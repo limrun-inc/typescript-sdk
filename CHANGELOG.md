@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2 (2025-09-08)
+
+Full Changelog: [v0.6.1...v0.6.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.6.1...v0.6.2)
+
+### Chores
+
+* update SDK settings ([3073047](https://github.com/limrun-inc/typescript-sdk/commit/3073047142a387364e14634af10ebceb0fe6503e))
+
 ## 0.6.1 (2025-09-08)
 
 Full Changelog: [v0.6.0...v0.6.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.6.0...v0.6.1)
