@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 (2025-09-08)
+
+Full Changelog: [v0.1.0...v0.2.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.1.0...v0.2.0)
+
+### Features
+
+* **api:** rename retrieve to get ([4b83931](https://github.com/limrun-inc/typescript-sdk/commit/4b83931741aa63ad47bd6937635c0ec28a63c763))
+
 ## 0.1.0 (2025-09-08)
 
 Full Changelog: [v0.0.1...v0.1.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.0.1...v0.1.0)

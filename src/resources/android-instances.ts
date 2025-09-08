@@ -16,13 +16,6 @@ export class AndroidInstances extends APIResource {
   }
 
   /**
-   * Get Android instance with given ID
-   */
-  retrieve(id: string, options?: RequestOptions): APIPromise<AndroidInstance> {
-    return this._client.get(path`/v1/android_instances/${id}`, options);
-  }
-
-  /**
    * List Android instances belonging to given organization
    */
   list(
@@ -40,6 +33,13 @@ export class AndroidInstances extends APIResource {
       ...options,
       headers: buildHeaders([{ Accept: '*/*' }, options?.headers]),
     });
+  }
+
+  /**
+   * Get Android instance with given ID
+   */
+  get(id: string, options?: RequestOptions): APIPromise<AndroidInstance> {
+    return this._client.get(path`/v1/android_instances/${id}`, options);
   }
 }
 
