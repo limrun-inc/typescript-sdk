@@ -38,9 +38,9 @@ function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          // 'X-Forwarded-For': '38.32.68.57',
         },
         body: JSON.stringify({
-          name: `sdk-example`,
           assets: assetPaths.filter((p) => p.trim() !== '').map((path) => ({ path })),
         }),
       });

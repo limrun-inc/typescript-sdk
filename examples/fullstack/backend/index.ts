@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { Limrun } from '@limrun/api';
+import { AndroidInstanceCreateParams } from '@limrun/api/resources';
 
 const apiKey = process.env['LIM_TOKEN'];
 
@@ -37,21 +38,29 @@ app.post('/create-instance', async (req: Request<{}, {}, { assets?: { path: stri
       });
     }
   }
+  const spec: AndroidInstanceCreateParams.Spec = {
+    ...(downloadUrls.length > 0 ?
+        {
+          initialAssets: downloadUrls.map((url) => ({
+            kind: 'App',
+            source: 'URL',
+            url,
+          })),
+        }
+      : {})
+  }
+  const forwardedIp = req.headers['x-forwarded-for'] instanceof Array ? req.headers['x-forwarded-for'].join(",") : req.headers['x-forwarded-for'];
+  const clientIp = forwardedIp ? forwardedIp.split(",")[0] : req.socket.remoteAddress;
+  if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
+    console.log({ clientIp }, 'Adding client IP as scheduling clue');
+    spec.clues = [{
+      kind: 'ClientIP',
+      clientIp,
+    }];
+  }
   try {
     console.time('create');
-    const result = await limrun.androidInstances.create({
-      spec:
-        downloadUrls.length > 0 ?
-          {
-            initialAssets: downloadUrls.map((url) => ({
-              kind: 'App',
-              source: 'URL',
-              url,
-            })),
-          }
-        : {},
-      wait: true,
-    });
+    const result = await limrun.androidInstances.create({ spec });
     console.timeEnd('create');
     return res.status(200).json({
       id: result.metadata.id,
