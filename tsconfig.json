@@ -1,6 +1,6 @@
 {
-  "include": ["src", "tests", "examples"],
-  "exclude": [],
+  "include": ["src", "tests"],
+  "exclude": ["examples"],
   "compilerOptions": {
     "target": "es2020",
     "lib": ["es2020"],

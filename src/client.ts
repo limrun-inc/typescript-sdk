@@ -762,5 +762,6 @@ export declare namespace Limrun {
     type AssetListParams as AssetListParams,
     type AssetGetOrCreateParams as AssetGetOrCreateParams,
     type AssetGetOrUploadParams as AssetGetOrUploadParams,
+    type AssetGetOrUploadResponse as AssetGetOrUploadResponse,
   };
 }
