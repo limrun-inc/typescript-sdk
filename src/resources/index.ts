@@ -11,8 +11,8 @@ export {
   type Asset,
   type AssetListResponse,
   type AssetGetOrCreateResponse,
-  type AssetRetrieveParams,
   type AssetListParams,
+  type AssetGetParams,
   type AssetGetOrCreateParams,
 } from './assets';
 
