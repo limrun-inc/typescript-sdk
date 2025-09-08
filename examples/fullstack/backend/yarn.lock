@@ -132,14 +132,12 @@
   resolved "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.9.tgz#585624dc829cfb6e7c0aa6c3ca7d7e6daa87e34f"
   integrity sha512-PPOl1mi6lpLNQxnGoyAfschAodRFYXJ+9fs6WHXz7CSWKbOqiMZsubC+BQsVKuul+3vKLuwTHsS2c2y9EoKwxQ==
 
-"@limrun/api@^0.5.2":
-  version "0.5.2"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.5.2.tgz#ecf3bb5728e506f3ea81e6e81e71f393cb481161"
-  integrity sha512-Kv8BNfM4aBnlgGkb5QrfVsmLeIoCL6cigKqS0bVf4sEXWG0iNwmxL7GjYG8u9v9j5+hB8HYuXoKa+EQDNCKJtg==
+"@limrun/api@^0.6.2":
+  version "0.6.2"
+  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.6.2.tgz#79dc6a4c1ac87d3ceb702d7fbf8a906e89829363"
+  integrity sha512-Sb0v2TzOGw9JiFR7Nsj6o1pjl7wsApjQ5ER43l51t6WNx420bS1K6dUX0dkpxxpfIpxZnFTh1cQWBiJuL5TsDg==
   dependencies:
     ws "^8.18.3"
-  optionalDependencies:
-    bufferutil "^4.0.9"
 
 "@types/body-parser@*":
   version "1.19.6"
@@ -248,13 +246,6 @@ body-parser@^2.2.0:
     qs "^6.14.0"
     raw-body "^3.0.0"
     type-is "^2.0.0"
-
-bufferutil@^4.0.9:
-  version "4.0.9"
-  resolved "https://registry.npmjs.org/bufferutil/-/bufferutil-4.0.9.tgz#6e81739ad48a95cad45a279588e13e95e24a800a"
-  integrity sha512-WDtdLmJvAuNNPzByAYpRo2rF1Mmradw6gvWsQKf63476DDXmomT9zUiGypLcG4ibIM67vhAj8jJRdbmEws2Aqw==
-  dependencies:
-    node-gyp-build "^4.3.0"
 
 bytes@3.1.2, bytes@^3.1.2:
   version "3.1.2"
@@ -586,11 +577,6 @@ negotiator@^1.0.0:
   version "1.0.0"
   resolved "https://registry.npmjs.org/negotiator/-/negotiator-1.0.0.tgz#b6c91bb47172d69f93cfd7c357bbb529019b5f6a"
   integrity sha512-8Ofs/AUQh8MaEcrlq5xOX0CQ9ypTF5dl78mjlMNfOK08fzpgTHQRQPBxcPlEtIw0yRpws+Zo/3r+5WRby7u3Gg==
-
-node-gyp-build@^4.3.0:
-  version "4.8.4"
-  resolved "https://registry.npmjs.org/node-gyp-build/-/node-gyp-build-4.8.4.tgz#8a70ee85464ae52327772a90d66c6077a900cfc8"
-  integrity sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==
 
 object-assign@^4:
   version "4.1.1"
