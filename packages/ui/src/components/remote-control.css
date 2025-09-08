@@ -1,0 +1,60 @@
+.rc-container {
+  position: relative;
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  isolation: isolate;
+  contain: layout style;
+
+  background-color: rgba(0, 0, 0, 0.05);
+  touch-action: none;
+
+  --rc-spinner-color: #3b82f6;
+  --rc-text-muted: #6b7280;
+}
+
+.rc-video {
+  height: 100%;
+  width: 100%;
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  outline: none;
+  pointer-events: none;
+  cursor: none;
+}
+
+.rc-placeholder-wrapper {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.rc-placeholder-content {
+  color: var(--rc-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  margin: 0;
+  font-family: inherit;
+}
+
+.rc-spinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid transparent;
+  border-top-color: var(--rc-spinner-color);
+  border-radius: 50%;
+  margin: 0 auto 8px;
+  animation: rc-spin 1s linear infinite;
+}
+
+@keyframes rc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -30,8 +30,8 @@ import {
   AssetListParams,
   AssetListResponse,
   AssetRetrieveParams,
-  Assets,
 } from './resources/assets';
+import { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './resources/assets-helpers';
 import { type Fetch } from './internal/builtin-types';
 import { HeadersLike, NullableHeaders, buildHeaders } from './internal/headers';
 import { FinalRequestOptions, RequestOptions } from './internal/request-options';
@@ -761,5 +761,6 @@ export declare namespace Limrun {
     type AssetRetrieveParams as AssetRetrieveParams,
     type AssetListParams as AssetListParams,
     type AssetGetOrCreateParams as AssetGetOrCreateParams,
+    type AssetGetOrUploadParams as AssetGetOrUploadParams,
   };
 }

@@ -8,7 +8,6 @@ export {
   type AndroidInstanceListParams,
 } from './android-instances';
 export {
-  Assets,
   type Asset,
   type AssetListResponse,
   type AssetGetOrCreateResponse,
@@ -16,3 +15,5 @@ export {
   type AssetListParams,
   type AssetGetOrCreateParams,
 } from './assets';
+
+export { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './assets-helpers';
