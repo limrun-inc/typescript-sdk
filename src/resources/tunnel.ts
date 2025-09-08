@@ -1,9 +1,11 @@
 import * as net from 'net';
 import { WebSocket } from 'ws';
 
-/** Returned by `startTcpTunnel` – holds the chosen localhost port and a close callback. */
 export interface Tunnel {
-  address: net.AddressInfo;
+  address: {
+    address: string;
+    port: number;
+  };
   close: () => void;
 }
 
@@ -78,7 +80,7 @@ export async function startTcpTunnel(
       });
 
       // WebSocket error
-      ws.once('error', (err) => {
+      ws.once('error', (err: any) => {
         console.error('WebSocket error:', err);
         tcpSocket.destroy();
         close();
@@ -101,7 +103,7 @@ export async function startTcpTunnel(
         });
 
         // WS → TCP
-        socket.on('message', (data) => {
+        socket.on('message', (data: any) => {
           if (!tcpSocket.destroyed) {
             tcpSocket.write(data as Buffer);
           }
@@ -110,7 +112,7 @@ export async function startTcpTunnel(
 
       // Mutual close
       tcpSocket.on('close', close);
-      tcpSocket.on('error', (err) => {
+      tcpSocket.on('error', (err: any) => {
         console.error('TCP socket error:', err);
         close();
       });
