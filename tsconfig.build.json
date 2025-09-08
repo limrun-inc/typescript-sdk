@@ -5,8 +5,8 @@
   "compilerOptions": {
     "rootDir": "./dist/src",
     "paths": {
-      "limrun-v1/*": ["dist/src/*"],
-      "limrun-v1": ["dist/src/index.ts"]
+      "@limrun/api/*": ["dist/src/*"],
+      "@limrun/api": ["dist/src/index.ts"]
     },
     "noEmit": false,
     "declaration": true,

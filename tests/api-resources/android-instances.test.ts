@@ -1,6 +1,6 @@
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-import Limrun from 'limrun-v1';
+import Limrun from '@limrun/api';
 
 const client = new Limrun({
   apiKey: 'My API Key',

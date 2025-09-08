@@ -1,10 +1,10 @@
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-import { APIPromise } from 'limrun-v1/core/api-promise';
+import { APIPromise } from '@limrun/api/core/api-promise';
 
 import util from 'node:util';
-import Limrun from 'limrun-v1';
-import { APIUserAbortError } from 'limrun-v1';
+import Limrun from '@limrun/api';
+import { APIUserAbortError } from '@limrun/api';
 const defaultFetch = fetch;
 
 describe('instantiate client', () => {

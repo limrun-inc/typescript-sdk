@@ -9,8 +9,8 @@
     "esModuleInterop": true,
     "baseUrl": "./",
     "paths": {
-      "limrun-v1/*": ["src/*"],
-      "limrun-v1": ["src/index.ts"]
+      "@limrun/api/*": ["src/*"],
+      "@limrun/api": ["src/index.ts"]
     },
     "noEmit": true,
 

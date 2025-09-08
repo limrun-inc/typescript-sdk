@@ -1,10 +1,10 @@
 # Limrun TypeScript API Library
 
-[![NPM version](<https://img.shields.io/npm/v/limrun-v1.svg?label=npm%20(stable)>)](https://npmjs.org/package/limrun-v1) ![npm bundle size](https://img.shields.io/bundlephobia/minzip/limrun-v1)
+[![NPM version](<https://img.shields.io/npm/v/@limrun/api.svg?label=npm%20(stable)>)](https://npmjs.org/package/@limrun/api) ![npm bundle size](https://img.shields.io/bundlephobia/minzip/@limrun/api)
 
 This library provides convenient access to the Limrun REST API from server-side TypeScript or JavaScript.
 
-The full API of this library can be found in [api.md](api.md).
+The REST API documentation can be found on [lim.run](https://lim.run). The full API of this library can be found in [api.md](api.md).
 
 It is generated with [Stainless](https://www.stainless.com/).
 
@@ -15,7 +15,7 @@ npm install git+ssh://git@github.com:stainless-sdks/limrun-v1-typescript.git
 ```
 
 > [!NOTE]
-> Once this package is [published to npm](https://www.stainless.com/docs/guides/publish), this will become: `npm install limrun-v1`
+> Once this package is [published to npm](https://www.stainless.com/docs/guides/publish), this will become: `npm install @limrun/api`
 
 ## Usage
 
@@ -23,7 +23,7 @@ The full API of this library can be found in [api.md](api.md).
 
 <!-- prettier-ignore -->
 ```js
-import Limrun from 'limrun-v1';
+import Limrun from '@limrun/api';
 
 const client = new Limrun({
   apiKey: process.env['LIM_TOKEN'], // This is the default and can be omitted
@@ -40,7 +40,7 @@ This library includes TypeScript definitions for all request params and response
 
 <!-- prettier-ignore -->
 ```ts
-import Limrun from 'limrun-v1';
+import Limrun from '@limrun/api';
 
 const client = new Limrun({
   apiKey: process.env['LIM_TOKEN'], // This is the default and can be omitted
@@ -162,7 +162,7 @@ The log level can be configured in two ways:
 2. Using the `logLevel` client option (overrides the environment variable if set)
 
 ```ts
-import Limrun from 'limrun-v1';
+import Limrun from '@limrun/api';
 
 const client = new Limrun({
   logLevel: 'debug', // Show all log messages
@@ -190,7 +190,7 @@ When providing a custom logger, the `logLevel` option still controls which messa
 below the configured level will not be sent to your logger.
 
 ```ts
-import Limrun from 'limrun-v1';
+import Limrun from '@limrun/api';
 import pino from 'pino';
 
 const logger = pino();
@@ -259,7 +259,7 @@ globalThis.fetch = fetch;
 Or pass it to the client:
 
 ```ts
-import Limrun from 'limrun-v1';
+import Limrun from '@limrun/api';
 import fetch from 'my-fetch';
 
 const client = new Limrun({ fetch });
@@ -270,7 +270,7 @@ const client = new Limrun({ fetch });
 If you want to set custom `fetch` options without overriding the `fetch` function, you can provide a `fetchOptions` object when instantiating the client or making a request. (Request-specific options override client options.)
 
 ```ts
-import Limrun from 'limrun-v1';
+import Limrun from '@limrun/api';
 
 const client = new Limrun({
   fetchOptions: {
@@ -287,7 +287,7 @@ options to requests:
 <img src="https://raw.githubusercontent.com/stainless-api/sdk-assets/refs/heads/main/node.svg" align="top" width="18" height="21"> **Node** <sup>[[docs](https://github.com/nodejs/undici/blob/main/docs/docs/api/ProxyAgent.md#example---proxyagent-with-fetch)]</sup>
 
 ```ts
-import Limrun from 'limrun-v1';
+import Limrun from '@limrun/api';
 import * as undici from 'undici';
 
 const proxyAgent = new undici.ProxyAgent('http://localhost:8888');
@@ -301,7 +301,7 @@ const client = new Limrun({
 <img src="https://raw.githubusercontent.com/stainless-api/sdk-assets/refs/heads/main/bun.svg" align="top" width="18" height="21"> **Bun** <sup>[[docs](https://bun.sh/guides/http/proxy)]</sup>
 
 ```ts
-import Limrun from 'limrun-v1';
+import Limrun from '@limrun/api';
 
 const client = new Limrun({
   fetchOptions: {
@@ -313,7 +313,7 @@ const client = new Limrun({
 <img src="https://raw.githubusercontent.com/stainless-api/sdk-assets/refs/heads/main/deno.svg" align="top" width="18" height="21"> **Deno** <sup>[[docs](https://docs.deno.com/api/deno/~/Deno.createHttpClient)]</sup>
 
 ```ts
-import Limrun from 'npm:limrun-v1';
+import Limrun from 'npm:@limrun/api';
 
 const httpClient = Deno.createHttpClient({ proxy: { url: 'http://localhost:8888' } });
 const client = new Limrun({

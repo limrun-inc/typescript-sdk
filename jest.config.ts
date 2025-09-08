@@ -7,8 +7,8 @@ const config: JestConfigWithTsJest = {
     '^.+\\.(t|j)sx?$': ['@swc/jest', { sourceMaps: 'inline' }],
   },
   moduleNameMapper: {
-    '^limrun-v1$': '<rootDir>/src/index.ts',
-    '^limrun-v1/(.*)$': '<rootDir>/src/$1',
+    '^@limrun/api$': '<rootDir>/src/index.ts',
+    '^@limrun/api/(.*)$': '<rootDir>/src/$1',
   },
   modulePathIgnorePatterns: [
     '<rootDir>/ecosystem-tests/',

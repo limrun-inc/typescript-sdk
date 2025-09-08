@@ -1,5 +1,5 @@
-import { multipartFormRequestOptions, createForm } from 'limrun-v1/internal/uploads';
-import { toFile } from 'limrun-v1/core/uploads';
+import { multipartFormRequestOptions, createForm } from '@limrun/api/internal/uploads';
+import { toFile } from '@limrun/api/core/uploads';
 
 describe('form data validation', () => {
   test('valid values do not error', async () => {
