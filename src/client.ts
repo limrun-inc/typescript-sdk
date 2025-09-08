@@ -27,9 +27,9 @@ import {
   Asset,
   AssetGetOrCreateParams,
   AssetGetOrCreateResponse,
+  AssetGetParams,
   AssetListParams,
   AssetListResponse,
-  AssetRetrieveParams,
   Assets,
 } from './resources/assets';
 import { type Fetch } from './internal/builtin-types';
@@ -758,8 +758,8 @@ export declare namespace Limrun {
     type Asset as Asset,
     type AssetListResponse as AssetListResponse,
     type AssetGetOrCreateResponse as AssetGetOrCreateResponse,
-    type AssetRetrieveParams as AssetRetrieveParams,
     type AssetListParams as AssetListParams,
+    type AssetGetParams as AssetGetParams,
     type AssetGetOrCreateParams as AssetGetOrCreateParams,
   };
 }

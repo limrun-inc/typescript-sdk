@@ -9,30 +9,6 @@ const client = new Limrun({
 
 describe('resource assets', () => {
   // Prism tests are disabled
-  test.skip('retrieve', async () => {
-    const responsePromise = client.assets.retrieve('assetId');
-    const rawResponse = await responsePromise.asResponse();
-    expect(rawResponse).toBeInstanceOf(Response);
-    const response = await responsePromise;
-    expect(response).not.toBeInstanceOf(Response);
-    const dataAndResponse = await responsePromise.withResponse();
-    expect(dataAndResponse.data).toBe(response);
-    expect(dataAndResponse.response).toBe(rawResponse);
-  });
-
-  // Prism tests are disabled
-  test.skip('retrieve: request options and params are passed correctly', async () => {
-    // ensure the request options are being passed correctly by passing an invalid HTTP method in order to cause an error
-    await expect(
-      client.assets.retrieve(
-        'assetId',
-        { includeDownloadUrl: true, includeUploadUrl: true },
-        { path: '/_stainless_unknown_path' },
-      ),
-    ).rejects.toThrow(Limrun.NotFoundError);
-  });
-
-  // Prism tests are disabled
   test.skip('list', async () => {
     const responsePromise = client.assets.list();
     const rawResponse = await responsePromise.asResponse();
@@ -55,6 +31,30 @@ describe('resource assets', () => {
           md5Filter: 'md5Filter',
           nameFilter: 'nameFilter',
         },
+        { path: '/_stainless_unknown_path' },
+      ),
+    ).rejects.toThrow(Limrun.NotFoundError);
+  });
+
+  // Prism tests are disabled
+  test.skip('get', async () => {
+    const responsePromise = client.assets.get('assetId');
+    const rawResponse = await responsePromise.asResponse();
+    expect(rawResponse).toBeInstanceOf(Response);
+    const response = await responsePromise;
+    expect(response).not.toBeInstanceOf(Response);
+    const dataAndResponse = await responsePromise.withResponse();
+    expect(dataAndResponse.data).toBe(response);
+    expect(dataAndResponse.response).toBe(rawResponse);
+  });
+
+  // Prism tests are disabled
+  test.skip('get: request options and params are passed correctly', async () => {
+    // ensure the request options are being passed correctly by passing an invalid HTTP method in order to cause an error
+    await expect(
+      client.assets.get(
+        'assetId',
+        { includeDownloadUrl: true, includeUploadUrl: true },
         { path: '/_stainless_unknown_path' },
       ),
     ).rejects.toThrow(Limrun.NotFoundError);

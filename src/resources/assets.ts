@@ -7,17 +7,6 @@ import { path } from '../internal/utils/path';
 
 export class Assets extends APIResource {
   /**
-   * Get the asset with given ID.
-   */
-  retrieve(
-    assetID: string,
-    query: AssetRetrieveParams | null | undefined = {},
-    options?: RequestOptions,
-  ): APIPromise<Asset> {
-    return this._client.get(path`/v1/assets/${assetID}`, { query, ...options });
-  }
-
-  /**
    * List organization's all assets with given filters. If none given, return all
    * assets.
    */
@@ -26,6 +15,17 @@ export class Assets extends APIResource {
     options?: RequestOptions,
   ): APIPromise<AssetListResponse> {
     return this._client.get('/v1/assets', { query, ...options });
+  }
+
+  /**
+   * Get the asset with given ID.
+   */
+  get(
+    assetID: string,
+    query: AssetGetParams | null | undefined = {},
+    options?: RequestOptions,
+  ): APIPromise<Asset> {
+    return this._client.get(path`/v1/assets/${assetID}`, { query, ...options });
   }
 
   /**
@@ -72,18 +72,6 @@ export interface AssetGetOrCreateResponse {
   md5?: string;
 }
 
-export interface AssetRetrieveParams {
-  /**
-   * Toggles whether a download URL should be included in the response
-   */
-  includeDownloadUrl?: boolean;
-
-  /**
-   * Toggles whether an upload URL should be included in the response
-   */
-  includeUploadUrl?: boolean;
-}
-
 export interface AssetListParams {
   /**
    * Toggles whether a download URL should be included in the response
@@ -106,6 +94,18 @@ export interface AssetListParams {
   nameFilter?: string;
 }
 
+export interface AssetGetParams {
+  /**
+   * Toggles whether a download URL should be included in the response
+   */
+  includeDownloadUrl?: boolean;
+
+  /**
+   * Toggles whether an upload URL should be included in the response
+   */
+  includeUploadUrl?: boolean;
+}
+
 export interface AssetGetOrCreateParams {
   name: string;
 }
@@ -115,8 +115,8 @@ export declare namespace Assets {
     type Asset as Asset,
     type AssetListResponse as AssetListResponse,
     type AssetGetOrCreateResponse as AssetGetOrCreateResponse,
-    type AssetRetrieveParams as AssetRetrieveParams,
     type AssetListParams as AssetListParams,
+    type AssetGetParams as AssetGetParams,
     type AssetGetOrCreateParams as AssetGetOrCreateParams,
   };
 }
