@@ -1,7 +1,6 @@
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 export {
-  AndroidInstances,
   type AndroidInstance,
   type AndroidInstanceListResponse,
   type AndroidInstanceCreateParams,
@@ -15,5 +14,7 @@ export {
   type AssetGetParams,
   type AssetGetOrCreateParams,
 } from './assets';
+
+export { AndroidInstances } from './android-instances-helpers';
 
 export { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './assets-helpers';

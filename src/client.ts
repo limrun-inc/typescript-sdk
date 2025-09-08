@@ -21,7 +21,6 @@ import {
   AndroidInstanceCreateParams,
   AndroidInstanceListParams,
   AndroidInstanceListResponse,
-  AndroidInstances,
 } from './resources/android-instances';
 import {
   Asset,
@@ -31,6 +30,7 @@ import {
   AssetListResponse,
   AssetGetParams,
 } from './resources/assets';
+import { AndroidInstances } from './resources/android-instances-helpers';
 import { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './resources/assets-helpers';
 import { type Fetch } from './internal/builtin-types';
 import { HeadersLike, NullableHeaders, buildHeaders } from './internal/headers';
