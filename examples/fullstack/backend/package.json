@@ -13,7 +13,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@limrun/api": "^0.6.2",
+    "@limrun/api": "^0.7.0",
     "cors": "^2.8.5",
     "express": "^5.1.0"
   },
