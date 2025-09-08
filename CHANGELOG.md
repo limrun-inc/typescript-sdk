@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.0 (2025-09-08)
+
+Full Changelog: [v0.2.0...v0.6.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.2.0...v0.6.0)
+
+### Features
+
+* **examples:** add tunnel example ([e174066](https://github.com/limrun-inc/typescript-sdk/commit/e174066fd66892daf58a9c9769ca41d7e3eb618f))
+* **examples:** update frontend and backend to include scheduling clue ([178be4b](https://github.com/limrun-inc/typescript-sdk/commit/178be4b4e9f4e683977e17a53bb7668c0b96645f))
+* **github:** add workflow to publish ui package ([e8ff97f](https://github.com/limrun-inc/typescript-sdk/commit/e8ff97fd4105a67a0e044520c062056a0939709f))
+
+
+### Chores
+
+* lint issues ([2647181](https://github.com/limrun-inc/typescript-sdk/commit/26471818e3fdbb5d9a1604cb1bd66e92aa5685dd))
+* lint issues ([7c1af79](https://github.com/limrun-inc/typescript-sdk/commit/7c1af79f1c9bbcaa5a7cda911178549a81a95754))
+
 ## 0.2.0 (2025-09-08)
 
 Full Changelog: [v0.1.0...v0.2.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.1.0...v0.2.0)
