@@ -40,23 +40,28 @@ app.post('/create-instance', async (req: Request<{}, {}, { assets?: { path: stri
   }
   const spec: AndroidInstanceCreateParams.Spec = {
     ...(downloadUrls.length > 0 ?
-        {
-          initialAssets: downloadUrls.map((url) => ({
-            kind: 'App',
-            source: 'URL',
-            url,
-          })),
-        }
-      : {})
-  }
-  const forwardedIp = req.headers['x-forwarded-for'] instanceof Array ? req.headers['x-forwarded-for'].join(",") : req.headers['x-forwarded-for'];
-  const clientIp = forwardedIp ? forwardedIp.split(",")[0] : req.socket.remoteAddress;
+      {
+        initialAssets: downloadUrls.map((url) => ({
+          kind: 'App',
+          source: 'URL',
+          url,
+        })),
+      }
+    : {}),
+  };
+  const forwardedIp =
+    req.headers['x-forwarded-for'] instanceof Array ?
+      req.headers['x-forwarded-for'].join(',')
+    : req.headers['x-forwarded-for'];
+  const clientIp = forwardedIp ? forwardedIp.split(',')[0] : req.socket.remoteAddress;
   if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
     console.log({ clientIp }, 'Adding client IP as scheduling clue');
-    spec.clues = [{
-      kind: 'ClientIP',
-      clientIp,
-    }];
+    spec.clues = [
+      {
+        kind: 'ClientIP',
+        clientIp,
+      },
+    ];
   }
   try {
     console.time('create');
