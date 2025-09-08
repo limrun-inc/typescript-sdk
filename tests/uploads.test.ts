@@ -1,6 +1,6 @@
 import fs from 'fs';
-import type { ResponseLike } from 'limrun-v1/internal/to-file';
-import { toFile } from 'limrun-v1/core/uploads';
+import type { ResponseLike } from '@limrun/api/internal/to-file';
+import { toFile } from '@limrun/api/core/uploads';
 import { File } from 'node:buffer';
 
 class MyClass {
@@ -97,7 +97,7 @@ describe('missing File error message', () => {
   });
 
   test('is thrown', async () => {
-    const uploads = await import('limrun-v1/core/uploads');
+    const uploads = await import('@limrun/api/core/uploads');
     await expect(
       uploads.toFile(mockResponse({ url: 'https://example.com/my/audio.mp3' })),
     ).rejects.toMatchInlineSnapshot(

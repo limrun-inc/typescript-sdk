@@ -55,12 +55,12 @@ $ cd limrun-v1-typescript
 # With yarn
 $ yarn link
 $ cd ../my-package
-$ yarn link limrun-v1
+$ yarn link @limrun/api
 
 # With pnpm
 $ pnpm link --global
 $ cd ../my-package
-$ pnpm link -—global limrun-v1
+$ pnpm link -—global @limrun/api
 ```
 
 ## Running tests
