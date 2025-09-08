@@ -1,0 +1,31 @@
+name: Publish @limrun/ui
+on:
+  workflow_dispatch:
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: packages/ui
+        run: |
+          yarn install
+
+      - name: Publish to NPM
+        working-directory: packages/ui
+        run: |
+          yarn config set registry https://registry.npmjs.org/
+          npm config set '//registry.npmjs.org/:_authToken' "$NPM_TOKEN"
+          yarn build
+          cd dist
+          yarn publish
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
