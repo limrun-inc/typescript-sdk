@@ -1,12 +1,12 @@
 {
   "name": "@limrun/api",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "The official TypeScript library for the Limrun API",
   "author": "Limrun <contact@limrun.com>",
   "types": "dist/index.d.ts",
   "main": "dist/index.js",
   "type": "commonjs",
-  "repository": "github:stainless-sdks/limrun-v1-typescript",
+  "repository": "github:limrun-inc/typescript-sdk",
   "license": "Apache-2.0",
   "packageManager": "yarn@1.22.22",
   "files": [
