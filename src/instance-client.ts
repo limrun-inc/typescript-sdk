@@ -1,8 +1,8 @@
 import { WebSocket, Data } from 'ws';
 import { exec } from 'node:child_process';
 
-import { startTcpTunnel } from './tunnel.js';
-import type { Tunnel } from './tunnel.js';
+import { startTcpTunnel } from './tunnel';
+import type { Tunnel } from './tunnel';
 
 /**
  * A client for interacting with a Limbar instance
