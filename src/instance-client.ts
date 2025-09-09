@@ -3,8 +3,6 @@ import { exec } from 'node:child_process';
 
 import { startTcpTunnel } from './tunnel.js';
 import type { Tunnel } from './tunnel.js';
-export type { Tunnel } from './tunnel.js';
-import { AndroidInstance } from './android-instances.js';
 
 /**
  * A client for interacting with a Limbar instance
@@ -42,6 +40,18 @@ export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
  * Configuration options for creating an Instance API client
  */
 export type InstanceClientOptions = {
+  /**
+   * The URL of the ADB WebSocket endpoint.
+   */
+  adbUrl: string;
+  /**
+   * The URL of the main endpoint WebSocket.
+   */
+  endpointUrl: string;
+  /**
+   * The token to use for the WebSocket connections.
+   */
+  token: string;
   /**
    * Path to the ADB executable.
    * @default 'adb'
@@ -99,14 +109,9 @@ type ServerMessage =
  * @returns An InstanceClient for controlling the instance
  */
 export async function createInstanceClient(
-  androidInstance: AndroidInstance,
-  options: InstanceClientOptions = {
-    adbPath: 'adb',
-    logLevel: 'info',
-  },
+  options: InstanceClientOptions,
 ): Promise<InstanceClient> {
-  const token = androidInstance.status.token;
-  const serverAddress = `${androidInstance.status.endpointWebSocketUrl}?token=${token}`;
+  const serverAddress = `${options.endpointUrl}?token=${options.token}`;
   const logLevel = options.logLevel ?? 'info';
   let ws: WebSocket | undefined = undefined;
 
@@ -296,12 +301,9 @@ export async function createInstanceClient(
      * client to it.
      */
     const startAdbTunnel = async (): Promise<Tunnel> => {
-      if (!androidInstance.status.adbWebSocketUrl) {
-        return Promise.reject(new Error('ADB WebSocket URL is not set'));
-      }
       const { address, close } = await startTcpTunnel(
-        androidInstance.status.adbWebSocketUrl,
-        token,
+        options.adbUrl,
+        options.token,
         '127.0.0.1',
         0,
       );
