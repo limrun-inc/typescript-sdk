@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.0 (2025-09-09)
+
+Full Changelog: [v0.7.0...v0.8.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.7.0...v0.8.0)
+
+### Bug Fixes
+
+* coerce nullable values to undefined ([0b8c51a](https://github.com/limrun-inc/typescript-sdk/commit/0b8c51a581fe97fcc9c2cd7016a3cceee0700d67))
+
+
+### Chores
+
+* **api:** fix linter issues ([9b65c4f](https://github.com/limrun-inc/typescript-sdk/commit/9b65c4f773a08bd85f23fdcbf2c6e2ae727d7a08))
+* **examples:** update to the latest @limrun/api ([a7e513e](https://github.com/limrun-inc/typescript-sdk/commit/a7e513e29c8948109dc0e2cb00d15a030e2cb7a3))
+* **tests:** fix the import to be compatible ([40f7fab](https://github.com/limrun-inc/typescript-sdk/commit/40f7fabcf473c28b1a711a8ea524624a3a982e21))
+
 ## 0.7.0 (2025-09-08)
 
 Full Changelog: [v0.6.2...v0.7.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.6.2...v0.7.0)
