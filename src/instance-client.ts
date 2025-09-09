@@ -108,9 +108,7 @@ type ServerMessage =
  * @param options Configuration options including webrtcUrl, token and log level
  * @returns An InstanceClient for controlling the instance
  */
-export async function createInstanceClient(
-  options: InstanceClientOptions,
-): Promise<InstanceClient> {
+export async function createInstanceClient(options: InstanceClientOptions): Promise<InstanceClient> {
   const serverAddress = `${options.endpointUrl}?token=${options.token}`;
   const logLevel = options.logLevel ?? 'info';
   let ws: WebSocket | undefined = undefined;
@@ -301,12 +299,7 @@ export async function createInstanceClient(
      * client to it.
      */
     const startAdbTunnel = async (): Promise<Tunnel> => {
-      const { address, close } = await startTcpTunnel(
-        options.adbUrl,
-        options.token,
-        '127.0.0.1',
-        0,
-      );
+      const { address, close } = await startTcpTunnel(options.adbUrl, options.token, '127.0.0.1', 0);
       try {
         await new Promise<void>((resolve, reject) => {
           exec(`${options.adbPath ?? 'adb'} connect ${address.address}:${address.port}`, (err) => {
