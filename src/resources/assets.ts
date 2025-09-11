@@ -84,11 +84,6 @@ export interface AssetListParams {
   includeUploadUrl?: boolean;
 
   /**
-   * Query by file md5
-   */
-  md5Filter?: string;
-
-  /**
    * Query by file name
    */
   nameFilter?: string;

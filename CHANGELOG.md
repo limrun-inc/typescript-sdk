@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.1 (2025-09-11)
+
+Full Changelog: [v0.8.0...v0.8.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.8.0...v0.8.1)
+
+### Features
+
+* **api:** remove md5filter from list assets ([e34b33e](https://github.com/limrun-inc/typescript-sdk/commit/e34b33eb60bb37e557a4d898dfc073427fc8acd8))
+
+
+### Chores
+
+* **examples:** update to the latest @limrun/api ([4a24195](https://github.com/limrun-inc/typescript-sdk/commit/4a241955518cd9ae68bd9859e83958cb01447138))
+
 ## 0.8.0 (2025-09-09)
 
 Full Changelog: [v0.7.0...v0.8.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.7.0...v0.8.0)
