@@ -18,9 +18,8 @@ export {
 } from './assets';
 export {
   IosInstances,
-  type IosInstanceCreateResponse,
+  type IosInstance,
   type IosInstanceListResponse,
-  type IosInstanceGetResponse,
   type IosInstanceCreateParams,
   type IosInstanceListParams,
 } from './ios-instances';

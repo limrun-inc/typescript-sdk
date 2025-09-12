@@ -30,13 +30,12 @@ Methods:
 
 Types:
 
-- <code><a href="./src/resources/ios-instances.ts">IosInstanceCreateResponse</a></code>
+- <code><a href="./src/resources/ios-instances.ts">IosInstance</a></code>
 - <code><a href="./src/resources/ios-instances.ts">IosInstanceListResponse</a></code>
-- <code><a href="./src/resources/ios-instances.ts">IosInstanceGetResponse</a></code>
 
 Methods:
 
-- <code title="post /v1/ios_instances">client.iosInstances.<a href="./src/resources/ios-instances.ts">create</a>({ ...params }) -> IosInstanceCreateResponse</code>
+- <code title="post /v1/ios_instances">client.iosInstances.<a href="./src/resources/ios-instances.ts">create</a>({ ...params }) -> IosInstance</code>
 - <code title="get /v1/ios_instances">client.iosInstances.<a href="./src/resources/ios-instances.ts">list</a>({ ...params }) -> IosInstanceListResponse</code>
 - <code title="delete /v1/ios_instances/{id}">client.iosInstances.<a href="./src/resources/ios-instances.ts">delete</a>(id) -> void</code>
-- <code title="get /v1/ios_instances/{id}">client.iosInstances.<a href="./src/resources/ios-instances.ts">get</a>(id) -> IosInstanceGetResponse</code>
+- <code title="get /v1/ios_instances/{id}">client.iosInstances.<a href="./src/resources/ios-instances.ts">get</a>(id) -> IosInstance</code>
