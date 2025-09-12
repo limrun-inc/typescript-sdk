@@ -10,7 +10,7 @@ export class IosInstances extends APIResource {
   /**
    * Create an iOS instance
    */
-  create(params: IosInstanceCreateParams, options?: RequestOptions): APIPromise<IosInstanceCreateResponse> {
+  create(params: IosInstanceCreateParams, options?: RequestOptions): APIPromise<IosInstance> {
     const { wait, ...body } = params;
     return this._client.post('/v1/ios_instances', { query: { wait }, body, ...options });
   }
@@ -38,20 +38,20 @@ export class IosInstances extends APIResource {
   /**
    * Get iOS instance with given ID
    */
-  get(id: string, options?: RequestOptions): APIPromise<IosInstanceGetResponse> {
+  get(id: string, options?: RequestOptions): APIPromise<IosInstance> {
     return this._client.get(path`/v1/ios_instances/${id}`, options);
   }
 }
 
-export interface IosInstanceCreateResponse {
-  metadata: IosInstanceCreateResponse.Metadata;
+export interface IosInstance {
+  metadata: IosInstance.Metadata;
 
-  spec: IosInstanceCreateResponse.Spec;
+  spec: IosInstance.Spec;
 
-  status: IosInstanceCreateResponse.Status;
+  status: IosInstance.Status;
 }
 
-export namespace IosInstanceCreateResponse {
+export namespace IosInstance {
   export interface Metadata {
     id: string;
 
@@ -96,115 +96,7 @@ export namespace IosInstanceCreateResponse {
   }
 }
 
-export type IosInstanceListResponse = Array<IosInstanceListResponse.IosInstanceListResponseItem>;
-
-export namespace IosInstanceListResponse {
-  export interface IosInstanceListResponseItem {
-    metadata: IosInstanceListResponseItem.Metadata;
-
-    spec: IosInstanceListResponseItem.Spec;
-
-    status: IosInstanceListResponseItem.Status;
-  }
-
-  export namespace IosInstanceListResponseItem {
-    export interface Metadata {
-      id: string;
-
-      createdAt: string;
-
-      organizationId: string;
-
-      displayName?: string;
-
-      labels?: { [key: string]: string };
-
-      terminatedAt?: string;
-    }
-
-    export interface Spec {
-      /**
-       * After how many minutes of inactivity should the instance be terminated. Example
-       * values 1m, 10m, 3h. Default is 3m. Providing "0" disables inactivity checks
-       * altogether.
-       */
-      inactivityTimeout: string;
-
-      /**
-       * The region where the instance will be created. If not given, will be decided
-       * based on scheduling clues and availability.
-       */
-      region: string;
-
-      /**
-       * After how many minutes should the instance be terminated. Example values 1m,
-       * 10m, 3h. Default is "0" which means no hard timeout.
-       */
-      hardTimeout?: string;
-    }
-
-    export interface Status {
-      token: string;
-
-      state: 'unknown' | 'creating' | 'ready' | 'terminated';
-
-      endpointWebSocketUrl?: string;
-    }
-  }
-}
-
-export interface IosInstanceGetResponse {
-  metadata: IosInstanceGetResponse.Metadata;
-
-  spec: IosInstanceGetResponse.Spec;
-
-  status: IosInstanceGetResponse.Status;
-}
-
-export namespace IosInstanceGetResponse {
-  export interface Metadata {
-    id: string;
-
-    createdAt: string;
-
-    organizationId: string;
-
-    displayName?: string;
-
-    labels?: { [key: string]: string };
-
-    terminatedAt?: string;
-  }
-
-  export interface Spec {
-    /**
-     * After how many minutes of inactivity should the instance be terminated. Example
-     * values 1m, 10m, 3h. Default is 3m. Providing "0" disables inactivity checks
-     * altogether.
-     */
-    inactivityTimeout: string;
-
-    /**
-     * The region where the instance will be created. If not given, will be decided
-     * based on scheduling clues and availability.
-     */
-    region: string;
-
-    /**
-     * After how many minutes should the instance be terminated. Example values 1m,
-     * 10m, 3h. Default is "0" which means no hard timeout.
-     */
-    hardTimeout?: string;
-  }
-
-  export interface Status {
-    token: string;
-
-    state: 'unknown' | 'creating' | 'ready' | 'terminated';
-
-    endpointWebSocketUrl?: string;
-  }
-}
+export type IosInstanceListResponse = Array<IosInstance>;
 
 export interface IosInstanceCreateParams {
   /**
@@ -294,9 +186,8 @@ export interface IosInstanceListParams {
 
 export declare namespace IosInstances {
   export {
-    type IosInstanceCreateResponse as IosInstanceCreateResponse,
+    type IosInstance as IosInstance,
     type IosInstanceListResponse as IosInstanceListResponse,
-    type IosInstanceGetResponse as IosInstanceGetResponse,
     type IosInstanceCreateParams as IosInstanceCreateParams,
     type IosInstanceListParams as IosInstanceListParams,
   };

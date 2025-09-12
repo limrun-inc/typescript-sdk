@@ -33,9 +33,8 @@ import {
 import { AndroidInstances } from './resources/android-instances-helpers';
 import { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './resources/assets-helpers';
 import {
+  IosInstance,
   IosInstanceCreateParams,
-  IosInstanceCreateResponse,
-  IosInstanceGetResponse,
   IosInstanceListParams,
   IosInstanceListResponse,
   IosInstances,
@@ -777,9 +776,8 @@ export declare namespace Limrun {
 
   export {
     IosInstances as IosInstances,
-    type IosInstanceCreateResponse as IosInstanceCreateResponse,
+    type IosInstance as IosInstance,
     type IosInstanceListResponse as IosInstanceListResponse,
-    type IosInstanceGetResponse as IosInstanceGetResponse,
     type IosInstanceCreateParams as IosInstanceCreateParams,
     type IosInstanceListParams as IosInstanceListParams,
   };
