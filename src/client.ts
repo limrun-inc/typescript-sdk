@@ -32,6 +32,13 @@ import {
 } from './resources/assets';
 import { AndroidInstances } from './resources/android-instances-helpers';
 import { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './resources/assets-helpers';
+import {
+  IosInstance,
+  IosInstanceCreateParams,
+  IosInstanceListParams,
+  IosInstanceListResponse,
+  IosInstances,
+} from './resources/ios-instances';
 import { type Fetch } from './internal/builtin-types';
 import { HeadersLike, NullableHeaders, buildHeaders } from './internal/headers';
 import { FinalRequestOptions, RequestOptions } from './internal/request-options';
@@ -737,10 +744,12 @@ export class Limrun {
 
   androidInstances: API.AndroidInstances = new API.AndroidInstances(this);
   assets: API.Assets = new API.Assets(this);
+  iosInstances: API.IosInstances = new API.IosInstances(this);
 }
 
 Limrun.AndroidInstances = AndroidInstances;
 Limrun.Assets = Assets;
+Limrun.IosInstances = IosInstances;
 
 export declare namespace Limrun {
   export type RequestOptions = Opts.RequestOptions;
@@ -763,5 +772,13 @@ export declare namespace Limrun {
     type AssetGetOrCreateParams as AssetGetOrCreateParams,
     type AssetGetOrUploadParams as AssetGetOrUploadParams,
     type AssetGetOrUploadResponse as AssetGetOrUploadResponse,
+  };
+
+  export {
+    IosInstances as IosInstances,
+    type IosInstance as IosInstance,
+    type IosInstanceListResponse as IosInstanceListResponse,
+    type IosInstanceCreateParams as IosInstanceCreateParams,
+    type IosInstanceListParams as IosInstanceListParams,
   };
 }

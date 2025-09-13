@@ -14,6 +14,13 @@ export {
   type AssetGetParams,
   type AssetGetOrCreateParams,
 } from './assets';
+export {
+  IosInstances,
+  type IosInstance,
+  type IosInstanceListResponse,
+  type IosInstanceCreateParams,
+  type IosInstanceListParams,
+} from './ios-instances';
 
 export { AndroidInstances } from './android-instances-helpers';
 
