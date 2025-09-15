@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 (2025-09-13)
+
+Full Changelog: [v0.8.1...v0.9.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.8.1...v0.9.0)
+
+### Features
+
+* **api:** manual updates ([36880d1](https://github.com/limrun-inc/typescript-sdk/commit/36880d1793fbb6de43013d2891c069aa941a0641))
+* **api:** manual updates ([2b613d4](https://github.com/limrun-inc/typescript-sdk/commit/2b613d4fcafeb69a77b8ef5edbe0eafea96ad615))
+
 ## 0.8.1 (2025-09-11)
 
 Full Changelog: [v0.8.0...v0.8.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.8.0...v0.8.1)
