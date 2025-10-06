@@ -523,7 +523,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           updateStatus('Control channel opened');
           // Request first frame once we're ready to receive video
           if (wsRef.current) {
-            wsRef.current.send(JSON.stringify({ type: 'requestFrame', sessionId: sessionId }));
+            for (let i = 0; i < 12; i++) {
+              setTimeout(() => {
+                if (wsRef.current) {
+                  wsRef.current.send(JSON.stringify({ type: 'requestFrame', sessionId: sessionId }));
+                }
+              }, i * 125); // 125ms = quarter second
+            }
 
             // Send openUrl message if the prop is provided
             if (openUrl) {
