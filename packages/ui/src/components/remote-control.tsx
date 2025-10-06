@@ -486,7 +486,33 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         const rtcConfig = await rtcConfigPromise;
         peerConnectionRef.current = new RTCPeerConnection(rtcConfig);
         peerConnectionRef.current.addTransceiver('audio', { direction: 'recvonly' });
-        peerConnectionRef.current.addTransceiver('video', { direction: 'recvonly' });
+        const videoTransceiver = peerConnectionRef.current.addTransceiver('video', { direction: 'recvonly' });
+
+        // As hardware encoder, we use H265 for iOS and VP9 for Android.
+        // We make sure these two are the first ones in the list.
+        // If not, the fallback is H264 which is also hardware accelerated, although not as good,
+        // available on all platforms.
+        //
+        // The rest is not important.
+        if (RTCRtpReceiver.getCapabilities) {
+          const capabilities = RTCRtpReceiver.getCapabilities('video');
+          if (capabilities && capabilities.codecs) {
+            const codecs = capabilities.codecs;
+            const sortedCodecs = codecs.sort((a, b) => {
+              const getCodecPriority = (codec: { mimeType: string }): number => {
+                const mimeType = codec.mimeType.toLowerCase();
+                if (mimeType.includes('vp9')) return 1;
+                if (mimeType.includes('h265') || mimeType.includes('hevc')) return 2;
+                if (mimeType.includes('h264') || mimeType.includes('avc')) return 3;
+                return 4; // Everything else
+              };
+              return getCodecPriority(a) - getCodecPriority(b);
+            });
+            videoTransceiver.setCodecPreferences(sortedCodecs);
+            debugLog('Set codec preferences:', sortedCodecs.map(c => c.mimeType).join(', '));
+          }
+        }
+
         dataChannelRef.current = peerConnectionRef.current.createDataChannel('control', {
           ordered: true,
           negotiated: true,
