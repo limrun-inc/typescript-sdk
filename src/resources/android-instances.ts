@@ -159,11 +159,15 @@ export namespace AndroidInstanceCreateParams {
     export interface InitialAsset {
       kind: 'App';
 
-      source: 'URL' | 'AssetName';
+      source: 'URL' | 'URLs' | 'AssetName' | 'AssetNames';
 
       assetName?: string;
 
+      assetNames?: Array<string>;
+
       url?: string;
+
+      urls?: Array<string>;
     }
   }
 }

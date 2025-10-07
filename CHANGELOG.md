@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.10.0 (2025-10-07)
+
+Full Changelog: [v0.9.0...v0.10.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.9.0...v0.10.0)
+
+### Features
+
+* **api:** add the new multiple apk installation options ([b1a4673](https://github.com/limrun-inc/typescript-sdk/commit/b1a4673f84bbc9ed4de55a8a458ad7ea9e9eda0e))
+* **api:** mark public urls as required ([a92c622](https://github.com/limrun-inc/typescript-sdk/commit/a92c622bb1a0a1d929158dad399f1e5b6e04c734))
+* **api:** revert api change ([67d8bac](https://github.com/limrun-inc/typescript-sdk/commit/67d8bac803a1dc79983e3a30e7c67aca00358098))
+
+
+### Performance Improvements
+
+* faster formatting ([e7a022f](https://github.com/limrun-inc/typescript-sdk/commit/e7a022fd1e84f3bf92b196d44164a6ee6a135a91))
+
+
+### Chores
+
+* do not install brew dependencies in ./scripts/bootstrap by default ([a543831](https://github.com/limrun-inc/typescript-sdk/commit/a543831fd8915896f3b6565864ba460003a65d9d))
+* **internal:** codegen related update ([c5f3153](https://github.com/limrun-inc/typescript-sdk/commit/c5f3153c2c83b31f0aa26b491a461b60b4e73762))
+* **internal:** fix incremental formatting in some cases ([0043015](https://github.com/limrun-inc/typescript-sdk/commit/00430153b9be1a8325e6cacfa9df044f5e46a129))
+* **internal:** ignore .eslintcache ([4339876](https://github.com/limrun-inc/typescript-sdk/commit/433987662250c855eb8b9db9d2de5311ef3625d4))
+* **internal:** remove .eslintcache ([97d80ff](https://github.com/limrun-inc/typescript-sdk/commit/97d80ff1fe59b16bbbf20b4be0398ad7a5b91c88))
+* **internal:** remove deprecated `compilerOptions.baseUrl` from tsconfig.json ([55ca245](https://github.com/limrun-inc/typescript-sdk/commit/55ca2453910e5efb7852ca9fbe8db464bcf02797))
+* **internal:** use npm pack for build uploads ([a081b33](https://github.com/limrun-inc/typescript-sdk/commit/a081b33aa80cf91addb1286d365955c3911020ec))
+* **jsdoc:** fix [@link](https://github.com/link) annotations to refer only to parts of the package‘s public interface ([cb76432](https://github.com/limrun-inc/typescript-sdk/commit/cb764327f88eab2b87e0adf784e43df2461add02))
+
 ## 0.9.0 (2025-09-13)
 
 Full Changelog: [v0.8.1...v0.9.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.8.1...v0.9.0)
