@@ -90,11 +90,11 @@ export namespace AndroidInstance {
   export interface Status {
     token: string;
 
+    adbWebSocketUrl: string;
+
+    endpointWebSocketUrl: string;
+
     state: 'unknown' | 'creating' | 'ready' | 'terminated';
-
-    adbWebSocketUrl?: string;
-
-    endpointWebSocketUrl?: string;
   }
 }
 
