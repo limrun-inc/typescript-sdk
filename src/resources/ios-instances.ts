@@ -90,9 +90,9 @@ export namespace IosInstance {
   export interface Status {
     token: string;
 
-    state: 'unknown' | 'creating' | 'ready' | 'terminated';
+    endpointWebSocketUrl: string;
 
-    endpointWebSocketUrl?: string;
+    state: 'unknown' | 'creating' | 'ready' | 'terminated';
   }
 }
 
