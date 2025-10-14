@@ -9,8 +9,9 @@ import { Limrun } from '@limrun/api';
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'expo-go-'));
 // Download the Expo Go iOS Simulator build.
 console.log('Downloading Expo Go iOS Simulator build...');
-const expoGoPublicUrl = "https://github.com/expo/expo-go-releases/releases/download/Expo-Go-54.0.6/Expo-Go-54.0.6.tar.gz";
-const expoGoLocalPath = path.join(tempDir, "expo-go-54.0.6.tar.gz");
+const expoGoPublicUrl =
+  'https://github.com/expo/expo-go-releases/releases/download/Expo-Go-54.0.6/Expo-Go-54.0.6.tar.gz';
+const expoGoLocalPath = path.join(tempDir, 'expo-go-54.0.6.tar.gz');
 const response = await fetch(expoGoPublicUrl);
 const buffer = await response.arrayBuffer();
 fs.writeFileSync(expoGoLocalPath, Buffer.from(buffer));
@@ -50,18 +51,22 @@ console.timeEnd('upload');
 // Create an iOS instance with that asset.
 console.log('Creating iOS instance with Expo Go iOS Simulator build...');
 console.time('create');
-const instance = await limrun.iosInstances.create({ wait: true, spec:{
-  initialAssets: [{
-    kind: 'App',
-    source: 'AssetName',
-    assetName: asset.name,
-  }],
-}});
+const instance = await limrun.iosInstances.create({
+  wait: true,
+  spec: {
+    initialAssets: [
+      {
+        kind: 'App',
+        source: 'AssetName',
+        assetName: asset.name,
+      },
+    ],
+  },
+});
 console.timeEnd('create');
 console.log(`Instance ${instance.metadata.id} created.`);
 console.log('Connect by clicking on the link below:');
 console.log(`https://console.limrun.com/stream/${instance.metadata.id}`);
-
 
 // Clean up temporary directory
 fs.rmSync(tempDir, { recursive: true, force: true });
