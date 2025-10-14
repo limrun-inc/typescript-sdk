@@ -413,10 +413,10 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@limrun/ui@^0.2.0":
-  version "0.2.0"
-  resolved "https://registry.npmjs.org/@limrun/ui/-/ui-0.2.0.tgz#0211ceb96d49331be1dfbe979ba6e6bb2547912b"
-  integrity sha512-6RBjUhrEgLuig8eJKHkageh1LfNqL2bfj8eoSzBmx9s/3tJYiT3mKmK+bTlZYOBCPotWSUT5VzJRNDEKtx/0gw==
+"@limrun/ui@^0.3.1":
+  version "0.3.1"
+  resolved "https://registry.npmjs.org/@limrun/ui/-/ui-0.3.1.tgz#7fc58e65b0d2363228489c4450cdaa23fa25e233"
+  integrity sha512-ZXOUmlYqhu+t71VgXwSrNEMV/nPs0TUzl5GRZ94/c8Y1f4pSqqAWomncW0dyO23JzQpWKkzMFWIDhDaf67XFhg==
   dependencies:
     clsx "^2.1.1"
 
