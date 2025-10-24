@@ -174,15 +174,32 @@ export namespace AndroidInstanceCreateParams {
 
 export interface AndroidInstanceListParams {
   /**
+   * Return records up until this instance ID. If not given, it will return up until
+   * the 50th instance.
+   */
+  endingBefore?: string;
+
+  /**
    * Labels filter to apply to Android instances to return. Expects a comma-separated
    * list of key=value pairs (e.g., env=prod,region=us-west).
    */
   labelSelector?: string;
 
   /**
+   * Maximum number of instances to be returned. The default is 50.
+   */
+  limit?: number;
+
+  /**
    * Region where the instance is scheduled on.
    */
   region?: string;
+
+  /**
+   * Return records starting after this instance ID. If not given, it will start from
+   * the most recent one.
+   */
+  startingAfter?: string;
 
   /**
    * State filter to apply to Android instances to return.
