@@ -5,7 +5,7 @@ export {
   type AndroidInstance,
   type AndroidInstanceCreateParams,
   type AndroidInstanceListParams,
-  type AndroidInstancesItems,
+  type AndroidInstancesList,
 } from './android-instances';
 export {
   Assets,
@@ -14,12 +14,12 @@ export {
   type AssetListParams,
   type AssetGetParams,
   type AssetGetOrCreateParams,
-  type AssetsItems,
+  type AssetsList,
 } from './assets';
 export {
   IosInstances,
   type IosInstance,
   type IosInstanceCreateParams,
   type IosInstanceListParams,
-  type IosInstancesItems,
+  type IosInstancesList,
 } from './ios-instances';

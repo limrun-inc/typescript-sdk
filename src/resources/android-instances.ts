@@ -2,7 +2,7 @@
 
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
-import { Items, type ItemsParams, PagePromise } from '../core/pagination';
+import { List, type ListParams, PagePromise } from '../core/pagination';
 import { buildHeaders } from '../internal/headers';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
@@ -22,8 +22,8 @@ export class AndroidInstances extends APIResource {
   list(
     query: AndroidInstanceListParams | null | undefined = {},
     options?: RequestOptions,
-  ): PagePromise<AndroidInstancesItems, AndroidInstance> {
-    return this._client.getAPIList('/v1/android_instances', Items<AndroidInstance>, { query, ...options });
+  ): PagePromise<AndroidInstancesList, AndroidInstance> {
+    return this._client.getAPIList('/v1/android_instances', List<AndroidInstance>, { query, ...options });
   }
 
   /**
@@ -44,7 +44,7 @@ export class AndroidInstances extends APIResource {
   }
 }
 
-export type AndroidInstancesItems = Items<AndroidInstance>;
+export type AndroidInstancesList = List<AndroidInstance>;
 
 export interface AndroidInstance {
   metadata: AndroidInstance.Metadata;
@@ -173,7 +173,7 @@ export namespace AndroidInstanceCreateParams {
   }
 }
 
-export interface AndroidInstanceListParams extends ItemsParams {
+export interface AndroidInstanceListParams extends ListParams {
   /**
    * Labels filter to apply to Android instances to return. Expects a comma-separated
    * list of key=value pairs (e.g., env=prod,region=us-west).
@@ -194,7 +194,7 @@ export interface AndroidInstanceListParams extends ItemsParams {
 export declare namespace AndroidInstances {
   export {
     type AndroidInstance as AndroidInstance,
-    type AndroidInstancesItems as AndroidInstancesItems,
+    type AndroidInstancesList as AndroidInstancesList,
     type AndroidInstanceCreateParams as AndroidInstanceCreateParams,
     type AndroidInstanceListParams as AndroidInstanceListParams,
   };

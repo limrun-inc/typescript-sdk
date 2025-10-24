@@ -107,11 +107,11 @@ export class PagePromise<
   }
 }
 
-export interface ItemsResponse<Item> {
+export interface ListResponse<Item> {
   items: Array<Item>;
 }
 
-export interface ItemsParams {
+export interface ListParams {
   startingAfter?: string;
 
   endingBefore?: string;
@@ -119,10 +119,10 @@ export interface ItemsParams {
   limit?: number;
 }
 
-export class Items<Item extends { id: string }> extends AbstractPage<Item> implements ItemsResponse<Item> {
+export class List<Item extends { id: string }> extends AbstractPage<Item> implements ListResponse<Item> {
   items: Array<Item>;
 
-  constructor(client: Limrun, response: Response, body: ItemsResponse<Item>, options: FinalRequestOptions) {
+  constructor(client: Limrun, response: Response, body: ListResponse<Item>, options: FinalRequestOptions) {
     super(client, response, body, options);
 
     this.items = body.items || [];
