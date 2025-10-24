@@ -2,7 +2,7 @@
 
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
-import { Items, type ItemsParams, PagePromise } from '../core/pagination';
+import { List, type ListParams, PagePromise } from '../core/pagination';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
 
@@ -14,8 +14,8 @@ export class Assets extends APIResource {
   list(
     query: AssetListParams | null | undefined = {},
     options?: RequestOptions,
-  ): PagePromise<AssetsItems, Asset> {
-    return this._client.getAPIList('/v1/assets', Items<Asset>, { query, ...options });
+  ): PagePromise<AssetsList, Asset> {
+    return this._client.getAPIList('/v1/assets', List<Asset>, { query, ...options });
   }
 
   /**
@@ -41,7 +41,7 @@ export class Assets extends APIResource {
   }
 }
 
-export type AssetsItems = Items<Asset>;
+export type AssetsList = List<Asset>;
 
 export interface Asset {
   id: string;
@@ -73,7 +73,7 @@ export interface AssetGetOrCreateResponse {
   md5?: string;
 }
 
-export interface AssetListParams extends ItemsParams {
+export interface AssetListParams extends ListParams {
   /**
    * Toggles whether a download URL should be included in the response
    */
@@ -110,7 +110,7 @@ export declare namespace Assets {
   export {
     type Asset as Asset,
     type AssetGetOrCreateResponse as AssetGetOrCreateResponse,
-    type AssetsItems as AssetsItems,
+    type AssetsList as AssetsList,
     type AssetListParams as AssetListParams,
     type AssetGetParams as AssetGetParams,
     type AssetGetOrCreateParams as AssetGetOrCreateParams,
