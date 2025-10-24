@@ -2,6 +2,7 @@
 
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
+import { Items, type ItemsParams, PagePromise } from '../core/pagination';
 import { buildHeaders } from '../internal/headers';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
@@ -21,8 +22,8 @@ export class IosInstances extends APIResource {
   list(
     query: IosInstanceListParams | null | undefined = {},
     options?: RequestOptions,
-  ): APIPromise<IosInstanceListResponse> {
-    return this._client.get('/v1/ios_instances', { query, ...options });
+  ): PagePromise<IosInstancesItems, IosInstance> {
+    return this._client.getAPIList('/v1/ios_instances', Items<IosInstance>, { query, ...options });
   }
 
   /**
@@ -42,6 +43,8 @@ export class IosInstances extends APIResource {
     return this._client.get(path`/v1/ios_instances/${id}`, options);
   }
 }
+
+export type IosInstancesItems = Items<IosInstance>;
 
 export interface IosInstance {
   metadata: IosInstance.Metadata;
@@ -95,8 +98,6 @@ export namespace IosInstance {
     endpointWebSocketUrl?: string;
   }
 }
-
-export type IosInstanceListResponse = Array<IosInstance>;
 
 export interface IosInstanceCreateParams {
   /**
@@ -166,7 +167,7 @@ export namespace IosInstanceCreateParams {
   }
 }
 
-export interface IosInstanceListParams {
+export interface IosInstanceListParams extends ItemsParams {
   /**
    * Labels filter to apply to instances to return. Expects a comma-separated list of
    * key=value pairs (e.g., env=prod,region=us-west).
@@ -187,7 +188,7 @@ export interface IosInstanceListParams {
 export declare namespace IosInstances {
   export {
     type IosInstance as IosInstance,
-    type IosInstanceListResponse as IosInstanceListResponse,
+    type IosInstancesItems as IosInstancesItems,
     type IosInstanceCreateParams as IosInstanceCreateParams,
     type IosInstanceListParams as IosInstanceListParams,
   };

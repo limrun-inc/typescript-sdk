@@ -107,11 +107,11 @@ export class PagePromise<
   }
 }
 
-export interface InstancesResponse<Item> {
-  instances: Array<Item>;
+export interface ItemsResponse<Item> {
+  items: Array<Item>;
 }
 
-export interface InstancesParams {
+export interface ItemsParams {
   startingAfter?: string;
 
   endingBefore?: string;
@@ -119,35 +119,27 @@ export interface InstancesParams {
   limit?: number;
 }
 
-export class Instances<Item extends { id: string }>
-  extends AbstractPage<Item>
-  implements InstancesResponse<Item>
-{
-  instances: Array<Item>;
+export class Items<Item extends { id: string }> extends AbstractPage<Item> implements ItemsResponse<Item> {
+  items: Array<Item>;
 
-  constructor(
-    client: Limrun,
-    response: Response,
-    body: InstancesResponse<Item>,
-    options: FinalRequestOptions,
-  ) {
+  constructor(client: Limrun, response: Response, body: ItemsResponse<Item>, options: FinalRequestOptions) {
     super(client, response, body, options);
 
-    this.instances = body.instances || [];
+    this.items = body.items || [];
   }
 
   getPaginatedItems(): Item[] {
-    return this.instances ?? [];
+    return this.items ?? [];
   }
 
   nextPageRequestOptions(): PageRequestOptions | null {
-    const instances = this.getPaginatedItems();
+    const items = this.getPaginatedItems();
 
     const isForwards = !(
       typeof this.options.query === 'object' && 'endingBefore' in (this.options.query || {})
     );
     if (isForwards) {
-      const id = instances[instances.length - 1]?.id;
+      const id = items[items.length - 1]?.id;
       if (!id) {
         return null;
       }
@@ -161,7 +153,7 @@ export class Instances<Item extends { id: string }>
       };
     }
 
-    const id = instances[0]?.id;
+    const id = items[0]?.id;
     if (!id) {
       return null;
     }
