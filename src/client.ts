@@ -14,7 +14,7 @@ import * as Opts from './internal/request-options';
 import { VERSION } from './version';
 import * as Errors from './core/error';
 import * as Pagination from './core/pagination';
-import { AbstractPage, type InstancesParams, InstancesResponse } from './core/pagination';
+import { AbstractPage, type ItemsParams, ItemsResponse } from './core/pagination';
 import * as Uploads from './core/uploads';
 import * as API from './resources/index';
 import { APIPromise } from './core/api-promise';
@@ -22,8 +22,8 @@ import {
   AndroidInstance,
   AndroidInstanceCreateParams,
   AndroidInstanceListParams,
-  AndroidInstanceListResponse,
   AndroidInstances,
+  AndroidInstancesItems,
 } from './resources/android-instances';
 import {
   Asset,
@@ -31,15 +31,15 @@ import {
   AssetGetOrCreateResponse,
   AssetGetParams,
   AssetListParams,
-  AssetListResponse,
   Assets,
+  AssetsItems,
 } from './resources/assets';
 import {
   IosInstance,
   IosInstanceCreateParams,
   IosInstanceListParams,
-  IosInstanceListResponse,
   IosInstances,
+  IosInstancesItems,
 } from './resources/ios-instances';
 import { type Fetch } from './internal/builtin-types';
 import { HeadersLike, NullableHeaders, buildHeaders } from './internal/headers';
@@ -775,13 +775,13 @@ Limrun.IosInstances = IosInstances;
 export declare namespace Limrun {
   export type RequestOptions = Opts.RequestOptions;
 
-  export import Instances = Pagination.Instances;
-  export { type InstancesParams as InstancesParams, type InstancesResponse as InstancesResponse };
+  export import Items = Pagination.Items;
+  export { type ItemsParams as ItemsParams, type ItemsResponse as ItemsResponse };
 
   export {
     AndroidInstances as AndroidInstances,
     type AndroidInstance as AndroidInstance,
-    type AndroidInstanceListResponse as AndroidInstanceListResponse,
+    type AndroidInstancesItems as AndroidInstancesItems,
     type AndroidInstanceCreateParams as AndroidInstanceCreateParams,
     type AndroidInstanceListParams as AndroidInstanceListParams,
   };
@@ -789,8 +789,8 @@ export declare namespace Limrun {
   export {
     Assets as Assets,
     type Asset as Asset,
-    type AssetListResponse as AssetListResponse,
     type AssetGetOrCreateResponse as AssetGetOrCreateResponse,
+    type AssetsItems as AssetsItems,
     type AssetListParams as AssetListParams,
     type AssetGetParams as AssetGetParams,
     type AssetGetOrCreateParams as AssetGetOrCreateParams,
@@ -799,7 +799,7 @@ export declare namespace Limrun {
   export {
     IosInstances as IosInstances,
     type IosInstance as IosInstance,
-    type IosInstanceListResponse as IosInstanceListResponse,
+    type IosInstancesItems as IosInstancesItems,
     type IosInstanceCreateParams as IosInstanceCreateParams,
     type IosInstanceListParams as IosInstanceListParams,
   };
