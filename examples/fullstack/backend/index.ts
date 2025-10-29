@@ -17,7 +17,7 @@ const port = 3000;
 app.use(express.json());
 app.use(cors());
 
-app.post('/create-instance', async (req: Request<{}, {}, { assets?: { path: string }[] }>, res: Response) => {
+app.post('/create-instance', async (req: Request<{}, {}, { assets?: { path: string }[]; androidVersion?: string }>, res: Response) => {
   const downloadUrls: string[] = [];
   if (req.body.assets?.length) {
     try {
@@ -49,6 +49,15 @@ app.post('/create-instance', async (req: Request<{}, {}, { assets?: { path: stri
       }
     : {}),
   };
+  
+  const androidVersion = req.body.androidVersion || '14';
+  const clues: AndroidInstanceCreateParams.Spec.Clue[] = [
+    {
+      kind: 'OSVersion',
+      osVersion: androidVersion,
+    }
+  ];
+  
   const forwardedIp =
     req.headers['x-forwarded-for'] instanceof Array ?
       req.headers['x-forwarded-for'].join(',')
@@ -56,13 +65,13 @@ app.post('/create-instance', async (req: Request<{}, {}, { assets?: { path: stri
   const clientIp = forwardedIp ? forwardedIp.split(',')[0] : req.socket.remoteAddress;
   if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
     console.log({ clientIp }, 'Adding client IP as scheduling clue');
-    spec.clues = [
-      {
-        kind: 'ClientIP',
-        clientIp,
-      },
-    ];
+    clues.push({
+      kind: 'ClientIP',
+      clientIp,
+    });
   }
+  
+  spec.clues = clues;
   try {
     console.time('create');
     const result = await limrun.androidInstances.create({ spec });
