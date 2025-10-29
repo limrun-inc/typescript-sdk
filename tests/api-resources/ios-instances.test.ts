@@ -37,14 +37,7 @@ describe('resource iosInstances', () => {
     // ensure the request options are being passed correctly by passing an invalid HTTP method in order to cause an error
     await expect(
       client.iosInstances.list(
-        {
-          endingBefore: 'ios_someid',
-          labelSelector: 'env=prod,version=1.2',
-          limit: 50,
-          region: 'region',
-          startingAfter: 'ios_someid',
-          state: 'unknown',
-        },
+        { labelSelector: 'env=prod,version=1.2', limit: 50, region: 'region', state: 'unknown' },
         { path: '/_stainless_unknown_path' },
       ),
     ).rejects.toThrow(Limrun.NotFoundError);

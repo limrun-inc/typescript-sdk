@@ -3,23 +3,23 @@
 export {
   AndroidInstances,
   type AndroidInstance,
+  type AndroidInstanceListResponse,
   type AndroidInstanceCreateParams,
   type AndroidInstanceListParams,
-  type AndroidInstancesList,
 } from './android-instances';
 export {
   Assets,
   type Asset,
+  type AssetListResponse,
   type AssetGetOrCreateResponse,
   type AssetListParams,
   type AssetGetParams,
   type AssetGetOrCreateParams,
-  type AssetsList,
 } from './assets';
 export {
   IosInstances,
   type IosInstance,
+  type IosInstanceListResponse,
   type IosInstanceCreateParams,
   type IosInstanceListParams,
-  type IosInstancesList,
 } from './ios-instances';

@@ -2,7 +2,6 @@
 
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
-import { List, type ListParams, PagePromise } from '../core/pagination';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
 
@@ -14,8 +13,8 @@ export class Assets extends APIResource {
   list(
     query: AssetListParams | null | undefined = {},
     options?: RequestOptions,
-  ): PagePromise<AssetsList, Asset> {
-    return this._client.getAPIList('/v1/assets', List<Asset>, { query, ...options });
+  ): APIPromise<AssetListResponse> {
+    return this._client.get('/v1/assets', { query, ...options });
   }
 
   /**
@@ -41,8 +40,6 @@ export class Assets extends APIResource {
   }
 }
 
-export type AssetsList = List<Asset>;
-
 export interface Asset {
   id: string;
 
@@ -56,6 +53,10 @@ export interface Asset {
   signedDownloadUrl?: string;
 
   signedUploadUrl?: string;
+}
+
+export interface AssetListResponse {
+  items?: Array<Asset>;
 }
 
 export interface AssetGetOrCreateResponse {
@@ -73,7 +74,7 @@ export interface AssetGetOrCreateResponse {
   md5?: string;
 }
 
-export interface AssetListParams extends ListParams {
+export interface AssetListParams {
   /**
    * Toggles whether a download URL should be included in the response
    */
@@ -83,6 +84,11 @@ export interface AssetListParams extends ListParams {
    * Toggles whether an upload URL should be included in the response
    */
   includeUploadUrl?: boolean;
+
+  /**
+   * Maximum number of items to be returned. The default is 50.
+   */
+  limit?: number;
 
   /**
    * Query by file name
@@ -109,8 +115,8 @@ export interface AssetGetOrCreateParams {
 export declare namespace Assets {
   export {
     type Asset as Asset,
+    type AssetListResponse as AssetListResponse,
     type AssetGetOrCreateResponse as AssetGetOrCreateResponse,
-    type AssetsList as AssetsList,
     type AssetListParams as AssetListParams,
     type AssetGetParams as AssetGetParams,
     type AssetGetOrCreateParams as AssetGetOrCreateParams,
