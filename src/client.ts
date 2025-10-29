@@ -13,8 +13,6 @@ import * as Shims from './internal/shims';
 import * as Opts from './internal/request-options';
 import { VERSION } from './version';
 import * as Errors from './core/error';
-import * as Pagination from './core/pagination';
-import { AbstractPage, type ListParams, ListResponse } from './core/pagination';
 import * as Uploads from './core/uploads';
 import * as API from './resources/index';
 import { APIPromise } from './core/api-promise';
@@ -22,16 +20,16 @@ import {
   AndroidInstance,
   AndroidInstanceCreateParams,
   AndroidInstanceListParams,
+  AndroidInstanceListResponse,
   AndroidInstances,
-  AndroidInstancesList,
 } from './resources/android-instances';
 import {
   Asset,
   AssetGetOrCreateParams,
   AssetGetOrCreateResponse,
   AssetListParams,
+  AssetListResponse,
   Assets,
-  AssetsList,
 } from './resources/assets';
 import { AndroidInstances } from './resources/android-instances-helpers';
 import { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './resources/assets-helpers';
@@ -39,8 +37,8 @@ import {
   IosInstance,
   IosInstanceCreateParams,
   IosInstanceListParams,
+  IosInstanceListResponse,
   IosInstances,
-  IosInstancesList,
 } from './resources/ios-instances';
 import { type Fetch } from './internal/builtin-types';
 import { HeadersLike, NullableHeaders, buildHeaders } from './internal/headers';
@@ -513,25 +511,6 @@ export class Limrun {
     return { response, options, controller, requestLogID, retryOfRequestLogID, startTime };
   }
 
-  getAPIList<Item, PageClass extends Pagination.AbstractPage<Item> = Pagination.AbstractPage<Item>>(
-    path: string,
-    Page: new (...args: any[]) => PageClass,
-    opts?: RequestOptions,
-  ): Pagination.PagePromise<PageClass, Item> {
-    return this.requestAPIList(Page, { method: 'get', path, ...opts });
-  }
-
-  requestAPIList<
-    Item = unknown,
-    PageClass extends Pagination.AbstractPage<Item> = Pagination.AbstractPage<Item>,
-  >(
-    Page: new (...args: ConstructorParameters<typeof Pagination.AbstractPage>) => PageClass,
-    options: FinalRequestOptions,
-  ): Pagination.PagePromise<PageClass, Item> {
-    const request = this.makeRequest(options, null, undefined);
-    return new Pagination.PagePromise<PageClass, Item>(this as any as Limrun, request, Page);
-  }
-
   async fetchWithTimeout(
     url: RequestInfo,
     init: RequestInit | undefined,
@@ -776,13 +755,10 @@ Limrun.IosInstances = IosInstances;
 export declare namespace Limrun {
   export type RequestOptions = Opts.RequestOptions;
 
-  export import List = Pagination.List;
-  export { type ListParams as ListParams, type ListResponse as ListResponse };
-
   export {
     AndroidInstances as AndroidInstances,
     type AndroidInstance as AndroidInstance,
-    type AndroidInstancesList as AndroidInstancesList,
+    type AndroidInstanceListResponse as AndroidInstanceListResponse,
     type AndroidInstanceCreateParams as AndroidInstanceCreateParams,
     type AndroidInstanceListParams as AndroidInstanceListParams,
   };
@@ -790,8 +766,8 @@ export declare namespace Limrun {
   export {
     Assets as Assets,
     type Asset as Asset,
+    type AssetListResponse as AssetListResponse,
     type AssetGetOrCreateResponse as AssetGetOrCreateResponse,
-    type AssetsList as AssetsList,
     type AssetListParams as AssetListParams,
     type AssetGetParams as AssetGetParams,
     type AssetGetOrCreateParams as AssetGetOrCreateParams,
@@ -802,7 +778,7 @@ export declare namespace Limrun {
   export {
     IosInstances as IosInstances,
     type IosInstance as IosInstance,
-    type IosInstancesList as IosInstancesList,
+    type IosInstanceListResponse as IosInstanceListResponse,
     type IosInstanceCreateParams as IosInstanceCreateParams,
     type IosInstanceListParams as IosInstanceListParams,
   };

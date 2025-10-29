@@ -2,7 +2,6 @@
 
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
-import { List, type ListParams, PagePromise } from '../core/pagination';
 import { buildHeaders } from '../internal/headers';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
@@ -22,8 +21,8 @@ export class IosInstances extends APIResource {
   list(
     query: IosInstanceListParams | null | undefined = {},
     options?: RequestOptions,
-  ): PagePromise<IosInstancesList, IosInstance> {
-    return this._client.getAPIList('/v1/ios_instances', List<IosInstance>, { query, ...options });
+  ): APIPromise<IosInstanceListResponse> {
+    return this._client.get('/v1/ios_instances', { query, ...options });
   }
 
   /**
@@ -43,8 +42,6 @@ export class IosInstances extends APIResource {
     return this._client.get(path`/v1/ios_instances/${id}`, options);
   }
 }
-
-export type IosInstancesList = List<IosInstance>;
 
 export interface IosInstance {
   metadata: IosInstance.Metadata;
@@ -97,6 +94,10 @@ export namespace IosInstance {
 
     endpointWebSocketUrl?: string;
   }
+}
+
+export interface IosInstanceListResponse {
+  items?: Array<IosInstance>;
 }
 
 export interface IosInstanceCreateParams {
@@ -169,12 +170,17 @@ export namespace IosInstanceCreateParams {
   }
 }
 
-export interface IosInstanceListParams extends ListParams {
+export interface IosInstanceListParams {
   /**
    * Labels filter to apply to instances to return. Expects a comma-separated list of
    * key=value pairs (e.g., env=prod,region=us-west).
    */
   labelSelector?: string;
+
+  /**
+   * Maximum number of items to be returned. The default is 50.
+   */
+  limit?: number;
 
   /**
    * Region where the instance is scheduled on.
@@ -190,7 +196,7 @@ export interface IosInstanceListParams extends ListParams {
 export declare namespace IosInstances {
   export {
     type IosInstance as IosInstance,
-    type IosInstancesList as IosInstancesList,
+    type IosInstanceListResponse as IosInstanceListResponse,
     type IosInstanceCreateParams as IosInstanceCreateParams,
     type IosInstanceListParams as IosInstanceListParams,
   };

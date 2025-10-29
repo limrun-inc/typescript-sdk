@@ -2,24 +2,24 @@
 
 export {
   type AndroidInstance,
+  type AndroidInstanceListResponse,
   type AndroidInstanceCreateParams,
   type AndroidInstanceListParams,
-  type AndroidInstancesList,
 } from './android-instances';
 export {
   type Asset,
+  type AssetListResponse,
   type AssetGetOrCreateResponse,
   type AssetListParams,
   type AssetGetParams,
   type AssetGetOrCreateParams,
-  type AssetsList,
 } from './assets';
 export {
   IosInstances,
   type IosInstance,
+  type IosInstanceListResponse,
   type IosInstanceCreateParams,
   type IosInstanceListParams,
-  type IosInstancesList,
 } from './ios-instances';
 
 export { AndroidInstances } from './android-instances-helpers';

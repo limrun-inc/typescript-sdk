@@ -25,14 +25,7 @@ describe('resource assets', () => {
     // ensure the request options are being passed correctly by passing an invalid HTTP method in order to cause an error
     await expect(
       client.assets.list(
-        {
-          endingBefore: 'asset_someid',
-          includeDownloadUrl: true,
-          includeUploadUrl: true,
-          limit: 50,
-          nameFilter: 'nameFilter',
-          startingAfter: 'asset_someid',
-        },
+        { includeDownloadUrl: true, includeUploadUrl: true, limit: 50, nameFilter: 'nameFilter' },
         { path: '/_stainless_unknown_path' },
       ),
     ).rejects.toThrow(Limrun.NotFoundError);
