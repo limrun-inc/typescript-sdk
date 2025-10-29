@@ -17,34 +17,42 @@ const port = 3000;
 app.use(express.json());
 app.use(cors());
 
-app.post('/create-instance', async (req: Request<{}, {}, { assets?: { path: string }[]; androidVersion?: string }>, res: Response) => {
-  const downloadUrls: string[] = [];
-  if (req.body.assets?.length) {
-    try {
-      await Promise.all(
-        req.body.assets?.map(async (asset) => {
-          console.time('getOrUpload-' + asset.path);
-          console.log('Ensuring asset is in place', asset.path);
-          const assetResponse = await limrun.assets.getOrUpload({ path: asset.path });
-          downloadUrls.push(assetResponse.signedDownloadUrl);
-          console.timeEnd('getOrUpload-' + asset.path);
-        }),
-      );
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'An unknown error occurred';
-      return res.status(500).json({
+app.post('/get-upload-url', async (req: Request<{}, {}, { filename: string }>, res: Response) => {
+  try {
+    const { filename } = req.body;
+    if (!filename) {
+      return res.status(400).json({
         status: 'error',
-        message: 'Failed to upload assets: ' + message,
+        message: 'Filename is required',
       });
     }
+
+    console.log('Getting upload URL for', filename);
+    const asset = await limrun.assets.getOrCreate({ name: filename });
+    
+    return res.status(200).json({
+      uploadUrl: asset.signedUploadUrl,
+      assetName: asset.name,
+      assetId: asset.id,
+      md5: asset.md5,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'An unknown error occurred';
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to get upload URL: ' + message,
+    });
   }
+});
+
+app.post('/create-instance', async (req: Request<{}, {}, { assetNames?: string[]; androidVersion?: string }>, res: Response) => {
   const spec: AndroidInstanceCreateParams.Spec = {
-    ...(downloadUrls.length > 0 ?
+    ...(req.body.assetNames?.length ?
       {
-        initialAssets: downloadUrls.map((url) => ({
+        initialAssets: req.body.assetNames.map((assetName) => ({
           kind: 'App',
-          source: 'URL',
-          url,
+          source: 'AssetName',
+          assetName,
         })),
       }
     : {}),
