@@ -151,9 +151,11 @@ export namespace AndroidInstanceCreateParams {
 
   export namespace Spec {
     export interface Clue {
-      kind: 'ClientIP';
+      kind: 'ClientIP' | 'OSVersion';
 
       clientIp?: string;
+
+      osVersion?: string;
     }
 
     export interface InitialAsset {
