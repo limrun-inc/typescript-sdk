@@ -11,6 +11,7 @@ function App() {
   const [error, setError] = useState<string | undefined>();
   const [platform, setPlatform] = useState<'android' | 'ios'>('android');
   const [androidVersion, setAndroidVersion] = useState('14');
+  const [openUrl, setOpenUrl] = useState('');
 
   const { assets, addFiles, removeAsset, clearAssets, getUploadedAssetNames, areAllAssetsUploaded } =
     useAssets();
@@ -161,7 +162,27 @@ function App() {
 
             <div>
               <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
-                Assets (optional)
+                Open with URL
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., https://example.com"
+                value={openUrl}
+                onChange={(e) => setOpenUrl(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
+                Assets
               </label>
 
               {assets.length > 0 && (
@@ -328,6 +349,7 @@ function App() {
               url={instanceData.webrtcUrl}
               token={instanceData.token}
               sessionId={`session-${Date.now()}`}
+              {...(openUrl.trim() && { openUrl: openUrl.trim() })}
             />
           </div>
         : <div style={{ textAlign: 'center', color: '#999', fontSize: '16px' }}>
