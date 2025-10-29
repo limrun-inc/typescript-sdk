@@ -150,9 +150,11 @@ export namespace IosInstanceCreateParams {
 
   export namespace Spec {
     export interface Clue {
-      kind: 'ClientIP';
+      kind: 'ClientIP' | 'OSVersion';
 
       clientIp?: string;
+
+      sVersion?: string;
     }
 
     export interface InitialAsset {
