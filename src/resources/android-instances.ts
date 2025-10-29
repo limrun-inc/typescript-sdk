@@ -98,7 +98,7 @@ export namespace AndroidInstance {
   }
 }
 
-export type AndroidInstanceListResponse = Array<unknown>;
+export type AndroidInstanceListResponse = Array<AndroidInstance>;
 
 export interface AndroidInstanceCreateParams {
   /**
