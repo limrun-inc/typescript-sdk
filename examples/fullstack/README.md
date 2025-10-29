@@ -3,6 +3,7 @@
 This example show show you can integrate Limrun instances in your application.
 
 It has two components:
+
 - `backend/`: The calls you need to make in your server with your Limrun API key.
 - `frontend/`: How to mount the Limrun `RemoteControl` React component in your frontend
   to stream the created instance.

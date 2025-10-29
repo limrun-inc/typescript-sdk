@@ -29,7 +29,7 @@ app.post('/get-upload-url', async (req: Request<{}, {}, { filename: string }>, r
 
     console.log('Getting upload URL for', filename);
     const asset = await limrun.assets.getOrCreate({ name: filename });
-    
+
     return res.status(200).json({
       uploadUrl: asset.signedUploadUrl,
       assetName: asset.name,
@@ -45,125 +45,135 @@ app.post('/get-upload-url', async (req: Request<{}, {}, { filename: string }>, r
   }
 });
 
-app.post('/create-instance', async (req: Request<{}, {}, { assetNames?: string[]; platform: 'android' | 'ios'; androidVersion?: string }>, res: Response) => {
-  try {
-    const { assetNames, platform = 'android', androidVersion } = req.body;
+app.post(
+  '/create-instance',
+  async (
+    req: Request<{}, {}, { assetNames?: string[]; platform: 'android' | 'ios'; androidVersion?: string }>,
+    res: Response,
+  ) => {
+    try {
+      const { assetNames, platform = 'android', androidVersion } = req.body;
 
-    const initialAssets = assetNames?.length ?
-      assetNames.map((assetName) => ({
-        kind: 'App' as const,
-        source: 'AssetName' as const,
-        assetName,
-      }))
-    : [];
+      const initialAssets =
+        assetNames?.length ?
+          assetNames.map((assetName) => ({
+            kind: 'App' as const,
+            source: 'AssetName' as const,
+            assetName,
+          }))
+        : [];
 
-    const forwardedIp =
-      req.headers['x-forwarded-for'] instanceof Array ?
-        req.headers['x-forwarded-for'].join(',')
-      : req.headers['x-forwarded-for'];
-    const clientIp = forwardedIp ? forwardedIp.split(',')[0] : req.socket.remoteAddress;
+      const forwardedIp =
+        req.headers['x-forwarded-for'] instanceof Array ?
+          req.headers['x-forwarded-for'].join(',')
+        : req.headers['x-forwarded-for'];
+      const clientIp = forwardedIp ? forwardedIp.split(',')[0] : req.socket.remoteAddress;
 
-    console.time('create');
-    
-    if (platform === 'ios') {
-      // iOS instance creation
-      const spec: IosInstanceCreateParams.Spec = {
-        ...(initialAssets.length > 0 && { initialAssets }),
-      };
+      console.time('create');
 
-      // iOS doesn't support OSVersion clue, only ClientIP
-      if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
-        console.log({ clientIp }, 'Adding client IP as scheduling clue (iOS)');
-        spec.clues = [
+      if (platform === 'ios') {
+        // iOS instance creation
+        const spec: IosInstanceCreateParams.Spec = {
+          ...(initialAssets.length > 0 && { initialAssets }),
+        };
+
+        // iOS doesn't support OSVersion clue, only ClientIP
+        if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
+          console.log({ clientIp }, 'Adding client IP as scheduling clue (iOS)');
+          spec.clues = [
+            {
+              kind: 'ClientIP',
+              clientIp,
+            },
+          ];
+        }
+
+        const result = await limrun.iosInstances.create({ spec });
+        console.timeEnd('create');
+
+        return res.status(200).json({
+          id: result.metadata.id,
+          webrtcUrl: result.status.endpointWebSocketUrl,
+          token: result.status.token,
+        });
+      } else {
+        // Android instance creation
+        const spec: AndroidInstanceCreateParams.Spec = {
+          ...(initialAssets.length > 0 && { initialAssets }),
+        };
+
+        const version = androidVersion || '14';
+        const clues: AndroidInstanceCreateParams.Spec.Clue[] = [
           {
-            kind: 'ClientIP',
-            clientIp,
+            kind: 'OSVersion',
+            osVersion: version,
           },
         ];
-      }
 
-      const result = await limrun.iosInstances.create({ spec });
-      console.timeEnd('create');
-      
-      return res.status(200).json({
-        id: result.metadata.id,
-        webrtcUrl: result.status.endpointWebSocketUrl,
-        token: result.status.token,
-      });
-    } else {
-      // Android instance creation
-      const spec: AndroidInstanceCreateParams.Spec = {
-        ...(initialAssets.length > 0 && { initialAssets }),
-      };
-
-      const version = androidVersion || '14';
-      const clues: AndroidInstanceCreateParams.Spec.Clue[] = [
-        {
-          kind: 'OSVersion',
-          osVersion: version,
+        if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
+          console.log({ clientIp }, 'Adding client IP as scheduling clue (Android)');
+          clues.push({
+            kind: 'ClientIP',
+            clientIp,
+          });
         }
-      ];
 
-      if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
-        console.log({ clientIp }, 'Adding client IP as scheduling clue (Android)');
-        clues.push({
-          kind: 'ClientIP',
-          clientIp,
+        spec.clues = clues;
+
+        const result = await limrun.androidInstances.create({ spec });
+        console.timeEnd('create');
+
+        return res.status(200).json({
+          id: result.metadata.id,
+          webrtcUrl: result.status.endpointWebSocketUrl,
+          token: result.status.token,
+        });
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'An unknown error occurred';
+      return res.status(500).json({
+        status: 'error',
+        message: 'Internal server error: ' + message,
+      });
+    }
+  },
+);
+
+app.post(
+  '/stop-instance',
+  async (req: Request<{}, {}, { instanceId: string; platform: 'android' | 'ios' }>, res: Response) => {
+    try {
+      const { instanceId, platform = 'android' } = req.body;
+      if (!instanceId) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Instance ID is required',
         });
       }
 
-      spec.clues = clues;
+      console.log(`Stopping ${platform} instance`, instanceId);
 
-      const result = await limrun.androidInstances.create({ spec });
-      console.timeEnd('create');
-      
+      if (platform === 'ios') {
+        await limrun.iosInstances.delete(instanceId);
+      } else {
+        await limrun.androidInstances.delete(instanceId);
+      }
+
+      console.log('Instance stopped successfully');
+
       return res.status(200).json({
-        id: result.metadata.id,
-        webrtcUrl: result.status.endpointWebSocketUrl,
-        token: result.status.token,
+        status: 'success',
+        message: 'Instance stopped successfully',
       });
-    }
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'An unknown error occurred';
-    return res.status(500).json({
-      status: 'error',
-      message: 'Internal server error: ' + message,
-    });
-  }
-});
-
-app.post('/stop-instance', async (req: Request<{}, {}, { instanceId: string; platform: 'android' | 'ios' }>, res: Response) => {
-  try {
-    const { instanceId, platform = 'android' } = req.body;
-    if (!instanceId) {
-      return res.status(400).json({
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'An unknown error occurred';
+      return res.status(500).json({
         status: 'error',
-        message: 'Instance ID is required',
+        message: 'Failed to stop instance: ' + message,
       });
     }
-
-    console.log(`Stopping ${platform} instance`, instanceId);
-    
-    if (platform === 'ios') {
-      await limrun.iosInstances.delete(instanceId);
-    } else {
-      await limrun.androidInstances.delete(instanceId);
-    }
-    
-    console.log('Instance stopped successfully');
-
-    return res.status(200).json({
-      status: 'success',
-      message: 'Instance stopped successfully',
-    });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'An unknown error occurred';
-    return res.status(500).json({
-      status: 'error',
-      message: 'Failed to stop instance: ' + message,
-    });
-  }
-});
+  },
+);
 
 app.listen(port, () => {
   console.log(`Express server listening at http://localhost:${port}`);

@@ -3,14 +3,17 @@ import { useState } from 'react';
 import { useAssets } from './useAssets';
 
 function App() {
-  const [instanceData, setInstanceData] = useState<{ id: string; webrtcUrl: string; token: string; platform: 'android' | 'ios' } | undefined>();
+  const [instanceData, setInstanceData] = useState<
+    { id: string; webrtcUrl: string; token: string; platform: 'android' | 'ios' } | undefined
+  >();
   const [loading, setLoading] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [platform, setPlatform] = useState<'android' | 'ios'>('android');
   const [androidVersion, setAndroidVersion] = useState('14');
-  
-  const { assets, addFiles, removeAsset, clearAssets, getUploadedAssetNames, areAllAssetsUploaded } = useAssets();
+
+  const { assets, addFiles, removeAsset, clearAssets, getUploadedAssetNames, areAllAssetsUploaded } =
+    useAssets();
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     await addFiles(event.target.files);
@@ -160,7 +163,7 @@ function App() {
               <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
                 Assets (optional)
               </label>
-              
+
               {assets.length > 0 && (
                 <div style={{ marginBottom: '10px' }}>
                   {assets.map((asset, index) => (
@@ -178,18 +181,21 @@ function App() {
                         fontSize: '13px',
                       }}
                     >
-                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span
+                        style={{
+                          flex: 1,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {asset.name}
                       </span>
                       {asset.uploading && (
                         <span style={{ fontSize: '11px', color: '#0066ff' }}>Uploading...</span>
                       )}
-                      {asset.uploaded && (
-                        <span style={{ fontSize: '11px', color: '#28a745' }}>✓</span>
-                      )}
-                      {asset.error && (
-                        <span style={{ fontSize: '11px', color: '#dc3545' }}>✗</span>
-                      )}
+                      {asset.uploaded && <span style={{ fontSize: '11px', color: '#28a745' }}>✓</span>}
+                      {asset.error && <span style={{ fontSize: '11px', color: '#dc3545' }}>✗</span>}
                       <button
                         onClick={() => removeAsset(index)}
                         disabled={asset.uploading}
@@ -209,7 +215,7 @@ function App() {
                   ))}
                 </div>
               )}
-              
+
               <label
                 style={{
                   display: 'flex',
@@ -230,12 +236,7 @@ function App() {
               >
                 <span style={{ fontSize: '18px' }}>+</span>
                 Add File
-                <input
-                  type="file"
-                  multiple
-                  onChange={handleFileSelect}
-                  style={{ display: 'none' }}
-                />
+                <input type="file" multiple onChange={handleFileSelect} style={{ display: 'none' }} />
               </label>
             </div>
 
@@ -321,7 +322,7 @@ function App() {
           boxSizing: 'border-box',
         }}
       >
-        {instanceData ? (
+        {instanceData ?
           <div style={{ width: '100%', height: '100%', maxWidth: '1000px', maxHeight: '700px' }}>
             <RemoteControl
               url={instanceData.webrtcUrl}
@@ -329,11 +330,10 @@ function App() {
               sessionId={`session-${Date.now()}`}
             />
           </div>
-        ) : (
-          <div style={{ textAlign: 'center', color: '#999', fontSize: '16px' }}>
+        : <div style={{ textAlign: 'center', color: '#999', fontSize: '16px' }}>
             Configure settings and create an instance to begin
           </div>
-        )}
+        }
       </div>
     </div>
   );

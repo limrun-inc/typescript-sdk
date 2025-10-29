@@ -55,7 +55,7 @@ export const useAssets = (backendUrl: string = 'http://localhost:3000') => {
       uploading: false,
       uploaded: false,
     }));
-    
+
     setAssets((prev) => [...prev, ...newAssets]);
 
     // Start uploading files
@@ -116,9 +116,7 @@ export const useAssets = (backendUrl: string = 'http://localhost:3000') => {
       console.log(`Successfully uploaded ${asset.name}`);
       // Mark as uploaded
       setAssets((prev) =>
-        prev.map((a) =>
-          a.file === asset.file ? { ...a, uploading: false, uploaded: true, assetName } : a,
-        ),
+        prev.map((a) => (a.file === asset.file ? { ...a, uploading: false, uploaded: true, assetName } : a)),
       );
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Upload failed';
@@ -156,4 +154,3 @@ export const useAssets = (backendUrl: string = 'http://localhost:3000') => {
     areAllAssetsUploaded,
   };
 };
-
