@@ -3,10 +3,11 @@ import { useState } from 'react';
 import { useAssets } from './useAssets';
 
 function App() {
-  const [instanceData, setInstanceData] = useState<{ id: string; webrtcUrl: string; token: string } | undefined>();
+  const [instanceData, setInstanceData] = useState<{ id: string; webrtcUrl: string; token: string; platform: 'android' | 'ios' } | undefined>();
   const [loading, setLoading] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [platform, setPlatform] = useState<'android' | 'ios'>('android');
   const [androidVersion, setAndroidVersion] = useState('14');
   
   const { assets, addFiles, removeAsset, clearAssets, getUploadedAssetNames, areAllAssetsUploaded } = useAssets();
@@ -34,7 +35,8 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           assetNames: getUploadedAssetNames(),
-          androidVersion,
+          platform,
+          ...(platform === 'android' && { androidVersion }),
         }),
       });
 
@@ -44,7 +46,7 @@ function App() {
         return;
       }
 
-      setInstanceData({ id: data.id, webrtcUrl: data.webrtcUrl, token: data.token });
+      setInstanceData({ id: data.id, webrtcUrl: data.webrtcUrl, token: data.token, platform });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
@@ -62,7 +64,7 @@ function App() {
       const response = await fetch('http://localhost:3000/stop-instance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instanceId: instanceData.id }),
+        body: JSON.stringify({ instanceId: instanceData.id, platform: instanceData.platform }),
       });
 
       const data = await response.json();
@@ -108,11 +110,11 @@ function App() {
           <>
             <div>
               <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
-                Android Version
+                Platform
               </label>
               <select
-                value={androidVersion}
-                onChange={(e) => setAndroidVersion(e.target.value)}
+                value={platform}
+                onChange={(e) => setPlatform(e.target.value as 'android' | 'ios')}
                 style={{
                   width: '100%',
                   padding: '10px',
@@ -124,10 +126,35 @@ function App() {
                   cursor: 'pointer',
                 }}
               >
-                <option value="14">Android 14</option>
-                <option value="15">Android 15</option>
+                <option value="android">Android</option>
+                <option value="ios">iOS</option>
               </select>
             </div>
+
+            {platform === 'android' && (
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
+                  Android Version
+                </label>
+                <select
+                  value={androidVersion}
+                  onChange={(e) => setAndroidVersion(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '1px solid #ddd',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                    backgroundColor: 'white',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="14">Android 14</option>
+                  <option value="15">Android 15</option>
+                </select>
+              </div>
+            )}
 
             <div>
               <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>

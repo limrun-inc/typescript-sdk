@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { Limrun } from '@limrun/api';
-import { AndroidInstanceCreateParams } from '@limrun/api/resources';
+import { AndroidInstanceCreateParams, IosInstanceCreateParams } from '@limrun/api/resources';
 
 const apiKey = process.env['LIM_API_KEY'];
 
@@ -45,50 +45,84 @@ app.post('/get-upload-url', async (req: Request<{}, {}, { filename: string }>, r
   }
 });
 
-app.post('/create-instance', async (req: Request<{}, {}, { assetNames?: string[]; androidVersion?: string }>, res: Response) => {
-  const spec: AndroidInstanceCreateParams.Spec = {
-    ...(req.body.assetNames?.length ?
-      {
-        initialAssets: req.body.assetNames.map((assetName) => ({
-          kind: 'App',
-          source: 'AssetName',
-          assetName,
-        })),
-      }
-    : {}),
-  };
-  
-  const androidVersion = req.body.androidVersion || '14';
-  const clues: AndroidInstanceCreateParams.Spec.Clue[] = [
-    {
-      kind: 'OSVersion',
-      osVersion: androidVersion,
-    }
-  ];
-  
-  const forwardedIp =
-    req.headers['x-forwarded-for'] instanceof Array ?
-      req.headers['x-forwarded-for'].join(',')
-    : req.headers['x-forwarded-for'];
-  const clientIp = forwardedIp ? forwardedIp.split(',')[0] : req.socket.remoteAddress;
-  if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
-    console.log({ clientIp }, 'Adding client IP as scheduling clue');
-    clues.push({
-      kind: 'ClientIP',
-      clientIp,
-    });
-  }
-  
-  spec.clues = clues;
+app.post('/create-instance', async (req: Request<{}, {}, { assetNames?: string[]; platform: 'android' | 'ios'; androidVersion?: string }>, res: Response) => {
   try {
+    const { assetNames, platform = 'android', androidVersion } = req.body;
+
+    const initialAssets = assetNames?.length ?
+      assetNames.map((assetName) => ({
+        kind: 'App' as const,
+        source: 'AssetName' as const,
+        assetName,
+      }))
+    : [];
+
+    const forwardedIp =
+      req.headers['x-forwarded-for'] instanceof Array ?
+        req.headers['x-forwarded-for'].join(',')
+      : req.headers['x-forwarded-for'];
+    const clientIp = forwardedIp ? forwardedIp.split(',')[0] : req.socket.remoteAddress;
+
     console.time('create');
-    const result = await limrun.androidInstances.create({ spec });
-    console.timeEnd('create');
-    return res.status(200).json({
-      id: result.metadata.id,
-      webrtcUrl: result.status.endpointWebSocketUrl,
-      token: result.status.token,
-    });
+    
+    if (platform === 'ios') {
+      // iOS instance creation
+      const spec: IosInstanceCreateParams.Spec = {
+        ...(initialAssets.length > 0 && { initialAssets }),
+      };
+
+      // iOS doesn't support OSVersion clue, only ClientIP
+      if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
+        console.log({ clientIp }, 'Adding client IP as scheduling clue (iOS)');
+        spec.clues = [
+          {
+            kind: 'ClientIP',
+            clientIp,
+          },
+        ];
+      }
+
+      const result = await limrun.iosInstances.create({ spec });
+      console.timeEnd('create');
+      
+      return res.status(200).json({
+        id: result.metadata.id,
+        webrtcUrl: result.status.endpointWebSocketUrl,
+        token: result.status.token,
+      });
+    } else {
+      // Android instance creation
+      const spec: AndroidInstanceCreateParams.Spec = {
+        ...(initialAssets.length > 0 && { initialAssets }),
+      };
+
+      const version = androidVersion || '14';
+      const clues: AndroidInstanceCreateParams.Spec.Clue[] = [
+        {
+          kind: 'OSVersion',
+          osVersion: version,
+        }
+      ];
+
+      if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
+        console.log({ clientIp }, 'Adding client IP as scheduling clue (Android)');
+        clues.push({
+          kind: 'ClientIP',
+          clientIp,
+        });
+      }
+
+      spec.clues = clues;
+
+      const result = await limrun.androidInstances.create({ spec });
+      console.timeEnd('create');
+      
+      return res.status(200).json({
+        id: result.metadata.id,
+        webrtcUrl: result.status.endpointWebSocketUrl,
+        token: result.status.token,
+      });
+    }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
     return res.status(500).json({
@@ -98,9 +132,9 @@ app.post('/create-instance', async (req: Request<{}, {}, { assetNames?: string[]
   }
 });
 
-app.post('/stop-instance', async (req: Request<{}, {}, { instanceId: string }>, res: Response) => {
+app.post('/stop-instance', async (req: Request<{}, {}, { instanceId: string; platform: 'android' | 'ios' }>, res: Response) => {
   try {
-    const { instanceId } = req.body;
+    const { instanceId, platform = 'android' } = req.body;
     if (!instanceId) {
       return res.status(400).json({
         status: 'error',
@@ -108,8 +142,14 @@ app.post('/stop-instance', async (req: Request<{}, {}, { instanceId: string }>, 
       });
     }
 
-    console.log('Stopping instance', instanceId);
-    await limrun.androidInstances.delete(instanceId);
+    console.log(`Stopping ${platform} instance`, instanceId);
+    
+    if (platform === 'ios') {
+      await limrun.iosInstances.delete(instanceId);
+    } else {
+      await limrun.androidInstances.delete(instanceId);
+    }
+    
     console.log('Instance stopped successfully');
 
     return res.status(200).json({
