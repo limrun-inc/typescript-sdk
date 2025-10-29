@@ -16,7 +16,7 @@ export class AndroidInstances extends APIResource {
   }
 
   /**
-   * List Android instances belonging to given organization
+   * List Android instances
    */
   list(
     query: AndroidInstanceListParams | null | undefined = {},
@@ -98,9 +98,7 @@ export namespace AndroidInstance {
   }
 }
 
-export interface AndroidInstanceListResponse {
-  items?: Array<AndroidInstance>;
-}
+export type AndroidInstanceListResponse = Array<unknown>;
 
 export interface AndroidInstanceCreateParams {
   /**

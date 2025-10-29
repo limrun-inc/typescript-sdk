@@ -96,9 +96,7 @@ export namespace IosInstance {
   }
 }
 
-export interface IosInstanceListResponse {
-  items?: Array<IosInstance>;
-}
+export type IosInstanceListResponse = Array<IosInstance>;
 
 export interface IosInstanceCreateParams {
   /**

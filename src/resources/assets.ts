@@ -55,9 +55,7 @@ export interface Asset {
   signedUploadUrl?: string;
 }
 
-export interface AssetListResponse {
-  items?: Array<Asset>;
-}
+export type AssetListResponse = Array<Asset>;
 
 export interface AssetGetOrCreateResponse {
   id: string;
