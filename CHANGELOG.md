@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.0 (2025-10-29)
+
+Full Changelog: [v0.10.0...v0.11.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.10.0...v0.11.0)
+
+### Features
+
+* **api:** add explicit pagination fields ([0ef01e4](https://github.com/limrun-inc/typescript-sdk/commit/0ef01e41a5045b71803ce06344a5e523a143ec84))
+* **api:** add os version clue ([5de52ba](https://github.com/limrun-inc/typescript-sdk/commit/5de52badad2747ea639059c9322578a61963fd53))
+* **api:** manual updates ([adffa6b](https://github.com/limrun-inc/typescript-sdk/commit/adffa6b5e55140160f00526beac63f6beed1f909))
+* **api:** update assets and ios_instances endpoints with pagination ([e800d0b](https://github.com/limrun-inc/typescript-sdk/commit/e800d0b9ef46ca1b3831228eed4345172f2f6438))
+* **api:** update stainless schema for pagination ([d931de9](https://github.com/limrun-inc/typescript-sdk/commit/d931de908d95d363b3ddaee65a1dcf7823926f59))
+
 ## 0.10.0 (2025-10-07)
 
 Full Changelog: [v0.9.0...v0.10.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.9.0...v0.10.0)
