@@ -1,93 +1,20 @@
 import { RemoteControl } from '@limrun/ui';
 import { useState } from 'react';
-
-interface Asset {
-  file: File;
-  name: string;
-  assetName?: string;
-  uploading: boolean;
-  uploaded: boolean;
-  error?: string;
-}
+import { useAssets } from './useAssets';
 
 function App() {
-  const [instanceData, setInstanceData] = useState<{ webrtcUrl: string; token: string } | undefined>();
+  const [instanceData, setInstanceData] = useState<{ id: string; webrtcUrl: string; token: string } | undefined>();
   const [loading, setLoading] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  const [assets, setAssets] = useState<Asset[]>([]);
   const [androidVersion, setAndroidVersion] = useState('14');
+  
+  const { assets, addFiles, removeAsset, clearAssets, getUploadedAssetNames, areAllAssetsUploaded } = useAssets();
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (files && files.length > 0) {
-      const newAssets = Array.from(files).map((file) => ({
-        file,
-        name: file.name,
-        uploading: false,
-        uploaded: false,
-      }));
-      setAssets([...assets, ...newAssets]);
-      
-      // Start uploading files
-      for (const asset of newAssets) {
-        await uploadAsset(asset);
-      }
-    }
+    await addFiles(event.target.files);
     // Reset the input so the same file can be selected again if needed
     event.target.value = '';
-  };
-
-  const uploadAsset = async (asset: Asset) => {
-    try {
-      // Mark as uploading
-      setAssets((prev) =>
-        prev.map((a) => (a.file === asset.file ? { ...a, uploading: true, error: undefined } : a)),
-      );
-
-      // Get presigned upload URL
-      const urlResponse = await fetch('http://localhost:3000/get-upload-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: asset.name }),
-      });
-
-      if (!urlResponse.ok) {
-        throw new Error('Failed to get upload URL');
-      }
-
-      const { uploadUrl, assetName } = await urlResponse.json();
-
-      // Upload file to S3
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/octet-stream',
-        },
-        body: asset.file,
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error('Failed to upload file');
-      }
-
-      // Mark as uploaded
-      setAssets((prev) =>
-        prev.map((a) =>
-          a.file === asset.file ? { ...a, uploading: false, uploaded: true, assetName } : a,
-        ),
-      );
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Upload failed';
-      setAssets((prev) =>
-        prev.map((a) =>
-          a.file === asset.file ? { ...a, uploading: false, uploaded: false, error: errorMessage } : a,
-        ),
-      );
-    }
-  };
-
-  const removeAsset = (index: number) => {
-    setAssets(assets.filter((_, i) => i !== index));
   };
 
   const createInstance = async () => {
@@ -96,8 +23,7 @@ function App() {
       setLoading(true);
 
       // Check if all assets are uploaded
-      const uploadedAssets = assets.filter((a) => a.uploaded && a.assetName);
-      if (assets.length > 0 && uploadedAssets.length !== assets.length) {
+      if (!areAllAssetsUploaded()) {
         setError('Please wait for all assets to finish uploading');
         setLoading(false);
         return;
@@ -107,7 +33,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          assetNames: uploadedAssets.map((a) => a.assetName),
+          assetNames: getUploadedAssetNames(),
           androidVersion,
         }),
       });
@@ -118,11 +44,40 @@ function App() {
         return;
       }
 
-      setInstanceData({ webrtcUrl: data.webrtcUrl, token: data.token });
+      setInstanceData({ id: data.id, webrtcUrl: data.webrtcUrl, token: data.token });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const stopInstance = async () => {
+    if (!instanceData) return;
+
+    try {
+      setError(undefined);
+      setStopping(true);
+
+      const response = await fetch('http://localhost:3000/stop-instance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instanceId: instanceData.id }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.message || 'Failed to stop instance');
+        return;
+      }
+
+      // Clear instance data and assets after successful stop
+      setInstanceData(undefined);
+      clearAssets();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+    } finally {
+      setStopping(false);
     }
   };
 
@@ -293,17 +248,38 @@ function App() {
         )}
 
         {instanceData && (
-          <div
-            style={{
-              padding: '12px',
-              backgroundColor: '#e8f5e9',
-              color: '#2e7d32',
-              borderRadius: '6px',
-              fontSize: '13px',
-            }}
-          >
-            Instance created successfully!
-          </div>
+          <>
+            <div
+              style={{
+                padding: '12px',
+                backgroundColor: '#e8f5e9',
+                color: '#2e7d32',
+                borderRadius: '6px',
+                fontSize: '13px',
+                marginBottom: '10px',
+              }}
+            >
+              Instance created successfully!
+            </div>
+            <button
+              onClick={stopInstance}
+              disabled={stopping}
+              style={{
+                width: '100%',
+                padding: '12px',
+                fontSize: '14px',
+                fontWeight: '500',
+                backgroundColor: stopping ? '#ccc' : '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: stopping ? 'not-allowed' : 'pointer',
+                transition: 'background-color 0.2s',
+              }}
+            >
+              {stopping ? 'Stopping...' : 'Stop Instance'}
+            </button>
+          </>
         )}
       </div>
 

@@ -98,6 +98,33 @@ app.post('/create-instance', async (req: Request<{}, {}, { assetNames?: string[]
   }
 });
 
+app.post('/stop-instance', async (req: Request<{}, {}, { instanceId: string }>, res: Response) => {
+  try {
+    const { instanceId } = req.body;
+    if (!instanceId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Instance ID is required',
+      });
+    }
+
+    console.log('Stopping instance', instanceId);
+    await limrun.androidInstances.delete(instanceId);
+    console.log('Instance stopped successfully');
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Instance stopped successfully',
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'An unknown error occurred';
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to stop instance: ' + message,
+    });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Express server listening at http://localhost:${port}`);
 });
