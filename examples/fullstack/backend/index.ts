@@ -3,10 +3,10 @@ import cors from 'cors';
 import { Limrun } from '@limrun/api';
 import { AndroidInstanceCreateParams } from '@limrun/api/resources';
 
-const apiKey = process.env['LIM_TOKEN'];
+const apiKey = process.env['LIM_API_KEY'];
 
 if (!apiKey) {
-  console.error('Error: Missing required environment variables (LIM_TOKEN).');
+  console.error('Error: Missing required environment variables (LIM_API_KEY).');
   process.exit(1);
 }
 
