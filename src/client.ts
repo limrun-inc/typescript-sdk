@@ -28,7 +28,6 @@ import {
   AssetGetOrCreateResponse,
   AssetListParams,
   AssetListResponse,
-  AssetGetParams,
 } from './resources/assets';
 import { AndroidInstances } from './resources/android-instances-helpers';
 import { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './resources/assets-helpers';
@@ -768,7 +767,6 @@ export declare namespace Limrun {
     type AssetListResponse as AssetListResponse,
     type AssetGetOrCreateResponse as AssetGetOrCreateResponse,
     type AssetListParams as AssetListParams,
-    type AssetGetParams as AssetGetParams,
     type AssetGetOrCreateParams as AssetGetOrCreateParams,
     type AssetGetOrUploadParams as AssetGetOrUploadParams,
     type AssetGetOrUploadResponse as AssetGetOrUploadResponse,

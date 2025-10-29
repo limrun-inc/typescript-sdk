@@ -174,6 +174,11 @@ export interface IosInstanceListParams {
   labelSelector?: string;
 
   /**
+   * Maximum number of items to be returned. The default is 50.
+   */
+  limit?: number;
+
+  /**
    * Region where the instance is scheduled on.
    */
   region?: string;

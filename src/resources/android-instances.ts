@@ -16,7 +16,7 @@ export class AndroidInstances extends APIResource {
   }
 
   /**
-   * List Android instances belonging to given organization
+   * List Android instances
    */
   list(
     query: AndroidInstanceListParams | null | undefined = {},
@@ -151,9 +151,14 @@ export namespace AndroidInstanceCreateParams {
 
   export namespace Spec {
     export interface Clue {
-      kind: 'ClientIP';
+      kind: 'ClientIP' | 'OSVersion';
 
       clientIp?: string;
+
+      /**
+       * The major version of Android, e.g. "13", "14" or "15".
+       */
+      osVersion?: string;
     }
 
     export interface InitialAsset {
@@ -178,6 +183,11 @@ export interface AndroidInstanceListParams {
    * list of key=value pairs (e.g., env=prod,region=us-west).
    */
   labelSelector?: string;
+
+  /**
+   * Maximum number of instances to be returned. The default is 50.
+   */
+  limit?: number;
 
   /**
    * Region where the instance is scheduled on.

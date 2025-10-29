@@ -84,6 +84,11 @@ export interface AssetListParams {
   includeUploadUrl?: boolean;
 
   /**
+   * Maximum number of items to be returned. The default is 50.
+   */
+  limit?: number;
+
+  /**
    * Query by file name
    */
   nameFilter?: string;
