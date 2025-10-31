@@ -93,6 +93,8 @@ export namespace IosInstance {
     state: 'unknown' | 'creating' | 'ready' | 'terminated';
 
     endpointWebSocketUrl?: string;
+
+    portForwardWebSocketUrl?: string;
   }
 }
 
