@@ -2,6 +2,7 @@
 
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
+import { buildHeaders } from '../internal/headers';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
 
@@ -15,6 +16,16 @@ export class Assets extends APIResource {
     options?: RequestOptions,
   ): APIPromise<AssetListResponse> {
     return this._client.get('/v1/assets', { query, ...options });
+  }
+
+  /**
+   * Delete the asset with given ID.
+   */
+  delete(assetID: string, options?: RequestOptions): APIPromise<void> {
+    return this._client.delete(path`/v1/assets/${assetID}`, {
+      ...options,
+      headers: buildHeaders([{ Accept: '*/*' }, options?.headers]),
+    });
   }
 
   /**
