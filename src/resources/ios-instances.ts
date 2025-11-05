@@ -90,9 +90,11 @@ export namespace IosInstance {
   export interface Status {
     token: string;
 
-    state: 'unknown' | 'creating' | 'ready' | 'terminated';
+    state: 'unknown' | 'creating' | 'assigned' | 'ready' | 'terminated';
 
     endpointWebSocketUrl?: string;
+
+    portForwardWebSocketUrl?: string;
   }
 }
 
@@ -161,6 +163,12 @@ export namespace IosInstanceCreateParams {
 
       assetName?: string;
 
+      /**
+       * Launch mode specifies how to launch the app after installation. If not given,
+       * the app won't be launched.
+       */
+      launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
+
       url?: string;
     }
   }
@@ -186,7 +194,7 @@ export interface IosInstanceListParams {
   /**
    * State filter to apply to instances to return.
    */
-  state?: 'unknown' | 'creating' | 'ready' | 'terminated';
+  state?: 'unknown' | 'creating' | 'assigned' | 'ready' | 'terminated';
 }
 
 export declare namespace IosInstances {

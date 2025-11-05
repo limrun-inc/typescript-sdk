@@ -23,6 +23,7 @@ Types:
 Methods:
 
 - <code title="get /v1/assets">client.assets.<a href="./src/resources/assets.ts">list</a>({ ...params }) -> AssetListResponse</code>
+- <code title="delete /v1/assets/{assetId}">client.assets.<a href="./src/resources/assets.ts">delete</a>(assetID) -> void</code>
 - <code title="get /v1/assets/{assetId}">client.assets.<a href="./src/resources/assets.ts">get</a>(assetID, { ...params }) -> Asset</code>
 - <code title="put /v1/assets">client.assets.<a href="./src/resources/assets.ts">getOrCreate</a>({ ...params }) -> AssetGetOrCreateResponse</code>
 
