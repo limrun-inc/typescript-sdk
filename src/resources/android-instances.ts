@@ -90,7 +90,7 @@ export namespace AndroidInstance {
   export interface Status {
     token: string;
 
-    state: 'unknown' | 'creating' | 'ready' | 'terminated';
+    state: 'unknown' | 'creating' | 'assigned' | 'ready' | 'terminated';
 
     adbWebSocketUrl?: string;
 
@@ -197,7 +197,7 @@ export interface AndroidInstanceListParams {
   /**
    * State filter to apply to Android instances to return.
    */
-  state?: 'unknown' | 'creating' | 'ready' | 'terminated';
+  state?: 'unknown' | 'creating' | 'assigned' | 'ready' | 'terminated';
 }
 
 export declare namespace AndroidInstances {
