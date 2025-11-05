@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.12.0 (2025-11-05)
+
+Full Changelog: [v0.11.0...v0.12.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.11.0...v0.12.0)
+
+### Features
+
+* **api:** add asset deletion endpoint ([d91d4ce](https://github.com/limrun-inc/typescript-sdk/commit/d91d4cebf3418673c04a47425d2bc447c827f520))
+* **api:** add ios port-forward endpoint url to return type ([12d241b](https://github.com/limrun-inc/typescript-sdk/commit/12d241b117685eacdae89f2685e5cd233e50e188))
+* **api:** add launchMode to iOS asset object ([b91904b](https://github.com/limrun-inc/typescript-sdk/commit/b91904b652dbb9f4db4efc223384ca1505cfc5f2))
+* **api:** add the assigned state to both android and ios instance states ([4873126](https://github.com/limrun-inc/typescript-sdk/commit/487312644b0347134df139d0241d3518e109a7c9))
+
 ## 0.11.0 (2025-10-29)
 
 Full Changelog: [v0.10.0...v0.11.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.10.0...v0.11.0)
