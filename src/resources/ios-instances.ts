@@ -160,7 +160,9 @@ export namespace IosInstanceCreateParams {
     export interface InitialAsset {
       kind: 'App';
 
-      source: 'URL' | 'AssetName';
+      source: 'URL' | 'AssetName' | 'AssetID';
+
+      assetId?: string;
 
       assetName?: string;
 
