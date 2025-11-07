@@ -19,8 +19,8 @@ export class AndroidInstances extends GeneratedAndroidInstances {
       },
       options,
     );
-    if (instances && instances.length > 0) {
-      return instances[0]!;
+    if (instances && instances.items.length > 0) {
+      return instances.items[0]!;
     }
     return super.create(params, options);
   }
