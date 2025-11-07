@@ -30,7 +30,6 @@ import {
   AssetGetOrCreateResponse,
   AssetListParams,
   AssetListResponse,
-  Assets,
 } from './resources/assets';
 import { AndroidInstances } from './resources/android-instances-helpers';
 import { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './resources/assets-helpers';
