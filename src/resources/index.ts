@@ -2,9 +2,9 @@
 
 export {
   type AndroidInstance,
+  type AndroidInstanceListResponse,
   type AndroidInstanceCreateParams,
   type AndroidInstanceListParams,
-  type AndroidInstancesAndroidInstance,
 } from './android-instances';
 export {
   type Asset,
