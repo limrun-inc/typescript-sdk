@@ -194,6 +194,8 @@ export interface AndroidInstanceListParams extends ItemsParams {
    * State filter to apply to Android instances to return. Each comma-separated state
    * will be used as part of an OR clause, e.g. "assigned,ready" will return all
    * instances that are either assigned or ready.
+   *
+   * Valid states: creating, assigned, ready, terminated, unknown
    */
   state?: string;
 }
