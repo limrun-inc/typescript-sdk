@@ -2,11 +2,6 @@
 
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
-import {
-  AndroidInstance as PaginationAndroidInstance,
-  type AndroidInstanceParams,
-  PagePromise,
-} from '../core/pagination';
 import { buildHeaders } from '../internal/headers';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
@@ -26,11 +21,8 @@ export class AndroidInstances extends APIResource {
   list(
     query: AndroidInstanceListParams | null | undefined = {},
     options?: RequestOptions,
-  ): PagePromise<AndroidInstancesAndroidInstance, AndroidInstance> {
-    return this._client.getAPIList('/v1/android_instances', PaginationAndroidInstance<AndroidInstance>, {
-      query,
-      ...options,
-    });
+  ): APIPromise<AndroidInstanceListResponse> {
+    return this._client.get('/v1/android_instances', { query, ...options });
   }
 
   /**
@@ -50,8 +42,6 @@ export class AndroidInstances extends APIResource {
     return this._client.get(path`/v1/android_instances/${id}`, options);
   }
 }
-
-export type AndroidInstancesAndroidInstance = PaginationAndroidInstance<AndroidInstance>;
 
 export interface AndroidInstance {
   metadata: AndroidInstance.Metadata;
@@ -107,6 +97,8 @@ export namespace AndroidInstance {
     endpointWebSocketUrl?: string;
   }
 }
+
+export type AndroidInstanceListResponse = Array<AndroidInstance>;
 
 export interface AndroidInstanceCreateParams {
   /**
@@ -185,7 +177,9 @@ export namespace AndroidInstanceCreateParams {
   }
 }
 
-export interface AndroidInstanceListParams extends AndroidInstanceParams {
+export interface AndroidInstanceListParams {
+  endingBefore?: string;
+
   /**
    * Labels filter to apply to Android instances to return. Expects a comma-separated
    * list of key=value pairs (e.g., env=prod,region=us-west).
@@ -193,9 +187,16 @@ export interface AndroidInstanceListParams extends AndroidInstanceParams {
   labelSelector?: string;
 
   /**
+   * Maximum number of instances to be returned. The default is 50.
+   */
+  limit?: number;
+
+  /**
    * Region where the instance is scheduled on.
    */
   region?: string;
+
+  startingAfter?: string;
 
   /**
    * State filter to apply to Android instances to return.
@@ -206,7 +207,7 @@ export interface AndroidInstanceListParams extends AndroidInstanceParams {
 export declare namespace AndroidInstances {
   export {
     type AndroidInstance as AndroidInstance,
-    type AndroidInstancesAndroidInstance as AndroidInstancesAndroidInstance,
+    type AndroidInstanceListResponse as AndroidInstanceListResponse,
     type AndroidInstanceCreateParams as AndroidInstanceCreateParams,
     type AndroidInstanceListParams as AndroidInstanceListParams,
   };
