@@ -13,6 +13,8 @@ import * as Shims from './internal/shims';
 import * as Opts from './internal/request-options';
 import { VERSION } from './version';
 import * as Errors from './core/error';
+import * as Pagination from './core/pagination';
+import { AbstractPage, type ItemsParams, ItemsResponse } from './core/pagination';
 import * as Uploads from './core/uploads';
 import * as API from './resources/index';
 import { APIPromise } from './core/api-promise';
@@ -20,7 +22,7 @@ import {
   AndroidInstance,
   AndroidInstanceCreateParams,
   AndroidInstanceListParams,
-  AndroidInstanceListResponse,
+  AndroidInstancesItems,
 } from './resources/android-instances';
 import {
   Asset,
@@ -35,8 +37,8 @@ import {
   IosInstance,
   IosInstanceCreateParams,
   IosInstanceListParams,
-  IosInstanceListResponse,
   IosInstances,
+  IosInstancesItems,
 } from './resources/ios-instances';
 import { type Fetch } from './internal/builtin-types';
 import { HeadersLike, NullableHeaders, buildHeaders } from './internal/headers';
@@ -509,6 +511,25 @@ export class Limrun {
     return { response, options, controller, requestLogID, retryOfRequestLogID, startTime };
   }
 
+  getAPIList<Item, PageClass extends Pagination.AbstractPage<Item> = Pagination.AbstractPage<Item>>(
+    path: string,
+    Page: new (...args: any[]) => PageClass,
+    opts?: RequestOptions,
+  ): Pagination.PagePromise<PageClass, Item> {
+    return this.requestAPIList(Page, { method: 'get', path, ...opts });
+  }
+
+  requestAPIList<
+    Item = unknown,
+    PageClass extends Pagination.AbstractPage<Item> = Pagination.AbstractPage<Item>,
+  >(
+    Page: new (...args: ConstructorParameters<typeof Pagination.AbstractPage>) => PageClass,
+    options: FinalRequestOptions,
+  ): Pagination.PagePromise<PageClass, Item> {
+    const request = this.makeRequest(options, null, undefined);
+    return new Pagination.PagePromise<PageClass, Item>(this as any as Limrun, request, Page);
+  }
+
   async fetchWithTimeout(
     url: RequestInfo,
     init: RequestInit | undefined,
@@ -753,10 +774,13 @@ Limrun.IosInstances = IosInstances;
 export declare namespace Limrun {
   export type RequestOptions = Opts.RequestOptions;
 
+  export import Items = Pagination.Items;
+  export { type ItemsParams as ItemsParams, type ItemsResponse as ItemsResponse };
+
   export {
     AndroidInstances as AndroidInstances,
     type AndroidInstance as AndroidInstance,
-    type AndroidInstanceListResponse as AndroidInstanceListResponse,
+    type AndroidInstancesItems as AndroidInstancesItems,
     type AndroidInstanceCreateParams as AndroidInstanceCreateParams,
     type AndroidInstanceListParams as AndroidInstanceListParams,
   };
@@ -775,7 +799,7 @@ export declare namespace Limrun {
   export {
     IosInstances as IosInstances,
     type IosInstance as IosInstance,
-    type IosInstanceListResponse as IosInstanceListResponse,
+    type IosInstancesItems as IosInstancesItems,
     type IosInstanceCreateParams as IosInstanceCreateParams,
     type IosInstanceListParams as IosInstanceListParams,
   };

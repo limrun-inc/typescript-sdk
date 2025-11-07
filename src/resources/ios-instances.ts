@@ -2,6 +2,7 @@
 
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
+import { Items, type ItemsParams, PagePromise } from '../core/pagination';
 import { buildHeaders } from '../internal/headers';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
@@ -21,8 +22,8 @@ export class IosInstances extends APIResource {
   list(
     query: IosInstanceListParams | null | undefined = {},
     options?: RequestOptions,
-  ): APIPromise<IosInstanceListResponse> {
-    return this._client.get('/v1/ios_instances', { query, ...options });
+  ): PagePromise<IosInstancesItems, IosInstance> {
+    return this._client.getAPIList('/v1/ios_instances', Items<IosInstance>, { query, ...options });
   }
 
   /**
@@ -42,6 +43,8 @@ export class IosInstances extends APIResource {
     return this._client.get(path`/v1/ios_instances/${id}`, options);
   }
 }
+
+export type IosInstancesItems = Items<IosInstance>;
 
 export interface IosInstance {
   metadata: IosInstance.Metadata;
@@ -97,8 +100,6 @@ export namespace IosInstance {
     portForwardWebSocketUrl?: string;
   }
 }
-
-export type IosInstanceListResponse = Array<IosInstance>;
 
 export interface IosInstanceCreateParams {
   /**
@@ -174,7 +175,7 @@ export namespace IosInstanceCreateParams {
   }
 }
 
-export interface IosInstanceListParams {
+export interface IosInstanceListParams extends ItemsParams {
   /**
    * Labels filter to apply to instances to return. Expects a comma-separated list of
    * key=value pairs (e.g., env=prod,region=us-west).
@@ -182,25 +183,22 @@ export interface IosInstanceListParams {
   labelSelector?: string;
 
   /**
-   * Maximum number of items to be returned. The default is 50.
-   */
-  limit?: number;
-
-  /**
    * Region where the instance is scheduled on.
    */
   region?: string;
 
   /**
-   * State filter to apply to instances to return.
+   * State filter to apply to Android instances to return. Each comma-separated state
+   * will be used as part of an OR clause, e.g. "assigned,ready" will return all
+   * instances that are either assigned or ready.
    */
-  state?: 'unknown' | 'creating' | 'assigned' | 'ready' | 'terminated';
+  state?: string;
 }
 
 export declare namespace IosInstances {
   export {
     type IosInstance as IosInstance,
-    type IosInstanceListResponse as IosInstanceListResponse,
+    type IosInstancesItems as IosInstancesItems,
     type IosInstanceCreateParams as IosInstanceCreateParams,
     type IosInstanceListParams as IosInstanceListParams,
   };

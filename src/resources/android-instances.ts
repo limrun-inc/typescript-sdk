@@ -2,6 +2,7 @@
 
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
+import { Items, type ItemsParams, PagePromise } from '../core/pagination';
 import { buildHeaders } from '../internal/headers';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
@@ -21,8 +22,8 @@ export class AndroidInstances extends APIResource {
   list(
     query: AndroidInstanceListParams | null | undefined = {},
     options?: RequestOptions,
-  ): APIPromise<AndroidInstanceListResponse> {
-    return this._client.get('/v1/android_instances', { query, ...options });
+  ): PagePromise<AndroidInstancesItems, AndroidInstance> {
+    return this._client.getAPIList('/v1/android_instances', Items<AndroidInstance>, { query, ...options });
   }
 
   /**
@@ -42,6 +43,8 @@ export class AndroidInstances extends APIResource {
     return this._client.get(path`/v1/android_instances/${id}`, options);
   }
 }
+
+export type AndroidInstancesItems = Items<AndroidInstance>;
 
 export interface AndroidInstance {
   metadata: AndroidInstance.Metadata;
@@ -97,8 +100,6 @@ export namespace AndroidInstance {
     endpointWebSocketUrl?: string;
   }
 }
-
-export type AndroidInstanceListResponse = Array<AndroidInstance>;
 
 export interface AndroidInstanceCreateParams {
   /**
@@ -177,7 +178,7 @@ export namespace AndroidInstanceCreateParams {
   }
 }
 
-export interface AndroidInstanceListParams {
+export interface AndroidInstanceListParams extends ItemsParams {
   /**
    * Labels filter to apply to Android instances to return. Expects a comma-separated
    * list of key=value pairs (e.g., env=prod,region=us-west).
@@ -185,25 +186,22 @@ export interface AndroidInstanceListParams {
   labelSelector?: string;
 
   /**
-   * Maximum number of instances to be returned. The default is 50.
-   */
-  limit?: number;
-
-  /**
    * Region where the instance is scheduled on.
    */
   region?: string;
 
   /**
-   * State filter to apply to Android instances to return.
+   * State filter to apply to Android instances to return. Each comma-separated state
+   * will be used as part of an OR clause, e.g. "assigned,ready" will return all
+   * instances that are either assigned or ready.
    */
-  state?: 'unknown' | 'creating' | 'assigned' | 'ready' | 'terminated';
+  state?: string;
 }
 
 export declare namespace AndroidInstances {
   export {
     type AndroidInstance as AndroidInstance,
-    type AndroidInstanceListResponse as AndroidInstanceListResponse,
+    type AndroidInstancesItems as AndroidInstancesItems,
     type AndroidInstanceCreateParams as AndroidInstanceCreateParams,
     type AndroidInstanceListParams as AndroidInstanceListParams,
   };
