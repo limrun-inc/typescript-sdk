@@ -43,7 +43,7 @@ describe('resource iosInstances', () => {
           limit: 50,
           region: 'region',
           startingAfter: 'startingAfter',
-          state: 'unknown',
+          state: 'assigned,ready',
         },
         { path: '/_stainless_unknown_path' },
       ),
