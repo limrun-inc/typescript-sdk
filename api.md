@@ -3,12 +3,11 @@
 Types:
 
 - <code><a href="./src/resources/android-instances.ts">AndroidInstance</a></code>
-- <code><a href="./src/resources/android-instances.ts">AndroidInstanceListResponse</a></code>
 
 Methods:
 
 - <code title="post /v1/android_instances">client.androidInstances.<a href="./src/resources/android-instances.ts">create</a>({ ...params }) -> AndroidInstance</code>
-- <code title="get /v1/android_instances">client.androidInstances.<a href="./src/resources/android-instances.ts">list</a>({ ...params }) -> AndroidInstanceListResponse</code>
+- <code title="get /v1/android_instances">client.androidInstances.<a href="./src/resources/android-instances.ts">list</a>({ ...params }) -> AndroidInstancesAndroidInstance</code>
 - <code title="delete /v1/android_instances/{id}">client.androidInstances.<a href="./src/resources/android-instances.ts">delete</a>(id) -> void</code>
 - <code title="get /v1/android_instances/{id}">client.androidInstances.<a href="./src/resources/android-instances.ts">get</a>(id) -> AndroidInstance</code>
 

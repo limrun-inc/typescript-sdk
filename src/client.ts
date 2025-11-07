@@ -22,7 +22,8 @@ import {
   AndroidInstance as AndroidInstancesAPIAndroidInstance,
   AndroidInstanceCreateParams,
   AndroidInstanceListParams,
-  AndroidInstanceListResponse,
+  AndroidInstances,
+  AndroidInstancesAndroidInstance,
 } from './resources/android-instances';
 import {
   Asset,
@@ -783,7 +784,7 @@ export declare namespace Limrun {
   export {
     AndroidInstances as AndroidInstances,
     type AndroidInstancesAPIAndroidInstance as AndroidInstance,
-    type AndroidInstanceListResponse as AndroidInstanceListResponse,
+    type AndroidInstancesAndroidInstance as AndroidInstancesAndroidInstance,
     type AndroidInstanceCreateParams as AndroidInstanceCreateParams,
     type AndroidInstanceListParams as AndroidInstanceListParams,
   };
