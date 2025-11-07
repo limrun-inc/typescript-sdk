@@ -7,7 +7,7 @@ Types:
 Methods:
 
 - <code title="post /v1/android_instances">client.androidInstances.<a href="./src/resources/android-instances.ts">create</a>({ ...params }) -> AndroidInstance</code>
-- <code title="get /v1/android_instances">client.androidInstances.<a href="./src/resources/android-instances.ts">list</a>({ ...params }) -> AndroidInstancesAndroidInstance</code>
+- <code title="get /v1/android_instances">client.androidInstances.<a href="./src/resources/android-instances.ts">list</a>({ ...params }) -> AndroidInstancesItems</code>
 - <code title="delete /v1/android_instances/{id}">client.androidInstances.<a href="./src/resources/android-instances.ts">delete</a>(id) -> void</code>
 - <code title="get /v1/android_instances/{id}">client.androidInstances.<a href="./src/resources/android-instances.ts">get</a>(id) -> AndroidInstance</code>
 
@@ -31,11 +31,10 @@ Methods:
 Types:
 
 - <code><a href="./src/resources/ios-instances.ts">IosInstance</a></code>
-- <code><a href="./src/resources/ios-instances.ts">IosInstanceListResponse</a></code>
 
 Methods:
 
 - <code title="post /v1/ios_instances">client.iosInstances.<a href="./src/resources/ios-instances.ts">create</a>({ ...params }) -> IosInstance</code>
-- <code title="get /v1/ios_instances">client.iosInstances.<a href="./src/resources/ios-instances.ts">list</a>({ ...params }) -> IosInstanceListResponse</code>
+- <code title="get /v1/ios_instances">client.iosInstances.<a href="./src/resources/ios-instances.ts">list</a>({ ...params }) -> IosInstancesItems</code>
 - <code title="delete /v1/ios_instances/{id}">client.iosInstances.<a href="./src/resources/ios-instances.ts">delete</a>(id) -> void</code>
 - <code title="get /v1/ios_instances/{id}">client.iosInstances.<a href="./src/resources/ios-instances.ts">get</a>(id) -> IosInstance</code>
