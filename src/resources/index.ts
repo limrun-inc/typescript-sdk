@@ -8,11 +8,11 @@ export {
 } from './android-instances';
 export {
   type Asset,
+  type AssetListResponse,
   type AssetGetOrCreateResponse,
   type AssetListParams,
   type AssetGetParams,
   type AssetGetOrCreateParams,
-  type AssetsItems,
 } from './assets';
 export {
   IosInstances,
