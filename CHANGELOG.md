@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.13.0 (2025-11-07)
+
+Full Changelog: [v0.12.0...v0.13.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.12.0...v0.13.0)
+
+### Features
+
+* **api:** add comma-separated state for multi-state listings ([2e7024b](https://github.com/limrun-inc/typescript-sdk/commit/2e7024bf3836565602181289d33aaeb1f6c1d77a))
+* **api:** add pagination for ios instances and assets as well ([364555a](https://github.com/limrun-inc/typescript-sdk/commit/364555aa052c35bbdf74fc02fa65ab312ea60d18))
+* **api:** add pagination to asset spec ([d19a0e8](https://github.com/limrun-inc/typescript-sdk/commit/d19a0e8c2ea128ef883f5ceef1adf69a945b9108))
+* **api:** disable pagination for assets ([5b172d6](https://github.com/limrun-inc/typescript-sdk/commit/5b172d665f2d43d93364aeb0d98117d9b8637cdb))
+* **api:** enable pagination for android_instances ([dec7487](https://github.com/limrun-inc/typescript-sdk/commit/dec74876e38c0d458af78f269a967ae71d3180ce))
+* **api:** manual updates ([554c926](https://github.com/limrun-inc/typescript-sdk/commit/554c9262da9fe552e7257d7e7b44e4d116d35d82))
+* **api:** manual updates ([24bfb68](https://github.com/limrun-inc/typescript-sdk/commit/24bfb687d407fc834260952b8fac06675b2336d7))
+* **api:** move pagination prop to openapi ([13d900e](https://github.com/limrun-inc/typescript-sdk/commit/13d900e6bffe06eae9253e0248a3f895a32f316c))
+* **api:** regenerate new pagination fields ([3df097b](https://github.com/limrun-inc/typescript-sdk/commit/3df097b6ee6b0695d55ebd521012becc2f2fdfd9))
+
 ## 0.12.0 (2025-11-05)
 
 Full Changelog: [v0.11.0...v0.12.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.11.0...v0.12.0)
