@@ -107,9 +107,9 @@ export class PagePromise<
   }
 }
 
-export type AndroidInstanceResponse<Item> = Item[];
+export type ItemsResponse<Item> = Item[];
 
-export interface AndroidInstanceParams {
+export interface ItemsParams {
   startingAfter?: string;
 
   endingBefore?: string;
@@ -117,15 +117,10 @@ export interface AndroidInstanceParams {
   limit?: number;
 }
 
-export class AndroidInstance<Item extends { metadata: { id: string } }> extends AbstractPage<Item> {
+export class Items<Item extends { metadata: { id: string } }> extends AbstractPage<Item> {
   items: Array<Item>;
 
-  constructor(
-    client: Limrun,
-    response: Response,
-    body: AndroidInstanceResponse<Item>,
-    options: FinalRequestOptions,
-  ) {
+  constructor(client: Limrun, response: Response, body: ItemsResponse<Item>, options: FinalRequestOptions) {
     super(client, response, body, options);
 
     this.items = body || [];

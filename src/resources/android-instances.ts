@@ -2,11 +2,7 @@
 
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
-import {
-  AndroidInstance as PaginationAndroidInstance,
-  type AndroidInstanceParams,
-  PagePromise,
-} from '../core/pagination';
+import { Items, type ItemsParams, PagePromise } from '../core/pagination';
 import { buildHeaders } from '../internal/headers';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
@@ -26,11 +22,8 @@ export class AndroidInstances extends APIResource {
   list(
     query: AndroidInstanceListParams | null | undefined = {},
     options?: RequestOptions,
-  ): PagePromise<AndroidInstancesAndroidInstance, AndroidInstance> {
-    return this._client.getAPIList('/v1/android_instances', PaginationAndroidInstance<AndroidInstance>, {
-      query,
-      ...options,
-    });
+  ): PagePromise<AndroidInstancesItems, AndroidInstance> {
+    return this._client.getAPIList('/v1/android_instances', Items<AndroidInstance>, { query, ...options });
   }
 
   /**
@@ -51,7 +44,7 @@ export class AndroidInstances extends APIResource {
   }
 }
 
-export type AndroidInstancesAndroidInstance = PaginationAndroidInstance<AndroidInstance>;
+export type AndroidInstancesItems = Items<AndroidInstance>;
 
 export interface AndroidInstance {
   metadata: AndroidInstance.Metadata;
@@ -185,7 +178,7 @@ export namespace AndroidInstanceCreateParams {
   }
 }
 
-export interface AndroidInstanceListParams extends AndroidInstanceParams {
+export interface AndroidInstanceListParams extends ItemsParams {
   /**
    * Labels filter to apply to Android instances to return. Expects a comma-separated
    * list of key=value pairs (e.g., env=prod,region=us-west).
@@ -206,7 +199,7 @@ export interface AndroidInstanceListParams extends AndroidInstanceParams {
 export declare namespace AndroidInstances {
   export {
     type AndroidInstance as AndroidInstance,
-    type AndroidInstancesAndroidInstance as AndroidInstancesAndroidInstance,
+    type AndroidInstancesItems as AndroidInstancesItems,
     type AndroidInstanceCreateParams as AndroidInstanceCreateParams,
     type AndroidInstanceListParams as AndroidInstanceListParams,
   };

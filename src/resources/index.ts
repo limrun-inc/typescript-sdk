@@ -4,7 +4,7 @@ export {
   type AndroidInstance,
   type AndroidInstanceCreateParams,
   type AndroidInstanceListParams,
-  type AndroidInstancesAndroidInstance,
+  type AndroidInstancesItems,
 } from './android-instances';
 export {
   type Asset,
@@ -17,9 +17,9 @@ export {
 export {
   IosInstances,
   type IosInstance,
-  type IosInstanceListResponse,
   type IosInstanceCreateParams,
   type IosInstanceListParams,
+  type IosInstancesItems,
 } from './ios-instances';
 
 export { AndroidInstances } from './android-instances-helpers';
