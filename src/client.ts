@@ -31,8 +31,8 @@ import {
   AssetGetOrCreateResponse,
   AssetGetParams,
   AssetListParams,
+  AssetListResponse,
   Assets,
-  AssetsItems,
 } from './resources/assets';
 import {
   IosInstance,
@@ -789,8 +789,8 @@ export declare namespace Limrun {
   export {
     Assets as Assets,
     type Asset as Asset,
+    type AssetListResponse as AssetListResponse,
     type AssetGetOrCreateResponse as AssetGetOrCreateResponse,
-    type AssetsItems as AssetsItems,
     type AssetListParams as AssetListParams,
     type AssetGetParams as AssetGetParams,
     type AssetGetOrCreateParams as AssetGetOrCreateParams,
