@@ -118,7 +118,7 @@ export interface AndroidInstanceParams {
 }
 
 export class AndroidInstance<Item extends { id: string }> extends AbstractPage<Item> {
-  items: Array<Item>;
+  data: Array<Item>;
 
   constructor(
     client: Limrun,
@@ -128,21 +128,21 @@ export class AndroidInstance<Item extends { id: string }> extends AbstractPage<I
   ) {
     super(client, response, body, options);
 
-    this.items = body || [];
+    this.data = body || [];
   }
 
   getPaginatedItems(): Item[] {
-    return this.items ?? [];
+    return this.data ?? [];
   }
 
   nextPageRequestOptions(): PageRequestOptions | null {
-    const items = this.getPaginatedItems();
+    const data = this.getPaginatedItems();
 
     const isForwards = !(
       typeof this.options.query === 'object' && 'endingBefore' in (this.options.query || {})
     );
     if (isForwards) {
-      const id = items[items.length - 1]?.id;
+      const id = data[data.length - 1]?.id;
       if (!id) {
         return null;
       }
@@ -156,7 +156,7 @@ export class AndroidInstance<Item extends { id: string }> extends AbstractPage<I
       };
     }
 
-    const id = items[0]?.id;
+    const id = data[0]?.id;
     if (!id) {
       return null;
     }
