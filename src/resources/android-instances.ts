@@ -12,8 +12,8 @@ export class AndroidInstances extends APIResource {
    * Create an Android instance
    */
   create(params: AndroidInstanceCreateParams, options?: RequestOptions): APIPromise<AndroidInstance> {
-    const { wait, ...body } = params;
-    return this._client.post('/v1/android_instances', { query: { wait }, body, ...options });
+    const { reuseIfExists, wait, ...body } = params;
+    return this._client.post('/v1/android_instances', { query: { reuseIfExists, wait }, body, ...options });
   }
 
   /**
@@ -103,6 +103,12 @@ export namespace AndroidInstance {
 
 export interface AndroidInstanceCreateParams {
   /**
+   * Query param: If there is another instance with given labels and region, return
+   * that one instead of creating a new instance.
+   */
+  reuseIfExists?: boolean;
+
+  /**
    * Query param: Return after the instance is ready to connect.
    */
   wait?: boolean;
@@ -165,7 +171,9 @@ export namespace AndroidInstanceCreateParams {
     export interface InitialAsset {
       kind: 'App';
 
-      source: 'URL' | 'URLs' | 'AssetName' | 'AssetNames';
+      source: 'URL' | 'URLs' | 'AssetName' | 'AssetNames' | 'AssetIDs';
+
+      assetIds?: Array<string>;
 
       assetName?: string;
 
@@ -194,6 +202,8 @@ export interface AndroidInstanceListParams extends ItemsParams {
    * State filter to apply to Android instances to return. Each comma-separated state
    * will be used as part of an OR clause, e.g. "assigned,ready" will return all
    * instances that are either assigned or ready.
+   *
+   * Valid states: creating, assigned, ready, terminated, unknown
    */
   state?: string;
 }

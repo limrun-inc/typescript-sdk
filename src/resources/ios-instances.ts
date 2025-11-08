@@ -12,8 +12,8 @@ export class IosInstances extends APIResource {
    * Create an iOS instance
    */
   create(params: IosInstanceCreateParams, options?: RequestOptions): APIPromise<IosInstance> {
-    const { wait, ...body } = params;
-    return this._client.post('/v1/ios_instances', { query: { wait }, body, ...options });
+    const { reuseIfExists, wait, ...body } = params;
+    return this._client.post('/v1/ios_instances', { query: { reuseIfExists, wait }, body, ...options });
   }
 
   /**
@@ -103,6 +103,12 @@ export namespace IosInstance {
 
 export interface IosInstanceCreateParams {
   /**
+   * Query param: If there is another instance with given labels and region, return
+   * that one instead of creating a new instance.
+   */
+  reuseIfExists?: boolean;
+
+  /**
    * Query param: Return after the instance is ready to connect.
    */
   wait?: boolean;
@@ -160,7 +166,9 @@ export namespace IosInstanceCreateParams {
     export interface InitialAsset {
       kind: 'App';
 
-      source: 'URL' | 'AssetName';
+      source: 'URL' | 'AssetName' | 'AssetID';
+
+      assetId?: string;
 
       assetName?: string;
 
@@ -191,6 +199,8 @@ export interface IosInstanceListParams extends ItemsParams {
    * State filter to apply to Android instances to return. Each comma-separated state
    * will be used as part of an OR clause, e.g. "assigned,ready" will return all
    * instances that are either assigned or ready.
+   *
+   * Valid states: creating, assigned, ready, terminated, unknown
    */
   state?: string;
 }
