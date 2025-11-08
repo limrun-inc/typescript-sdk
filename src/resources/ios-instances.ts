@@ -12,8 +12,8 @@ export class IosInstances extends APIResource {
    * Create an iOS instance
    */
   create(params: IosInstanceCreateParams, options?: RequestOptions): APIPromise<IosInstance> {
-    const { wait, ...body } = params;
-    return this._client.post('/v1/ios_instances', { query: { wait }, body, ...options });
+    const { reuseIfExists, wait, ...body } = params;
+    return this._client.post('/v1/ios_instances', { query: { reuseIfExists, wait }, body, ...options });
   }
 
   /**
@@ -102,6 +102,12 @@ export namespace IosInstance {
 }
 
 export interface IosInstanceCreateParams {
+  /**
+   * Query param: If there is another instance with given labels and region, return
+   * that one instead of creating a new instance.
+   */
+  reuseIfExists?: boolean;
+
   /**
    * Query param: Return after the instance is ready to connect.
    */

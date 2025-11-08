@@ -12,8 +12,8 @@ export class AndroidInstances extends APIResource {
    * Create an Android instance
    */
   create(params: AndroidInstanceCreateParams, options?: RequestOptions): APIPromise<AndroidInstance> {
-    const { wait, ...body } = params;
-    return this._client.post('/v1/android_instances', { query: { wait }, body, ...options });
+    const { reuseIfExists, wait, ...body } = params;
+    return this._client.post('/v1/android_instances', { query: { reuseIfExists, wait }, body, ...options });
   }
 
   /**
@@ -102,6 +102,12 @@ export namespace AndroidInstance {
 }
 
 export interface AndroidInstanceCreateParams {
+  /**
+   * Query param: If there is another instance with given labels and region, return
+   * that one instead of creating a new instance.
+   */
+  reuseIfExists?: boolean;
+
   /**
    * Query param: Return after the instance is ready to connect.
    */
