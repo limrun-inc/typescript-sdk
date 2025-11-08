@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.1 (2025-11-08)
+
+Full Changelog: [v0.13.0...v0.13.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.13.0...v0.13.1)
+
+### Features
+
+* **api:** add assetId as asset source kind ([2ed40d5](https://github.com/limrun-inc/typescript-sdk/commit/2ed40d5d05ea21abbbd4198c3a01442a7c3886e1))
+* **api:** add reuseIfExists to creation endpoint ([146628a](https://github.com/limrun-inc/typescript-sdk/commit/146628a4f6d66b4adf51d719392f865b00e52fb2))
+* **api:** update comment ([4cccda8](https://github.com/limrun-inc/typescript-sdk/commit/4cccda8fa709402fc601b241df7baaa7673a7846))
+
 ## 0.13.0 (2025-11-07)
 
 Full Changelog: [v0.12.0...v0.13.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.12.0...v0.13.0)
