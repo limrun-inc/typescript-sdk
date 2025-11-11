@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0 (2025-11-11)
+
+Full Changelog: [v0.13.2...v0.14.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.13.2...v0.14.0)
+
+### Features
+
+* **api:** update to use LIM_API_KEY instead of LIM_TOKEN ([aeeaf11](https://github.com/limrun-inc/typescript-sdk/commit/aeeaf11638e19df8577fca16b9452c8311c93219))
+
 ## 0.13.2 (2025-11-11)
 
 Full Changelog: [v0.13.1...v0.13.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.13.1...v0.13.2)

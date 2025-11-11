@@ -23,7 +23,7 @@ The full API of this library can be found in [api.md](api.md).
 import Limrun from '@limrun/api';
 
 const client = new Limrun({
-  apiKey: process.env['LIM_TOKEN'], // This is the default and can be omitted
+  apiKey: process.env['LIM_API_KEY'], // This is the default and can be omitted
 });
 
 const androidInstance = await client.androidInstances.create();
@@ -40,7 +40,7 @@ This library includes TypeScript definitions for all request params and response
 import Limrun from '@limrun/api';
 
 const client = new Limrun({
-  apiKey: process.env['LIM_TOKEN'], // This is the default and can be omitted
+  apiKey: process.env['LIM_API_KEY'], // This is the default and can be omitted
 });
 
 const androidInstance: Limrun.AndroidInstance = await client.androidInstances.create();
