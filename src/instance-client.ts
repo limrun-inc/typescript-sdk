@@ -5,6 +5,16 @@ import { startTcpTunnel } from './tunnel';
 import type { Tunnel } from './tunnel';
 
 /**
+ * Connection state of the instance client
+ */
+export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
+
+/**
+ * Callback function for connection state changes
+ */
+export type ConnectionStateCallback = (state: ConnectionState) => void;
+
+/**
  * A client for interacting with a Limbar instance
  */
 export type InstanceClient = {
@@ -29,6 +39,17 @@ export type InstanceClient = {
    * rejects with an Error on failure.
    */
   sendAsset: (url: string) => Promise<void>;
+
+  /**
+   * Get current connection state
+   */
+  getConnectionState: () => ConnectionState;
+
+  /**
+   * Register callback for connection state changes
+   * @returns A function to unregister the callback
+   */
+  onConnectionStateChange: (callback: ConnectionStateCallback) => () => void;
 };
 
 /**
@@ -62,6 +83,21 @@ export type InstanceClientOptions = {
    * @default 'info'
    */
   logLevel?: LogLevel;
+  /**
+   * Maximum number of reconnection attempts
+   * @default 6
+   */
+  maxReconnectAttempts?: number;
+  /**
+   * Initial reconnection delay in milliseconds
+   * @default 1000
+   */
+  reconnectDelay?: number;
+  /**
+   * Maximum reconnection delay in milliseconds
+   * @default 30000
+   */
+  maxReconnectDelay?: number;
 };
 
 type ScreenshotRequest = {
@@ -111,7 +147,15 @@ type ServerMessage =
 export async function createInstanceClient(options: InstanceClientOptions): Promise<InstanceClient> {
   const serverAddress = `${options.endpointUrl}?token=${options.token}`;
   const logLevel = options.logLevel ?? 'info';
+  const maxReconnectAttempts = options.maxReconnectAttempts ?? 6;
+  const reconnectDelay = options.reconnectDelay ?? 1000;
+  const maxReconnectDelay = options.maxReconnectDelay ?? 30000;
+
   let ws: WebSocket | undefined = undefined;
+  let connectionState: ConnectionState = 'connecting';
+  let reconnectAttempts = 0;
+  let reconnectTimeout: NodeJS.Timeout | undefined;
+  let intentionalDisconnect = false;
 
   const screenshotRequests: Map<
     string,
@@ -129,6 +173,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     }
   > = new Map();
 
+  const stateChangeCallbacks: Set<ConnectionStateCallback> = new Set();
+
   // Logger functions
   const logger = {
     debug: (...args: any[]) => {
@@ -145,12 +191,85 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     },
   };
 
-  return new Promise<InstanceClient>((resolveConnection, rejectConnection) => {
-    logger.debug(`Attempting to connect to WebSocket server at ${serverAddress}...`);
-    ws = new WebSocket(serverAddress);
-    let pingInterval: NodeJS.Timeout | undefined;
+  const updateConnectionState = (newState: ConnectionState): void => {
+    if (connectionState !== newState) {
+      connectionState = newState;
+      logger.debug(`Connection state changed to: ${newState}`);
+      stateChangeCallbacks.forEach((callback) => {
+        try {
+          callback(newState);
+        } catch (err) {
+          logger.error('Error in connection state callback:', err);
+        }
+      });
+    }
+  };
 
-    ws.on('message', (data: Data) => {
+  const failPendingRequests = (reason: string): void => {
+    screenshotRequests.forEach((request) => request.rejecter(new Error(reason)));
+    screenshotRequests.clear();
+    assetRequests.forEach((request) => request.rejecter(new Error(reason)));
+    assetRequests.clear();
+  };
+
+  const cleanup = (): void => {
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = undefined;
+    }
+    if (pingInterval) {
+      clearInterval(pingInterval);
+      pingInterval = undefined;
+    }
+    if (ws) {
+      ws.removeAllListeners();
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+      }
+      ws = undefined;
+    }
+  };
+
+  let pingInterval: NodeJS.Timeout | undefined;
+
+  return new Promise<InstanceClient>((resolveConnection, rejectConnection) => {
+    let hasResolved = false;
+
+    // Reconnection logic with exponential backoff
+    const scheduleReconnect = (): void => {
+      if (intentionalDisconnect) {
+        logger.debug('Skipping reconnection (intentional disconnect)');
+        return;
+      }
+
+      if (reconnectAttempts >= maxReconnectAttempts) {
+        logger.error(`Max reconnection attempts (${maxReconnectAttempts}) reached. Giving up.`);
+        updateConnectionState('disconnected');
+        return;
+      }
+
+      const currentDelay = Math.min(
+        reconnectDelay * Math.pow(2, reconnectAttempts),
+        maxReconnectDelay,
+      );
+
+      reconnectAttempts++;
+      logger.debug(`Scheduling reconnection attempt ${reconnectAttempts} in ${currentDelay}ms...`);
+      updateConnectionState('reconnecting');
+
+      reconnectTimeout = setTimeout(() => {
+        logger.debug(`Attempting to reconnect (attempt ${reconnectAttempts})...`);
+        setupWebSocket();
+      }, currentDelay);
+    };
+
+    const setupWebSocket = (): void => {
+      cleanup();
+      updateConnectionState('connecting');
+
+      ws = new WebSocket(serverAddress);
+
+      ws.on('message', (data: Data) => {
       let message: ServerMessage;
       try {
         message = JSON.parse(data.toString());
@@ -233,22 +352,55 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }
     });
 
-    ws.on('error', (err: Error) => {
-      logger.error('WebSocket error:', err.message);
-      if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
-        rejectConnection(err);
-      }
-      screenshotRequests.forEach((request) => request.rejecter(err));
-    });
+      ws.on('error', (err: Error) => {
+        logger.error('WebSocket error:', err.message);
+        if (!hasResolved && (ws?.readyState === WebSocket.CONNECTING || ws?.readyState === WebSocket.OPEN)) {
+          rejectConnection(err);
+        }
+      });
 
-    ws.on('close', () => {
-      if (pingInterval) {
-        clearInterval(pingInterval);
-        pingInterval = undefined;
-      }
-      logger.debug('Disconnected from server.');
-      screenshotRequests.forEach((request) => request.rejecter('Disconnected from server'));
-    });
+      ws.on('close', () => {
+        if (pingInterval) {
+          clearInterval(pingInterval);
+          pingInterval = undefined;
+        }
+
+        const shouldReconnect = !intentionalDisconnect && connectionState !== 'disconnected';
+        updateConnectionState('disconnected');
+
+        logger.debug('Disconnected from server.');
+
+        failPendingRequests('Connection closed');
+
+        if (shouldReconnect) {
+          scheduleReconnect();
+        }
+      });
+
+      ws.on('open', () => {
+        logger.debug(`Connected to ${serverAddress}`);
+        reconnectAttempts = 0;
+        updateConnectionState('connected');
+
+        pingInterval = setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            (ws as any).ping();
+          }
+        }, 30_000);
+
+        if (!hasResolved) {
+          hasResolved = true;
+          resolveConnection({
+            screenshot,
+            disconnect,
+            startAdbTunnel,
+            sendAsset,
+            getConnectionState,
+            onConnectionStateChange,
+          });
+        }
+      });
+    };
 
     const screenshot = async (): Promise<ScreenshotData> => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -293,15 +445,22 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const disconnect = (): void => {
-      if (pingInterval) {
-        clearInterval(pingInterval);
-        pingInterval = undefined;
-      }
-      if (ws) {
-        logger.debug('Closing WebSocket connection.');
-        ws.close();
-      }
-      screenshotRequests.forEach((request) => request.rejecter('Websocket connection closed'));
+      intentionalDisconnect = true;
+      cleanup();
+      updateConnectionState('disconnected');
+      failPendingRequests('Intentional disconnect');
+      logger.debug('Intentionally disconnected from WebSocket.');
+    };
+
+    const getConnectionState = (): ConnectionState => {
+      return connectionState;
+    };
+
+    const onConnectionStateChange = (callback: ConnectionStateCallback): (() => void) => {
+      stateChangeCallbacks.add(callback);
+      return () => {
+        stateChangeCallbacks.delete(callback);
+      };
     };
 
     /**
@@ -342,22 +501,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         assetRequests.set(url, { resolver: resolve, rejecter: reject });
       });
     };
-    ws.on('open', () => {
-      logger.debug(`Connected to ${serverAddress}`);
-      
-      // Set up ping interval to keep connection alive
-      pingInterval = setInterval(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          (ws as any).ping();
-        }
-      }, 30_000);
-      
-      resolveConnection({
-        screenshot,
-        disconnect,
-        startAdbTunnel,
-        sendAsset,
-      });
-    });
+
+    // Start the initial connection
+    setupWebSocket();
   });
 }
