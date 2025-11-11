@@ -468,20 +468,31 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
      * client to it.
      */
     const startAdbTunnel = async (): Promise<Tunnel> => {
-      const { address, close } = await startTcpTunnel(options.adbUrl, options.token, '127.0.0.1', 0);
+      const tunnel = await startTcpTunnel(
+        options.adbUrl,
+        options.token,
+        '127.0.0.1',
+        0,
+        {
+          maxReconnectAttempts,
+          reconnectDelay,
+          maxReconnectDelay,
+          logLevel,
+        },
+      );
       try {
         await new Promise<void>((resolve, reject) => {
-          exec(`${options.adbPath ?? 'adb'} connect ${address.address}:${address.port}`, (err) => {
+          exec(`${options.adbPath ?? 'adb'} connect ${tunnel.address.address}:${tunnel.address.port}`, (err) => {
             if (err) return reject(err);
             resolve();
           });
         });
-        logger.debug(`ADB connected on ${address.address}`);
+        logger.debug(`ADB connected on ${tunnel.address.address}`);
       } catch (err) {
-        close();
+        tunnel.close();
         throw err;
       }
-      return { address, close };
+      return tunnel;
     };
 
     const sendAsset = async (url: string): Promise<void> => {
