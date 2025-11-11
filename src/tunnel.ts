@@ -93,7 +93,8 @@ export async function startTcpTunnel(
       if (logLevel === 'info' || logLevel === 'debug') console.log('[Tunnel]', ...args);
     },
     warn: (...args: any[]) => {
-      if (logLevel === 'warn' || logLevel === 'info' || logLevel === 'debug') console.warn('[Tunnel]', ...args);
+      if (logLevel === 'warn' || logLevel === 'info' || logLevel === 'debug')
+        console.warn('[Tunnel]', ...args);
     },
     error: (...args: any[]) => {
       if (logLevel !== 'none') console.error('[Tunnel]', ...args);
@@ -110,7 +111,7 @@ export async function startTcpTunnel(
     let intentionalDisconnect = false;
     let tcpSocket: net.Socket | undefined;
     let connectionState: TunnelConnectionState = 'connecting';
-    
+
     const stateChangeCallbacks: Set<TunnelConnectionStateCallback> = new Set();
 
     const updateConnectionState = (newState: TunnelConnectionState): void => {
@@ -174,10 +175,7 @@ export async function startTcpTunnel(
         return;
       }
 
-      const currentDelay = Math.min(
-        reconnectDelay * Math.pow(2, reconnectAttempts),
-        maxReconnectDelay,
-      );
+      const currentDelay = Math.min(reconnectDelay * Math.pow(2, reconnectAttempts), maxReconnectDelay);
 
       reconnectAttempts++;
       logger.debug(`Scheduling reconnection attempt ${reconnectAttempts} in ${currentDelay}ms...`);
@@ -292,8 +290,8 @@ export async function startTcpTunnel(
         close();
         return reject(new Error('Failed to obtain listening address'));
       }
-      resolve({ 
-        address, 
+      resolve({
+        address,
         close,
         getConnectionState,
         onConnectionStateChange,

@@ -248,10 +248,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         return;
       }
 
-      const currentDelay = Math.min(
-        reconnectDelay * Math.pow(2, reconnectAttempts),
-        maxReconnectDelay,
-      );
+      const currentDelay = Math.min(reconnectDelay * Math.pow(2, reconnectAttempts), maxReconnectDelay);
 
       reconnectAttempts++;
       logger.debug(`Scheduling reconnection attempt ${reconnectAttempts} in ${currentDelay}ms...`);
@@ -270,87 +267,87 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       ws = new WebSocket(serverAddress);
 
       ws.on('message', (data: Data) => {
-      let message: ServerMessage;
-      try {
-        message = JSON.parse(data.toString());
-      } catch (e) {
-        logger.error({ data, error: e }, 'Failed to parse JSON message');
-        return;
-      }
-
-      switch (message.type) {
-        case 'screenshot': {
-          if (!('dataUri' in message) || typeof message.dataUri !== 'string' || !('id' in message)) {
-            logger.warn('Received invalid screenshot message:', message);
-            break;
-          }
-
-          const screenshotMessage = message as ScreenshotResponse;
-          const request = screenshotRequests.get(screenshotMessage.id);
-
-          if (!request) {
-            logger.warn(
-              `Received screenshot data for unknown or already handled session: ${screenshotMessage.id}`,
-            );
-            break;
-          }
-
-          logger.debug(`Received screenshot data URI for session ${screenshotMessage.id}.`);
-          request.resolver({ dataUri: screenshotMessage.dataUri });
-          screenshotRequests.delete(screenshotMessage.id);
-          break;
+        let message: ServerMessage;
+        try {
+          message = JSON.parse(data.toString());
+        } catch (e) {
+          logger.error({ data, error: e }, 'Failed to parse JSON message');
+          return;
         }
-        case 'screenshotError': {
-          if (!('message' in message) || !('id' in message)) {
-            logger.warn('Received invalid screenshot error message:', message);
+
+        switch (message.type) {
+          case 'screenshot': {
+            if (!('dataUri' in message) || typeof message.dataUri !== 'string' || !('id' in message)) {
+              logger.warn('Received invalid screenshot message:', message);
+              break;
+            }
+
+            const screenshotMessage = message as ScreenshotResponse;
+            const request = screenshotRequests.get(screenshotMessage.id);
+
+            if (!request) {
+              logger.warn(
+                `Received screenshot data for unknown or already handled session: ${screenshotMessage.id}`,
+              );
+              break;
+            }
+
+            logger.debug(`Received screenshot data URI for session ${screenshotMessage.id}.`);
+            request.resolver({ dataUri: screenshotMessage.dataUri });
+            screenshotRequests.delete(screenshotMessage.id);
             break;
           }
+          case 'screenshotError': {
+            if (!('message' in message) || !('id' in message)) {
+              logger.warn('Received invalid screenshot error message:', message);
+              break;
+            }
 
-          const errorMessage = message as ScreenshotErrorResponse;
-          const request = screenshotRequests.get(errorMessage.id);
+            const errorMessage = message as ScreenshotErrorResponse;
+            const request = screenshotRequests.get(errorMessage.id);
 
-          if (!request) {
-            logger.warn(
-              `Received screenshot error for unknown or already handled session: ${errorMessage.id}`,
+            if (!request) {
+              logger.warn(
+                `Received screenshot error for unknown or already handled session: ${errorMessage.id}`,
+              );
+              break;
+            }
+
+            logger.error(
+              `Server reported an error capturing screenshot for session ${errorMessage.id}:`,
+              errorMessage.message,
             );
+            request.rejecter(new Error(errorMessage.message));
+            screenshotRequests.delete(errorMessage.id);
             break;
           }
-
-          logger.error(
-            `Server reported an error capturing screenshot for session ${errorMessage.id}:`,
-            errorMessage.message,
-          );
-          request.rejecter(new Error(errorMessage.message));
-          screenshotRequests.delete(errorMessage.id);
-          break;
-        }
-        case 'assetResult': {
-          logger.debug('Received assetResult:', message);
-          const request = assetRequests.get(message.url as string);
-          if (!request) {
-            logger.warn(`Received assetResult for unknown or already handled url: ${message.url}`);
-            break;
-          }
-          if (message.result === 'success') {
-            logger.debug('Asset result is success');
-            request.resolver();
+          case 'assetResult': {
+            logger.debug('Received assetResult:', message);
+            const request = assetRequests.get(message.url as string);
+            if (!request) {
+              logger.warn(`Received assetResult for unknown or already handled url: ${message.url}`);
+              break;
+            }
+            if (message.result === 'success') {
+              logger.debug('Asset result is success');
+              request.resolver();
+              assetRequests.delete(message.url as string);
+              break;
+            }
+            const errorMessage =
+              typeof message.message === 'string' && message.message ?
+                message.message
+              : `Asset processing failed: ${JSON.stringify(message)}`;
+            logger.debug('Asset result is failure', errorMessage);
+            request.rejecter(new Error(errorMessage));
             assetRequests.delete(message.url as string);
             break;
           }
-          const errorMessage =
-            typeof message.message === 'string' && message.message ?
-              message.message
-            : `Asset processing failed: ${JSON.stringify(message)}`;
-          logger.debug('Asset result is failure', errorMessage);
-          request.rejecter(new Error(errorMessage));
-          assetRequests.delete(message.url as string);
-          break;
+          default:
+            logger.warn(`Received unexpected message type: ${message.type}`);
+            break;
         }
-        default:
-          logger.warn(`Received unexpected message type: ${message.type}`);
-          break;
-      }
-    });
+      });
 
       ws.on('error', (err: Error) => {
         logger.error('WebSocket error:', err.message);
@@ -468,24 +465,21 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
      * client to it.
      */
     const startAdbTunnel = async (): Promise<Tunnel> => {
-      const tunnel = await startTcpTunnel(
-        options.adbUrl,
-        options.token,
-        '127.0.0.1',
-        0,
-        {
-          maxReconnectAttempts,
-          reconnectDelay,
-          maxReconnectDelay,
-          logLevel,
-        },
-      );
+      const tunnel = await startTcpTunnel(options.adbUrl, options.token, '127.0.0.1', 0, {
+        maxReconnectAttempts,
+        reconnectDelay,
+        maxReconnectDelay,
+        logLevel,
+      });
       try {
         await new Promise<void>((resolve, reject) => {
-          exec(`${options.adbPath ?? 'adb'} connect ${tunnel.address.address}:${tunnel.address.port}`, (err) => {
-            if (err) return reject(err);
-            resolve();
-          });
+          exec(
+            `${options.adbPath ?? 'adb'} connect ${tunnel.address.address}:${tunnel.address.port}`,
+            (err) => {
+              if (err) return reject(err);
+              resolve();
+            },
+          );
         });
         logger.debug(`ADB connected on ${tunnel.address.address}`);
       } catch (err) {
