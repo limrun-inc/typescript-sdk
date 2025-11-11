@@ -132,10 +132,10 @@
   resolved "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.9.tgz#585624dc829cfb6e7c0aa6c3ca7d7e6daa87e34f"
   integrity sha512-PPOl1mi6lpLNQxnGoyAfschAodRFYXJ+9fs6WHXz7CSWKbOqiMZsubC+BQsVKuul+3vKLuwTHsS2c2y9EoKwxQ==
 
-"@limrun/api@^0.10.0":
-  version "0.10.0"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.10.0.tgz#1339077bf5e9898cdb9bc1695826dec8065a4d8c"
-  integrity sha512-oW2lYi0enzvmvKblFO+5/3qxllujZ7NJ/N/xhQ1i8L3z+lY5VHOkAvIj6ic0vVjt69Ux4hAxD7rofPOAq1qauA==
+"@limrun/api@^0.13.2":
+  version "0.13.2"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.13.2.tgz#7e94517549645ef1be8c4940c49d7dca64f0fce3"
+  integrity sha512-fa02ZBV67p9z0PhXw3wmliGcaCrctsuhU89J+DG55rJvVvrqRaUmeEE6sEnrdVzQj946KD6SzBbvYrIoJN/cVw==
   dependencies:
     ws "^8.18.3"
 

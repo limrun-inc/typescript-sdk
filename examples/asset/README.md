@@ -5,7 +5,7 @@ and have an iOS Simulator created with that app installed.
 
 Run the example:
 ```bash
-export LIM_TOKEN=<lim token from Console>
+export LIM_API_KEY=<lim token from Console>
 yarn install
 yarn run start
 

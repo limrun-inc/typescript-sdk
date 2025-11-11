@@ -33,10 +33,10 @@ const zipFilePath = path.join(tempDir, 'Expo.app.zip');
 execSync(`cd ${tempDir} && zip -rX ${zipFilePath} Expo.app`);
 console.log('Zip file created:', zipFilePath);
 
-const apiKey = process.env['LIM_TOKEN'];
+const apiKey = process.env['LIM_API_KEY'];
 
 if (!apiKey) {
-  console.error('Error: Missing required environment variables (LIM_TOKEN).');
+  console.error('Error: Missing required environment variables (LIM_API_KEY).');
   process.exit(1);
 }
 
