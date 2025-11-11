@@ -148,6 +148,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   return new Promise<InstanceClient>((resolveConnection, rejectConnection) => {
     logger.debug(`Attempting to connect to WebSocket server at ${serverAddress}...`);
     ws = new WebSocket(serverAddress);
+    let pingInterval: NodeJS.Timeout | undefined;
+
     ws.on('message', (data: Data) => {
       let message: ServerMessage;
       try {
@@ -240,6 +242,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     });
 
     ws.on('close', () => {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = undefined;
+      }
       logger.debug('Disconnected from server.');
       screenshotRequests.forEach((request) => request.rejecter('Disconnected from server'));
     });
@@ -287,6 +293,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const disconnect = (): void => {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = undefined;
+      }
       if (ws) {
         logger.debug('Closing WebSocket connection.');
         ws.close();
@@ -334,6 +344,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
     ws.on('open', () => {
       logger.debug(`Connected to ${serverAddress}`);
+      
+      // Set up ping interval to keep connection alive
+      pingInterval = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          (ws as any).ping();
+        }
+      }, 30_000);
+      
       resolveConnection({
         screenshot,
         disconnect,
