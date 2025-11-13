@@ -452,13 +452,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         await new Promise((resolve, reject) => {
           if (wsRef.current) {
             wsRef.current.onopen = resolve;
-            setTimeout(() => reject(new Error('WebSocket connection timeout')), 5000);
+            setTimeout(() => reject(new Error('WebSocket connection timeout')), 30000);
           }
         });
 
         // Request RTCConfiguration
         const rtcConfigPromise = new Promise<RTCConfiguration>((resolve, reject) => {
-          const timeoutId = setTimeout(() => reject(new Error('RTCConfiguration timeout')), 5000);
+          const timeoutId = setTimeout(() => reject(new Error('RTCConfiguration timeout')), 30000);
 
           const messageHandler = (event: MessageEvent) => {
             try {
