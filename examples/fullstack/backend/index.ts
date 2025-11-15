@@ -48,11 +48,15 @@ app.post('/get-upload-url', async (req: Request<{}, {}, { filename: string }>, r
 app.post(
   '/create-instance',
   async (
-    req: Request<{}, {}, { assetNames?: string[]; platform: 'android' | 'ios'; androidVersion?: string }>,
+    req: Request<
+      {},
+      {},
+      { webSessionId: string; assetNames?: string[]; platform: 'android' | 'ios'; androidVersion?: string }
+    >,
     res: Response,
   ) => {
     try {
-      const { assetNames, platform = 'android', androidVersion } = req.body;
+      const { webSessionId, assetNames, platform = 'android', androidVersion } = req.body;
 
       const initialAssets =
         assetNames?.length ?
@@ -68,8 +72,6 @@ app.post(
           req.headers['x-forwarded-for'].join(',')
         : req.headers['x-forwarded-for'];
       const clientIp = forwardedIp ? forwardedIp.split(',')[0] : req.socket.remoteAddress;
-
-      console.time('create');
 
       if (platform === 'ios') {
         // iOS instance creation
@@ -88,7 +90,12 @@ app.post(
           ];
         }
 
-        const result = await limrun.iosInstances.create({ spec });
+        console.time('create');
+        const result = await limrun.iosInstances.create({
+          reuseIfExists: true,
+          spec,
+          metadata: { labels: { webSessionId } },
+        });
         console.timeEnd('create');
 
         return res.status(200).json({

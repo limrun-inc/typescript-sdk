@@ -20,6 +20,7 @@ import * as API from './resources/index';
 import { APIPromise } from './core/api-promise';
 import {
   AndroidInstance,
+  AndroidInstances,
   AndroidInstanceCreateParams,
   AndroidInstanceListParams,
   AndroidInstancesItems,
@@ -31,7 +32,6 @@ import {
   AssetListParams,
   AssetListResponse,
 } from './resources/assets';
-import { AndroidInstances } from './resources/android-instances-helpers';
 import { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './resources/assets-helpers';
 import {
   IosInstance,
