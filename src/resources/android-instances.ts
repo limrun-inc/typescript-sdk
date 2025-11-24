@@ -98,6 +98,20 @@ export namespace AndroidInstance {
     adbWebSocketUrl?: string;
 
     endpointWebSocketUrl?: string;
+
+    sandbox?: Status.Sandbox;
+  }
+
+  export namespace Status {
+    export interface Sandbox {
+      playwrightAndroid?: Sandbox.PlaywrightAndroid;
+    }
+
+    export namespace Sandbox {
+      export interface PlaywrightAndroid {
+        url?: string;
+      }
+    }
   }
 }
 
@@ -154,6 +168,8 @@ export namespace AndroidInstanceCreateParams {
      * based on scheduling clues and availability.
      */
     region?: string;
+
+    sandbox?: Spec.Sandbox;
   }
 
   export namespace Spec {
@@ -182,6 +198,16 @@ export namespace AndroidInstanceCreateParams {
       url?: string;
 
       urls?: Array<string>;
+    }
+
+    export interface Sandbox {
+      playwrightAndroid?: Sandbox.PlaywrightAndroid;
+    }
+
+    export namespace Sandbox {
+      export interface PlaywrightAndroid {
+        enabled?: boolean;
+      }
     }
   }
 }
