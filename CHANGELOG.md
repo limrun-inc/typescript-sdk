@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.0 (2025-11-24)
+
+Full Changelog: [v0.14.0...v0.15.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.14.0...v0.15.0)
+
+### Features
+
+* **api:** add android sandbox api ([5009870](https://github.com/limrun-inc/typescript-sdk/commit/500987045220fff0e65807712ba99143253a6753))
+* **api:** manual updates ([b982736](https://github.com/limrun-inc/typescript-sdk/commit/b98273685d2d4e024524011c51f318ba1f58659c))
+
 ## 0.14.0 (2025-11-11)
 
 Full Changelog: [v0.13.2...v0.14.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.13.2...v0.14.0)
