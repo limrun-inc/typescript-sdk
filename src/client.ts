@@ -31,7 +31,6 @@ import {
   AssetGetOrCreateResponse,
   AssetListParams,
   AssetListResponse,
-  Assets,
 } from './resources/assets';
 import { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './resources/assets-helpers';
 import {
