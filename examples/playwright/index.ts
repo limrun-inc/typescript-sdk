@@ -49,17 +49,39 @@ const device = await android.connect(
   `${instance.status.sandbox.playwrightAndroid.url}?token=${instance.status.token}`,
 );
 console.timeEnd('connect');
+await device.shell('am force-stop org.chromium.webview_shell');
+await device.shell('am start org.chromium.webview_shell/.WebViewBrowserActivity');
+// Get the WebView.
+const webview = await device.webView({ pkg: 'org.chromium.webview_shell' });
+console.log('Browser launched');
 
-console.log('Launching Chrome...');
-const context = await device.launchBrowser({
-  args: ['--disable-fre', '--no-default-browser-check', '--no-first-run'],
+console.time('cdp.commands');
+const page = await webview.page();
+await page.goto('https://github.com/microsoft/playwright');
+await page.waitForURL('https://github.com/microsoft/playwright');
+console.log(await page.title());
+console.log('Page title logged');
+// Wait for main content to be visible
+await page.waitForSelector('[data-hpc]', { state: 'visible' });
+const linksCount = await page.locator('a').count();
+console.log(`Links on page: ${linksCount}`);
+
+console.time('click.github');
+await page.locator('a[title=".github"]').first().click();
+console.timeEnd('click.github');
+await page.locator('a[title="workflows"]').first().click();
+await page.locator('a[title="infra.yml"]').first().click();
+// Scroll
+await page.evaluate(() => {
+  window.scrollTo(0, document.body.scrollHeight);
 });
-const page = await context.newPage();
+console.time('cdp.screenshot');
+await page.screenshot({ path: 'screenshot.png' });
+console.timeEnd('cdp.screenshot');
+console.timeEnd('cdp.commands');
 
-console.log('Navigating to https://lim.run...');
-await page.goto('https://lim.run');
-
-console.log('Page title:', await page.title());
-
-await context.close();
 await device.close();
+console.log('Session closed');
+
+await limrun.androidInstances.delete(instance.metadata.id);
+console.log('Instance deleted');
