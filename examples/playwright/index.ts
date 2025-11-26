@@ -20,18 +20,15 @@ const instance = await limrun.androidInstances.create({
     },
   },
   spec: {
-    initialAssets: [
-      {
-        kind: 'App',
-        source: 'AssetName',
-        assetName: 'SystemWebViewShell.apk',
-      },
-    ],
     sandbox: {
       playwrightAndroid: {
         enabled: true,
       },
     },
+    clues: [{
+      kind: 'OSVersion',
+      osVersion: '15',
+    }]
   },
   wait: true,
   reuseIfExists: true,
@@ -49,14 +46,19 @@ const device = await android.connect(
   `${instance.status.sandbox.playwrightAndroid.url}?token=${instance.status.token}`,
 );
 console.timeEnd('connect');
-await device.shell('am force-stop org.chromium.webview_shell');
-await device.shell('am start org.chromium.webview_shell/.WebViewBrowserActivity');
-// Get the WebView.
-const webview = await device.webView({ pkg: 'org.chromium.webview_shell' });
+
+// This is needed for Chrome's first-run initializations to complete.
+await device.shell('am start com.android.chrome/com.google.android.apps.chrome.Main');
+await new Promise(resolve => setTimeout(resolve, 1_000));
+await device.shell('am force-stop com.android.chrome');
+console.log('Chrome is ready');
+
+
+const browser = await device.launchBrowser();
 console.log('Browser launched');
 
 console.time('cdp.commands');
-const page = await webview.page();
+const page = await browser.newPage();
 await page.goto('https://github.com/microsoft/playwright');
 await page.waitForURL('https://github.com/microsoft/playwright');
 console.log(await page.title());

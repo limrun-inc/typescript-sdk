@@ -4,18 +4,10 @@ This example shows how to enable the Playwright Android sandbox feature
 so that the Chrome Developer Protocol (CDP) communication happens
 with very low latency while your test code still runs wherever you'd like.
 
+It opens Chrome, goes to [Playwright](https://github.com/microsoft/playwright)
+does a couple clicks and deletes the instance.
+
 ## Quick Start
-
-This example relies on having an app that embeds a WebView. If you don't have
-any readily available, you can download [WebView Shell](https://storage.googleapis.com/chromium-browser-snapshots/index.html?prefix=AndroidDesktop_x64/1549337/) app
-and push to your asset storage with the following commands:
-```bash
-unzip AndroidDesktop_x64_1549337_chrome-android-desktop.zip
-# Install lim via `brew install limrun-inc/tap/lim`
-lim push chrome-android-desktop/apks/SystemWebViewShell.apk
-```
-
-Once the `lim push` command succeeds, we can continue.
 
 1. Get an API Key from `Limrun Console` > `Settings` page [here](https://console.limrun.com/settings).
 1. Make it available as environment variable.
