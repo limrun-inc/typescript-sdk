@@ -25,6 +25,7 @@ You can always opt into starting an ADB tunnel and connect Playwright locally
 like the following, but it is known to be slower as CDP traffic is quite chatty
 and Playwright's current Android integration makes aggressive calls that add up
 if you're not in the same continent.
+
 ```ts
 // Talks with ADB directly and starts CDP connection
 const [device] = await android.devices();

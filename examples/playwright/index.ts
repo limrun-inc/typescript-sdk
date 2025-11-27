@@ -25,10 +25,12 @@ const instance = await limrun.androidInstances.create({
         enabled: true,
       },
     },
-    clues: [{
-      kind: 'OSVersion',
-      osVersion: '15',
-    }]
+    clues: [
+      {
+        kind: 'OSVersion',
+        osVersion: '15',
+      },
+    ],
   },
   wait: true,
   reuseIfExists: true,
@@ -49,10 +51,9 @@ console.timeEnd('connect');
 
 // This is needed for Chrome's first-run initializations to complete.
 await device.shell('am start com.android.chrome/com.google.android.apps.chrome.Main');
-await new Promise(resolve => setTimeout(resolve, 1_000));
+await new Promise((resolve) => setTimeout(resolve, 1_000));
 await device.shell('am force-stop com.android.chrome');
 console.log('Chrome is ready');
-
 
 const browser = await device.launchBrowser();
 console.log('Browser launched');
