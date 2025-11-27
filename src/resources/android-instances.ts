@@ -185,9 +185,7 @@ export namespace AndroidInstanceCreateParams {
     }
 
     export interface InitialAsset {
-      kind: 'App';
-
-      source: 'URL' | 'URLs' | 'AssetName' | 'AssetNames' | 'AssetIDs';
+      kind: 'App' | 'Configuration';
 
       assetIds?: Array<string>;
 
@@ -195,9 +193,21 @@ export namespace AndroidInstanceCreateParams {
 
       assetNames?: Array<string>;
 
+      configuration?: InitialAsset.Configuration;
+
+      source?: 'URL' | 'URLs' | 'AssetName' | 'AssetNames' | 'AssetIDs';
+
       url?: string;
 
       urls?: Array<string>;
+    }
+
+    export namespace InitialAsset {
+      export interface Configuration {
+        kind: 'ChromeFlag';
+
+        chromeFlag?: 'enable-command-line-on-non-rooted-devices@1';
+      }
     }
 
     export interface Sandbox {
