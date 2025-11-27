@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.16.0 (2025-11-27)
+
+Full Changelog: [v0.15.0...v0.16.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.15.0...v0.16.0)
+
+### Features
+
+* **api:** add asset type configuration with chrome flag ([48537a6](https://github.com/limrun-inc/typescript-sdk/commit/48537a65190fbe7f1be6eb5c9af04b7de375eaab))
+* **api:** make chromeFlag enum with supported value ([b733a0d](https://github.com/limrun-inc/typescript-sdk/commit/b733a0dcbd38827e263746cfb133f2bdf0533813))
+
 ## 0.15.0 (2025-11-24)
 
 Full Changelog: [v0.14.0...v0.15.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.14.0...v0.15.0)
