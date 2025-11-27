@@ -206,7 +206,7 @@ export namespace AndroidInstanceCreateParams {
       export interface Configuration {
         kind: 'ChromeFlag';
 
-        chromeFlag?: string;
+        chromeFlag?: 'enable-command-line-on-non-rooted-devices@1';
       }
     }
 
