@@ -20,6 +20,15 @@ const instance = await limrun.androidInstances.create({
     },
   },
   spec: {
+    initialAssets: [
+      {
+        kind: 'Configuration',
+        configuration: {
+          kind: 'ChromeFlag',
+          chromeFlag: 'enable-command-line-on-non-rooted-devices@1',
+        },
+      },
+    ],
     sandbox: {
       playwrightAndroid: {
         enabled: true,

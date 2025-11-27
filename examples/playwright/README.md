@@ -7,6 +7,10 @@ with very low latency while your test code still runs wherever you'd like.
 It opens Chrome, goes to [Playwright](https://github.com/microsoft/playwright)
 does a couple clicks and deletes the instance.
 
+Note that Playwright requires Chrome flag `enable-command-line-on-non-rooted-devices`
+to be enabled to launch Chrome. The example enables that Chrome flag via
+a `Configuration` asset.
+
 ## Quick Start
 
 1. Get an API Key from `Limrun Console` > `Settings` page [here](https://console.limrun.com/settings).
