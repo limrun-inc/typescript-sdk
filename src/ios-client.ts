@@ -1,4 +1,5 @@
 import { WebSocket, Data } from 'ws';
+import fs from 'fs';
 import { EventEmitter } from 'events';
 
 /**
@@ -85,6 +86,14 @@ export type InstanceClient = {
    * ```
    */
   simctl: (args: string[]) => SimctlExecution;
+
+  /**
+   * Copy a file to the sandbox of the simulator. Returns the path of the file that can be used in simctl commands.
+   * @param name The name of the file in the sandbox of the simulator.
+   * @param path The path of the file to copy to the sandbox of the simulator.
+   * @returns A promise that resolves to the path of the file that can be used in simctl commands.
+   */
+  cp: (name: string, path: string) => Promise<string>;
 };
 
 /**
@@ -97,11 +106,11 @@ export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
  */
 export type InstanceClientOptions = {
   /**
-   * The URL of the main endpoint WebSocket for the instance.
+   * The API URL for the instance.
    */
-  endpointWebSocketUrl: string;
+  apiUrl: string;
   /**
-   * The token to use for the WebSocket connections.
+   * The token to use for authentication.
    */
   token: string;
   /**
@@ -183,14 +192,14 @@ type ServerMessage =
  * @example
  * ```typescript
  * const execution = client.simctl(['boot', 'device-id']);
- * 
+ *
  * // Listen to raw output
  * execution.on('stdout', (data) => console.log(data.toString()));
- * 
+ *
  * // Or listen line-by-line (more convenient for most use cases)
  * execution.on('line-stdout', (line) => console.log('Output:', line));
  * execution.on('line-stderr', (line) => console.error('Error:', line));
- * 
+ *
  * execution.on('exit', (code) => console.log('Exit code:', code));
  * ```
  */
@@ -350,7 +359,7 @@ export class SimctlExecution extends EventEmitter {
  * @returns An InstanceClient for controlling the instance
  */
 export async function createInstanceClient(options: InstanceClientOptions): Promise<InstanceClient> {
-  const endpointWebSocketUrl = `${options.endpointWebSocketUrl}?token=${options.token}`;
+  const endpointWebSocketUrl = `${options.apiUrl}/endpointWebSocket?token=${options.token}`;
   const logLevel = options.logLevel ?? 'info';
   const maxReconnectAttempts = options.maxReconnectAttempts ?? 6;
   const reconnectDelay = options.reconnectDelay ?? 1000;
@@ -641,6 +650,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             getConnectionState,
             onConnectionStateChange,
             simctl,
+            cp,
           });
         }
       });
@@ -726,6 +736,33 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
 
       return execution;
+    };
+
+    const cp = async (name: string, filePath: string): Promise<string> => {
+      const fileStream = fs.createReadStream(filePath);
+      const uploadUrl = `${options.apiUrl}/files?name=${encodeURIComponent(name)}`;
+      try {
+        const response = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'Content-Length': fs.statSync(filePath).size.toString(),
+            Authorization: `Bearer ${options.token}`,
+          },
+          body: fileStream,
+          duplex: 'half',
+        });
+        if (!response.ok) {
+          const errorBody = await response.text();
+          logger.debug(`Upload failed: ${response.status} ${errorBody}`);
+          throw new Error(`Upload failed: ${response.status} ${errorBody}`);
+        }
+        const result = (await response.json()) as { path: string };
+        return result.path;
+      } catch (err) {
+        logger.debug(`Failed to upload file ${filePath}:`, err);
+        throw err;
+      }
     };
 
     const disconnect = (): void => {
