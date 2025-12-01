@@ -7,6 +7,7 @@ export { APIPromise } from './core/api-promise';
 export { Limrun, type ClientOptions } from './client';
 export { PagePromise } from './core/pagination';
 export * from './instance-client';
+export * as Ios from './ios-client';
 export {
   LimrunError,
   APIError,
