@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as net from 'net';
 import { WebSocket } from 'ws';
 
@@ -111,6 +112,8 @@ export async function startTcpTunnel(
     let intentionalDisconnect = false;
     let tcpSocket: net.Socket | undefined;
     let connectionState: TunnelConnectionState = 'connecting';
+    let sessionId: string | undefined;
+    let lastError: string | undefined;
 
     const stateChangeCallbacks: Set<TunnelConnectionStateCallback> = new Set();
 
@@ -170,7 +173,10 @@ export async function startTcpTunnel(
       }
 
       if (reconnectAttempts >= maxReconnectAttempts) {
-        logger.error(`Max reconnection attempts (${maxReconnectAttempts}) reached. Closing tunnel.`);
+        logger.error(
+          `Max reconnection attempts (${maxReconnectAttempts}) reached. Closing tunnel.`,
+          lastError ? `Last error: ${lastError}` : '',
+        );
         close();
         return;
       }
@@ -196,13 +202,21 @@ export async function startTcpTunnel(
       cleanup();
       updateConnectionState('connecting');
 
-      ws = new WebSocket(remoteURL, {
+      // Append sessionId as query parameter for server-side session persistence
+      const url = new URL(remoteURL);
+      if (sessionId) {
+        url.searchParams.set('sessionId', sessionId);
+      }
+
+      ws = new WebSocket(url.toString(), {
         headers: { Authorization: `Bearer ${token}` },
         perMessageDeflate: false,
       });
 
       ws.on('error', (err: any) => {
-        logger.error('WebSocket error:', err.message || err);
+        // Store error but don't log yet - we'll log only if we give up reconnecting
+        lastError = err.message || String(err);
+        logger.debug('WebSocket error (will retry):', lastError);
       });
 
       ws.on('close', () => {
@@ -231,6 +245,7 @@ export async function startTcpTunnel(
         const socket = ws as WebSocket;
         logger.debug('WebSocket connected');
         reconnectAttempts = 0;
+        lastError = undefined;
         updateConnectionState('connected');
 
         pingInterval = setInterval(() => {
@@ -309,6 +324,8 @@ export async function startTcpTunnel(
       // Reset reconnection state for next connection
       reconnectAttempts = 0;
       intentionalDisconnect = false;
+      sessionId = undefined;
+      lastError = undefined;
       logger.debug('Connection cleaned up, ready for new TCP connection');
     };
 
@@ -321,7 +338,11 @@ export async function startTcpTunnel(
         return;
       }
 
-      logger.debug('TCP client connected');
+      // Generate a new sessionId for this TCP connection.
+      // This ID persists across WebSocket reconnects, allowing the server
+      // to associate reconnecting clients with their existing ADB session.
+      sessionId = crypto.randomUUID();
+      logger.debug('TCP client connected', 'sessionId', sessionId);
       tcpSocket = socket;
 
       // TCP socket handlers

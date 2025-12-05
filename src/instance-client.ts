@@ -156,6 +156,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   let reconnectAttempts = 0;
   let reconnectTimeout: NodeJS.Timeout | undefined;
   let intentionalDisconnect = false;
+  let lastError: string | undefined;
 
   const screenshotRequests: Map<
     string,
@@ -243,7 +244,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }
 
       if (reconnectAttempts >= maxReconnectAttempts) {
-        logger.error(`Max reconnection attempts (${maxReconnectAttempts}) reached. Giving up.`);
+        logger.error(
+          `Max reconnection attempts (${maxReconnectAttempts}) reached. Giving up.`,
+          lastError ? `Last error: ${lastError}` : '',
+        );
         updateConnectionState('disconnected');
         return;
       }
@@ -350,7 +354,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
 
       ws.on('error', (err: Error) => {
-        logger.error('WebSocket error:', err.message);
+        // Store error but don't log yet - we'll log only if we give up reconnecting
+        lastError = err.message;
+        logger.debug('WebSocket error (will retry):', lastError);
         if (!hasResolved && (ws?.readyState === WebSocket.CONNECTING || ws?.readyState === WebSocket.OPEN)) {
           rejectConnection(err);
         }
@@ -377,6 +383,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       ws.on('open', () => {
         logger.debug(`Connected to ${serverAddress}`);
         reconnectAttempts = 0;
+        lastError = undefined;
         updateConnectionState('connected');
 
         pingInterval = setInterval(() => {
