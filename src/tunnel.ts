@@ -85,7 +85,6 @@ export async function startTcpTunnel(
   const maxReconnectDelay = options?.maxReconnectDelay ?? 30000;
   const logLevel = options?.logLevel ?? 'info';
 
-  // Logger functions
   const logger = {
     debug: (...args: any[]) => {
       if (logLevel === 'debug') console.log('[Tunnel]', ...args);
@@ -167,6 +166,11 @@ export async function startTcpTunnel(
         return;
       }
 
+      if (isNonRetryableError(lastError ?? '')) {
+        logger.error(`Skipping reconnection (non-retryable error): ${lastError}`);
+        return;
+      }
+
       if (!tcpSocket || tcpSocket.destroyed) {
         logger.debug('Skipping reconnection (TCP socket closed)');
         return;
@@ -214,9 +218,9 @@ export async function startTcpTunnel(
       });
 
       ws.on('error', (err: any) => {
-        // Store error but don't log yet - we'll log only if we give up reconnecting
-        lastError = err.message || String(err);
-        logger.debug('WebSocket error (will retry):', lastError);
+        const errMessage = err.message || String(err);
+        lastError = errMessage;
+        logger.debug('WebSocket error:', errMessage);
       });
 
       ws.on('close', () => {
@@ -225,7 +229,10 @@ export async function startTcpTunnel(
           pingInterval = undefined;
         }
 
-        const shouldReconnect = !intentionalDisconnect && connectionState !== 'disconnected';
+        const shouldReconnect =
+          !intentionalDisconnect &&
+          !isNonRetryableError(lastError ?? '') &&
+          connectionState !== 'disconnected';
         updateConnectionState('disconnected');
 
         logger.debug('WebSocket disconnected');
@@ -238,6 +245,11 @@ export async function startTcpTunnel(
 
         if (shouldReconnect && tcpSocket && !tcpSocket.destroyed) {
           scheduleReconnect();
+        } else if (isNonRetryableError(lastError ?? '')) {
+          // Close entire tunnel on non-retryable errors (not just TCP socket)
+          // This prevents adb from reconnecting and triggering the same error
+          logger.error(`Closing tunnel due to non-retryable error: ${lastError}`);
+          close();
         }
       });
 
@@ -364,3 +376,12 @@ export async function startTcpTunnel(
     server.listen(port, hostname);
   });
 }
+
+export const isNonRetryableError = (errMessage: string): boolean => {
+  const match = errMessage.match(/Unexpected server response: (\d+)/);
+  if (match && match[1]) {
+    const statusCode = parseInt(match[1], 10);
+    return statusCode >= 400 && statusCode < 500;
+  }
+  return false;
+};

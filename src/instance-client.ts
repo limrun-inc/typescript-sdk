@@ -1,7 +1,7 @@
 import { WebSocket, Data } from 'ws';
 import { exec } from 'node:child_process';
 
-import { startTcpTunnel } from './tunnel';
+import { startTcpTunnel, isNonRetryableError } from './tunnel';
 import type { Tunnel } from './tunnel';
 
 /**
@@ -176,19 +176,19 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
   const stateChangeCallbacks: Set<ConnectionStateCallback> = new Set();
 
-  // Logger functions
   const logger = {
     debug: (...args: any[]) => {
-      if (logLevel === 'debug') console.log(...args);
+      if (logLevel === 'debug') console.log('[Endpoint]', ...args);
     },
     info: (...args: any[]) => {
-      if (logLevel === 'info' || logLevel === 'debug') console.log(...args);
+      if (logLevel === 'info' || logLevel === 'debug') console.log('[Endpoint]', ...args);
     },
     warn: (...args: any[]) => {
-      if (logLevel === 'warn' || logLevel === 'info' || logLevel === 'debug') console.warn(...args);
+      if (logLevel === 'warn' || logLevel === 'info' || logLevel === 'debug')
+        console.warn('[Endpoint]', ...args);
     },
     error: (...args: any[]) => {
-      if (logLevel !== 'none') console.error(...args);
+      if (logLevel !== 'none') console.error('[Endpoint]', ...args);
     },
   };
 
@@ -240,6 +240,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const scheduleReconnect = (): void => {
       if (intentionalDisconnect) {
         logger.debug('Skipping reconnection (intentional disconnect)');
+        return;
+      }
+
+      if (isNonRetryableError(lastError ?? '')) {
+        logger.debug('Skipping reconnection (non-retryable error)');
         return;
       }
 
@@ -354,9 +359,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
 
       ws.on('error', (err: Error) => {
-        // Store error but don't log yet - we'll log only if we give up reconnecting
-        lastError = err.message;
-        logger.debug('WebSocket error (will retry):', lastError);
+        const errMessage = err.message;
+        lastError = errMessage;
+        logger.debug('WebSocket error:', errMessage);
         if (!hasResolved && (ws?.readyState === WebSocket.CONNECTING || ws?.readyState === WebSocket.OPEN)) {
           rejectConnection(err);
         }
@@ -368,7 +373,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           pingInterval = undefined;
         }
 
-        const shouldReconnect = !intentionalDisconnect && connectionState !== 'disconnected';
+        const shouldReconnect =
+          !intentionalDisconnect &&
+          !isNonRetryableError(lastError ?? '') &&
+          connectionState !== 'disconnected';
         updateConnectionState('disconnected');
 
         logger.debug('Disconnected from server.');
@@ -377,6 +385,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
         if (shouldReconnect) {
           scheduleReconnect();
+        } else if (isNonRetryableError(lastError ?? '')) {
+          logger.error(`Closing connection due to non-retryable error: ${lastError}`);
+          cleanup();
+          updateConnectionState('disconnected');
+          failPendingRequests('Non-retryable error');
+          logger.debug('Non-retryable error. Closing connection.');
         }
       });
 
