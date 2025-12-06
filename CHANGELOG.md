@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.1 (2025-12-06)
+
+Full Changelog: [v0.16.0...v0.16.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.16.0...v0.16.1)
+
+### Bug Fixes
+
+* **mcp:** correct code tool API endpoint ([280763d](https://github.com/limrun-inc/typescript-sdk/commit/280763d64aa3c2c0e615be1a3472f9b3f3d96221))
+* **mcp:** return correct lines on typescript errors ([12b83c8](https://github.com/limrun-inc/typescript-sdk/commit/12b83c805cfc763c4b13c7cda65f79b6afc50d12))
+
+
+### Chores
+
+* **client:** fix logger property type ([19a857f](https://github.com/limrun-inc/typescript-sdk/commit/19a857f714f069ace7c3066a0efad5bc18cca3f4))
+* **internal:** codegen related update ([f71b1a5](https://github.com/limrun-inc/typescript-sdk/commit/f71b1a546aca5ea7a99c9803831242b7307c6063))
+* **internal:** codegen related update ([1c4a97e](https://github.com/limrun-inc/typescript-sdk/commit/1c4a97ef324ac5772b3495da6ba9ef7b455370bd))
+* **internal:** upgrade eslint ([5d64880](https://github.com/limrun-inc/typescript-sdk/commit/5d648803e7d79d067bd54e32980c4898959cb530))
+
 ## 0.16.0 (2025-11-27)
 
 Full Changelog: [v0.15.0...v0.16.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.15.0...v0.16.0)
