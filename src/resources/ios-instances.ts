@@ -95,9 +95,11 @@ export namespace IosInstance {
 
     state: 'unknown' | 'creating' | 'assigned' | 'ready' | 'terminated';
 
+    apiUrl?: string;
+
     endpointWebSocketUrl?: string;
 
-    portForwardWebSocketUrl?: string;
+    targetHttpPortUrlPrefix?: string;
   }
 }
 
