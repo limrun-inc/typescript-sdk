@@ -100,6 +100,8 @@ export namespace AndroidInstance {
     endpointWebSocketUrl?: string;
 
     sandbox?: Status.Sandbox;
+
+    targetHttpPortUrlPrefix?: string;
   }
 
   export namespace Status {
