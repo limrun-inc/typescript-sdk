@@ -359,7 +359,9 @@ export class SimctlExecution extends EventEmitter {
  * @returns An InstanceClient for controlling the instance
  */
 export async function createInstanceClient(options: InstanceClientOptions): Promise<InstanceClient> {
-  const endpointWebSocketUrl = `${options.apiUrl}/signaling?token=${options.token}`;
+  const endpointWebSocketUrl = `${options.apiUrl
+    .replace('https://', 'wss://')
+    .replace('http://', 'ws://')}/signaling?token=${options.token}`;
   const logLevel = options.logLevel ?? 'info';
   const maxReconnectAttempts = options.maxReconnectAttempts ?? 6;
   const reconnectDelay = options.reconnectDelay ?? 1000;
