@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.16.2 (2025-12-06)
+
+Full Changelog: [v0.16.1...v0.16.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.16.1...v0.16.2)
+
+### Features
+
+* **api:** manual updates ([5d26261](https://github.com/limrun-inc/typescript-sdk/commit/5d26261c64ed1a04222159254962b7215f82f374))
+
 ## 0.16.1 (2025-12-06)
 
 Full Changelog: [v0.16.0...v0.16.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.16.0...v0.16.1)
