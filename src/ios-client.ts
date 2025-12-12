@@ -55,6 +55,8 @@ export type InstanceClient = {
    * Returns an EventEmitter that streams stdout, stderr, and exit events.
    *
    * @param args Arguments to pass to simctl
+   * @param opts Options for the simctl execution
+   * @param opts.disconnectOnExit If true, disconnect from the instance when the command completes
    * @returns A SimctlExecution handle for listening to command output
    *
    * @example
@@ -83,9 +85,12 @@ export type InstanceClient = {
    * const result = await execution.wait();
    * console.log('Exit code:', result.code);
    * console.log('Full stdout:', result.stdout.toString());
+   *
+   * // Disconnect from the instance when the command finishes
+   * const execution2 = client.simctl(['status'], { disconnectOnExit: true });
    * ```
    */
-  simctl: (args: string[]) => SimctlExecution;
+  simctl: (args: string[], opts?: { disconnectOnExit?: boolean }) => SimctlExecution;
 
   /**
    * Copy a file to the sandbox of the simulator. Returns the path of the file that can be used in simctl commands.
@@ -700,17 +705,33 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
     };
 
-    const simctl = (args: string[]): SimctlExecution => {
+    const simctl = (args: string[], opts: { disconnectOnExit?: boolean } = {}): SimctlExecution => {
       const id = 'ts-simctl-' + Date.now() + '-' + Math.random().toString(36).substring(7);
 
       const cancelCallback = () => {
         // Clean up execution tracking
         simctlExecutions.delete(id);
+        if (opts.disconnectOnExit) {
+          logger.debug(`Simctl execution ${id} cancelled, disconnecting due to disconnectOnExit`);
+          disconnect();
+        }
         logger.debug(`Simctl execution ${id} cancelled`);
       };
 
       const execution = new SimctlExecution(cancelCallback);
       simctlExecutions.set(id, execution);
+
+      // If disconnectOnExit is enabled, register listeners before any async operations
+      if (opts.disconnectOnExit) {
+        execution.once('exit', () => {
+          logger.debug(`Simctl execution ${id} finished, disconnecting due to disconnectOnExit`);
+          disconnect();
+        });
+        execution.once('error', () => {
+          logger.debug(`Simctl execution ${id} errored, disconnecting due to disconnectOnExit`);
+          disconnect();
+        });
+      }
 
       // Send request asynchronously
       if (!ws || ws.readyState !== WebSocket.OPEN) {
