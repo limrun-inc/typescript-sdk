@@ -241,16 +241,18 @@ export class SimctlExecution extends EventEmitter {
   private stderrLineBuffer = '';
   private exitCodeValue: number | null = null;
   private completed = false;
-  private waitPromise: Promise<{ code: number; stdout: Buffer; stderr: Buffer }> | null = null;
+  private waitPromise: Promise<{ code: number; stdout: string; stderr: string }> | null = null;
   private stopCallback: (() => void) | null = null;
+  private encoding: BufferEncoding;
 
   public get isRunning(): boolean {
     return !this.completed;
   }
 
-  constructor(stopCallback: () => void) {
+  constructor(stopCallback: () => void, { encoding = 'utf-8' }: { encoding?: BufferEncoding } = {}) {
     super();
     this.stopCallback = stopCallback;
+    this.encoding = encoding;
   }
 
   /**
@@ -285,7 +287,7 @@ export class SimctlExecution extends EventEmitter {
    * This accumulates all stdout/stderr chunks in memory.
    * @returns Promise that resolves with exit code and complete output
    */
-  wait(): Promise<{ code: number; stdout: Buffer; stderr: Buffer }> {
+  wait(): Promise<{ code: number; stdout: string; stderr: string }> {
     if (this.waitPromise) {
       return this.waitPromise;
     }
@@ -294,8 +296,8 @@ export class SimctlExecution extends EventEmitter {
       if (this.completed) {
         resolve({
           code: this.exitCodeValue!,
-          stdout: Buffer.concat(this.stdoutChunks),
-          stderr: Buffer.concat(this.stderrChunks),
+          stdout: Buffer.concat(this.stdoutChunks).toString(this.encoding),
+          stderr: Buffer.concat(this.stderrChunks).toString(this.encoding),
         });
         return;
       }
@@ -303,8 +305,8 @@ export class SimctlExecution extends EventEmitter {
       this.once('exit', (code) => {
         resolve({
           code,
-          stdout: Buffer.concat(this.stdoutChunks),
-          stderr: Buffer.concat(this.stderrChunks),
+          stdout: Buffer.concat(this.stdoutChunks).toString(this.encoding),
+          stderr: Buffer.concat(this.stderrChunks).toString(this.encoding),
         });
       });
 
@@ -332,7 +334,7 @@ export class SimctlExecution extends EventEmitter {
     this.emit('stdout', data);
 
     // Process line-by-line
-    this.stdoutLineBuffer += data.toString('utf-8');
+    this.stdoutLineBuffer += data.toString(this.encoding);
     const lines = this.stdoutLineBuffer.split('\n');
     // Keep the last incomplete line in the buffer
     this.stdoutLineBuffer = lines.pop() || '';
@@ -349,7 +351,7 @@ export class SimctlExecution extends EventEmitter {
     this.emit('stderr', data);
 
     // Process line-by-line
-    this.stderrLineBuffer += data.toString('utf-8');
+    this.stderrLineBuffer += data.toString(this.encoding);
     const lines = this.stderrLineBuffer.split('\n');
     // Keep the last incomplete line in the buffer
     this.stderrLineBuffer = lines.pop() || '';
