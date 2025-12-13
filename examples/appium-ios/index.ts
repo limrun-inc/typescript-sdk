@@ -8,7 +8,7 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const limrun = new Limrun({ apiKey, baseURL: 'https://api-staging.limrun.dev' });
+const limrun = new Limrun({ apiKey });
 
 console.time('create');
 const instance = await limrun.iosInstances.create({
