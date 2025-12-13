@@ -8,7 +8,7 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const limrun = new Limrun({ apiKey });
+const limrun = new Limrun({ apiKey, baseURL: 'https://api-staging.limrun.dev' });
 
 console.time('create');
 const instance = await limrun.iosInstances.create({
@@ -53,6 +53,7 @@ const driver = await remote({
     'appium:limInstanceApiUrl': instance.status.apiUrl,
     'appium:limInstanceToken': instance.status.token,
     'appium:webDriverAgentUrl': wdaUrl,
+    'appium:wdaLocalPort': 443,
     'appium:wdaRequestHeaders': {
       Authorization: `Bearer ${instance.status.token}`,
     },
