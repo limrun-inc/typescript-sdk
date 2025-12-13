@@ -1,6 +1,6 @@
 {
   "name": "@limrun/api",
-  "version": "0.16.2",
+  "version": "0.17.0",
   "description": "The official TypeScript library for the Limrun API",
   "author": "Limrun <contact@limrun.com>",
   "types": "dist/index.d.ts",
