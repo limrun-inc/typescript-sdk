@@ -99,6 +99,18 @@ export type InstanceClient = {
    * @returns A promise that resolves to the path of the file that can be used in simctl commands.
    */
   cp: (name: string, path: string) => Promise<string>;
+
+  /**
+   * List all open files on the instance. Useful to start tunnel to the
+   * UNIX sockets listed here.
+   * @returns A promise that resolves to a list of open files.
+   */
+  lsof: () => Promise<LsofEntry[]>;
+};
+
+export type LsofEntry = {
+  kind: 'unix';
+  path: string;
 };
 
 /**
@@ -181,11 +193,25 @@ type SimctlErrorResponse = {
   message: string;
 };
 
+type ListOpenFilesRequest = {
+  type: 'listOpenFiles';
+  id: string;
+  kind: 'unix';
+};
+
+type ListOpenFilesResponse = {
+  type: 'listOpenFilesResult';
+  id: string;
+  files?: LsofEntry[];
+  error?: string;
+};
+
 type ServerMessage =
   | ScreenshotResponse
   | ScreenshotErrorResponse
   | SimctlStreamResponse
   | SimctlErrorResponse
+  | ListOpenFilesResponse
   | { type: string; [key: string]: unknown };
 
 /**
@@ -386,6 +412,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     }
   > = new Map();
 
+  const lsofRequests: Map<
+    string,
+    {
+      resolver: (value: LsofEntry[] | PromiseLike<LsofEntry[]>) => void;
+      rejecter: (reason?: any) => void;
+    }
+  > = new Map();
+
   const simctlExecutions: Map<string, SimctlExecution> = new Map();
 
   const stateChangeCallbacks: Set<ConnectionStateCallback> = new Set();
@@ -423,6 +457,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   const failPendingRequests = (reason: string): void => {
     screenshotRequests.forEach((request) => request.rejecter(new Error(reason)));
     screenshotRequests.clear();
+
+    lsofRequests.forEach((request) => request.rejecter(new Error(reason)));
+    lsofRequests.clear();
 
     simctlExecutions.forEach((execution) => execution._handleError(new Error(reason)));
     simctlExecutions.clear();
@@ -607,6 +644,44 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             simctlExecutions.delete(errorMessage.id);
             break;
           }
+          case 'listOpenFilesResult': {
+            if (!('id' in message)) {
+              logger.warn('Received invalid listOpenFilesResult message:', message);
+              break;
+            }
+
+            const lsofMessage = message as ListOpenFilesResponse;
+            const request = lsofRequests.get(lsofMessage.id);
+
+            if (!request) {
+              logger.warn(
+                `Received listOpenFilesResult for unknown or already handled session: ${lsofMessage.id}`,
+              );
+              break;
+            }
+
+            if (lsofMessage.error) {
+              logger.error(
+                `Server reported an error listing open files for session ${lsofMessage.id}:`,
+                lsofMessage.error,
+              );
+              request.rejecter(new Error(lsofMessage.error));
+              lsofRequests.delete(lsofMessage.id);
+              break;
+            }
+
+            if (!lsofMessage.files || !Array.isArray(lsofMessage.files)) {
+              logger.warn('Received listOpenFilesResult without files array:', message);
+              request.rejecter(new Error('Invalid listOpenFilesResult: missing files array'));
+              lsofRequests.delete(lsofMessage.id);
+              break;
+            }
+
+            logger.debug(`Received listOpenFilesResult for session ${lsofMessage.id}.`);
+            request.resolver(lsofMessage.files);
+            lsofRequests.delete(lsofMessage.id);
+            break;
+          }
           default:
             logger.warn('Received unexpected message type:', message);
             break;
@@ -658,6 +733,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             onConnectionStateChange,
             simctl,
             cp,
+            lsof,
           });
         }
       });
@@ -700,6 +776,49 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             clearTimeout(timeout);
             reject(reason);
             screenshotRequests.delete(id);
+          },
+        });
+      });
+    };
+
+    const lsof = async (): Promise<LsofEntry[]> => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return Promise.reject(new Error('WebSocket is not connected or connection is not open.'));
+      }
+
+      const id = 'ts-client-' + Date.now();
+      const lsofRequest: ListOpenFilesRequest = {
+        type: 'listOpenFiles',
+        id,
+        kind: 'unix',
+      };
+
+      return new Promise<LsofEntry[]>((resolve, reject) => {
+        logger.debug('Sending listOpenFiles request:', lsofRequest);
+        ws!.send(JSON.stringify(lsofRequest), (err?: Error) => {
+          if (err) {
+            logger.error('Failed to send listOpenFiles request:', err);
+            reject(err);
+          }
+        });
+
+        const timeout = setTimeout(() => {
+          if (lsofRequests.has(id)) {
+            logger.error(`listOpenFiles request timed out for session ${id}`);
+            lsofRequests.get(id)?.rejecter(new Error('listOpenFiles request timed out'));
+            lsofRequests.delete(id);
+          }
+        }, 30000);
+        lsofRequests.set(id, {
+          resolver: (value: LsofEntry[] | PromiseLike<LsofEntry[]>) => {
+            clearTimeout(timeout);
+            resolve(value);
+            lsofRequests.delete(id);
+          },
+          rejecter: (reason?: any) => {
+            clearTimeout(timeout);
+            reject(reason);
+            lsofRequests.delete(id);
           },
         });
       });

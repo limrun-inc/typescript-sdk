@@ -17,6 +17,13 @@ export type TunnelConnectionState = 'connecting' | 'connected' | 'disconnected' 
  */
 export type TunnelConnectionStateCallback = (state: TunnelConnectionState) => void;
 
+/**
+ * Tunnel mode for TCP connections.
+ * - 'singleton': Single TCP connection forwarded to WebSocket (default)
+ * - 'multiplexed': Multiple TCP connections multiplexed over a single WebSocket
+ */
+export type TunnelMode = 'singleton' | 'multiplexed';
+
 export interface Tunnel {
   address: {
     address: string;
@@ -55,6 +62,14 @@ export interface TcpTunnelOptions {
    * @default 'info'
    */
   logLevel?: LogLevel;
+  /**
+   * Tunnel mode for handling TCP connections
+   * - 'singleton': Single TCP connection forwarded to WebSocket (default)
+   * - 'multiplexed': Multiple TCP connections multiplexed over a single WebSocket,
+   *                  each packet prefixed with a 4-byte connection ID
+   * @default 'singleton'
+   */
+  mode?: TunnelMode;
 }
 
 /**
@@ -74,6 +89,25 @@ export interface TcpTunnelOptions {
  * @param options   Optional reconnection configuration
  */
 export async function startTcpTunnel(
+  remoteURL: string,
+  token: string,
+  hostname: string,
+  port: number,
+  options?: TcpTunnelOptions,
+): Promise<Tunnel> {
+  const mode = options?.mode ?? 'singleton';
+
+  if (mode === 'multiplexed') {
+    return startMultiplexedTcpTunnel(remoteURL, token, hostname, port, options);
+  }
+
+  return startSingletonTcpTunnel(remoteURL, token, hostname, port, options);
+}
+
+/**
+ * Singleton mode: Single TCP connection forwarded to WebSocket
+ */
+async function startSingletonTcpTunnel(
   remoteURL: string,
   token: string,
   hostname: string,
@@ -377,6 +411,306 @@ export async function startTcpTunnel(
   });
 }
 
+/**
+ * Multiplexed mode: Multiple TCP connections multiplexed over a single WebSocket
+ *
+ * Each TCP connection is assigned a unique 32-bit connection ID. All data sent
+ * to the WebSocket is prefixed with a 4-byte big-endian header containing the
+ * connection ID. The server responds with data prefixed with the same header.
+ *
+ * A close signal for a connection is indicated by sending a header-only packet
+ * (4 bytes with no payload) for that connection ID.
+ */
+async function startMultiplexedTcpTunnel(
+  remoteURL: string,
+  token: string,
+  hostname: string,
+  port: number,
+  options?: TcpTunnelOptions,
+): Promise<Tunnel> {
+  const logLevel = options?.logLevel ?? 'info';
+
+  const logger = {
+    debug: (...args: any[]) => {
+      if (logLevel === 'debug') console.log('[Tunnel:Mux]', ...args);
+    },
+    info: (...args: any[]) => {
+      if (logLevel === 'info' || logLevel === 'debug') console.log('[Tunnel:Mux]', ...args);
+    },
+    warn: (...args: any[]) => {
+      if (logLevel === 'warn' || logLevel === 'info' || logLevel === 'debug')
+        console.warn('[Tunnel:Mux]', ...args);
+    },
+    error: (...args: any[]) => {
+      if (logLevel !== 'none') console.error('[Tunnel:Mux]', ...args);
+    },
+  };
+
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+
+    // Map of connection ID to TCP socket
+    const connections: Map<number, net.Socket> = new Map();
+    // Counter for generating unique connection IDs
+    let nextConnId = 1;
+
+    let ws: WebSocket | undefined;
+    let pingInterval: NodeJS.Timeout | undefined;
+    let intentionalDisconnect = false;
+    let connectionState: TunnelConnectionState = 'connecting';
+
+    const stateChangeCallbacks: Set<TunnelConnectionStateCallback> = new Set();
+
+    const updateConnectionState = (newState: TunnelConnectionState): void => {
+      if (connectionState !== newState) {
+        connectionState = newState;
+        logger.debug(`Connection state changed to: ${newState}`);
+        stateChangeCallbacks.forEach((callback) => {
+          try {
+            callback(newState);
+          } catch (err) {
+            logger.error('Error in connection state callback:', err);
+          }
+        });
+      }
+    };
+
+    const cleanupWebSocket = () => {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = undefined;
+      }
+      if (ws) {
+        ws.removeAllListeners();
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close(1000, 'close');
+        }
+        ws = undefined;
+      }
+    };
+
+    const closeAllConnections = () => {
+      for (const [connId, socket] of connections) {
+        logger.debug(`Closing TCP connection ${connId}`);
+        if (!socket.destroyed) {
+          socket.destroy();
+        }
+      }
+      connections.clear();
+    };
+
+    const close = () => {
+      intentionalDisconnect = true;
+      cleanupWebSocket();
+      closeAllConnections();
+      updateConnectionState('disconnected');
+      if (server.listening) {
+        server.close();
+      }
+    };
+
+    // Send close signal for a connection (header-only packet)
+    const sendCloseSignal = (connId: number) => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const header = encodeConnectionHeader(connId);
+        ws.send(header);
+        logger.debug(`Sent close signal for connection ${connId}`);
+      }
+    };
+
+    // Remove a connection from tracking
+    const removeConnection = (connId: number) => {
+      const socket = connections.get(connId);
+      if (socket) {
+        if (!socket.destroyed) {
+          socket.destroy();
+        }
+        connections.delete(connId);
+        logger.debug(`Removed connection ${connId}`);
+      }
+    };
+
+    const setupWebSocket = (): Promise<void> => {
+      return new Promise((resolveWs, rejectWs) => {
+        cleanupWebSocket();
+        updateConnectionState('connecting');
+
+        // Build URL with mode=multiplexed query parameter
+        const url = new URL(remoteURL);
+        url.searchParams.set('mode', 'multiplexed');
+
+        logger.debug(`Connecting WebSocket to: ${url.toString()}`);
+
+        ws = new WebSocket(url.toString(), {
+          headers: { Authorization: `Bearer ${token}` },
+          perMessageDeflate: false,
+        });
+
+        ws.on('error', (err: any) => {
+          const errMessage = err.message || String(err);
+          logger.error('WebSocket error:', errMessage, err.code || '');
+          rejectWs(err);
+        });
+
+        ws.on('close', () => {
+          if (pingInterval) {
+            clearInterval(pingInterval);
+            pingInterval = undefined;
+          }
+
+          updateConnectionState('disconnected');
+          logger.debug('WebSocket disconnected');
+
+          // Close all TCP connections when WebSocket closes
+          closeAllConnections();
+        });
+
+        ws.on('open', () => {
+          const socket = ws as WebSocket;
+          logger.debug('WebSocket connected');
+          updateConnectionState('connected');
+
+          pingInterval = setInterval(() => {
+            if (socket.readyState === WebSocket.OPEN) {
+              (socket as any).ping();
+            }
+          }, 30_000);
+
+          // WS → TCP: Demultiplex incoming data
+          socket.on('message', (data: any) => {
+            const buffer = data as Buffer;
+            logger.debug(`WS→TCP raw message: ${buffer.length} bytes`);
+            if (buffer.length < 4) {
+              logger.error('Received binary frame shorter than 4 bytes; dropping');
+              return;
+            }
+
+            const connId = decodeConnectionHeader(buffer);
+            const payload = buffer.subarray(4);
+
+            // Close signal (header only, no payload)
+            if (payload.length === 0) {
+              logger.debug(`Received close signal for connection ${connId}`);
+              removeConnection(connId);
+              return;
+            }
+
+            logger.debug(
+              `WS→TCP [conn=${connId}] ${payload.length} bytes: ${payload
+                .subarray(0, Math.min(200, payload.length))
+                .toString('utf8')
+                .replace(/[\x00-\x1f]/g, '.')}`,
+            );
+
+            const tcpSocket = connections.get(connId);
+            if (tcpSocket && !tcpSocket.destroyed) {
+              tcpSocket.write(payload);
+            } else {
+              logger.debug(`Received data for unknown/closed connection ${connId}`);
+            }
+          });
+
+          // WebSocket is now ready - resolve the promise
+          resolveWs();
+        });
+      });
+    };
+
+    // TCP server error
+    server.once('error', (err) => {
+      close();
+      reject(new Error(`TCP server error: ${err.message}`));
+    });
+
+    const getConnectionState = (): TunnelConnectionState => {
+      return connectionState;
+    };
+
+    const onConnectionStateChange = (callback: TunnelConnectionStateCallback): (() => void) => {
+      stateChangeCallbacks.add(callback);
+      return () => {
+        stateChangeCallbacks.delete(callback);
+      };
+    };
+
+    // Listening
+    server.once('listening', async () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        close();
+        return reject(new Error('Failed to obtain listening address'));
+      }
+
+      logger.debug(`Multiplexed tunnel listening on ${address.address}:${address.port}`);
+
+      // Start WebSocket connection and wait for it to be ready
+      try {
+        await setupWebSocket();
+        logger.debug('WebSocket ready, tunnel fully initialized');
+        resolve({
+          address,
+          close,
+          getConnectionState,
+          onConnectionStateChange,
+        });
+      } catch (err) {
+        close();
+        reject(new Error(`Failed to establish WebSocket connection: ${err}`));
+      }
+    });
+
+    // On TCP connection - allow multiple connections in multiplexed mode
+    server.on('connection', (socket) => {
+      // Assign a unique connection ID
+      const connId = nextConnId++;
+      // Wrap around at 32-bit max to stay within uint32 range
+      if (nextConnId > 0xffffffff) {
+        nextConnId = 1;
+      }
+
+      connections.set(connId, socket);
+      logger.debug(
+        `New TCP connection ${connId} from ${socket.remoteAddress}:${socket.remotePort}, WS state=${ws?.readyState}, total connections=${connections.size}`,
+      );
+
+      // TCP → WS: Forward data with connection ID header
+      socket.on('data', (chunk: Buffer) => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          const header = encodeConnectionHeader(connId);
+          const framed = Buffer.concat([header, chunk]);
+          logger.debug(
+            `TCP→WS [conn=${connId}] ${chunk.length} bytes: ${chunk
+              .subarray(0, Math.min(200, chunk.length))
+              .toString('utf8')
+              .replace(/[\x00-\x1f]/g, '.')}`,
+          );
+          ws.send(framed);
+        } else {
+          logger.debug(
+            `TCP→WS [conn=${connId}] WS not open (state=${ws?.readyState}), dropping ${chunk.length} bytes`,
+          );
+        }
+        // If WebSocket is not ready, data will queue in TCP buffers (backpressure)
+      });
+
+      socket.on('close', () => {
+        logger.debug(`TCP connection ${connId} closed by client`);
+        sendCloseSignal(connId);
+        connections.delete(connId);
+      });
+
+      socket.on('error', (err: any) => {
+        logger.error(`TCP connection ${connId} error:`, err);
+        sendCloseSignal(connId);
+        connections.delete(connId);
+      });
+    });
+
+    // Start listening
+    server.listen(port, hostname);
+  });
+}
+
 export const isNonRetryableError = (errMessage: string): boolean => {
   const match = errMessage.match(/Unexpected server response: (\d+)/);
   if (match && match[1]) {
@@ -385,3 +719,22 @@ export const isNonRetryableError = (errMessage: string): boolean => {
   }
   return false;
 };
+
+/**
+ * Encode a 32-bit connection ID as a 4-byte big-endian header
+ */
+export function encodeConnectionHeader(connId: number): Buffer {
+  const header = Buffer.alloc(4);
+  header.writeUInt32BE(connId, 0);
+  return header;
+}
+
+/**
+ * Decode a 4-byte big-endian header into a 32-bit connection ID
+ */
+export function decodeConnectionHeader(header: Buffer): number {
+  if (header.length < 4) {
+    throw new Error('Header must be at least 4 bytes');
+  }
+  return header.readUInt32BE(0);
+}

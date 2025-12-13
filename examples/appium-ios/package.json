@@ -14,7 +14,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@limrun/api": "https://pkg.stainless.com/s/limrun-v1-typescript/5d26261c64ed1a04222159254962b7215f82f374/dist.tar.gz",
+    "@limrun/api": "file:../../dist",
     "webdriverio": "^9.21.0"
   },
   "devDependencies": {
