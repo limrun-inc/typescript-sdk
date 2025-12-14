@@ -11,9 +11,14 @@ GitHub Actions job with Linux runner - a first in the ecosystem!
 It creates an iOS instance where `WebDriverAgent` is pre-installed
 and launched and then starts running the automation commands.
 
+Install appium:
+```bash
+npm i --location=global appium
+```
+
 Install our custom driver that's based on upstream:
 ```bash
-appium driver install --source npm @limrun/appium-xcuitest-driver@10.11.0-lim.1
+appium driver install --source npm @limrun/appium-xcuitest-driver@10.11.0-lim.2
 ```
 
 Start Appium server in a separate terminal:
