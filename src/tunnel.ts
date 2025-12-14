@@ -257,7 +257,7 @@ async function startSingletonTcpTunnel(
         logger.debug('WebSocket error:', errMessage);
       });
 
-      ws.on('close', () => {
+      ws.on('close', (code: number, reason: Buffer) => {
         if (pingInterval) {
           clearInterval(pingInterval);
           pingInterval = undefined;
@@ -269,7 +269,7 @@ async function startSingletonTcpTunnel(
           connectionState !== 'disconnected';
         updateConnectionState('disconnected');
 
-        logger.debug('WebSocket disconnected');
+        logger.debug(`WebSocket disconnected (code=${code}, reason=${reason.toString()})`);
 
         // Pause TCP socket to apply backpressure - TCP will handle buffering
         if (tcpSocket && !tcpSocket.destroyed && !tcpSocket.isPaused()) {
@@ -552,14 +552,14 @@ async function startMultiplexedTcpTunnel(
           rejectWs(err);
         });
 
-        ws.on('close', () => {
+        ws.on('close', (code: number, reason: Buffer) => {
           if (pingInterval) {
             clearInterval(pingInterval);
             pingInterval = undefined;
           }
 
           updateConnectionState('disconnected');
-          logger.debug('WebSocket disconnected');
+          logger.debug(`WebSocket disconnected (code=${code}, reason=${reason.toString()})`);
 
           // Close all TCP connections when WebSocket closes
           closeAllConnections();
@@ -684,7 +684,11 @@ async function startMultiplexedTcpTunnel(
               .toString('utf8')
               .replace(/[\x00-\x1f]/g, '.')}`,
           );
-          ws.send(framed);
+          ws.send(framed, (err) => {
+            if (err) {
+              logger.error(`TCP→WS [conn=${connId}] send error: ${err.message}`);
+            }
+          });
         } else {
           logger.debug(
             `TCP→WS [conn=${connId}] WS not open (state=${ws?.readyState}), dropping ${chunk.length} bytes`,
