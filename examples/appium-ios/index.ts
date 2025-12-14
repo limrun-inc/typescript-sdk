@@ -25,7 +25,7 @@ const instance = await limrun.iosInstances.create({
         kind: 'App',
         source: 'URL',
         // Use Limrun asset storage in production to avoid being throttled by GitHub.
-        url: 'https://github.com/appium/WebDriverAgent/releases/download/v10.4.2/WebDriverAgentRunner-Build-Sim-arm64.zip',
+        url: 'https://github.com/appium/WebDriverAgent/releases/download/v10.4.5/WebDriverAgentRunner-Build-Sim-arm64.zip',
         launchMode: 'ForegroundIfRunning',
       },
     ],
@@ -56,7 +56,7 @@ try {
     },
     signal: controller.signal,
   });
-} catch (error) {
+} catch (_) {
   wdaRunning = false;
 }
 if (!wdaRunning) {
@@ -66,6 +66,8 @@ if (!wdaRunning) {
     token: instance.status.token,
   });
   await lim.simctl(['launch', 'booted', 'com.facebook.WebDriverAgentRunner.xctrunner']).wait();
+  lim.disconnect();
+  console.log('WDA launched');
 }
 
 const driver = await remote({
