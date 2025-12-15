@@ -144,10 +144,10 @@
     wrap-ansi "^8.1.0"
     wrap-ansi-cjs "npm:wrap-ansi@^7.0.0"
 
-"@limrun/api@^0.17.2":
-  version "0.17.2"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.17.2.tgz#d99fbd0123560f132dc4a4250e014cce200664bc"
-  integrity sha512-lUYkq5EBsY5RT6XK6iGvlSvR5As6FYac4SUiPH+a7fh35h9KdiEXH6KBjw8s0AhUzm1vGTFvm0ckc67gvDn5Ow==
+"@limrun/api@^0.17.4":
+  version "0.17.4"
+  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.17.4.tgz#52f70387a3b0763f931ab5bc7bc63dafb7949407"
+  integrity sha512-cEJf+qz03ulJN6LvHOguFwrD+d3FMxDgHXkkhu4/Tfxx+cFdBk02gma6GR+d8ydy3JxPoTAOlIcWVLjOtK3SLA==
   dependencies:
     ws "^8.18.3"
 
