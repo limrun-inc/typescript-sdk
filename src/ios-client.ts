@@ -1,6 +1,7 @@
 import { WebSocket, Data } from 'ws';
 import fs from 'fs';
 import { EventEmitter } from 'events';
+import { isNonRetryableError } from './tunnel';
 
 /**
  * Connection state of the instance client
@@ -405,6 +406,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   let reconnectAttempts = 0;
   let reconnectTimeout: NodeJS.Timeout | undefined;
   let intentionalDisconnect = false;
+  let lastError: string | undefined;
 
   const screenshotRequests: Map<
     string,
@@ -494,6 +496,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const scheduleReconnect = (): void => {
       if (intentionalDisconnect) {
         logger.debug('Skipping reconnection (intentional disconnect)');
+        return;
+      }
+
+      if (isNonRetryableError(lastError ?? '')) {
+        logger.error(`Skipping reconnection (non-retryable error): ${lastError}`);
+        updateConnectionState('disconnected');
         return;
       }
 
@@ -691,6 +699,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
 
       ws.on('error', (err: Error) => {
+        lastError = err.message;
         logger.error('WebSocket error:', err.message);
         if (!hasResolved && (ws?.readyState === WebSocket.CONNECTING || ws?.readyState === WebSocket.OPEN)) {
           rejectConnection(err);
@@ -703,7 +712,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           pingInterval = undefined;
         }
 
-        const shouldReconnect = !intentionalDisconnect && connectionState !== 'disconnected';
+        const shouldReconnect =
+          !intentionalDisconnect &&
+          !isNonRetryableError(lastError ?? '') &&
+          connectionState !== 'disconnected';
         updateConnectionState('disconnected');
 
         logger.debug('Disconnected from server.');
@@ -712,12 +724,19 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
         if (shouldReconnect) {
           scheduleReconnect();
+        } else if (isNonRetryableError(lastError ?? '')) {
+          logger.error(`Closing connection due to non-retryable error: ${lastError}`);
+          cleanup();
+          updateConnectionState('disconnected');
+          failPendingRequests('Non-retryable error');
+          logger.debug('Non-retryable error. Closing connection.');
         }
       });
 
       ws.on('open', () => {
         logger.debug(`Connected to ${endpointWebSocketUrl}`);
         reconnectAttempts = 0;
+        lastError = undefined;
         updateConnectionState('connected');
 
         pingInterval = setInterval(() => {
