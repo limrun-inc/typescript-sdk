@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.3 (2025-12-15)
+
+Full Changelog: [v0.17.2...v0.17.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.17.2...v0.17.3)
+
+### Features
+
+* **api:** add the optional errorMessage field in status ([efc1f1d](https://github.com/limrun-inc/typescript-sdk/commit/efc1f1d06bd04a0df9694f52220d3ff4faac493d))
+
 ## 0.17.2 (2025-12-14)
 
 Full Changelog: [v0.17.1...v0.17.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.17.1...v0.17.2)
