@@ -99,6 +99,8 @@ export namespace AndroidInstance {
 
     endpointWebSocketUrl?: string;
 
+    errorMessage?: string;
+
     sandbox?: Status.Sandbox;
 
     targetHttpPortUrlPrefix?: string;

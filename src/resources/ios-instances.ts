@@ -99,6 +99,8 @@ export namespace IosInstance {
 
     endpointWebSocketUrl?: string;
 
+    errorMessage?: string;
+
     targetHttpPortUrlPrefix?: string;
   }
 }
