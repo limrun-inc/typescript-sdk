@@ -101,6 +101,8 @@ export namespace IosInstance {
 
     errorMessage?: string;
 
+    mcpUrl?: string;
+
     targetHttpPortUrlPrefix?: string;
   }
 }

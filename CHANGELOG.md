@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.5 (2025-12-18)
+
+Full Changelog: [v0.17.4...v0.17.5](https://github.com/limrun-inc/typescript-sdk/compare/v0.17.4...v0.17.5)
+
+### Features
+
+* **api:** add status.mcpUrl for ios ([d19a102](https://github.com/limrun-inc/typescript-sdk/commit/d19a102ea6ec8c4745352671f41f7bbfbdf449f7))
+
 ## 0.17.4 (2025-12-15)
 
 Full Changelog: [v0.17.3...v0.17.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.17.3...v0.17.4)
