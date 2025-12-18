@@ -75,16 +75,18 @@ const driver = await remote({
     platformName: 'iOS',
     'appium:app': 'com.apple.mobilesafari',
     'appium:automationName': 'XCUITest',
+    'appium:noReset': true, // Otherwise, deletes the app we installed.
+    'appium:fullReset': false,
+    'appium:webDriverAgentUrl': wdaUrl,
+    'appium:wdaLocalPort': 443,
+    'appium:useNewWDA': false,
+    'appium:usePreinstalledWDA': true,
     // @ts-expect-error -- limInstance* are our custom capabilities not known to webdriverio
     'appium:limInstanceApiUrl': instance.status.apiUrl,
     'appium:limInstanceToken': instance.status.token,
-    'appium:webDriverAgentUrl': wdaUrl,
-    'appium:wdaLocalPort': 443,
     'appium:wdaRequestHeaders': {
       Authorization: `Bearer ${instance.status.token}`,
     },
-    'appium:useNewWDA': false,
-    'appium:usePreinstalledWDA': true,
   },
   hostname: '127.0.0.1',
   port: 4723,
