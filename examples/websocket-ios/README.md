@@ -1,13 +1,13 @@
-# Asset Example
+# iOS WebSocket Example
 
-This example demonstrates how you can upload your iOS Simulator build to Limrun Asset Storage
-only once and have an iOS Simulator created with that app pre-installed.
+This example shows how you can drive iOS simulator natively over the WebSocket
+without any intermediary.
+
+It creates an iOS instance and executes a bunch of actions.
 
 Run the example:
 ```bash
 export LIM_API_KEY=<lim token from Console>
 yarn install
 yarn run start
-
-# Click on the instance link to connect!
 ```
