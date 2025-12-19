@@ -25,15 +25,157 @@ export interface SimctlExecutionEvents {
   error: (error: Error) => void;
 }
 
+// ============================================================================
+// Accessibility Selector - used for element-based operations
+// ============================================================================
+
+/**
+ * Selector criteria for finding accessibility elements.
+ * All non-undefined fields must match for an element to be selected.
+ */
+export type AccessibilitySelector = {
+  /** Match by AXUniqueId (accessibilityIdentifier) - exact match */
+  accessibilityId?: string;
+  /** Match by AXLabel - exact match */
+  label?: string;
+  /** Match by AXLabel - contains (case-insensitive) */
+  labelContains?: string;
+  /** Match by element type/role (e.g., "Button", "TextField") - case-insensitive */
+  elementType?: string;
+  /** Match by title - exact match */
+  title?: string;
+  /** Match by title - contains (case-insensitive) */
+  titleContains?: string;
+  /** Match by AXValue - exact match */
+  value?: string;
+};
+
+/**
+ * A point on the screen for accessibility queries
+ */
+export type AccessibilityPoint = {
+  x: number;
+  y: number;
+};
+
+// ============================================================================
+// Result Types
+// ============================================================================
+
+export type ScreenshotData = {
+  /** Base64-encoded JPEG image data */
+  base64: string;
+  /** Width in points (for tap coordinates) */
+  width: number;
+  /** Height in points (for tap coordinates) */
+  height: number;
+};
+
+export type TapElementResult = {
+  elementLabel?: string;
+  elementType?: string;
+};
+
+export type ElementResult = {
+  elementLabel?: string;
+};
+
+export type InstalledApp = {
+  bundleId: string;
+  name: string;
+  installType: string;
+};
+
+export type LsofEntry = {
+  kind: 'unix';
+  path: string;
+};
+
 /**
  * A client for interacting with a Limrun iOS instance
  */
 export type InstanceClient = {
   /**
    * Take a screenshot of the current screen
-   * @returns A promise that resolves to the screenshot data
+   * @returns A promise that resolves to the screenshot data with base64 image and dimensions
    */
   screenshot: () => Promise<ScreenshotData>;
+
+  /**
+   * Get the element tree (accessibility hierarchy) of the current screen
+   * @param point Optional point to get the element at that specific location
+   * @returns A promise that resolves to the JSON string of the accessibility tree
+   */
+  elementTree: (point?: AccessibilityPoint) => Promise<string>;
+
+  /**
+   * Tap at the specified coordinates
+   * @param x X coordinate in points
+   * @param y Y coordinate in points
+   */
+  tap: (x: number, y: number) => Promise<void>;
+
+  /**
+   * Tap an accessibility element by selector
+   * @param selector The selector criteria to find the element
+   * @returns Information about the tapped element
+   */
+  tapElement: (selector: AccessibilitySelector) => Promise<TapElementResult>;
+
+  /**
+   * Increment an accessibility element (useful for sliders, steppers, etc.)
+   * @param selector The selector criteria to find the element
+   * @returns Information about the incremented element
+   */
+  incrementElement: (selector: AccessibilitySelector) => Promise<ElementResult>;
+
+  /**
+   * Decrement an accessibility element (useful for sliders, steppers, etc.)
+   * @param selector The selector criteria to find the element
+   * @returns Information about the decremented element
+   */
+  decrementElement: (selector: AccessibilitySelector) => Promise<ElementResult>;
+
+  /**
+   * Set the value of an accessibility element (useful for text fields, etc.)
+   * This is much faster than typing character by character.
+   * @param text The text value to set
+   * @param selector The selector criteria to find the element
+   * @returns Information about the modified element
+   */
+  setElementValue: (text: string, selector: AccessibilitySelector) => Promise<ElementResult>;
+
+  /**
+   * Type text into the currently focused input field
+   * @param text The text to type
+   * @param pressEnter If true, press Enter after typing
+   */
+  typeText: (text: string, pressEnter?: boolean) => Promise<void>;
+
+  /**
+   * Press a key on the keyboard, optionally with modifiers
+   * @param key The key to press (e.g., 'a', 'enter', 'backspace', 'up', 'f1')
+   * @param modifiers Optional modifier keys (e.g., ['shift'], ['command', 'shift'])
+   */
+  pressKey: (key: string, modifiers?: string[]) => Promise<void>;
+
+  /**
+   * Launch an installed app by bundle identifier
+   * @param bundleId Bundle identifier of the app to launch
+   */
+  launchApp: (bundleId: string) => Promise<void>;
+
+  /**
+   * List installed apps on the simulator
+   * @returns Array of installed apps with bundleId, name, and installType
+   */
+  listApps: () => Promise<InstalledApp[]>;
+
+  /**
+   * Open a URL in the simulator (web URLs open in Safari, deep links open corresponding apps)
+   * @param url The URL to open
+   */
+  openUrl: (url: string) => Promise<void>;
 
   /**
    * Disconnect from the Limrun instance
@@ -109,11 +251,6 @@ export type InstanceClient = {
   lsof: () => Promise<LsofEntry[]>;
 };
 
-export type LsofEntry = {
-  kind: 'unix';
-  path: string;
-};
-
 /**
  * Controls the verbosity of logging in the client
  */
@@ -153,67 +290,47 @@ export type InstanceClientOptions = {
   maxReconnectDelay?: number;
 };
 
-type ScreenshotRequest = {
-  type: 'screenshot';
-  id: string;
+// ============================================================================
+// Internal Types - Message Protocol
+// ============================================================================
+
+/**
+ * Generic pending request tracker
+ */
+type PendingRequest<T> = {
+  resolve: (value: T) => void;
+  reject: (reason: Error) => void;
+  timeout: NodeJS.Timeout;
 };
 
-type ScreenshotResponse = {
-  type: 'screenshot';
-  dataUri: string;
-  id: string;
-};
-
-type ScreenshotData = {
-  dataUri: string;
-};
-
-type ScreenshotErrorResponse = {
-  type: 'screenshotError';
-  message: string;
-  id: string;
-};
-
+// Simctl uses streaming, so it's handled separately
 type SimctlRequest = {
   type: 'simctl';
   id: string;
   args: string[];
 };
 
-type SimctlStreamResponse = {
-  type: 'simctlStream';
+/**
+ * Generic server response with optional error
+ */
+type ServerResponse = {
+  type: string;
   id: string;
-  stdout?: string; // base64 encoded
-  stderr?: string; // base64 encoded
+  error?: string;
+  // Response-specific fields
+  base64?: string;
+  width?: number;
+  height?: number;
+  json?: string;
+  elementLabel?: string;
+  elementType?: string;
+  apps?: string;
+  files?: LsofEntry[];
+  // Simctl streaming fields
+  stdout?: string;
+  stderr?: string;
   exitCode?: number;
 };
-
-type SimctlErrorResponse = {
-  type: 'simctlError';
-  id: string;
-  message: string;
-};
-
-type ListOpenFilesRequest = {
-  type: 'listOpenFiles';
-  id: string;
-  kind: 'unix';
-};
-
-type ListOpenFilesResponse = {
-  type: 'listOpenFilesResult';
-  id: string;
-  files?: LsofEntry[];
-  error?: string;
-};
-
-type ServerMessage =
-  | ScreenshotResponse
-  | ScreenshotErrorResponse
-  | SimctlStreamResponse
-  | SimctlErrorResponse
-  | ListOpenFilesResponse
-  | { type: string; [key: string]: unknown };
 
 /**
  * Handle for a running simctl command execution.
@@ -408,22 +525,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   let intentionalDisconnect = false;
   let lastError: string | undefined;
 
-  const screenshotRequests: Map<
-    string,
-    {
-      resolver: (value: ScreenshotData | PromiseLike<ScreenshotData>) => void;
-      rejecter: (reason?: any) => void;
-    }
-  > = new Map();
+  // Centralized pending requests map - handles all request/response patterns
+  const pendingRequests: Map<string, PendingRequest<any>> = new Map();
 
-  const lsofRequests: Map<
-    string,
-    {
-      resolver: (value: LsofEntry[] | PromiseLike<LsofEntry[]>) => void;
-      rejecter: (reason?: any) => void;
-    }
-  > = new Map();
-
+  // Simctl uses streaming, so it needs separate handling
   const simctlExecutions: Map<string, SimctlExecution> = new Map();
 
   const stateChangeCallbacks: Set<ConnectionStateCallback> = new Set();
@@ -459,11 +564,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   };
 
   const failPendingRequests = (reason: string): void => {
-    screenshotRequests.forEach((request) => request.rejecter(new Error(reason)));
-    screenshotRequests.clear();
-
-    lsofRequests.forEach((request) => request.rejecter(new Error(reason)));
-    lsofRequests.clear();
+    pendingRequests.forEach((request) => {
+      clearTimeout(request.timeout);
+      request.reject(new Error(reason));
+    });
+    pendingRequests.clear();
 
     simctlExecutions.forEach((execution) => execution._handleError(new Error(reason)));
     simctlExecutions.clear();
@@ -523,6 +628,69 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }, currentDelay);
     };
 
+    // Generate unique request ID
+    const generateId = (): string => {
+      return `ts-client-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    };
+
+    // Generic request sender with timeout and response handling
+    const sendRequest = <T>(
+      type: string,
+      params: Record<string, unknown> = {},
+      timeoutMs: number = 30000,
+    ): Promise<T> => {
+      return new Promise((resolve, reject) => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          reject(new Error('WebSocket is not connected or connection is not open.'));
+          return;
+        }
+
+        const id = generateId();
+        const timeout = setTimeout(() => {
+          pendingRequests.delete(id);
+          reject(new Error(`Request ${type} timed out`));
+        }, timeoutMs);
+
+        pendingRequests.set(id, { resolve, reject, timeout });
+
+        const request = { type, id, ...params };
+        logger.debug('Sending request:', request);
+
+        ws.send(JSON.stringify(request), (err?: Error) => {
+          if (err) {
+            clearTimeout(timeout);
+            pendingRequests.delete(id);
+            logger.error(`Failed to send ${type} request:`, err);
+            reject(err);
+          }
+        });
+      });
+    };
+
+    // Response handlers - transform raw responses to typed results
+    const responseHandlers: Record<string, (msg: ServerResponse) => unknown> = {
+      screenshotResult: (msg) => ({
+        base64: msg.base64!,
+        width: msg.width!,
+        height: msg.height!,
+      }),
+      elementTreeResult: (msg) => msg.json!,
+      tapResult: () => undefined,
+      tapElementResult: (msg) => ({
+        elementLabel: msg.elementLabel,
+        elementType: msg.elementType,
+      }),
+      incrementElementResult: (msg) => ({ elementLabel: msg.elementLabel }),
+      decrementElementResult: (msg) => ({ elementLabel: msg.elementLabel }),
+      setElementValueResult: (msg) => ({ elementLabel: msg.elementLabel }),
+      typeTextResult: () => undefined,
+      pressKeyResult: () => undefined,
+      launchAppResult: () => undefined,
+      listAppsResult: (msg) => JSON.parse(msg.apps || '[]') as InstalledApp[],
+      listOpenFilesResult: (msg) => msg.files || [],
+      openUrlResult: () => undefined,
+    };
+
     const setupWebSocket = (): void => {
       cleanup();
       updateConnectionState('connecting');
@@ -530,7 +698,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       ws = new WebSocket(endpointWebSocketUrl);
 
       ws.on('message', (data: Data) => {
-        let message: ServerMessage;
+        let message: ServerResponse;
         try {
           message = JSON.parse(data.toString());
         } catch (e) {
@@ -538,163 +706,66 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           return;
         }
 
-        switch (message.type) {
-          case 'screenshot': {
-            if (!('dataUri' in message) || typeof message.dataUri !== 'string' || !('id' in message)) {
-              logger.warn('Received invalid screenshot message:', message);
-              break;
-            }
-
-            const screenshotMessage = message as ScreenshotResponse;
-            const request = screenshotRequests.get(screenshotMessage.id);
-
-            if (!request) {
-              logger.warn(
-                `Received screenshot data for unknown or already handled session: ${screenshotMessage.id}`,
-              );
-              break;
-            }
-
-            logger.debug(`Received screenshot data URI for session ${screenshotMessage.id}.`);
-            request.resolver({ dataUri: screenshotMessage.dataUri });
-            screenshotRequests.delete(screenshotMessage.id);
-            break;
+        // Handle simctl streaming separately (it uses multiple messages per request)
+        if (message.type === 'simctlStream') {
+          const execution = simctlExecutions.get(message.id);
+          if (!execution) {
+            logger.warn(`Received simctl stream for unknown execution: ${message.id}`);
+            return;
           }
-          case 'screenshotError': {
-            if (!('message' in message) || !('id' in message)) {
-              logger.warn('Received invalid screenshot error message:', message);
-              break;
+
+          if (message.stdout) {
+            try {
+              execution._handleStdout(Buffer.from(message.stdout, 'base64'));
+            } catch (err) {
+              logger.error('Failed to decode stdout data:', err);
             }
-
-            const errorMessage = message as ScreenshotErrorResponse;
-            const request = screenshotRequests.get(errorMessage.id);
-
-            if (!request) {
-              logger.warn(
-                `Received screenshot error for unknown or already handled session: ${errorMessage.id}`,
-              );
-              break;
-            }
-
-            logger.error(
-              `Server reported an error capturing screenshot for session ${errorMessage.id}:`,
-              errorMessage.message,
-            );
-            request.rejecter(new Error(errorMessage.message));
-            screenshotRequests.delete(errorMessage.id);
-            break;
           }
-          case 'simctlStream': {
-            if (!('id' in message)) {
-              logger.warn('Received invalid simctl stream message:', message);
-              break;
-            }
 
-            const streamMessage = message as SimctlStreamResponse;
-            const execution = simctlExecutions.get(streamMessage.id);
-
-            if (!execution) {
-              logger.warn(
-                `Received simctl stream for unknown or already completed execution: ${streamMessage.id}`,
-              );
-              break;
+          if (message.stderr) {
+            try {
+              execution._handleStderr(Buffer.from(message.stderr, 'base64'));
+            } catch (err) {
+              logger.error('Failed to decode stderr data:', err);
             }
-
-            // Handle stdout if present
-            if (streamMessage.stdout) {
-              try {
-                const stdoutBuffer = Buffer.from(streamMessage.stdout, 'base64');
-                execution._handleStdout(stdoutBuffer);
-              } catch (err) {
-                logger.error('Failed to decode stdout data:', err);
-              }
-            }
-
-            // Handle stderr if present
-            if (streamMessage.stderr) {
-              try {
-                const stderrBuffer = Buffer.from(streamMessage.stderr, 'base64');
-                execution._handleStderr(stderrBuffer);
-              } catch (err) {
-                logger.error('Failed to decode stderr data:', err);
-              }
-            }
-
-            // Handle exit code if present (final message)
-            if (streamMessage.exitCode !== undefined) {
-              logger.debug(
-                `Simctl execution ${streamMessage.id} completed with exit code ${streamMessage.exitCode}`,
-              );
-              execution._handleExit(streamMessage.exitCode);
-              simctlExecutions.delete(streamMessage.id);
-            }
-            break;
           }
-          case 'simctlError': {
-            if (!('message' in message) || !('id' in message)) {
-              logger.warn('Received invalid simctl error message:', message);
-              break;
-            }
 
-            const errorMessage = message as SimctlErrorResponse;
-            const execution = simctlExecutions.get(errorMessage.id);
-
-            if (!execution) {
-              logger.warn(
-                `Received simctl error for unknown or already handled execution: ${errorMessage.id}`,
-              );
-              break;
-            }
-
-            logger.error(
-              `Server reported an error for simctl execution ${errorMessage.id}:`,
-              errorMessage.message,
-            );
-            execution._handleError(new Error(errorMessage.message));
-            simctlExecutions.delete(errorMessage.id);
-            break;
+          if (message.exitCode !== undefined) {
+            logger.debug(`Simctl execution ${message.id} completed with exit code ${message.exitCode}`);
+            execution._handleExit(message.exitCode);
+            simctlExecutions.delete(message.id);
           }
-          case 'listOpenFilesResult': {
-            if (!('id' in message)) {
-              logger.warn('Received invalid listOpenFilesResult message:', message);
-              break;
-            }
+          return;
+        }
 
-            const lsofMessage = message as ListOpenFilesResponse;
-            const request = lsofRequests.get(lsofMessage.id);
+        // Handle all other request/response patterns generically
+        const request = pendingRequests.get(message.id);
+        if (!request) {
+          logger.debug(`Received response for unknown or already handled request: ${message.id}`);
+          return;
+        }
 
-            if (!request) {
-              logger.warn(
-                `Received listOpenFilesResult for unknown or already handled session: ${lsofMessage.id}`,
-              );
-              break;
-            }
+        clearTimeout(request.timeout);
+        pendingRequests.delete(message.id);
 
-            if (lsofMessage.error) {
-              logger.error(
-                `Server reported an error listing open files for session ${lsofMessage.id}:`,
-                lsofMessage.error,
-              );
-              request.rejecter(new Error(lsofMessage.error));
-              lsofRequests.delete(lsofMessage.id);
-              break;
-            }
+        // Check for error
+        if (message.error) {
+          logger.error(`Server error for ${message.type}: ${message.error}`);
+          request.reject(new Error(message.error));
+          return;
+        }
 
-            if (!lsofMessage.files || !Array.isArray(lsofMessage.files)) {
-              logger.warn('Received listOpenFilesResult without files array:', message);
-              request.rejecter(new Error('Invalid listOpenFilesResult: missing files array'));
-              lsofRequests.delete(lsofMessage.id);
-              break;
-            }
-
-            logger.debug(`Received listOpenFilesResult for session ${lsofMessage.id}.`);
-            request.resolver(lsofMessage.files);
-            lsofRequests.delete(lsofMessage.id);
-            break;
+        // Use handler to transform response, or resolve with raw message
+        const handler = responseHandlers[message.type];
+        if (handler) {
+          try {
+            request.resolve(handler(message));
+          } catch (err) {
+            request.reject(err as Error);
           }
-          default:
-            logger.warn('Received unexpected message type:', message);
-            break;
+        } else {
+          logger.warn('Received unexpected message type:', message.type);
+          request.resolve(message);
         }
       });
 
@@ -749,6 +820,17 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           hasResolved = true;
           resolveConnection({
             screenshot,
+            elementTree,
+            tap,
+            tapElement,
+            incrementElement,
+            decrementElement,
+            setElementValue,
+            typeText,
+            pressKey,
+            launchApp,
+            listApps,
+            openUrl,
             disconnect,
             getConnectionState,
             onConnectionStateChange,
@@ -760,93 +842,64 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
     };
 
-    const screenshot = async (): Promise<ScreenshotData> => {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        return Promise.reject(new Error('WebSocket is not connected or connection is not open.'));
-      }
+    // ========================================================================
+    // Client Methods - using centralized sendRequest
+    // ========================================================================
 
-      const id = 'ts-client-' + Date.now();
-      const screenshotRequest: ScreenshotRequest = {
-        type: 'screenshot',
-        id,
-      };
-
-      return new Promise<ScreenshotData>((resolve, reject) => {
-        logger.debug('Sending screenshot request:', screenshotRequest);
-        ws!.send(JSON.stringify(screenshotRequest), (err?: Error) => {
-          if (err) {
-            logger.error('Failed to send screenshot request:', err);
-            reject(err);
-          }
-        });
-
-        const timeout = setTimeout(() => {
-          if (screenshotRequests.has(id)) {
-            logger.error(`Screenshot request timed out for session ${id}`);
-            screenshotRequests.get(id)?.rejecter(new Error('Screenshot request timed out'));
-            screenshotRequests.delete(id);
-          }
-        }, 30000);
-        screenshotRequests.set(id, {
-          resolver: (value: ScreenshotData | PromiseLike<ScreenshotData>) => {
-            clearTimeout(timeout);
-            resolve(value);
-            screenshotRequests.delete(id);
-          },
-          rejecter: (reason?: any) => {
-            clearTimeout(timeout);
-            reject(reason);
-            screenshotRequests.delete(id);
-          },
-        });
-      });
+    const screenshot = (): Promise<ScreenshotData> => {
+      return sendRequest<ScreenshotData>('screenshot');
     };
 
-    const lsof = async (): Promise<LsofEntry[]> => {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        return Promise.reject(new Error('WebSocket is not connected or connection is not open.'));
-      }
+    const elementTree = (point?: AccessibilityPoint): Promise<string> => {
+      return sendRequest<string>('elementTree', { point });
+    };
 
-      const id = 'ts-client-' + Date.now();
-      const lsofRequest: ListOpenFilesRequest = {
-        type: 'listOpenFiles',
-        id,
-        kind: 'unix',
-      };
+    const tap = (x: number, y: number): Promise<void> => {
+      return sendRequest<void>('tap', { x, y });
+    };
 
-      return new Promise<LsofEntry[]>((resolve, reject) => {
-        logger.debug('Sending listOpenFiles request:', lsofRequest);
-        ws!.send(JSON.stringify(lsofRequest), (err?: Error) => {
-          if (err) {
-            logger.error('Failed to send listOpenFiles request:', err);
-            reject(err);
-          }
-        });
+    const tapElement = (selector: AccessibilitySelector): Promise<TapElementResult> => {
+      return sendRequest<TapElementResult>('tapElement', { selector });
+    };
 
-        const timeout = setTimeout(() => {
-          if (lsofRequests.has(id)) {
-            logger.error(`listOpenFiles request timed out for session ${id}`);
-            lsofRequests.get(id)?.rejecter(new Error('listOpenFiles request timed out'));
-            lsofRequests.delete(id);
-          }
-        }, 30000);
-        lsofRequests.set(id, {
-          resolver: (value: LsofEntry[] | PromiseLike<LsofEntry[]>) => {
-            clearTimeout(timeout);
-            resolve(value);
-            lsofRequests.delete(id);
-          },
-          rejecter: (reason?: any) => {
-            clearTimeout(timeout);
-            reject(reason);
-            lsofRequests.delete(id);
-          },
-        });
-      });
+    const incrementElement = (selector: AccessibilitySelector): Promise<ElementResult> => {
+      return sendRequest<ElementResult>('incrementElement', { selector });
+    };
+
+    const decrementElement = (selector: AccessibilitySelector): Promise<ElementResult> => {
+      return sendRequest<ElementResult>('decrementElement', { selector });
+    };
+
+    const setElementValue = (text: string, selector: AccessibilitySelector): Promise<ElementResult> => {
+      return sendRequest<ElementResult>('setElementValue', { text, selector });
+    };
+
+    const typeText = (text: string, pressEnter?: boolean): Promise<void> => {
+      return sendRequest<void>('typeText', { text, pressEnter });
+    };
+
+    const pressKey = (key: string, modifiers?: string[]): Promise<void> => {
+      return sendRequest<void>('pressKey', { key, modifiers });
+    };
+
+    const launchApp = (bundleId: string): Promise<void> => {
+      return sendRequest<void>('launchApp', { bundleId });
+    };
+
+    const listApps = (): Promise<InstalledApp[]> => {
+      return sendRequest<InstalledApp[]>('listApps');
+    };
+
+    const openUrl = (url: string): Promise<void> => {
+      return sendRequest<void>('openUrl', { url });
+    };
+
+    const lsof = (): Promise<LsofEntry[]> => {
+      return sendRequest<LsofEntry[]>('listOpenFiles', { kind: 'unix' });
     };
 
     const simctl = (args: string[], opts: { disconnectOnExit?: boolean } = {}): SimctlExecution => {
-      const id = 'ts-simctl-' + Date.now() + '-' + Math.random().toString(36).substring(7);
+      const id = generateId();
 
       const cancelCallback = () => {
         // Clean up execution tracking
