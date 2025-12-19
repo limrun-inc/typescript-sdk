@@ -1,5 +1,4 @@
 import fs from 'fs';
-import { execSync } from 'child_process';
 import path from 'path';
 import os from 'os';
 
@@ -17,22 +16,6 @@ const buffer = await response.arrayBuffer();
 fs.writeFileSync(expoGoLocalPath, Buffer.from(buffer));
 console.log('Expo Go iOS Simulator build downloaded');
 
-// Extract the tar.gz file
-console.log('Extracting Expo Go tar.gz file...');
-const expoAppPath = path.join(tempDir, 'Expo.app');
-fs.mkdirSync(expoAppPath);
-execSync(`tar -xzf ${expoGoLocalPath} -C ${expoAppPath}`);
-console.log('Expo Go tar.gz file extracted');
-
-// Create a zip file with the Expo.app folder
-console.log('Creating zip file with Expo.app folder...');
-const zipFilePath = path.join(tempDir, 'Expo.app.zip');
-
-// Create the zip file using the zip command (available on macOS)
-// -X excludes extra file attributes for reproducibility
-execSync(`cd ${tempDir} && zip -rX ${zipFilePath} Expo.app`);
-console.log('Zip file created:', zipFilePath);
-
 const apiKey = process.env['LIM_API_KEY'];
 
 if (!apiKey) {
@@ -40,13 +23,13 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const limrun = new Limrun({ apiKey });
+const limrun = new Limrun({ apiKey, baseURL: 'https://api-staging.limrun.dev' });
 
 // Upload the zip file to Limrun Asset Storage.
-console.log('Uploading Expo.app.zip to Limrun Asset Storage...');
+console.log('Uploading Expo Go iOS Simulator build to Limrun Asset Storage...');
 console.time('upload');
-const asset = await limrun.assets.getOrUpload({ path: zipFilePath });
-console.log('Expo.app.zip uploaded to Limrun Asset Storage');
+const asset = await limrun.assets.getOrUpload({ path: expoGoLocalPath });
+console.log('Expo Go iOS Simulator build uploaded to Limrun Asset Storage');
 console.timeEnd('upload');
 // Create an iOS instance with that asset.
 console.log('Creating iOS instance with Expo Go iOS Simulator build...');
