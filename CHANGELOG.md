@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.18.0 (2025-12-20)
+
+Full Changelog: [v0.17.5...v0.18.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.17.5...v0.18.0)
+
+### Documentation
+
+* add more examples ([4e62598](https://github.com/limrun-inc/typescript-sdk/commit/4e6259834d441af4d23b59ce43f00c1f91b544b2))
+
 ## 0.17.5 (2025-12-18)
 
 Full Changelog: [v0.17.4...v0.17.5](https://github.com/limrun-inc/typescript-sdk/compare/v0.17.4...v0.17.5)

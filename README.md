@@ -122,6 +122,37 @@ On timeout, an `APIConnectionTimeoutError` is thrown.
 
 Note that requests which time out will be [retried twice by default](#retries).
 
+## Auto-pagination
+
+List methods in the Limrun API are paginated.
+You can use the `for await … of` syntax to iterate through items across all pages:
+
+```ts
+async function fetchAllAndroidInstances(params) {
+  const allAndroidInstances = [];
+  // Automatically fetches more pages as needed.
+  for await (const androidInstance of client.androidInstances.list()) {
+    allAndroidInstances.push(androidInstance);
+  }
+  return allAndroidInstances;
+}
+```
+
+Alternatively, you can request a single page at a time:
+
+```ts
+let page = await client.androidInstances.list();
+for (const androidInstance of page.items) {
+  console.log(androidInstance);
+}
+
+// Convenience methods are provided for manually paginating:
+while (page.hasNextPage()) {
+  page = await page.getNextPage();
+  // ...
+}
+```
+
 ## Advanced Usage
 
 ### Accessing raw Response data (e.g., headers)
