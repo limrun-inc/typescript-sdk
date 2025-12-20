@@ -91,6 +91,26 @@ export type LsofEntry = {
   path: string;
 };
 
+export type AppInstallationResult = {
+  /** The URL the app was installed from */
+  url: string;
+  /** Bundle ID of the installed app */
+  bundleId: string;
+};
+
+export type AppInstallationOptions = {
+  /** MD5 hash for caching - if provided and matches cached version, skips download */
+  md5?: string;
+  /**
+   * Launch mode after installation:
+   * - 'ForegroundIfRunning': Bring to foreground if already running, otherwise launch
+   * - 'RelaunchIfRunning': Kill and relaunch if already running
+   * - 'FailIfRunning': Fail if the app is already running
+   * - undefined: Don't launch after installation
+   */
+  launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
+};
+
 /**
  * A client for interacting with a Limrun iOS instance
  */
@@ -176,6 +196,15 @@ export type InstanceClient = {
    * @param url The URL to open
    */
   openUrl: (url: string) => Promise<void>;
+
+  /**
+   * Install an app from a URL (supports .ipa or .app files, optionally zipped)
+   * @param url The URL to download the app from
+   * @param options Optional installation options (md5 for caching, launchMode)
+   * @returns The installation result with bundle ID on success
+   * @throws Error if installation fails (e.g., invalid app, download failure)
+   */
+  installApp: (url: string, options?: AppInstallationOptions) => Promise<AppInstallationResult>;
 
   /**
    * Disconnect from the Limrun instance
@@ -325,6 +354,8 @@ type ServerResponse = {
   elementLabel?: string;
   elementType?: string;
   apps?: string;
+  url?: string;
+  bundleId?: string;
   files?: LsofEntry[];
   // Simctl streaming fields
   stdout?: string;
@@ -689,6 +720,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       listAppsResult: (msg) => JSON.parse(msg.apps || '[]') as InstalledApp[],
       listOpenFilesResult: (msg) => msg.files || [],
       openUrlResult: () => undefined,
+      appInstallationResult: (msg) => ({
+        url: msg.url || '',
+        bundleId: msg.bundleId || '',
+      }),
     };
 
     const setupWebSocket = (): void => {
@@ -831,6 +866,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             launchApp,
             listApps,
             openUrl,
+            installApp,
             disconnect,
             getConnectionState,
             onConnectionStateChange,
@@ -892,6 +928,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const openUrl = (url: string): Promise<void> => {
       return sendRequest<void>('openUrl', { url });
+    };
+
+    const installApp = (url: string, options?: AppInstallationOptions): Promise<AppInstallationResult> => {
+      return sendRequest<AppInstallationResult>('appInstallation', {
+        url,
+        md5: options?.md5,
+        launchMode: options?.launchMode,
+      });
     };
 
     const lsof = (): Promise<LsofEntry[]> => {
