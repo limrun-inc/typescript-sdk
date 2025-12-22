@@ -151,7 +151,7 @@ export class Limrun {
    *
    * @param {string | null | undefined} [opts.apiKey=process.env['LIM_API_KEY'] ?? null]
    * @param {string} [opts.baseURL=process.env['LIMRUN_BASE_URL'] ?? https://api.limrun.com] - Override the default base URL for the API.
-   * @param {number} [opts.timeout=1 minute] - The maximum amount of time (in milliseconds) the client will wait for a response before timing out.
+   * @param {number} [opts.timeout=5 minutes] - The maximum amount of time (in milliseconds) the client will wait for a response before timing out.
    * @param {MergedRequestInit} [opts.fetchOptions] - Additional `RequestInit` options to be passed to `fetch` calls.
    * @param {Fetch} [opts.fetch] - Specify a custom `fetch` function implementation.
    * @param {number} [opts.maxRetries=2] - The maximum number of times the client will retry a request.
@@ -170,7 +170,7 @@ export class Limrun {
     };
 
     this.baseURL = options.baseURL!;
-    this.timeout = options.timeout ?? Limrun.DEFAULT_TIMEOUT /* 1 minute */;
+    this.timeout = options.timeout ?? Limrun.DEFAULT_TIMEOUT /* 5 minutes */;
     this.logger = options.logger ?? console;
     const defaultLogLevel = 'warn';
     // Set default logLevel early so that we can log a warning in parseLogLevel.
@@ -744,7 +744,7 @@ export class Limrun {
   }
 
   static Limrun = this;
-  static DEFAULT_TIMEOUT = 60000; // 1 minute
+  static DEFAULT_TIMEOUT = 300000; // 5 minutes
 
   static LimrunError = Errors.LimrunError;
   static APIError = Errors.APIError;
