@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.18.1 (2025-12-22)
+
+Full Changelog: [v0.18.0...v0.18.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.18.0...v0.18.1)
+
+### Features
+
+* **api:** increase timeout to 5 minutes since big app installations may take longer than a minute ([00455d8](https://github.com/limrun-inc/typescript-sdk/commit/00455d8af6b4518729450faa1221570d7e8c41e6))
+
 ## 0.18.0 (2025-12-20)
 
 Full Changelog: [v0.17.5...v0.18.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.17.5...v0.18.0)
