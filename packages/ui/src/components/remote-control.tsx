@@ -41,6 +41,10 @@ interface RemoteControlProps {
   //
   // If not provided, the component will not open any URL.
   openUrl?: string;
+
+  // showFrame controls whether to display the device frame
+  // around the video. Defaults to true.
+  showFrame?: boolean;
 }
 
 interface ScreenshotData {
@@ -131,7 +135,7 @@ function getAndroidKeycodeAndMeta(event: React.KeyboardEvent): { keycode: number
 }
 
 export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>(
-  ({ className, url, token, sessionId: propSessionId, openUrl }: RemoteControlProps, ref) => {
+  ({ className, url, token, sessionId: propSessionId, openUrl, showFrame = true }: RemoteControlProps, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
     const [videoLoaded, setVideoLoaded] = useState(false);
@@ -779,7 +783,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     useEffect(() => {
       const video = videoRef.current;
       const frame = frameRef.current;
-      if (!video || !frame) return;
+      if (!video || !frame || !showFrame) return;
 
       const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
@@ -799,7 +803,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       return () => {
         resizeObserver.disconnect();
       };
-    }, [config]);
+    }, [config, showFrame]);
 
     const handleVideoClick = () => {
       if (videoRef.current) {
@@ -927,18 +931,20 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         onTouchEnd={handleInteraction}
         onTouchCancel={handleInteraction}
       >
-        <img
-          ref={frameRef}
-          src={config.frameImage}
-          alt=""
-          className="rc-phone-frame"
-          draggable={false}
-        />
+        {showFrame && (
+          <img
+            ref={frameRef}
+            src={config.frameImage}
+            alt=""
+            className="rc-phone-frame"
+            draggable={false}
+          />
+        )}
         <video
           ref={videoRef}
           className={clsx(
             'rc-video',
-            platform === 'ios' ? 'rc-video-ios' : 'rc-video-android',
+            showFrame ? (platform === 'ios' ? 'rc-video-ios' : 'rc-video-android') : 'rc-video-frameless',
             !videoLoaded && 'rc-video-loading',
           )}
           style={

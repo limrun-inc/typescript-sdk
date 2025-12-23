@@ -27,6 +27,13 @@
   background-color: black;
 }
 
+.rc-video-frameless {
+  position: relative;
+  height: 100%;
+  top: auto;
+  left: auto;
+}
+
 .rc-video-loading {
   aspect-ratio: 9 / 19.5;
 }
