@@ -89,13 +89,13 @@ const deviceConfig = {
   ios: {
     frameImage: iphoneFrameImage,
     frameWidthMultiplier: 1.0841,
-    videoBorderRadiusMultiplier: 0.157,
+    videoBorderRadiusMultiplier: 0.15,
     loadingLogo: appleLogoSvg,
   },
   android: {
     frameImage: pixelFrameImage,
     frameWidthMultiplier: 1.107,
-    videoBorderRadiusMultiplier: 0.137,
+    videoBorderRadiusMultiplier: 0.13,
     loadingLogo: undefined,
   },
 };
