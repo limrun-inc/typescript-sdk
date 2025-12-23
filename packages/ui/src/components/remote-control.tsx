@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, forwardRef, useImperativeHandle } from 'react';
+import React, { useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { clsx } from 'clsx';
 import './remote-control.css';
 
@@ -84,8 +84,8 @@ const detectPlatform = (url: string): DevicePlatform => {
 const deviceConfig = {
   ios: {
     frameImage: '/iphone16pro_black.webp',
-    frameWidthMultiplier: 1.0846,
-    videoBorderRadiusMultiplier: 0.16,
+    frameWidthMultiplier: 1.0841,
+    videoBorderRadiusMultiplier: 0.157,
   },
   android: {
     frameImage: '/pixel9_black.webp',
@@ -131,7 +131,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const wsRef = useRef<WebSocket | null>(null);
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
     const dataChannelRef = useRef<RTCDataChannel | null>(null);
-    const [isConnected, setIsConnected] = useState<boolean>(false);
     const keepAliveIntervalRef = useRef<number | undefined>(undefined);
     const pendingScreenshotResolversRef = useRef<
       Map<string, (value: ScreenshotData | PromiseLike<ScreenshotData>) => void>
@@ -597,7 +596,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         // Set up connection state monitoring
         peerConnectionRef.current.onconnectionstatechange = () => {
           updateStatus('Connection state: ' + peerConnectionRef.current?.connectionState);
-          setIsConnected(peerConnectionRef.current?.connectionState === 'connected');
         };
 
         peerConnectionRef.current.oniceconnectionstatechange = () => {
@@ -744,7 +742,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         dataChannelRef.current.close();
         dataChannelRef.current = null;
       }
-      setIsConnected(false);
       updateStatus('Stopped');
     };
 
@@ -776,8 +773,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
-          // Only apply styles when video is actually streaming (has video content)
-          if (video.videoWidth === 0) return;
           const videoWidth = entry.contentRect.width;
           frame.style.width = `${videoWidth * config.frameWidthMultiplier}px`;
           video.style.borderRadius = `${videoWidth * config.videoBorderRadiusMultiplier}px`;
