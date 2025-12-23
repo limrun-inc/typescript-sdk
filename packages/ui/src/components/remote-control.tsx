@@ -868,12 +868,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       >
         <video
           ref={videoRef}
-          className="rc-video" // Use custom CSS class
+          className="rc-video"
           autoPlay
           playsInline
           muted
-          tabIndex={0} // Make it focusable
-          style={{ outline: 'none', pointerEvents: 'none' }}
+          tabIndex={0}
           onKeyDown={handleKeyboard}
           onKeyUp={handleKeyboard}
           onClick={handleVideoClick}
@@ -887,6 +886,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               videoRef.current.style.outline = 'none';
             }
           }}
+        />
+        <img
+          src="/iphone16pro_black.webp"
+          alt=""
+          className="rc-phone-frame"
+          draggable={false}
         />
         {!isConnected && (
           <div className="rc-placeholder-wrapper">
