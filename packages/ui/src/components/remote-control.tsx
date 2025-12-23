@@ -70,6 +70,30 @@ const debugWarn = (...args: any[]) => {
   }
 };
 
+type DevicePlatform = 'ios' | 'android';
+
+const detectPlatform = (url: string): DevicePlatform => {
+  if (url.includes('/android_')) {
+    return 'android';
+  }
+  // Default to iOS if no Android pattern is found
+  return 'ios';
+};
+
+// Device-specific configuration for frame sizing and video positioning
+const deviceConfig = {
+  ios: {
+    frameImage: '/iphone16pro_black.webp',
+    frameWidthMultiplier: 1.0846,
+    videoBorderRadiusMultiplier: 0.16,
+  },
+  android: {
+    frameImage: '/pixel9_black.webp',
+    frameWidthMultiplier: 1.107,
+    videoBorderRadiusMultiplier: 0.137,
+  },
+};
+
 function getAndroidKeycodeAndMeta(event: React.KeyboardEvent): { keycode: number; metaState: number } | null {
   const code = event.code;
   const keycode = codeMap[code];
@@ -124,6 +148,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
       [propSessionId],
     );
+
+    const platform = useMemo(() => detectPlatform(url), [url]);
+    const config = deviceConfig[platform];
 
     const updateStatus = (message: string) => {
       // Use the wrapper for conditional logging
@@ -752,8 +779,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           // Only apply styles when video is actually streaming (has video content)
           if (video.videoWidth === 0) return;
           const videoWidth = entry.contentRect.width;
-          frame.style.width = `${videoWidth * 1.0846}px`;
-          video.style.borderRadius = `${videoWidth * 0.16}px`;
+          frame.style.width = `${videoWidth * config.frameWidthMultiplier}px`;
+          video.style.borderRadius = `${videoWidth * config.videoBorderRadiusMultiplier}px`;
         }
       });
 
@@ -762,7 +789,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       return () => {
         resizeObserver.disconnect();
       };
-    }, []);
+    }, [config]);
 
     const handleVideoClick = () => {
       if (videoRef.current) {
@@ -892,20 +919,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       >
         <img
           ref={frameRef}
-          src="/iphone16pro_black.webp"
+          src={config.frameImage}
           alt=""
           className="rc-phone-frame"
           draggable={false}
         />
-        <img
-            src="/Apple_logo_white.svg"
-            alt="Apple logo"
-            className="rc-apple-logo"
-            draggable={false}
-          />
         <video
           ref={videoRef}
-          className="rc-video"
+          className={clsx('rc-video', platform === 'ios' ? 'rc-video-ios' : 'rc-video-android')}
           autoPlay
           playsInline
           muted

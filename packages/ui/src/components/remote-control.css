@@ -16,27 +16,31 @@
   height: 100%;
   pointer-events: none;
   user-select: none;
-  background-color: black;
   border-radius: 16.8% / 8.7%;
 }
 
 .rc-video {
   position: absolute;
   z-index: 10;
-  top: 1.6%;
-  left: 3.9%;
-  height: 96.8%;
   width: auto;
   outline: none;
   pointer-events: none;
   cursor: none;
+  background-color: black;
 }
 
-.rc-apple-logo {
-  width: 20%;
-  height: auto;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+.rc-video-ios {
+  top: 1.6%;
+  left: 3.9%;
+  height: 95.9%;
+  background-image: url('/Apple_logo_white.svg');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 20%;
+}
+
+.rc-video-android {
+  top: 2.3%;
+  left: 4.5%;
+  height: 95.9%;
 }
