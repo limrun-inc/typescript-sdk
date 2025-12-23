@@ -1,8 +1,12 @@
-import React, { useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
+import React, { useEffect, useRef, useMemo, useState, forwardRef, useImperativeHandle } from 'react';
 import { clsx } from 'clsx';
 import './remote-control.css';
 
 import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
+
+import iphoneFrameImage from '../assets/iphone16pro_black.webp';
+import pixelFrameImage from '../assets/pixel9_black.webp';
+import appleLogoSvg from '../assets/Apple_logo_white.svg';
 import {
   createTouchControlMessage,
   createInjectKeycodeMessage,
@@ -83,14 +87,16 @@ const detectPlatform = (url: string): DevicePlatform => {
 // Device-specific configuration for frame sizing and video positioning
 const deviceConfig = {
   ios: {
-    frameImage: '/iphone16pro_black.webp',
+    frameImage: iphoneFrameImage,
     frameWidthMultiplier: 1.0841,
-    videoBorderRadiusMultiplier: 0.157,
+    videoBorderRadiusMultiplier: 0.15,
+    loadingLogo: appleLogoSvg,
   },
   android: {
-    frameImage: '/pixel9_black.webp',
+    frameImage: pixelFrameImage,
     frameWidthMultiplier: 1.107,
-    videoBorderRadiusMultiplier: 0.137,
+    videoBorderRadiusMultiplier: 0.13,
+    loadingLogo: undefined,
   },
 };
 
@@ -128,6 +134,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
   ({ className, url, token, sessionId: propSessionId, openUrl }: RemoteControlProps, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
+    const [videoLoaded, setVideoLoaded] = useState(false);
     const wsRef = useRef<WebSocket | null>(null);
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
     const dataChannelRef = useRef<RTCDataChannel | null>(null);
@@ -746,6 +753,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
 
     useEffect(() => {
+      // Reset video loaded state when connection params change
+      setVideoLoaded(false);
+
       // Start connection when component mounts
       start();
 
@@ -774,7 +784,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
           const videoWidth = entry.contentRect.width;
-          frame.style.width = `${videoWidth * config.frameWidthMultiplier}px`;
+          const originalFrameWidth = frame.clientWidth;
+          const newFrameWidth = videoWidth * config.frameWidthMultiplier;
+          // The video is too small up until the first frame is visible, so we need to make sure we don't scale the frame down too much.
+          if (newFrameWidth > 0.9*originalFrameWidth) {
+            frame.style.width = `${videoWidth * config.frameWidthMultiplier}px`;
+          }
           video.style.borderRadius = `${videoWidth * config.videoBorderRadiusMultiplier}px`;
         }
       });
@@ -921,7 +936,21 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         />
         <video
           ref={videoRef}
-          className={clsx('rc-video', platform === 'ios' ? 'rc-video-ios' : 'rc-video-android')}
+          className={clsx(
+            'rc-video',
+            platform === 'ios' ? 'rc-video-ios' : 'rc-video-android',
+            !videoLoaded && 'rc-video-loading',
+          )}
+          style={
+            config.loadingLogo
+              ? {
+                  backgroundImage: `url("${config.loadingLogo}")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'center',
+                  backgroundSize: '20%',
+                }
+              : {}
+          }
           autoPlay
           playsInline
           muted
@@ -929,6 +958,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           onKeyDown={handleKeyboard}
           onKeyUp={handleKeyboard}
           onClick={handleVideoClick}
+          onLoadedMetadata={() => setVideoLoaded(true)}
           onFocus={() => {
             if (videoRef.current) {
               videoRef.current.style.outline = 'none';
