@@ -866,6 +866,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         onTouchEnd={handleInteraction}
         onTouchCancel={handleInteraction}
       >
+        <img
+          src="/iphone16pro_black.webp"
+          alt=""
+          className="rc-phone-frame"
+          draggable={false}
+        />
         <video
           ref={videoRef}
           className="rc-video"
@@ -886,12 +892,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               videoRef.current.style.outline = 'none';
             }
           }}
-        />
-        <img
-          src="/iphone16pro_black.webp"
-          alt=""
-          className="rc-phone-frame"
-          draggable={false}
         />
         {!isConnected && (
           <div className="rc-placeholder-wrapper">
