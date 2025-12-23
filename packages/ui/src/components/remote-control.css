@@ -6,12 +6,11 @@
   isolation: isolate;
 
   touch-action: none;
-
-  --rc-spinner-color: #3b82f6;
-  --rc-text-muted: #6b7280;
 }
 
 .rc-phone-frame {
+  position: relative;
+  z-index: 20;
   display: block;
   height: 100%;
   pointer-events: none;
@@ -21,7 +20,6 @@
 
 .rc-video {
   position: absolute;
-  z-index: 10;
   width: auto;
   outline: none;
   pointer-events: none;
@@ -32,7 +30,7 @@
 .rc-video-ios {
   top: 1.6%;
   left: 3.9%;
-  height: 95.9%;
+  height: 96.76%;
   background-image: url('/Apple_logo_white.svg');
   background-repeat: no-repeat;
   background-position: center;
