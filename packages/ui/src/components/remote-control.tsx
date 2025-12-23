@@ -741,7 +741,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       };
     }, [url, token, propSessionId]);
 
-    // Resize phone frame to 95% of video width
+    // Resize phone frame and video border-radius relative to video size
     useEffect(() => {
       const video = videoRef.current;
       const frame = frameRef.current;
@@ -750,7 +750,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
           const videoWidth = entry.contentRect.width;
-          frame.style.width = `${videoWidth * 1.0858}px`;
+          frame.style.width = `${videoWidth * 1.0846}px`;
+          // Border radius as ~12% of video width to scale proportionally
+          video.style.borderRadius = `${videoWidth * 0.1}px`;
         }
       });
 
