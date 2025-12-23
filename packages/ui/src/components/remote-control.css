@@ -27,14 +27,14 @@
   background-color: black;
 }
 
+.rc-video-loading {
+  aspect-ratio: 9 / 19.5;
+}
+
 .rc-video-ios {
   top: 1.6%;
   left: 3.9%;
   height: 96.76%;
-  background-image: url('/Apple_logo_white.svg');
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 20%;
 }
 
 .rc-video-android {
