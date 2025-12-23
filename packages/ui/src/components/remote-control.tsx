@@ -103,6 +103,7 @@ function getAndroidKeycodeAndMeta(event: React.KeyboardEvent): { keycode: number
 export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>(
   ({ className, url, token, sessionId: propSessionId, openUrl }: RemoteControlProps, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
+    const frameRef = useRef<HTMLImageElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
     const dataChannelRef = useRef<RTCDataChannel | null>(null);
@@ -740,6 +741,26 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       };
     }, [url, token, propSessionId]);
 
+    // Resize phone frame to 95% of video width
+    useEffect(() => {
+      const video = videoRef.current;
+      const frame = frameRef.current;
+      if (!video || !frame) return;
+
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const videoWidth = entry.contentRect.width;
+          frame.style.width = `${videoWidth * 1.0858}px`;
+        }
+      });
+
+      resizeObserver.observe(video);
+
+      return () => {
+        resizeObserver.disconnect();
+      };
+    }, []);
+
     const handleVideoClick = () => {
       if (videoRef.current) {
         videoRef.current.focus();
@@ -867,6 +888,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         onTouchCancel={handleInteraction}
       >
         <img
+          ref={frameRef}
           src="/iphone16pro_black.webp"
           alt=""
           className="rc-phone-frame"
