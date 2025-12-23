@@ -749,10 +749,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
+          // Only apply styles when video is actually streaming (has video content)
+          if (video.videoWidth === 0) return;
           const videoWidth = entry.contentRect.width;
           frame.style.width = `${videoWidth * 1.0846}px`;
-          // Border radius as ~12% of video width to scale proportionally
-          video.style.borderRadius = `${videoWidth * 0.1}px`;
+          video.style.borderRadius = `${videoWidth * 0.16}px`;
         }
       });
 
@@ -896,6 +897,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           className="rc-phone-frame"
           draggable={false}
         />
+        <img
+            src="/Apple_logo_white.svg"
+            alt="Apple logo"
+            className="rc-apple-logo"
+            draggable={false}
+          />
         <video
           ref={videoRef}
           className="rc-video"
@@ -917,12 +924,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             }
           }}
         />
-        {!isConnected && (
-          <div className="rc-placeholder-wrapper">
-            <div className="rc-spinner"></div>
-            <p className="rc-placeholder-content">Connecting...</p>
-          </div>
-        )}
       </div>
     );
   },

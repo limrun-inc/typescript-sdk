@@ -12,17 +12,17 @@
 }
 
 .rc-phone-frame {
-  position: relative;
-  z-index: 10;
   display: block;
   height: 100%;
-  width: auto;
   pointer-events: none;
   user-select: none;
+  background-color: black;
+  border-radius: 16.8% / 8.7%;
 }
 
 .rc-video {
   position: absolute;
+  z-index: 10;
   top: 1.6%;
   left: 3.9%;
   height: 96.8%;
@@ -32,36 +32,11 @@
   cursor: none;
 }
 
-.rc-placeholder-wrapper {
+.rc-apple-logo {
+  width: 20%;
+  height: auto;
   position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.rc-placeholder-content {
-  color: var(--rc-text-muted);
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-  margin: 0;
-  font-family: inherit;
-}
-
-.rc-spinner {
-  width: 32px;
-  height: 32px;
-  border: 2px solid transparent;
-  border-top-color: var(--rc-spinner-color);
-  border-radius: 50%;
-  margin: 0 auto 8px;
-  animation: rc-spin 1s linear infinite;
-}
-
-@keyframes rc-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
