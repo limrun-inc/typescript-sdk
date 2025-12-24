@@ -4,10 +4,10 @@ import './remote-control.css';
 
 import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
 
-import iphoneFrameImage from '../assets/iphone16pro_black.webp';
+import iphoneFrameImage from '../assets/iphone16pro_black_bg.webp';
 import pixelFrameImage from '../assets/pixel9_black.webp';
 import pixelFrameImageLandscape from '../assets/pixel9_black_landscape.webp';
-import iphoneFrameImageLandscape from '../assets/iphone16pro_black_landscape.webp';
+import iphoneFrameImageLandscape from '../assets/iphone16pro_black_landscape_bg.webp';
 import appleLogoSvg from '../assets/Apple_logo_white.svg';
 import androidBootImage from '../assets/android_boot.webp';
 import {
