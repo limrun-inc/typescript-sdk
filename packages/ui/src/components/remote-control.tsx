@@ -9,6 +9,7 @@ import pixelFrameImage from '../assets/pixel9_black.webp';
 import pixelFrameImageLandscape from '../assets/pixel9_black_landscape.webp';
 import iphoneFrameImageLandscape from '../assets/iphone16pro_black_landscape.webp';
 import appleLogoSvg from '../assets/Apple_logo_white.svg';
+import androidBootImage from '../assets/android_boot.webp';
 import {
   createTouchControlMessage,
   createInjectKeycodeMessage,
@@ -90,21 +91,50 @@ const detectPlatform = (url: string): DevicePlatform => {
   return 'ios';
 };
 
+type DeviceConfig = {
+  videoBorderRadiusMultiplier: number;
+  loadingLogo: string;
+  loadingLogoSize: string;
+  videoPosition: {
+    portrait: { top: number; left: number; height: number; };
+    landscape: { top: number; left: number; width: number; };
+  };
+  frame: {
+    image: string;
+    imageLandscape: string;
+  }
+}
+
 // Device-specific configuration for frame sizing and video positioning
-const deviceConfig = {
+// Video position percentages are relative to the frame image dimensions
+const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
   ios: {
-    frameImage: iphoneFrameImage,
-    frameImageLandscape: iphoneFrameImageLandscape,
-    frameWidthMultiplier: 1.0841,
+    frame: {
+      image: iphoneFrameImage,
+      imageLandscape: iphoneFrameImageLandscape,
+    },
     videoBorderRadiusMultiplier: 0.15,
     loadingLogo: appleLogoSvg,
+    loadingLogoSize: '20%',
+    // Video position as percentage of frame dimensions
+    videoPosition: {
+      portrait: { top: 1.61, left: 3.6, height: 96.78 },
+      landscape: { top: 3.9, left: 1.61, width: 96.78 },
+    },
   },
   android: {
-    frameImage: pixelFrameImage,
-    frameImageLandscape: pixelFrameImageLandscape,
-    frameWidthMultiplier: 1.107,
+    frame: {
+      image: pixelFrameImage,
+      imageLandscape: pixelFrameImageLandscape,
+    },
     videoBorderRadiusMultiplier: 0.13,
-    loadingLogo: undefined,
+    loadingLogo: androidBootImage,
+    loadingLogoSize: '40%',
+    // Video position as percentage of frame dimensions
+    videoPosition: {
+      portrait: { top: 2.1, left: 4.5, height: 96.2 },
+      landscape: { top: 5, left: 2.25, width: 95.9 },
+    },
   },
 };
 
@@ -144,6 +174,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const frameRef = useRef<HTMLImageElement>(null);
     const [videoLoaded, setVideoLoaded] = useState(false);
     const [isLandscape, setIsLandscape] = useState(false);
+    const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
     const wsRef = useRef<WebSocket | null>(null);
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
     const dataChannelRef = useRef<RTCDataChannel | null>(null);
@@ -784,33 +815,73 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       };
     }, [url, token, propSessionId]);
 
-    // Resize phone frame and video border-radius relative to video size
+    // Calculate video position and border-radius based on frame dimensions
     useEffect(() => {
       const video = videoRef.current;
       const frame = frameRef.current;
-      if (!video || !frame || !showFrame) return;
 
-      const resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const landscape = entry.contentRect.width > entry.contentRect.height;
-          setIsLandscape(landscape);
-          const videoWidth = entry.contentRect.width;
-          const videoHeight = entry.contentRect.height;
-          const originalFrameWidth = frame.clientWidth;
-          const newFrameWidth = videoWidth * config.frameWidthMultiplier;
-          // The video is too small up until the first frame is visible, so we need to make sure we don't scale the frame down too much.
-          if (!landscape && newFrameWidth > 0.9*originalFrameWidth) {
-            // This is mostly for iOS where the video size is slightly inconsistent.
-            frame.style.width = `${videoWidth * config.frameWidthMultiplier}px`;
-          }
-          video.style.borderRadius = `${(entry.contentRect.width > entry.contentRect.height ? videoHeight : videoWidth) * config.videoBorderRadiusMultiplier}px`;
+      if (!video) return;
+
+      // If no frame, no positioning needed
+      if (!showFrame || !frame) {
+        setVideoStyle({});
+        return;
+      }
+
+      const updateVideoPosition = () => {
+        const frameWidth = frame.clientWidth;
+        const frameHeight = frame.clientHeight;
+
+        if (frameWidth === 0 || frameHeight === 0) return;
+
+        // Determine landscape based on video's intrinsic dimensions
+        const landscape = video.videoWidth > video.videoHeight;
+        setIsLandscape(landscape);
+
+        const pos = landscape ? config.videoPosition.landscape : config.videoPosition.portrait;
+
+        // Calculate position in pixels based on frame dimensions
+        const topPx = (pos.top / 100) * frameHeight;
+        const leftPx = (pos.left / 100) * frameWidth;
+
+        let newStyle: React.CSSProperties = {
+          top: `${topPx}px`,
+          left: `${leftPx}px`,
+        };
+
+        if ('height' in pos) {
+          const heightPx = (pos.height / 100) * frameHeight;
+          newStyle.height = `${heightPx}px`;
+          newStyle.borderRadius = `${frameWidth * config.videoBorderRadiusMultiplier}px`;
+        } else if ('width' in pos) {
+          const widthPx = (pos.width / 100) * frameWidth;
+          newStyle.width = `${widthPx}px`;
+          newStyle.borderRadius = `${frameHeight * config.videoBorderRadiusMultiplier}px`;
         }
+
+        setVideoStyle(newStyle);
+      };
+
+      const resizeObserver = new ResizeObserver(() => {
+        updateVideoPosition();
       });
 
+      resizeObserver.observe(frame);
       resizeObserver.observe(video);
+
+      // Also update when the frame image loads
+      frame.addEventListener('load', updateVideoPosition);
+
+      // Update when video metadata loads (to get correct intrinsic dimensions)
+      video.addEventListener('loadedmetadata', updateVideoPosition);
+
+      // Initial calculation
+      updateVideoPosition();
 
       return () => {
         resizeObserver.disconnect();
+        video.removeEventListener('loadedmetadata', updateVideoPosition);
+        frame.removeEventListener('load', updateVideoPosition);
       };
     }, [config, showFrame]);
 
@@ -925,7 +996,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     return (
       <div
         className={clsx(
-          'rc-container', // Use custom CSS class instead of Tailwind
+          'rc-container',
+          isLandscape ? 'rc-container-landscape' : 'rc-container-portrait', // Use custom CSS class instead of Tailwind
           className,
         )}
         style={{ touchAction: 'none' }} // Keep touchAction none for the container
@@ -943,7 +1015,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         {showFrame && (
           <img
             ref={frameRef}
-            src={isLandscape ? config.frameImageLandscape : config.frameImage}
+            src={isLandscape ? config.frame.imageLandscape : config.frame.image}
             alt=""
             className={clsx('rc-phone-frame', isLandscape ? 'rc-phone-frame-landscape' : 'rc-phone-frame-portrait')}
             draggable={false}
@@ -953,19 +1025,20 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           ref={videoRef}
           className={clsx(
             'rc-video',
-            showFrame ? (platform === 'ios' ? (isLandscape ? 'rc-video-ios-landscape' : 'rc-video-ios-portrait') : isLandscape ? 'rc-video-android-landscape' : 'rc-video-android-portrait') : 'rc-video-frameless',
+            !showFrame && 'rc-video-frameless',
             !videoLoaded && 'rc-video-loading',
           )}
-          style={
-            config.loadingLogo
+          style={{
+            ...videoStyle,
+            ...(config.loadingLogo
               ? {
                   backgroundImage: `url("${config.loadingLogo}")`,
                   backgroundRepeat: 'no-repeat',
                   backgroundPosition: 'center',
-                  backgroundSize: '20%',
+                  backgroundSize: config.loadingLogoSize,
                 }
-              : {}
-          }
+              : {}),
+          }}
           autoPlay
           playsInline
           muted
