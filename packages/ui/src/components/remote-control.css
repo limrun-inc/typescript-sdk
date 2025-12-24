@@ -1,11 +1,18 @@
 .rc-container {
   position: relative;
   display: inline-block;
-  height: 100%;
   box-sizing: border-box;
   isolation: isolate;
 
   touch-action: none;
+}
+
+.rc-container-portrait {
+  height: 100%;
+}
+
+.rc-container-landscape {
+  width: 100%;
 }
 
 .rc-phone-frame {
@@ -18,10 +25,12 @@
 
 .rc-phone-frame-portrait {
   height: 100%;
+  max-width: 100%;
 }
 
 .rc-phone-frame-landscape {
   width: 100%;
+  max-height: 100%;
 }
 
 .rc-video {
@@ -42,28 +51,4 @@
 
 .rc-video-loading {
   aspect-ratio: 9 / 19.5;
-}
-
-.rc-video-ios-portrait {
-  top: 1.61%;
-  left: 3.9%;
-  height: 96.78%;
-}
-
-.rc-video-ios-landscape {
-  top: 3.9%;
-  left: 1.61%;
-  width: 96.78%;
-}
-
-.rc-video-android-portrait {
-  top: 2.25%;
-  left: 4.5%;
-  height: 95.9%;
-}
-
-.rc-video-android-landscape {
-  left: 2.25%;
-  top: 4.5%;
-  width: 95.9%;
 }
