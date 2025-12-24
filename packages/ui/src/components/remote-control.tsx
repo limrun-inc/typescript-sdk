@@ -9,6 +9,7 @@ import pixelFrameImage from '../assets/pixel9_black.webp';
 import pixelFrameImageLandscape from '../assets/pixel9_black_landscape.webp';
 import iphoneFrameImageLandscape from '../assets/iphone16pro_black_landscape.webp';
 import appleLogoSvg from '../assets/Apple_logo_white.svg';
+import androidBootImage from '../assets/android_boot.webp';
 import {
   createTouchControlMessage,
   createInjectKeycodeMessage,
@@ -98,13 +99,15 @@ const deviceConfig = {
     frameWidthMultiplier: 1.0841,
     videoBorderRadiusMultiplier: 0.15,
     loadingLogo: appleLogoSvg,
+    loadingLogoSize: '20%',
   },
   android: {
     frameImage: pixelFrameImage,
     frameImageLandscape: pixelFrameImageLandscape,
     frameWidthMultiplier: 1.107,
     videoBorderRadiusMultiplier: 0.13,
-    loadingLogo: undefined,
+    loadingLogo: androidBootImage,
+    loadingLogoSize: '40%',
   },
 };
 
@@ -962,7 +965,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                   backgroundImage: `url("${config.loadingLogo}")`,
                   backgroundRepeat: 'no-repeat',
                   backgroundPosition: 'center',
-                  backgroundSize: '20%',
+                  backgroundSize: config.loadingLogoSize,
                 }
               : {}
           }
