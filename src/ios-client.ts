@@ -207,6 +207,12 @@ export type InstanceClient = {
   installApp: (url: string, options?: AppInstallationOptions) => Promise<AppInstallationResult>;
 
   /**
+   * Set the device orientation
+   * @param orientation The orientation to set ("Portrait" or "Landscape")
+   */
+  setOrientation: (orientation: 'Portrait' | 'Landscape') => Promise<void>;
+
+  /**
    * Disconnect from the Limrun instance
    */
   disconnect: () => void;
@@ -724,6 +730,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         url: msg.url || '',
         bundleId: msg.bundleId || '',
       }),
+      setOrientationResult: () => undefined,
     };
 
     const setupWebSocket = (): void => {
@@ -867,6 +874,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             listApps,
             openUrl,
             installApp,
+            setOrientation,
             disconnect,
             getConnectionState,
             onConnectionStateChange,
@@ -936,6 +944,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         md5: options?.md5,
         launchMode: options?.launchMode,
       });
+    };
+
+    const setOrientation = (orientation: 'Portrait' | 'Landscape'): Promise<void> => {
+      return sendRequest<void>('setOrientation', { orientation });
     };
 
     const lsof = (): Promise<LsofEntry[]> => {
