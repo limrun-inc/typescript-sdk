@@ -12,10 +12,16 @@
   position: relative;
   z-index: 20;
   display: block;
-  height: 100%;
   pointer-events: none;
   user-select: none;
-  border-radius: 16.8% / 8.7%;
+}
+
+.rc-phone-frame-portrait {
+  height: 100%;
+}
+
+.rc-phone-frame-landscape {
+  width: 100%;
 }
 
 .rc-video {
@@ -38,14 +44,26 @@
   aspect-ratio: 9 / 19.5;
 }
 
-.rc-video-ios {
+.rc-video-ios-portrait {
   top: 1.61%;
   left: 3.9%;
-  height: 96.76%;
+  height: 96.78%;
 }
 
-.rc-video-android {
+.rc-video-ios-landscape {
+  top: 3.9%;
+  left: 1.61%;
+  width: 96.78%;
+}
+
+.rc-video-android-portrait {
   top: 2.25%;
   left: 4.5%;
   height: 95.9%;
+}
+
+.rc-video-android-landscape {
+  left: 2.25%;
+  top: 4.5%;
+  width: 95.9%;
 }

@@ -6,6 +6,8 @@ import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
 
 import iphoneFrameImage from '../assets/iphone16pro_black.webp';
 import pixelFrameImage from '../assets/pixel9_black.webp';
+import pixelFrameImageLandscape from '../assets/pixel9_black_landscape.webp';
+import iphoneFrameImageLandscape from '../assets/iphone16pro_black_landscape.webp';
 import appleLogoSvg from '../assets/Apple_logo_white.svg';
 import {
   createTouchControlMessage,
@@ -92,12 +94,14 @@ const detectPlatform = (url: string): DevicePlatform => {
 const deviceConfig = {
   ios: {
     frameImage: iphoneFrameImage,
+    frameImageLandscape: iphoneFrameImageLandscape,
     frameWidthMultiplier: 1.0841,
     videoBorderRadiusMultiplier: 0.15,
     loadingLogo: appleLogoSvg,
   },
   android: {
     frameImage: pixelFrameImage,
+    frameImageLandscape: pixelFrameImageLandscape,
     frameWidthMultiplier: 1.107,
     videoBorderRadiusMultiplier: 0.13,
     loadingLogo: undefined,
@@ -139,6 +143,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
     const [videoLoaded, setVideoLoaded] = useState(false);
+    const [isLandscape, setIsLandscape] = useState(false);
     const wsRef = useRef<WebSocket | null>(null);
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
     const dataChannelRef = useRef<RTCDataChannel | null>(null);
@@ -787,14 +792,18 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
+          const landscape = entry.contentRect.width > entry.contentRect.height;
+          setIsLandscape(landscape);
           const videoWidth = entry.contentRect.width;
+          const videoHeight = entry.contentRect.height;
           const originalFrameWidth = frame.clientWidth;
           const newFrameWidth = videoWidth * config.frameWidthMultiplier;
           // The video is too small up until the first frame is visible, so we need to make sure we don't scale the frame down too much.
-          if (newFrameWidth > 0.9*originalFrameWidth) {
+          if (!landscape && newFrameWidth > 0.9*originalFrameWidth) {
+            // This is mostly for iOS where the video size is slightly inconsistent.
             frame.style.width = `${videoWidth * config.frameWidthMultiplier}px`;
           }
-          video.style.borderRadius = `${videoWidth * config.videoBorderRadiusMultiplier}px`;
+          video.style.borderRadius = `${(entry.contentRect.width > entry.contentRect.height ? videoHeight : videoWidth) * config.videoBorderRadiusMultiplier}px`;
         }
       });
 
@@ -934,9 +943,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         {showFrame && (
           <img
             ref={frameRef}
-            src={config.frameImage}
+            src={isLandscape ? config.frameImageLandscape : config.frameImage}
             alt=""
-            className="rc-phone-frame"
+            className={clsx('rc-phone-frame', isLandscape ? 'rc-phone-frame-landscape' : 'rc-phone-frame-portrait')}
             draggable={false}
           />
         )}
@@ -944,7 +953,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           ref={videoRef}
           className={clsx(
             'rc-video',
-            showFrame ? (platform === 'ios' ? 'rc-video-ios' : 'rc-video-android') : 'rc-video-frameless',
+            showFrame ? (platform === 'ios' ? (isLandscape ? 'rc-video-ios-landscape' : 'rc-video-ios-portrait') : isLandscape ? 'rc-video-android-landscape' : 'rc-video-android-portrait') : 'rc-video-frameless',
             !videoLoaded && 'rc-video-loading',
           )}
           style={
