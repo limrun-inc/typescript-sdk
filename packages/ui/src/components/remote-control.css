@@ -35,11 +35,28 @@
 
 .rc-video {
   position: absolute;
-  width: auto;
+  /* Size is controlled by inline style; defaults are for frameless mode */
+  width: 100%;
+  height: 100%;
   outline: none;
   pointer-events: none;
   cursor: none;
   background-color: black;
+  object-fit: contain;
+  object-position: center center;
+  inset: 0;
+
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  right: auto;
+  bottom: auto;
+}
+
+.rc-video-ios-stretch {
+  /* iOS-only: intentionally stretch to fill the target screen box */
+  object-fit: fill;
+  z-index: 30;
 }
 
 .rc-video-frameless {
@@ -47,6 +64,7 @@
   height: 100%;
   top: auto;
   left: auto;
+  width: 100%;
 }
 
 .rc-video-loading {

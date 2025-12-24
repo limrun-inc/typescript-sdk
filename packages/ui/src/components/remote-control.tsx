@@ -96,8 +96,8 @@ type DeviceConfig = {
   loadingLogo: string;
   loadingLogoSize: string;
   videoPosition: {
-    portrait: { top: number; left: number; height: number; };
-    landscape: { top: number; left: number; width: number; };
+    portrait: { heightMultiplier?: number; widthMultiplier?: number; };
+    landscape: { heightMultiplier?: number; widthMultiplier?: number; };
   };
   frame: {
     image: string;
@@ -118,8 +118,8 @@ const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
     loadingLogoSize: '20%',
     // Video position as percentage of frame dimensions
     videoPosition: {
-      portrait: { top: 1.61, left: 3.6, height: 96.78 },
-      landscape: { top: 3.9, left: 1.61, width: 96.78 },
+      portrait: { heightMultiplier: 0.9678 },
+      landscape: { widthMultiplier: 0.9678 },
     },
   },
   android: {
@@ -132,8 +132,8 @@ const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
     loadingLogoSize: '40%',
     // Video position as percentage of frame dimensions
     videoPosition: {
-      portrait: { top: 2.1, left: 4.5, height: 96.2 },
-      landscape: { top: 5, left: 2.25, width: 95.9 },
+      portrait: { heightMultiplier: 0.967 },
+      landscape: { widthMultiplier: 0.962 },
     },
   },
 };
@@ -819,9 +819,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     useEffect(() => {
       const video = videoRef.current;
       const frame = frameRef.current;
-
+      
       if (!video) return;
-
+      
       // If no frame, no positioning needed
       if (!showFrame || !frame) {
         setVideoStyle({});
@@ -831,34 +831,25 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const updateVideoPosition = () => {
         const frameWidth = frame.clientWidth;
         const frameHeight = frame.clientHeight;
-
+        
         if (frameWidth === 0 || frameHeight === 0) return;
-
+        
         // Determine landscape based on video's intrinsic dimensions
         const landscape = video.videoWidth > video.videoHeight;
         setIsLandscape(landscape);
-
+        
         const pos = landscape ? config.videoPosition.landscape : config.videoPosition.portrait;
-
-        // Calculate position in pixels based on frame dimensions
-        const topPx = (pos.top / 100) * frameHeight;
-        const leftPx = (pos.left / 100) * frameWidth;
-
-        let newStyle: React.CSSProperties = {
-          top: `${topPx}px`,
-          left: `${leftPx}px`,
-        };
-
-        if ('height' in pos) {
-          const heightPx = (pos.height / 100) * frameHeight;
-          newStyle.height = `${heightPx}px`;
-          newStyle.borderRadius = `${frameWidth * config.videoBorderRadiusMultiplier}px`;
-        } else if ('width' in pos) {
-          const widthPx = (pos.width / 100) * frameWidth;
-          newStyle.width = `${widthPx}px`;
-          newStyle.borderRadius = `${frameHeight * config.videoBorderRadiusMultiplier}px`;
+        let newStyle: React.CSSProperties = {};
+        if (pos.heightMultiplier) {
+          newStyle.height = `${frameHeight * pos.heightMultiplier}px`;
+          // Let the other dimension follow the video stream's intrinsic aspect ratio.
+          newStyle.width = 'auto';
+        } else if (pos.widthMultiplier) {
+          newStyle.width = `${frameWidth * pos.widthMultiplier}px`;
+          // Let the other dimension follow the video stream's intrinsic aspect ratio.
+          newStyle.height = 'auto';
         }
-
+        newStyle.borderRadius = `${landscape ? frameHeight * config.videoBorderRadiusMultiplier : frameWidth * config.videoBorderRadiusMultiplier}px`;
         setVideoStyle(newStyle);
       };
 
@@ -868,12 +859,17 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       resizeObserver.observe(frame);
       resizeObserver.observe(video);
-
+      
       // Also update when the frame image loads
       frame.addEventListener('load', updateVideoPosition);
-
+      
       // Update when video metadata loads (to get correct intrinsic dimensions)
       video.addEventListener('loadedmetadata', updateVideoPosition);
+
+      // IMPORTANT: When the WebRTC stream changes orientation, the intrinsic video size
+      // (videoWidth/videoHeight) can change without re-firing 'loadedmetadata'.
+      // The <video> element emits 'resize' in that case.
+      video.addEventListener('resize', updateVideoPosition);
 
       // Initial calculation
       updateVideoPosition();
@@ -881,6 +877,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       return () => {
         resizeObserver.disconnect();
         video.removeEventListener('loadedmetadata', updateVideoPosition);
+        video.removeEventListener('resize', updateVideoPosition);
         frame.removeEventListener('load', updateVideoPosition);
       };
     }, [config, showFrame]);
@@ -1026,6 +1023,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           className={clsx(
             'rc-video',
             !showFrame && 'rc-video-frameless',
+            showFrame && platform === 'ios' && 'rc-video-ios-stretch',
             !videoLoaded && 'rc-video-loading',
           )}
           style={{
