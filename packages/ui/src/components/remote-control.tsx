@@ -1023,7 +1023,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           className={clsx(
             'rc-video',
             !showFrame && 'rc-video-frameless',
-            showFrame && platform === 'ios' && 'rc-video-ios-stretch',
             !videoLoaded && 'rc-video-loading',
           )}
           style={{
