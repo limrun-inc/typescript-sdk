@@ -91,6 +91,17 @@ export type LsofEntry = {
   path: string;
 };
 
+export type DeviceInfo = {
+  /** Device UDID */
+  udid: string;
+  /** Screen width in points (Swift Double) */
+  screenWidth: number;
+  /** Screen height in points (Swift Double) */
+  screenHeight: number;
+  /** Device model name */
+  model: string;
+};
+
 export type AppInstallationResult = {
   /** The URL the app was installed from */
   url: string;
@@ -284,6 +295,12 @@ export type InstanceClient = {
    * @returns A promise that resolves to a list of open files.
    */
   lsof: () => Promise<LsofEntry[]>;
+
+  /**
+   * Device information fetched during client initialization.
+   * Contains id, udid, screen dimensions, and model.
+   */
+  deviceInfo: DeviceInfo;
 };
 
 /**
@@ -363,6 +380,11 @@ type ServerResponse = {
   url?: string;
   bundleId?: string;
   files?: LsofEntry[];
+  // Device info fields
+  udid?: string;
+  screenWidth?: number;
+  screenHeight?: number;
+  model?: string;
   // Simctl streaming fields
   stdout?: string;
   stderr?: string;
@@ -725,6 +747,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       launchAppResult: () => undefined,
       listAppsResult: (msg) => JSON.parse(msg.apps || '[]') as InstalledApp[],
       listOpenFilesResult: (msg) => msg.files || [],
+      deviceInfoResult: (msg) => ({
+        udid: msg.udid!,
+        screenWidth: msg.screenWidth!,
+        screenHeight: msg.screenHeight!,
+        model: msg.model!,
+      }),
       openUrlResult: () => undefined,
       appInstallationResult: (msg) => ({
         url: msg.url || '',
@@ -846,7 +874,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
       });
 
-      ws.on('open', () => {
+      ws.on('open', async () => {
         logger.debug(`Connected to ${endpointWebSocketUrl}`);
         reconnectAttempts = 0;
         lastError = undefined;
@@ -859,6 +887,16 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }, 30_000);
 
         if (!hasResolved) {
+          try {
+            // Fetch device info before resolving connection
+            cachedDeviceInfo = await fetchDeviceInfo();
+            logger.debug('Device info fetched:', cachedDeviceInfo);
+          } catch (err) {
+            logger.error('Failed to fetch device info:', err);
+            rejectConnection(err as Error);
+            return;
+          }
+
           hasResolved = true;
           resolveConnection({
             screenshot,
@@ -881,6 +919,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             simctl,
             cp,
             lsof,
+            deviceInfo: cachedDeviceInfo,
           });
         }
       });
@@ -953,6 +992,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const lsof = (): Promise<LsofEntry[]> => {
       return sendRequest<LsofEntry[]>('listOpenFiles', { kind: 'unix' });
     };
+
+    const fetchDeviceInfo = (): Promise<DeviceInfo> => {
+      return sendRequest<DeviceInfo>('deviceInfo');
+    };
+
+    // Cached device info, populated during connection
+    let cachedDeviceInfo: DeviceInfo;
 
     const simctl = (args: string[], opts: { disconnectOnExit?: boolean } = {}): SimctlExecution => {
       const id = generateId();
