@@ -224,6 +224,20 @@ export type InstanceClient = {
   setOrientation: (orientation: 'Portrait' | 'Landscape') => Promise<void>;
 
   /**
+   * Scroll in a direction by a specified number of pixels
+   * @param direction Direction content moves: "up", "down", "left", "right"
+   * @param pixels Total pixels to scroll (finger movement distance)
+   * @param options Optional scroll options
+   * @param options.coordinate Starting coordinate [x, y]. Defaults to screen center.
+   * @param options.momentum 0.0-1.0 controlling scroll speed and inertia. 0 (default) = slow scroll, no momentum. 1 = fastest with max inertia.
+   */
+  scroll: (
+    direction: 'up' | 'down' | 'left' | 'right',
+    pixels: number,
+    options?: { coordinate?: [number, number]; momentum?: number },
+  ) => Promise<void>;
+
+  /**
    * Disconnect from the Limrun instance
    */
   disconnect: () => void;
@@ -759,6 +773,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         bundleId: msg.bundleId || '',
       }),
       setOrientationResult: () => undefined,
+      scrollResult: () => undefined,
     };
 
     const setupWebSocket = (): void => {
@@ -913,6 +928,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             openUrl,
             installApp,
             setOrientation,
+            scroll,
             disconnect,
             getConnectionState,
             onConnectionStateChange,
@@ -987,6 +1003,19 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const setOrientation = (orientation: 'Portrait' | 'Landscape'): Promise<void> => {
       return sendRequest<void>('setOrientation', { orientation });
+    };
+
+    const scroll = (
+      direction: 'up' | 'down' | 'left' | 'right',
+      pixels: number,
+      options?: { coordinate?: [number, number]; momentum?: number },
+    ): Promise<void> => {
+      return sendRequest<void>('scroll', {
+        direction,
+        pixels,
+        coordinate: options?.coordinate,
+        momentum: options?.momentum,
+      });
     };
 
     const lsof = (): Promise<LsofEntry[]> => {
