@@ -66,6 +66,12 @@ export interface Asset {
    */
   md5?: string;
 
+  /**
+   * The operating system this asset is for. If not set, the asset is available for
+   * all platforms.
+   */
+  os?: 'ios' | 'android';
+
   signedDownloadUrl?: string;
 
   signedUploadUrl?: string;
