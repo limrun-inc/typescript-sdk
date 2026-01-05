@@ -57,6 +57,11 @@ export interface Asset {
   name: string;
 
   /**
+   * Human-readable display name for the asset. If not set, the name should be used.
+   */
+  displayName?: string;
+
+  /**
    * Returned only if there is a corresponding file uploaded already.
    */
   md5?: string;
