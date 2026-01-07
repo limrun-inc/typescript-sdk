@@ -349,9 +349,9 @@ export type InstanceClient = {
    * Run `xcodebuild` command with the given arguments.
    * Returns the complete output once the command finishes (non-streaming).
    *
-   * Only `-version` is allowed.
+   * Only `-version` is allowed (validated server-side).
    *
-   * @param args Arguments to pass to xcodebuild (must be `['-version']`)
+   * @param args Arguments to pass to xcodebuild
    * @returns A promise that resolves to the command result with stdout, stderr, and exit code
    *
    * @example
@@ -363,7 +363,7 @@ export type InstanceClient = {
    * //         Build version 16A242d
    * ```
    */
-  xcodebuild: (args: ['-version']) => Promise<CommandResult>;
+  xcodebuild: (args: string[]) => Promise<CommandResult>;
 
   /**
    * List all open files on the instance. Useful to start tunnel to the
@@ -1100,7 +1100,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<CommandResult>('xcrun', { args });
     };
 
-    const xcodebuild = (args: ['-version']): Promise<CommandResult> => {
+    const xcodebuild = (args: string[]): Promise<CommandResult> => {
       return sendRequest<CommandResult>('xcodebuild', { args });
     };
 
