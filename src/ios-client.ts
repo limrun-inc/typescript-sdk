@@ -110,9 +110,9 @@ export type AppInstallationResult = {
 };
 
 /**
- * Result from an xcrun command execution
+ * Result from a command execution (xcrun, xcodebuild, etc.)
  */
-export type XcrunResult = {
+export type CommandResult = {
   /** Standard output from the command */
   stdout: string;
   /** Standard error from the command */
@@ -343,7 +343,27 @@ export type InstanceClient = {
    * console.log('Platform version:', platformResult.stdout.trim());
    * ```
    */
-  xcrun: (args: string[]) => Promise<XcrunResult>;
+  xcrun: (args: string[]) => Promise<CommandResult>;
+
+  /**
+   * Run `xcodebuild` command with the given arguments.
+   * Returns the complete output once the command finishes (non-streaming).
+   *
+   * Only `-version` is allowed.
+   *
+   * @param args Arguments to pass to xcodebuild (must be `['-version']`)
+   * @returns A promise that resolves to the command result with stdout, stderr, and exit code
+   *
+   * @example
+   * ```typescript
+   * // Get the Xcode version
+   * const result = await client.xcodebuild(['-version']);
+   * console.log('Xcode version:', result.stdout);
+   * // Output: Xcode 16.0
+   * //         Build version 16A242d
+   * ```
+   */
+  xcodebuild: (args: ['-version']) => Promise<CommandResult>;
 
   /**
    * List all open files on the instance. Useful to start tunnel to the
@@ -816,7 +836,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }),
       setOrientationResult: () => undefined,
       scrollResult: () => undefined,
-      xcrunResult: (msg) => ({
+      xcrunResult: (msg): CommandResult => ({
+        stdout: msg.stdout ? Buffer.from(msg.stdout, 'base64').toString('utf-8') : '',
+        stderr: msg.stderr ? Buffer.from(msg.stderr, 'base64').toString('utf-8') : '',
+        exitCode: msg.exitCode ?? -1,
+      }),
+      xcodebuildResult: (msg): CommandResult => ({
         stdout: msg.stdout ? Buffer.from(msg.stdout, 'base64').toString('utf-8') : '',
         stderr: msg.stderr ? Buffer.from(msg.stderr, 'base64').toString('utf-8') : '',
         exitCode: msg.exitCode ?? -1,
@@ -981,6 +1006,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             onConnectionStateChange,
             simctl,
             xcrun,
+            xcodebuild,
             cp,
             lsof,
             deviceInfo: cachedDeviceInfo,
@@ -1070,8 +1096,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<LsofEntry[]>('listOpenFiles', { kind: 'unix' });
     };
 
-    const xcrun = (args: string[]): Promise<XcrunResult> => {
-      return sendRequest<XcrunResult>('xcrun', { args });
+    const xcrun = (args: string[]): Promise<CommandResult> => {
+      return sendRequest<CommandResult>('xcrun', { args });
+    };
+
+    const xcodebuild = (args: ['-version']): Promise<CommandResult> => {
+      return sendRequest<CommandResult>('xcodebuild', { args });
     };
 
     const fetchDeviceInfo = (): Promise<DeviceInfo> => {
