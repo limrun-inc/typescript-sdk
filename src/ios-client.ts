@@ -109,6 +109,18 @@ export type AppInstallationResult = {
   bundleId: string;
 };
 
+/**
+ * Result from an xcrun command execution
+ */
+export type XcrunResult = {
+  /** Standard output from the command */
+  stdout: string;
+  /** Standard error from the command */
+  stderr: string;
+  /** Exit code of the command */
+  exitCode: number;
+};
+
 export type AppInstallationOptions = {
   /** MD5 hash for caching - if provided and matches cached version, skips download */
   md5?: string;
@@ -302,6 +314,36 @@ export type InstanceClient = {
    * @returns A promise that resolves to the path of the file that can be used in simctl commands.
    */
   cp: (name: string, path: string) => Promise<string>;
+
+  /**
+   * Run `xcrun` command with the given arguments.
+   * Unlike simctl, this returns the complete output once the command finishes (non-streaming).
+   *
+   * Only the following flags are allowed:
+   * - `--sdk <value>`: Specify the SDK (e.g., 'iphonesimulator', 'iphoneos')
+   * - `--show-sdk-version`: Show the SDK version
+   * - `--show-sdk-build-version`: Show the SDK build version
+   * - `--show-sdk-platform-version`: Show the SDK platform version
+   *
+   * @param args Arguments to pass to xcrun
+   * @returns A promise that resolves to the command result with stdout, stderr, and exit code
+   *
+   * @example
+   * ```typescript
+   * // Get the SDK version for iphonesimulator
+   * const result = await client.xcrun(['--sdk', 'iphonesimulator', '--show-sdk-version']);
+   * console.log('SDK version:', result.stdout.trim());
+   *
+   * // Get the SDK build version (default SDK)
+   * const buildResult = await client.xcrun(['--show-sdk-build-version']);
+   * console.log('Build version:', buildResult.stdout.trim());
+   *
+   * // Get the SDK platform version for iphoneos
+   * const platformResult = await client.xcrun(['--sdk', 'iphoneos', '--show-sdk-platform-version']);
+   * console.log('Platform version:', platformResult.stdout.trim());
+   * ```
+   */
+  xcrun: (args: string[]) => Promise<XcrunResult>;
 
   /**
    * List all open files on the instance. Useful to start tunnel to the
@@ -774,6 +816,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }),
       setOrientationResult: () => undefined,
       scrollResult: () => undefined,
+      xcrunResult: (msg) => ({
+        stdout: msg.stdout ? Buffer.from(msg.stdout, 'base64').toString('utf-8') : '',
+        stderr: msg.stderr ? Buffer.from(msg.stderr, 'base64').toString('utf-8') : '',
+        exitCode: msg.exitCode ?? -1,
+      }),
     };
 
     const setupWebSocket = (): void => {
@@ -933,6 +980,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             getConnectionState,
             onConnectionStateChange,
             simctl,
+            xcrun,
             cp,
             lsof,
             deviceInfo: cachedDeviceInfo,
@@ -1020,6 +1068,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const lsof = (): Promise<LsofEntry[]> => {
       return sendRequest<LsofEntry[]>('listOpenFiles', { kind: 'unix' });
+    };
+
+    const xcrun = (args: string[]): Promise<XcrunResult> => {
+      return sendRequest<XcrunResult>('xcrun', { args });
     };
 
     const fetchDeviceInfo = (): Promise<DeviceInfo> => {
