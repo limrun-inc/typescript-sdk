@@ -171,7 +171,9 @@ const response = await client.androidInstances.create().asResponse();
 console.log(response.headers.get('X-My-Header'));
 console.log(response.statusText); // access the underlying Response object
 
-const { data: androidInstance, response: raw } = await client.androidInstances.create().withResponse();
+const { data: androidInstance, response: raw } = await client.androidInstances
+  .create()
+  .withResponse();
 console.log(raw.headers.get('X-My-Header'));
 console.log(androidInstance.metadata);
 ```

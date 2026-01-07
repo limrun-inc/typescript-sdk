@@ -57,9 +57,20 @@ export interface Asset {
   name: string;
 
   /**
+   * Human-readable display name for the asset. If not set, the name should be used.
+   */
+  displayName?: string;
+
+  /**
    * Returned only if there is a corresponding file uploaded already.
    */
   md5?: string;
+
+  /**
+   * The operating system this asset is for. If not set, the asset is available for
+   * all platforms.
+   */
+  os?: 'ios' | 'android';
 
   signedDownloadUrl?: string;
 
