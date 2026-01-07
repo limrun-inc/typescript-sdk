@@ -73,7 +73,7 @@ if (!wdaRunning) {
 const driver = await remote({
   capabilities: {
     platformName: 'iOS',
-    'appium:app': 'com.apple.mobilesafari',
+    browserName: 'safari',
     'appium:automationName': 'XCUITest',
     'appium:noReset': true, // Otherwise, deletes the app we installed.
     'appium:fullReset': false,
