@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.18.3 (2026-01-07)
+
+Full Changelog: [v0.18.2...v0.18.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.18.2...v0.18.3)
+
+### Features
+
+* **api:** add displayName to asset ([e641747](https://github.com/limrun-inc/typescript-sdk/commit/e6417478ea5e6e21005ebce9b28466fb11a880d2))
+* **api:** add optional os field to assets ([4b24ab8](https://github.com/limrun-inc/typescript-sdk/commit/4b24ab8c8eefc9ba1c7050ca2f2dc0534d8d2a81))
+
+
+### Chores
+
+* break long lines in snippets into multiline ([3ce0f46](https://github.com/limrun-inc/typescript-sdk/commit/3ce0f46875d62a9b285d4c2ddf797728381a1604))
+
 ## 0.18.2 (2025-12-24)
 
 Full Changelog: [v0.18.1...v0.18.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.18.1...v0.18.2)
