@@ -1013,7 +1013,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             ref={frameRef}
             src={isLandscape ? config.frame.imageLandscape : config.frame.image}
             alt=""
-            className={'rc-phone-frame'}
+            className={platform === 'ios' ? clsx('rc-phone-frame', 'rc-phone-frame-ios') : 'rc-phone-frame'}
             draggable={false}
           />
         )}

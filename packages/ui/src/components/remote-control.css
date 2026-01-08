@@ -23,6 +23,10 @@
   max-height: 100%;
 }
 
+.rc-phone-frame-ios {
+  z-index: 10;
+}
+
 .rc-video {
   position: absolute;
   z-index: 20;
