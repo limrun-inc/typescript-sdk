@@ -994,7 +994,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       <div
         className={clsx(
           'rc-container',
-          isLandscape ? 'rc-container-landscape' : 'rc-container-portrait', // Use custom CSS class instead of Tailwind
           className,
         )}
         style={{ touchAction: 'none' }} // Keep touchAction none for the container
@@ -1014,7 +1013,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             ref={frameRef}
             src={isLandscape ? config.frame.imageLandscape : config.frame.image}
             alt=""
-            className={clsx('rc-phone-frame', isLandscape ? 'rc-phone-frame-landscape' : 'rc-phone-frame-portrait')}
+            className={'rc-phone-frame'}
             draggable={false}
           />
         )}
