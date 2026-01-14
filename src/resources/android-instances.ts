@@ -132,12 +132,12 @@ export interface AndroidInstanceCreateParams {
   wait?: boolean;
 
   /**
-   * Body param:
+   * Body param
    */
   metadata?: AndroidInstanceCreateParams.Metadata;
 
   /**
-   * Body param:
+   * Body param
    */
   spec?: AndroidInstanceCreateParams.Spec;
 }

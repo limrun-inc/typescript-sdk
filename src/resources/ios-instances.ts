@@ -120,12 +120,12 @@ export interface IosInstanceCreateParams {
   wait?: boolean;
 
   /**
-   * Body param:
+   * Body param
    */
   metadata?: IosInstanceCreateParams.Metadata;
 
   /**
-   * Body param:
+   * Body param
    */
   spec?: IosInstanceCreateParams.Spec;
 }
