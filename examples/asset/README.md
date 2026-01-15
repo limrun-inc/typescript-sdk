@@ -1,7 +1,8 @@
 # Asset Example
 
 This example demonstrates how you can upload your iOS Simulator build to Limrun Asset Storage
-only once and have an iOS Simulator created with that app pre-installed.
+only once and have an iOS Simulator created with that app pre-installed or install it later
+on-demand via `installApp` method.
 
 Run the example:
 ```bash
