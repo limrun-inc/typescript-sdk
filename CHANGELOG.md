@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.19.0 (2026-01-16)
+
+Full Changelog: [v0.18.3...v0.19.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.18.3...v0.19.0)
+
+### Chores
+
+* fix typo in descriptions ([44e45d6](https://github.com/limrun-inc/typescript-sdk/commit/44e45d66651ac606e308de2f910e98e2872708d4))
+* **internal:** upgrade babel, qs, js-yaml ([f6ebf0c](https://github.com/limrun-inc/typescript-sdk/commit/f6ebf0c6aed2199cc404bf52853b10018b17b6b1))
+
 ## 0.18.3 (2026-01-07)
 
 Full Changelog: [v0.18.2...v0.18.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.18.2...v0.18.3)
