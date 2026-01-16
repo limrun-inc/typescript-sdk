@@ -64,6 +64,9 @@ type BeginDeltaMsg = {
   targetSha256: string;
   patchSize: number;
 };
+type BeginDeltaBatchMsg = { type: 'beginDeltaBatch'; batchId: string; count: number };
+type EndDeltaMsg = { type: 'endDelta'; id: string };
+type EndDeltaBatchMsg = { type: 'endDeltaBatch'; batchId: string };
 type SyncFinalizeMsg = {
   type: 'syncFinalize';
   id: string;
@@ -103,6 +106,16 @@ function fmtMs(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+function fmtBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  const kib = bytes / 1024;
+  if (kib < 1024) return `${kib.toFixed(1)}KiB`;
+  const mib = kib / 1024;
+  if (mib < 1024) return `${mib.toFixed(1)}MiB`;
+  const gib = mib / 1024;
+  return `${gib.toFixed(2)}GiB`;
+}
+
 function baseName(p: string): string {
   // We use posix-style relative paths in the sync protocol.
   const parts = p.split('/');
@@ -117,6 +130,188 @@ function genId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function concurrencyLimit(): number {
+  // min(4, max(1, cpuCount-1))
+  const cpu = os.cpus()?.length ?? 1;
+  return Math.min(4, Math.max(1, cpu - 1));
+}
+
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let idx = 0;
+  const workers = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+    while (true) {
+      const my = idx++;
+      if (my >= items.length) return;
+      const item = items[my]!;
+      results[my] = await fn(item);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+function encodeDeltaChunkFrame(id: string, chunk: Buffer): Buffer {
+  const idBytes = Buffer.from(id, 'utf-8');
+  const header = Buffer.allocUnsafe(8);
+  header.writeUInt32BE(idBytes.length, 0);
+  header.writeUInt32BE(chunk.length, 4);
+  return Buffer.concat([header, idBytes, chunk]);
+}
+
+class FolderSyncWsSession {
+  private ws: WebSocket | null = null;
+  private connecting: Promise<void> | null = null;
+
+  private planWaiters = new Map<string, (m: SyncPlanMsg) => void>();
+  private resultWaiters = new Map<string, (m: SyncResultMsg) => void>();
+  private ackWaiters = new Map<string, (m: ApplyAckMsg) => void>();
+
+  constructor(
+    private wsUrl: string,
+    private log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void,
+  ) {}
+
+  async connect(): Promise<void> {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+    if (this.connecting) return await this.connecting;
+
+    this.connecting = new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(this.wsUrl);
+      this.ws = ws;
+
+      const cleanup = () => {
+        ws.removeAllListeners();
+        this.connecting = null;
+      };
+
+      ws.on('open', () => {
+        this.log('debug', `ws connected`);
+        resolve();
+      });
+      ws.on('error', (e) => {
+        cleanup();
+        reject(e);
+      });
+      ws.on('close', () => {
+        // Leave waiters; next connect() will recreate socket.
+        this.log('debug', `ws closed`);
+        cleanup();
+      });
+      ws.on('message', (data: any) => this.onMessage(data));
+    });
+
+    return await this.connecting;
+  }
+
+  async connectWithBackoff(opts?: {
+    maxAttempts?: number;
+    baseDelayMs?: number;
+    maxDelayMs?: number;
+  }): Promise<void> {
+    const maxAttempts = opts?.maxAttempts ?? 8;
+    const baseDelayMs = opts?.baseDelayMs ?? 200;
+    const maxDelayMs = opts?.maxDelayMs ?? 5_000;
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await this.connect();
+        return;
+      } catch (e) {
+        lastErr = e;
+        const delay = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt - 1));
+        this.log(
+          'warn',
+          `ws connect failed attempt=${attempt}/${maxAttempts} retryIn=${fmtMs(delay)} err=${
+            (e as Error).message
+          }`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error('WebSocket connect failed');
+  }
+
+  close(): void {
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {
+        // ignore
+      }
+    }
+    this.ws = null;
+  }
+
+  private onMessage(data: any): void {
+    let msg: IncomingMsg;
+    try {
+      msg = JSON.parse(data.toString());
+    } catch {
+      return;
+    }
+    if (msg.type === 'syncPlan') {
+      const w = this.planWaiters.get(msg.id);
+      if (w) {
+        this.planWaiters.delete(msg.id);
+        w(msg);
+      }
+      return;
+    }
+    if (msg.type === 'syncResult') {
+      const w = this.resultWaiters.get(msg.id);
+      if (w) {
+        this.resultWaiters.delete(msg.id);
+        w(msg);
+      }
+      return;
+    }
+    if (msg.type === 'applyAck') {
+      const w = this.ackWaiters.get(msg.id);
+      if (w) {
+        this.ackWaiters.delete(msg.id);
+        w(msg);
+      }
+      return;
+    }
+  }
+
+  sendJson(msg: unknown): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error('WebSocket not connected');
+    }
+    this.ws.send(JSON.stringify(msg));
+  }
+
+  sendBinary(buf: Buffer): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error('WebSocket not connected');
+    }
+    this.ws.send(buf);
+  }
+
+  waitPlan(syncId: string, timeoutMs = 120_000): Promise<SyncPlanMsg> {
+    return this.waitWithTimeout(timeoutMs, (resolve) => this.planWaiters.set(syncId, resolve));
+  }
+
+  waitResult(syncId: string, timeoutMs = 300_000): Promise<SyncResultMsg> {
+    return this.waitWithTimeout(timeoutMs, (resolve) => this.resultWaiters.set(syncId, resolve));
+  }
+
+  waitAck(id: string, timeoutMs = 120_000): Promise<ApplyAckMsg> {
+    return this.waitWithTimeout(timeoutMs, (resolve) => this.ackWaiters.set(id, resolve));
+  }
+
+  private waitWithTimeout<T>(timeoutMs: number, register: (resolve: (v: T) => void) => void): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('Timed out waiting for server response')), timeoutMs);
+      register((v) => {
+        clearTimeout(t);
+        resolve(v);
+      });
+    });
+  }
+}
 async function sha256FileHex(filePath: string): Promise<string> {
   return await new Promise((resolve, reject) => {
     const hash = crypto.createHash('sha256');
@@ -225,69 +420,6 @@ function cacheGet(cacheRoot: string, relPath: string): string {
   return path.join(cacheRoot, relPath.split('/').join(path.sep));
 }
 
-function wsSendJson(ws: WebSocket, msg: any): void {
-  ws.send(JSON.stringify(msg));
-}
-
-async function wsWaitFor<T extends IncomingMsg>(
-  ws: WebSocket,
-  predicate: (m: IncomingMsg) => m is T,
-  timeoutMs = 120_000,
-): Promise<T> {
-  return await new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => {
-      cleanup();
-      reject(new Error('Timed out waiting for WebSocket message'));
-    }, timeoutMs);
-    const onMsg = (data: any) => {
-      try {
-        const raw = JSON.parse(data.toString()) as IncomingMsg;
-        if (predicate(raw)) {
-          cleanup();
-          resolve(raw);
-        }
-      } catch {
-        // ignore
-      }
-    };
-    const onErr = (e: any) => {
-      cleanup();
-      reject(e);
-    };
-    const onClose = () => {
-      cleanup();
-      reject(new Error('WebSocket closed'));
-    };
-    const cleanup = () => {
-      clearTimeout(t);
-      ws.off('message', onMsg);
-      ws.off('error', onErr);
-      ws.off('close', onClose);
-    };
-    ws.on('message', onMsg);
-    ws.on('error', onErr);
-    ws.on('close', onClose);
-  });
-}
-
-async function wsSendBinaryFile(ws: WebSocket, filePath: string, chunkSize = 64 * 1024): Promise<void> {
-  const fd = await fs.promises.open(filePath, 'r');
-  try {
-    const st = await fd.stat();
-    let offset = 0;
-    while (offset < st.size) {
-      const len = Math.min(chunkSize, st.size - offset);
-      const buf = Buffer.allocUnsafe(len);
-      const { bytesRead } = await fd.read(buf, 0, len, offset);
-      if (bytesRead <= 0) break;
-      offset += bytesRead;
-      ws.send(buf.subarray(0, bytesRead));
-    }
-  } finally {
-    await fd.close();
-  }
-}
-
 export type SyncAppResult = SyncFolderResult;
 
 export async function syncApp(localFolderPath: string, opts: FolderSyncOptions): Promise<SyncFolderResult> {
@@ -295,7 +427,12 @@ export async function syncApp(localFolderPath: string, opts: FolderSyncOptions):
     return await syncFolderOnce(localFolderPath, opts);
   }
   // Initial sync, then watch for changes and re-run sync in the background.
-  const first = await syncFolderOnce(localFolderPath, opts, 'startup');
+  const log = opts.log ?? noopLogger;
+  const wsUrl = toWsUrl(opts.apiUrl, opts.token);
+  const session = new FolderSyncWsSession(wsUrl, (level, msg) => log(level, `syncApp: ${msg}`));
+  await session.connectWithBackoff();
+
+  const first = await syncFolderOnce(localFolderPath, opts, 'startup', session);
   let inFlight = false;
   let queued = false;
 
@@ -306,7 +443,7 @@ export async function syncApp(localFolderPath: string, opts: FolderSyncOptions):
     }
     inFlight = true;
     try {
-      await syncFolderOnce(localFolderPath, opts, reason);
+      await syncFolderOnce(localFolderPath, opts, reason, session);
     } finally {
       inFlight = false;
       if (queued) {
@@ -329,7 +466,10 @@ export async function syncApp(localFolderPath: string, opts: FolderSyncOptions):
 
   return {
     ...first,
-    stopWatching: () => watcher.close(),
+    stopWatching: () => {
+      watcher.close();
+      session.close();
+    },
   };
 }
 
@@ -345,25 +485,30 @@ async function syncFolderOnce(
   localFolderPath: string,
   opts: FolderSyncOptions,
   reason?: string,
+  session?: FolderSyncWsSession,
 ): Promise<SyncFolderResult> {
   const totalStart = nowMs();
   const log = opts.log ?? noopLogger;
   const slog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => log(level, `syncApp: ${msg}`);
   const maxPatchBytes = opts.maxPatchBytes ?? 4 * 1024 * 1024;
 
+  const tEnsureStart = nowMs();
   await ensureXdelta3();
+  const tEnsureMs = nowMs() - tEnsureStart;
 
+  const tWalkStart = nowMs();
   const files = await walkFiles(localFolderPath);
+  const tWalkMs = nowMs() - tWalkStart;
   const fileMap = new Map(files.map((f) => [f.path, f]));
-  slog('info', `manifest built: ${files.length} files${reason ? ` reason=${reason}` : ''}`);
+  slog('info', `sync started files=${files.length}${reason ? ` reason=${reason}` : ''}`);
 
   const wsUrl = toWsUrl(opts.apiUrl, opts.token);
-  const ws = new WebSocket(wsUrl);
+  const ownsSession = !session;
+  const wsSession = session ?? new FolderSyncWsSession(wsUrl, (level, msg) => log(level, `syncApp: ${msg}`));
 
-  await new Promise<void>((resolve, reject) => {
-    ws.once('open', () => resolve());
-    ws.once('error', (e) => reject(e));
-  });
+  const tWsConnectStart = nowMs();
+  await wsSession.connectWithBackoff();
+  const tWsConnectMs = nowMs() - tWsConnectStart;
 
   const syncId = genId('sync');
   const rootName = path.basename(path.resolve(localFolderPath));
@@ -373,12 +518,22 @@ async function syncFolderOnce(
     rootName,
     files: files.map((f) => ({ path: f.path, size: f.size, sha256: f.sha256, mode: f.mode })),
   };
-  wsSendJson(ws, manifestMsg);
+  wsSession.sendJson(manifestMsg);
 
-  const plan = await wsWaitFor(ws, (m): m is SyncPlanMsg => m.type === 'syncPlan' && m.id === syncId);
+  const tPlanStart = nowMs();
+  const plan = await wsSession.waitPlan(syncId);
+  const tPlanMs = nowMs() - tPlanStart;
 
   const cacheRoot = localBasisCacheRoot(opts);
   await fs.promises.mkdir(cacheRoot, { recursive: true });
+
+  // Track how many bytes we actually transmit to the server.
+  let bytesSentFull = 0;
+  let bytesSentDelta = 0;
+  let fullUploadMsTotal = 0;
+  let fullApplyMsTotal = 0;
+  let deltaEncodeMsTotal = 0;
+  let deltaSendApplyMsTotal = 0;
 
   // Helper: perform full upload + apply
   const applyFull = async (relPath: string, expectedSha: string): Promise<void> => {
@@ -390,6 +545,7 @@ async function syncFolderOnce(
     const uploadStart = nowMs();
     const uploadedPath = await httpUploadFile(opts.apiUrl, opts.token, tmpName, entry.absPath);
     const uploadMs = nowMs() - uploadStart;
+    fullUploadMsTotal += uploadMs;
     slog('debug', `full(upload): ${relPath} took=${fmtMs(uploadMs)}`);
     const msgId = genId('full');
     const applyMsg: ApplyFullFromUploadMsg = {
@@ -402,10 +558,11 @@ async function syncFolderOnce(
     };
     slog('debug', `full(apply): ${relPath} size=${entry.size}`);
     const applyStart = nowMs();
-    wsSendJson(ws, applyMsg);
-    const ack = await wsWaitFor(ws, (m): m is ApplyAckMsg => m.type === 'applyAck' && m.id === msgId);
+    wsSession.sendJson(applyMsg);
+    const ack = await wsSession.waitAck(msgId);
     if (!ack.ok) throw new Error(`applyFull failed for ${relPath}: ${ack.error ?? 'unknown error'}`);
     const applyMs = nowMs() - applyStart;
+    fullApplyMsTotal += applyMs;
     const totalMs = nowMs() - start;
     slog(
       'debug',
@@ -413,36 +570,42 @@ async function syncFolderOnce(
         applyMs,
       )} total=${fmtMs(totalMs)}`,
     );
+    bytesSentFull += entry.size;
     await cachePut(cacheRoot, relPath, entry.absPath);
   };
 
   // First: do files server says must be full
   for (const f of plan.sendFull) {
-    log('info', `full: ${f.path} (${f.size} bytes)`);
+    slog('debug', `full(plan): ${f.path} (${f.size} bytes)`);
     await applyFull(f.path, f.sha256);
   }
 
-  // Then: try deltas
-  for (const d of plan.sendDelta) {
+  // Then: try deltas (encode in parallel, send in a batch, await acks)
+  type PlanDelta = SyncPlanMsg['sendDelta'][number];
+  type EncodedDelta = {
+    plan: PlanDelta;
+    entry: FileEntry;
+    basisPath: string;
+    patchPath: string;
+    patchSize: number;
+    encodeMs: number;
+    tmpDir: string;
+  };
+
+  const encodeLimit = concurrencyLimit();
+  const encoded: (EncodedDelta | null)[] = await mapLimit(plan.sendDelta, encodeLimit, async (d) => {
     const entry = fileMap.get(d.path);
-    if (!entry) continue;
+    if (!entry) return null;
     const basisPath = cacheGet(cacheRoot, d.path);
-    const basisExists = fs.existsSync(basisPath);
-    if (!basisExists) {
-      slog('info', `delta->full (no basis): ${d.path}`);
+    if (!fs.existsSync(basisPath)) {
       slog('debug', `delta(skip): ${baseName(d.path)} reason=no_basis`);
-      await applyFull(d.path, d.targetSha256);
-      continue;
+      return null;
     }
     const basisSha = await sha256FileHex(basisPath);
     if (basisSha !== d.basisSha256.toLowerCase()) {
-      slog('info', `delta->full (basis sha mismatch): ${d.path}`);
       slog('debug', `delta(skip): ${baseName(d.path)} reason=basis_sha_mismatch`);
-      await applyFull(d.path, d.targetSha256);
-      continue;
+      return null;
     }
-
-    // Build patch in temp dir
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limulator-xdelta3-'));
     const patchPath = path.join(tmpDir, 'patch.xdelta3');
     try {
@@ -451,69 +614,155 @@ async function syncFolderOnce(
       const encodeMs = nowMs() - encodeStart;
       const st = await fs.promises.stat(patchPath);
       if (st.size > maxPatchBytes) {
-        slog('info', `delta->full (patch too big ${st.size} bytes): ${d.path}`);
         slog('debug', `delta(skip): ${baseName(d.path)} patchSize=${st.size} reason=patch_too_big`);
-        await applyFull(d.path, d.targetSha256);
-        continue;
+        return null;
       }
-
-      const msgId = genId('delta');
-      slog('debug', `delta(send): ${baseName(d.path)} patchSize=${st.size} encode=${fmtMs(encodeMs)}`);
-      const begin: BeginDeltaMsg = {
-        type: 'beginDelta',
-        id: msgId,
-        path: d.path,
-        basisSha256: d.basisSha256,
-        targetSha256: d.targetSha256,
-        patchSize: st.size,
-      };
-      const sendStart = nowMs();
-      wsSendJson(ws, begin);
-      await wsSendBinaryFile(ws, patchPath);
-      const ack = await wsWaitFor(ws, (m): m is ApplyAckMsg => m.type === 'applyAck' && m.id === msgId);
-      const sendMs = nowMs() - sendStart;
-      if (!ack.ok) {
-        if (ack.needFull) {
-          slog('warn', `delta failed, retrying full for ${d.path}: ${ack.error ?? 'unknown'}`);
-          await applyFull(d.path, d.targetSha256);
-        } else {
-          throw new Error(`delta apply failed for ${d.path}: ${ack.error ?? 'unknown error'}`);
-        }
-      } else {
-        slog(
-          'debug',
-          `delta(done): ${baseName(d.path)} patchSize=${st.size} total=${fmtMs(encodeMs + sendMs)}`,
-        );
-        await cachePut(cacheRoot, d.path, entry.absPath);
-      }
-    } finally {
+      return { plan: d, entry, basisPath, patchPath, patchSize: st.size, encodeMs, tmpDir };
+    } catch (e) {
       try {
         await fs.promises.rm(tmpDir, { recursive: true, force: true });
       } catch {
         // ignore
       }
+      throw e;
+    }
+  });
+
+  const deltasToSend = encoded.filter((x): x is EncodedDelta => x !== null);
+  // Any skipped deltas become full uploads.
+  const deltaPathsToSend = new Set(deltasToSend.map((d) => d.plan.path));
+  for (const d of plan.sendDelta) {
+    if (!deltaPathsToSend.has(d.path)) {
+      await applyFull(d.path, d.targetSha256);
     }
   }
 
+  if (deltasToSend.length > 0) {
+    deltaEncodeMsTotal += deltasToSend.reduce((sum, d) => sum + d.encodeMs, 0);
+    const batchId = genId('batch');
+    wsSession.sendJson({
+      type: 'beginDeltaBatch',
+      batchId,
+      count: deltasToSend.length,
+    } satisfies BeginDeltaBatchMsg);
+
+    const deltaMsgIds: { msgId: string; path: string; patchSize: number; targetSha256: string }[] = [];
+    for (const d of deltasToSend) {
+      const msgId = genId('delta');
+      deltaMsgIds.push({
+        msgId,
+        path: d.plan.path,
+        patchSize: d.patchSize,
+        targetSha256: d.plan.targetSha256,
+      });
+      slog(
+        'debug',
+        `delta(send): ${baseName(d.plan.path)} patchSize=${d.patchSize} encode=${fmtMs(d.encodeMs)}`,
+      );
+      const begin: BeginDeltaMsg = {
+        type: 'beginDelta',
+        id: msgId,
+        path: d.plan.path,
+        basisSha256: d.plan.basisSha256,
+        targetSha256: d.plan.targetSha256,
+        patchSize: d.patchSize,
+      };
+      wsSession.sendJson(begin);
+
+      // Stream patch bytes framed with id header
+      const sendStart = nowMs();
+      const fd = await fs.promises.open(d.patchPath, 'r');
+      try {
+        let offset = 0;
+        while (offset < d.patchSize) {
+          const len = Math.min(64 * 1024, d.patchSize - offset);
+          const buf = Buffer.allocUnsafe(len);
+          const { bytesRead } = await fd.read(buf, 0, len, offset);
+          if (bytesRead <= 0) break;
+          offset += bytesRead;
+          wsSession.sendBinary(encodeDeltaChunkFrame(msgId, buf.subarray(0, bytesRead)));
+        }
+      } finally {
+        await fd.close();
+      }
+      wsSession.sendJson({ type: 'endDelta', id: msgId } satisfies EndDeltaMsg);
+      const sendMs = nowMs() - sendStart;
+      deltaSendApplyMsTotal += sendMs;
+    }
+
+    wsSession.sendJson({ type: 'endDeltaBatch', batchId } satisfies EndDeltaBatchMsg);
+
+    // Await acks (as they arrive) after sending the whole batch.
+    const acks = await Promise.all(deltaMsgIds.map((d) => wsSession.waitAck(d.msgId)));
+    for (let i = 0; i < acks.length; i++) {
+      const ack = acks[i]!;
+      const info = deltaMsgIds[i]!;
+      const { path, patchSize, targetSha256 } = info;
+      if (!ack.ok) {
+        if (ack.needFull) {
+          slog('warn', `delta failed, retrying full for ${path}: ${ack.error ?? 'unknown'}`);
+          await applyFull(path, targetSha256);
+        } else {
+          throw new Error(`delta apply failed for ${path}: ${ack.error ?? 'unknown error'}`);
+        }
+      } else {
+        bytesSentDelta += patchSize;
+        const entry = fileMap.get(path);
+        if (entry) {
+          await cachePut(cacheRoot, path, entry.absPath);
+        }
+      }
+    }
+
+    // Cleanup temp dirs
+    await Promise.all(
+      deltasToSend.map(async (d) => {
+        try {
+          await fs.promises.rm(d.tmpDir, { recursive: true, force: true });
+        } catch {
+          // ignore
+        }
+      }),
+    );
+  }
+
+  // Sync work includes: local hashing + planning + transfers (but excludes finalize/install wait).
+  const syncWorkMs = nowMs() - totalStart;
   const finalize: SyncFinalizeMsg = {
     type: 'syncFinalize',
     id: syncId,
     install: opts.install ?? true,
     ...(opts.launchMode ? { launchMode: opts.launchMode } : {}),
   };
-  wsSendJson(ws, finalize);
+  wsSession.sendJson(finalize);
 
-  const result = await wsWaitFor(
-    ws,
-    (m): m is SyncResultMsg => m.type === 'syncResult' && m.id === syncId,
-    300_000,
-  );
-  ws.close();
+  const installStart = nowMs();
+  const result = await wsSession.waitResult(syncId, 300_000);
+  if (ownsSession) {
+    wsSession.close();
+  }
 
   if (!result.ok) {
     throw new Error(result.error ?? 'sync failed');
   }
-  slog('debug', `total: files=${files.length} took=${fmtMs(nowMs() - totalStart)}`);
+  const tookMs = nowMs() - totalStart;
+  const installMs = nowMs() - installStart;
+  const totalBytes = bytesSentFull + bytesSentDelta;
+  slog(
+    'info',
+    `sync finished files=${files.length} sent=${fmtBytes(totalBytes)} syncWork=${fmtMs(
+      syncWorkMs,
+    )} install=${fmtMs(installMs)} total=${fmtMs(tookMs)}`,
+  );
+  slog('debug', `sync bytes full=${fmtBytes(bytesSentFull)} delta=${fmtBytes(bytesSentDelta)}`);
+  slog(
+    'debug',
+    `timing ensureXdelta3=${fmtMs(tEnsureMs)} walk=${fmtMs(tWalkMs)} wsConnect=${fmtMs(
+      tWsConnectMs,
+    )} plan=${fmtMs(tPlanMs)} fullUpload=${fmtMs(fullUploadMsTotal)} fullApply=${fmtMs(
+      fullApplyMsTotal,
+    )} deltaEncode=${fmtMs(deltaEncodeMsTotal)} deltaSendApply=${fmtMs(deltaSendApplyMsTotal)}`,
+  );
   const out: SyncFolderResult = {};
   if (result.installedAppPath) {
     out.installedAppPath = result.installedAppPath;
