@@ -15,6 +15,14 @@ export type FolderSyncOptions = {
   apiUrl: string;
   token: string;
   udid: string; // used only for local cache scoping
+  /**
+   * Directory for the client-side folder-sync cache.
+   * Used to store the last-synced “basis” copies of files (and related sync metadata) so we can compute xdelta patches
+   * on subsequent syncs without re-downloading server state.
+   *
+   * Can be absolute or relative to process.cwd(). Defaults to `.lim-metadata-cache/`.
+   */
+  basisCacheDir?: string;
   install?: boolean;
   launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
   /** If true, watch the folder and re-sync on any changes (debounced, single-flight). */
@@ -280,8 +288,12 @@ function localBasisCacheRoot(opts: FolderSyncOptions, localFolderPath: string): 
   const resolved = path.resolve(localFolderPath);
   const base = path.basename(resolved);
   const hash = crypto.createHash('sha1').update(resolved).digest('hex').slice(0, 8);
+  const rootOverride =
+    opts.basisCacheDir ?
+      path.resolve(process.cwd(), opts.basisCacheDir)
+    : path.join(process.cwd(), '.lim-metadata-cache');
   // Include folder identity to avoid collisions between different roots.
-  return path.join(os.homedir(), '.cache', 'limulator', 'folder-sync', hostKey, opts.udid, `${base}-${hash}`);
+  return path.join(rootOverride, 'folder-sync', hostKey, opts.udid, `${base}-${hash}`);
 }
 
 async function cachePut(cacheRoot: string, relPath: string, srcFile: string): Promise<void> {
