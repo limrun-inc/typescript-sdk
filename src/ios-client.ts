@@ -2,6 +2,7 @@ import { WebSocket, Data } from 'ws';
 import fs from 'fs';
 import { EventEmitter } from 'events';
 import { isNonRetryableError } from './tunnel';
+import { syncApp as syncAppImpl, type SyncFolderResult, type FolderSyncOptions } from './folder-sync';
 
 /**
  * Connection state of the instance client
@@ -248,6 +249,19 @@ export type InstanceClient = {
     pixels: number,
     options?: { coordinate?: [number, number]; momentum?: number },
   ) => Promise<void>;
+
+  /**
+   * Sync an iOS app bundle folder to the server and (optionally) install/launch it.
+   */
+  syncApp: (
+    localAppBundlePath: string,
+    opts?: {
+      install?: boolean;
+      maxPatchBytes?: number;
+      launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
+      watch?: boolean;
+    },
+  ) => Promise<SyncFolderResult>;
 
   /**
    * Disconnect from the Limrun instance
@@ -1001,6 +1015,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             installApp,
             setOrientation,
             scroll,
+            syncApp,
             disconnect,
             getConnectionState,
             onConnectionStateChange,
@@ -1092,6 +1107,49 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
     };
 
+    const syncApp = async (
+      localAppBundlePath: string,
+      opts?: {
+        install?: boolean;
+        maxPatchBytes?: number;
+        launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
+        watch?: boolean;
+      },
+    ): Promise<SyncFolderResult> => {
+      if (!cachedDeviceInfo) {
+        throw new Error('Device info not available yet; wait for client connection to be established.');
+      }
+      const appSyncOpts: FolderSyncOptions = {
+        apiUrl: options.apiUrl,
+        token: options.token,
+        udid: cachedDeviceInfo.udid,
+        log: (level, msg) => {
+          switch (level) {
+            case 'debug':
+              logger.debug(msg);
+              break;
+            case 'info':
+              logger.info(msg);
+              break;
+            case 'warn':
+              logger.warn(msg);
+              break;
+            case 'error':
+              logger.error(msg);
+              break;
+            default:
+              logger.info(msg);
+              break;
+          }
+        },
+        ...(opts?.install !== undefined ? { install: opts.install } : {}),
+        ...(opts?.maxPatchBytes !== undefined ? { maxPatchBytes: opts.maxPatchBytes } : {}),
+        ...(opts?.launchMode !== undefined ? { launchMode: opts.launchMode } : {}),
+        ...(opts?.watch !== undefined ? { watch: opts.watch } : {}),
+      };
+      return await syncAppImpl(localAppBundlePath, appSyncOpts);
+    };
+
     const lsof = (): Promise<LsofEntry[]> => {
       return sendRequest<LsofEntry[]>('listOpenFiles', { kind: 'unix' });
     };
@@ -1171,6 +1229,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       const fileStream = fs.createReadStream(filePath);
       const uploadUrl = `${options.apiUrl}/files?name=${encodeURIComponent(name)}`;
       try {
+        // Node's fetch (undici) supports streaming request bodies but TS DOM types may not include
+        // `duplex` and may not accept Node ReadStreams as BodyInit in some configs.
         const response = await fetch(uploadUrl, {
           method: 'PUT',
           headers: {
@@ -1178,9 +1238,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             'Content-Length': fs.statSync(filePath).size.toString(),
             Authorization: `Bearer ${options.token}`,
           },
-          body: fileStream,
-          duplex: 'half',
-        });
+          body: fileStream as any,
+          duplex: 'half' as any,
+        } as any);
         if (!response.ok) {
           const errorBody = await response.text();
           logger.debug(`Upload failed: ${response.status} ${errorBody}`);
