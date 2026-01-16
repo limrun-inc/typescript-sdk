@@ -126,12 +126,26 @@ export type AppInstallationOptions = {
   md5?: string;
   /**
    * Launch mode after installation:
-   * - 'ForegroundIfRunning': Bring to foreground if already running, otherwise launch
+   * - 'ForegroundIfRunning': Bring to foreground if already running, otherwise launch (default)
    * - 'RelaunchIfRunning': Kill and relaunch if already running
    * - 'FailIfRunning': Fail if the app is already running
-   * - undefined: Don't launch after installation
    */
   launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
+};
+
+export type LocalInstallOptions = {
+  /**
+   * Launch mode after installation:
+   * - 'ForegroundIfRunning': Bring to foreground if already running, otherwise launch (default)
+   * - 'RelaunchIfRunning': Kill and relaunch if already running
+   * - 'FailIfRunning': Fail if the app is already running
+   */
+  launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
+};
+
+export type LocalInstallResult = {
+  /** Bundle ID of the installed app */
+  bundleId: string;
 };
 
 /**
@@ -228,6 +242,16 @@ export type InstanceClient = {
    * @throws Error if installation fails (e.g., invalid app, download failure)
    */
   installApp: (url: string, options?: AppInstallationOptions) => Promise<AppInstallationResult>;
+
+  /**
+   * Install an app from a local file path (supports .zip or .tar.gz containing .app bundle)
+   * The file is uploaded to the simulator, installed, and then deleted.
+   * @param filePath Local path to the app archive
+   * @param options Optional installation options (launchMode defaults to ForegroundIfRunning)
+   * @returns The installation result with bundle ID on success
+   * @throws Error if installation fails (e.g., invalid app, upload failure)
+   */
+  installAppFromFile: (filePath: string, options?: LocalInstallOptions) => Promise<LocalInstallResult>;
 
   /**
    * Set the device orientation
@@ -999,6 +1023,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             listApps,
             openUrl,
             installApp,
+            installAppFromFile,
             setOrientation,
             scroll,
             disconnect,
@@ -1167,29 +1192,72 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return execution;
     };
 
-    const cp = async (name: string, filePath: string): Promise<string> => {
+    // Shared file upload helper
+    type UploadOptions = {
+      name: string;
+      install?: boolean;
+      launchMode?: string;
+    };
+    type UploadResponse = { path?: string; bundleId?: string };
+
+    const uploadFile = async (filePath: string, uploadOptions: UploadOptions): Promise<UploadResponse> => {
       const fileStream = fs.createReadStream(filePath);
-      const uploadUrl = `${options.apiUrl}/files?name=${encodeURIComponent(name)}`;
+      const params = new URLSearchParams({ name: uploadOptions.name });
+      if (uploadOptions.install) {
+        params.set('install', 'true');
+      }
+      if (uploadOptions.launchMode) {
+        params.set('launchMode', uploadOptions.launchMode);
+      }
+      const uploadUrl = `${options.apiUrl}/files?${params.toString()}`;
+
+      const response = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': fs.statSync(filePath).size.toString(),
+          Authorization: `Bearer ${options.token}`,
+        },
+        body: fileStream,
+        duplex: 'half',
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        logger.debug(`Upload failed: ${response.status} ${errorBody}`);
+        throw new Error(`Upload failed: ${response.status} ${errorBody}`);
+      }
+
+      return (await response.json()) as UploadResponse;
+    };
+
+    const cp = async (name: string, filePath: string): Promise<string> => {
       try {
-        const response = await fetch(uploadUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/octet-stream',
-            'Content-Length': fs.statSync(filePath).size.toString(),
-            Authorization: `Bearer ${options.token}`,
-          },
-          body: fileStream,
-          duplex: 'half',
-        });
-        if (!response.ok) {
-          const errorBody = await response.text();
-          logger.debug(`Upload failed: ${response.status} ${errorBody}`);
-          throw new Error(`Upload failed: ${response.status} ${errorBody}`);
-        }
-        const result = (await response.json()) as { path: string };
-        return result.path;
+        const result = await uploadFile(filePath, { name });
+        return result.path!;
       } catch (err) {
         logger.debug(`Failed to upload file ${filePath}:`, err);
+        throw err;
+      }
+    };
+
+    const installAppFromFile = async (
+      filePath: string,
+      installOptions?: LocalInstallOptions,
+    ): Promise<LocalInstallResult> => {
+      const fileName = filePath.split('/').pop() || 'app.zip';
+      try {
+        const uploadOpts: UploadOptions = { name: fileName, install: true };
+        if (installOptions?.launchMode) {
+          uploadOpts.launchMode = installOptions.launchMode;
+        }
+        const result = await uploadFile(filePath, uploadOpts);
+        if (!result.bundleId) {
+          throw new Error('Installation succeeded but no bundleId returned');
+        }
+        return { bundleId: result.bundleId };
+      } catch (err) {
+        logger.debug(`Failed to install app from ${filePath}:`, err);
         throw err;
       }
     };
