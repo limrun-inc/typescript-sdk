@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { spawn } from 'child_process';
 import { watchFolderTree } from './folder-sync-watcher';
 import { Readable } from 'stream';
+import * as zlib from 'zlib';
 
 // =============================================================================
 // Folder Sync (HTTP batch)
@@ -87,6 +88,11 @@ function genId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function isENOENT(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code === 'ENOENT' || e?.cause?.code === 'ENOENT';
+}
+
 function concurrencyLimit(): number {
   // min(4, max(1, cpuCount-1))
   const cpu = os.cpus()?.length ?? 1;
@@ -122,6 +128,7 @@ async function httpFolderSyncBatch(
   opts: FolderSyncOptions,
   meta: FolderSyncHttpMeta,
   payloadFiles: { filePath: string }[],
+  compression: 'zstd' | 'gzip' | 'identity',
 ): Promise<FolderSyncHttpResponse> {
   const url = folderSyncHttpUrl(opts.apiUrl);
   const headers: Record<string, string> = {
@@ -154,12 +161,47 @@ async function httpFolderSyncBatch(
     }
   }
 
+  const sourceStream = Readable.from(gen());
+  let bodyStream: Readable | NodeJS.ReadWriteStream;
+  if (compression === 'zstd') {
+    const createZstd = (zlib as any).createZstdCompress as
+      | ((opts?: { level?: number }) => NodeJS.ReadWriteStream)
+      | undefined;
+    if (!createZstd) {
+      throw new Error('zstd compression not available in this Node.js version');
+    }
+    bodyStream = sourceStream.pipe(createZstd({ level: 3 }));
+    headers['Content-Encoding'] = 'zstd';
+  } else if (compression === 'gzip') {
+    const createGzip = zlib.createGzip as ((opts?: zlib.ZlibOptions) => NodeJS.ReadWriteStream) | undefined;
+    if (!createGzip) {
+      throw new Error('gzip compression not available in this Node.js version');
+    }
+    bodyStream = sourceStream.pipe(createGzip({ level: 6 }));
+    headers['Content-Encoding'] = 'gzip';
+  } else {
+    bodyStream = sourceStream;
+  }
+  const controller = new AbortController();
+  let streamError: unknown;
+  const onStreamError = (err: unknown) => {
+    streamError = err;
+    controller.abort();
+  };
+  sourceStream.on('error', onStreamError);
+  bodyStream.on('error', onStreamError);
   const res = await fetch(url, {
     method: 'POST',
     headers,
-    body: Readable.from(gen()) as any,
+    body: bodyStream as any,
     duplex: 'half' as any,
-  } as any);
+    signal: controller.signal,
+  } as any).catch((err) => {
+    if (streamError) {
+      throw streamError;
+    }
+    throw err;
+  });
   const text = await res.text();
   if (!res.ok) {
     throw new Error(`folder-sync http failed: ${res.status} ${text}`);
@@ -233,10 +275,13 @@ async function runXdelta3Encode(basis: string, target: string, outPatch: string)
   });
 }
 
-function localBasisCacheRoot(opts: FolderSyncOptions): string {
+function localBasisCacheRoot(opts: FolderSyncOptions, localFolderPath: string): string {
   const hostKey = opts.apiUrl.replace(/[:/]+/g, '_');
-  // Include a stable suffix to avoid collisions if different folder basenames are synced for the same UDID.
-  return path.join(os.homedir(), '.cache', 'limulator', 'folder-sync', hostKey, opts.udid);
+  const resolved = path.resolve(localFolderPath);
+  const base = path.basename(resolved);
+  const hash = crypto.createHash('sha1').update(resolved).digest('hex').slice(0, 8);
+  // Include folder identity to avoid collisions between different roots.
+  return path.join(os.homedir(), '.cache', 'limulator', 'folder-sync', hostKey, opts.udid, `${base}-${hash}`);
 }
 
 async function cachePut(cacheRoot: string, relPath: string, srcFile: string): Promise<void> {
@@ -308,6 +353,7 @@ async function syncFolderOnce(
   localFolderPath: string,
   opts: FolderSyncOptions,
   reason?: string,
+  attempt = 0,
 ): Promise<SyncFolderResult> {
   const totalStart = nowMs();
   const log = opts.log ?? noopLogger;
@@ -322,12 +368,12 @@ async function syncFolderOnce(
   const files = await walkFiles(localFolderPath);
   const tWalkMs = nowMs() - tWalkStart;
   const fileMap = new Map(files.map((f) => [f.path, f]));
-  slog('info', `sync started files=${files.length}${reason ? ` reason=${reason}` : ''}`);
 
   const syncId = genId('sync');
   const rootName = path.basename(path.resolve(localFolderPath));
+  const preferredCompression = (zlib as any).createZstdCompress ? 'zstd' : 'gzip';
 
-  const cacheRoot = localBasisCacheRoot(opts);
+  const cacheRoot = localBasisCacheRoot(opts, localFolderPath);
   await fs.promises.mkdir(cacheRoot, { recursive: true });
 
   // Track how many bytes we actually transmit to the server (single HTTP request).
@@ -404,22 +450,37 @@ async function syncFolderOnce(
     files: files.map((f) => ({ path: f.path, size: f.size, sha256: f.sha256.toLowerCase(), mode: f.mode })),
     payloads: encodedPayloads.map((p) => p.payload),
   };
+  const hasDelta = encodedPayloads.some((p) => p.payload.kind === 'delta');
+  const compression: 'zstd' | 'gzip' | 'identity' = hasDelta ? 'identity' : preferredCompression;
+  slog(
+    'info',
+    `sync started files=${files.length}${reason ? ` reason=${reason}` : ''} compression=${compression}`,
+  );
 
   const sendStart = nowMs();
-  let resp = await httpFolderSyncBatch(
-    opts,
-    meta,
-    encodedPayloads.map((p) => ({ filePath: p.filePath })),
-  );
+  let resp: FolderSyncHttpResponse;
+  try {
+    resp = await httpFolderSyncBatch(
+      opts,
+      meta,
+      encodedPayloads.map((p) => ({ filePath: p.filePath })),
+      compression,
+    );
+  } catch (err) {
+    if (attempt < 1 && isENOENT(err)) {
+      slog('warn', `sync retrying after missing file during upload (ENOENT)`);
+      return await syncFolderOnce(localFolderPath, opts, reason, attempt + 1);
+    }
+    throw err;
+  }
   httpSendMsTotal += nowMs() - sendStart;
 
   // Retry once if server needs full for some paths (basis mismatch).
   if (!resp.ok && resp.needFull && resp.needFull.length > 0) {
     const need = new Set(resp.needFull);
     const retryPayloads: EncodedPayload[] = [];
-    for (const p of encodedPayloads) {
-      if (!need.has(p.payload.path)) continue;
-      const entry = fileMap.get(p.payload.path);
+    for (const p of need) {
+      const entry = fileMap.get(p);
       if (!entry) continue;
       retryPayloads.push({
         payload: {
@@ -443,6 +504,7 @@ async function syncFolderOnce(
         opts,
         retryMeta,
         retryPayloads.map((p) => ({ filePath: p.filePath })),
+        preferredCompression,
       );
       httpSendMsTotal += nowMs() - retryStart;
     }
