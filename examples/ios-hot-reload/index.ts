@@ -34,10 +34,7 @@ const ios = await Ios.createInstanceClient({
 });
 
 console.log(`Setting up the sync for app folder at ${process.env['SYNC_FOLDER_PATH']}.`);
-const result = await ios.syncApp(process.env['SYNC_FOLDER_PATH'], {
-  install: true,
-  watch,
-});
+const result = await ios.syncApp(process.env['SYNC_FOLDER_PATH'], { watch });
 if (watch) {
   console.log(`App folder is continuously syncing now. Press Ctrl+C to stop.`);
 } else {
