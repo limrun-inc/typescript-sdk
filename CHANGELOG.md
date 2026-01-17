@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.19.2 (2026-01-17)
+
+Full Changelog: [v0.19.1...v0.19.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.19.1...v0.19.2)
+
+### Chores
+
+* **internal:** update `actions/checkout` version ([1db5e18](https://github.com/limrun-inc/typescript-sdk/commit/1db5e181c4d4ae748c0d0588403939a6b1233737))
+
 ## 0.19.1 (2026-01-16)
 
 Full Changelog: [v0.19.0...v0.19.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.19.0...v0.19.1)
