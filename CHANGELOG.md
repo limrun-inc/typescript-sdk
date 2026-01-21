@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.19.2 (2026-01-21)
+
+Full Changelog: [v0.19.1...v0.19.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.19.1...v0.19.2)
+
+### Features
+
+* **api:** add ios sandbox properties and app store for assets ([aea41c4](https://github.com/limrun-inc/typescript-sdk/commit/aea41c421c9e082494c1e7b8d2def7de5974eda1))
+
+
+### Chores
+
+* **internal:** update `actions/checkout` version ([1db5e18](https://github.com/limrun-inc/typescript-sdk/commit/1db5e181c4d4ae748c0d0588403939a6b1233737))
+
 ## 0.19.1 (2026-01-16)
 
 Full Changelog: [v0.19.0...v0.19.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.19.0...v0.19.1)
