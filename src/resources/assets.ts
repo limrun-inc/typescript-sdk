@@ -96,6 +96,12 @@ export interface AssetGetOrCreateResponse {
 
 export interface AssetListParams {
   /**
+   * If true, also includes assets from Limrun App Store where you have access to.
+   * App Store assets will be returned with a "appstore/" prefix in their names.
+   */
+  includeAppStore?: boolean;
+
+  /**
    * Toggles whether a download URL should be included in the response
    */
   includeDownloadUrl?: boolean;

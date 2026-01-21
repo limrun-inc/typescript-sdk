@@ -103,7 +103,21 @@ export namespace IosInstance {
 
     mcpUrl?: string;
 
+    sandbox?: Status.Sandbox;
+
     targetHttpPortUrlPrefix?: string;
+  }
+
+  export namespace Status {
+    export interface Sandbox {
+      xcode?: Sandbox.Xcode;
+    }
+
+    export namespace Sandbox {
+      export interface Xcode {
+        url?: string;
+      }
+    }
   }
 }
 
@@ -160,6 +174,8 @@ export namespace IosInstanceCreateParams {
      * based on scheduling clues and availability.
      */
     region?: string;
+
+    sandbox?: Spec.Sandbox;
   }
 
   export namespace Spec {
@@ -185,6 +201,16 @@ export namespace IosInstanceCreateParams {
       launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
 
       url?: string;
+    }
+
+    export interface Sandbox {
+      xcode?: Sandbox.Xcode;
+    }
+
+    export namespace Sandbox {
+      export interface Xcode {
+        enabled?: boolean;
+      }
     }
   }
 }
