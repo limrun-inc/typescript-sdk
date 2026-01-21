@@ -26,6 +26,7 @@ describe('resource assets', () => {
     await expect(
       client.assets.list(
         {
+          includeAppStore: true,
           includeDownloadUrl: true,
           includeUploadUrl: true,
           limit: 50,
