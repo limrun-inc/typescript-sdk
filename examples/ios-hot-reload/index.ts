@@ -1,9 +1,7 @@
 import { Limrun, Ios } from '@limrun/api';
 
 const args = new Set(process.argv.slice(2));
-const folderArg = process.argv.find((arg, idx) =>
-  idx > 1 && !arg.startsWith('-')
-);
+const folderArg = process.argv.find((arg, idx) => idx > 1 && !arg.startsWith('-'));
 
 const appPath = folderArg;
 if (!appPath) {
@@ -18,7 +16,7 @@ if (!process.env['LIM_API_KEY']) {
   process.exit(1);
 }
 
-const lim = new Limrun({ apiKey: process.env['LIM_API_KEY'], baseURL: 'https://api-staging.limrun.dev' });
+const lim = new Limrun({ apiKey: process.env['LIM_API_KEY'] });
 
 const instance = await lim.iosInstances.create({
   wait: true,
@@ -69,7 +67,7 @@ await new Promise<void>((resolve) => {
 });
 
 await new Promise<void>((resolve) => {
-  console.log('Streaming syslog that contains your app\'s bundle ID for 30 seconds...');
+  console.log("Streaming syslog that contains your app's bundle ID for 30 seconds...");
   const syslog = ios.streamSyslog();
   syslog.on('line', (line) => {
     if (!line.includes(bundleId)) {
