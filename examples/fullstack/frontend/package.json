@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@limrun/ui": "^0.3.1",
+    "@limrun/ui": "^0.4.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "spark-md5": "^3.0.2"
