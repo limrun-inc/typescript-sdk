@@ -18,6 +18,6 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "@limrun/api": "^0.19.1"
+    "@limrun/api": "^0.19.3"
   }
 }

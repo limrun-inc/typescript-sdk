@@ -24,7 +24,7 @@
 
 "@esbuild/darwin-arm64@0.25.9":
   version "0.25.9"
-  resolved "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.25.9.tgz#f1513eaf9ec8fa15dcaf4c341b0f005d3e8b47ae"
+  resolved "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.25.9.tgz"
   integrity sha512-XIpIDMAjOELi/9PB30vEbVMs3GV1v2zkkPnuyRRURbhqjyzIINwj+nbQATh4H9GxUgH1kFsEyQMxwiLFKUS6Rg==
 
 "@esbuild/darwin-x64@0.25.9":
@@ -132,16 +132,16 @@
   resolved "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.9.tgz#585624dc829cfb6e7c0aa6c3ca7d7e6daa87e34f"
   integrity sha512-PPOl1mi6lpLNQxnGoyAfschAodRFYXJ+9fs6WHXz7CSWKbOqiMZsubC+BQsVKuul+3vKLuwTHsS2c2y9EoKwxQ==
 
-"@limrun/api@^0.19.1":
-  version "0.19.1"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.19.1.tgz#ec0b7d34a83b9336309559ea9b103f1437a8a5c4"
-  integrity sha512-ely/dWgNYYjRAAPIbtWPFPW/w8+Q3lpishroZO8dFIqm+ypcLuvmEuM7uPGAHZc2qaXiZ8E+lbtGE46RXjpwYw==
+"@limrun/api@^0.19.3":
+  version "0.19.3"
+  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.19.3.tgz#8f20e79b78ae00f961306ca3947824720d71e6e8"
+  integrity sha512-HyunccrXOycB67amonnp8lLkElndaTrYdSMXFxFatDGJvn/MuMfNI9Rh/egsVwyoMOpIZy0bvdMPStm5ahM66Q==
   dependencies:
     ws "^8.18.3"
 
 esbuild@~0.25.0:
   version "0.25.9"
-  resolved "https://registry.npmjs.org/esbuild/-/esbuild-0.25.9.tgz#15ab8e39ae6cdc64c24ff8a2c0aef5b3fd9fa976"
+  resolved "https://registry.npmjs.org/esbuild/-/esbuild-0.25.9.tgz"
   integrity sha512-CRbODhYyQx3qp7ZEwzxOk4JBqmD/seJrzPa/cGjY1VtIn5E09Oi9/dB4JwctnfZ8Q8iT7rioVv5k/FNT/uf54g==
   optionalDependencies:
     "@esbuild/aix-ppc64" "0.25.9"
@@ -173,24 +173,24 @@ esbuild@~0.25.0:
 
 fsevents@~2.3.3:
   version "2.3.3"
-  resolved "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz#cac6407785d03675a2a5e1a5305c697b347d90d6"
+  resolved "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz"
   integrity sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==
 
 get-tsconfig@^4.7.5:
   version "4.10.1"
-  resolved "https://registry.npmjs.org/get-tsconfig/-/get-tsconfig-4.10.1.tgz#d34c1c01f47d65a606c37aa7a177bc3e56ab4b2e"
+  resolved "https://registry.npmjs.org/get-tsconfig/-/get-tsconfig-4.10.1.tgz"
   integrity sha512-auHyJ4AgMz7vgS8Hp3N6HXSmlMdUyhSUrfBF16w153rxtLIEOE+HGqaBppczZvnHLqQJfiHotCYpNhl0lUROFQ==
   dependencies:
     resolve-pkg-maps "^1.0.0"
 
 resolve-pkg-maps@^1.0.0:
   version "1.0.0"
-  resolved "https://registry.npmjs.org/resolve-pkg-maps/-/resolve-pkg-maps-1.0.0.tgz#616b3dc2c57056b5588c31cdf4b3d64db133720f"
+  resolved "https://registry.npmjs.org/resolve-pkg-maps/-/resolve-pkg-maps-1.0.0.tgz"
   integrity sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==
 
 tsx@^4.20.5:
   version "4.20.5"
-  resolved "https://registry.npmjs.org/tsx/-/tsx-4.20.5.tgz#856c8b2f114c50a9f4ae108126967a167f240dc7"
+  resolved "https://registry.npmjs.org/tsx/-/tsx-4.20.5.tgz"
   integrity sha512-+wKjMNU9w/EaQayHXb7WA7ZaHY6hN8WgfvHNQ3t1PnU91/7O8TcTnIhCDYTZwnt8JsO9IBqZ30Ln1r7pPF52Aw==
   dependencies:
     esbuild "~0.25.0"
@@ -200,10 +200,10 @@ tsx@^4.20.5:
 
 typescript@^5.9.2:
   version "5.9.2"
-  resolved "https://registry.npmjs.org/typescript/-/typescript-5.9.2.tgz#d93450cddec5154a2d5cabe3b8102b83316fb2a6"
+  resolved "https://registry.npmjs.org/typescript/-/typescript-5.9.2.tgz"
   integrity sha512-CWBzXQrc/qOkhidw1OzBTQuYRbfyxDXJMVJ1XNwUHGROVmuaeiEm3OslpZ1RV96d7SKKjZKrSJu3+t/xlw3R9A==
 
 ws@^8.18.3:
   version "8.18.3"
-  resolved "https://registry.npmjs.org/ws/-/ws-8.18.3.tgz#b56b88abffde62791c639170400c93dcb0c95472"
+  resolved "https://registry.npmjs.org/ws/-/ws-8.18.3.tgz"
   integrity sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==
