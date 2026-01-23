@@ -214,14 +214,20 @@ export type InstanceClient = {
    * @param bundleId Bundle identifier of the app
    * @param lines Number of lines to return (clamped to server limit)
    */
-  logTail: (bundleId: string, lines: number) => Promise<string>;
+  appLogTail: (bundleId: string, lines: number) => Promise<string>;
 
   /**
    * Stream app logs for a bundle ID (batched lines every ~500ms)
    * @param bundleId Bundle identifier of the app
-   * @returns AppLogStream handle (use .stop() to unsubscribe)
+   * @returns LogStream handle (use .stop() to unsubscribe)
    */
-  streamAppLog: (bundleId: string) => AppLogStream;
+  streamAppLog: (bundleId: string) => LogStream;
+
+  /**
+   * Stream syslog (batched lines every ~500ms)
+   * @returns LogStream handle (use .stop() to unsubscribe)
+   */
+  streamSyslog: () => LogStream;
 
   /**
    * List installed apps on the simulator
@@ -672,56 +678,135 @@ export class SimctlExecution extends EventEmitter {
 }
 
 /**
- * Handle for a running app log stream subscription.
+ * Handle for a running log stream subscription (app logs or syslog).
  *
+ * Uses a dedicated WebSocket connection separate from the main signaling connection.
  * Emits batched log lines every ~500ms when new lines arrive.
  */
-export interface AppLogStreamEvents {
+export interface LogStreamEvents {
   lines: (lines: string[]) => void;
   line: (line: string) => void;
   error: (error: Error) => void;
+  close: () => void;
 }
 
-export class AppLogStream extends EventEmitter {
-  private stopCallback: (() => void) | null = null;
+/** @internal - Message from log stream WebSocket */
+type LogStreamMessage = {
+  type: string;
+  id: string;
+  lines?: string[];
+  error?: string;
+};
 
-  constructor(stopCallback: () => void) {
+/**
+ * Log stream with dedicated WebSocket connection.
+ * Each LogStream opens its own WebSocket to isolate log traffic from signaling.
+ */
+export class LogStream extends EventEmitter {
+  private ws: WebSocket | null = null;
+  private subscriptionId: string;
+  private stopped = false;
+  private terminateMessageType: string;
+
+  /** @internal */
+  constructor(
+    private wsUrl: string,
+    private subscribeMessage: object,
+    terminateMessageType: string,
+    subscriptionId: string,
+  ) {
     super();
-    this.stopCallback = stopCallback;
+    this.terminateMessageType = terminateMessageType;
+    this.subscriptionId = subscriptionId;
+    this._connect();
   }
 
-  override on<E extends keyof AppLogStreamEvents>(event: E, listener: AppLogStreamEvents[E]): this {
+  override on<E extends keyof LogStreamEvents>(event: E, listener: LogStreamEvents[E]): this {
     return super.on(event, listener as any);
   }
 
-  override once<E extends keyof AppLogStreamEvents>(event: E, listener: AppLogStreamEvents[E]): this {
+  override once<E extends keyof LogStreamEvents>(event: E, listener: LogStreamEvents[E]): this {
     return super.once(event, listener as any);
   }
 
-  override off<E extends keyof AppLogStreamEvents>(event: E, listener: AppLogStreamEvents[E]): this {
+  override off<E extends keyof LogStreamEvents>(event: E, listener: LogStreamEvents[E]): this {
     return super.off(event, listener as any);
   }
 
+  /** Stop the log stream and close the dedicated WebSocket connection */
   stop(): void {
-    if (this.stopCallback) {
-      this.stopCallback();
-      this.stopCallback = null;
+    if (this.stopped) return;
+    this.stopped = true;
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      // Send terminate message before closing
+      const terminateMsg = { type: this.terminateMessageType, id: this.subscriptionId };
+      try {
+        this.ws.send(JSON.stringify(terminateMsg));
+      } catch {
+        // Ignore send errors during shutdown
+      }
+      this.ws.close();
     }
+    this.ws = null;
+    this.emit('close');
   }
 
-  /** @internal - Handle batched lines from server */
-  _handleLines(lines: string[]): void {
-    this.emit('lines', lines);
-    for (const line of lines) {
-      this.emit('line', line);
-    }
-  }
+  /** @internal - Establish the dedicated WebSocket connection */
+  private _connect(): void {
+    this.ws = new WebSocket(this.wsUrl);
 
-  /** @internal - Handle errors from server or connection */
-  _handleError(error: Error): void {
-    this.emit('error', error);
+    this.ws.on('open', () => {
+      if (this.stopped) {
+        this.ws?.close();
+        return;
+      }
+      // Send subscription message
+      this.ws?.send(JSON.stringify(this.subscribeMessage), (err?: Error) => {
+        if (err) {
+          this.emit('error', err);
+          this.stop();
+        }
+      });
+    });
+
+    this.ws.on('message', (data: Data) => {
+      if (this.stopped) return;
+      try {
+        const message: LogStreamMessage = JSON.parse(data.toString());
+        if (message.error) {
+          this.emit('error', new Error(message.error));
+          return;
+        }
+        if (message.lines && message.lines.length > 0) {
+          this.emit('lines', message.lines);
+          for (const line of message.lines) {
+            this.emit('line', line);
+          }
+        }
+      } catch (e) {
+        // Ignore parse errors for non-JSON messages
+      }
+    });
+
+    this.ws.on('error', (err: Error) => {
+      if (!this.stopped) {
+        this.emit('error', err);
+      }
+    });
+
+    this.ws.on('close', () => {
+      if (!this.stopped) {
+        this.stopped = true;
+        this.emit('close');
+      }
+      this.ws = null;
+    });
   }
 }
+
+/** @deprecated Use LogStream instead */
+export const AppLogStream = LogStream;
 
 /**
  * Creates a client for interacting with a Limrun iOS instance
@@ -749,9 +834,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
   // Simctl uses streaming, so it needs separate handling
   const simctlExecutions: Map<string, SimctlExecution> = new Map();
-
-  // App log stream subscriptions
-  const appLogStreams: Map<string, AppLogStream> = new Map();
 
   const stateChangeCallbacks: Set<ConnectionStateCallback> = new Set();
 
@@ -794,11 +876,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     simctlExecutions.forEach((execution) => execution._handleError(new Error(reason)));
     simctlExecutions.clear();
-  };
-
-  const failAppLogStreams = (reason: string): void => {
-    appLogStreams.forEach((stream) => stream._handleError(new Error(reason)));
-    appLogStreams.clear();
   };
 
   const cleanup = (): void => {
@@ -913,7 +990,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       typeTextResult: () => undefined,
       pressKeyResult: () => undefined,
       launchAppResult: () => undefined,
-      logTailResult: (msg) => msg.logs ?? '',
+      appLogTailResult: (msg) => msg.logs ?? '',
       listAppsResult: (msg) => JSON.parse(msg.apps || '[]') as InstalledApp[],
       listOpenFilesResult: (msg) => msg.files || [],
       deviceInfoResult: (msg) => ({
@@ -988,19 +1065,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           return;
         }
 
-        // Handle app log streaming separately (batched lines)
-        if (message.type === 'appLogStream') {
-          const stream = appLogStreams.get(message.id);
-          if (!stream) {
-            logger.warn(`Received app log stream for unknown subscription: ${message.id}`);
-            return;
-          }
-          if (message.lines && message.lines.length > 0) {
-            stream._handleLines(message.lines);
-          }
-          return;
-        }
-
         // Handle all other request/response patterns generically
         const request = pendingRequests.get(message.id);
         if (!request) {
@@ -1055,7 +1119,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         logger.debug('Disconnected from server.');
 
         failPendingRequests('Connection closed');
-        failAppLogStreams('Connection closed');
 
         if (shouldReconnect) {
           scheduleReconnect();
@@ -1103,8 +1166,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             typeText,
             pressKey,
             launchApp,
-            logTail,
+            appLogTail,
             streamAppLog,
+            streamSyslog,
             listApps,
             openUrl,
             installApp,
@@ -1169,44 +1233,20 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<void>('launchApp', { bundleId });
     };
 
-    const logTail = (bundleId: string, lines: number): Promise<string> => {
-      return sendRequest<string>('logTail', { bundleId, lines });
+    const appLogTail = (bundleId: string, lines: number): Promise<string> => {
+      return sendRequest<string>('appLogTail', { bundleId, lines });
     };
 
-    const streamAppLog = (bundleId: string): AppLogStream => {
+    const streamAppLog = (bundleId: string): LogStream => {
       const id = generateId();
-      const stream = new AppLogStream(() => {
-        if (appLogStreams.has(id)) {
-          appLogStreams.delete(id);
-        }
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          const request = { type: 'streamAppLogTerminate', id };
-          ws.send(JSON.stringify(request), (err?: Error) => {
-            if (err) {
-              logger.error('Failed to send streamAppLogTerminate request:', err);
-            }
-          });
-        }
-      });
+      const subscribeMessage = { type: 'streamAppLog', id, bundleId };
+      return new LogStream(endpointWebSocketUrl, subscribeMessage, 'streamAppLogTerminate', id);
+    };
 
-      appLogStreams.set(id, stream);
-
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        stream._handleError(new Error('WebSocket is not connected or connection is not open.'));
-        appLogStreams.delete(id);
-        return stream;
-      }
-
-      const request = { type: 'streamAppLog', id, bundleId };
-      ws.send(JSON.stringify(request), (err?: Error) => {
-        if (err) {
-          appLogStreams.delete(id);
-          logger.error('Failed to send streamAppLog request:', err);
-          stream._handleError(err);
-        }
-      });
-
-      return stream;
+    const streamSyslog = (): LogStream => {
+      const id = generateId();
+      const subscribeMessage = { type: 'streamSyslog', id };
+      return new LogStream(endpointWebSocketUrl, subscribeMessage, 'streamSyslogTerminate', id);
     };
 
     const listApps = (): Promise<InstalledApp[]> => {
