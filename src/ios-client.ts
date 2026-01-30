@@ -153,11 +153,21 @@ export type InstanceClient = {
   elementTree: (point?: AccessibilityPoint) => Promise<string>;
 
   /**
-   * Tap at the specified coordinates
+   * Tap at the specified coordinates (uses device's native screen dimensions)
    * @param x X coordinate in points
    * @param y Y coordinate in points
    */
   tap: (x: number, y: number) => Promise<void>;
+
+  /**
+   * Tap at coordinates with explicit screen size.
+   * Use this when coordinates are in a different coordinate space than the device's native dimensions.
+   * @param x X coordinate in the provided screen coordinate space
+   * @param y Y coordinate in the provided screen coordinate space
+   * @param screenWidth Width of the coordinate space
+   * @param screenHeight Height of the coordinate space
+   */
+  tapWithScreenSize: (x: number, y: number, screenWidth: number, screenHeight: number) => Promise<void>;
 
   /**
    * Tap an accessibility element by selector
@@ -1159,6 +1169,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             screenshot,
             elementTree,
             tap,
+            tapWithScreenSize,
             tapElement,
             incrementElement,
             decrementElement,
@@ -1202,7 +1213,29 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const tap = (x: number, y: number): Promise<void> => {
-      return sendRequest<void>('tap', { x, y });
+      return sendRequest<void>('tap', {
+        x,
+        y,
+        screenWidth: cachedDeviceInfo?.screenWidth,
+        screenHeight: cachedDeviceInfo?.screenHeight,
+      });
+    };
+
+    /**
+     * Tap at coordinates with explicit screen size.
+     * Use this when coordinates are in a different coordinate space than the device's native dimensions.
+     * @param x - X coordinate in the provided screen coordinate space
+     * @param y - Y coordinate in the provided screen coordinate space
+     * @param screenWidth - Width of the coordinate space
+     * @param screenHeight - Height of the coordinate space
+     */
+    const tapWithScreenSize = (
+      x: number,
+      y: number,
+      screenWidth: number,
+      screenHeight: number,
+    ): Promise<void> => {
+      return sendRequest<void>('tap', { x, y, screenWidth, screenHeight });
     };
 
     const tapElement = (selector: AccessibilitySelector): Promise<TapElementResult> => {
