@@ -14,6 +14,7 @@ import {
   createTouchControlMessage,
   createInjectKeycodeMessage,
   createSetClipboardMessage,
+  createTwoFingerTouchControlMessage,
 } from '../core/webrtc-messages';
 
 declare global {
@@ -79,6 +80,14 @@ const debugWarn = (...args: any[]) => {
   if (window.debugRemoteControl) {
     console.warn(...args);
   }
+};
+
+const motionActionToString = (action: number): string => {
+  // AMOTION_EVENT is a constants object; find the matching ACTION_* key if present
+  const match = Object.entries(AMOTION_EVENT).find(
+    ([key, value]) => key.startsWith('ACTION_') && value === action,
+  );
+  return match?.[0] ?? String(action);
 };
 
 type DevicePlatform = 'ios' | 'android';
@@ -170,6 +179,7 @@ function getAndroidKeycodeAndMeta(event: React.KeyboardEvent): { keycode: number
 
 export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>(
   ({ className, url, token, sessionId: propSessionId, openUrl, showFrame = true }: RemoteControlProps, ref) => {
+    const containerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
     const [videoLoaded, setVideoLoaded] = useState(false);
@@ -184,9 +194,45 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     >(new Map());
     const pendingScreenshotRejectersRef = useRef<Map<string, (reason?: any) => void>>(new Map());
 
-    // Map to track active pointers (mouse or touch) and their last known position inside the video
+    // Map to track active pointers for real touch/mouse single-finger events.
     // Key: pointerId (-1 for mouse, touch.identifier for touch), Value: { x: number, y: number }
     const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+
+    // Alt/Option modifier state for pinch emulation.
+    // We use a ref as the source of truth (for synchronous event handler access)
+    // and state only to trigger re-renders for the visual indicators.
+    const isAltHeldRef = useRef(false);
+    const [isAltHeld, setIsAltHeld] = useState(false);
+
+    // State for any two-finger gesture (Alt+mouse simulated or real two-finger touch).
+    // Tracks positions, video size, source, and pointer IDs (for Android protocol).
+    type TwoFingerState = {
+      finger0: { x: number; y: number };
+      finger1: { x: number; y: number };
+      videoSize: { width: number; height: number };
+      // Track source so we know when to clear (Alt release vs touch end)
+      source: 'alt-mouse' | 'real-touch';
+      // Pointer IDs for Android (real touch.identifier or simulated -1/-2)
+      pointerId0: number;
+      pointerId1: number;
+    };
+    const twoFingerStateRef = useRef<TwoFingerState | null>(null);
+
+    // Hover point for rendering two-finger indicators when Alt is held.
+    // Only computed/set when Alt is held to avoid unnecessary re-renders.
+    type HoverPoint = {
+      containerX: number;
+      containerY: number;
+      mirrorContainerX: number;
+      mirrorContainerY: number;
+      videoX: number;
+      videoY: number;
+      mirrorVideoX: number;
+      mirrorVideoY: number;
+      videoWidth: number;
+      videoHeight: number;
+    };
+    const [hoverPoint, setHoverPoint] = useState<HoverPoint | null>(null);
 
     const sessionId = useMemo(
       () =>
@@ -210,130 +256,449 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       dataChannelRef.current.send(data);
     };
 
+    // Fixed pointer IDs for Alt-simulated two-finger gestures
+    const ALT_POINTER_ID_PRIMARY = -1;
+    const ALT_POINTER_ID_MIRROR = -2;
+
+    // Helper to send a single-touch control message (used by both single-finger and Android two-finger paths)
+    const sendSingleTouch = (
+      action: number,
+      pointerId: number,
+      videoWidth: number,
+      videoHeight: number,
+      x: number,
+      y: number,
+    ) => {
+      const message = createTouchControlMessage(
+        action,
+        pointerId,
+        videoWidth,
+        videoHeight,
+        x,
+        y,
+        1.0, // pressure
+        AMOTION_EVENT.BUTTON_PRIMARY,
+        AMOTION_EVENT.BUTTON_PRIMARY,
+      );
+      if (message) {
+        debugLog('[rc-touch] sendSingleTouch', {
+          action,
+          actionName: motionActionToString(action),
+          pointerId,
+          x,
+          y,
+          video: { width: videoWidth, height: videoHeight },
+        });
+        sendBinaryControlMessage(message);
+      }
+    };
+
+    // Minimal geometry for single-finger touch events (no mirror/container coords needed).
+    type PointerGeometry = {
+      inside: boolean;
+      videoX: number;
+      videoY: number;
+      videoWidth: number;
+      videoHeight: number;
+    };
+
+    const applyPointerEvent = (
+      pointerId: number,
+      eventType: 'down' | 'move' | 'up' | 'cancel',
+      geometry: PointerGeometry | null,
+    ) => {
+      if (!geometry) return;
+      const { inside: isInside, videoX, videoY, videoWidth, videoHeight } = geometry;
+
+      let action: number | null = null;
+      let positionToSend: { x: number; y: number } | null = null;
+      let pressure = 1.0; // Default pressure
+      const buttons = AMOTION_EVENT.BUTTON_PRIMARY; // Assume primary button
+
+      switch (eventType) {
+        case 'down':
+          if (isInside) {
+            // For multi-touch: use ACTION_DOWN for first pointer, ACTION_POINTER_DOWN for additional pointers
+            const currentPointerCount = activePointers.current.size;
+            action =
+              currentPointerCount === 0
+                ? AMOTION_EVENT.ACTION_DOWN
+                : AMOTION_EVENT.ACTION_POINTER_DOWN;
+            positionToSend = { x: videoX, y: videoY };
+            activePointers.current.set(pointerId, positionToSend);
+            if (pointerId === -1) {
+              // Focus on mouse down
+              videoRef.current?.focus();
+            }
+          } else {
+            // If the initial down event is outside, ignore it for this pointer
+            activePointers.current.delete(pointerId);
+          }
+          break;
+
+        case 'move':
+          if (activePointers.current.has(pointerId)) {
+            if (isInside) {
+              action = AMOTION_EVENT.ACTION_MOVE;
+              positionToSend = { x: videoX, y: videoY };
+              // Update the last known position for this active pointer
+              activePointers.current.set(pointerId, positionToSend);
+            } else {
+              // Moved outside while active - do nothing, UP/CANCEL will use last known pos
+            }
+          }
+          break;
+
+        case 'up':
+        case 'cancel': // Treat cancel like up, but use ACTION_CANCEL
+          if (activePointers.current.has(pointerId)) {
+            // IMPORTANT: Send the UP/CANCEL at the *last known position* inside the video
+            positionToSend = activePointers.current.get(pointerId)!;
+            activePointers.current.delete(pointerId); // Remove pointer as it's no longer active
+
+            if (eventType === 'cancel') {
+              action = AMOTION_EVENT.ACTION_CANCEL;
+            } else {
+              // For multi-touch: use ACTION_UP for last pointer, ACTION_POINTER_UP for non-last pointers
+              const remainingPointerCount = activePointers.current.size;
+              action =
+                remainingPointerCount === 0
+                  ? AMOTION_EVENT.ACTION_UP
+                  : AMOTION_EVENT.ACTION_POINTER_UP;
+            }
+          }
+          break;
+      }
+
+      // Send message if action and position determined
+      if (action !== null && positionToSend !== null) {
+          debugLog('[rc-touch][mouse->touch] sending', {
+            pointerId,
+            eventType,
+            action,
+            actionName: motionActionToString(action),
+            isInside,
+            positionToSend,
+            video: { width: videoWidth, height: videoHeight },
+            altHeld: isAltHeldRef.current,
+            activePointersAfter: Array.from(activePointers.current.entries()).map(([id, pos]) => ({
+              id,
+              x: pos.x,
+              y: pos.y,
+            })),
+          });
+        const message = createTouchControlMessage(
+          action,
+          pointerId,
+          videoWidth,
+          videoHeight,
+          positionToSend.x,
+          positionToSend.y,
+          pressure,
+          buttons,
+          buttons,
+        );
+        if (message) {
+            debugLog('[rc-touch][mouse->touch] buffer', {
+              pointerId,
+              actionName: motionActionToString(action),
+              byteLength: message.byteLength,
+            });
+          sendBinaryControlMessage(message);
+        }
+      } else if (eventType === 'up' || eventType === 'cancel') {
+        // Clean up map just in case if 'down' was outside and 'up'/'cancel' is triggered
+        activePointers.current.delete(pointerId);
+      }
+    };
+
+    // Update Alt modifier state. Only iOS Simulator uses Indigo modifier injection.
+    const updateAltHeld = (nextHeld: boolean) => {
+      if (isAltHeldRef.current === nextHeld) {
+        return;
+      }
+      isAltHeldRef.current = nextHeld;
+      setIsAltHeld(nextHeld);
+
+      // Clear hover point when Alt is released to hide indicators immediately.
+      if (!nextHeld) {
+        setHoverPoint(null);
+      }
+
+      debugLog('[rc-touch][alt] updateAltHeld', {
+        nextHeld,
+        activePointerIds: Array.from(activePointers.current.keys()),
+      });
+
+      // iOS Simulator pinch (Option/Alt+drag) behavior depends on the Option modifier being
+      // active on the Indigo HID side. Send Alt key down/up immediately on toggle so the
+      // sequence matches Simulator.app (Alt down -> mouse down/drag -> mouse up -> Alt up).
+      // This is iOS-specific; Android doesn't use this modifier injection.
+      if (platform === 'ios' && dataChannelRef.current && dataChannelRef.current.readyState === 'open') {
+        const action = nextHeld ? ANDROID_KEYS.ACTION_DOWN : ANDROID_KEYS.ACTION_UP;
+        const message = createInjectKeycodeMessage(action, ANDROID_KEYS.KEYCODE_ALT_LEFT, 0, ANDROID_KEYS.META_NONE);
+        debugLog('[rc-touch][alt] sending Indigo modifier keycode', {
+          action,
+          keycode: ANDROID_KEYS.KEYCODE_ALT_LEFT,
+        });
+        if (message) {
+          sendBinaryControlMessage(message);
+        }
+      }
+    };
+
+    // Mapping context computed once per DOM event, then reused for each pointer.
+    type VideoMappingContext = {
+      videoWidth: number;
+      videoHeight: number;
+      videoRect: DOMRect;
+      containerRect: DOMRect;
+      actualWidth: number;
+      actualHeight: number;
+      offsetX: number;
+      offsetY: number;
+    };
+
+    // Compute mapping context from current video/container state (once per event).
+    const computeVideoMappingContext = (): VideoMappingContext | null => {
+      const video = videoRef.current;
+      const container = containerRef.current;
+      if (!video || !container) return null;
+
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
+      if (!videoWidth || !videoHeight) return null;
+
+      const videoRect = video.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+
+      const displayWidth = videoRect.width;
+      const displayHeight = videoRect.height;
+      const videoAspectRatio = videoWidth / videoHeight;
+      const containerAspectRatio = displayWidth / displayHeight;
+
+      let actualWidth = displayWidth;
+      let actualHeight = displayHeight;
+      if (videoAspectRatio > containerAspectRatio) {
+        actualHeight = displayWidth / videoAspectRatio;
+      } else {
+        actualWidth = displayHeight * videoAspectRatio;
+      }
+
+      const offsetX = (displayWidth - actualWidth) / 2;
+      const offsetY = (displayHeight - actualHeight) / 2;
+
+      return {
+        videoWidth,
+        videoHeight,
+        videoRect,
+        containerRect,
+        actualWidth,
+        actualHeight,
+        offsetX,
+        offsetY,
+      };
+    };
+
+    // Map a client point to video coordinates using a pre-computed context.
+    // Returns null if outside the video content area or context is missing.
+    const mapClientPointToVideo = (
+      ctx: VideoMappingContext,
+      clientX: number,
+      clientY: number,
+    ): PointerGeometry | null => {
+      const relativeX = clientX - ctx.videoRect.left - ctx.offsetX;
+      const relativeY = clientY - ctx.videoRect.top - ctx.offsetY;
+
+      const isInside =
+        relativeX >= 0 && relativeX <= ctx.actualWidth &&
+        relativeY >= 0 && relativeY <= ctx.actualHeight;
+
+      if (!isInside) {
+        return {
+          inside: false,
+          videoX: 0,
+          videoY: 0,
+          videoWidth: ctx.videoWidth,
+          videoHeight: ctx.videoHeight,
+        };
+      }
+
+      const videoX = Math.max(0, Math.min(ctx.videoWidth, (relativeX / ctx.actualWidth) * ctx.videoWidth));
+      const videoY = Math.max(0, Math.min(ctx.videoHeight, (relativeY / ctx.actualHeight) * ctx.videoHeight));
+
+      return {
+        inside: true,
+        videoX,
+        videoY,
+        videoWidth: ctx.videoWidth,
+        videoHeight: ctx.videoHeight,
+      };
+    };
+
+    // Compute full hover point with mirror/container coordinates (for Alt indicator rendering).
+    const computeFullHoverPoint = (
+      ctx: VideoMappingContext,
+      clientX: number,
+      clientY: number,
+    ): HoverPoint | null => {
+      const relativeX = clientX - ctx.videoRect.left - ctx.offsetX;
+      const relativeY = clientY - ctx.videoRect.top - ctx.offsetY;
+
+      const isInside =
+        relativeX >= 0 && relativeX <= ctx.actualWidth &&
+        relativeY >= 0 && relativeY <= ctx.actualHeight;
+
+      if (!isInside) {
+        return null;
+      }
+
+      const videoX = Math.max(0, Math.min(ctx.videoWidth, (relativeX / ctx.actualWidth) * ctx.videoWidth));
+      const videoY = Math.max(0, Math.min(ctx.videoHeight, (relativeY / ctx.actualHeight) * ctx.videoHeight));
+      const mirrorVideoX = ctx.videoWidth - videoX;
+      const mirrorVideoY = ctx.videoHeight - videoY;
+
+      const contentLeft = ctx.videoRect.left + ctx.offsetX;
+      const contentTop = ctx.videoRect.top + ctx.offsetY;
+      const containerX = contentLeft - ctx.containerRect.left + relativeX;
+      const containerY = contentTop - ctx.containerRect.top + relativeY;
+      const mirrorContainerX = contentLeft - ctx.containerRect.left + (ctx.actualWidth - relativeX);
+      const mirrorContainerY = contentTop - ctx.containerRect.top + (ctx.actualHeight - relativeY);
+
+      return {
+        containerX,
+        containerY,
+        mirrorContainerX,
+        mirrorContainerY,
+        videoX,
+        videoY,
+        mirrorVideoX,
+        mirrorVideoY,
+        videoWidth: ctx.videoWidth,
+        videoHeight: ctx.videoHeight,
+      };
+    };
+
+    // Helper to send a two-finger touch message (iOS-specific type=18 message).
+    const sendTwoFingerMessage = (
+      action: number,
+      videoWidth: number,
+      videoHeight: number,
+      x0: number,
+      y0: number,
+      x1: number,
+      y1: number,
+    ) => {
+      const msg = createTwoFingerTouchControlMessage(
+        action,
+        videoWidth,
+        videoHeight,
+        x0,
+        y0,
+        x1,
+        y1,
+      );
+      debugLog('[rc-touch2] sendTwoFingerMessage (iOS)', {
+        actionName: motionActionToString(action),
+        video: { width: videoWidth, height: videoHeight },
+        p0: { x: x0, y: y0 },
+        p1: { x: x1, y: y1 },
+        byteLength: msg.byteLength,
+      });
+      sendBinaryControlMessage(msg);
+    };
+
+    // Generic two-finger event handler - sends platform-appropriate messages.
+    // iOS: uses special two-finger message (type=18)
+    // Android: sends two separate single-touch messages with proper action sequencing
+    const applyTwoFingerEvent = (
+      eventType: 'down' | 'move' | 'up',
+      videoWidth: number,
+      videoHeight: number,
+      x0: number,
+      y0: number,
+      x1: number,
+      y1: number,
+      pointerId0: number,
+      pointerId1: number,
+    ) => {
+      debugLog('[rc-touch2] applyTwoFingerEvent', {
+        platform,
+        eventType,
+        video: { width: videoWidth, height: videoHeight },
+        p0: { x: x0, y: y0, id: pointerId0 },
+        p1: { x: x1, y: y1, id: pointerId1 },
+      });
+
+      if (platform === 'ios') {
+        // iOS: use special two-finger message (type=18)
+        const action = eventType === 'down' ? AMOTION_EVENT.ACTION_DOWN
+                     : eventType === 'move' ? AMOTION_EVENT.ACTION_MOVE
+                     : AMOTION_EVENT.ACTION_UP;
+        sendTwoFingerMessage(action, videoWidth, videoHeight, x0, y0, x1, y1);
+      } else {
+        // Android: send two separate single-touch messages with proper action codes
+        // Per scrcpy protocol, each finger is a separate INJECT_TOUCH_EVENT with unique pointerId
+        if (eventType === 'down') {
+          // First finger down (ACTION_DOWN), then second finger down (ACTION_POINTER_DOWN)
+          sendSingleTouch(AMOTION_EVENT.ACTION_DOWN, pointerId0, videoWidth, videoHeight, x0, y0);
+          sendSingleTouch(AMOTION_EVENT.ACTION_POINTER_DOWN, pointerId1, videoWidth, videoHeight, x1, y1);
+        } else if (eventType === 'move') {
+          // Both fingers move (ACTION_MOVE for each)
+          sendSingleTouch(AMOTION_EVENT.ACTION_MOVE, pointerId0, videoWidth, videoHeight, x0, y0);
+          sendSingleTouch(AMOTION_EVENT.ACTION_MOVE, pointerId1, videoWidth, videoHeight, x1, y1);
+        } else {
+          // Second finger up (ACTION_POINTER_UP), then first finger up (ACTION_UP)
+          sendSingleTouch(AMOTION_EVENT.ACTION_POINTER_UP, pointerId1, videoWidth, videoHeight, x1, y1);
+          sendSingleTouch(AMOTION_EVENT.ACTION_UP, pointerId0, videoWidth, videoHeight, x0, y0);
+        }
+      }
+    };
+
+    // Update hover point only when Alt is held (to avoid re-renders in normal path).
+    const updateHoverPoint = (ctx: VideoMappingContext, clientX: number, clientY: number) => {
+      if (!isAltHeldRef.current) {
+        // Don't compute or update when Alt isn't held
+        if (hoverPoint !== null) {
+          setHoverPoint(null);
+        }
+        return;
+      }
+      const fullPoint = computeFullHoverPoint(ctx, clientX, clientY);
+      setHoverPoint(fullPoint);
+    };
+
     // Unified handler for both mouse and touch interactions
     const handleInteraction = (event: React.MouseEvent | React.TouchEvent) => {
       event.preventDefault();
       event.stopPropagation();
 
-      if (!dataChannelRef.current || dataChannelRef.current.readyState !== 'open' || !videoRef.current) {
-        return;
+      // Compute mapping context once per event (reused for all pointers)
+      const ctx = computeVideoMappingContext();
+
+      // Handle hover point updates for mouse events (only when Alt is held)
+      if (!('touches' in event) && ctx) {
+        if (event.type === 'mousemove') {
+          updateHoverPoint(ctx, event.clientX, event.clientY);
+        } else if (event.type === 'mouseleave') {
+          setHoverPoint(null);
+        }
+        // Note: Alt state is tracked via global keydown/keyup listeners, not event.altKey,
+        // to ensure consistent behavior across focus transitions.
       }
 
-      const video = videoRef.current;
-      const rect = video.getBoundingClientRect();
-      const videoWidth = video.videoWidth;
-      const videoHeight = video.videoHeight;
-
-      if (!videoWidth || !videoHeight) return; // Video dimensions not ready
-
-      // Helper to process a single pointer event (either mouse or a single touch point)
-      const processPointer = (
-        pointerId: number,
-        clientX: number,
-        clientY: number,
-        eventType: 'down' | 'move' | 'up' | 'cancel',
-      ) => {
-        // --- Start: Coordinate Calculation ---
-        const displayWidth = rect.width;
-        const displayHeight = rect.height;
-        const videoAspectRatio = videoWidth / videoHeight;
-        const containerAspectRatio = displayWidth / displayHeight;
-        let actualWidth = displayWidth;
-        let actualHeight = displayHeight;
-        if (videoAspectRatio > containerAspectRatio) {
-          actualHeight = displayWidth / videoAspectRatio;
-        } else {
-          actualWidth = displayHeight * videoAspectRatio;
-        }
-        const offsetX = (displayWidth - actualWidth) / 2;
-        const offsetY = (displayHeight - actualHeight) / 2;
-        const relativeX = clientX - rect.left - offsetX;
-        const relativeY = clientY - rect.top - offsetY;
-        const isInside =
-          relativeX >= 0 && relativeX <= actualWidth && relativeY >= 0 && relativeY <= actualHeight;
-
-        let videoX = 0;
-        let videoY = 0;
-        if (isInside) {
-          videoX = Math.max(0, Math.min(videoWidth, (relativeX / actualWidth) * videoWidth));
-          videoY = Math.max(0, Math.min(videoHeight, (relativeY / actualHeight) * videoHeight));
-        }
-        // --- End: Coordinate Calculation ---
-
-        let action: number | null = null;
-        let positionToSend: { x: number; y: number } | null = null;
-        let pressure = 1.0; // Default pressure
-        const buttons = AMOTION_EVENT.BUTTON_PRIMARY; // Assume primary button
-
-        switch (eventType) {
-          case 'down':
-            if (isInside) {
-              action = AMOTION_EVENT.ACTION_DOWN;
-              positionToSend = { x: videoX, y: videoY };
-              activePointers.current.set(pointerId, positionToSend);
-              if (pointerId === -1) {
-                // Focus on mouse down
-                videoRef.current?.focus();
-              }
-            } else {
-              // If the initial down event is outside, ignore it for this pointer
-              activePointers.current.delete(pointerId);
-            }
-            break;
-
-          case 'move':
-            if (activePointers.current.has(pointerId)) {
-              if (isInside) {
-                action = AMOTION_EVENT.ACTION_MOVE;
-                positionToSend = { x: videoX, y: videoY };
-                // Update the last known position for this active pointer
-                activePointers.current.set(pointerId, positionToSend);
-              } else {
-                // Moved outside while active - do nothing, UP/CANCEL will use last known pos
-              }
-            }
-            break;
-
-          case 'up':
-          case 'cancel': // Treat cancel like up, but use ACTION_CANCEL
-            if (activePointers.current.has(pointerId)) {
-              action = eventType === 'cancel' ? AMOTION_EVENT.ACTION_CANCEL : AMOTION_EVENT.ACTION_UP;
-              // IMPORTANT: Send the UP/CANCEL at the *last known position* inside the video
-              positionToSend = activePointers.current.get(pointerId)!;
-              activePointers.current.delete(pointerId); // Remove pointer as it's no longer active
-            }
-            break;
-        }
-
-        // Send message if action and position determined
-        if (action !== null && positionToSend !== null) {
-          const message = createTouchControlMessage(
-            action,
-            pointerId,
-            videoWidth,
-            videoHeight,
-            positionToSend.x,
-            positionToSend.y,
-            pressure,
-            buttons,
-            buttons,
-          );
-          if (message) {
-            sendBinaryControlMessage(message);
-          }
-        } else if (eventType === 'up' || eventType === 'cancel') {
-          // Clean up map just in case if 'down' was outside and 'up'/'cancel' is triggered
-          activePointers.current.delete(pointerId);
-        }
-      };
+      if (!dataChannelRef.current || dataChannelRef.current.readyState !== 'open' || !videoRef.current || !ctx) {
+        return;
+      }
 
       // --- Event Type Handling ---
 
       if ('touches' in event) {
-        // Touch Events
-        const touches = event.changedTouches; // Use changedTouches for start/end/cancel
-        let eventType: 'down' | 'move' | 'up' | 'cancel';
+        // Touch Events - handle both single-finger and two-finger gestures
+        const allTouches = event.touches; // All currently active touches
+        const changedTouches = event.changedTouches;
 
+        let eventType: 'down' | 'move' | 'up' | 'cancel';
         switch (event.type) {
           case 'touchstart':
             eventType = 'down';
@@ -348,44 +713,209 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             eventType = 'cancel';
             break;
           default:
-            return; // Should not happen
+            return;
         }
 
-        for (let i = 0; i < touches.length; i++) {
-          const touch = touches[i];
-          processPointer(touch.identifier, touch.clientX, touch.clientY, eventType);
+        // Check if we have exactly 2 active touches - route to two-finger logic
+        if (allTouches.length === 2) {
+          const t0 = allTouches[0];
+          const t1 = allTouches[1];
+          const g0 = mapClientPointToVideo(ctx, t0.clientX, t0.clientY);
+          const g1 = mapClientPointToVideo(ctx, t1.clientX, t1.clientY);
+
+          if (!g0 || !g1) return;
+
+          if (!twoFingerStateRef.current) {
+            // Starting a new two-finger gesture
+            if (g0.inside && g1.inside) {
+              twoFingerStateRef.current = {
+                finger0: { x: g0.videoX, y: g0.videoY },
+                finger1: { x: g1.videoX, y: g1.videoY },
+                videoSize: { width: g0.videoWidth, height: g0.videoHeight },
+                source: 'real-touch',
+                pointerId0: t0.identifier,
+                pointerId1: t1.identifier,
+              };
+              applyTwoFingerEvent('down', g0.videoWidth, g0.videoHeight,
+                                  g0.videoX, g0.videoY, g1.videoX, g1.videoY,
+                                  t0.identifier, t1.identifier);
+            }
+          } else if (twoFingerStateRef.current.source === 'real-touch') {
+            // Continuing two-finger gesture (move)
+            if (g0.inside && g1.inside) {
+              twoFingerStateRef.current.finger0 = { x: g0.videoX, y: g0.videoY };
+              twoFingerStateRef.current.finger1 = { x: g1.videoX, y: g1.videoY };
+              applyTwoFingerEvent('move', g0.videoWidth, g0.videoHeight,
+                                  g0.videoX, g0.videoY, g1.videoX, g1.videoY,
+                                  twoFingerStateRef.current.pointerId0,
+                                  twoFingerStateRef.current.pointerId1);
+            }
+          }
+        } else if (allTouches.length < 2 && twoFingerStateRef.current?.source === 'real-touch') {
+          // Finger lifted - end two-finger gesture using last known state
+          const state = twoFingerStateRef.current;
+          applyTwoFingerEvent('up', state.videoSize.width, state.videoSize.height,
+                              state.finger0.x, state.finger0.y,
+                              state.finger1.x, state.finger1.y,
+                              state.pointerId0, state.pointerId1);
+          twoFingerStateRef.current = null;
+          // Don't process remaining finger - gesture ended
+          return;
+        } else if (allTouches.length > 2) {
+          // 3+ fingers - not supported, ignore
+          return;
+        } else {
+          // Single finger touch (allTouches is 0 or 1)
+          // Note: allTouches=0 happens on touchend when last finger lifts
+          const touch = changedTouches[0];
+          if (touch) {
+            const geometry = mapClientPointToVideo(ctx, touch.clientX, touch.clientY);
+            applyPointerEvent(touch.identifier, eventType, geometry);
+          }
         }
       } else {
         // Mouse Events
-        const pointerId = -1; // Use -1 for mouse pointer
+        const pointerId = -1; // Primary mouse pointer
         let eventType: 'down' | 'move' | 'up' | 'cancel' | null = null;
+
+        // Determine if we're in two-finger mode (Alt+mouse drag)
+        const inTwoFingerMode = twoFingerStateRef.current?.source === 'alt-mouse';
 
         switch (event.type) {
           case 'mousedown':
-            if (event.button === 0) eventType = 'down'; // Only primary button
+            if (event.button === 0) eventType = 'down';
             break;
           case 'mousemove':
-            // Only process move if primary button is down (check map)
-            if (activePointers.current.has(pointerId)) {
+            // Process move if either in two-finger mode or has active pointer (normal drag)
+            if (inTwoFingerMode || activePointers.current.has(pointerId)) {
               eventType = 'move';
             }
             break;
           case 'mouseup':
-            if (event.button === 0) eventType = 'up'; // Only primary button
+            if (event.button === 0) eventType = 'up';
             break;
           case 'mouseleave':
-            // Treat leave like up only if button was down
-            if (activePointers.current.has(pointerId)) {
+            // Treat leave like up only if in drag/two-finger mode
+            if (inTwoFingerMode || activePointers.current.has(pointerId)) {
               eventType = 'up';
             }
             break;
         }
 
         if (eventType) {
-          processPointer(pointerId, event.clientX, event.clientY, eventType);
+          const geometry = mapClientPointToVideo(ctx, event.clientX, event.clientY);
+          if (!geometry) {
+            return;
+          }
+
+          debugLog('[rc-touch][mouse] event', {
+            domType: event.type,
+            eventType,
+            button: event.button,
+            buttons: (event as React.MouseEvent).buttons,
+            client: { x: event.clientX, y: event.clientY },
+            altHeldRef: isAltHeldRef.current,
+            inTwoFingerMode,
+            geometry: {
+              inside: geometry.inside,
+              videoX: geometry.videoX,
+              videoY: geometry.videoY,
+              videoWidth: geometry.videoWidth,
+              videoHeight: geometry.videoHeight,
+            },
+            activePointerIds: Array.from(activePointers.current.keys()),
+          });
+
+          // Route to two-finger (Alt+mouse) or single-finger path
+          if (isAltHeldRef.current || inTwoFingerMode) {
+            // Two-finger mode - Alt simulates second finger at mirror position
+            handleAltMouseGesture(eventType, geometry);
+          } else {
+            // Normal single-finger touch
+            applyPointerEvent(pointerId, eventType, geometry);
+          }
         }
       }
     };
+
+    // Handle Alt+mouse gestures (simulated two-finger with mirror position).
+    // Works on both iOS and Android - applyTwoFingerEvent handles platform differences.
+    const handleAltMouseGesture = (
+      eventType: 'down' | 'move' | 'up' | 'cancel',
+      geometry: PointerGeometry,
+    ) => {
+      const { inside, videoX, videoY, videoWidth, videoHeight } = geometry;
+      const mirrorX = videoWidth - videoX;
+      const mirrorY = videoHeight - videoY;
+
+      if (eventType === 'down') {
+        if (inside) {
+          // Start two-finger gesture
+          twoFingerStateRef.current = {
+            finger0: { x: videoX, y: videoY },
+            finger1: { x: mirrorX, y: mirrorY },
+            videoSize: { width: videoWidth, height: videoHeight },
+            source: 'alt-mouse',
+            pointerId0: ALT_POINTER_ID_PRIMARY,
+            pointerId1: ALT_POINTER_ID_MIRROR,
+          };
+          videoRef.current?.focus();
+          applyTwoFingerEvent('down', videoWidth, videoHeight, videoX, videoY, mirrorX, mirrorY,
+                              ALT_POINTER_ID_PRIMARY, ALT_POINTER_ID_MIRROR);
+        }
+        return;
+      }
+
+      if (eventType === 'move') {
+        if (twoFingerStateRef.current?.source === 'alt-mouse' && inside) {
+          // Update positions
+          twoFingerStateRef.current.finger0 = { x: videoX, y: videoY };
+          twoFingerStateRef.current.finger1 = { x: mirrorX, y: mirrorY };
+          applyTwoFingerEvent('move', videoWidth, videoHeight, videoX, videoY, mirrorX, mirrorY,
+                              ALT_POINTER_ID_PRIMARY, ALT_POINTER_ID_MIRROR);
+        }
+        // If outside, we just don't send a move - UP will use last known position
+        return;
+      }
+
+      if (eventType === 'up' || eventType === 'cancel') {
+        const state = twoFingerStateRef.current;
+        if (state?.source === 'alt-mouse') {
+          // End gesture at last known inside positions
+          const { finger0, finger1, videoSize } = state;
+          applyTwoFingerEvent('up', videoSize.width, videoSize.height,
+                              finger0.x, finger0.y, finger1.x, finger1.y,
+                              ALT_POINTER_ID_PRIMARY, ALT_POINTER_ID_MIRROR);
+          twoFingerStateRef.current = null;
+        }
+        return;
+      }
+    };
+
+    useEffect(() => {
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Alt') {
+          updateAltHeld(true);
+        }
+      };
+      const handleKeyUp = (event: KeyboardEvent) => {
+        if (event.key === 'Alt') {
+          updateAltHeld(false);
+        }
+      };
+      const handleWindowBlur = () => {
+        updateAltHeld(false);
+      };
+      // Use capture phase so these fire before handleKeyboard's stopPropagation
+      window.addEventListener('keydown', handleKeyDown, true);
+      window.addEventListener('keyup', handleKeyUp, true);
+      window.addEventListener('blur', handleWindowBlur);
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown, true);
+        window.removeEventListener('keyup', handleKeyUp, true);
+        window.removeEventListener('blur', handleWindowBlur);
+      };
+    }, []);
 
     const handleKeyboard = (event: React.KeyboardEvent) => {
       event.preventDefault();
@@ -990,8 +1520,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       },
     }));
 
+    // Show indicators when Alt is held and we have a valid hover point (null when outside)
+    const showAltIndicators = isAltHeld && hoverPoint !== null;
+
     return (
       <div
+        ref={containerRef}
         className={clsx(
           'rc-container',
           className,
@@ -1008,6 +1542,24 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         onTouchEnd={handleInteraction}
         onTouchCancel={handleInteraction}
       >
+        {showAltIndicators && hoverPoint && (
+          <>
+            <div
+              className="rc-touch-indicator"
+              style={{
+                left: `${hoverPoint.containerX}px`,
+                top: `${hoverPoint.containerY}px`,
+              }}
+            />
+            <div
+              className="rc-touch-indicator"
+              style={{
+                left: `${hoverPoint.mirrorContainerX}px`,
+                top: `${hoverPoint.mirrorContainerY}px`,
+              }}
+            />
+          </>
+        )}
         {showFrame && (
           <img
             ref={frameRef}
