@@ -2,6 +2,8 @@ export const CONTROL_MSG_TYPE = {
   INJECT_KEYCODE: 0,
   INJECT_TEXT: 1,
   INJECT_TOUCH_EVENT: 2,
+  // iOS-specific: send two touch points in one message (Option/Alt+drag pinch)
+  INJECT_TWO_FINGER_TOUCH_EVENT: 18,
   INJECT_SCROLL_EVENT: 3,
   BACK_OR_SCREEN_ON: 4,
   EXPAND_NOTIFICATION_PANEL: 5,

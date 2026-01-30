@@ -21,7 +21,7 @@ export function createTouchControlMessage(
   view.setUint8(offset, action);
   offset += 1;
 
-  view.setBigInt64(offset, BigInt(pointerId));
+  view.setBigInt64(offset, BigInt(pointerId), true);
   offset += 8;
 
   view.setInt32(offset, Math.round(x), true);
@@ -40,6 +40,54 @@ export function createTouchControlMessage(
   offset += 4;
 
   view.setInt32(offset, buttons, true);
+  return buffer;
+}
+
+// iOS-specific two-finger touch control message (fixed size = 24 bytes)
+// Layout (little-endian):
+// 1  byte: type
+// 1  byte: action
+// 4  bytes: x0 (Int32)
+// 4  bytes: y0 (Int32)
+// 4  bytes: x1 (Int32)
+// 4  bytes: y1 (Int32)
+// 2  bytes: videoWidth (UInt16)
+// 2  bytes: videoHeight (UInt16)
+// 2  bytes: reserved (UInt16, currently 0)
+export function createTwoFingerTouchControlMessage(
+  action: number,
+  videoWidth: number,
+  videoHeight: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): ArrayBuffer {
+  const buffer = new ArrayBuffer(24);
+  const view = new DataView(buffer);
+  let offset = 0;
+
+  view.setUint8(offset, CONTROL_MSG_TYPE.INJECT_TWO_FINGER_TOUCH_EVENT);
+  offset += 1;
+
+  view.setUint8(offset, action);
+  offset += 1;
+
+  view.setInt32(offset, Math.round(x0), true);
+  offset += 4;
+  view.setInt32(offset, Math.round(y0), true);
+  offset += 4;
+  view.setInt32(offset, Math.round(x1), true);
+  offset += 4;
+  view.setInt32(offset, Math.round(y1), true);
+  offset += 4;
+
+  view.setUint16(offset, videoWidth, true);
+  offset += 2;
+  view.setUint16(offset, videoHeight, true);
+  offset += 2;
+
+  view.setUint16(offset, 0, true);
   return buffer;
 }
 
