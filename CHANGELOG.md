@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.19.4 (2026-01-30)
+
+Full Changelog: [v0.19.3...v0.19.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.19.3...v0.19.4)
+
+### Chores
+
+* **ci:** upgrade `actions/github-script` ([7d38fea](https://github.com/limrun-inc/typescript-sdk/commit/7d38fea3ee337e1fc4a62bae60792671d727fcb8))
+
 ## 0.19.3 (2026-01-23)
 
 Full Changelog: [v0.19.2...v0.19.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.19.2...v0.19.3)
