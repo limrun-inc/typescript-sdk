@@ -1,5 +1,8 @@
 /**
  * Client for executing commands on limbuild server with streaming output.
+ *
+ * The interface is designed to be similar to Node.js's child_process.spawn()
+ * for familiarity and ease of extension.
  */
 
 // =============================================================================
@@ -8,6 +11,11 @@
 
 export type ExecRequest = {
   command: 'xcodebuild';
+  xcodebuild?: {
+    workspace?: string;
+    project?: string;
+    scheme?: string;
+  };
 };
 
 export type ExecOptions = {
@@ -22,294 +30,301 @@ export type ExecResult = {
   status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
 };
 
-type BuildStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
-
-type BuildRecord = {
-  id: string;
-  status: BuildStatus;
-  exitCode?: number;
-  error?: string;
-};
-
-type DataListener = (line: string) => void;
-type ErrorListener = (err: Error) => void;
-type EndListener = () => void;
+type DataListener = (chunk: string) => void;
+type CloseListener = () => void;
+type ExitListener = (code: number) => void;
 
 /**
- * A simple EventEmitter-like interface for stdout streaming.
+ * A Readable-like stream interface, similar to Node.js stream.Readable.
+ * Emits 'data' for each chunk and 'close' when the stream ends.
  */
-class StreamEmitter {
+export class ReadableStream {
   private dataListeners: DataListener[] = [];
-  private errorListeners: ErrorListener[] = [];
-  private endListeners: EndListener[] = [];
-  private ended = false;
+  private closeListeners: CloseListener[] = [];
+  private closed = false;
 
   on(event: 'data', listener: DataListener): this;
-  on(event: 'error', listener: ErrorListener): this;
-  on(event: 'end', listener: EndListener): this;
-  on(event: 'data' | 'error' | 'end', listener: DataListener | ErrorListener | EndListener): this {
+  on(event: 'close', listener: CloseListener): this;
+  on(event: 'data' | 'close', listener: DataListener | CloseListener): this {
     if (event === 'data') {
       this.dataListeners.push(listener as DataListener);
-    } else if (event === 'error') {
-      this.errorListeners.push(listener as ErrorListener);
-    } else if (event === 'end') {
-      this.endListeners.push(listener as EndListener);
+    } else if (event === 'close') {
+      this.closeListeners.push(listener as CloseListener);
     }
     return this;
   }
 
-  emit(event: 'data', line: string): void;
-  emit(event: 'error', err: Error): void;
-  emit(event: 'end'): void;
-  emit(event: 'data' | 'error' | 'end', arg?: string | Error): void {
+  /** @internal */
+  emit(event: 'data', chunk: string): void;
+  emit(event: 'close'): void;
+  emit(event: 'data' | 'close', arg?: string): void {
     if (event === 'data' && typeof arg === 'string') {
       for (const l of this.dataListeners) l(arg);
-    } else if (event === 'error' && arg instanceof Error) {
-      for (const l of this.errorListeners) l(arg);
-    } else if (event === 'end' && !this.ended) {
-      this.ended = true;
-      for (const l of this.endListeners) l();
+    } else if (event === 'close' && !this.closed) {
+      this.closed = true;
+      for (const l of this.closeListeners) l();
     }
   }
 }
 
 /**
- * A ChildProcess-like object that can be awaited for the result
- * and provides stdout streaming via event listeners.
- */
-export interface ExecChildProcess extends Promise<ExecResult> {
-  /** Stream of stdout/stderr lines from the build */
-  stdout: {
-    on(event: 'data', listener: (line: string) => void): void;
-    on(event: 'error', listener: (err: Error) => void): void;
-    on(event: 'end', listener: () => void): void;
-  };
-  /** Cancel the running build */
-  kill: () => Promise<void>;
-  /** The exec/build ID (available after exec starts) */
-  execId: string | undefined;
-}
-
-// =============================================================================
-// Implementation
-// =============================================================================
-
-const noopLog = (_level: 'debug' | 'info' | 'warn' | 'error', _msg: string) => {};
-
-/**
- * Execute a command on the limbuild server.
- * Returns a ChildProcess-like object that can be awaited and provides stdout streaming.
+ * A ChildProcess-like object similar to Node.js's ChildProcess.
+ *
+ * Implements PromiseLike so it can be awaited directly.
  *
  * @example
- * const proc = exec({ command: 'xcodebuild' }, { apiUrl: '...', token: '...' });
- * proc.stdout.on('data', (line) => console.log(line));
- * const { exitCode } = await proc;
+ * // Stream-based (like Node.js spawn)
+ * const proc = exec({ command: 'xcodebuild' }, options);
+ * proc.stdout.on('data', (chunk) => process.stdout.write(chunk));
+ * proc.stderr.on('data', (chunk) => process.stderr.write(chunk));
+ * proc.on('exit', (code) => console.log(`Exited with code ${code}`));
+ *
+ * // Promise-based (can be awaited)
+ * const { exitCode, status } = await proc;
  */
-export function exec(request: ExecRequest, options: ExecOptions): ExecChildProcess {
-  const log = options.log ?? noopLog;
-  const stdout = new StreamEmitter();
-  let execId: string | undefined;
-  let abortController: AbortController | null = null;
-  let killed = false;
+export class ExecChildProcess implements PromiseLike<ExecResult> {
+  /** Stdout stream - emits 'data' and 'close' events */
+  readonly stdout = new ReadableStream();
 
-  const kill = async (): Promise<void> => {
-    killed = true;
-    if (abortController) {
-      abortController.abort();
+  /** Stderr stream - emits 'data' and 'close' events */
+  readonly stderr = new ReadableStream();
+
+  /** The remote process/build identifier (similar to pid in Node.js) */
+  execId: string | undefined;
+
+  private readonly resultPromise: Promise<ExecResult>;
+  private readonly exitListeners: ExitListener[] = [];
+  private abortController: AbortController | null = null;
+  private killed = false;
+  private readonly options: ExecOptions;
+  private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
+
+  constructor(request: ExecRequest, options: ExecOptions) {
+    this.options = options;
+    this.log = options.log ?? (() => {});
+    this.resultPromise = this.run(request);
+  }
+
+  /** Implement PromiseLike so this object can be awaited */
+  then<TResult1 = ExecResult, TResult2 = never>(
+    onfulfilled?: ((value: ExecResult) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): Promise<TResult1 | TResult2> {
+    return this.resultPromise.then(onfulfilled, onrejected);
+  }
+
+  /** Catch errors */
+  catch<TResult = never>(
+    onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
+  ): Promise<ExecResult | TResult> {
+    return this.resultPromise.catch(onrejected);
+  }
+
+  /** Finally handler */
+  finally(onfinally?: (() => void) | null): Promise<ExecResult> {
+    return this.resultPromise.finally(onfinally);
+  }
+
+  /** Listen for process events */
+  on(event: 'exit', listener: ExitListener): this {
+    if (event === 'exit') {
+      this.exitListeners.push(listener);
+    }
+    return this;
+  }
+
+  /** Send a signal to terminate the process */
+  async kill(): Promise<void> {
+    this.killed = true;
+    if (this.abortController) {
+      this.abortController.abort();
+    }
+    if (!this.execId) {
+      this.log('warn', 'Failed to cancel build: execId is not set');
+      return;
     }
     try {
-      await fetch(`${options.apiUrl}/build/cancel`, {
+      await fetch(`${this.options.apiUrl}/exec/${this.execId}/cancel`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${options.token}`,
+          Authorization: `Bearer ${this.options.token}`,
         },
       });
-      log('info', 'Build cancelled');
+      this.log('info', 'Build cancelled');
     } catch (err) {
-      log('warn', `Failed to cancel build: ${err}`);
+      this.log('warn', `Failed to cancel build: ${err}`);
     }
-  };
+  }
 
-  const run = async (): Promise<ExecResult> => {
+  private async run(request: ExecRequest): Promise<ExecResult> {
+    const { log } = this;
+    const { apiUrl, token } = this.options;
+
     // 1. Trigger the build via POST /exec
-    log('debug', `POST ${options.apiUrl}/exec`);
-    const execRes = await fetch(`${options.apiUrl}/exec`, {
+    log('debug', `POST ${apiUrl}/exec`);
+    const execRes = await fetch(`${apiUrl}/exec`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${options.token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(request),
     });
 
     if (!execRes.ok) {
       const text = await execRes.text();
-      const err = new Error(`exec failed: ${execRes.status} ${text}`);
-      stdout.emit('error', err);
-      stdout.emit('end');
-      throw err;
+      throw new Error(`exec failed: ${execRes.status} ${text}`);
     }
 
     const execData = (await execRes.json()) as { execId: string };
-    execId = execData.execId;
-    log('info', `Build started: ${execId}`);
+    this.execId = execData.execId;
+    log('info', `Build started: ${this.execId}`);
 
-    // 2. Connect to SSE for log streaming
-    abortController = new AbortController();
-    const eventsUrl = `${options.apiUrl}/events`;
+    // 2. Connect to SSE for log streaming and completion detection
+    this.abortController = new AbortController();
+    const eventsUrl = `${apiUrl}/exec/${this.execId}/events`;
     log('debug', `GET ${eventsUrl} (SSE)`);
 
-    let sseReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-    let buildCompleted = false;
-    let finalResult: ExecResult | null = null;
+    // Promise that resolves when build completes (via exitCode event)
+    let sseCompletionResolve: ((exitCode: number) => void) | null = null;
+    const sseCompletionPromise = new Promise<number>((resolve) => {
+      sseCompletionResolve = resolve;
+    });
 
-    const connectSSE = async () => {
-      try {
-        const sseRes = await fetch(eventsUrl, {
-          headers: {
-            Accept: 'text/event-stream',
-            Authorization: `Bearer ${options.token}`,
-          },
-          signal: abortController!.signal,
-        });
+    const ssePromise = this.connectSSE(eventsUrl, sseCompletionResolve);
 
-        if (!sseRes.ok || !sseRes.body) {
-          log('warn', `SSE connection failed: ${sseRes.status}`);
-          return;
-        }
-
-        sseReader = sseRes.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (!buildCompleted && !killed) {
-          const { done, value } = await sseReader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-
-          let currentEvent = '';
-          let currentData = '';
-
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith('data: ')) {
-              currentData = line.slice(6);
-            } else if (line === '' && currentEvent && currentData) {
-              // Process complete event
-              if (currentEvent === 'log' && currentData.startsWith(`${execId}|`)) {
-                const logLine = currentData.slice(execId!.length + 1);
-                stdout.emit('data', logLine);
-              } else if (currentEvent === 'build' && currentData.startsWith(execId!)) {
-                // Build status event: "<buildId> succeeded|failed|cancelled"
-                const statusPart = currentData.slice(execId!.length + 1).toLowerCase();
-                if (statusPart === 'succeeded' || statusPart === 'failed' || statusPart === 'cancelled') {
-                  buildCompleted = true;
-                  log('debug', `Build event: ${statusPart}`);
-                }
-              }
-              currentEvent = '';
-              currentData = '';
-            }
-          }
-        }
-      } catch (err) {
-        if (!killed && !(err instanceof Error && err.name === 'AbortError')) {
-          log('warn', `SSE error: ${err}`);
-        }
-      } finally {
-        if (sseReader) {
-          try {
-            sseReader.releaseLock();
-          } catch {
-            // ignore
-          }
-        }
-      }
-    };
-
-    // Start SSE in background
-    const ssePromise = connectSSE();
-
-    // 3. Poll for build completion (backup to SSE events)
-    const pollForCompletion = async (): Promise<ExecResult> => {
-      const pollInterval = 1000;
-      const maxAttempts = 3600; // 1 hour max
-
-      for (let attempt = 0; attempt < maxAttempts && !killed; attempt++) {
-        try {
-          const buildRes = await fetch(`${options.apiUrl}/builds/${execId}`, {
-            headers: {
-              Authorization: `Bearer ${options.token}`,
-            },
-          });
-
-          if (buildRes.ok) {
-            const build = (await buildRes.json()) as BuildRecord;
-            log('debug', `Build status: ${build.status}`);
-
-            if (build.status === 'SUCCEEDED' || build.status === 'FAILED' || build.status === 'CANCELLED') {
-              buildCompleted = true;
-              return {
-                exitCode: build.exitCode ?? (build.status === 'SUCCEEDED' ? 0 : 1),
-                execId: execId!,
-                status: build.status,
-              };
-            }
-          }
-        } catch (err) {
-          log('warn', `Poll error: ${err}`);
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, pollInterval));
-      }
-
-      // Timeout
-      buildCompleted = true;
-      return {
-        exitCode: 1,
-        execId: execId!,
-        status: 'FAILED',
-      };
-    };
-
-    // Wait for completion
-    finalResult = await pollForCompletion();
+    // Wait for SSE to signal completion (with timeout fallback)
+    const timeoutMs = 3600 * 1000; // 1 hour max
+    let exitCode: number;
+    try {
+      exitCode = await Promise.race([
+        sseCompletionPromise,
+        new Promise<number>((_, reject) => setTimeout(() => reject(new Error('SSE timeout')), timeoutMs)),
+      ]);
+    } catch {
+      log('warn', 'SSE completion timeout');
+      exitCode = 1;
+    }
 
     // Cleanup SSE connection
-    if (abortController) {
-      abortController.abort();
+    if (this.abortController) {
+      this.abortController.abort();
     }
     await ssePromise.catch(() => {});
 
-    stdout.emit('end');
-    log('info', `Build finished: ${finalResult.status} (exit ${finalResult.exitCode})`);
-    return finalResult;
-  };
+    // Emit close events on streams
+    this.stdout.emit('close');
+    this.stderr.emit('close');
 
-  // Create the promise
-  const promise = run();
+    // Emit exit event
+    for (const listener of this.exitListeners) {
+      listener(exitCode);
+    }
 
-  // Create the ExecChildProcess object
-  const execChildProcess = promise as ExecChildProcess;
-  Object.defineProperty(execChildProcess, 'stdout', {
-    value: {
-      on: (event: string, listener: (...args: unknown[]) => void) => {
-        stdout.on(event as 'data', listener as DataListener);
-      },
-    },
-    writable: false,
-  });
-  Object.defineProperty(execChildProcess, 'kill', {
-    value: kill,
-    writable: false,
-  });
-  Object.defineProperty(execChildProcess, 'execId', {
-    get: () => execId,
-  });
+    // Determine status from exit code
+    const status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED' =
+      exitCode === 0 ? 'SUCCEEDED' : exitCode === -1 ? 'CANCELLED' : 'FAILED';
 
-  return execChildProcess;
+    const result: ExecResult = {
+      exitCode,
+      execId: this.execId!,
+      status,
+    };
+
+    this.log('info', `Build finished: ${result.status} (exit ${result.exitCode})`);
+    return result;
+  }
+
+  private async connectSSE(
+    eventsUrl: string,
+    onComplete: ((exitCode: number) => void) | null,
+  ): Promise<void> {
+    let sseReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    try {
+      const sseRes = await fetch(eventsUrl, {
+        headers: {
+          Accept: 'text/event-stream',
+          Authorization: `Bearer ${this.options.token}`,
+        },
+        signal: this.abortController!.signal,
+      });
+
+      if (!sseRes.ok || !sseRes.body) {
+        this.log('warn', `SSE connection failed: ${sseRes.status}`);
+        return;
+      }
+
+      sseReader = sseRes.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let currentEvent = '';
+      let currentData: string[] = [];
+
+      while (!this.killed) {
+        const { done, value } = await sseReader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const cleanLine = line.endsWith('\r') ? line.slice(0, -1) : line;
+          if (cleanLine.startsWith('event:')) {
+            currentEvent = cleanLine.slice(6).trim();
+          } else if (cleanLine.startsWith('data:')) {
+            const dataLine = cleanLine.slice(5);
+            currentData.push(dataLine.startsWith(' ') ? dataLine.slice(1) : dataLine);
+          } else if (cleanLine === '') {
+            if (!currentEvent && currentData.length === 0) {
+              continue;
+            }
+            const data = currentData.join('\n');
+            if (currentEvent === 'stdout') {
+              this.stdout.emit('data', data);
+            } else if (currentEvent === 'stderr') {
+              this.stderr.emit('data', data);
+            } else if (currentEvent === 'exitCode') {
+              const exitCode = parseInt(data, 10);
+              this.log('debug', `Build completed via SSE: exitCode=${exitCode}`);
+              onComplete?.(exitCode);
+              return;
+            }
+            currentEvent = '';
+            currentData = [];
+          }
+        }
+      }
+    } catch (err) {
+      if (!this.killed && !(err instanceof Error && err.name === 'AbortError')) {
+        this.log('warn', `SSE error: ${err}`);
+      }
+    } finally {
+      if (sseReader) {
+        try {
+          sseReader.releaseLock();
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Execute a command on the limbuild server.
+ * Returns a ChildProcess-like object with stdout/stderr streams.
+ *
+ * @example
+ * const proc = exec({ command: 'xcodebuild' }, { apiUrl: '...', token: '...' });
+ *
+ * // Stream output
+ * proc.stdout.on('data', (chunk) => console.log('[stdout]', chunk));
+ * proc.stderr.on('data', (chunk) => console.error('[stderr]', chunk));
+ *
+ * // Wait for completion
+ * const { exitCode, status } = await proc;
+ */
+export function exec(request: ExecRequest, options: ExecOptions): ExecChildProcess {
+  return new ExecChildProcess(request, options);
 }

@@ -815,9 +815,6 @@ export class LogStream extends EventEmitter {
   }
 }
 
-/** @deprecated Use LogStream instead */
-export const AppLogStream = LogStream;
-
 /**
  * Creates a client for interacting with a Limrun iOS instance
  * @param options Configuration options including webrtcUrl, token and log level

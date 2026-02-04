@@ -1,14 +1,15 @@
-import { syncFolder as syncFolderImpl, type FolderSyncOptions } from './folder-sync';
-import { exec, type ExecChildProcess } from './exec-client';
+import { syncApp as syncFolderImpl, type FolderSyncOptions } from './folder-sync';
+import { exec, ExecChildProcess } from './exec-client';
 
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
 
+/**
+ * Build configuration for xcodebuild command.
+ */
 export type XcodeBuildConfig = {
   workspace?: string;
   project?: string;
   scheme?: string;
-  configuration?: string;
-  sdk?: string;
 };
 
 /**
@@ -48,13 +49,6 @@ export type SyncResult = {
 };
 
 /**
- * Options for xcodebuild command.
- */
-export type XcodeBuildOptions = {
-  // Future: build config overrides
-};
-
-/**
  * Client for interacting with a sandboxed Xcode build service.
  */
 export type XCodeSandboxClient = {
@@ -74,7 +68,7 @@ export type XCodeSandboxClient = {
    * build.stdout.on('data', (line) => console.log(line));
    * const { exitCode } = await build;
    */
-  xcodebuild: (opts?: XcodeBuildOptions) => ExecChildProcess;
+  xcodebuild: (opts?: XcodeBuildConfig) => ExecChildProcess;
 };
 
 export type CreateXCodeSandboxClientOptions = {
@@ -85,13 +79,9 @@ export type CreateXCodeSandboxClientOptions = {
   /**
    * Simulator (limulator) connection details. Only needed if the sandbox is not
    * already configured (e.g., when created outside of an iOS instance).
-   * When provided, the client will call POST /config to set up the connection.
+   * When provided, the client will call POST /simulator to set up the connection.
    */
   simulator?: SimulatorConfig;
-  /**
-   * Build configuration overrides (workspace, scheme, etc.)
-   */
-  buildConfig?: XcodeBuildConfig;
   /**
    * Controls logging verbosity
    * @default 'info'
@@ -165,23 +155,17 @@ export async function createXCodeSandboxClient(
     }
   };
 
-  // Configure the server if needed (partial updates supported)
-  if (options.simulator || options.buildConfig) {
+  // Configure the simulator connection if provided
+  if (options.simulator) {
     const cfg: {
-      limulatorBaseUrl?: string;
-      limulatorAuthHeader?: string;
-      buildConfig?: XcodeBuildConfig;
-    } = {};
+      simulatorApiUrl?: string;
+      simulatorToken?: string;
+    } = {
+      simulatorApiUrl: options.simulator.apiUrl,
+      simulatorToken: options.simulator.token ?? options.token,
+    };
 
-    if (options.simulator) {
-      cfg.limulatorBaseUrl = options.simulator.apiUrl;
-      cfg.limulatorAuthHeader = `Bearer ${options.simulator.token ?? options.token}`;
-    }
-    if (options.buildConfig) {
-      cfg.buildConfig = options.buildConfig;
-    }
-
-    const res = await fetch(`${options.apiUrl}/config`, {
+    const res = await fetch(`${options.apiUrl}/simulator`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -191,39 +175,9 @@ export async function createXCodeSandboxClient(
     });
     const text = await res.text();
     if (!res.ok) {
-      throw new Error(`xcode /config failed: ${res.status} ${text}`);
+      throw new Error(`POST /simulator failed: ${res.status} ${text}`);
     }
   }
-
-  // Track in-flight sync operations so xcodebuild can wait for them
-  let currentSyncPromise: Promise<void> | null = null;
-  let syncResolve: (() => void) | null = null;
-
-  // Called when a sync operation starts (internal, not exposed to users)
-  const onSyncStart = () => {
-    if (!currentSyncPromise) {
-      currentSyncPromise = new Promise<void>((resolve) => {
-        syncResolve = resolve;
-      });
-    }
-  };
-
-  // Called when a sync operation completes
-  const onSyncEnd = () => {
-    if (syncResolve) {
-      syncResolve();
-      syncResolve = null;
-      currentSyncPromise = null;
-    }
-  };
-
-  // Wait for any in-flight sync to complete
-  const waitForSync = async () => {
-    if (currentSyncPromise) {
-      logger.debug('Waiting for in-flight sync to complete before building...');
-      await currentSyncPromise;
-    }
-  };
 
   return {
     async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
@@ -235,8 +189,6 @@ export async function createXCodeSandboxClient(
         ...(opts?.basisCacheDir ? { basisCacheDir: opts.basisCacheDir } : {}),
         ...(opts?.maxPatchBytes !== undefined ? { maxPatchBytes: opts.maxPatchBytes } : {}),
         ...(opts?.watch !== undefined ? { watch: opts.watch } : {}),
-        onSyncStart, // Internal: track when syncs start
-        onSync: onSyncEnd, // Internal: track when syncs complete
         log: opts?.log ?? logFn,
       };
 
@@ -247,102 +199,15 @@ export async function createXCodeSandboxClient(
       return {};
     },
 
-    xcodebuild(_opts?: XcodeBuildOptions): ExecChildProcess {
-      // Wait for any in-flight sync before starting the build
-      // We wrap the exec call to handle the async wait
-      return execWithSyncWait(
-        { command: 'xcodebuild' },
+    xcodebuild(opts?: XcodeBuildConfig): ExecChildProcess {
+      return exec(
+        { command: 'xcodebuild', ...(opts && { xcodebuild: opts }) },
         {
           apiUrl: options.apiUrl,
           token: options.token,
           log: logFn,
         },
-        waitForSync,
       );
     },
   };
 }
-
-/**
- * Wraps exec() to wait for sync before starting.
- * Returns an ExecChildProcess that delays the actual exec until sync completes.
- */
-function execWithSyncWait(
-  request: { command: 'xcodebuild' },
-  execOptions: {
-    apiUrl: string;
-    token: string;
-    log?: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
-  },
-  waitForSync: () => Promise<void>,
-): ExecChildProcess {
-  type DataListener = (line: string) => void;
-  type ErrorListener = (err: Error) => void;
-  type EndListener = () => void;
-
-  const dataListeners: DataListener[] = [];
-  const errorListeners: ErrorListener[] = [];
-  const endListeners: EndListener[] = [];
-
-  let realProcess: ExecChildProcess | null = null;
-  let execIdValue: string | undefined = undefined;
-
-  // Start the real exec after waiting for sync
-  const startPromise = (async () => {
-    await waitForSync();
-    realProcess = exec(request, execOptions);
-    execIdValue = realProcess.execId;
-
-    // Forward events from real process to our listeners
-    dataListeners.forEach((listener) => realProcess!.stdout.on('data', listener));
-    errorListeners.forEach((listener) => realProcess!.stdout.on('error', listener));
-    endListeners.forEach((listener) => realProcess!.stdout.on('end', listener));
-
-    return realProcess;
-  })();
-
-  // Create a promise that resolves with the exec result
-  const resultPromise = startPromise.then((proc) => proc) as ExecChildProcess;
-
-  // Add stdout event emitter that queues listeners until real process starts
-  const stdoutEmitter = {
-    on(event: string, listener: DataListener | ErrorListener | EndListener): void {
-      if (event === 'data') {
-        dataListeners.push(listener as DataListener);
-        if (realProcess) realProcess.stdout.on('data', listener as DataListener);
-      } else if (event === 'error') {
-        errorListeners.push(listener as ErrorListener);
-        if (realProcess) realProcess.stdout.on('error', listener as ErrorListener);
-      } else if (event === 'end') {
-        endListeners.push(listener as EndListener);
-        if (realProcess) realProcess.stdout.on('end', listener as EndListener);
-      }
-    },
-  };
-  resultPromise.stdout = stdoutEmitter as ExecChildProcess['stdout'];
-
-  resultPromise.kill = async () => {
-    if (realProcess) {
-      await realProcess.kill();
-    }
-  };
-
-  Object.defineProperty(resultPromise, 'execId', {
-    get: () => execIdValue ?? realProcess?.execId,
-  });
-
-  return resultPromise;
-}
-
-// Re-export for backward compatibility
-export { type ExecChildProcess } from './exec-client';
-
-// Legacy type aliases for backward compatibility
-/** @deprecated Use XCodeSandboxClient instead */
-export type XcodeClient = XCodeSandboxClient;
-/** @deprecated Use CreateXCodeSandboxClientOptions instead */
-export type CreateXcodeClientOptions = CreateXCodeSandboxClientOptions;
-/** @deprecated Use SyncOptions instead */
-export type XcodeSyncCodeOptions = SyncOptions;
-/** @deprecated Use createXCodeSandboxClient instead */
-export const createXcodeClient = createXCodeSandboxClient;

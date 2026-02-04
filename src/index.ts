@@ -17,10 +17,6 @@ export {
   type SyncResult,
   type XcodeBuildOptions,
   type XcodeBuildConfig,
-  // Legacy aliases
-  createXcodeClient,
-  type XcodeClient,
-  type CreateXcodeClientOptions,
 } from './sandbox-client';
 export {
   exec,

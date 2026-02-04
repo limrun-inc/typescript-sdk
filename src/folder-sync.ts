@@ -32,13 +32,6 @@ export type FolderSyncOptions = {
   maxPatchBytes?: number;
   /** Controls logging verbosity */
   log?: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
-  /**
-   * Internal: Callback fired when a sync operation starts.
-   * Used by sandbox-client for build/sync coordination. Not exposed in public SyncOptions.
-   */
-  onSyncStart?: () => void;
-  /** Callback fired after each successful sync (useful for triggering builds in watch mode) */
-  onSync?: () => void;
 };
 
 export type SyncFolderResult = {
@@ -352,15 +345,11 @@ export type SyncAppResult = SyncFolderResult;
 
 export async function syncApp(localFolderPath: string, opts: FolderSyncOptions): Promise<SyncFolderResult> {
   if (!opts.watch) {
-    opts.onSyncStart?.();
     const result = await syncFolderOnce(localFolderPath, opts);
-    opts.onSync?.();
     return result;
   }
   // Initial sync, then watch for changes and re-run sync in the background.
-  opts.onSyncStart?.();
   const first = await syncFolderOnce(localFolderPath, opts, 'startup');
-  opts.onSync?.();
   let inFlight = false;
   let queued = false;
 
@@ -370,10 +359,8 @@ export async function syncApp(localFolderPath: string, opts: FolderSyncOptions):
       return;
     }
     inFlight = true;
-    opts.onSyncStart?.();
     try {
       await syncFolderOnce(localFolderPath, opts, reason);
-      opts.onSync?.();
     } finally {
       inFlight = false;
       if (queued) {
@@ -400,14 +387,6 @@ export async function syncApp(localFolderPath: string, opts: FolderSyncOptions):
       watcher.close();
     },
   };
-}
-
-// Back-compat alias (older callers)
-export async function syncFolder(
-  localFolderPath: string,
-  opts: FolderSyncOptions,
-): Promise<SyncFolderResult> {
-  return await syncApp(localFolderPath, opts);
 }
 
 async function syncFolderOnce(
