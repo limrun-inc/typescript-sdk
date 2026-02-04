@@ -6,6 +6,7 @@ import { spawn } from 'child_process';
 import { watchFolderTree } from './folder-sync-watcher';
 import { Readable } from 'stream';
 import * as zlib from 'zlib';
+import ignore, { type Ignore } from 'ignore';
 
 // =============================================================================
 // Folder Sync (HTTP batch)
@@ -31,6 +32,13 @@ export type FolderSyncOptions = {
   maxPatchBytes?: number;
   /** Controls logging verbosity */
   log?: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
+  /**
+   * Internal: Callback fired when a sync operation starts.
+   * Used by sandbox-client for build/sync coordination. Not exposed in public SyncOptions.
+   */
+  onSyncStart?: () => void;
+  /** Callback fired after each successful sync (useful for triggering builds in watch mode) */
+  onSync?: () => void;
 };
 
 export type SyncFolderResult = {
@@ -63,6 +71,10 @@ type FolderSyncHttpMeta = {
 type FolderSyncHttpResponse = {
   ok: boolean;
   needFull?: string[];
+  // Timing fields
+  syncDurationMs?: number;
+  installDurationMs?: number; // limulator only
+  // Install result fields (limulator only)
   installedAppPath?: string;
   bundleId?: string;
   error?: string;
@@ -123,7 +135,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 }
 
 function folderSyncHttpUrl(apiUrl: string): string {
-  return `${apiUrl}/folder-sync`;
+  return `${apiUrl}/sync`;
 }
 
 function u32be(n: number): Buffer {
@@ -227,22 +239,36 @@ async function sha256FileHex(filePath: string): Promise<string> {
 }
 
 async function walkFiles(root: string): Promise<FileEntry[]> {
-  const out: FileEntry[] = [];
-  const stack: string[] = [root];
   const rootResolved = path.resolve(root);
+
+  // Load .gitignore if it exists
+  const ig = await loadGitignore(rootResolved);
+
+  const out: FileEntry[] = [];
+  const stack: string[] = [rootResolved];
   while (stack.length) {
     const dir = stack.pop()!;
     const entries = await fs.promises.readdir(dir, { withFileTypes: true });
     for (const ent of entries) {
-      if (ent.name === '.DS_Store') continue;
+      // Always skip .git folder and .DS_Store
+      if (ent.name === '.DS_Store' || ent.name === '.git') continue;
+
       const abs = path.join(dir, ent.name);
+      const rel = path.relative(rootResolved, abs).split(path.sep).join('/');
+
+      // Check if ignored by .gitignore
+      if (ig.ignores(rel)) continue;
+
       if (ent.isDirectory()) {
-        stack.push(abs);
+        // For directories, check with trailing slash
+        if (!ig.ignores(rel + '/')) {
+          stack.push(abs);
+        }
         continue;
       }
       if (!ent.isFile()) continue;
+
       const st = await fs.promises.stat(abs);
-      const rel = path.relative(rootResolved, abs).split(path.sep).join('/');
       const sha256 = await sha256FileHex(abs);
       // Preserve POSIX permission bits (including +x). Mask out file-type bits.
       const mode = st.mode & 0o7777;
@@ -251,6 +277,22 @@ async function walkFiles(root: string): Promise<FileEntry[]> {
   }
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
+}
+
+/**
+ * Load and parse .gitignore file if it exists.
+ * Returns an Ignore instance that can be used to test paths.
+ */
+async function loadGitignore(rootDir: string): Promise<Ignore> {
+  const ig = ignore();
+  const gitignorePath = path.join(rootDir, '.gitignore');
+  try {
+    const content = await fs.promises.readFile(gitignorePath, 'utf-8');
+    ig.add(content);
+  } catch {
+    // No .gitignore file, return empty ignore instance
+  }
+  return ig;
 }
 
 let xdelta3Ready: Promise<void> | null = null;
@@ -310,10 +352,15 @@ export type SyncAppResult = SyncFolderResult;
 
 export async function syncApp(localFolderPath: string, opts: FolderSyncOptions): Promise<SyncFolderResult> {
   if (!opts.watch) {
-    return await syncFolderOnce(localFolderPath, opts);
+    opts.onSyncStart?.();
+    const result = await syncFolderOnce(localFolderPath, opts);
+    opts.onSync?.();
+    return result;
   }
   // Initial sync, then watch for changes and re-run sync in the background.
+  opts.onSyncStart?.();
   const first = await syncFolderOnce(localFolderPath, opts, 'startup');
+  opts.onSync?.();
   let inFlight = false;
   let queued = false;
 
@@ -323,8 +370,10 @@ export async function syncApp(localFolderPath: string, opts: FolderSyncOptions):
       return;
     }
     inFlight = true;
+    opts.onSyncStart?.();
     try {
       await syncFolderOnce(localFolderPath, opts, reason);
+      opts.onSync?.();
     } finally {
       inFlight = false;
       if (queued) {
