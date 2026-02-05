@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.20.0 (2026-02-05)
+
+Full Changelog: [v0.19.3...v0.20.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.19.3...v0.20.0)
+
+### Bug Fixes
+
+* **client:** avoid memory leak with abort signals ([6fb27b3](https://github.com/limrun-inc/typescript-sdk/commit/6fb27b34798983b05b825b37bf6e08be3810e032))
+
+
+### Chores
+
+* **ci:** upgrade `actions/github-script` ([d797e19](https://github.com/limrun-inc/typescript-sdk/commit/d797e19986dd929a766b59ece6f3d98d47a0c7ce))
+* **client:** do not parse responses with empty content-length ([8c2c71e](https://github.com/limrun-inc/typescript-sdk/commit/8c2c71e97e5f32111bc6c1a29a093f005598b218))
+* **client:** restructure abort controller binding ([687f38b](https://github.com/limrun-inc/typescript-sdk/commit/687f38bf7ea69467b85253c4e9aab8204437006d))
+
 ## 0.19.3 (2026-01-23)
 
 Full Changelog: [v0.19.2...v0.19.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.19.2...v0.19.3)
