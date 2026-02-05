@@ -15,7 +15,6 @@ export {
   type SimulatorConfig,
   type SyncOptions,
   type SyncResult,
-  type XcodeBuildOptions,
   type XcodeBuildConfig,
 } from './sandbox-client';
 export {

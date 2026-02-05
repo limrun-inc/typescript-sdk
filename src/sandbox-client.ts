@@ -38,6 +38,21 @@ export type SyncOptions = {
    */
   watch?: boolean;
   log?: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
+  /**
+   * Optional filter function to include/exclude files and directories.
+   * Called with the relative path from the sync root (using forward slashes).
+   * For directories, the path ends with '/'.
+   * Return true to include, false to exclude.
+   *
+   * @example
+   * // Exclude build folder
+   * filter: (path) => !path.startsWith('build/')
+   *
+   * @example
+   * // Only include source files
+   * filter: (path) => path.startsWith('src/') || path.endsWith('.json')
+   */
+  filter?: (relativePath: string) => boolean;
 };
 
 /**
@@ -186,6 +201,15 @@ export async function createXCodeSandboxClient(
         token: options.token,
         udid: opts?.cacheKey ?? 'xcode-sandbox',
         install: false,
+        filter: (relativePath: string) => {
+          if (relativePath.startsWith('build/') || relativePath.startsWith('.swiftpm/')) {
+            return false;
+          }
+          if (opts?.filter && opts.filter(relativePath)) {
+            return true;
+          }
+          return false;
+        },
         ...(opts?.basisCacheDir ? { basisCacheDir: opts.basisCacheDir } : {}),
         ...(opts?.maxPatchBytes !== undefined ? { maxPatchBytes: opts.maxPatchBytes } : {}),
         ...(opts?.watch !== undefined ? { watch: opts.watch } : {}),

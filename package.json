@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "ignore": "^7.0.5",
+    "undici": "^7.20.0",
     "ws": "^8.18.3"
   },
   "devDependencies": {

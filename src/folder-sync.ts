@@ -32,6 +32,21 @@ export type FolderSyncOptions = {
   maxPatchBytes?: number;
   /** Controls logging verbosity */
   log?: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
+  /**
+   * Optional filter function to include/exclude files and directories.
+   * Called with the relative path from localFolderPath (using forward slashes).
+   * For directories, the path ends with '/'.
+   * Return true to include, false to exclude.
+   *
+   * @example
+   * // Exclude build folder
+   * filter: (path) => !path.startsWith('build/')
+   *
+   * @example
+   * // Only include source files
+   * filter: (path) => path.startsWith('src/') || path.endsWith('.json')
+   */
+  filter?: (relativePath: string) => boolean;
 };
 
 export type SyncFolderResult = {
@@ -231,7 +246,7 @@ async function sha256FileHex(filePath: string): Promise<string> {
   });
 }
 
-async function walkFiles(root: string): Promise<FileEntry[]> {
+async function walkFiles(root: string, filter?: (relativePath: string) => boolean): Promise<FileEntry[]> {
   const rootResolved = path.resolve(root);
 
   // Load .gitignore if it exists
@@ -254,12 +269,17 @@ async function walkFiles(root: string): Promise<FileEntry[]> {
 
       if (ent.isDirectory()) {
         // For directories, check with trailing slash
-        if (!ig.ignores(rel + '/')) {
-          stack.push(abs);
-        }
+        const relDir = rel + '/';
+        if (ig.ignores(relDir)) continue;
+        // Check custom filter (directories have trailing slash)
+        if (filter && !filter(relDir)) continue;
+        stack.push(abs);
         continue;
       }
       if (!ent.isFile()) continue;
+
+      // Check custom filter for files
+      if (filter && !filter(rel)) continue;
 
       const st = await fs.promises.stat(abs);
       const sha256 = await sha256FileHex(abs);
@@ -405,7 +425,7 @@ async function syncFolderOnce(
   const tEnsureMs = nowMs() - tEnsureStart;
 
   const tWalkStart = nowMs();
-  const files = await walkFiles(localFolderPath);
+  const files = await walkFiles(localFolderPath, opts.filter);
   const tWalkMs = nowMs() - tWalkStart;
   const fileMap = new Map(files.map((f) => [f.path, f]));
 

@@ -5,6 +5,8 @@
  * for familiarity and ease of extension.
  */
 
+import { Agent, EventSource, type Dispatcher } from 'undici';
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -95,6 +97,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private readonly resultPromise: Promise<ExecResult>;
   private readonly exitListeners: ExitListener[] = [];
   private abortController: AbortController | null = null;
+  private sseConnection: EventSource | null = null;
   private killed = false;
   private readonly options: ExecOptions;
   private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
@@ -138,6 +141,10 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     this.killed = true;
     if (this.abortController) {
       this.abortController.abort();
+    }
+    if (this.sseConnection) {
+      this.sseConnection.close();
+      this.sseConnection = null;
     }
     if (!this.execId) {
       this.log('warn', 'Failed to cancel build: execId is not set');
@@ -223,7 +230,9 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
 
     // Determine status from exit code
     const status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED' =
-      exitCode === 0 ? 'SUCCEEDED' : exitCode === -1 ? 'CANCELLED' : 'FAILED';
+      exitCode === 0 ? 'SUCCEEDED'
+      : exitCode === -1 ? 'CANCELLED'
+      : 'FAILED';
 
     const result: ExecResult = {
       exitCode,
@@ -239,75 +248,78 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     eventsUrl: string,
     onComplete: ((exitCode: number) => void) | null,
   ): Promise<void> {
-    let sseReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-    try {
-      const sseRes = await fetch(eventsUrl, {
-        headers: {
-          Accept: 'text/event-stream',
-          Authorization: `Bearer ${this.options.token}`,
-        },
-        signal: this.abortController!.signal,
-      });
-
-      if (!sseRes.ok || !sseRes.body) {
-        this.log('warn', `SSE connection failed: ${sseRes.status}`);
-        return;
-      }
-
-      sseReader = sseRes.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let currentEvent = '';
-      let currentData: string[] = [];
-
-      while (!this.killed) {
-        const { done, value } = await sseReader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          const cleanLine = line.endsWith('\r') ? line.slice(0, -1) : line;
-          if (cleanLine.startsWith('event:')) {
-            currentEvent = cleanLine.slice(6).trim();
-          } else if (cleanLine.startsWith('data:')) {
-            const dataLine = cleanLine.slice(5);
-            currentData.push(dataLine.startsWith(' ') ? dataLine.slice(1) : dataLine);
-          } else if (cleanLine === '') {
-            if (!currentEvent && currentData.length === 0) {
-              continue;
-            }
-            const data = currentData.join('\n');
-            if (currentEvent === 'stdout') {
-              this.stdout.emit('data', data);
-            } else if (currentEvent === 'stderr') {
-              this.stderr.emit('data', data);
-            } else if (currentEvent === 'exitCode') {
-              const exitCode = parseInt(data, 10);
-              this.log('debug', `Build completed via SSE: exitCode=${exitCode}`);
-              onComplete?.(exitCode);
-              return;
-            }
-            currentEvent = '';
-            currentData = [];
+    return new Promise((resolve) => {
+      const authHeader = `Bearer ${this.options.token}`;
+      class CustomHeaderAgent extends Agent {
+        override dispatch(opts: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandler): boolean {
+          if (opts.headers) {
+            (opts.headers as Record<string, string>)['Authorization'] = authHeader;
+          } else {
+            opts.headers = { Authorization: authHeader };
           }
+          return super.dispatch(opts, handler);
         }
       }
-    } catch (err) {
-      if (!this.killed && !(err instanceof Error && err.name === 'AbortError')) {
-        this.log('warn', `SSE error: ${err}`);
-      }
-    } finally {
-      if (sseReader) {
-        try {
-          sseReader.releaseLock();
-        } catch {
-          // ignore
+
+      let resolved = false;
+      const resolveOnce = () => {
+        if (resolved) return;
+        resolved = true;
+        this.sseConnection?.close();
+        this.sseConnection = null;
+        resolve();
+      };
+
+      try {
+        const eventSource = new EventSource(eventsUrl, { dispatcher: new CustomHeaderAgent() });
+        this.sseConnection = eventSource;
+
+        const readData = (event: { data?: unknown }): string => {
+          if (typeof event.data === 'string') return event.data;
+          if (event.data === undefined || event.data === null) return '';
+          return String(event.data);
+        };
+
+        eventSource.addEventListener('stdout', (event) => {
+          this.stdout.emit('data', readData(event as { data?: unknown }));
+        });
+        eventSource.addEventListener('stderr', (event) => {
+          this.stderr.emit('data', readData(event as { data?: unknown }));
+        });
+        eventSource.addEventListener('exitCode', (event) => {
+          const data = readData(event as { data?: unknown });
+          const exitCode = parseInt(data, 10);
+          if (Number.isNaN(exitCode)) {
+            this.log('warn', `SSE exitCode event has invalid data: ${data}`);
+            return;
+          }
+          this.log('debug', `Build completed via SSE: exitCode=${exitCode}`);
+          onComplete?.(exitCode);
+          resolveOnce();
+        });
+        eventSource.onerror = (err) => {
+          if (!this.killed) {
+            this.log('warn', `SSE error: ${err}`);
+          }
+        };
+
+        const abortSignal = this.abortController?.signal;
+        if (abortSignal) {
+          abortSignal.addEventListener(
+            'abort',
+            () => {
+              resolveOnce();
+            },
+            { once: true },
+          );
         }
+      } catch (err) {
+        if (!this.killed) {
+          this.log('warn', `SSE setup failed: ${err}`);
+        }
+        resolveOnce();
       }
-    }
+    });
   }
 }
 
