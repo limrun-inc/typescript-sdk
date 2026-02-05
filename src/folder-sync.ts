@@ -21,7 +21,7 @@ export type FolderSyncOptions = {
    * Used to store the last-synced “basis” copies of files (and related sync metadata) so we can compute xdelta patches
    * on subsequent syncs without re-downloading server state.
    *
-   * Can be absolute or relative to process.cwd(). Defaults to `.lim-metadata-cache/`.
+   * Can be absolute or relative to process.cwd(). Defaults to `.limsync-cache/`.
    */
   basisCacheDir?: string;
   install?: boolean;
@@ -346,7 +346,7 @@ function localBasisCacheRoot(opts: FolderSyncOptions, localFolderPath: string): 
   const rootOverride =
     opts.basisCacheDir ?
       path.resolve(process.cwd(), opts.basisCacheDir)
-    : path.join(process.cwd(), '.lim-metadata-cache');
+    : path.join(process.cwd(), '.limsync-cache');
   // Include folder identity to avoid collisions between different roots.
   return path.join(rootOverride, 'folder-sync', hostKey, opts.udid, `${base}-${hash}`);
 }
