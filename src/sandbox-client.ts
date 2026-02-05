@@ -202,13 +202,17 @@ export async function createXCodeSandboxClient(
         udid: opts?.cacheKey ?? 'xcode-sandbox',
         install: false,
         filter: (relativePath: string) => {
-          if (relativePath.startsWith('build/') || relativePath.startsWith('.swiftpm/')) {
+          if (
+            relativePath.startsWith('build/') ||
+            relativePath.startsWith('.swiftpm/') ||
+            relativePath.startsWith('.git/')
+          ) {
             return false;
           }
           if (opts?.filter && opts.filter(relativePath)) {
             return true;
           }
-          return false;
+          return true;
         },
         ...(opts?.basisCacheDir ? { basisCacheDir: opts.basisCacheDir } : {}),
         ...(opts?.maxPatchBytes !== undefined ? { maxPatchBytes: opts.maxPatchBytes } : {}),

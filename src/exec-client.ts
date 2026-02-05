@@ -5,7 +5,7 @@
  * for familiarity and ease of extension.
  */
 
-import { Agent, EventSource, type Dispatcher } from 'undici';
+import { createEventSource, type EventSourceClient, type EventSourceMessage } from 'eventsource-client';
 
 // =============================================================================
 // Types
@@ -97,7 +97,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private readonly resultPromise: Promise<ExecResult>;
   private readonly exitListeners: ExitListener[] = [];
   private abortController: AbortController | null = null;
-  private sseConnection: EventSource | null = null;
+  private sseConnection: EventSourceClient | null = null;
   private killed = false;
   private readonly options: ExecOptions;
   private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
@@ -250,16 +250,6 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   ): Promise<void> {
     return new Promise((resolve) => {
       const authHeader = `Bearer ${this.options.token}`;
-      class CustomHeaderAgent extends Agent {
-        override dispatch(opts: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandler): boolean {
-          if (opts.headers) {
-            (opts.headers as Record<string, string>)['Authorization'] = authHeader;
-          } else {
-            opts.headers = { Authorization: authHeader };
-          }
-          return super.dispatch(opts, handler);
-        }
-      }
 
       let resolved = false;
       const resolveOnce = () => {
@@ -271,37 +261,38 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       };
 
       try {
-        const eventSource = new EventSource(eventsUrl, { dispatcher: new CustomHeaderAgent() });
+        const eventSource = createEventSource({
+          url: eventsUrl,
+          headers: { Authorization: authHeader },
+          onMessage: (message: EventSourceMessage) => {
+            const data = typeof message.data === 'string' ? message.data : String(message.data ?? '');
+            const eventType = message.event;
+            if (eventType === 'stdout') {
+              this.stdout.emit('data', data);
+              return;
+            }
+            if (eventType === 'stderr') {
+              this.stderr.emit('data', data);
+              return;
+            }
+            if (eventType === 'exitCode') {
+              const exitCode = parseInt(data, 10);
+              if (Number.isNaN(exitCode)) {
+                this.log('warn', `SSE exitCode event has invalid data: ${data}`);
+                return;
+              }
+              this.log('debug', `Build completed via SSE: exitCode=${exitCode}`);
+              onComplete?.(exitCode);
+              resolveOnce();
+            }
+          },
+          onDisconnect: () => {
+            if (!this.killed) {
+              this.log('warn', 'SSE disconnected');
+            }
+          },
+        });
         this.sseConnection = eventSource;
-
-        const readData = (event: { data?: unknown }): string => {
-          if (typeof event.data === 'string') return event.data;
-          if (event.data === undefined || event.data === null) return '';
-          return String(event.data);
-        };
-
-        eventSource.addEventListener('stdout', (event) => {
-          this.stdout.emit('data', readData(event as { data?: unknown }));
-        });
-        eventSource.addEventListener('stderr', (event) => {
-          this.stderr.emit('data', readData(event as { data?: unknown }));
-        });
-        eventSource.addEventListener('exitCode', (event) => {
-          const data = readData(event as { data?: unknown });
-          const exitCode = parseInt(data, 10);
-          if (Number.isNaN(exitCode)) {
-            this.log('warn', `SSE exitCode event has invalid data: ${data}`);
-            return;
-          }
-          this.log('debug', `Build completed via SSE: exitCode=${exitCode}`);
-          onComplete?.(exitCode);
-          resolveOnce();
-        });
-        eventSource.onerror = (err) => {
-          if (!this.killed) {
-            this.log('warn', `SSE error: ${err}`);
-          }
-        };
 
         const abortSignal = this.abortController?.signal;
         if (abortSignal) {

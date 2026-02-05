@@ -27,8 +27,8 @@
     "fix": "./scripts/format"
   },
   "dependencies": {
+    "eventsource-client": "^1.2.0",
     "ignore": "^7.0.5",
-    "undici": "^7.20.0",
     "ws": "^8.18.3"
   },
   "devDependencies": {
