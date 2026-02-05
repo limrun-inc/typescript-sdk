@@ -204,13 +204,39 @@ export async function createXCodeSandboxClient(
         filter: (relativePath: string) => {
           if (
             relativePath.startsWith('build/') ||
-            relativePath.startsWith('.swiftpm/') ||
-            relativePath.startsWith('.git/')
+            relativePath.startsWith('.build/') ||
+            relativePath.startsWith('DerivedData/') ||
+            relativePath.startsWith('Index.noindex/') ||
+            relativePath.startsWith('ModuleCache.noindex/') ||
+            relativePath.startsWith('.index-build/')
           ) {
             return false;
           }
-          if (opts?.filter && opts.filter(relativePath)) {
-            return true;
+          if (
+            relativePath.startsWith('.swiftpm/') ||
+            relativePath.startsWith('Pods/') ||
+            relativePath.startsWith('Carthage/Build/')
+          ) {
+            return false;
+          }
+          if (
+            relativePath.startsWith('.git/') ||
+            relativePath.startsWith('.limsync-cache/') ||
+            relativePath === '.DS_Store' ||
+            relativePath.endsWith('/.DS_Store')
+          ) {
+            return false;
+          }
+          if (relativePath.includes('/xcuserdata/')) {
+            return false;
+          }
+          if (relativePath.includes('.dSYM/')) {
+            return false;
+          }
+
+          // User-provided filter
+          if (opts?.filter && !opts.filter(relativePath)) {
+            return false;
           }
           return true;
         },
