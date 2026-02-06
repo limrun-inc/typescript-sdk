@@ -48,6 +48,7 @@ As you make changes on source files, we automatically sync it so by the time you
 your agent is done with code changes, all is already in the sandbox.
 
 Trigger a manual build:
+
 ```bash
 curl http://localhost:3000/xcodebuild
 ```
@@ -63,6 +64,7 @@ Let your agent trigger a build on its own:
   }
 }
 ```
+
 ```bash
 claude mcp add xcode --transport http http://localhost:3000
 ```

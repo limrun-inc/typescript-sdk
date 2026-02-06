@@ -96,7 +96,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
 
   private readonly resultPromise: Promise<ExecResult>;
   private readonly exitListeners: ExitListener[] = [];
-  private abortController: AbortController | null = null;
+  private abortController = new AbortController();
   private sseConnection: EventSourceClient | null = null;
   private killed = false;
   private readonly options: ExecOptions;
@@ -139,9 +139,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   /** Send a signal to terminate the process */
   async kill(): Promise<void> {
     this.killed = true;
-    if (this.abortController) {
-      this.abortController.abort();
-    }
+    this.abortController.abort();
     if (this.sseConnection) {
       this.sseConnection.close();
       this.sseConnection = null;
@@ -169,14 +167,25 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
 
     // 1. Trigger the build via POST /exec
     log('debug', `POST ${apiUrl}/exec`);
-    const execRes = await fetch(`${apiUrl}/exec`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(request),
-    });
+    let execRes: Response;
+    try {
+      execRes = await fetch(`${apiUrl}/exec`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(request),
+        signal: this.abortController.signal,
+      });
+    } catch (err) {
+      if (this.killed) {
+        this.stdout.emit('close');
+        this.stderr.emit('close');
+        return { exitCode: -1, execId: '', status: 'CANCELLED' };
+      }
+      throw err;
+    }
 
     if (!execRes.ok) {
       const text = await execRes.text();
@@ -187,37 +196,35 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     this.execId = execData.execId;
     log('info', `Build started: ${this.execId}`);
 
-    // 2. Connect to SSE for log streaming and completion detection
-    this.abortController = new AbortController();
+    // 2. Stream logs via SSE and wait for exit code
     const eventsUrl = `${apiUrl}/exec/${this.execId}/events`;
     log('debug', `GET ${eventsUrl} (SSE)`);
 
-    // Promise that resolves when build completes (via exitCode event)
-    let sseCompletionResolve: ((exitCode: number) => void) | null = null;
-    const sseCompletionPromise = new Promise<number>((resolve) => {
-      sseCompletionResolve = resolve;
-    });
-
-    const ssePromise = this.connectSSE(eventsUrl, sseCompletionResolve);
-
-    // Wait for SSE to signal completion (with timeout fallback)
     const timeoutMs = 3600 * 1000; // 1 hour max
     let exitCode: number;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       exitCode = await Promise.race([
-        sseCompletionPromise,
-        new Promise<number>((_, reject) => setTimeout(() => reject(new Error('SSE timeout')), timeoutMs)),
+        this.connectSSE(eventsUrl),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('SSE timeout')), timeoutMs);
+        }),
       ]);
     } catch {
-      log('warn', 'SSE completion timeout');
-      exitCode = 1;
+      if (this.killed) {
+        log('info', 'Build killed');
+        exitCode = -1;
+      } else {
+        log('warn', 'SSE completion timeout');
+        exitCode = 1;
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      if (this.sseConnection) {
+        this.sseConnection.close();
+        this.sseConnection = null;
+      }
     }
-
-    // Cleanup SSE connection
-    if (this.abortController) {
-      this.abortController.abort();
-    }
-    await ssePromise.catch(() => {});
 
     // Emit close events on streams
     this.stdout.emit('close');
@@ -244,46 +251,32 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     return result;
   }
 
-  private async connectSSE(
-    eventsUrl: string,
-    onComplete: ((exitCode: number) => void) | null,
-  ): Promise<void> {
-    return new Promise((resolve) => {
-      const authHeader = `Bearer ${this.options.token}`;
-
-      let resolved = false;
-      const resolveOnce = () => {
-        if (resolved) return;
-        resolved = true;
-        this.sseConnection?.close();
-        this.sseConnection = null;
-        resolve();
-      };
-
+  /**
+   * Opens an SSE connection and routes events to stdout/stderr streams.
+   * Resolves with the exit code when an 'exitCode' event arrives.
+   * Rejects when the abort signal fires (kill or cleanup).
+   */
+  private connectSSE(eventsUrl: string): Promise<number> {
+    return new Promise<number>((resolve, reject) => {
       try {
         const eventSource = createEventSource({
           url: eventsUrl,
-          headers: { Authorization: authHeader },
+          headers: { Authorization: `Bearer ${this.options.token}` },
           onMessage: (message: EventSourceMessage) => {
             const data = typeof message.data === 'string' ? message.data : String(message.data ?? '');
             const eventType = message.event;
             if (eventType === 'stdout') {
               this.stdout.emit('data', data);
-              return;
-            }
-            if (eventType === 'stderr') {
+            } else if (eventType === 'stderr') {
               this.stderr.emit('data', data);
-              return;
-            }
-            if (eventType === 'exitCode') {
+            } else if (eventType === 'exitCode') {
               const exitCode = parseInt(data, 10);
               if (Number.isNaN(exitCode)) {
                 this.log('warn', `SSE exitCode event has invalid data: ${data}`);
                 return;
               }
               this.log('debug', `Build completed via SSE: exitCode=${exitCode}`);
-              onComplete?.(exitCode);
-              resolveOnce();
+              resolve(exitCode);
             }
           },
           onDisconnect: () => {
@@ -294,21 +287,14 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
         });
         this.sseConnection = eventSource;
 
-        const abortSignal = this.abortController?.signal;
-        if (abortSignal) {
-          abortSignal.addEventListener(
-            'abort',
-            () => {
-              resolveOnce();
-            },
-            { once: true },
-          );
-        }
+        this.abortController.signal.addEventListener('abort', () => reject(new Error('killed')), {
+          once: true,
+        });
       } catch (err) {
         if (!this.killed) {
           this.log('warn', `SSE setup failed: ${err}`);
         }
-        resolveOnce();
+        reject(err);
       }
     });
   }
