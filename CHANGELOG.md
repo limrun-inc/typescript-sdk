@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.20.1 (2026-02-06)
+
+Full Changelog: [v0.20.0...v0.20.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.20.0...v0.20.1)
+
+### Bug Fixes
+
+* **client:** avoid removing abort listener too early ([a8dd2e2](https://github.com/limrun-inc/typescript-sdk/commit/a8dd2e2a012e53853084291cc49bbad351c4c28e))
+
+
+### Chores
+
+* **internal:** fix pagination internals not accepting option promises ([8007b8a](https://github.com/limrun-inc/typescript-sdk/commit/8007b8a713e672f06c4cf3e37d9d971643ba6fe6))
+
 ## 0.20.0 (2026-02-05)
 
 Full Changelog: [v0.19.3...v0.20.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.19.3...v0.20.0)
