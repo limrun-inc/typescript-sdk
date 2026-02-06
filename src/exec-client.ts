@@ -182,6 +182,9 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       if (this.killed) {
         this.stdout.emit('close');
         this.stderr.emit('close');
+        for (const listener of this.exitListeners) {
+          listener(-1);
+        }
         return { exitCode: -1, execId: '', status: 'CANCELLED' };
       }
       throw err;
@@ -258,6 +261,11 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
    */
   private connectSSE(eventsUrl: string): Promise<number> {
     return new Promise<number>((resolve, reject) => {
+      if (this.abortController.signal.aborted) {
+        reject(new Error('killed'));
+        return;
+      }
+
       try {
         const eventSource = createEventSource({
           url: eventsUrl,
