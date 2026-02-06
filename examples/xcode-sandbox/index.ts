@@ -56,8 +56,12 @@ async function runBuild(onLine: (line: string) => void): Promise<number> {
   console.log('Starting xcodebuild...');
   const build = sandbox.xcodebuild();
 
-  build.stdout.on('data', (line) => { onLine(line.toString()); });
-  build.stderr.on('data', (line) => { onLine(line.toString()); });
+  build.stdout.on('data', (line) => {
+    onLine(line.toString());
+  });
+  build.stderr.on('data', (line) => {
+    onLine(line.toString());
+  });
 
   const result = await build;
   console.log(`Build finished with exit code: ${result.exitCode}`);
@@ -70,13 +74,16 @@ await runBuild((line) => console.log(line));
 // Create a fresh MCP server + transport per request (stateless mode)
 function createServer() {
   const mcp = new McpServer({ name: 'xcodebuild', version: '1.0.0' });
-  mcp.registerTool('build', {
-    title: 'xcodebuild',
-    description: 'Runs xcodebuild and installs the app on the remote simulator. Returns the build output.',
-  }, async () => {
-    let buffer: string[] = [];
-    await runBuild((line) => buffer.push(line));
-    return { content: [{ type: 'text', text: buffer.join('\n') }] };
+  mcp.registerTool(
+    'build',
+    {
+      title: 'xcodebuild',
+      description: 'Runs xcodebuild and installs the app on the remote simulator. Returns the build output.',
+    },
+    async () => {
+      let buffer: string[] = [];
+      await runBuild((line) => buffer.push(line));
+      return { content: [{ type: 'text', text: buffer.join('\n') }] };
     },
   );
   return mcp;
@@ -86,7 +93,10 @@ const httpServer = http.createServer(async (req, res) => {
   if (req.url === '/xcodebuild') {
     res.writeHead(200, { 'Content-Type': 'text/plain', 'Transfer-Encoding': 'chunked' });
     try {
-      await runBuild((line) => { res.write(line + '\n'); console.log(line); });
+      await runBuild((line) => {
+        res.write(line + '\n');
+        console.log(line);
+      });
       res.end();
     } catch (err) {
       res.write(`\nError: ${String(err)}\n`);
@@ -98,7 +108,9 @@ const httpServer = http.createServer(async (req, res) => {
   // MCP starts here.
   const body = await new Promise<string>((resolve) => {
     let data = '';
-    req.on('data', (chunk) => { data += chunk; });
+    req.on('data', (chunk) => {
+      data += chunk;
+    });
     req.on('end', () => resolve(data));
   });
   const parsedBody = body ? JSON.parse(body) : undefined;
@@ -115,15 +127,15 @@ const httpServer = http.createServer(async (req, res) => {
 
 const port = 3000;
 httpServer.listen(port, () => {
-  console.log("");
-  console.log("");
-  console.log("");
-  console.log("--------------------------------");
+  console.log('');
+  console.log('');
+  console.log('');
+  console.log('--------------------------------');
   console.log(`Access your iOS simulator here: https://console.limrun.com/stream/${instance.metadata.id}`);
-  console.log("--------------------------------");
+  console.log('--------------------------------');
   console.log(`Files are auto-synced. Trigger a build with:`);
   console.log(`$ curl http://localhost:${port}/xcodebuild`);
-  console.log("--------------------------------");
+  console.log('--------------------------------');
   console.log(`Also, an MCP server is listening on http://localhost:${port}`);
 
   console.log(`Add the following to your .mcp.json file:`);
@@ -134,8 +146,8 @@ httpServer.listen(port, () => {
     }
   }
 }`);
-  console.log("--------------------------------");
+  console.log('--------------------------------');
   console.log(`For Claude Code:`);
   console.log(`$ claude mcp add xcode --transport http http://localhost:3000`);
-  console.log("--------------------------------");
+  console.log('--------------------------------');
 });
