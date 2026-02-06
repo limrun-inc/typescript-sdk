@@ -47,7 +47,12 @@ Go to the printed iOS simulator link to see your app.
 As you make changes on source files, we automatically sync it so by the time you or
 your agent is done with code changes, all is already in the sandbox.
 
-Add this as an MCP server to your agent so that it can trigger a build on its own!
+Trigger a manual build:
+```bash
+curl http://localhost:3000/xcodebuild
+```
+
+Let your agent trigger a build on its own:
 
 ```json
 {
