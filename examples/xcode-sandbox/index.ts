@@ -8,7 +8,7 @@ if (!process.env['LIM_API_KEY']) {
   process.exit(1);
 }
 
-const lim = new Limrun({ apiKey: process.env['LIM_API_KEY'], baseURL: 'https://api-staging.limrun.dev' });
+const lim = new Limrun({ apiKey: process.env['LIM_API_KEY'] });
 
 const args = process.argv.slice(2);
 const codeFolder = args.find((arg) => !arg.startsWith('-'));
