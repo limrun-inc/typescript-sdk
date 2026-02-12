@@ -1082,9 +1082,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         clearTimeout(request.timeout);
         pendingRequests.delete(message.id);
 
-        // Check for error
         if (message.error) {
-          logger.error(`Server error for ${message.type}: ${message.error}`);
+          logger.debug(`Server error for ${message.type}: ${message.error}`);
           request.reject(new Error(message.error));
           return;
         }
