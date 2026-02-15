@@ -214,6 +214,12 @@ export type InstanceClient = {
   pressKey: (key: string, modifiers?: string[]) => Promise<void>;
 
   /**
+   * Toggle the on-screen software keyboard visibility.
+   * Equivalent to pressing Cmd+K in the iOS Simulator.
+   */
+  toggleKeyboard: () => Promise<void>;
+
+  /**
    * Launch an installed app by bundle identifier
    * @param bundleId Bundle identifier of the app to launch
    */
@@ -996,6 +1002,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       setElementValueResult: (msg) => ({ elementLabel: msg.elementLabel }),
       typeTextResult: () => undefined,
       pressKeyResult: () => undefined,
+      toggleKeyboardResult: () => undefined,
       launchAppResult: () => undefined,
       appLogTailResult: (msg) => msg.logs ?? '',
       listAppsResult: (msg) => JSON.parse(msg.apps || '[]') as InstalledApp[],
@@ -1172,6 +1179,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             setElementValue,
             typeText,
             pressKey,
+            toggleKeyboard,
             launchApp,
             appLogTail,
             streamAppLog,
@@ -1256,6 +1264,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const pressKey = (key: string, modifiers?: string[]): Promise<void> => {
       return sendRequest<void>('pressKey', { key, modifiers });
+    };
+
+    const toggleKeyboard = (): Promise<void> => {
+      return sendRequest<void>('toggleKeyboard');
     };
 
     const launchApp = (bundleId: string): Promise<void> => {
