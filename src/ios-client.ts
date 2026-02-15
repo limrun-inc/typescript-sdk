@@ -129,10 +129,9 @@ export type AppInstallationOptions = {
    * Launch mode after installation:
    * - 'ForegroundIfRunning': Bring to foreground if already running, otherwise launch
    * - 'RelaunchIfRunning': Kill and relaunch if already running
-   * - 'FailIfRunning': Fail if the app is already running
    * - undefined: Don't launch after installation
    */
-  launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
+  launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
 };
 
 /**
@@ -222,8 +221,18 @@ export type InstanceClient = {
   /**
    * Launch an installed app by bundle identifier
    * @param bundleId Bundle identifier of the app to launch
+   * @param mode Optional launch mode:
+   *   - 'ForegroundIfRunning' (default): bring to foreground if already running
+   *   - 'RelaunchIfRunning': terminate and relaunch if already running
    */
-  launchApp: (bundleId: string) => Promise<void>;
+  launchApp: (bundleId: string, mode?: 'ForegroundIfRunning' | 'RelaunchIfRunning') => Promise<void>;
+
+  /**
+   * Terminate a running app by bundle identifier.
+   * Succeeds silently if the app is not currently running.
+   * @param bundleId Bundle identifier of the app to terminate
+   */
+  terminateApp: (bundleId: string) => Promise<void>;
 
   /**
    * Fetch the last N lines of app logs (combined stdout/stderr)
@@ -294,7 +303,7 @@ export type InstanceClient = {
     opts?: {
       install?: boolean;
       maxPatchBytes?: number;
-      launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
+      launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
       watch?: boolean;
     },
   ) => Promise<SyncFolderResult>;
@@ -1004,6 +1013,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       pressKeyResult: () => undefined,
       toggleKeyboardResult: () => undefined,
       launchAppResult: () => undefined,
+      terminateAppResult: () => undefined,
       appLogTailResult: (msg) => msg.logs ?? '',
       listAppsResult: (msg) => JSON.parse(msg.apps || '[]') as InstalledApp[],
       listOpenFilesResult: (msg) => msg.files || [],
@@ -1181,6 +1191,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             pressKey,
             toggleKeyboard,
             launchApp,
+            terminateApp,
             appLogTail,
             streamAppLog,
             streamSyslog,
@@ -1270,8 +1281,15 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<void>('toggleKeyboard');
     };
 
-    const launchApp = (bundleId: string): Promise<void> => {
-      return sendRequest<void>('launchApp', { bundleId });
+    const launchApp = (
+      bundleId: string,
+      mode?: 'ForegroundIfRunning' | 'RelaunchIfRunning',
+    ): Promise<void> => {
+      return sendRequest<void>('launchApp', { bundleId, mode });
+    };
+
+    const terminateApp = (bundleId: string): Promise<void> => {
+      return sendRequest<void>('terminateApp', { bundleId });
     };
 
     const appLogTail = (bundleId: string, lines: number): Promise<string> => {
@@ -1328,7 +1346,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       opts?: {
         install?: boolean;
         maxPatchBytes?: number;
-        launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
+        launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
         watch?: boolean;
       },
     ): Promise<SyncFolderResult> => {

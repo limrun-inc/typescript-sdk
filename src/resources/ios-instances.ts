@@ -198,7 +198,7 @@ export namespace IosInstanceCreateParams {
        * Launch mode specifies how to launch the app after installation. If not given,
        * the app won't be launched.
        */
-      launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
+      launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
 
       url?: string;
     }

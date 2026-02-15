@@ -25,7 +25,7 @@ export type FolderSyncOptions = {
    */
   basisCacheDir?: string;
   install?: boolean;
-  launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
+  launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
   /** If true, watch the folder and re-sync on any changes (debounced, single-flight). */
   watch?: boolean;
   /** Max patch size (bytes) to send as delta before falling back to full upload. */
@@ -72,7 +72,7 @@ type FolderSyncHttpMeta = {
   id: string;
   rootName: string;
   install?: boolean;
-  launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' | 'FailIfRunning';
+  launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
   files: { path: string; size: number; sha256: string; mode: number }[];
   payloads: FolderSyncHttpPayload[];
 };
