@@ -126,6 +126,14 @@ try {
   await sleep(500);
 
   // ========================================================================
+  // Toggle Software Keyboard
+  // ========================================================================
+  console.log('\n--- Testing toggleKeyboard ---');
+  await client.toggleKeyboard();
+  console.log('Toggled software keyboard');
+  await sleep(500);
+
+  // ========================================================================
   // Press Key
   // ========================================================================
   console.log('\n--- Testing pressKey ---');
