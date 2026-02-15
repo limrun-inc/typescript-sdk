@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.2 (2026-02-15)
+
+Full Changelog: [v0.20.1...v0.20.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.20.1...v0.20.2)
+
+### Chores
+
+* **internal:** avoid type checking errors with ts-reset ([0e11f26](https://github.com/limrun-inc/typescript-sdk/commit/0e11f2628ecd76d8bc1f65bc1a3b4782bc290cbe))
+
 ## 0.20.1 (2026-02-06)
 
 Full Changelog: [v0.20.0...v0.20.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.20.0...v0.20.1)
