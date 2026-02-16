@@ -77,9 +77,31 @@ try {
   // ========================================================================
   console.log('\n--- Testing launchApp ---');
   await client.launchApp('com.apple.mobilesafari');
-  console.log('Launched Safari');
+  console.log('Launched Safari (default ForegroundIfRunning)');
 
   // Wait for app to launch
+  await sleep(1000);
+
+  // Relaunch Safari (terminates and relaunches even if already running)
+  await client.launchApp('com.apple.mobilesafari', 'RelaunchIfRunning');
+  console.log('Relaunched Safari (RelaunchIfRunning)');
+
+  // ========================================================================
+  // Terminate App
+  // ========================================================================
+  console.log('\n--- Testing terminateApp ---');
+  await client.terminateApp('com.apple.mobilesafari');
+  console.log('Terminated Safari');
+  await sleep(10*1000);
+
+  // Terminating again succeeds silently (app is already not running)
+  await client.terminateApp('com.apple.mobilesafari');
+  console.log('Terminated Safari again (no-op, already not running)');
+  await sleep(1000)
+
+  // Re-launch Safari for the rest of the example
+  await client.launchApp('com.apple.mobilesafari');
+  console.log('Re-launched Safari for remaining tests');
   await sleep(1000);
 
   // ========================================================================

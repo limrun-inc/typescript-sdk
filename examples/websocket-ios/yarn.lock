@@ -132,10 +132,10 @@
   resolved "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.9.tgz#585624dc829cfb6e7c0aa6c3ca7d7e6daa87e34f"
   integrity sha512-PPOl1mi6lpLNQxnGoyAfschAodRFYXJ+9fs6WHXz7CSWKbOqiMZsubC+BQsVKuul+3vKLuwTHsS2c2y9EoKwxQ==
 
-"@limrun/api@0.20.2":
-  version "0.20.2"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.20.2.tgz#06ab9dbb612f5335514fa5674306ebd8b2aa6869"
-  integrity sha512-D8sPAuPrDws0KpLjfK6z34DYRC/6VLu4NCzQ+4mJ5Xh1ikhsxbSrlRmxrykHBDE4sEOLxmaAxCFWhj6wzcMEVQ==
+"@limrun/api@0.20.3":
+  version "0.20.3"
+  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.20.3.tgz#c838d72c7c1a6590584ffe93e8db39826fb21cc2"
+  integrity sha512-7/duQ6cDbQAUXTRAltg6iww4uTzX9lsk73iFDIIoFN0yHkzGre3ZLQ3imX95MHfipZlkk1g78pXEMXXzZZSWEA==
   dependencies:
     eventsource-client "^1.2.0"
     ignore "^7.0.5"
