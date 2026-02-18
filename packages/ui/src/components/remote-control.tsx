@@ -68,6 +68,7 @@ export interface RemoteControlHandle {
   openUrl: (url: string) => void;
   sendKeyEvent: (event: ImperativeKeyboardEvent) => void;
   screenshot: () => Promise<ScreenshotData>;
+  terminateApp: (bundleId: string) => Promise<void>;
 }
 
 const debugLog = (...args: any[]) => {
@@ -193,6 +194,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       Map<string, (value: ScreenshotData | PromiseLike<ScreenshotData>) => void>
     >(new Map());
     const pendingScreenshotRejectersRef = useRef<Map<string, (reason?: any) => void>>(new Map());
+    const pendingTerminateAppResolversRef = useRef<Map<string, () => void>>(new Map());
+    const pendingTerminateAppRejectersRef = useRef<Map<string, (reason?: any) => void>>(new Map());
 
     // Map to track active pointers for real touch/mouse single-finger events.
     // Key: pointerId (-1 for mouse, touch.identifier for touch), Value: { x: number, y: number }
@@ -1273,6 +1276,33 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               pendingScreenshotResolversRef.current.delete(message.id);
               pendingScreenshotRejectersRef.current.delete(message.id);
               break;
+            case 'terminateAppResult':
+              if (typeof message.id !== 'string') {
+                debugWarn('Received invalid terminateApp result message:', message);
+                break;
+              }
+              if (typeof message.error === 'string') {
+                const terminateRejecter = pendingTerminateAppRejectersRef.current.get(message.id);
+                if (!terminateRejecter) {
+                  debugWarn(`Received terminateApp error for unknown or handled id: ${message.id}`);
+                  break;
+                }
+                debugWarn(`Received terminateApp error for id ${message.id}: ${message.error}`);
+                terminateRejecter(new Error(message.error));
+                pendingTerminateAppResolversRef.current.delete(message.id);
+                pendingTerminateAppRejectersRef.current.delete(message.id);
+                break;
+              }
+              const terminateResolver = pendingTerminateAppResolversRef.current.get(message.id);
+              if (!terminateResolver) {
+                debugWarn(`Received terminateApp result for unknown or handled id: ${message.id}`);
+                break;
+              }
+              debugLog(`Received terminateApp success for id ${message.id}`);
+              terminateResolver();
+              pendingTerminateAppResolversRef.current.delete(message.id);
+              pendingTerminateAppRejectersRef.current.delete(message.id);
+              break;
             default:
               debugWarn(`Received unhandled message type: ${message.type}`, message);
               break;
@@ -1516,6 +1546,43 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               pendingScreenshotRejectersRef.current.delete(id);
             }
           }, 30000); // 30-second timeout
+        });
+      },
+      terminateApp: (bundleId: string): Promise<void> => {
+        return new Promise<void>((resolve, reject) => {
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+            debugWarn('WebSocket not open, cannot send terminateApp command.');
+            return reject(new Error('WebSocket is not connected or connection is not open.'));
+          }
+          const id = `ui-term-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+          const request = {
+            type: 'terminateApp',
+            id,
+            bundleId,
+          };
+
+          pendingTerminateAppResolversRef.current.set(id, resolve);
+          pendingTerminateAppRejectersRef.current.set(id, reject);
+
+          debugLog('Sending terminateApp request:', request);
+          try {
+            wsRef.current.send(JSON.stringify(request));
+          } catch (err) {
+            debugWarn('Failed to send terminateApp request immediately:', err);
+            pendingTerminateAppResolversRef.current.delete(id);
+            pendingTerminateAppRejectersRef.current.delete(id);
+            reject(err);
+            return;
+          }
+
+          setTimeout(() => {
+            if (pendingTerminateAppResolversRef.current.has(id)) {
+              debugWarn(`terminateApp request timed out for id ${id}`);
+              pendingTerminateAppRejectersRef.current.get(id)?.(new Error('terminateApp request timed out'));
+              pendingTerminateAppResolversRef.current.delete(id);
+              pendingTerminateAppRejectersRef.current.delete(id);
+            }
+          }, 30000);
         });
       },
     }));
