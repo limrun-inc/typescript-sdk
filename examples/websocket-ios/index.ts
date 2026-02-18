@@ -92,12 +92,12 @@ try {
   console.log('\n--- Testing terminateApp ---');
   await client.terminateApp('com.apple.mobilesafari');
   console.log('Terminated Safari');
-  await sleep(10*1000);
+  await sleep(10 * 1000);
 
   // Terminating again succeeds silently (app is already not running)
   await client.terminateApp('com.apple.mobilesafari');
   console.log('Terminated Safari again (no-op, already not running)');
-  await sleep(1000)
+  await sleep(1000);
 
   // Re-launch Safari for the rest of the example
   await client.launchApp('com.apple.mobilesafari');
