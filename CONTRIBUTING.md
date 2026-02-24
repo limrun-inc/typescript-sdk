@@ -60,7 +60,7 @@ $ yarn link @limrun/api
 # With pnpm
 $ pnpm link --global
 $ cd ../my-package
-$ pnpm link -—global @limrun/api
+$ pnpm link --global @limrun/api
 ```
 
 ## Running tests
