@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.20.4 (2026-02-27)
+
+Full Changelog: [v0.20.3...v0.20.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.20.3...v0.20.4)
+
+### Bug Fixes
+
+* **docs/contributing:** correct pnpm link command ([10c64f4](https://github.com/limrun-inc/typescript-sdk/commit/10c64f411138c0cdb3bd14a352dceff0e4db8a39))
+
+
+### Chores
+
+* **internal/client:** fix form-urlencoded requests ([04f91a8](https://github.com/limrun-inc/typescript-sdk/commit/04f91a8624aabc45464929188c811514e226b5d3))
+* **internal:** move stringifyQuery implementation to internal function ([ae4dfc7](https://github.com/limrun-inc/typescript-sdk/commit/ae4dfc786fdec64992b02df6bd025c81245aea68))
+* **internal:** remove mock server code ([b6101a2](https://github.com/limrun-inc/typescript-sdk/commit/b6101a2e3607e962a00a540ae9fbf3524b942661))
+* update mock server docs ([2f52100](https://github.com/limrun-inc/typescript-sdk/commit/2f52100eab1f5448b8b744a9ba3be153c28ed785))
+
 ## 0.20.3 (2026-02-15)
 
 Full Changelog: [v0.20.2...v0.20.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.20.2...v0.20.3)
