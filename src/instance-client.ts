@@ -24,6 +24,42 @@ export type InstanceClient = {
    */
   screenshot: () => Promise<ScreenshotData>;
   /**
+   * Fetch Android UI hierarchy from UIAutomator.
+   */
+  getElementTree: () => Promise<ElementTreeData>;
+  /**
+   * Find matching elements by Android-native selector.
+   */
+  findElement: (selector: AndroidSelector, limit?: number) => Promise<FindElementResult>;
+  /**
+   * Tap an element by selector/reference (or explicit coordinates).
+   */
+  tapElement: (target: AndroidElementTarget) => Promise<TapResult>;
+  /**
+   * Set text into an element or currently focused input.
+   */
+  setText: (target: AndroidElementTarget | undefined, text: string) => Promise<SetTextResult>;
+  /**
+   * Press an Android key by code or key name.
+   */
+  pressKey: (key: number | string) => Promise<PressKeyResult>;
+  /**
+   * Scroll around the entire screen.
+   */
+  scrollScreen: (direction: ScrollDirection, amount?: number) => Promise<ScrollResult>;
+  /**
+   * Scroll inside an element matched by selector/reference.
+   */
+  scrollElement: (
+    target: AndroidElementTarget,
+    direction: ScrollDirection,
+    amount?: number,
+  ) => Promise<ScrollResult>;
+  /**
+   * Open a URL/deeplink on Android.
+   */
+  openUrl: (url: string) => Promise<OpenUrlResult>;
+  /**
    * Disconnect from the Limbar instance
    */
   disconnect: () => void;
@@ -56,6 +92,54 @@ export type InstanceClient = {
  * Controls the verbosity of logging in the client
  */
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
+
+export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
+
+export type AndroidSelector = {
+  resourceId?: string;
+  text?: string;
+  contentDesc?: string;
+  className?: string;
+  packageName?: string;
+  index?: number;
+  clickable?: boolean;
+  enabled?: boolean;
+  focused?: boolean;
+  boundsContains?: {
+    x: number;
+    y: number;
+  };
+};
+
+export type AndroidElementTarget = {
+  selector?: AndroidSelector;
+  x?: number;
+  y?: number;
+};
+
+export type AndroidElementNode = {
+  index?: string;
+  text?: string;
+  resourceId?: string;
+  className?: string;
+  packageName?: string;
+  contentDesc?: string;
+  clickable?: boolean;
+  enabled?: boolean;
+  focusable?: boolean;
+  focused?: boolean;
+  scrollable?: boolean;
+  selected?: boolean;
+  bounds?: string;
+  parsedBounds?: {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+    centerX: number;
+    centerY: number;
+  };
+};
 
 /**
  * Configuration options for creating an Instance API client
@@ -100,11 +184,6 @@ export type InstanceClientOptions = {
   maxReconnectDelay?: number;
 };
 
-type ScreenshotRequest = {
-  type: 'screenshot';
-  id: string;
-};
-
 type ScreenshotResponse = {
   type: 'screenshot';
   dataUri: string;
@@ -113,6 +192,41 @@ type ScreenshotResponse = {
 
 type ScreenshotData = {
   dataUri: string;
+};
+
+export type ElementTreeData = {
+  xml: string;
+  nodes: AndroidElementNode[];
+};
+
+export type FindElementResult = {
+  elements: AndroidElementNode[];
+  count: number;
+};
+
+export type TapResult = {
+  x: number;
+  y: number;
+};
+
+export type SetTextResult = {
+  textLength: number;
+};
+
+export type PressKeyResult = {
+  key: string;
+};
+
+export type ScrollResult = {
+  direction: ScrollDirection;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+};
+
+export type OpenUrlResult = {
+  url: string;
 };
 
 type ScreenshotErrorResponse = {
@@ -133,11 +247,122 @@ type AssetResultResponse = {
   message?: string;
 };
 
+type CommandError = {
+  code?: string;
+  message?: string;
+  retriable?: boolean;
+};
+
+type ScreenshotResultMessage = {
+  type: 'screenshotResult';
+  id: string;
+  payload?: ScreenshotData;
+  error?: CommandError;
+};
+
+type GetElementTreeResultMessage = {
+  type: 'getElementTreeResult';
+  id: string;
+  payload?: ElementTreeData;
+  error?: CommandError;
+};
+
+type FindElementResultMessage = {
+  type: 'findElementResult';
+  id: string;
+  payload?: FindElementResult;
+  error?: CommandError;
+};
+
+type TapElementResultMessage = {
+  type: 'tapElementResult';
+  id: string;
+  payload?: TapResult;
+  error?: CommandError;
+};
+
+type SetTextResultMessage = {
+  type: 'setTextResult';
+  id: string;
+  payload?: SetTextResult;
+  error?: CommandError;
+};
+
+type PressKeyResultMessage = {
+  type: 'pressKeyResult';
+  id: string;
+  payload?: PressKeyResult;
+  error?: CommandError;
+};
+
+type ScrollScreenResultMessage = {
+  type: 'scrollScreenResult';
+  id: string;
+  payload?: ScrollResult;
+  error?: CommandError;
+};
+
+type ScrollElementResultMessage = {
+  type: 'scrollElementResult';
+  id: string;
+  payload?: ScrollResult;
+  error?: CommandError;
+};
+
+type OpenUrlResultMessage = {
+  type: 'openUrlResult';
+  id: string;
+  payload?: OpenUrlResult;
+  error?: CommandError;
+};
+
+type KnownCommandResultMessage =
+  | ScreenshotResultMessage
+  | GetElementTreeResultMessage
+  | FindElementResultMessage
+  | TapElementResultMessage
+  | SetTextResultMessage
+  | PressKeyResultMessage
+  | ScrollScreenResultMessage
+  | ScrollElementResultMessage
+  | OpenUrlResultMessage;
+
 type ServerMessage =
   | ScreenshotResponse
   | ScreenshotErrorResponse
   | AssetResultResponse
+  | KnownCommandResultMessage
   | { type: string; [key: string]: unknown };
+
+type CommandRequestMap = {
+  screenshot: {};
+  getElementTree: {};
+  findElement: { selector: AndroidSelector; limit?: number };
+  tapElement: AndroidElementTarget;
+  setText: { text: string } & AndroidElementTarget;
+  pressKey: { keyCode?: number; keyName?: string };
+  scrollScreen: { direction: ScrollDirection; amount?: number };
+  scrollElement: AndroidElementTarget & { direction: ScrollDirection; amount?: number };
+  openUrl: { url: string };
+};
+
+type CommandResultMap = {
+  screenshot: ScreenshotData;
+  getElementTree: ElementTreeData;
+  findElement: FindElementResult;
+  tapElement: TapResult;
+  setText: SetTextResult;
+  pressKey: PressKeyResult;
+  scrollScreen: ScrollResult;
+  scrollElement: ScrollResult;
+  openUrl: OpenUrlResult;
+};
+
+type PendingRequest<T> = {
+  resolve: (value: T) => void;
+  reject: (reason: Error) => void;
+  timeout: NodeJS.Timeout;
+};
 
 /**
  * Creates a client for interacting with a Limbar instance
@@ -158,21 +383,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   let intentionalDisconnect = false;
   let lastError: string | undefined;
 
-  const screenshotRequests: Map<
-    string,
-    {
-      resolver: (value: ScreenshotData | PromiseLike<ScreenshotData>) => void;
-      rejecter: (reason?: any) => void;
-    }
-  > = new Map();
-
-  const assetRequests: Map<
-    string,
-    {
-      resolver: (value: void | PromiseLike<void>) => void;
-      rejecter: (reason?: any) => void;
-    }
-  > = new Map();
+  const pendingRequests: Map<string, PendingRequest<unknown>> = new Map();
+  const pendingAssetRequestsByUrl: Map<string, Array<PendingRequest<void>>> = new Map();
 
   const stateChangeCallbacks: Set<ConnectionStateCallback> = new Set();
 
@@ -207,10 +419,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   };
 
   const failPendingRequests = (reason: string): void => {
-    screenshotRequests.forEach((request) => request.rejecter(new Error(reason)));
-    screenshotRequests.clear();
-    assetRequests.forEach((request) => request.rejecter(new Error(reason)));
-    assetRequests.clear();
+    pendingRequests.forEach((request) => {
+      clearTimeout(request.timeout);
+      request.reject(new Error(reason));
+    });
+    pendingRequests.clear();
+    pendingAssetRequestsByUrl.forEach((requests) => {
+      requests.forEach((request) => {
+        clearTimeout(request.timeout);
+        request.reject(new Error(reason));
+      });
+    });
+    pendingAssetRequestsByUrl.clear();
   };
 
   const cleanup = (): void => {
@@ -232,9 +452,108 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   };
 
   let pingInterval: NodeJS.Timeout | undefined;
+  let requestCounter = 0;
 
   return new Promise<InstanceClient>((resolveConnection, rejectConnection) => {
     let hasResolved = false;
+
+    const nextRequestId = (prefix: string): string => {
+      requestCounter += 1;
+      return `${prefix}-${Date.now()}-${requestCounter}`;
+    };
+
+    const resolvePendingRequest = <T>(id: string, value: T): void => {
+      const request = pendingRequests.get(id) as PendingRequest<T> | undefined;
+      if (!request) {
+        logger.debug(`Received response for unknown/already-settled request: ${id}`);
+        return;
+      }
+      clearTimeout(request.timeout);
+      pendingRequests.delete(id);
+      request.resolve(value);
+    };
+
+    const rejectPendingRequest = (id: string, error: Error): void => {
+      const request = pendingRequests.get(id);
+      if (!request) {
+        logger.debug(`Received error for unknown/already-settled request: ${id}`);
+        return;
+      }
+      clearTimeout(request.timeout);
+      pendingRequests.delete(id);
+      request.reject(error);
+    };
+
+    const extractErrorMessage = (message: ServerMessage): string | undefined => {
+      if ('message' in message && typeof message.message === 'string') {
+        return message.message;
+      }
+      if ('error' in message && message.error && typeof message.error === 'object') {
+        const obj = message.error as CommandError;
+        if (typeof obj.message === 'string' && obj.message) {
+          return obj.message;
+        }
+        if (typeof obj.code === 'string' && obj.code) {
+          return obj.code;
+        }
+        // Presence of an error object itself is treated as failure, even if message/code are absent.
+        return `Server returned ${String(message.type)} with an error payload but no error message/code`;
+      }
+      return undefined;
+    };
+
+    const isKnownCommandResultMessage = (message: ServerMessage): message is KnownCommandResultMessage => {
+      if (!('type' in message) || typeof message.type !== 'string') {
+        return false;
+      }
+      switch (message.type) {
+        case 'screenshotResult':
+        case 'getElementTreeResult':
+        case 'findElementResult':
+        case 'tapElementResult':
+        case 'setTextResult':
+        case 'pressKeyResult':
+        case 'scrollScreenResult':
+        case 'scrollElementResult':
+        case 'openUrlResult':
+          return 'id' in message && typeof message.id === 'string';
+        default:
+          return false;
+      }
+    };
+
+    const sendRequest = async <K extends keyof CommandRequestMap>(
+      type: K,
+      params: CommandRequestMap[K],
+      timeoutMs: number = 30000,
+    ): Promise<CommandResultMap[K]> => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return Promise.reject(new Error('WebSocket is not connected or connection is not open.'));
+      }
+      const id = nextRequestId('ts-client');
+      const command =
+        Object.keys(params).length > 0 ? { type, id, ...params, payload: params } : { type, id };
+      return new Promise<CommandResultMap[K]>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          if (pendingRequests.has(id)) {
+            pendingRequests.delete(id);
+            reject(new Error(`Request ${type} timed out`));
+          }
+        }, timeoutMs);
+        pendingRequests.set(id, {
+          resolve: (value: unknown) => resolve(value as CommandResultMap[K]),
+          reject: (reason: Error) => reject(reason),
+          timeout,
+        });
+        ws!.send(JSON.stringify(command), (err?: Error) => {
+          if (err) {
+            clearTimeout(timeout);
+            pendingRequests.delete(id);
+            reject(err);
+          }
+        });
+      });
+    };
 
     // Reconnection logic with exponential backoff
     const scheduleReconnect = (): void => {
@@ -290,20 +609,30 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
               logger.warn('Received invalid screenshot message:', message);
               break;
             }
-
             const screenshotMessage = message as ScreenshotResponse;
-            const request = screenshotRequests.get(screenshotMessage.id);
-
-            if (!request) {
-              logger.warn(
-                `Received screenshot data for unknown or already handled session: ${screenshotMessage.id}`,
+            logger.debug(`Received screenshot data URI for request ${screenshotMessage.id}.`);
+            resolvePendingRequest<ScreenshotData>(screenshotMessage.id, {
+              dataUri: screenshotMessage.dataUri,
+            });
+            break;
+          }
+          case 'screenshotResult': {
+            const resultMessage = message as ScreenshotResultMessage;
+            const errorMessage = extractErrorMessage(resultMessage);
+            if (errorMessage) {
+              rejectPendingRequest(resultMessage.id, new Error(errorMessage));
+              break;
+            }
+            const dataUri =
+              typeof resultMessage.payload?.dataUri === 'string' ? resultMessage.payload.dataUri : '';
+            if (!dataUri) {
+              rejectPendingRequest(
+                resultMessage.id,
+                new Error('Received screenshotResult without payload.dataUri'),
               );
               break;
             }
-
-            logger.debug(`Received screenshot data URI for session ${screenshotMessage.id}.`);
-            request.resolver({ dataUri: screenshotMessage.dataUri });
-            screenshotRequests.delete(screenshotMessage.id);
+            resolvePendingRequest<ScreenshotData>(resultMessage.id, { dataUri });
             break;
           }
           case 'screenshotError': {
@@ -311,50 +640,55 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
               logger.warn('Received invalid screenshot error message:', message);
               break;
             }
-
             const errorMessage = message as ScreenshotErrorResponse;
-            const request = screenshotRequests.get(errorMessage.id);
-
-            if (!request) {
-              logger.warn(
-                `Received screenshot error for unknown or already handled session: ${errorMessage.id}`,
-              );
-              break;
-            }
-
             logger.error(
-              `Server reported an error capturing screenshot for session ${errorMessage.id}:`,
+              `Server reported an error capturing screenshot for request ${errorMessage.id}:`,
               errorMessage.message,
             );
-            request.rejecter(new Error(errorMessage.message));
-            screenshotRequests.delete(errorMessage.id);
+            rejectPendingRequest(errorMessage.id, new Error(errorMessage.message));
             break;
           }
           case 'assetResult': {
             logger.debug('Received assetResult:', message);
-            const request = assetRequests.get(message.url as string);
-            if (!request) {
+            const url = message.url as string;
+            const queue = pendingAssetRequestsByUrl.get(url);
+            if (!queue || queue.length === 0) {
               logger.warn(`Received assetResult for unknown or already handled url: ${message.url}`);
               break;
             }
+            const request = queue.shift()!;
+            if (queue.length === 0) {
+              pendingAssetRequestsByUrl.delete(url);
+            } else {
+              pendingAssetRequestsByUrl.set(url, queue);
+            }
+            clearTimeout(request.timeout);
             if (message.result === 'success') {
               logger.debug('Asset result is success');
-              request.resolver();
-              assetRequests.delete(message.url as string);
+              request.resolve();
               break;
             }
-            const errorMessage =
+            const assetErrorMessage =
               typeof message.message === 'string' && message.message ?
                 message.message
               : `Asset processing failed: ${JSON.stringify(message)}`;
-            logger.debug('Asset result is failure', errorMessage);
-            request.rejecter(new Error(errorMessage));
-            assetRequests.delete(message.url as string);
+            logger.debug('Asset result is failure', assetErrorMessage);
+            request.reject(new Error(assetErrorMessage));
             break;
           }
-          default:
+          default: {
+            if (isKnownCommandResultMessage(message)) {
+              const err = extractErrorMessage(message);
+              if (err) {
+                rejectPendingRequest(message.id, new Error(err));
+              } else {
+                resolvePendingRequest(message.id, message.payload ?? message);
+              }
+              break;
+            }
             logger.warn(`Received unexpected message type: ${message.type}`);
             break;
+          }
         }
       });
 
@@ -410,6 +744,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           hasResolved = true;
           resolveConnection({
             screenshot,
+            getElementTree,
+            findElement,
+            tapElement,
+            setText,
+            pressKey,
+            scrollScreen,
+            scrollElement,
+            openUrl,
             disconnect,
             startAdbTunnel,
             sendAsset,
@@ -421,45 +763,79 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const screenshot = async (): Promise<ScreenshotData> => {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        return Promise.reject(new Error('WebSocket is not connected or connection is not open.'));
-      }
+      return sendRequest('screenshot', {});
+    };
 
-      const id = 'ts-client-' + Date.now();
-      const screenshotRequest: ScreenshotRequest = {
-        type: 'screenshot',
-        id,
+    const getElementTree = async (): Promise<ElementTreeData> => {
+      const result = await sendRequest('getElementTree', {});
+      return {
+        xml: typeof result.xml === 'string' ? result.xml : '',
+        nodes: Array.isArray(result.nodes) ? result.nodes : [],
       };
+    };
 
-      return new Promise<ScreenshotData>((resolve, reject) => {
-        logger.debug('Sending screenshot request:', screenshotRequest);
-        ws!.send(JSON.stringify(screenshotRequest), (err?: Error) => {
-          if (err) {
-            logger.error('Failed to send screenshot request:', err);
-            reject(err);
-          }
-        });
+    const findElement = async (selector: AndroidSelector, limit = 20): Promise<FindElementResult> => {
+      const result = await sendRequest('findElement', { selector, limit });
+      const elements = Array.isArray(result.elements) ? result.elements : [];
+      return {
+        elements,
+        count: typeof result.count === 'number' ? result.count : elements.length,
+      };
+    };
 
-        const timeout = setTimeout(() => {
-          if (screenshotRequests.has(id)) {
-            logger.error(`Screenshot request timed out for session ${id}`);
-            screenshotRequests.get(id)?.rejecter(new Error('Screenshot request timed out'));
-            screenshotRequests.delete(id);
-          }
-        }, 30000);
-        screenshotRequests.set(id, {
-          resolver: (value: ScreenshotData | PromiseLike<ScreenshotData>) => {
-            clearTimeout(timeout);
-            resolve(value);
-            screenshotRequests.delete(id);
-          },
-          rejecter: (reason?: any) => {
-            clearTimeout(timeout);
-            reject(reason);
-            screenshotRequests.delete(id);
-          },
-        });
+    const tapElement = async (target: AndroidElementTarget): Promise<TapResult> => {
+      const result = await sendRequest('tapElement', target);
+      return {
+        x: Number(result.x ?? 0),
+        y: Number(result.y ?? 0),
+      };
+    };
+
+    const setText = async (
+      target: AndroidElementTarget | undefined,
+      text: string,
+    ): Promise<SetTextResult> => {
+      const payload: CommandRequestMap['setText'] = { text };
+      if (target?.selector) payload.selector = target.selector;
+      if (typeof target?.x === 'number') payload.x = target.x;
+      if (typeof target?.y === 'number') payload.y = target.y;
+      const result = await sendRequest('setText', payload);
+      return {
+        textLength: Number(result.textLength ?? text.length),
+      };
+    };
+
+    const pressKey = async (key: number | string): Promise<PressKeyResult> => {
+      const payload = typeof key === 'number' ? { keyCode: key } : { keyName: key };
+      const result = await sendRequest('pressKey', payload);
+      return {
+        key: typeof result.key === 'string' ? result.key : String(key),
+      };
+    };
+
+    const scrollScreen = async (direction: ScrollDirection, amount = 6): Promise<ScrollResult> => {
+      const result = await sendRequest('scrollScreen', { direction, amount });
+      return result;
+    };
+
+    const scrollElement = async (
+      target: AndroidElementTarget,
+      direction: ScrollDirection,
+      amount = 6,
+    ): Promise<ScrollResult> => {
+      const result = await sendRequest('scrollElement', {
+        ...target,
+        direction,
+        amount,
       });
+      return result;
+    };
+
+    const openUrl = async (url: string): Promise<OpenUrlResult> => {
+      const result = await sendRequest('openUrl', { url });
+      return {
+        url: typeof result.url === 'string' ? result.url : url,
+      };
     };
 
     const disconnect = (): void => {
@@ -518,13 +894,49 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         type: 'asset',
         url,
       };
-      ws.send(JSON.stringify(assetRequest), (err?: Error) => {
-        if (err) {
-          logger.error('Failed to send asset request:', err);
-        }
-      });
       return new Promise<void>((resolve, reject) => {
-        assetRequests.set(url, { resolver: resolve, rejecter: reject });
+        let request: PendingRequest<void>;
+        const timeout = setTimeout(() => {
+          const queue = pendingAssetRequestsByUrl.get(url);
+          if (!queue) {
+            return;
+          }
+          const idx = queue.indexOf(request);
+          if (idx >= 0) {
+            queue.splice(idx, 1);
+            reject(new Error(`Request asset timed out for url: ${url}`));
+          }
+          if (queue.length === 0) {
+            pendingAssetRequestsByUrl.delete(url);
+          } else {
+            pendingAssetRequestsByUrl.set(url, queue);
+          }
+        }, 30000);
+        request = {
+          resolve,
+          reject: (reason: Error) => reject(reason),
+          timeout,
+        };
+        const queue = pendingAssetRequestsByUrl.get(url) ?? [];
+        queue.push(request);
+        pendingAssetRequestsByUrl.set(url, queue);
+        ws!.send(JSON.stringify(assetRequest), (err?: Error) => {
+          if (err) {
+            clearTimeout(timeout);
+            const queued = pendingAssetRequestsByUrl.get(url) ?? [];
+            const idx = queued.indexOf(request);
+            if (idx >= 0) {
+              queued.splice(idx, 1);
+            }
+            if (queued.length === 0) {
+              pendingAssetRequestsByUrl.delete(url);
+            } else {
+              pendingAssetRequestsByUrl.set(url, queued);
+            }
+            logger.error('Failed to send asset request:', err);
+            reject(err);
+          }
+        });
       });
     };
 
