@@ -74,12 +74,12 @@ try {
   console.log('Scrolled screen up');
   await sleep(1000);
 
-  console.log('\n--- Testing tapElement with selector ---');
+  console.log('\n--- Testing tap with selector ---');
   try {
-    const tapResult = await client.tapElement({ selector: { clickable: true } });
+    const tapResult = await client.tap({ selector: { clickable: true } });
     console.log(`Tapped element at (${tapResult.x}, ${tapResult.y})`);
   } catch (err) {
-    console.log(`tapElement failed (expected in some UIs): ${(err as Error).message}`);
+    console.log(`tap failed (expected in some UIs): ${(err as Error).message}`);
   }
 
   console.log('\n--- Testing setText ---');

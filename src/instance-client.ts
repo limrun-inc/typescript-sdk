@@ -34,7 +34,7 @@ export type InstanceClient = {
   /**
    * Tap an element by selector/reference (or explicit coordinates).
    */
-  tapElement: (target: AndroidElementTarget) => Promise<TapResult>;
+  tap: (target: AndroidElementTarget) => Promise<TapResult>;
   /**
    * Set text into an element or currently focused input.
    */
@@ -274,8 +274,8 @@ type FindElementResultMessage = {
   error?: CommandError;
 };
 
-type TapElementResultMessage = {
-  type: 'tapElementResult';
+type TapResultMessage = {
+  type: 'tapResult';
   id: string;
   payload?: TapResult;
   error?: CommandError;
@@ -320,7 +320,7 @@ type KnownCommandResultMessage =
   | ScreenshotResultMessage
   | GetElementTreeResultMessage
   | FindElementResultMessage
-  | TapElementResultMessage
+  | TapResultMessage
   | SetTextResultMessage
   | PressKeyResultMessage
   | ScrollScreenResultMessage
@@ -338,7 +338,7 @@ type CommandRequestMap = {
   screenshot: {};
   getElementTree: {};
   findElement: { selector: AndroidSelector; limit?: number };
-  tapElement: AndroidElementTarget;
+  tap: AndroidElementTarget;
   setText: { text: string } & AndroidElementTarget;
   pressKey: { keyCode?: number; keyName?: string };
   scrollScreen: { direction: ScrollDirection; amount?: number };
@@ -350,7 +350,7 @@ type CommandResultMap = {
   screenshot: ScreenshotData;
   getElementTree: ElementTreeData;
   findElement: FindElementResult;
-  tapElement: TapResult;
+  tap: TapResult;
   setText: SetTextResult;
   pressKey: PressKeyResult;
   scrollScreen: ScrollResult;
@@ -510,7 +510,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         case 'screenshotResult':
         case 'getElementTreeResult':
         case 'findElementResult':
-        case 'tapElementResult':
+        case 'tapResult':
         case 'setTextResult':
         case 'pressKeyResult':
         case 'scrollScreenResult':
@@ -746,7 +746,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             screenshot,
             getElementTree,
             findElement,
-            tapElement,
+            tap,
             setText,
             pressKey,
             scrollScreen,
@@ -783,8 +783,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       };
     };
 
-    const tapElement = async (target: AndroidElementTarget): Promise<TapResult> => {
-      const result = await sendRequest('tapElement', target);
+    const tap = async (target: AndroidElementTarget): Promise<TapResult> => {
+      const result = await sendRequest('tap', target);
       return {
         x: Number(result.x ?? 0),
         y: Number(result.y ?? 0),
