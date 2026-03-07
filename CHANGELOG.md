@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.20.4 (2026-03-07)
+
+Full Changelog: [v0.20.3...v0.20.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.20.3...v0.20.4)
+
+### Bug Fixes
+
+* **client:** preserve URL params already embedded in path ([ce5db54](https://github.com/limrun-inc/typescript-sdk/commit/ce5db54d818d305fe22ae31b056cc1aef3656fdd))
+* **docs/contributing:** correct pnpm link command ([c0b75b3](https://github.com/limrun-inc/typescript-sdk/commit/c0b75b375571969436b587d408fafab85df34aad))
+
+
+### Chores
+
+* **ci:** skip uploading artifacts on stainless-internal branches ([28837a9](https://github.com/limrun-inc/typescript-sdk/commit/28837a97c59ee81d6e3d1dd277a245dc6a0f7021))
+* **internal/client:** fix form-urlencoded requests ([f47ef8b](https://github.com/limrun-inc/typescript-sdk/commit/f47ef8be5ee4129675e8b2678a3d0dc08b0f6e36))
+* **internal:** codegen related update ([c4e4329](https://github.com/limrun-inc/typescript-sdk/commit/c4e4329afaf2d2a51adb11e52b238865c26ab691))
+* **internal:** move stringifyQuery implementation to internal function ([2c750e2](https://github.com/limrun-inc/typescript-sdk/commit/2c750e2afe373d6f73479a0b3d0b3ccf0d584d7f))
+* **internal:** remove mock server code ([8e47f66](https://github.com/limrun-inc/typescript-sdk/commit/8e47f66509ab47d8f8434227a176afd099cf28fd))
+* update mock server docs ([4638c53](https://github.com/limrun-inc/typescript-sdk/commit/4638c53fd783bbd16e4ca983eed1c32479927bd1))
+
 ## 0.20.3 (2026-02-15)
 
 Full Changelog: [v0.20.2...v0.20.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.20.2...v0.20.3)
