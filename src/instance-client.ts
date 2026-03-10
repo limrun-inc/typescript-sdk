@@ -40,9 +40,14 @@ export type InstanceClient = {
    */
   setText: (target: AndroidElementTarget | undefined, text: string) => Promise<SetTextResult>;
   /**
-   * Press an Android key by code or key name.
+   * Press an Android key by key name, optionally with modifiers.
+   * Accepted key strings are case-insensitive and may be plain names like
+   * `'BACK'`, `'ENTER'`, `'A'`, `'TAB'`, full Android constants like
+   * `'KEYCODE_TAB'`, or digit strings like `'4'`.
+   * Supported modifiers are `'shift'`, `'ctrl'`/`'control'`, `'alt'`/`'option'`,
+   * `'meta'`/`'command'`/`'cmd'`, `'sym'`, and `'fn'`/`'function'`.
    */
-  pressKey: (key: number | string) => Promise<PressKeyResult>;
+  pressKey: (key: string, modifiers?: string[]) => Promise<PressKeyResult>;
   /**
    * Scroll around the entire screen.
    */
@@ -340,7 +345,7 @@ type CommandRequestMap = {
   findElement: { selector: AndroidSelector; limit?: number };
   tap: AndroidElementTarget;
   setText: { text: string } & AndroidElementTarget;
-  pressKey: { keyCode?: number; keyName?: string };
+  pressKey: { keyName?: string; key?: string; modifiers?: string[] };
   scrollScreen: { direction: ScrollDirection; amount?: number };
   scrollElement: AndroidElementTarget & { direction: ScrollDirection; amount?: number };
   openUrl: { url: string };
@@ -805,8 +810,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       };
     };
 
-    const pressKey = async (key: number | string): Promise<PressKeyResult> => {
-      const payload = typeof key === 'number' ? { keyCode: key } : { keyName: key };
+    const pressKey = async (key: string, modifiers?: string[]): Promise<PressKeyResult> => {
+      const payload: CommandRequestMap['pressKey'] = {
+        keyName: key,
+        ...(modifiers ? { modifiers } : {}),
+      };
       const result = await sendRequest('pressKey', payload);
       return {
         key: typeof result.key === 'string' ? result.key : String(key),
