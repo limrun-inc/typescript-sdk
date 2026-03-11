@@ -1247,6 +1247,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               updateStatus('Added ICE candidate');
               break;
             case 'screenshot':
+            case 'screenshotResult':
               if (typeof message.id !== 'string' || typeof message.dataUri !== 'string') {
                 debugWarn('Received invalid screenshot success message:', message);
                 break;
