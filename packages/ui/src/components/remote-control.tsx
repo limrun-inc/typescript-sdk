@@ -7,6 +7,8 @@ import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
 import iphoneFrameImage from '../assets/iphone16pro_black_bg.webp';
 import pixelFrameImage from '../assets/pixel9_black.webp';
 import pixelFrameImageLandscape from '../assets/pixel9_black_landscape.webp';
+import pixelTabletFrameImage from '../assets/pixel_tablet_portrait.webp';
+import pixelTabletFrameImageLandscape from '../assets/pixel_tablet_landscape.webp';
 import iphoneFrameImageLandscape from '../assets/iphone16pro_black_landscape_bg.webp';
 import appleLogoSvg from '../assets/Apple_logo_white.svg';
 import androidBootImage from '../assets/android_boot.webp';
@@ -115,6 +117,13 @@ type DeviceConfig = {
   }
 }
 
+const ANDROID_TABLET_VIDEO_WIDTH = 1920;
+const ANDROID_TABLET_VIDEO_HEIGHT = 1200;
+
+const isAndroidTabletVideo = (width: number, height: number): boolean =>
+  (width === ANDROID_TABLET_VIDEO_WIDTH && height === ANDROID_TABLET_VIDEO_HEIGHT) ||
+  (width === ANDROID_TABLET_VIDEO_HEIGHT && height === ANDROID_TABLET_VIDEO_WIDTH);
+
 // Device-specific configuration for frame sizing and video positioning
 // Video position percentages are relative to the frame image dimensions
 const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
@@ -185,6 +194,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const frameRef = useRef<HTMLImageElement>(null);
     const [videoLoaded, setVideoLoaded] = useState(false);
     const [isLandscape, setIsLandscape] = useState(false);
+    const [useAndroidTabletFrame, setUseAndroidTabletFrame] = useState(false);
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
     const wsRef = useRef<WebSocket | null>(null);
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
@@ -1397,6 +1407,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         // Determine landscape based on video's intrinsic dimensions
         const landscape = video.videoWidth > video.videoHeight;
         setIsLandscape(landscape);
+        setUseAndroidTabletFrame(
+          platform === 'android' && isAndroidTabletVideo(video.videoWidth, video.videoHeight),
+        );
         
         const pos = landscape ? config.videoPosition.landscape : config.videoPosition.portrait;
         let newStyle: React.CSSProperties = {};
@@ -1589,6 +1602,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     // Show indicators when Alt is held and we have a valid hover point (null when outside)
     const showAltIndicators = isAltHeld && hoverPoint !== null;
+    const frameImageSrc =
+      platform === 'android' && useAndroidTabletFrame
+        ? (isLandscape ? pixelTabletFrameImageLandscape : pixelTabletFrameImage)
+        : (isLandscape ? config.frame.imageLandscape : config.frame.image);
 
     return (
       <div
@@ -1630,7 +1647,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         {showFrame && (
           <img
             ref={frameRef}
-            src={isLandscape ? config.frame.imageLandscape : config.frame.image}
+            src={frameImageSrc}
             alt=""
             className={platform === 'ios' ? clsx('rc-phone-frame', 'rc-phone-frame-ios') : 'rc-phone-frame'}
             draggable={false}
