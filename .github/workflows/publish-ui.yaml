@@ -25,6 +25,5 @@ jobs:
       - name: Publish to NPM
         working-directory: packages/ui
         run: |
-          yarn build
-          cd dist
-          yarn publish
+          npm run build
+          npm publish --provenance
