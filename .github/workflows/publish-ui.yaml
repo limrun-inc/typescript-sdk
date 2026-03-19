@@ -1,6 +1,9 @@
 name: Publish @limrun/ui
 on:
   workflow_dispatch:
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
 jobs:
   publish:
     name: publish
@@ -9,10 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v3
+      - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         working-directory: packages/ui
