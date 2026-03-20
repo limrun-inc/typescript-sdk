@@ -196,6 +196,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
     const [videoLoaded, setVideoLoaded] = useState(false);
+    const [retryExhausted, setRetryExhausted] = useState(false);
     const [isLandscape, setIsLandscape] = useState(false);
     const [useAndroidTabletFrame, setUseAndroidTabletFrame] = useState(false);
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
@@ -1134,6 +1135,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const nextAttempt = connectionAttemptRef.current + 1;
       if (nextAttempt >= MAX_CONNECTION_ATTEMPTS) {
         updateStatus(`Connection failed after ${MAX_CONNECTION_ATTEMPTS} attempts: ${reason}`);
+        setRetryExhausted(true);
         teardownConnection();
         return;
       }
@@ -1154,6 +1156,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       connectionGenerationRef.current = generation;
       connectionAttemptRef.current = attemptNumber;
       controlChannelOpenedRef.current = false;
+      setRetryExhausted(false);
       clearScheduledRetry();
       clearConnectionSuccessTimeout();
       stopRequestFrameLoop();
@@ -1588,6 +1591,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       updateStatus('Stopped');
     };
 
+    const handleManualRetry = (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      start();
+    };
+
     useEffect(() => {
       // Reset video loaded state when connection params change
       setVideoLoaded(false);
@@ -1916,6 +1924,15 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             }
           }}
         />
+        {retryExhausted && (
+          <button
+            type="button"
+            className="rc-retry-button"
+            onClick={handleManualRetry}
+          >
+            Retry
+          </button>
+        )}
       </div>
     );
   },

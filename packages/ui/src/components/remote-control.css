@@ -71,3 +71,29 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   will-change: transform, left, top;
 }
+
+.rc-retry-button {
+  position: absolute;
+  z-index: 50;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: 0;
+  border-radius: 9999px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #111827;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.rc-retry-button:hover {
+  background: #ffffff;
+}
+
+.rc-retry-button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
