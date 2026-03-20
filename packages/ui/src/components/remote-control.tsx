@@ -1481,8 +1481,27 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               updateStatus('Added ICE candidate');
               break;
             case 'screenshot':
-              if (typeof message.id !== 'string' || typeof message.dataUri !== 'string') {
+            case 'screenshotResult': {
+              if (typeof message.id !== 'string') {
                 debugWarn('Received invalid screenshot success message:', message);
+                break;
+              }
+              const screenshotError = getScreenshotError(message);
+              if (screenshotError) {
+                const rejecter = pendingScreenshotRejectersRef.current.get(message.id);
+                if (!rejecter) {
+                  debugWarn(`Received screenshot error for unknown or handled id: ${message.id}`);
+                  break;
+                }
+                debugWarn(`Received screenshot error for id ${message.id}: ${screenshotError}`);
+                rejecter(new Error(screenshotError));
+                pendingScreenshotResolversRef.current.delete(message.id);
+                pendingScreenshotRejectersRef.current.delete(message.id);
+                break;
+              }
+              const screenshotData = toScreenshotData(message);
+              if (!screenshotData) {
+                debugWarn('Received screenshot message without image data:', message);
                 break;
               }
               const resolver = pendingScreenshotResolversRef.current.get(message.id);
@@ -1491,10 +1510,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 break;
               }
               debugLog(`Received screenshot data for id ${message.id}`);
-              resolver({ dataUri: message.dataUri });
+              resolver(screenshotData);
               pendingScreenshotResolversRef.current.delete(message.id);
               pendingScreenshotRejectersRef.current.delete(message.id);
               break;
+            }
             case 'screenshotError':
               if (typeof message.id !== 'string' || typeof message.message !== 'string') {
                 debugWarn('Received invalid screenshot error message:', message);
@@ -1937,3 +1957,32 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     );
   },
 );
+
+const getScreenshotError = (message: any): string | null => {
+  if (typeof message.message === 'string') {
+    return message.message;
+  }
+
+  if (typeof message.error === 'string') {
+    return message.error;
+  }
+
+  return null;
+};
+
+const toScreenshotData = (message: any): ScreenshotData | null => {
+  if (typeof message.dataUri === 'string') {
+    return { dataUri: message.dataUri };
+  }
+
+  if (typeof message.base64 === 'string') {
+    if (message.base64.startsWith('data:')) {
+      return { dataUri: message.base64 };
+    }
+
+    const mimeType = message.base64.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
+    return { dataUri: `data:${mimeType};base64,${message.base64}` };
+  }
+
+  return null;
+};
