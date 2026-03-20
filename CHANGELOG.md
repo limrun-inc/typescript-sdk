@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.21.0 (2026-03-20)
+
+Full Changelog: [v0.20.3...v0.21.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.20.3...v0.21.0)
+
+### Features
+
+* **api:** add status.mcpUrl to android ([73070e8](https://github.com/limrun-inc/typescript-sdk/commit/73070e8fc8bde58cc89dce7b47c8e7f215b9fa1f))
+
+
+### Bug Fixes
+
+* **client:** preserve URL params already embedded in path ([c44d6a0](https://github.com/limrun-inc/typescript-sdk/commit/c44d6a01116ec6b24f8910d94bc82c6eff9bdfca))
+* **docs/contributing:** correct pnpm link command ([a660b0b](https://github.com/limrun-inc/typescript-sdk/commit/a660b0be357aaad6f3c6501a99e9db45894b6aaf))
+
+
+### Chores
+
+* **ci:** skip uploading artifacts on stainless-internal branches ([8d06568](https://github.com/limrun-inc/typescript-sdk/commit/8d06568cc33163bde031a928cccbde77cc41bdce))
+* **internal/client:** fix form-urlencoded requests ([1a0b3dc](https://github.com/limrun-inc/typescript-sdk/commit/1a0b3dc8388afb62fed4f9c96ae8d18a563e8298))
+* **internal:** codegen related update ([47531fb](https://github.com/limrun-inc/typescript-sdk/commit/47531fb7c9a2d4332e898302312a62b1f9156eed))
+* **internal:** move stringifyQuery implementation to internal function ([39532ba](https://github.com/limrun-inc/typescript-sdk/commit/39532ba1eed8100e69571e7cca2b7a7ce30df2c6))
+* **internal:** remove mock server code ([357c0d5](https://github.com/limrun-inc/typescript-sdk/commit/357c0d595db37491700acca5d4d8cb48b11ad760))
+* **internal:** tweak CI branches ([9d772d1](https://github.com/limrun-inc/typescript-sdk/commit/9d772d1866f6d0a0bf9710190d3dc3cebbb61588))
+* **internal:** update dependencies to address dependabot vulnerabilities ([ee6848d](https://github.com/limrun-inc/typescript-sdk/commit/ee6848da62e0ad9a770a2c7195a4b12eb31c0eb5))
+* update mock server docs ([07ef3d5](https://github.com/limrun-inc/typescript-sdk/commit/07ef3d58d34884ae7b30f4c6f286a5a51dcedfd7))
+
 ## 0.20.3 (2026-02-15)
 
 Full Changelog: [v0.20.2...v0.20.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.20.2...v0.20.3)
