@@ -101,6 +101,8 @@ export namespace AndroidInstance {
 
     errorMessage?: string;
 
+    mcpUrl?: string;
+
     sandbox?: Status.Sandbox;
 
     targetHttpPortUrlPrefix?: string;
