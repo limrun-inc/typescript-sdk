@@ -1126,7 +1126,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
 
     const scheduleRetry = (reason: string, generation: number) => {
-      if (generation !== connectionGenerationRef.current || controlChannelOpenedRef.current) {
+      if (generation !== connectionGenerationRef.current) {
+        return;
+      }
+
+      if (controlChannelOpenedRef.current) {
+        updateStatus(`Connection failed after it was established: ${reason}`);
+        setRetryExhausted(true);
+        teardownConnection();
         return;
       }
 
