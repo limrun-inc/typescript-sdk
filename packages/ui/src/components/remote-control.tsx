@@ -119,6 +119,9 @@ type DeviceConfig = {
 
 const ANDROID_TABLET_VIDEO_WIDTH = 1920;
 const ANDROID_TABLET_VIDEO_HEIGHT = 1200;
+const MAX_CONNECTION_ATTEMPTS = 3;
+const CONNECTION_RETRY_DELAY_MS = 1000;
+const CONNECTION_SUCCESS_TIMEOUT_MS = 15000;
 
 const isAndroidTabletVideo = (width: number, height: number): boolean =>
   (width === ANDROID_TABLET_VIDEO_WIDTH && height === ANDROID_TABLET_VIDEO_HEIGHT) ||
@@ -193,6 +196,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
     const [videoLoaded, setVideoLoaded] = useState(false);
+    const [retryExhausted, setRetryExhausted] = useState(false);
     const [isLandscape, setIsLandscape] = useState(false);
     const [useAndroidTabletFrame, setUseAndroidTabletFrame] = useState(false);
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
@@ -200,6 +204,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
     const dataChannelRef = useRef<RTCDataChannel | null>(null);
     const keepAliveIntervalRef = useRef<number | undefined>(undefined);
+    const retryTimeoutRef = useRef<number | undefined>(undefined);
+    const connectionSuccessTimeoutRef = useRef<number | undefined>(undefined);
+    const requestFrameIntervalRef = useRef<number | undefined>(undefined);
+    const connectionGenerationRef = useRef(0);
+    const connectionAttemptRef = useRef(0);
+    const controlChannelOpenedRef = useRef(false);
+    const firstFrameShownRef = useRef(false);
     const pendingScreenshotResolversRef = useRef<
       Map<string, (value: ScreenshotData | PromiseLike<ScreenshotData>) => void>
     >(new Map());
@@ -1045,6 +1056,67 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
     };
 
+    const clearScheduledRetry = () => {
+      if (retryTimeoutRef.current) {
+        window.clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = undefined;
+      }
+    };
+
+    const clearConnectionSuccessTimeout = () => {
+      if (connectionSuccessTimeoutRef.current) {
+        window.clearTimeout(connectionSuccessTimeoutRef.current);
+        connectionSuccessTimeoutRef.current = undefined;
+      }
+    };
+
+    const stopRequestFrameLoop = () => {
+      if (requestFrameIntervalRef.current) {
+        window.clearInterval(requestFrameIntervalRef.current);
+        requestFrameIntervalRef.current = undefined;
+      }
+    };
+
+    const markFirstFrameShown = () => {
+      if (firstFrameShownRef.current) {
+        return;
+      }
+      firstFrameShownRef.current = true;
+      stopRequestFrameLoop();
+      setVideoLoaded(true);
+    };
+
+    const teardownConnection = () => {
+      clearConnectionSuccessTimeout();
+      stopRequestFrameLoop();
+      if (wsRef.current) {
+        wsRef.current.onopen = null;
+        wsRef.current.onmessage = null;
+        wsRef.current.onerror = null;
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.onconnectionstatechange = null;
+        peerConnectionRef.current.oniceconnectionstatechange = null;
+        peerConnectionRef.current.ontrack = null;
+        peerConnectionRef.current.onicecandidate = null;
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      if (dataChannelRef.current) {
+        dataChannelRef.current.onopen = null;
+        dataChannelRef.current.onclose = null;
+        dataChannelRef.current.onerror = null;
+        dataChannelRef.current.close();
+        dataChannelRef.current = null;
+      }
+    };
+
     const handleVisibilityChange = () => {
       if (document.hidden) {
         stopKeepAlive();
@@ -1053,46 +1125,143 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
     };
 
-    const start = async () => {
-      try {
-        wsRef.current = new WebSocket(`${url}?token=${token}`);
+    const scheduleRetry = (reason: string, generation: number) => {
+      if (generation !== connectionGenerationRef.current) {
+        return;
+      }
 
-        wsRef.current.onerror = (error) => {
+      if (controlChannelOpenedRef.current) {
+        updateStatus(`Connection failed after it was established: ${reason}`);
+        setRetryExhausted(true);
+        teardownConnection();
+        return;
+      }
+
+      clearScheduledRetry();
+
+      const nextAttempt = connectionAttemptRef.current + 1;
+      if (nextAttempt >= MAX_CONNECTION_ATTEMPTS) {
+        updateStatus(`Connection failed after ${MAX_CONNECTION_ATTEMPTS} attempts: ${reason}`);
+        setRetryExhausted(true);
+        teardownConnection();
+        return;
+      }
+
+      updateStatus(`Retrying connection (${nextAttempt + 1}/${MAX_CONNECTION_ATTEMPTS})`);
+      teardownConnection();
+      retryTimeoutRef.current = window.setTimeout(() => {
+        retryTimeoutRef.current = undefined;
+        if (generation !== connectionGenerationRef.current) {
+          return;
+        }
+        void startAttempt(nextAttempt);
+      }, CONNECTION_RETRY_DELAY_MS);
+    };
+
+    const startAttempt = async (attemptNumber = 0) => {
+      const generation = connectionGenerationRef.current + 1;
+      connectionGenerationRef.current = generation;
+      connectionAttemptRef.current = attemptNumber;
+      controlChannelOpenedRef.current = false;
+      setRetryExhausted(false);
+      clearScheduledRetry();
+      clearConnectionSuccessTimeout();
+      stopRequestFrameLoop();
+      firstFrameShownRef.current = false;
+      setVideoLoaded(false);
+      teardownConnection();
+
+      const isCurrentAttempt = () =>
+        generation === connectionGenerationRef.current;
+
+      connectionSuccessTimeoutRef.current = window.setTimeout(() => {
+        connectionSuccessTimeoutRef.current = undefined;
+        if (!isCurrentAttempt() || controlChannelOpenedRef.current) {
+          return;
+        }
+        scheduleRetry('Connection did not succeed within 15 seconds', generation);
+      }, CONNECTION_SUCCESS_TIMEOUT_MS);
+
+      try {
+        const ws = new WebSocket(`${url}?token=${token}`);
+        wsRef.current = ws;
+
+        // Wait for WebSocket to connect
+        await new Promise<void>((resolve, reject) => {
+          let settled = false;
+          const timeoutId = window.setTimeout(() => reject(new Error('WebSocket connection timeout')), 30000);
+          const settle = (callback: () => void) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            window.clearTimeout(timeoutId);
+            callback();
+          };
+
+          ws.onopen = () => {
+            if (!isCurrentAttempt() || wsRef.current !== ws) {
+              return;
+            }
+            settle(resolve);
+          };
+
+          ws.onerror = (error) => {
+            if (!isCurrentAttempt() || wsRef.current !== ws) {
+              return;
+            }
+            updateStatus('WebSocket error: ' + error);
+            settle(() => reject(new Error('WebSocket connection failed')));
+          };
+
+          ws.onclose = () => {
+            if (!isCurrentAttempt() || wsRef.current !== ws) {
+              return;
+            }
+            updateStatus('WebSocket closed');
+            settle(() => reject(new Error('WebSocket closed before connection was established')));
+          };
+        });
+        if (!isCurrentAttempt() || wsRef.current !== ws) {
+          return;
+        }
+
+        ws.onerror = (error) => {
+          if (!isCurrentAttempt() || wsRef.current !== ws) {
+            return;
+          }
           updateStatus('WebSocket error: ' + error);
         };
 
-        wsRef.current.onclose = () => {
+        ws.onclose = () => {
+          if (!isCurrentAttempt() || wsRef.current !== ws) {
+            return;
+          }
           updateStatus('WebSocket closed');
         };
 
-        // Wait for WebSocket to connect
-        await new Promise((resolve, reject) => {
-          if (wsRef.current) {
-            wsRef.current.onopen = resolve;
-            setTimeout(() => reject(new Error('WebSocket connection timeout')), 30000);
-          }
-        });
-
         // Request RTCConfiguration
         const rtcConfigPromise = new Promise<RTCConfiguration>((resolve, reject) => {
-          const timeoutId = setTimeout(() => reject(new Error('RTCConfiguration timeout')), 30000);
+          const timeoutId = window.setTimeout(() => reject(new Error('RTCConfiguration timeout')), 30000);
 
           const messageHandler = (event: MessageEvent) => {
             try {
               const message = JSON.parse(event.data);
               if (message.type === 'rtcConfiguration') {
-                clearTimeout(timeoutId);
-                wsRef.current?.removeEventListener('message', messageHandler);
+                window.clearTimeout(timeoutId);
+                ws.removeEventListener('message', messageHandler);
                 resolve(message.rtcConfiguration);
               }
             } catch (e) {
+              window.clearTimeout(timeoutId);
+              ws.removeEventListener('message', messageHandler);
               console.error('Error handling RTC configuration:', e);
               reject(e);
             }
           };
 
-          wsRef.current?.addEventListener('message', messageHandler);
-          wsRef.current?.send(
+          ws.addEventListener('message', messageHandler);
+          ws.send(
             JSON.stringify({
               type: 'requestRtcConfiguration',
               sessionId: sessionId,
@@ -1101,9 +1270,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         });
 
         const rtcConfig = await rtcConfigPromise;
-        peerConnectionRef.current = new RTCPeerConnection(rtcConfig);
-        peerConnectionRef.current.addTransceiver('audio', { direction: 'recvonly' });
-        const videoTransceiver = peerConnectionRef.current.addTransceiver('video', { direction: 'recvonly' });
+        if (!isCurrentAttempt() || wsRef.current !== ws) {
+          return;
+        }
+
+        const peerConnection = new RTCPeerConnection(rtcConfig);
+        peerConnectionRef.current = peerConnection;
+        peerConnection.addTransceiver('audio', { direction: 'recvonly' });
+        const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
 
         // As hardware encoder, we use H265 for iOS and VP9 for Android.
         // We make sure these two are the first ones in the list.
@@ -1130,70 +1304,115 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }
         }
 
-        dataChannelRef.current = peerConnectionRef.current.createDataChannel('control', {
+        const dataChannel = peerConnection.createDataChannel('control', {
           ordered: true,
           negotiated: true,
           id: 1,
         });
+        dataChannelRef.current = dataChannel;
 
-        dataChannelRef.current.onopen = () => {
+        dataChannel.onopen = () => {
+          if (!isCurrentAttempt() || dataChannelRef.current !== dataChannel || wsRef.current !== ws) {
+            return;
+          }
+          controlChannelOpenedRef.current = true;
+          clearConnectionSuccessTimeout();
           updateStatus('Control channel opened');
-          // Request first frame once we're ready to receive video
-          if (wsRef.current) {
-            for (let i = 0; i < 12; i++) {
-              setTimeout(() => {
-                if (wsRef.current) {
-                  wsRef.current.send(JSON.stringify({ type: 'requestFrame', sessionId: sessionId }));
-                }
-              }, i * 125); // 125ms = quarter second
+          const sendRequestFrame = () => {
+            if (
+              !isCurrentAttempt() ||
+              firstFrameShownRef.current ||
+              dataChannelRef.current !== dataChannel ||
+              wsRef.current !== ws ||
+              ws.readyState !== WebSocket.OPEN
+            ) {
+              return;
             }
+            ws.send(JSON.stringify({ type: 'requestFrame', sessionId: sessionId }));
+          };
 
-            // Send openUrl message if the prop is provided
-            if (openUrl) {
-              try {
-                const decodedUrl = decodeURIComponent(openUrl);
-                updateStatus('Opening URL');
-                wsRef.current.send(
-                  JSON.stringify({
-                    type: 'openUrl',
-                    url: decodedUrl,
-                    sessionId: sessionId,
-                  }),
-                );
-              } catch (error) {
-                console.error({ error }, 'Error decoding URL, falling back to the original URL');
-                wsRef.current.send(
-                  JSON.stringify({
-                    type: 'openUrl',
-                    url: openUrl,
-                    sessionId: sessionId,
-                  }),
-                );
-              }
+          sendRequestFrame();
+          stopRequestFrameLoop();
+          requestFrameIntervalRef.current = window.setInterval(() => {
+            if (
+              !isCurrentAttempt() ||
+              firstFrameShownRef.current ||
+              dataChannelRef.current !== dataChannel ||
+              wsRef.current !== ws ||
+              ws.readyState !== WebSocket.OPEN
+            ) {
+              stopRequestFrameLoop();
+              return;
+            }
+            sendRequestFrame();
+          }, 250);
+
+          // Send openUrl message if the prop is provided
+          if (openUrl) {
+            try {
+              const decodedUrl = decodeURIComponent(openUrl);
+              updateStatus('Opening URL');
+              ws.send(
+                JSON.stringify({
+                  type: 'openUrl',
+                  url: decodedUrl,
+                  sessionId: sessionId,
+                }),
+              );
+            } catch (error) {
+              console.error({ error }, 'Error decoding URL, falling back to the original URL');
+              ws.send(
+                JSON.stringify({
+                  type: 'openUrl',
+                  url: openUrl,
+                  sessionId: sessionId,
+                }),
+              );
             }
           }
         };
 
-        dataChannelRef.current.onclose = () => {
+        dataChannel.onclose = () => {
+          if (!isCurrentAttempt() || dataChannelRef.current !== dataChannel) {
+            return;
+          }
           updateStatus('Control channel closed');
         };
 
-        dataChannelRef.current.onerror = (error) => {
+        dataChannel.onerror = (error) => {
+          if (!isCurrentAttempt() || dataChannelRef.current !== dataChannel) {
+            return;
+          }
           console.error('Control channel error:', error);
           updateStatus('Control channel error: ' + error);
         };
 
         // Set up connection state monitoring
-        peerConnectionRef.current.onconnectionstatechange = () => {
-          updateStatus('Connection state: ' + peerConnectionRef.current?.connectionState);
+        peerConnection.onconnectionstatechange = () => {
+          if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
+            return;
+          }
+          updateStatus('Connection state: ' + peerConnection.connectionState);
+          if (peerConnection.connectionState === 'failed') {
+            scheduleRetry('WebRTC connection entered failed state', generation);
+          }
         };
 
-        peerConnectionRef.current.oniceconnectionstatechange = () => {
-          updateStatus('ICE state: ' + peerConnectionRef.current?.iceConnectionState);
+        peerConnection.oniceconnectionstatechange = () => {
+          if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
+            return;
+          }
+          updateStatus('ICE state: ' + peerConnection.iceConnectionState);
+          if (peerConnection.iceConnectionState === 'failed') {
+            scheduleRetry('ICE connection entered failed state', generation);
+          }
         };
 
         // Set up video handling
-        peerConnectionRef.current.ontrack = (event) => {
+        peerConnection.ontrack = (event) => {
+          if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
+            return;
+          }
           updateStatus('Received remote track: ' + event.track.kind);
           if (event.track.kind === 'video' && videoRef.current) {
             debugLog(`[${new Date().toISOString()}] Video track received:`, event.track);
@@ -1202,8 +1421,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         };
 
         // Handle ICE candidates
-        peerConnectionRef.current.onicecandidate = (event) => {
-          if (event.candidate && wsRef.current) {
+        peerConnection.onicecandidate = (event) => {
+          if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection || wsRef.current !== ws) {
+            return;
+          }
+          if (event.candidate && ws.readyState === WebSocket.OPEN) {
             const message = {
               type: 'candidate',
               candidate: event.candidate.candidate,
@@ -1211,7 +1433,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               sdpMLineIndex: event.candidate.sdpMLineIndex,
               sessionId: sessionId,
             };
-            wsRef.current.send(JSON.stringify(message));
+            ws.send(JSON.stringify(message));
             updateStatus('Sent ICE candidate');
           } else {
             updateStatus('ICE candidate gathering completed');
@@ -1219,7 +1441,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         };
 
         // Handle incoming messages
-        wsRef.current.onmessage = async (event) => {
+        ws.onmessage = async (event) => {
+          if (!isCurrentAttempt() || wsRef.current !== ws) {
+            return;
+          }
           let message;
           try {
             message = JSON.parse(event.data);
@@ -1230,35 +1455,60 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           updateStatus('Received: ' + message.type);
           switch (message.type) {
             case 'answer':
-              if (!peerConnectionRef.current) {
+              if (!peerConnectionRef.current || peerConnectionRef.current !== peerConnection) {
                 updateStatus('No peer connection, skipping answer');
                 break;
               }
-              await peerConnectionRef.current.setRemoteDescription(
+              await peerConnection.setRemoteDescription(
                 new RTCSessionDescription({
                   type: 'answer',
                   sdp: message.sdp,
                 }),
               );
+              if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
+                return;
+              }
               updateStatus('Set remote description');
               break;
             case 'candidate':
-              if (!peerConnectionRef.current) {
+              if (!peerConnectionRef.current || peerConnectionRef.current !== peerConnection) {
                 updateStatus('No peer connection, skipping candidate');
                 break;
               }
-              await peerConnectionRef.current.addIceCandidate(
+              await peerConnection.addIceCandidate(
                 new RTCIceCandidate({
                   candidate: message.candidate,
                   sdpMid: message.sdpMid,
                   sdpMLineIndex: message.sdpMLineIndex,
                 }),
               );
+              if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
+                return;
+              }
               updateStatus('Added ICE candidate');
               break;
             case 'screenshot':
-              if (typeof message.id !== 'string' || typeof message.dataUri !== 'string') {
+            case 'screenshotResult': {
+              if (typeof message.id !== 'string') {
                 debugWarn('Received invalid screenshot success message:', message);
+                break;
+              }
+              const screenshotError = getScreenshotError(message);
+              if (screenshotError) {
+                const rejecter = pendingScreenshotRejectersRef.current.get(message.id);
+                if (!rejecter) {
+                  debugWarn(`Received screenshot error for unknown or handled id: ${message.id}`);
+                  break;
+                }
+                debugWarn(`Received screenshot error for id ${message.id}: ${screenshotError}`);
+                rejecter(new Error(screenshotError));
+                pendingScreenshotResolversRef.current.delete(message.id);
+                pendingScreenshotRejectersRef.current.delete(message.id);
+                break;
+              }
+              const screenshotData = toScreenshotData(message);
+              if (!screenshotData) {
+                debugWarn('Received screenshot message without image data:', message);
                 break;
               }
               const resolver = pendingScreenshotResolversRef.current.get(message.id);
@@ -1267,10 +1517,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 break;
               }
               debugLog(`Received screenshot data for id ${message.id}`);
-              resolver({ dataUri: message.dataUri });
+              resolver(screenshotData);
               pendingScreenshotResolversRef.current.delete(message.id);
               pendingScreenshotRejectersRef.current.delete(message.id);
               break;
+            }
             case 'screenshotError':
               if (typeof message.id !== 'string' || typeof message.message !== 'string') {
                 debugWarn('Received invalid screenshot error message:', message);
@@ -1320,15 +1571,21 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         };
 
         // Create and send offer
-        if (peerConnectionRef.current) {
-          const offer = await peerConnectionRef.current.createOffer({
+        if (peerConnectionRef.current === peerConnection) {
+          const offer = await peerConnection.createOffer({
             offerToReceiveVideo: true,
             offerToReceiveAudio: false,
           });
-          await peerConnectionRef.current.setLocalDescription(offer);
+          if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
+            return;
+          }
+          await peerConnection.setLocalDescription(offer);
+          if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
+            return;
+          }
 
-          if (wsRef.current) {
-            wsRef.current.send(
+          if (isCurrentAttempt() && wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(
               JSON.stringify({
                 type: 'offer',
                 sdp: offer.sdp,
@@ -1339,27 +1596,31 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           updateStatus('Sent offer');
         }
       } catch (e) {
-        updateStatus('Error: ' + e);
+        if (!isCurrentAttempt()) {
+          return;
+        }
+        const reason = e instanceof Error ? e.message : String(e);
+        updateStatus('Error: ' + reason);
+        scheduleRetry(reason, generation);
       }
     };
 
+    const start = () => {
+      void startAttempt(0);
+    };
+
     const stop = () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-        peerConnectionRef.current = null;
-      }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
-      if (dataChannelRef.current) {
-        dataChannelRef.current.close();
-        dataChannelRef.current = null;
-      }
+      connectionGenerationRef.current += 1;
+      connectionAttemptRef.current = 0;
+      controlChannelOpenedRef.current = false;
+      clearScheduledRetry();
+      teardownConnection();
       updateStatus('Stopped');
+    };
+
+    const handleManualRetry = (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      start();
     };
 
     useEffect(() => {
@@ -1678,7 +1939,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           onKeyDown={handleKeyboard}
           onKeyUp={handleKeyboard}
           onClick={handleVideoClick}
-          onLoadedMetadata={() => setVideoLoaded(true)}
+          onLoadedData={markFirstFrameShown}
           onFocus={() => {
             if (videoRef.current) {
               videoRef.current.style.outline = 'none';
@@ -1690,7 +1951,45 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             }
           }}
         />
+        {retryExhausted && (
+          <button
+            type="button"
+            className="rc-retry-button"
+            onClick={handleManualRetry}
+          >
+            Retry
+          </button>
+        )}
       </div>
     );
   },
 );
+
+const getScreenshotError = (message: any): string | null => {
+  if (typeof message.message === 'string') {
+    return message.message;
+  }
+
+  if (typeof message.error === 'string') {
+    return message.error;
+  }
+
+  return null;
+};
+
+const toScreenshotData = (message: any): ScreenshotData | null => {
+  if (typeof message.dataUri === 'string') {
+    return { dataUri: message.dataUri };
+  }
+
+  if (typeof message.base64 === 'string') {
+    if (message.base64.startsWith('data:')) {
+      return { dataUri: message.base64 };
+    }
+
+    const mimeType = message.base64.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
+    return { dataUri: `data:${mimeType};base64,${message.base64}` };
+  }
+
+  return null;
+};
