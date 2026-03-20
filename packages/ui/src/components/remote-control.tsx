@@ -205,9 +205,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const keepAliveIntervalRef = useRef<number | undefined>(undefined);
     const retryTimeoutRef = useRef<number | undefined>(undefined);
     const connectionSuccessTimeoutRef = useRef<number | undefined>(undefined);
+    const requestFrameIntervalRef = useRef<number | undefined>(undefined);
     const connectionGenerationRef = useRef(0);
     const connectionAttemptRef = useRef(0);
     const controlChannelOpenedRef = useRef(false);
+    const firstFrameShownRef = useRef(false);
     const pendingScreenshotResolversRef = useRef<
       Map<string, (value: ScreenshotData | PromiseLike<ScreenshotData>) => void>
     >(new Map());
@@ -1067,8 +1069,25 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
     };
 
+    const stopRequestFrameLoop = () => {
+      if (requestFrameIntervalRef.current) {
+        window.clearInterval(requestFrameIntervalRef.current);
+        requestFrameIntervalRef.current = undefined;
+      }
+    };
+
+    const markFirstFrameShown = () => {
+      if (firstFrameShownRef.current) {
+        return;
+      }
+      firstFrameShownRef.current = true;
+      stopRequestFrameLoop();
+      setVideoLoaded(true);
+    };
+
     const teardownConnection = () => {
       clearConnectionSuccessTimeout();
+      stopRequestFrameLoop();
       if (wsRef.current) {
         wsRef.current.onopen = null;
         wsRef.current.onmessage = null;
@@ -1137,6 +1156,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       controlChannelOpenedRef.current = false;
       clearScheduledRetry();
       clearConnectionSuccessTimeout();
+      stopRequestFrameLoop();
+      firstFrameShownRef.current = false;
       setVideoLoaded(false);
       teardownConnection();
 
@@ -1287,43 +1308,56 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           controlChannelOpenedRef.current = true;
           clearConnectionSuccessTimeout();
           updateStatus('Control channel opened');
-          // Request first frame once we're ready to receive video
-          if (ws.readyState === WebSocket.OPEN) {
-            for (let i = 0; i < 12; i++) {
-              window.setTimeout(() => {
-                if (
-                  isCurrentAttempt() &&
-                  dataChannelRef.current === dataChannel &&
-                  wsRef.current === ws &&
-                  ws.readyState === WebSocket.OPEN
-                ) {
-                  ws.send(JSON.stringify({ type: 'requestFrame', sessionId: sessionId }));
-                }
-              }, i * 125); // 125ms = quarter second
+          const sendRequestFrame = () => {
+            if (
+              !isCurrentAttempt() ||
+              firstFrameShownRef.current ||
+              dataChannelRef.current !== dataChannel ||
+              wsRef.current !== ws ||
+              ws.readyState !== WebSocket.OPEN
+            ) {
+              return;
             }
+            ws.send(JSON.stringify({ type: 'requestFrame', sessionId: sessionId }));
+          };
 
-            // Send openUrl message if the prop is provided
-            if (openUrl) {
-              try {
-                const decodedUrl = decodeURIComponent(openUrl);
-                updateStatus('Opening URL');
-                ws.send(
-                  JSON.stringify({
-                    type: 'openUrl',
-                    url: decodedUrl,
-                    sessionId: sessionId,
-                  }),
-                );
-              } catch (error) {
-                console.error({ error }, 'Error decoding URL, falling back to the original URL');
-                ws.send(
-                  JSON.stringify({
-                    type: 'openUrl',
-                    url: openUrl,
-                    sessionId: sessionId,
-                  }),
-                );
-              }
+          sendRequestFrame();
+          stopRequestFrameLoop();
+          requestFrameIntervalRef.current = window.setInterval(() => {
+            if (
+              !isCurrentAttempt() ||
+              firstFrameShownRef.current ||
+              dataChannelRef.current !== dataChannel ||
+              wsRef.current !== ws ||
+              ws.readyState !== WebSocket.OPEN
+            ) {
+              stopRequestFrameLoop();
+              return;
+            }
+            sendRequestFrame();
+          }, 250);
+
+          // Send openUrl message if the prop is provided
+          if (openUrl) {
+            try {
+              const decodedUrl = decodeURIComponent(openUrl);
+              updateStatus('Opening URL');
+              ws.send(
+                JSON.stringify({
+                  type: 'openUrl',
+                  url: decodedUrl,
+                  sessionId: sessionId,
+                }),
+              );
+            } catch (error) {
+              console.error({ error }, 'Error decoding URL, falling back to the original URL');
+              ws.send(
+                JSON.stringify({
+                  type: 'openUrl',
+                  url: openUrl,
+                  sessionId: sessionId,
+                }),
+              );
             }
           }
         };
@@ -1870,7 +1904,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           onKeyDown={handleKeyboard}
           onKeyUp={handleKeyboard}
           onClick={handleVideoClick}
-          onLoadedMetadata={() => setVideoLoaded(true)}
+          onLoadedData={markFirstFrameShown}
           onFocus={() => {
             if (videoRef.current) {
               videoRef.current.style.outline = 'none';
