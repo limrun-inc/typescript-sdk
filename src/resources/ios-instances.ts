@@ -170,6 +170,11 @@ export namespace IosInstanceCreateParams {
     initialAssets?: Array<Spec.InitialAsset>;
 
     /**
+     * The model for the Apple Simulator. Default is iphone.
+     */
+    model?: 'iphone' | 'ipad' | 'watch';
+
+    /**
      * The region where the instance will be created. If not given, will be decided
      * based on scheduling clues and availability.
      */

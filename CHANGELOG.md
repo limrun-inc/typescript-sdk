@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.22.0 (2026-03-29)
+
+Full Changelog: [v0.21.0...v0.22.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.21.0...v0.22.0)
+
+### Features
+
+* **api:** add spec.model to ios creation api ([9ed9e0d](https://github.com/limrun-inc/typescript-sdk/commit/9ed9e0d8c3279f0696d397480395b1c559b51617))
+
+
+### Chores
+
+* **ci:** skip lint on metadata-only changes ([d4da783](https://github.com/limrun-inc/typescript-sdk/commit/d4da7831e47d6248dd61895c34b7271f786cd3ba))
+* **internal:** codegen related update ([c3d1a27](https://github.com/limrun-inc/typescript-sdk/commit/c3d1a27d8a638d2b19c283468fa2ce485cd65652))
+* **internal:** update gitignore ([303c5a5](https://github.com/limrun-inc/typescript-sdk/commit/303c5a59bd44a985528fa4319ff2eceb2c1bea33))
+
 ## 0.21.0 (2026-03-20)
 
 Full Changelog: [v0.20.3...v0.21.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.20.3...v0.21.0)
