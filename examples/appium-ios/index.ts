@@ -74,7 +74,7 @@ const driver = await remote({
   capabilities: {
     platformName: 'iOS',
     browserName: 'safari',
-    'appium:automationName': 'XCUITest',
+    'appium:automationName': '@limrun/xcuitest',
     'appium:noReset': true, // Otherwise, deletes the app we installed.
     'appium:fullReset': false,
     'appium:webDriverAgentUrl': wdaUrl,
