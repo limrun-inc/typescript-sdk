@@ -79,7 +79,7 @@ export type InstanceClient = {
    * and process it (currently APK install is supported). Resolves on success,
    * rejects with an Error on failure.
    */
-  sendAsset: (url: string) => Promise<void>;
+  sendAsset: (url: string, timeoutMs?: number) => Promise<void>;
 
   /**
    * Get current connection state
