@@ -894,7 +894,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return tunnel;
     };
 
-    const sendAsset = async (url: string): Promise<void> => {
+    const sendAsset = async (url: string, timeoutMs?: number): Promise<void> => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         return Promise.reject(new Error('WebSocket is not connected or connection is not open.'));
       }
@@ -919,7 +919,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           } else {
             pendingAssetRequestsByUrl.set(url, queue);
           }
-        }, 30000);
+        }, timeoutMs ?? 120_000);
         request = {
           resolve,
           reject: (reason: Error) => reject(reason),
