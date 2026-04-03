@@ -1061,7 +1061,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         if (message.type === 'simctlStream') {
           const execution = simctlExecutions.get(message.id);
           if (!execution) {
-            logger.warn(`Received simctl stream for unknown execution: ${message.id}`);
+            logger.debug(`Received simctl stream for unknown execution: ${message.id}`);
             return;
           }
 
