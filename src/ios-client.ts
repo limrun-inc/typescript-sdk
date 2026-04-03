@@ -296,6 +296,18 @@ export type InstanceClient = {
   ) => Promise<void>;
 
   /**
+   * Start recording simulator video to the provided filename.
+   */
+  startVideo: (filename: string) => Promise<void>;
+
+  /**
+   * Stop recording simulator video for the provided filename.
+   * If `upload.s3Url` is provided, the server uploads the completed file there before resolving.
+   * Returns a download URL for the completed recording.
+   */
+  stopVideo: (filename: string, options?: { upload?: { s3Url?: string } }) => Promise<string>;
+
+  /**
    * Sync an iOS app bundle folder to the server and (optionally) install/launch it.
    */
   syncApp: (
@@ -513,6 +525,7 @@ type ServerResponse = {
   elementType?: string;
   apps?: string;
   url?: string;
+  filename?: string;
   bundleId?: string;
   files?: LsofEntry[];
   // Device info fields
@@ -1028,6 +1041,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         url: msg.url || '',
         bundleId: msg.bundleId || '',
       }),
+      startVideoRecordingResult: () => undefined,
+      stopVideoRecordingResult: (msg) => ({
+        filename: msg.filename || '',
+        url: msg.url || '',
+      }),
       setOrientationResult: () => undefined,
       scrollResult: () => undefined,
       xcrunResult: (msg): CommandResult => ({
@@ -1200,6 +1218,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             installApp,
             setOrientation,
             scroll,
+            startVideo,
+            stopVideo,
             syncApp,
             disconnect,
             getConnectionState,
@@ -1339,6 +1359,21 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         coordinate: options?.coordinate,
         momentum: options?.momentum,
       });
+    };
+
+    const startVideo = async (filename: string): Promise<void> => {
+      await sendRequest<void>('startVideoRecording', { filename });
+    };
+
+    const stopVideo = async (
+      filename: string,
+      options?: { upload?: { s3Url?: string } },
+    ): Promise<string> => {
+      const result = await sendRequest<{ filename: string; url: string }>('stopVideoRecording', {
+        filename,
+        upload: options?.upload,
+      });
+      return result.url;
     };
 
     const syncApp = async (
