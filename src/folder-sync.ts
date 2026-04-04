@@ -312,15 +312,6 @@ async function runXdelta3Encode(basis: string, target: string, outPatch: string)
   });
 }
 
-function localBasisCacheRoot(opts: FolderSyncOptions, localFolderPath: string): string {
-  const hostKey = opts.apiUrl.replace(/[:/]+/g, '_');
-  const resolved = path.resolve(localFolderPath);
-  const base = path.basename(resolved);
-  const hash = crypto.createHash('sha1').update(resolved).digest('hex').slice(0, 8);
-  // Include folder identity to avoid collisions between different roots.
-  return path.join(opts.basisCacheDir, 'folder-sync', hostKey, opts.udid, `${base}-${hash}`);
-}
-
 async function cachePut(cacheRoot: string, relPath: string, srcFile: string): Promise<void> {
   const dst = path.join(cacheRoot, relPath.split('/').join(path.sep));
   await fs.promises.mkdir(path.dirname(dst), { recursive: true });
@@ -408,8 +399,7 @@ async function syncFolderOnce(
   const rootName = path.basename(path.resolve(localFolderPath));
   const preferredCompression = (zlib as any).createZstdCompress ? 'zstd' : 'gzip';
 
-  const cacheRoot = localBasisCacheRoot(opts, localFolderPath);
-  await fs.promises.mkdir(cacheRoot, { recursive: true });
+  await fs.promises.mkdir(opts.basisCacheDir, { recursive: true });
 
   // Track how many bytes we actually transmit to the server (single HTTP request).
   let bytesSentFull = 0;
@@ -422,7 +412,7 @@ async function syncFolderOnce(
   const encodeLimit = concurrencyLimit();
   const changed: FileEntry[] = [];
   for (const f of files) {
-    const basisPath = cacheGet(cacheRoot, f.path);
+    const basisPath = cacheGet(opts.basisCacheDir, f.path);
     if (!fs.existsSync(basisPath)) {
       changed.push(f);
       continue;
@@ -434,7 +424,7 @@ async function syncFolderOnce(
   }
 
   const encodedPayloads = await mapLimit(changed, encodeLimit, async (f): Promise<EncodedPayload> => {
-    const basisPath = cacheGet(cacheRoot, f.path);
+    const basisPath = cacheGet(opts.basisCacheDir, f.path);
     if (fs.existsSync(basisPath)) {
       const basisSha = await sha256FileHex(basisPath);
       const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limulator-xdelta3-'));
@@ -586,7 +576,7 @@ async function syncFolderOnce(
   }
   // Update local cache optimistically: after a successful sync, cache reflects current local tree.
   for (const f of files) {
-    await cachePut(cacheRoot, f.path, f.absPath);
+    await cachePut(opts.basisCacheDir, f.path, f.absPath);
   }
   return out;
 }
