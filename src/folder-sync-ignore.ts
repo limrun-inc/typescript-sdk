@@ -6,7 +6,7 @@ export type IgnoreFn = (relativePath: string) => boolean;
 
 export type IgnoreFnOptions = {
   additional?: IgnoreFn;
-  basisCacheDir?: string;
+  basisCacheDir: string;
 };
 
 function normalizeRelativePath(relativePath: string): string {
@@ -17,7 +17,7 @@ function normalizeRelativePath(relativePath: string): string {
     .replace(/\/+/g, '/');
 }
 
-export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions = {}): Promise<IgnoreFn> {
+export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions): Promise<IgnoreFn> {
   const rootResolved = path.resolve(rootDir);
   const ig = ignorePkg();
   const gitignorePath = path.join(rootResolved, '.gitignore');
@@ -27,14 +27,9 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions =
   } catch {
     // No .gitignore file, return empty ignore instance
   }
-  const basisCacheRoot =
-    options.basisCacheDir ?
-      path.resolve(process.cwd(), options.basisCacheDir)
-    : path.join(process.cwd(), '.limsync-cache');
-  const basisCacheRelative = normalizeRelativePath(path.relative(rootResolved, basisCacheRoot)).replace(
-    /\/+$/,
-    '',
-  );
+  const basisCacheRelative = normalizeRelativePath(
+    path.relative(rootResolved, options.basisCacheDir),
+  ).replace(/\/+$/, '');
   const shouldIgnoreBasisCache =
     basisCacheRelative &&
     basisCacheRelative !== '.' &&
@@ -48,6 +43,8 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions =
 
     if (
       withoutTrailingSlash === '.git' ||
+      withoutTrailingSlash.endsWith('/.git') ||
+      withoutTrailingSlash.includes('/.git/') ||
       withoutTrailingSlash === '.DS_Store' ||
       withoutTrailingSlash.endsWith('/.DS_Store')
     ) {
