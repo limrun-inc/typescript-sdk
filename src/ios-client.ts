@@ -1,8 +1,12 @@
 import { WebSocket, Data } from 'ws';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { isNonRetryableError } from './tunnel';
-import { syncApp as syncAppImpl, type SyncFolderResult, type FolderSyncOptions } from './folder-sync';
+import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
+import { createIgnoreFn } from './folder-sync-ignore';
 
 /**
  * Connection state of the instance client
@@ -297,11 +301,19 @@ export type InstanceClient = {
 
   /**
    * Sync an iOS app bundle folder to the server and (optionally) install/launch it.
+   * @param localAppBundlePath The path to the local app bundle folder
+   * @param opts Optional sync options
+   * @param opts.install If true, install the app after syncing. Defaults to true.
+   * @param opts.basisCacheDir Directory for the client-side folder-sync cache.
+   * @param opts.maxPatchBytes Max patch size (bytes) to send as delta before falling back to full upload. Defaults to 4MB.
+   * @param opts.launchMode Launch mode after installation: "ForegroundIfRunning" (default): bring to foreground if already running, otherwise launch, "RelaunchIfRunning": kill and relaunch if already running
+   * @param opts.watch If true, watch the folder and re-sync on any changes (debounced, single-flight).
    */
   syncApp: (
     localAppBundlePath: string,
     opts?: {
       install?: boolean;
+      basisCacheDir?: string;
       maxPatchBytes?: number;
       launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
       watch?: boolean;
@@ -1345,18 +1357,31 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       localAppBundlePath: string,
       opts?: {
         install?: boolean;
+        basisCacheDir?: string;
         maxPatchBytes?: number;
         launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
         watch?: boolean;
       },
     ): Promise<SyncFolderResult> => {
+      const infoPlistPath = path.join(localAppBundlePath, 'Info.plist');
+      const infoPlistStat = await fs.promises.stat(infoPlistPath).catch(() => null);
+      if (!infoPlistStat?.isFile()) {
+        throw new Error(`The folder is not a valid app bundle: missing Info.plist at ${infoPlistPath}`);
+      }
       if (!cachedDeviceInfo) {
         throw new Error('Device info not available yet; wait for client connection to be established.');
       }
-      const appSyncOpts: FolderSyncOptions = {
+      const resolvedPath = path.resolve(localAppBundlePath);
+      const folderName = path.basename(resolvedPath);
+      const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
+      const cacheKey = `limsync-cache-${folderName}-${hash}`;
+      const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
+      const folderSyncOpts: FolderSyncOptions = {
         apiUrl: options.apiUrl,
         token: options.token,
-        udid: cachedDeviceInfo.udid,
+        udid: cacheKey,
+        ignoreFn: await createIgnoreFn(localAppBundlePath, { basisCacheDir }),
+        basisCacheDir,
         log: (level, msg) => {
           switch (level) {
             case 'debug':
@@ -1376,12 +1401,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
               break;
           }
         },
-        ...(opts?.install !== undefined ? { install: opts.install } : {}),
-        ...(opts?.maxPatchBytes !== undefined ? { maxPatchBytes: opts.maxPatchBytes } : {}),
-        ...(opts?.launchMode !== undefined ? { launchMode: opts.launchMode } : {}),
-        ...(opts?.watch !== undefined ? { watch: opts.watch } : {}),
+        install: opts?.install ?? true,
+        maxPatchBytes: opts?.maxPatchBytes ?? 4 * 1024 * 1024,
+        launchMode: opts?.launchMode ?? 'ForegroundIfRunning',
+        watch: opts?.watch ?? true,
       };
-      return await syncAppImpl(localAppBundlePath, appSyncOpts);
+      return await syncFolder(localAppBundlePath, folderSyncOpts);
     };
 
     const lsof = (): Promise<LsofEntry[]> => {

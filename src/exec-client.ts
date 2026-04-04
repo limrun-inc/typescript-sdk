@@ -166,7 +166,6 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     const { apiUrl, token } = this.options;
 
     // 1. Trigger the build via POST /exec
-    log('debug', `POST ${apiUrl}/exec`);
     let execRes: Response;
     try {
       execRes = await fetch(`${apiUrl}/exec`, {
@@ -197,11 +196,10 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
 
     const execData = (await execRes.json()) as { execId: string };
     this.execId = execData.execId;
-    log('info', `Build started: ${this.execId}`);
+    log('debug', `Build started: ${this.execId}`);
 
     // 2. Stream logs via SSE and wait for exit code
     const eventsUrl = `${apiUrl}/exec/${this.execId}/events`;
-    log('debug', `GET ${eventsUrl} (SSE)`);
 
     const timeoutMs = 3600 * 1000; // 1 hour max
     let exitCode: number;
@@ -215,7 +213,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       ]);
     } catch {
       if (this.killed) {
-        log('info', 'Build killed');
+        log('debug', 'Build killed');
         exitCode = -1;
       } else {
         log('warn', 'SSE completion timeout');
@@ -250,7 +248,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       status,
     };
 
-    this.log('info', `Build finished: ${result.status} (exit ${result.exitCode})`);
+    this.log('debug', `Build finished: ${result.status} (exit ${result.exitCode})`);
     return result;
   }
 
