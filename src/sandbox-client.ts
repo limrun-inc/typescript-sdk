@@ -1,5 +1,8 @@
-import { syncApp as syncFolderImpl, type FolderSyncOptions } from './folder-sync';
+import os from 'os';
+import path from 'path';
+import { syncFolder as syncFolderImpl, type FolderSyncOptions } from './folder-sync';
 import { exec, ExecChildProcess } from './exec-client';
+import { createIgnoreFn } from './folder-sync-ignore';
 
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
 
@@ -27,32 +30,36 @@ export type SimulatorConfig = {
  */
 export type SyncOptions = {
   /**
-   * Cache scoping key for delta basis caching. Defaults to 'xcode-sandbox'.
-   * This is not sent to the server.
-   */
-  cacheKey?: string;
-  basisCacheDir?: string;
-  maxPatchBytes?: number;
-  /**
    * If true, watch the folder and re-sync on any changes.
    */
   watch?: boolean;
+  /**
+   * Directory for the client-side folder-sync cache.
+   * Used to store the last-synced “basis” copies of files (and related sync metadata) so we can compute xdelta patches
+   * on subsequent syncs without re-downloading server state.
+   *
+   * Defaults to a temporary directory under the OS temp directory.
+   */
+  basisCacheDir?: string;
+  /** Max patch size (bytes) to send as delta before falling back to full upload. */
+  maxPatchBytes?: number;
   log?: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
   /**
-   * Optional filter function to include/exclude files and directories.
+   * Optional predicate for ignoring files and directories during sync.
+   * Applied in addition to built-in sync and Xcode-specific ignore rules.
    * Called with the relative path from the sync root (using forward slashes).
    * For directories, the path ends with '/'.
-   * Return true to include, false to exclude.
+   * Return true to ignore, false to keep.
    *
    * @example
-   * // Exclude build folder
-   * filter: (path) => !path.startsWith('build/')
+   * // Ignore build folder
+   * ignore: (path) => path.startsWith('build/')
    *
    * @example
-   * // Only include source files
-   * filter: (path) => path.startsWith('src/') || path.endsWith('.json')
+   * // Ignore anything outside src/ and JSON files
+   * ignore: (path) => !(path.startsWith('src/') || path.endsWith('.json'))
    */
-  filter?: (relativePath: string) => boolean;
+  ignore?: (relativePath: string) => boolean;
 };
 
 /**
@@ -196,51 +203,51 @@ export async function createXCodeSandboxClient(
 
   return {
     async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
+      // Use folder name and hash of absolute path to scope basisCacheDir uniquely for each sync root
+      const resolvedPath = path.resolve(localCodePath);
+      const folderName = path.basename(resolvedPath);
+      const hash = Buffer.from(resolvedPath).toString('base64').replace(/[+/=]/g, '').slice(0, 8);
+      const cacheKey = `limsync-cache-${folderName}-${hash}`;
+      const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
       const codeSyncOpts: FolderSyncOptions = {
         apiUrl: options.apiUrl,
         token: options.token,
-        udid: opts?.cacheKey ?? 'xcode-sandbox',
+        udid: cacheKey,
         install: false,
-        filter: (relativePath: string) => {
-          if (
-            relativePath.startsWith('build/') ||
-            relativePath.startsWith('.build/') ||
-            relativePath.startsWith('DerivedData/') ||
-            relativePath.startsWith('Index.noindex/') ||
-            relativePath.startsWith('ModuleCache.noindex/') ||
-            relativePath.startsWith('.index-build/')
-          ) {
+        ignoreFn: await createIgnoreFn(localCodePath, {
+          basisCacheDir,
+          additional: (relativePath: string) => {
+            if (
+              relativePath.startsWith('build/') ||
+              relativePath.startsWith('.build/') ||
+              relativePath.startsWith('DerivedData/') ||
+              relativePath.startsWith('Index.noindex/') ||
+              relativePath.startsWith('ModuleCache.noindex/') ||
+              relativePath.startsWith('.index-build/')
+            ) {
+              return true;
+            }
+            if (
+              relativePath.startsWith('.swiftpm/') ||
+              relativePath.startsWith('Pods/') ||
+              relativePath.startsWith('Carthage/Build/')
+            ) {
+              return true;
+            }
+            if (relativePath.includes('/xcuserdata/')) {
+              return true;
+            }
+            if (relativePath.includes('.dSYM/')) {
+              return true;
+            }
+            // User-provided ignores
+            if (opts?.ignore?.(relativePath)) {
+              return true;
+            }
             return false;
-          }
-          if (
-            relativePath.startsWith('.swiftpm/') ||
-            relativePath.startsWith('Pods/') ||
-            relativePath.startsWith('Carthage/Build/')
-          ) {
-            return false;
-          }
-          if (
-            relativePath.startsWith('.git/') ||
-            relativePath.startsWith('.limsync-cache/') ||
-            relativePath === '.DS_Store' ||
-            relativePath.endsWith('/.DS_Store')
-          ) {
-            return false;
-          }
-          if (relativePath.includes('/xcuserdata/')) {
-            return false;
-          }
-          if (relativePath.includes('.dSYM/')) {
-            return false;
-          }
-
-          // User-provided filter
-          if (opts?.filter && !opts.filter(relativePath)) {
-            return false;
-          }
-          return true;
-        },
-        ...(opts?.basisCacheDir ? { basisCacheDir: opts.basisCacheDir } : {}),
+          },
+        }),
+        basisCacheDir,
         ...(opts?.maxPatchBytes !== undefined ? { maxPatchBytes: opts.maxPatchBytes } : {}),
         ...(opts?.watch !== undefined ? { watch: opts.watch } : {}),
         log: opts?.log ?? logFn,

@@ -4,9 +4,9 @@ import os from 'os';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
 import { watchFolderTree } from './folder-sync-watcher';
+import { type IgnoreFn } from './folder-sync-ignore';
 import { Readable } from 'stream';
 import * as zlib from 'zlib';
-import ignore, { type Ignore } from 'ignore';
 
 // =============================================================================
 // Folder Sync (HTTP batch)
@@ -21,9 +21,9 @@ export type FolderSyncOptions = {
    * Used to store the last-synced “basis” copies of files (and related sync metadata) so we can compute xdelta patches
    * on subsequent syncs without re-downloading server state.
    *
-   * Can be absolute or relative to process.cwd(). Defaults to `.limsync-cache/`.
+   * Defaults to a temporary directory under the OS temp directory.
    */
-  basisCacheDir?: string;
+  basisCacheDir: string;
   install?: boolean;
   launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
   /** If true, watch the folder and re-sync on any changes (debounced, single-flight). */
@@ -33,20 +33,20 @@ export type FolderSyncOptions = {
   /** Controls logging verbosity */
   log?: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
   /**
-   * Optional filter function to include/exclude files and directories.
+   * Predicate for ignoring files and directories during sync.
    * Called with the relative path from localFolderPath (using forward slashes).
    * For directories, the path ends with '/'.
-   * Return true to include, false to exclude.
+   * Return true to ignore, false to keep.
    *
    * @example
-   * // Exclude build folder
-   * filter: (path) => !path.startsWith('build/')
+   * // Ignore build folder
+   * ignoreFn: (path) => path.startsWith('build/')
    *
    * @example
-   * // Only include source files
-   * filter: (path) => path.startsWith('src/') || path.endsWith('.json')
+   * // Ignore anything outside src/ and JSON files
+   * ignoreFn: (path) => !(path.startsWith('src/') || path.endsWith('.json'))
    */
-  filter?: (relativePath: string) => boolean;
+  ignoreFn: IgnoreFn;
 };
 
 export type SyncFolderResult = {
@@ -246,11 +246,8 @@ async function sha256FileHex(filePath: string): Promise<string> {
   });
 }
 
-async function walkFiles(root: string, filter?: (relativePath: string) => boolean): Promise<FileEntry[]> {
+async function walkFiles(root: string, ignoreFn: IgnoreFn): Promise<FileEntry[]> {
   const rootResolved = path.resolve(root);
-
-  // Load .gitignore if it exists
-  const ig = await loadGitignore(rootResolved);
 
   const out: FileEntry[] = [];
   const stack: string[] = [rootResolved];
@@ -258,28 +255,21 @@ async function walkFiles(root: string, filter?: (relativePath: string) => boolea
     const dir = stack.pop()!;
     const entries = await fs.promises.readdir(dir, { withFileTypes: true });
     for (const ent of entries) {
-      // Always skip .git folder and .DS_Store
-      if (ent.name === '.DS_Store' || ent.name === '.git') continue;
-
       const abs = path.join(dir, ent.name);
       const rel = path.relative(rootResolved, abs).split(path.sep).join('/');
-
-      // Check if ignored by .gitignore
-      if (ig.ignores(rel)) continue;
 
       if (ent.isDirectory()) {
         // For directories, check with trailing slash
         const relDir = rel + '/';
-        if (ig.ignores(relDir)) continue;
-        // Check custom filter (directories have trailing slash)
-        if (filter && !filter(relDir)) continue;
+        // Check custom ignores (directories have trailing slash)
+        if (ignoreFn(relDir)) continue;
         stack.push(abs);
         continue;
       }
       if (!ent.isFile()) continue;
 
-      // Check custom filter for files
-      if (filter && !filter(rel)) continue;
+      // Check custom ignores for files
+      if (ignoreFn(rel)) continue;
 
       const st = await fs.promises.stat(abs);
       const sha256 = await sha256FileHex(abs);
@@ -290,22 +280,6 @@ async function walkFiles(root: string, filter?: (relativePath: string) => boolea
   }
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
-}
-
-/**
- * Load and parse .gitignore file if it exists.
- * Returns an Ignore instance that can be used to test paths.
- */
-async function loadGitignore(rootDir: string): Promise<Ignore> {
-  const ig = ignore();
-  const gitignorePath = path.join(rootDir, '.gitignore');
-  try {
-    const content = await fs.promises.readFile(gitignorePath, 'utf-8');
-    ig.add(content);
-  } catch {
-    // No .gitignore file, return empty ignore instance
-  }
-  return ig;
 }
 
 let xdelta3Ready: Promise<void> | null = null;
@@ -343,12 +317,8 @@ function localBasisCacheRoot(opts: FolderSyncOptions, localFolderPath: string): 
   const resolved = path.resolve(localFolderPath);
   const base = path.basename(resolved);
   const hash = crypto.createHash('sha1').update(resolved).digest('hex').slice(0, 8);
-  const rootOverride =
-    opts.basisCacheDir ?
-      path.resolve(process.cwd(), opts.basisCacheDir)
-    : path.join(process.cwd(), '.limsync-cache');
   // Include folder identity to avoid collisions between different roots.
-  return path.join(rootOverride, 'folder-sync', hostKey, opts.udid, `${base}-${hash}`);
+  return path.join(opts.basisCacheDir, 'folder-sync', hostKey, opts.udid, `${base}-${hash}`);
 }
 
 async function cachePut(cacheRoot: string, relPath: string, srcFile: string): Promise<void> {
@@ -361,9 +331,10 @@ function cacheGet(cacheRoot: string, relPath: string): string {
   return path.join(cacheRoot, relPath.split('/').join(path.sep));
 }
 
-export type SyncAppResult = SyncFolderResult;
-
-export async function syncApp(localFolderPath: string, opts: FolderSyncOptions): Promise<SyncFolderResult> {
+export async function syncFolder(
+  localFolderPath: string,
+  opts: FolderSyncOptions,
+): Promise<SyncFolderResult> {
   if (!opts.watch) {
     const result = await syncFolderOnce(localFolderPath, opts);
     return result;
@@ -391,11 +362,12 @@ export async function syncApp(localFolderPath: string, opts: FolderSyncOptions):
   };
 
   const watcherLog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => {
-    (opts.log ?? noopLogger)(level, `syncApp: ${msg}`);
+    (opts.log ?? noopLogger)(level, `syncFolder: ${msg}`);
   };
   const watcher = await watchFolderTree({
     rootPath: localFolderPath,
     log: watcherLog,
+    ignoreFn: opts.ignoreFn,
     onChange: (reason) => {
       void run(reason);
     },
@@ -417,7 +389,7 @@ async function syncFolderOnce(
 ): Promise<SyncFolderResult> {
   const totalStart = nowMs();
   const log = opts.log ?? noopLogger;
-  const slog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => log(level, `syncApp: ${msg}`);
+  const slog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => log(level, `syncFolder: ${msg}`);
   const maxPatchBytes = opts.maxPatchBytes ?? 4 * 1024 * 1024;
 
   const tEnsureStart = nowMs();
@@ -425,7 +397,7 @@ async function syncFolderOnce(
   const tEnsureMs = nowMs() - tEnsureStart;
 
   const tWalkStart = nowMs();
-  const files = await walkFiles(localFolderPath, opts.filter);
+  const files = await walkFiles(localFolderPath, opts.ignoreFn);
   const tWalkMs = nowMs() - tWalkStart;
   const fileMap = new Map(files.map((f) => [f.path, f]));
 
@@ -513,7 +485,7 @@ async function syncFolderOnce(
   const hasDelta = encodedPayloads.some((p) => p.payload.kind === 'delta');
   const compression: 'zstd' | 'gzip' | 'identity' = hasDelta ? 'identity' : preferredCompression;
   slog(
-    'info',
+    'debug',
     `sync started files=${files.length}${reason ? ` reason=${reason}` : ''} compression=${compression}`,
   );
 

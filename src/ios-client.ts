@@ -1,8 +1,11 @@
 import { WebSocket, Data } from 'ws';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { EventEmitter } from 'events';
 import { isNonRetryableError } from './tunnel';
-import { syncApp as syncAppImpl, type SyncFolderResult, type FolderSyncOptions } from './folder-sync';
+import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
+import { createIgnoreFn } from './folder-sync-ignore';
 
 /**
  * Connection state of the instance client
@@ -1345,18 +1348,31 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       localAppBundlePath: string,
       opts?: {
         install?: boolean;
+        basisCacheDir?: string;
         maxPatchBytes?: number;
         launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
         watch?: boolean;
       },
     ): Promise<SyncFolderResult> => {
+      const infoPlistPath = path.join(localAppBundlePath, 'Info.plist');
+      const infoPlistStat = await fs.promises.stat(infoPlistPath).catch(() => null);
+      if (!infoPlistStat?.isFile()) {
+        throw new Error(`The folder is not a valid app bundle: missing Info.plist at ${infoPlistPath}`);
+      }
       if (!cachedDeviceInfo) {
         throw new Error('Device info not available yet; wait for client connection to be established.');
       }
-      const appSyncOpts: FolderSyncOptions = {
+      const resolvedPath = path.resolve(localAppBundlePath);
+      const folderName = path.basename(resolvedPath);
+      const hash = Buffer.from(resolvedPath).toString('base64').replace(/[+/=]/g, '').slice(0, 8);
+      const cacheKey = `limsync-cache-${folderName}-${hash}`;
+      const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
+      const folderSyncOpts: FolderSyncOptions = {
         apiUrl: options.apiUrl,
         token: options.token,
-        udid: cachedDeviceInfo.udid,
+        udid: cacheKey,
+        ignoreFn: await createIgnoreFn(localAppBundlePath, { basisCacheDir }),
+        basisCacheDir,
         log: (level, msg) => {
           switch (level) {
             case 'debug':
@@ -1381,7 +1397,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         ...(opts?.launchMode !== undefined ? { launchMode: opts.launchMode } : {}),
         ...(opts?.watch !== undefined ? { watch: opts.watch } : {}),
       };
-      return await syncAppImpl(localAppBundlePath, appSyncOpts);
+      return await syncFolder(localAppBundlePath, folderSyncOpts);
     };
 
     const lsof = (): Promise<LsofEntry[]> => {
