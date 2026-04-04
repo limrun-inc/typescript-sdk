@@ -6,28 +6,36 @@ This example shows how you can create a Limrun iOS Simulator and XCode
 sandbox that are connected to each other where your local code is automatically
 synced, built and hot-reloaded on every change.
 
-### Pre-requisites
+Clone this repo and get started!
 
-No macOS.
+```bash
+git clone https://github.com/limrun-inc/typescript-sdk.git
+cd typescript-sdk/examples/xcode-sandbox
+```
+
+### Pre-requisites
 
 We utilize `xdelta3` algorithm for differential patching, so it needs to be
 installed in the environment.
 
-Mac:
-
 ```bash
+# macOS
 brew install xdelta
 ```
-
-Ubuntu:
-
 ```bash
+# Ubuntu/Debian
 sudo apt-get install xdelta3
 ```
 
 ### Run
 
-You can get an API key from [Limrun Console](https://console.limrun.com)
+Clone our sample Swift-based native app.
+
+```bash
+git clone https://github.com/limrun-inc/sample-native-app.git
+```
+
+Get an API key from [Limrun Console](https://console.limrun.com)
 
 ```bash
 export LIM_API_KEY=<lim token from Console>
@@ -38,11 +46,10 @@ yarn install
 ```
 
 ```bash
-NATIVE_APP_CODE_DIR="<directory where your app code resides>"
-yarn run start $NATIVE_APP_CODE_DIR
+yarn run start sample-native-app/
 ```
 
-Go to the printed iOS simulator link to see your app.
+Go to the printed iOS simulator URL to see your app.
 
 As you make changes on source files, we automatically sync it so by the time you or
 your agent is done with code changes, all is already in the sandbox.
