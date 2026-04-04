@@ -55,65 +55,22 @@ export async function watchFolderTree(opts: FolderSyncWatcherOptions): Promise<W
   const log = opts.log ?? noopLogger;
   const debounceMs = 500;
   const rootPath = opts.rootPath;
-
   if (!fs.existsSync(rootPath)) {
     throw new Error(`watchFolderTree root does not exist: ${rootPath}`);
   }
-
   let timer: NodeJS.Timeout | undefined;
   const schedule = (reason: string) => {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => opts.onChange(reason), debounceMs);
   };
-  const scheduleIfIncluded = (filename?: string | Buffer | null) => {
-    const relativePath = filename ? normalizeRelativePath(filename.toString()) : '';
+  const watcher = fs.watch(rootPath, { recursive: true }, (_eventType, filename) => {
+    if (!filename) return;
+    const relativePath = normalizeRelativePath(filename);
     if (relativePath && !shouldWatchRelativePath(relativePath, opts.ignoreFn)) {
       return;
     }
     schedule(relativePath ? `change:${relativePath}` : 'change');
-  };
-
-  // Preferred: recursive watch
-  try {
-    const watcher = fs.watch(rootPath, { recursive: true }, (_eventType, filename) => {
-      scheduleIfIncluded(filename);
-    });
-    log('info', `watchFolderTree(recursive): ${rootPath}`);
-    return { close: () => watcher.close() };
-  } catch (err) {
-    log(
-      'warn',
-      `watchFolderTree: recursive unsupported, using per-directory watches: ${(err as Error).message}`,
-    );
-  }
-
-  // Fallback: watch every directory. Also re-scan on any event to pick up newly-created dirs.
-  const watchers = new Map<string, fs.FSWatcher>();
-
-  const ensureWatched = async () => {
-    const dirs = await listDirsRecursive(rootPath, opts.ignoreFn);
-    for (const d of dirs) {
-      if (watchers.has(d)) continue;
-      try {
-        const w = fs.watch(d, (_eventType, filename) => {
-          scheduleIfIncluded(filename);
-          void ensureWatched();
-        });
-        watchers.set(d, w);
-      } catch {
-        // ignore dirs we can't watch
-      }
-    }
-  };
-
-  await ensureWatched();
-  log('info', `watchFolderTree(per-dir): ${rootPath} dirs=${watchers.size}`);
-
-  return {
-    close: () => {
-      if (timer) clearTimeout(timer);
-      for (const w of watchers.values()) w.close();
-      watchers.clear();
-    },
-  };
+  });
+  log('debug', `watchFolderTree(recursive): ${rootPath}`);
+  return { close: () => watcher.close() };
 }

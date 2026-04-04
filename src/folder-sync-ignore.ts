@@ -43,6 +43,7 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
 
     if (
       withoutTrailingSlash === '.git' ||
+      withoutTrailingSlash.startsWith('.git/') ||
       withoutTrailingSlash.endsWith('/.git') ||
       withoutTrailingSlash.includes('/.git/') ||
       withoutTrailingSlash === '.DS_Store' ||

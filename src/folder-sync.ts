@@ -562,7 +562,7 @@ async function syncFolderOnce(
   const tookMs = nowMs() - totalStart;
   const totalBytes = bytesSentFull + bytesSentDelta;
   slog(
-    'info',
+    'debug',
     `sync finished files=${files.length} sent=${fmtBytes(totalBytes)} syncWork=${fmtMs(
       syncWorkMs,
     )} total=${fmtMs(tookMs)}`,
