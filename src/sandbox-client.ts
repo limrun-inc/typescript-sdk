@@ -3,6 +3,7 @@ import path from 'path';
 import { syncFolder as syncFolderImpl, type FolderSyncOptions } from './folder-sync';
 import { exec, ExecChildProcess } from './exec-client';
 import { createIgnoreFn } from './folder-sync-ignore';
+import crypto from 'crypto';
 
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
 
@@ -206,7 +207,7 @@ export async function createXCodeSandboxClient(
       // Use folder name and hash of absolute path to scope basisCacheDir uniquely for each sync root
       const resolvedPath = path.resolve(localCodePath);
       const folderName = path.basename(resolvedPath);
-      const hash = Buffer.from(resolvedPath).toString('base64').replace(/[+/=]/g, '').slice(0, 8);
+      const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
       const cacheKey = `limsync-cache-${folderName}-${hash}`;
       const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
       const codeSyncOpts: FolderSyncOptions = {

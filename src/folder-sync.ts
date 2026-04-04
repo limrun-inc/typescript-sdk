@@ -335,6 +335,13 @@ export async function syncFolder(
   localFolderPath: string,
   opts: FolderSyncOptions,
 ): Promise<SyncFolderResult> {
+  const log = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => {
+    (opts.log ?? noopLogger)(level, `syncFolder: ${msg}`);
+  };
+  log(
+    'debug',
+    `syncFolder: setup ${localFolderPath} watch=${opts.watch} basisCacheDir=${opts.basisCacheDir}`,
+  );
   if (!opts.watch) {
     const result = await syncFolderOnce(localFolderPath, opts);
     return result;
@@ -360,13 +367,9 @@ export async function syncFolder(
       }
     }
   };
-
-  const watcherLog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => {
-    (opts.log ?? noopLogger)(level, `syncFolder: ${msg}`);
-  };
   const watcher = await watchFolderTree({
     rootPath: localFolderPath,
-    log: watcherLog,
+    log,
     ignoreFn: opts.ignoreFn,
     onChange: (reason) => {
       void run(reason);

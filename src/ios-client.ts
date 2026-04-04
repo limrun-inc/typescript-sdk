@@ -2,6 +2,7 @@ import { WebSocket, Data } from 'ws';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { isNonRetryableError } from './tunnel';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
@@ -1364,7 +1365,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }
       const resolvedPath = path.resolve(localAppBundlePath);
       const folderName = path.basename(resolvedPath);
-      const hash = Buffer.from(resolvedPath).toString('base64').replace(/[+/=]/g, '').slice(0, 8);
+      const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
       const cacheKey = `limsync-cache-${folderName}-${hash}`;
       const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
       const folderSyncOpts: FolderSyncOptions = {
