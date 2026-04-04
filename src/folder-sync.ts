@@ -24,14 +24,14 @@ export type FolderSyncOptions = {
    * Defaults to a temporary directory under the OS temp directory.
    */
   basisCacheDir: string;
-  install?: boolean;
-  launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
+  install: boolean;
+  launchMode: 'ForegroundIfRunning' | 'RelaunchIfRunning';
   /** If true, watch the folder and re-sync on any changes (debounced, single-flight). */
-  watch?: boolean;
+  watch: boolean;
   /** Max patch size (bytes) to send as delta before falling back to full upload. */
-  maxPatchBytes?: number;
+  maxPatchBytes: number;
   /** Controls logging verbosity */
-  log?: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
+  log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
   /**
    * Predicate for ignoring files and directories during sync.
    * Called with the relative path from localFolderPath (using forward slashes).
@@ -329,10 +329,7 @@ export async function syncFolder(
   const log = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => {
     (opts.log ?? noopLogger)(level, `syncFolder: ${msg}`);
   };
-  log(
-    'debug',
-    `syncFolder: setup ${localFolderPath} watch=${opts.watch} basisCacheDir=${opts.basisCacheDir}`,
-  );
+  log('debug', `setup ${localFolderPath} watch=${opts.watch} basisCacheDir=${opts.basisCacheDir}`);
   if (!opts.watch) {
     const result = await syncFolderOnce(localFolderPath, opts);
     return result;
@@ -385,14 +382,9 @@ async function syncFolderOnce(
   const log = opts.log ?? noopLogger;
   const slog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => log(level, `syncFolder: ${msg}`);
   const maxPatchBytes = opts.maxPatchBytes ?? 4 * 1024 * 1024;
-
-  const tEnsureStart = nowMs();
   await ensureXdelta3();
-  const tEnsureMs = nowMs() - tEnsureStart;
 
-  const tWalkStart = nowMs();
   const files = await walkFiles(localFolderPath, opts.ignoreFn);
-  const tWalkMs = nowMs() - tWalkStart;
   const fileMap = new Map(files.map((f) => [f.path, f]));
 
   const syncId = genId('sync');
@@ -470,7 +462,7 @@ async function syncFolderOnce(
   const meta: FolderSyncHttpMeta = {
     id: syncId,
     rootName,
-    install: opts.install ?? true,
+    install: opts.install,
     ...(opts.launchMode ? { launchMode: opts.launchMode } : {}),
     files: files.map((f) => ({ path: f.path, size: f.size, sha256: f.sha256.toLowerCase(), mode: f.mode })),
     payloads: encodedPayloads.map((p) => p.payload),
@@ -559,13 +551,6 @@ async function syncFolderOnce(
     `sync finished files=${files.length} sent=${fmtBytes(totalBytes)} syncWork=${fmtMs(
       syncWorkMs,
     )} total=${fmtMs(tookMs)}`,
-  );
-  slog('debug', `sync bytes full=${fmtBytes(bytesSentFull)} delta=${fmtBytes(bytesSentDelta)}`);
-  slog(
-    'debug',
-    `timing ensureXdelta3=${fmtMs(tEnsureMs)} walk=${fmtMs(tWalkMs)} httpSend=${fmtMs(
-      httpSendMsTotal,
-    )} deltaEncode=${fmtMs(deltaEncodeMsTotal)}`,
   );
   const out: SyncFolderResult = {};
   if (resp.installedAppPath) {

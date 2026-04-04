@@ -31,7 +31,7 @@ export type SimulatorConfig = {
  */
 export type SyncOptions = {
   /**
-   * If true, watch the folder and re-sync on any changes.
+   * If true, watch the folder and re-sync on any changes. Defaults to true.
    */
   watch?: boolean;
   /**
@@ -44,7 +44,8 @@ export type SyncOptions = {
   basisCacheDir?: string;
   /** Max patch size (bytes) to send as delta before falling back to full upload. */
   maxPatchBytes?: number;
-  log?: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
+  /** If true, install the app after syncing. Defaults to true. */
+  install?: boolean;
   /**
    * Optional predicate for ignoring files and directories during sync.
    * Applied in addition to built-in sync and Xcode-specific ignore rules.
@@ -158,7 +159,7 @@ export async function createXCodeSandboxClient(
     },
   };
 
-  const logFn = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => {
+  const log = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => {
     switch (level) {
       case 'debug':
         logger.debug(msg);
@@ -214,7 +215,7 @@ export async function createXCodeSandboxClient(
         apiUrl: options.apiUrl,
         token: options.token,
         udid: cacheKey,
-        install: false,
+        install: opts?.install ?? true,
         ignoreFn: await createIgnoreFn(localCodePath, {
           basisCacheDir,
           additional: (relativePath: string) => {
@@ -249,9 +250,10 @@ export async function createXCodeSandboxClient(
           },
         }),
         basisCacheDir,
-        ...(opts?.maxPatchBytes !== undefined ? { maxPatchBytes: opts.maxPatchBytes } : {}),
-        ...(opts?.watch !== undefined ? { watch: opts.watch } : {}),
-        log: opts?.log ?? logFn,
+        watch: opts?.watch ?? true,
+        maxPatchBytes: opts?.maxPatchBytes ?? 4 * 1024 * 1024,
+        launchMode: 'ForegroundIfRunning',
+        log,
       };
 
       const result = await syncFolderImpl(localCodePath, codeSyncOpts);
@@ -267,7 +269,7 @@ export async function createXCodeSandboxClient(
         {
           apiUrl: options.apiUrl,
           token: options.token,
-          log: logFn,
+          log,
         },
       );
     },
