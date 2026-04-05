@@ -27,21 +27,30 @@ function generateRecordingFilename(): string {
 }
 
 async function downloadFileToLocalPath(url: string, token: string, localPath: string): Promise<void> {
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Download failed: ${response.status} ${errorBody}`);
+  const maxRetries = 3;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      const errorBody = await response.text();
+      const isRetriable = response.status >= 500 && response.status < 600;
+      if (isRetriable && attempt < maxRetries) {
+        continue;
+      }
+      throw new Error(`Download failed: ${response.status} ${errorBody}`);
+    }
+    if (!response.body) {
+      throw new Error('Download failed: response body is missing');
+    }
+    await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+    await pipeline(Readable.fromWeb(response.body as any), fs.createWriteStream(localPath));
+    return;
   }
-  if (!response.body) {
-    throw new Error('Download failed: response body is missing');
-  }
-  await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-  await pipeline(Readable.fromWeb(response.body as any), fs.createWriteStream(localPath));
 }
 
 function buildDownloadUrl(apiUrl: string, filename: string): string {
@@ -1403,8 +1412,15 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         throw new Error(`A recording is already active for this client: ${activeRecordingFilename}`);
       }
       const finalFilename = generateRecordingFilename();
-      await sendRequest<void>('startVideoRecording', { filename: finalFilename });
       activeRecordingFilename = finalFilename;
+      try {
+        await sendRequest<void>('startVideoRecording', { filename: finalFilename });
+      } catch (error) {
+        if (activeRecordingFilename === finalFilename) {
+          activeRecordingFilename = undefined;
+        }
+        throw error;
+      }
     };
 
     const stopRecording = async (saveTo: { presignedUrl?: string; localPath?: string }): Promise<string> => {
@@ -1418,9 +1434,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
       const finalFilename = result.filename || filename;
       const downloadUrl = buildDownloadUrl(options.apiUrl, finalFilename);
-      activeRecordingFilename = undefined;
       if (saveTo.localPath) {
-        await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
+        try {
+          await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
+        } finally {
+          activeRecordingFilename = undefined;
+        }
+      } else {
+        activeRecordingFilename = undefined;
       }
       return downloadUrl;
     };
