@@ -4,6 +4,9 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
+import path from 'path';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import { isNonRetryableError } from './tunnel';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
 import { createIgnoreFn } from './folder-sync-ignore';
@@ -17,6 +20,46 @@ export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'rec
  * Callback function for connection state changes
  */
 export type ConnectionStateCallback = (state: ConnectionState) => void;
+
+function generateRecordingFilename(): string {
+  const rand = Math.random().toString(36).slice(2, 5).padEnd(3, '0');
+  const now = new Date();
+  const formattedDate = now.toISOString().replace(/[-:]/g, '_').replace('T', '_').replace(/\..+/, '');
+
+  // Example: 20240602_17_45_30 for June 2, 2024 17:45:30 UTC
+  return `ios_video_${formattedDate}_${rand}.mp4`;
+}
+
+async function downloadFileToLocalPath(url: string, token: string, localPath: string): Promise<void> {
+  const maxRetries = 3;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      const errorBody = await response.text();
+      const isRetriable = response.status >= 500 && response.status < 600;
+      if (isRetriable && attempt < maxRetries) {
+        continue;
+      }
+      throw new Error(`Download failed: ${response.status} ${errorBody}`);
+    }
+    if (!response.body) {
+      throw new Error('Download failed: response body is missing');
+    }
+    await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+    await pipeline(Readable.fromWeb(response.body as any), fs.createWriteStream(localPath));
+    return;
+  }
+}
+
+function buildDownloadUrl(apiUrl: string, filename: string): string {
+  return `${apiUrl}/files?name=${encodeURIComponent(filename)}`;
+}
 
 /**
  * Events emitted by a simctl execution
@@ -300,6 +343,21 @@ export type InstanceClient = {
   ) => Promise<void>;
 
   /**
+   * Start recording simulator video. Use stopRecording() to stop the recording.
+   */
+  startRecording: () => Promise<void>;
+
+  /**
+   * Stop the active recording for this client instance.
+   * If `saveTo.presignedUrl` is provided, the server uploads the completed file there before resolving.
+   * If `saveTo.localPath` is provided, the client downloads the completed file to that path.
+   * If both are provided, both are performed.
+   * Returns a download URL for the completed recording that can be used to download using the token.
+   * Note that the download URL is only valid while the instance is running.
+   */
+  stopRecording: (saveTo: { presignedUrl?: string; localPath?: string }) => Promise<string>;
+
+  /**
    * Sync an iOS app bundle folder to the server and (optionally) install/launch it.
    * @param localAppBundlePath The path to the local app bundle folder
    * @param opts Optional sync options
@@ -525,6 +583,7 @@ type ServerResponse = {
   elementType?: string;
   apps?: string;
   url?: string;
+  filename?: string;
   bundleId?: string;
   files?: LsofEntry[];
   // Device info fields
@@ -862,6 +921,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   let reconnectTimeout: NodeJS.Timeout | undefined;
   let intentionalDisconnect = false;
   let lastError: string | undefined;
+  let activeRecordingFilename: string | undefined;
 
   // Centralized pending requests map - handles all request/response patterns
   const pendingRequests: Map<string, PendingRequest<any>> = new Map();
@@ -1040,6 +1100,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         url: msg.url || '',
         bundleId: msg.bundleId || '',
       }),
+      startVideoRecordingResult: () => undefined,
+      stopVideoRecordingResult: (msg) => ({
+        filename: msg.filename || '',
+      }),
       setOrientationResult: () => undefined,
       scrollResult: () => undefined,
       xcrunResult: (msg): CommandResult => ({
@@ -1212,6 +1276,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             installApp,
             setOrientation,
             scroll,
+            startRecording,
+            stopRecording,
             syncApp,
             disconnect,
             getConnectionState,
@@ -1351,6 +1417,45 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         coordinate: options?.coordinate,
         momentum: options?.momentum,
       });
+    };
+
+    const startRecording = async (): Promise<void> => {
+      if (activeRecordingFilename) {
+        throw new Error(`A recording is already active for this client: ${activeRecordingFilename}`);
+      }
+      const finalFilename = generateRecordingFilename();
+      activeRecordingFilename = finalFilename;
+      try {
+        await sendRequest<void>('startVideoRecording', { filename: finalFilename });
+      } catch (error) {
+        if (activeRecordingFilename === finalFilename) {
+          activeRecordingFilename = undefined;
+        }
+        throw error;
+      }
+    };
+
+    const stopRecording = async (saveTo: { presignedUrl?: string; localPath?: string }): Promise<string> => {
+      const filename = activeRecordingFilename;
+      if (!filename) {
+        throw new Error('No active recording for this client. Call startRecording() first.');
+      }
+      const result = await sendRequest<{ filename: string }>('stopVideoRecording', {
+        filename,
+        upload: saveTo.presignedUrl ? { presignedUrl: saveTo.presignedUrl } : undefined,
+      });
+      const finalFilename = result.filename || filename;
+      const downloadUrl = buildDownloadUrl(options.apiUrl, finalFilename);
+      if (saveTo.localPath) {
+        try {
+          await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
+        } finally {
+          activeRecordingFilename = undefined;
+        }
+      } else {
+        activeRecordingFilename = undefined;
+      }
+      return downloadUrl;
     };
 
     const syncApp = async (
