@@ -4,7 +4,6 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
-import path from 'path';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { isNonRetryableError } from './tunnel';
