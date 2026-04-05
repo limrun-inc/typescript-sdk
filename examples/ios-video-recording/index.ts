@@ -28,34 +28,39 @@ const client = await Ios.createInstanceClient({
 });
 console.log('Connected to instance');
 try {
-  console.log('\n--- startRecording ---');
   await client.startRecording();
   console.log('Started recording');
 
-  console.log('\n--- Testing launchApp ---');
-  await client.launchApp('com.apple.mobilesafari');
-  console.log('Launched Safari (default ForegroundIfRunning)');
+  await client.launchApp('com.apple.Preferences');
+  console.log('Launched Settings');
 
-  // Wait for app to launch
+  // Wait for Settings to render before tapping into General.
   await sleep(1000);
-  console.log('\n--- Testing openUrl ---');
+  await client.tapElement({ label: 'General' });
+  console.log('Opened General in Settings');
+
+  // Open Safari to apple.com from the simulator.
+  await sleep(1000);
   await client.openUrl('https://apple.com');
   console.log('Opened URL: https://apple.com');
 
-  // Wait for page to load
-  await sleep(2000);
-
-  await client.scroll('down', 500);
-  console.log(`Scrolled down 100 pixels`);
+  // Wait for Safari and the page to load.
+  await sleep(10*1000);
+  await client.terminateApp('com.apple.mobilesafari');
+  console.log('Terminated Safari');
   await sleep(1000);
-  console.log('\n--- stopRecording ---');
+  console.log('Stopping recording');
+  console.time('stopRecording');
   await client.stopRecording({ localPath: 'video.mp4' });
+  console.timeEnd('stopRecording');
   console.log('Stopped recording and saved to video.mp4');
 } catch (error) {
   console.error('Error:', error);
 } finally {
   client.disconnect();
   console.log('\nDisconnected from instance');
+  await limrun.iosInstances.delete(instance.metadata.id);
+  console.log('Deleted instance');
 }
 
 function sleep(ms: number): Promise<void> {
