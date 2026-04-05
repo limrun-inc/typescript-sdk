@@ -4,8 +4,8 @@ You can record the screen of the iOS simulator instance while
 you use it by calling `startRecording` and `stopRecording` functions.
 
 With `stopRecording` you can specify a local path to download the video file
-or a pre-signed bucket URL to upload to a bucket directly from our
-datacenter.
+or a pre-signed bucket URL to upload to a bucket directly from the simulator
+host.
 
 ## Quick Start
 

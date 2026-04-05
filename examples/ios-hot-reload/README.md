@@ -18,6 +18,12 @@ Pre-requisite:
 brew install xdelta
 ```
 
+Clone this repo and enter this example folder:
+```bash
+git clone https://github.com/limrun-inc/typescript-sdk.git
+cd typescript-sdk/examples/ios-hot-reload
+```
+
 ## Build your app
 
 You can build your app for simulator with the following command:

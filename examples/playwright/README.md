@@ -11,6 +11,12 @@ Note that Playwright requires Chrome flag `enable-command-line-on-non-rooted-dev
 to be enabled to launch Chrome. The example enables that Chrome flag via
 a `Configuration` asset.
 
+Clone this repo and enter this example folder:
+```bash
+git clone https://github.com/limrun-inc/typescript-sdk.git
+cd typescript-sdk/examples/playwright
+```
+
 ## Quick Start
 
 1. Get an API Key from `Limrun Console` > `Settings` page [here](https://console.limrun.com/settings).

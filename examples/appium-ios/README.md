@@ -6,6 +6,12 @@ using Appium, including native app and Safari actions.
 It also shows how to get an iOS instance from Limrun and drive it from a
 GitHub Actions job with Linux runner - a first in the ecosystem!
 
+Clone this repo and enter this example folder:
+```bash
+git clone https://github.com/limrun-inc/typescript-sdk.git
+cd typescript-sdk/examples/appium-ios
+```
+
 ## Get Started
 
 It creates an iOS instance where `WebDriverAgent` is pre-installed

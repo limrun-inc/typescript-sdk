@@ -10,6 +10,11 @@ It has two components:
 
 ## Quick Start
 
+Clone this repo and enter this example folder:
+```bash
+git clone https://github.com/limrun-inc/typescript-sdk.git
+```
+
 1. Get an API Key from `Limrun Console` > `Settings` page [here](https://console.limrun.com/settings).
 1. Make it available as environment variable.
    ```bash
