@@ -19,7 +19,11 @@ export type ConnectionStateCallback = (state: ConnectionState) => void;
 
 function generateRecordingFilename(): string {
   const rand = Math.random().toString(36).slice(2, 5).padEnd(3, '0');
-  return `vid_${Date.now()}_${rand}.mp4`;
+  const now = new Date();
+  const formattedDate = now.toISOString().replace(/[-:]/g, '_').replace('T', '_').replace(/\..+/, '');
+
+  // Example: 20240602_17_45_30 for June 2, 2024 17:45:30 UTC
+  return `ios_video_${formattedDate}_${rand}.mp4`;
 }
 
 async function downloadFileToLocalPath(url: string, token: string, localPath: string): Promise<void> {
