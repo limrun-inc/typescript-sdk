@@ -40,6 +40,10 @@ async function downloadFileToLocalPath(url: string, token: string, localPath: st
   await pipeline(Readable.fromWeb(response.body as any), fs.createWriteStream(localPath));
 }
 
+function buildDownloadUrl(apiUrl: string, filename: string): string {
+  return `${apiUrl}/files?name=${encodeURIComponent(filename)}`;
+}
+
 /**
  * Events emitted by a simctl execution
  */
@@ -328,13 +332,13 @@ export type InstanceClient = {
 
   /**
    * Stop the active recording for this client instance.
-   * If `saveTo.s3Url` is provided, the server uploads the completed file there before resolving.
+   * If `saveTo.presignedUrl` is provided, the server uploads the completed file there before resolving.
    * If `saveTo.localPath` is provided, the client downloads the completed file to that path.
    * If both are provided, both are performed.
    * Returns a download URL for the completed recording that can be used to download using the token.
    * Note that the download URL is only valid while the instance is running.
    */
-  stopRecording: (saveTo: { s3Url?: string; localPath?: string }) => Promise<string>;
+  stopRecording: (saveTo: { presignedUrl?: string; localPath?: string }) => Promise<string>;
 
   /**
    * Sync an iOS app bundle folder to the server and (optionally) install/launch it.
@@ -1074,7 +1078,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       startVideoRecordingResult: () => undefined,
       stopVideoRecordingResult: (msg) => ({
         filename: msg.filename || '',
-        url: msg.url || '',
       }),
       setOrientationResult: () => undefined,
       scrollResult: () => undefined,
@@ -1400,20 +1403,22 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       activeRecordingFilename = finalFilename;
     };
 
-    const stopRecording = async (saveTo: { s3Url?: string; localPath?: string }): Promise<string> => {
+    const stopRecording = async (saveTo: { presignedUrl?: string; localPath?: string }): Promise<string> => {
       const filename = activeRecordingFilename;
       if (!filename) {
         throw new Error('No active recording for this client. Call startRecording() first.');
       }
-      const result = await sendRequest<{ filename: string; url: string }>('stopVideoRecording', {
+      const result = await sendRequest<{ filename: string }>('stopVideoRecording', {
         filename,
-        upload: saveTo.s3Url ? { s3Url: saveTo.s3Url } : undefined,
+        upload: saveTo.presignedUrl ? { presignedUrl: saveTo.presignedUrl } : undefined,
       });
+      const finalFilename = result.filename || filename;
+      const downloadUrl = buildDownloadUrl(options.apiUrl, finalFilename);
       activeRecordingFilename = undefined;
       if (saveTo.localPath) {
-        await downloadFileToLocalPath(result.url, options.token, saveTo.localPath);
+        await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
       }
-      return result.url;
+      return downloadUrl;
     };
 
     const syncApp = async (
