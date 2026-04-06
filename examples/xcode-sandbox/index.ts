@@ -49,13 +49,16 @@ const sandbox = await createXCodeSandboxClient({
 
 // Sync the code to the sandbox
 console.log(`Syncing code from ${codeFolder}...`);
-await sandbox.sync(codeFolder, { watch: true });
+await sandbox.sync(codeFolder);
 
 // Function to trigger a build
 async function runBuild(onLine: (line: string) => void): Promise<number> {
   console.log('Starting xcodebuild...');
   const build = sandbox.xcodebuild();
 
+  build.command.on('data', (line) => {
+    console.log('Executing command: ', line.toString());
+  });
   build.stdout.on('data', (line) => {
     onLine(line.toString());
   });

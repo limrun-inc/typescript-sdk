@@ -137,10 +137,10 @@
   resolved "https://registry.yarnpkg.com/@hono/node-server/-/node-server-1.19.9.tgz#8f37119b1acf283fd3f6035f3d1356fdb97a09ac"
   integrity sha512-vHL6w3ecZsky+8P5MD+eFfaGTyCeOHUIFYMGpQGbrBTSmNNoxv0if69rEZ5giu36weC5saFuznL411gRX7bJDw==
 
-"@limrun/api@0.20.1":
-  version "0.20.1"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.20.1.tgz#9b6e24f0e48698f53676bdaa7081032cafc4de74"
-  integrity sha512-c4i+oOnavKJrMFiDQ5FxLQKHrmVJfnz+cbmV3k9L8OibcN9YNycZl/JsXdhAU3a+Pud4ekhHxJzYSeL9DNe9xg==
+"@limrun/api@0.23.1":
+  version "0.23.1"
+  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.23.1.tgz#3e5ca9878f16a7774901c01d9abccb843ccddb82"
+  integrity sha512-2a1BPll3tnvVSd4ZjGBnQeiW+AR00/PR/vlkhV4MuNmXVmZ7RQh+ySlD+fgVZcyXMWj8ron4Ir9HGh8d/UuN7w==
   dependencies:
     eventsource-client "^1.2.0"
     ignore "^7.0.5"
