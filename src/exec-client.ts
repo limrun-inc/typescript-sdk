@@ -77,6 +77,7 @@ export class ReadableStream {
  * @example
  * // Stream-based (like Node.js spawn)
  * const proc = exec({ command: 'xcodebuild' }, options);
+ * proc.command.on('data', (chunk) => console.log('[command]', chunk));
  * proc.stdout.on('data', (chunk) => process.stdout.write(chunk));
  * proc.stderr.on('data', (chunk) => process.stderr.write(chunk));
  * proc.on('exit', (code) => console.log(`Exited with code ${code}`));
@@ -85,6 +86,9 @@ export class ReadableStream {
  * const { exitCode, status } = await proc;
  */
 export class ExecChildProcess implements PromiseLike<ExecResult> {
+  /** Command stream - emits the executed command and then closes */
+  readonly command = new ReadableStream();
+
   /** Stdout stream - emits 'data' and 'close' events */
   readonly stdout = new ReadableStream();
 
@@ -179,6 +183,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       });
     } catch (err) {
       if (this.killed) {
+        this.command.emit('close');
         this.stdout.emit('close');
         this.stderr.emit('close');
         for (const listener of this.exitListeners) {
@@ -228,6 +233,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     }
 
     // Emit close events on streams
+    this.command.emit('close');
     this.stdout.emit('close');
     this.stderr.emit('close');
 
@@ -253,7 +259,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   }
 
   /**
-   * Opens an SSE connection and routes events to stdout/stderr streams.
+   * Opens an SSE connection and routes streamed events to the exposed command/stdout/stderr streams.
    * Resolves with the exit code when an 'exitCode' event arrives.
    * Rejects when the abort signal fires (kill or cleanup).
    */
@@ -271,7 +277,9 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
           onMessage: (message: EventSourceMessage) => {
             const data = typeof message.data === 'string' ? message.data : String(message.data ?? '');
             const eventType = message.event;
-            if (eventType === 'stdout') {
+            if (eventType === 'command') {
+              this.command.emit('data', data);
+            } else if (eventType === 'stdout') {
               this.stdout.emit('data', data);
             } else if (eventType === 'stderr') {
               this.stderr.emit('data', data);
@@ -314,6 +322,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
  * const proc = exec({ command: 'xcodebuild' }, { apiUrl: '...', token: '...' });
  *
  * // Stream output
+ * proc.command.on('data', (chunk) => console.log('[command]', chunk));
  * proc.stdout.on('data', (chunk) => console.log('[stdout]', chunk));
  * proc.stderr.on('data', (chunk) => console.error('[stderr]', chunk));
  *

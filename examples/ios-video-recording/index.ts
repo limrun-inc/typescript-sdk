@@ -45,7 +45,7 @@ try {
   console.log('Opened URL: https://apple.com');
 
   // Wait for Safari and the page to load.
-  await sleep(10*1000);
+  await sleep(10 * 1000);
   await client.terminateApp('com.apple.mobilesafari');
   console.log('Terminated Safari');
   await sleep(1000);
