@@ -58,6 +58,7 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
     ) {
       return true;
     }
+    if (withoutTrailingSlash.endsWith('.xcconfig')) return false;
     if (ig.ignores(normalized)) return true;
     if (options.additional?.(normalized)) return true;
     return false;
