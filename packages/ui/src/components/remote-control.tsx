@@ -524,8 +524,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       };
     };
 
-    // Map a client point to video coordinates using a pre-computed context.
-    // Returns null if outside the video content area or context is missing.
+    // Map a client point to video coordinates using a pre-computed context,
+    // clamping points outside the rendered video to the nearest point on the video.
     const mapClientPointToVideo = (
       ctx: VideoMappingContext,
       clientX: number,
@@ -534,22 +534,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const relativeX = clientX - ctx.videoRect.left - ctx.offsetX;
       const relativeY = clientY - ctx.videoRect.top - ctx.offsetY;
 
-      const isInside =
-        relativeX >= 0 && relativeX <= ctx.actualWidth &&
-        relativeY >= 0 && relativeY <= ctx.actualHeight;
-
-      if (!isInside) {
-        return {
-          inside: false,
-          videoX: 0,
-          videoY: 0,
-          videoWidth: ctx.videoWidth,
-          videoHeight: ctx.videoHeight,
-        };
-      }
-
-      const videoX = Math.max(0, Math.min(ctx.videoWidth, (relativeX / ctx.actualWidth) * ctx.videoWidth));
-      const videoY = Math.max(0, Math.min(ctx.videoHeight, (relativeY / ctx.actualHeight) * ctx.videoHeight));
+      const clampedRelativeX = Math.max(0, Math.min(ctx.actualWidth, relativeX));
+      const clampedRelativeY = Math.max(0, Math.min(ctx.actualHeight, relativeY));
+      const videoX = Math.max(0, Math.min(ctx.videoWidth, (clampedRelativeX / ctx.actualWidth) * ctx.videoWidth));
+      const videoY = Math.max(0, Math.min(ctx.videoHeight, (clampedRelativeY / ctx.actualHeight) * ctx.videoHeight));
 
       return {
         inside: true,
@@ -560,7 +548,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       };
     };
 
-    // Compute full hover point with mirror/container coordinates (for Alt indicator rendering).
+    // Compute full hover point with mirror/container coordinates (for Alt indicator rendering),
+    // clamping points outside the rendered video to the nearest point on the video.
     const computeFullHoverPoint = (
       ctx: VideoMappingContext,
       clientX: number,
@@ -569,25 +558,19 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const relativeX = clientX - ctx.videoRect.left - ctx.offsetX;
       const relativeY = clientY - ctx.videoRect.top - ctx.offsetY;
 
-      const isInside =
-        relativeX >= 0 && relativeX <= ctx.actualWidth &&
-        relativeY >= 0 && relativeY <= ctx.actualHeight;
-
-      if (!isInside) {
-        return null;
-      }
-
-      const videoX = Math.max(0, Math.min(ctx.videoWidth, (relativeX / ctx.actualWidth) * ctx.videoWidth));
-      const videoY = Math.max(0, Math.min(ctx.videoHeight, (relativeY / ctx.actualHeight) * ctx.videoHeight));
+      const clampedRelativeX = Math.max(0, Math.min(ctx.actualWidth, relativeX));
+      const clampedRelativeY = Math.max(0, Math.min(ctx.actualHeight, relativeY));
+      const videoX = Math.max(0, Math.min(ctx.videoWidth, (clampedRelativeX / ctx.actualWidth) * ctx.videoWidth));
+      const videoY = Math.max(0, Math.min(ctx.videoHeight, (clampedRelativeY / ctx.actualHeight) * ctx.videoHeight));
       const mirrorVideoX = ctx.videoWidth - videoX;
       const mirrorVideoY = ctx.videoHeight - videoY;
 
       const contentLeft = ctx.videoRect.left + ctx.offsetX;
       const contentTop = ctx.videoRect.top + ctx.offsetY;
-      const containerX = contentLeft - ctx.containerRect.left + relativeX;
-      const containerY = contentTop - ctx.containerRect.top + relativeY;
-      const mirrorContainerX = contentLeft - ctx.containerRect.left + (ctx.actualWidth - relativeX);
-      const mirrorContainerY = contentTop - ctx.containerRect.top + (ctx.actualHeight - relativeY);
+      const containerX = contentLeft - ctx.containerRect.left + clampedRelativeX;
+      const containerY = contentTop - ctx.containerRect.top + clampedRelativeY;
+      const mirrorContainerX = contentLeft - ctx.containerRect.left + (ctx.actualWidth - clampedRelativeX);
+      const mirrorContainerY = contentTop - ctx.containerRect.top + (ctx.actualHeight - clampedRelativeY);
 
       return {
         containerX,
