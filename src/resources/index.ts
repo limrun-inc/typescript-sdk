@@ -22,5 +22,11 @@ export {
   type IosInstanceListParams,
   type IosInstancesItems,
 } from './ios-instances';
+export {
+  XcodeInstances,
+  type XcodeInstanceCreateParams,
+  type XcodeInstanceListParams,
+  type XcodeInstancesItems,
+} from './xcode-instances';
 
 export { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './assets-helpers';
