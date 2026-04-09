@@ -43,11 +43,11 @@ Methods:
 
 Types:
 
-- <code><a href="./src/resources/xcode-instances.ts">XcodeInstances</a></code>
+- <code><a href="./src/resources/xcode-instances.ts">XcodeInstance</a></code>
 
 Methods:
 
-- <code title="post /v1/xcode_instances">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">create</a>({ ...params }) -> XcodeInstances</code>
+- <code title="post /v1/xcode_instances">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">create</a>({ ...params }) -> XcodeInstance</code>
 - <code title="get /v1/xcode_instances">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">list</a>({ ...params }) -> XcodeInstancesItems</code>
 - <code title="delete /v1/xcode_instances/{id}">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">delete</a>(id) -> void</code>
-- <code title="get /v1/xcode_instances/{id}">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">get</a>(id) -> XcodeInstances</code>
+- <code title="get /v1/xcode_instances/{id}">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">get</a>(id) -> XcodeInstance</code>

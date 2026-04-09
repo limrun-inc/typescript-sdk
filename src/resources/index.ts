@@ -24,6 +24,7 @@ export {
 } from './ios-instances';
 export {
   XcodeInstances,
+  type XcodeInstance,
   type XcodeInstanceCreateParams,
   type XcodeInstanceListParams,
   type XcodeInstancesItems,

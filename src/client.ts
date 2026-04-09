@@ -42,6 +42,7 @@ import {
   IosInstancesItems,
 } from './resources/ios-instances';
 import {
+  XcodeInstance,
   XcodeInstanceCreateParams,
   XcodeInstanceListParams,
   XcodeInstances,
@@ -786,6 +787,7 @@ export class Limrun {
 Limrun.AndroidInstances = AndroidInstances;
 Limrun.Assets = Assets;
 Limrun.IosInstances = IosInstances;
+Limrun.XcodeInstances = XcodeInstances;
 
 export declare namespace Limrun {
   export type RequestOptions = Opts.RequestOptions;
@@ -821,7 +823,8 @@ export declare namespace Limrun {
   };
 
   export {
-    type XcodeInstances as XcodeInstances,
+    XcodeInstances as XcodeInstances,
+    type XcodeInstance as XcodeInstance,
     type XcodeInstancesItems as XcodeInstancesItems,
     type XcodeInstanceCreateParams as XcodeInstanceCreateParams,
     type XcodeInstanceListParams as XcodeInstanceListParams,
