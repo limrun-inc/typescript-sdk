@@ -6,6 +6,7 @@
  */
 
 import { createEventSource, type EventSourceClient, type EventSourceMessage } from 'eventsource-client';
+import { nodeProxyTransport } from './internal/proxy-transport';
 
 // =============================================================================
 // Types
@@ -153,7 +154,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       return;
     }
     try {
-      await fetch(`${this.options.apiUrl}/exec/${this.execId}/cancel`, {
+      await nodeProxyTransport.fetch(`${this.options.apiUrl}/exec/${this.execId}/cancel`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${this.options.token}`,
@@ -172,7 +173,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     // 1. Trigger the build via POST /exec
     let execRes: Response;
     try {
-      execRes = await fetch(`${apiUrl}/exec`, {
+      execRes = await nodeProxyTransport.fetch(`${apiUrl}/exec`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -273,6 +274,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       try {
         const eventSource = createEventSource({
           url: eventsUrl,
+          fetch: nodeProxyTransport.fetch,
           headers: { Authorization: `Bearer ${this.options.token}` },
           onMessage: (message: EventSourceMessage) => {
             const data = typeof message.data === 'string' ? message.data : String(message.data ?? '');

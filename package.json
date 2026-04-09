@@ -28,7 +28,10 @@
   },
   "dependencies": {
     "eventsource-client": "^1.2.0",
+    "https-proxy-agent": "7.0.6",
     "ignore": "^7.0.5",
+    "proxy-from-env": "^2.1.0",
+    "undici": "7.24.7",
     "ws": "^8.18.3"
   },
   "devDependencies": {
@@ -37,6 +40,7 @@
     "@swc/jest": "^0.2.29",
     "@types/jest": "^29.4.0",
     "@types/node": "^20.17.6",
+    "@types/proxy-from-env": "^1.0.4",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "8.31.1",
     "@typescript-eslint/parser": "8.31.1",

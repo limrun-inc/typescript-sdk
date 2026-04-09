@@ -8,11 +8,12 @@
  */
 
 import type { Fetch } from './builtin-types';
+import { nodeProxyTransport } from './proxy-transport';
 import type { ReadableStream } from './shim-types';
 
 export function getDefaultFetch(): Fetch {
   if (typeof fetch !== 'undefined') {
-    return fetch as any;
+    return nodeProxyTransport.fetch;
   }
 
   throw new Error(

@@ -7,6 +7,7 @@ import { watchFolderTree } from './folder-sync-watcher';
 import { type IgnoreFn } from './folder-sync-ignore';
 import { Readable } from 'stream';
 import * as zlib from 'zlib';
+import { nodeProxyTransport } from './internal/proxy-transport';
 
 // =============================================================================
 // Folder Sync (HTTP batch)
@@ -218,18 +219,20 @@ async function httpFolderSyncBatch(
   };
   sourceStream.on('error', onStreamError);
   bodyStream.on('error', onStreamError);
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: bodyStream as any,
-    duplex: 'half' as any,
-    signal: controller.signal,
-  } as any).catch((err) => {
-    if (streamError) {
-      throw streamError;
-    }
-    throw err;
-  });
+  const res = await nodeProxyTransport
+    .fetch(url, {
+      method: 'POST',
+      headers,
+      body: bodyStream as any,
+      duplex: 'half' as any,
+      signal: controller.signal,
+    } as any)
+    .catch((err) => {
+      if (streamError) {
+        throw streamError;
+      }
+      throw err;
+    });
   const text = await res.text();
   if (!res.ok) {
     throw new Error(`folder-sync http failed: ${res.status} ${text}`);

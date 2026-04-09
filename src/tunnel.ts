@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import * as net from 'net';
 import { WebSocket } from 'ws';
+import { nodeProxyTransport } from './internal/proxy-transport';
 
 /**
  * Controls the verbosity of logging in the tunnel
@@ -246,8 +247,10 @@ async function startSingletonTcpTunnel(
         url.searchParams.set('sessionId', sessionId);
       }
 
+      const proxyAgent = nodeProxyTransport.getWebSocketAgent(url.toString());
       ws = new WebSocket(url.toString(), {
         headers: { Authorization: `Bearer ${token}` },
+        ...(proxyAgent ? { agent: proxyAgent } : {}),
         perMessageDeflate: false,
       });
 
@@ -541,8 +544,10 @@ async function startMultiplexedTcpTunnel(
 
         logger.debug(`Connecting WebSocket to: ${url.toString()}`);
 
+        const proxyAgent = nodeProxyTransport.getWebSocketAgent(url.toString());
         ws = new WebSocket(url.toString(), {
           headers: { Authorization: `Bearer ${token}` },
+          ...(proxyAgent ? { agent: proxyAgent } : {}),
           perMessageDeflate: false,
         });
 

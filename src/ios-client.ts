@@ -9,6 +9,7 @@ import { pipeline } from 'stream/promises';
 import { isNonRetryableError } from './tunnel';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
 import { createIgnoreFn } from './folder-sync-ignore';
+import { nodeProxyTransport } from './internal/proxy-transport';
 
 /**
  * Connection state of the instance client
@@ -33,7 +34,7 @@ async function downloadFileToLocalPath(url: string, token: string, localPath: st
   const maxRetries = 3;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const response = await fetch(url, {
+    const response = await nodeProxyTransport.fetch(url, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -849,7 +850,8 @@ export class LogStream extends EventEmitter {
 
   /** @internal - Establish the dedicated WebSocket connection */
   private _connect(): void {
-    this.ws = new WebSocket(this.wsUrl);
+    const proxyAgent = nodeProxyTransport.getWebSocketAgent(this.wsUrl);
+    this.ws = new WebSocket(this.wsUrl, proxyAgent ? { agent: proxyAgent } : {});
 
     this.ws.on('open', () => {
       if (this.stopped) {
@@ -1121,7 +1123,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       cleanup();
       updateConnectionState('connecting');
 
-      ws = new WebSocket(endpointWebSocketUrl);
+      const proxyAgent = nodeProxyTransport.getWebSocketAgent(endpointWebSocketUrl);
+      ws = new WebSocket(endpointWebSocketUrl, proxyAgent ? { agent: proxyAgent } : {});
 
       ws.on('message', (data: Data) => {
         let message: ServerResponse;
@@ -1594,7 +1597,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       try {
         // Node's fetch (undici) supports streaming request bodies but TS DOM types may not include
         // `duplex` and may not accept Node ReadStreams as BodyInit in some configs.
-        const response = await fetch(uploadUrl, {
+        const response = await nodeProxyTransport.fetch(uploadUrl, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/octet-stream',

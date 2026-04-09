@@ -4,6 +4,7 @@ import { syncFolder as syncFolderImpl, type FolderSyncOptions } from './folder-s
 import { exec, ExecChildProcess } from './exec-client';
 import { createIgnoreFn } from './folder-sync-ignore';
 import crypto from 'crypto';
+import { nodeProxyTransport } from './internal/proxy-transport';
 
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
 
@@ -189,7 +190,7 @@ export async function createXCodeSandboxClient(
       simulatorToken: options.simulator.token ?? options.token,
     };
 
-    const res = await fetch(`${options.apiUrl}/simulator`, {
+    const res = await nodeProxyTransport.fetch(`${options.apiUrl}/simulator`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

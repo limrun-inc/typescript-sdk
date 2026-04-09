@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 
 import { RequestOptions } from '../internal/request-options';
+import { nodeProxyTransport } from '../internal/proxy-transport';
 import { Assets as GeneratedAssets } from './assets';
 
 export interface AssetGetOrUploadParams {
@@ -45,7 +46,7 @@ export class Assets extends GeneratedAssets {
         md5: creationResponse.md5,
       };
     }
-    const uploadResponse = await fetch(creationResponse.signedUploadUrl, {
+    const uploadResponse = await nodeProxyTransport.fetch(creationResponse.signedUploadUrl, {
       headers: {
         'Content-Length': data.length.toString(),
         'Content-Type': 'application/octet-stream',

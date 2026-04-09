@@ -1,6 +1,7 @@
 import { WebSocket, Data } from 'ws';
 import { exec } from 'node:child_process';
 
+import { nodeProxyTransport } from './internal/proxy-transport';
 import { startTcpTunnel, isNonRetryableError } from './tunnel';
 import type { Tunnel } from './tunnel';
 
@@ -597,7 +598,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       cleanup();
       updateConnectionState('connecting');
 
-      ws = new WebSocket(serverAddress);
+      const proxyAgent = nodeProxyTransport.getWebSocketAgent(serverAddress);
+      ws = new WebSocket(serverAddress, proxyAgent ? { agent: proxyAgent } : {});
 
       ws.on('message', (data: Data) => {
         let message: ServerMessage;
