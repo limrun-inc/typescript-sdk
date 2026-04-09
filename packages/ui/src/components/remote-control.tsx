@@ -319,7 +319,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     // Minimal geometry for single-finger touch events (no mirror/container coords needed).
     type PointerGeometry = {
-      inside: boolean;
       videoX: number;
       videoY: number;
       videoWidth: number;
@@ -332,7 +331,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       geometry: PointerGeometry | null,
     ) => {
       if (!geometry) return;
-      const { inside: isInside, videoX, videoY, videoWidth, videoHeight } = geometry;
+      const { videoX, videoY, videoWidth, videoHeight } = geometry;
 
       let action: number | null = null;
       let positionToSend: { x: number; y: number } | null = null;
@@ -341,35 +340,26 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       switch (eventType) {
         case 'down':
-          if (isInside) {
-            // For multi-touch: use ACTION_DOWN for first pointer, ACTION_POINTER_DOWN for additional pointers
-            const currentPointerCount = activePointers.current.size;
-            action =
-              currentPointerCount === 0
-                ? AMOTION_EVENT.ACTION_DOWN
-                : AMOTION_EVENT.ACTION_POINTER_DOWN;
-            positionToSend = { x: videoX, y: videoY };
-            activePointers.current.set(pointerId, positionToSend);
-            if (pointerId === -1) {
-              // Focus on mouse down
-              videoRef.current?.focus();
-            }
-          } else {
-            // If the initial down event is outside, ignore it for this pointer
-            activePointers.current.delete(pointerId);
+          // For multi-touch: use ACTION_DOWN for first pointer, ACTION_POINTER_DOWN for additional pointers
+          const currentPointerCount = activePointers.current.size;
+          action =
+            currentPointerCount === 0
+              ? AMOTION_EVENT.ACTION_DOWN
+              : AMOTION_EVENT.ACTION_POINTER_DOWN;
+          positionToSend = { x: videoX, y: videoY };
+          activePointers.current.set(pointerId, positionToSend);
+          if (pointerId === -1) {
+            // Focus on mouse down
+            videoRef.current?.focus();
           }
           break;
 
         case 'move':
           if (activePointers.current.has(pointerId)) {
-            if (isInside) {
-              action = AMOTION_EVENT.ACTION_MOVE;
-              positionToSend = { x: videoX, y: videoY };
-              // Update the last known position for this active pointer
-              activePointers.current.set(pointerId, positionToSend);
-            } else {
-              // Moved outside while active - do nothing, UP/CANCEL will use last known pos
-            }
+            action = AMOTION_EVENT.ACTION_MOVE;
+            positionToSend = { x: videoX, y: videoY };
+            // Update the last known position for this active pointer
+            activePointers.current.set(pointerId, positionToSend);
           }
           break;
 
@@ -401,7 +391,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             eventType,
             action,
             actionName: motionActionToString(action),
-            isInside,
             positionToSend,
             video: { width: videoWidth, height: videoHeight },
             altHeld: isAltHeldRef.current,
@@ -431,7 +420,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           sendBinaryControlMessage(message);
         }
       } else if (eventType === 'up' || eventType === 'cancel') {
-        // Clean up map just in case if 'down' was outside and 'up'/'cancel' is triggered
         activePointers.current.delete(pointerId);
       }
     };
@@ -540,7 +528,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const videoY = Math.max(0, Math.min(ctx.videoHeight, (clampedRelativeY / ctx.actualHeight) * ctx.videoHeight));
 
       return {
-        inside: true,
         videoX,
         videoY,
         videoWidth: ctx.videoWidth,
@@ -734,29 +721,25 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
           if (!twoFingerStateRef.current) {
             // Starting a new two-finger gesture
-            if (g0.inside && g1.inside) {
-              twoFingerStateRef.current = {
-                finger0: { x: g0.videoX, y: g0.videoY },
-                finger1: { x: g1.videoX, y: g1.videoY },
-                videoSize: { width: g0.videoWidth, height: g0.videoHeight },
-                source: 'real-touch',
-                pointerId0: t0.identifier,
-                pointerId1: t1.identifier,
-              };
-              applyTwoFingerEvent('down', g0.videoWidth, g0.videoHeight,
-                                  g0.videoX, g0.videoY, g1.videoX, g1.videoY,
-                                  t0.identifier, t1.identifier);
-            }
+            twoFingerStateRef.current = {
+              finger0: { x: g0.videoX, y: g0.videoY },
+              finger1: { x: g1.videoX, y: g1.videoY },
+              videoSize: { width: g0.videoWidth, height: g0.videoHeight },
+              source: 'real-touch',
+              pointerId0: t0.identifier,
+              pointerId1: t1.identifier,
+            };
+            applyTwoFingerEvent('down', g0.videoWidth, g0.videoHeight,
+                                g0.videoX, g0.videoY, g1.videoX, g1.videoY,
+                                t0.identifier, t1.identifier);
           } else if (twoFingerStateRef.current.source === 'real-touch') {
             // Continuing two-finger gesture (move)
-            if (g0.inside && g1.inside) {
-              twoFingerStateRef.current.finger0 = { x: g0.videoX, y: g0.videoY };
-              twoFingerStateRef.current.finger1 = { x: g1.videoX, y: g1.videoY };
-              applyTwoFingerEvent('move', g0.videoWidth, g0.videoHeight,
-                                  g0.videoX, g0.videoY, g1.videoX, g1.videoY,
-                                  twoFingerStateRef.current.pointerId0,
-                                  twoFingerStateRef.current.pointerId1);
-            }
+            twoFingerStateRef.current.finger0 = { x: g0.videoX, y: g0.videoY };
+            twoFingerStateRef.current.finger1 = { x: g1.videoX, y: g1.videoY };
+            applyTwoFingerEvent('move', g0.videoWidth, g0.videoHeight,
+                                g0.videoX, g0.videoY, g1.videoX, g1.videoY,
+                                twoFingerStateRef.current.pointerId0,
+                                twoFingerStateRef.current.pointerId1);
           }
         } else if (allTouches.length < 2 && twoFingerStateRef.current?.source === 'real-touch') {
           // Finger lifted - end two-finger gesture using last known state
@@ -824,7 +807,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             altHeldRef: isAltHeldRef.current,
             inTwoFingerMode,
             geometry: {
-              inside: geometry.inside,
               videoX: geometry.videoX,
               videoY: geometry.videoY,
               videoWidth: geometry.videoWidth,
@@ -851,44 +833,41 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       eventType: 'down' | 'move' | 'up' | 'cancel',
       geometry: PointerGeometry,
     ) => {
-      const { inside, videoX, videoY, videoWidth, videoHeight } = geometry;
+      const { videoX, videoY, videoWidth, videoHeight } = geometry;
       const mirrorX = videoWidth - videoX;
       const mirrorY = videoHeight - videoY;
 
       if (eventType === 'down') {
-        if (inside) {
-          // Start two-finger gesture
-          twoFingerStateRef.current = {
-            finger0: { x: videoX, y: videoY },
-            finger1: { x: mirrorX, y: mirrorY },
-            videoSize: { width: videoWidth, height: videoHeight },
-            source: 'alt-mouse',
-            pointerId0: ALT_POINTER_ID_PRIMARY,
-            pointerId1: ALT_POINTER_ID_MIRROR,
-          };
-          videoRef.current?.focus();
-          applyTwoFingerEvent('down', videoWidth, videoHeight, videoX, videoY, mirrorX, mirrorY,
-                              ALT_POINTER_ID_PRIMARY, ALT_POINTER_ID_MIRROR);
-        }
+        // Start two-finger gesture
+        twoFingerStateRef.current = {
+          finger0: { x: videoX, y: videoY },
+          finger1: { x: mirrorX, y: mirrorY },
+          videoSize: { width: videoWidth, height: videoHeight },
+          source: 'alt-mouse',
+          pointerId0: ALT_POINTER_ID_PRIMARY,
+          pointerId1: ALT_POINTER_ID_MIRROR,
+        };
+        videoRef.current?.focus();
+        applyTwoFingerEvent('down', videoWidth, videoHeight, videoX, videoY, mirrorX, mirrorY,
+                            ALT_POINTER_ID_PRIMARY, ALT_POINTER_ID_MIRROR);
         return;
       }
 
       if (eventType === 'move') {
-        if (twoFingerStateRef.current?.source === 'alt-mouse' && inside) {
+        if (twoFingerStateRef.current?.source === 'alt-mouse') {
           // Update positions
           twoFingerStateRef.current.finger0 = { x: videoX, y: videoY };
           twoFingerStateRef.current.finger1 = { x: mirrorX, y: mirrorY };
           applyTwoFingerEvent('move', videoWidth, videoHeight, videoX, videoY, mirrorX, mirrorY,
                               ALT_POINTER_ID_PRIMARY, ALT_POINTER_ID_MIRROR);
         }
-        // If outside, we just don't send a move - UP will use last known position
         return;
       }
 
       if (eventType === 'up' || eventType === 'cancel') {
         const state = twoFingerStateRef.current;
         if (state?.source === 'alt-mouse') {
-          // End gesture at last known inside positions
+          // End gesture at last known positions
           const { finger0, finger1, videoSize } = state;
           applyTwoFingerEvent('up', videoSize.width, videoSize.height,
                               finger0.x, finger0.y, finger1.x, finger1.y,
