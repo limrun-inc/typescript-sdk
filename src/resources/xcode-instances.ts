@@ -11,7 +11,7 @@ export class XcodeInstances extends APIResource {
   /**
    * Create an Xcode instance
    */
-  create(params: XcodeInstanceCreateParams, options?: RequestOptions): APIPromise<XcodeInstances> {
+  create(params: XcodeInstanceCreateParams, options?: RequestOptions): APIPromise<XcodeInstance> {
     const { reuseIfExists, wait, ...body } = params;
     return this._client.post('/v1/xcode_instances', { query: { reuseIfExists, wait }, body, ...options });
   }
@@ -22,8 +22,8 @@ export class XcodeInstances extends APIResource {
   list(
     query: XcodeInstanceListParams | null | undefined = {},
     options?: RequestOptions,
-  ): PagePromise<XcodeInstancesItems, XcodeInstances> {
-    return this._client.getAPIList('/v1/xcode_instances', Items<XcodeInstances>, { query, ...options });
+  ): PagePromise<XcodeInstancesItems, XcodeInstance> {
+    return this._client.getAPIList('/v1/xcode_instances', Items<XcodeInstance>, { query, ...options });
   }
 
   /**
@@ -39,22 +39,22 @@ export class XcodeInstances extends APIResource {
   /**
    * Get Xcode instance with given ID
    */
-  get(id: string, options?: RequestOptions): APIPromise<XcodeInstances> {
+  get(id: string, options?: RequestOptions): APIPromise<XcodeInstance> {
     return this._client.get(path`/v1/xcode_instances/${id}`, options);
   }
 }
 
-export type XcodeInstancesItems = Items<XcodeInstances>;
+export type XcodeInstancesItems = Items<XcodeInstance>;
 
-export interface XcodeInstances {
-  metadata: XcodeInstances.Metadata;
+export interface XcodeInstance {
+  metadata: XcodeInstance.Metadata;
 
-  spec: XcodeInstances.Spec;
+  spec: XcodeInstance.Spec;
 
-  status: XcodeInstances.Status;
+  status: XcodeInstance.Status;
 }
 
-export namespace XcodeInstances {
+export namespace XcodeInstance {
   export interface Metadata {
     id: string;
 
@@ -169,7 +169,7 @@ export interface XcodeInstanceListParams extends ItemsParams {
 
 export declare namespace XcodeInstances {
   export {
-    type XcodeInstances as XcodeInstances,
+    type XcodeInstance as XcodeInstance,
     type XcodeInstancesItems as XcodeInstancesItems,
     type XcodeInstanceCreateParams as XcodeInstanceCreateParams,
     type XcodeInstanceListParams as XcodeInstanceListParams,

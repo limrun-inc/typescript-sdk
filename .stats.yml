@@ -1,4 +1,4 @@
 configured_endpoints: 16
 openapi_spec_url: https://storage.googleapis.com/stainless-sdk-openapi-specs/limrun--inc-dash%2Flimrun-v1-bf3778fef35fa88d7658085d6a77daaecdcf821d04cd014ade552f1ecf3f1d43.yml
 openapi_spec_hash: a70496d3538141fcded701016da6b3f7
-config_hash: 4d79a00ee32bd6cad9d9e3470215cfe4
+config_hash: cc551e5b155630476a9c97cdf4e46bc8
