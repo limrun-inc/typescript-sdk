@@ -115,6 +115,8 @@ export type CreateXCodeSandboxClientOptions = {
 };
 
 /**
+ * @deprecated Use `lim.xcodeInstances.createClient()` instead.
+ *
  * Creates a client for interacting with a sandboxed Xcode build service.
  *
  * @example
