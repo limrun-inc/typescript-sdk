@@ -43,15 +43,15 @@ const instance = await limrun.iosInstances.create({
       name: 'expo-go-ios-simulator-example',
     },
   },
-  // spec: {
-  //   initialAssets: [
-  //     {
-  //       kind: 'App',
-  //       source: 'AssetName',
-  //       assetName: asset.name,
-  //     },
-  //   ],
-  // },
+  spec: {
+    initialAssets: [
+      {
+        kind: 'App',
+        source: 'AssetName',
+        assetName: asset.name,
+      },
+    ],
+  },
 });
 console.timeEnd('create');
 console.log(`Instance ${instance.metadata.id} created.`);
@@ -63,10 +63,12 @@ const ios = await Ios.createInstanceClient({
   apiUrl: instance.status.apiUrl,
   token: instance.status.token,
 });
-console.log(ios.deviceInfo, 'Installing Expo Go iOS Simulator build...');
-console.time('install');
-await ios.installApp(asset.signedDownloadUrl);
-console.timeEnd('install');
+// Example on-the-fly app installation
+//
+// console.log(ios.deviceInfo, 'Installing Expo Go iOS Simulator build...');
+// console.time('install');
+// await ios.installApp(asset.signedDownloadUrl);
+// console.timeEnd('install');
 ios.disconnect();
 console.log('Expo Go iOS Simulator build installed');
 console.log('Connect by clicking on the link below:');
