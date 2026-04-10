@@ -97,6 +97,8 @@ export namespace AndroidInstance {
 
     adbWebSocketUrl?: string;
 
+    apiUrl?: string;
+
     endpointWebSocketUrl?: string;
 
     errorMessage?: string;
