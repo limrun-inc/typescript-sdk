@@ -39,7 +39,7 @@ export type SyncResult = {
   stopWatching?: () => void;
 };
 
-export type XcodeBuildSettings = {
+export type XcodeProjectConfig = {
   workspace?: string;
   project?: string;
   scheme?: string;
@@ -64,7 +64,7 @@ export type XcodeClient = {
    * build.stdout.on('data', (line) => console.log(line));
    * const { exitCode } = await build;
    */
-  xcodebuild: (settings?: XcodeBuildSettings, options?: XcodeBuildOptions) => ExecChildProcess;
+  xcodebuild: (settings?: XcodeProjectConfig, options?: XcodeBuildOptions) => ExecChildProcess;
 
   /**
    * Attach a simulator to this xcode instance.
@@ -169,7 +169,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         return {};
       },
 
-      xcodebuild(settings?: XcodeBuildSettings, options?: XcodeBuildOptions): ExecChildProcess {
+      xcodebuild(settings?: XcodeProjectConfig, options?: XcodeBuildOptions): ExecChildProcess {
         const request: ExecRequest = {
           command: 'xcodebuild',
           ...(settings && { xcodebuild: settings }),

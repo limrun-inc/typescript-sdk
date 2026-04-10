@@ -18,7 +18,7 @@ export {
 export {
   type XcodeCreateClientParams,
   type XcodeClient,
-  type XcodeBuildSettings,
+  type XcodeProjectConfig,
   type XcodeBuildOptions,
 } from './resources/xcode-instances-helpers';
 export {

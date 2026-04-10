@@ -51,7 +51,7 @@ import {
   XcodeInstances,
   XcodeCreateClientParams,
   XcodeClient,
-  XcodeBuildSettings,
+  XcodeProjectConfig,
   XcodeBuildOptions,
 } from './resources/xcode-instances-helpers';
 import { type Fetch } from './internal/builtin-types';
@@ -836,7 +836,7 @@ export declare namespace Limrun {
     type XcodeInstanceListParams as XcodeInstanceListParams,
     type XcodeCreateClientParams as XcodeCreateClientParams,
     type XcodeClient as XcodeClient,
-    type XcodeBuildSettings as XcodeBuildSettings,
+    type XcodeProjectConfig as XcodeProjectConfig,
     type XcodeBuildOptions as XcodeBuildOptions,
   };
 }
