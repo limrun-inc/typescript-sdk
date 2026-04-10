@@ -1,6 +1,8 @@
-import { WebSocket, Data } from 'ws';
 import os from 'os';
 import crypto from 'crypto';
+import path from 'path';
+import fs from 'fs';
+import { WebSocket, Data } from 'ws';
 import { EventEmitter } from 'events';
 import { isNonRetryableError } from './tunnel';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
