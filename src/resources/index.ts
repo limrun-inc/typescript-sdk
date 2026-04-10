@@ -23,7 +23,6 @@ export {
   type IosInstancesItems,
 } from './ios-instances';
 export {
-  XcodeInstances,
   type XcodeInstance,
   type XcodeInstanceCreateParams,
   type XcodeInstanceListParams,
@@ -31,3 +30,10 @@ export {
 } from './xcode-instances';
 
 export { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './assets-helpers';
+export {
+  XcodeInstances,
+  type XcodeCreateClientParams,
+  type XcodeClient,
+  type XcodeBuildSettings,
+  type XcodeBuildOptions,
+} from './xcode-instances-helpers';

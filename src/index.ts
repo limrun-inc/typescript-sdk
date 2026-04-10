@@ -25,6 +25,12 @@ export {
   type ExecChildProcess,
 } from './exec-client';
 export {
+  type XcodeCreateClientParams,
+  type XcodeClient,
+  type XcodeBuildSettings,
+  type XcodeBuildOptions,
+} from './resources/xcode-instances-helpers';
+export {
   LimrunError,
   APIError,
   APIConnectionError,
