@@ -19,6 +19,7 @@ export type ExecRequest = {
     project?: string;
     scheme?: string;
   };
+  signedUploadUrl?: string;
 };
 
 export type ExecOptions = {
