@@ -1,10 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-import { Readable } from 'stream';
-import { pipeline } from 'stream/promises';
 import { WebSocket, Data } from 'ws';
 import { exec } from 'node:child_process';
 
+import { downloadFileToLocalPath } from './internal/download-file';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import { startTcpTunnel, isNonRetryableError } from './tunnel';
 import type { Tunnel } from './tunnel';
@@ -21,33 +18,6 @@ export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'rec
  * Callback function for connection state changes
  */
 export type ConnectionStateCallback = (state: ConnectionState) => void;
-
-async function downloadFileToLocalPath(url: string, token: string, localPath: string): Promise<void> {
-  const maxRetries = 3;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const response = await nodeProxyTransport.fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (!response.ok) {
-      const errorBody = await response.text();
-      const isRetriable = response.status >= 500 && response.status < 600;
-      if (isRetriable && attempt < maxRetries) {
-        continue;
-      }
-      throw new Error(`Download failed: ${response.status} ${errorBody}`);
-    }
-    if (!response.body) {
-      throw new Error('Download failed: response body is missing');
-    }
-    await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-    await pipeline(Readable.fromWeb(response.body as any), fs.createWriteStream(localPath));
-    return;
-  }
-}
 
 function deriveEndpointWebSocketUrl(apiUrl: string): string {
   const parsed = new URL(apiUrl);
