@@ -60,11 +60,11 @@ export type XcodeClient = {
    * Returns a ChildProcess-like object for streaming output.
    *
    * @example
-   * const build = await xcode.xcodebuild({ scheme: 'MyApp' });
+   * const build = xcode.xcodebuild({ scheme: 'MyApp' });
    * build.stdout.on('data', (line) => console.log(line));
    * const { exitCode } = await build;
    */
-  xcodebuild: (settings?: XcodeBuildSettings, options?: XcodeBuildOptions) => Promise<ExecChildProcess>;
+  xcodebuild: (settings?: XcodeBuildSettings, options?: XcodeBuildOptions) => ExecChildProcess;
 
   /**
    * Attach a simulator to this xcode instance.
@@ -169,44 +169,45 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         return {};
       },
 
-      async xcodebuild(
-        settings?: XcodeBuildSettings,
-        options?: XcodeBuildOptions,
-      ): Promise<ExecChildProcess> {
+      xcodebuild(settings?: XcodeBuildSettings, options?: XcodeBuildOptions): ExecChildProcess {
         const request: ExecRequest = {
           command: 'xcodebuild',
           ...(settings && { xcodebuild: settings }),
         };
 
         if (options?.upload) {
-          let asset;
-          try {
-            asset = await client.assets.getOrCreate({ name: options.upload.assetName });
-          } catch (err) {
-            throw new Error(
-              `Failed to create upload URL for artifact '${options.upload.assetName}': ${
-                err instanceof Error ? err.message : err
-              }`,
-            );
-          }
-          request.signedUploadUrl = asset.signedUploadUrl;
+          const uploadName = options.upload.assetName;
+          const requestPromise = client.assets
+            .getOrCreate({ name: uploadName })
+            .then((asset) => {
+              request.signedUploadUrl = asset.signedUploadUrl;
+              return request;
+            })
+            .catch((err) => {
+              throw new Error(
+                `Failed to create upload URL for artifact '${uploadName}': ${
+                  err instanceof Error ? err.message : err
+                }`,
+              );
+            });
+          return exec(requestPromise, { apiUrl, token, log });
         }
 
         return exec(request, { apiUrl, token, log });
       },
 
       async attachSimulator(simulator: IosInstance | { apiUrl: string; token: string }): Promise<void> {
-        let simulatorApiUrl: string;
-        let simulatorToken: string;
+        let simApiUrl: string;
+        let simToken: string;
         if ('status' in simulator) {
           if (!simulator.status.apiUrl) {
             throw new Error('Simulator instance not ready: apiUrl is not available');
           }
-          simulatorApiUrl = simulator.status.apiUrl;
-          simulatorToken = simulator.status.token;
+          simApiUrl = simulator.status.apiUrl;
+          simToken = simulator.status.token;
         } else {
-          simulatorApiUrl = simulator.apiUrl;
-          simulatorToken = simulator.token;
+          simApiUrl = simulator.apiUrl;
+          simToken = simulator.token;
         }
 
         const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator`, {
@@ -215,7 +216,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ simulatorApiUrl, simulatorToken }),
+          body: JSON.stringify({ apiUrl: simApiUrl, token: simToken }),
         });
         if (!res.ok) {
           const text = await res.text();

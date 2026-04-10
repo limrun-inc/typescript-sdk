@@ -57,7 +57,7 @@ await xcode.sync(codeFolder);
 // Function to trigger a build
 async function runBuild(onLine: (line: string) => void): Promise<number> {
   console.log('Starting xcodebuild...');
-  const build = await xcode.xcodebuild();
+  const build = xcode.xcodebuild();
 
   build.command.on('data', (line) => {
     console.log('Executing command: ', line.toString());

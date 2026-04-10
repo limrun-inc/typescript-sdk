@@ -67,7 +67,7 @@ await xcode.sync(codeFolder);
 // Function to trigger a build with optional artifact upload
 async function runBuild(onLine: (line: string) => void): Promise<number> {
   console.log('Starting xcodebuild...');
-  const build = assetName ? await xcode.xcodebuild({}, { upload: { assetName } }) : await xcode.xcodebuild();
+  const build = assetName ? xcode.xcodebuild({}, { upload: { assetName } }) : xcode.xcodebuild();
 
   build.command.on('data', (line) => {
     console.log('Executing command: ', line.toString());
