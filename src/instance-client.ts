@@ -113,7 +113,7 @@ export type InstanceClient = {
    */
   openUrl: (url: string) => Promise<OpenUrlResult>;
   /**
- * Start recording device video. Use stopRecording() to finish the recording.
+   * Start recording device video. Use stopRecording() to finish the recording.
    */
   startRecording: () => Promise<void>;
   /**
