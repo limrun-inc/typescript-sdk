@@ -1,37 +1,36 @@
 import fs from 'fs';
 import path from 'path';
-import { createInstanceClient } from '@limrun/api';
+import { Limrun, createInstanceClient } from '@limrun/api';
 
-// const apiKey = process.env['LIM_API_KEY'];
+const apiKey = process.env['LIM_API_KEY'];
 
-// if (!apiKey) {
-//   console.error('Error: Missing required environment variables (LIM_API_KEY).');
-//   process.exit(1);
-// }
+if (!apiKey) {
+  console.error('Error: Missing required environment variables (LIM_API_KEY).');
+  process.exit(1);
+}
 
-// const limrun = new Limrun({ apiKey });
+const limrun = new Limrun({ apiKey });
 
-// console.time('create');
-// const instance = await limrun.androidInstances.create({
-//   wait: true,
-//   reuseIfExists: true,
-//   metadata: {
-//     labels: {
-//       name: 'websocket-android-example',
-//     },
-//   },
-// });
-// console.timeEnd('create');
+console.time('create');
+const instance = await limrun.androidInstances.create({
+  wait: true,
+  reuseIfExists: true,
+  metadata: {
+    labels: {
+      name: 'websocket-android-example',
+    },
+  },
+});
 
-// if (!instance.status.endpointWebSocketUrl || !instance.status.adbWebSocketUrl) {
-//   throw new Error('Missing endpointWebSocketUrl or adbWebSocketUrl on Android instance');
-// }
+console.timeEnd('create');
+
+if (!instance.status.apiUrl) {
+  throw new Error('Missing apiUrl on Android instance');
+}
 
 const client = await createInstanceClient({
-  endpointUrl: 'ws://127.0.0.1:8833/',
-  adbUrl: '',
-  token: '',
-  logLevel: 'debug',
+  apiUrl: instance.status.apiUrl,
+  token: instance.status.token,
 });
 
 console.log('Connected to Android instance');
