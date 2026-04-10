@@ -1,5 +1,5 @@
 {
-  "name": "xcode-sandbox",
+  "name": "ios-with-xcode",
   "version": "1.0.0",
   "description": "",
   "type": "module",
@@ -19,7 +19,7 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "@limrun/api": "0.23.1",
+    "@limrun/api": "0.24.1",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "zod": "^4.3.6"
   }

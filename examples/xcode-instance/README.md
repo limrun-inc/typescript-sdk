@@ -1,16 +1,16 @@
-# XCode Sandbox + iOS Simulator
+# Xcode Instance
 
-You and your agents can now develop iOS apps without a Mac.
+Build iOS apps in the cloud without a Mac using a standalone Xcode instance.
 
-This example shows how you can create a Limrun iOS Simulator and XCode
-sandbox that are connected to each other where your local code is automatically
-synced, built and hot-reloaded on every change.
+This example creates a Limrun Xcode instance, syncs your local code,
+and builds it remotely. Optionally attach an iOS simulator to preview
+builds on device.
 
 Clone this repo and get started!
 
 ```bash
 git clone https://github.com/limrun-inc/typescript-sdk.git
-cd typescript-sdk/examples/xcode-sandbox
+cd typescript-sdk/examples/xcode-instance
 ```
 
 ### Pre-requisites
@@ -22,6 +22,7 @@ installed in the environment.
 # macOS
 brew install xdelta
 ```
+
 ```bash
 # Ubuntu/Debian
 sudo apt-get install xdelta3
@@ -45,14 +46,20 @@ export LIM_API_KEY=<lim token from Console>
 yarn install
 ```
 
+Build and upload artifact:
+
 ```bash
-yarn run start sample-native-app/
+yarn run start sample-native-app/ --asset-name=my-app-build
 ```
 
-Go to the printed iOS simulator URL to see your app.
+Build and install on an iOS simulator:
+
+```bash
+yarn run start sample-native-app/ --simulator
+```
 
 As you make changes on source files, we automatically sync it so by the time you or
-your agent is done with code changes, all is already in the sandbox.
+your agent is done with code changes, all is already synced.
 
 Trigger a manual build:
 
