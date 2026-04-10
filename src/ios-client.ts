@@ -1,14 +1,11 @@
 import { WebSocket, Data } from 'ws';
-import fs from 'fs';
 import os from 'os';
-import path from 'path';
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
-import { Readable } from 'stream';
-import { pipeline } from 'stream/promises';
 import { isNonRetryableError } from './tunnel';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
 import { createIgnoreFn } from './folder-sync-ignore';
+import { downloadFileToLocalPath } from './internal/download-file';
 import { nodeProxyTransport } from './internal/proxy-transport';
 
 /**
@@ -28,33 +25,6 @@ function generateRecordingFilename(): string {
 
   // Example: 20240602_17_45_30 for June 2, 2024 17:45:30 UTC
   return `ios_video_${formattedDate}_${rand}.mp4`;
-}
-
-async function downloadFileToLocalPath(url: string, token: string, localPath: string): Promise<void> {
-  const maxRetries = 3;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const response = await nodeProxyTransport.fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (!response.ok) {
-      const errorBody = await response.text();
-      const isRetriable = response.status >= 500 && response.status < 600;
-      if (isRetriable && attempt < maxRetries) {
-        continue;
-      }
-      throw new Error(`Download failed: ${response.status} ${errorBody}`);
-    }
-    if (!response.body) {
-      throw new Error('Download failed: response body is missing');
-    }
-    await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-    await pipeline(Readable.fromWeb(response.body as any), fs.createWriteStream(localPath));
-    return;
-  }
 }
 
 function buildDownloadUrl(apiUrl: string, filename: string): string {

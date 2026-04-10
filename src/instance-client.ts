@@ -1,9 +1,13 @@
 import { WebSocket, Data } from 'ws';
 import { exec } from 'node:child_process';
 
+import { downloadFileToLocalPath } from './internal/download-file';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import { startTcpTunnel, isNonRetryableError } from './tunnel';
 import type { Tunnel } from './tunnel';
+
+const ANDROID_RECORDING_PATH = '/data/local/tmp/recordings/video_recording.mp4';
+const ANDROID_SIGNALING_PATH = '/ws';
 
 /**
  * Connection state of the instance client
@@ -14,6 +18,19 @@ export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'rec
  * Callback function for connection state changes
  */
 export type ConnectionStateCallback = (state: ConnectionState) => void;
+
+function deriveEndpointWebSocketUrl(apiUrl: string): string {
+  const parsed = new URL(apiUrl);
+  parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+  parsed.search = '';
+  parsed.hash = '';
+  parsed.pathname = `${parsed.pathname.replace(/\/$/, '')}${ANDROID_SIGNALING_PATH}`;
+  return parsed.toString().replace(/\/$/, '');
+}
+
+function buildDownloadUrl(apiUrl: string): string {
+  return `${apiUrl}/files?path=${encodeURIComponent(ANDROID_RECORDING_PATH)}`;
+}
 
 /**
  * A client for interacting with a Limbar instance
@@ -65,6 +82,17 @@ export type InstanceClient = {
    * Open a URL/deeplink on Android.
    */
   openUrl: (url: string) => Promise<OpenUrlResult>;
+  /**
+   * Start recording device video. Use stopRecording() to finish the recording.
+   */
+  startRecording: () => Promise<void>;
+  /**
+   * Stop the active server-side recording.
+   * If `saveTo.presignedUrl` is provided, the server uploads the completed file there before resolving.
+   * If `saveTo.localPath` is provided, the client downloads the completed file to that path.
+   * Returns a download URL for the completed recording.
+   */
+  stopRecording: (saveTo: { presignedUrl?: string; localPath?: string }) => Promise<string>;
   /**
    * Disconnect from the Limbar instance
    */
@@ -152,13 +180,14 @@ export type AndroidElementNode = {
  */
 export type InstanceClientOptions = {
   /**
+   * HTTP base URL for the Android daemon. WebSocket control is derived from it
+   * using the `/ws` path, and recording downloads use the same base URL.
+   */
+  apiUrl: string;
+  /**
    * The URL of the ADB WebSocket endpoint.
    */
-  adbUrl: string;
-  /**
-   * The URL of the main endpoint WebSocket.
-   */
-  endpointUrl: string;
+  adbUrl?: string;
   /**
    * The token to use for the WebSocket connections.
    */
@@ -234,6 +263,8 @@ export type ScrollResult = {
 export type OpenUrlResult = {
   url: string;
 };
+
+type EmptyCommandResult = Record<string, never>;
 
 type ScreenshotErrorResponse = {
   type: 'screenshotError';
@@ -322,6 +353,20 @@ type OpenUrlResultMessage = {
   error?: CommandError;
 };
 
+type StartVideoRecordingResultMessage = {
+  type: 'startRecordingResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
+type StopVideoRecordingResultMessage = {
+  type: 'stopRecordingResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
 type KnownCommandResultMessage =
   | ScreenshotResultMessage
   | GetElementTreeResultMessage
@@ -331,7 +376,9 @@ type KnownCommandResultMessage =
   | PressKeyResultMessage
   | ScrollScreenResultMessage
   | ScrollElementResultMessage
-  | OpenUrlResultMessage;
+  | OpenUrlResultMessage
+  | StartVideoRecordingResultMessage
+  | StopVideoRecordingResultMessage;
 
 type ServerMessage =
   | ScreenshotResponse
@@ -350,6 +397,8 @@ type CommandRequestMap = {
   scrollScreen: { direction: ScrollDirection; amount?: number };
   scrollElement: AndroidElementTarget & { direction: ScrollDirection; amount?: number };
   openUrl: { url: string };
+  startRecording: Record<string, never>;
+  stopRecording: { upload?: { presignedUrl: string } };
 };
 
 type CommandResultMap = {
@@ -362,6 +411,8 @@ type CommandResultMap = {
   scrollScreen: ScrollResult;
   scrollElement: ScrollResult;
   openUrl: OpenUrlResult;
+  startRecording: EmptyCommandResult;
+  stopRecording: EmptyCommandResult;
 };
 
 type PendingRequest<T> = {
@@ -376,7 +427,9 @@ type PendingRequest<T> = {
  * @returns An InstanceClient for controlling the instance
  */
 export async function createInstanceClient(options: InstanceClientOptions): Promise<InstanceClient> {
-  const serverAddress = `${options.endpointUrl}?token=${options.token}`;
+  const endpointWebSocketUrl = deriveEndpointWebSocketUrl(options.apiUrl);
+  const serverAddress = `${endpointWebSocketUrl}?token=${options.token}`;
+  const recordingApiUrl = options.apiUrl;
   const logLevel = options.logLevel ?? 'info';
   const maxReconnectAttempts = options.maxReconnectAttempts ?? 6;
   const reconnectDelay = options.reconnectDelay ?? 1000;
@@ -388,7 +441,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   let reconnectTimeout: NodeJS.Timeout | undefined;
   let intentionalDisconnect = false;
   let lastError: string | undefined;
-
   const pendingRequests: Map<string, PendingRequest<unknown>> = new Map();
   const pendingAssetRequestsByUrl: Map<string, Array<PendingRequest<void>>> = new Map();
 
@@ -522,6 +574,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         case 'scrollScreenResult':
         case 'scrollElementResult':
         case 'openUrlResult':
+        case 'startRecordingResult':
+        case 'stopRecordingResult':
           return 'id' in message && typeof message.id === 'string';
         default:
           return false;
@@ -759,6 +813,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             scrollScreen,
             scrollElement,
             openUrl,
+            startRecording,
+            stopRecording,
             disconnect,
             startAdbTunnel,
             sendAsset,
@@ -848,6 +904,23 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       };
     };
 
+    const startRecording = async (): Promise<void> => {
+      await sendRequest('startRecording', {});
+    };
+
+    const stopRecording = async (saveTo: { presignedUrl?: string; localPath?: string }): Promise<string> => {
+      const request: CommandRequestMap['stopRecording'] = {};
+      if (saveTo.presignedUrl) {
+        request.upload = { presignedUrl: saveTo.presignedUrl };
+      }
+      await sendRequest('stopRecording', request);
+      const downloadUrl = buildDownloadUrl(recordingApiUrl);
+      if (saveTo.localPath) {
+        await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
+      }
+      return downloadUrl;
+    };
+
     const disconnect = (): void => {
       intentionalDisconnect = true;
       cleanup();
@@ -872,6 +945,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
      * client to it.
      */
     const startAdbTunnel = async (): Promise<Tunnel> => {
+      if (!options.adbUrl) {
+        throw new Error('adbUrl is required to start an ADB tunnel.');
+      }
       const tunnel = await startTcpTunnel(options.adbUrl, options.token, '127.0.0.1', 0, {
         maxReconnectAttempts,
         reconnectDelay,
