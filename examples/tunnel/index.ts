@@ -17,9 +17,12 @@ const androidInstance = await limrun.androidInstances.create({ wait: true });
 console.log(`Instance ${androidInstance.metadata.id} created`);
 console.timeEnd('create');
 
+if (!androidInstance.status.apiUrl || !androidInstance.status.adbWebSocketUrl) {
+  throw new Error('Missing apiUrl or adbWebSocketUrl on Android instance');
+}
 const client = await createInstanceClient({
-  adbUrl: androidInstance.status.adbWebSocketUrl!,
-  endpointUrl: androidInstance.status.endpointWebSocketUrl!,
+  apiUrl: androidInstance.status.apiUrl,
+  adbUrl: androidInstance.status.adbWebSocketUrl,
   token: androidInstance.status.token,
 });
 
