@@ -84,8 +84,9 @@ export type InstanceClient = {
   openUrl: (url: string) => Promise<OpenUrlResult>;
   /**
    * Start recording device video. Use stopRecording() to finish the recording.
+   * When provided, `quality` must be an integer from 5 to 10. The server default is 5.
    */
-  startRecording: () => Promise<void>;
+  startRecording: (options?: { quality?: RecordingQuality }) => Promise<void>;
   /**
    * Stop the active server-side recording.
    * If `saveTo.presignedUrl` is provided, the server uploads the completed file there before resolving.
@@ -128,6 +129,7 @@ export type InstanceClient = {
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
 
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
+export type RecordingQuality = number;
 
 export type AndroidSelector = {
   resourceId?: string;
@@ -397,7 +399,7 @@ type CommandRequestMap = {
   scrollScreen: { direction: ScrollDirection; amount?: number };
   scrollElement: AndroidElementTarget & { direction: ScrollDirection; amount?: number };
   openUrl: { url: string };
-  startRecording: Record<string, never>;
+  startRecording: { quality?: RecordingQuality };
   stopRecording: { upload?: { presignedUrl: string } };
 };
 
@@ -904,8 +906,17 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       };
     };
 
-    const startRecording = async (): Promise<void> => {
-      await sendRequest('startRecording', {});
+    const startRecording = async (recordingOptions?: {
+      quality?: RecordingQuality;
+    }): Promise<void> => {
+      const request: CommandRequestMap['startRecording'] = {};
+      if (recordingOptions?.quality !== undefined) {
+        if (!Number.isInteger(recordingOptions.quality) || recordingOptions.quality < 5 || recordingOptions.quality > 10) {
+          throw new Error('quality must be an integer from 5 to 10');
+        }
+        request.quality = recordingOptions.quality;
+      }
+      await sendRequest('startRecording', request);
     };
 
     const stopRecording = async (saveTo: { presignedUrl?: string; localPath?: string }): Promise<string> => {
