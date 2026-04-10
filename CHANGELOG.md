@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.24.0 (2026-04-10)
+
+Full Changelog: [v0.23.2...v0.24.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.23.2...v0.24.0)
+
+### Features
+
+* **api:** add apiUrl to android ([1eb1937](https://github.com/limrun-inc/typescript-sdk/commit/1eb19377c3ea5c9faac73674a52be8e72a9418d5))
+* **api:** add xcode instances endpoints ([6e9c659](https://github.com/limrun-inc/typescript-sdk/commit/6e9c659a60df434d5deea04e60d0fb854b1d138f))
+* **api:** fix model name for xcode_instance in stainless config ([2643293](https://github.com/limrun-inc/typescript-sdk/commit/2643293d19d660345aa1c47b5450407ba01a12e3))
+* **api:** update stainless config for xcode_instances resource ([2ec760f](https://github.com/limrun-inc/typescript-sdk/commit/2ec760fb6a96afab102b879876fbc9cee48b8f49))
+
+
+### Chores
+
+* **internal:** codegen related update ([5eb602c](https://github.com/limrun-inc/typescript-sdk/commit/5eb602c31ddc62c0121426d2031cef31a54670c6))
+
 ## 0.23.2 (2026-04-07)
 
 Full Changelog: [v0.23.1...v0.23.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.23.1...v0.23.2)

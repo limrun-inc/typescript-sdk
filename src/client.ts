@@ -41,6 +41,13 @@ import {
   IosInstances,
   IosInstancesItems,
 } from './resources/ios-instances';
+import {
+  XcodeInstance,
+  XcodeInstanceCreateParams,
+  XcodeInstanceListParams,
+  XcodeInstances,
+  XcodeInstancesItems,
+} from './resources/xcode-instances';
 import { type Fetch } from './internal/builtin-types';
 import { HeadersLike, NullableHeaders, buildHeaders } from './internal/headers';
 import { FinalRequestOptions, RequestOptions } from './internal/request-options';
@@ -774,11 +781,13 @@ export class Limrun {
   androidInstances: API.AndroidInstances = new API.AndroidInstances(this);
   assets: API.Assets = new API.Assets(this);
   iosInstances: API.IosInstances = new API.IosInstances(this);
+  xcodeInstances: API.XcodeInstances = new API.XcodeInstances(this);
 }
 
 Limrun.AndroidInstances = AndroidInstances;
 Limrun.Assets = Assets;
 Limrun.IosInstances = IosInstances;
+Limrun.XcodeInstances = XcodeInstances;
 
 export declare namespace Limrun {
   export type RequestOptions = Opts.RequestOptions;
@@ -811,5 +820,13 @@ export declare namespace Limrun {
     type IosInstancesItems as IosInstancesItems,
     type IosInstanceCreateParams as IosInstanceCreateParams,
     type IosInstanceListParams as IosInstanceListParams,
+  };
+
+  export {
+    XcodeInstances as XcodeInstances,
+    type XcodeInstance as XcodeInstance,
+    type XcodeInstancesItems as XcodeInstancesItems,
+    type XcodeInstanceCreateParams as XcodeInstanceCreateParams,
+    type XcodeInstanceListParams as XcodeInstanceListParams,
   };
 }

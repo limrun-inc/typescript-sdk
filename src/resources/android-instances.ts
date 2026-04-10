@@ -72,8 +72,8 @@ export namespace AndroidInstance {
   export interface Spec {
     /**
      * After how many minutes of inactivity should the instance be terminated. Example
-     * values 1m, 10m, 3h. Default is 3m. Providing "0" disables inactivity checks
-     * altogether.
+     * values 1m, 10m, 3h. Default is 3m. Providing "0" uses the organization's default
+     * inactivity timeout.
      */
     inactivityTimeout: string;
 
@@ -96,6 +96,8 @@ export namespace AndroidInstance {
     state: 'unknown' | 'creating' | 'assigned' | 'ready' | 'terminated';
 
     adbWebSocketUrl?: string;
+
+    apiUrl?: string;
 
     endpointWebSocketUrl?: string;
 
@@ -162,8 +164,8 @@ export namespace AndroidInstanceCreateParams {
 
     /**
      * After how many minutes of inactivity should the instance be terminated. Example
-     * values 1m, 10m, 3h. Default is 3m. Providing "0" disables inactivity checks
-     * altogether.
+     * values 1m, 10m, 3h. Default is 3m. Providing "0" uses the organization's default
+     * inactivity timeout.
      */
     inactivityTimeout?: string;
 

@@ -38,3 +38,16 @@ Methods:
 - <code title="get /v1/ios_instances">client.iosInstances.<a href="./src/resources/ios-instances.ts">list</a>({ ...params }) -> IosInstancesItems</code>
 - <code title="delete /v1/ios_instances/{id}">client.iosInstances.<a href="./src/resources/ios-instances.ts">delete</a>(id) -> void</code>
 - <code title="get /v1/ios_instances/{id}">client.iosInstances.<a href="./src/resources/ios-instances.ts">get</a>(id) -> IosInstance</code>
+
+# XcodeInstances
+
+Types:
+
+- <code><a href="./src/resources/xcode-instances.ts">XcodeInstance</a></code>
+
+Methods:
+
+- <code title="post /v1/xcode_instances">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">create</a>({ ...params }) -> XcodeInstance</code>
+- <code title="get /v1/xcode_instances">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">list</a>({ ...params }) -> XcodeInstancesItems</code>
+- <code title="delete /v1/xcode_instances/{id}">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">delete</a>(id) -> void</code>
+- <code title="get /v1/xcode_instances/{id}">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">get</a>(id) -> XcodeInstance</code>
