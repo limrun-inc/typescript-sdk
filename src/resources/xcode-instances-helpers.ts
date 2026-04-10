@@ -7,6 +7,8 @@ import { type IosInstance } from './ios-instances';
 import { exec, type ExecChildProcess, type ExecRequest } from '../exec-client';
 import { syncFolder as syncFolderImpl, type FolderSyncOptions } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
+import { nodeProxyTransport } from '../internal/proxy-transport';
+
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
 
 export type SyncOptions = {
@@ -68,7 +70,7 @@ export type XcodeClient = {
    * Attach a simulator to this xcode instance.
    * After attaching, builds will auto-install on the simulator.
    */
-  attachSimulator: (simulator: IosInstance | { apiUrl: string; token?: string }) => Promise<void>;
+  attachSimulator: (simulator: IosInstance | { apiUrl: string; token: string }) => Promise<void>;
 };
 
 export type XcodeCreateClientParams =
@@ -182,7 +184,9 @@ export class XcodeInstances extends GeneratedXcodeInstances {
             asset = await client.assets.getOrCreate({ name: options.upload.assetName });
           } catch (err) {
             throw new Error(
-              `Failed to create upload URL for artifact '${options.upload.assetName}': ${err instanceof Error ? err.message : err}`,
+              `Failed to create upload URL for artifact '${options.upload.assetName}': ${
+                err instanceof Error ? err.message : err
+              }`,
             );
           }
           request.signedUploadUrl = asset.signedUploadUrl;
@@ -191,8 +195,32 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         return exec(request, { apiUrl, token, log });
       },
 
-      async attachSimulator(): Promise<void> {
-        throw new Error('Not implemented');
+      async attachSimulator(simulator: IosInstance | { apiUrl: string; token: string }): Promise<void> {
+        let simulatorApiUrl: string;
+        let simulatorToken: string;
+        if ('status' in simulator) {
+          if (!simulator.status.apiUrl) {
+            throw new Error('Simulator instance not ready: apiUrl is not available');
+          }
+          simulatorApiUrl = simulator.status.apiUrl;
+          simulatorToken = simulator.status.token;
+        } else {
+          simulatorApiUrl = simulator.apiUrl;
+          simulatorToken = simulator.token;
+        }
+
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ simulatorApiUrl, simulatorToken }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`POST /simulator failed: ${res.status} ${text}`);
+        }
       },
     };
   }
