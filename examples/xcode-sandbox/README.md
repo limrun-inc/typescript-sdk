@@ -10,7 +10,7 @@ Clone this repo and get started!
 
 ```bash
 git clone https://github.com/limrun-inc/typescript-sdk.git
-cd typescript-sdk/examples/xcode-instance
+cd typescript-sdk/examples/xcode-sandbox
 ```
 
 ### Pre-requisites
