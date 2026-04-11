@@ -315,7 +315,7 @@ export type InstanceClient = {
   startRecording: (options?: { quality?: RecordingQuality }) => Promise<void>;
 
   /**
-   * Stop the active recording for this client instance.
+   * Stop the active server-side recording.
    * If `saveTo.presignedUrl` is provided, the server uploads the completed file there before resolving.
    * If `saveTo.localPath` is provided, the client downloads the completed file to that path.
    * If both are provided, both are performed.
@@ -898,8 +898,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   let reconnectTimeout: NodeJS.Timeout | undefined;
   let intentionalDisconnect = false;
   let lastError: string | undefined;
-  let hasActiveRecording = false;
-
   // Centralized pending requests map - handles all request/response patterns
   const pendingRequests: Map<string, PendingRequest<any>> = new Map();
 
@@ -1396,41 +1394,23 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const startRecording = async (opts?: { quality?: RecordingQuality }): Promise<void> => {
-      if (hasActiveRecording) {
-        throw new Error('A recording is already active for this client');
-      }
-      hasActiveRecording = true;
-      try {
-        const request: { quality?: RecordingQuality } = {};
-        if (opts?.quality !== undefined) {
-          if (!Number.isInteger(opts.quality) || opts.quality < 5 || opts.quality > 10) {
-            throw new Error('quality must be one of: 5, 6, 7, 8, 9, 10');
-          }
-          request.quality = opts.quality;
+      const request: { quality?: RecordingQuality } = {};
+      if (opts?.quality !== undefined) {
+        if (!Number.isInteger(opts.quality) || opts.quality < 5 || opts.quality > 10) {
+          throw new Error('quality must be one of: 5, 6, 7, 8, 9, 10');
         }
-        await sendRequest<void>('startVideoRecording', request);
-      } catch (error) {
-        hasActiveRecording = false;
-        throw error;
+        request.quality = opts.quality;
       }
+      await sendRequest<void>('startVideoRecording', request);
     };
 
     const stopRecording = async (saveTo: { presignedUrl?: string; localPath?: string }): Promise<string> => {
-      if (!hasActiveRecording) {
-        throw new Error('No active recording for this client. Call startRecording() first.');
-      }
       await sendRequest<void>('stopVideoRecording', {
         upload: saveTo.presignedUrl ? { presignedUrl: saveTo.presignedUrl } : undefined,
       });
       const downloadUrl = buildDownloadUrl(options.apiUrl);
       if (saveTo.localPath) {
-        try {
-          await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
-        } finally {
-          hasActiveRecording = false;
-        }
-      } else {
-        hasActiveRecording = false;
+        await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
       }
       return downloadUrl;
     };
