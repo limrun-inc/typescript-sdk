@@ -84,7 +84,8 @@ export type InstanceClient = {
   openUrl: (url: string) => Promise<OpenUrlResult>;
   /**
    * Start recording device video. Use stopRecording() to finish the recording.
-   * When provided, `quality` must be an integer from 5 to 10. The server default is 5.
+   * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
+   * The server default is `5`.
    */
   startRecording: (options?: { quality?: RecordingQuality }) => Promise<void>;
   /**
@@ -129,7 +130,14 @@ export type InstanceClient = {
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
 
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
-export type RecordingQuality = number;
+export enum RecordingQuality {
+  Q5 = 5,
+  Q6 = 6,
+  Q7 = 7,
+  Q8 = 8,
+  Q9 = 9,
+  Q10 = 10,
+}
 
 export type AndroidSelector = {
   resourceId?: string;
@@ -906,13 +914,15 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       };
     };
 
-    const startRecording = async (recordingOptions?: {
-      quality?: RecordingQuality;
-    }): Promise<void> => {
+    const startRecording = async (recordingOptions?: { quality?: RecordingQuality }): Promise<void> => {
       const request: CommandRequestMap['startRecording'] = {};
       if (recordingOptions?.quality !== undefined) {
-        if (!Number.isInteger(recordingOptions.quality) || recordingOptions.quality < 5 || recordingOptions.quality > 10) {
-          throw new Error('quality must be an integer from 5 to 10');
+        if (
+          !Number.isInteger(recordingOptions.quality) ||
+          recordingOptions.quality < 5 ||
+          recordingOptions.quality > 10
+        ) {
+          throw new Error('quality must be one of: 5, 6, 7, 8, 9, 10');
         }
         request.quality = recordingOptions.quality;
       }
