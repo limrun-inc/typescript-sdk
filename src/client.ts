@@ -45,9 +45,15 @@ import {
   XcodeInstance,
   XcodeInstanceCreateParams,
   XcodeInstanceListParams,
-  XcodeInstances,
   XcodeInstancesItems,
 } from './resources/xcode-instances';
+import {
+  XcodeInstances,
+  XcodeCreateClientParams,
+  XcodeClient,
+  XcodeProjectConfig,
+  XcodeBuildOptions,
+} from './resources/xcode-instances-helpers';
 import { type Fetch } from './internal/builtin-types';
 import { HeadersLike, NullableHeaders, buildHeaders } from './internal/headers';
 import { FinalRequestOptions, RequestOptions } from './internal/request-options';
@@ -828,5 +834,9 @@ export declare namespace Limrun {
     type XcodeInstancesItems as XcodeInstancesItems,
     type XcodeInstanceCreateParams as XcodeInstanceCreateParams,
     type XcodeInstanceListParams as XcodeInstanceListParams,
+    type XcodeCreateClientParams as XcodeCreateClientParams,
+    type XcodeClient as XcodeClient,
+    type XcodeProjectConfig as XcodeProjectConfig,
+    type XcodeBuildOptions as XcodeBuildOptions,
   };
 }

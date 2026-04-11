@@ -19,6 +19,7 @@ export type ExecRequest = {
     project?: string;
     scheme?: string;
   };
+  signedUploadUrl?: string;
 };
 
 export type ExecOptions = {
@@ -107,10 +108,14 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private readonly options: ExecOptions;
   private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
 
-  constructor(request: ExecRequest, options: ExecOptions) {
+  constructor(request: ExecRequest | Promise<ExecRequest>, options: ExecOptions) {
     this.options = options;
     this.log = options.log ?? (() => {});
-    this.resultPromise = this.run(request);
+    if (request instanceof Promise) {
+      this.resultPromise = request.then((r) => this.run(r));
+    } else {
+      this.resultPromise = this.run(request);
+    }
   }
 
   /** Implement PromiseLike so this object can be awaited */
@@ -331,6 +336,6 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
  * // Wait for completion
  * const { exitCode, status } = await proc;
  */
-export function exec(request: ExecRequest, options: ExecOptions): ExecChildProcess {
+export function exec(request: ExecRequest | Promise<ExecRequest>, options: ExecOptions): ExecChildProcess {
   return new ExecChildProcess(request, options);
 }

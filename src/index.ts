@@ -9,21 +9,18 @@ export { PagePromise } from './core/pagination';
 export * from './instance-client';
 export * as Ios from './ios-client';
 export {
-  createXCodeSandboxClient,
-  type XCodeSandboxClient,
-  type CreateXCodeSandboxClientOptions,
-  type SimulatorConfig,
-  type SyncOptions,
-  type SyncResult,
-  type XcodeBuildConfig,
-} from './sandbox-client';
-export {
   exec,
   type ExecRequest,
   type ExecOptions,
   type ExecResult,
   type ExecChildProcess,
 } from './exec-client';
+export {
+  type XcodeCreateClientParams,
+  type XcodeClient,
+  type XcodeProjectConfig,
+  type XcodeBuildOptions,
+} from './resources/xcode-instances-helpers';
 export {
   LimrunError,
   APIError,

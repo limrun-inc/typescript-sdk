@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { Limrun, createXCodeSandboxClient } from '@limrun/api';
+import Limrun from '@limrun/api';
 
 if (!process.env['LIM_API_KEY']) {
   console.error('Error: Missing required environment variables (LIM_API_KEY).');
@@ -18,13 +18,15 @@ if (!codeFolder) {
   console.error('Example: node index.ts ./my-ios-app');
   process.exit(1);
 }
-console.log('Creating iOS instance with an XCode sandbox...');
+
+// Create an iOS instance with an embedded Xcode sandbox
+console.log('Creating iOS instance with Xcode...');
 const instance = await lim.iosInstances.create({
   wait: true,
   reuseIfExists: true,
   metadata: {
     labels: {
-      name: 'ios-native-build-example',
+      name: 'ios-with-xcode-example',
     },
   },
   spec: {
@@ -36,25 +38,26 @@ const instance = await lim.iosInstances.create({
   },
 });
 
-const sandboxUrl = instance.status.sandbox?.xcode?.url;
-if (!sandboxUrl) {
-  console.error('Error: Xcode sandbox URL not available');
+const xcodeUrl = instance.status.sandbox?.xcode?.url;
+if (!xcodeUrl) {
+  console.error('Error: Xcode URL not available on the iOS instance');
   process.exit(1);
 }
 
-const sandbox = await createXCodeSandboxClient({
-  apiUrl: sandboxUrl,
+// Create a client for the embedded xcode instance
+const xcode = await lim.xcodeInstances.createClient({
+  apiUrl: xcodeUrl,
   token: instance.status.token,
 });
 
-// Sync the code to the sandbox
+// Sync the code
 console.log(`Syncing code from ${codeFolder}...`);
-await sandbox.sync(codeFolder);
+await xcode.sync(codeFolder);
 
 // Function to trigger a build
 async function runBuild(onLine: (line: string) => void): Promise<number> {
   console.log('Starting xcodebuild...');
-  const build = sandbox.xcodebuild();
+  const build = xcode.xcodebuild();
 
   build.command.on('data', (line) => {
     console.log('Executing command: ', line.toString());
@@ -81,7 +84,8 @@ function createServer() {
     'build',
     {
       title: 'xcodebuild',
-      description: 'Runs xcodebuild and installs the app on the remote simulator. Returns the build output.',
+      description:
+        'Runs xcodebuild on the remote Xcode instance and installs the app on the simulator. Returns the build output.',
     },
     async () => {
       let buffer: string[] = [];
@@ -131,8 +135,6 @@ const httpServer = http.createServer(async (req, res) => {
 const port = 3000;
 httpServer.listen(port, () => {
   console.log('');
-  console.log('');
-  console.log('');
   console.log('--------------------------------');
   console.log(`Access your iOS simulator here: https://console.limrun.com/stream/${instance.metadata.id}`);
   console.log('--------------------------------');
@@ -140,7 +142,6 @@ httpServer.listen(port, () => {
   console.log(`$ curl http://localhost:${port}/xcodebuild`);
   console.log('--------------------------------');
   console.log(`Also, an MCP server is listening on http://localhost:${port}`);
-
   console.log(`Add the following to your .mcp.json file:`);
   console.log(`{
   "mcpServers": {
