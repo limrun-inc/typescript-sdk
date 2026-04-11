@@ -33,7 +33,7 @@ and then save the recording to a local `video.mp4` file.
 
 ### Upload to S3 or Google Cloud Storage
 
-You can have simulator upload directly to a pre-signed object URL by supplying that in `saveTo.s3Url` parameter of the `stopRecording` function.
+You can have simulator upload directly to a pre-signed object URL by supplying that in `presignedUrl` parameter of the `stopRecording` function, e.g. `await client.stopRecording({ presignedUrl: "<URL>" });`
 
 Generate pre-signed URL in AWS:
 ```bash
