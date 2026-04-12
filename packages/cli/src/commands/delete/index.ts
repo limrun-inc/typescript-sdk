@@ -1,5 +1,6 @@
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { clearInstanceCache } from '../../lib/config';
 
 export default class Delete extends BaseCommand {
   static summary = 'Delete a resource by ID (auto-detects type from ID prefix)';
@@ -29,6 +30,7 @@ export default class Delete extends BaseCommand {
           break;
         case 'ios':
           await this.client.iosInstances.delete(args.id);
+          clearInstanceCache(args.id);
           this.log(`Deleted iOS instance: ${args.id}`);
           break;
         case 'xcode':

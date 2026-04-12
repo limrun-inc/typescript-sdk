@@ -70,3 +70,41 @@ export function clearApiKey(): void {
   delete raw[CONFIG_KEYS.apiKey];
   writeRawConfig(raw);
 }
+
+// ---------- Instance metadata cache ----------
+// Stores data from create responses that the API doesn't return on get
+// (e.g. sandbox.xcode.url for iOS instances)
+
+const INSTANCES_DIR = path.join(CONFIG_DIR, 'instances');
+
+export interface InstanceCache {
+  sandboxXcodeUrl?: string;
+  token?: string;
+}
+
+function instanceCachePath(instanceId: string): string {
+  // Sanitize ID for use as filename
+  return path.join(INSTANCES_DIR, `${instanceId.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`);
+}
+
+export function saveInstanceCache(instanceId: string, data: InstanceCache): void {
+  ensureConfigDir();
+  if (!fs.existsSync(INSTANCES_DIR)) {
+    fs.mkdirSync(INSTANCES_DIR, { recursive: true, mode: 0o700 });
+  }
+  fs.writeFileSync(instanceCachePath(instanceId), JSON.stringify(data, null, 2), { mode: 0o600 });
+}
+
+export function loadInstanceCache(instanceId: string): InstanceCache | null {
+  const p = instanceCachePath(instanceId);
+  if (!fs.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+export function clearInstanceCache(instanceId: string): void {
+  try { fs.unlinkSync(instanceCachePath(instanceId)); } catch {}
+}

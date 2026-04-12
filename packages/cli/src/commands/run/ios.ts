@@ -2,6 +2,7 @@ import path from 'path';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
+import { saveInstanceCache } from '../../lib/config';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 
 export default class RunIos extends BaseCommand {
@@ -26,6 +27,7 @@ export default class RunIos extends BaseCommand {
     'reuse-if-exists': Flags.boolean({ description: 'Reuse existing instance with same labels/region', default: false }),
     'install-asset': Flags.string({ description: 'Asset name to install', multiple: true }),
     install: Flags.string({ description: 'Local file to install (auto-uploads if needed)', multiple: true }),
+    xcode: Flags.boolean({ description: 'Enable Xcode sandbox on this iOS instance', default: false }),
   };
 
   async run(): Promise<void> {
@@ -65,6 +67,9 @@ export default class RunIos extends BaseCommand {
       if (flags.model) params.spec!.model = flags.model as 'iphone' | 'ipad' | 'watch';
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
+      if (flags.xcode) {
+        params.spec!.sandbox = { xcode: { enabled: true } };
+      }
 
       const labels = parseLabels(flags.label);
       if (flags['display-name'] || labels) {
@@ -79,6 +84,13 @@ export default class RunIos extends BaseCommand {
       this.log(`Instance ID: ${instance.metadata.id}`);
       this.log(`Region: ${instance.spec.region}`);
       this.log(`State: ${instance.status.state}`);
+      if (instance.status.sandbox?.xcode?.url) {
+        this.log(`Xcode Sandbox: ${instance.status.sandbox.xcode.url}`);
+        saveInstanceCache(instance.metadata.id, {
+          sandboxXcodeUrl: instance.status.sandbox.xcode.url,
+          token: instance.status.token,
+        });
+      }
 
       if (flags.json) {
         this.outputJson(instance);

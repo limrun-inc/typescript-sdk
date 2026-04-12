@@ -2,6 +2,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { isDaemonRunning, getDaemonPid, loadState } from '../../lib/daemon';
 import { sendCommand } from '../../lib/daemon-client';
+import { loadInstanceCache } from '../../lib/config';
 
 export default class SessionStatus extends BaseCommand {
   static summary = 'Show active session status';
@@ -42,6 +43,11 @@ export default class SessionStatus extends BaseCommand {
     if (state) {
       this.log(`  Instance:   ${state.instanceId}`);
       this.log(`  Type:       ${state.instanceType}`);
+
+      const cache = loadInstanceCache(state.instanceId);
+      if (cache?.sandboxXcodeUrl) {
+        this.log(`  Xcode:      ${cache.sandboxXcodeUrl}`);
+      }
     }
 
     try {

@@ -2,7 +2,7 @@ import Limrun, { createInstanceClient, Ios, type InstanceClient } from '@limrun/
 import { isSessionActive, sendCommand } from './daemon-client';
 import { loadState } from './daemon';
 
-export type InstanceType = 'android' | 'ios';
+export type InstanceType = 'android' | 'ios' | 'xcode';
 
 export interface ResolvedInstanceClient {
   type: InstanceType;
@@ -16,7 +16,8 @@ export function detectInstanceType(id: string): InstanceType {
   const prefix = id.split('_')[0];
   if (prefix === 'android') return 'android';
   if (prefix === 'ios') return 'ios';
-  throw new Error(`Cannot detect instance type from ID "${id}". Expected prefix "android_" or "ios_".`);
+  if (prefix === 'xcode') return 'xcode';
+  throw new Error(`Cannot detect instance type from ID "${id}". Expected prefix "android_", "ios_", or "xcode_".`);
 }
 
 /**

@@ -106,6 +106,7 @@ lim run xcode --rm --hard-timeout 1h
 | Flag | Description |
 |------|-------------|
 | `--model <iphone\|ipad\|watch>` | Simulator device model |
+| `--xcode` | Attach a Xcode build sandbox to the iOS instance |
 
 #### List Instances
 
@@ -391,24 +392,74 @@ lim exec record ios_abc123 stop -o recording.mp4
 
 ### Xcode Build Pipeline
 
-Build iOS apps remotely using cloud Xcode instances.
+Build and test iOS apps remotely using cloud Xcode sandboxes. The `sync` and `build` commands work with both standalone Xcode instances and iOS instances that have Xcode sandbox enabled.
+
+#### Option A: iOS Instance with Xcode Sandbox (Recommended)
+
+This gives you a simulator **and** a build environment in one instance — the built app is automatically installed on the simulator.
 
 ```bash
-# 1. Create a Xcode instance
+# 1. Create iOS instance with Xcode sandbox
+lim run ios --xcode
+# Output:
+#   Instance ID: ios_abc123
+#   Xcode Sandbox: https://...limrun.net/v1/sandbox_.../xcode
+#   (sandbox URL is cached locally for sync/build to use)
+
+# 2. Sync your project code to the Xcode sandbox
+lim sync ios_abc123 ./MyProject
+
+# 3. Build — the app is auto-installed on the simulator
+lim build ios_abc123 --scheme MyApp --workspace MyApp.xcworkspace
+
+# 4. Start a session for fast device interaction
+lim session start ios_abc123
+
+# 5. Test the built app on the simulator (~50ms per command)
+lim exec launch-app ios_abc123 com.example.myapp
+lim exec element-tree ios_abc123 | jq '.'
+lim exec screenshot ios_abc123 -o built-app.png
+
+# 6. Clean up
+lim session stop
+lim delete ios_abc123
+```
+
+> **Note:** The Xcode sandbox URL is only returned when the instance is created — not on subsequent `get` calls. The CLI caches it locally at `~/.lim/instances/` so that `sync` and `build` can find it. This means `sync`/`build` must run on the same machine where `run ios --xcode` was executed.
+
+#### Option B: Standalone Xcode Instance
+
+Use this when you only need to build (no simulator needed), or when you want to attach a simulator separately.
+
+```bash
+# 1. Create a standalone Xcode instance
 lim run xcode --rm
 
-# 2. Sync your project code
+# 2. Sync and build
 lim sync xcode_abc123 ./MyProject
-
-# Watch mode (re-syncs on file changes)
-lim sync xcode_abc123 ./MyProject --watch
-
-# 3. Build
 lim build xcode_abc123 --scheme MyApp --workspace MyApp.xcworkspace
 
-# Build and upload artifact
+# 3. Upload build artifact
 lim build xcode_abc123 --scheme MyApp --upload my-app-build
+
+# 4. Download the artifact
+lim pull my-app-build -o ./build-output
 ```
+
+#### Sync Options
+
+```bash
+# Watch mode (re-syncs on file changes, default)
+lim sync ios_abc123 ./MyProject --watch
+
+# One-shot sync (no watch)
+lim sync ios_abc123 ./MyProject --no-watch
+
+# Sync without installing
+lim sync ios_abc123 ./MyProject --no-install
+```
+
+The sync automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
 
 ---
 
@@ -514,13 +565,34 @@ lim session stop
 lim delete $ID
 ```
 
-### Remote Xcode Build
+### Remote Build + Test on iOS Simulator
+
+```bash
+# Single instance: Xcode sandbox + iOS simulator
+ID=$(lim run ios --xcode --json | jq -r '.metadata.id')
+
+# Sync, build, and test
+lim sync $ID ./MyiOSProject --no-watch
+lim build $ID --scheme MyApp --workspace MyApp.xcworkspace
+
+# Verify the built app on the simulator
+lim session start $ID
+lim exec launch-app $ID com.example.myapp
+sleep 2
+lim exec element-tree $ID | grep "Welcome"
+lim exec screenshot $ID -o test-result.png
+lim session stop
+
+lim delete $ID
+```
+
+### Build-Only with Artifact Upload
 
 ```bash
 lim run xcode --rm --reuse-if-exists --label project=myapp
 XCODE_ID="xcode_..."
 
-lim sync $XCODE_ID ./MyiOSProject
+lim sync $XCODE_ID ./MyiOSProject --no-watch
 lim build $XCODE_ID --scheme MyApp --workspace MyApp.xcworkspace --upload myapp-latest
 lim pull myapp-latest -o ./build-output
 ```
