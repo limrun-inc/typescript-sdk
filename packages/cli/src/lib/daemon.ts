@@ -2,16 +2,40 @@ import net from 'net';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import Limrun, { createInstanceClient, Ios, type InstanceClient } from '@limrun/api';
-import { detectInstanceType, type InstanceType } from './instance-client-factory';
-import { readConfig } from './config';
+import { createInstanceClient, Ios, type InstanceClient } from '@limrun/api';
+import { type InstanceType } from './instance-client-factory';
 
-const SESSION_DIR = path.join(os.tmpdir(), 'lim-session');
-const SOCKET_PATH = path.join(SESSION_DIR, 'daemon.sock');
-const PID_FILE = path.join(SESSION_DIR, 'daemon.pid');
-const STATE_FILE = path.join(SESSION_DIR, 'state.json');
+// Unix sockets have a 104-108 byte path limit depending on OS.
+// macOS tmpdir is long (~50 chars), instance IDs are ~40 chars.
+// We use ~/.lim/sessions/ (shorter) and a short hash of the instance ID for the dir name.
+import crypto from 'crypto';
 
-export { SOCKET_PATH, PID_FILE, STATE_FILE, SESSION_DIR };
+const SESSIONS_ROOT = path.join(os.homedir(), '.lim', 'sessions');
+
+export { SESSIONS_ROOT };
+
+// ---------- Per-instance paths ----------
+
+/** Short 8-char hash of the instance ID to keep socket path under 104 bytes. */
+function sessionKey(instanceId: string): string {
+  return crypto.createHash('sha1').update(instanceId).digest('hex').slice(0, 8);
+}
+
+export function sessionDir(instanceId: string): string {
+  return path.join(SESSIONS_ROOT, sessionKey(instanceId));
+}
+
+export function socketPath(instanceId: string): string {
+  return path.join(sessionDir(instanceId), 's.sock');
+}
+
+export function pidFile(instanceId: string): string {
+  return path.join(sessionDir(instanceId), 'd.pid');
+}
+
+export function stateFile(instanceId: string): string {
+  return path.join(sessionDir(instanceId), 'state.json');
+}
 
 // ---------- State ----------
 
@@ -23,51 +47,92 @@ export interface SessionState {
   token: string;
 }
 
-function ensureSessionDir(): void {
-  if (!fs.existsSync(SESSION_DIR)) {
-    fs.mkdirSync(SESSION_DIR, { recursive: true, mode: 0o700 });
+function ensureDir(dir: string): void {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
 }
 
-export function saveState(state: SessionState): void {
-  ensureSessionDir();
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), { mode: 0o600 });
+export function saveState(instanceId: string, state: SessionState): void {
+  ensureDir(sessionDir(instanceId));
+  fs.writeFileSync(stateFile(instanceId), JSON.stringify(state, null, 2), { mode: 0o600 });
 }
 
-export function loadState(): SessionState | null {
-  if (!fs.existsSync(STATE_FILE)) return null;
+export function loadState(instanceId: string): SessionState | null {
+  const p = stateFile(instanceId);
+  if (!fs.existsSync(p)) return null;
   try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+    return JSON.parse(fs.readFileSync(p, 'utf-8'));
   } catch {
     return null;
   }
 }
 
-export function clearState(): void {
-  try { fs.unlinkSync(STATE_FILE); } catch {}
+export function clearSession(instanceId: string): void {
+  const dir = sessionDir(instanceId);
+  try { fs.unlinkSync(path.join(dir, 'state.json')); } catch {}
+  try { fs.unlinkSync(path.join(dir, 's.sock')); } catch {}
+  try { fs.unlinkSync(path.join(dir, 'd.pid')); } catch {}
+  try { fs.rmdirSync(dir); } catch {}
 }
 
-// ---------- Daemon lifecycle helpers (used by CLI) ----------
+// ---------- Daemon lifecycle helpers ----------
 
-export function isDaemonRunning(): boolean {
-  if (!fs.existsSync(PID_FILE)) return false;
-  const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
+export function isDaemonRunning(instanceId: string): boolean {
+  const pf = pidFile(instanceId);
+  if (!fs.existsSync(pf)) return false;
+  const pid = parseInt(fs.readFileSync(pf, 'utf-8').trim(), 10);
   if (isNaN(pid)) return false;
   try {
-    process.kill(pid, 0); // signal 0 = liveness check
+    process.kill(pid, 0);
     return true;
   } catch {
     // Process gone — clean up stale files
-    try { fs.unlinkSync(PID_FILE); } catch {}
-    try { fs.unlinkSync(SOCKET_PATH); } catch {}
+    try { fs.unlinkSync(pf); } catch {}
+    try { fs.unlinkSync(socketPath(instanceId)); } catch {}
     return false;
   }
 }
 
-export function getDaemonPid(): number | null {
-  if (!fs.existsSync(PID_FILE)) return null;
-  const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
+export function getDaemonPid(instanceId: string): number | null {
+  const pf = pidFile(instanceId);
+  if (!fs.existsSync(pf)) return null;
+  const pid = parseInt(fs.readFileSync(pf, 'utf-8').trim(), 10);
   return isNaN(pid) ? null : pid;
+}
+
+/**
+ * List all instance IDs that have an active daemon running.
+ */
+export function listActiveSessions(): { instanceId: string; pid: number }[] {
+  if (!fs.existsSync(SESSIONS_ROOT)) return [];
+  const results: { instanceId: string; pid: number }[] = [];
+  for (const entry of fs.readdirSync(SESSIONS_ROOT)) {
+    const dir = path.join(SESSIONS_ROOT, entry);
+    if (!fs.statSync(dir).isDirectory()) continue;
+    const pf = path.join(dir, 'd.pid');
+    if (!fs.existsSync(pf)) continue;
+    const pid = parseInt(fs.readFileSync(pf, 'utf-8').trim(), 10);
+    if (isNaN(pid)) continue;
+    // Read state.json to get the actual instance ID (dir name is a hash)
+    const sf = path.join(dir, 'state.json');
+    let instanceId = entry; // fallback to hash
+    try {
+      const state = JSON.parse(fs.readFileSync(sf, 'utf-8'));
+      if (state.instanceId) instanceId = state.instanceId;
+    } catch {}
+    try {
+      process.kill(pid, 0);
+      results.push({ instanceId, pid });
+    } catch {
+      // Stale — clean up
+      try { fs.unlinkSync(pf); } catch {}
+      try { fs.unlinkSync(path.join(dir, 's.sock')); } catch {}
+      try { fs.unlinkSync(sf); } catch {}
+      try { fs.rmdirSync(dir); } catch {}
+    }
+  }
+  return results;
 }
 
 // ---------- Protocol ----------
@@ -85,11 +150,24 @@ export interface DaemonResponse {
 
 // ---------- Daemon server ----------
 
+/**
+ * Start the daemon server. The instance ID is read from LIM_DAEMON_INSTANCE_ID env var.
+ */
 export function startDaemonServer(): void {
-  ensureSessionDir();
+  const instanceId = process.env.LIM_DAEMON_INSTANCE_ID;
+  if (!instanceId) {
+    console.error('LIM_DAEMON_INSTANCE_ID env var is required');
+    process.exit(1);
+  }
+
+  const dir = sessionDir(instanceId);
+  const sock = socketPath(instanceId);
+  const pid = pidFile(instanceId);
+
+  ensureDir(dir);
 
   // Clean up stale socket
-  try { fs.unlinkSync(SOCKET_PATH); } catch {}
+  try { fs.unlinkSync(sock); } catch {}
 
   let instanceClient: (InstanceClient | Ios.InstanceClient) | null = null;
   let instanceType: InstanceType | null = null;
@@ -99,10 +177,10 @@ export function startDaemonServer(): void {
       return { type: instanceType, client: instanceClient };
     }
 
-    const state = loadState();
-    if (!state) throw new Error('No active session. Run `lim session start <ID>` first.');
+    const state = loadState(instanceId!);
+    if (!state) throw new Error('No active session state found.');
 
-    instanceType = state.instanceType;
+    instanceType = state.instanceType as InstanceType;
 
     if (state.instanceType === 'android') {
       instanceClient = await createInstanceClient({
@@ -153,7 +231,7 @@ export function startDaemonServer(): void {
       }
 
       if (command === 'status') {
-        const state = loadState();
+        const state = loadState(instanceId!);
         send(socket, {
           type: 'result',
           data: state
@@ -300,12 +378,12 @@ export function startDaemonServer(): void {
         }
       }
     });
-    socket.on('error', () => {}); // Ignore client disconnects
+    socket.on('error', () => {});
   });
 
   function cleanup(): void {
-    try { fs.unlinkSync(SOCKET_PATH); } catch {}
-    try { fs.unlinkSync(PID_FILE); } catch {}
+    try { fs.unlinkSync(sock); } catch {}
+    try { fs.unlinkSync(pid); } catch {}
   }
 
   function shutdown(): void {
@@ -322,10 +400,10 @@ export function startDaemonServer(): void {
     shutdown();
   });
 
-  server.listen(SOCKET_PATH, () => {
-    fs.writeFileSync(PID_FILE, String(process.pid), { mode: 0o600 });
-    try { fs.chmodSync(SOCKET_PATH, 0o600); } catch {}
-    console.error(`lim daemon started (pid ${process.pid}, socket ${SOCKET_PATH})`);
+  server.listen(sock, () => {
+    fs.writeFileSync(pid, String(process.pid), { mode: 0o600 });
+    try { fs.chmodSync(sock, 0o600); } catch {}
+    console.error(`lim daemon started for ${instanceId} (pid ${process.pid})`);
   });
 
   server.on('error', (err) => {

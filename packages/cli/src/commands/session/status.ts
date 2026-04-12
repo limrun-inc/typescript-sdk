@@ -1,11 +1,11 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { isDaemonRunning, getDaemonPid, loadState } from '../../lib/daemon';
+import { listActiveSessions, getDaemonPid, loadState } from '../../lib/daemon';
 import { sendCommand } from '../../lib/daemon-client';
 import { loadInstanceCache } from '../../lib/config';
 
 export default class SessionStatus extends BaseCommand {
-  static summary = 'Show active session status';
+  static summary = 'Show active sessions';
   static examples = ['<%= config.bin %> session status'];
 
   static flags = { ...BaseCommand.baseFlags };
@@ -14,45 +14,53 @@ export default class SessionStatus extends BaseCommand {
     const { flags } = await this.parse(SessionStatus);
     this.setParsedFlags(flags);
 
-    const running = isDaemonRunning();
-    const state = loadState();
-    const pid = getDaemonPid();
+    const sessions = listActiveSessions();
 
     if (flags.json) {
-      if (running) {
+      const details = [];
+      for (const s of sessions) {
+        const state = loadState(s.instanceId);
+        const cache = loadInstanceCache(s.instanceId);
+        let connected = false;
         try {
-          const daemonStatus = await sendCommand('status');
-          this.outputJson(daemonStatus);
-        } catch {
-          this.outputJson({ running, pid, state });
-        }
-      } else {
-        this.outputJson({ running: false, state: null });
+          const status = (await sendCommand(s.instanceId, 'status')) as any;
+          connected = status.connected;
+        } catch {}
+        details.push({
+          instanceId: s.instanceId,
+          pid: s.pid,
+          type: state?.instanceType,
+          connected,
+          xcodeSandbox: cache?.sandboxXcodeUrl || null,
+        });
       }
+      this.outputJson(details);
       return;
     }
 
-    if (!running) {
-      this.log('No active session.');
+    if (sessions.length === 0) {
+      this.log('No active sessions.');
       this.log('Start one with: lim session start <instance-ID>');
       return;
     }
 
-    this.log(`Session active`);
-    this.log(`  Daemon PID: ${pid}`);
-    if (state) {
-      this.log(`  Instance:   ${state.instanceId}`);
-      this.log(`  Type:       ${state.instanceType}`);
-
-      const cache = loadInstanceCache(state.instanceId);
-      if (cache?.sandboxXcodeUrl) {
-        this.log(`  Xcode:      ${cache.sandboxXcodeUrl}`);
+    this.log(`${sessions.length} active session(s):\n`);
+    for (const s of sessions) {
+      const state = loadState(s.instanceId);
+      this.log(`  ${s.instanceId}`);
+      this.log(`    PID:  ${s.pid}`);
+      if (state) {
+        this.log(`    Type: ${state.instanceType}`);
       }
+      const cache = loadInstanceCache(s.instanceId);
+      if (cache?.sandboxXcodeUrl) {
+        this.log(`    Xcode: ${cache.sandboxXcodeUrl}`);
+      }
+      try {
+        const status = (await sendCommand(s.instanceId, 'status')) as any;
+        this.log(`    Connected: ${status.connected}`);
+      } catch {}
+      this.log('');
     }
-
-    try {
-      const status = (await sendCommand('status')) as any;
-      this.log(`  Connected:  ${status.connected}`);
-    } catch {}
   }
 }

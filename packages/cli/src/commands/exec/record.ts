@@ -1,7 +1,7 @@
 import path from 'path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecRecord extends BaseCommand {
   static summary = 'Start or stop video recording on a running instance';
@@ -29,7 +29,7 @@ export default class ExecRecord extends BaseCommand {
     await this.withAuth(async () => {
       if (args.action === 'start') {
         if (hasActiveSession(args.id)) {
-          await sendCommand('start-recording', [flags.quality]);
+          await sendSessionCommand(args.id, 'start-recording', [flags.quality]);
         } else {
           const { client, disconnect } = await getInstanceClient(this.client, args.id);
           try {
@@ -44,7 +44,7 @@ export default class ExecRecord extends BaseCommand {
         if (flags.output) saveTo.localPath = path.resolve(flags.output);
 
         if (hasActiveSession(args.id)) {
-          const url = await sendCommand('stop-recording', [saveTo]);
+          const url = await sendSessionCommand(args.id, 'stop-recording', [saveTo]);
           if (flags.output) {
             this.log(`Recording saved to ${flags.output}`);
           } else {

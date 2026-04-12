@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecScreenshot extends BaseCommand {
   static summary = 'Capture a screenshot from a running instance';
@@ -29,7 +29,7 @@ export default class ExecScreenshot extends BaseCommand {
       let type: string;
 
       if (hasActiveSession(args.id)) {
-        screenshot = await sendCommand('screenshot');
+        screenshot = await sendSessionCommand(args.id, 'screenshot');
         type = args.id.split('_')[0];
       } else {
         const resolved = await getInstanceClient(this.client, args.id);

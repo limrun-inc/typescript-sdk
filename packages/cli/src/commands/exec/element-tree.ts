@@ -1,6 +1,6 @@
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecElementTree extends BaseCommand {
   static summary = 'Get the UI element tree from a running instance';
@@ -18,7 +18,7 @@ export default class ExecElementTree extends BaseCommand {
 
     await this.withAuth(async () => {
       if (hasActiveSession(args.id)) {
-        const tree = await sendCommand('element-tree');
+        const tree = await sendSessionCommand(args.id, 'element-tree');
         if (flags.json) {
           this.outputJson(tree);
         } else {

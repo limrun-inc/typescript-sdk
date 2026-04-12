@@ -1,6 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecPressKey extends BaseCommand {
   static summary = 'Press a key on a running instance';
@@ -25,7 +25,7 @@ export default class ExecPressKey extends BaseCommand {
 
     await this.withAuth(async () => {
       if (hasActiveSession(args.id)) {
-        await sendCommand('press-key', [args.key, flags.modifier]);
+        await sendSessionCommand(args.id, 'press-key', [args.key, flags.modifier]);
       } else {
         const { client, disconnect } = await getInstanceClient(this.client, args.id);
         try {

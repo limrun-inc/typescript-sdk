@@ -1,29 +1,30 @@
 import net from 'net';
 import {
-  SOCKET_PATH,
+  socketPath,
   isDaemonRunning,
   type DaemonRequest,
   type DaemonResponse,
 } from './daemon';
 
 /**
- * Check if a daemon session is active and available.
+ * Check if a daemon session is active for the given instance ID.
  */
-export function isSessionActive(): boolean {
-  return isDaemonRunning();
+export function isSessionActive(instanceId: string): boolean {
+  return isDaemonRunning(instanceId);
 }
 
 /**
- * Send a command to the running daemon and collect the result.
- * Returns the result data from the daemon, or throws on error.
+ * Send a command to the daemon for the given instance ID and collect the result.
  */
-export async function sendCommand(command: string, args: unknown[] = []): Promise<unknown> {
-  if (!isDaemonRunning()) {
-    throw new Error('No active session. Run `lim session start <ID>` first.');
+export async function sendCommand(instanceId: string, command: string, args: unknown[] = []): Promise<unknown> {
+  if (!isDaemonRunning(instanceId)) {
+    throw new Error(`No active session for ${instanceId}. Run \`lim session start ${instanceId}\` first.`);
   }
 
+  const sock = socketPath(instanceId);
+
   return new Promise((resolve, reject) => {
-    const socket = net.createConnection(SOCKET_PATH);
+    const socket = net.createConnection(sock);
     let buffer = '';
     let resultData: unknown = undefined;
     let errorMsg: string | undefined;
@@ -71,7 +72,7 @@ export async function sendCommand(command: string, args: unknown[] = []): Promis
     });
 
     socket.on('error', (err) => {
-      reject(new Error(`Failed to connect to daemon: ${err.message}`));
+      reject(new Error(`Failed to connect to daemon for ${instanceId}: ${err.message}`));
     });
 
     socket.on('timeout', () => {
@@ -79,6 +80,6 @@ export async function sendCommand(command: string, args: unknown[] = []): Promis
       reject(new Error('Daemon request timed out'));
     });
 
-    socket.setTimeout(30000); // 30s timeout for any command
+    socket.setTimeout(30000);
   });
 }

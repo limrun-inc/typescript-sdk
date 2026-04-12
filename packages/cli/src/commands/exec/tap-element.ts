@@ -1,6 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecTapElement extends BaseCommand {
   static summary = 'Tap an element by accessibility selector';
@@ -39,7 +39,7 @@ export default class ExecTapElement extends BaseCommand {
           if (flags.text) selector.text = flags.text;
           if (flags['accessibility-id']) selector.resourceId = flags['accessibility-id'];
         }
-        const result = await sendCommand('tap-element', [selector]);
+        const result = await sendSessionCommand(args.id, 'tap-element', [selector]);
         if (flags.json) this.outputJson(result);
         else this.log('Element tapped');
       } else {

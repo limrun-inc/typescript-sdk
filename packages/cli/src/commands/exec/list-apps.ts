@@ -1,6 +1,6 @@
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecListApps extends BaseCommand {
   static summary = 'List installed apps on a running iOS instance';
@@ -20,7 +20,7 @@ export default class ExecListApps extends BaseCommand {
       let apps: any[];
 
       if (hasActiveSession(args.id)) {
-        apps = (await sendCommand('list-apps')) as any[];
+        apps = (await sendSessionCommand(args.id, 'list-apps')) as any[];
       } else {
         const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
         if (type !== 'ios') {

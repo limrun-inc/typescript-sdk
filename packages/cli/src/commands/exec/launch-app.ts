@@ -1,6 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecLaunchApp extends BaseCommand {
   static summary = 'Launch an app on a running iOS instance';
@@ -29,7 +29,7 @@ export default class ExecLaunchApp extends BaseCommand {
 
     await this.withAuth(async () => {
       if (hasActiveSession(args.id)) {
-        await sendCommand('launch-app', [args.bundleId, flags.mode]);
+        await sendSessionCommand(args.id, 'launch-app', [args.bundleId, flags.mode]);
       } else {
         const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
         if (type !== 'ios') {

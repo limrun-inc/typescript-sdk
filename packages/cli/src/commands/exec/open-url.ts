@@ -1,6 +1,6 @@
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecOpenUrl extends BaseCommand {
   static summary = 'Open a URL on a running instance';
@@ -19,7 +19,7 @@ export default class ExecOpenUrl extends BaseCommand {
 
     await this.withAuth(async () => {
       if (hasActiveSession(args.id)) {
-        await sendCommand('open-url', [args.url]);
+        await sendSessionCommand(args.id, 'open-url', [args.url]);
       } else {
         const { client, disconnect } = await getInstanceClient(this.client, args.id);
         try {

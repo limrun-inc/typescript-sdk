@@ -1,6 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecScroll extends BaseCommand {
   static summary = 'Scroll on a running instance';
@@ -26,7 +26,7 @@ export default class ExecScroll extends BaseCommand {
 
     await this.withAuth(async () => {
       if (hasActiveSession(args.id)) {
-        await sendCommand('scroll', [args.direction, flags.amount]);
+        await sendSessionCommand(args.id, 'scroll', [args.direction, flags.amount]);
       } else {
         const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
         try {

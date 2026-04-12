@@ -1,6 +1,6 @@
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecTap extends BaseCommand {
   static summary = 'Tap at coordinates on a running instance';
@@ -20,7 +20,7 @@ export default class ExecTap extends BaseCommand {
 
     await this.withAuth(async () => {
       if (hasActiveSession(args.id)) {
-        await sendCommand('tap', [args.x, args.y]);
+        await sendSessionCommand(args.id, 'tap', [args.x, args.y]);
       } else {
         const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
         try {

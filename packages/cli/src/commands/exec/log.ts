@@ -1,6 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecLog extends BaseCommand {
   static summary = 'Stream or tail app logs from a running iOS instance';
@@ -29,7 +29,7 @@ export default class ExecLog extends BaseCommand {
       // Log tail (non-streaming) can use session
       if (!flags.follow) {
         if (hasActiveSession(args.id)) {
-          const output = await sendCommand('app-log-tail', [args.bundleId, flags.lines]);
+          const output = await sendSessionCommand(args.id, 'app-log-tail', [args.bundleId, flags.lines]);
           this.log(String(output));
         } else {
           const { type, client, disconnect } = await getInstanceClient(this.client, args.id);

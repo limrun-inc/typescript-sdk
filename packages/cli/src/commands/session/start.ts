@@ -1,14 +1,14 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { Args, Flags } from '@oclif/core';
+import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { detectInstanceType } from '../../lib/instance-client-factory';
 import {
   isDaemonRunning,
   saveState,
-  SOCKET_PATH,
-  SESSION_DIR,
+  socketPath,
+  sessionDir,
   type SessionState,
 } from '../../lib/daemon';
 
@@ -16,7 +16,8 @@ export default class SessionStart extends BaseCommand {
   static summary = 'Start a persistent session for fast device interaction';
   static description =
     'Starts a background daemon that holds a WebSocket connection to the instance. ' +
-    'All subsequent `exec` commands will route through this session for ~50ms latency instead of ~2s.';
+    'All subsequent `exec` commands for this instance will route through the session for ~50ms latency instead of ~2s. ' +
+    'Multiple sessions can run simultaneously for different instances.';
 
   static examples = [
     '<%= config.bin %> session start ios_abc123',
@@ -33,15 +34,17 @@ export default class SessionStart extends BaseCommand {
     const { args, flags } = await this.parse(SessionStart);
     this.setParsedFlags(flags);
 
-    if (isDaemonRunning()) {
-      this.log('A session is already running. Run `lim session stop` first to start a new one.');
+    if (isDaemonRunning(args.id)) {
+      this.log(`Session already running for ${args.id}.`);
       return;
     }
 
     const type = detectInstanceType(args.id);
+    if (type === 'xcode') {
+      this.error('Sessions are for device interaction (exec commands). Xcode instances use sync/build instead.');
+    }
 
     await this.withAuth(async () => {
-      // Fetch instance to get connection details
       let apiUrl: string | undefined;
       let adbUrl: string | undefined;
       let token: string;
@@ -61,7 +64,6 @@ export default class SessionStart extends BaseCommand {
         this.error(`Instance ${args.id} does not have an apiUrl. Is it ready?`);
       }
 
-      // Save state for the daemon to read
       const state: SessionState = {
         instanceId: args.id,
         instanceType: type,
@@ -69,24 +71,25 @@ export default class SessionStart extends BaseCommand {
         adbUrl,
         token,
       };
-      saveState(state);
+      saveState(args.id, state);
 
-      // Spawn daemon as detached background process
+      // Spawn daemon with the instance ID as env var
       const daemonScript = path.join(__dirname, '..', '..', 'lib', 'daemon.js');
       const child = spawn(process.execPath, [daemonScript], {
         detached: true,
         stdio: ['ignore', 'ignore', 'pipe'],
-        env: { ...process.env },
+        env: { ...process.env, LIM_DAEMON_INSTANCE_ID: args.id },
       });
       child.unref();
 
-      // Wait for daemon to be ready (socket file appears)
+      // Wait for daemon to be ready
+      const sock = socketPath(args.id);
       const startTime = Date.now();
       const timeout = 15000;
 
       await new Promise<void>((resolve, reject) => {
         const check = () => {
-          if (fs.existsSync(SOCKET_PATH)) {
+          if (fs.existsSync(sock)) {
             resolve();
             return;
           }
@@ -105,8 +108,6 @@ export default class SessionStart extends BaseCommand {
       });
 
       this.log(`Session started for ${args.id} (${type})`);
-      this.log('All exec commands will now use this session for fast interaction.');
-      this.log('Run `lim session stop` when done.');
     });
   }
 }

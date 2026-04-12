@@ -1,6 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecType extends BaseCommand {
   static summary = 'Type text into the focused input field';
@@ -22,7 +22,7 @@ export default class ExecType extends BaseCommand {
 
     await this.withAuth(async () => {
       if (hasActiveSession(args.id)) {
-        await sendCommand('type', [args.text, flags['press-enter']]);
+        await sendSessionCommand(args.id, 'type', [args.text, flags['press-enter']]);
       } else {
         const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
         try {

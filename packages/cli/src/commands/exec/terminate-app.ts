@@ -1,6 +1,6 @@
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecTerminateApp extends BaseCommand {
   static summary = 'Terminate an app on a running iOS instance';
@@ -19,7 +19,7 @@ export default class ExecTerminateApp extends BaseCommand {
 
     await this.withAuth(async () => {
       if (hasActiveSession(args.id)) {
-        await sendCommand('terminate-app', [args.bundleId]);
+        await sendSessionCommand(args.id, 'terminate-app', [args.bundleId]);
       } else {
         const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
         if (type !== 'ios') {

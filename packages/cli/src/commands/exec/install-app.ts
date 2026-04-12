@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendCommand } from '../../lib/instance-client-factory';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecInstallApp extends BaseCommand {
   static summary = 'Install an app on a running instance';
@@ -41,7 +41,7 @@ export default class ExecInstallApp extends BaseCommand {
       }
 
       if (hasActiveSession(args.id)) {
-        const result = await sendCommand('install-app', [downloadUrl]);
+        const result = await sendSessionCommand(args.id, 'install-app', [downloadUrl]);
         if (flags.json) {
           this.outputJson(result);
         } else {

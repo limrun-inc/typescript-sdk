@@ -214,32 +214,35 @@ This makes sessions essential for interactive workflows, AI agent loops, and any
 #### Session Commands
 
 ```bash
-# Start a session (spawns background daemon)
+# Start sessions (one per instance, can run multiple)
 lim session start ios_abc123
-lim session start android_abc123
+lim session start ios_def456
+lim session start android_ghi789
 
-# Check session status
+# Check all active sessions
 lim session status
 lim session status --json
 
-# Stop the session (disconnects and kills daemon)
-lim session stop
+# Stop a specific session
+lim session stop ios_abc123
+
+# Stop all sessions at once
+lim session stop --all
 ```
+
+If only one session is active, `lim session stop` (no ID) stops it automatically.
 
 #### How It Works
 
-`lim session start` spawns a lightweight background daemon that:
-- Holds a persistent WebSocket connection to the instance
-- Listens on a local Unix socket for commands
-- All `exec` commands automatically detect the running session and route through it
-- No code changes needed in your scripts — just add `session start` before and `session stop` after
+Each `lim session start <ID>` spawns an independent background daemon that:
+- Holds a persistent WebSocket connection to that specific instance
+- Listens on its own Unix socket at `/tmp/lim-sessions/<instance-id>/`
+- All `exec` commands automatically detect the matching session and route through it
+- Multiple sessions run in parallel with no shared state
 
-The session state is stored in `/tmp/lim-session/`. If the daemon crashes, just run `session start` again.
-
-#### Example: Interactive Testing with Sessions
+#### Example: Interactive Testing
 
 ```bash
-# Start instance and session
 lim run ios --model iphone
 lim session start ios_abc123
 
@@ -251,26 +254,59 @@ lim exec type ios_abc123 "user@example.com"
 lim exec tap-element ios_abc123 --label "Submit"
 lim exec screenshot ios_abc123 -o after-login.png
 
-# Clean up
-lim session stop
+lim session stop ios_abc123
 lim delete ios_abc123
 ```
 
-#### Example: AI Agent Loop with Sessions
+#### Example: Multi-Device AI Agent
 
 ```bash
-ID="ios_abc123"
-lim session start $ID
+# Create two instances and start sessions for both
+lim run ios --model iphone
+lim run ios --model ipad
+lim session start ios_phone_123
+lim session start ios_tablet_456
 
-# Agent can run hundreds of commands with minimal latency
-for i in $(seq 1 10); do
-  lim exec screenshot $ID -o "step_${i}.png"
-  lim exec element-tree $ID --json > "tree_${i}.json"
-  # ... agent decides next action ...
-  lim exec tap $ID $X $Y
+# Agent controls both devices in parallel — ~50ms per command
+lim exec launch-app ios_phone_123 com.example.myapp
+lim exec launch-app ios_tablet_456 com.example.myapp
+
+lim exec screenshot ios_phone_123 -o phone.png
+lim exec screenshot ios_tablet_456 -o tablet.png
+
+lim exec tap ios_phone_123 200 400
+lim exec element-tree ios_tablet_456 --json > tablet-tree.json
+
+# Clean up all sessions
+lim session stop --all
+lim delete ios_phone_123
+lim delete ios_tablet_456
+```
+
+#### Example: Automated Test Matrix
+
+```bash
+# Spin up devices, start sessions, run tests, tear down
+DEVICES=("iphone" "ipad")
+IDS=()
+
+for model in "${DEVICES[@]}"; do
+  ID=$(lim run ios --model $model --json | jq -r '.metadata.id')
+  lim session start $ID
+  IDS+=($ID)
 done
 
-lim session stop
+# Run tests against all devices
+for ID in "${IDS[@]}"; do
+  lim exec launch-app $ID com.example.myapp
+  lim exec screenshot $ID -o "test_${ID}.png"
+done
+
+# Tear down
+lim session stop --all
+for ID in "${IDS[@]}"; do
+  lim delete $ID
+done
 ```
 
 ---
@@ -421,7 +457,7 @@ lim exec element-tree ios_abc123 | jq '.'
 lim exec screenshot ios_abc123 -o built-app.png
 
 # 6. Clean up
-lim session stop
+lim session stop ios_abc123
 lim delete ios_abc123
 ```
 
@@ -536,7 +572,7 @@ lim exec element-tree $INSTANCE_ID | grep "Welcome"
 lim exec screenshot $INSTANCE_ID -o test-result.png
 
 # Clean up
-lim session stop
+lim session stop $INSTANCE_ID
 lim delete $INSTANCE_ID
 ```
 
@@ -561,7 +597,7 @@ lim exec element-tree $ID --json > ui-state.json
 lim exec log $ID com.example.myapp --lines 20
 
 # Clean up
-lim session stop
+lim session stop $ID
 lim delete $ID
 ```
 
@@ -595,4 +631,40 @@ XCODE_ID="xcode_..."
 lim sync $XCODE_ID ./MyiOSProject --no-watch
 lim build $XCODE_ID --scheme MyApp --workspace MyApp.xcworkspace --upload myapp-latest
 lim pull myapp-latest -o ./build-output
+```
+
+---
+
+## Development
+
+### Setup
+
+```bash
+cd packages/cli
+npm install
+npm run build
+```
+
+### Run commands during development
+
+```bash
+# After making changes, rebuild and run
+npm run build && node bin/run.js <command>
+
+# Or use watch mode in one terminal, run in another
+npx tsc --watch          # Terminal 1
+node bin/run.js get ios   # Terminal 2
+```
+
+### Link globally
+
+```bash
+npm link
+
+# Now `lim` works anywhere on your machine
+lim --help
+lim get android
+
+# Unlink when done
+npm unlink -g @limrun/cli
 ```
