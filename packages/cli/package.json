@@ -1,0 +1,55 @@
+{
+  "name": "@limrun/cli",
+  "version": "0.1.0",
+  "description": "The official CLI for Limrun — create and control cloud mobile sandboxes",
+  "bin": {
+    "lim": "./bin/run.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/limrun-inc/typescript-sdk.git",
+    "directory": "packages/cli"
+  },
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsc",
+    "dev": "node bin/dev.js",
+    "prepublishOnly": "npm run build",
+    "lint": "eslint src/",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@limrun/api": "^0.24.2",
+    "@oclif/core": "^4",
+    "cli-table3": "^0.6.5",
+    "js-yaml": "^4.1.0",
+    "open": "^10.1.0",
+    "cli-progress": "^3.12.0"
+  },
+  "devDependencies": {
+    "@oclif/test": "^4",
+    "@types/cli-progress": "^3.11.6",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22",
+    "typescript": "^5.8.3"
+  },
+  "oclif": {
+    "bin": "lim",
+    "dirname": "lim",
+    "commands": "./dist/commands",
+    "topicSeparator": " "
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ]
+}
