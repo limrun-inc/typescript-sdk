@@ -1,0 +1,69 @@
+import path from 'path';
+import { Args, Flags } from '@oclif/core';
+import { BaseCommand } from '../../base-command';
+import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
+
+export default class ExecRecord extends BaseCommand {
+  static summary = 'Start or stop video recording on a running instance';
+  static examples = [
+    '<%= config.bin %> exec record <instance-ID> start',
+    '<%= config.bin %> exec record <instance-ID> stop -o recording.mp4',
+    '<%= config.bin %> exec record <instance-ID> start --quality 8',
+  ];
+
+  static args = {
+    id: Args.string({ description: 'Instance ID', required: true }),
+    action: Args.string({ description: 'start or stop', required: true, options: ['start', 'stop'] }),
+  };
+
+  static flags = {
+    ...BaseCommand.baseFlags,
+    quality: Flags.integer({ description: 'Recording quality (5-10)', default: 5 }),
+    output: Flags.string({ char: 'o', description: 'Save recording to file (for stop action)' }),
+  };
+
+  async run(): Promise<void> {
+    const { args, flags } = await this.parse(ExecRecord);
+    this.setParsedFlags(flags);
+
+    await this.withAuth(async () => {
+      if (args.action === 'start') {
+        if (hasActiveSession(args.id)) {
+          await sendSessionCommand(args.id, 'start-recording', [flags.quality]);
+        } else {
+          const { client, disconnect } = await getInstanceClient(this.client, args.id);
+          try {
+            await (client as any).startRecording({ quality: flags.quality });
+          } finally {
+            disconnect();
+          }
+        }
+        this.log('Recording started');
+      } else {
+        const saveTo: { localPath?: string } = {};
+        if (flags.output) saveTo.localPath = path.resolve(flags.output);
+
+        if (hasActiveSession(args.id)) {
+          const url = await sendSessionCommand(args.id, 'stop-recording', [saveTo]);
+          if (flags.output) {
+            this.log(`Recording saved to ${flags.output}`);
+          } else {
+            this.log(`Recording download URL: ${url}`);
+          }
+        } else {
+          const { client, disconnect } = await getInstanceClient(this.client, args.id);
+          try {
+            const url = await (client as any).stopRecording(saveTo);
+            if (flags.output) {
+              this.log(`Recording saved to ${flags.output}`);
+            } else {
+              this.log(`Recording download URL: ${url}`);
+            }
+          } finally {
+            disconnect();
+          }
+        }
+      }
+    });
+  }
+}
