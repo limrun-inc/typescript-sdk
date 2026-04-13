@@ -6,10 +6,7 @@ export default class SessionStop extends Command {
   static summary = 'Stop one or all active sessions';
   static description = 'Stops background daemons and disconnects from instances.';
 
-  static examples = [
-    '<%= config.bin %> session stop ios_abc123',
-    '<%= config.bin %> session stop --all',
-  ];
+  static examples = ['<%= config.bin %> session stop ios_abc123', '<%= config.bin %> session stop --all'];
 
   static args = {
     id: Args.string({ description: 'Instance ID to stop session for', required: false }),

@@ -4,13 +4,7 @@ import path from 'path';
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { detectInstanceType } from '../../lib/instance-client-factory';
-import {
-  isDaemonRunning,
-  saveState,
-  socketPath,
-  sessionDir,
-  type SessionState,
-} from '../../lib/daemon';
+import { isDaemonRunning, saveState, socketPath, type SessionState } from '../../lib/daemon';
 
 export default class SessionStart extends BaseCommand {
   static summary = 'Start a persistent session for fast device interaction';
@@ -41,7 +35,9 @@ export default class SessionStart extends BaseCommand {
 
     const type = detectInstanceType(args.id);
     if (type === 'xcode') {
-      this.error('Sessions are for device interaction (exec commands). Xcode instances use sync/build instead.');
+      this.error(
+        'Sessions are for device interaction (exec commands). Xcode instances use sync/build instead.',
+      );
     }
 
     await this.withAuth(async () => {

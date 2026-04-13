@@ -17,7 +17,10 @@ export default class ExecScroll extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    amount: Flags.integer({ description: 'Scroll amount (pixels for iOS, abstract units for Android)', default: 300 }),
+    amount: Flags.integer({
+      description: 'Scroll amount (pixels for iOS, abstract units for Android)',
+      default: 300,
+    }),
   };
 
   async run(): Promise<void> {

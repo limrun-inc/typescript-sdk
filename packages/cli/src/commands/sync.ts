@@ -77,9 +77,7 @@ export default class Sync extends BaseCommand {
       }
 
       if (!sandboxUrl) {
-        this.error(
-          `iOS instance ${id} does not have a Xcode sandbox. Create it with: lim run ios --xcode`,
-        );
+        this.error(`iOS instance ${id} does not have a Xcode sandbox. Create it with: lim run ios --xcode`);
       }
       return this.client.xcodeInstances.createClient({
         apiUrl: sandboxUrl,

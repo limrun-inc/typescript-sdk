@@ -1,6 +1,5 @@
-import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { listActiveSessions, getDaemonPid, loadState } from '../../lib/daemon';
+import { listActiveSessions, loadState } from '../../lib/daemon';
 import { sendCommand } from '../../lib/daemon-client';
 import { loadInstanceCache } from '../../lib/config';
 

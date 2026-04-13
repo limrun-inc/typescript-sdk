@@ -7,10 +7,7 @@ export default class RunXcode extends BaseCommand {
   static summary = 'Create a new Xcode instance';
   static description = 'Creates a new Xcode build sandbox instance in the cloud.';
 
-  static examples = [
-    '<%= config.bin %> run xcode',
-    '<%= config.bin %> run xcode --rm --region us-west',
-  ];
+  static examples = ['<%= config.bin %> run xcode', '<%= config.bin %> run xcode --rm --region us-west'];
 
   static flags = {
     ...BaseCommand.baseFlags,
@@ -20,7 +17,10 @@ export default class RunXcode extends BaseCommand {
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
     'inactivity-timeout': Flags.string({ description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default: 3m' }),
     label: Flags.string({ description: 'Labels in key=value format', multiple: true }),
-    'reuse-if-exists': Flags.boolean({ description: 'Reuse existing instance with same labels/region', default: false }),
+    'reuse-if-exists': Flags.boolean({
+      description: 'Reuse existing instance with same labels/region',
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {

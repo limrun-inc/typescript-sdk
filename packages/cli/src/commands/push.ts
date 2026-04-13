@@ -2,7 +2,6 @@ import path from 'path';
 import fs from 'fs';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../base-command';
-import cliProgress from 'cli-progress';
 
 export default class Push extends BaseCommand {
   static summary = 'Upload an asset file';

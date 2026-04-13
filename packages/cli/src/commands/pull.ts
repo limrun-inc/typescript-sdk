@@ -18,7 +18,11 @@ export default class Pull extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     name: Flags.string({ char: 'n', description: 'Asset name to search for' }),
-    output: Flags.string({ char: 'o', description: 'Output directory (defaults to current directory)', default: '.' }),
+    output: Flags.string({
+      char: 'o',
+      description: 'Output directory (defaults to current directory)',
+      default: '.',
+    }),
   };
 
   async run(): Promise<void> {

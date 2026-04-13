@@ -51,7 +51,8 @@ export function readConfig(): LimConfig {
   const raw = readRawConfig();
   return {
     apiKey: process.env.LIM_API_KEY || raw[CONFIG_KEYS.apiKey] || '',
-    apiEndpoint: process.env.LIM_API_ENDPOINT || raw[CONFIG_KEYS.apiEndpoint] || DEFAULTS[CONFIG_KEYS.apiEndpoint],
+    apiEndpoint:
+      process.env.LIM_API_ENDPOINT || raw[CONFIG_KEYS.apiEndpoint] || DEFAULTS[CONFIG_KEYS.apiEndpoint],
     consoleEndpoint:
       process.env.LIM_CONSOLE_ENDPOINT ||
       raw[CONFIG_KEYS.consoleEndpoint] ||
@@ -106,5 +107,7 @@ export function loadInstanceCache(instanceId: string): InstanceCache | null {
 }
 
 export function clearInstanceCache(instanceId: string): void {
-  try { fs.unlinkSync(instanceCachePath(instanceId)); } catch {}
+  try {
+    fs.unlinkSync(instanceCachePath(instanceId));
+  } catch {}
 }

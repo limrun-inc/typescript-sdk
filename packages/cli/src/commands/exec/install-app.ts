@@ -6,7 +6,8 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecInstallApp extends BaseCommand {
   static summary = 'Install an app on a running instance';
-  static description = 'Installs an app from a local file or URL. Local files are auto-uploaded to asset storage first.';
+  static description =
+    'Installs an app from a local file or URL. Local files are auto-uploaded to asset storage first.';
 
   static examples = [
     '<%= config.bin %> exec install-app <instance-ID> ./MyApp.ipa',

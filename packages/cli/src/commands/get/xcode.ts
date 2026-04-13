@@ -28,7 +28,14 @@ export default class GetXcode extends BaseCommand {
         } else {
           this.outputTable(
             ['ID', 'Name', 'Region', 'State'],
-            [[instance.metadata.id, instance.metadata.displayName || '', instance.spec.region, instance.status.state]],
+            [
+              [
+                instance.metadata.id,
+                instance.metadata.displayName || '',
+                instance.spec.region,
+                instance.status.state,
+              ],
+            ],
           );
         }
         return;

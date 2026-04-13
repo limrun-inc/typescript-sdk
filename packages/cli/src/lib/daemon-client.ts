@@ -1,10 +1,5 @@
 import net from 'net';
-import {
-  socketPath,
-  isDaemonRunning,
-  type DaemonRequest,
-  type DaemonResponse,
-} from './daemon';
+import { socketPath, isDaemonRunning, type DaemonRequest, type DaemonResponse } from './daemon';
 
 /**
  * Check if a daemon session is active for the given instance ID.
@@ -16,7 +11,11 @@ export function isSessionActive(instanceId: string): boolean {
 /**
  * Send a command to the daemon for the given instance ID and collect the result.
  */
-export async function sendCommand(instanceId: string, command: string, args: unknown[] = []): Promise<unknown> {
+export async function sendCommand(
+  instanceId: string,
+  command: string,
+  args: unknown[] = [],
+): Promise<unknown> {
   if (!isDaemonRunning(instanceId)) {
     throw new Error(`No active session for ${instanceId}. Run \`lim session start ${instanceId}\` first.`);
   }

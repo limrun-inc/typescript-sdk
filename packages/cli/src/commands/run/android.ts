@@ -1,13 +1,14 @@
 import path from 'path';
 import { spawn } from 'child_process';
-import { Args, Flags } from '@oclif/core';
+import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-instances';
 
 export default class RunAndroid extends BaseCommand {
   static summary = 'Create a new Android instance';
-  static description = 'Creates and optionally connects to a new Android instance with ADB tunnel and scrcpy streaming.';
+  static description =
+    'Creates and optionally connects to a new Android instance with ADB tunnel and scrcpy streaming.';
 
   static examples = [
     '<%= config.bin %> run android',
@@ -17,7 +18,11 @@ export default class RunAndroid extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    connect: Flags.boolean({ description: 'Connect to the instance (start ADB tunnel)', default: true, allowNo: true }),
+    connect: Flags.boolean({
+      description: 'Connect to the instance (start ADB tunnel)',
+      default: true,
+      allowNo: true,
+    }),
     stream: Flags.boolean({ description: 'Stream the instance with scrcpy', default: true, allowNo: true }),
     rm: Flags.boolean({ description: 'Delete instance on exit', default: false }),
     'adb-path': Flags.string({ description: 'Path to adb binary', default: 'adb' }),
@@ -26,9 +31,15 @@ export default class RunAndroid extends BaseCommand {
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
     'inactivity-timeout': Flags.string({ description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default: 3m' }),
     label: Flags.string({ description: 'Labels in key=value format', multiple: true }),
-    'reuse-if-exists': Flags.boolean({ description: 'Reuse existing instance with same labels/region', default: false }),
+    'reuse-if-exists': Flags.boolean({
+      description: 'Reuse existing instance with same labels/region',
+      default: false,
+    }),
     'install-asset': Flags.string({ description: 'Asset name to install (can be repeated)', multiple: true }),
-    install: Flags.string({ description: 'Local file to install (auto-uploads if needed, can be repeated)', multiple: true }),
+    install: Flags.string({
+      description: 'Local file to install (auto-uploads if needed, can be repeated)',
+      multiple: true,
+    }),
   };
 
   async run(): Promise<void> {
@@ -110,7 +121,7 @@ export default class RunAndroid extends BaseCommand {
 
         if (flags.stream) {
           const addr = `${tunnel.address.address}:${tunnel.address.port}`;
-        const scrcpy = spawn('scrcpy', ['-s', addr], { stdio: 'inherit' });
+          const scrcpy = spawn('scrcpy', ['-s', addr], { stdio: 'inherit' });
           scrcpy.on('error', (err) => {
             this.warn(`Failed to start scrcpy: ${err.message}`);
           });

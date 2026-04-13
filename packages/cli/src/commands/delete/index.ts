@@ -42,7 +42,9 @@ export default class Delete extends BaseCommand {
           this.log(`Deleted asset: ${args.id}`);
           break;
         default:
-          this.error(`Unknown resource type for ID "${args.id}". Expected prefix: android_, ios_, xcode_, or asset_`);
+          this.error(
+            `Unknown resource type for ID "${args.id}". Expected prefix: android_, ios_, xcode_, or asset_`,
+          );
       }
     });
   }

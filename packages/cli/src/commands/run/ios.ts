@@ -23,8 +23,14 @@ export default class RunIos extends BaseCommand {
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
     'inactivity-timeout': Flags.string({ description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default: 3m' }),
     label: Flags.string({ description: 'Labels in key=value format', multiple: true }),
-    model: Flags.string({ description: 'Device model (iphone, ipad, watch)', options: ['iphone', 'ipad', 'watch'] }),
-    'reuse-if-exists': Flags.boolean({ description: 'Reuse existing instance with same labels/region', default: false }),
+    model: Flags.string({
+      description: 'Device model (iphone, ipad, watch)',
+      options: ['iphone', 'ipad', 'watch'],
+    }),
+    'reuse-if-exists': Flags.boolean({
+      description: 'Reuse existing instance with same labels/region',
+      default: false,
+    }),
     'install-asset': Flags.string({ description: 'Asset name to install', multiple: true }),
     install: Flags.string({ description: 'Local file to install (auto-uploads if needed)', multiple: true }),
     xcode: Flags.boolean({ description: 'Enable Xcode sandbox on this iOS instance', default: false }),

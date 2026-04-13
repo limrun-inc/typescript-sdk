@@ -70,10 +70,18 @@ export function loadState(instanceId: string): SessionState | null {
 
 export function clearSession(instanceId: string): void {
   const dir = sessionDir(instanceId);
-  try { fs.unlinkSync(path.join(dir, 'state.json')); } catch {}
-  try { fs.unlinkSync(path.join(dir, 's.sock')); } catch {}
-  try { fs.unlinkSync(path.join(dir, 'd.pid')); } catch {}
-  try { fs.rmdirSync(dir); } catch {}
+  try {
+    fs.unlinkSync(path.join(dir, 'state.json'));
+  } catch {}
+  try {
+    fs.unlinkSync(path.join(dir, 's.sock'));
+  } catch {}
+  try {
+    fs.unlinkSync(path.join(dir, 'd.pid'));
+  } catch {}
+  try {
+    fs.rmdirSync(dir);
+  } catch {}
 }
 
 // ---------- Daemon lifecycle helpers ----------
@@ -88,8 +96,12 @@ export function isDaemonRunning(instanceId: string): boolean {
     return true;
   } catch {
     // Process gone — clean up stale files
-    try { fs.unlinkSync(pf); } catch {}
-    try { fs.unlinkSync(socketPath(instanceId)); } catch {}
+    try {
+      fs.unlinkSync(pf);
+    } catch {}
+    try {
+      fs.unlinkSync(socketPath(instanceId));
+    } catch {}
     return false;
   }
 }
@@ -126,10 +138,18 @@ export function listActiveSessions(): { instanceId: string; pid: number }[] {
       results.push({ instanceId, pid });
     } catch {
       // Stale — clean up
-      try { fs.unlinkSync(pf); } catch {}
-      try { fs.unlinkSync(path.join(dir, 's.sock')); } catch {}
-      try { fs.unlinkSync(sf); } catch {}
-      try { fs.rmdirSync(dir); } catch {}
+      try {
+        fs.unlinkSync(pf);
+      } catch {}
+      try {
+        fs.unlinkSync(path.join(dir, 's.sock'));
+      } catch {}
+      try {
+        fs.unlinkSync(sf);
+      } catch {}
+      try {
+        fs.rmdirSync(dir);
+      } catch {}
     }
   }
   return results;
@@ -167,7 +187,9 @@ export function startDaemonServer(): void {
   ensureDir(dir);
 
   // Clean up stale socket
-  try { fs.unlinkSync(sock); } catch {}
+  try {
+    fs.unlinkSync(sock);
+  } catch {}
 
   let instanceClient: (InstanceClient | Ios.InstanceClient) | null = null;
   let instanceType: InstanceType | null = null;
@@ -200,7 +222,9 @@ export function startDaemonServer(): void {
 
   function disconnectClient(): void {
     if (instanceClient) {
-      try { instanceClient.disconnect(); } catch {}
+      try {
+        instanceClient.disconnect();
+      } catch {}
       instanceClient = null;
       instanceType = null;
     }
@@ -234,8 +258,9 @@ export function startDaemonServer(): void {
         const state = loadState(instanceId!);
         send(socket, {
           type: 'result',
-          data: state
-            ? { ...state, daemonPid: process.pid, connected: !!instanceClient }
+          data:
+            state ?
+              { ...state, daemonPid: process.pid, connected: !!instanceClient }
             : { daemonPid: process.pid, connected: false },
         });
         send(socket, { type: 'done', exitCode: 0 });
@@ -382,8 +407,12 @@ export function startDaemonServer(): void {
   });
 
   function cleanup(): void {
-    try { fs.unlinkSync(sock); } catch {}
-    try { fs.unlinkSync(pid); } catch {}
+    try {
+      fs.unlinkSync(sock);
+    } catch {}
+    try {
+      fs.unlinkSync(pid);
+    } catch {}
   }
 
   function shutdown(): void {
@@ -402,7 +431,9 @@ export function startDaemonServer(): void {
 
   server.listen(sock, () => {
     fs.writeFileSync(pid, String(process.pid), { mode: 0o600 });
-    try { fs.chmodSync(sock, 0o600); } catch {}
+    try {
+      fs.chmodSync(sock, 0o600);
+    } catch {}
     console.error(`lim daemon started for ${instanceId} (pid ${process.pid})`);
   });
 

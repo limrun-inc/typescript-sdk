@@ -16,7 +16,9 @@ export function detectInstanceType(id: string): InstanceType {
   if (prefix === 'android') return 'android';
   if (prefix === 'ios') return 'ios';
   if (prefix === 'xcode') return 'xcode';
-  throw new Error(`Cannot detect instance type from ID "${id}". Expected prefix "android_", "ios_", or "xcode_".`);
+  throw new Error(
+    `Cannot detect instance type from ID "${id}". Expected prefix "android_", "ios_", or "xcode_".`,
+  );
 }
 
 /**
@@ -29,7 +31,11 @@ export function hasActiveSession(id: string): boolean {
 /**
  * Send a command via the daemon session for the given instance ID.
  */
-export function sendSessionCommand(instanceId: string, command: string, args: unknown[] = []): Promise<unknown> {
+export function sendSessionCommand(
+  instanceId: string,
+  command: string,
+  args: unknown[] = [],
+): Promise<unknown> {
   return sendCommand(instanceId, command, args);
 }
 
