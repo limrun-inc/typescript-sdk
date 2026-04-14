@@ -7,21 +7,25 @@ export default class Build extends BaseCommand {
   static summary = 'Run xcodebuild on a Xcode sandbox';
   static aliases = ['ios build', 'xcode build'];
   static description =
-    'Triggers a remote xcodebuild with streaming output. ' +
+    'Syncs a local project path once (or the current working directory if omitted), then triggers a remote xcodebuild with streaming output. ' +
     'Works with both standalone Xcode instances and iOS instances that have --xcode enabled.';
 
   static examples = [
-    '<%= config.bin %> build <xcode-instance-ID>',
-    '<%= config.bin %> build <ios-instance-ID> --scheme MyApp',
-    '<%= config.bin %> build <xcode-instance-ID> --scheme MyApp --workspace MyApp.xcworkspace',
+    '<%= config.bin %> build',
+    '<%= config.bin %> build ./MyProject',
+    '<%= config.bin %> build --id <xcode-instance-ID>',
+    '<%= config.bin %> build ./MyProject --id <xcode-instance-ID>',
+    '<%= config.bin %> build --id <ios-instance-ID> --scheme MyApp',
+    '<%= config.bin %> build --id <xcode-instance-ID> --scheme MyApp --workspace MyApp.xcworkspace',
   ];
 
   static args = {
-    id: Args.string({ description: 'Xcode or iOS instance ID (defaults to last created)', required: false }),
+    path: Args.string({ description: 'Local project path (defaults to current directory)', required: false }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Xcode or iOS instance ID (defaults to last created)' }),
     scheme: Flags.string({ description: 'Xcode scheme' }),
     workspace: Flags.string({ description: 'Xcode workspace file' }),
     project: Flags.string({ description: 'Xcode project file' }),
@@ -33,7 +37,8 @@ export default class Build extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(args.id);
+      const id = this.resolveId(flags.id);
+      const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClientFromIosInstance(id);
 
       const settings: Record<string, string> = {};
@@ -45,6 +50,10 @@ export default class Build extends BaseCommand {
       if (flags.upload) {
         options.upload = { assetName: flags.upload };
       }
+
+      this.log(`Syncing ${syncPath} to instance ${id}...`);
+      await xcodeClient.sync(syncPath, { watch: false, install: false });
+      this.log('Sync complete.');
 
       this.log('Starting xcodebuild...');
 

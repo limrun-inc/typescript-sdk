@@ -210,7 +210,7 @@ lim ios record stop -o recording.mp4
 #### Xcode Integration
 
 ```bash
-# Sync and build (requires --xcode on create)
+# Sync/build use the current directory if no path is provided; pass instance IDs with --id (requires --xcode on create)
 lim ios sync ./MyProject
 lim ios build --scheme MyApp --workspace MyApp.xcworkspace
 ```
@@ -542,10 +542,16 @@ lim asset pull my-app-build -o ./build-output
 #### Sync Options
 
 ```bash
-# Watch mode (re-syncs on file changes, default)
+# Sync the current directory
+lim ios sync
+
+# Watch mode (re-syncs on file changes)
 lim ios sync ./MyProject --watch
 
-# One-shot sync (no watch)
+# One-shot sync (default)
+lim ios sync ./MyProject
+
+# Explicitly disable watch mode
 lim ios sync ./MyProject --no-watch
 
 # Sync without installing
@@ -645,7 +651,7 @@ lim delete $ID
 ID=$(lim ios create --xcode --json | jq -r '.metadata.id')
 
 # Sync, build, and test
-lim ios sync ./MyiOSProject --no-watch
+lim ios sync ./MyiOSProject
 lim ios build --scheme MyApp --workspace MyApp.xcworkspace
 
 # Verify the built app on the simulator
@@ -664,7 +670,7 @@ lim delete $ID
 ```bash
 lim xcode create --rm --reuse-if-exists --label project=myapp
 
-lim xcode sync ./MyiOSProject --no-watch
+lim xcode sync ./MyiOSProject
 lim xcode build --scheme MyApp --workspace MyApp.xcworkspace --upload myapp-latest
 lim asset pull myapp-latest -o ./build-output
 ```
