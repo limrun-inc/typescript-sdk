@@ -92,6 +92,8 @@ export default class AndroidCreate extends BaseCommand {
       const instance = await this.client.androidInstances.create(params);
       saveLastInstanceId(instance.metadata.id);
       this.log(`Created a new instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
+      this.log(`Instance ID: ${instance.metadata.id}`);
+      this.log(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
 
       if (flags.rm) {
         const cleanup = async () => {

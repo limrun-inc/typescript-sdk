@@ -83,6 +83,11 @@ export abstract class BaseCommand extends Command {
     this.log(JSON.stringify(data, null, 2));
   }
 
+  protected consoleStreamUrl(instanceId: string): string {
+    const baseUrl = readConfig().consoleEndpoint.replace(/\/+$/, '');
+    return `${baseUrl}/stream/${instanceId}`;
+  }
+
   /**
    * Resolve an instance ID from args, falling back to the last-used instance.
    * Infers expected type from the command alias (e.g. "ios screenshot" -> "ios").

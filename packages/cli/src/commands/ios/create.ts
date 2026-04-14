@@ -90,6 +90,7 @@ export default class IosCreate extends BaseCommand {
       saveLastInstanceId(instance.metadata.id);
       this.log(`Created a new iOS instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.log(`Instance ID: ${instance.metadata.id}`);
+      this.log(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
       this.log(`Region: ${instance.spec.region}`);
       this.log(`State: ${instance.status.state}`);
       if (instance.status.sandbox?.xcode?.url) {
