@@ -24,7 +24,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@limrun/api": "file:../../dist",
+    "@limrun/api": "0.24.3",
     "@oclif/core": "^4",
     "cli-progress": "^3.12.0",
     "cli-table3": "^0.6.5",
