@@ -4,15 +4,19 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecType extends BaseCommand {
   static summary = 'Type text into the focused input field';
-  static examples = ['<%= config.bin %> exec type <instance-ID> "Hello World"'];
+  static aliases = ['ios type', 'android type'];
+  static examples = [
+    '<%= config.bin %> ios type "Hello World"',
+    '<%= config.bin %> ios type "Hello World" --id <instance-ID>',
+  ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     text: Args.string({ description: 'Text to type', required: true }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
     'press-enter': Flags.boolean({ description: 'Press Enter after typing (iOS only)', default: false }),
   };
 
@@ -21,10 +25,11 @@ export default class ExecType extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'type', [args.text, flags['press-enter']]);
+      const id = this.resolveId(flags.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'type', [args.text, flags['press-enter']]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         try {
           if (type === 'ios') {
             await (client as any).typeText(args.text, flags['press-enter']);

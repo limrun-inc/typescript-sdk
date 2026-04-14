@@ -95,6 +95,8 @@ export type InstanceClient = {
    * Returns a download URL for the completed recording.
    */
   stopRecording: (saveTo: { presignedUrl?: string; localPath?: string }) => Promise<string>;
+  /** Send an application-level keepAlive message on the control websocket. */
+  keepAlive: () => void;
   /**
    * Disconnect from the Limbar instance
    */
@@ -521,6 +523,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
   let pingInterval: NodeJS.Timeout | undefined;
   let requestCounter = 0;
+  const keepAliveSessionId =
+    Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
   return new Promise<InstanceClient>((resolveConnection, rejectConnection) => {
     let hasResolved = false;
@@ -825,6 +829,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             openUrl,
             startRecording,
             stopRecording,
+            keepAlive,
             disconnect,
             startAdbTunnel,
             sendAsset,
@@ -940,6 +945,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
       }
       return downloadUrl;
+    };
+
+    const keepAlive = (): void => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      ws.send(
+        JSON.stringify({
+          type: 'keepAlive',
+          sessionId: keepAliveSessionId,
+        }),
+      );
     };
 
     const disconnect = (): void => {

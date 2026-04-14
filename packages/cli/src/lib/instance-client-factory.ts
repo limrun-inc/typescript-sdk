@@ -15,9 +15,9 @@ export function detectInstanceType(id: string): InstanceType {
   const prefix = id.split('_')[0];
   if (prefix === 'android') return 'android';
   if (prefix === 'ios') return 'ios';
-  if (prefix === 'xcode') return 'xcode';
+  if (prefix === 'xcode' || prefix === 'sandbox') return 'xcode';
   throw new Error(
-    `Cannot detect instance type from ID "${id}". Expected prefix "android_", "ios_", or "xcode_".`,
+    `Cannot detect instance type from ID "${id}". Expected prefix "android_", "ios_", "xcode_", or "sandbox_".`,
   );
 }
 

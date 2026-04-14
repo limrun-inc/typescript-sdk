@@ -1,4 +1,4 @@
-import { Args, Flags } from '@oclif/core';
+import { Flags } from '@oclif/core';
 import { Command } from '@oclif/core';
 import { isDaemonRunning, getDaemonPid, clearSession, listActiveSessions } from '../../lib/daemon';
 
@@ -6,18 +6,21 @@ export default class SessionStop extends Command {
   static summary = 'Stop one or all active sessions';
   static description = 'Stops background daemons and disconnects from instances.';
 
-  static examples = ['<%= config.bin %> session stop ios_abc123', '<%= config.bin %> session stop --all'];
+  static examples = [
+    '<%= config.bin %> session stop',
+    '<%= config.bin %> session stop --id ios_abc123',
+    '<%= config.bin %> session stop --all',
+  ];
 
-  static args = {
-    id: Args.string({ description: 'Instance ID to stop session for', required: false }),
-  };
+  static args = {};
 
   static flags = {
+    id: Flags.string({ description: 'Instance ID to stop session for' }),
     all: Flags.boolean({ description: 'Stop all active sessions', default: false }),
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(SessionStop);
+    const { flags } = await this.parse(SessionStop);
 
     if (flags.all) {
       const sessions = listActiveSessions();
@@ -32,7 +35,7 @@ export default class SessionStop extends Command {
       return;
     }
 
-    if (!args.id) {
+    if (!flags.id) {
       // If only one session, stop it. Otherwise ask for specificity.
       const sessions = listActiveSessions();
       if (sessions.length === 0) {
@@ -51,13 +54,13 @@ export default class SessionStop extends Command {
       return;
     }
 
-    if (!isDaemonRunning(args.id)) {
-      this.log(`No active session for ${args.id}.`);
+    if (!isDaemonRunning(flags.id)) {
+      this.log(`No active session for ${flags.id}.`);
       return;
     }
 
-    const pid = getDaemonPid(args.id);
-    this.stopSession(args.id, pid);
+    const pid = getDaemonPid(flags.id);
+    this.stopSession(flags.id, pid);
   }
 
   private stopSession(instanceId: string, pid: number | null): void {

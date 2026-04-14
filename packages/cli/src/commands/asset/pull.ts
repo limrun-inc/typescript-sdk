@@ -1,14 +1,15 @@
 import path from 'path';
 import fs from 'fs';
 import { Args, Flags } from '@oclif/core';
-import { BaseCommand } from '../base-command';
+import { BaseCommand } from '../../base-command';
 
-export default class Pull extends BaseCommand {
+export default class AssetPull extends BaseCommand {
   static summary = 'Download an asset file';
+  static aliases = ['pull'];
   static examples = [
-    '<%= config.bin %> pull <ID>',
-    '<%= config.bin %> pull my-app.apk',
-    '<%= config.bin %> pull <ID> -o ./downloads',
+    '<%= config.bin %> asset pull <ID>',
+    '<%= config.bin %> asset pull my-app.apk',
+    '<%= config.bin %> asset pull <ID> -o ./downloads',
   ];
 
   static args = {
@@ -26,7 +27,7 @@ export default class Pull extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(Pull);
+    const { args, flags } = await this.parse(AssetPull);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {

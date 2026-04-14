@@ -3,17 +3,19 @@ import { spawn } from 'child_process';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
+import { saveLastInstanceId } from '../../lib/config';
 import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-instances';
 
-export default class RunAndroid extends BaseCommand {
+export default class AndroidCreate extends BaseCommand {
   static summary = 'Create a new Android instance';
   static description =
     'Creates and optionally connects to a new Android instance with ADB tunnel and scrcpy streaming.';
+  static aliases = ['run android'];
 
   static examples = [
-    '<%= config.bin %> run android',
-    '<%= config.bin %> run android --rm --install ./app.apk',
-    '<%= config.bin %> run android --region us-west --label env=dev',
+    '<%= config.bin %> android create',
+    '<%= config.bin %> android create --rm --install ./app.apk',
+    '<%= config.bin %> android create --region us-west --label env=dev',
   ];
 
   static flags = {
@@ -43,7 +45,7 @@ export default class RunAndroid extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(RunAndroid);
+    const { flags } = await this.parse(AndroidCreate);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
@@ -88,7 +90,10 @@ export default class RunAndroid extends BaseCommand {
 
       const start = Date.now();
       const instance = await this.client.androidInstances.create(params);
+      saveLastInstanceId(instance.metadata.id);
       this.log(`Created a new instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
+      this.log(`Instance ID: ${instance.metadata.id}`);
+      this.log(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
 
       if (flags.rm) {
         const cleanup = async () => {

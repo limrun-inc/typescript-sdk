@@ -39,7 +39,7 @@ export default class SessionStatus extends BaseCommand {
 
     if (sessions.length === 0) {
       this.log('No active sessions.');
-      this.log('Start one with: lim session start <instance-ID>');
+      this.log('Start one with: lim session start --id <instance-ID>');
       return;
     }
 

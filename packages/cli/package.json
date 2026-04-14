@@ -1,6 +1,6 @@
 {
   "name": "@limrun/cli",
-  "version": "0.1.0",
+  "version": "0.2.6",
   "description": "The official CLI for Limrun — create and control cloud mobile sandboxes",
   "bin": {
     "lim": "./bin/run.js"
@@ -24,12 +24,12 @@
     "test": "jest"
   },
   "dependencies": {
-    "@limrun/api": "^0.24.2",
+    "@limrun/api": "file:../../dist",
     "@oclif/core": "^4",
+    "cli-progress": "^3.12.0",
     "cli-table3": "^0.6.5",
     "js-yaml": "^4.1.0",
-    "open": "^10.1.0",
-    "cli-progress": "^3.12.0"
+    "open": "^10.1.0"
   },
   "devDependencies": {
     "@oclif/test": "^4",
@@ -42,7 +42,36 @@
     "bin": "lim",
     "dirname": "lim",
     "commands": "./dist/commands",
-    "topicSeparator": " "
+    "topicSeparator": " ",
+    "topics": {
+      "ios": {
+        "description": "Create, manage, and interact with iOS instances"
+      },
+      "android": {
+        "description": "Create, manage, and interact with Android instances"
+      },
+      "xcode": {
+        "description": "Create and manage Xcode sandbox instances"
+      },
+      "asset": {
+        "description": "Upload, download, and manage assets"
+      },
+      "session": {
+        "description": "Manage persistent sessions for fast device interaction"
+      },
+      "exec": {
+        "hidden": true
+      },
+      "run": {
+        "hidden": true
+      },
+      "get": {
+        "hidden": true
+      },
+      "connect": {
+        "hidden": true
+      }
+    }
   },
   "engines": {
     "node": ">=18.0.0"

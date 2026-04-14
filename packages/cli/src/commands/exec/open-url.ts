@@ -1,27 +1,34 @@
-import { Args } from '@oclif/core';
+import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecOpenUrl extends BaseCommand {
   static summary = 'Open a URL on a running instance';
-  static examples = ['<%= config.bin %> exec open-url <instance-ID> https://example.com'];
+  static aliases = ['ios open-url', 'android open-url'];
+  static examples = [
+    '<%= config.bin %> ios open-url https://example.com',
+    '<%= config.bin %> ios open-url https://example.com --id <instance-ID>',
+  ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     url: Args.string({ description: 'URL to open', required: true }),
   };
 
-  static flags = { ...BaseCommand.baseFlags };
+  static flags = {
+    ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
+  };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ExecOpenUrl);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'open-url', [args.url]);
+      const id = this.resolveId(flags.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'open-url', [args.url]);
       } else {
-        const { client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { client, disconnect } = await getInstanceClient(this.client, id);
         try {
           await (client as any).openUrl(args.url);
         } finally {

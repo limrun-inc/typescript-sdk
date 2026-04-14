@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { Args } from '@oclif/core';
+import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { detectInstanceType } from '../../lib/instance-client-factory';
 import { isDaemonRunning, saveState, socketPath, type SessionState } from '../../lib/daemon';
@@ -14,26 +14,30 @@ export default class SessionStart extends BaseCommand {
     'Multiple sessions can run simultaneously for different instances.';
 
   static examples = [
-    '<%= config.bin %> session start ios_abc123',
-    '<%= config.bin %> session start android_abc123',
+    '<%= config.bin %> session start',
+    '<%= config.bin %> session start --id ios_abc123',
+    '<%= config.bin %> session start --id android_abc123',
   ];
 
-  static args = {
-    id: Args.string({ description: 'Instance ID to connect to', required: true }),
+  static args = {};
+
+  static flags = {
+    ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID to connect to (defaults to last created)' }),
   };
 
-  static flags = { ...BaseCommand.baseFlags };
-
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(SessionStart);
+    const { flags } = await this.parse(SessionStart);
     this.setParsedFlags(flags);
 
-    if (isDaemonRunning(args.id)) {
-      this.log(`Session already running for ${args.id}.`);
+    const id = this.resolveId(flags.id);
+
+    if (isDaemonRunning(id)) {
+      this.log(`Session already running for ${id}.`);
       return;
     }
 
-    const type = detectInstanceType(args.id);
+    const type = detectInstanceType(id);
     if (type === 'xcode') {
       this.error(
         'Sessions are for device interaction (exec commands). Xcode instances use sync/build instead.',
@@ -46,44 +50,46 @@ export default class SessionStart extends BaseCommand {
       let token: string;
 
       if (type === 'android') {
-        const instance = await this.client.androidInstances.get(args.id);
+        const instance = await this.client.androidInstances.get(id);
         apiUrl = instance.status.apiUrl;
         adbUrl = instance.status.adbWebSocketUrl;
         token = instance.status.token;
       } else {
-        const instance = await this.client.iosInstances.get(args.id);
+        const instance = await this.client.iosInstances.get(id);
         apiUrl = instance.status.apiUrl;
         token = instance.status.token;
       }
 
       if (!apiUrl) {
-        this.error(`Instance ${args.id} does not have an apiUrl. Is it ready?`);
+        this.error(`Instance ${id} does not have an apiUrl. Is it ready?`);
       }
 
       const state: SessionState = {
-        instanceId: args.id,
+        instanceId: id,
         instanceType: type,
         apiUrl,
         adbUrl,
         token,
       };
-      saveState(args.id, state);
+      saveState(id, state);
 
       // Spawn daemon with the instance ID as env var
       const daemonScript = path.join(__dirname, '..', '..', 'lib', 'daemon.js');
       const child = spawn(process.execPath, [daemonScript], {
         detached: true,
-        stdio: ['ignore', 'ignore', 'pipe'],
-        env: { ...process.env, LIM_DAEMON_INSTANCE_ID: args.id },
+        stdio: 'ignore',
+        env: { ...process.env, LIM_DAEMON_INSTANCE_ID: id },
       });
       child.unref();
 
       // Wait for daemon to be ready
-      const sock = socketPath(args.id);
+      const sock = socketPath(id);
       const startTime = Date.now();
       const timeout = 15000;
 
       await new Promise<void>((resolve, reject) => {
+        child.on('error', reject);
+
         const check = () => {
           if (fs.existsSync(sock)) {
             resolve();
@@ -96,14 +102,10 @@ export default class SessionStart extends BaseCommand {
           setTimeout(check, 100);
         };
 
-        child.stderr?.on('data', () => {
-          setTimeout(check, 50);
-        });
-
-        setTimeout(check, 200);
+        setTimeout(check, 100);
       });
 
-      this.log(`Session started for ${args.id} (${type})`);
+      this.log(`Session started for ${id} (${type})`);
     });
   }
 }

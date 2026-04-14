@@ -34,6 +34,7 @@ export default class Delete extends BaseCommand {
           this.log(`Deleted iOS instance: ${args.id}`);
           break;
         case 'xcode':
+        case 'sandbox':
           await this.client.xcodeInstances.delete(args.id);
           this.log(`Deleted Xcode instance: ${args.id}`);
           break;
@@ -43,7 +44,7 @@ export default class Delete extends BaseCommand {
           break;
         default:
           this.error(
-            `Unknown resource type for ID "${args.id}". Expected prefix: android_, ios_, xcode_, or asset_`,
+            `Unknown resource type for ID "${args.id}". Expected prefix: android_, ios_, xcode_, sandbox_, or asset_`,
           );
       }
     });

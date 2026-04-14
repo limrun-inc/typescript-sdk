@@ -11,6 +11,8 @@ import { type InstanceType } from './instance-client-factory';
 import crypto from 'crypto';
 
 const SESSIONS_ROOT = path.join(os.homedir(), '.lim', 'sessions');
+const KEEPALIVE_INTERVAL_MS = 60 * 1000;
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
 export { SESSIONS_ROOT };
 
@@ -193,6 +195,8 @@ export function startDaemonServer(): void {
 
   let instanceClient: (InstanceClient | Ios.InstanceClient) | null = null;
   let instanceType: InstanceType | null = null;
+  let lastCommandAt = Date.now();
+  let keepAliveInterval: NodeJS.Timeout | undefined;
 
   async function getClient(): Promise<{ type: InstanceType; client: InstanceClient | Ios.InstanceClient }> {
     if (instanceClient && instanceType) {
@@ -230,6 +234,28 @@ export function startDaemonServer(): void {
     }
   }
 
+  function sendClientKeepAlive(client: InstanceClient | Ios.InstanceClient): void {
+    const maybeClient = client as { keepAlive?: () => void };
+    maybeClient.keepAlive?.();
+  }
+
+  function startKeepAliveLoop(): void {
+    if (keepAliveInterval) {
+      clearInterval(keepAliveInterval);
+    }
+    keepAliveInterval = setInterval(() => {
+      if (!instanceClient) {
+        return;
+      }
+      if (Date.now() - lastCommandAt > INACTIVITY_TIMEOUT_MS) {
+        return;
+      }
+      try {
+        sendClientKeepAlive(instanceClient);
+      } catch {}
+    }, KEEPALIVE_INTERVAL_MS);
+  }
+
   function send(socket: net.Socket, resp: DaemonResponse): void {
     try {
       socket.write(JSON.stringify(resp) + '\n');
@@ -238,6 +264,9 @@ export function startDaemonServer(): void {
 
   async function dispatch(socket: net.Socket, req: DaemonRequest): Promise<void> {
     const { command, args } = req;
+    if (command !== 'ping') {
+      lastCommandAt = Date.now();
+    }
 
     try {
       if (command === 'ping') {
@@ -407,6 +436,10 @@ export function startDaemonServer(): void {
   });
 
   function cleanup(): void {
+    if (keepAliveInterval) {
+      clearInterval(keepAliveInterval);
+      keepAliveInterval = undefined;
+    }
     try {
       fs.unlinkSync(sock);
     } catch {}
@@ -430,6 +463,7 @@ export function startDaemonServer(): void {
   });
 
   server.listen(sock, () => {
+    startKeepAliveLoop();
     fs.writeFileSync(pid, String(process.pid), { mode: 0o600 });
     try {
       fs.chmodSync(sock, 0o600);

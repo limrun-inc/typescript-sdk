@@ -2,20 +2,21 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
-export default class ExecLaunchApp extends BaseCommand {
+export default class IosLaunchApp extends BaseCommand {
   static summary = 'Launch an app on a running iOS instance';
+  static aliases = ['exec launch-app'];
   static examples = [
-    '<%= config.bin %> exec launch-app <instance-ID> com.example.app',
-    '<%= config.bin %> exec launch-app <instance-ID> com.example.app --mode RelaunchIfRunning',
+    '<%= config.bin %> ios launch-app com.example.app',
+    '<%= config.bin %> ios launch-app com.example.app --mode RelaunchIfRunning --id <instance-ID>',
   ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     bundleId: Args.string({ description: 'App bundle identifier', required: true }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
     mode: Flags.string({
       description: 'Launch mode',
       options: ['ForegroundIfRunning', 'RelaunchIfRunning'],
@@ -24,14 +25,15 @@ export default class ExecLaunchApp extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ExecLaunchApp);
+    const { args, flags } = await this.parse(IosLaunchApp);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'launch-app', [args.bundleId, flags.mode]);
+      const id = this.resolveId(flags.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'launch-app', [args.bundleId, flags.mode]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         if (type !== 'ios') {
           disconnect();
           this.error('launch-app is only supported on iOS instances');

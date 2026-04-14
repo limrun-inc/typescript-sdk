@@ -4,10 +4,13 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecScroll extends BaseCommand {
   static summary = 'Scroll on a running instance';
-  static examples = ['<%= config.bin %> exec scroll <instance-ID> down --amount 500'];
+  static aliases = ['ios scroll', 'android scroll'];
+  static examples = [
+    '<%= config.bin %> ios scroll down --amount 500',
+    '<%= config.bin %> ios scroll down --amount 500 --id <instance-ID>',
+  ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     direction: Args.string({
       description: 'Scroll direction',
       required: true,
@@ -17,6 +20,7 @@ export default class ExecScroll extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
     amount: Flags.integer({
       description: 'Scroll amount (pixels for iOS, abstract units for Android)',
       default: 300,
@@ -28,10 +32,11 @@ export default class ExecScroll extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'scroll', [args.direction, flags.amount]);
+      const id = this.resolveId(flags.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'scroll', [args.direction, flags.amount]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         try {
           if (type === 'ios') {
             await (client as any).scroll(args.direction, flags.amount);

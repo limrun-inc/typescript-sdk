@@ -1,27 +1,34 @@
-import { Args } from '@oclif/core';
+import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
-export default class ExecTerminateApp extends BaseCommand {
+export default class IosTerminateApp extends BaseCommand {
   static summary = 'Terminate an app on a running iOS instance';
-  static examples = ['<%= config.bin %> exec terminate-app <instance-ID> com.example.app'];
+  static aliases = ['exec terminate-app'];
+  static examples = [
+    '<%= config.bin %> ios terminate-app com.example.app',
+    '<%= config.bin %> ios terminate-app com.example.app --id <instance-ID>',
+  ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     bundleId: Args.string({ description: 'App bundle identifier', required: true }),
   };
 
-  static flags = { ...BaseCommand.baseFlags };
+  static flags = {
+    ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
+  };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ExecTerminateApp);
+    const { args, flags } = await this.parse(IosTerminateApp);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'terminate-app', [args.bundleId]);
+      const id = this.resolveId(flags.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'terminate-app', [args.bundleId]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         if (type !== 'ios') {
           disconnect();
           this.error('terminate-app is only supported on iOS instances');

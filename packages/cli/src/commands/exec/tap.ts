@@ -1,28 +1,35 @@
-import { Args } from '@oclif/core';
+import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecTap extends BaseCommand {
   static summary = 'Tap at coordinates on a running instance';
-  static examples = ['<%= config.bin %> exec tap <instance-ID> 100 200'];
+  static aliases = ['ios tap', 'android tap', 'tap'];
+  static examples = [
+    '<%= config.bin %> ios tap 100 200',
+    '<%= config.bin %> ios tap 100 200 --id <instance-ID>',
+  ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     x: Args.integer({ description: 'X coordinate', required: true }),
     y: Args.integer({ description: 'Y coordinate', required: true }),
   };
 
-  static flags = { ...BaseCommand.baseFlags };
+  static flags = {
+    ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
+  };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ExecTap);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'tap', [args.x, args.y]);
+      const id = this.resolveId(flags.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'tap', [args.x, args.y]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         try {
           if (type === 'ios') {
             await (client as any).tap(args.x, args.y);

@@ -1,13 +1,18 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
+import { saveLastInstanceId } from '../../lib/config';
 import { type XcodeInstanceCreateParams } from '@limrun/api/resources/xcode-instances';
 
-export default class RunXcode extends BaseCommand {
+export default class XcodeCreate extends BaseCommand {
   static summary = 'Create a new Xcode instance';
   static description = 'Creates a new Xcode build sandbox instance in the cloud.';
+  static aliases = ['run xcode'];
 
-  static examples = ['<%= config.bin %> run xcode', '<%= config.bin %> run xcode --rm --region us-west'];
+  static examples = [
+    '<%= config.bin %> xcode create',
+    '<%= config.bin %> xcode create --rm --region us-west',
+  ];
 
   static flags = {
     ...BaseCommand.baseFlags,
@@ -24,7 +29,7 @@ export default class RunXcode extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(RunXcode);
+    const { flags } = await this.parse(XcodeCreate);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
@@ -47,6 +52,7 @@ export default class RunXcode extends BaseCommand {
 
       const start = Date.now();
       const instance = await this.client.xcodeInstances.create(params);
+      saveLastInstanceId(instance.metadata.id);
       this.log(`Created a new Xcode instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.log(`Instance ID: ${instance.metadata.id}`);
       this.log(`Region: ${instance.spec.region}`);

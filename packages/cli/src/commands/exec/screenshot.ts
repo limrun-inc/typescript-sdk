@@ -1,38 +1,39 @@
 import fs from 'fs';
 import path from 'path';
-import { Args, Flags } from '@oclif/core';
+import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecScreenshot extends BaseCommand {
   static summary = 'Capture a screenshot from a running instance';
+  static aliases = ['ios screenshot', 'android screenshot', 'screenshot'];
   static examples = [
-    '<%= config.bin %> exec screenshot <instance-ID> -o screenshot.png',
-    '<%= config.bin %> exec screenshot <instance-ID>',
+    '<%= config.bin %> ios screenshot -o screenshot.png',
+    '<%= config.bin %> android screenshot --id <instance-ID>',
   ];
 
-  static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
-  };
+  static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
     output: Flags.string({ char: 'o', description: 'Save screenshot to file path' }),
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ExecScreenshot);
+    const { flags } = await this.parse(ExecScreenshot);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
+      const id = this.resolveId(flags.id);
       let screenshot: any;
       let type: string;
 
-      if (hasActiveSession(args.id)) {
-        screenshot = await sendSessionCommand(args.id, 'screenshot');
-        type = args.id.split('_')[0];
+      if (hasActiveSession(id)) {
+        screenshot = await sendSessionCommand(id, 'screenshot');
+        type = id.split('_')[0];
       } else {
-        const resolved = await getInstanceClient(this.client, args.id);
+        const resolved = await getInstanceClient(this.client, id);
         type = resolved.type;
         try {
           screenshot = await resolved.client.screenshot();

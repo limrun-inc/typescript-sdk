@@ -2,37 +2,39 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
-export default class ExecLog extends BaseCommand {
+export default class IosLog extends BaseCommand {
   static summary = 'Stream or tail app logs from a running iOS instance';
+  static aliases = ['exec log'];
   static examples = [
-    '<%= config.bin %> exec log <instance-ID> com.example.app',
-    '<%= config.bin %> exec log <instance-ID> com.example.app --lines 50',
-    '<%= config.bin %> exec log <instance-ID> com.example.app -f',
+    '<%= config.bin %> ios log com.example.app',
+    '<%= config.bin %> ios log com.example.app --id <instance-ID> --lines 50',
+    '<%= config.bin %> ios log com.example.app --id <instance-ID> -f',
   ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     bundleId: Args.string({ description: 'App bundle identifier', required: true }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
     follow: Flags.boolean({ char: 'f', description: 'Stream logs continuously', default: false }),
     lines: Flags.integer({ description: 'Number of lines to tail (non-streaming)', default: 100 }),
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ExecLog);
+    const { args, flags } = await this.parse(IosLog);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
+      const id = this.resolveId(flags.id);
       // Log tail (non-streaming) can use session
       if (!flags.follow) {
-        if (hasActiveSession(args.id)) {
-          const output = await sendSessionCommand(args.id, 'app-log-tail', [args.bundleId, flags.lines]);
+        if (hasActiveSession(id)) {
+          const output = await sendSessionCommand(id, 'app-log-tail', [args.bundleId, flags.lines]);
           this.log(String(output));
         } else {
-          const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+          const { type, client, disconnect } = await getInstanceClient(this.client, id);
           if (type !== 'ios') {
             disconnect();
             this.error('log command is only supported on iOS instances');
@@ -48,7 +50,7 @@ export default class ExecLog extends BaseCommand {
       }
 
       // Streaming requires direct connection (long-lived)
-      const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+      const { type, client, disconnect } = await getInstanceClient(this.client, id);
       if (type !== 'ios') {
         disconnect();
         this.error('log command is only supported on iOS instances');

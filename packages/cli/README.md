@@ -19,11 +19,11 @@ npx @limrun/cli <command>
 lim login
 
 # Or provide an API key directly
-lim --api-key <YOUR_KEY> get android
+lim --api-key <YOUR_KEY> android list
 
 # Or use an environment variable
 export LIM_API_KEY=<YOUR_KEY>
-lim get android
+lim android list
 
 # Log out (removes stored API key)
 lim logout
@@ -41,49 +41,86 @@ Every command supports these flags:
 | `--json` | Output as JSON instead of human-readable tables |
 | `--help` | Show help for any command |
 
+## Command Structure
+
+Commands are organized by resource (noun-first), so you can discover everything available for a platform with `--help`:
+
+```bash
+lim ios --help       # All iOS commands
+lim android --help   # All Android commands
+lim xcode --help     # All Xcode commands
+lim asset --help     # All asset commands
+```
+
+**Instance ID is optional** on interaction commands. When omitted, the CLI uses the last created instance of the matching type:
+
+```bash
+lim ios create                  # Creates ios_abc123, remembers it
+lim ios screenshot -o test.png  # Uses ios_abc123 automatically
+lim ios tap 100 200             # Still uses ios_abc123
+lim session start               # Starts session for ios_abc123
+```
+
+You can always provide an ID explicitly to target a specific instance:
+
+```bash
+lim ios screenshot -o test.png --id ios_def456
+```
+
+**Top-level shortcuts** are available for common actions — the platform is auto-detected from the instance ID prefix:
+
+```bash
+lim screenshot --id ios_abc123   # Works for both iOS and Android
+lim tap 100 200 --id ios_abc123  # Auto-detects platform from ID prefix
+lim delete ios_abc123       # Auto-detects resource type from ID prefix
+```
+
 ## Commands
 
-- [Instance Management](#instance-management) — Create, list, and delete Android/iOS/Xcode instances
-- [Asset Management](#asset-management) — Upload and download files (APKs, IPAs, etc.)
+- [iOS](#ios) — Create, manage, and interact with iOS instances
+- [Android](#android) — Create, manage, and interact with Android instances
+- [Xcode](#xcode) — Create and manage Xcode sandbox instances
+- [Assets](#assets) — Upload and download files (APKs, IPAs, etc.)
 - [Sessions](#sessions) — Persistent connections for fast, interactive device control
-- [Device Interaction](#device-interaction) — Screenshots, tapping, typing, scrolling, and more
 - [Xcode Build Pipeline](#xcode-build-pipeline) — Sync code and run xcodebuild remotely
-- [Connectivity](#connectivity) — ADB tunnel for Android debugging
 
 ---
 
-### Instance Management
-
-#### Create Instances
+### iOS
 
 ```bash
-# Android instance with ADB tunnel and scrcpy streaming
-lim run android
-
-# Android with apps pre-installed
-lim run android --install ./my-app.apk --install ./another.apk
-
-# Android with custom settings
-lim run android --region us-west --display-name "CI Test" --label env=ci --rm
-
-# iOS instance
-lim run ios
-
-# iOS with specific device model
-lim run ios --model ipad --rm
-
-# iOS with pre-installed app from asset storage
-lim run ios --install-asset my-app.ipa
-
-# Xcode build sandbox
-lim run xcode --rm --hard-timeout 1h
+lim ios create          # Create a new iOS instance
+lim ios list            # List all ready iOS instances
+lim ios get <ID>        # Get details of a specific instance
+lim ios delete <ID>     # Delete an instance
 ```
 
-**Common flags for `run` commands:**
+#### Create Options
+
+```bash
+# Basic
+lim ios create
+
+# With specific device model
+lim ios create --model ipad --rm
+
+# With pre-installed app from asset storage
+lim ios create --install-asset my-app.ipa
+
+# With Xcode sandbox enabled
+lim ios create --xcode
+
+# Full options
+lim ios create --region us-west --display-name "CI Test" --label env=ci --rm
+```
+
+**Flags for `ios create`:**
 
 | Flag | Description |
 |------|-------------|
 | `--rm` | Auto-delete the instance on exit (Ctrl+C) |
+| `--model <iphone\|ipad\|watch>` | Simulator device model |
+| `--xcode` | Attach a Xcode build sandbox to the iOS instance |
 | `--region <value>` | Region for the instance (e.g. `us-west`) |
 | `--display-name <value>` | Human-readable name |
 | `--label <key=value>` | Labels (repeatable). Used for filtering and reuse |
@@ -93,6 +130,121 @@ lim run xcode --rm --hard-timeout 1h
 | `--install <file>` | Local file to install (auto-uploads, repeatable) |
 | `--install-asset <name>` | Asset name to install (repeatable) |
 
+#### List and Filter
+
+```bash
+lim ios list                                   # Ready instances
+lim ios list --all                             # All states
+lim ios list --state creating                  # Filter by state
+lim ios list --region us-west                  # Filter by region
+lim ios list --label-selector env=prod         # Filter by labels
+lim ios list --json                            # JSON output
+lim ios get <ID>                               # Single instance details
+```
+
+#### Device Interaction
+
+All interaction commands accept an optional `--id`. When omitted, the last created iOS instance is used.
+
+```bash
+# Screenshots
+lim ios screenshot -o screenshot.png
+lim ios screenshot                      # Output base64 to stdout
+
+# Tapping
+lim ios tap 100 200
+lim ios tap-element --label "Submit"
+lim ios tap-element --accessibility-id btn_ok
+
+# Text input
+lim ios type "Hello World"
+lim ios type "search query" --press-enter
+lim ios press-key enter
+lim ios press-key a --modifier shift
+
+# Scrolling
+lim ios scroll down --amount 500
+
+# UI inspection
+lim ios element-tree
+lim ios element-tree | jq '.'
+
+# Open URLs / deep links
+lim ios open-url https://example.com
+lim ios open-url myapp://settings
+```
+
+#### App Management (iOS only)
+
+```bash
+# Install an app (local file auto-uploads, or use URL)
+lim ios install-app ./MyApp.ipa
+lim ios install-app https://example.com/app.ipa
+
+# Launch / terminate
+lim ios launch-app com.example.myapp
+lim ios launch-app com.example.myapp --mode RelaunchIfRunning
+lim ios terminate-app com.example.myapp
+
+# List installed apps
+lim ios list-apps
+```
+
+#### Log Streaming (iOS only)
+
+```bash
+# Tail recent logs
+lim ios log com.example.myapp --lines 50
+
+# Stream logs continuously (Ctrl+C to stop)
+lim ios log com.example.myapp -f
+```
+
+#### Video Recording
+
+```bash
+lim ios record start
+lim ios record start --quality 8
+lim ios record stop
+lim ios record stop -o recording.mp4
+lim ios record stop --presigned-url https://example.com/upload
+```
+
+#### Xcode Integration
+
+```bash
+# Sync/build use the current directory if no path is provided; pass instance IDs with --id (requires --xcode on create)
+lim ios sync ./MyProject
+lim ios build --scheme MyApp --workspace MyApp.xcworkspace
+```
+
+---
+
+### Android
+
+```bash
+lim android create       # Create a new Android instance
+lim android list         # List all ready Android instances
+lim android get <ID>     # Get details of a specific instance
+lim android delete <ID>  # Delete an instance
+```
+
+#### Create Options
+
+```bash
+# Basic (with ADB tunnel and scrcpy streaming)
+lim android create
+
+# With apps pre-installed
+lim android create --install ./my-app.apk --install ./another.apk
+
+# Without streaming
+lim android create --no-stream
+
+# Full options
+lim android create --region us-west --display-name "CI Test" --label env=ci --rm
+```
+
 **Android-specific flags:**
 
 | Flag | Description |
@@ -101,130 +253,155 @@ lim run xcode --rm --hard-timeout 1h
 | `--[no-]stream` | Launch scrcpy for visual control (default: true) |
 | `--adb-path <path>` | Path to `adb` binary (default: `adb`) |
 
-**iOS-specific flags:**
+#### Device Interaction
 
-| Flag | Description |
-|------|-------------|
-| `--model <iphone\|ipad\|watch>` | Simulator device model |
-| `--xcode` | Attach a Xcode build sandbox to the iOS instance |
-
-#### List Instances
+All interaction commands accept an optional `--id`. When omitted, the last created Android instance is used.
 
 ```bash
-# List ready instances
-lim get android
-lim get ios
-lim get xcode
+# Screenshots
+lim android screenshot -o screenshot.png
 
-# Get a specific instance by ID
-lim get android android_abc123
+# Tapping
+lim android tap 100 200
+lim android tap-element --resource-id com.example:id/button
+lim android tap-element --text "Sign In"
 
-# Show all states (not just ready)
-lim get ios --all
+# Text input
+lim android type "Hello World"
+lim android press-key enter
 
-# Filter by state, region, or labels
-lim get android --state creating
-lim get ios --region us-west
-lim get android --label-selector env=prod,team=mobile
+# Scrolling
+lim android scroll down --amount 500
 
-# JSON output for scripting
-lim get android --json
+# UI inspection
+lim android element-tree
+
+# Install app
+lim android install-app ./app.apk
+
+# Open URL
+lim android open-url https://example.com
+
+# Video recording
+lim android record start
+lim android record stop
+lim android record stop -o recording.mp4
+lim android record stop --presigned-url https://example.com/upload
 ```
 
-**Filtering flags:**
+#### ADB Tunnel
 
-| Flag | Description |
-|------|-------------|
-| `--all` | Show instances in all states |
-| `--state <value>` | Filter by state (`unknown`, `creating`, `ready`, `terminated`) |
-| `--region <value>` | Filter by region |
-| `--label-selector <value>` | Filter by labels (e.g. `env=prod,team=mobile`) |
-
-#### Delete Instances
+Connect to a running Android instance for direct `adb` access:
 
 ```bash
-# Delete by type
-lim delete android android_abc123
-lim delete ios ios_abc123
-lim delete xcode xcode_abc123
+lim android connect
+lim android connect --id android_abc123 --adb-path /usr/local/bin/adb
+```
 
-# Auto-detect type from ID prefix
-lim delete android_abc123
-lim delete ios_abc123
+The tunnel stays open until you press Ctrl+C. While connected, you can use `adb` commands in another terminal.
+
+---
+
+### Xcode
+
+Standalone Xcode build sandboxes for remote compilation.
+
+```bash
+lim xcode create          # Create a new Xcode sandbox
+lim xcode list            # List all ready Xcode instances
+lim xcode get <ID>        # Get details of a specific instance
+lim xcode delete <ID>     # Delete an instance
+```
+
+```bash
+# Create with options
+lim xcode create --rm --region us-west --hard-timeout 1h
+
+# Sync and build
+lim xcode sync ./MyProject
+lim xcode build --scheme MyApp --workspace MyApp.xcworkspace
+
+# Build and upload artifact
+lim xcode build --scheme MyApp --upload my-app-build
 ```
 
 ---
 
-### Asset Management
+### Assets
 
 Assets are files (APKs, IPAs, configs, etc.) stored in Limrun's cloud storage for use with instances.
 
 ```bash
 # Upload a file
-lim push ./my-app.apk
-lim push ./my-app.ipa -n custom-name
+lim asset push ./my-app.apk
+lim asset push ./my-app.ipa -n custom-name
 
 # Download a file
-lim pull asset_abc123
-lim pull my-app.apk
-lim pull asset_abc123 -o ./downloads
+lim asset pull asset_abc123
+lim asset pull my-app.apk
+lim asset pull asset_abc123 -o ./downloads
 
 # List assets
-lim get asset
-lim get asset --name my-app
-lim get asset --download-url
+lim asset list
+lim asset list --name my-app
+lim asset list --download-url
 
 # Get a specific asset
-lim get asset asset_abc123
+lim asset list asset_abc123
 
 # Delete an asset
-lim delete asset asset_abc123
+lim asset delete asset_abc123
 ```
 
 ---
 
 ### Sessions
 
-Sessions keep a persistent WebSocket connection to an instance in the background, making all `exec` commands near-instant (~50ms instead of ~2s per command).
+Sessions keep a persistent WebSocket connection to an instance in the background, making all interaction commands near-instant (~50ms instead of ~2s per command).
 
 #### Why Sessions?
 
-Without a session, every `exec` command creates a new connection:
+Without a session, every command creates a new connection:
 
 ```
-lim exec screenshot ios_abc123      # ~2s (connect + auth + screenshot + disconnect)
-lim exec tap ios_abc123 100 200     # ~2s (connect + auth + tap + disconnect)
-lim exec element-tree ios_abc123    # ~2s (connect + auth + fetch + disconnect)
+lim ios screenshot              # ~2s (connect + auth + screenshot + disconnect)
+lim ios tap 100 200             # ~2s (connect + auth + tap + disconnect)
+lim ios element-tree            # ~2s (connect + auth + fetch + disconnect)
 # Total: ~6s for 3 commands
 ```
 
 With a session, the connection is created once and reused:
 
 ```
-lim session start ios_abc123        # ~2s (one-time connection setup)
-lim exec screenshot ios_abc123      # ~50ms (reuses connection)
-lim exec tap ios_abc123 100 200     # ~50ms (reuses connection)
-lim exec element-tree ios_abc123    # ~50ms (reuses connection)
-lim session stop                    # instant cleanup
+lim session start               # ~2s (one-time connection setup)
+lim ios screenshot              # ~50ms (reuses connection)
+lim ios tap 100 200             # ~50ms (reuses connection)
+lim ios element-tree            # ~50ms (reuses connection)
+lim session stop                # instant cleanup
 # Total: ~2.15s for 3 commands
 ```
 
-This makes sessions essential for interactive workflows, AI agent loops, and any scenario where you run multiple `exec` commands against the same instance.
+This makes sessions essential for interactive workflows, AI agent loops, and any scenario where you run multiple commands against the same instance.
 
 #### Session Commands
 
 ```bash
-# Start sessions (one per instance, can run multiple)
-lim session start ios_abc123
-lim session start ios_def456
-lim session start android_ghi789
+# Start a session (defaults to last created instance)
+lim session start
+
+# Or specify an instance explicitly
+lim session start --id ios_abc123
+
+# Multiple sessions can run simultaneously
+lim session start --id ios_abc123
+lim session start --id android_def456
 
 # Check all active sessions
 lim session status
 lim session status --json
 
 # Stop a specific session
-lim session stop ios_abc123
+lim session stop --id ios_abc123
 
 # Stop all sessions at once
 lim session stop --all
@@ -234,53 +411,53 @@ If only one session is active, `lim session stop` (no ID) stops it automatically
 
 #### How It Works
 
-Each `lim session start <ID>` spawns an independent background daemon that:
+Each `lim session start` spawns an independent background daemon that:
 - Holds a persistent WebSocket connection to that specific instance
 - Listens on its own Unix socket at `/tmp/lim-sessions/<instance-id>/`
-- All `exec` commands automatically detect the matching session and route through it
+- All interaction commands automatically detect the matching session and route through it
 - Multiple sessions run in parallel with no shared state
 
 #### Example: Interactive Testing
 
 ```bash
-lim run ios --model iphone
-lim session start ios_abc123
+lim ios create --model iphone
+lim session start
 
 # Fast interaction loop — each command takes ~50ms
-lim exec launch-app ios_abc123 com.example.myapp
-lim exec element-tree ios_abc123 | jq '.tree'
-lim exec tap-element ios_abc123 --label "Login"
-lim exec type ios_abc123 "user@example.com"
-lim exec tap-element ios_abc123 --label "Submit"
-lim exec screenshot ios_abc123 -o after-login.png
+lim ios launch-app com.example.myapp
+lim ios element-tree | jq '.tree'
+lim ios tap-element --label "Login"
+lim ios type "user@example.com"
+lim ios tap-element --label "Submit"
+lim ios screenshot -o after-login.png
 
-lim session stop ios_abc123
-lim delete ios_abc123
+lim session stop
+lim ios delete ios_abc123
 ```
 
 #### Example: Multi-Device AI Agent
 
 ```bash
 # Create two instances and start sessions for both
-lim run ios --model iphone
-lim run ios --model ipad
-lim session start ios_phone_123
-lim session start ios_tablet_456
+lim ios create --model iphone
+lim ios create --model ipad
+lim session start --id ios_phone_123
+lim session start --id ios_tablet_456
 
 # Agent controls both devices in parallel — ~50ms per command
-lim exec launch-app ios_phone_123 com.example.myapp
-lim exec launch-app ios_tablet_456 com.example.myapp
+lim ios launch-app com.example.myapp --id ios_phone_123
+lim ios launch-app com.example.myapp --id ios_tablet_456
 
-lim exec screenshot ios_phone_123 -o phone.png
-lim exec screenshot ios_tablet_456 -o tablet.png
+lim ios screenshot -o phone.png --id ios_phone_123
+lim ios screenshot -o tablet.png --id ios_tablet_456
 
-lim exec tap ios_phone_123 200 400
-lim exec element-tree ios_tablet_456 --json > tablet-tree.json
+lim ios tap 200 400 --id ios_phone_123
+lim ios element-tree --id ios_tablet_456 --json > tablet-tree.json
 
 # Clean up all sessions
 lim session stop --all
-lim delete ios_phone_123
-lim delete ios_tablet_456
+lim ios delete ios_phone_123
+lim ios delete ios_tablet_456
 ```
 
 #### Example: Automated Test Matrix
@@ -291,15 +468,15 @@ DEVICES=("iphone" "ipad")
 IDS=()
 
 for model in "${DEVICES[@]}"; do
-  ID=$(lim run ios --model $model --json | jq -r '.metadata.id')
-  lim session start $ID
+  ID=$(lim ios create --model $model --json | jq -r '.metadata.id')
+  lim session start --id $ID
   IDS+=($ID)
 done
 
 # Run tests against all devices
 for ID in "${IDS[@]}"; do
-  lim exec launch-app $ID com.example.myapp
-  lim exec screenshot $ID -o "test_${ID}.png"
+  lim ios launch-app com.example.myapp --id $ID
+  lim ios screenshot -o "test_${ID}.png" --id $ID
 done
 
 # Tear down
@@ -307,121 +484,6 @@ lim session stop --all
 for ID in "${IDS[@]}"; do
   lim delete $ID
 done
-```
-
----
-
-### Device Interaction
-
-The `exec` commands let you interact with running Android and iOS instances directly from the command line. These commands auto-detect the platform from the instance ID prefix. When a [session](#sessions) is active, commands route through it automatically for near-instant execution.
-
-#### Screenshots
-
-```bash
-# Save to file
-lim exec screenshot ios_abc123 -o screenshot.png
-
-# Output base64 to stdout (for piping)
-lim exec screenshot ios_abc123
-
-# JSON output with metadata
-lim exec screenshot ios_abc123 --json
-```
-
-#### Tapping
-
-```bash
-# Tap at coordinates
-lim exec tap ios_abc123 100 200
-
-# Tap an element by accessibility selector
-lim exec tap-element ios_abc123 --label "Submit"
-lim exec tap-element ios_abc123 --accessibility-id btn_ok
-
-# Android: tap by resource ID or text
-lim exec tap-element android_abc123 --resource-id com.example:id/button
-lim exec tap-element android_abc123 --text "Sign In"
-```
-
-#### Text Input
-
-```bash
-# Type text into the focused field
-lim exec type ios_abc123 "Hello World"
-
-# Type and press Enter (iOS)
-lim exec type ios_abc123 "search query" --press-enter
-
-# Press a key
-lim exec press-key ios_abc123 enter
-lim exec press-key ios_abc123 a --modifier shift
-```
-
-#### Scrolling
-
-```bash
-lim exec scroll ios_abc123 down --amount 500
-lim exec scroll android_abc123 up --amount 300
-```
-
-#### UI Inspection
-
-```bash
-# Get the element/accessibility tree
-lim exec element-tree ios_abc123
-lim exec element-tree android_abc123
-
-# Pipe to jq for filtering
-lim exec element-tree ios_abc123 | jq '.'
-```
-
-#### App Management (iOS)
-
-```bash
-# Install an app from local file (auto-uploads)
-lim exec install-app ios_abc123 ./MyApp.ipa
-
-# Install from URL
-lim exec install-app ios_abc123 https://example.com/app.ipa
-
-# Launch / terminate
-lim exec launch-app ios_abc123 com.example.myapp
-lim exec launch-app ios_abc123 com.example.myapp --mode RelaunchIfRunning
-lim exec terminate-app ios_abc123 com.example.myapp
-
-# List installed apps
-lim exec list-apps ios_abc123
-```
-
-#### Open URLs
-
-```bash
-# Open web URL (opens in browser on the device)
-lim exec open-url ios_abc123 https://example.com
-
-# Open deep link
-lim exec open-url ios_abc123 myapp://settings
-```
-
-#### Log Streaming (iOS)
-
-```bash
-# Tail recent logs
-lim exec log ios_abc123 com.example.myapp --lines 50
-
-# Stream logs continuously (Ctrl+C to stop)
-lim exec log ios_abc123 com.example.myapp -f
-```
-
-#### Video Recording
-
-```bash
-# Start recording
-lim exec record ios_abc123 start
-lim exec record ios_abc123 start --quality 8
-
-# Stop and save
-lim exec record ios_abc123 stop -o recording.mp4
 ```
 
 ---
@@ -436,32 +498,32 @@ This gives you a simulator **and** a build environment in one instance — the b
 
 ```bash
 # 1. Create iOS instance with Xcode sandbox
-lim run ios --xcode
+lim ios create --xcode
 # Output:
 #   Instance ID: ios_abc123
 #   Xcode Sandbox: https://...limrun.net/v1/sandbox_.../xcode
 #   (sandbox URL is cached locally for sync/build to use)
 
 # 2. Sync your project code to the Xcode sandbox
-lim sync ios_abc123 ./MyProject
+lim ios sync ./MyProject
 
 # 3. Build — the app is auto-installed on the simulator
-lim build ios_abc123 --scheme MyApp --workspace MyApp.xcworkspace
+lim ios build --scheme MyApp --workspace MyApp.xcworkspace
 
 # 4. Start a session for fast device interaction
-lim session start ios_abc123
+lim session start
 
 # 5. Test the built app on the simulator (~50ms per command)
-lim exec launch-app ios_abc123 com.example.myapp
-lim exec element-tree ios_abc123 | jq '.'
-lim exec screenshot ios_abc123 -o built-app.png
+lim ios launch-app com.example.myapp
+lim ios element-tree | jq '.'
+lim ios screenshot -o built-app.png
 
 # 6. Clean up
-lim session stop ios_abc123
-lim delete ios_abc123
+lim session stop
+lim ios delete ios_abc123
 ```
 
-> **Note:** The Xcode sandbox URL is only returned when the instance is created — not on subsequent `get` calls. The CLI caches it locally at `~/.lim/instances/` so that `sync` and `build` can find it. This means `sync`/`build` must run on the same machine where `run ios --xcode` was executed.
+> **Note:** The Xcode sandbox URL is only returned when the instance is created — not on subsequent `list` calls. The CLI caches it locally at `~/.lim/instances/` so that `sync` and `build` can find it. This means `sync`/`build` must run on the same machine where `ios create --xcode` was executed.
 
 #### Option B: Standalone Xcode Instance
 
@@ -469,51 +531,39 @@ Use this when you only need to build (no simulator needed), or when you want to 
 
 ```bash
 # 1. Create a standalone Xcode instance
-lim run xcode --rm
+lim xcode create --rm
 
 # 2. Sync and build
-lim sync xcode_abc123 ./MyProject
-lim build xcode_abc123 --scheme MyApp --workspace MyApp.xcworkspace
+lim xcode sync ./MyProject
+lim xcode build --scheme MyApp --workspace MyApp.xcworkspace
 
 # 3. Upload build artifact
-lim build xcode_abc123 --scheme MyApp --upload my-app-build
+lim xcode build --scheme MyApp --upload my-app-build
 
 # 4. Download the artifact
-lim pull my-app-build -o ./build-output
+lim asset pull my-app-build -o ./build-output
 ```
 
 #### Sync Options
 
 ```bash
-# Watch mode (re-syncs on file changes, default)
-lim sync ios_abc123 ./MyProject --watch
+# Sync the current directory
+lim ios sync
 
-# One-shot sync (no watch)
-lim sync ios_abc123 ./MyProject --no-watch
+# Watch mode (re-syncs on file changes)
+lim ios sync ./MyProject --watch
+
+# One-shot sync (default)
+lim ios sync ./MyProject
+
+# Explicitly disable watch mode
+lim ios sync ./MyProject --no-watch
 
 # Sync without installing
-lim sync ios_abc123 ./MyProject --no-install
+lim ios sync ./MyProject --no-install
 ```
 
 The sync automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
-
----
-
-### Connectivity
-
-#### Android ADB Tunnel
-
-Connect to a running Android instance for `adb` access:
-
-```bash
-# Connect to an existing instance
-lim connect android android_abc123
-
-# With custom adb path
-lim connect android android_abc123 --adb-path /usr/local/bin/adb
-```
-
-The tunnel stays open until you press Ctrl+C. While connected, you can use `adb` commands in another terminal.
 
 ---
 
@@ -541,14 +591,14 @@ All commands support `--json` for machine-readable output, making the CLI suitab
 
 ```bash
 # Get instance details as JSON
-lim get ios ios_abc123 --json
+lim ios get ios_abc123 --json
 
 # Parse with jq
-lim get android --json | jq '.[].metadata.id'
+lim android list --json | jq '.[].metadata.id'
 
 # Use in scripts
-INSTANCE_ID=$(lim run ios --json | jq -r '.metadata.id')
-lim exec screenshot $INSTANCE_ID -o test.png
+INSTANCE_ID=$(lim ios create --json | jq -r '.metadata.id')
+lim ios screenshot -o test.png
 lim delete $INSTANCE_ID
 ```
 
@@ -559,45 +609,43 @@ lim delete $INSTANCE_ID
 ### CI Testing: Install and Verify an App
 
 ```bash
-INSTANCE_ID="ios_..."
-
 # Create instance and start session for fast commands
-lim run ios --install ./build/MyApp.ipa
-lim session start $INSTANCE_ID
+lim ios create --install ./build/MyApp.ipa
+lim session start
 
 # Verify — each command takes ~50ms with session
-lim exec launch-app $INSTANCE_ID com.example.myapp
+lim ios launch-app com.example.myapp
 sleep 2
-lim exec element-tree $INSTANCE_ID | grep "Welcome"
-lim exec screenshot $INSTANCE_ID -o test-result.png
+lim ios element-tree | grep "Welcome"
+lim ios screenshot -o test-result.png
 
 # Clean up
-lim session stop $INSTANCE_ID
-lim delete $INSTANCE_ID
+lim session stop
+lim delete ios_abc123
 ```
 
 ### AI Agent Automation
 
 ```bash
 # Create instance
-INSTANCE=$(lim run ios --model iphone --json)
+INSTANCE=$(lim ios create --model iphone --json)
 ID=$(echo $INSTANCE | jq -r '.metadata.id')
 
-# Start session — all exec commands now run in ~50ms
-lim session start $ID
+# Start session — all commands now run in ~50ms
+lim session start
 
 # Agent can interact at high speed
-lim exec tap $ID 200 400
-lim exec type $ID "test@example.com"
-lim exec tap-element $ID --label "Sign In"
-lim exec screenshot $ID -o result.png
-lim exec element-tree $ID --json > ui-state.json
+lim ios tap 200 400
+lim ios type "test@example.com"
+lim ios tap-element --label "Sign In"
+lim ios screenshot -o result.png
+lim ios element-tree --json > ui-state.json
 
 # Tail logs (non-streaming works through session too)
-lim exec log $ID com.example.myapp --lines 20
+lim ios log com.example.myapp --lines 20
 
 # Clean up
-lim session stop $ID
+lim session stop
 lim delete $ID
 ```
 
@@ -605,18 +653,18 @@ lim delete $ID
 
 ```bash
 # Single instance: Xcode sandbox + iOS simulator
-ID=$(lim run ios --xcode --json | jq -r '.metadata.id')
+ID=$(lim ios create --xcode --json | jq -r '.metadata.id')
 
 # Sync, build, and test
-lim sync $ID ./MyiOSProject --no-watch
-lim build $ID --scheme MyApp --workspace MyApp.xcworkspace
+lim ios sync ./MyiOSProject
+lim ios build --scheme MyApp --workspace MyApp.xcworkspace
 
 # Verify the built app on the simulator
-lim session start $ID
-lim exec launch-app $ID com.example.myapp
+lim session start
+lim ios launch-app com.example.myapp
 sleep 2
-lim exec element-tree $ID | grep "Welcome"
-lim exec screenshot $ID -o test-result.png
+lim ios element-tree | grep "Welcome"
+lim ios screenshot -o test-result.png
 lim session stop
 
 lim delete $ID
@@ -625,12 +673,11 @@ lim delete $ID
 ### Build-Only with Artifact Upload
 
 ```bash
-lim run xcode --rm --reuse-if-exists --label project=myapp
-XCODE_ID="xcode_..."
+lim xcode create --rm --reuse-if-exists --label project=myapp
 
-lim sync $XCODE_ID ./MyiOSProject --no-watch
-lim build $XCODE_ID --scheme MyApp --workspace MyApp.xcworkspace --upload myapp-latest
-lim pull myapp-latest -o ./build-output
+lim xcode sync ./MyiOSProject
+lim xcode build --scheme MyApp --workspace MyApp.xcworkspace --upload myapp-latest
+lim asset pull myapp-latest -o ./build-output
 ```
 
 ---
@@ -652,8 +699,8 @@ npm run build
 npm run build && node bin/run.js <command>
 
 # Or use watch mode in one terminal, run in another
-npx tsc --watch          # Terminal 1
-node bin/run.js get ios   # Terminal 2
+npx tsc --watch           # Terminal 1
+node bin/run.js ios list   # Terminal 2
 ```
 
 ### Link globally
@@ -663,7 +710,7 @@ npm link
 
 # Now `lim` works anywhere on your machine
 lim --help
-lim get android
+lim android list
 
 # Unlink when done
 npm unlink -g @limrun/cli

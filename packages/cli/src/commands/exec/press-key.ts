@@ -4,18 +4,19 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecPressKey extends BaseCommand {
   static summary = 'Press a key on a running instance';
+  static aliases = ['ios press-key', 'android press-key'];
   static examples = [
-    '<%= config.bin %> exec press-key <instance-ID> enter',
-    '<%= config.bin %> exec press-key <instance-ID> a --modifier shift',
+    '<%= config.bin %> ios press-key enter',
+    '<%= config.bin %> ios press-key a --modifier shift --id <instance-ID>',
   ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     key: Args.string({ description: 'Key to press (e.g. enter, backspace, a, f1)', required: true }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
     modifier: Flags.string({ description: 'Modifier key (e.g. shift, command, alt)', multiple: true }),
   };
 
@@ -24,10 +25,11 @@ export default class ExecPressKey extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'press-key', [args.key, flags.modifier]);
+      const id = this.resolveId(flags.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'press-key', [args.key, flags.modifier]);
       } else {
-        const { client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { client, disconnect } = await getInstanceClient(this.client, id);
         try {
           await (client as any).pressKey(args.key, flags.modifier);
         } finally {

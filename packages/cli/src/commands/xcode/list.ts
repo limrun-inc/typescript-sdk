@@ -1,13 +1,11 @@
-import { Args, Flags } from '@oclif/core';
+import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 
-export default class GetXcode extends BaseCommand {
-  static summary = 'List Xcode instances or get a specific one';
-  static examples = ['<%= config.bin %> get xcode', '<%= config.bin %> get xcode <ID>'];
+export default class XcodeList extends BaseCommand {
+  static summary = 'List Xcode instances';
+  static examples = ['<%= config.bin %> xcode list'];
 
-  static args = {
-    id: Args.string({ description: 'Instance ID to get', required: false }),
-  };
+  static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
@@ -17,30 +15,10 @@ export default class GetXcode extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(GetXcode);
+    const { flags } = await this.parse(XcodeList);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (args.id) {
-        const instance = await this.client.xcodeInstances.get(args.id);
-        if (flags.json) {
-          this.outputJson(instance);
-        } else {
-          this.outputTable(
-            ['ID', 'Name', 'Region', 'State'],
-            [
-              [
-                instance.metadata.id,
-                instance.metadata.displayName || '',
-                instance.spec.region,
-                instance.status.state,
-              ],
-            ],
-          );
-        }
-        return;
-      }
-
       const params: Record<string, unknown> = {};
       if (flags.state) {
         params.state = flags.state;
