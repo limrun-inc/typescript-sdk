@@ -75,7 +75,7 @@ export default class SessionStart extends BaseCommand {
       const daemonScript = path.join(__dirname, '..', '..', 'lib', 'daemon.js');
       const child = spawn(process.execPath, [daemonScript], {
         detached: true,
-        stdio: ['ignore', 'ignore', 'pipe'],
+        stdio: 'ignore',
         env: { ...process.env, LIM_DAEMON_INSTANCE_ID: id },
       });
       child.unref();
@@ -86,6 +86,8 @@ export default class SessionStart extends BaseCommand {
       const timeout = 15000;
 
       await new Promise<void>((resolve, reject) => {
+        child.on('error', reject);
+
         const check = () => {
           if (fs.existsSync(sock)) {
             resolve();
@@ -98,11 +100,7 @@ export default class SessionStart extends BaseCommand {
           setTimeout(check, 100);
         };
 
-        child.stderr?.on('data', () => {
-          setTimeout(check, 50);
-        });
-
-        setTimeout(check, 200);
+        setTimeout(check, 100);
       });
 
       this.log(`Session started for ${id} (${type})`);
