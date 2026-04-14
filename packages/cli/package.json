@@ -1,6 +1,6 @@
 {
   "name": "@limrun/cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "The official CLI for Limrun — create and control cloud mobile sandboxes",
   "bin": {
     "lim": "./bin/run.js"
