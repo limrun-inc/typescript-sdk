@@ -1,11 +1,15 @@
 import path from 'path';
 import fs from 'fs';
 import { Args, Flags } from '@oclif/core';
-import { BaseCommand } from '../base-command';
+import { BaseCommand } from '../../base-command';
 
-export default class Push extends BaseCommand {
+export default class AssetPush extends BaseCommand {
   static summary = 'Upload an asset file';
-  static examples = ['<%= config.bin %> push ./app.apk', '<%= config.bin %> push ./app.ipa -n my-app'];
+  static aliases = ['push'];
+  static examples = [
+    '<%= config.bin %> asset push ./app.apk',
+    '<%= config.bin %> asset push ./app.ipa -n my-app',
+  ];
 
   static args = {
     file: Args.string({ description: 'Path to the file to upload', required: true }),
@@ -17,7 +21,7 @@ export default class Push extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(Push);
+    const { args, flags } = await this.parse(AssetPush);
     this.setParsedFlags(flags);
 
     const filePath = path.resolve(args.file);

@@ -5,6 +5,7 @@ import { loadInstanceCache } from '../lib/config';
 
 export default class Build extends BaseCommand {
   static summary = 'Run xcodebuild on a Xcode sandbox';
+  static aliases = ['ios build', 'xcode build'];
   static description =
     'Triggers a remote xcodebuild with streaming output. ' +
     'Works with both standalone Xcode instances and iOS instances that have --xcode enabled.';

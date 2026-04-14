@@ -2,12 +2,13 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
-export default class ExecLog extends BaseCommand {
+export default class IosLog extends BaseCommand {
   static summary = 'Stream or tail app logs from a running iOS instance';
+  static aliases = ['exec log'];
   static examples = [
-    '<%= config.bin %> exec log <instance-ID> com.example.app',
-    '<%= config.bin %> exec log <instance-ID> com.example.app --lines 50',
-    '<%= config.bin %> exec log <instance-ID> com.example.app -f',
+    '<%= config.bin %> ios log <instance-ID> com.example.app',
+    '<%= config.bin %> ios log <instance-ID> com.example.app --lines 50',
+    '<%= config.bin %> ios log <instance-ID> com.example.app -f',
   ];
 
   static args = {
@@ -22,7 +23,7 @@ export default class ExecLog extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ExecLog);
+    const { args, flags } = await this.parse(IosLog);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {

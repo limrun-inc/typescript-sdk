@@ -1,9 +1,10 @@
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 
-export default class DeleteXcode extends BaseCommand {
+export default class XcodeDelete extends BaseCommand {
   static summary = 'Delete a Xcode instance';
-  static examples = ['<%= config.bin %> delete xcode <ID>'];
+  static aliases = ['delete xcode'];
+  static examples = ['<%= config.bin %> xcode delete <ID>'];
 
   static args = {
     id: Args.string({ description: 'Instance ID to delete', required: true }),
@@ -12,7 +13,7 @@ export default class DeleteXcode extends BaseCommand {
   static flags = { ...BaseCommand.baseFlags };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(DeleteXcode);
+    const { args, flags } = await this.parse(XcodeDelete);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {

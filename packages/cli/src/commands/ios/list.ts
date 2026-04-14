@@ -1,10 +1,10 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 
-export default class GetAndroid extends BaseCommand {
-  static summary = 'List Android instances or get a specific one';
-  static aliases = ['get a'];
-  static examples = ['<%= config.bin %> get android', '<%= config.bin %> get android <ID>'];
+export default class IosList extends BaseCommand {
+  static summary = 'List iOS instances or get a specific one';
+  static aliases = ['get ios', 'get i'];
+  static examples = ['<%= config.bin %> ios list', '<%= config.bin %> ios list <ID>'];
 
   static args = {
     id: Args.string({ description: 'Instance ID to get', required: false }),
@@ -19,12 +19,12 @@ export default class GetAndroid extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(GetAndroid);
+    const { args, flags } = await this.parse(IosList);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
       if (args.id) {
-        const instance = await this.client.androidInstances.get(args.id);
+        const instance = await this.client.iosInstances.get(args.id);
         if (flags.json) {
           this.outputJson(instance);
         } else {
@@ -52,7 +52,7 @@ export default class GetAndroid extends BaseCommand {
       if (flags.region) params.region = flags.region;
       if (flags['label-selector']) params.labelSelector = flags['label-selector'];
 
-      const instances = await this.client.androidInstances.list(params as any);
+      const instances = await this.client.iosInstances.list(params as any);
       const items = instances.items ?? instances.getPaginatedItems();
       const rows = items.map((i: any) => [
         i.metadata.id,

@@ -4,7 +4,8 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecType extends BaseCommand {
   static summary = 'Type text into the focused input field';
-  static examples = ['<%= config.bin %> exec type <instance-ID> "Hello World"'];
+  static aliases = ['ios type', 'android type'];
+  static examples = ['<%= config.bin %> ios type <instance-ID> "Hello World"'];
 
   static args = {
     id: Args.string({ description: 'Instance ID', required: true }),

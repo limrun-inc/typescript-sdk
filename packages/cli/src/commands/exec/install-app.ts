@@ -8,10 +8,11 @@ export default class ExecInstallApp extends BaseCommand {
   static summary = 'Install an app on a running instance';
   static description =
     'Installs an app from a local file or URL. Local files are auto-uploaded to asset storage first.';
+  static aliases = ['ios install-app', 'android install-app'];
 
   static examples = [
-    '<%= config.bin %> exec install-app <instance-ID> ./MyApp.ipa',
-    '<%= config.bin %> exec install-app <instance-ID> https://example.com/app.apk',
+    '<%= config.bin %> ios install-app <instance-ID> ./MyApp.ipa',
+    '<%= config.bin %> android install-app <instance-ID> ./app.apk',
   ];
 
   static args = {

@@ -1,9 +1,10 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 
-export default class GetXcode extends BaseCommand {
+export default class XcodeList extends BaseCommand {
   static summary = 'List Xcode instances or get a specific one';
-  static examples = ['<%= config.bin %> get xcode', '<%= config.bin %> get xcode <ID>'];
+  static aliases = ['get xcode'];
+  static examples = ['<%= config.bin %> xcode list', '<%= config.bin %> xcode list <ID>'];
 
   static args = {
     id: Args.string({ description: 'Instance ID to get', required: false }),
@@ -17,7 +18,7 @@ export default class GetXcode extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(GetXcode);
+    const { args, flags } = await this.parse(XcodeList);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {

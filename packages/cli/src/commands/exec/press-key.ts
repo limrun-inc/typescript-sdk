@@ -4,9 +4,10 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecPressKey extends BaseCommand {
   static summary = 'Press a key on a running instance';
+  static aliases = ['ios press-key', 'android press-key'];
   static examples = [
-    '<%= config.bin %> exec press-key <instance-ID> enter',
-    '<%= config.bin %> exec press-key <instance-ID> a --modifier shift',
+    '<%= config.bin %> ios press-key <instance-ID> enter',
+    '<%= config.bin %> ios press-key <instance-ID> a --modifier shift',
   ];
 
   static args = {

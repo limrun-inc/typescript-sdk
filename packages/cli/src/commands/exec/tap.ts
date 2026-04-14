@@ -4,7 +4,8 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecTap extends BaseCommand {
   static summary = 'Tap at coordinates on a running instance';
-  static examples = ['<%= config.bin %> exec tap <instance-ID> 100 200'];
+  static aliases = ['ios tap', 'android tap', 'tap'];
+  static examples = ['<%= config.bin %> ios tap <instance-ID> 100 200'];
 
   static args = {
     id: Args.string({ description: 'Instance ID', required: true }),

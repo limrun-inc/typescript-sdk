@@ -2,9 +2,10 @@ import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
-export default class ExecListApps extends BaseCommand {
+export default class IosListApps extends BaseCommand {
   static summary = 'List installed apps on a running iOS instance';
-  static examples = ['<%= config.bin %> exec list-apps <instance-ID>'];
+  static aliases = ['exec list-apps'];
+  static examples = ['<%= config.bin %> ios list-apps <instance-ID>'];
 
   static args = {
     id: Args.string({ description: 'Instance ID', required: true }),
@@ -13,7 +14,7 @@ export default class ExecListApps extends BaseCommand {
   static flags = { ...BaseCommand.baseFlags };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ExecListApps);
+    const { args, flags } = await this.parse(IosListApps);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {

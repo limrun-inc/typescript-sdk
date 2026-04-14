@@ -5,10 +5,11 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecRecord extends BaseCommand {
   static summary = 'Start or stop video recording on a running instance';
+  static aliases = ['ios record', 'android record'];
   static examples = [
-    '<%= config.bin %> exec record <instance-ID> start',
-    '<%= config.bin %> exec record <instance-ID> stop -o recording.mp4',
-    '<%= config.bin %> exec record <instance-ID> start --quality 8',
+    '<%= config.bin %> ios record <instance-ID> start',
+    '<%= config.bin %> ios record <instance-ID> stop -o recording.mp4',
+    '<%= config.bin %> ios record <instance-ID> start --quality 8',
   ];
 
   static args = {

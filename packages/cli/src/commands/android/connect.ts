@@ -1,9 +1,10 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 
-export default class ConnectAndroid extends BaseCommand {
+export default class AndroidConnect extends BaseCommand {
   static summary = 'Connect to an existing Android instance via ADB tunnel';
-  static examples = ['<%= config.bin %> connect android <ID>'];
+  static aliases = ['connect android'];
+  static examples = ['<%= config.bin %> android connect <ID>'];
 
   static args = {
     id: Args.string({ description: 'Android instance ID', required: true }),
@@ -15,7 +16,7 @@ export default class ConnectAndroid extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ConnectAndroid);
+    const { args, flags } = await this.parse(AndroidConnect);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {

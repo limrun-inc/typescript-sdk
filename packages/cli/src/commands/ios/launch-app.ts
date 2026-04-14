@@ -2,11 +2,12 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
-export default class ExecLaunchApp extends BaseCommand {
+export default class IosLaunchApp extends BaseCommand {
   static summary = 'Launch an app on a running iOS instance';
+  static aliases = ['exec launch-app'];
   static examples = [
-    '<%= config.bin %> exec launch-app <instance-ID> com.example.app',
-    '<%= config.bin %> exec launch-app <instance-ID> com.example.app --mode RelaunchIfRunning',
+    '<%= config.bin %> ios launch-app <instance-ID> com.example.app',
+    '<%= config.bin %> ios launch-app <instance-ID> com.example.app --mode RelaunchIfRunning',
   ];
 
   static args = {
@@ -24,7 +25,7 @@ export default class ExecLaunchApp extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ExecLaunchApp);
+    const { args, flags } = await this.parse(IosLaunchApp);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {

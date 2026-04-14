@@ -4,7 +4,8 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecOpenUrl extends BaseCommand {
   static summary = 'Open a URL on a running instance';
-  static examples = ['<%= config.bin %> exec open-url <instance-ID> https://example.com'];
+  static aliases = ['ios open-url', 'android open-url'];
+  static examples = ['<%= config.bin %> ios open-url <instance-ID> https://example.com'];
 
   static args = {
     id: Args.string({ description: 'Instance ID', required: true }),

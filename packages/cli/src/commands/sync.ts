@@ -5,6 +5,7 @@ import { loadInstanceCache } from '../lib/config';
 
 export default class Sync extends BaseCommand {
   static summary = 'Sync local code to a Xcode sandbox';
+  static aliases = ['ios sync', 'xcode sync'];
   static description =
     'Pushes local source code to a remote Xcode sandbox with optional watch mode. ' +
     'Works with both standalone Xcode instances and iOS instances that have --xcode enabled.';

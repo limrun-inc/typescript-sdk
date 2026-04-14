@@ -2,9 +2,10 @@ import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
-export default class ExecTerminateApp extends BaseCommand {
+export default class IosTerminateApp extends BaseCommand {
   static summary = 'Terminate an app on a running iOS instance';
-  static examples = ['<%= config.bin %> exec terminate-app <instance-ID> com.example.app'];
+  static aliases = ['exec terminate-app'];
+  static examples = ['<%= config.bin %> ios terminate-app <instance-ID> com.example.app'];
 
   static args = {
     id: Args.string({ description: 'Instance ID', required: true }),
@@ -14,7 +15,7 @@ export default class ExecTerminateApp extends BaseCommand {
   static flags = { ...BaseCommand.baseFlags };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ExecTerminateApp);
+    const { args, flags } = await this.parse(IosTerminateApp);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {

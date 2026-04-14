@@ -4,7 +4,8 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecScroll extends BaseCommand {
   static summary = 'Scroll on a running instance';
-  static examples = ['<%= config.bin %> exec scroll <instance-ID> down --amount 500'];
+  static aliases = ['ios scroll', 'android scroll'];
+  static examples = ['<%= config.bin %> ios scroll <instance-ID> down --amount 500'];
 
   static args = {
     id: Args.string({ description: 'Instance ID', required: true }),

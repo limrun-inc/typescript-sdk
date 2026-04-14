@@ -1,9 +1,10 @@
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 
-export default class DeleteAndroid extends BaseCommand {
+export default class AndroidDelete extends BaseCommand {
   static summary = 'Delete an Android instance';
-  static examples = ['<%= config.bin %> delete android <ID>'];
+  static aliases = ['delete android'];
+  static examples = ['<%= config.bin %> android delete <ID>'];
 
   static args = {
     id: Args.string({ description: 'Instance ID to delete', required: true }),
@@ -12,7 +13,7 @@ export default class DeleteAndroid extends BaseCommand {
   static flags = { ...BaseCommand.baseFlags };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(DeleteAndroid);
+    const { args, flags } = await this.parse(AndroidDelete);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {

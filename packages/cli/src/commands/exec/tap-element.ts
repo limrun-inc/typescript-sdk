@@ -4,9 +4,10 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecTapElement extends BaseCommand {
   static summary = 'Tap an element by accessibility selector';
+  static aliases = ['ios tap-element', 'android tap-element'];
   static examples = [
-    '<%= config.bin %> exec tap-element <instance-ID> --label "Submit"',
-    '<%= config.bin %> exec tap-element <instance-ID> --accessibility-id btn_ok',
+    '<%= config.bin %> ios tap-element <instance-ID> --label "Submit"',
+    '<%= config.bin %> android tap-element <instance-ID> --accessibility-id btn_ok',
   ];
 
   static args = {

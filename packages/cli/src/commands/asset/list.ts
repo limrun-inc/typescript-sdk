@@ -1,10 +1,10 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 
-export default class GetAsset extends BaseCommand {
+export default class AssetList extends BaseCommand {
   static summary = 'List assets or get a specific one';
-  static aliases = ['get assets'];
-  static examples = ['<%= config.bin %> get asset', '<%= config.bin %> get asset <ID>'];
+  static aliases = ['get asset', 'get assets'];
+  static examples = ['<%= config.bin %> asset list', '<%= config.bin %> asset list <ID>'];
 
   static args = {
     id: Args.string({ description: 'Asset ID to get', required: false }),
@@ -18,7 +18,7 @@ export default class GetAsset extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(GetAsset);
+    const { args, flags } = await this.parse(AssetList);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {

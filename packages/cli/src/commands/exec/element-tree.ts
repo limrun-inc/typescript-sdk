@@ -4,7 +4,8 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecElementTree extends BaseCommand {
   static summary = 'Get the UI element tree from a running instance';
-  static examples = ['<%= config.bin %> exec element-tree <instance-ID>'];
+  static aliases = ['ios element-tree', 'android element-tree'];
+  static examples = ['<%= config.bin %> ios element-tree <instance-ID>'];
 
   static args = {
     id: Args.string({ description: 'Instance ID', required: true }),

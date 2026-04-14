@@ -6,9 +6,10 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecScreenshot extends BaseCommand {
   static summary = 'Capture a screenshot from a running instance';
+  static aliases = ['ios screenshot', 'android screenshot', 'screenshot'];
   static examples = [
-    '<%= config.bin %> exec screenshot <instance-ID> -o screenshot.png',
-    '<%= config.bin %> exec screenshot <instance-ID>',
+    '<%= config.bin %> ios screenshot <instance-ID> -o screenshot.png',
+    '<%= config.bin %> android screenshot <instance-ID>',
   ];
 
   static args = {
