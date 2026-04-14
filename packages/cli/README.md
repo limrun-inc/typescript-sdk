@@ -204,7 +204,9 @@ lim ios log com.example.myapp -f
 ```bash
 lim ios record start
 lim ios record start --quality 8
+lim ios record stop
 lim ios record stop -o recording.mp4
+lim ios record stop --presigned-url https://example.com/upload
 ```
 
 #### Xcode Integration
@@ -281,7 +283,9 @@ lim android open-url https://example.com
 
 # Video recording
 lim android record start
+lim android record stop
 lim android record stop -o recording.mp4
+lim android record stop --presigned-url https://example.com/upload
 ```
 
 #### ADB Tunnel

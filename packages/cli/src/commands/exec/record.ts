@@ -8,8 +8,12 @@ export default class ExecRecord extends BaseCommand {
   static aliases = ['ios record', 'android record'];
   static examples = [
     '<%= config.bin %> ios record <instance-ID> start',
+    '<%= config.bin %> ios record <instance-ID> stop',
     '<%= config.bin %> ios record <instance-ID> stop -o recording.mp4',
+    '<%= config.bin %> ios record <instance-ID> stop --presigned-url https://example.com/upload',
     '<%= config.bin %> ios record <instance-ID> start --quality 8',
+    '<%= config.bin %> android record <instance-ID> stop',
+    '<%= config.bin %> android record <instance-ID> stop --presigned-url https://example.com/upload',
   ];
 
   static args = {
@@ -21,6 +25,7 @@ export default class ExecRecord extends BaseCommand {
     ...BaseCommand.baseFlags,
     quality: Flags.integer({ description: 'Recording quality (5-10)', default: 5 }),
     output: Flags.string({ char: 'o', description: 'Save recording to file (for stop action)' }),
+    'presigned-url': Flags.string({ description: 'Upload the recording directly using this presigned URL' }),
   };
 
   async run(): Promise<void> {
@@ -42,24 +47,25 @@ export default class ExecRecord extends BaseCommand {
         }
         this.log('Recording started');
       } else {
-        const saveTo: { localPath?: string } = {};
-        if (flags.output) saveTo.localPath = path.resolve(flags.output);
+        const outputPath = flags.output ? path.resolve(flags.output) : this.defaultRecordingPath();
+        const saveTo = {
+          localPath: outputPath,
+          presignedUrl: flags['presigned-url'],
+        };
 
         if (hasActiveSession(id)) {
-          const url = await sendSessionCommand(id, 'stop-recording', [saveTo]);
-          if (flags.output) {
-            this.log(`Recording saved to ${flags.output}`);
-          } else {
-            this.log(`Recording download URL: ${url}`);
+          await sendSessionCommand(id, 'stop-recording', [saveTo]);
+          this.log(`Recording saved to ${outputPath}`);
+          if (flags['presigned-url']) {
+            this.log('Recording uploaded using the provided presigned URL');
           }
         } else {
           const { client, disconnect } = await getInstanceClient(this.client, id);
           try {
-            const url = await (client as any).stopRecording(saveTo);
-            if (flags.output) {
-              this.log(`Recording saved to ${flags.output}`);
-            } else {
-              this.log(`Recording download URL: ${url}`);
+            await (client as any).stopRecording(saveTo);
+            this.log(`Recording saved to ${outputPath}`);
+            if (flags['presigned-url']) {
+              this.log('Recording uploaded using the provided presigned URL');
             }
           } finally {
             disconnect();
@@ -67,5 +73,10 @@ export default class ExecRecord extends BaseCommand {
         }
       }
     });
+  }
+
+  private defaultRecordingPath(): string {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    return path.join(process.cwd(), `video_${timestamp}.mp4`);
   }
 }
