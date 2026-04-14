@@ -5,7 +5,10 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 export default class ExecScroll extends BaseCommand {
   static summary = 'Scroll on a running instance';
   static aliases = ['ios scroll', 'android scroll'];
-  static examples = ['<%= config.bin %> ios scroll <instance-ID> down --amount 500'];
+  static examples = [
+    '<%= config.bin %> ios scroll down --amount 500',
+    '<%= config.bin %> ios scroll down --amount 500 --id <instance-ID>',
+  ];
 
   static args = {
     direction: Args.string({
@@ -13,11 +16,11 @@ export default class ExecScroll extends BaseCommand {
       required: true,
       options: ['up', 'down', 'left', 'right'],
     }),
-    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
     amount: Flags.integer({
       description: 'Scroll amount (pixels for iOS, abstract units for Android)',
       default: 300,
@@ -29,7 +32,7 @@ export default class ExecScroll extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(args.id);
+      const id = this.resolveId(flags.id);
       if (hasActiveSession(id)) {
         await sendSessionCommand(id, 'scroll', [args.direction, flags.amount]);
       } else {

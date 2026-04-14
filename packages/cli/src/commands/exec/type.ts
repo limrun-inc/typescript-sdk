@@ -5,15 +5,18 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 export default class ExecType extends BaseCommand {
   static summary = 'Type text into the focused input field';
   static aliases = ['ios type', 'android type'];
-  static examples = ['<%= config.bin %> ios type <instance-ID> "Hello World"'];
+  static examples = [
+    '<%= config.bin %> ios type "Hello World"',
+    '<%= config.bin %> ios type "Hello World" --id <instance-ID>',
+  ];
 
   static args = {
     text: Args.string({ description: 'Text to type', required: true }),
-    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
     'press-enter': Flags.boolean({ description: 'Press Enter after typing (iOS only)', default: false }),
   };
 
@@ -22,7 +25,7 @@ export default class ExecType extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(args.id);
+      const id = this.resolveId(flags.id);
       if (hasActiveSession(id)) {
         await sendSessionCommand(id, 'type', [args.text, flags['press-enter']]);
       } else {

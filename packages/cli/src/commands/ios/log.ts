@@ -6,18 +6,18 @@ export default class IosLog extends BaseCommand {
   static summary = 'Stream or tail app logs from a running iOS instance';
   static aliases = ['exec log'];
   static examples = [
-    '<%= config.bin %> ios log <instance-ID> com.example.app',
-    '<%= config.bin %> ios log <instance-ID> com.example.app --lines 50',
-    '<%= config.bin %> ios log <instance-ID> com.example.app -f',
+    '<%= config.bin %> ios log com.example.app',
+    '<%= config.bin %> ios log com.example.app --id <instance-ID> --lines 50',
+    '<%= config.bin %> ios log com.example.app --id <instance-ID> -f',
   ];
 
   static args = {
     bundleId: Args.string({ description: 'App bundle identifier', required: true }),
-    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
     follow: Flags.boolean({ char: 'f', description: 'Stream logs continuously', default: false }),
     lines: Flags.integer({ description: 'Number of lines to tail (non-streaming)', default: 100 }),
   };
@@ -27,7 +27,7 @@ export default class IosLog extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(args.id);
+      const id = this.resolveId(flags.id);
       // Log tail (non-streaming) can use session
       if (!flags.follow) {
         if (hasActiveSession(id)) {

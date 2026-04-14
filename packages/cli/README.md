@@ -64,14 +64,14 @@ lim session start               # Starts session for ios_abc123
 You can always provide an ID explicitly to target a specific instance:
 
 ```bash
-lim ios screenshot ios_def456 -o test.png
+lim ios screenshot -o test.png --id ios_def456
 ```
 
 **Top-level shortcuts** are available for common actions — the platform is auto-detected from the instance ID prefix:
 
 ```bash
-lim screenshot ios_abc123   # Works for both iOS and Android
-lim tap 100 200 ios_abc123  # Auto-detects platform from ID prefix
+lim screenshot --id ios_abc123   # Works for both iOS and Android
+lim tap 100 200 --id ios_abc123  # Auto-detects platform from ID prefix
 lim delete ios_abc123       # Auto-detects resource type from ID prefix
 ```
 
@@ -91,7 +91,7 @@ lim delete ios_abc123       # Auto-detects resource type from ID prefix
 ```bash
 lim ios create          # Create a new iOS instance
 lim ios list            # List all ready iOS instances
-lim ios list <ID>       # Get details of a specific instance
+lim ios get <ID>        # Get details of a specific instance
 lim ios delete <ID>     # Delete an instance
 ```
 
@@ -139,11 +139,12 @@ lim ios list --state creating                  # Filter by state
 lim ios list --region us-west                  # Filter by region
 lim ios list --label-selector env=prod         # Filter by labels
 lim ios list --json                            # JSON output
+lim ios get <ID>                               # Single instance details
 ```
 
 #### Device Interaction
 
-All interaction commands accept an optional `[ID]` as the last argument. When omitted, the last created iOS instance is used.
+All interaction commands accept an optional `--id`. When omitted, the last created iOS instance is used.
 
 ```bash
 # Screenshots
@@ -224,7 +225,7 @@ lim ios build --scheme MyApp --workspace MyApp.xcworkspace
 ```bash
 lim android create       # Create a new Android instance
 lim android list         # List all ready Android instances
-lim android list <ID>    # Get details of a specific instance
+lim android get <ID>     # Get details of a specific instance
 lim android delete <ID>  # Delete an instance
 ```
 
@@ -254,7 +255,7 @@ lim android create --region us-west --display-name "CI Test" --label env=ci --rm
 
 #### Device Interaction
 
-All interaction commands accept an optional `[ID]` as the last argument. When omitted, the last created Android instance is used.
+All interaction commands accept an optional `--id`. When omitted, the last created Android instance is used.
 
 ```bash
 # Screenshots
@@ -294,7 +295,7 @@ Connect to a running Android instance for direct `adb` access:
 
 ```bash
 lim android connect
-lim android connect android_abc123 --adb-path /usr/local/bin/adb
+lim android connect --id android_abc123 --adb-path /usr/local/bin/adb
 ```
 
 The tunnel stays open until you press Ctrl+C. While connected, you can use `adb` commands in another terminal.
@@ -308,7 +309,7 @@ Standalone Xcode build sandboxes for remote compilation.
 ```bash
 lim xcode create          # Create a new Xcode sandbox
 lim xcode list            # List all ready Xcode instances
-lim xcode list <ID>       # Get details of a specific instance
+lim xcode get <ID>        # Get details of a specific instance
 lim xcode delete <ID>     # Delete an instance
 ```
 
@@ -389,18 +390,18 @@ This makes sessions essential for interactive workflows, AI agent loops, and any
 lim session start
 
 # Or specify an instance explicitly
-lim session start ios_abc123
+lim session start --id ios_abc123
 
 # Multiple sessions can run simultaneously
-lim session start ios_abc123
-lim session start android_def456
+lim session start --id ios_abc123
+lim session start --id android_def456
 
 # Check all active sessions
 lim session status
 lim session status --json
 
 # Stop a specific session
-lim session stop ios_abc123
+lim session stop --id ios_abc123
 
 # Stop all sessions at once
 lim session stop --all
@@ -440,18 +441,18 @@ lim ios delete ios_abc123
 # Create two instances and start sessions for both
 lim ios create --model iphone
 lim ios create --model ipad
-lim session start ios_phone_123
-lim session start ios_tablet_456
+lim session start --id ios_phone_123
+lim session start --id ios_tablet_456
 
 # Agent controls both devices in parallel — ~50ms per command
-lim ios launch-app com.example.myapp ios_phone_123
-lim ios launch-app com.example.myapp ios_tablet_456
+lim ios launch-app com.example.myapp --id ios_phone_123
+lim ios launch-app com.example.myapp --id ios_tablet_456
 
-lim ios screenshot ios_phone_123 -o phone.png
-lim ios screenshot ios_tablet_456 -o tablet.png
+lim ios screenshot -o phone.png --id ios_phone_123
+lim ios screenshot -o tablet.png --id ios_tablet_456
 
-lim ios tap 200 400 ios_phone_123
-lim ios element-tree ios_tablet_456 --json > tablet-tree.json
+lim ios tap 200 400 --id ios_phone_123
+lim ios element-tree --id ios_tablet_456 --json > tablet-tree.json
 
 # Clean up all sessions
 lim session stop --all
@@ -468,14 +469,14 @@ IDS=()
 
 for model in "${DEVICES[@]}"; do
   ID=$(lim ios create --model $model --json | jq -r '.metadata.id')
-  lim session start $ID
+  lim session start --id $ID
   IDS+=($ID)
 done
 
 # Run tests against all devices
 for ID in "${IDS[@]}"; do
-  lim ios launch-app com.example.myapp $ID
-  lim ios screenshot $ID -o "test_${ID}.png"
+  lim ios launch-app com.example.myapp --id $ID
+  lim ios screenshot -o "test_${ID}.png" --id $ID
 done
 
 # Tear down
@@ -590,7 +591,7 @@ All commands support `--json` for machine-readable output, making the CLI suitab
 
 ```bash
 # Get instance details as JSON
-lim ios list ios_abc123 --json
+lim ios get ios_abc123 --json
 
 # Parse with jq
 lim android list --json | jq '.[].metadata.id'

@@ -6,17 +6,17 @@ export default class ExecPressKey extends BaseCommand {
   static summary = 'Press a key on a running instance';
   static aliases = ['ios press-key', 'android press-key'];
   static examples = [
-    '<%= config.bin %> ios press-key <instance-ID> enter',
-    '<%= config.bin %> ios press-key <instance-ID> a --modifier shift',
+    '<%= config.bin %> ios press-key enter',
+    '<%= config.bin %> ios press-key a --modifier shift --id <instance-ID>',
   ];
 
   static args = {
     key: Args.string({ description: 'Key to press (e.g. enter, backspace, a, f1)', required: true }),
-    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
     modifier: Flags.string({ description: 'Modifier key (e.g. shift, command, alt)', multiple: true }),
   };
 
@@ -25,7 +25,7 @@ export default class ExecPressKey extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(args.id);
+      const id = this.resolveId(flags.id);
       if (hasActiveSession(id)) {
         await sendSessionCommand(id, 'press-key', [args.key, flags.modifier]);
       } else {

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { Args, Flags } from '@oclif/core';
+import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 

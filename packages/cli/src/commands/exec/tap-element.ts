@@ -1,4 +1,4 @@
-import { Args, Flags } from '@oclif/core';
+import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
@@ -6,16 +6,15 @@ export default class ExecTapElement extends BaseCommand {
   static summary = 'Tap an element by accessibility selector';
   static aliases = ['ios tap-element', 'android tap-element'];
   static examples = [
-    '<%= config.bin %> ios tap-element <instance-ID> --label "Submit"',
-    '<%= config.bin %> android tap-element <instance-ID> --accessibility-id btn_ok',
+    '<%= config.bin %> ios tap-element --label "Submit"',
+    '<%= config.bin %> android tap-element --accessibility-id btn_ok --id <instance-ID>',
   ];
 
-  static args = {
-    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
-  };
+  static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
     label: Flags.string({ description: 'Element label text' }),
     'accessibility-id': Flags.string({ description: 'Accessibility identifier' }),
     'resource-id': Flags.string({ description: 'Android resource ID' }),
@@ -23,11 +22,11 @@ export default class ExecTapElement extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ExecTapElement);
+    const { flags } = await this.parse(ExecTapElement);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(args.id);
+      const id = this.resolveId(flags.id);
       const type = id.split('_')[0];
 
       if (hasActiveSession(id)) {

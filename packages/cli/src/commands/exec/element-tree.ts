@@ -1,24 +1,28 @@
-import { Args } from '@oclif/core';
+import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
 export default class ExecElementTree extends BaseCommand {
   static summary = 'Get the UI element tree from a running instance';
   static aliases = ['ios element-tree', 'android element-tree'];
-  static examples = ['<%= config.bin %> ios element-tree <instance-ID>'];
+  static examples = [
+    '<%= config.bin %> ios element-tree',
+    '<%= config.bin %> ios element-tree --id <instance-ID>',
+  ];
 
-  static args = {
-    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
+  static args = {};
+
+  static flags = {
+    ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
   };
 
-  static flags = { ...BaseCommand.baseFlags };
-
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ExecElementTree);
+    const { flags } = await this.parse(ExecElementTree);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(args.id);
+      const id = this.resolveId(flags.id);
       if (hasActiveSession(id)) {
         const tree = await sendSessionCommand(id, 'element-tree');
         if (flags.json) {

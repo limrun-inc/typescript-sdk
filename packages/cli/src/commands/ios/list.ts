@@ -1,16 +1,14 @@
-import { Args, Flags } from '@oclif/core';
+import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 
 export default class IosList extends BaseCommand {
-  static summary = 'List iOS instances or get a specific one';
-  static aliases = ['get ios', 'get i'];
-  static examples = ['<%= config.bin %> ios list', '<%= config.bin %> ios list --id <ID>'];
+  static summary = 'List iOS instances';
+  static examples = ['<%= config.bin %> ios list'];
 
   static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID to get' }),
     state: Flags.string({ description: 'Filter by state (unknown, creating, ready, terminated)' }),
     region: Flags.string({ description: 'Filter by region' }),
     'label-selector': Flags.string({ description: 'Filter by labels (e.g. env=prod,region=us-west)' }),
@@ -22,26 +20,6 @@ export default class IosList extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (flags.id) {
-        const instance = await this.client.iosInstances.get(flags.id);
-        if (flags.json) {
-          this.outputJson(instance);
-        } else {
-          this.outputTable(
-            ['ID', 'Name', 'Region', 'State'],
-            [
-              [
-                instance.metadata.id,
-                instance.metadata.displayName || '',
-                instance.spec.region,
-                instance.status.state,
-              ],
-            ],
-          );
-        }
-        return;
-      }
-
       const params: Record<string, unknown> = {};
       if (flags.state) {
         params.state = flags.state;

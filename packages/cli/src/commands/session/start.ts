@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { Args } from '@oclif/core';
+import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { detectInstanceType } from '../../lib/instance-client-factory';
 import { isDaemonRunning, saveState, socketPath, type SessionState } from '../../lib/daemon';

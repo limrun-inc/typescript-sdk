@@ -1,4 +1,4 @@
-import { Args, Flags } from '@oclif/core';
+import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 
 export default class AndroidConnect extends BaseCommand {
