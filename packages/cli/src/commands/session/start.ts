@@ -14,21 +14,23 @@ export default class SessionStart extends BaseCommand {
     'Multiple sessions can run simultaneously for different instances.';
 
   static examples = [
-    '<%= config.bin %> session start ios_abc123',
-    '<%= config.bin %> session start android_abc123',
+    '<%= config.bin %> session start',
+    '<%= config.bin %> session start --id ios_abc123',
+    '<%= config.bin %> session start --id android_abc123',
   ];
 
-  static args = {
-    id: Args.string({ description: 'Instance ID to connect to (defaults to last created)', required: false }),
+  static args = {};
+
+  static flags = {
+    ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID to connect to (defaults to last created)' }),
   };
 
-  static flags = { ...BaseCommand.baseFlags };
-
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(SessionStart);
+    const { flags } = await this.parse(SessionStart);
     this.setParsedFlags(flags);
 
-    const id = this.resolveId(args.id);
+    const id = this.resolveId(flags.id);
 
     if (isDaemonRunning(id)) {
       this.log(`Session already running for ${id}.`);

@@ -4,14 +4,13 @@ import { BaseCommand } from '../../base-command';
 export default class AndroidConnect extends BaseCommand {
   static summary = 'Connect to an existing Android instance via ADB tunnel';
   static aliases = ['connect android'];
-  static examples = ['<%= config.bin %> android connect <ID>'];
+  static examples = ['<%= config.bin %> android connect', '<%= config.bin %> android connect --id <ID>'];
 
-  static args = {
-    id: Args.string({ description: 'Android instance ID (defaults to last created)', required: false }),
-  };
+  static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Android instance ID (defaults to last created)' }),
     'adb-path': Flags.string({ description: 'Path to adb binary', default: 'adb' }),
   };
 
@@ -20,7 +19,7 @@ export default class AndroidConnect extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(args.id);
+      const id = this.resolveId(flags.id);
       const instance = await this.client.androidInstances.get(id);
       if (!instance.status.apiUrl) {
         this.error(`Instance ${id} does not have an apiUrl. Is it ready?`);

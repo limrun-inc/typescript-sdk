@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs';
-import { Args } from '@oclif/core';
+import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
@@ -11,23 +11,25 @@ export default class ExecInstallApp extends BaseCommand {
   static aliases = ['ios install-app', 'android install-app'];
 
   static examples = [
-    '<%= config.bin %> ios install-app <instance-ID> ./MyApp.ipa',
-    '<%= config.bin %> android install-app <instance-ID> ./app.apk',
+    '<%= config.bin %> ios install-app ./MyApp.ipa',
+    '<%= config.bin %> android install-app ./app.apk --id <instance-ID>',
   ];
 
   static args = {
     path_or_url: Args.string({ description: 'Local file path or URL', required: true }),
-    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
-  static flags = { ...BaseCommand.baseFlags };
+  static flags = {
+    ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
+  };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ExecInstallApp);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(args.id);
+      const id = this.resolveId(flags.id);
       let downloadUrl: string;
 
       if (args.path_or_url.startsWith('http://') || args.path_or_url.startsWith('https://')) {

@@ -4,14 +4,13 @@ import { BaseCommand } from '../../base-command';
 export default class IosList extends BaseCommand {
   static summary = 'List iOS instances or get a specific one';
   static aliases = ['get ios', 'get i'];
-  static examples = ['<%= config.bin %> ios list', '<%= config.bin %> ios list <ID>'];
+  static examples = ['<%= config.bin %> ios list', '<%= config.bin %> ios list --id <ID>'];
 
-  static args = {
-    id: Args.string({ description: 'Instance ID to get', required: false }),
-  };
+  static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
+    id: Flags.string({ description: 'Instance ID to get' }),
     state: Flags.string({ description: 'Filter by state (unknown, creating, ready, terminated)' }),
     region: Flags.string({ description: 'Filter by region' }),
     'label-selector': Flags.string({ description: 'Filter by labels (e.g. env=prod,region=us-west)' }),
@@ -19,12 +18,12 @@ export default class IosList extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(IosList);
+    const { flags } = await this.parse(IosList);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (args.id) {
-        const instance = await this.client.iosInstances.get(args.id);
+      if (flags.id) {
+        const instance = await this.client.iosInstances.get(flags.id);
         if (flags.json) {
           this.outputJson(instance);
         } else {
