@@ -323,6 +323,8 @@ export type InstanceClient = {
    * Note that the download URL is only valid while the instance is running.
    */
   stopRecording: (saveTo: { presignedUrl?: string; localPath?: string }) => Promise<string>;
+  /** Send an application-level keepAlive message on the control websocket. */
+  keepAlive: () => void;
 
   /**
    * Sync an iOS app bundle folder to the server and (optionally) install/launch it.
@@ -966,6 +968,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   };
 
   let pingInterval: NodeJS.Timeout | undefined;
+  const keepAliveSessionId =
+    Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
   return new Promise<InstanceClient>((resolveConnection, rejectConnection) => {
     let hasResolved = false;
@@ -1252,6 +1256,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             scroll,
             startRecording,
             stopRecording,
+            keepAlive,
             syncApp,
             disconnect,
             getConnectionState,
@@ -1413,6 +1418,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
       }
       return downloadUrl;
+    };
+
+    const keepAlive = (): void => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      ws.send(
+        JSON.stringify({
+          type: 'keepAlive',
+          sessionId: keepAliveSessionId,
+        }),
+      );
     };
 
     const syncApp = async (
