@@ -19,7 +19,7 @@ export default class SessionStart extends BaseCommand {
   ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID to connect to', required: true }),
+    id: Args.string({ description: 'Instance ID to connect to (defaults to last created)', required: false }),
   };
 
   static flags = { ...BaseCommand.baseFlags };
@@ -28,12 +28,14 @@ export default class SessionStart extends BaseCommand {
     const { args, flags } = await this.parse(SessionStart);
     this.setParsedFlags(flags);
 
-    if (isDaemonRunning(args.id)) {
-      this.log(`Session already running for ${args.id}.`);
+    const id = this.resolveId(args.id);
+
+    if (isDaemonRunning(id)) {
+      this.log(`Session already running for ${id}.`);
       return;
     }
 
-    const type = detectInstanceType(args.id);
+    const type = detectInstanceType(id);
     if (type === 'xcode') {
       this.error(
         'Sessions are for device interaction (exec commands). Xcode instances use sync/build instead.',
@@ -46,40 +48,40 @@ export default class SessionStart extends BaseCommand {
       let token: string;
 
       if (type === 'android') {
-        const instance = await this.client.androidInstances.get(args.id);
+        const instance = await this.client.androidInstances.get(id);
         apiUrl = instance.status.apiUrl;
         adbUrl = instance.status.adbWebSocketUrl;
         token = instance.status.token;
       } else {
-        const instance = await this.client.iosInstances.get(args.id);
+        const instance = await this.client.iosInstances.get(id);
         apiUrl = instance.status.apiUrl;
         token = instance.status.token;
       }
 
       if (!apiUrl) {
-        this.error(`Instance ${args.id} does not have an apiUrl. Is it ready?`);
+        this.error(`Instance ${id} does not have an apiUrl. Is it ready?`);
       }
 
       const state: SessionState = {
-        instanceId: args.id,
+        instanceId: id,
         instanceType: type,
         apiUrl,
         adbUrl,
         token,
       };
-      saveState(args.id, state);
+      saveState(id, state);
 
       // Spawn daemon with the instance ID as env var
       const daemonScript = path.join(__dirname, '..', '..', 'lib', 'daemon.js');
       const child = spawn(process.execPath, [daemonScript], {
         detached: true,
         stdio: ['ignore', 'ignore', 'pipe'],
-        env: { ...process.env, LIM_DAEMON_INSTANCE_ID: args.id },
+        env: { ...process.env, LIM_DAEMON_INSTANCE_ID: id },
       });
       child.unref();
 
       // Wait for daemon to be ready
-      const sock = socketPath(args.id);
+      const sock = socketPath(id);
       const startTime = Date.now();
       const timeout = 15000;
 
@@ -103,7 +105,7 @@ export default class SessionStart extends BaseCommand {
         setTimeout(check, 200);
       });
 
-      this.log(`Session started for ${args.id} (${type})`);
+      this.log(`Session started for ${id} (${type})`);
     });
   }
 }

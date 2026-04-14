@@ -17,7 +17,7 @@ export default class Build extends BaseCommand {
   ];
 
   static args = {
-    id: Args.string({ description: 'Xcode or iOS instance ID', required: true }),
+    id: Args.string({ description: 'Xcode or iOS instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
@@ -33,7 +33,8 @@ export default class Build extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const xcodeClient = await this.resolveXcodeClientFromIosInstance(args.id);
+      const id = this.resolveId(args.id);
+      const xcodeClient = await this.resolveXcodeClientFromIosInstance(id);
 
       const settings: Record<string, string> = {};
       if (flags.scheme) settings.scheme = flags.scheme;

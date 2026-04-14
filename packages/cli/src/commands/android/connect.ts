@@ -7,7 +7,7 @@ export default class AndroidConnect extends BaseCommand {
   static examples = ['<%= config.bin %> android connect <ID>'];
 
   static args = {
-    id: Args.string({ description: 'Android instance ID', required: true }),
+    id: Args.string({ description: 'Android instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
@@ -20,9 +20,10 @@ export default class AndroidConnect extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const instance = await this.client.androidInstances.get(args.id);
+      const id = this.resolveId(args.id);
+      const instance = await this.client.androidInstances.get(id);
       if (!instance.status.apiUrl) {
-        this.error(`Instance ${args.id} does not have an apiUrl. Is it ready?`);
+        this.error(`Instance ${id} does not have an apiUrl. Is it ready?`);
       }
 
       const { createInstanceClient } = await import('@limrun/api');

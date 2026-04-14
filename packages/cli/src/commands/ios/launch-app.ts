@@ -11,8 +11,8 @@ export default class IosLaunchApp extends BaseCommand {
   ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     bundleId: Args.string({ description: 'App bundle identifier', required: true }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
@@ -29,10 +29,11 @@ export default class IosLaunchApp extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'launch-app', [args.bundleId, flags.mode]);
+      const id = this.resolveId(args.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'launch-app', [args.bundleId, flags.mode]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         if (type !== 'ios') {
           disconnect();
           this.error('launch-app is only supported on iOS instances');

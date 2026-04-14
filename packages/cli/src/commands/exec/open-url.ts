@@ -8,8 +8,8 @@ export default class ExecOpenUrl extends BaseCommand {
   static examples = ['<%= config.bin %> ios open-url <instance-ID> https://example.com'];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     url: Args.string({ description: 'URL to open', required: true }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = { ...BaseCommand.baseFlags };
@@ -19,10 +19,11 @@ export default class ExecOpenUrl extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'open-url', [args.url]);
+      const id = this.resolveId(args.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'open-url', [args.url]);
       } else {
-        const { client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { client, disconnect } = await getInstanceClient(this.client, id);
         try {
           await (client as any).openUrl(args.url);
         } finally {

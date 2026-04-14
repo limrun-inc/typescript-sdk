@@ -11,14 +11,14 @@ export default class Sync extends BaseCommand {
     'Works with both standalone Xcode instances and iOS instances that have --xcode enabled.';
 
   static examples = [
-    '<%= config.bin %> sync <xcode-instance-ID> ./MyProject',
-    '<%= config.bin %> sync <ios-instance-ID> ./MyProject',
-    '<%= config.bin %> sync <xcode-instance-ID> ./MyProject --no-watch',
+    '<%= config.bin %> sync ./MyProject',
+    '<%= config.bin %> sync ./MyProject <xcode-instance-ID>',
+    '<%= config.bin %> sync ./MyProject --no-watch',
   ];
 
   static args = {
-    id: Args.string({ description: 'Xcode or iOS instance ID', required: true }),
     path: Args.string({ description: 'Local project path to sync', required: true }),
+    id: Args.string({ description: 'Xcode or iOS instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
@@ -32,9 +32,10 @@ export default class Sync extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const xcodeClient = await this.resolveXcodeClient(args.id);
+      const id = this.resolveId(args.id);
+      const xcodeClient = await this.resolveXcodeClient(id);
 
-      this.log(`Syncing ${args.path} to instance ${args.id}...`);
+      this.log(`Syncing ${args.path} to instance ${id}...`);
 
       const result = await xcodeClient.sync(args.path, {
         watch: flags.watch,

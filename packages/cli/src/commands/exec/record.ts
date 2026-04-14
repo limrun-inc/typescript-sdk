@@ -13,8 +13,8 @@ export default class ExecRecord extends BaseCommand {
   ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     action: Args.string({ description: 'start or stop', required: true, options: ['start', 'stop'] }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
@@ -28,11 +28,12 @@ export default class ExecRecord extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
+      const id = this.resolveId(args.id);
       if (args.action === 'start') {
-        if (hasActiveSession(args.id)) {
-          await sendSessionCommand(args.id, 'start-recording', [flags.quality]);
+        if (hasActiveSession(id)) {
+          await sendSessionCommand(id, 'start-recording', [flags.quality]);
         } else {
-          const { client, disconnect } = await getInstanceClient(this.client, args.id);
+          const { client, disconnect } = await getInstanceClient(this.client, id);
           try {
             await (client as any).startRecording({ quality: flags.quality });
           } finally {
@@ -44,15 +45,15 @@ export default class ExecRecord extends BaseCommand {
         const saveTo: { localPath?: string } = {};
         if (flags.output) saveTo.localPath = path.resolve(flags.output);
 
-        if (hasActiveSession(args.id)) {
-          const url = await sendSessionCommand(args.id, 'stop-recording', [saveTo]);
+        if (hasActiveSession(id)) {
+          const url = await sendSessionCommand(id, 'stop-recording', [saveTo]);
           if (flags.output) {
             this.log(`Recording saved to ${flags.output}`);
           } else {
             this.log(`Recording download URL: ${url}`);
           }
         } else {
-          const { client, disconnect } = await getInstanceClient(this.client, args.id);
+          const { client, disconnect } = await getInstanceClient(this.client, id);
           try {
             const url = await (client as any).stopRecording(saveTo);
             if (flags.output) {

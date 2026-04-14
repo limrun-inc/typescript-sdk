@@ -8,8 +8,8 @@ export default class ExecType extends BaseCommand {
   static examples = ['<%= config.bin %> ios type <instance-ID> "Hello World"'];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     text: Args.string({ description: 'Text to type', required: true }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
@@ -22,10 +22,11 @@ export default class ExecType extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'type', [args.text, flags['press-enter']]);
+      const id = this.resolveId(args.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'type', [args.text, flags['press-enter']]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         try {
           if (type === 'ios') {
             await (client as any).typeText(args.text, flags['press-enter']);

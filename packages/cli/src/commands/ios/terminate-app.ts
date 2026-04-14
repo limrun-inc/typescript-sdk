@@ -8,8 +8,8 @@ export default class IosTerminateApp extends BaseCommand {
   static examples = ['<%= config.bin %> ios terminate-app <instance-ID> com.example.app'];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     bundleId: Args.string({ description: 'App bundle identifier', required: true }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = { ...BaseCommand.baseFlags };
@@ -19,10 +19,11 @@ export default class IosTerminateApp extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'terminate-app', [args.bundleId]);
+      const id = this.resolveId(args.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'terminate-app', [args.bundleId]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         if (type !== 'ios') {
           disconnect();
           this.error('terminate-app is only supported on iOS instances');

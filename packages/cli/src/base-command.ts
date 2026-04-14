@@ -1,6 +1,6 @@
 import { Command, Flags } from '@oclif/core';
 import Limrun, { AuthenticationError } from '@limrun/api';
-import { readConfig } from './lib/config';
+import { readConfig, resolveInstanceId } from './lib/config';
 import { login } from './lib/auth';
 import { renderTable } from './lib/formatting';
 
@@ -81,5 +81,17 @@ export abstract class BaseCommand extends Command {
 
   protected outputJson(data: unknown): void {
     this.log(JSON.stringify(data, null, 2));
+  }
+
+  /**
+   * Resolve an instance ID from args, falling back to the last-used instance.
+   * Infers expected type from the command alias (e.g. "ios screenshot" -> "ios").
+   */
+  protected resolveId(providedId: string | undefined): string {
+    const commandId = this.id ?? '';
+    const parts = commandId.split(' ');
+    const noun = parts[0];
+    const expectedType = ['ios', 'android', 'xcode'].includes(noun) ? noun : undefined;
+    return resolveInstanceId(providedId, expectedType);
   }
 }

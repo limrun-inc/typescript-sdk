@@ -8,7 +8,7 @@ export default class ExecElementTree extends BaseCommand {
   static examples = ['<%= config.bin %> ios element-tree <instance-ID>'];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = { ...BaseCommand.baseFlags };
@@ -18,15 +18,16 @@ export default class ExecElementTree extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        const tree = await sendSessionCommand(args.id, 'element-tree');
+      const id = this.resolveId(args.id);
+      if (hasActiveSession(id)) {
+        const tree = await sendSessionCommand(id, 'element-tree');
         if (flags.json) {
           this.outputJson(tree);
         } else {
           this.log(typeof tree === 'string' ? tree : JSON.stringify(tree, null, 2));
         }
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         try {
           if (type === 'ios') {
             const tree = await (client as any).elementTree();

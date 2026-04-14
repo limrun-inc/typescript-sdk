@@ -1,6 +1,7 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
+import { saveLastInstanceId } from '../../lib/config';
 import { type XcodeInstanceCreateParams } from '@limrun/api/resources/xcode-instances';
 
 export default class XcodeCreate extends BaseCommand {
@@ -51,6 +52,7 @@ export default class XcodeCreate extends BaseCommand {
 
       const start = Date.now();
       const instance = await this.client.xcodeInstances.create(params);
+      saveLastInstanceId(instance.metadata.id);
       this.log(`Created a new Xcode instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.log(`Instance ID: ${instance.metadata.id}`);
       this.log(`Region: ${instance.spec.region}`);

@@ -8,12 +8,12 @@ export default class ExecScroll extends BaseCommand {
   static examples = ['<%= config.bin %> ios scroll <instance-ID> down --amount 500'];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     direction: Args.string({
       description: 'Scroll direction',
       required: true,
       options: ['up', 'down', 'left', 'right'],
     }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
@@ -29,10 +29,11 @@ export default class ExecScroll extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'scroll', [args.direction, flags.amount]);
+      const id = this.resolveId(args.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'scroll', [args.direction, flags.amount]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         try {
           if (type === 'ios') {
             await (client as any).scroll(args.direction, flags.amount);

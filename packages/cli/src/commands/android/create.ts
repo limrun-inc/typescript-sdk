@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
+import { saveLastInstanceId } from '../../lib/config';
 import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-instances';
 
 export default class AndroidCreate extends BaseCommand {
@@ -89,6 +90,7 @@ export default class AndroidCreate extends BaseCommand {
 
       const start = Date.now();
       const instance = await this.client.androidInstances.create(params);
+      saveLastInstanceId(instance.metadata.id);
       this.log(`Created a new instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
 
       if (flags.rm) {

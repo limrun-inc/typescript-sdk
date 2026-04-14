@@ -16,8 +16,8 @@ export default class ExecInstallApp extends BaseCommand {
   ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     path_or_url: Args.string({ description: 'Local file path or URL', required: true }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = { ...BaseCommand.baseFlags };
@@ -27,6 +27,7 @@ export default class ExecInstallApp extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
+      const id = this.resolveId(args.id);
       let downloadUrl: string;
 
       if (args.path_or_url.startsWith('http://') || args.path_or_url.startsWith('https://')) {
@@ -42,15 +43,15 @@ export default class ExecInstallApp extends BaseCommand {
         downloadUrl = asset.signedDownloadUrl;
       }
 
-      if (hasActiveSession(args.id)) {
-        const result = await sendSessionCommand(args.id, 'install-app', [downloadUrl]);
+      if (hasActiveSession(id)) {
+        const result = await sendSessionCommand(id, 'install-app', [downloadUrl]);
         if (flags.json) {
           this.outputJson(result);
         } else {
           this.log('App installed');
         }
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         try {
           if (type === 'ios') {
             const result = await (client as any).installApp(downloadUrl);

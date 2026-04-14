@@ -11,7 +11,7 @@ export default class ExecTapElement extends BaseCommand {
   ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
@@ -27,9 +27,10 @@ export default class ExecTapElement extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const type = args.id.split('_')[0];
+      const id = this.resolveId(args.id);
+      const type = id.split('_')[0];
 
-      if (hasActiveSession(args.id)) {
+      if (hasActiveSession(id)) {
         const selector: Record<string, string> = {};
         if (type === 'ios') {
           if (flags.label) selector.label = flags.label;
@@ -40,11 +41,11 @@ export default class ExecTapElement extends BaseCommand {
           if (flags.text) selector.text = flags.text;
           if (flags['accessibility-id']) selector.resourceId = flags['accessibility-id'];
         }
-        const result = await sendSessionCommand(args.id, 'tap-element', [selector]);
+        const result = await sendSessionCommand(id, 'tap-element', [selector]);
         if (flags.json) this.outputJson(result);
         else this.log('Element tapped');
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         try {
           if (type === 'ios') {
             const selector: Record<string, string> = {};

@@ -8,9 +8,9 @@ export default class ExecTap extends BaseCommand {
   static examples = ['<%= config.bin %> ios tap <instance-ID> 100 200'];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     x: Args.integer({ description: 'X coordinate', required: true }),
     y: Args.integer({ description: 'Y coordinate', required: true }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = { ...BaseCommand.baseFlags };
@@ -20,10 +20,11 @@ export default class ExecTap extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'tap', [args.x, args.y]);
+      const id = this.resolveId(args.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'tap', [args.x, args.y]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         try {
           if (type === 'ios') {
             await (client as any).tap(args.x, args.y);

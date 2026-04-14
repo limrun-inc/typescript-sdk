@@ -2,7 +2,7 @@ import path from 'path';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
-import { saveInstanceCache } from '../../lib/config';
+import { saveInstanceCache, saveLastInstanceId } from '../../lib/config';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 
 export default class IosCreate extends BaseCommand {
@@ -87,6 +87,7 @@ export default class IosCreate extends BaseCommand {
 
       const start = Date.now();
       const instance = await this.client.iosInstances.create(params);
+      saveLastInstanceId(instance.metadata.id);
       this.log(`Created a new iOS instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.log(`Instance ID: ${instance.metadata.id}`);
       this.log(`Region: ${instance.spec.region}`);

@@ -12,8 +12,8 @@ export default class IosLog extends BaseCommand {
   ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     bundleId: Args.string({ description: 'App bundle identifier', required: true }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
@@ -27,13 +27,14 @@ export default class IosLog extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
+      const id = this.resolveId(args.id);
       // Log tail (non-streaming) can use session
       if (!flags.follow) {
-        if (hasActiveSession(args.id)) {
-          const output = await sendSessionCommand(args.id, 'app-log-tail', [args.bundleId, flags.lines]);
+        if (hasActiveSession(id)) {
+          const output = await sendSessionCommand(id, 'app-log-tail', [args.bundleId, flags.lines]);
           this.log(String(output));
         } else {
-          const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+          const { type, client, disconnect } = await getInstanceClient(this.client, id);
           if (type !== 'ios') {
             disconnect();
             this.error('log command is only supported on iOS instances');
@@ -49,7 +50,7 @@ export default class IosLog extends BaseCommand {
       }
 
       // Streaming requires direct connection (long-lived)
-      const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+      const { type, client, disconnect } = await getInstanceClient(this.client, id);
       if (type !== 'ios') {
         disconnect();
         this.error('log command is only supported on iOS instances');

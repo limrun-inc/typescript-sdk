@@ -11,8 +11,8 @@ export default class ExecPressKey extends BaseCommand {
   ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
     key: Args.string({ description: 'Key to press (e.g. enter, backspace, a, f1)', required: true }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
@@ -25,10 +25,11 @@ export default class ExecPressKey extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      if (hasActiveSession(args.id)) {
-        await sendSessionCommand(args.id, 'press-key', [args.key, flags.modifier]);
+      const id = this.resolveId(args.id);
+      if (hasActiveSession(id)) {
+        await sendSessionCommand(id, 'press-key', [args.key, flags.modifier]);
       } else {
-        const { client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { client, disconnect } = await getInstanceClient(this.client, id);
         try {
           await (client as any).pressKey(args.key, flags.modifier);
         } finally {

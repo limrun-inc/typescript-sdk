@@ -8,7 +8,7 @@ export default class IosListApps extends BaseCommand {
   static examples = ['<%= config.bin %> ios list-apps <instance-ID>'];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = { ...BaseCommand.baseFlags };
@@ -18,12 +18,13 @@ export default class IosListApps extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
+      const id = this.resolveId(args.id);
       let apps: any[];
 
-      if (hasActiveSession(args.id)) {
-        apps = (await sendSessionCommand(args.id, 'list-apps')) as any[];
+      if (hasActiveSession(id)) {
+        apps = (await sendSessionCommand(id, 'list-apps')) as any[];
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, args.id);
+        const { type, client, disconnect } = await getInstanceClient(this.client, id);
         if (type !== 'ios') {
           disconnect();
           this.error('list-apps is only supported on iOS instances');

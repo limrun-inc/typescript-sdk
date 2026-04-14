@@ -13,7 +13,7 @@ export default class ExecScreenshot extends BaseCommand {
   ];
 
   static args = {
-    id: Args.string({ description: 'Instance ID', required: true }),
+    id: Args.string({ description: 'Instance ID (defaults to last created)', required: false }),
   };
 
   static flags = {
@@ -26,14 +26,15 @@ export default class ExecScreenshot extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
+      const id = this.resolveId(args.id);
       let screenshot: any;
       let type: string;
 
-      if (hasActiveSession(args.id)) {
-        screenshot = await sendSessionCommand(args.id, 'screenshot');
-        type = args.id.split('_')[0];
+      if (hasActiveSession(id)) {
+        screenshot = await sendSessionCommand(id, 'screenshot');
+        type = id.split('_')[0];
       } else {
-        const resolved = await getInstanceClient(this.client, args.id);
+        const resolved = await getInstanceClient(this.client, id);
         type = resolved.type;
         try {
           screenshot = await resolved.client.screenshot();
