@@ -572,7 +572,7 @@ The sync automatically ignores build artifacts (`build/`, `DerivedData/`, `.buil
 The CLI reads configuration from multiple sources (in order of precedence):
 
 1. Command-line flags (`--api-key`)
-2. Environment variables (`LIM_API_KEY`, `LIM_API_ENDPOINT`, `LIM_CONSOLE_ENDPOINT`)
+2. Environment variables (`LIM_API_KEY`, `LIM_API_ENDPOINT`, `LIM_CONSOLE_ENDPOINT`), including values loaded from a local `.env` file
 3. Config file (`~/.lim/config.yaml`)
 
 **Config file keys:**
