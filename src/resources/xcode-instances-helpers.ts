@@ -43,6 +43,7 @@ export type XcodeProjectConfig = {
   workspace?: string;
   project?: string;
   scheme?: string;
+  sdk?: 'iphonesimulator' | 'iphoneos';
 };
 
 export type XcodeBuildOptions = {
