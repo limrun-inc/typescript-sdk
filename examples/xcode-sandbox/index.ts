@@ -44,7 +44,7 @@ const xcodeInstance = await lim.xcodeInstances.create({
 const xcode = await lim.xcodeInstances.createClient({ instance: xcodeInstance });
 
 // Optionally attach a simulator
-let iosInstance;
+let iosInstance: Limrun.IosInstance | undefined;
 if (withSimulator) {
   console.log('Creating iOS simulator and attaching...');
   iosInstance = await lim.iosInstances.create({
