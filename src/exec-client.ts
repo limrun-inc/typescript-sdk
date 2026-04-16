@@ -20,6 +20,9 @@ export type ExecRequest = {
     scheme?: string;
   };
   signedUploadUrl?: string;
+  additionalMetadata?: {
+    signedDownloadUrl?: string;
+  };
 };
 
 export type ExecOptions = {
@@ -32,6 +35,7 @@ export type ExecResult = {
   exitCode: number;
   execId: string;
   status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  signedDownloadUrl?: string;
 };
 
 type DataListener = (chunk: string) => void;
@@ -258,6 +262,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       exitCode,
       execId: this.execId!,
       status,
+      ...(request.additionalMetadata ?? {}),
     };
 
     this.log('debug', `Build finished: ${result.status} (exit ${result.exitCode})`);

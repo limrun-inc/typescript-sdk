@@ -182,6 +182,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
             .getOrCreate({ name: uploadName })
             .then((asset) => {
               request.signedUploadUrl = asset.signedUploadUrl;
+              request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
               return request;
             })
             .catch((err) => {
