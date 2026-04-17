@@ -261,25 +261,31 @@ try {
   }));
 
   try {
-    const navResult = await client.performActions([
-      // `openUrl` also launches Safari if it wasn't running.
-      { type: 'openUrl', url: 'https://www.apple.com' },
-      { type: 'wait', durationMs: 2000 },
-      // Focus the URL bar so the keyboard appears and typed keys land there.
-      { type: 'tapElement', selector: { elementType: 'TextField' } },
-      { type: 'wait', durationMs: 500 },
-      // If a hardware keyboard is attached the software keyboard is hidden;
-      // `toggleKeyboard` (Cmd+K in the simulator) flips visibility so the
-      // on-screen keys are actually tappable.
-      { type: 'toggleKeyboard' },
-      { type: 'wait', durationMs: 500 },
-      // Tap each key of "ycombinator.com" on the software keyboard.
-      ...keyTaps,
-      // Submit by tapping the on-screen "Go" button (Safari's return key in
-      // URL mode). On other locales this is "go" — `labelContains` stays loose.
-      { type: 'tapElement', selector: { labelContains: 'go', elementType: 'Button' } },
-      { type: 'wait', durationMs: 2500 },
-    ]);
+    const navResult = await client.performActions(
+      [
+        // `openUrl` also launches Safari if it wasn't running.
+        { type: 'openUrl', url: 'https://www.apple.com' },
+        { type: 'wait', durationMs: 2000 },
+        // Focus the URL bar so the keyboard appears and typed keys land there.
+        { type: 'tapElement', selector: { elementType: 'TextField' } },
+        { type: 'wait', durationMs: 500 },
+        // If a hardware keyboard is attached the software keyboard is hidden;
+        // `toggleKeyboard` (Cmd+K in the simulator) flips visibility so the
+        // on-screen keys are actually tappable.
+        { type: 'toggleKeyboard' },
+        { type: 'wait', durationMs: 500 },
+        // Tap each key of "ycombinator.com" on the software keyboard.
+        ...keyTaps,
+        // Submit by tapping the on-screen "Go" button (Safari's return key in
+        // URL mode). On other locales this is "go" — `labelContains` stays loose.
+        { type: 'tapElement', selector: { labelContains: 'go', elementType: 'Button' } },
+        { type: 'wait', durationMs: 2500 },
+      ],
+      // Explicit timeout — the default is already scaled by batch size and
+      // wait durations, but for a long user-driven flow like this one you
+      // may want a generous ceiling.
+      { timeoutMs: 60_000 },
+    );
     console.log(`performActions: ${navResult.results.length} action(s) executed`);
     navResult.results.forEach((r, i) => {
       const label = r.elementLabel ? ` [${r.elementLabel}]` : '';
@@ -304,32 +310,36 @@ try {
   const endY = startY - 200;
 
   try {
-    const hidResult = await client.performActions([
-      // Scroll content up by 200px (finger moves up, page scrolls up).
-      { type: 'touchDown', x: cx, y: startY },
-      { type: 'wait', durationMs: 30 },
-      { type: 'touchMove', x: cx, y: startY - 50 },
-      { type: 'wait', durationMs: 30 },
-      { type: 'touchMove', x: cx, y: startY - 100 },
-      { type: 'wait', durationMs: 30 },
-      { type: 'touchMove', x: cx, y: startY - 150 },
-      { type: 'wait', durationMs: 30 },
-      { type: 'touchMove', x: cx, y: endY },
-      { type: 'touchUp', x: cx, y: endY },
-      { type: 'wait', durationMs: 800 },
+    const hidResult = await client.performActions(
+      [
+        // Scroll content up by 200px (finger moves up, page scrolls up).
+        { type: 'touchDown', x: cx, y: startY },
+        { type: 'wait', durationMs: 30 },
+        { type: 'touchMove', x: cx, y: startY - 50 },
+        { type: 'wait', durationMs: 30 },
+        { type: 'touchMove', x: cx, y: startY - 100 },
+        { type: 'wait', durationMs: 30 },
+        { type: 'touchMove', x: cx, y: startY - 150 },
+        { type: 'wait', durationMs: 30 },
+        { type: 'touchMove', x: cx, y: endY },
+        { type: 'touchUp', x: cx, y: endY },
+        { type: 'wait', durationMs: 800 },
 
-      // Now scroll back in the opposite direction (finger moves down).
-      { type: 'touchDown', x: cx, y: endY },
-      { type: 'wait', durationMs: 30 },
-      { type: 'touchMove', x: cx, y: endY + 50 },
-      { type: 'wait', durationMs: 30 },
-      { type: 'touchMove', x: cx, y: endY + 100 },
-      { type: 'wait', durationMs: 30 },
-      { type: 'touchMove', x: cx, y: endY + 150 },
-      { type: 'wait', durationMs: 30 },
-      { type: 'touchMove', x: cx, y: startY },
-      { type: 'touchUp', x: cx, y: startY },
-    ]);
+        // Now scroll back in the opposite direction (finger moves down).
+        { type: 'touchDown', x: cx, y: endY },
+        { type: 'wait', durationMs: 30 },
+        { type: 'touchMove', x: cx, y: endY + 50 },
+        { type: 'wait', durationMs: 30 },
+        { type: 'touchMove', x: cx, y: endY + 100 },
+        { type: 'wait', durationMs: 30 },
+        { type: 'touchMove', x: cx, y: endY + 150 },
+        { type: 'wait', durationMs: 30 },
+        { type: 'touchMove', x: cx, y: startY },
+        { type: 'touchUp', x: cx, y: startY },
+      ],
+      // HID gesture is short (~1s of waits) — tight timeout to fail fast.
+      { timeoutMs: 10_000 },
+    );
     console.log(`performActions: ${hidResult.results.length} HID event(s) executed`);
     console.log('  HID scroll round-trip complete');
   } catch (e) {

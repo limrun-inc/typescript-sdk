@@ -385,10 +385,19 @@ export type InstanceClient = {
    *   `keyDown`/`keyUp`, `buttonDown`/`buttonUp`) for building custom
    *   gestures such as long-presses or bespoke scrolls.
    *
+   * The default request timeout grows with the batch (sum of `wait`
+   * durations + 2s per action + a 30s base) so a batch whose waits
+   * alone exceed 30s won't time out client-side. Pass
+   * `options.timeoutMs` to override.
+   *
    * @param actions The actions to run in order.
+   * @param options.timeoutMs Custom client-side timeout in milliseconds.
    * @throws If any action fails — subsequent actions are not executed.
    */
-  performActions: (actions: PerformAction[]) => Promise<PerformActionsResult>;
+  performActions: (
+    actions: PerformAction[],
+    options?: { timeoutMs?: number },
+  ) => Promise<PerformActionsResult>;
 
   /**
    * Start recording simulator video. Use stopRecording() to stop the recording.
@@ -1487,8 +1496,16 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
     };
 
-    const performActions = (actions: PerformAction[]): Promise<PerformActionsResult> => {
-      return sendRequest<PerformActionsResult>('performActions', { actions });
+    const performActions = (
+      actions: PerformAction[],
+      options?: { timeoutMs?: number },
+    ): Promise<PerformActionsResult> => {
+      // Batch duration is unbounded (user-supplied `wait` durations, plus
+      // per-action server work), so we grow the timeout with the batch
+      // rather than sticking to sendRequest's 30s default.
+      const waitMs = actions.reduce((acc, a) => acc + (a.type === 'wait' ? Math.max(0, a.durationMs) : 0), 0);
+      const timeoutMs = options?.timeoutMs ?? 30_000 + waitMs + actions.length * 2_000;
+      return sendRequest<PerformActionsResult>('performActions', { actions }, timeoutMs);
     };
 
     const startRecording = async (opts?: { quality?: RecordingQuality }): Promise<void> => {
