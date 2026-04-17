@@ -3,8 +3,7 @@
 Build iOS apps in the cloud without a Mac using a standalone Xcode instance.
 
 This example creates a Limrun Xcode instance, syncs your local code,
-and builds it remotely. Optionally attach an iOS simulator to preview
-builds on device.
+and builds it remotely for either the iOS simulator or a real device.
 
 Clone this repo and get started!
 
@@ -46,41 +45,29 @@ export LIM_API_KEY=<lim token from Console>
 yarn install
 ```
 
-Build and upload artifact:
+Start the sandbox. This creates the Xcode instance, syncs your code, runs an
+initial simulator build, and starts an HTTP server on port 3000:
 
 ```bash
-yarn run start sample-native-app/ --asset-name=my-app-build
+yarn run start sample-native-app/
 ```
 
-Build and install on an iOS simulator:
+As you make changes on source files, we automatically sync them so by the time
+you or your agent is done with code changes, all is already synced.
 
-```bash
-yarn run start sample-native-app/ --simulator
-```
-
-As you make changes on source files, we automatically sync it so by the time you or
-your agent is done with code changes, all is already synced.
-
-Trigger a manual build:
+Trigger a simulator build:
 
 ```bash
 curl http://localhost:3000/xcodebuild
 ```
 
-Let your agent trigger a build on its own:
-
-```json
-{
-  "mcpServers": {
-    "xcode": {
-      "url": "http://localhost:3000/"
-    }
-  }
-}
-```
+Trigger a real device build and get a signed download URL for the IPA:
 
 ```bash
-claude mcp add xcode --transport http http://localhost:3000
+curl "http://localhost:3000/xcodebuild?sdk=iphoneos&assetName=device-build.ipa"
 ```
+
+> Tip: Use `attachSimulator()` for hot-reloading builds on a simulator for fast
+> iteration. Alternatively, create the simulator with `sandbox.xcode.enabled=true`.
 
 Enjoy!
