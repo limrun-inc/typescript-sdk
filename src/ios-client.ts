@@ -200,15 +200,14 @@ export type PerformActionResult = {
 };
 
 /**
- * Aggregate result of `performActions`. On the first failing action the batch
- * stops early: `results` contains one entry per action that was executed
- * (including the failing one) and `error` is set to that action's error
- * message. On full success, `error` is undefined and `results.length`
+ * Aggregate result of a successful `performActions` call. `results.length`
  * matches the number of actions submitted.
+ *
+ * When the batch stops early because an action failed, `performActions`
+ * rejects with the failing action's error message — it does not resolve.
  */
 export type PerformActionsResult = {
   results: PerformActionResult[];
-  error?: string;
 };
 
 /**
@@ -375,9 +374,9 @@ export type InstanceClient = {
   /**
    * Run a sequence of actions sequentially inside the pod, without a
    * client round-trip between steps. On the first failing action the
-   * batch stops early; the returned `results` array contains one entry
-   * per action that was executed (including the failing one) and the
-   * top-level `error` is set to that action's error message.
+   * batch stops early and this method rejects with that action's error
+   * message; on full success it resolves with a `results` array that
+   * has one entry per submitted action.
    *
    * In addition to the same actions as the single-action methods
    * (`tap`, `typeText`, `scroll`, `toggleKeyboard`, …) this accepts:
@@ -387,6 +386,7 @@ export type InstanceClient = {
    *   gestures such as long-presses or bespoke scrolls.
    *
    * @param actions The actions to run in order.
+   * @throws If any action fails — subsequent actions are not executed.
    */
   performActions: (actions: PerformAction[]) => Promise<PerformActionsResult>;
 
@@ -1170,7 +1170,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       scrollResult: () => undefined,
       performActionsResult: (msg): PerformActionsResult => ({
         results: msg.results ?? [],
-        error: msg.error,
       }),
       xcrunResult: (msg): CommandResult => ({
         stdout: msg.stdout ? Buffer.from(msg.stdout, 'base64').toString('utf-8') : '',
@@ -1242,7 +1241,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         clearTimeout(request.timeout);
         pendingRequests.delete(message.id);
 
-        if (message.error && message.type !== 'performActionsResult') {
+        if (message.error) {
           logger.debug(`Server error for ${message.type}: ${message.error}`);
           request.reject(new Error(message.error));
           return;

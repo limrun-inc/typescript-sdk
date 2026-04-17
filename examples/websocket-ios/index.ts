@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Ios, Limrun } from '@limrun/api';
+import type { PerformAction } from '@limrun/api';
 
 const apiKey = process.env['LIM_API_KEY'];
 
@@ -244,33 +245,48 @@ try {
   //
   // Everything is sent as a single batch so there is no client round-trip
   // between steps — the pod runs them sequentially and stops on the first
-  // failure. The returned `results` array mirrors each action (including
-  // partial results if the batch fails early).
+  // failure. On a partial failure, `performActions` throws with the failing
+  // action's error message.
   // ========================================================================
   console.log('\n--- Testing performActions: Safari navigation ---');
-  const navResult = await client.performActions([
-    // `openUrl` also launches Safari if it wasn't running.
-    { type: 'openUrl', url: 'https://www.apple.com' },
-    { type: 'wait', durationMs: 2000 },
-    // Focus the URL bar so typed text lands there.
-    { type: 'tapElement', selector: { elementType: 'TextField' } },
-    { type: 'wait', durationMs: 500 },
-    // If a hardware keyboard is attached the software keyboard may be
-    // hidden; `toggleKeyboard` (Cmd+K in the simulator) flips visibility
-    // so the on-screen keyboard is showing while we type.
-    { type: 'toggleKeyboard' },
-    { type: 'wait', durationMs: 300 },
-    { type: 'typeText', text: 'ycombinator.com', pressEnter: true },
-    { type: 'wait', durationMs: 2500 },
-  ]);
-  console.log(`performActions: ${navResult.results.length} action(s) executed`);
-  navResult.results.forEach((r, i) => {
-    const status = r.error ? `ERROR: ${r.error}` : 'ok';
-    const label = r.elementLabel ? ` [${r.elementLabel}]` : '';
-    console.log(`  ${i + 1}. ${r.type}${label} — ${status}`);
-  });
-  if (navResult.error) {
-    console.log(`  batch stopped early: ${navResult.error}`);
+
+  // Tap each character on the on-screen keyboard by its accessibility label.
+  // iOS keyboard keys have `elementType: "Key"` and `AXLabel` equal to the
+  // character they insert. This actually drives the software keyboard UI
+  // (unlike `typeText`, which injects hardware USB HID keystrokes and
+  // bypasses the on-screen keyboard entirely).
+  const keyTaps: PerformAction[] = Array.from('ycombinator.com').map((ch) => ({
+    type: 'tapElement',
+    selector: { label: ch, elementType: 'Key' },
+  }));
+
+  try {
+    const navResult = await client.performActions([
+      // `openUrl` also launches Safari if it wasn't running.
+      { type: 'openUrl', url: 'https://www.apple.com' },
+      { type: 'wait', durationMs: 2000 },
+      // Focus the URL bar so the keyboard appears and typed keys land there.
+      { type: 'tapElement', selector: { elementType: 'TextField' } },
+      { type: 'wait', durationMs: 500 },
+      // If a hardware keyboard is attached the software keyboard is hidden;
+      // `toggleKeyboard` (Cmd+K in the simulator) flips visibility so the
+      // on-screen keys are actually tappable.
+      { type: 'toggleKeyboard' },
+      { type: 'wait', durationMs: 500 },
+      // Tap each key of "ycombinator.com" on the software keyboard.
+      ...keyTaps,
+      // Submit by tapping the on-screen "Go" button (Safari's return key in
+      // URL mode). On other locales this is "go" — `labelContains` stays loose.
+      { type: 'tapElement', selector: { labelContains: 'go', elementType: 'Button' } },
+      { type: 'wait', durationMs: 2500 },
+    ]);
+    console.log(`performActions: ${navResult.results.length} action(s) executed`);
+    navResult.results.forEach((r, i) => {
+      const label = r.elementLabel ? ` [${r.elementLabel}]` : '';
+      console.log(`  ${i + 1}. ${r.type}${label}`);
+    });
+  } catch (e) {
+    console.log(`performActions batch stopped early: ${(e as Error).message}`);
   }
 
   // ========================================================================
@@ -287,37 +303,37 @@ try {
   const startY = height / 2 + 100;
   const endY = startY - 200;
 
-  const hidResult = await client.performActions([
-    // Scroll content up by 200px (finger moves up, page scrolls up).
-    { type: 'touchDown', x: cx, y: startY },
-    { type: 'wait', durationMs: 30 },
-    { type: 'touchMove', x: cx, y: startY - 50 },
-    { type: 'wait', durationMs: 30 },
-    { type: 'touchMove', x: cx, y: startY - 100 },
-    { type: 'wait', durationMs: 30 },
-    { type: 'touchMove', x: cx, y: startY - 150 },
-    { type: 'wait', durationMs: 30 },
-    { type: 'touchMove', x: cx, y: endY },
-    { type: 'touchUp', x: cx, y: endY },
-    { type: 'wait', durationMs: 800 },
+  try {
+    const hidResult = await client.performActions([
+      // Scroll content up by 200px (finger moves up, page scrolls up).
+      { type: 'touchDown', x: cx, y: startY },
+      { type: 'wait', durationMs: 30 },
+      { type: 'touchMove', x: cx, y: startY - 50 },
+      { type: 'wait', durationMs: 30 },
+      { type: 'touchMove', x: cx, y: startY - 100 },
+      { type: 'wait', durationMs: 30 },
+      { type: 'touchMove', x: cx, y: startY - 150 },
+      { type: 'wait', durationMs: 30 },
+      { type: 'touchMove', x: cx, y: endY },
+      { type: 'touchUp', x: cx, y: endY },
+      { type: 'wait', durationMs: 800 },
 
-    // Now scroll back in the opposite direction (finger moves down).
-    { type: 'touchDown', x: cx, y: endY },
-    { type: 'wait', durationMs: 30 },
-    { type: 'touchMove', x: cx, y: endY + 50 },
-    { type: 'wait', durationMs: 30 },
-    { type: 'touchMove', x: cx, y: endY + 100 },
-    { type: 'wait', durationMs: 30 },
-    { type: 'touchMove', x: cx, y: endY + 150 },
-    { type: 'wait', durationMs: 30 },
-    { type: 'touchMove', x: cx, y: startY },
-    { type: 'touchUp', x: cx, y: startY },
-  ]);
-  console.log(`performActions: ${hidResult.results.length} HID event(s) executed`);
-  if (hidResult.error) {
-    console.log(`  batch stopped early: ${hidResult.error}`);
-  } else {
+      // Now scroll back in the opposite direction (finger moves down).
+      { type: 'touchDown', x: cx, y: endY },
+      { type: 'wait', durationMs: 30 },
+      { type: 'touchMove', x: cx, y: endY + 50 },
+      { type: 'wait', durationMs: 30 },
+      { type: 'touchMove', x: cx, y: endY + 100 },
+      { type: 'wait', durationMs: 30 },
+      { type: 'touchMove', x: cx, y: endY + 150 },
+      { type: 'wait', durationMs: 30 },
+      { type: 'touchMove', x: cx, y: startY },
+      { type: 'touchUp', x: cx, y: startY },
+    ]);
+    console.log(`performActions: ${hidResult.results.length} HID event(s) executed`);
     console.log('  HID scroll round-trip complete');
+  } catch (e) {
+    console.log(`HID batch stopped early: ${(e as Error).message}`);
   }
 
   // ========================================================================
