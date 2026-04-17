@@ -146,6 +146,70 @@ export type AppInstallationOptions = {
   launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
 };
 
+// ============================================================================
+// performActions - batch action execution (ran sequentially inside the pod,
+// stopping on the first failure).
+// ============================================================================
+
+/**
+ * A single action in a `performActions` batch. The `type` tag matches the
+ * request-side message `type` used by the equivalent single-action methods.
+ *
+ * HID primitives (`touchDown`/`touchMove`/`touchUp`, `keyDown`/`keyUp`,
+ * `buttonDown`/`buttonUp`) are deliberately unpaired so callers can build
+ * their own gestures (e.g. long-press = `touchDown` + `wait` + `touchUp`).
+ */
+export type PerformAction =
+  | { type: 'tap'; x: number; y: number; screenWidth?: number; screenHeight?: number }
+  | { type: 'tapElement'; selector: AccessibilitySelector }
+  | { type: 'incrementElement'; selector: AccessibilitySelector }
+  | { type: 'decrementElement'; selector: AccessibilitySelector }
+  | { type: 'setElementValue'; text: string; selector: AccessibilitySelector }
+  | { type: 'typeText'; text: string; pressEnter?: boolean }
+  | { type: 'pressKey'; key: string; modifiers?: string[] }
+  | {
+      type: 'scroll';
+      direction: 'up' | 'down' | 'left' | 'right';
+      pixels: number;
+      coordinate?: [number, number];
+      momentum?: number;
+    }
+  | { type: 'toggleKeyboard' }
+  | { type: 'openUrl'; url: string }
+  | { type: 'setOrientation'; orientation: 'Portrait' | 'Landscape' }
+  | { type: 'wait'; durationMs: number }
+  | { type: 'touchDown'; x: number; y: number; screenWidth?: number; screenHeight?: number }
+  | { type: 'touchMove'; x: number; y: number; screenWidth?: number; screenHeight?: number }
+  | { type: 'touchUp'; x: number; y: number; screenWidth?: number; screenHeight?: number }
+  | { type: 'keyDown'; keyCode: number }
+  | { type: 'keyUp'; keyCode: number }
+  | { type: 'buttonDown'; button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | string }
+  | { type: 'buttonUp'; button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | string };
+
+/**
+ * Per-action result in a `performActions` batch. `type` identifies which
+ * action the result corresponds to; `error` is non-null when that action
+ * failed. Element-based actions additionally populate `elementLabel` and
+ * `elementType` on success.
+ */
+export type PerformActionResult = {
+  type: string;
+  elementLabel?: string;
+  elementType?: string;
+  error?: string;
+};
+
+/**
+ * Aggregate result of a successful `performActions` call. `results.length`
+ * matches the number of actions submitted.
+ *
+ * When the batch stops early because an action failed, `performActions`
+ * rejects with the failing action's error message — it does not resolve.
+ */
+export type PerformActionsResult = {
+  results: PerformActionResult[];
+};
+
 /**
  * A client for interacting with a Limrun iOS instance
  */
@@ -306,6 +370,34 @@ export type InstanceClient = {
     pixels: number,
     options?: { coordinate?: [number, number]; momentum?: number },
   ) => Promise<void>;
+
+  /**
+   * Run a sequence of actions sequentially inside the pod, without a
+   * client round-trip between steps. On the first failing action the
+   * batch stops early and this method rejects with that action's error
+   * message; on full success it resolves with a `results` array that
+   * has one entry per submitted action.
+   *
+   * In addition to the same actions as the single-action methods
+   * (`tap`, `typeText`, `scroll`, `toggleKeyboard`, …) this accepts:
+   * - `wait` for inline delays between actions,
+   * - raw HID primitives (`touchDown`/`touchMove`/`touchUp`,
+   *   `keyDown`/`keyUp`, `buttonDown`/`buttonUp`) for building custom
+   *   gestures such as long-presses or bespoke scrolls.
+   *
+   * The default request timeout grows with the batch (sum of `wait`
+   * durations + 2s per action + a 30s base) so a batch whose waits
+   * alone exceed 30s won't time out client-side. Pass
+   * `options.timeoutMs` to override.
+   *
+   * @param actions The actions to run in order.
+   * @param options.timeoutMs Custom client-side timeout in milliseconds.
+   * @throws If any action fails — subsequent actions are not executed.
+   */
+  performActions: (
+    actions: PerformAction[],
+    options?: { timeoutMs?: number },
+  ) => Promise<PerformActionsResult>;
 
   /**
    * Start recording simulator video. Use stopRecording() to stop the recording.
@@ -577,6 +669,8 @@ type ServerResponse = {
   logs?: string;
   // App log streaming fields
   lines?: string[];
+  // performActions batch result fields
+  results?: PerformActionResult[];
 };
 
 /**
@@ -1083,6 +1177,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       stopVideoRecordingResult: () => undefined,
       setOrientationResult: () => undefined,
       scrollResult: () => undefined,
+      performActionsResult: (msg): PerformActionsResult => ({
+        results: msg.results ?? [],
+      }),
       xcrunResult: (msg): CommandResult => ({
         stdout: msg.stdout ? Buffer.from(msg.stdout, 'base64').toString('utf-8') : '',
         stderr: msg.stderr ? Buffer.from(msg.stderr, 'base64').toString('utf-8') : '',
@@ -1254,6 +1351,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             installApp,
             setOrientation,
             scroll,
+            performActions,
             startRecording,
             stopRecording,
             keepAlive,
@@ -1396,6 +1494,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         coordinate: options?.coordinate,
         momentum: options?.momentum,
       });
+    };
+
+    const performActions = (
+      actions: PerformAction[],
+      options?: { timeoutMs?: number },
+    ): Promise<PerformActionsResult> => {
+      // Batch duration is unbounded (user-supplied `wait` durations, plus
+      // per-action server work), so we grow the timeout with the batch
+      // rather than sticking to sendRequest's 30s default.
+      const waitMs = actions.reduce((acc, a) => acc + (a.type === 'wait' ? Math.max(0, a.durationMs) : 0), 0);
+      const timeoutMs = options?.timeoutMs ?? 30_000 + waitMs + actions.length * 2_000;
+      return sendRequest<PerformActionsResult>('performActions', { actions }, timeoutMs);
     };
 
     const startRecording = async (opts?: { quality?: RecordingQuality }): Promise<void> => {
