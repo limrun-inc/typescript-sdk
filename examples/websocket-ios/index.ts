@@ -239,6 +239,88 @@ try {
   console.log(`Simctl exited with code: ${result.code}`);
 
   // ========================================================================
+  // performActions (batch) - open Safari, focus URL bar, make sure the
+  // on-screen keyboard is up, and type `ycombinator.com` + Enter.
+  //
+  // Everything is sent as a single batch so there is no client round-trip
+  // between steps — the pod runs them sequentially and stops on the first
+  // failure. The returned `results` array mirrors each action (including
+  // partial results if the batch fails early).
+  // ========================================================================
+  console.log('\n--- Testing performActions: Safari navigation ---');
+  const navResult = await client.performActions([
+    // `openUrl` also launches Safari if it wasn't running.
+    { type: 'openUrl', url: 'https://www.apple.com' },
+    { type: 'wait', durationMs: 2000 },
+    // Focus the URL bar so typed text lands there.
+    { type: 'tapElement', selector: { elementType: 'TextField' } },
+    { type: 'wait', durationMs: 500 },
+    // If a hardware keyboard is attached the software keyboard may be
+    // hidden; `toggleKeyboard` (Cmd+K in the simulator) flips visibility
+    // so the on-screen keyboard is showing while we type.
+    { type: 'toggleKeyboard' },
+    { type: 'wait', durationMs: 300 },
+    { type: 'typeText', text: 'ycombinator.com', pressEnter: true },
+    { type: 'wait', durationMs: 2500 },
+  ]);
+  console.log(`performActions: ${navResult.results.length} action(s) executed`);
+  navResult.results.forEach((r, i) => {
+    const status = r.error ? `ERROR: ${r.error}` : 'ok';
+    const label = r.elementLabel ? ` [${r.elementLabel}]` : '';
+    console.log(`  ${i + 1}. ${r.type}${label} — ${status}`);
+  });
+  if (navResult.error) {
+    console.log(`  batch stopped early: ${navResult.error}`);
+  }
+
+  // ========================================================================
+  // performActions (batch) - custom scroll gesture built from raw HID
+  // primitives (touchDown / touchMove / touchUp).
+  //
+  // This bypasses the `scroll` helper so you can pick your own pacing,
+  // distance and interpolation. We scroll the page down 200px and then
+  // back up 200px at the center of the screen.
+  // ========================================================================
+  console.log('\n--- Testing performActions: HID scroll gestures ---');
+  const { width, height } = await client.screenshot();
+  const cx = width / 2;
+  const startY = height / 2 + 100;
+  const endY = startY - 200;
+
+  const hidResult = await client.performActions([
+    // Scroll content up by 200px (finger moves up, page scrolls up).
+    { type: 'touchDown', x: cx, y: startY },
+    { type: 'wait', durationMs: 30 },
+    { type: 'touchMove', x: cx, y: startY - 50 },
+    { type: 'wait', durationMs: 30 },
+    { type: 'touchMove', x: cx, y: startY - 100 },
+    { type: 'wait', durationMs: 30 },
+    { type: 'touchMove', x: cx, y: startY - 150 },
+    { type: 'wait', durationMs: 30 },
+    { type: 'touchMove', x: cx, y: endY },
+    { type: 'touchUp', x: cx, y: endY },
+    { type: 'wait', durationMs: 800 },
+
+    // Now scroll back in the opposite direction (finger moves down).
+    { type: 'touchDown', x: cx, y: endY },
+    { type: 'wait', durationMs: 30 },
+    { type: 'touchMove', x: cx, y: endY + 50 },
+    { type: 'wait', durationMs: 30 },
+    { type: 'touchMove', x: cx, y: endY + 100 },
+    { type: 'wait', durationMs: 30 },
+    { type: 'touchMove', x: cx, y: endY + 150 },
+    { type: 'wait', durationMs: 30 },
+    { type: 'touchMove', x: cx, y: startY },
+    { type: 'touchUp', x: cx, y: startY },
+  ]);
+  console.log(`performActions: ${hidResult.results.length} HID event(s) executed`);
+  if (hidResult.error) {
+    console.log(`  batch stopped early: ${hidResult.error}`);
+  } else {
+    console.log('  HID scroll round-trip complete');
+  }
+
+  // ========================================================================
   // Take final screenshot
   // ========================================================================
   console.log('\n--- Taking final screenshot ---');

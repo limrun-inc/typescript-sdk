@@ -146,6 +146,71 @@ export type AppInstallationOptions = {
   launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
 };
 
+// ============================================================================
+// performActions - batch action execution (ran sequentially inside the pod,
+// stopping on the first failure).
+// ============================================================================
+
+/**
+ * A single action in a `performActions` batch. The `type` tag matches the
+ * request-side message `type` used by the equivalent single-action methods.
+ *
+ * HID primitives (`touchDown`/`touchMove`/`touchUp`, `keyDown`/`keyUp`,
+ * `buttonDown`/`buttonUp`) are deliberately unpaired so callers can build
+ * their own gestures (e.g. long-press = `touchDown` + `wait` + `touchUp`).
+ */
+export type PerformAction =
+  | { type: 'tap'; x: number; y: number; screenWidth?: number; screenHeight?: number }
+  | { type: 'tapElement'; selector: AccessibilitySelector }
+  | { type: 'incrementElement'; selector: AccessibilitySelector }
+  | { type: 'decrementElement'; selector: AccessibilitySelector }
+  | { type: 'setElementValue'; text: string; selector: AccessibilitySelector }
+  | { type: 'typeText'; text: string; pressEnter?: boolean }
+  | { type: 'pressKey'; key: string; modifiers?: string[] }
+  | {
+      type: 'scroll';
+      direction: 'up' | 'down' | 'left' | 'right';
+      pixels: number;
+      coordinate?: [number, number];
+      momentum?: number;
+    }
+  | { type: 'toggleKeyboard' }
+  | { type: 'openUrl'; url: string }
+  | { type: 'setOrientation'; orientation: 'Portrait' | 'Landscape' }
+  | { type: 'wait'; durationMs: number }
+  | { type: 'touchDown'; x: number; y: number; screenWidth?: number; screenHeight?: number }
+  | { type: 'touchMove'; x: number; y: number; screenWidth?: number; screenHeight?: number }
+  | { type: 'touchUp'; x: number; y: number; screenWidth?: number; screenHeight?: number }
+  | { type: 'keyDown'; keyCode: number }
+  | { type: 'keyUp'; keyCode: number }
+  | { type: 'buttonDown'; button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | string }
+  | { type: 'buttonUp'; button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | string };
+
+/**
+ * Per-action result in a `performActions` batch. `type` identifies which
+ * action the result corresponds to; `error` is non-null when that action
+ * failed. Element-based actions additionally populate `elementLabel` and
+ * `elementType` on success.
+ */
+export type PerformActionResult = {
+  type: string;
+  elementLabel?: string;
+  elementType?: string;
+  error?: string;
+};
+
+/**
+ * Aggregate result of `performActions`. On the first failing action the batch
+ * stops early: `results` contains one entry per action that was executed
+ * (including the failing one) and `error` is set to that action's error
+ * message. On full success, `error` is undefined and `results.length`
+ * matches the number of actions submitted.
+ */
+export type PerformActionsResult = {
+  results: PerformActionResult[];
+  error?: string;
+};
+
 /**
  * A client for interacting with a Limrun iOS instance
  */
@@ -306,6 +371,24 @@ export type InstanceClient = {
     pixels: number,
     options?: { coordinate?: [number, number]; momentum?: number },
   ) => Promise<void>;
+
+  /**
+   * Run a sequence of actions sequentially inside the pod, without a
+   * client round-trip between steps. On the first failing action the
+   * batch stops early; the returned `results` array contains one entry
+   * per action that was executed (including the failing one) and the
+   * top-level `error` is set to that action's error message.
+   *
+   * In addition to the same actions as the single-action methods
+   * (`tap`, `typeText`, `scroll`, `toggleKeyboard`, …) this accepts:
+   * - `wait` for inline delays between actions,
+   * - raw HID primitives (`touchDown`/`touchMove`/`touchUp`,
+   *   `keyDown`/`keyUp`, `buttonDown`/`buttonUp`) for building custom
+   *   gestures such as long-presses or bespoke scrolls.
+   *
+   * @param actions The actions to run in order.
+   */
+  performActions: (actions: PerformAction[]) => Promise<PerformActionsResult>;
 
   /**
    * Start recording simulator video. Use stopRecording() to stop the recording.
@@ -577,6 +660,8 @@ type ServerResponse = {
   logs?: string;
   // App log streaming fields
   lines?: string[];
+  // performActions batch result fields
+  results?: PerformActionResult[];
 };
 
 /**
@@ -1083,6 +1168,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       stopVideoRecordingResult: () => undefined,
       setOrientationResult: () => undefined,
       scrollResult: () => undefined,
+      performActionsResult: (msg): PerformActionsResult => ({
+        results: msg.results ?? [],
+        error: msg.error,
+      }),
       xcrunResult: (msg): CommandResult => ({
         stdout: msg.stdout ? Buffer.from(msg.stdout, 'base64').toString('utf-8') : '',
         stderr: msg.stderr ? Buffer.from(msg.stderr, 'base64').toString('utf-8') : '',
@@ -1153,7 +1242,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         clearTimeout(request.timeout);
         pendingRequests.delete(message.id);
 
-        if (message.error) {
+        if (message.error && message.type !== 'performActionsResult') {
           logger.debug(`Server error for ${message.type}: ${message.error}`);
           request.reject(new Error(message.error));
           return;
@@ -1254,6 +1343,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             installApp,
             setOrientation,
             scroll,
+            performActions,
             startRecording,
             stopRecording,
             keepAlive,
@@ -1396,6 +1486,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         coordinate: options?.coordinate,
         momentum: options?.momentum,
       });
+    };
+
+    const performActions = (actions: PerformAction[]): Promise<PerformActionsResult> => {
+      return sendRequest<PerformActionsResult>('performActions', { actions });
     };
 
     const startRecording = async (opts?: { quality?: RecordingQuality }): Promise<void> => {
