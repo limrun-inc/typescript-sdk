@@ -35,9 +35,15 @@ console.log(`Syncing code from ${codeFolder}...`);
 await xcode.sync(codeFolder);
 
 // Function to trigger a build with optional artifact upload
-async function runBuild(onLine: (line: string) => void, opts?: {sdk?: 'iphonesimulator' | 'iphoneos', assetName?: string}): Promise<number> {
+async function runBuild(
+  onLine: (line: string) => void,
+  opts?: { sdk?: 'iphonesimulator' | 'iphoneos'; assetName?: string },
+): Promise<number> {
   console.log('Starting xcodebuild...');
-  const build = xcode.xcodebuild(opts?.sdk ? { sdk: opts.sdk } : undefined, opts?.assetName ? { upload: { assetName: opts.assetName } } : undefined);
+  const build = xcode.xcodebuild(
+    opts?.sdk ? { sdk: opts.sdk } : undefined,
+    opts?.assetName ? { upload: { assetName: opts.assetName } } : undefined,
+  );
 
   build.command.on('data', (line) => {
     console.log('Executing command: ', line.toString());
@@ -67,10 +73,13 @@ const httpServer = http.createServer(async (req, res) => {
     const assetName = url.searchParams.get('assetName');
     res.writeHead(200, { 'Content-Type': 'text/plain', 'Transfer-Encoding': 'chunked' });
     try {
-      await runBuild((line) => {
-        res.write(line + '\n');
-        console.log(line);
-      }, { sdk, assetName: assetName ?? undefined });
+      await runBuild(
+        (line) => {
+          res.write(line + '\n');
+          console.log(line);
+        },
+        { sdk, assetName: assetName ?? undefined },
+      );
       res.end();
     } catch (err) {
       res.write(`\nError: ${String(err)}\n`);
@@ -91,8 +100,10 @@ httpServer.listen(port, () => {
   console.log(`Files are auto-synced. Trigger a simulator build:`);
   console.log(`$ curl http://localhost:${port}/xcodebuild`);
   console.log('--------------------------------');
-  console.log('Trigger a real device build and get the IPA file:')
+  console.log('Trigger a real device build and get the IPA file:');
   console.log(`$ curl http://localhost:${port}/xcodebuild?sdk=iphoneos&assetName=device-build.ipa`);
   console.log('--------------------------------');
-  console.log("Tip: Use attachSimulator() for hot-reloading builds on a simulator for fast iteration. Alternatively, create the simulator with sandbox.xcode.enabled=true")
+  console.log(
+    'Tip: Use attachSimulator() for hot-reloading builds on a simulator for fast iteration. Alternatively, create the simulator with sandbox.xcode.enabled=true',
+  );
 });
