@@ -38,6 +38,11 @@ if (!instance.status.targetHttpPortUrlPrefix) {
 if (!instance.status.apiUrl) {
   throw new Error('API URL is missing');
 }
+const lim = await Ios.createInstanceClient({
+  apiUrl: instance.status.apiUrl,
+  token: instance.status.token,
+});
+console.log('Device UDID:', lim.deviceInfo.udid);
 
 // targetHttpPortUrlPrefix allows us to append any port to the URL to connect to that port
 // on the simulator and WDA listens on port 8100 by default.
@@ -61,10 +66,7 @@ try {
 }
 if (!wdaRunning) {
   console.log('WDA is not running, launching it...');
-  const lim = await Ios.createInstanceClient({
-    apiUrl: instance.status.apiUrl,
-    token: instance.status.token,
-  });
+
   await lim.simctl(['launch', 'booted', 'com.facebook.WebDriverAgentRunner.xctrunner']).wait();
   lim.disconnect();
   console.log('WDA launched');
@@ -74,6 +76,7 @@ const driver = await remote({
   capabilities: {
     platformName: 'iOS',
     browserName: 'safari',
+    'appium:udid': lim.deviceInfo.udid,
     'appium:automationName': '@limrun/xcuitest',
     'appium:noReset': true, // Otherwise, deletes the app we installed.
     'appium:fullReset': false,
