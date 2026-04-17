@@ -48,11 +48,11 @@ export interface SimctlExecutionEvents {
  */
 export type AccessibilitySelector = {
   /** Match by AXUniqueId (accessibilityIdentifier) - exact match */
-  axUniqueId?: string;
+  AXUniqueId?: string;
   /** Match by AXLabel - exact match */
-  axLabel?: string;
+  AXLabel?: string;
   /** Match by AXLabel - contains (case-insensitive) */
-  axLabelContains?: string;
+  AXLabelContains?: string;
   /** Match by element type/role (e.g., "Button", "TextField") - case-insensitive */
   type?: string;
   /** Match by title - exact match */
@@ -60,7 +60,7 @@ export type AccessibilitySelector = {
   /** Match by title - contains (case-insensitive) */
   titleContains?: string;
   /** Match by AXValue - exact match */
-  axValue?: string;
+  AXValue?: string;
 };
 
 /**
