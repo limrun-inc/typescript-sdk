@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.2 (2026-04-17)
+
+Full Changelog: [v0.25.1...v0.25.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.25.1...v0.25.2)
+
 ## 0.25.1 (2026-04-17)
 
 Full Changelog: [v0.25.0...v0.25.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.25.0...v0.25.1)
