@@ -71,6 +71,62 @@ export type AccessibilityPoint = {
   y: number;
 };
 
+export type ElementTreeFrame = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
+export type ElementTreeNode = {
+  AXFrame: string;
+  AXLabel?: string | null;
+  AXUniqueId?: string | null;
+  AXValue?: string | null;
+  children?: ElementTreeNode[];
+  content_required: boolean;
+  custom_actions: string[];
+  enabled: boolean;
+  frame: ElementTreeFrame;
+  help?: string | null;
+  pid: number;
+  role: string;
+  role_description: string;
+  subrole?: string | null;
+  title?: string | null;
+  traits: string[];
+  type: string;
+};
+
+export type ElementTree = ElementTreeNode[];
+
+export type ElementTreeResultMessage = {
+  type: 'elementTreeResult';
+  id: string;
+  json: string;
+};
+
+export type ParsedElementTreeResultMessage = Omit<ElementTreeResultMessage, 'json'> & {
+  tree: ElementTree;
+};
+
+export function parseElementTree(json: string): ElementTree {
+  return JSON.parse(json) as ElementTree;
+}
+
+export function parseElementTreeResultMessage(
+  message: string | ElementTreeResultMessage,
+): ParsedElementTreeResultMessage {
+  const parsedMessage =
+    typeof message === 'string' ? (JSON.parse(message) as ElementTreeResultMessage) : message;
+
+  return {
+    type: parsedMessage.type,
+    id: parsedMessage.id,
+    tree: parseElementTree(parsedMessage.json),
+  };
+}
+
 // ============================================================================
 // Result Types
 // ============================================================================
@@ -223,9 +279,9 @@ export type InstanceClient = {
   /**
    * Get the element tree (accessibility hierarchy) of the current screen
    * @param point Optional point to get the element at that specific location
-   * @returns A promise that resolves to the JSON string of the accessibility tree
+   * @returns A promise that resolves to the parsed accessibility tree
    */
-  elementTree: (point?: AccessibilityPoint) => Promise<string>;
+  elementTree: (point?: AccessibilityPoint) => Promise<ElementTree>;
 
   /**
    * Tap at the specified coordinates (uses device's native screen dimensions)
@@ -1145,7 +1201,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         width: msg.width!,
         height: msg.height!,
       }),
-      elementTreeResult: (msg) => msg.json!,
+      elementTreeResult: (msg) => parseElementTree(msg.json ?? '[]'),
       tapResult: () => undefined,
       tapElementResult: (msg) => ({
         elementLabel: msg.elementLabel,
@@ -1378,8 +1434,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<ScreenshotData>('screenshot');
     };
 
-    const elementTree = (point?: AccessibilityPoint): Promise<string> => {
-      return sendRequest<string>('elementTree', { point });
+    const elementTree = (point?: AccessibilityPoint): Promise<ElementTree> => {
+      return sendRequest<ElementTree>('elementTree', { point });
     };
 
     const tap = (x: number, y: number): Promise<void> => {
