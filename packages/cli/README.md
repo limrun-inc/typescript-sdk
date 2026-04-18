@@ -229,12 +229,14 @@ lim ios record stop -o recording.mp4
 lim ios record stop --presigned-url https://example.com/upload
 ```
 
-#### Xcode Integration
+#### Built App Sync (iOS only)
 
 ```bash
-# Sync/build use the current directory if no path is provided; pass instance IDs with --id (requires --xcode on create)
-lim ios sync ./MyProject
-lim ios build --scheme MyApp --workspace MyApp.xcworkspace
+# Sync a built .app bundle to the current iOS instance
+lim ios sync ./Build/Products/Debug-iphonesimulator/MyApp.app
+
+# Re-sync on changes and relaunch if the app is already running
+lim ios sync ./MyApp.app --watch --launch-mode RelaunchIfRunning
 ```
 
 ---
@@ -337,12 +339,11 @@ lim xcode delete <ID>     # Delete an instance
 # Create with options
 lim xcode create --rm --region us-west --hard-timeout 1h
 
-# Sync and build
-lim xcode sync ./MyProject
-lim xcode build --scheme MyApp --workspace MyApp.xcworkspace
+# Build (automatically syncs the project path first)
+lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 
 # Build and upload artifact
-lim xcode build --scheme MyApp --upload my-app-build
+lim xcode build ./MyProject --scheme MyApp --upload my-app-build
 ```
 
 ---
@@ -526,26 +527,23 @@ lim ios create --xcode
 #   Xcode Sandbox: https://...limrun.net/v1/sandbox_.../xcode
 #   (sandbox URL is cached locally for sync/build to use)
 
-# 2. Sync your project code to the Xcode sandbox
-lim ios sync ./MyProject
+# 2. Build — automatically syncs your project code first, then auto-installs on the simulator
+lim xcode build ./MyProject --id ios_abc123 --scheme MyApp --workspace MyApp.xcworkspace
 
-# 3. Build — the app is auto-installed on the simulator
-lim ios build --scheme MyApp --workspace MyApp.xcworkspace
-
-# 4. Start a session for fast device interaction
+# 3. Start a session for fast device interaction
 lim session start
 
-# 5. Test the built app on the simulator (~50ms per command)
+# 4. Test the built app on the simulator (~50ms per command)
 lim ios launch-app com.example.myapp
 lim ios element-tree | jq '.'
 lim ios screenshot -o built-app.png
 
-# 6. Clean up
+# 5. Clean up
 lim session stop
 lim ios delete ios_abc123
 ```
 
-> **Note:** The Xcode sandbox URL is only returned when the instance is created — not on subsequent `list` calls. The CLI caches it locally at `~/.lim/instances/` so that `sync` and `build` can find it. This means `sync`/`build` must run on the same machine where `ios create --xcode` was executed.
+> **Note:** `lim xcode build` already syncs the project path you pass before invoking `xcodebuild`, so you do not need to call `lim xcode sync` first. The Xcode sandbox URL is only returned when the instance is created — not on subsequent `list` calls. The CLI caches it locally at `~/.lim/instances/` so that build workflows can find it. This means `build` must run on the same machine where `ios create --xcode` was executed.
 
 #### Option B: Standalone Xcode Instance
 
@@ -555,37 +553,19 @@ Use this when you only need to build (no simulator needed), or when you want to 
 # 1. Create a standalone Xcode instance
 lim xcode create --rm
 
-# 2. Sync and build
-lim xcode sync ./MyProject
-lim xcode build --scheme MyApp --workspace MyApp.xcworkspace
+# 2. Build (automatically syncs the project path first)
+lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 
 # 3. Upload build artifact
-lim xcode build --scheme MyApp --upload my-app-build
+lim xcode build ./MyProject --scheme MyApp --upload my-app-build
 
 # 4. Download the artifact
 lim asset pull my-app-build -o ./build-output
 ```
 
-#### Sync Options
+#### Build Behavior
 
-```bash
-# Sync the current directory
-lim ios sync
-
-# Watch mode (re-syncs on file changes)
-lim ios sync ./MyProject --watch
-
-# One-shot sync (default)
-lim ios sync ./MyProject
-
-# Explicitly disable watch mode
-lim ios sync ./MyProject --no-watch
-
-# Sync without installing
-lim ios sync ./MyProject --no-install
-```
-
-The sync automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
+`lim xcode build [PATH]` automatically performs a one-shot code sync for the given project path before invoking `xcodebuild`. The sync step automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
 
 ---
 
@@ -677,9 +657,8 @@ lim ios delete $ID
 # Single instance: Xcode sandbox + iOS simulator
 ID=$(lim ios create --xcode --json | jq -r '.metadata.id')
 
-# Sync, build, and test
-lim ios sync ./MyiOSProject
-lim ios build --scheme MyApp --workspace MyApp.xcworkspace
+# Build and test (build automatically syncs the project path first)
+lim xcode build ./MyiOSProject --id $ID --scheme MyApp --workspace MyApp.xcworkspace
 
 # Verify the built app on the simulator
 lim session start
@@ -697,8 +676,7 @@ lim ios delete $ID
 ```bash
 lim xcode create --rm --reuse-if-exists --label project=myapp
 
-lim xcode sync ./MyiOSProject
-lim xcode build --scheme MyApp --workspace MyApp.xcworkspace --upload myapp-latest
+lim xcode build ./MyiOSProject --scheme MyApp --workspace MyApp.xcworkspace --upload myapp-latest
 lim asset list --name myapp-latest --json
 lim asset pull asset_abc123 -o ./build-output
 ```

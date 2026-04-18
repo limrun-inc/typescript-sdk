@@ -4,21 +4,19 @@ import { detectInstanceType } from '../../lib/instance-client-factory';
 import { loadInstanceCache } from '../../lib/config';
 
 export default class XcodeSync extends BaseCommand {
-  static summary = 'Sync local code to an Xcode sandbox';
+  static summary = 'Continuously sync local source code to an Xcode sandbox';
   static description =
-    'Push a local project path (or the current working directory if omitted) to a remote Xcode sandbox with optional watch mode. This works with standalone Xcode instances and can also target an iOS instance with `--xcode` enabled when you pass `--id`.';
+    'Push local source code and project files (or the current working directory if omitted) to a remote Xcode sandbox with optional watch mode. This command is mostly useful for continuous sync workflows with `--watch`; for most one-shot builds, use `xcode build`, which already syncs the project path first. This works with standalone Xcode instances and can also target an iOS instance with `--xcode` enabled when you pass `--id`.';
 
   static examples = [
-    '<%= config.bin %> xcode sync',
-    '<%= config.bin %> xcode sync ./MyProject',
-    '<%= config.bin %> xcode sync --id <xcode-instance-ID>',
     '<%= config.bin %> xcode sync --watch',
     '<%= config.bin %> xcode sync ./MyProject --id <ios-instance-ID> --no-install',
+    '<%= config.bin %> xcode build ./MyProject --scheme MyApp',
   ];
 
   static args = {
     path: Args.string({
-      description: 'Local project path to sync. Defaults to the current working directory.',
+      description: 'Local source code or project path to sync. Defaults to the current working directory.',
       required: false,
     }),
   };
@@ -30,7 +28,7 @@ export default class XcodeSync extends BaseCommand {
         'Xcode instance ID to sync to, or an iOS instance ID with `--xcode` enabled. Defaults to the last created Xcode instance.',
     }),
     watch: Flags.boolean({
-      description: 'Keep watching the local project and push changes automatically',
+      description: 'Keep watching the local source tree and push changes automatically',
       default: false,
       allowNo: true,
     }),
