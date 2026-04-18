@@ -17,7 +17,7 @@
   },
   "license": "Apache-2.0",
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && tsc",
     "dev": "node bin/dev.js",
     "prepublishOnly": "npm run build",
     "lint": "eslint src/",

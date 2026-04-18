@@ -139,10 +139,10 @@ export function resolveInstanceId(providedId: string | undefined, expectedType?:
   const lastId = loadLastInstanceId(expectedType);
   if (lastId) return lastId;
 
-  const typeHint = `${expectedType ?? 'ios|xcode|android'}`.trim();
+  const typeHint = `${expectedType ?? '(ios|xcode|android)'}`.trim();
   throw new Error(
     `No instance ID provided and no recent${typeHint} instance found.\n` +
-      `Provide an instance ID or create one first with: lim${typeHint} create`,
+      `Provide an instance ID or create one first with: lim ${typeHint} create`,
   );
 }
 

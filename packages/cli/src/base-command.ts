@@ -1,6 +1,13 @@
 import { Command, Flags } from '@oclif/core';
 import Limrun, { AuthenticationError, NotFoundError } from '@limrun/api';
-import { clearInstanceCache, clearLastInstanceId, readConfig, resolveInstanceId } from './lib/config';
+import {
+  clearInstanceCache,
+  clearLastInstanceId,
+  readConfig,
+  resolveInstanceId,
+  saveInstanceCache,
+  saveLastInstanceId,
+} from './lib/config';
 import { login } from './lib/auth';
 import { renderTable } from './lib/formatting';
 import { stopDaemon } from './lib/daemon';
@@ -24,6 +31,11 @@ export abstract class BaseCommand extends Command {
       description: 'Suppress intermediate human-readable logs and only emit the final result.',
       default: false,
     }),
+    create: Flags.boolean({
+      description: 'Create a replacement instance automatically if the target instance is not found.',
+      default: true,
+      allowNo: true,
+    }),
   };
 
   private _client?: Limrun;
@@ -46,6 +58,9 @@ export abstract class BaseCommand extends Command {
 
   private _parsedFlags?: Record<string, unknown>;
   private _lastResolvedInstanceId?: string;
+  private _lastResolvedExpectedType?: 'ios' | 'android' | 'xcode';
+  private _overrideInstanceId?: string;
+  private _createRetryCount = 0;
 
   protected get parsedFlags(): Record<string, unknown> | undefined {
     return this._parsedFlags;
@@ -96,6 +111,22 @@ export abstract class BaseCommand extends Command {
           stopDaemon(instanceId);
           clearLastInstanceId(instanceId);
           clearInstanceCache(instanceId);
+          if (this.shouldAutoCreateOnNotFound()) {
+            const replacementId = await this.createReplacementInstance(instanceId);
+            if (replacementId) {
+              this.info(
+                `Instance ${instanceId} was not found. Created replacement instance ${replacementId}.`,
+              );
+              this._overrideInstanceId = replacementId;
+              this._createRetryCount += 1;
+              try {
+                return await this.withAuth(fn);
+              } finally {
+                this._createRetryCount -= 1;
+                this._overrideInstanceId = undefined;
+              }
+            }
+          }
           this.error(
             `Instance ${instanceId} was not found. Local session and cached state were cleaned up. Either create a new instance or provide --id to target a different one.`,
           );
@@ -135,10 +166,15 @@ export abstract class BaseCommand extends Command {
    * Infers expected type from the command alias (e.g. "ios screenshot" -> "ios").
    */
   protected resolveId(providedId: string | undefined): string {
-    const commandId = this.id ?? '';
-    const parts = commandId.split(' ');
+    if (this._overrideInstanceId) {
+      this._lastResolvedInstanceId = this._overrideInstanceId;
+      return this._overrideInstanceId;
+    }
+    const parts = this.getCommandParts();
     const noun = parts[0];
-    const expectedType = ['ios', 'android', 'xcode'].includes(noun) ? noun : undefined;
+    const expectedType =
+      ['ios', 'android', 'xcode'].includes(noun) ? (noun as 'ios' | 'android' | 'xcode') : undefined;
+    this._lastResolvedExpectedType = expectedType;
     const id = resolveInstanceId(providedId, expectedType);
     this._lastResolvedInstanceId = id;
     return id;
@@ -151,4 +187,78 @@ export abstract class BaseCommand extends Command {
     }
     return this._lastResolvedInstanceId ?? null;
   }
+
+  private shouldAutoCreateOnNotFound(): boolean {
+    if (this.parsedFlags?.create === false) {
+      return false;
+    }
+    if (this._createRetryCount > 0) {
+      return false;
+    }
+    const parts = this.getCommandParts();
+    const noun = parts[0];
+    const verb = parts[1];
+    if (!['ios', 'android', 'xcode'].includes(noun)) {
+      return false;
+    }
+    if (['create', 'delete', 'list'].includes(verb)) {
+      return false;
+    }
+    return true;
+  }
+
+  private async createReplacementInstance(instanceId: string): Promise<string | null> {
+    const commandType = this._lastResolvedExpectedType;
+    const prefix = instanceId.split('_')[0];
+
+    if (
+      (commandType === 'xcode' && prefix === 'ios') ||
+      (commandType === 'xcode' && instanceId.startsWith('ios_'))
+    ) {
+      const instance = await this.client.iosInstances.create({
+        wait: true,
+        spec: {
+          sandbox: { xcode: { enabled: true } },
+        },
+      });
+      saveLastCreatedInstance(instance.metadata.id);
+      saveLastCreatedInstance(instance.metadata.id, 'xcode');
+      const xcodeSandboxUrl = instance.status.sandbox?.xcode?.url;
+      if (xcodeSandboxUrl) {
+        saveInstanceCache(instance.metadata.id, {
+          sandboxXcodeUrl: xcodeSandboxUrl,
+          token: instance.status.token,
+        });
+      }
+      return instance.metadata.id;
+    }
+
+    if (prefix === 'ios' || commandType === 'ios') {
+      const instance = await this.client.iosInstances.create({ wait: true, spec: {} });
+      saveLastCreatedInstance(instance.metadata.id);
+      return instance.metadata.id;
+    }
+
+    if (prefix === 'android' || commandType === 'android') {
+      const instance = await this.client.androidInstances.create({ wait: true, spec: {} });
+      saveLastCreatedInstance(instance.metadata.id);
+      return instance.metadata.id;
+    }
+
+    if (prefix === 'xcode' || prefix === 'sandbox' || commandType === 'xcode') {
+      const instance = await this.client.xcodeInstances.create({ wait: true, spec: {} });
+      saveLastCreatedInstance(instance.metadata.id);
+      return instance.metadata.id;
+    }
+
+    return null;
+  }
+
+  private getCommandParts(): string[] {
+    return (this.id ?? '').split(/[: ]+/).filter(Boolean);
+  }
+}
+
+function saveLastCreatedInstance(instanceId: string, asType?: 'ios' | 'android' | 'xcode'): void {
+  saveLastInstanceId(instanceId, asType);
 }
