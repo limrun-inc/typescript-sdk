@@ -19,6 +19,8 @@ type PerformActionsResult = {
   results: Array<Record<string, unknown>>;
 };
 
+const IPC_TIMEOUT_BUFFER_MS = 5_000;
+
 function splitActionFields(raw: string): string[] {
   const fields: string[] = [];
   let current = '';
@@ -245,14 +247,17 @@ YAML example:
 
       const actions = await readActions(flags);
       const timeoutMs = estimateTimeoutMs(actions, flags.timeout);
+      const ipcTimeoutMs = timeoutMs + IPC_TIMEOUT_BUFFER_MS;
 
       let result: PerformActionsResult;
       if (hasActiveSession(id)) {
+        // Keep the local socket alive slightly longer than the server-side
+        // request timeout so the daemon can return the real API outcome.
         result = (await sendSessionCommand(
           id,
           'perform-actions',
           [actions, flags.timeout],
-          timeoutMs,
+          ipcTimeoutMs,
         )) as PerformActionsResult;
       } else {
         const { type, client, disconnect } = await getInstanceClient(this.client, id);
