@@ -10,10 +10,11 @@ import {
 export default class IosTapElement extends BaseCommand {
   static summary = 'Tap an iOS element by accessibility selector';
   static description =
-    'Find an element on the current iOS screen and tap it using accessibility metadata such as the visible label or accessibility identifier.';
+    'Find an element on the current iOS screen and tap it using the native iOS accessibility selector fields.';
   static examples = [
-    '<%= config.bin %> ios tap-element --label "Submit"',
-    '<%= config.bin %> ios tap-element --accessibility-id login_button --id <instance-ID>',
+    '<%= config.bin %> ios tap-element --ax-label "Submit"',
+    '<%= config.bin %> ios tap-element --ax-unique-id login_button --id <instance-ID>',
+    '<%= config.bin %> ios tap-element --type Button --title "Continue"',
   ];
 
   static args = {};
@@ -23,11 +24,26 @@ export default class IosTapElement extends BaseCommand {
     id: Flags.string({
       description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
     }),
-    label: Flags.string({
-      description: 'Visible accessibility label to match, such as the AXLabel shown on screen.',
+    'ax-unique-id': Flags.string({
+      description: 'Match by `AXUniqueId` (accessibilityIdentifier) using an exact match.',
     }),
-    'accessibility-id': Flags.string({
-      description: 'Accessibility identifier to match, such as a stable test hook.',
+    'ax-label': Flags.string({
+      description: 'Match by `AXLabel` using an exact match.',
+    }),
+    'ax-label-contains': Flags.string({
+      description: 'Match by `AXLabelContains` using a case-insensitive contains query.',
+    }),
+    type: Flags.string({
+      description: 'Match by element type/role, such as `Button` or `TextField`.',
+    }),
+    title: Flags.string({
+      description: 'Match by title using an exact match.',
+    }),
+    'title-contains': Flags.string({
+      description: 'Match by `titleContains` using a case-insensitive contains query.',
+    }),
+    'ax-value': Flags.string({
+      description: 'Match by `AXValue` using an exact match.',
     }),
   };
 
@@ -42,8 +58,19 @@ export default class IosTapElement extends BaseCommand {
       }
 
       const selector: Record<string, string> = {};
-      if (flags.label) selector.label = flags.label;
-      if (flags['accessibility-id']) selector.accessibilityId = flags['accessibility-id'];
+      if (flags['ax-unique-id']) selector.AXUniqueId = flags['ax-unique-id'];
+      if (flags['ax-label']) selector.AXLabel = flags['ax-label'];
+      if (flags['ax-label-contains']) selector.AXLabelContains = flags['ax-label-contains'];
+      if (flags.type) selector.type = flags.type;
+      if (flags.title) selector.title = flags.title;
+      if (flags['title-contains']) selector.titleContains = flags['title-contains'];
+      if (flags['ax-value']) selector.AXValue = flags['ax-value'];
+
+      if (Object.keys(selector).length === 0) {
+        this.error(
+          'Provide at least one iOS selector flag such as --ax-label, --ax-unique-id, --type, or --title.',
+        );
+      }
 
       if (hasActiveSession(id)) {
         const result = await sendSessionCommand(id, 'tap-element', [selector]);

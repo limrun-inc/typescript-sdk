@@ -161,8 +161,8 @@ lim ios screenshot                      # Output base64 to stdout
 
 # Tapping
 lim ios tap 100 200
-lim ios tap-element --label "Submit"
-lim ios tap-element --accessibility-id btn_ok
+lim ios tap-element --ax-label "Submit"
+lim ios tap-element --ax-unique-id btn_ok
 
 # Text input
 lim ios type "Hello World"
@@ -287,6 +287,7 @@ lim android screenshot -o screenshot.png
 # Tapping
 lim android tap 100 200
 lim android tap-element --resource-id com.example:id/button
+lim android tap-element --content-desc "Sign In button"
 lim android tap-element --text "Sign In"
 
 # Text input
@@ -450,9 +451,9 @@ lim session start
 # Fast interaction loop — each command takes ~50ms
 lim ios launch-app com.example.myapp
 lim ios element-tree | jq '.tree'
-lim ios tap-element --label "Login"
+lim ios tap-element --ax-label "Login"
 lim ios type "user@example.com"
-lim ios tap-element --label "Submit"
+lim ios tap-element --ax-label "Submit"
 lim ios screenshot -o after-login.png
 
 lim session stop
@@ -640,7 +641,7 @@ lim session start
 # Agent can interact at high speed
 lim ios tap 200 400
 lim ios type "test@example.com"
-lim ios tap-element --label "Sign In"
+lim ios tap-element --ax-label "Sign In"
 lim ios screenshot -o result.png
 lim ios element-tree --json > ui-state.json
 
