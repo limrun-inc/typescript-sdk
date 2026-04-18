@@ -1,6 +1,6 @@
 {
   "name": "@limrun/cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Use remote XCode, iOS Simulator, Android Emulator and more to build and test apps from Linux, Windows or macOS.",
   "bin": {
     "lim": "./bin/run.js"
