@@ -83,6 +83,8 @@ interface LastInstances {
   xcode?: string;
 }
 
+type LastInstanceType = keyof LastInstances;
+
 function readLastInstances(): LastInstances {
   if (!fs.existsSync(LAST_INSTANCE_FILE)) return {};
   try {
@@ -92,11 +94,12 @@ function readLastInstances(): LastInstances {
   }
 }
 
-export function saveLastInstanceId(instanceId: string): void {
+export function saveLastInstanceId(instanceId: string, asType?: LastInstanceType): void {
   ensureConfigDir();
   const rawPrefix = instanceId.split('_')[0];
   // Map sandbox_ prefix to xcode type
-  const prefix = (rawPrefix === 'sandbox' ? 'xcode' : rawPrefix) as keyof LastInstances;
+  const detectedType = (rawPrefix === 'sandbox' ? 'xcode' : rawPrefix) as LastInstanceType;
+  const prefix = asType ?? detectedType;
   const data = readLastInstances();
   data[prefix] = instanceId;
   fs.writeFileSync(LAST_INSTANCE_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
@@ -108,6 +111,21 @@ export function loadLastInstanceId(type?: string): string | null {
   // Return the most recently saved one (check all types)
   // Since we can't track order, prefer ios > android > xcode as a reasonable default
   return data.ios ?? data.android ?? data.xcode ?? null;
+}
+
+export function clearLastInstanceId(instanceId: string): void {
+  const data = readLastInstances();
+  let changed = false;
+  for (const key of Object.keys(data) as (keyof LastInstances)[]) {
+    if (data[key] === instanceId) {
+      delete data[key];
+      changed = true;
+    }
+  }
+  if (changed) {
+    ensureConfigDir();
+    fs.writeFileSync(LAST_INSTANCE_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
+  }
 }
 
 /**

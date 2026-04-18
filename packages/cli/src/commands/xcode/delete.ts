@@ -1,5 +1,8 @@
+import { NotFoundError } from '@limrun/api';
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { clearLastInstanceId, clearInstanceCache } from '../../lib/config';
+import { stopDaemon } from '../../lib/daemon';
 
 export default class XcodeDelete extends BaseCommand {
   static summary = 'Delete an Xcode instance';
@@ -17,7 +20,17 @@ export default class XcodeDelete extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      await this.client.xcodeInstances.delete(args.id);
+      try {
+        await this.client.xcodeInstances.delete(args.id);
+      } catch (err) {
+        if (!(err instanceof NotFoundError)) {
+          throw err;
+        }
+      }
+
+      stopDaemon(args.id);
+      clearLastInstanceId(args.id);
+      clearInstanceCache(args.id);
       this.log(`Deleted Xcode instance: ${args.id}`);
     });
   }

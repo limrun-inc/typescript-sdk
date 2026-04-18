@@ -352,6 +352,7 @@ Standalone Xcode build sandboxes for remote compilation.
 
 ```bash
 lim xcode create          # Create a new Xcode sandbox
+lim xcode create --ios    # Create an iOS instance with an attached Xcode sandbox
 lim xcode list            # List all ready Xcode instances
 lim xcode get <ID>        # Get details of a specific instance
 lim xcode delete <ID>     # Delete an instance

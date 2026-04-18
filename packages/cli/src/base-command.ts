@@ -1,10 +1,12 @@
 import { Command, Flags } from '@oclif/core';
-import Limrun, { AuthenticationError } from '@limrun/api';
-import { readConfig, resolveInstanceId } from './lib/config';
+import Limrun, { AuthenticationError, NotFoundError } from '@limrun/api';
+import { clearInstanceCache, clearLastInstanceId, readConfig, resolveInstanceId } from './lib/config';
 import { login } from './lib/auth';
 import { renderTable } from './lib/formatting';
+import { stopDaemon } from './lib/daemon';
 
 const VERSION = require('../package.json').version;
+const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox)_[a-z0-9]+\b/i;
 
 export abstract class BaseCommand extends Command {
   static baseFlags = {
@@ -43,6 +45,7 @@ export abstract class BaseCommand extends Command {
   }
 
   private _parsedFlags?: Record<string, unknown>;
+  private _lastResolvedInstanceId?: string;
 
   protected get parsedFlags(): Record<string, unknown> | undefined {
     return this._parsedFlags;
@@ -85,7 +88,18 @@ export abstract class BaseCommand extends Command {
         this.info('You are logged in now.');
         // Reset client so it picks up the new key
         this._client = undefined;
-        return fn();
+        return this.withAuth(fn);
+      }
+      if (err instanceof NotFoundError) {
+        const instanceId = this.findMissingInstanceId(err);
+        if (instanceId) {
+          stopDaemon(instanceId);
+          clearLastInstanceId(instanceId);
+          clearInstanceCache(instanceId);
+          this.error(
+            `Instance ${instanceId} was not found. Local session and cached state were cleaned up. Either create a new instance or provide --id to target a different one.`,
+          );
+        }
       }
       throw err;
     }
@@ -125,6 +139,16 @@ export abstract class BaseCommand extends Command {
     const parts = commandId.split(' ');
     const noun = parts[0];
     const expectedType = ['ios', 'android', 'xcode'].includes(noun) ? noun : undefined;
-    return resolveInstanceId(providedId, expectedType);
+    const id = resolveInstanceId(providedId, expectedType);
+    this._lastResolvedInstanceId = id;
+    return id;
+  }
+
+  private findMissingInstanceId(err: NotFoundError): string | null {
+    const match = err.message.match(INSTANCE_ID_PATTERN);
+    if (match) {
+      return match[0];
+    }
+    return this._lastResolvedInstanceId ?? null;
   }
 }

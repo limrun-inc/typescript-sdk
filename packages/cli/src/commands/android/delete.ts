@@ -1,5 +1,8 @@
+import { NotFoundError } from '@limrun/api';
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { clearLastInstanceId } from '../../lib/config';
+import { stopDaemon } from '../../lib/daemon';
 
 export default class AndroidDelete extends BaseCommand {
   static summary = 'Delete an Android instance';
@@ -20,7 +23,16 @@ export default class AndroidDelete extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      await this.client.androidInstances.delete(args.id);
+      try {
+        await this.client.androidInstances.delete(args.id);
+      } catch (err) {
+        if (!(err instanceof NotFoundError)) {
+          throw err;
+        }
+      }
+
+      stopDaemon(args.id);
+      clearLastInstanceId(args.id);
       this.log(`Deleted Android instance: ${args.id}`);
     });
   }

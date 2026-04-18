@@ -1,6 +1,12 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { isDaemonRunning, getDaemonPid, clearSession, listActiveSessions } from '../../lib/daemon';
+import {
+  isDaemonRunning,
+  getDaemonPid,
+  clearSession,
+  listActiveSessions,
+  stopDaemon,
+} from '../../lib/daemon';
 
 export default class SessionStop extends BaseCommand {
   static summary = 'Stop one or all active sessions';
@@ -74,11 +80,10 @@ export default class SessionStop extends BaseCommand {
 
   private stopSession(instanceId: string, pid: number | null): void {
     if (pid) {
-      try {
-        process.kill(pid, 'SIGTERM');
-      } catch {}
+      stopDaemon(instanceId);
+    } else {
+      clearSession(instanceId);
     }
-    clearSession(instanceId);
     this.log(`Session stopped for ${instanceId}.`);
   }
 }

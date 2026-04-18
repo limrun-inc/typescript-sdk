@@ -3,11 +3,12 @@ import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { detectInstanceType } from '../../lib/instance-client-factory';
 import { loadInstanceCache } from '../../lib/config';
+import { formatDurationMs } from '../../lib/duration';
 
 export default class XcodeSync extends BaseCommand {
   static summary = 'Continuously sync local source code to an Xcode sandbox';
   static description =
-    'Push local source code and project files (or the current working directory if omitted) to a remote Xcode sandbox with optional watch mode. This command is mostly useful for continuous sync workflows with `--watch`; for most one-shot builds, use `xcode build`, which already syncs the project path first. This works with standalone Xcode instances and can also target an iOS instance with `--xcode` enabled when you pass `--id`.';
+    'Push local source code and project files (or the current working directory if omitted) to a remote Xcode sandbox with optional watch mode. This command is mostly useful for continuous sync workflows with `--watch`; for most one-shot builds, use `xcode build`, which already syncs the project path first. This works with standalone Xcode instances and can also target an iOS instance with `--xcode` enabled or created via `xcode create --ios` when you pass `--id`.';
 
   static examples = [
     '<%= config.bin %> xcode sync --watch',
@@ -63,6 +64,7 @@ export default class XcodeSync extends BaseCommand {
       const xcodeClient = await this.resolveXcodeClient(id);
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
+      const syncStart = Date.now();
 
       const result = await xcodeClient.sync(syncPath, {
         watch: flags.watch,
@@ -72,7 +74,8 @@ export default class XcodeSync extends BaseCommand {
         ignore: compileIgnorePatterns(flags.ignore),
       });
 
-      this.output('Sync complete.');
+      const syncDuration = formatDurationMs(Date.now() - syncStart);
+      this.output(`Sync complete in ${syncDuration}.`);
 
       if (flags.watch && result.stopWatching) {
         this.output('Watching for changes. Press Ctrl+C to stop.');
@@ -108,7 +111,7 @@ export default class XcodeSync extends BaseCommand {
 
       if (!sandboxUrl) {
         this.error(
-          `iOS instance ${id} does not have a Xcode sandbox. Create it with: lim ios create --xcode`,
+          `iOS instance ${id} does not have a Xcode sandbox. Create it with: lim ios create --xcode or lim xcode create --ios`,
         );
       }
       return this.client.xcodeInstances.createClient({

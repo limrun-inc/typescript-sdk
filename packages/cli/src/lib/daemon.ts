@@ -115,6 +115,16 @@ export function getDaemonPid(instanceId: string): number | null {
   return isNaN(pid) ? null : pid;
 }
 
+export function stopDaemon(instanceId: string): void {
+  const pid = getDaemonPid(instanceId);
+  if (pid) {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {}
+  }
+  clearSession(instanceId);
+}
+
 /**
  * List all instance IDs that have an active daemon running.
  */

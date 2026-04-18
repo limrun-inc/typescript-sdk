@@ -3,11 +3,12 @@ import { BaseCommand } from '../../base-command';
 import { detectInstanceType } from '../../lib/instance-client-factory';
 import { loadInstanceCache } from '../../lib/config';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
+import { formatDurationMs } from '../../lib/duration';
 
 export default class XcodeBuild extends BaseCommand {
   static summary = 'Run xcodebuild on an Xcode sandbox';
   static description =
-    'Sync a local project path once (or the current working directory if omitted), then trigger a remote xcodebuild with streaming output. This works with standalone Xcode instances and can also target an iOS instance with `--xcode` enabled when you pass `--id`.';
+    'Sync a local project path once (or the current working directory if omitted), then trigger a remote xcodebuild with streaming output. This works with standalone Xcode instances and can also target an iOS instance with `--xcode` enabled or created via `xcode create --ios` when you pass `--id`.';
 
   static examples = [
     '<%= config.bin %> xcode build',
@@ -72,6 +73,7 @@ export default class XcodeBuild extends BaseCommand {
       }
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
+      const syncStart = Date.now();
       await xcodeClient.sync(syncPath, {
         watch: false,
         install: false,
@@ -79,7 +81,8 @@ export default class XcodeBuild extends BaseCommand {
         maxPatchBytes: flags['max-patch-bytes'],
         ignore: compileIgnorePatterns(flags.ignore),
       });
-      this.info('Sync complete.');
+      const syncDuration = formatDurationMs(Date.now() - syncStart);
+      this.info(`Sync complete in ${syncDuration}.`);
 
       this.info('Starting xcodebuild...');
 
@@ -124,7 +127,7 @@ export default class XcodeBuild extends BaseCommand {
 
       if (!sandboxUrl) {
         this.error(
-          `iOS instance ${id} does not have a Xcode sandbox. Create it with: lim ios create --xcode`,
+          `iOS instance ${id} does not have a Xcode sandbox. Create it with: lim ios create --xcode or lim xcode create --ios`,
         );
       }
       return this.client.xcodeInstances.createClient({
