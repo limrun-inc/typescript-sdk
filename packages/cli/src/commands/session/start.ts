@@ -11,7 +11,7 @@ export default class SessionStart extends BaseCommand {
   static description =
     'Starts a background daemon that holds a WebSocket connection to the instance. ' +
     'All subsequent `exec` commands for this instance will route through the session for ~50ms latency instead of ~2s. ' +
-    'Multiple sessions can run simultaneously for different instances.';
+    'Multiple sessions can run simultaneously for different instances. For agent or multi-device workflows, prefer passing `--id` explicitly instead of relying on the last created instance.';
 
   static examples = [
     '<%= config.bin %> session start',
@@ -24,7 +24,8 @@ export default class SessionStart extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     id: Flags.string({
-      description: 'Instance ID to connect to. Defaults to the last created Android or iOS instance.',
+      description:
+        'Instance ID to connect to. Defaults to the last created Android or iOS instance, but `--id` is recommended for scripts and agents.',
     }),
   };
 

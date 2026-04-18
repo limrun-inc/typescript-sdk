@@ -62,15 +62,6 @@
       },
       "exec": {
         "hidden": true
-      },
-      "run": {
-        "hidden": true
-      },
-      "get": {
-        "hidden": true
-      },
-      "connect": {
-        "hidden": true
       }
     }
   },

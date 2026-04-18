@@ -1,5 +1,4 @@
 import path from 'path';
-import { spawn } from 'child_process';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
@@ -9,7 +8,7 @@ import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-
 export default class AndroidCreate extends BaseCommand {
   static summary = 'Create a new Android instance';
   static description =
-    'Create a new cloud Android instance and optionally connect to it immediately with an ADB tunnel and scrcpy streaming.';
+    'Create a new cloud Android instance and optionally connect to it immediately with an ADB tunnel. Use the printed Console URL to open the live device stream in your browser.';
 
   static examples = [
     '<%= config.bin %> android create',
@@ -22,11 +21,6 @@ export default class AndroidCreate extends BaseCommand {
     ...BaseCommand.baseFlags,
     connect: Flags.boolean({
       description: 'Connect to the new instance immediately by starting an ADB tunnel',
-      default: true,
-      allowNo: true,
-    }),
-    stream: Flags.boolean({
-      description: 'Launch scrcpy after connecting so you can watch and control the device visually',
       default: true,
       allowNo: true,
     }),
@@ -142,18 +136,11 @@ export default class AndroidCreate extends BaseCommand {
         });
 
         const tunnel = await instanceClient.startAdbTunnel();
-
-        if (flags.stream) {
-          const addr = `${tunnel.address.address}:${tunnel.address.port}`;
-          const scrcpy = spawn('scrcpy', ['-s', addr], { stdio: 'inherit' });
-          scrcpy.on('error', (err) => {
-            this.warn(`Failed to start scrcpy: ${err.message}`);
-          });
-          scrcpy.on('close', () => {
-            process.kill(process.pid, 'SIGTERM');
-          });
-        }
-
+        this.log(
+          `Open the Console URL in your browser to stream the device: ${this.consoleStreamUrl(
+            instance.metadata.id,
+          )}`,
+        );
         this.log('Tunnel started. Press Ctrl+C to stop.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);

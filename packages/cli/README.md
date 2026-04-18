@@ -67,13 +67,15 @@ You can always provide an ID explicitly to target a specific instance:
 lim ios screenshot -o test.png --id ios_def456
 ```
 
-**Top-level shortcuts** are available for common actions — the platform is auto-detected from the instance ID prefix:
+For repeatable scripts and LLM agents, prefer explicit platform commands plus an explicit `--id` once you have it:
 
 ```bash
-lim screenshot --id ios_abc123   # Works for both iOS and Android
-lim tap 100 200 --id ios_abc123  # Auto-detects platform from ID prefix
-lim delete ios_abc123       # Auto-detects resource type from ID prefix
+lim ios get ios_abc123 --json
+lim ios screenshot --id ios_abc123 -o screenshot.png
+lim android tap --id android_abc123 100 200
 ```
+
+This avoids relying on locally cached "last created" state and keeps the target platform explicit.
 
 ## Commands
 
@@ -249,14 +251,14 @@ lim android delete <ID>  # Delete an instance
 #### Create Options
 
 ```bash
-# Basic (with ADB tunnel and scrcpy streaming)
+# Basic (prints a Console URL you can open in the browser)
 lim android create
 
 # With apps pre-installed
 lim android create --install ./my-app.apk --install ./another.apk
 
-# Without streaming
-lim android create --no-stream
+# Create without opening an ADB tunnel
+lim android create --no-connect
 
 # Full options
 lim android create --region us-west --display-name "CI Test" --label env=ci --rm
@@ -266,9 +268,10 @@ lim android create --region us-west --display-name "CI Test" --label env=ci --rm
 
 | Flag                | Description                                      |
 | ------------------- | ------------------------------------------------ |
-| `--[no-]connect`    | Start ADB tunnel (default: true)                 |
-| `--[no-]stream`     | Launch scrcpy for visual control (default: true) |
+| `--[no-]connect`    | Start an ADB tunnel immediately (default: true)  |
 | `--adb-path <path>` | Path to `adb` binary (default: `adb`)            |
+
+`lim android create` always prints a Console URL such as `https://console.limrun.com/stream/android_...` that you can open in the browser for live viewing. For automation, `--no-connect` is usually the safest default.
 
 #### Device Interaction
 
@@ -355,8 +358,9 @@ lim asset push ./my-app.ipa -n custom-name
 
 # Download a file
 lim asset pull asset_abc123
-lim asset pull my-app.apk
 lim asset pull asset_abc123 -o ./downloads
+lim asset list --name my-app.apk --json
+lim asset pull asset_abc123
 
 # List assets
 lim asset list
@@ -424,7 +428,7 @@ lim session stop --id ios_abc123
 lim session stop --all
 ```
 
-If only one session is active, `lim session stop` (no ID) stops it automatically.
+If only one session is active, `lim session stop` (no ID) stops it automatically. For scripts and agents, prefer `--id` explicitly so the target instance is unambiguous.
 
 #### How It Works
 
@@ -500,7 +504,7 @@ done
 # Tear down
 lim session stop --all
 for ID in "${IDS[@]}"; do
-  lim delete $ID
+  lim ios delete $ID
 done
 ```
 
@@ -616,8 +620,8 @@ lim android list --json | jq '.[].metadata.id'
 
 # Use in scripts
 INSTANCE_ID=$(lim ios create --json | jq -r '.metadata.id')
-lim ios screenshot -o test.png
-lim delete $INSTANCE_ID
+lim ios screenshot --id $INSTANCE_ID -o test.png
+lim ios delete $INSTANCE_ID
 ```
 
 ---
@@ -639,7 +643,7 @@ lim ios screenshot -o test-result.png
 
 # Clean up
 lim session stop
-lim delete ios_abc123
+lim ios delete ios_abc123
 ```
 
 ### AI Agent Automation
@@ -664,7 +668,7 @@ lim ios log com.example.myapp --lines 20
 
 # Clean up
 lim session stop
-lim delete $ID
+lim ios delete $ID
 ```
 
 ### Remote Build + Test on iOS Simulator
@@ -685,7 +689,7 @@ lim ios element-tree | grep "Welcome"
 lim ios screenshot -o test-result.png
 lim session stop
 
-lim delete $ID
+lim ios delete $ID
 ```
 
 ### Build-Only with Artifact Upload
@@ -695,7 +699,8 @@ lim xcode create --rm --reuse-if-exists --label project=myapp
 
 lim xcode sync ./MyiOSProject
 lim xcode build --scheme MyApp --workspace MyApp.xcworkspace --upload myapp-latest
-lim asset pull myapp-latest -o ./build-output
+lim asset list --name myapp-latest --json
+lim asset pull asset_abc123 -o ./build-output
 ```
 
 ---
