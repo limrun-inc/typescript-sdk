@@ -344,8 +344,11 @@ export function startDaemonServer(): void {
             await (client as any).scroll(args[0], args[1]);
           } else {
             const hasTarget = typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0]);
+            const hasUndefinedPlaceholder = args[0] === undefined && typeof args[1] === 'string';
             if (hasTarget) {
               await (client as any).scrollElement(args[0], args[1], args[2]);
+            } else if (hasUndefinedPlaceholder) {
+              await (client as any).scrollScreen(args[1], args[2]);
             } else {
               await (client as any).scrollScreen(args[0], args[1]);
             }
@@ -353,7 +356,9 @@ export function startDaemonServer(): void {
           result = {
             scrolled: true,
             direction:
-              typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0]) ? args[1] : args[0],
+              typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0]) ? args[1]
+              : args[0] === undefined && typeof args[1] === 'string' ? args[1]
+              : args[0],
           };
           break;
 

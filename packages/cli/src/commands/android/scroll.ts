@@ -52,7 +52,11 @@ export default class AndroidScroll extends BaseCommand {
       const target = buildAndroidTarget(flags);
 
       if (hasActiveSession(id)) {
-        await sendSessionCommand(id, 'scroll', [target, args.direction, flags.amount]);
+        if (target) {
+          await sendSessionCommand(id, 'scroll', [target, args.direction, flags.amount]);
+        } else {
+          await sendSessionCommand(id, 'scroll', [args.direction, flags.amount]);
+        }
       } else {
         const { type, client, disconnect } = await getInstanceClient(this.client, id);
         try {
