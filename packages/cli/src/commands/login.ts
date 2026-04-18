@@ -6,7 +6,9 @@ const VERSION = require('../../package.json').version;
 
 export default class Login extends Command {
   static summary = 'Log in to Limrun';
-  static description = 'Opens your browser to authenticate with Limrun and stores the API key locally.';
+  static description =
+    'Open your browser to authenticate with Limrun and store the resulting API key locally for future CLI commands.';
+  static examples = ['<%= config.bin %> login'];
 
   async run(): Promise<void> {
     const config = readConfig();

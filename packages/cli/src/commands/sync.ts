@@ -4,7 +4,7 @@ import { detectInstanceType } from '../lib/instance-client-factory';
 import { loadInstanceCache } from '../lib/config';
 
 export default class Sync extends BaseCommand {
-  static summary = 'Sync local code to a Xcode sandbox';
+  static summary = 'Sync local code to an Xcode sandbox';
   static aliases = ['ios sync', 'xcode sync'];
   static description =
     'Pushes a local project path (or the current working directory if omitted) to a remote Xcode sandbox with optional watch mode. ' +
@@ -16,17 +16,32 @@ export default class Sync extends BaseCommand {
     '<%= config.bin %> sync --id <xcode-instance-ID>',
     '<%= config.bin %> sync ./MyProject --id <xcode-instance-ID>',
     '<%= config.bin %> sync --watch',
+    '<%= config.bin %> sync ./MyProject --id <ios-instance-ID> --no-install',
   ];
 
   static args = {
-    path: Args.string({ description: 'Local project path (defaults to current directory)', required: false }),
+    path: Args.string({
+      description: 'Local project path to sync. Defaults to the current working directory.',
+      required: false,
+    }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Xcode or iOS instance ID (defaults to last created)' }),
-    watch: Flags.boolean({ description: 'Watch for changes and re-sync', default: false, allowNo: true }),
-    install: Flags.boolean({ description: 'Install after syncing', default: true, allowNo: true }),
+    id: Flags.string({
+      description:
+        'Xcode instance ID or iOS instance ID with `--xcode` enabled. Defaults to the last created matching instance.',
+    }),
+    watch: Flags.boolean({
+      description: 'Keep watching the local project and push changes automatically',
+      default: false,
+      allowNo: true,
+    }),
+    install: Flags.boolean({
+      description: 'Run install behavior after each sync when the sandbox supports it',
+      default: true,
+      allowNo: true,
+    }),
   };
 
   async run(): Promise<void> {

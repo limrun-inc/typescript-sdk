@@ -4,15 +4,18 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecScroll extends BaseCommand {
   static summary = 'Scroll on a running instance';
+  static description =
+    'Scroll the current screen on a running iOS or Android instance. The amount uses pixels on iOS and the Android client scroll units on Android.';
   static aliases = ['ios scroll', 'android scroll'];
   static examples = [
     '<%= config.bin %> ios scroll down --amount 500',
     '<%= config.bin %> ios scroll down --amount 500 --id <instance-ID>',
+    '<%= config.bin %> android scroll up --amount 300',
   ];
 
   static args = {
     direction: Args.string({
-      description: 'Scroll direction',
+      description: 'Scroll direction to apply',
       required: true,
       options: ['up', 'down', 'left', 'right'],
     }),
@@ -20,9 +23,11 @@ export default class ExecScroll extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
+    id: Flags.string({
+      description: 'Instance ID to target. Defaults to the last created instance of the command alias type.',
+    }),
     amount: Flags.integer({
-      description: 'Scroll amount (pixels for iOS, abstract units for Android)',
+      description: 'Scroll amount. Uses pixels on iOS and Android scroll units on Android.',
       default: 300,
     }),
   };

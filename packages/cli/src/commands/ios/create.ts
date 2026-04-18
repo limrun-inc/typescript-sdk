@@ -7,34 +7,54 @@ import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instance
 
 export default class IosCreate extends BaseCommand {
   static summary = 'Create a new iOS instance';
-  static description = 'Creates a new iOS simulator instance in the cloud.';
+  static description =
+    'Create a new cloud iOS simulator instance and wait for it to become ready. You can attach labels, install apps, choose a device model, and optionally enable an Xcode sandbox.';
   static aliases = ['run ios'];
 
   static examples = [
     '<%= config.bin %> ios create',
     '<%= config.bin %> ios create --rm --model ipad',
     '<%= config.bin %> ios create --region us-west --install-asset my-app.ipa',
+    '<%= config.bin %> ios create --install ./MyApp.ipa --xcode',
   ];
 
   static flags = {
     ...BaseCommand.baseFlags,
-    rm: Flags.boolean({ description: 'Delete instance on exit', default: false }),
-    'display-name': Flags.string({ description: 'Display name for the instance' }),
-    region: Flags.string({ description: 'Region where the instance will be created' }),
+    rm: Flags.boolean({
+      description: 'Delete the instance automatically when this CLI process exits',
+      default: false,
+    }),
+    'display-name': Flags.string({
+      description: 'Human-friendly display name shown in listings and the console',
+    }),
+    region: Flags.string({ description: 'Region where the instance should be created, such as us-west' }),
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
     'inactivity-timeout': Flags.string({ description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default: 3m' }),
-    label: Flags.string({ description: 'Labels in key=value format', multiple: true }),
+    label: Flags.string({
+      description: 'Metadata label in key=value format. Repeat to attach multiple labels.',
+      multiple: true,
+    }),
     model: Flags.string({
-      description: 'Device model (iphone, ipad, watch)',
+      description: 'Device model to create',
       options: ['iphone', 'ipad', 'watch'],
     }),
     'reuse-if-exists': Flags.boolean({
-      description: 'Reuse existing instance with same labels/region',
+      description: 'Reuse an existing matching instance instead of creating a new one',
       default: false,
     }),
-    'install-asset': Flags.string({ description: 'Asset name to install', multiple: true }),
-    install: Flags.string({ description: 'Local file to install (auto-uploads if needed)', multiple: true }),
-    xcode: Flags.boolean({ description: 'Enable Xcode sandbox on this iOS instance', default: false }),
+    'install-asset': Flags.string({
+      description: 'Existing asset name to install onto the instance after creation',
+      multiple: true,
+    }),
+    install: Flags.string({
+      description:
+        'Local app file to upload and install automatically after creation. Repeat for multiple files.',
+      multiple: true,
+    }),
+    xcode: Flags.boolean({
+      description: 'Enable an attached Xcode sandbox for build and sync workflows',
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {

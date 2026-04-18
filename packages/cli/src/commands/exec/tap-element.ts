@@ -4,21 +4,35 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecTapElement extends BaseCommand {
   static summary = 'Tap an element by accessibility selector';
+  static description =
+    'Find an element on the current screen and tap it using accessibility metadata. The selector fields differ slightly by platform, so choose the flags that match the target instance type.';
   static aliases = ['ios tap-element', 'android tap-element'];
   static examples = [
     '<%= config.bin %> ios tap-element --label "Submit"',
+    '<%= config.bin %> ios tap-element --accessibility-id login_button --id <instance-ID>',
     '<%= config.bin %> android tap-element --accessibility-id btn_ok --id <instance-ID>',
+    '<%= config.bin %> android tap-element --resource-id com.example:id/submit',
   ];
 
   static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
-    label: Flags.string({ description: 'Element label text' }),
-    'accessibility-id': Flags.string({ description: 'Accessibility identifier' }),
-    'resource-id': Flags.string({ description: 'Android resource ID' }),
-    text: Flags.string({ description: 'Android text content' }),
+    id: Flags.string({
+      description: 'Instance ID to target. Defaults to the last created instance of the command alias type.',
+    }),
+    label: Flags.string({
+      description:
+        'Visible accessibility label to match. Works as AXLabel on iOS and content description on Android.',
+    }),
+    'accessibility-id': Flags.string({
+      description:
+        'Accessibility identifier to match. Maps to accessibilityId on iOS and resource ID matching on Android.',
+    }),
+    'resource-id': Flags.string({
+      description: 'Android resource ID to match, such as com.example:id/submit',
+    }),
+    text: Flags.string({ description: 'Android visible text to match exactly' }),
   };
 
   async run(): Promise<void> {

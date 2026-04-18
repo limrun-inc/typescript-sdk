@@ -4,11 +4,12 @@ import { clearInstanceCache } from '../../lib/config';
 
 export default class IosDelete extends BaseCommand {
   static summary = 'Delete an iOS instance';
+  static description = 'Delete an existing iOS instance by ID and remove any cached local metadata for it.';
   static aliases = ['delete ios'];
-  static examples = ['<%= config.bin %> ios delete <ID>'];
+  static examples = ['<%= config.bin %> ios delete <ID>', '<%= config.bin %> ios delete ios_abc123'];
 
   static args = {
-    id: Args.string({ description: 'Instance ID to delete', required: true }),
+    id: Args.string({ description: 'iOS instance ID to delete', required: true }),
   };
 
   static flags = { ...BaseCommand.baseFlags };

@@ -9,11 +9,13 @@ const VERSION = require('../package.json').version;
 export abstract class BaseCommand extends Command {
   static baseFlags = {
     'api-key': Flags.string({
-      description: 'API key for authentication',
+      description:
+        'API key to use for this command. Overrides the saved login and can also be provided via LIM_API_KEY.',
       env: 'LIM_API_KEY',
     }),
     json: Flags.boolean({
-      description: 'Output as JSON',
+      description:
+        'Output structured JSON instead of human-readable tables or plain text when the command supports it.',
       default: false,
     }),
   };

@@ -6,24 +6,34 @@ import { type XcodeInstanceCreateParams } from '@limrun/api/resources/xcode-inst
 
 export default class XcodeCreate extends BaseCommand {
   static summary = 'Create a new Xcode instance';
-  static description = 'Creates a new Xcode build sandbox instance in the cloud.';
+  static description =
+    'Create a new cloud Xcode sandbox for remote sync and build workflows. You can attach labels, choose a region, and optionally delete the sandbox automatically when the CLI exits.';
   static aliases = ['run xcode'];
 
   static examples = [
     '<%= config.bin %> xcode create',
     '<%= config.bin %> xcode create --rm --region us-west',
+    '<%= config.bin %> xcode create --label env=dev --display-name ci-builder',
   ];
 
   static flags = {
     ...BaseCommand.baseFlags,
-    rm: Flags.boolean({ description: 'Delete instance on exit', default: false }),
-    'display-name': Flags.string({ description: 'Display name for the instance' }),
-    region: Flags.string({ description: 'Region where the instance will be created' }),
+    rm: Flags.boolean({
+      description: 'Delete the instance automatically when this CLI process exits',
+      default: false,
+    }),
+    'display-name': Flags.string({
+      description: 'Human-friendly display name shown in listings and the console',
+    }),
+    region: Flags.string({ description: 'Region where the sandbox should be created, such as us-west' }),
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
     'inactivity-timeout': Flags.string({ description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default: 3m' }),
-    label: Flags.string({ description: 'Labels in key=value format', multiple: true }),
+    label: Flags.string({
+      description: 'Metadata label in key=value format. Repeat to attach multiple labels.',
+      multiple: true,
+    }),
     'reuse-if-exists': Flags.boolean({
-      description: 'Reuse existing instance with same labels/region',
+      description: 'Reuse an existing matching instance instead of creating a new one',
       default: false,
     }),
   };

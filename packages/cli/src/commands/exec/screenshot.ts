@@ -6,18 +6,26 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecScreenshot extends BaseCommand {
   static summary = 'Capture a screenshot from a running instance';
+  static description =
+    'Capture the current screen from a running iOS or Android instance. Save the image to a file with `-o`, or use `--json` to inspect the raw response payload.';
   static aliases = ['ios screenshot', 'android screenshot', 'screenshot'];
   static examples = [
     '<%= config.bin %> ios screenshot -o screenshot.png',
     '<%= config.bin %> android screenshot --id <instance-ID>',
+    '<%= config.bin %> ios screenshot --json',
   ];
 
   static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
-    output: Flags.string({ char: 'o', description: 'Save screenshot to file path' }),
+    id: Flags.string({
+      description: 'Instance ID to capture. Defaults to the last created instance of the command alias type.',
+    }),
+    output: Flags.string({
+      char: 'o',
+      description: 'File path where the screenshot should be written instead of printing the raw image data',
+    }),
   };
 
   async run(): Promise<void> {

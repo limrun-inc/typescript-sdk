@@ -3,7 +3,8 @@ import { clearApiKey } from '../lib/config';
 
 export default class Logout extends Command {
   static summary = 'Log out of Limrun';
-  static description = 'Removes the stored API key.';
+  static description = 'Remove the stored API key so future CLI commands must authenticate again.';
+  static examples = ['<%= config.bin %> logout'];
 
   async run(): Promise<void> {
     clearApiKey();

@@ -4,6 +4,8 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class IosLog extends BaseCommand {
   static summary = 'Stream or tail app logs from a running iOS instance';
+  static description =
+    'Read logs from an installed app on a running iOS instance. Use the default tail mode for a snapshot of recent lines, or `--follow` to keep streaming logs until you stop the command.';
   static aliases = ['exec log'];
   static examples = [
     '<%= config.bin %> ios log com.example.app',
@@ -12,14 +14,26 @@ export default class IosLog extends BaseCommand {
   ];
 
   static args = {
-    bundleId: Args.string({ description: 'App bundle identifier', required: true }),
+    bundleId: Args.string({
+      description: 'Bundle identifier of the installed app whose logs should be read',
+      required: true,
+    }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
-    follow: Flags.boolean({ char: 'f', description: 'Stream logs continuously', default: false }),
-    lines: Flags.integer({ description: 'Number of lines to tail (non-streaming)', default: 100 }),
+    id: Flags.string({
+      description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
+    }),
+    follow: Flags.boolean({
+      char: 'f',
+      description: 'Keep streaming log lines until interrupted',
+      default: false,
+    }),
+    lines: Flags.integer({
+      description: 'Number of recent lines to fetch when not using `--follow`',
+      default: 100,
+    }),
   };
 
   async run(): Promise<void> {

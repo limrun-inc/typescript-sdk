@@ -5,23 +5,29 @@ import { BaseCommand } from '../../base-command';
 
 export default class AssetPull extends BaseCommand {
   static summary = 'Download an asset file';
+  static description =
+    'Download an asset by ID or by name into a local directory. When you pass a name, the command picks the first matching asset returned by the API.';
   static aliases = ['pull'];
   static examples = [
     '<%= config.bin %> asset pull <ID>',
     '<%= config.bin %> asset pull my-app.apk',
     '<%= config.bin %> asset pull <ID> -o ./downloads',
+    '<%= config.bin %> asset pull my-app.apk --name my-app.apk',
   ];
 
   static args = {
-    id_or_name: Args.string({ description: 'Asset ID or name', required: true }),
+    id_or_name: Args.string({ description: 'Asset ID or asset name to download', required: true }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
-    name: Flags.string({ char: 'n', description: 'Asset name to search for' }),
+    name: Flags.string({
+      char: 'n',
+      description: 'Explicit asset name to search for when the positional argument is not an asset ID',
+    }),
     output: Flags.string({
       char: 'o',
-      description: 'Output directory (defaults to current directory)',
+      description: 'Output directory where the downloaded file should be written',
       default: '.',
     }),
   };

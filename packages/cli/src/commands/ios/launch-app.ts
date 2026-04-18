@@ -4,6 +4,8 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class IosLaunchApp extends BaseCommand {
   static summary = 'Launch an app on a running iOS instance';
+  static description =
+    'Launch an installed app on a running iOS instance by bundle identifier. Choose `ForegroundIfRunning` to bring an already-running app to the front or `RelaunchIfRunning` to restart it.';
   static aliases = ['exec launch-app'];
   static examples = [
     '<%= config.bin %> ios launch-app com.example.app',
@@ -16,9 +18,11 @@ export default class IosLaunchApp extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
+    id: Flags.string({
+      description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
+    }),
     mode: Flags.string({
-      description: 'Launch mode',
+      description: 'Launch behavior to use when the app may already be running',
       options: ['ForegroundIfRunning', 'RelaunchIfRunning'],
       default: 'ForegroundIfRunning',
     }),

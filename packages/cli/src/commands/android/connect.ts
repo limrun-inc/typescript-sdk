@@ -3,15 +3,26 @@ import { BaseCommand } from '../../base-command';
 
 export default class AndroidConnect extends BaseCommand {
   static summary = 'Connect to an existing Android instance via ADB tunnel';
+  static description =
+    'Open a long-lived ADB tunnel to a running Android instance so local tools can talk to it as if it were attached over USB. The command stays running until you stop it.';
   static aliases = ['connect android'];
-  static examples = ['<%= config.bin %> android connect', '<%= config.bin %> android connect --id <ID>'];
+  static examples = [
+    '<%= config.bin %> android connect',
+    '<%= config.bin %> android connect --id <ID>',
+    '<%= config.bin %> android connect --id android_abc123 --adb-path /opt/homebrew/bin/adb',
+  ];
 
   static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Android instance ID (defaults to last created)' }),
-    'adb-path': Flags.string({ description: 'Path to adb binary', default: 'adb' }),
+    id: Flags.string({
+      description: 'Android instance ID to connect to. Defaults to the last created Android instance.',
+    }),
+    'adb-path': Flags.string({
+      description: 'Path to the adb binary available on your machine',
+      default: 'adb',
+    }),
   };
 
   async run(): Promise<void> {

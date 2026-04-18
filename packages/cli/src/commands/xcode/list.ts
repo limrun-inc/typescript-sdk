@@ -3,15 +3,28 @@ import { BaseCommand } from '../../base-command';
 
 export default class XcodeList extends BaseCommand {
   static summary = 'List Xcode instances';
-  static examples = ['<%= config.bin %> xcode list'];
+  static description =
+    'List Xcode sandbox instances in your account. By default only ready sandboxes are shown; use `--all` or `--state` to inspect other lifecycle states.';
+  static examples = [
+    '<%= config.bin %> xcode list',
+    '<%= config.bin %> xcode list --all',
+    '<%= config.bin %> xcode list --label-selector env=prod',
+  ];
 
   static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
-    state: Flags.string({ description: 'Filter by state (unknown, creating, ready, terminated)' }),
-    'label-selector': Flags.string({ description: 'Filter by labels (e.g. env=prod,region=us-west)' }),
-    all: Flags.boolean({ description: 'Show all states, not just ready', default: false }),
+    state: Flags.string({
+      description: 'Lifecycle state to filter by: unknown, creating, ready, or terminated',
+    }),
+    'label-selector': Flags.string({
+      description: 'Comma-separated label filters, for example env=prod,team=mobile',
+    }),
+    all: Flags.boolean({
+      description: 'Show all states instead of defaulting to ready instances only',
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {

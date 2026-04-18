@@ -4,14 +4,22 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class IosListApps extends BaseCommand {
   static summary = 'List installed apps on a running iOS instance';
+  static description =
+    'List the apps currently installed on a running iOS instance, including bundle identifiers, display names, and install types. Use this before `launch-app` if you need to discover the correct bundle ID.';
   static aliases = ['exec list-apps'];
-  static examples = ['<%= config.bin %> ios list-apps', '<%= config.bin %> ios list-apps --id <instance-ID>'];
+  static examples = [
+    '<%= config.bin %> ios list-apps',
+    '<%= config.bin %> ios list-apps --id <instance-ID>',
+    '<%= config.bin %> ios list-apps --json',
+  ];
 
   static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
+    id: Flags.string({
+      description: 'iOS instance ID to inspect. Defaults to the last created iOS instance.',
+    }),
   };
 
   async run(): Promise<void> {
