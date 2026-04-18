@@ -6,7 +6,6 @@ export default class ExecTapElement extends BaseCommand {
   static summary = 'Tap an element by accessibility selector';
   static description =
     'Find an element on the current screen and tap it using accessibility metadata. The selector fields differ slightly by platform, so choose the flags that match the target instance type.';
-  static aliases = ['ios tap-element', 'android tap-element'];
   static examples = [
     '<%= config.bin %> ios tap-element --label "Submit"',
     '<%= config.bin %> ios tap-element --accessibility-id login_button --id <instance-ID>',

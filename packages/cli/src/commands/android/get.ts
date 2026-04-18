@@ -5,7 +5,6 @@ export default class AndroidGet extends BaseCommand {
   static summary = 'Get details for a specific Android instance';
   static description =
     'Fetch detailed metadata for a single Android instance, including region, state, and display name. Use `--json` to inspect the full API response.';
-  static aliases = ['get android', 'get a'];
   static examples = ['<%= config.bin %> android get <ID>', '<%= config.bin %> android get <ID> --json'];
 
   static args = {

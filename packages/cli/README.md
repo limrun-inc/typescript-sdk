@@ -67,13 +67,15 @@ You can always provide an ID explicitly to target a specific instance:
 lim ios screenshot -o test.png --id ios_def456
 ```
 
-**Top-level shortcuts** are available for common actions — the platform is auto-detected from the instance ID prefix:
+For repeatable scripts and LLM agents, prefer explicit platform commands plus an explicit `--id` once you have it:
 
 ```bash
-lim screenshot --id ios_abc123   # Works for both iOS and Android
-lim tap 100 200 --id ios_abc123  # Auto-detects platform from ID prefix
-lim delete ios_abc123       # Auto-detects resource type from ID prefix
+lim ios get ios_abc123 --json
+lim ios screenshot --id ios_abc123 -o screenshot.png
+lim android tap --id android_abc123 100 200
 ```
+
+This avoids relying on locally cached "last created" state and keeps the target platform explicit.
 
 ## Commands
 
@@ -227,12 +229,14 @@ lim ios record stop -o recording.mp4
 lim ios record stop --presigned-url https://example.com/upload
 ```
 
-#### Xcode Integration
+#### Built App Sync (iOS only)
 
 ```bash
-# Sync/build use the current directory if no path is provided; pass instance IDs with --id (requires --xcode on create)
-lim ios sync ./MyProject
-lim ios build --scheme MyApp --workspace MyApp.xcworkspace
+# Sync a built .app bundle to the current iOS instance
+lim ios sync ./Build/Products/Debug-iphonesimulator/MyApp.app
+
+# Re-sync on changes and relaunch if the app is already running
+lim ios sync ./MyApp.app --watch --launch-mode RelaunchIfRunning
 ```
 
 ---
@@ -249,14 +253,14 @@ lim android delete <ID>  # Delete an instance
 #### Create Options
 
 ```bash
-# Basic (with ADB tunnel and scrcpy streaming)
+# Basic (prints a Console URL you can open in the browser)
 lim android create
 
 # With apps pre-installed
 lim android create --install ./my-app.apk --install ./another.apk
 
-# Without streaming
-lim android create --no-stream
+# Create without opening an ADB tunnel
+lim android create --no-connect
 
 # Full options
 lim android create --region us-west --display-name "CI Test" --label env=ci --rm
@@ -266,9 +270,10 @@ lim android create --region us-west --display-name "CI Test" --label env=ci --rm
 
 | Flag                | Description                                      |
 | ------------------- | ------------------------------------------------ |
-| `--[no-]connect`    | Start ADB tunnel (default: true)                 |
-| `--[no-]stream`     | Launch scrcpy for visual control (default: true) |
+| `--[no-]connect`    | Start an ADB tunnel immediately (default: true)  |
 | `--adb-path <path>` | Path to `adb` binary (default: `adb`)            |
+
+`lim android create` always prints a Console URL such as `https://console.limrun.com/stream/android_...` that you can open in the browser for live viewing. For automation, `--no-connect` is usually the safest default.
 
 #### Device Interaction
 
@@ -334,12 +339,11 @@ lim xcode delete <ID>     # Delete an instance
 # Create with options
 lim xcode create --rm --region us-west --hard-timeout 1h
 
-# Sync and build
-lim xcode sync ./MyProject
-lim xcode build --scheme MyApp --workspace MyApp.xcworkspace
+# Build (automatically syncs the project path first)
+lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 
 # Build and upload artifact
-lim xcode build --scheme MyApp --upload my-app-build
+lim xcode build ./MyProject --scheme MyApp --upload my-app-build
 ```
 
 ---
@@ -355,8 +359,9 @@ lim asset push ./my-app.ipa -n custom-name
 
 # Download a file
 lim asset pull asset_abc123
-lim asset pull my-app.apk
 lim asset pull asset_abc123 -o ./downloads
+lim asset list --name my-app.apk --json
+lim asset pull asset_abc123
 
 # List assets
 lim asset list
@@ -424,7 +429,7 @@ lim session stop --id ios_abc123
 lim session stop --all
 ```
 
-If only one session is active, `lim session stop` (no ID) stops it automatically.
+If only one session is active, `lim session stop` (no ID) stops it automatically. For scripts and agents, prefer `--id` explicitly so the target instance is unambiguous.
 
 #### How It Works
 
@@ -500,7 +505,7 @@ done
 # Tear down
 lim session stop --all
 for ID in "${IDS[@]}"; do
-  lim delete $ID
+  lim ios delete $ID
 done
 ```
 
@@ -522,26 +527,23 @@ lim ios create --xcode
 #   Xcode Sandbox: https://...limrun.net/v1/sandbox_.../xcode
 #   (sandbox URL is cached locally for sync/build to use)
 
-# 2. Sync your project code to the Xcode sandbox
-lim ios sync ./MyProject
+# 2. Build — automatically syncs your project code first, then auto-installs on the simulator
+lim xcode build ./MyProject --id ios_abc123 --scheme MyApp --workspace MyApp.xcworkspace
 
-# 3. Build — the app is auto-installed on the simulator
-lim ios build --scheme MyApp --workspace MyApp.xcworkspace
-
-# 4. Start a session for fast device interaction
+# 3. Start a session for fast device interaction
 lim session start
 
-# 5. Test the built app on the simulator (~50ms per command)
+# 4. Test the built app on the simulator (~50ms per command)
 lim ios launch-app com.example.myapp
 lim ios element-tree | jq '.'
 lim ios screenshot -o built-app.png
 
-# 6. Clean up
+# 5. Clean up
 lim session stop
 lim ios delete ios_abc123
 ```
 
-> **Note:** The Xcode sandbox URL is only returned when the instance is created — not on subsequent `list` calls. The CLI caches it locally at `~/.lim/instances/` so that `sync` and `build` can find it. This means `sync`/`build` must run on the same machine where `ios create --xcode` was executed.
+> **Note:** `lim xcode build` already syncs the project path you pass before invoking `xcodebuild`, so you do not need to call `lim xcode sync` first. The Xcode sandbox URL is only returned when the instance is created — not on subsequent `list` calls. The CLI caches it locally at `~/.lim/instances/` so that build workflows can find it. This means `build` must run on the same machine where `ios create --xcode` was executed.
 
 #### Option B: Standalone Xcode Instance
 
@@ -551,37 +553,19 @@ Use this when you only need to build (no simulator needed), or when you want to 
 # 1. Create a standalone Xcode instance
 lim xcode create --rm
 
-# 2. Sync and build
-lim xcode sync ./MyProject
-lim xcode build --scheme MyApp --workspace MyApp.xcworkspace
+# 2. Build (automatically syncs the project path first)
+lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 
 # 3. Upload build artifact
-lim xcode build --scheme MyApp --upload my-app-build
+lim xcode build ./MyProject --scheme MyApp --upload my-app-build
 
 # 4. Download the artifact
 lim asset pull my-app-build -o ./build-output
 ```
 
-#### Sync Options
+#### Build Behavior
 
-```bash
-# Sync the current directory
-lim ios sync
-
-# Watch mode (re-syncs on file changes)
-lim ios sync ./MyProject --watch
-
-# One-shot sync (default)
-lim ios sync ./MyProject
-
-# Explicitly disable watch mode
-lim ios sync ./MyProject --no-watch
-
-# Sync without installing
-lim ios sync ./MyProject --no-install
-```
-
-The sync automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
+`lim xcode build [PATH]` automatically performs a one-shot code sync for the given project path before invoking `xcodebuild`. The sync step automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
 
 ---
 
@@ -616,8 +600,8 @@ lim android list --json | jq '.[].metadata.id'
 
 # Use in scripts
 INSTANCE_ID=$(lim ios create --json | jq -r '.metadata.id')
-lim ios screenshot -o test.png
-lim delete $INSTANCE_ID
+lim ios screenshot --id $INSTANCE_ID -o test.png
+lim ios delete $INSTANCE_ID
 ```
 
 ---
@@ -639,7 +623,7 @@ lim ios screenshot -o test-result.png
 
 # Clean up
 lim session stop
-lim delete ios_abc123
+lim ios delete ios_abc123
 ```
 
 ### AI Agent Automation
@@ -664,7 +648,7 @@ lim ios log com.example.myapp --lines 20
 
 # Clean up
 lim session stop
-lim delete $ID
+lim ios delete $ID
 ```
 
 ### Remote Build + Test on iOS Simulator
@@ -673,9 +657,8 @@ lim delete $ID
 # Single instance: Xcode sandbox + iOS simulator
 ID=$(lim ios create --xcode --json | jq -r '.metadata.id')
 
-# Sync, build, and test
-lim ios sync ./MyiOSProject
-lim ios build --scheme MyApp --workspace MyApp.xcworkspace
+# Build and test (build automatically syncs the project path first)
+lim xcode build ./MyiOSProject --id $ID --scheme MyApp --workspace MyApp.xcworkspace
 
 # Verify the built app on the simulator
 lim session start
@@ -685,7 +668,7 @@ lim ios element-tree | grep "Welcome"
 lim ios screenshot -o test-result.png
 lim session stop
 
-lim delete $ID
+lim ios delete $ID
 ```
 
 ### Build-Only with Artifact Upload
@@ -693,9 +676,9 @@ lim delete $ID
 ```bash
 lim xcode create --rm --reuse-if-exists --label project=myapp
 
-lim xcode sync ./MyiOSProject
-lim xcode build --scheme MyApp --workspace MyApp.xcworkspace --upload myapp-latest
-lim asset pull myapp-latest -o ./build-output
+lim xcode build ./MyiOSProject --scheme MyApp --workspace MyApp.xcworkspace --upload myapp-latest
+lim asset list --name myapp-latest --json
+lim asset pull asset_abc123 -o ./build-output
 ```
 
 ---

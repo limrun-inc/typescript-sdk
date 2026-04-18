@@ -1,23 +1,20 @@
 import { Args, Flags } from '@oclif/core';
-import { BaseCommand } from '../base-command';
-import { detectInstanceType } from '../lib/instance-client-factory';
-import { loadInstanceCache } from '../lib/config';
+import { BaseCommand } from '../../base-command';
+import { detectInstanceType } from '../../lib/instance-client-factory';
+import { loadInstanceCache } from '../../lib/config';
 
-export default class Build extends BaseCommand {
+export default class XcodeBuild extends BaseCommand {
   static summary = 'Run xcodebuild on an Xcode sandbox';
-  static aliases = ['ios build', 'xcode build'];
   static description =
-    'Syncs a local project path once (or the current working directory if omitted), then triggers a remote xcodebuild with streaming output. ' +
-    'Works with both standalone Xcode instances and iOS instances that have --xcode enabled.';
+    'Sync a local project path once (or the current working directory if omitted), then trigger a remote xcodebuild with streaming output. This works with standalone Xcode instances and can also target an iOS instance with `--xcode` enabled when you pass `--id`.';
 
   static examples = [
-    '<%= config.bin %> build',
-    '<%= config.bin %> build ./MyProject',
-    '<%= config.bin %> build --id <xcode-instance-ID>',
-    '<%= config.bin %> build ./MyProject --id <xcode-instance-ID>',
-    '<%= config.bin %> build --id <ios-instance-ID> --scheme MyApp',
-    '<%= config.bin %> build --id <xcode-instance-ID> --scheme MyApp --workspace MyApp.xcworkspace',
-    '<%= config.bin %> build ./MyProject --project MyApp.xcodeproj --upload ios-build.zip',
+    '<%= config.bin %> xcode build',
+    '<%= config.bin %> xcode build ./MyProject',
+    '<%= config.bin %> xcode build --id <xcode-instance-ID>',
+    '<%= config.bin %> xcode build ./MyProject --id <xcode-instance-ID>',
+    '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
+    '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
   ];
 
   static args = {
@@ -31,7 +28,7 @@ export default class Build extends BaseCommand {
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description:
-        'Xcode instance ID or iOS instance ID with `--xcode` enabled. Defaults to the last created matching instance.',
+        'Xcode instance ID to build on, or an iOS instance ID with `--xcode` enabled. Defaults to the last created Xcode instance.',
     }),
     scheme: Flags.string({ description: 'Xcode scheme to build, such as MyApp' }),
     workspace: Flags.string({
@@ -42,7 +39,7 @@ export default class Build extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(Build);
+    const { args, flags } = await this.parse(XcodeBuild);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
@@ -106,7 +103,9 @@ export default class Build extends BaseCommand {
       }
 
       if (!sandboxUrl) {
-        this.error(`iOS instance ${id} does not have a Xcode sandbox. Create it with: lim run ios --xcode`);
+        this.error(
+          `iOS instance ${id} does not have a Xcode sandbox. Create it with: lim ios create --xcode`,
+        );
       }
       return this.client.xcodeInstances.createClient({
         apiUrl: sandboxUrl,

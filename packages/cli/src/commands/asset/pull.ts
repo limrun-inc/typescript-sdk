@@ -6,11 +6,11 @@ import { BaseCommand } from '../../base-command';
 export default class AssetPull extends BaseCommand {
   static summary = 'Download an asset file';
   static description =
-    'Download an asset by ID or by name into a local directory. When you pass a name, the command picks the first matching asset returned by the API.';
-  static aliases = ['pull'];
+    'Download an asset by ID or by name into a local directory. For reliable automation, prefer an asset ID or ensure the name resolves to exactly one asset.';
   static examples = [
     '<%= config.bin %> asset pull <ID>',
     '<%= config.bin %> asset pull my-app.apk',
+    '<%= config.bin %> asset list --name my-app.apk --json',
     '<%= config.bin %> asset pull <ID> -o ./downloads',
     '<%= config.bin %> asset pull my-app.apk --name my-app.apk',
   ];
@@ -54,6 +54,15 @@ export default class AssetPull extends BaseCommand {
         const list = fetched as any[];
         if (list.length === 0) {
           this.error(`Asset with name "${searchName}" not found`);
+        }
+        if (list.length > 1) {
+          const matches = list
+            .map((item) => item.metadata?.id || item.id || item.name || '<unknown>')
+            .slice(0, 5)
+            .join(', ');
+          this.error(
+            `Asset name "${searchName}" matched multiple assets (${matches}). Use an asset ID or narrow the name first with \`lim asset list --name "${searchName}" --json\`.`,
+          );
         }
         asset = list[0];
       }

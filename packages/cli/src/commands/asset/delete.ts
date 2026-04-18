@@ -4,7 +4,6 @@ import { BaseCommand } from '../../base-command';
 export default class AssetDelete extends BaseCommand {
   static summary = 'Delete an asset';
   static description = 'Delete an uploaded asset by ID.';
-  static aliases = ['delete asset'];
   static examples = ['<%= config.bin %> asset delete <ID>', '<%= config.bin %> asset delete asset_abc123'];
 
   static args = {

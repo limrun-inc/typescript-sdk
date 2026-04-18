@@ -7,7 +7,6 @@ export default class ExecRecord extends BaseCommand {
   static summary = 'Start or stop video recording on a running instance';
   static description =
     'Control screen recording on a running iOS or Android instance. Start recording first, then stop recording to download the file locally or upload it directly with `--presigned-url`.';
-  static aliases = ['ios record', 'android record'];
   static examples = [
     '<%= config.bin %> ios record start',
     '<%= config.bin %> ios record stop',

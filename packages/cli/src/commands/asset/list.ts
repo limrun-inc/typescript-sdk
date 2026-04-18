@@ -5,7 +5,6 @@ export default class AssetList extends BaseCommand {
   static summary = 'List assets or get a specific one';
   static description =
     'List uploaded assets in your account or fetch a single asset by ID. You can optionally include signed download or upload URLs when preparing follow-up automation steps.';
-  static aliases = ['get asset', 'get assets'];
   static examples = [
     '<%= config.bin %> asset list',
     '<%= config.bin %> asset list <ID>',

@@ -6,7 +6,6 @@ export default class ExecOpenUrl extends BaseCommand {
   static summary = 'Open a URL on a running instance';
   static description =
     'Open a web URL or application deep link on a running iOS or Android instance. This is useful for browser navigation, deep-link testing, and app routing flows.';
-  static aliases = ['ios open-url', 'android open-url'];
   static examples = [
     '<%= config.bin %> ios open-url https://example.com',
     '<%= config.bin %> ios open-url https://example.com --id <instance-ID>',

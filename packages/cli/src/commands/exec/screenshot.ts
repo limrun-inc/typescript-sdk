@@ -8,7 +8,6 @@ export default class ExecScreenshot extends BaseCommand {
   static summary = 'Capture a screenshot from a running instance';
   static description =
     'Capture the current screen from a running iOS or Android instance. Save the image to a file with `-o`, or use `--json` to inspect the raw response payload.';
-  static aliases = ['ios screenshot', 'android screenshot', 'screenshot'];
   static examples = [
     '<%= config.bin %> ios screenshot -o screenshot.png',
     '<%= config.bin %> android screenshot --id <instance-ID>',

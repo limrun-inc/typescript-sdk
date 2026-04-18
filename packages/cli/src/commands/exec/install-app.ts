@@ -8,7 +8,6 @@ export default class ExecInstallApp extends BaseCommand {
   static summary = 'Install an app on a running instance';
   static description =
     'Install an app from a local file path or remote URL onto a running iOS or Android instance. Local files are uploaded to Limrun asset storage automatically before installation.';
-  static aliases = ['ios install-app', 'android install-app'];
 
   static examples = [
     '<%= config.bin %> ios install-app ./MyApp.ipa',

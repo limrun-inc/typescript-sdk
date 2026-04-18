@@ -6,7 +6,6 @@ export default class IosTerminateApp extends BaseCommand {
   static summary = 'Terminate an app on a running iOS instance';
   static description =
     'Stop a running app on an iOS instance by bundle identifier. This is useful when resetting application state or ending a foreground app before another automation step.';
-  static aliases = ['exec terminate-app'];
   static examples = [
     '<%= config.bin %> ios terminate-app com.example.app',
     '<%= config.bin %> ios terminate-app com.example.app --id <instance-ID>',

@@ -1,7 +1,7 @@
 {
   "name": "@limrun/cli",
-  "version": "0.3.0",
-  "description": "The official CLI for Limrun — create and control cloud mobile sandboxes",
+  "version": "0.3.1",
+  "description": "Use remote XCode, iOS Simulator, Android Emulator and more to build and test apps from Linux, Windows or macOS.",
   "bin": {
     "lim": "./bin/run.js"
   },
@@ -46,30 +46,21 @@
     "topicSeparator": " ",
     "topics": {
       "ios": {
-        "description": "Create, manage, and interact with iOS instances"
+          "description": "Execute any task on remote iOS Simulators: create, list, get, delete, info, list-apps, launch-app, terminate-app, log, sync, screenshot, tap, tap-element, element-tree, type, press-key, scroll, open-url, install-app, record, perform"
       },
       "android": {
-        "description": "Create, manage, and interact with Android instances"
+          "description": "Execute any task on remote Android Emulators: create, list, get, delete, connect, screenshot, tap, tap-element, element-tree, type, press-key, scroll, open-url, install-app, record"
       },
       "xcode": {
-        "description": "Create and manage Xcode sandbox instances"
+          "description": "Execute any task on remote XCode sandboxes: create, list, get, delete, sync, build"
       },
       "asset": {
-        "description": "Upload, download, and manage assets"
+          "description": "Upload, download, list, inspect, and delete files that can be used by iOS & Android as pre-installed apps: push, pull, list, delete"
       },
       "session": {
-        "description": "Manage persistent sessions for fast device interaction"
+          "description": "Manage persistent background sessions for device interaction: start, status, stop. Sessions are used to execute commands on remote devices without the need to reconnect to the device after each command."
       },
       "exec": {
-        "hidden": true
-      },
-      "run": {
-        "hidden": true
-      },
-      "get": {
-        "hidden": true
-      },
-      "connect": {
         "hidden": true
       }
     }

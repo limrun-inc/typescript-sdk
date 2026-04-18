@@ -1,27 +1,22 @@
 import { Args, Flags } from '@oclif/core';
-import { BaseCommand } from '../base-command';
-import { detectInstanceType } from '../lib/instance-client-factory';
-import { loadInstanceCache } from '../lib/config';
+import { BaseCommand } from '../../base-command';
+import { detectInstanceType } from '../../lib/instance-client-factory';
+import { loadInstanceCache } from '../../lib/config';
 
-export default class Sync extends BaseCommand {
-  static summary = 'Sync local code to an Xcode sandbox';
-  static aliases = ['ios sync', 'xcode sync'];
+export default class XcodeSync extends BaseCommand {
+  static summary = 'Continuously sync local source code to an Xcode sandbox';
   static description =
-    'Pushes a local project path (or the current working directory if omitted) to a remote Xcode sandbox with optional watch mode. ' +
-    'Works with both standalone Xcode instances and iOS instances that have --xcode enabled.';
+    'Push local source code and project files (or the current working directory if omitted) to a remote Xcode sandbox with optional watch mode. This command is mostly useful for continuous sync workflows with `--watch`; for most one-shot builds, use `xcode build`, which already syncs the project path first. This works with standalone Xcode instances and can also target an iOS instance with `--xcode` enabled when you pass `--id`.';
 
   static examples = [
-    '<%= config.bin %> sync',
-    '<%= config.bin %> sync ./MyProject',
-    '<%= config.bin %> sync --id <xcode-instance-ID>',
-    '<%= config.bin %> sync ./MyProject --id <xcode-instance-ID>',
-    '<%= config.bin %> sync --watch',
-    '<%= config.bin %> sync ./MyProject --id <ios-instance-ID> --no-install',
+    '<%= config.bin %> xcode sync --watch',
+    '<%= config.bin %> xcode sync ./MyProject --id <ios-instance-ID> --no-install',
+    '<%= config.bin %> xcode build ./MyProject --scheme MyApp',
   ];
 
   static args = {
     path: Args.string({
-      description: 'Local project path to sync. Defaults to the current working directory.',
+      description: 'Local source code or project path to sync. Defaults to the current working directory.',
       required: false,
     }),
   };
@@ -30,10 +25,10 @@ export default class Sync extends BaseCommand {
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description:
-        'Xcode instance ID or iOS instance ID with `--xcode` enabled. Defaults to the last created matching instance.',
+        'Xcode instance ID to sync to, or an iOS instance ID with `--xcode` enabled. Defaults to the last created Xcode instance.',
     }),
     watch: Flags.boolean({
-      description: 'Keep watching the local project and push changes automatically',
+      description: 'Keep watching the local source tree and push changes automatically',
       default: false,
       allowNo: true,
     }),
@@ -45,7 +40,7 @@ export default class Sync extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(Sync);
+    const { args, flags } = await this.parse(XcodeSync);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
@@ -82,12 +77,10 @@ export default class Sync extends BaseCommand {
     const type = detectInstanceType(id).toString();
 
     if (type === 'ios') {
-      // iOS instance with Xcode sandbox
       const instance = await this.client.iosInstances.get(id);
       let sandboxUrl = instance.status.sandbox?.xcode?.url;
       let token = instance.status.token;
 
-      // The API doesn't return sandbox URL on get — check local cache
       if (!sandboxUrl) {
         const cached = loadInstanceCache(id);
         if (cached?.sandboxXcodeUrl) {
@@ -97,7 +90,9 @@ export default class Sync extends BaseCommand {
       }
 
       if (!sandboxUrl) {
-        this.error(`iOS instance ${id} does not have a Xcode sandbox. Create it with: lim run ios --xcode`);
+        this.error(
+          `iOS instance ${id} does not have a Xcode sandbox. Create it with: lim ios create --xcode`,
+        );
       }
       return this.client.xcodeInstances.createClient({
         apiUrl: sandboxUrl,
@@ -105,7 +100,6 @@ export default class Sync extends BaseCommand {
       });
     }
 
-    // Standalone Xcode instance
     const instance = await this.client.xcodeInstances.get(id);
     return this.client.xcodeInstances.createClient({ instance });
   }

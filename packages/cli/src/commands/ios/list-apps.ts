@@ -6,7 +6,6 @@ export default class IosListApps extends BaseCommand {
   static summary = 'List installed apps on a running iOS instance';
   static description =
     'List the apps currently installed on a running iOS instance, including bundle identifiers, display names, and install types. Use this before `launch-app` if you need to discover the correct bundle ID.';
-  static aliases = ['exec list-apps'];
   static examples = [
     '<%= config.bin %> ios list-apps',
     '<%= config.bin %> ios list-apps --id <instance-ID>',

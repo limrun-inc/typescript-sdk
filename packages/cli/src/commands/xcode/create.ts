@@ -8,7 +8,6 @@ export default class XcodeCreate extends BaseCommand {
   static summary = 'Create a new Xcode instance';
   static description =
     'Create a new cloud Xcode sandbox for remote sync and build workflows. You can attach labels, choose a region, and optionally delete the sandbox automatically when the CLI exits.';
-  static aliases = ['run xcode'];
 
   static examples = [
     '<%= config.bin %> xcode create',
