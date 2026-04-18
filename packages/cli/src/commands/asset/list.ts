@@ -9,6 +9,7 @@ export default class AssetList extends BaseCommand {
     '<%= config.bin %> asset list',
     '<%= config.bin %> asset list <ID>',
     '<%= config.bin %> asset list --name MyApp --download-url',
+    '<%= config.bin %> asset list --include-app-store',
   ];
 
   static args = {
@@ -24,6 +25,10 @@ export default class AssetList extends BaseCommand {
     }),
     'upload-url': Flags.boolean({
       description: 'Include a signed upload URL in the output where available',
+      default: false,
+    }),
+    'include-app-store': Flags.boolean({
+      description: 'Also include App Store assets you have access to.',
       default: false,
     }),
   };
@@ -59,6 +64,7 @@ export default class AssetList extends BaseCommand {
       const params: Record<string, unknown> = {
         includeDownloadUrl: flags['download-url'],
         includeUploadUrl: flags['upload-url'],
+        includeAppStore: flags['include-app-store'],
       };
       if (flags.name) params.nameFilter = flags.name;
 

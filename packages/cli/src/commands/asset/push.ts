@@ -31,7 +31,7 @@ export default class AssetPush extends BaseCommand {
     }
 
     const assetName = flags.name || path.basename(filePath);
-    this.log(`Name: ${assetName}`);
+    this.info(`Name: ${assetName}`);
 
     await this.withAuth(async () => {
       const asset = await this.client.assets.getOrUpload({
@@ -39,8 +39,7 @@ export default class AssetPush extends BaseCommand {
         name: assetName,
       });
 
-      this.log(`ID: ${asset.id}`);
-      this.log('\nDone!');
+      this.output(`ID: ${asset.id}`);
     });
   }
 }

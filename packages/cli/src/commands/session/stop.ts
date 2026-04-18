@@ -1,8 +1,8 @@
 import { Flags } from '@oclif/core';
-import { Command } from '@oclif/core';
+import { BaseCommand } from '../../base-command';
 import { isDaemonRunning, getDaemonPid, clearSession, listActiveSessions } from '../../lib/daemon';
 
-export default class SessionStop extends Command {
+export default class SessionStop extends BaseCommand {
   static summary = 'Stop one or all active sessions';
   static description =
     'Stop a single background session daemon or all active session daemons. If you omit `--id` and only one session is running, that session is stopped automatically.';
@@ -16,6 +16,7 @@ export default class SessionStop extends Command {
   static args = {};
 
   static flags = {
+    ...BaseCommand.baseFlags,
     id: Flags.string({
       description:
         'Instance ID whose session should be stopped. If omitted, the command can auto-select the only active session.',
@@ -28,6 +29,7 @@ export default class SessionStop extends Command {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(SessionStop);
+    this.setParsedFlags(flags);
 
     if (flags.all) {
       const sessions = listActiveSessions();

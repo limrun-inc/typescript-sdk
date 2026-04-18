@@ -68,11 +68,11 @@ export default class AndroidCreate extends BaseCommand {
         for (const filePath of flags.install) {
           const resolved = path.resolve(filePath);
           const name = path.basename(resolved);
-          this.log(`Uploading ${name}...`);
+          this.info(`Uploading ${name}...`);
           const asset = await this.client.assets.getOrUpload({ path: resolved, name });
           assetNames.push(asset.name);
         }
-        this.log(`Successfully uploaded ${flags.install.length} file(s)`);
+        this.info(`Successfully uploaded ${flags.install.length} file(s)`);
       }
 
       // Build params
@@ -104,17 +104,17 @@ export default class AndroidCreate extends BaseCommand {
       const start = Date.now();
       const instance = await this.client.androidInstances.create(params);
       saveLastInstanceId(instance.metadata.id);
-      this.log(`Created a new instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
-      this.log(`Instance ID: ${instance.metadata.id}`);
-      this.log(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
+      this.info(`Created a new instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
+      this.info(`Instance ID: ${instance.metadata.id}`);
+      this.info(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
 
       if (flags.rm) {
         const cleanup = async () => {
           try {
             await this.client.androidInstances.delete(instance.metadata.id);
-            this.log(`${instance.metadata.id} is deleted`);
+            this.info(`${instance.metadata.id} is deleted`);
           } catch (e) {
-            this.log(`Failed to delete instance: ${e}`);
+            this.info(`Failed to delete instance: ${e}`);
           }
         };
         process.on('SIGINT', async () => {
@@ -136,12 +136,12 @@ export default class AndroidCreate extends BaseCommand {
         });
 
         const tunnel = await instanceClient.startAdbTunnel();
-        this.log(
+        this.info(
           `Open the Console URL in your browser to stream the device: ${this.consoleStreamUrl(
             instance.metadata.id,
           )}`,
         );
-        this.log('Tunnel started. Press Ctrl+C to stop.');
+        this.output('Tunnel started. Press Ctrl+C to stop.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
           const shutdown = () => {
@@ -155,9 +155,10 @@ export default class AndroidCreate extends BaseCommand {
         tunnel.close();
         instanceClient.disconnect();
       } else {
-        this.log(`Created instance ${instance.metadata.id}`);
         if (flags.json) {
           this.outputJson(instance);
+        } else {
+          this.output(`Created instance ${instance.metadata.id}`);
         }
       }
     });

@@ -39,6 +39,7 @@ Every command supports these flags:
 | ------------------- | ----------------------------------------------- |
 | `--api-key <value>` | API key (also reads `LIM_API_KEY` env var)      |
 | `--json`            | Output as JSON instead of human-readable tables |
+| `--quiet`           | Suppress intermediate logs and print only the final result |
 | `--help`            | Show help for any command                       |
 
 ## Command Structure
@@ -160,8 +161,8 @@ lim ios screenshot                      # Output base64 to stdout
 
 # Tapping
 lim ios tap 100 200
-lim ios tap-element --label "Submit"
-lim ios tap-element --accessibility-id btn_ok
+lim ios tap-element --ax-label "Submit"
+lim ios tap-element --ax-unique-id btn_ok
 
 # Text input
 lim ios type "Hello World"
@@ -191,6 +192,13 @@ lim ios element-tree | jq '.'
 # Open URLs / deep links
 lim ios open-url https://example.com
 lim ios open-url myapp://settings
+
+# Low-level simulator access
+lim ios simctl -- listapps booted
+lim ios xcrun -- --sdk iphonesimulator --show-sdk-version
+lim ios xcodebuild -- -version
+lim ios cp payload.json ./fixtures/payload.json
+lim ios lsof
 ```
 
 #### App Management (iOS only)
@@ -199,6 +207,8 @@ lim ios open-url myapp://settings
 # Install an app (local file auto-uploads, or use URL)
 lim ios install-app ./MyApp.ipa
 lim ios install-app https://example.com/app.ipa
+lim ios install-app https://example.com/app.ipa --md5 <hex-digest>
+lim ios install-app ./MyApp.ipa --launch-mode RelaunchIfRunning
 
 # Launch / terminate
 lim ios launch-app com.example.myapp
@@ -213,10 +223,14 @@ lim ios list-apps
 
 ```bash
 # Tail recent logs
-lim ios log com.example.myapp --lines 50
+lim ios app-log com.example.myapp --tail 50
 
 # Stream logs continuously (Ctrl+C to stop)
-lim ios log com.example.myapp -f
+lim ios app-log com.example.myapp --follow
+
+# Stream full simulator syslog
+lim ios syslog
+lim ios syslog --json
 ```
 
 #### Video Recording
@@ -237,6 +251,9 @@ lim ios sync ./Build/Products/Debug-iphonesimulator/MyApp.app
 
 # Re-sync on changes and relaunch if the app is already running
 lim ios sync ./MyApp.app --watch --launch-mode RelaunchIfRunning
+
+# Tune the delta-sync cache and patch size
+lim ios sync ./MyApp.app --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152
 ```
 
 ---
@@ -286,14 +303,18 @@ lim android screenshot -o screenshot.png
 # Tapping
 lim android tap 100 200
 lim android tap-element --resource-id com.example:id/button
+lim android tap-element --content-desc "Sign In button"
 lim android tap-element --text "Sign In"
+lim android find-element --resource-id com.example:id/button --json
 
 # Text input
 lim android type "Hello World"
+lim android type "Hello World" --resource-id com.example:id/search_input
 lim android press-key enter
 
 # Scrolling
 lim android scroll down --amount 500
+lim android scroll down --resource-id com.example:id/list --amount 500
 
 # UI inspection
 lim android element-tree
@@ -306,6 +327,7 @@ lim android open-url https://example.com
 
 # Video recording
 lim android record start
+lim android record start --quality 8
 lim android record stop
 lim android record stop -o recording.mp4
 lim android record stop --presigned-url https://example.com/upload
@@ -344,6 +366,10 @@ lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 
 # Build and upload artifact
 lim xcode build ./MyProject --scheme MyApp --upload my-app-build
+
+# Tune sync cache, patch size, or ignore additional paths
+lim xcode sync ./MyProject --watch --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152
+lim xcode sync ./MyProject --ignore "\\.xcuserdata/" --ignore "^DerivedData/"
 ```
 
 ---
@@ -367,6 +393,7 @@ lim asset pull asset_abc123
 lim asset list
 lim asset list --name my-app
 lim asset list --download-url
+lim asset list --include-app-store
 
 # Get a specific asset
 lim asset list asset_abc123
@@ -408,7 +435,7 @@ This makes sessions essential for interactive workflows, AI agent loops, and any
 #### Session Commands
 
 ```bash
-# Start a session (defaults to last created instance)
+# Start a session (defaults to the last remembered iOS instance, otherwise Android, then Xcode)
 lim session start
 
 # Or specify an instance explicitly
@@ -436,7 +463,7 @@ If only one session is active, `lim session stop` (no ID) stops it automatically
 Each `lim session start` spawns an independent background daemon that:
 
 - Holds a persistent WebSocket connection to that specific instance
-- Listens on its own Unix socket at `/tmp/lim-sessions/<instance-id>/`
+- Listens on its own Unix socket under `~/.lim/sessions/<hashed-instance-id>/`
 - All interaction commands automatically detect the matching session and route through it
 - Multiple sessions run in parallel with no shared state
 
@@ -449,9 +476,9 @@ lim session start
 # Fast interaction loop — each command takes ~50ms
 lim ios launch-app com.example.myapp
 lim ios element-tree | jq '.tree'
-lim ios tap-element --label "Login"
+lim ios tap-element --ax-label "Login"
 lim ios type "user@example.com"
-lim ios tap-element --label "Submit"
+lim ios tap-element --ax-label "Submit"
 lim ios screenshot -o after-login.png
 
 lim session stop
@@ -639,12 +666,12 @@ lim session start
 # Agent can interact at high speed
 lim ios tap 200 400
 lim ios type "test@example.com"
-lim ios tap-element --label "Sign In"
+lim ios tap-element --ax-label "Sign In"
 lim ios screenshot -o result.png
 lim ios element-tree --json > ui-state.json
 
 # Tail logs (non-streaming works through session too)
-lim ios log com.example.myapp --lines 20
+lim ios app-log com.example.myapp --tail 20
 
 # Clean up
 lim session stop

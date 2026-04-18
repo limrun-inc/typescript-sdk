@@ -1,5 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { detectInstanceType } from '../../lib/instance-client-factory';
 import { loadInstanceCache } from '../../lib/config';
 
@@ -12,6 +13,8 @@ export default class XcodeSync extends BaseCommand {
     '<%= config.bin %> xcode sync --watch',
     '<%= config.bin %> xcode sync ./MyProject --id <ios-instance-ID> --no-install',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp',
+    '<%= config.bin %> xcode sync ./MyProject --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152',
+    '<%= config.bin %> xcode sync ./MyProject --ignore "\\\\.xcuserdata/" --ignore "^DerivedData/"',
   ];
 
   static args = {
@@ -37,6 +40,17 @@ export default class XcodeSync extends BaseCommand {
       default: true,
       allowNo: true,
     }),
+    'basis-cache-dir': Flags.string({
+      description: 'Directory to use for the client-side delta sync cache.',
+    }),
+    'max-patch-bytes': Flags.integer({
+      description: 'Maximum patch size in bytes before falling back to a full upload.',
+    }),
+    ignore: Flags.string({
+      description:
+        'Regular expression to ignore matching relative paths during sync. Repeat for multiple patterns.',
+      multiple: true,
+    }),
   };
 
   async run(): Promise<void> {
@@ -48,17 +62,20 @@ export default class XcodeSync extends BaseCommand {
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(id);
 
-      this.log(`Syncing ${syncPath} to instance ${id}...`);
+      this.info(`Syncing ${syncPath} to instance ${id}...`);
 
       const result = await xcodeClient.sync(syncPath, {
         watch: flags.watch,
         install: flags.install,
+        basisCacheDir: flags['basis-cache-dir'],
+        maxPatchBytes: flags['max-patch-bytes'],
+        ignore: compileIgnorePatterns(flags.ignore),
       });
 
-      this.log('Sync complete.');
+      this.output('Sync complete.');
 
       if (flags.watch && result.stopWatching) {
-        this.log('Watching for changes. Press Ctrl+C to stop.');
+        this.output('Watching for changes. Press Ctrl+C to stop.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
           const shutdown = () => {

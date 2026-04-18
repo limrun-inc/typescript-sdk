@@ -75,7 +75,7 @@ export default class AssetPull extends BaseCommand {
       fs.mkdirSync(outDir, { recursive: true });
       const fullPath = path.join(outDir, asset.name);
 
-      this.log(`Pulling to ${fullPath}`);
+      this.info(`Pulling to ${fullPath}`);
 
       const resp = await fetch(asset.signedDownloadUrl);
       if (!resp.ok) {
@@ -85,7 +85,7 @@ export default class AssetPull extends BaseCommand {
 
       const buffer = Buffer.from(await resp.arrayBuffer());
       fs.writeFileSync(fullPath, buffer);
-      this.log('Done!');
+      this.output(`Saved to ${fullPath}`);
     });
   }
 }
