@@ -6,7 +6,6 @@ export default class IosLog extends BaseCommand {
   static summary = 'Stream or tail app logs from a running iOS instance';
   static description =
     'Read logs from an installed app on a running iOS instance. Use the default tail mode for a snapshot of recent lines, or `--follow` to keep streaming logs until you stop the command.';
-  static aliases = ['exec log'];
   static examples = [
     '<%= config.bin %> ios log com.example.app',
     '<%= config.bin %> ios log com.example.app --id <instance-ID> --lines 50',

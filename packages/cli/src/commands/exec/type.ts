@@ -6,7 +6,6 @@ export default class ExecType extends BaseCommand {
   static summary = 'Type text into the focused input field';
   static description =
     'Type text into the currently focused input field on a running iOS or Android instance. On iOS, `--enter` can submit the field after typing.';
-  static aliases = ['ios type', 'android type'];
   static examples = [
     '<%= config.bin %> ios type "Hello World"',
     '<%= config.bin %> ios type "Hello World" --id <instance-ID>',

@@ -6,7 +6,6 @@ export default class ExecScroll extends BaseCommand {
   static summary = 'Scroll on a running instance';
   static description =
     'Scroll the current screen on a running iOS or Android instance. The amount uses pixels on iOS and the Android client scroll units on Android.';
-  static aliases = ['ios scroll', 'android scroll'];
   static examples = [
     '<%= config.bin %> ios scroll down --amount 500',
     '<%= config.bin %> ios scroll down --amount 500 --id <instance-ID>',

@@ -9,7 +9,6 @@ export default class IosCreate extends BaseCommand {
   static summary = 'Create a new iOS instance';
   static description =
     'Create a new cloud iOS simulator instance and wait for it to become ready. You can attach labels, install apps, choose a device model, and optionally enable an Xcode sandbox.';
-  static aliases = ['run ios'];
 
   static examples = [
     '<%= config.bin %> ios create',

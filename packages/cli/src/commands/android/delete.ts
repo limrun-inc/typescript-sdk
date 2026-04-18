@@ -4,7 +4,6 @@ import { BaseCommand } from '../../base-command';
 export default class AndroidDelete extends BaseCommand {
   static summary = 'Delete an Android instance';
   static description = 'Delete an existing Android instance by ID.';
-  static aliases = ['delete android'];
   static examples = [
     '<%= config.bin %> android delete <ID>',
     '<%= config.bin %> android delete android_abc123',

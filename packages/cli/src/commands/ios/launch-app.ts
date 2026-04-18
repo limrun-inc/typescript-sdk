@@ -6,7 +6,6 @@ export default class IosLaunchApp extends BaseCommand {
   static summary = 'Launch an app on a running iOS instance';
   static description =
     'Launch an installed app on a running iOS instance by bundle identifier. Choose `ForegroundIfRunning` to bring an already-running app to the front or `RelaunchIfRunning` to restart it.';
-  static aliases = ['exec launch-app'];
   static examples = [
     '<%= config.bin %> ios launch-app com.example.app',
     '<%= config.bin %> ios launch-app com.example.app --mode RelaunchIfRunning --id <instance-ID>',

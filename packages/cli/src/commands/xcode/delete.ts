@@ -4,7 +4,6 @@ import { BaseCommand } from '../../base-command';
 export default class XcodeDelete extends BaseCommand {
   static summary = 'Delete an Xcode instance';
   static description = 'Delete an existing Xcode sandbox instance by ID.';
-  static aliases = ['delete xcode'];
   static examples = ['<%= config.bin %> xcode delete <ID>', '<%= config.bin %> xcode delete xcode_abc123'];
 
   static args = {

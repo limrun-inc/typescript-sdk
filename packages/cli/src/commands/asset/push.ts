@@ -7,7 +7,6 @@ export default class AssetPush extends BaseCommand {
   static summary = 'Upload an asset file';
   static description =
     'Upload a local file to Limrun asset storage so it can be installed on instances or reused by later commands. The asset name defaults to the filename unless you provide `-n`.';
-  static aliases = ['push'];
   static examples = [
     '<%= config.bin %> asset push ./app.apk',
     '<%= config.bin %> asset push ./app.ipa -n my-app',

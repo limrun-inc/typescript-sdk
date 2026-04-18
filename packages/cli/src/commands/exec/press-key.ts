@@ -6,7 +6,6 @@ export default class ExecPressKey extends BaseCommand {
   static summary = 'Press a key on a running instance';
   static description =
     'Send a keyboard key press to the focused app or text field on a running iOS or Android instance. You can repeat `--modifier` to combine keys such as Command, Shift, or Alt.';
-  static aliases = ['ios press-key', 'android press-key'];
   static examples = [
     '<%= config.bin %> ios press-key enter',
     '<%= config.bin %> ios press-key a --modifier shift --id <instance-ID>',

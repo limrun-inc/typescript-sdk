@@ -6,7 +6,6 @@ export default class ExecElementTree extends BaseCommand {
   static summary = 'Get the UI element tree from a running instance';
   static description =
     'Inspect the current accessibility hierarchy of a running iOS or Android instance. Use `--json` for structured output that agents can search, filter, or feed into later automation steps.';
-  static aliases = ['ios element-tree', 'android element-tree'];
   static examples = [
     '<%= config.bin %> ios element-tree',
     '<%= config.bin %> android element-tree --id <instance-ID>',

@@ -5,7 +5,6 @@ export default class IosGet extends BaseCommand {
   static summary = 'Get details for a specific iOS instance';
   static description =
     'Fetch detailed metadata for a single iOS instance, including region, state, and display name. Use `--json` to inspect the full API response.';
-  static aliases = ['get ios', 'get i'];
   static examples = ['<%= config.bin %> ios get <ID>', '<%= config.bin %> ios get <ID> --json'];
 
   static args = {

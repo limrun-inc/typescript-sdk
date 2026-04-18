@@ -173,7 +173,6 @@ export default class ExecPerform extends BaseCommand {
   static summary = 'Perform multiple iOS actions in a single batch';
   static description =
     'Run a batch of iOS actions in a single CLI invocation using repeated `--action` flags or a JSON/YAML action file. This is the best choice for agent-driven multi-step interactions that should execute without reconnecting between steps.';
-  static aliases = ['ios perform', 'ios perform-actions'];
   static examples = [
     '<%= config.bin %> ios perform --action type=tap,x=100,y=200 --action "type=typeText,text=Hello World"',
     '<%= config.bin %> ios perform --action type=wait,durationMs=1000 --action type=pressKey,key=enter',

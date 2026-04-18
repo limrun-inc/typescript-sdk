@@ -10,7 +10,6 @@ export default class AndroidCreate extends BaseCommand {
   static summary = 'Create a new Android instance';
   static description =
     'Create a new cloud Android instance and optionally connect to it immediately with an ADB tunnel and scrcpy streaming.';
-  static aliases = ['run android'];
 
   static examples = [
     '<%= config.bin %> android create',

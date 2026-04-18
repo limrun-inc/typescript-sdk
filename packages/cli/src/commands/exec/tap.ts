@@ -6,7 +6,6 @@ export default class ExecTap extends BaseCommand {
   static summary = 'Tap at coordinates on a running instance';
   static description =
     'Tap a specific coordinate on the current screen of a running iOS or Android instance. Use this when element selectors are unavailable or when automating canvas-style UIs.';
-  static aliases = ['ios tap', 'android tap', 'tap'];
   static examples = [
     '<%= config.bin %> ios tap 100 200',
     '<%= config.bin %> ios tap 100 200 --id <instance-ID>',
