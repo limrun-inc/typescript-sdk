@@ -48,17 +48,17 @@ export default class XcodeSync extends BaseCommand {
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(id);
 
-      this.log(`Syncing ${syncPath} to instance ${id}...`);
+      this.info(`Syncing ${syncPath} to instance ${id}...`);
 
       const result = await xcodeClient.sync(syncPath, {
         watch: flags.watch,
         install: flags.install,
       });
 
-      this.log('Sync complete.');
+      this.output('Sync complete.');
 
       if (flags.watch && result.stopWatching) {
-        this.log('Watching for changes. Press Ctrl+C to stop.');
+        this.output('Watching for changes. Press Ctrl+C to stop.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
           const shutdown = () => {

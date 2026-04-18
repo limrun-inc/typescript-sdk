@@ -59,9 +59,6 @@
       },
       "session": {
           "description": "Manage persistent background sessions for device interaction: start, status, stop. Sessions are used to execute commands on remote devices without the need to reconnect to the device after each command."
-      },
-      "exec": {
-        "hidden": true
       }
     }
   },

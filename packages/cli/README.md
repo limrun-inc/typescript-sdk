@@ -39,6 +39,7 @@ Every command supports these flags:
 | ------------------- | ----------------------------------------------- |
 | `--api-key <value>` | API key (also reads `LIM_API_KEY` env var)      |
 | `--json`            | Output as JSON instead of human-readable tables |
+| `--quiet`           | Suppress intermediate logs and print only the final result |
 | `--help`            | Show help for any command                       |
 
 ## Command Structure

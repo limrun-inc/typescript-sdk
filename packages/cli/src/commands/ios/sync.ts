@@ -65,7 +65,7 @@ export default class IosSync extends BaseCommand {
         token: instance.status.token,
       });
 
-      this.log(`Syncing app bundle ${syncPath} to instance ${id}...`);
+      this.info(`Syncing app bundle ${syncPath} to instance ${id}...`);
 
       const result = await iosClient.syncApp(syncPath, {
         watch: flags.watch,
@@ -73,13 +73,13 @@ export default class IosSync extends BaseCommand {
         launchMode: flags['launch-mode'] as 'ForegroundIfRunning' | 'RelaunchIfRunning' | undefined,
       });
 
-      this.log('App sync complete.');
+      this.output('App sync complete.');
       if (result.installedBundleId) {
-        this.log(`Installed bundle ID: ${result.installedBundleId}`);
+        this.output(`Installed bundle ID: ${result.installedBundleId}`);
       }
 
       if (flags.watch && result.stopWatching) {
-        this.log('Watching for changes. Press Ctrl+C to stop.');
+        this.output('Watching for changes. Press Ctrl+C to stop.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
           const shutdown = () => {

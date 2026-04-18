@@ -18,6 +18,10 @@ export abstract class BaseCommand extends Command {
         'Output structured JSON instead of human-readable tables or plain text when the command supports it.',
       default: false,
     }),
+    quiet: Flags.boolean({
+      description: 'Suppress intermediate human-readable logs and only emit the final result.',
+      default: false,
+    }),
   };
 
   private _client?: Limrun;
@@ -48,15 +52,37 @@ export abstract class BaseCommand extends Command {
     this._parsedFlags = flags;
   }
 
+  protected isJsonEnabled(): boolean {
+    return Boolean(this.parsedFlags?.json);
+  }
+
+  protected isQuietEnabled(): boolean {
+    return Boolean(this.parsedFlags?.quiet);
+  }
+
+  protected shouldSuppressInfo(): boolean {
+    return this.isJsonEnabled() || this.isQuietEnabled();
+  }
+
+  protected info(message = ''): void {
+    if (!this.shouldSuppressInfo()) {
+      super.log(message);
+    }
+  }
+
+  protected output(message = ''): void {
+    super.log(message);
+  }
+
   protected async withAuth<T>(fn: () => Promise<T>): Promise<T> {
     try {
       return await fn();
     } catch (err) {
       if (err instanceof AuthenticationError) {
         const config = readConfig();
-        this.log('Session expired. Logging in...');
+        this.info('Session expired. Logging in...');
         await login(config.consoleEndpoint, VERSION);
-        this.log('You are logged in now.');
+        this.info('You are logged in now.');
         // Reset client so it picks up the new key
         this._client = undefined;
         return fn();
@@ -75,14 +101,14 @@ export abstract class BaseCommand extends Command {
         });
         return obj;
       });
-      this.log(JSON.stringify(objects, null, 2));
+      this.output(JSON.stringify(objects, null, 2));
     } else {
-      this.log(renderTable(headers, rows));
+      this.output(renderTable(headers, rows));
     }
   }
 
   protected outputJson(data: unknown): void {
-    this.log(JSON.stringify(data, null, 2));
+    this.output(JSON.stringify(data, null, 2));
   }
 
   protected consoleStreamUrl(instanceId: string): string {

@@ -57,11 +57,11 @@ export default class XcodeBuild extends BaseCommand {
         options.upload = { assetName: flags.upload };
       }
 
-      this.log(`Syncing ${syncPath} to instance ${id}...`);
+      this.info(`Syncing ${syncPath} to instance ${id}...`);
       await xcodeClient.sync(syncPath, { watch: false, install: false });
-      this.log('Sync complete.');
+      this.info('Sync complete.');
 
-      this.log('Starting xcodebuild...');
+      this.info('Starting xcodebuild...');
 
       const proc = xcodeClient.xcodebuild(
         Object.keys(settings).length > 0 ? settings : undefined,
@@ -82,7 +82,7 @@ export default class XcodeBuild extends BaseCommand {
         this.error(`xcodebuild failed with exit code ${result.exitCode}`, { exit: result.exitCode });
       }
 
-      this.log(`\nBuild succeeded (exit code ${result.exitCode})`);
+      this.output(`\nBuild succeeded (exit code ${result.exitCode})`);
     });
   }
 

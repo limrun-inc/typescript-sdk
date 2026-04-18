@@ -5,6 +5,10 @@ import { parseLabels } from '../../lib/formatting';
 import { saveInstanceCache, saveLastInstanceId } from '../../lib/config';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 
+function xcodeSandboxIdFromUrl(url: string): string | undefined {
+  return url.match(/\/(sandbox_[^/]+)(?:\/|$)/)?.[1];
+}
+
 export default class IosCreate extends BaseCommand {
   static summary = 'Create a new iOS instance';
   static description =
@@ -67,11 +71,11 @@ export default class IosCreate extends BaseCommand {
         for (const filePath of flags.install) {
           const resolved = path.resolve(filePath);
           const name = path.basename(resolved);
-          this.log(`Uploading ${name}...`);
+          this.info(`Uploading ${name}...`);
           const asset = await this.client.assets.getOrUpload({ path: resolved, name });
           assetNames.push(asset.name);
         }
-        this.log(`Successfully uploaded ${flags.install.length} file(s)`);
+        this.info(`Successfully uploaded ${flags.install.length} file(s)`);
       }
 
       // Build params
@@ -106,35 +110,45 @@ export default class IosCreate extends BaseCommand {
 
       const start = Date.now();
       const instance = await this.client.iosInstances.create(params);
+      const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
+      const xcodeSandboxUrl = instance.status.sandbox?.xcode?.url;
+      const xcodeSandboxId = xcodeSandboxUrl ? xcodeSandboxIdFromUrl(xcodeSandboxUrl) : undefined;
       saveLastInstanceId(instance.metadata.id);
-      this.log(`Created a new iOS instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
-      this.log(`Instance ID: ${instance.metadata.id}`);
-      this.log(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
-      this.log(`Region: ${instance.spec.region}`);
-      this.log(`State: ${instance.status.state}`);
-      if (instance.status.sandbox?.xcode?.url) {
-        this.log(`Xcode Sandbox: ${instance.status.sandbox.xcode.url}`);
+      this.info(`Created a new iOS instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
+      this.info('iOS Instance:');
+      this.info(`  ID: ${instance.metadata.id}`);
+      this.info(`  Console URL: ${consoleUrl}`);
+      this.info(`  Region: ${instance.spec.region}`);
+      this.info(`  State: ${instance.status.state}`);
+      if (xcodeSandboxUrl) {
+        this.info('Xcode Sandbox:');
+        if (xcodeSandboxId) {
+          this.info(`  ID: ${xcodeSandboxId}`);
+        }
+        this.info(`  URL: ${xcodeSandboxUrl}`);
         saveInstanceCache(instance.metadata.id, {
-          sandboxXcodeUrl: instance.status.sandbox.xcode.url,
+          sandboxXcodeUrl: xcodeSandboxUrl,
           token: instance.status.token,
         });
       }
 
       if (flags.json) {
         this.outputJson(instance);
+      } else if (this.isQuietEnabled()) {
+        this.output(instance.metadata.id);
       }
 
       if (flags.rm) {
         const cleanup = async () => {
           try {
             await this.client.iosInstances.delete(instance.metadata.id);
-            this.log(`${instance.metadata.id} is deleted`);
+            this.info(`${instance.metadata.id} is deleted`);
           } catch (e) {
-            this.log(`Failed to delete instance: ${e}`);
+            this.info(`Failed to delete instance: ${e}`);
           }
         };
 
-        this.log('Instance running. Press Ctrl+C to stop and delete.');
+        this.info('Instance running. Press Ctrl+C to stop and delete.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
           const shutdown = () => {
