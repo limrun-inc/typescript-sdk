@@ -93,6 +93,7 @@ lim ios create          # Create a new iOS instance
 lim ios list            # List all ready iOS instances
 lim ios get <ID>        # Get details of a specific instance
 lim ios delete <ID>     # Delete an instance
+lim ios info            # Get device info from a running instance
 ```
 
 #### Create Options
@@ -147,6 +148,10 @@ lim ios get <ID>                               # Single instance details
 All interaction commands accept an optional `--id`. When omitted, the last created iOS instance is used.
 
 ```bash
+# Device info
+lim ios info
+lim ios info --json
+
 # Screenshots
 lim ios screenshot -o screenshot.png
 lim ios screenshot                      # Output base64 to stdout
@@ -164,6 +169,18 @@ lim ios press-key a --modifier shift
 
 # Scrolling
 lim ios scroll down --amount 500
+
+# Batch multiple actions in one call
+lim ios perform --action type=tap,x=100,y=200 --action 'type=typeText,text=Hello World'
+lim ios perform --action type=wait,durationMs=500 --action type=pressKey,key=enter
+lim ios perform --file ./actions.yaml
+
+# actions.yaml
+- type: tap
+  x: 100
+  y: 200
+- type: typeText
+  text: "Hello World"
 
 # UI inspection
 lim ios element-tree

@@ -346,12 +346,27 @@ export function startDaemonServer(): void {
           result = { scrolled: true, direction: args[0] };
           break;
 
+        case 'perform-actions': {
+          if (type !== 'ios') throw new Error('perform-actions is only supported on iOS instances');
+          const timeoutMs = typeof args[1] === 'number' ? args[1] : undefined;
+          result = await (client as any).performActions(
+            args[0],
+            timeoutMs !== undefined ? { timeoutMs } : undefined,
+          );
+          break;
+        }
+
         case 'element-tree':
           if (type === 'ios') {
             result = await (client as any).elementTree();
           } else {
             result = await (client as any).getElementTree();
           }
+          break;
+
+        case 'device-info':
+          if (type !== 'ios') throw new Error('info is only supported on iOS instances');
+          result = (client as any).deviceInfo;
           break;
 
         case 'open-url':
