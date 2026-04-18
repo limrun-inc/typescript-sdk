@@ -88,12 +88,12 @@ export default class XcodeBuild extends BaseCommand {
         Object.keys(options).length > 0 ? options : undefined,
       );
 
-      proc.stdout.on('data', (chunk: string) => {
-        process.stdout.write(chunk);
+      proc.stdout.on('data', (line: string) => {
+        process.stdout.write(line + '\n');
       });
 
-      proc.stderr.on('data', (chunk: string) => {
-        process.stderr.write(chunk);
+      proc.stderr.on('data', (line: string) => {
+        process.stderr.write(line + '\n');
       });
 
       const result = await proc;
