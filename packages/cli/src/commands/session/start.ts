@@ -23,7 +23,9 @@ export default class SessionStart extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID to connect to (defaults to last created)' }),
+    id: Flags.string({
+      description: 'Instance ID to connect to. Defaults to the last created Android or iOS instance.',
+    }),
   };
 
   async run(): Promise<void> {

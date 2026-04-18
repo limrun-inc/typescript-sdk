@@ -3,16 +3,29 @@ import { BaseCommand } from '../../base-command';
 
 export default class AndroidList extends BaseCommand {
   static summary = 'List Android instances';
-  static examples = ['<%= config.bin %> android list'];
+  static description =
+    'List Android instances in your account. By default only ready instances are shown; use `--all` or `--state` to inspect other lifecycle states.';
+  static examples = [
+    '<%= config.bin %> android list',
+    '<%= config.bin %> android list --all',
+    '<%= config.bin %> android list --region us-west --label-selector env=prod',
+  ];
 
   static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
-    state: Flags.string({ description: 'Filter by state (unknown, creating, ready, terminated)' }),
-    region: Flags.string({ description: 'Filter by region' }),
-    'label-selector': Flags.string({ description: 'Filter by labels (e.g. env=prod,region=us-west)' }),
-    all: Flags.boolean({ description: 'Show all states, not just ready', default: false }),
+    state: Flags.string({
+      description: 'Lifecycle state to filter by: unknown, creating, ready, or terminated',
+    }),
+    region: Flags.string({ description: 'Region to filter by, such as us-west' }),
+    'label-selector': Flags.string({
+      description: 'Comma-separated label filters, for example env=prod,team=mobile',
+    }),
+    all: Flags.boolean({
+      description: 'Show all states instead of defaulting to ready instances only',
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {

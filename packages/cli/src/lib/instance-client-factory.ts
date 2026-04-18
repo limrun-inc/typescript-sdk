@@ -35,8 +35,9 @@ export function sendSessionCommand(
   instanceId: string,
   command: string,
   args: unknown[] = [],
+  timeoutMs?: number,
 ): Promise<unknown> {
-  return sendCommand(instanceId, command, args);
+  return sendCommand(instanceId, command, args, timeoutMs);
 }
 
 /**

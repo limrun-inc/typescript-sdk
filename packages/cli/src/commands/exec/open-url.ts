@@ -4,19 +4,27 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecOpenUrl extends BaseCommand {
   static summary = 'Open a URL on a running instance';
+  static description =
+    'Open a web URL or application deep link on a running iOS or Android instance. This is useful for browser navigation, deep-link testing, and app routing flows.';
   static aliases = ['ios open-url', 'android open-url'];
   static examples = [
     '<%= config.bin %> ios open-url https://example.com',
     '<%= config.bin %> ios open-url https://example.com --id <instance-ID>',
+    '<%= config.bin %> android open-url myapp://settings --id <instance-ID>',
   ];
 
   static args = {
-    url: Args.string({ description: 'URL to open', required: true }),
+    url: Args.string({
+      description: 'URL or deep link to open, such as https://example.com or myapp://settings',
+      required: true,
+    }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
+    id: Flags.string({
+      description: 'Instance ID to target. Defaults to the last created instance of the command alias type.',
+    }),
   };
 
   async run(): Promise<void> {

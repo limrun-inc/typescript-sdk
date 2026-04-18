@@ -9,37 +9,57 @@ import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-
 export default class AndroidCreate extends BaseCommand {
   static summary = 'Create a new Android instance';
   static description =
-    'Creates and optionally connects to a new Android instance with ADB tunnel and scrcpy streaming.';
+    'Create a new cloud Android instance and optionally connect to it immediately with an ADB tunnel and scrcpy streaming.';
   static aliases = ['run android'];
 
   static examples = [
     '<%= config.bin %> android create',
     '<%= config.bin %> android create --rm --install ./app.apk',
     '<%= config.bin %> android create --region us-west --label env=dev',
+    '<%= config.bin %> android create --no-connect',
   ];
 
   static flags = {
     ...BaseCommand.baseFlags,
     connect: Flags.boolean({
-      description: 'Connect to the instance (start ADB tunnel)',
+      description: 'Connect to the new instance immediately by starting an ADB tunnel',
       default: true,
       allowNo: true,
     }),
-    stream: Flags.boolean({ description: 'Stream the instance with scrcpy', default: true, allowNo: true }),
-    rm: Flags.boolean({ description: 'Delete instance on exit', default: false }),
-    'adb-path': Flags.string({ description: 'Path to adb binary', default: 'adb' }),
-    'display-name': Flags.string({ description: 'Display name for the instance' }),
-    region: Flags.string({ description: 'Region where the instance will be created' }),
-    'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
-    'inactivity-timeout': Flags.string({ description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default: 3m' }),
-    label: Flags.string({ description: 'Labels in key=value format', multiple: true }),
-    'reuse-if-exists': Flags.boolean({
-      description: 'Reuse existing instance with same labels/region',
+    stream: Flags.boolean({
+      description: 'Launch scrcpy after connecting so you can watch and control the device visually',
+      default: true,
+      allowNo: true,
+    }),
+    rm: Flags.boolean({
+      description: 'Delete the instance automatically when this CLI process exits',
       default: false,
     }),
-    'install-asset': Flags.string({ description: 'Asset name to install (can be repeated)', multiple: true }),
+    'adb-path': Flags.string({
+      description: 'Path to the adb binary used for tunnel-driven workflows',
+      default: 'adb',
+    }),
+    'display-name': Flags.string({
+      description: 'Human-friendly display name shown in listings and the console',
+    }),
+    region: Flags.string({ description: 'Region where the instance should be created, such as us-west' }),
+    'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
+    'inactivity-timeout': Flags.string({ description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default: 3m' }),
+    label: Flags.string({
+      description: 'Metadata label in key=value format. Repeat to attach multiple labels.',
+      multiple: true,
+    }),
+    'reuse-if-exists': Flags.boolean({
+      description: 'Reuse an existing matching instance instead of creating a new one',
+      default: false,
+    }),
+    'install-asset': Flags.string({
+      description: 'Existing asset name to install after creation. Repeat for multiple assets.',
+      multiple: true,
+    }),
     install: Flags.string({
-      description: 'Local file to install (auto-uploads if needed, can be repeated)',
+      description:
+        'Local app file to upload and install automatically after creation. Repeat for multiple files.',
       multiple: true,
     }),
   };

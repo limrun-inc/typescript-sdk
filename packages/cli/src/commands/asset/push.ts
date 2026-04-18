@@ -5,6 +5,8 @@ import { BaseCommand } from '../../base-command';
 
 export default class AssetPush extends BaseCommand {
   static summary = 'Upload an asset file';
+  static description =
+    'Upload a local file to Limrun asset storage so it can be installed on instances or reused by later commands. The asset name defaults to the filename unless you provide `-n`.';
   static aliases = ['push'];
   static examples = [
     '<%= config.bin %> asset push ./app.apk',
@@ -12,12 +14,12 @@ export default class AssetPush extends BaseCommand {
   ];
 
   static args = {
-    file: Args.string({ description: 'Path to the file to upload', required: true }),
+    file: Args.string({ description: 'Path to the local file to upload as an asset', required: true }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
-    name: Flags.string({ char: 'n', description: 'Name for the asset (defaults to filename)' }),
+    name: Flags.string({ char: 'n', description: 'Asset name to store. Defaults to the source filename.' }),
   };
 
   async run(): Promise<void> {

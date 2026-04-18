@@ -5,6 +5,8 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecRecord extends BaseCommand {
   static summary = 'Start or stop video recording on a running instance';
+  static description =
+    'Control screen recording on a running iOS or Android instance. Start recording first, then stop recording to download the file locally or upload it directly with `--presigned-url`.';
   static aliases = ['ios record', 'android record'];
   static examples = [
     '<%= config.bin %> ios record start',
@@ -17,15 +19,33 @@ export default class ExecRecord extends BaseCommand {
   ];
 
   static args = {
-    action: Args.string({ description: 'start or stop', required: true, options: ['start', 'stop'] }),
+    action: Args.string({
+      description:
+        'Recording action to perform: `start` begins capturing and `stop` finalizes the video file',
+      required: true,
+      options: ['start', 'stop'],
+    }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
-    quality: Flags.integer({ description: 'Recording quality (5-10)', default: 5 }),
-    output: Flags.string({ char: 'o', description: 'Save recording to file (for stop action)' }),
-    'presigned-url': Flags.string({ description: 'Upload the recording directly using this presigned URL' }),
+    id: Flags.string({
+      description: 'Instance ID to record. Defaults to the last created instance of the command alias type.',
+    }),
+    quality: Flags.integer({
+      description:
+        'Recording quality from 5 to 10. Higher values increase quality and file size when starting a recording.',
+      default: 5,
+    }),
+    output: Flags.string({
+      char: 'o',
+      description:
+        'Local file path for the finished recording when using the `stop` action. Defaults to a timestamped mp4 in the current directory.',
+    }),
+    'presigned-url': Flags.string({
+      description:
+        'Presigned upload URL to receive the recording when using the `stop` action. Use this if you will upload the recording to a bucket.',
+    }),
   };
 
   async run(): Promise<void> {

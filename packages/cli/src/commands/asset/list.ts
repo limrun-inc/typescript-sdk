@@ -3,18 +3,30 @@ import { BaseCommand } from '../../base-command';
 
 export default class AssetList extends BaseCommand {
   static summary = 'List assets or get a specific one';
+  static description =
+    'List uploaded assets in your account or fetch a single asset by ID. You can optionally include signed download or upload URLs when preparing follow-up automation steps.';
   static aliases = ['get asset', 'get assets'];
-  static examples = ['<%= config.bin %> asset list', '<%= config.bin %> asset list <ID>'];
+  static examples = [
+    '<%= config.bin %> asset list',
+    '<%= config.bin %> asset list <ID>',
+    '<%= config.bin %> asset list --name MyApp --download-url',
+  ];
 
   static args = {
-    id: Args.string({ description: 'Asset ID to get', required: false }),
+    id: Args.string({ description: 'Asset ID to fetch. Omit to list assets instead.', required: false }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
-    name: Flags.string({ description: 'Filter by asset name' }),
-    'download-url': Flags.boolean({ description: 'Include download URL in output', default: false }),
-    'upload-url': Flags.boolean({ description: 'Include upload URL in output', default: false }),
+    name: Flags.string({ description: 'Filter listed assets by exact name' }),
+    'download-url': Flags.boolean({
+      description: 'Include a signed download URL in the output where available',
+      default: false,
+    }),
+    'upload-url': Flags.boolean({
+      description: 'Include a signed upload URL in the output where available',
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {

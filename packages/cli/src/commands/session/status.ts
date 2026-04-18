@@ -5,7 +5,9 @@ import { loadInstanceCache } from '../../lib/config';
 
 export default class SessionStatus extends BaseCommand {
   static summary = 'Show active sessions';
-  static examples = ['<%= config.bin %> session status'];
+  static description =
+    'List background session daemons started with `lim session start`, including instance type, daemon PID, and live connection state. Use `--json` for agent-friendly structured output.';
+  static examples = ['<%= config.bin %> session status', '<%= config.bin %> session status --json'];
 
   static flags = { ...BaseCommand.baseFlags };
 

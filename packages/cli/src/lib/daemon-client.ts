@@ -15,6 +15,7 @@ export async function sendCommand(
   instanceId: string,
   command: string,
   args: unknown[] = [],
+  timeoutMs?: number,
 ): Promise<unknown> {
   if (!isDaemonRunning(instanceId)) {
     throw new Error(`No active session for ${instanceId}. Run \`lim session start ${instanceId}\` first.`);
@@ -79,6 +80,6 @@ export async function sendCommand(
       reject(new Error('Daemon request timed out'));
     });
 
-    socket.setTimeout(30000);
+    socket.setTimeout(timeoutMs ?? 30000);
   });
 }

@@ -4,7 +4,7 @@ import { detectInstanceType } from '../lib/instance-client-factory';
 import { loadInstanceCache } from '../lib/config';
 
 export default class Build extends BaseCommand {
-  static summary = 'Run xcodebuild on a Xcode sandbox';
+  static summary = 'Run xcodebuild on an Xcode sandbox';
   static aliases = ['ios build', 'xcode build'];
   static description =
     'Syncs a local project path once (or the current working directory if omitted), then triggers a remote xcodebuild with streaming output. ' +
@@ -17,19 +17,28 @@ export default class Build extends BaseCommand {
     '<%= config.bin %> build ./MyProject --id <xcode-instance-ID>',
     '<%= config.bin %> build --id <ios-instance-ID> --scheme MyApp',
     '<%= config.bin %> build --id <xcode-instance-ID> --scheme MyApp --workspace MyApp.xcworkspace',
+    '<%= config.bin %> build ./MyProject --project MyApp.xcodeproj --upload ios-build.zip',
   ];
 
   static args = {
-    path: Args.string({ description: 'Local project path (defaults to current directory)', required: false }),
+    path: Args.string({
+      description: 'Local project path to sync before building. Defaults to the current working directory.',
+      required: false,
+    }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Xcode or iOS instance ID (defaults to last created)' }),
-    scheme: Flags.string({ description: 'Xcode scheme' }),
-    workspace: Flags.string({ description: 'Xcode workspace file' }),
-    project: Flags.string({ description: 'Xcode project file' }),
-    upload: Flags.string({ description: 'Upload build artifact as asset with this name' }),
+    id: Flags.string({
+      description:
+        'Xcode instance ID or iOS instance ID with `--xcode` enabled. Defaults to the last created matching instance.',
+    }),
+    scheme: Flags.string({ description: 'Xcode scheme to build, such as MyApp' }),
+    workspace: Flags.string({
+      description: 'Workspace file to pass to xcodebuild, such as MyApp.xcworkspace',
+    }),
+    project: Flags.string({ description: 'Project file to pass to xcodebuild, such as MyApp.xcodeproj' }),
+    upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
   };
 
   async run(): Promise<void> {

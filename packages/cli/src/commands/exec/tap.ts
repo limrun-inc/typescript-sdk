@@ -4,20 +4,31 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecTap extends BaseCommand {
   static summary = 'Tap at coordinates on a running instance';
+  static description =
+    'Tap a specific coordinate on the current screen of a running iOS or Android instance. Use this when element selectors are unavailable or when automating canvas-style UIs.';
   static aliases = ['ios tap', 'android tap', 'tap'];
   static examples = [
     '<%= config.bin %> ios tap 100 200',
     '<%= config.bin %> ios tap 100 200 --id <instance-ID>',
+    '<%= config.bin %> android tap 540 1200',
   ];
 
   static args = {
-    x: Args.integer({ description: 'X coordinate', required: true }),
-    y: Args.integer({ description: 'Y coordinate', required: true }),
+    x: Args.integer({
+      description: 'X coordinate in screen points or pixels for the current device view',
+      required: true,
+    }),
+    y: Args.integer({
+      description: 'Y coordinate in screen points or pixels for the current device view',
+      required: true,
+    }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
+    id: Flags.string({
+      description: 'Instance ID to target. Defaults to the last created instance of the command alias type.',
+    }),
   };
 
   async run(): Promise<void> {

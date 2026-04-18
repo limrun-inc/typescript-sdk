@@ -4,7 +4,8 @@ import { isDaemonRunning, getDaemonPid, clearSession, listActiveSessions } from 
 
 export default class SessionStop extends Command {
   static summary = 'Stop one or all active sessions';
-  static description = 'Stops background daemons and disconnects from instances.';
+  static description =
+    'Stop a single background session daemon or all active session daemons. If you omit `--id` and only one session is running, that session is stopped automatically.';
 
   static examples = [
     '<%= config.bin %> session stop',
@@ -15,8 +16,14 @@ export default class SessionStop extends Command {
   static args = {};
 
   static flags = {
-    id: Flags.string({ description: 'Instance ID to stop session for' }),
-    all: Flags.boolean({ description: 'Stop all active sessions', default: false }),
+    id: Flags.string({
+      description:
+        'Instance ID whose session should be stopped. If omitted, the command can auto-select the only active session.',
+    }),
+    all: Flags.boolean({
+      description: 'Stop all active sessions instead of a single instance session',
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {

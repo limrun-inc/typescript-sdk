@@ -3,11 +3,13 @@ import { BaseCommand } from '../../base-command';
 
 export default class AndroidGet extends BaseCommand {
   static summary = 'Get details for a specific Android instance';
+  static description =
+    'Fetch detailed metadata for a single Android instance, including region, state, and display name. Use `--json` to inspect the full API response.';
   static aliases = ['get android', 'get a'];
-  static examples = ['<%= config.bin %> android get <ID>'];
+  static examples = ['<%= config.bin %> android get <ID>', '<%= config.bin %> android get <ID> --json'];
 
   static args = {
-    id: Args.string({ description: 'Instance ID to get', required: true }),
+    id: Args.string({ description: 'Android instance ID to fetch', required: true }),
   };
 
   static flags = { ...BaseCommand.baseFlags };

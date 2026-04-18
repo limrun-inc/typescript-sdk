@@ -35,11 +35,11 @@ The CLI stores configuration in `~/.lim/config.yaml`. This file is compatible wi
 
 Every command supports these flags:
 
-| Flag | Description |
-|------|-------------|
-| `--api-key <value>` | API key (also reads `LIM_API_KEY` env var) |
-| `--json` | Output as JSON instead of human-readable tables |
-| `--help` | Show help for any command |
+| Flag                | Description                                     |
+| ------------------- | ----------------------------------------------- |
+| `--api-key <value>` | API key (also reads `LIM_API_KEY` env var)      |
+| `--json`            | Output as JSON instead of human-readable tables |
+| `--help`            | Show help for any command                       |
 
 ## Command Structure
 
@@ -93,6 +93,7 @@ lim ios create          # Create a new iOS instance
 lim ios list            # List all ready iOS instances
 lim ios get <ID>        # Get details of a specific instance
 lim ios delete <ID>     # Delete an instance
+lim ios info            # Get device info from a running instance
 ```
 
 #### Create Options
@@ -116,19 +117,19 @@ lim ios create --region us-west --display-name "CI Test" --label env=ci --rm
 
 **Flags for `ios create`:**
 
-| Flag | Description |
-|------|-------------|
-| `--rm` | Auto-delete the instance on exit (Ctrl+C) |
-| `--model <iphone\|ipad\|watch>` | Simulator device model |
-| `--xcode` | Attach a Xcode build sandbox to the iOS instance |
-| `--region <value>` | Region for the instance (e.g. `us-west`) |
-| `--display-name <value>` | Human-readable name |
-| `--label <key=value>` | Labels (repeatable). Used for filtering and reuse |
-| `--hard-timeout <duration>` | Max lifetime (e.g. `1m`, `10m`, `3h`). Default: none |
-| `--inactivity-timeout <duration>` | Idle timeout. Default: `3m` |
-| `--reuse-if-exists` | Reuse an existing instance with matching labels/region |
-| `--install <file>` | Local file to install (auto-uploads, repeatable) |
-| `--install-asset <name>` | Asset name to install (repeatable) |
+| Flag                              | Description                                            |
+| --------------------------------- | ------------------------------------------------------ |
+| `--rm`                            | Auto-delete the instance on exit (Ctrl+C)              |
+| `--model <iphone\|ipad\|watch>`   | Simulator device model                                 |
+| `--xcode`                         | Attach a Xcode build sandbox to the iOS instance       |
+| `--region <value>`                | Region for the instance (e.g. `us-west`)               |
+| `--display-name <value>`          | Human-readable name                                    |
+| `--label <key=value>`             | Labels (repeatable). Used for filtering and reuse      |
+| `--hard-timeout <duration>`       | Max lifetime (e.g. `1m`, `10m`, `3h`). Default: none   |
+| `--inactivity-timeout <duration>` | Idle timeout. Default: `3m`                            |
+| `--reuse-if-exists`               | Reuse an existing instance with matching labels/region |
+| `--install <file>`                | Local file to install (auto-uploads, repeatable)       |
+| `--install-asset <name>`          | Asset name to install (repeatable)                     |
 
 #### List and Filter
 
@@ -147,6 +148,10 @@ lim ios get <ID>                               # Single instance details
 All interaction commands accept an optional `--id`. When omitted, the last created iOS instance is used.
 
 ```bash
+# Device info
+lim ios info
+lim ios info --json
+
 # Screenshots
 lim ios screenshot -o screenshot.png
 lim ios screenshot                      # Output base64 to stdout
@@ -158,12 +163,24 @@ lim ios tap-element --accessibility-id btn_ok
 
 # Text input
 lim ios type "Hello World"
-lim ios type "search query" --press-enter
+lim ios type "search query" --enter
 lim ios press-key enter
 lim ios press-key a --modifier shift
 
 # Scrolling
 lim ios scroll down --amount 500
+
+# Batch multiple actions in one call
+lim ios perform --action type=tap,x=100,y=200 --action 'type=typeText,text=Hello World'
+lim ios perform --action type=wait,durationMs=500 --action type=pressKey,key=enter
+lim ios perform --file ./actions.yaml
+
+# actions.yaml
+- type: tap
+  x: 100
+  y: 200
+- type: typeText
+  text: "Hello World"
 
 # UI inspection
 lim ios element-tree
@@ -247,11 +264,11 @@ lim android create --region us-west --display-name "CI Test" --label env=ci --rm
 
 **Android-specific flags:**
 
-| Flag | Description |
-|------|-------------|
-| `--[no-]connect` | Start ADB tunnel (default: true) |
-| `--[no-]stream` | Launch scrcpy for visual control (default: true) |
-| `--adb-path <path>` | Path to `adb` binary (default: `adb`) |
+| Flag                | Description                                      |
+| ------------------- | ------------------------------------------------ |
+| `--[no-]connect`    | Start ADB tunnel (default: true)                 |
+| `--[no-]stream`     | Launch scrcpy for visual control (default: true) |
+| `--adb-path <path>` | Path to `adb` binary (default: `adb`)            |
 
 #### Device Interaction
 
@@ -412,6 +429,7 @@ If only one session is active, `lim session stop` (no ID) stops it automatically
 #### How It Works
 
 Each `lim session start` spawns an independent background daemon that:
+
 - Holds a persistent WebSocket connection to that specific instance
 - Listens on its own Unix socket at `/tmp/lim-sessions/<instance-id>/`
 - All interaction commands automatically detect the matching session and route through it
@@ -577,10 +595,10 @@ The CLI reads configuration from multiple sources (in order of precedence):
 
 **Config file keys:**
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `api-key` | — | Your Limrun API key |
-| `api-endpoint` | `https://api.limrun.com` | API base URL |
+| Key                | Default                      | Description             |
+| ------------------ | ---------------------------- | ----------------------- |
+| `api-key`          | —                            | Your Limrun API key     |
+| `api-endpoint`     | `https://api.limrun.com`     | API base URL            |
 | `console-endpoint` | `https://console.limrun.com` | Console URL (for login) |
 
 ---

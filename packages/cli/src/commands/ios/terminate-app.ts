@@ -4,19 +4,27 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class IosTerminateApp extends BaseCommand {
   static summary = 'Terminate an app on a running iOS instance';
+  static description =
+    'Stop a running app on an iOS instance by bundle identifier. This is useful when resetting application state or ending a foreground app before another automation step.';
   static aliases = ['exec terminate-app'];
   static examples = [
     '<%= config.bin %> ios terminate-app com.example.app',
     '<%= config.bin %> ios terminate-app com.example.app --id <instance-ID>',
+    '<%= config.bin %> ios terminate-app com.example.app --id ios_abc123',
   ];
 
   static args = {
-    bundleId: Args.string({ description: 'App bundle identifier', required: true }),
+    bundleId: Args.string({
+      description: 'Bundle identifier of the running app to terminate',
+      required: true,
+    }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
+    id: Flags.string({
+      description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
+    }),
   };
 
   async run(): Promise<void> {

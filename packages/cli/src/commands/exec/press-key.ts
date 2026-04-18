@@ -4,10 +4,13 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 
 export default class ExecPressKey extends BaseCommand {
   static summary = 'Press a key on a running instance';
+  static description =
+    'Send a keyboard key press to the focused app or text field on a running iOS or Android instance. You can repeat `--modifier` to combine keys such as Command, Shift, or Alt.';
   static aliases = ['ios press-key', 'android press-key'];
   static examples = [
     '<%= config.bin %> ios press-key enter',
     '<%= config.bin %> ios press-key a --modifier shift --id <instance-ID>',
+    '<%= config.bin %> android press-key tab',
   ];
 
   static args = {
@@ -16,8 +19,14 @@ export default class ExecPressKey extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
-    modifier: Flags.string({ description: 'Modifier key (e.g. shift, command, alt)', multiple: true }),
+    id: Flags.string({
+      description: 'Instance ID to target. Defaults to the last created instance of the command alias type.',
+    }),
+    modifier: Flags.string({
+      description:
+        'Modifier key to hold during the press, such as shift, command, control, or alt. Repeat for multiple modifiers.',
+      multiple: true,
+    }),
   };
 
   async run(): Promise<void> {

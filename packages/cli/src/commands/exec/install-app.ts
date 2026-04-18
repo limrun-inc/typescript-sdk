@@ -7,21 +7,28 @@ import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../l
 export default class ExecInstallApp extends BaseCommand {
   static summary = 'Install an app on a running instance';
   static description =
-    'Installs an app from a local file or URL. Local files are auto-uploaded to asset storage first.';
+    'Install an app from a local file path or remote URL onto a running iOS or Android instance. Local files are uploaded to Limrun asset storage automatically before installation.';
   static aliases = ['ios install-app', 'android install-app'];
 
   static examples = [
     '<%= config.bin %> ios install-app ./MyApp.ipa',
     '<%= config.bin %> android install-app ./app.apk --id <instance-ID>',
+    '<%= config.bin %> ios install-app https://example.com/MyApp.ipa --json',
   ];
 
   static args = {
-    path_or_url: Args.string({ description: 'Local file path or URL', required: true }),
+    path_or_url: Args.string({
+      description: 'Local app file path or remote URL to an installable package such as .ipa or .apk',
+      required: true,
+    }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
-    id: Flags.string({ description: 'Instance ID (defaults to last created)' }),
+    id: Flags.string({
+      description:
+        'Instance ID to install the app on. Defaults to the last created instance of the command alias type.',
+    }),
   };
 
   async run(): Promise<void> {
