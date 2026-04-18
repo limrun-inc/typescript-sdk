@@ -103,7 +103,9 @@ export default class XcodeBuild extends BaseCommand {
       }
 
       if (!sandboxUrl) {
-        this.error(`iOS instance ${id} does not have a Xcode sandbox. Create it with: lim ios create --xcode`);
+        this.error(
+          `iOS instance ${id} does not have a Xcode sandbox. Create it with: lim ios create --xcode`,
+        );
       }
       return this.client.xcodeInstances.createClient({
         apiUrl: sandboxUrl,
