@@ -7,10 +7,10 @@
   resolved "https://registry.npmjs.org/@colors/colors/-/colors-1.5.0.tgz"
   integrity sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==
 
-"@limrun/api@0.24.3":
-  version "0.24.3"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.24.3.tgz"
-  integrity sha512-Mh2644xFqKOY992FM53xzRYj1cv9TNhZFVHiQBzId9BuJ5k2z4wbaAb7K0xoJqO9ERZ//7Sn0nRhPPCPuKx+Gw==
+"@limrun/api@0.26.0":
+  version "0.26.0"
+  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.26.0.tgz#4b1c27d2954d0dff15784d31893f834a4fe1542c"
+  integrity sha512-ZQ55kNgWbh5EU9FI/GQv478NdUABgX2+028MjkSNVp0IgZOIy42391IEUVDviLOC8Nbsj7NJZIuICnMqYwZjpw==
   dependencies:
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"
@@ -18,6 +18,7 @@
     proxy-from-env "^2.1.0"
     undici "7.24.7"
     ws "^8.18.3"
+    xdelta3-wasm "^1.0.0"
 
 "@oclif/core@^4":
   version "4.10.5"
@@ -473,3 +474,8 @@ wsl-utils@^0.1.0:
   integrity sha512-h3Fbisa2nKGPxCpm89Hk33lBLsnaGBvctQopaBSOW/uIs6FTe1ATyAnKFJrzVs9vpGdsTe73WF3V4lIsk4Gacw==
   dependencies:
     is-wsl "^3.1.0"
+
+xdelta3-wasm@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.npmjs.org/xdelta3-wasm/-/xdelta3-wasm-1.0.0.tgz"
+  integrity sha512-vhS28BhVaE3S/PGG1KQIwjBVqJecuS5Sdh82UAZysbnYaU93KS6l8ZPtsqonNZMeuyFgrGW9D44hh2lwQCsidA==
