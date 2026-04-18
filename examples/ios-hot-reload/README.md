@@ -10,13 +10,9 @@ For example, a native Swift app with a 25mb binary has a string change, the
 only chunk sent is that changed 1kb and our server applies that patch which
 happens in milliseconds.
 
-Under the hood, it uses `xdelta3` algorithm for diff-ing and OS-specific
-functionality for watching changes.
-
-Pre-requisite:
-```bash
-brew install xdelta
-```
+Under the hood, it uses the `xdelta3` algorithm for diff-ing (shipped in-process
+as a WebAssembly module, no host install required) and OS-specific functionality
+for watching changes.
 
 Clone this repo and enter this example folder:
 ```bash

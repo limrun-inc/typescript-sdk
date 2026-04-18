@@ -12,21 +12,6 @@ git clone https://github.com/limrun-inc/typescript-sdk.git
 cd typescript-sdk/examples/xcode-sandbox
 ```
 
-### Pre-requisites
-
-We utilize `xdelta3` algorithm for differential patching, so it needs to be
-installed in the environment.
-
-```bash
-# macOS
-brew install xdelta
-```
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install xdelta3
-```
-
 ### Run
 
 Clone our sample Swift-based native app.
