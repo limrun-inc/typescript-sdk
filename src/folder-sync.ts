@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { spawn } from 'child_process';
 import { watchFolderTree } from './folder-sync-watcher';
 import { type IgnoreFn } from './folder-sync-ignore';
 import { Readable } from 'stream';
@@ -285,34 +284,69 @@ async function walkFiles(root: string, ignoreFn: IgnoreFn): Promise<FileEntry[]>
   return out;
 }
 
-let xdelta3Ready: Promise<void> | null = null;
-async function ensureXdelta3(): Promise<void> {
-  if (!xdelta3Ready) {
-    xdelta3Ready = new Promise<void>((resolve, reject) => {
-      const p = spawn('xdelta3', ['-V']);
-      p.on('error', reject);
-      p.on('exit', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`xdelta3 not available (exit=${code})`));
-      });
+// xdelta3 encoder backed by a WASM build of the upstream xdelta3 library.
+// Produces VCDIFF-compatible patches identical to `xdelta3 -e -s basis target`,
+// so the server-side decoder continues to apply them without changes.
+type Xdelta3Wasm = {
+  init: () => Promise<void>;
+  xd3_encode_memory: (
+    input: Uint8Array,
+    source: Uint8Array,
+    output_size_max: number,
+    smatch_cfg: number,
+  ) => { ret: number; str: string; output: Uint8Array };
+  xd3_smatch_cfg: { DEFAULT: number };
+  WASI_ERRNO: { ENOSPC: number };
+};
+
+let xdelta3WasmReady: Promise<Xdelta3Wasm> | null = null;
+async function loadXdelta3Wasm(): Promise<Xdelta3Wasm> {
+  if (!xdelta3WasmReady) {
+    xdelta3WasmReady = (async () => {
+      // Dynamic import so the WASM module is only loaded when sync is actually used.
+      // Works in both CJS and ESM outputs emitted by tsc-multi.
+      const mod = (await import('xdelta3-wasm')) as unknown as Xdelta3Wasm;
+      await mod.init();
+      return mod;
+    })().catch((err) => {
+      // Allow retry on a subsequent call if the first init failed.
+      xdelta3WasmReady = null;
+      throw err;
     });
   }
-  return await xdelta3Ready;
+  return await xdelta3WasmReady;
 }
 
-async function runXdelta3Encode(basis: string, target: string, outPatch: string): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const p = spawn('xdelta3', ['-e', '-s', basis, target, outPatch], {
-      stdio: ['ignore', 'ignore', 'pipe'],
-    });
-    let stderr = '';
-    p.stderr.on('data', (d) => (stderr += d.toString()));
-    p.on('error', reject);
-    p.on('exit', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`xdelta3 encode failed (exit=${code}): ${stderr.trim()}`));
-    });
-  });
+/**
+ * Encode an xdelta3/VCDIFF patch for `target` relative to `basis` and write it
+ * to `outPatch`. Returns the size of the resulting patch in bytes.
+ *
+ * If the encoder would produce a patch larger than `maxPatchBytes`, it short-
+ * circuits with ENOSPC and this function returns -1 without writing a file, so
+ * callers can fall back to a full upload cheaply.
+ */
+export async function encodeXdelta3Patch(
+  basis: string,
+  target: string,
+  outPatch: string,
+  maxPatchBytes: number,
+): Promise<number> {
+  const wasm = await loadXdelta3Wasm();
+  const [basisBuf, targetBuf] = await Promise.all([
+    fs.promises.readFile(basis),
+    fs.promises.readFile(target),
+  ]);
+  const basisBytes = new Uint8Array(basisBuf.buffer, basisBuf.byteOffset, basisBuf.byteLength);
+  const targetBytes = new Uint8Array(targetBuf.buffer, targetBuf.byteOffset, targetBuf.byteLength);
+  const res = wasm.xd3_encode_memory(targetBytes, basisBytes, maxPatchBytes, wasm.xd3_smatch_cfg.DEFAULT);
+  if (res.ret === wasm.WASI_ERRNO.ENOSPC) {
+    return -1;
+  }
+  if (res.ret !== 0) {
+    throw new Error(`xdelta3 encode failed: ${res.str} (code=${res.ret})`);
+  }
+  await fs.promises.writeFile(outPatch, res.output);
+  return res.output.byteLength;
 }
 
 async function cachePut(cacheRoot: string, relPath: string, srcFile: string): Promise<void> {
@@ -385,7 +419,6 @@ async function syncFolderOnce(
   const log = opts.log ?? noopLogger;
   const slog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => log(level, `syncFolder: ${msg}`);
   const maxPatchBytes = opts.maxPatchBytes ?? 4 * 1024 * 1024;
-  await ensureXdelta3();
 
   const files = await walkFiles(localFolderPath, opts.ignoreFn);
   const fileMap = new Map(files.map((f) => [f.path, f]));
@@ -425,23 +458,22 @@ async function syncFolderOnce(
       const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limulator-xdelta3-'));
       const patchPath = path.join(tmpDir, 'patch.xdelta3');
       const encodeStart = nowMs();
-      await runXdelta3Encode(basisPath, f.absPath, patchPath);
+      const patchSize = await encodeXdelta3Patch(basisPath, f.absPath, patchPath, maxPatchBytes);
       const encodeMs = nowMs() - encodeStart;
       deltaEncodeMsTotal += encodeMs;
-      const st = await fs.promises.stat(patchPath);
-      if (st.size <= maxPatchBytes) {
+      if (patchSize >= 0) {
         slog(
           'debug',
-          `delta(file): ${path.posix.basename(f.path)} patchSize=${st.size} encode=${fmtMs(encodeMs)}`,
+          `delta(file): ${path.posix.basename(f.path)} patchSize=${patchSize} encode=${fmtMs(encodeMs)}`,
         );
-        bytesSentDelta += st.size;
+        bytesSentDelta += patchSize;
         return {
           payload: {
             kind: 'delta',
             path: f.path,
             basisSha256: basisSha.toLowerCase(),
             targetSha256: f.sha256.toLowerCase(),
-            length: st.size,
+            length: patchSize,
           },
           filePath: patchPath,
           cleanupDir: tmpDir,
