@@ -2,14 +2,14 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
 
-export default class IosLog extends BaseCommand {
+export default class IosAppLog extends BaseCommand {
   static summary = 'Stream or tail app logs from a running iOS instance';
   static description =
-    'Read logs from an installed app on a running iOS instance. Use the default tail mode for a snapshot of recent lines, or `--follow` to keep streaming logs until you stop the command.';
+    'Read logs for a specific installed app on a running iOS instance. Use `--tail` for recent lines, or `--follow` to keep streaming logs until you stop the command.';
   static examples = [
-    '<%= config.bin %> ios log com.example.app',
-    '<%= config.bin %> ios log com.example.app --id <instance-ID> --lines 50',
-    '<%= config.bin %> ios log com.example.app --id <instance-ID> -f',
+    '<%= config.bin %> ios app-log com.example.app',
+    '<%= config.bin %> ios app-log com.example.app --tail 50',
+    '<%= config.bin %> ios app-log com.example.app --follow --id <instance-ID>',
   ];
 
   static args = {
@@ -29,31 +29,32 @@ export default class IosLog extends BaseCommand {
       description: 'Keep streaming log lines until interrupted',
       default: false,
     }),
-    lines: Flags.integer({
-      description: 'Number of recent lines to fetch when not using `--follow`',
+    tail: Flags.integer({
+      char: 'n',
+      description: 'Number of recent lines to fetch when not using `--follow`.',
       default: 100,
     }),
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(IosLog);
+    const { args, flags } = await this.parse(IosAppLog);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
       const id = this.resolveId(flags.id);
-      // Log tail (non-streaming) can use session
+
       if (!flags.follow) {
         if (hasActiveSession(id)) {
-          const output = await sendSessionCommand(id, 'app-log-tail', [args.bundleId, flags.lines]);
+          const output = await sendSessionCommand(id, 'app-log-tail', [args.bundleId, flags.tail]);
           this.log(String(output));
         } else {
           const { type, client, disconnect } = await getInstanceClient(this.client, id);
           if (type !== 'ios') {
             disconnect();
-            this.error('log command is only supported on iOS instances');
+            this.error('app-log command is only supported on iOS instances');
           }
           try {
-            const output = await (client as any).appLogTail(args.bundleId, flags.lines);
+            const output = await (client as any).appLogTail(args.bundleId, flags.tail);
             this.log(output);
           } finally {
             disconnect();
@@ -62,11 +63,10 @@ export default class IosLog extends BaseCommand {
         return;
       }
 
-      // Streaming requires direct connection (long-lived)
       const { type, client, disconnect } = await getInstanceClient(this.client, id);
       if (type !== 'ios') {
         disconnect();
-        this.error('log command is only supported on iOS instances');
+        this.error('app-log command is only supported on iOS instances');
       }
 
       try {
@@ -75,7 +75,7 @@ export default class IosLog extends BaseCommand {
           process.stdout.write(line + '\n');
         });
         logStream.on('error', (err: Error) => {
-          this.warn(`Log stream error: ${err.message}`);
+          this.warn(`App log stream error: ${err.message}`);
         });
 
         await new Promise<void>((resolve) => {

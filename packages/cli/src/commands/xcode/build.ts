@@ -2,6 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { detectInstanceType } from '../../lib/instance-client-factory';
 import { loadInstanceCache } from '../../lib/config';
+import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 
 export default class XcodeBuild extends BaseCommand {
   static summary = 'Run xcodebuild on an Xcode sandbox';
@@ -15,6 +16,8 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./MyProject --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
+    '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152',
+    '<%= config.bin %> xcode build ./MyProject --ignore "\\\\.xcuserdata/"',
   ];
 
   static args = {
@@ -36,6 +39,17 @@ export default class XcodeBuild extends BaseCommand {
     }),
     project: Flags.string({ description: 'Project file to pass to xcodebuild, such as MyApp.xcodeproj' }),
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
+    'basis-cache-dir': Flags.string({
+      description: 'Directory to use for the client-side delta sync cache during the pre-build sync step.',
+    }),
+    'max-patch-bytes': Flags.integer({
+      description: 'Maximum patch size in bytes before falling back to a full upload during sync.',
+    }),
+    ignore: Flags.string({
+      description:
+        'Regular expression to ignore matching relative paths during the pre-build sync. Repeat for multiple patterns.',
+      multiple: true,
+    }),
   };
 
   async run(): Promise<void> {
@@ -58,7 +72,13 @@ export default class XcodeBuild extends BaseCommand {
       }
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
-      await xcodeClient.sync(syncPath, { watch: false, install: false });
+      await xcodeClient.sync(syncPath, {
+        watch: false,
+        install: false,
+        basisCacheDir: flags['basis-cache-dir'],
+        maxPatchBytes: flags['max-patch-bytes'],
+        ignore: compileIgnorePatterns(flags.ignore),
+      });
       this.info('Sync complete.');
 
       this.info('Starting xcodebuild...');

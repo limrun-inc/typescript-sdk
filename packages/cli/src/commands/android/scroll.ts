@@ -1,5 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { androidTargetFlags, buildAndroidTarget } from '../../lib/android-selector';
 import {
   detectInstanceType,
   getInstanceClient,
@@ -10,10 +11,12 @@ import {
 export default class AndroidScroll extends BaseCommand {
   static summary = 'Scroll on a running Android instance';
   static description =
-    'Scroll the current screen on a running Android instance. The amount uses Android client scroll units.';
+    'Scroll the current screen on a running Android instance, or scroll inside a matched element by selector or coordinates. The amount uses Android client scroll units.';
   static examples = [
     '<%= config.bin %> android scroll up --amount 300',
     '<%= config.bin %> android scroll down --amount 500 --id <instance-ID>',
+    '<%= config.bin %> android scroll down --resource-id com.example:id/list --amount 500',
+    '<%= config.bin %> android scroll up --x 120 --y 500 --amount 250',
   ];
 
   static args = {
@@ -29,6 +32,7 @@ export default class AndroidScroll extends BaseCommand {
     id: Flags.string({
       description: 'Android instance ID to target. Defaults to the last created Android instance.',
     }),
+    ...androidTargetFlags,
     amount: Flags.integer({
       description: 'Scroll amount in Android scroll units.',
       default: 300,
@@ -45,15 +49,21 @@ export default class AndroidScroll extends BaseCommand {
         this.error('android scroll only supports Android instances');
       }
 
+      const target = buildAndroidTarget(flags);
+
       if (hasActiveSession(id)) {
-        await sendSessionCommand(id, 'scroll', [args.direction, flags.amount]);
+        await sendSessionCommand(id, 'scroll', [target, args.direction, flags.amount]);
       } else {
         const { type, client, disconnect } = await getInstanceClient(this.client, id);
         try {
           if (type !== 'android') {
             this.error('android scroll only supports Android instances');
           }
-          await (client as any).scrollScreen(args.direction, flags.amount);
+          if (target) {
+            await (client as any).scrollElement(target, args.direction, flags.amount);
+          } else {
+            await (client as any).scrollScreen(args.direction, flags.amount);
+          }
         } finally {
           disconnect();
         }

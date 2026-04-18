@@ -18,6 +18,8 @@ export default class IosInstallApp extends BaseCommand {
     '<%= config.bin %> ios install-app ./MyApp.ipa',
     '<%= config.bin %> ios install-app https://example.com/MyApp.ipa --json',
     '<%= config.bin %> ios install-app ./MyApp.ipa --id <instance-ID>',
+    '<%= config.bin %> ios install-app ./MyApp.ipa --launch-mode RelaunchIfRunning',
+    '<%= config.bin %> ios install-app https://example.com/MyApp.ipa --md5 <hex-digest>',
   ];
 
   static args = {
@@ -31,6 +33,13 @@ export default class IosInstallApp extends BaseCommand {
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description: 'iOS instance ID to install the app on. Defaults to the last created iOS instance.',
+    }),
+    md5: Flags.string({
+      description: 'Optional MD5 digest to enable server-side install caching for remote URLs.',
+    }),
+    'launch-mode': Flags.string({
+      description: 'Launch behavior after installation. Omit to install without launching.',
+      options: ['ForegroundIfRunning', 'RelaunchIfRunning'],
     }),
   };
 
@@ -58,8 +67,18 @@ export default class IosInstallApp extends BaseCommand {
         downloadUrl = asset.signedDownloadUrl;
       }
 
+      let installOptions:
+        | { md5?: string; launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning' }
+        | undefined;
+      if (flags.md5 || flags['launch-mode']) {
+        installOptions = {
+          md5: flags.md5,
+          launchMode: flags['launch-mode'] as 'ForegroundIfRunning' | 'RelaunchIfRunning' | undefined,
+        };
+      }
+
       if (hasActiveSession(id)) {
-        const result = await sendSessionCommand(id, 'install-app', [downloadUrl]);
+        const result = await sendSessionCommand(id, 'install-app', [downloadUrl, installOptions]);
         if (flags.json) {
           this.outputJson(result);
         } else {
@@ -73,7 +92,7 @@ export default class IosInstallApp extends BaseCommand {
         if (type !== 'ios') {
           this.error('ios install-app only supports iOS instances');
         }
-        const result = await (client as any).installApp(downloadUrl);
+        const result = await (client as any).installApp(downloadUrl, installOptions);
         if (flags.json) {
           this.outputJson(result);
         } else {
