@@ -284,6 +284,13 @@ export type InstanceClient = {
   elementTree: (point?: AccessibilityPoint) => Promise<ElementTree>;
 
   /**
+   * Get the raw element tree string returned by the server.
+   * @param point Optional point to get the element at that specific location
+   * @returns A promise that resolves to the raw accessibility tree payload
+   */
+  elementTreeRaw: (point?: AccessibilityPoint) => Promise<string>;
+
+  /**
    * Tap at the specified coordinates (uses device's native screen dimensions)
    * @param x X coordinate in points
    * @param y Y coordinate in points
@@ -684,6 +691,7 @@ type PendingRequest<T> = {
   resolve: (value: T) => void;
   reject: (reason: Error) => void;
   timeout: NodeJS.Timeout;
+  transform?: (message: ServerResponse) => T;
 };
 
 // Simctl uses streaming, so it's handled separately
@@ -1164,6 +1172,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const sendRequest = <T>(
       type: string,
       params: Record<string, unknown> = {},
+      transform?: (message: ServerResponse) => T,
       timeoutMs: number = 30000,
     ): Promise<T> => {
       return new Promise((resolve, reject) => {
@@ -1178,7 +1187,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           reject(new Error(`Request ${type} timed out`));
         }, timeoutMs);
 
-        pendingRequests.set(id, { resolve, reject, timeout });
+        pendingRequests.set(
+          id,
+          transform ? { resolve, reject, timeout, transform } : { resolve, reject, timeout },
+        );
 
         const request = { type, id, ...params };
         logger.debug('Sending request:', request);
@@ -1313,7 +1325,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
 
         // Use handler to transform response, or resolve with raw message
-        const handler = responseHandlers[message.type];
+        const handler = request.transform ?? responseHandlers[message.type];
         if (handler) {
           try {
             request.resolve(handler(message));
@@ -1388,6 +1400,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           resolveConnection({
             screenshot,
             elementTree,
+            elementTreeRaw,
             tap,
             tapWithScreenSize,
             tapElement,
@@ -1436,6 +1449,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const elementTree = (point?: AccessibilityPoint): Promise<ElementTree> => {
       return sendRequest<ElementTree>('elementTree', { point });
+    };
+
+    const elementTreeRaw = (point?: AccessibilityPoint): Promise<string> => {
+      return sendRequest<string>('elementTree', { point }, (msg) => msg.json ?? '');
     };
 
     const tap = (x: number, y: number): Promise<void> => {
@@ -1561,7 +1578,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       // rather than sticking to sendRequest's 30s default.
       const waitMs = actions.reduce((acc, a) => acc + (a.type === 'wait' ? Math.max(0, a.durationMs) : 0), 0);
       const timeoutMs = options?.timeoutMs ?? 30_000 + waitMs + actions.length * 2_000;
-      return sendRequest<PerformActionsResult>('performActions', { actions }, timeoutMs);
+      return sendRequest<PerformActionsResult>('performActions', { actions }, undefined, timeoutMs);
     };
 
     const startRecording = async (opts?: { quality?: RecordingQuality }): Promise<void> => {
