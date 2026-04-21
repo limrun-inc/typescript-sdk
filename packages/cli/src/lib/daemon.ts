@@ -349,6 +349,12 @@ export function startDaemonServer(): void {
           result = { pressed: true, key: args[0] };
           break;
 
+        case 'toggle-keyboard':
+          if (type !== 'ios') throw new Error('toggle-keyboard is only supported on iOS instances');
+          await (client as any).toggleKeyboard();
+          result = { toggled: true };
+          break;
+
         case 'scroll':
           if (type === 'ios') {
             await (client as any).scroll(args[0], args[1]);

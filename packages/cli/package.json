@@ -1,6 +1,6 @@
 {
   "name": "@limrun/cli",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Use remote XCode, iOS Simulator, Android Emulator and more to build and test apps from Linux, Windows or macOS.",
   "bin": {
     "lim": "./bin/run.js"
@@ -46,19 +46,19 @@
     "topicSeparator": " ",
     "topics": {
       "ios": {
-          "description": "Execute any task on remote iOS Simulators: create, list, get, delete, info, list-apps, launch-app, terminate-app, app-log, syslog, sync, screenshot, tap, tap-element, element-tree, type, press-key, scroll, open-url, install-app, record, perform, simctl, cp, xcrun, xcodebuild, lsof"
+        "description": "Execute any task on remote iOS Simulators: create, list, get, delete, info, list-apps, launch-app, terminate-app, app-log, syslog, sync, screenshot, tap, tap-element, element-tree, type, press-key, toggle-keyboard, scroll, open-url, install-app, record, perform, simctl, cp, xcrun, xcodebuild, lsof"
       },
       "android": {
-          "description": "Execute any task on remote Android Emulators: create, list, get, delete, connect, screenshot, tap, tap-element, find-element, element-tree, type, press-key, scroll, open-url, install-app, record"
+        "description": "Execute any task on remote Android Emulators: create, list, get, delete, connect, screenshot, tap, tap-element, find-element, element-tree, type, press-key, scroll, open-url, install-app, record"
       },
       "xcode": {
-          "description": "Execute any task on remote XCode sandboxes: create, list, get, delete, sync, build"
+        "description": "Execute any task on remote XCode sandboxes: create, list, get, delete, sync, build"
       },
       "asset": {
-          "description": "Upload, download, list, inspect, and delete files that can be used by iOS & Android as pre-installed apps: push, pull, list, delete"
+        "description": "Upload, download, list, inspect, and delete files that can be used by iOS & Android as pre-installed apps: push, pull, list, delete"
       },
       "session": {
-          "description": "Manage persistent background sessions for device interaction: start, status, stop. Sessions are used to execute commands on remote devices without the need to reconnect to the device after each command."
+        "description": "Manage persistent background sessions for device interaction: start, status, stop. Sessions are used to execute commands on remote devices without the need to reconnect to the device after each command."
       }
     }
   },

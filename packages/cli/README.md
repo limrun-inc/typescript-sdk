@@ -169,6 +169,7 @@ lim ios type "Hello World"
 lim ios type "search query" --enter
 lim ios press-key enter
 lim ios press-key a --modifier shift
+lim ios toggle-keyboard
 
 # Scrolling
 lim ios scroll down --amount 500
