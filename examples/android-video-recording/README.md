@@ -38,8 +38,8 @@ You can have simulator upload directly to a pre-signed object URL by supplying t
 Generate pre-signed URL in AWS:
 ```bash
 #export AWS_ENDPOINT_URL
-export AWS_ACCESS_KEY_ID=a9ec9049a271245746e23446c3e731d4
-export AWS_SECRET_ACCESS_KEY=f5a45435de28a02802d7e62d71a2ca2c528d27ac6a189ac4da56fab2ec47c41a
+export AWS_ACCESS_KEY_ID=
+export AWS_SECRET_ACCESS_KEY=
 
 export S3_BUCKET=asset-storage-staging
 export S3_FILENAME=my-android.mp4
