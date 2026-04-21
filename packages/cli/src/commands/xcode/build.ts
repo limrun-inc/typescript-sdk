@@ -32,7 +32,7 @@ export default class XcodeBuild extends BaseCommand {
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description:
-        'Xcode instance ID to build on, or an iOS instance ID with `--xcode` enabled. Defaults to the last created Xcode instance.',
+        'Xcode instance ID to build on, or an iOS instance ID with `--xcode` enabled. Defaults to the most recently created Xcode-capable target.',
     }),
     scheme: Flags.string({ description: 'Xcode scheme to build, such as MyApp' }),
     workspace: Flags.string({

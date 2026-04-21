@@ -29,7 +29,7 @@ export default class XcodeSync extends BaseCommand {
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description:
-        'Xcode instance ID to sync to, or an iOS instance ID with `--xcode` enabled. Defaults to the last created Xcode instance.',
+        'Xcode instance ID to sync to, or an iOS instance ID with `--xcode` enabled. Defaults to the most recently created Xcode-capable target.',
     }),
     watch: Flags.boolean({
       description: 'Keep watching the local source tree and push changes automatically',

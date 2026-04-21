@@ -105,6 +105,13 @@ export function saveLastInstanceId(instanceId: string, asType?: LastInstanceType
   fs.writeFileSync(LAST_INSTANCE_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
+export function registerCreatedInstance(instanceId: string, relatedTypes: LastInstanceType[] = []): void {
+  saveLastInstanceId(instanceId);
+  for (const type of new Set(relatedTypes)) {
+    saveLastInstanceId(instanceId, type);
+  }
+}
+
 export function loadLastInstanceId(type?: string): string | null {
   const data = readLastInstances();
   if (type) return data[type as keyof LastInstances] ?? null;

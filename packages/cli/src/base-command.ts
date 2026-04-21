@@ -4,9 +4,9 @@ import {
   clearInstanceCache,
   clearLastInstanceId,
   readConfig,
+  registerCreatedInstance,
   resolveInstanceId,
   saveInstanceCache,
-  saveLastInstanceId,
 } from './lib/config';
 import { login } from './lib/auth';
 import { renderTable } from './lib/formatting';
@@ -221,8 +221,7 @@ export abstract class BaseCommand extends Command {
           sandbox: { xcode: { enabled: true } },
         },
       });
-      saveLastCreatedInstance(instance.metadata.id);
-      saveLastCreatedInstance(instance.metadata.id, 'xcode');
+      saveLastCreatedInstance(instance.metadata.id, ['xcode']);
       const xcodeSandboxUrl = instance.status.sandbox?.xcode?.url;
       if (xcodeSandboxUrl) {
         saveInstanceCache(instance.metadata.id, {
@@ -259,6 +258,9 @@ export abstract class BaseCommand extends Command {
   }
 }
 
-function saveLastCreatedInstance(instanceId: string, asType?: 'ios' | 'android' | 'xcode'): void {
-  saveLastInstanceId(instanceId, asType);
+function saveLastCreatedInstance(
+  instanceId: string,
+  relatedTypes: Array<'ios' | 'android' | 'xcode'> = [],
+): void {
+  registerCreatedInstance(instanceId, relatedTypes);
 }
