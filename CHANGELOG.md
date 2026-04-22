@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.27.0 (2026-04-22)
+
+Full Changelog: [v0.26.1...v0.27.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.26.1...v0.27.0)
+
+### Features
+
+* **api:** add xcode build logs and signedStreamUrl ([2532adf](https://github.com/limrun-inc/typescript-sdk/commit/2532adf659b7d4bc29347d7be19873a136c31a47))
+
 ## 0.26.1 (2026-04-21)
 
 Full Changelog: [v0.26.0...v0.26.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.26.0...v0.26.1)
