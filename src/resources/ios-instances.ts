@@ -105,6 +105,8 @@ export namespace IosInstance {
 
     sandbox?: Status.Sandbox;
 
+    signedStreamUrl?: string;
+
     targetHttpPortUrlPrefix?: string;
   }
 

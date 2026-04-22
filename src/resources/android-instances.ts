@@ -107,6 +107,8 @@ export namespace AndroidInstance {
 
     sandbox?: Status.Sandbox;
 
+    signedStreamUrl?: string;
+
     targetHttpPortUrlPrefix?: string;
   }
 
