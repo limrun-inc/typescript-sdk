@@ -103,10 +103,14 @@ export default class AndroidCreate extends BaseCommand {
 
       const start = Date.now();
       const instance = await this.client.androidInstances.create(params);
+      const signedStreamUrl = this.signedStreamUrl(instance.status);
       registerCreatedInstance(instance.metadata.id);
       this.info(`Created a new instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.info(`Instance ID: ${instance.metadata.id}`);
       this.info(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
+      if (signedStreamUrl) {
+        this.info(`Signed Stream URL: ${signedStreamUrl}`);
+      }
 
       if (flags.rm) {
         const cleanup = async () => {
@@ -136,11 +140,7 @@ export default class AndroidCreate extends BaseCommand {
         });
 
         const tunnel = await instanceClient.startAdbTunnel();
-        this.info(
-          `Open the Console URL in your browser to stream the device: ${this.consoleStreamUrl(
-            instance.metadata.id,
-          )}`,
-        );
+        this.info(`Open this URL in your browser to stream the device: ${signedStreamUrl || this.consoleStreamUrl(instance.metadata.id)}`);
         this.output('Tunnel started. Press Ctrl+C to stop.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);

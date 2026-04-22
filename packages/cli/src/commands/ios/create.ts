@@ -111,6 +111,7 @@ export default class IosCreate extends BaseCommand {
       const start = Date.now();
       const instance = await this.client.iosInstances.create(params);
       const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
+      const signedStreamUrl = this.signedStreamUrl(instance.status);
       const xcodeSandboxUrl = instance.status.sandbox?.xcode?.url;
       const xcodeSandboxId = xcodeSandboxUrl ? xcodeSandboxIdFromUrl(xcodeSandboxUrl) : undefined;
       registerCreatedInstance(instance.metadata.id, flags.xcode ? ['xcode'] : []);
@@ -118,6 +119,9 @@ export default class IosCreate extends BaseCommand {
       this.info('iOS Instance:');
       this.info(`  ID: ${instance.metadata.id}`);
       this.info(`  Console URL: ${consoleUrl}`);
+      if (signedStreamUrl) {
+        this.info(`  Signed Stream URL: ${signedStreamUrl}`);
+      }
       this.info(`  Region: ${instance.spec.region}`);
       this.info(`  State: ${instance.status.state}`);
       if (xcodeSandboxUrl) {

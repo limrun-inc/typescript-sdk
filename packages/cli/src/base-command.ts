@@ -161,6 +161,10 @@ export abstract class BaseCommand extends Command {
     return `${baseUrl}/stream/${instanceId}`;
   }
 
+  protected signedStreamUrl(status: { signedStreamUrl?: string } | undefined): string | undefined {
+    return status?.signedStreamUrl;
+  }
+
   /**
    * Resolve an instance ID from args, falling back to the last-used instance.
    * Infers expected type from the command alias (e.g. "ios screenshot" -> "ios").

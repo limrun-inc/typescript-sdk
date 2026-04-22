@@ -7,10 +7,10 @@
   resolved "https://registry.npmjs.org/@colors/colors/-/colors-1.5.0.tgz"
   integrity sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==
 
-"@limrun/api@0.26.0":
-  version "0.26.0"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.26.0.tgz#4b1c27d2954d0dff15784d31893f834a4fe1542c"
-  integrity sha512-ZQ55kNgWbh5EU9FI/GQv478NdUABgX2+028MjkSNVp0IgZOIy42391IEUVDviLOC8Nbsj7NJZIuICnMqYwZjpw==
+"@limrun/api@0.27.0":
+  version "0.27.0"
+  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.27.0.tgz#6ff160dbd956ef44f1d4dff3a42cfd0a2ccb381c"
+  integrity sha512-K9+nMqHj9IJNh/ccjmT7knx6kwZXCo2fh5OoBCzHYvKz95ZcVgh35O/w5zKniFla3x1GufAkVKXG5eS/ZEkBVA==
   dependencies:
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"

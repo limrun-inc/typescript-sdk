@@ -22,6 +22,7 @@ export default class IosGet extends BaseCommand {
       if (flags.json) {
         this.outputJson(instance);
       } else {
+        const signedStreamUrl = this.signedStreamUrl(instance.status);
         this.outputTable(
           ['Field', 'Value'],
           [
@@ -29,6 +30,7 @@ export default class IosGet extends BaseCommand {
             ['Name', instance.metadata.displayName || ''],
             ['Region', instance.spec.region],
             ['State', instance.status.state],
+            ...(signedStreamUrl ? [['Signed Stream URL', signedStreamUrl]] : []),
           ],
         );
       }

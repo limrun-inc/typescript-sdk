@@ -76,6 +76,7 @@ export default class XcodeCreate extends BaseCommand {
         const start = Date.now();
         const instance = await this.client.iosInstances.create(params);
         const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
+        const signedStreamUrl = this.signedStreamUrl(instance.status);
         const xcodeSandboxUrl = instance.status.sandbox?.xcode?.url;
         const xcodeSandboxId = xcodeSandboxUrl ? xcodeSandboxIdFromUrl(xcodeSandboxUrl) : undefined;
         registerCreatedInstance(instance.metadata.id, ['xcode']);
@@ -85,6 +86,9 @@ export default class XcodeCreate extends BaseCommand {
         this.info('iOS Instance:');
         this.info(`  ID: ${instance.metadata.id}`);
         this.info(`  Console URL: ${consoleUrl}`);
+        if (signedStreamUrl) {
+          this.info(`  Signed Stream URL: ${signedStreamUrl}`);
+        }
         this.info(`  Region: ${instance.spec.region}`);
         this.info(`  State: ${instance.status.state}`);
         if (xcodeSandboxUrl) {
@@ -149,11 +153,17 @@ export default class XcodeCreate extends BaseCommand {
       const start = Date.now();
       const instance = await this.client.xcodeInstances.create(params);
       const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
+      const signedStreamUrl = this.signedStreamUrl(
+        instance.status as { signedStreamUrl?: string } | undefined,
+      );
       registerCreatedInstance(instance.metadata.id);
       this.info(`Created a new Xcode instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.info('Xcode Instance:');
       this.info(`  ID: ${instance.metadata.id}`);
       this.info(`  Console URL: ${consoleUrl}`);
+      if (signedStreamUrl) {
+        this.info(`  Signed Stream URL: ${signedStreamUrl}`);
+      }
       this.info(`  Region: ${instance.spec.region}`);
       this.info(`  State: ${instance.status.state}`);
 
