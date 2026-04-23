@@ -179,6 +179,32 @@ export type AppInstallationResult = {
 };
 
 /**
+ * Result of auto-discovering a StoreKit configuration from the
+ * simulator's cached sandbox response.
+ */
+export type StoreKitDiscoverResult = {
+  /** Number of amp-api items decoded from the sandbox response. */
+  itemsFound: number;
+  /** Number of non-subscription products in the generated `.storekit`. */
+  productsCount: number;
+  /** Total number of auto-renewing subscriptions across all groups. */
+  subscriptionsCount: number;
+  /** Number of subscription groups in the generated `.storekit`. */
+  subscriptionGroupsCount: number;
+};
+
+/**
+ * Options for {@link InstanceClient.discoverStoreKitConfig}.
+ */
+export type StoreKitDiscoverOptions = {
+  /**
+   * Seconds the server blocks while polling for a sandbox response. Clamped
+   * server-side to [1, 300]. Default 120.
+   */
+  timeoutSeconds?: number;
+};
+
+/**
  * Result from a command execution (xcrun, xcodebuild, etc.)
  */
 export type CommandResult = {
@@ -501,6 +527,43 @@ export type InstanceClient = {
       watch?: boolean;
     },
   ) => Promise<SyncFolderResult>;
+
+  /**
+   * Register a StoreKit local-test configuration for an app on the
+   * simulator. The bytes are the contents of a `.storekit` file — typically
+   * the one Xcode generates via File → New → StoreKit Configuration File
+   * → Sync with App Store Connect. The simulator immediately wires the
+   * Octane file for `bundleId` so the app's next StoreKit product request
+   * hits the local test environment (no Apple Account dialog, no sandbox).
+   *
+   * @param bundleId Bundle ID of the app the config is for.
+   * @param storekit Raw `.storekit` JSON bytes.
+   */
+  setStoreKitConfig: (bundleId: string, storekit: Buffer | Uint8Array) => Promise<void>;
+
+  /**
+   * Clear the registered StoreKit configuration for `bundleId` and
+   * remove the app's Octane file so subsequent StoreKit requests fall
+   * back to the real sandbox. Safe to call when nothing is registered
+   * for the bundle.
+   */
+  clearStoreKitConfig: (bundleId: string) => Promise<void>;
+
+  /**
+   * Auto-generate and register a `.storekit` configuration for `bundleId`
+   * by polling the simulator's storekitd cache for a captured sandbox
+   * response. Blocks server-side for up to `timeoutSeconds` (default 120).
+   *
+   * Requires the bundle to have IAPs registered in App Store Connect
+   * sandbox AND the app to trigger a StoreKit product fetch during the
+   * wait window — typically by opening its paywall.
+   *
+   * @throws If the server times out or no IAPs are registered in sandbox.
+   */
+  discoverStoreKitConfig: (
+    bundleId: string,
+    options?: StoreKitDiscoverOptions,
+  ) => Promise<StoreKitDiscoverResult>;
 
   /**
    * Disconnect from the Limrun instance
@@ -1425,6 +1488,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             stopRecording,
             keepAlive,
             syncApp,
+            setStoreKitConfig,
+            clearStoreKitConfig,
+            discoverStoreKitConfig,
             disconnect,
             getConnectionState,
             onConnectionStateChange,
@@ -1772,6 +1838,80 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       } catch (err) {
         logger.debug(`Failed to upload file ${filePath}:`, err);
         throw err;
+      }
+    };
+
+    const setStoreKitConfig = async (bundleId: string, storekit: Buffer | Uint8Array): Promise<void> => {
+      const body = Buffer.isBuffer(storekit) ? storekit : Buffer.from(storekit);
+      const url = `${options.apiUrl}/payments/storeKitConfigs/${encodeURIComponent(bundleId)}`;
+      const response = await nodeProxyTransport.fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': body.length.toString(),
+          Authorization: `Bearer ${options.token}`,
+        },
+        body: body as any,
+      } as any);
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`setStoreKitConfig failed: ${response.status} ${errorBody}`);
+      }
+    };
+
+    const clearStoreKitConfig = async (bundleId: string): Promise<void> => {
+      const url = `${options.apiUrl}/payments/storeKitConfigs/${encodeURIComponent(bundleId)}`;
+      const response = await nodeProxyTransport.fetch(url, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${options.token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`clearStoreKitConfig failed: ${response.status} ${errorBody}`);
+      }
+    };
+
+    const discoverStoreKitConfig = async (
+      bundleId: string,
+      discoverOptions?: StoreKitDiscoverOptions,
+    ): Promise<StoreKitDiscoverResult> => {
+      const timeoutSeconds = discoverOptions?.timeoutSeconds ?? 120;
+      const url = `${options.apiUrl}/payments/storeKitConfigs/${encodeURIComponent(bundleId)}/discover`;
+      // Give the client 10 extra seconds beyond the server's own deadline
+      // so we never abort before the server returns its 408.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), (timeoutSeconds + 10) * 1000);
+      try {
+        const response = await nodeProxyTransport.fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${options.token}`,
+          },
+          body: JSON.stringify({ timeoutSeconds }),
+          signal: controller.signal,
+        } as any);
+        if (!response.ok) {
+          const errorBody = await response.text();
+          throw new Error(`discoverStoreKitConfig failed: ${response.status} ${errorBody}`);
+        }
+        const result = (await response.json()) as {
+          ok: boolean;
+          itemsFound: number;
+          productsCount: number;
+          subscriptionsCount: number;
+          subscriptionGroupsCount: number;
+        };
+        return {
+          itemsFound: result.itemsFound,
+          productsCount: result.productsCount,
+          subscriptionsCount: result.subscriptionsCount,
+          subscriptionGroupsCount: result.subscriptionGroupsCount,
+        };
+      } finally {
+        clearTimeout(timer);
       }
     };
 
