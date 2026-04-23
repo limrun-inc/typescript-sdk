@@ -140,7 +140,11 @@ export default class AndroidCreate extends BaseCommand {
         });
 
         const tunnel = await instanceClient.startAdbTunnel();
-        this.info(`Open this URL in your browser to stream the device: ${signedStreamUrl || this.consoleStreamUrl(instance.metadata.id)}`);
+        this.info(
+          `Open this URL in your browser to stream the device: ${
+            signedStreamUrl || this.consoleStreamUrl(instance.metadata.id)
+          }`,
+        );
         this.output('Tunnel started. Press Ctrl+C to stop.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
