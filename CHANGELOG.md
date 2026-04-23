@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.27.1 (2026-04-23)
+
+Full Changelog: [v0.27.0...v0.27.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.27.0...v0.27.1)
+
+### Chores
+
+* **internal:** more robust bootstrap script ([605ce35](https://github.com/limrun-inc/typescript-sdk/commit/605ce35a6018c78a1cffebd0e3ae82d2f7afc24e))
+
 ## 0.27.0 (2026-04-22)
 
 Full Changelog: [v0.26.1...v0.27.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.26.1...v0.27.0)
