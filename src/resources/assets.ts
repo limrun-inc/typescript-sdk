@@ -117,9 +117,22 @@ export interface AssetListParams {
   limit?: number;
 
   /**
-   * Query by file name
+   * Case-sensitive exact match on the asset name. Cannot be combined with
+   * namePrefixFilter. When combined with includeAppStore=true, a leading "appstore/"
+   * is stripped before querying App Store assets (whose stored names never carry the
+   * prefix).
    */
   nameFilter?: string;
+
+  /**
+   * Case-sensitive prefix match on the asset name. LIKE wildcards ("%", "\_") in the
+   * value are treated as literal characters, not wildcards. Empty string is rejected
+   * with 400; omit the parameter if no filtering is desired. Cannot be combined with
+   * nameFilter. When combined with includeAppStore=true, a leading "appstore/" is
+   * stripped before querying App Store assets (whose stored names never carry the
+   * prefix); a partial prefix like "appstor" will not match any App Store assets.
+   */
+  namePrefixFilter?: string;
 }
 
 export interface AssetGetParams {
