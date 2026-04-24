@@ -31,6 +31,7 @@ describe('resource assets', () => {
           includeUploadUrl: true,
           limit: 50,
           nameFilter: 'nameFilter',
+          namePrefixFilter: 'namePrefixFilter',
         },
         { path: '/_stainless_unknown_path' },
       ),
