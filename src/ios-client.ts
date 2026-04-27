@@ -205,6 +205,46 @@ export type StoreKitDiscoverOptions = {
 };
 
 /**
+ * Strategy used by {@link InstanceClient.softReset}.
+ *
+ * - `data` (default): terminate + wipe the app's data container only.
+ *   Fast; intended for "start the scenario over" loops.
+ * - `full`: take the app back to freshly-opened-simulator state —
+ *   terminate + wipe shared App Group containers + `simctl uninstall`
+ *   (bundle + data container) + drop cfprefsd's NSUserDefaults cache
+ *   + `simctl keychain reset` + `simctl privacy reset all` +
+ *   reinstall from the last cached source .app path.
+ *
+ * Both strategies relaunch the app after the reset completes.
+ */
+export type SoftResetStrategy = 'data' | 'full';
+
+/**
+ * Options for {@link InstanceClient.softReset}.
+ */
+export type SoftResetOptions = {
+  /** Reset strategy. Defaults to `data` server-side. */
+  strategy?: SoftResetStrategy;
+};
+
+/**
+ * Result of a {@link InstanceClient.softReset} call.
+ */
+export type SoftResetResult = {
+  /** Strategy that was actually applied. */
+  strategy: SoftResetStrategy;
+  /** Bundle ID that was reset. */
+  bundleId: string;
+  /**
+   * Top-level entries removed from the app's data container.
+   * Only populated when `strategy === 'data'`.
+   */
+  itemsCleared?: number;
+  /** Wall-clock duration of the reset on the server. */
+  durationMs: number;
+};
+
+/**
  * Result from a command execution (xcrun, xcodebuild, etc.)
  */
 export type CommandResult = {
@@ -564,6 +604,24 @@ export type InstanceClient = {
     bundleId: string,
     options?: StoreKitDiscoverOptions,
   ) => Promise<StoreKitDiscoverResult>;
+
+  /**
+   * Soft-reset an installed app on the simulator.
+   *
+   * Strategies (see {@link SoftResetStrategy} for details):
+   * - `data` (default): wipe the app's data container only.
+   * - `full`: restore freshly-opened-simulator state (uninstall +
+   *   reinstall from the cached source `.app`, clear keychain, privacy,
+   *   NSUserDefaults cache, and shared App Group containers).
+   *
+   * Both strategies relaunch the app after the reset completes.
+   *
+   * @param bundleId Bundle ID of the installed app to reset.
+   * @param options Reset options (currently just `strategy`).
+   * @throws If the app is not installed (404), the reinstall source is
+   *   missing for `strategy: 'full'` (409), or the request is malformed (400).
+   */
+  softReset: (bundleId: string, options?: SoftResetOptions) => Promise<SoftResetResult>;
 
   /**
    * Disconnect from the Limrun instance
@@ -1491,6 +1549,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             setStoreKitConfig,
             clearStoreKitConfig,
             discoverStoreKitConfig,
+            softReset,
             disconnect,
             getConnectionState,
             onConnectionStateChange,
@@ -1913,6 +1972,42 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       } finally {
         clearTimeout(timer);
       }
+    };
+
+    const softReset = async (bundleId: string, resetOptions?: SoftResetOptions): Promise<SoftResetResult> => {
+      const body: { bundleId: string; strategy?: SoftResetStrategy } = { bundleId };
+      if (resetOptions?.strategy) {
+        body.strategy = resetOptions.strategy;
+      }
+      const url = `${options.apiUrl}/softReset`;
+      const response = await nodeProxyTransport.fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${options.token}`,
+        },
+        body: JSON.stringify(body),
+      } as any);
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`softReset failed: ${response.status} ${errorBody}`);
+      }
+      const result = (await response.json()) as {
+        ok: boolean;
+        strategy: SoftResetStrategy;
+        bundleId: string;
+        itemsCleared?: number;
+        durationMs: number;
+      };
+      const out: SoftResetResult = {
+        strategy: result.strategy,
+        bundleId: result.bundleId,
+        durationMs: result.durationMs,
+      };
+      if (result.itemsCleared !== undefined) {
+        out.itemsCleared = result.itemsCleared;
+      }
+      return out;
     };
 
     const disconnect = (): void => {
