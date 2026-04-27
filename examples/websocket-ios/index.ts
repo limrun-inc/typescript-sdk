@@ -192,6 +192,25 @@ try {
   }
 
   // ========================================================================
+  // softReset — wipe Safari's data container and relaunch.
+  //
+  // `data` strategy (default) terminates the app, removes its data container
+  // contents, and relaunches it. Use this to start a scenario over without
+  // paying for a full reinstall. `full` strategy additionally uninstalls and
+  // reinstalls from the cached source `.app`, clears keychain, privacy, the
+  // NSUserDefaults cache, and shared App Group containers — closer to a
+  // freshly-opened-simulator state.
+  // ========================================================================
+  console.log('\n--- Testing softReset ---');
+  const reset = await client.softReset('com.apple.mobilesafari', { strategy: 'data' });
+  console.log(
+    `Soft reset ${reset.bundleId} (strategy=${reset.strategy}, items=${reset.itemsCleared ?? 0}, ${
+      reset.durationMs
+    }ms)`,
+  );
+  await sleep(3 * 1000);
+
+  // ========================================================================
   // Take final screenshot
   // ========================================================================
   console.log('\n--- Taking final screenshot ---');
