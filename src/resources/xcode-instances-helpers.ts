@@ -47,7 +47,7 @@ export type XcodeProjectConfig = {
 };
 
 export type XcodeBuildOptions = {
-  upload?: { assetName: string };
+  upload?: { assetName: string } | { signedUploadUrl: string; signedDownloadUrl: string };
 };
 
 export type XcodeClient = {
@@ -176,7 +176,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(settings && { xcodebuild: settings }),
         };
 
-        if (options?.upload) {
+        if (options?.upload && 'assetName' in options.upload) {
           const uploadName = options.upload.assetName;
           const requestPromise = client.assets
             .getOrCreate({ name: uploadName })
@@ -193,6 +193,11 @@ export class XcodeInstances extends GeneratedXcodeInstances {
               );
             });
           return exec(requestPromise, { apiUrl, token, log });
+        }
+
+        if (options?.upload && 'signedUploadUrl' in options.upload && 'signedDownloadUrl' in options.upload) {
+          request.signedUploadUrl = options.upload.signedUploadUrl;
+          request.additionalMetadata = { signedDownloadUrl: options.upload.signedDownloadUrl };
         }
 
         return exec(request, { apiUrl, token, log });
