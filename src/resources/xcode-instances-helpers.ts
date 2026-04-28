@@ -5,7 +5,11 @@ import crypto from 'crypto';
 import { XcodeInstances as GeneratedXcodeInstances, type XcodeInstance } from './xcode-instances';
 import { type IosInstance } from './ios-instances';
 import { exec, type ExecChildProcess, type ExecRequest } from '../exec-client';
-import { syncFolder as syncFolderImpl, type FolderSyncOptions } from '../folder-sync';
+import {
+  syncFolder as syncFolderImpl,
+  type AdditionalFileSyncEntry,
+  type FolderSyncOptions,
+} from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
 import { nodeProxyTransport } from '../internal/proxy-transport';
 
@@ -32,6 +36,10 @@ export type SyncOptions = {
    * Return true to ignore, false to keep.
    */
   ignore?: (relativePath: string) => boolean;
+  /**
+   * Extra files to sync on every sync pass.
+   */
+  additionalFiles?: AdditionalFileSyncEntry[];
 };
 
 export type SyncResult = {
@@ -94,6 +102,42 @@ function createLogger(logLevel: LogLevel) {
   };
 }
 
+function normalizeWorkspaceRelativePath(remotePath: string): string {
+  if (
+    remotePath === '' ||
+    remotePath.startsWith('/') ||
+    remotePath.includes('\\') ||
+    remotePath.includes('\0')
+  ) {
+    throw new Error(`invalid sandbox home path from server: ${remotePath}`);
+  }
+  const parts = remotePath.split('/');
+  if (parts.some((part) => part === '' || part === '.' || part === '..')) {
+    throw new Error(`invalid sandbox home path from server: ${remotePath}`);
+  }
+  return parts.join('/');
+}
+
+async function fetchSandboxInfo(apiUrl: string, token: string): Promise<{ homeDir: string }> {
+  const res = await nodeProxyTransport.fetch(`${apiUrl}/info`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`GET /info failed: ${res.status} ${text}`);
+  }
+  const body = JSON.parse(text) as { homeDir?: string };
+  if (!body.homeDir) {
+    throw new Error('GET /info response is missing homeDir');
+  }
+  return {
+    homeDir: normalizeWorkspaceRelativePath(body.homeDir),
+  };
+}
+
 export class XcodeInstances extends GeneratedXcodeInstances {
   async createClient(params: XcodeCreateClientParams): Promise<XcodeClient> {
     let apiUrl: string;
@@ -111,6 +155,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
 
     const log = createLogger(params.logLevel ?? 'info');
     const client = this._client;
+    const sandboxInfo = await fetchSandboxInfo(apiUrl, token);
 
     return {
       async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
@@ -119,6 +164,13 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
         const cacheKey = `limsync-cache-${folderName}-${hash}`;
         const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
+        const additionalFiles = opts?.additionalFiles?.map((file) => ({
+          localPath: file.localPath,
+          remotePath:
+            file.remotePath.startsWith('~/') ?
+              `${sandboxInfo.homeDir}/${file.remotePath.slice(2)}`
+            : file.remotePath,
+        }));
         const codeSyncOpts: FolderSyncOptions = {
           apiUrl,
           token,
@@ -162,6 +214,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           maxPatchBytes: opts?.maxPatchBytes ?? 4 * 1024 * 1024,
           launchMode: 'ForegroundIfRunning',
           log,
+          ...(additionalFiles ? { additionalFiles } : {}),
         };
 
         const result = await syncFolderImpl(localCodePath, codeSyncOpts);
