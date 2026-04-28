@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.28.2 (2026-04-28)
+
+Full Changelog: [v0.28.1...v0.28.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.28.1...v0.28.2)
+
+### Features
+
+* support setting headers via env ([f2bfccf](https://github.com/limrun-inc/typescript-sdk/commit/f2bfccfd52816f7a7c6443158f39e1113bab556c))
+
+
+### Chores
+
+* **internal:** codegen related update ([1422a24](https://github.com/limrun-inc/typescript-sdk/commit/1422a24814866373598f5bd848f109c447c83aaf))
+
 ## 0.28.1 (2026-04-27)
 
 Full Changelog: [v0.28.0...v0.28.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.28.0...v0.28.1)
