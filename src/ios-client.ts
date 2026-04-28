@@ -1763,31 +1763,32 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
       const cacheKey = `limsync-cache-${folderName}-${hash}`;
       const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
+      const syncLog: FolderSyncOptions['log'] = (level, msg) => {
+        switch (level) {
+          case 'debug':
+            logger.debug(msg);
+            break;
+          case 'info':
+            logger.info(msg);
+            break;
+          case 'warn':
+            logger.warn(msg);
+            break;
+          case 'error':
+            logger.error(msg);
+            break;
+          default:
+            logger.info(msg);
+            break;
+        }
+      };
       const folderSyncOpts: FolderSyncOptions = {
         apiUrl: options.apiUrl,
         token: options.token,
         udid: cacheKey,
-        ignoreFn: await createIgnoreFn(localAppBundlePath, { basisCacheDir }),
+        ignoreFn: await createIgnoreFn(localAppBundlePath, { basisCacheDir, log: syncLog }),
         basisCacheDir,
-        log: (level, msg) => {
-          switch (level) {
-            case 'debug':
-              logger.debug(msg);
-              break;
-            case 'info':
-              logger.info(msg);
-              break;
-            case 'warn':
-              logger.warn(msg);
-              break;
-            case 'error':
-              logger.error(msg);
-              break;
-            default:
-              logger.info(msg);
-              break;
-          }
-        },
+        log: syncLog,
         install: opts?.install ?? true,
         maxPatchBytes: opts?.maxPatchBytes ?? 4 * 1024 * 1024,
         launchMode: opts?.launchMode ?? 'ForegroundIfRunning',

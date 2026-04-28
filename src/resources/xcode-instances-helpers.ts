@@ -126,6 +126,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           install: opts?.install ?? true,
           ignoreFn: await createIgnoreFn(localCodePath, {
             basisCacheDir,
+            log,
             additional: (relativePath: string) => {
               if (
                 relativePath.startsWith('build/') ||
