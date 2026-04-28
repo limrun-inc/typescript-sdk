@@ -462,7 +462,7 @@ async function syncFolderOnce(
 
   const files = await walkFiles(localFolderPath, opts.ignoreFn);
   const additionalFiles = await collectAdditionalFiles(opts.additionalFiles);
-  const allFiles = [...files, ...additionalFiles];
+  const allFiles = [...files, ...additionalFiles].sort((a, b) => a.path.localeCompare(b.path));
   const fileMap = new Map(allFiles.map((f) => [f.path, f]));
 
   const syncId = genId('sync');
