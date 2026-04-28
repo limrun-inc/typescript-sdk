@@ -4,6 +4,7 @@ import { detectInstanceType } from '../../lib/instance-client-factory';
 import { loadInstanceCache } from '../../lib/config';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
+import { parseAdditionalFileFlags } from '../../lib/additional-files';
 
 export default class XcodeBuild extends BaseCommand {
   static summary = 'Run xcodebuild on an Xcode sandbox';
@@ -19,6 +20,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
     '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152',
     '<%= config.bin %> xcode build ./MyProject --ignore "\\\\.xcuserdata/"',
+    '<%= config.bin %> xcode build ./MyProject --additional-file ~/.netrc=~/.netrc',
   ];
 
   static args = {
@@ -51,6 +53,11 @@ export default class XcodeBuild extends BaseCommand {
         'Regular expression to ignore matching relative paths during the pre-build sync. Repeat for multiple patterns.',
       multiple: true,
     }),
+    'additional-file': Flags.string({
+      description:
+        'Additional file to sync before building as localPath=remotePath, for example ~/.netrc=~/.netrc. Repeat for multiple files.',
+      multiple: true,
+    }),
   };
 
   async run(): Promise<void> {
@@ -74,13 +81,15 @@ export default class XcodeBuild extends BaseCommand {
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
       const syncStart = Date.now();
-      await xcodeClient.sync(syncPath, {
+      const syncOptions = {
         watch: false,
         install: false,
         basisCacheDir: flags['basis-cache-dir'],
         maxPatchBytes: flags['max-patch-bytes'],
         ignore: compileIgnorePatterns(flags.ignore),
-      });
+        additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
+      };
+      await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
       const syncDuration = formatDurationMs(Date.now() - syncStart);
       this.info(`Sync complete in ${syncDuration}.`);
 
