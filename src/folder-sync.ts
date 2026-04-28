@@ -47,6 +47,11 @@ export type FolderSyncOptions = {
    * ignoreFn: (path) => !(path.startsWith('src/') || path.endsWith('.json'))
    */
   ignoreFn: IgnoreFn;
+  /**
+   * Extra files to sync into limbuild. These are included
+   * in every sync pass but are not watched directly.
+   */
+  additionalFiles?: AdditionalFileSyncEntry[];
 };
 
 export type SyncFolderResult = {
@@ -56,7 +61,15 @@ export type SyncFolderResult = {
   stopWatching?: () => void;
 };
 
-type FileEntry = { path: string; size: number; sha256: string; absPath: string; mode: number };
+export type AdditionalFileSyncEntry = { localPath: string; remotePath: string };
+
+type FileEntry = {
+  path: string;
+  size: number;
+  sha256: string;
+  absPath: string;
+  mode: number;
+};
 
 type FolderSyncHttpPayload = {
   kind: 'delta' | 'full';
@@ -284,6 +297,33 @@ async function walkFiles(root: string, ignoreFn: IgnoreFn): Promise<FileEntry[]>
   return out;
 }
 
+async function collectAdditionalFiles(
+  additionalFiles: AdditionalFileSyncEntry[] | undefined,
+): Promise<FileEntry[]> {
+  if (!additionalFiles || additionalFiles.length === 0) {
+    return [];
+  }
+  const out: FileEntry[] = [];
+  for (const additionalFile of additionalFiles) {
+    const remotePath = additionalFile.remotePath;
+    const absPath = path.resolve(additionalFile.localPath);
+    const st = await fs.promises.stat(absPath);
+    if (!st.isFile()) {
+      throw new Error(`additional file localPath must be a file: ${additionalFile.localPath}`);
+    }
+    const sha256 = await sha256FileHex(absPath);
+    out.push({
+      path: remotePath,
+      size: st.size,
+      sha256,
+      absPath,
+      mode: st.mode & 0o7777,
+    });
+  }
+  out.sort((a, b) => a.path.localeCompare(b.path));
+  return out;
+}
+
 // xdelta3 encoder backed by a WASM build of the upstream xdelta3 library.
 // Produces VCDIFF-compatible patches identical to `xdelta3 -e -s basis target`,
 // so the server-side decoder continues to apply them without changes.
@@ -421,7 +461,9 @@ async function syncFolderOnce(
   const maxPatchBytes = opts.maxPatchBytes ?? 4 * 1024 * 1024;
 
   const files = await walkFiles(localFolderPath, opts.ignoreFn);
-  const fileMap = new Map(files.map((f) => [f.path, f]));
+  const additionalFiles = await collectAdditionalFiles(opts.additionalFiles);
+  const allFiles = [...files, ...additionalFiles].sort((a, b) => a.path.localeCompare(b.path));
+  const fileMap = new Map(allFiles.map((f) => [f.path, f]));
 
   const syncId = genId('sync');
   const rootName = path.basename(path.resolve(localFolderPath));
@@ -439,7 +481,7 @@ async function syncFolderOnce(
   // Build payload list by comparing against local basis cache (single-flight/watch assumes server matches cache).
   const encodeLimit = concurrencyLimit();
   const changed: FileEntry[] = [];
-  for (const f of files) {
+  for (const f of allFiles) {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
     if (!fs.existsSync(basisPath)) {
       changed.push(f);
@@ -489,7 +531,12 @@ async function syncFolderOnce(
     slog('debug', `full(file): ${f.path} size=${f.size}`);
     bytesSentFull += f.size;
     return {
-      payload: { kind: 'full', path: f.path, targetSha256: f.sha256.toLowerCase(), length: f.size },
+      payload: {
+        kind: 'full',
+        path: f.path,
+        targetSha256: f.sha256.toLowerCase(),
+        length: f.size,
+      },
       filePath: f.absPath,
     };
   });
@@ -499,14 +546,19 @@ async function syncFolderOnce(
     rootName,
     install: opts.install,
     ...(opts.launchMode ? { launchMode: opts.launchMode } : {}),
-    files: files.map((f) => ({ path: f.path, size: f.size, sha256: f.sha256.toLowerCase(), mode: f.mode })),
+    files: allFiles.map((f) => ({
+      path: f.path,
+      size: f.size,
+      sha256: f.sha256.toLowerCase(),
+      mode: f.mode,
+    })),
     payloads: encodedPayloads.map((p) => p.payload),
   };
   const hasDelta = encodedPayloads.some((p) => p.payload.kind === 'delta');
   const compression: 'zstd' | 'gzip' | 'identity' = hasDelta ? 'identity' : preferredCompression;
   slog(
     'debug',
-    `sync started files=${files.length}${reason ? ` reason=${reason}` : ''} compression=${compression}`,
+    `sync started files=${allFiles.length}${reason ? ` reason=${reason}` : ''} compression=${compression}`,
   );
 
   const sendStart = nowMs();
@@ -583,7 +635,7 @@ async function syncFolderOnce(
   const totalBytes = bytesSentFull + bytesSentDelta;
   slog(
     'debug',
-    `sync finished files=${files.length} sent=${fmtBytes(totalBytes)} syncWork=${fmtMs(
+    `sync finished files=${allFiles.length} sent=${fmtBytes(totalBytes)} syncWork=${fmtMs(
       syncWorkMs,
     )} total=${fmtMs(tookMs)}`,
   );
@@ -595,7 +647,7 @@ async function syncFolderOnce(
     out.installedBundleId = resp.bundleId;
   }
   // Update local cache optimistically: after a successful sync, cache reflects current local tree.
-  for (const f of files) {
+  for (const f of allFiles) {
     await cachePut(opts.basisCacheDir, f.path, f.absPath);
   }
   return out;
