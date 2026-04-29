@@ -18,6 +18,12 @@ export type ExecRequest = {
     workspace?: string;
     project?: string;
     scheme?: string;
+    sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos';
+  };
+  signing?: {
+    certificateP12Base64?: string;
+    certificatePassword?: string;
+    provisioningProfileBase64?: string;
   };
   signedUploadUrl?: string;
   additionalMetadata?: {
