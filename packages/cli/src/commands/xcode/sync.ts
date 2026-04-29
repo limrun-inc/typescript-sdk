@@ -1,8 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
-import { detectInstanceType } from '../../lib/instance-client-factory';
-import { loadInstanceCache } from '../../lib/config';
 import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 
@@ -100,36 +98,5 @@ export default class XcodeSync extends BaseCommand {
         });
       }
     });
-  }
-
-  private async resolveXcodeClient(id: string) {
-    const type = detectInstanceType(id).toString();
-
-    if (type === 'ios') {
-      const instance = await this.client.iosInstances.get(id);
-      let sandboxUrl = instance.status.sandbox?.xcode?.url;
-      let token = instance.status.token;
-
-      if (!sandboxUrl) {
-        const cached = loadInstanceCache(id);
-        if (cached?.sandboxXcodeUrl) {
-          sandboxUrl = cached.sandboxXcodeUrl;
-          token = cached.token || token;
-        }
-      }
-
-      if (!sandboxUrl) {
-        this.error(
-          `iOS instance ${id} does not have a Xcode sandbox. Create it with: lim ios create --xcode or lim xcode create --ios`,
-        );
-      }
-      return this.client.xcodeInstances.createClient({
-        apiUrl: sandboxUrl,
-        token,
-      });
-    }
-
-    const instance = await this.client.xcodeInstances.get(id);
-    return this.client.xcodeInstances.createClient({ instance });
   }
 }

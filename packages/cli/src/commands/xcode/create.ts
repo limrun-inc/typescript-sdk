@@ -32,7 +32,9 @@ export default class XcodeCreate extends BaseCommand {
     }),
     region: Flags.string({ description: 'Region where the sandbox should be created, such as us-west' }),
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
-    'inactivity-timeout': Flags.string({ description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default: 3m' }),
+    'inactivity-timeout': Flags.string({
+      description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default is in organization settings.',
+    }),
     label: Flags.string({
       description: 'Metadata label in key=value format. Repeat to attach multiple labels.',
       multiple: true,

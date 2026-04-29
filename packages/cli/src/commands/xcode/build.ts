@@ -1,7 +1,5 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { detectInstanceType } from '../../lib/instance-client-factory';
-import { loadInstanceCache } from '../../lib/config';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
@@ -17,7 +15,9 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build ./MyProject --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
+    '<%= config.bin %> xcode build --scheme WatchApp --sdk watchsimulator',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
+    '<%= config.bin %> xcode build --signed-upload-url <url>',
     '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152',
     '<%= config.bin %> xcode build ./MyProject --ignore "\\\\.xcuserdata/"',
     '<%= config.bin %> xcode build ./MyProject --additional-file ~/.netrc=~/.netrc',
@@ -41,7 +41,14 @@ export default class XcodeBuild extends BaseCommand {
       description: 'Workspace file to pass to xcodebuild, such as MyApp.xcworkspace',
     }),
     project: Flags.string({ description: 'Project file to pass to xcodebuild, such as MyApp.xcodeproj' }),
+    sdk: Flags.string({
+      description: 'SDK family to build for.',
+      options: ['iphonesimulator', 'iphoneos', 'watchsimulator', 'watchos'],
+    }),
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
+    'signed-upload-url': Flags.string({
+      description: 'Presigned URL to upload the resulting build artifact to.',
+    }),
     'basis-cache-dir': Flags.string({
       description: 'Directory to use for the client-side delta sync cache during the pre-build sync step.',
     }),
@@ -67,16 +74,24 @@ export default class XcodeBuild extends BaseCommand {
     await this.withAuth(async () => {
       const id = this.resolveId(flags.id);
       const syncPath = args.path ?? process.cwd();
-      const xcodeClient = await this.resolveXcodeClientFromIosInstance(id);
+      const xcodeClient = await this.resolveXcodeClient(id);
 
       const settings: Record<string, string> = {};
       if (flags.scheme) settings.scheme = flags.scheme;
       if (flags.workspace) settings.workspace = flags.workspace;
       if (flags.project) settings.project = flags.project;
+      if (flags.sdk) settings.sdk = flags.sdk;
 
       const options: Record<string, unknown> = {};
+      if (flags.upload && flags['signed-upload-url']) {
+        this.error('Use either --upload or --signed-upload-url, not both.');
+      }
       if (flags.upload) {
         options.upload = { assetName: flags.upload };
+      } else if (flags['signed-upload-url']) {
+        options.upload = {
+          signedUploadUrl: flags['signed-upload-url'],
+        };
       }
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
@@ -115,37 +130,9 @@ export default class XcodeBuild extends BaseCommand {
       }
 
       this.output(`\nBuild succeeded (exit code ${result.exitCode})`);
+      if (flags.upload && result.signedDownloadUrl) {
+        this.output(`Artifact download URL: ${result.signedDownloadUrl}`);
+      }
     });
-  }
-
-  private async resolveXcodeClientFromIosInstance(id: string) {
-    const type = detectInstanceType(id).toString();
-
-    if (type === 'ios') {
-      const instance = await this.client.iosInstances.get(id);
-      let sandboxUrl = instance.status.sandbox?.xcode?.url;
-      let token = instance.status.token;
-
-      if (!sandboxUrl) {
-        const cached = loadInstanceCache(id);
-        if (cached?.sandboxXcodeUrl) {
-          sandboxUrl = cached.sandboxXcodeUrl;
-          token = cached.token || token;
-        }
-      }
-
-      if (!sandboxUrl) {
-        this.error(
-          `iOS instance ${id} does not have a Xcode sandbox. Create it with: lim ios create --xcode or lim xcode create --ios`,
-        );
-      }
-      return this.client.xcodeInstances.createClient({
-        apiUrl: sandboxUrl,
-        token,
-      });
-    }
-
-    const instance = await this.client.xcodeInstances.get(id);
-    return this.client.xcodeInstances.createClient({ instance });
   }
 }
