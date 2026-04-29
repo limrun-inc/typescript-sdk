@@ -51,11 +51,18 @@ export type XcodeProjectConfig = {
   workspace?: string;
   project?: string;
   scheme?: string;
-  sdk?: 'iphonesimulator' | 'iphoneos';
+  sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos';
+};
+
+export type XcodeSigningConfig = {
+  certificateP12Base64?: string;
+  certificatePassword?: string;
+  provisioningProfileBase64?: string;
 };
 
 export type XcodeBuildOptions = {
-  upload?: { assetName: string } | { signedUploadUrl: string; signedDownloadUrl: string };
+  upload?: { assetName: string } | { signedUploadUrl: string };
+  signing?: XcodeSigningConfig;
 };
 
 export type XcodeClient = {
@@ -228,6 +235,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         const request: ExecRequest = {
           command: 'xcodebuild',
           ...(settings && { xcodebuild: settings }),
+          ...(options?.signing && { signing: options.signing }),
         };
 
         if (options?.upload && 'assetName' in options.upload) {
@@ -249,9 +257,8 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           return exec(requestPromise, { apiUrl, token, log });
         }
 
-        if (options?.upload && 'signedUploadUrl' in options.upload && 'signedDownloadUrl' in options.upload) {
+        if (options?.upload && 'signedUploadUrl' in options.upload) {
           request.signedUploadUrl = options.upload.signedUploadUrl;
-          request.additionalMetadata = { signedDownloadUrl: options.upload.signedDownloadUrl };
         }
 
         return exec(request, { apiUrl, token, log });

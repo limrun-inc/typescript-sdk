@@ -357,6 +357,7 @@ lim xcode create --ios    # Create an iOS instance with an attached Xcode sandbo
 lim xcode list            # List all ready Xcode instances
 lim xcode get <ID>        # Get details of a specific instance
 lim xcode delete <ID>     # Delete an instance
+lim xcode attach-simulator <IOS_ID> --id <XCODE_ID>
 ```
 
 ```bash
@@ -368,6 +369,9 @@ lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 
 # Build and upload artifact
 lim xcode build ./MyProject --scheme MyApp --upload my-app-build
+
+# Attach an existing simulator so builds auto-install there
+lim xcode attach-simulator ios_abc123 --id sandbox_def456
 
 # Tune sync cache, patch size, or ignore additional paths
 lim xcode sync ./MyProject --watch --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152
@@ -582,13 +586,16 @@ Use this when you only need to build (no simulator needed), or when you want to 
 # 1. Create a standalone Xcode instance
 lim xcode create --rm
 
-# 2. Build (automatically syncs the project path first)
+# 2. Optionally attach an existing simulator by ID
+lim xcode attach-simulator ios_abc123 --id sandbox_def456
+
+# 3. Build (automatically syncs the project path first)
 lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 
-# 3. Upload build artifact
+# 4. Upload build artifact
 lim xcode build ./MyProject --scheme MyApp --upload my-app-build
 
-# 4. Download the artifact
+# 5. Download the artifact
 lim asset pull my-app-build -o ./build-output
 ```
 

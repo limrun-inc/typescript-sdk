@@ -3,6 +3,7 @@ import Limrun, { AuthenticationError, NotFoundError } from '@limrun/api';
 import {
   clearInstanceCache,
   clearLastInstanceId,
+  loadInstanceCache,
   readConfig,
   registerCreatedInstance,
   resolveInstanceId,
@@ -11,6 +12,7 @@ import {
 import { login } from './lib/auth';
 import { renderTable } from './lib/formatting';
 import { stopDaemon } from './lib/daemon';
+import { detectInstanceType } from './lib/instance-client-factory';
 
 const VERSION = require('../package.json').version;
 const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox)_[a-z0-9]+\b/i;
@@ -163,6 +165,37 @@ export abstract class BaseCommand extends Command {
 
   protected signedStreamUrl(status: { signedStreamUrl?: string } | undefined): string | undefined {
     return status?.signedStreamUrl;
+  }
+
+  protected async resolveXcodeClient(id: string) {
+    const type = detectInstanceType(id).toString();
+
+    if (type === 'ios') {
+      const instance = await this.client.iosInstances.get(id);
+      let sandboxUrl = instance.status.sandbox?.xcode?.url;
+      let token = instance.status.token;
+
+      if (!sandboxUrl) {
+        const cached = loadInstanceCache(id);
+        if (cached?.sandboxXcodeUrl) {
+          sandboxUrl = cached.sandboxXcodeUrl;
+          token = cached.token || token;
+        }
+      }
+
+      if (!sandboxUrl) {
+        this.error(
+          `iOS instance ${id} does not have a Xcode sandbox. Create it with: lim ios create --xcode or lim xcode create --ios`,
+        );
+      }
+      return this.client.xcodeInstances.createClient({
+        apiUrl: sandboxUrl,
+        token,
+      });
+    }
+
+    const instance = await this.client.xcodeInstances.get(id);
+    return this.client.xcodeInstances.createClient({ instance });
   }
 
   /**
