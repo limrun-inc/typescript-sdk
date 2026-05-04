@@ -17,56 +17,23 @@ const port = 3000;
 app.use(express.json());
 app.use(cors());
 
-app.post('/get-upload-url', async (req: Request<{}, {}, { filename: string }>, res: Response) => {
-  try {
-    const { filename } = req.body;
-    if (!filename) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Filename is required',
-      });
-    }
-
-    console.log('Getting upload URL for', filename);
-    const asset = await limrun.assets.getOrCreate({ name: filename });
-
-    return res.status(200).json({
-      uploadUrl: asset.signedUploadUrl,
-      assetName: asset.name,
-      assetId: asset.id,
-      md5: asset.md5,
-    });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'An unknown error occurred';
-    return res.status(500).json({
-      status: 'error',
-      message: 'Failed to get upload URL: ' + message,
-    });
-  }
-});
-
 app.post(
   '/create-instance',
   async (
     req: Request<
       {},
       {},
-      { webSessionId: string; assetNames?: string[]; platform: 'android' | 'ios'; androidVersion?: string }
+      {
+        webSessionId: string;
+        platform: 'android' | 'ios';
+        iosModel?: IosInstanceCreateParams.Spec['model'];
+        withExpoGo54?: boolean;
+      }
     >,
     res: Response,
   ) => {
     try {
-      const { webSessionId, assetNames, platform = 'android', androidVersion } = req.body;
-
-      const initialAssets =
-        assetNames?.length ?
-          assetNames.map((assetName) => ({
-            kind: 'App' as const,
-            source: 'AssetName' as const,
-            assetName,
-          }))
-        : [];
-
+      const { webSessionId, platform = 'android', iosModel = 'iphone', withExpoGo54 = true } = req.body;
       const forwardedIp =
         req.headers['x-forwarded-for'] instanceof Array ?
           req.headers['x-forwarded-for'].join(',')
@@ -76,9 +43,17 @@ app.post(
       if (platform === 'ios') {
         // iOS instance creation
         const spec: IosInstanceCreateParams.Spec = {
-          ...(initialAssets.length > 0 && { initialAssets }),
+          model: iosModel,
         };
-
+        if (withExpoGo54) {
+          spec.initialAssets = [
+            {
+              kind: 'App',
+              source: 'AssetName',
+              assetName: 'appstore/Expo-Go-54.0.6.tar.gz',
+            },
+          ];
+        }
         // iOS doesn't support OSVersion clue, only ClientIP
         if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
           console.log({ clientIp }, 'Adding client IP as scheduling clue (iOS)');
@@ -89,7 +64,6 @@ app.post(
             },
           ];
         }
-
         console.time('create');
         const result = await limrun.iosInstances.create({
           reuseIfExists: true,
@@ -105,30 +79,31 @@ app.post(
         });
       } else {
         // Android instance creation
-        const spec: AndroidInstanceCreateParams.Spec = {
-          ...(initialAssets.length > 0 && { initialAssets }),
-        };
-
-        const version = androidVersion || '14';
-        const clues: AndroidInstanceCreateParams.Spec.Clue[] = [
-          {
-            kind: 'OSVersion',
-            osVersion: version,
-          },
-        ];
+        const spec: AndroidInstanceCreateParams.Spec = {};
+        if (withExpoGo54) {
+          spec.initialAssets = [
+            {
+              kind: 'App',
+              source: 'AssetName',
+              assetName: 'appstore/Expo-Go-54.0.6.apk',
+            },
+          ];
+        }
 
         if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
           console.log({ clientIp }, 'Adding client IP as scheduling clue (Android)');
-          clues.push({
-            kind: 'ClientIP',
-            clientIp,
-          });
+          spec.clues = [
+            {
+              kind: 'ClientIP',
+              clientIp,
+            },
+          ];
         }
 
-        spec.clues = clues;
-
-        const result = await limrun.androidInstances.create({ spec });
-        console.timeEnd('create');
+        const result = await limrun.androidInstances.create({
+          spec,
+          metadata: { labels: { webSessionId } },
+        });
 
         return res.status(200).json({
           id: result.metadata.id,

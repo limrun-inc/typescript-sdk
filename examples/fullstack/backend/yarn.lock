@@ -132,10 +132,10 @@
   resolved "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.9.tgz#585624dc829cfb6e7c0aa6c3ca7d7e6daa87e34f"
   integrity sha512-PPOl1mi6lpLNQxnGoyAfschAodRFYXJ+9fs6WHXz7CSWKbOqiMZsubC+BQsVKuul+3vKLuwTHsS2c2y9EoKwxQ==
 
-"@limrun/api@0.24.0":
-  version "0.24.0"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.24.0.tgz#5c8b1264d1ca667c6fa6ea2fa038f8ea59e8d666"
-  integrity sha512-3i3mODJzsu600g248F5rclqU/DP2H8Uc/hWtEodw2XzHONdZ/lLJl0bBtnAqWaiWiXIsRYKSadlt67eN9nKgaA==
+"@limrun/api@0.28.3":
+  version "0.28.3"
+  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.28.3.tgz#9c9f4e265ec290f9cb4ffdf35357882dc9d495ef"
+  integrity sha512-PxE+hIhRd8uOrP+CFLA7XyHyUsX17bB7J7j3xhcu/0eNxBqvEXhrOOT1fq7drn1Ea2TUA8lX/xAPpV9Gx1fIkA==
   dependencies:
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"
@@ -143,6 +143,7 @@
     proxy-from-env "^2.1.0"
     undici "7.24.7"
     ws "^8.18.3"
+    xdelta3-wasm "^1.0.0"
 
 "@types/body-parser@*":
   version "1.19.6"
@@ -855,3 +856,8 @@ ws@^8.18.3:
   version "8.18.3"
   resolved "https://registry.npmjs.org/ws/-/ws-8.18.3.tgz"
   integrity sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==
+
+xdelta3-wasm@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.npmjs.org/xdelta3-wasm/-/xdelta3-wasm-1.0.0.tgz#43b6ef9e9649830e25713914e40324217f8565fd"
+  integrity sha512-vhS28BhVaE3S/PGG1KQIwjBVqJecuS5Sdh82UAZysbnYaU93KS6l8ZPtsqonNZMeuyFgrGW9D44hh2lwQCsidA==

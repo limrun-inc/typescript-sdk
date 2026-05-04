@@ -1,46 +1,36 @@
 import { RemoteControl } from '@limrun/ui';
 import { useState } from 'react';
-import { useAssets } from './useAssets';
 
 function App() {
   const [instanceData, setInstanceData] = useState<
-    { id: string; webrtcUrl: string; token: string; platform: 'android' | 'ios' } | undefined
+    {
+      id: string;
+      webrtcUrl: string;
+      token: string;
+      platform: 'android' | 'ios';
+      iosModel?: 'iphone' | 'ipad' | 'watch';
+    } | undefined
   >();
   const [loading, setLoading] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  const [platform, setPlatform] = useState<'android' | 'ios'>('android');
-  const [androidVersion, setAndroidVersion] = useState('14');
+  const [platform, setPlatform] = useState<'android' | 'ios'>('ios');
+  const [iosModel, setIosModel] = useState<'iphone' | 'ipad' | 'watch'>('iphone');
   const [openUrl, setOpenUrl] = useState('');
-
-  const { assets, addFiles, removeAsset, clearAssets, getUploadedAssetNames, areAllAssetsUploaded } =
-    useAssets();
-
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    await addFiles(event.target.files);
-    // Reset the input so the same file can be selected again if needed
-    event.target.value = '';
-  };
+  const [withExpoGo54, setWithExpoGo54] = useState(false);
 
   const createInstance = async () => {
     try {
       setError(undefined);
       setLoading(true);
 
-      // Check if all assets are uploaded
-      if (!areAllAssetsUploaded()) {
-        setError('Please wait for all assets to finish uploading');
-        setLoading(false);
-        return;
-      }
-
       const response = await fetch('http://localhost:3000/create-instance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          assetNames: getUploadedAssetNames(),
           platform,
-          ...(platform === 'android' && { androidVersion }),
+          iosModel,
+          withExpoGo54,
         }),
       });
 
@@ -50,7 +40,7 @@ function App() {
         return;
       }
 
-      setInstanceData({ id: data.id, webrtcUrl: data.webrtcUrl, token: data.token, platform });
+      setInstanceData({ id: data.id, webrtcUrl: data.webrtcUrl, token: data.token, platform, iosModel });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
@@ -77,9 +67,7 @@ function App() {
         return;
       }
 
-      // Clear instance data and assets after successful stop
       setInstanceData(undefined);
-      clearAssets();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
@@ -135,14 +123,14 @@ function App() {
               </select>
             </div>
 
-            {platform === 'android' && (
+            {platform === 'ios' && (
               <div>
                 <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
-                  Android Version
+                  iOS Model
                 </label>
                 <select
-                  value={androidVersion}
-                  onChange={(e) => setAndroidVersion(e.target.value)}
+                  value={iosModel}
+                  onChange={(e) => setIosModel(e.target.value as 'iphone' | 'ipad' | 'watch')}
                   style={{
                     width: '100%',
                     padding: '10px',
@@ -154,11 +142,31 @@ function App() {
                     cursor: 'pointer',
                   }}
                 >
-                  <option value="14">Android 14</option>
-                  <option value="15">Android 15</option>
+                  <option value="iphone">iPhone</option>
+                  <option value="ipad">iPad</option>
+                  <option value="watch">Apple Watch</option>
                 </select>
               </div>
             )}
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={withExpoGo54}
+                onChange={(e) => setWithExpoGo54(e.target.checked)}
+                style={{ width: '16px', height: '16px' }}
+              />
+              With Expo Go 54
+            </label>
 
             <div>
               <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
@@ -179,88 +187,6 @@ function App() {
                 }}
               />
             </div>
-
-            <div>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
-                Assets
-              </label>
-
-              {assets.length > 0 && (
-                <div style={{ marginBottom: '10px' }}>
-                  {assets.map((asset, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '8px',
-                        backgroundColor: 'white',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        marginBottom: '6px',
-                        fontSize: '13px',
-                      }}
-                    >
-                      <span
-                        style={{
-                          flex: 1,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {asset.name}
-                      </span>
-                      {asset.uploading && (
-                        <span style={{ fontSize: '11px', color: '#0066ff' }}>Uploading...</span>
-                      )}
-                      {asset.uploaded && <span style={{ fontSize: '11px', color: '#28a745' }}>✓</span>}
-                      {asset.error && <span style={{ fontSize: '11px', color: '#dc3545' }}>✗</span>}
-                      <button
-                        onClick={() => removeAsset(index)}
-                        disabled={asset.uploading}
-                        style={{
-                          padding: '4px 8px',
-                          fontSize: '12px',
-                          backgroundColor: asset.uploading ? '#ccc' : '#dc3545',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: asset.uploading ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  padding: '10px',
-                  border: '2px dashed #ddd',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  color: '#666',
-                  cursor: 'pointer',
-                  backgroundColor: 'white',
-                  transition: 'border-color 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#0066ff')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#ddd')}
-              >
-                <span style={{ fontSize: '18px' }}>+</span>
-                Add File
-                <input type="file" multiple onChange={handleFileSelect} style={{ display: 'none' }} />
-              </label>
-            </div>
-
             <button
               onClick={createInstance}
               disabled={loading}
@@ -349,6 +275,7 @@ function App() {
               url={instanceData.webrtcUrl}
               token={instanceData.token}
               sessionId={`session-${Date.now()}`}
+              showFrame={instanceData.platform !== 'ios' || instanceData.iosModel === 'iphone'}
               {...(openUrl.trim() && { openUrl: openUrl.trim() })}
             />
           </div>
