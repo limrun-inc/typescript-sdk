@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.28.4 (2026-05-05)
+
+Full Changelog: [v0.28.3...v0.28.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.28.3...v0.28.4)
+
+### Chores
+
+* **format:** run eslint and prettier separately ([6da4d85](https://github.com/limrun-inc/typescript-sdk/commit/6da4d85502e13716d18c3f0ec1f1fd9f7425842f))
+
 ## 0.28.3 (2026-04-28)
 
 Full Changelog: [v0.28.2...v0.28.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.28.2...v0.28.3)
