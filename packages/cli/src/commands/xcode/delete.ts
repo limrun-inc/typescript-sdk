@@ -7,10 +7,17 @@ import { stopDaemon } from '../../lib/daemon';
 export default class XcodeDelete extends BaseCommand {
   static summary = 'Delete an Xcode instance';
   static description = 'Delete an existing Xcode sandbox instance by ID.';
-  static examples = ['<%= config.bin %> xcode delete <ID>', '<%= config.bin %> xcode delete xcode_abc123'];
+  static examples = [
+    '<%= config.bin %> xcode delete',
+    '<%= config.bin %> xcode delete <ID>',
+    '<%= config.bin %> xcode delete xcode_abc123',
+  ];
 
   static args = {
-    id: Args.string({ description: 'Xcode instance ID to delete', required: true }),
+    id: Args.string({
+      description: 'Xcode instance ID to delete. Defaults to the last created Xcode instance.',
+      required: false,
+    }),
   };
 
   static flags = { ...BaseCommand.baseFlags };
@@ -20,18 +27,19 @@ export default class XcodeDelete extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
+      const id = this.resolveId(args.id);
       try {
-        await this.client.xcodeInstances.delete(args.id);
+        await this.client.xcodeInstances.delete(id);
       } catch (err) {
         if (!(err instanceof NotFoundError)) {
           throw err;
         }
       }
 
-      stopDaemon(args.id);
-      clearLastInstanceId(args.id);
-      clearInstanceCache(args.id);
-      this.log(`Deleted Xcode instance: ${args.id}`);
+      stopDaemon(id);
+      clearLastInstanceId(id);
+      clearInstanceCache(id);
+      this.log(`Deleted Xcode instance: ${id}`);
     });
   }
 }
