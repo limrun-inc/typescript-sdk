@@ -97,8 +97,7 @@ const driver = await remote({
   protocol: 'http',
 });
 console.log('Appium successfully connected to the Limrun iOS instance');
-
-await driver.url('https://news.ycombinator.com');
+await driver.executeScript('window.location.assign(arguments[0])', ['https://news.ycombinator.com/']);
 console.log('Navigated to Hacker News');
 
 // Switch to webview context (requires remote debugger)
