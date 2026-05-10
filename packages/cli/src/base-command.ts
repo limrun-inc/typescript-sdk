@@ -217,12 +217,36 @@ export abstract class BaseCommand extends Command {
     return id;
   }
 
+  protected async resolveIdOrCreate(providedId: string | undefined): Promise<string> {
+    try {
+      return this.resolveId(providedId);
+    } catch (err) {
+      if (!this.isMissingDefaultInstanceError(err) || !this.shouldAutoCreateOnNotFound()) {
+        throw err;
+      }
+
+      const replacementId = await this.createReplacementInstance();
+      if (!replacementId) {
+        throw err;
+      }
+
+      const instanceType = this._lastResolvedExpectedType ?? 'target';
+      this.info(`No recent ${instanceType} instance found. Created instance ${replacementId}.`);
+      this._lastResolvedInstanceId = replacementId;
+      return replacementId;
+    }
+  }
+
   private findMissingInstanceId(err: NotFoundError): string | null {
     const match = err.message.match(INSTANCE_ID_PATTERN);
     if (match) {
       return match[0];
     }
     return this._lastResolvedInstanceId ?? null;
+  }
+
+  private isMissingDefaultInstanceError(err: unknown): err is Error {
+    return err instanceof Error && err.message.startsWith('No instance ID provided and no recent');
   }
 
   private shouldAutoCreateOnNotFound(): boolean {
@@ -244,13 +268,13 @@ export abstract class BaseCommand extends Command {
     return true;
   }
 
-  private async createReplacementInstance(instanceId: string): Promise<string | null> {
+  private async createReplacementInstance(instanceId?: string): Promise<string | null> {
     const commandType = this._lastResolvedExpectedType;
-    const prefix = instanceId.split('_')[0];
+    const prefix = instanceId?.split('_')[0];
 
     if (
       (commandType === 'xcode' && prefix === 'ios') ||
-      (commandType === 'xcode' && instanceId.startsWith('ios_'))
+      (commandType === 'xcode' && instanceId?.startsWith('ios_'))
     ) {
       const instance = await this.client.iosInstances.create({
         wait: true,
