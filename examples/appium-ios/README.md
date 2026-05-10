@@ -7,6 +7,7 @@ It also shows how to get an iOS instance from Limrun and drive it from a
 GitHub Actions job with Linux runner - a first in the ecosystem!
 
 Clone this repo and enter this example folder:
+
 ```bash
 git clone https://github.com/limrun-inc/typescript-sdk.git
 cd typescript-sdk/examples/appium-ios
@@ -18,27 +19,32 @@ It creates an iOS instance where `WebDriverAgent` is pre-installed
 and launched and then starts running the automation commands.
 
 Install appium:
+
 ```bash
 npm i --location=global appium
 ```
 
 Install our custom driver that's based on upstream:
+
 ```bash
 appium driver install --source npm @limrun/appium-xcuitest-driver@10.14.6-lim.10
 ```
 
 Start Appium server in a separate terminal:
+
 ```bash
 appium
 ```
 
 Export your Limrun API key:
+
 ```bash
 # Acquire from your Organization Settings -> API Keys
 export LIM_API_KEY=lim_...
 ```
 
 Start the example test:
+
 ```bash
 yarn install
 yarn run start
@@ -57,16 +63,17 @@ locally since there is no other vendor yet that provides remote iOS simulator
 automation.
 
 The summary of our patches is as following:
-* To manage simulators, the driver makes `xcrun simctl` calls assuming it's on
+
+- To manage simulators, the driver makes `xcrun simctl` calls assuming it's on
   the same host.
-  * We forward those calls to our macOS host running the iOS
+  - We forward those calls to our macOS host running the iOS
     simulator under isolation and disable some of them, such as booting and termination
     as they are managed through Limrun API.
-* To seed files, it simply copies to the corresponding directory in the host it is running on.
-  * We upload the file and our internal server places it on the target location.
-* To automate Safari, it scans the list of open UNIX sockets by Simulator usually under `/tmp/`
+- To seed files, it simply copies to the corresponding directory in the host it is running on.
+  - We upload the file and our internal server places it on the target location.
+- To automate Safari, it scans the list of open UNIX sockets by Simulator usually under `/tmp/`
   and connects to them directly.
-  * We create a tunnel through the Limrun API to expose those UNIX sockets locally over TCP.
+  - We create a tunnel through the Limrun API to expose those UNIX sockets locally over TCP.
 
 Important to make clear that these are simply implementation details of the driver;
 your test code is not affected in anyway, the same code would work with local iOS simulator

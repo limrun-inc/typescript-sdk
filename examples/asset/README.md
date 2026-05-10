@@ -5,12 +5,14 @@ only once and have an iOS Simulator created with that app pre-installed or insta
 on-demand via `installApp` method.
 
 Clone this repo and enter this example folder:
+
 ```bash
 git clone https://github.com/limrun-inc/typescript-sdk.git
 cd typescript-sdk/examples/asset
 ```
 
 Run the example:
+
 ```bash
 export LIM_API_KEY=<lim token from Console>
 yarn install

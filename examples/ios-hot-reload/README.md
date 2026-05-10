@@ -15,6 +15,7 @@ as a WebAssembly module, no host install required) and OS-specific functionality
 for watching changes.
 
 Clone this repo and enter this example folder:
+
 ```bash
 git clone https://github.com/limrun-inc/typescript-sdk.git
 cd typescript-sdk/examples/ios-hot-reload
@@ -23,6 +24,7 @@ cd typescript-sdk/examples/ios-hot-reload
 ## Build your app
 
 You can build your app for simulator with the following command:
+
 ```bash
 export XCODEPROJ_NAME=sample-native-app.xcodeproj
 export XCODE_TARGET_NAME=sample-native-app
@@ -49,6 +51,7 @@ as example to show how you can see the logs that XCode shows when you run it loc
 
 Every time you run `xcodebuild`, it will calculate the byte diff, send patches and reopen the app,
 similar to hot reload.
+
 ```bash
 yarn install
 

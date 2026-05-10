@@ -3,13 +3,14 @@ import { useState } from 'react';
 
 function App() {
   const [instanceData, setInstanceData] = useState<
-    {
-      id: string;
-      webrtcUrl: string;
-      token: string;
-      platform: 'android' | 'ios';
-      iosModel?: 'iphone' | 'ipad' | 'watch';
-    } | undefined
+    | {
+        id: string;
+        webrtcUrl: string;
+        token: string;
+        platform: 'android' | 'ios';
+        iosModel?: 'iphone' | 'ipad' | 'watch';
+      }
+    | undefined
   >();
   const [loading, setLoading] = useState(false);
   const [stopping, setStopping] = useState(false);

@@ -12,6 +12,7 @@ to be enabled to launch Chrome. The example enables that Chrome flag via
 a `Configuration` asset.
 
 Clone this repo and enter this example folder:
+
 ```bash
 git clone https://github.com/limrun-inc/typescript-sdk.git
 cd typescript-sdk/examples/playwright

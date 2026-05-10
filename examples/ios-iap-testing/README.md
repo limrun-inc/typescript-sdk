@@ -12,8 +12,8 @@ StoreKit's local test environment accepts the bundle).
 Two flows are supported:
 
 1. **Explicit** — you already have a `.storekit` file (e.g. the one Xcode
-   generates via *File → New → StoreKit Configuration File → Sync with
-   App Store Connect*). The script uploads it with `setStoreKitConfig`.
+   generates via _File → New → StoreKit Configuration File → Sync with
+   App Store Connect_). The script uploads it with `setStoreKitConfig`.
 2. **Discover** — you don't have a `.storekit` on hand. The script runs
    `discoverStoreKitConfig`, which polls the simulator's cached sandbox
    response and auto-generates one. Requires the bundle to have IAPs

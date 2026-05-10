@@ -10,20 +10,24 @@ host.
 ## Quick Start
 
 Clone this repo and enter this example folder:
+
 ```bash
 git clone https://github.com/limrun-inc/typescript-sdk.git
 cd typescript-sdk/examples/android-video-recording
 ```
 
 Set up the example:
+
 ```bash
 export LIM_API_KEY=<lim token from Console>
 ```
+
 ```bash
 yarn install
 ```
 
 Run it!
+
 ```bash
 yarn run start
 ```
@@ -36,6 +40,7 @@ and then save the recording to a local `video.mp4` file.
 You can have simulator upload directly to a pre-signed object URL by supplying that in `presignedUrl` parameter of the `stopRecording` function, e.g. `await client.stopRecording({ presignedUrl: "<URL>" });`
 
 Generate pre-signed URL in AWS:
+
 ```bash
 #export AWS_ENDPOINT_URL
 export AWS_ACCESS_KEY_ID=

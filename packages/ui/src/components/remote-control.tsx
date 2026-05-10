@@ -108,14 +108,14 @@ type DeviceConfig = {
   loadingLogo: string;
   loadingLogoSize: string;
   videoPosition: {
-    portrait: { heightMultiplier?: number; widthMultiplier?: number; };
-    landscape: { heightMultiplier?: number; widthMultiplier?: number; };
+    portrait: { heightMultiplier?: number; widthMultiplier?: number };
+    landscape: { heightMultiplier?: number; widthMultiplier?: number };
   };
   frame: {
     image: string;
     imageLandscape: string;
-  }
-}
+  };
+};
 
 const ANDROID_TABLET_VIDEO_WIDTH = 1920;
 const ANDROID_TABLET_VIDEO_HEIGHT = 1200;
@@ -191,7 +191,10 @@ function getAndroidKeycodeAndMeta(event: React.KeyboardEvent): { keycode: number
 }
 
 export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>(
-  ({ className, url, token, sessionId: propSessionId, openUrl, showFrame = true }: RemoteControlProps, ref) => {
+  (
+    { className, url, token, sessionId: propSessionId, openUrl, showFrame = true }: RemoteControlProps,
+    ref,
+  ) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
@@ -342,10 +345,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         case 'down':
           // For multi-touch: use ACTION_DOWN for first pointer, ACTION_POINTER_DOWN for additional pointers
           const currentPointerCount = activePointers.current.size;
-          action =
-            currentPointerCount === 0
-              ? AMOTION_EVENT.ACTION_DOWN
-              : AMOTION_EVENT.ACTION_POINTER_DOWN;
+          action = currentPointerCount === 0 ? AMOTION_EVENT.ACTION_DOWN : AMOTION_EVENT.ACTION_POINTER_DOWN;
           positionToSend = { x: videoX, y: videoY };
           activePointers.current.set(pointerId, positionToSend);
           if (pointerId === -1) {
@@ -376,9 +376,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               // For multi-touch: use ACTION_UP for last pointer, ACTION_POINTER_UP for non-last pointers
               const remainingPointerCount = activePointers.current.size;
               action =
-                remainingPointerCount === 0
-                  ? AMOTION_EVENT.ACTION_UP
-                  : AMOTION_EVENT.ACTION_POINTER_UP;
+                remainingPointerCount === 0 ? AMOTION_EVENT.ACTION_UP : AMOTION_EVENT.ACTION_POINTER_UP;
             }
           }
           break;
@@ -386,20 +384,20 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       // Send message if action and position determined
       if (action !== null && positionToSend !== null) {
-          debugLog('[rc-touch][mouse->touch] sending', {
-            pointerId,
-            eventType,
-            action,
-            actionName: motionActionToString(action),
-            positionToSend,
-            video: { width: videoWidth, height: videoHeight },
-            altHeld: isAltHeldRef.current,
-            activePointersAfter: Array.from(activePointers.current.entries()).map(([id, pos]) => ({
-              id,
-              x: pos.x,
-              y: pos.y,
-            })),
-          });
+        debugLog('[rc-touch][mouse->touch] sending', {
+          pointerId,
+          eventType,
+          action,
+          actionName: motionActionToString(action),
+          positionToSend,
+          video: { width: videoWidth, height: videoHeight },
+          altHeld: isAltHeldRef.current,
+          activePointersAfter: Array.from(activePointers.current.entries()).map(([id, pos]) => ({
+            id,
+            x: pos.x,
+            y: pos.y,
+          })),
+        });
         const message = createTouchControlMessage(
           action,
           pointerId,
@@ -412,11 +410,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           buttons,
         );
         if (message) {
-            debugLog('[rc-touch][mouse->touch] buffer', {
-              pointerId,
-              actionName: motionActionToString(action),
-              byteLength: message.byteLength,
-            });
+          debugLog('[rc-touch][mouse->touch] buffer', {
+            pointerId,
+            actionName: motionActionToString(action),
+            byteLength: message.byteLength,
+          });
           sendBinaryControlMessage(message);
         }
       } else if (eventType === 'up' || eventType === 'cancel') {
@@ -448,7 +446,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // This is iOS-specific; Android doesn't use this modifier injection.
       if (platform === 'ios' && dataChannelRef.current && dataChannelRef.current.readyState === 'open') {
         const action = nextHeld ? ANDROID_KEYS.ACTION_DOWN : ANDROID_KEYS.ACTION_UP;
-        const message = createInjectKeycodeMessage(action, ANDROID_KEYS.KEYCODE_ALT_LEFT, 0, ANDROID_KEYS.META_NONE);
+        const message = createInjectKeycodeMessage(
+          action,
+          ANDROID_KEYS.KEYCODE_ALT_LEFT,
+          0,
+          ANDROID_KEYS.META_NONE,
+        );
         debugLog('[rc-touch][alt] sending Indigo modifier keycode', {
           action,
           keycode: ANDROID_KEYS.KEYCODE_ALT_LEFT,
@@ -524,8 +527,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       const clampedRelativeX = Math.max(0, Math.min(ctx.actualWidth, relativeX));
       const clampedRelativeY = Math.max(0, Math.min(ctx.actualHeight, relativeY));
-      const videoX = Math.max(0, Math.min(ctx.videoWidth, (clampedRelativeX / ctx.actualWidth) * ctx.videoWidth));
-      const videoY = Math.max(0, Math.min(ctx.videoHeight, (clampedRelativeY / ctx.actualHeight) * ctx.videoHeight));
+      const videoX = Math.max(
+        0,
+        Math.min(ctx.videoWidth, (clampedRelativeX / ctx.actualWidth) * ctx.videoWidth),
+      );
+      const videoY = Math.max(
+        0,
+        Math.min(ctx.videoHeight, (clampedRelativeY / ctx.actualHeight) * ctx.videoHeight),
+      );
 
       return {
         videoX,
@@ -547,8 +556,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       const clampedRelativeX = Math.max(0, Math.min(ctx.actualWidth, relativeX));
       const clampedRelativeY = Math.max(0, Math.min(ctx.actualHeight, relativeY));
-      const videoX = Math.max(0, Math.min(ctx.videoWidth, (clampedRelativeX / ctx.actualWidth) * ctx.videoWidth));
-      const videoY = Math.max(0, Math.min(ctx.videoHeight, (clampedRelativeY / ctx.actualHeight) * ctx.videoHeight));
+      const videoX = Math.max(
+        0,
+        Math.min(ctx.videoWidth, (clampedRelativeX / ctx.actualWidth) * ctx.videoWidth),
+      );
+      const videoY = Math.max(
+        0,
+        Math.min(ctx.videoHeight, (clampedRelativeY / ctx.actualHeight) * ctx.videoHeight),
+      );
       const mirrorVideoX = ctx.videoWidth - videoX;
       const mirrorVideoY = ctx.videoHeight - videoY;
 
@@ -583,15 +598,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       x1: number,
       y1: number,
     ) => {
-      const msg = createTwoFingerTouchControlMessage(
-        action,
-        videoWidth,
-        videoHeight,
-        x0,
-        y0,
-        x1,
-        y1,
-      );
+      const msg = createTwoFingerTouchControlMessage(action, videoWidth, videoHeight, x0, y0, x1, y1);
       debugLog('[rc-touch2] sendTwoFingerMessage (iOS)', {
         actionName: motionActionToString(action),
         video: { width: videoWidth, height: videoHeight },
@@ -626,9 +633,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       if (platform === 'ios') {
         // iOS: use special two-finger message (type=18)
-        const action = eventType === 'down' ? AMOTION_EVENT.ACTION_DOWN
-                     : eventType === 'move' ? AMOTION_EVENT.ACTION_MOVE
-                     : AMOTION_EVENT.ACTION_UP;
+        const action =
+          eventType === 'down' ? AMOTION_EVENT.ACTION_DOWN
+          : eventType === 'move' ? AMOTION_EVENT.ACTION_MOVE
+          : AMOTION_EVENT.ACTION_UP;
         sendTwoFingerMessage(action, videoWidth, videoHeight, x0, y0, x1, y1);
       } else {
         // Android: send two separate single-touch messages with proper action codes
@@ -681,7 +689,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         // to ensure consistent behavior across focus transitions.
       }
 
-      if (!dataChannelRef.current || dataChannelRef.current.readyState !== 'open' || !videoRef.current || !ctx) {
+      if (
+        !dataChannelRef.current ||
+        dataChannelRef.current.readyState !== 'open' ||
+        !videoRef.current ||
+        !ctx
+      ) {
         return;
       }
 
@@ -729,25 +742,47 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               pointerId0: t0.identifier,
               pointerId1: t1.identifier,
             };
-            applyTwoFingerEvent('down', g0.videoWidth, g0.videoHeight,
-                                g0.videoX, g0.videoY, g1.videoX, g1.videoY,
-                                t0.identifier, t1.identifier);
+            applyTwoFingerEvent(
+              'down',
+              g0.videoWidth,
+              g0.videoHeight,
+              g0.videoX,
+              g0.videoY,
+              g1.videoX,
+              g1.videoY,
+              t0.identifier,
+              t1.identifier,
+            );
           } else if (twoFingerStateRef.current.source === 'real-touch') {
             // Continuing two-finger gesture (move)
             twoFingerStateRef.current.finger0 = { x: g0.videoX, y: g0.videoY };
             twoFingerStateRef.current.finger1 = { x: g1.videoX, y: g1.videoY };
-            applyTwoFingerEvent('move', g0.videoWidth, g0.videoHeight,
-                                g0.videoX, g0.videoY, g1.videoX, g1.videoY,
-                                twoFingerStateRef.current.pointerId0,
-                                twoFingerStateRef.current.pointerId1);
+            applyTwoFingerEvent(
+              'move',
+              g0.videoWidth,
+              g0.videoHeight,
+              g0.videoX,
+              g0.videoY,
+              g1.videoX,
+              g1.videoY,
+              twoFingerStateRef.current.pointerId0,
+              twoFingerStateRef.current.pointerId1,
+            );
           }
         } else if (allTouches.length < 2 && twoFingerStateRef.current?.source === 'real-touch') {
           // Finger lifted - end two-finger gesture using last known state
           const state = twoFingerStateRef.current;
-          applyTwoFingerEvent('up', state.videoSize.width, state.videoSize.height,
-                              state.finger0.x, state.finger0.y,
-                              state.finger1.x, state.finger1.y,
-                              state.pointerId0, state.pointerId1);
+          applyTwoFingerEvent(
+            'up',
+            state.videoSize.width,
+            state.videoSize.height,
+            state.finger0.x,
+            state.finger0.y,
+            state.finger1.x,
+            state.finger1.y,
+            state.pointerId0,
+            state.pointerId1,
+          );
           twoFingerStateRef.current = null;
           // Don't process remaining finger - gesture ended
           return;
@@ -848,8 +883,17 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           pointerId1: ALT_POINTER_ID_MIRROR,
         };
         videoRef.current?.focus();
-        applyTwoFingerEvent('down', videoWidth, videoHeight, videoX, videoY, mirrorX, mirrorY,
-                            ALT_POINTER_ID_PRIMARY, ALT_POINTER_ID_MIRROR);
+        applyTwoFingerEvent(
+          'down',
+          videoWidth,
+          videoHeight,
+          videoX,
+          videoY,
+          mirrorX,
+          mirrorY,
+          ALT_POINTER_ID_PRIMARY,
+          ALT_POINTER_ID_MIRROR,
+        );
         return;
       }
 
@@ -858,8 +902,17 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           // Update positions
           twoFingerStateRef.current.finger0 = { x: videoX, y: videoY };
           twoFingerStateRef.current.finger1 = { x: mirrorX, y: mirrorY };
-          applyTwoFingerEvent('move', videoWidth, videoHeight, videoX, videoY, mirrorX, mirrorY,
-                              ALT_POINTER_ID_PRIMARY, ALT_POINTER_ID_MIRROR);
+          applyTwoFingerEvent(
+            'move',
+            videoWidth,
+            videoHeight,
+            videoX,
+            videoY,
+            mirrorX,
+            mirrorY,
+            ALT_POINTER_ID_PRIMARY,
+            ALT_POINTER_ID_MIRROR,
+          );
         }
         return;
       }
@@ -869,9 +922,17 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         if (state?.source === 'alt-mouse') {
           // End gesture at last known positions
           const { finger0, finger1, videoSize } = state;
-          applyTwoFingerEvent('up', videoSize.width, videoSize.height,
-                              finger0.x, finger0.y, finger1.x, finger1.y,
-                              ALT_POINTER_ID_PRIMARY, ALT_POINTER_ID_MIRROR);
+          applyTwoFingerEvent(
+            'up',
+            videoSize.width,
+            videoSize.height,
+            finger0.x,
+            finger0.y,
+            finger1.x,
+            finger1.y,
+            ALT_POINTER_ID_PRIMARY,
+            ALT_POINTER_ID_MIRROR,
+          );
           twoFingerStateRef.current = null;
         }
         return;
@@ -1133,8 +1194,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       setVideoLoaded(false);
       teardownConnection();
 
-      const isCurrentAttempt = () =>
-        generation === connectionGenerationRef.current;
+      const isCurrentAttempt = () => generation === connectionGenerationRef.current;
 
       connectionSuccessTimeoutRef.current = window.setTimeout(() => {
         connectionSuccessTimeoutRef.current = undefined;
@@ -1262,7 +1322,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               return getCodecPriority(a) - getCodecPriority(b);
             });
             videoTransceiver.setCodecPreferences(sortedCodecs);
-            debugLog('Set codec preferences:', sortedCodecs.map(c => c.mimeType).join(', '));
+            debugLog('Set codec preferences:', sortedCodecs.map((c) => c.mimeType).join(', '));
           }
         }
 
@@ -1612,9 +1672,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     useEffect(() => {
       const video = videoRef.current;
       const frame = frameRef.current;
-      
+
       if (!video) return;
-      
+
       // If no frame, no positioning needed
       if (!showFrame || !frame) {
         setVideoStyle({});
@@ -1624,16 +1684,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const updateVideoPosition = () => {
         const frameWidth = frame.clientWidth;
         const frameHeight = frame.clientHeight;
-        
+
         if (frameWidth === 0 || frameHeight === 0) return;
-        
+
         // Determine landscape based on video's intrinsic dimensions
         const landscape = video.videoWidth > video.videoHeight;
         setIsLandscape(landscape);
         setUseAndroidTabletFrame(
           platform === 'android' && isAndroidTabletVideo(video.videoWidth, video.videoHeight),
         );
-        
+
         const pos = landscape ? config.videoPosition.landscape : config.videoPosition.portrait;
         let newStyle: React.CSSProperties = {};
         if (pos.heightMultiplier) {
@@ -1645,7 +1705,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           // Let the other dimension follow the video stream's intrinsic aspect ratio.
           newStyle.height = 'auto';
         }
-        newStyle.borderRadius = `${landscape ? frameHeight * config.videoBorderRadiusMultiplier : frameWidth * config.videoBorderRadiusMultiplier}px`;
+        newStyle.borderRadius = `${
+          landscape ?
+            frameHeight * config.videoBorderRadiusMultiplier
+          : frameWidth * config.videoBorderRadiusMultiplier
+        }px`;
         setVideoStyle(newStyle);
       };
 
@@ -1655,10 +1719,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       resizeObserver.observe(frame);
       resizeObserver.observe(video);
-      
+
       // Also update when the frame image loads
       frame.addEventListener('load', updateVideoPosition);
-      
+
       // Update when video metadata loads (to get correct intrinsic dimensions)
       video.addEventListener('loadedmetadata', updateVideoPosition);
 
@@ -1826,17 +1890,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // Show indicators when Alt is held and we have a valid hover point (null when outside)
     const showAltIndicators = isAltHeld && hoverPoint !== null;
     const frameImageSrc =
-      platform === 'android' && useAndroidTabletFrame
-        ? (isLandscape ? pixelTabletFrameImageLandscape : pixelTabletFrameImage)
-        : (isLandscape ? config.frame.imageLandscape : config.frame.image);
+      platform === 'android' && useAndroidTabletFrame ?
+        isLandscape ? pixelTabletFrameImageLandscape
+        : pixelTabletFrameImage
+      : isLandscape ? config.frame.imageLandscape
+      : config.frame.image;
 
     return (
       <div
         ref={containerRef}
-        className={clsx(
-          'rc-container',
-          className,
-        )}
+        className={clsx('rc-container', className)}
         style={{ touchAction: 'none' }} // Keep touchAction none for the container
         // Attach unified handler to all interaction events on the container
         // This helps capture mouseleave correctly even if the video element itself isn't hovered
@@ -1878,21 +1941,17 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         )}
         <video
           ref={videoRef}
-          className={clsx(
-            'rc-video',
-            !showFrame && 'rc-video-frameless',
-            !videoLoaded && 'rc-video-loading',
-          )}
+          className={clsx('rc-video', !showFrame && 'rc-video-frameless', !videoLoaded && 'rc-video-loading')}
           style={{
             ...videoStyle,
-            ...(config.loadingLogo
-              ? {
-                  backgroundImage: `url("${config.loadingLogo}")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'center',
-                  backgroundSize: config.loadingLogoSize,
-                }
-              : {}),
+            ...(config.loadingLogo ?
+              {
+                backgroundImage: `url("${config.loadingLogo}")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'center',
+                backgroundSize: config.loadingLogoSize,
+              }
+            : {}),
           }}
           autoPlay
           playsInline
@@ -1914,11 +1973,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }}
         />
         {retryExhausted && (
-          <button
-            type="button"
-            className="rc-retry-button"
-            onClick={handleManualRetry}
-          >
+          <button type="button" className="rc-retry-button" onClick={handleManualRetry}>
             Retry
           </button>
         )}

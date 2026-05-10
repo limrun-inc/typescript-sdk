@@ -35,12 +35,12 @@ The CLI stores configuration in `~/.lim/config.yaml`. This file is compatible wi
 
 Every command supports these flags:
 
-| Flag                | Description                                     |
-| ------------------- | ----------------------------------------------- |
-| `--api-key <value>` | API key (also reads `LIM_API_KEY` env var)      |
-| `--json`            | Output as JSON instead of human-readable tables |
+| Flag                | Description                                                |
+| ------------------- | ---------------------------------------------------------- |
+| `--api-key <value>` | API key (also reads `LIM_API_KEY` env var)                 |
+| `--json`            | Output as JSON instead of human-readable tables            |
 | `--quiet`           | Suppress intermediate logs and print only the final result |
-| `--help`            | Show help for any command                       |
+| `--help`            | Show help for any command                                  |
 
 ## Command Structure
 
@@ -286,10 +286,10 @@ lim android create --region us-west --display-name "CI Test" --label env=ci --rm
 
 **Android-specific flags:**
 
-| Flag                | Description                                      |
-| ------------------- | ------------------------------------------------ |
-| `--[no-]connect`    | Start an ADB tunnel immediately (default: true)  |
-| `--adb-path <path>` | Path to `adb` binary (default: `adb`)            |
+| Flag                | Description                                     |
+| ------------------- | ----------------------------------------------- |
+| `--[no-]connect`    | Start an ADB tunnel immediately (default: true) |
+| `--adb-path <path>` | Path to `adb` binary (default: `adb`)           |
 
 `lim android create` always prints a Console URL such as `https://console.limrun.com/stream/android_...` that you can open in the browser for live viewing. For automation, `--no-connect` is usually the safest default.
 
