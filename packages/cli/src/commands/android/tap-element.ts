@@ -2,8 +2,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { androidSelectorFlags, buildAndroidSelector } from '../../lib/android-selector';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getAndroidInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -34,8 +33,9 @@ export default class AndroidTapElement extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'android') {
+      const resolvedInstance = this.resolveAndroidInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('android tap-element only supports Android instances');
       }
 
@@ -53,12 +53,9 @@ export default class AndroidTapElement extends BaseCommand {
         return;
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
+      const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
       try {
-        if (type !== 'android') {
-          this.error('android tap-element only supports Android instances');
-        }
-        const result = await (client as any).tap({ selector });
+        const result = await client.tap({ selector });
         if (flags.json) this.outputJson(result);
         else this.log('Element tapped');
       } finally {

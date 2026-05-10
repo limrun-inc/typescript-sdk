@@ -1,7 +1,7 @@
 import { NotFoundError } from '@limrun/api';
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { clearLastInstanceId, clearInstanceCache } from '../../lib/config';
+import { clearLastInstanceId } from '../../lib/config';
 import { stopDaemon } from '../../lib/daemon';
 
 export default class XcodeDelete extends BaseCommand {
@@ -27,7 +27,8 @@ export default class XcodeDelete extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(args.id);
+      const resolvedInstance = await this.resolveXcodeTarget(args.id);
+      const id = resolvedInstance.id;
       try {
         await this.client.xcodeInstances.delete(id);
       } catch (err) {
@@ -38,7 +39,6 @@ export default class XcodeDelete extends BaseCommand {
 
       stopDaemon(id);
       clearLastInstanceId(id);
-      clearInstanceCache(id);
       this.log(`Deleted Xcode instance: ${id}`);
     });
   }

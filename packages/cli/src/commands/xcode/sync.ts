@@ -64,9 +64,10 @@ export default class XcodeSync extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
+      const target = await this.resolveXcodeTarget(flags.id);
+      const id = target.id;
       const syncPath = args.path ?? process.cwd();
-      const xcodeClient = await this.resolveXcodeClient(id);
+      const xcodeClient = await this.resolveXcodeClient(target);
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
       const syncStart = Date.now();

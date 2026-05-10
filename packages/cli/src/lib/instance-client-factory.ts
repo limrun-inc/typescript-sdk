@@ -1,11 +1,20 @@
 import Limrun, { createInstanceClient, Ios, type InstanceClient } from '@limrun/api';
 import { isSessionActive, sendCommand } from './daemon-client';
+import { saveInstanceCache, type LastAndroidInstance, type LastIosInstance } from './config';
 
 export type InstanceType = 'android' | 'ios' | 'xcode';
 
-export interface ResolvedInstanceClient {
-  type: InstanceType;
-  client: InstanceClient | Ios.InstanceClient;
+export interface ResolvedAndroidInstanceClient {
+  type: 'android';
+  client: InstanceClient;
+  disconnect: () => void;
+  /** True if the client is backed by a daemon session (don't disconnect). */
+  isSession: boolean;
+}
+
+export interface ResolvedIosInstanceClient {
+  type: 'ios';
+  client: Ios.InstanceClient;
   disconnect: () => void;
   /** True if the client is backed by a daemon session (don't disconnect). */
   isSession: boolean;
@@ -40,37 +49,66 @@ export function sendSessionCommand(
   return sendCommand(instanceId, command, args, timeoutMs);
 }
 
-/**
- * Create a direct instance client (no daemon). Used when no session is active.
- */
-export async function getInstanceClient(lim: Limrun, id: string): Promise<ResolvedInstanceClient> {
-  const type = detectInstanceType(id);
-
-  if (type === 'android') {
-    const instance = await lim.androidInstances.get(id);
-    const apiUrl = instance.status.apiUrl;
-    const token = instance.status.token;
-    if (!apiUrl) {
-      throw new Error(`Android instance ${id} does not have an apiUrl. Is it ready?`);
-    }
+export async function getAndroidInstanceClient(
+  lim: Limrun,
+  target: LastAndroidInstance,
+): Promise<ResolvedAndroidInstanceClient> {
+  if (target.apiUrl && target.token) {
     const client = await createInstanceClient({
-      apiUrl,
-      adbUrl: instance.status.adbWebSocketUrl,
-      token,
+      apiUrl: target.apiUrl,
+      adbUrl: target.adbWebSocketUrl,
+      token: target.token,
     });
-    return { type, client, disconnect: () => client.disconnect(), isSession: false };
+    return { type: 'android', client, disconnect: () => client.disconnect(), isSession: false };
   }
 
-  if (type === 'ios') {
-    const instance = await lim.iosInstances.get(id);
-    const apiUrl = instance.status.apiUrl;
-    const token = instance.status.token;
-    if (!apiUrl) {
-      throw new Error(`iOS instance ${id} does not have an apiUrl. Is it ready?`);
-    }
-    const client = await Ios.createInstanceClient({ apiUrl, token });
-    return { type, client, disconnect: () => client.disconnect(), isSession: false };
+  const instance = await lim.androidInstances.get(target.id);
+  const apiUrl = instance.status.apiUrl;
+  const token = instance.status.token;
+  if (!apiUrl) {
+    throw new Error(`Android instance ${target.id} does not have an apiUrl. Is it ready?`);
+  }
+  saveInstanceCache(instance.metadata.id, {
+    apiUrl,
+    adbWebSocketUrl: instance.status.adbWebSocketUrl,
+    token,
+    endpointWebSocketUrl: instance.status.endpointWebSocketUrl,
+    mcpUrl: instance.status.mcpUrl,
+    signedStreamUrl: instance.status.signedStreamUrl,
+    targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix,
+  });
+  const client = await createInstanceClient({
+    apiUrl,
+    adbUrl: instance.status.adbWebSocketUrl,
+    token,
+  });
+  return { type: 'android', client, disconnect: () => client.disconnect(), isSession: false };
+}
+
+export async function getIosInstanceClient(
+  lim: Limrun,
+  target: LastIosInstance,
+): Promise<ResolvedIosInstanceClient> {
+  if (target.apiUrl && target.token) {
+    const client = await Ios.createInstanceClient({ apiUrl: target.apiUrl, token: target.token });
+    return { type: 'ios', client, disconnect: () => client.disconnect(), isSession: false };
   }
 
-  throw new Error(`Cannot create instance client for type "${type}". Only android and ios are supported.`);
+  const instance = await lim.iosInstances.get(target.id);
+  const apiUrl = instance.status.apiUrl;
+  const token = instance.status.token;
+  if (!apiUrl) {
+    throw new Error(`iOS instance ${target.id} does not have an apiUrl. Is it ready?`);
+  }
+  saveInstanceCache(instance.metadata.id, {
+    apiUrl,
+    token,
+    endpointWebSocketUrl: instance.status.endpointWebSocketUrl,
+    mcpUrl: instance.status.mcpUrl,
+    signedStreamUrl: instance.status.signedStreamUrl,
+    targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix,
+    sandboxXcodeUrl: instance.status.sandbox?.xcode?.url,
+  });
+  const client = await Ios.createInstanceClient({ apiUrl, token });
+  return { type: 'ios', client, disconnect: () => client.disconnect(), isSession: false };
 }

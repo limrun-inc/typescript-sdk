@@ -2,7 +2,7 @@ import path from 'path';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
-import { registerCreatedInstance, saveInstanceCache } from '../../lib/config';
+import { registerCreatedInstance } from '../../lib/config';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 
 function xcodeSandboxIdFromUrl(url: string): string | undefined {
@@ -116,7 +116,7 @@ export default class IosCreate extends BaseCommand {
       const signedStreamUrl = this.signedStreamUrl(instance.status);
       const xcodeSandboxUrl = instance.status.sandbox?.xcode?.url;
       const xcodeSandboxId = xcodeSandboxUrl ? xcodeSandboxIdFromUrl(xcodeSandboxUrl) : undefined;
-      registerCreatedInstance(instance.metadata.id, flags.xcode ? ['xcode'] : []);
+      registerCreatedInstance(instance, flags.xcode ? ['xcode'] : []);
       this.info(`Created a new iOS instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.info('iOS Instance:');
       this.info(`  ID: ${instance.metadata.id}`);
@@ -132,10 +132,6 @@ export default class IosCreate extends BaseCommand {
           this.info(`  ID: ${xcodeSandboxId}`);
         }
         this.info(`  URL: ${xcodeSandboxUrl}`);
-        saveInstanceCache(instance.metadata.id, {
-          sandboxXcodeUrl: xcodeSandboxUrl,
-          token: instance.status.token,
-        });
       }
 
       if (flags.json) {

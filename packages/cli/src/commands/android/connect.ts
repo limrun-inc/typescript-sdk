@@ -1,5 +1,6 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { getAndroidInstanceClient } from '../../lib/instance-client-factory';
 
 export default class AndroidConnect extends BaseCommand {
   static summary = 'Connect to an existing Android instance via ADB tunnel';
@@ -30,20 +31,11 @@ export default class AndroidConnect extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      const instance = await this.client.androidInstances.get(id);
-      if (!instance.status.apiUrl) {
-        this.error(`Instance ${id} does not have an apiUrl. Is it ready?`);
-      }
+      const resolvedInstance = this.resolveAndroidInstance(flags.id);
+      const id = resolvedInstance.id;
+      const { client } = await getAndroidInstanceClient(this.client, resolvedInstance);
 
-      const { createInstanceClient } = await import('@limrun/api');
-      const instanceClient = await createInstanceClient({
-        apiUrl: instance.status.apiUrl,
-        adbUrl: instance.status.adbWebSocketUrl,
-        token: instance.status.token,
-      });
-
-      const tunnel = await instanceClient.startAdbTunnel();
+      const tunnel = await client.startAdbTunnel();
       this.log('Tunnel started. Press Ctrl+C to stop.');
 
       await new Promise<void>((resolve) => {
@@ -58,7 +50,7 @@ export default class AndroidConnect extends BaseCommand {
       });
 
       tunnel.close();
-      instanceClient.disconnect();
+      client.disconnect();
     });
   }
 }

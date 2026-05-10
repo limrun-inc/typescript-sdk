@@ -2,8 +2,7 @@ import path from 'path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getIosInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -55,8 +54,9 @@ export default class IosRecord extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios record only supports iOS instances');
       }
 
@@ -64,12 +64,9 @@ export default class IosRecord extends BaseCommand {
         if (hasActiveSession(id)) {
           await sendSessionCommand(id, 'start-recording', [flags.quality]);
         } else {
-          const { type, client, disconnect } = await getInstanceClient(this.client, id);
+          const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
           try {
-            if (type !== 'ios') {
-              this.error('ios record only supports iOS instances');
-            }
-            await (client as any).startRecording({ quality: flags.quality });
+            await client.startRecording({ quality: flags.quality });
           } finally {
             disconnect();
           }
@@ -93,12 +90,9 @@ export default class IosRecord extends BaseCommand {
         return;
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
+      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        if (type !== 'ios') {
-          this.error('ios record only supports iOS instances');
-        }
-        await (client as any).stopRecording(saveTo);
+        await client.stopRecording(saveTo);
         this.log(`Recording saved to ${outputPath}`);
         if (flags['presigned-url']) {
           this.log('Recording uploaded using the provided presigned URL');

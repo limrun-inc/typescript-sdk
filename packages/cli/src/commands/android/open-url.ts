@@ -1,8 +1,7 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getAndroidInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -35,20 +34,18 @@ export default class AndroidOpenUrl extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'android') {
+      const resolvedInstance = this.resolveAndroidInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('android open-url only supports Android instances');
       }
 
       if (hasActiveSession(id)) {
         await sendSessionCommand(id, 'open-url', [args.url]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, id);
+        const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
         try {
-          if (type !== 'android') {
-            this.error('android open-url only supports Android instances');
-          }
-          await (client as any).openUrl(args.url);
+          await client.openUrl(args.url);
         } finally {
           disconnect();
         }

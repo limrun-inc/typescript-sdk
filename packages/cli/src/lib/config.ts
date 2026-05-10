@@ -3,6 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import yaml from 'js-yaml';
+import { type AndroidInstance } from '@limrun/api/resources/android-instances';
+import { type IosInstance } from '@limrun/api/resources/ios-instances';
+import { type XcodeInstance } from '@limrun/api/resources/xcode-instances';
 
 const CONFIG_DIR = path.join(os.homedir(), '.lim');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.yaml');
@@ -77,54 +80,221 @@ export function clearApiKey(): void {
 
 const LAST_INSTANCE_FILE = path.join(CONFIG_DIR, 'last-instances.json');
 
-interface LastInstances {
-  ios?: string;
-  android?: string;
-  xcode?: string;
+export interface LastAndroidInstance {
+  id: string;
+  type: 'android';
+  metadata?: AndroidInstance.Metadata;
+  spec?: AndroidInstance.Spec;
+  status?: AndroidInstance.Status;
+  apiUrl?: AndroidInstance.Status['apiUrl'];
+  token?: AndroidInstance.Status['token'];
+  adbWebSocketUrl?: AndroidInstance.Status['adbWebSocketUrl'];
+  endpointWebSocketUrl?: AndroidInstance.Status['endpointWebSocketUrl'];
+  mcpUrl?: AndroidInstance.Status['mcpUrl'];
+  signedStreamUrl?: AndroidInstance.Status['signedStreamUrl'];
+  targetHttpPortUrlPrefix?: AndroidInstance.Status['targetHttpPortUrlPrefix'];
 }
 
-type LastInstanceType = keyof LastInstances;
+export interface LastIosInstance {
+  id: string;
+  type: 'ios';
+  metadata?: IosInstance.Metadata;
+  spec?: IosInstance.Spec;
+  status?: IosInstance.Status;
+  apiUrl?: IosInstance.Status['apiUrl'];
+  token?: IosInstance.Status['token'];
+  endpointWebSocketUrl?: IosInstance.Status['endpointWebSocketUrl'];
+  mcpUrl?: IosInstance.Status['mcpUrl'];
+  signedStreamUrl?: IosInstance.Status['signedStreamUrl'];
+  targetHttpPortUrlPrefix?: IosInstance.Status['targetHttpPortUrlPrefix'];
+  sandboxXcodeUrl?: NonNullable<NonNullable<IosInstance.Status['sandbox']>['xcode']>['url'];
+}
+
+export interface LastXcodeInstance {
+  id: string;
+  type: 'xcode';
+  metadata?: XcodeInstance.Metadata;
+  spec?: XcodeInstance.Spec;
+  status?: XcodeInstance.Status;
+  apiUrl?: XcodeInstance.Status['apiUrl'];
+  token?: XcodeInstance.Status['token'];
+}
+
+interface LastInstances {
+  ios?: LastIosInstance;
+  android?: LastAndroidInstance;
+  xcode?: LastIosInstance | LastXcodeInstance;
+}
 
 function readLastInstances(): LastInstances {
   if (!fs.existsSync(LAST_INSTANCE_FILE)) return {};
   try {
-    return JSON.parse(fs.readFileSync(LAST_INSTANCE_FILE, 'utf-8'));
-  } catch {
-    return {};
-  }
+    const parsed = JSON.parse(fs.readFileSync(LAST_INSTANCE_FILE, 'utf-8'));
+    if (isLastInstances(parsed)) {
+      return parsed;
+    }
+  } catch {}
+  deleteLastInstancesFile();
+  return {};
 }
 
-export function saveLastInstanceId(instanceId: string, asType?: LastInstanceType): void {
-  ensureConfigDir();
+function deleteLastInstancesFile(): void {
+  try {
+    fs.unlinkSync(LAST_INSTANCE_FILE);
+  } catch {}
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isLastAndroidInstance(value: unknown): value is LastAndroidInstance {
+  return isRecord(value) && value.type === 'android' && typeof value.id === 'string';
+}
+
+function isLastIosInstance(value: unknown): value is LastIosInstance {
+  return isRecord(value) && value.type === 'ios' && typeof value.id === 'string';
+}
+
+function isLastXcodeInstance(value: unknown): value is LastXcodeInstance {
+  return isRecord(value) && value.type === 'xcode' && typeof value.id === 'string';
+}
+
+function isLastInstances(value: unknown): value is LastInstances {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value);
+  if (keys.some((key) => !['ios', 'android', 'xcode'].includes(key))) return false;
+  if (value.android !== undefined && !isLastAndroidInstance(value.android)) return false;
+  if (value.ios !== undefined && !isLastIosInstance(value.ios)) return false;
+  if (value.xcode !== undefined && !isLastIosInstance(value.xcode) && !isLastXcodeInstance(value.xcode)) {
+    return false;
+  }
+  return true;
+}
+
+function detectLastInstanceType(instanceId: string): 'ios' | 'android' | 'xcode' {
   const rawPrefix = instanceId.split('_')[0];
-  // Map sandbox_ prefix to xcode type
-  const detectedType = (rawPrefix === 'sandbox' ? 'xcode' : rawPrefix) as LastInstanceType;
-  const prefix = asType ?? detectedType;
+  if (rawPrefix === 'android') return 'android';
+  if (rawPrefix === 'ios') return 'ios';
+  return 'xcode';
+}
+
+function isAndroidInstance(instance: InstanceInput): instance is AndroidInstance {
+  return detectLastInstanceType(instance.metadata.id) === 'android';
+}
+
+function isIosInstance(instance: InstanceInput): instance is IosInstance {
+  return detectLastInstanceType(instance.metadata.id) === 'ios';
+}
+
+function isXcodeInstance(instance: InstanceInput): instance is XcodeInstance {
+  return detectLastInstanceType(instance.metadata.id) === 'xcode';
+}
+
+export type InstanceInput = AndroidInstance | IosInstance | XcodeInstance;
+
+function buildLastInstanceRecord(
+  instanceOrId: InstanceInput,
+): LastAndroidInstance | LastIosInstance | LastXcodeInstance {
+  const id = instanceOrId.metadata.id;
+  if (isAndroidInstance(instanceOrId)) {
+    return {
+      id,
+      type: 'android',
+      metadata: instanceOrId.metadata,
+      spec: instanceOrId.spec,
+      status: instanceOrId.status,
+      apiUrl: instanceOrId.status.apiUrl,
+      token: instanceOrId.status.token,
+      adbWebSocketUrl: instanceOrId.status.adbWebSocketUrl,
+      endpointWebSocketUrl: instanceOrId.status.endpointWebSocketUrl,
+      mcpUrl: instanceOrId.status.mcpUrl,
+      signedStreamUrl: instanceOrId.status.signedStreamUrl,
+      targetHttpPortUrlPrefix: instanceOrId.status.targetHttpPortUrlPrefix,
+    };
+  }
+  if (isIosInstance(instanceOrId)) {
+    return {
+      id,
+      type: 'ios',
+      metadata: instanceOrId.metadata,
+      spec: instanceOrId.spec,
+      status: instanceOrId.status,
+      apiUrl: instanceOrId.status.apiUrl,
+      token: instanceOrId.status.token,
+      endpointWebSocketUrl: instanceOrId.status.endpointWebSocketUrl,
+      mcpUrl: instanceOrId.status.mcpUrl,
+      signedStreamUrl: instanceOrId.status.signedStreamUrl,
+      targetHttpPortUrlPrefix: instanceOrId.status.targetHttpPortUrlPrefix,
+      sandboxXcodeUrl: instanceOrId.status.sandbox?.xcode?.url,
+    };
+  }
+  if (isXcodeInstance(instanceOrId)) {
+    return {
+      id,
+      type: 'xcode',
+      metadata: instanceOrId.metadata,
+      spec: instanceOrId.spec,
+      status: instanceOrId.status,
+      apiUrl: instanceOrId.status.apiUrl,
+      token: instanceOrId.status.token,
+    };
+  }
+
+  return {
+    id,
+    type: 'xcode',
+  };
+}
+
+function saveLastInstance(instanceOrId: InstanceInput, slot?: 'xcode'): void {
+  ensureConfigDir();
+  const record = buildLastInstanceRecord(instanceOrId);
   const data = readLastInstances();
-  data[prefix] = instanceId;
+  if (slot === 'xcode') {
+    if (record.type === 'ios' || record.type === 'xcode') {
+      data.xcode = record;
+    }
+  } else if (record.type === 'android') {
+    data.android = record;
+  } else if (record.type === 'ios') {
+    data.ios = record;
+  } else {
+    data.xcode = record;
+  }
   fs.writeFileSync(LAST_INSTANCE_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
-export function registerCreatedInstance(instanceId: string, relatedTypes: LastInstanceType[] = []): void {
-  saveLastInstanceId(instanceId);
-  for (const type of new Set(relatedTypes)) {
-    saveLastInstanceId(instanceId, type);
+export function registerCreatedInstance(
+  instanceOrId: InstanceInput,
+  relatedTypes: Array<'xcode'> = [],
+): void {
+  saveLastInstance(instanceOrId);
+  if (relatedTypes.includes('xcode')) {
+    saveLastInstance(instanceOrId, 'xcode');
   }
 }
 
-export function loadLastInstanceId(type?: string): string | null {
+export function loadLastAndroidInstance(): LastAndroidInstance | null {
   const data = readLastInstances();
-  if (type) return data[type as keyof LastInstances] ?? null;
-  // Return the most recently saved one (check all types)
-  // Since we can't track order, prefer ios > android > xcode as a reasonable default
-  return data.ios ?? data.android ?? data.xcode ?? null;
+  return data.android ?? null;
+}
+
+export function loadLastIosInstance(): LastIosInstance | null {
+  const data = readLastInstances();
+  return data.ios ?? null;
+}
+
+export function loadLastXcodeInstance(): LastIosInstance | LastXcodeInstance | null {
+  const data = readLastInstances();
+  return data.xcode ?? null;
 }
 
 export function clearLastInstanceId(instanceId: string): void {
   const data = readLastInstances();
   let changed = false;
   for (const key of Object.keys(data) as (keyof LastInstances)[]) {
-    if (data[key] === instanceId) {
+    if (data[key]?.id === instanceId) {
       delete data[key];
       changed = true;
     }
@@ -135,60 +305,54 @@ export function clearLastInstanceId(instanceId: string): void {
   }
 }
 
-/**
- * Resolve an instance ID from explicit arg, active session, or last-used fallback.
- * Throws with a helpful message if no ID can be determined.
- */
-export function resolveInstanceId(providedId: string | undefined, expectedType?: string): string {
-  if (providedId) return providedId;
-
-  // Try last-used instance for the expected type
-  const lastId = loadLastInstanceId(expectedType);
-  if (lastId) return lastId;
-
-  const typeHint = `${expectedType ?? '(ios|xcode|android)'}`.trim();
-  throw new Error(
-    `No instance ID provided and no recent${typeHint} instance found.\n` +
-      `Provide an instance ID or create one first with: lim ${typeHint} create`,
-  );
-}
-
-// ---------- Instance metadata cache ----------
-// Stores data from create responses that the API doesn't return on get
-// (e.g. sandbox.xcode.url for iOS instances)
-
-const INSTANCES_DIR = path.join(CONFIG_DIR, 'instances');
-
-export interface InstanceCache {
-  sandboxXcodeUrl?: string;
-  token?: string;
-}
-
-function instanceCachePath(instanceId: string): string {
-  // Sanitize ID for use as filename
-  return path.join(INSTANCES_DIR, `${instanceId.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`);
-}
-
-export function saveInstanceCache(instanceId: string, data: InstanceCache): void {
-  ensureConfigDir();
-  if (!fs.existsSync(INSTANCES_DIR)) {
-    fs.mkdirSync(INSTANCES_DIR, { recursive: true, mode: 0o700 });
+export function saveInstanceCache(
+  instanceId: string,
+  data: Partial<LastAndroidInstance> | Partial<LastIosInstance> | Partial<LastXcodeInstance>,
+): void {
+  const lastInstances = readLastInstances();
+  let changed = false;
+  if (lastInstances.android?.id === instanceId) {
+    lastInstances.android = {
+      ...lastInstances.android,
+      ...(data as Partial<LastAndroidInstance>),
+      type: 'android',
+    };
+    changed = true;
   }
-  fs.writeFileSync(instanceCachePath(instanceId), JSON.stringify(data, null, 2), { mode: 0o600 });
-}
-
-export function loadInstanceCache(instanceId: string): InstanceCache | null {
-  const p = instanceCachePath(instanceId);
-  if (!fs.existsSync(p)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(p, 'utf-8'));
-  } catch {
-    return null;
+  if (lastInstances.ios?.id === instanceId) {
+    lastInstances.ios = {
+      ...lastInstances.ios,
+      ...(data as Partial<LastIosInstance>),
+      type: 'ios',
+    };
+    changed = true;
+  }
+  if (lastInstances.xcode?.id === instanceId) {
+    lastInstances.xcode =
+      lastInstances.xcode.type === 'ios' ?
+        { ...lastInstances.xcode, ...(data as Partial<LastIosInstance>), type: 'ios' }
+      : { ...lastInstances.xcode, ...(data as Partial<LastXcodeInstance>), type: 'xcode' };
+    changed = true;
+  }
+  if (changed) {
+    ensureConfigDir();
+    fs.writeFileSync(LAST_INSTANCE_FILE, JSON.stringify(lastInstances, null, 2), { mode: 0o600 });
   }
 }
 
-export function clearInstanceCache(instanceId: string): void {
-  try {
-    fs.unlinkSync(instanceCachePath(instanceId));
-  } catch {}
+export function loadAndroidInstanceCache(instanceId: string): LastAndroidInstance | null {
+  const record = readLastInstances().android;
+  return record?.id === instanceId ? record : null;
+}
+
+export function loadIosInstanceCache(instanceId: string): LastIosInstance | null {
+  const data = readLastInstances();
+  if (data.ios?.id === instanceId) return data.ios;
+  if (data.xcode?.type === 'ios' && data.xcode.id === instanceId) return data.xcode;
+  return null;
+}
+
+export function loadXcodeInstanceCache(instanceId: string): LastXcodeInstance | null {
+  const record = readLastInstances().xcode;
+  return record?.type === 'xcode' && record.id === instanceId ? record : null;
 }

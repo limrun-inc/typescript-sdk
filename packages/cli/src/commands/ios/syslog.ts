@@ -1,6 +1,6 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { detectInstanceType, getInstanceClient } from '../../lib/instance-client-factory';
+import { getIosInstanceClient } from '../../lib/instance-client-factory';
 
 export default class IosSyslog extends BaseCommand {
   static summary = 'Stream syslog from a running iOS instance';
@@ -26,19 +26,16 @@ export default class IosSyslog extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios syslog only supports iOS instances');
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
-      if (type !== 'ios') {
-        disconnect();
-        this.error('ios syslog only supports iOS instances');
-      }
+      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
 
       try {
-        const stream = (client as any).streamSyslog();
+        const stream = client.streamSyslog();
         stream.on('line', (line: string) => {
           if (flags.json) {
             this.outputJson({ line });

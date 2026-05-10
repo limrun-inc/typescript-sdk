@@ -72,9 +72,10 @@ export default class XcodeBuild extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = await this.resolveIdOrCreate(flags.id);
+      const target = await this.resolveXcodeTargetOrCreate(flags.id);
+      const id = target.id;
       const syncPath = args.path ?? process.cwd();
-      const xcodeClient = await this.resolveXcodeClient(id);
+      const xcodeClient = await this.resolveXcodeClient(target);
 
       const settings: Record<string, string> = {};
       if (flags.scheme) settings.scheme = flags.scheme;

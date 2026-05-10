@@ -3,8 +3,7 @@ import yaml from 'js-yaml';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getIosInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -239,8 +238,9 @@ YAML example:
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios perform only supports iOS instances');
       }
 
@@ -257,13 +257,10 @@ YAML example:
           ipcTimeoutMs,
         )) as PerformActionsResult;
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, id);
+        const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          if (type !== 'ios') {
-            this.error('ios perform only supports iOS instances');
-          }
-          result = (await (client as any).performActions(
-            actions,
+          result = (await client.performActions(
+            actions as Parameters<typeof client.performActions>[0],
             flags.timeout !== undefined ? { timeoutMs: flags.timeout } : undefined,
           )) as PerformActionsResult;
         } finally {

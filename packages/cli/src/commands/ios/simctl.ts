@@ -1,6 +1,6 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { detectInstanceType, getInstanceClient } from '../../lib/instance-client-factory';
+import { getIosInstanceClient } from '../../lib/instance-client-factory';
 
 type SimctlResult = {
   code: number;
@@ -40,19 +40,16 @@ export default class IosSimctl extends BaseCommand {
         this.error('Provide at least one simctl argument after `lim ios simctl --`.');
       }
 
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios simctl only supports iOS instances');
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
-      if (type !== 'ios') {
-        disconnect();
-        this.error('ios simctl only supports iOS instances');
-      }
+      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
 
       try {
-        const execution = (client as any).simctl(rawArgs);
+        const execution = client.simctl(rawArgs);
 
         if (flags.json) {
           const result = (await execution.wait()) as SimctlResult;

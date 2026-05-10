@@ -1,7 +1,6 @@
 import { Args, Flags } from '@oclif/core';
-import { Ios } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
-import { detectInstanceType } from '../../lib/instance-client-factory';
+import { getIosInstanceClient } from '../../lib/instance-client-factory';
 
 export default class IosSync extends BaseCommand {
   static summary = 'Sync a built app bundle to a running iOS instance';
@@ -56,25 +55,14 @@ export default class IosSync extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
-        this.error('ios sync only supports iOS instances. Use `lim xcode sync` for source code syncing.');
-      }
-
-      const instance = await this.client.iosInstances.get(id);
-      if (!instance.status.apiUrl) {
-        this.error(`Instance ${id} does not have an apiUrl. Is it ready?`);
-      }
-
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
       const syncPath = args.path ?? process.cwd();
-      const iosClient = await Ios.createInstanceClient({
-        apiUrl: instance.status.apiUrl,
-        token: instance.status.token,
-      });
+      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
 
       this.info(`Syncing app bundle ${syncPath} to instance ${id}...`);
 
-      const result = await iosClient.syncApp(syncPath, {
+      const result = await client.syncApp(syncPath, {
         watch: flags.watch,
         install: flags.install,
         basisCacheDir: flags['basis-cache-dir'],
@@ -94,14 +82,14 @@ export default class IosSync extends BaseCommand {
           const shutdown = () => {
             clearInterval(keepAlive);
             result.stopWatching!();
-            iosClient.disconnect();
+            disconnect();
             resolve();
           };
           process.on('SIGINT', shutdown);
           process.on('SIGTERM', shutdown);
         });
       } else {
-        iosClient.disconnect();
+        disconnect();
       }
     });
   }

@@ -1,7 +1,7 @@
 import { NotFoundError } from '@limrun/api';
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { clearInstanceCache, clearLastInstanceId } from '../../lib/config';
+import { clearLastInstanceId } from '../../lib/config';
 import { stopDaemon } from '../../lib/daemon';
 
 export default class IosDelete extends BaseCommand {
@@ -27,7 +27,8 @@ export default class IosDelete extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(args.id);
+      const resolvedInstance = this.resolveIosInstance(args.id);
+      const id = resolvedInstance.id;
       try {
         await this.client.iosInstances.delete(id);
       } catch (err) {
@@ -38,7 +39,6 @@ export default class IosDelete extends BaseCommand {
 
       stopDaemon(id);
       clearLastInstanceId(id);
-      clearInstanceCache(id);
       this.log(`Deleted iOS instance: ${id}`);
     });
   }

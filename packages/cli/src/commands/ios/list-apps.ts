@@ -1,6 +1,10 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
+import {
+  getIosInstanceClient,
+  hasActiveSession,
+  sendSessionCommand,
+} from '../../lib/instance-client-factory';
 
 export default class IosListApps extends BaseCommand {
   static summary = 'List installed apps on a running iOS instance';
@@ -26,19 +30,16 @@ export default class IosListApps extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
       let apps: any[];
 
       if (hasActiveSession(id)) {
         apps = (await sendSessionCommand(id, 'list-apps')) as any[];
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, id);
-        if (type !== 'ios') {
-          disconnect();
-          this.error('list-apps is only supported on iOS instances');
-        }
+        const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          apps = await (client as any).listApps();
+          apps = await client.listApps();
         } finally {
           disconnect();
         }

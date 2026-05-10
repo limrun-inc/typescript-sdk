@@ -106,7 +106,7 @@ export default class AndroidCreate extends BaseCommand {
       const start = Date.now();
       const instance = await this.client.androidInstances.create(params);
       const signedStreamUrl = this.signedStreamUrl(instance.status);
-      registerCreatedInstance(instance.metadata.id);
+      registerCreatedInstance(instance);
       this.info(`Created a new instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.info(`Instance ID: ${instance.metadata.id}`);
       this.info(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
@@ -163,6 +163,8 @@ export default class AndroidCreate extends BaseCommand {
       } else {
         if (flags.json) {
           this.outputJson(instance);
+        } else if (this.isQuietEnabled()) {
+          this.output(instance.metadata.id);
         } else {
           this.output(`Created instance ${instance.metadata.id}`);
         }

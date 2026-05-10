@@ -3,8 +3,7 @@ import path from 'path';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getAndroidInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -37,8 +36,9 @@ export default class AndroidScreenshot extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'android') {
+      const resolvedInstance = this.resolveAndroidInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('android screenshot only supports Android instances');
       }
 
@@ -46,11 +46,8 @@ export default class AndroidScreenshot extends BaseCommand {
       if (hasActiveSession(id)) {
         screenshot = await sendSessionCommand(id, 'screenshot');
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, id);
+        const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
         try {
-          if (type !== 'android') {
-            this.error('android screenshot only supports Android instances');
-          }
           screenshot = await client.screenshot();
         } finally {
           disconnect();

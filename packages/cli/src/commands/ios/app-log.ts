@@ -1,6 +1,10 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
+import {
+  getIosInstanceClient,
+  hasActiveSession,
+  sendSessionCommand,
+} from '../../lib/instance-client-factory';
 
 export default class IosAppLog extends BaseCommand {
   static summary = 'Stream or tail app logs from a running iOS instance';
@@ -41,20 +45,17 @@ export default class IosAppLog extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
 
       if (!flags.follow) {
         if (hasActiveSession(id)) {
           const output = await sendSessionCommand(id, 'app-log-tail', [args.bundleId, flags.tail]);
           this.log(String(output));
         } else {
-          const { type, client, disconnect } = await getInstanceClient(this.client, id);
-          if (type !== 'ios') {
-            disconnect();
-            this.error('app-log command is only supported on iOS instances');
-          }
+          const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
           try {
-            const output = await (client as any).appLogTail(args.bundleId, flags.tail);
+            const output = await client.appLogTail(args.bundleId, flags.tail);
             this.log(output);
           } finally {
             disconnect();
@@ -63,14 +64,10 @@ export default class IosAppLog extends BaseCommand {
         return;
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
-      if (type !== 'ios') {
-        disconnect();
-        this.error('app-log command is only supported on iOS instances');
-      }
+      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
 
       try {
-        const logStream = (client as any).streamAppLog(args.bundleId);
+        const logStream = client.streamAppLog(args.bundleId);
         logStream.on('line', (line: string) => {
           process.stdout.write(line + '\n');
         });

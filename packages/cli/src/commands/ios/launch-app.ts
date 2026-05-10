@@ -1,6 +1,10 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
+import {
+  getIosInstanceClient,
+  hasActiveSession,
+  sendSessionCommand,
+} from '../../lib/instance-client-factory';
 
 export default class IosLaunchApp extends BaseCommand {
   static summary = 'Launch an app on a running iOS instance';
@@ -32,17 +36,17 @@ export default class IosLaunchApp extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
       if (hasActiveSession(id)) {
         await sendSessionCommand(id, 'launch-app', [args.bundleId, flags.mode]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, id);
-        if (type !== 'ios') {
-          disconnect();
-          this.error('launch-app is only supported on iOS instances');
-        }
+        const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          await (client as any).launchApp(args.bundleId, flags.mode);
+          await client.launchApp(
+            args.bundleId,
+            flags.mode as 'ForegroundIfRunning' | 'RelaunchIfRunning' | undefined,
+          );
         } finally {
           disconnect();
         }

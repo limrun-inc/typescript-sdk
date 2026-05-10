@@ -1,8 +1,7 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getIosInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -40,20 +39,19 @@ export default class IosScroll extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios scroll only supports iOS instances');
       }
 
       if (hasActiveSession(id)) {
         await sendSessionCommand(id, 'scroll', [args.direction, flags.amount]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, id);
+        const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          if (type !== 'ios') {
-            this.error('ios scroll only supports iOS instances');
-          }
-          await (client as any).scroll(args.direction, flags.amount);
+          const direction = args.direction as 'up' | 'down' | 'left' | 'right';
+          await client.scroll(direction, flags.amount);
         } finally {
           disconnect();
         }

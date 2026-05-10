@@ -1,6 +1,6 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { detectInstanceType, getInstanceClient } from '../../lib/instance-client-factory';
+import { getIosInstanceClient } from '../../lib/instance-client-factory';
 
 type CommandResult = {
   stdout: string;
@@ -40,18 +40,15 @@ export default class IosXcrun extends BaseCommand {
         this.error('Provide at least one xcrun argument after `lim ios xcrun --`.');
       }
 
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios xcrun only supports iOS instances');
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
+      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        if (type !== 'ios') {
-          this.error('ios xcrun only supports iOS instances');
-        }
-
-        const result = (await (client as any).xcrun(rawArgs)) as CommandResult;
+        const result = (await client.xcrun(rawArgs)) as CommandResult;
         if (flags.json) {
           this.outputJson(result);
           if (result.exitCode !== 0) this.exit(result.exitCode);

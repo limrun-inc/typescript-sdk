@@ -1,8 +1,7 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getIosInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -31,8 +30,9 @@ export default class IosElementTree extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios element-tree only supports iOS instances');
       }
 
@@ -46,12 +46,9 @@ export default class IosElementTree extends BaseCommand {
         return;
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
+      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        if (type !== 'ios') {
-          this.error('ios element-tree only supports iOS instances');
-        }
-        const tree = await (client as any).elementTree();
+        const tree = await client.elementTree();
         if (flags.json) {
           this.outputJson(tree);
         } else {

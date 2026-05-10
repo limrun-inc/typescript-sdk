@@ -1,8 +1,7 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getAndroidInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -31,8 +30,9 @@ export default class AndroidElementTree extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'android') {
+      const resolvedInstance = this.resolveAndroidInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('android element-tree only supports Android instances');
       }
 
@@ -50,12 +50,9 @@ export default class AndroidElementTree extends BaseCommand {
         return;
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
+      const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
       try {
-        if (type !== 'android') {
-          this.error('android element-tree only supports Android instances');
-        }
-        const tree = await (client as any).getElementTree();
+        const tree = await client.getElementTree();
         if (flags.json) {
           this.outputJson(tree);
         } else {

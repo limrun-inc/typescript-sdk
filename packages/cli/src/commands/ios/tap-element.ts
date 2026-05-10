@@ -1,8 +1,7 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getIosInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -52,8 +51,9 @@ export default class IosTapElement extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios tap-element only supports iOS instances');
       }
 
@@ -79,12 +79,9 @@ export default class IosTapElement extends BaseCommand {
         return;
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
+      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        if (type !== 'ios') {
-          this.error('ios tap-element only supports iOS instances');
-        }
-        const result = await (client as any).tapElement(selector);
+        const result = await client.tapElement(selector);
         if (flags.json) this.outputJson(result);
         else this.log('Element tapped');
       } finally {

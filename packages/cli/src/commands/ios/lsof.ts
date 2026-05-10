@@ -1,6 +1,6 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { detectInstanceType, getInstanceClient } from '../../lib/instance-client-factory';
+import { getIosInstanceClient } from '../../lib/instance-client-factory';
 
 type LsofEntry = {
   kind: 'unix';
@@ -31,18 +31,15 @@ export default class IosLsof extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios lsof only supports iOS instances');
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
+      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        if (type !== 'ios') {
-          this.error('ios lsof only supports iOS instances');
-        }
-
-        const entries = (await (client as any).lsof()) as LsofEntry[];
+        const entries = (await client.lsof()) as LsofEntry[];
         if (flags.json) {
           this.outputJson(entries);
         } else {

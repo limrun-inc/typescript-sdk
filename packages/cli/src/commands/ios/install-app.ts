@@ -3,8 +3,7 @@ import fs from 'fs';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getIosInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -48,8 +47,9 @@ export default class IosInstallApp extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios install-app only supports iOS instances');
       }
 
@@ -87,12 +87,9 @@ export default class IosInstallApp extends BaseCommand {
         return;
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
+      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        if (type !== 'ios') {
-          this.error('ios install-app only supports iOS instances');
-        }
-        const result = await (client as any).installApp(downloadUrl, installOptions);
+        const result = await client.installApp(downloadUrl, installOptions);
         if (flags.json) {
           this.outputJson(result);
         } else {

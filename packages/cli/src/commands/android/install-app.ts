@@ -3,8 +3,7 @@ import fs from 'fs';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getAndroidInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -39,8 +38,9 @@ export default class AndroidInstallApp extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'android') {
+      const resolvedInstance = this.resolveAndroidInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('android install-app only supports Android instances');
       }
 
@@ -64,12 +64,9 @@ export default class AndroidInstallApp extends BaseCommand {
         return;
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
+      const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
       try {
-        if (type !== 'android') {
-          this.error('android install-app only supports Android instances');
-        }
-        await (client as any).sendAsset(downloadUrl);
+        await client.sendAsset(downloadUrl);
         this.log('App sent to instance');
       } finally {
         disconnect();

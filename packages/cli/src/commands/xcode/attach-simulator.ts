@@ -36,9 +36,10 @@ export default class XcodeAttachSimulator extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const xcodeInstanceId = this.resolveId(flags.id);
+      const xcodeTarget = await this.resolveXcodeTarget(flags.id);
+      const xcodeInstanceId = xcodeTarget.id;
       const simulator = await this.client.iosInstances.get(args.simulatorId);
-      const xcodeClient = await this.resolveXcodeClient(xcodeInstanceId);
+      const xcodeClient = await this.resolveXcodeClient(xcodeTarget);
 
       this.info(`Attaching simulator ${args.simulatorId} to Xcode target ${xcodeInstanceId}...`);
       await xcodeClient.attachSimulator(simulator);

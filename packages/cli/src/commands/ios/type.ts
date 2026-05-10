@@ -1,8 +1,7 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getIosInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -37,20 +36,18 @@ export default class IosType extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios type only supports iOS instances');
       }
 
       if (hasActiveSession(id)) {
         await sendSessionCommand(id, 'type', [args.text, flags.enter]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, id);
+        const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          if (type !== 'ios') {
-            this.error('ios type only supports iOS instances');
-          }
-          await (client as any).typeText(args.text, flags.enter);
+          await client.typeText(args.text, flags.enter);
         } finally {
           disconnect();
         }

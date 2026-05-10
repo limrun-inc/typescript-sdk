@@ -1,8 +1,7 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getIosInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -38,20 +37,15 @@ export default class IosInfo extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
-        this.error('info is only supported on iOS instances');
-      }
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
 
       let info: DeviceInfo;
       if (hasActiveSession(id)) {
         info = (await sendSessionCommand(id, 'device-info')) as DeviceInfo;
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, id);
+        const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          if (type !== 'ios') {
-            this.error('info is only supported on iOS instances');
-          }
           info = (client as unknown as { deviceInfo: DeviceInfo }).deviceInfo;
         } finally {
           disconnect();

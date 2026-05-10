@@ -27,7 +27,8 @@ export default class AndroidDelete extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(args.id);
+      const resolvedInstance = this.resolveAndroidInstance(args.id);
+      const id = resolvedInstance.id;
       try {
         await this.client.androidInstances.delete(id);
       } catch (err) {

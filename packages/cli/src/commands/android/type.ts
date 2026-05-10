@@ -2,8 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { androidTargetFlags, buildAndroidTarget } from '../../lib/android-selector';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getAndroidInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -36,8 +35,9 @@ export default class AndroidType extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'android') {
+      const resolvedInstance = this.resolveAndroidInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('android type only supports Android instances');
       }
 
@@ -46,12 +46,9 @@ export default class AndroidType extends BaseCommand {
       if (hasActiveSession(id)) {
         await sendSessionCommand(id, 'type', [target, args.text]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, id);
+        const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
         try {
-          if (type !== 'android') {
-            this.error('android type only supports Android instances');
-          }
-          await (client as any).setText(target, args.text);
+          await client.setText(target, args.text);
         } finally {
           disconnect();
         }

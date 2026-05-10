@@ -1,6 +1,6 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { detectInstanceType, getInstanceClient } from '../../lib/instance-client-factory';
+import { getIosInstanceClient } from '../../lib/instance-client-factory';
 
 type CommandResult = {
   stdout: string;
@@ -39,18 +39,15 @@ export default class IosXcodebuild extends BaseCommand {
         this.error('Provide at least one xcodebuild argument after `lim ios xcodebuild --`.');
       }
 
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios xcodebuild only supports iOS instances');
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
+      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        if (type !== 'ios') {
-          this.error('ios xcodebuild only supports iOS instances');
-        }
-
-        const result = (await (client as any).xcodebuild(rawArgs)) as CommandResult;
+        const result = (await client.xcodebuild(rawArgs)) as CommandResult;
         if (flags.json) {
           this.outputJson(result);
           if (result.exitCode !== 0) this.exit(result.exitCode);

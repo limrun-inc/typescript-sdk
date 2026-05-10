@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { detectInstanceType, getInstanceClient } from '../../lib/instance-client-factory';
+import { getIosInstanceClient } from '../../lib/instance-client-factory';
 
 export default class IosCp extends BaseCommand {
   static summary = 'Copy a local file into the iOS sandbox';
@@ -36,8 +36,9 @@ export default class IosCp extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'ios') {
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('ios cp only supports iOS instances');
       }
 
@@ -46,13 +47,9 @@ export default class IosCp extends BaseCommand {
         this.error(`File not found: ${localPath}`);
       }
 
-      const { type, client, disconnect } = await getInstanceClient(this.client, id);
+      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        if (type !== 'ios') {
-          this.error('ios cp only supports iOS instances');
-        }
-
-        const sandboxPath = await (client as any).cp(args.name, localPath);
+        const sandboxPath = await client.cp(args.name, localPath);
         if (flags.json) {
           this.outputJson({ sandboxPath });
         } else {

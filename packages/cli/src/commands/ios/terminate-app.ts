@@ -1,6 +1,10 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getInstanceClient, hasActiveSession, sendSessionCommand } from '../../lib/instance-client-factory';
+import {
+  getIosInstanceClient,
+  hasActiveSession,
+  sendSessionCommand,
+} from '../../lib/instance-client-factory';
 
 export default class IosTerminateApp extends BaseCommand {
   static summary = 'Terminate an app on a running iOS instance';
@@ -31,17 +35,14 @@ export default class IosTerminateApp extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
+      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const id = resolvedInstance.id;
       if (hasActiveSession(id)) {
         await sendSessionCommand(id, 'terminate-app', [args.bundleId]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, id);
-        if (type !== 'ios') {
-          disconnect();
-          this.error('terminate-app is only supported on iOS instances');
-        }
+        const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          await (client as any).terminateApp(args.bundleId);
+          await client.terminateApp(args.bundleId);
         } finally {
           disconnect();
         }

@@ -3,8 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { detectInstanceType } from '../../lib/instance-client-factory';
 import { isDaemonRunning, saveState, socketPath, type SessionState } from '../../lib/daemon';
+import { saveInstanceCache } from '../../lib/config';
 
 export default class SessionStart extends BaseCommand {
   static summary = 'Start a persistent session for fast device interaction';
@@ -33,37 +33,62 @@ export default class SessionStart extends BaseCommand {
     const { flags } = await this.parse(SessionStart);
     this.setParsedFlags(flags);
 
-    const id = this.resolveId(flags.id);
+    const resolvedInstance = this.resolveDeviceInstance(flags.id);
+    const id = resolvedInstance.id;
 
     if (isDaemonRunning(id)) {
       this.log(`Session already running for ${id}.`);
       return;
     }
 
-    const type = detectInstanceType(id);
-    if (type === 'xcode') {
-      this.error(
-        'Sessions are for device interaction (exec commands). Xcode instances use sync/build instead.',
-      );
-    }
+    const type = resolvedInstance.type;
 
     await this.withAuth(async () => {
       let apiUrl: string | undefined;
       let adbUrl: string | undefined;
-      let token: string;
+      let token: string | undefined;
 
       if (type === 'android') {
-        const instance = await this.client.androidInstances.get(id);
-        apiUrl = instance.status.apiUrl;
-        adbUrl = instance.status.adbWebSocketUrl;
-        token = instance.status.token;
+        if (resolvedInstance.apiUrl && resolvedInstance.token) {
+          apiUrl = resolvedInstance.apiUrl;
+          adbUrl = resolvedInstance.adbWebSocketUrl;
+          token = resolvedInstance.token;
+        } else {
+          const instance = await this.client.androidInstances.get(id);
+          apiUrl = instance.status.apiUrl;
+          adbUrl = instance.status.adbWebSocketUrl;
+          token = instance.status.token;
+          saveInstanceCache(instance.metadata.id, {
+            apiUrl,
+            adbWebSocketUrl: adbUrl,
+            token,
+            endpointWebSocketUrl: instance.status.endpointWebSocketUrl,
+            mcpUrl: instance.status.mcpUrl,
+            signedStreamUrl: instance.status.signedStreamUrl,
+            targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix,
+          });
+        }
       } else {
-        const instance = await this.client.iosInstances.get(id);
-        apiUrl = instance.status.apiUrl;
-        token = instance.status.token;
+        if (resolvedInstance.apiUrl && resolvedInstance.token) {
+          apiUrl = resolvedInstance.apiUrl;
+          token = resolvedInstance.token;
+        } else {
+          const instance = await this.client.iosInstances.get(id);
+          apiUrl = instance.status.apiUrl;
+          token = instance.status.token;
+          saveInstanceCache(instance.metadata.id, {
+            apiUrl,
+            token,
+            endpointWebSocketUrl: instance.status.endpointWebSocketUrl,
+            mcpUrl: instance.status.mcpUrl,
+            signedStreamUrl: instance.status.signedStreamUrl,
+            targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix,
+            sandboxXcodeUrl: instance.status.sandbox?.xcode?.url,
+          });
+        }
       }
 
-      if (!apiUrl) {
+      if (!apiUrl || !token) {
         this.error(`Instance ${id} does not have an apiUrl. Is it ready?`);
       }
 

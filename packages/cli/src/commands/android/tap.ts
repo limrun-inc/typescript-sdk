@@ -1,8 +1,7 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
-  detectInstanceType,
-  getInstanceClient,
+  getAndroidInstanceClient,
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
@@ -39,20 +38,18 @@ export default class AndroidTap extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const id = this.resolveId(flags.id);
-      if (detectInstanceType(id) !== 'android') {
+      const resolvedInstance = this.resolveAndroidInstance(flags.id);
+      const id = resolvedInstance.id;
+      if (false) {
         this.error('android tap only supports Android instances');
       }
 
       if (hasActiveSession(id)) {
         await sendSessionCommand(id, 'tap', [args.x, args.y]);
       } else {
-        const { type, client, disconnect } = await getInstanceClient(this.client, id);
+        const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
         try {
-          if (type !== 'android') {
-            this.error('android tap only supports Android instances');
-          }
-          await (client as any).tap({ x: args.x, y: args.y });
+          await client.tap({ x: args.x, y: args.y });
         } finally {
           disconnect();
         }
