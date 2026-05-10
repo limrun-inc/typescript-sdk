@@ -259,6 +259,8 @@ export type CommandResult = {
 export type AppInstallationOptions = {
   /** MD5 hash for caching - if provided and matches cached version, skips download */
   md5?: string;
+  /** Client-side timeout for app installation. Defaults to 120 seconds. */
+  timeoutMs?: number;
   /**
    * Launch mode after installation:
    * - 'ForegroundIfRunning': Bring to foreground if already running, otherwise launch
@@ -1670,11 +1672,16 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const installApp = (url: string, options?: AppInstallationOptions): Promise<AppInstallationResult> => {
-      return sendRequest<AppInstallationResult>('appInstallation', {
-        url,
-        md5: options?.md5,
-        launchMode: options?.launchMode,
-      });
+      return sendRequest<AppInstallationResult>(
+        'appInstallation',
+        {
+          url,
+          md5: options?.md5,
+          launchMode: options?.launchMode,
+        },
+        undefined,
+        options?.timeoutMs ?? 120_000,
+      );
     };
 
     const setOrientation = (orientation: 'Portrait' | 'Landscape'): Promise<void> => {
