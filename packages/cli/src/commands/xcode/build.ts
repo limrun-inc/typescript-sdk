@@ -1,8 +1,12 @@
+import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
+
+const DEVICE_SDKS = new Set(['iphoneos', 'watchos']);
+const SIMULATOR_SDKS = new Set(['iphonesimulator', 'watchsimulator']);
 
 export default class XcodeBuild extends BaseCommand {
   static summary = 'Run xcodebuild on an Xcode sandbox';
@@ -16,6 +20,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./MyProject --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
     '<%= config.bin %> xcode build --scheme WatchApp --sdk watchsimulator',
+    '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
     '<%= config.bin %> xcode build --signed-upload-url <url>',
     '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152',
@@ -48,6 +53,17 @@ export default class XcodeBuild extends BaseCommand {
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
     'signed-upload-url': Flags.string({
       description: 'Presigned URL to upload the resulting build artifact to.',
+    }),
+    'certificate-p12': Flags.string({
+      description:
+        'Path to a PKCS#12 (.p12) signing certificate. Requires --certificate-password and --provisioning-profile.',
+    }),
+    'certificate-password': Flags.string({
+      description: 'Password for the PKCS#12 signing certificate.',
+    }),
+    'provisioning-profile': Flags.string({
+      description:
+        'Path to a .mobileprovision profile. Requires --certificate-p12 and --certificate-password.',
     }),
     'basis-cache-dir': Flags.string({
       description: 'Directory to use for the client-side delta sync cache during the pre-build sync step.',
@@ -84,6 +100,18 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.sdk) settings.sdk = flags.sdk;
 
       const options: Record<string, unknown> = {};
+      const signing = await this.buildSigningOptions(flags);
+      if (signing) {
+        if (flags.sdk && SIMULATOR_SDKS.has(flags.sdk)) {
+          this.error('Signing is only supported for device SDK builds. Use --sdk iphoneos or --sdk watchos.');
+        }
+        if (!flags.sdk) {
+          settings.sdk = 'iphoneos';
+        } else if (!DEVICE_SDKS.has(flags.sdk)) {
+          this.error('Signing is only supported for device SDK builds. Use --sdk iphoneos or --sdk watchos.');
+        }
+        options.signing = signing;
+      }
       if (flags.upload && flags['signed-upload-url']) {
         this.error('Use either --upload or --signed-upload-url, not both.');
       }
@@ -135,5 +163,37 @@ export default class XcodeBuild extends BaseCommand {
         this.output(`Artifact download URL: ${result.signedDownloadUrl}`);
       }
     });
+  }
+
+  private async buildSigningOptions(flags: {
+    'certificate-p12'?: string;
+    'certificate-password'?: string;
+    'provisioning-profile'?: string;
+  }): Promise<
+    | {
+        certificateP12Base64: string;
+        certificatePassword: string;
+        provisioningProfileBase64: string;
+      }
+    | undefined
+  > {
+    const hasCertificate = flags['certificate-p12'] !== undefined;
+    const hasPassword = flags['certificate-password'] !== undefined;
+    const hasProfile = flags['provisioning-profile'] !== undefined;
+    const hasAnySigningFlag = hasCertificate || hasPassword || hasProfile;
+    if (!hasAnySigningFlag) {
+      return undefined;
+    }
+    if (!hasCertificate || !hasPassword || !hasProfile) {
+      this.error(
+        'Signed device builds require --certificate-p12, --certificate-password, and --provisioning-profile.',
+      );
+    }
+
+    return {
+      certificateP12Base64: (await readFile(flags['certificate-p12']!)).toString('base64'),
+      certificatePassword: flags['certificate-password']!,
+      provisioningProfileBase64: (await readFile(flags['provisioning-profile']!)).toString('base64'),
+    };
   }
 }

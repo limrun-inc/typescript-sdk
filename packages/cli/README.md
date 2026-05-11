@@ -370,6 +370,9 @@ lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 # Build and upload artifact
 lim xcode build ./MyProject --scheme MyApp --upload my-app-build
 
+# Signed device build
+lim xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa
+
 # Attach an existing simulator so builds auto-install there
 lim xcode attach-simulator ios_abc123 --id sandbox_def456
 
@@ -595,6 +598,9 @@ lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 # 4. Upload build artifact
 lim xcode build ./MyProject --scheme MyApp --upload my-app-build
 
+# Signed device builds default to --sdk iphoneos when signing assets are provided
+lim xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa
+
 # 5. Download the artifact
 lim asset pull my-app-build -o ./build-output
 ```
@@ -602,6 +608,8 @@ lim asset pull my-app-build -o ./build-output
 #### Build Behavior
 
 `lim xcode build [PATH]` automatically performs a one-shot code sync for the given project path before invoking `xcodebuild`. The sync step automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
+
+Provide `--certificate-p12`, `--certificate-password`, and `--provisioning-profile` together to sign a real-device build. When signing assets are provided without `--sdk`, the CLI builds with `iphoneos`; pass `--sdk watchos` for signed watchOS device builds.
 
 ---
 
