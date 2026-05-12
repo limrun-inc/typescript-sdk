@@ -58,11 +58,6 @@ function detectAgentsForScope(scope: Scope): Set<AgentId> {
   return detected;
 }
 
-function detectAgentsAcrossScopes(): Set<AgentId> {
-  const merged = new Set<AgentId>([...detectAgentsForScope('project'), ...detectAgentsForScope('global')]);
-  return merged;
-}
-
 async function promptAgents(preselected: Set<AgentId>): Promise<AgentId[]> {
   // Loop to enforce "at least one agent" without crashing.
   while (true) {
@@ -211,7 +206,10 @@ export default class SkillsInstall extends Command {
     if (flags.agents && flags.agents.length > 0) {
       agents = Array.from(new Set(flags.agents)) as AgentId[];
     } else if (interactive) {
-      agents = await promptAgents(detectAgentsAcrossScopes());
+      // Pre-check based on project-local presence only. Global installs of
+      // agents (e.g. ~/.claude on a dev machine) are too weak a signal to
+      // auto-select them for this specific project's install.
+      agents = await promptAgents(detectAgentsForScope('project'));
     } else {
       this.error('--agents requires at least one of: claude, cursor, codex.', { exit: 2 });
     }
