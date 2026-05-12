@@ -30,13 +30,15 @@
     "cli-table3": "^0.6.5",
     "dotenv": "^17.4.2",
     "js-yaml": "^4.1.0",
-    "open": "^10.1.0"
+    "open": "^10.1.0",
+    "prompts": "^2.4.2"
   },
   "devDependencies": {
     "@oclif/test": "^4",
     "@types/cli-progress": "^3.11.6",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22",
+    "@types/prompts": "^2.4.9",
     "typescript": "^5.8.3"
   },
   "oclif": {
@@ -59,6 +61,9 @@
       },
       "session": {
         "description": "Manage persistent background sessions for device interaction: start, status, stop. Sessions are used to execute commands on remote devices without the need to reconnect to the device after each command."
+      },
+      "skills": {
+        "description": "Install Limrun skills for AI coding agents (Claude Code, Cursor, Codex). Run `lim skills install` to set up."
       }
     }
   },
