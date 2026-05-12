@@ -33,7 +33,7 @@ The CLI stores configuration in `~/.lim/config.yaml`. This file is compatible wi
 
 ## Global Flags
 
-Every command supports these flags:
+Most commands support these flags (exceptions: `lim skills install` does not take `--api-key` because it does not talk to the API):
 
 | Flag                | Description                                                |
 | ------------------- | ---------------------------------------------------------- |
@@ -86,6 +86,7 @@ This avoids relying on locally cached "last created" state and keeps the target 
 - [Assets](#assets) — Upload and download files (APKs, IPAs, etc.)
 - [Sessions](#sessions) — Persistent connections for fast, interactive device control
 - [Xcode Build Pipeline](#xcode-build-pipeline) — Sync code and run xcodebuild remotely
+- [Skills](#skills) — Install Limrun skills for AI coding agents (Claude Code, Cursor, Codex)
 
 ---
 
@@ -610,6 +611,55 @@ lim asset pull my-app-build -o ./build-output
 `lim xcode build [PATH]` automatically performs a one-shot code sync for the given project path before invoking `xcodebuild`. The sync step automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
 
 Provide `--certificate-p12`, `--certificate-password`, and `--provisioning-profile` together to sign a real-device build. When signing assets are provided without `--sdk`, the CLI builds with `iphoneos`; pass `--sdk watchos` for signed watchOS device builds.
+
+---
+
+### Skills
+
+Install Limrun skills into the native skills directory of AI coding agents (Claude Code, Cursor, Codex). After installation, the agent auto-discovers the skill and triggers it when you ask things like "build the iOS app" or "show me a screenshot."
+
+```bash
+# Interactive: prompts for agents (with detected ones pre-checked) and scope
+lim skills install
+
+# Non-interactive
+lim skills install --agents claude --scope project
+lim skills install --agents claude --agents cursor --scope project
+lim skills install --agents codex --scope global
+
+# Overwrite existing skill files (otherwise the command refuses on non-interactive runs)
+lim skills install --agents claude --scope project --force
+
+# Machine-readable output for scripts
+lim skills install --agents claude --scope project --json
+```
+
+**Flags:**
+
+| Flag                        | Description                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------- |
+| `--agents <id>`             | Target agent. Repeat to select multiple. One of: `claude`, `cursor`, `codex`.                |
+| `--scope <project\|global>` | `project` writes into the current directory; `global` writes into the user's home directory. |
+| `--force`                   | Overwrite existing skill files without confirmation.                                         |
+| `--json`                    | Emit structured JSON instead of the human summary.                                           |
+| `--quiet`                   | Suppress non-result output.                                                                  |
+
+**Install paths:**
+
+| Agent       | Project                   | Global                                                                     |
+| ----------- | ------------------------- | -------------------------------------------------------------------------- |
+| Claude Code | `.claude/skills/<skill>/` | `$CLAUDE_CONFIG_DIR/skills/<skill>/` (default `~/.claude/skills/<skill>/`) |
+| Cursor      | `.cursor/skills/<skill>/` | `~/.cursor/skills/<skill>/`                                                |
+| Codex       | `.codex/skills/<skill>/`  | `$CODEX_HOME/skills/<skill>/` (default `~/.codex/skills/<skill>/`)         |
+
+**Behavior:**
+
+- The command compares bundled vs existing content byte-for-byte. Identical content is reported as `Unchanged` (no writes).
+- Different content: in interactive mode you are asked to confirm each overwrite; in non-interactive mode the command refuses unless `--force` is passed.
+- Non-interactive runs are all-or-nothing: if any selected target conflicts and `--force` is not set, no files are written for any target, and the command exits with status 1.
+- Ctrl-C cancellation at any prompt exits cleanly without writing.
+
+**Cursor third-party skills toggle:** Cursor also supports loading skills from Claude and Codex paths via a "Third-party skills" setting (enabled by default). If your Cursor isn't picking up an installed skill, check that toggle in Cursor Settings.
 
 ---
 
