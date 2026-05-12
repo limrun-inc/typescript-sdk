@@ -41,12 +41,19 @@ export const AGENTS: Record<AgentId, AgentSpec> = {
   cursor: {
     id: 'cursor',
     displayName: 'Cursor',
+    // Cursor auto-discovers .agents/skills/ natively, same as .cursor/skills/.
+    // Installing into .agents/skills/ also reaches OpenCode and any other
+    // AGENTS.md-aware tool with a single copy, so prefer the broader path.
     skillsDir: (scope) =>
       scope === 'project' ?
-        path.join(process.cwd(), '.cursor', 'skills')
-      : path.join(os.homedir(), '.cursor', 'skills'),
+        path.join(process.cwd(), '.agents', 'skills')
+      : path.join(os.homedir(), '.agents', 'skills'),
+    // Detect either .cursor/ or .agents/: both are reliable signs the user
+    // is on a tool that auto-loads .agents/skills/.
     detectionPaths: (scope) =>
-      scope === 'project' ? [path.join(process.cwd(), '.cursor')] : [path.join(os.homedir(), '.cursor')],
+      scope === 'project' ?
+        [path.join(process.cwd(), '.cursor'), path.join(process.cwd(), '.agents')]
+      : [path.join(os.homedir(), '.cursor'), path.join(os.homedir(), '.agents')],
   },
   codex: {
     id: 'codex',
