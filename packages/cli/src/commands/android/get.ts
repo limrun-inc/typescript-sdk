@@ -33,7 +33,8 @@ export default class AndroidGet extends BaseCommand {
         this.output(`State: ${instance.status.state}`);
         this.output(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
         if (instance.status.apiUrl) this.output(`API URL: ${instance.status.apiUrl}`);
-        if (instance.status.adbWebSocketUrl) this.output(`ADB WebSocket URL: ${instance.status.adbWebSocketUrl}`);
+        if (instance.status.adbWebSocketUrl)
+          this.output(`ADB WebSocket URL: ${instance.status.adbWebSocketUrl}`);
         if (signedStreamUrl) this.output(`Signed Stream URL: ${signedStreamUrl}`);
       }
     });
