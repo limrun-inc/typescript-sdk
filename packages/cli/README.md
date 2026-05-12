@@ -649,7 +649,7 @@ lim skills install --agents claude --scope project --json
 | Agent       | Project                   | Global                                                                     |
 | ----------- | ------------------------- | -------------------------------------------------------------------------- |
 | Claude Code | `.claude/skills/<skill>/` | `$CLAUDE_CONFIG_DIR/skills/<skill>/` (default `~/.claude/skills/<skill>/`) |
-| Cursor      | `.cursor/skills/<skill>/` | `~/.cursor/skills/<skill>/`                                                |
+| Cursor      | `.agents/skills/<skill>/` | `~/.agents/skills/<skill>/`                                                |
 | Codex       | `.codex/skills/<skill>/`  | `$CODEX_HOME/skills/<skill>/` (default `~/.codex/skills/<skill>/`)         |
 
 **Behavior:**
@@ -659,7 +659,7 @@ lim skills install --agents claude --scope project --json
 - Non-interactive runs are all-or-nothing: if any selected target conflicts and `--force` is not set, no files are written for any target, and the command exits with status 1.
 - Ctrl-C cancellation at any prompt exits cleanly without writing.
 
-**Cursor third-party skills toggle:** Cursor also supports loading skills from Claude and Codex paths via a "Third-party skills" setting (enabled by default). If your Cursor isn't picking up an installed skill, check that toggle in Cursor Settings.
+Cursor reads `.agents/skills/` natively, so we install there rather than `.cursor/skills/`. As a bonus, the same install reaches OpenCode and any other tool that follows the AGENTS.md convention - no extra menu options needed.
 
 ---
 
