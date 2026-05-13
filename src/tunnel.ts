@@ -42,6 +42,16 @@ export interface Tunnel {
   onConnectionStateChange: (callback: TunnelConnectionStateCallback) => () => void;
 }
 
+export interface ReverseTunnel {
+  remoteAddress: {
+    address: string;
+    port: number;
+  };
+  close: () => void;
+  getConnectionState: () => TunnelConnectionState;
+  onConnectionStateChange: (callback: TunnelConnectionStateCallback) => () => void;
+}
+
 export interface TcpTunnelOptions {
   /**
    * Maximum number of reconnection attempts
@@ -71,6 +81,38 @@ export interface TcpTunnelOptions {
    * @default 'singleton'
    */
   mode?: TunnelMode;
+}
+
+export interface ReverseTcpTunnelOptions {
+  /**
+   * Hostname or IP address of the user-local service.
+   * @default '127.0.0.1'
+   */
+  localHost?: string;
+  /**
+   * Port of the user-local service.
+   */
+  localPort: number;
+  /**
+   * Controls logging verbosity
+   * @default 'info'
+   */
+  logLevel?: LogLevel;
+  /**
+   * Maximum concurrent remote TCP connections.
+   * @default 64
+   */
+  maxConnections?: number;
+  /**
+   * Maximum bytes buffered per connection while the local TCP connect is pending.
+   * @default 16777216
+   */
+  maxPendingBytesPerConnection?: number;
+  /**
+   * Local TCP connect timeout in milliseconds.
+   * @default 10000
+   */
+  connectTimeoutMs?: number;
 }
 
 /**
@@ -103,6 +145,376 @@ export async function startTcpTunnel(
   }
 
   return startSingletonTcpTunnel(remoteURL, token, hostname, port, options);
+}
+
+/**
+ * Starts a reverse TCP tunnel.
+ *
+ * The remote endpoint accepts TCP connections near the simulator and sends them
+ * through `remoteURL` as multiplexed WebSocket frames. For each remote connID,
+ * this client opens a TCP connection to `localHost:localPort` on the user's
+ * machine and pipes bytes in both directions.
+ */
+export async function startReverseTcpTunnel(
+  remoteURL: string,
+  token: string,
+  options: ReverseTcpTunnelOptions,
+): Promise<ReverseTunnel> {
+  assertPort(options.localPort, 'localPort', 1, 65535);
+
+  const localHost = options.localHost ?? '127.0.0.1';
+  const localPort = options.localPort;
+  const logLevel = options.logLevel ?? 'info';
+  const maxConnections = options.maxConnections ?? 64;
+  const maxPendingBytesPerConnection = options.maxPendingBytesPerConnection ?? 16 * 1024 * 1024;
+  const connectTimeoutMs = options.connectTimeoutMs ?? 10_000;
+
+  const logger = {
+    debug: (...args: any[]) => {
+      if (logLevel === 'debug') console.log('[ReverseTunnel]', ...args);
+    },
+    info: (...args: any[]) => {
+      if (logLevel === 'info' || logLevel === 'debug') console.log('[ReverseTunnel]', ...args);
+    },
+    warn: (...args: any[]) => {
+      if (logLevel === 'warn' || logLevel === 'info' || logLevel === 'debug')
+        console.warn('[ReverseTunnel]', ...args);
+    },
+    error: (...args: any[]) => {
+      if (logLevel !== 'none') console.error('[ReverseTunnel]', ...args);
+    },
+  };
+
+  return new Promise((resolve, reject) => {
+    const connections: Map<number, net.Socket> = new Map();
+    const connecting: Set<number> = new Set();
+    const pendingPerConn: Map<number, Buffer[]> = new Map();
+    const pendingBytesPerConn: Map<number, number> = new Map();
+    const connectTimers: Map<number, NodeJS.Timeout> = new Map();
+    const closedConnIds: Set<number> = new Set();
+    const stateChangeCallbacks: Set<TunnelConnectionStateCallback> = new Set();
+
+    let ws: WebSocket | undefined;
+    let pingInterval: NodeJS.Timeout | undefined;
+    let intentionalDisconnect = false;
+    let connectionState: TunnelConnectionState = 'connecting';
+    let hasResolved = false;
+    let remoteAddress: ReverseTunnel['remoteAddress'] | undefined;
+
+    const updateConnectionState = (newState: TunnelConnectionState): void => {
+      if (connectionState !== newState) {
+        connectionState = newState;
+        logger.debug(`Connection state changed to: ${newState}`);
+        stateChangeCallbacks.forEach((callback) => {
+          try {
+            callback(newState);
+          } catch (err) {
+            logger.error('Error in connection state callback:', err);
+          }
+        });
+      }
+    };
+
+    const sendCloseSignal = (connId: number): void => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(encodeConnectionHeader(connId));
+      }
+    };
+
+    const removeConnection = (connId: number, sendClose: boolean, graceful = false): void => {
+      const socket = connections.get(connId);
+      const connectTimer = connectTimers.get(connId);
+      connections.delete(connId);
+      connecting.delete(connId);
+      pendingPerConn.delete(connId);
+      pendingBytesPerConn.delete(connId);
+      connectTimers.delete(connId);
+      closedConnIds.add(connId);
+      if (connectTimer) {
+        clearTimeout(connectTimer);
+      }
+      if (sendClose) {
+        sendCloseSignal(connId);
+      }
+      if (socket && !socket.destroyed) {
+        if (graceful) {
+          socket.end();
+          setTimeout(() => {
+            if (!socket.destroyed) {
+              socket.destroy();
+            }
+          }, 1_000).unref();
+        } else {
+          socket.destroy();
+        }
+      }
+    };
+
+    const closeAllConnections = (): void => {
+      for (const connId of Array.from(connections.keys())) {
+        removeConnection(connId, false);
+      }
+      connections.clear();
+      connecting.clear();
+      pendingPerConn.clear();
+    };
+
+    const cleanupWebSocket = (): void => {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = undefined;
+      }
+      if (ws) {
+        ws.removeAllListeners();
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close(1000, 'close');
+        }
+        ws = undefined;
+      }
+    };
+
+    const close = (): void => {
+      intentionalDisconnect = true;
+      cleanupWebSocket();
+      closeAllConnections();
+      updateConnectionState('disconnected');
+    };
+
+    const getConnectionState = (): TunnelConnectionState => {
+      return connectionState;
+    };
+
+    const onConnectionStateChange = (callback: TunnelConnectionStateCallback): (() => void) => {
+      stateChangeCallbacks.add(callback);
+      return () => {
+        stateChangeCallbacks.delete(callback);
+      };
+    };
+
+    const resolveReady = (address: ReverseTunnel['remoteAddress']): void => {
+      remoteAddress = address;
+      hasResolved = true;
+      resolve({
+        remoteAddress,
+        close,
+        getConnectionState,
+        onConnectionStateChange,
+      });
+    };
+
+    const rejectStartup = (err: Error): void => {
+      if (!hasResolved) {
+        cleanupWebSocket();
+        closeAllConnections();
+        updateConnectionState('disconnected');
+        reject(err);
+      } else {
+        logger.error(err.message);
+      }
+    };
+
+    const flushPending = (connId: number, socket: net.Socket): void => {
+      const connectTimer = connectTimers.get(connId);
+      if (connectTimer) {
+        clearTimeout(connectTimer);
+        connectTimers.delete(connId);
+      }
+      const pending = pendingPerConn.get(connId) ?? [];
+      pendingPerConn.delete(connId);
+      pendingBytesPerConn.delete(connId);
+      connecting.delete(connId);
+      for (const payload of pending) {
+        socket.write(payload);
+      }
+    };
+
+    const connectLocal = (connId: number, firstPayload: Buffer): void => {
+      if (closedConnIds.has(connId)) {
+        logger.debug(`Ignoring payload for closed conn=${connId}`);
+        return;
+      }
+      if (connections.size >= maxConnections) {
+        logger.warn(`Rejecting reverse tunnel conn=${connId}: max connections reached`);
+        sendCloseSignal(connId);
+        closedConnIds.add(connId);
+        return;
+      }
+      if (firstPayload.length > maxPendingBytesPerConnection) {
+        logger.warn(`Rejecting reverse tunnel conn=${connId}: initial payload exceeds pending byte limit`);
+        sendCloseSignal(connId);
+        closedConnIds.add(connId);
+        return;
+      }
+
+      pendingPerConn.set(connId, [firstPayload]);
+      pendingBytesPerConn.set(connId, firstPayload.length);
+      connecting.add(connId);
+
+      const socket = net.createConnection({ host: localHost, port: localPort });
+      connections.set(connId, socket);
+      const connectTimer = setTimeout(() => {
+        logger.error(`Local TCP connect timed out conn=${connId} after ${connectTimeoutMs}ms`);
+        if (connections.has(connId)) {
+          removeConnection(connId, true);
+        }
+      }, connectTimeoutMs);
+      connectTimer.unref();
+      connectTimers.set(connId, connectTimer);
+
+      socket.on('connect', () => {
+        logger.debug(`Connected conn=${connId} to ${localHost}:${localPort}`);
+        flushPending(connId, socket);
+      });
+
+      socket.on('data', (chunk: Buffer) => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(Buffer.concat([encodeConnectionHeader(connId), chunk]), (err) => {
+            if (err) {
+              logger.error(`Failed to send conn=${connId} data: ${err.message}`);
+            }
+          });
+        }
+      });
+
+      socket.on('close', () => {
+        logger.debug(`Local TCP connection closed conn=${connId}`);
+        if (connections.has(connId)) {
+          removeConnection(connId, true);
+        }
+      });
+
+      socket.on('error', (err: Error) => {
+        logger.error(`Local TCP connection error conn=${connId}: ${err.message}`);
+        if (connections.has(connId)) {
+          removeConnection(connId, true);
+        }
+      });
+    };
+
+    const handleBinaryFrame = (buffer: Buffer): void => {
+      if (buffer.length < 4) {
+        logger.error('Received binary frame shorter than 4 bytes; dropping');
+        return;
+      }
+
+      const connId = decodeConnectionHeader(buffer);
+      const payload = buffer.subarray(4);
+
+      if (payload.length === 0) {
+        logger.debug(`Received remote close for conn=${connId}`);
+        removeConnection(connId, false, true);
+        return;
+      }
+      if (closedConnIds.has(connId)) {
+        logger.debug(`Ignoring payload for closed conn=${connId}`);
+        return;
+      }
+
+      const socket = connections.get(connId);
+      if (!socket) {
+        connectLocal(connId, payload);
+        return;
+      }
+
+      if (connecting.has(connId)) {
+        const pending = pendingPerConn.get(connId) ?? [];
+        const pendingBytes = (pendingBytesPerConn.get(connId) ?? 0) + payload.length;
+        if (pendingBytes > maxPendingBytesPerConnection) {
+          logger.warn(`Closing reverse tunnel conn=${connId}: pending byte limit exceeded`);
+          removeConnection(connId, true);
+          return;
+        }
+        pending.push(payload);
+        pendingPerConn.set(connId, pending);
+        pendingBytesPerConn.set(connId, pendingBytes);
+        return;
+      }
+
+      socket.write(payload);
+    };
+
+    const handleControlMessage = (data: any): void => {
+      let parsed: any;
+      try {
+        parsed = JSON.parse(data.toString());
+      } catch {
+        rejectStartup(new Error(`Malformed reverse tunnel control message: ${data.toString()}`));
+        return;
+      }
+
+      if (parsed.type === 'ready') {
+        if (typeof parsed.remoteHost !== 'string' || typeof parsed.remotePort !== 'number') {
+          rejectStartup(new Error(`Malformed reverse tunnel ready message: ${data.toString()}`));
+          return;
+        }
+        logger.info(`Reverse tunnel ready: ${parsed.remoteHost}:${parsed.remotePort}`);
+        updateConnectionState('connected');
+        resolveReady({ address: parsed.remoteHost, port: parsed.remotePort });
+        return;
+      }
+
+      if (parsed.type === 'error') {
+        rejectStartup(new Error(parsed.message || 'Reverse tunnel failed to start'));
+        return;
+      }
+
+      rejectStartup(new Error(`Unexpected reverse tunnel control message type: ${parsed.type}`));
+    };
+
+    const url = new URL(remoteURL);
+    const proxyAgent = nodeProxyTransport.getWebSocketAgent(url.toString());
+    ws = new WebSocket(url.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+      ...(proxyAgent ? { agent: proxyAgent } : {}),
+      perMessageDeflate: false,
+    });
+
+    ws.on('error', (err: Error) => {
+      logger.error('WebSocket error:', err.message);
+      rejectStartup(err);
+    });
+
+    ws.on('close', (code: number, reason: Buffer) => {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = undefined;
+      }
+      logger.debug(`WebSocket disconnected (code=${code}, reason=${reason.toString()})`);
+      closeAllConnections();
+      updateConnectionState('disconnected');
+      if (!intentionalDisconnect && !hasResolved) {
+        rejectStartup(new Error(`Reverse tunnel WebSocket closed before ready: ${code} ${reason.toString()}`));
+      }
+    });
+
+    ws.on('open', () => {
+      const socket = ws as WebSocket;
+      logger.debug(`Connected WebSocket to ${url.toString()}`);
+      pingInterval = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          (socket as any).ping();
+        }
+      }, 30_000);
+    });
+
+    ws.on('message', (data: any, isBinary: boolean) => {
+      if (!hasResolved) {
+        if (isBinary) {
+          rejectStartup(new Error('Received reverse tunnel binary frame before ready control message'));
+          return;
+        }
+        handleControlMessage(data);
+        return;
+      }
+
+      if (!isBinary) {
+        logger.warn(`Ignoring unexpected reverse tunnel text message: ${data.toString()}`);
+        return;
+      }
+
+      handleBinaryFrame(Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data));
+    });
+  });
 }
 
 /**
@@ -728,6 +1140,12 @@ export const isNonRetryableError = (errMessage: string): boolean => {
   }
   return false;
 };
+
+export function assertPort(port: number, name: string, min: number, max: number): void {
+  if (!Number.isInteger(port) || port < min || port > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  }
+}
 
 /**
  * Encode a 32-bit connection ID as a 4-byte big-endian header
