@@ -51,6 +51,10 @@ interface RemoteControlProps {
   // showFrame controls whether to display the device frame
   // around the video. Defaults to true.
   showFrame?: boolean;
+
+  // When true, drops after a working session auto-reconnect instead of
+  // surfacing the manual "Retry" button. Defaults to false.
+  autoReconnect?: boolean;
 }
 
 interface ScreenshotData {
@@ -71,6 +75,7 @@ export interface RemoteControlHandle {
   sendKeyEvent: (event: ImperativeKeyboardEvent) => void;
   screenshot: () => Promise<ScreenshotData>;
   terminateApp: (bundleId: string) => Promise<void>;
+  reconnect: () => void;
 }
 
 const debugLog = (...args: any[]) => {
@@ -122,6 +127,7 @@ const ANDROID_TABLET_VIDEO_HEIGHT = 1200;
 const MAX_CONNECTION_ATTEMPTS = 3;
 const CONNECTION_RETRY_DELAY_MS = 1000;
 const CONNECTION_SUCCESS_TIMEOUT_MS = 15000;
+const ICE_DISCONNECTED_GRACE_MS = 3000;
 
 const isAndroidTabletVideo = (width: number, height: number): boolean =>
   (width === ANDROID_TABLET_VIDEO_WIDTH && height === ANDROID_TABLET_VIDEO_HEIGHT) ||
@@ -192,7 +198,15 @@ function getAndroidKeycodeAndMeta(event: React.KeyboardEvent): { keycode: number
 
 export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>(
   (
-    { className, url, token, sessionId: propSessionId, openUrl, showFrame = true }: RemoteControlProps,
+    {
+      className,
+      url,
+      token,
+      sessionId: propSessionId,
+      openUrl,
+      showFrame = true,
+      autoReconnect = false,
+    }: RemoteControlProps,
     ref,
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -210,9 +224,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const retryTimeoutRef = useRef<number | undefined>(undefined);
     const connectionSuccessTimeoutRef = useRef<number | undefined>(undefined);
     const requestFrameIntervalRef = useRef<number | undefined>(undefined);
+    const iceDisconnectedGraceRef = useRef<number | undefined>(undefined);
     const connectionGenerationRef = useRef(0);
     const connectionAttemptRef = useRef(0);
     const controlChannelOpenedRef = useRef(false);
+    // Mirrored to a ref so stale closures in event handlers see the latest value.
+    const autoReconnectRef = useRef(autoReconnect);
+    autoReconnectRef.current = autoReconnect;
     const firstFrameShownRef = useRef(false);
     const pendingScreenshotResolversRef = useRef<
       Map<string, (value: ScreenshotData | PromiseLike<ScreenshotData>) => void>
@@ -1100,6 +1118,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
     };
 
+    const clearIceDisconnectedGrace = () => {
+      if (iceDisconnectedGraceRef.current !== undefined) {
+        window.clearTimeout(iceDisconnectedGraceRef.current);
+        iceDisconnectedGraceRef.current = undefined;
+      }
+    };
+
     const markFirstFrameShown = () => {
       if (firstFrameShownRef.current) {
         return;
@@ -1111,6 +1136,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     const teardownConnection = () => {
       clearConnectionSuccessTimeout();
+      clearIceDisconnectedGrace();
       stopRequestFrameLoop();
       if (wsRef.current) {
         wsRef.current.onopen = null;
@@ -1154,10 +1180,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
 
       if (controlChannelOpenedRef.current) {
-        updateStatus(`Connection failed after it was established: ${reason}`);
-        setRetryExhausted(true);
-        teardownConnection();
-        return;
+        if (!autoReconnectRef.current) {
+          updateStatus(`Connection failed after it was established: ${reason}`);
+          setRetryExhausted(true);
+          teardownConnection();
+          return;
+        }
+        // Reset so the upcoming retry gets a fresh MAX_CONNECTION_ATTEMPTS budget.
+        updateStatus(`Reconnecting after established session dropped: ${reason}`);
+        controlChannelOpenedRef.current = false;
+        connectionAttemptRef.current = -1;
       }
 
       clearScheduledRetry();
@@ -1424,9 +1456,32 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
             return;
           }
-          updateStatus('ICE state: ' + peerConnection.iceConnectionState);
-          if (peerConnection.iceConnectionState === 'failed') {
+          const iceState = peerConnection.iceConnectionState;
+          updateStatus('ICE state: ' + iceState);
+          if (iceState === 'connected' || iceState === 'completed') {
+            clearIceDisconnectedGrace();
+            return;
+          }
+          if (iceState === 'failed') {
+            clearIceDisconnectedGrace();
             scheduleRetry('ICE connection entered failed state', generation);
+            return;
+          }
+          if (
+            iceState === 'disconnected' &&
+            autoReconnectRef.current &&
+            iceDisconnectedGraceRef.current === undefined
+          ) {
+            // Cap the browser's natural disconnected→failed escalation to recover faster.
+            iceDisconnectedGraceRef.current = window.setTimeout(() => {
+              iceDisconnectedGraceRef.current = undefined;
+              if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
+                return;
+              }
+              if (peerConnection.iceConnectionState === 'disconnected') {
+                scheduleRetry('ICE stayed disconnected past grace period', generation);
+              }
+            }, ICE_DISCONNECTED_GRACE_MS);
           }
         };
 
@@ -1636,6 +1691,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       connectionAttemptRef.current = 0;
       controlChannelOpenedRef.current = false;
       clearScheduledRetry();
+      clearIceDisconnectedGrace();
       teardownConnection();
       updateStatus('Stopped');
     };
@@ -1885,6 +1941,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }, 30000);
         });
       },
+      reconnect: () => start(),
     }));
 
     // Show indicators when Alt is held and we have a valid hover point (null when outside)
