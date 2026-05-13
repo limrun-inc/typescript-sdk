@@ -10,6 +10,11 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@limrun/api": ["../../dist/index.d.ts"],
+      "@limrun/api/*": ["../../dist/*.d.ts"]
+    },
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true
