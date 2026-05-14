@@ -1,3 +1,5 @@
+import type { LaunchAppOptions } from '../src/ios-client';
+
 const sentMessages: Record<string, unknown>[] = [];
 
 jest.mock('ws', () => {
@@ -11,7 +13,7 @@ jest.mock('ws', () => {
 
     constructor() {
       super();
-      process.nextTick(() => this.emit('open'));
+      process.nextTick(() => this['emit']('open'));
     }
 
     send(data: string, callback?: (err?: Error) => void): void {
@@ -20,7 +22,7 @@ jest.mock('ws', () => {
 
       if (message.type === 'deviceInfo') {
         process.nextTick(() => {
-          this.emit(
+          this['emit'](
             'message',
             Buffer.from(
               JSON.stringify({
@@ -36,7 +38,7 @@ jest.mock('ws', () => {
         });
       } else if (message.type === 'launchApp') {
         process.nextTick(() => {
-          this.emit('message', Buffer.from(JSON.stringify({ type: 'launchAppResult', id: message.id })));
+          this['emit']('message', Buffer.from(JSON.stringify({ type: 'launchAppResult', id: message.id })));
         });
       }
 
@@ -47,7 +49,7 @@ jest.mock('ws', () => {
 
     close(): void {
       this.readyState = 3;
-      this.emit('close');
+      this['emit']('close');
     }
   }
 
@@ -69,7 +71,7 @@ describe('iOS launchApp serialization', () => {
 
     await client.launchApp('com.example.app', 'RelaunchIfRunning');
 
-    const launch = sentMessages.find((message) => message.type === 'launchApp');
+    const launch = sentMessages.find((message) => message['type'] === 'launchApp');
     expect(launch).toMatchObject({
       type: 'launchApp',
       bundleId: 'com.example.app',
@@ -100,7 +102,7 @@ describe('iOS launchApp serialization', () => {
       },
     });
 
-    const launch = sentMessages.find((message) => message.type === 'launchApp');
+    const launch = sentMessages.find((message) => message['type'] === 'launchApp');
     expect(launch).toMatchObject({
       type: 'launchApp',
       bundleId: 'host.exp.Exponent',
@@ -134,7 +136,7 @@ describe('iOS launchApp serialization', () => {
       },
     });
 
-    const launch = sentMessages.find((message) => message.type === 'launchApp');
+    const launch = sentMessages.find((message) => message['type'] === 'launchApp');
     expect(launch).toMatchObject({
       type: 'launchApp',
       bundleId: 'host.exp.Exponent',
@@ -166,7 +168,7 @@ describe('iOS launchApp serialization', () => {
           serverUrl: 'ws://10.0.0.1:57091',
           sessionId: 'limrun-detox',
         },
-      }),
+      } as unknown as LaunchAppOptions),
     ).rejects.toThrow('runtime launches require RelaunchIfRunning');
     expect(sentMessages).toEqual([]);
 
