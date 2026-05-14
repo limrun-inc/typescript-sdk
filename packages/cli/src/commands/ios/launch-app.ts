@@ -38,15 +38,13 @@ export default class IosLaunchApp extends BaseCommand {
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
+      const mode = flags.mode as 'ForegroundIfRunning' | 'RelaunchIfRunning';
       if (hasActiveSession(id)) {
-        await sendSessionCommand(id, 'launch-app', [args.bundleId, flags.mode]);
+        await sendSessionCommand(id, 'launch-app', [args.bundleId, mode]);
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          await client.launchApp(
-            args.bundleId,
-            flags.mode as 'ForegroundIfRunning' | 'RelaunchIfRunning' | undefined,
-          );
+          await client.launchApp(args.bundleId, mode);
         } finally {
           disconnect();
         }

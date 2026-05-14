@@ -1,0 +1,46 @@
+{
+  "name": "@limrun/detox",
+  "version": "0.1.0",
+  "description": "Limrun integration helpers and driver for Detox on remote iOS simulators",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./driver": {
+      "types": "./dist/driver.d.ts",
+      "require": "./dist/driver.js",
+      "default": "./dist/driver.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/limrun-inc/typescript-sdk.git",
+    "directory": "packages/detox"
+  },
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "cd ../.. && yarn build && cd packages/detox && rm -rf dist && ../../node_modules/.bin/tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@limrun/api": ">=0.28.4 <1",
+    "detox": ">=20.48.1 <21"
+  },
+  "devDependencies": {
+    "@limrun/api": "file:../..",
+    "@types/node": "^22",
+    "typescript": "^5.8.3"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

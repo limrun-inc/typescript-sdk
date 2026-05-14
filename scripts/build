@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
-set -exuo pipefail
+set -euo pipefail
+
+if [ "${LIMRUN_BUILD_TRACE:-}" = "true" ]; then
+  set -x
+fi
 
 cd "$(dirname "$0")/.."
 

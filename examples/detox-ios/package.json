@@ -1,0 +1,28 @@
+{
+  "name": "detox-ios",
+  "version": "1.0.0",
+  "description": "Run Detox tests against Expo Go on a Limrun iOS simulator",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "dev": "tsx watch index.ts",
+    "prestart": "yarn --cwd ../../packages/detox build",
+    "start": "tsc -b && node dist/index.js",
+    "prebuild": "yarn --cwd ../../packages/detox build",
+    "build": "tsc -b",
+    "detox:test": "detox test -C ./.detoxrc.cjs -c ios.limrun.expo-go --no-start"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@limrun/api": "file:../..",
+    "@limrun/detox": "file:../../packages/detox",
+    "detox": "20.51.1",
+    "jest": "^29.7.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}
