@@ -9,20 +9,20 @@ function Demo() {
   const [isConnected, setIsConnected] = useState(false);
   const [key, setKey] = useState(0);
   const [showDebugInfo, setShowDebugInfo] = useState(false);
-  
+
   const remoteControlRef = useRef<RemoteControlHandle>(null);
 
   const handleConnect = () => {
     if (url) {
       setIsConnected(true);
       // Force remount by changing key
-      setKey(prev => prev + 1);
+      setKey((prev) => prev + 1);
     }
   };
 
   const handleDisconnect = () => {
     setIsConnected(false);
-    setKey(prev => prev + 1);
+    setKey((prev) => prev + 1);
   };
 
   const handleScreenshot = async () => {
@@ -52,13 +52,13 @@ function Demo() {
         <div className="info-box">
           <h4>ℹ️ How to Use:</h4>
           <p>
-            Enter your WebSocket URL and authentication token below, select iOS or Android platform,
-            then click Connect to see the remote control in action. The iOS platform will display
-            a realistic iPhone frame around the stream.
+            Enter your WebSocket URL and authentication token below, select iOS or Android platform, then
+            click Connect to see the remote control in action. The iOS platform will display a realistic
+            iPhone frame around the stream.
           </p>
           <p style={{ marginTop: '10px', fontWeight: 600 }}>
-            ✨ iOS Feature: Touches can start from the bottom bezel area (below the screen, near the 
-            home indicator) to enable authentic iOS swipe-up gestures for going home or switching apps!
+            ✨ iOS Feature: Touches can start from the bottom bezel area (below the screen, near the home
+            indicator) to enable authentic iOS swipe-up gestures for going home or switching apps!
           </p>
         </div>
 
@@ -113,16 +113,11 @@ function Demo() {
           </div>
 
           <div className="button-group">
-            {!isConnected ? (
-              <button 
-                className="primary" 
-                onClick={handleConnect}
-                disabled={!url}
-              >
+            {!isConnected ?
+              <button className="primary" onClick={handleConnect} disabled={!url}>
                 Connect
               </button>
-            ) : (
-              <>
+            : <>
                 <button className="secondary" onClick={handleDisconnect}>
                   Disconnect
                 </button>
@@ -130,18 +125,20 @@ function Demo() {
                   Take Screenshot
                 </button>
               </>
-            )}
+            }
           </div>
         </div>
 
         {showDebugInfo && platform === 'ios' && (
-          <div style={{
-            background: '#e0f2fe',
-            border: '2px solid #0284c7',
-            borderRadius: '8px',
-            padding: '15px',
-            marginBottom: '20px'
-          }}>
+          <div
+            style={{
+              background: '#e0f2fe',
+              border: '2px solid #0284c7',
+              borderRadius: '8px',
+              padding: '15px',
+              marginBottom: '20px',
+            }}
+          >
             <h4 style={{ color: '#0c4a6e', marginBottom: '8px', fontSize: '0.95rem' }}>
               🔧 iOS Extended Touch Area
             </h4>
@@ -155,30 +152,26 @@ function Demo() {
           </div>
         )}
 
-        {isConnected ? (
+        {isConnected ?
           <div className="device-preview">
             <div className="preview-item">
               <h3>{platform === 'ios' ? '📱 iOS with Frame' : '🤖 Android (No Frame)'}</h3>
               <div className="device-wrapper">
-                <RemoteControl
-                  key={key}
-                  ref={remoteControlRef}
-                  url={url}
-                  token={token}
-                />
+                <RemoteControl key={key} ref={remoteControlRef} url={url} token={token} />
               </div>
             </div>
           </div>
-        ) : (
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '60px 20px', 
-            color: '#9ca3af',
-            fontSize: '1.1rem'
-          }}>
+        : <div
+            style={{
+              textAlign: 'center',
+              padding: '60px 20px',
+              color: '#9ca3af',
+              fontSize: '1.1rem',
+            }}
+          >
             Enter your connection details above and click Connect to start
           </div>
-        )}
+        }
       </div>
     </>
   );

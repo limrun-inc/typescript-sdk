@@ -16,7 +16,8 @@ export default class IosReverse extends BaseCommand {
 
   static args = {
     mapping: Args.string({
-      description: 'Port mapping as <remotePort> or <remotePort>:<localPort>. remotePort must be 57090-57099.',
+      description:
+        'Port mapping as <remotePort> or <remotePort>:<localPort>. remotePort must be 57090-57099.',
       required: true,
     }),
   };
@@ -66,7 +67,9 @@ export default class IosReverse extends BaseCommand {
         } else {
           this.output(`Remote endpoint: ${ready.remoteHost}:${ready.remotePort}`);
           this.output(`${ready.remoteHost}:${ready.remotePort} -> ${ready.localHost}:${ready.localPort}`);
-          this.output(`Use ${ready.remoteHost}:${ready.remotePort} from the simulator (for example exp://${ready.remoteHost}:${ready.remotePort}).`);
+          this.output(
+            `Use ${ready.remoteHost}:${ready.remotePort} from the simulator (for example exp://${ready.remoteHost}:${ready.remotePort}).`,
+          );
           this.info('Reverse tunnel started. Press Ctrl+C to stop.');
         }
 
