@@ -267,7 +267,7 @@ export type SoftResetResult = {
 export type ReverseTunnelOptions = {
   /** Port to listen on near the simulator. Must be in 57090-57099. */
   remotePort: number;
-  /** Local port on the user's machine. Defaults to remotePort. */
+  /** Local port for a client-first service on the user's machine. Defaults to remotePort. */
   localPort?: number;
   /** Local host on the user's machine. Defaults to 127.0.0.1. */
   localHost?: string;
@@ -657,8 +657,8 @@ export type InstanceClient = {
   softReset: (bundleId: string, options?: SoftResetOptions) => Promise<SoftResetResult>;
 
   /**
-   * Start a reverse TCP tunnel from the simulator-facing LISTEN_IP:remotePort
-   * to a user-local TCP service.
+   * Start a reverse tunnel from the simulator-facing LISTEN_IP:remotePort
+   * to a user-local client-first TCP service, such as HTTP or WebSocket.
    */
   startReverseTunnel: (options: ReverseTunnelOptions) => Promise<ReverseTunnel>;
 

@@ -148,12 +148,12 @@ export async function startTcpTunnel(
 }
 
 /**
- * Starts a reverse TCP tunnel.
+ * Starts a reverse TCP tunnel for client-first protocols.
  *
  * The remote endpoint accepts TCP connections near the simulator and sends them
  * through `remoteURL` as multiplexed WebSocket frames. For each remote connID,
- * this client opens a TCP connection to `localHost:localPort` on the user's
- * machine and pipes bytes in both directions.
+ * this client opens a TCP connection to `localHost:localPort` after the first
+ * payload arrives, then pipes bytes in both directions.
  */
 export async function startReverseTcpTunnel(
   remoteURL: string,
@@ -346,6 +346,10 @@ export async function startReverseTcpTunnel(
     };
 
     const connectLocal = (connId: number, firstPayload: Buffer): void => {
+      // The current wire protocol has data and close frames, but no explicit
+      // "remote TCP accepted" frame. Connect lazily on first payload, which fits
+      // HTTP/WebSocket dev servers. Server-first protocols need a protocol
+      // extension before this can behave like a transparent TCP forward.
       if (recentlyClosedConnIds.has(connId)) {
         logger.debug(`Ignoring payload for closed conn=${connId}`);
         return;
