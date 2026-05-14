@@ -78,8 +78,9 @@ export class RuntimeDriverClass extends IosDriver {
     const client = await this.getLimrunClient();
     const extension = 'jpg';
     const artifactName = screenshotName || `limrun-detox-${Date.now()}`;
-    const artifactRoot = process.env['DETOX_ARTIFACTS_DIR']
-      ? path.join(process.env['DETOX_ARTIFACTS_DIR'], 'detox-artifacts')
+    const artifactRoot =
+      process.env['DETOX_ARTIFACTS_DIR'] ?
+        path.join(process.env['DETOX_ARTIFACTS_DIR'], 'detox-artifacts')
       : os.tmpdir();
     fs.mkdirSync(artifactRoot, { recursive: true });
     const screenshotPath = path.join(artifactRoot, `${artifactName}.${extension}`);

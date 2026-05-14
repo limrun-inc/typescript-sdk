@@ -4,7 +4,12 @@ import net from 'net';
 import path from 'path';
 
 import { Ios } from '@limrun/api';
-import type { AccessibilitySelector, ElementTreeNode, InstanceClient, ReverseTunnel } from '@limrun/api/ios-client';
+import type {
+  AccessibilitySelector,
+  ElementTreeNode,
+  InstanceClient,
+  ReverseTunnel,
+} from '@limrun/api/ios-client';
 
 export type DetoxLaunchMode = 'ForegroundIfRunning' | 'RelaunchIfRunning';
 
@@ -177,7 +182,9 @@ export async function launchExpoGoDetoxAppFromEnv(): Promise<void> {
       sessionId,
       ...(process.env['DETOX_VERSION'] ? { version: process.env['DETOX_VERSION'] } : {}),
       ...(process.env['DETOX_BUNDLE_ID'] ? { bundleId: process.env['DETOX_BUNDLE_ID'] } : {}),
-      ...(process.env['DETOX_EXPECTED_ELEMENT_ID'] ? { expectedElementId: process.env['DETOX_EXPECTED_ELEMENT_ID'] } : {}),
+      ...(process.env['DETOX_EXPECTED_ELEMENT_ID'] ?
+        { expectedElementId: process.env['DETOX_EXPECTED_ELEMENT_ID'] }
+      : {}),
       ...(process.env['DETOX_EXPECTED_TEXT'] ? { expectedText: process.env['DETOX_EXPECTED_TEXT'] } : {}),
     });
   } finally {
@@ -333,7 +340,9 @@ async function openExpoProject(
   }
 
   if (readiness.expectedElementId) {
-    throw new Error(`Timed out waiting for element id '${readiness.expectedElementId}' after opening Expo URL`);
+    throw new Error(
+      `Timed out waiting for element id '${readiness.expectedElementId}' after opening Expo URL`,
+    );
   }
   if (readiness.expectedText) {
     throw new Error(`Timed out waiting for visible text '${readiness.expectedText}' after opening Expo URL`);
@@ -440,7 +449,10 @@ async function waitForExpoGoHome(client: LimrunDetoxInstanceClient, timeoutMs: n
   }
 }
 
-async function waitForExpoGoOpenPromptToDisappear(client: LimrunDetoxInstanceClient, timeoutMs: number): Promise<void> {
+async function waitForExpoGoOpenPromptToDisappear(
+  client: LimrunDetoxInstanceClient,
+  timeoutMs: number,
+): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     const tree = await client.elementTree();
@@ -458,7 +470,10 @@ function containsElementId(node: ElementTreeNode, id: string): boolean {
   return (node.children ?? []).some((child) => containsElementId(child, id));
 }
 
-function isAppReady(tree: ElementTreeNode[], readiness: { expectedElementId?: string; expectedText?: string }): boolean {
+function isAppReady(
+  tree: ElementTreeNode[],
+  readiness: { expectedElementId?: string; expectedText?: string },
+): boolean {
   if (readiness.expectedElementId) {
     if (tree.some((node) => containsElementId(node, readiness.expectedElementId!))) {
       return true;
@@ -503,7 +518,9 @@ function containsElementText(node: ElementTreeNode, text: string): boolean {
 function resolveLocalDetoxBin(cwd: string): string {
   const detoxBin = path.join(cwd, 'node_modules', '.bin', 'detox');
   if (!fs.existsSync(detoxBin)) {
-    throw new Error(`Missing local Detox binary at ${detoxBin}. Run your package manager install first or pass detoxBin.`);
+    throw new Error(
+      `Missing local Detox binary at ${detoxBin}. Run your package manager install first or pass detoxBin.`,
+    );
   }
   return detoxBin;
 }

@@ -10,8 +10,7 @@ import {
 
 export default class IosScreenshot extends BaseCommand {
   static summary = 'Capture a screenshot from a running iOS instance';
-  static description =
-    'Capture the current screen from a running iOS instance and save the image to a file.';
+  static description = 'Capture the current screen from a running iOS instance and save the image to a file.';
   static examples = [
     '<%= config.bin %> ios screenshot screenshot.png',
     '<%= config.bin %> ios screenshot screenshot.png --id <instance-ID>',

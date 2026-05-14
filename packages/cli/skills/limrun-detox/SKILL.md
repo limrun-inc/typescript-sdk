@@ -1,6 +1,6 @@
 ---
 name: limrun-detox
-description: Configure, run, or debug Detox on Limrun iOS simulators. Use when launching Expo Go or simulator apps with the Limrun Detox runtime, wiring Detox mediator connectivity, or validating app/tester connections over reverse tunnels.
+description: Configure, run, or debug Detox on Limrun iOS simulators. Use when attaching the Limrun Detox runtime to an app, wiring Detox mediator connectivity, or validating app/tester connections over reverse tunnels.
 ---
 
 # Limrun Detox
@@ -47,14 +47,11 @@ npx detox test --no-start
 
 Prefer starting the tester before the app connects, or use the maintained orchestration in `examples/detox-ios`, to avoid benign mediator "cannot forward" noise.
 
-For Expo Go, launch `host.exp.Exponent`, then use `lim ios open-url` for the Expo URL and handle the "Open in Expo Go" prompt if it appears.
-
 ## Detox Test Setup
 
 `npx detox test --no-start` still needs the normal Detox project configuration:
 
-- Pass the right Detox config and configuration, for example `-C ./.detoxrc.cjs -c ios.limrun.expo-go`.
-- `ios.limrun.expo-go` is the configuration name from `examples/detox-ios`; other apps should use their own Detox configuration name.
+- Pass the Detox config file and configuration name from your project (see `examples/detox-ios/.detoxrc.cjs` for a reference layout).
 - Use the Limrun third-party driver: `type: '@limrun/detox/driver'`.
 - Keep `DETOX_SERVER` and `DETOX_SESSION_ID` aligned with the mediator and launch command.
 - Provide Limrun driver env such as `LIMRUN_IOS_ID`, `LIMRUN_IOS_API_URL`, and `LIMRUN_IOS_TOKEN` when screenshots or driver calls need the instance API.
