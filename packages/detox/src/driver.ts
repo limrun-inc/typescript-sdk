@@ -74,6 +74,12 @@ export class RuntimeDriverClass extends IosDriver {
     await this['client'].waitForBackground();
   }
 
+  async cleanup(bundleId?: string): Promise<void> {
+    this.limrunClient?.disconnect?.();
+    this.limrunClient = undefined;
+    await super.cleanup(bundleId);
+  }
+
   async takeScreenshot(screenshotName: string): Promise<string> {
     const client = await this.getLimrunClient();
     const extension = 'jpg';
@@ -89,9 +95,10 @@ export class RuntimeDriverClass extends IosDriver {
       const screenshot = await client.screenshot();
       fs.writeFileSync(screenshotPath, Buffer.from(screenshot.base64, 'base64'));
       return screenshotPath;
-    } finally {
-      client.disconnect?.();
+    } catch (error) {
+      this.limrunClient?.disconnect?.();
       this.limrunClient = undefined;
+      throw error;
     }
   }
 
