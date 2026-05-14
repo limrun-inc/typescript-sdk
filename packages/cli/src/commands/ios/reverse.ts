@@ -5,9 +5,9 @@ import { getIosInstanceClient } from '../../lib/instance-client-factory';
 import { parseReversePortMapping } from '../../lib/reverse-port-mapping';
 
 export default class IosReverse extends BaseCommand {
-  static summary = 'Reverse-forward a simulator port to a local TCP service';
+  static summary = 'Expose a local client-first service to the simulator';
   static description =
-    'Open a long-lived reverse TCP tunnel so an app in the remote iOS Simulator can connect to LISTEN_IP:remotePort and reach a local service on your machine. Remote ports must be in the reserved Limrun range 57090-57099.';
+    'Open a long-lived reverse tunnel so an app in the remote iOS Simulator can connect to LISTEN_IP:remotePort and reach a local client-first service such as an HTTP or WebSocket dev server. Remote ports must be in the reserved Limrun range 57090-57099.';
   static examples = [
     '<%= config.bin %> ios reverse 57090:8081 --id <instance-ID>',
     '<%= config.bin %> ios reverse 57091:3000 --id <instance-ID>',
