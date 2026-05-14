@@ -495,13 +495,17 @@ function containsExpoGoHome(tree: ElementTreeNode[]): boolean {
   );
 }
 
+/** Wording from the iOS system prompt; quotes vary (ASCII vs Unicode “ ”). */
+const EXPO_GO_OPEN_PROMPT_PHRASES = ['Open in "Expo Go"', `Open in \u201CExpo Go\u201D`] as const;
+
 function containsExpoGoOpenPrompt(tree: ElementTreeNode[]): boolean {
-  return (
-    tree.some((node) => containsElementText(node, 'Expo Go')) &&
-    (tree.some((node) => containsElementText(node, 'Open in "Expo Go"')) ||
-      tree.some((node) => containsElementText(node, 'Open in “Expo Go”'))) &&
-    !containsExpoGoHome(tree)
-  );
+  if (containsExpoGoHome(tree)) {
+    return false;
+  }
+  if (!tree.some((node) => containsElementText(node, 'Expo Go'))) {
+    return false;
+  }
+  return EXPO_GO_OPEN_PROMPT_PHRASES.some((phrase) => tree.some((node) => containsElementText(node, phrase)));
 }
 
 function containsElementText(node: ElementTreeNode, text: string): boolean {
