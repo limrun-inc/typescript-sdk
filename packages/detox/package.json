@@ -31,7 +31,7 @@
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "@limrun/api": ">=0.28.4 <1",
+    "@limrun/api": ">=0.28.5 <1",
     "detox": ">=20.48.1 <21"
   },
   "devDependencies": {
