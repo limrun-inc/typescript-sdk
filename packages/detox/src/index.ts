@@ -11,6 +11,11 @@ import type {
   ReverseTunnel,
 } from '@limrun/api/ios-client';
 
+import { resolveInstalledDetoxVersion } from './resolve-installed-detox-version';
+
+export { resolveInstalledDetoxVersion };
+export type { ResolveInstalledDetoxVersionOptions } from './resolve-installed-detox-version';
+
 export type DetoxLaunchMode = 'ForegroundIfRunning' | 'RelaunchIfRunning';
 
 export type DetoxServerProcess = {
@@ -251,19 +256,6 @@ export async function runDetoxTest(options: DetoxTestRunOptions): Promise<DetoxT
     stderrPath,
     summaryPath,
   };
-}
-
-export function resolveInstalledDetoxVersion(cwd = process.cwd()): string {
-  const packageJsonPath = path.join(cwd, 'node_modules', 'detox', 'package.json');
-  if (!fs.existsSync(packageJsonPath)) {
-    throw new Error('Missing Detox version. Pass version or install detox in the current project.');
-  }
-
-  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as { version?: string };
-  if (!packageJson.version) {
-    throw new Error(`Missing Detox version in ${packageJsonPath}`);
-  }
-  return packageJson.version;
 }
 
 export async function startDetoxServer({
