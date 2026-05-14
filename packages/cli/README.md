@@ -57,7 +57,7 @@ lim asset --help     # All asset commands
 
 ```bash
 lim ios create                  # Creates ios_abc123, remembers it
-lim ios screenshot -o test.png  # Uses ios_abc123 automatically
+lim ios screenshot test.png     # Uses ios_abc123 automatically
 lim ios tap 100 200             # Still uses ios_abc123
 lim session start               # Starts session for ios_abc123
 ```
@@ -65,14 +65,14 @@ lim session start               # Starts session for ios_abc123
 You can always provide an ID explicitly to target a specific instance:
 
 ```bash
-lim ios screenshot -o test.png --id ios_def456
+lim ios screenshot test.png --id ios_def456
 ```
 
 For repeatable scripts and LLM agents, prefer explicit platform commands plus an explicit `--id` once you have it:
 
 ```bash
 lim ios get ios_abc123 --json
-lim ios screenshot --id ios_abc123 -o screenshot.png
+lim ios screenshot screenshot.png --id ios_abc123
 lim android tap --id android_abc123 100 200
 ```
 
@@ -157,8 +157,7 @@ lim ios info
 lim ios info --json
 
 # Screenshots
-lim ios screenshot -o screenshot.png
-lim ios screenshot                      # Output base64 to stdout
+lim ios screenshot screenshot.png
 
 # Tapping
 lim ios tap 100 200
@@ -300,7 +299,7 @@ All interaction commands accept an optional `--id`. When omitted, the last creat
 
 ```bash
 # Screenshots
-lim android screenshot -o screenshot.png
+lim android screenshot screenshot.png
 
 # Tapping
 lim android tap 100 200
@@ -423,7 +422,7 @@ Sessions keep a persistent WebSocket connection to an instance in the background
 Without a session, every command creates a new connection:
 
 ```
-lim ios screenshot              # ~2s (connect + auth + screenshot + disconnect)
+lim ios screenshot screenshot.png # ~2s (connect + auth + screenshot + disconnect)
 lim ios tap 100 200             # ~2s (connect + auth + tap + disconnect)
 lim ios element-tree            # ~2s (connect + auth + fetch + disconnect)
 # Total: ~6s for 3 commands
@@ -433,7 +432,7 @@ With a session, the connection is created once and reused:
 
 ```
 lim session start               # ~2s (one-time connection setup)
-lim ios screenshot              # ~50ms (reuses connection)
+lim ios screenshot screenshot.png # ~50ms (reuses connection)
 lim ios tap 100 200             # ~50ms (reuses connection)
 lim ios element-tree            # ~50ms (reuses connection)
 lim session stop                # instant cleanup
@@ -489,7 +488,7 @@ lim ios element-tree | jq '.tree'
 lim ios tap-element --ax-label "Login"
 lim ios type "user@example.com"
 lim ios tap-element --ax-label "Submit"
-lim ios screenshot -o after-login.png
+lim ios screenshot after-login.png
 
 lim session stop
 lim ios delete ios_abc123
@@ -508,8 +507,8 @@ lim session start --id ios_tablet_456
 lim ios launch-app com.example.myapp --id ios_phone_123
 lim ios launch-app com.example.myapp --id ios_tablet_456
 
-lim ios screenshot -o phone.png --id ios_phone_123
-lim ios screenshot -o tablet.png --id ios_tablet_456
+lim ios screenshot phone.png --id ios_phone_123
+lim ios screenshot tablet.png --id ios_tablet_456
 
 lim ios tap 200 400 --id ios_phone_123
 lim ios element-tree --id ios_tablet_456 --json > tablet-tree.json
@@ -536,7 +535,7 @@ done
 # Run tests against all devices
 for ID in "${IDS[@]}"; do
   lim ios launch-app com.example.myapp --id $ID
-  lim ios screenshot -o "test_${ID}.png" --id $ID
+  lim ios screenshot "test_${ID}.png" --id $ID
 done
 
 # Tear down
@@ -573,7 +572,7 @@ lim session start
 # 4. Test the built app on the simulator (~50ms per command)
 lim ios launch-app com.example.myapp
 lim ios element-tree | jq '.'
-lim ios screenshot -o built-app.png
+lim ios screenshot built-app.png
 
 # 5. Clean up
 lim session stop
@@ -694,7 +693,7 @@ lim android list --json | jq '.[].metadata.id'
 
 # Use in scripts
 INSTANCE_ID=$(lim ios create --json | jq -r '.metadata.id')
-lim ios screenshot --id $INSTANCE_ID -o test.png
+lim ios screenshot test.png --id $INSTANCE_ID
 lim ios delete $INSTANCE_ID
 ```
 
@@ -713,7 +712,7 @@ lim session start
 lim ios launch-app com.example.myapp
 sleep 2
 lim ios element-tree | grep "Welcome"
-lim ios screenshot -o test-result.png
+lim ios screenshot test-result.png
 
 # Clean up
 lim session stop
@@ -734,7 +733,7 @@ lim session start
 lim ios tap 200 400
 lim ios type "test@example.com"
 lim ios tap-element --ax-label "Sign In"
-lim ios screenshot -o result.png
+lim ios screenshot result.png
 lim ios element-tree --json > ui-state.json
 
 # Tail logs (non-streaming works through session too)
@@ -759,7 +758,7 @@ lim session start
 lim ios launch-app com.example.myapp
 sleep 2
 lim ios element-tree | grep "Welcome"
-lim ios screenshot -o test-result.png
+lim ios screenshot test-result.png
 lim session stop
 
 lim ios delete $ID

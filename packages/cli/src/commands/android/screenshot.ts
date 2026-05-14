@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { Flags } from '@oclif/core';
+import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getAndroidInstanceClient,
@@ -11,28 +11,29 @@ import {
 export default class AndroidScreenshot extends BaseCommand {
   static summary = 'Capture a screenshot from a running Android instance';
   static description =
-    'Capture the current screen from a running Android instance. Save the image to a file with `-o`, or use `--json` to inspect the raw response payload.';
+    'Capture the current screen from a running Android instance and save the image to a file.';
   static examples = [
-    '<%= config.bin %> android screenshot -o screenshot.png',
-    '<%= config.bin %> android screenshot --id <instance-ID>',
-    '<%= config.bin %> android screenshot --json',
+    '<%= config.bin %> android screenshot screenshot.png',
+    '<%= config.bin %> android screenshot screenshot.png --id <instance-ID>',
+    '<%= config.bin %> android screenshot screenshot.png --json',
   ];
 
-  static args = {};
+  static args = {
+    path: Args.string({
+      description: 'File path where the screenshot should be written.',
+      required: true,
+    }),
+  };
 
   static flags = {
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description: 'Android instance ID to capture. Defaults to the last created Android instance.',
     }),
-    output: Flags.string({
-      char: 'o',
-      description: 'File path where the screenshot should be written instead of printing the raw image data',
-    }),
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(AndroidScreenshot);
+    const { args, flags } = await this.parse(AndroidScreenshot);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
@@ -54,15 +55,13 @@ export default class AndroidScreenshot extends BaseCommand {
         }
       }
 
-      if (flags.output) {
-        const outPath = path.resolve(flags.output);
-        const base64 = (screenshot.dataUri as string).replace(/^data:image\/\w+;base64,/, '');
-        fs.writeFileSync(outPath, Buffer.from(base64, 'base64'));
-        this.log(`Screenshot saved to ${outPath}`);
-      } else if (flags.json) {
-        this.outputJson(screenshot);
+      const outPath = path.resolve(args.path);
+      const base64 = (screenshot.dataUri as string).replace(/^data:image\/\w+;base64,/, '');
+      fs.writeFileSync(outPath, Buffer.from(base64, 'base64'));
+      if (flags.json) {
+        this.outputJson({ path: outPath });
       } else {
-        this.log(screenshot.dataUri);
+        this.log(`Screenshot saved to ${outPath}`);
       }
     });
   }

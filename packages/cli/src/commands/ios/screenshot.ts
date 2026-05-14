@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { Flags } from '@oclif/core';
+import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
@@ -11,28 +11,29 @@ import {
 export default class IosScreenshot extends BaseCommand {
   static summary = 'Capture a screenshot from a running iOS instance';
   static description =
-    'Capture the current screen from a running iOS instance. Save the image to a file with `-o`, or use `--json` to inspect the raw response payload.';
+    'Capture the current screen from a running iOS instance and save the image to a file.';
   static examples = [
-    '<%= config.bin %> ios screenshot -o screenshot.png',
-    '<%= config.bin %> ios screenshot --id <instance-ID>',
-    '<%= config.bin %> ios screenshot --json',
+    '<%= config.bin %> ios screenshot screenshot.png',
+    '<%= config.bin %> ios screenshot screenshot.png --id <instance-ID>',
+    '<%= config.bin %> ios screenshot screenshot.png --json',
   ];
 
-  static args = {};
+  static args = {
+    path: Args.string({
+      description: 'File path where the screenshot should be written.',
+      required: true,
+    }),
+  };
 
   static flags = {
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description: 'iOS instance ID to capture. Defaults to the last created iOS instance.',
     }),
-    output: Flags.string({
-      char: 'o',
-      description: 'File path where the screenshot should be written instead of printing the raw image data',
-    }),
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(IosScreenshot);
+    const { args, flags } = await this.parse(IosScreenshot);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
@@ -54,14 +55,12 @@ export default class IosScreenshot extends BaseCommand {
         }
       }
 
-      if (flags.output) {
-        const outPath = path.resolve(flags.output);
-        fs.writeFileSync(outPath, Buffer.from(screenshot.base64, 'base64'));
-        this.log(`Screenshot saved to ${outPath}`);
-      } else if (flags.json) {
-        this.outputJson(screenshot);
+      const outPath = path.resolve(args.path);
+      fs.writeFileSync(outPath, Buffer.from(screenshot.base64, 'base64'));
+      if (flags.json) {
+        this.outputJson({ path: outPath });
       } else {
-        this.log(screenshot.base64);
+        this.log(`Screenshot saved to ${outPath}`);
       }
     });
   }
