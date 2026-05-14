@@ -191,7 +191,7 @@ export async function startReverseTcpTunnel(
     const pendingPerConn: Map<number, Buffer[]> = new Map();
     const pendingBytesPerConn: Map<number, number> = new Map();
     const connectTimers: Map<number, NodeJS.Timeout> = new Map();
-    const closedConnIds: Set<number> = new Set();
+    const recentlyClosedConnIds: Map<number, NodeJS.Timeout> = new Map();
     const stateChangeCallbacks: Set<TunnelConnectionStateCallback> = new Set();
 
     let ws: WebSocket | undefined;
@@ -221,6 +221,18 @@ export async function startReverseTcpTunnel(
       }
     };
 
+    const markRecentlyClosed = (connId: number): void => {
+      const existingTimer = recentlyClosedConnIds.get(connId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      const timer = setTimeout(() => {
+        recentlyClosedConnIds.delete(connId);
+      }, 30_000);
+      timer.unref();
+      recentlyClosedConnIds.set(connId, timer);
+    };
+
     const removeConnection = (connId: number, sendClose: boolean, graceful = false): void => {
       const socket = connections.get(connId);
       const connectTimer = connectTimers.get(connId);
@@ -229,7 +241,7 @@ export async function startReverseTcpTunnel(
       pendingPerConn.delete(connId);
       pendingBytesPerConn.delete(connId);
       connectTimers.delete(connId);
-      closedConnIds.add(connId);
+      markRecentlyClosed(connId);
       if (connectTimer) {
         clearTimeout(connectTimer);
       }
@@ -257,6 +269,11 @@ export async function startReverseTcpTunnel(
       connections.clear();
       connecting.clear();
       pendingPerConn.clear();
+      pendingBytesPerConn.clear();
+      for (const timer of recentlyClosedConnIds.values()) {
+        clearTimeout(timer);
+      }
+      recentlyClosedConnIds.clear();
     };
 
     const cleanupWebSocket = (): void => {
@@ -329,20 +346,20 @@ export async function startReverseTcpTunnel(
     };
 
     const connectLocal = (connId: number, firstPayload: Buffer): void => {
-      if (closedConnIds.has(connId)) {
+      if (recentlyClosedConnIds.has(connId)) {
         logger.debug(`Ignoring payload for closed conn=${connId}`);
         return;
       }
       if (connections.size >= maxConnections) {
         logger.warn(`Rejecting reverse tunnel conn=${connId}: max connections reached`);
         sendCloseSignal(connId);
-        closedConnIds.add(connId);
+        markRecentlyClosed(connId);
         return;
       }
       if (firstPayload.length > maxPendingBytesPerConnection) {
         logger.warn(`Rejecting reverse tunnel conn=${connId}: initial payload exceeds pending byte limit`);
         sendCloseSignal(connId);
-        closedConnIds.add(connId);
+        markRecentlyClosed(connId);
         return;
       }
 
@@ -405,7 +422,7 @@ export async function startReverseTcpTunnel(
         removeConnection(connId, false, true);
         return;
       }
-      if (closedConnIds.has(connId)) {
+      if (recentlyClosedConnIds.has(connId)) {
         logger.debug(`Ignoring payload for closed conn=${connId}`);
         return;
       }
@@ -483,7 +500,9 @@ export async function startReverseTcpTunnel(
       closeAllConnections();
       updateConnectionState('disconnected');
       if (!intentionalDisconnect && !hasResolved) {
-        rejectStartup(new Error(`Reverse tunnel WebSocket closed before ready: ${code} ${reason.toString()}`));
+        rejectStartup(
+          new Error(`Reverse tunnel WebSocket closed before ready: ${code} ${reason.toString()}`),
+        );
       }
     });
 
@@ -512,7 +531,11 @@ export async function startReverseTcpTunnel(
         return;
       }
 
-      handleBinaryFrame(Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data));
+      handleBinaryFrame(
+        Buffer.isBuffer(data) ? data
+        : Array.isArray(data) ? Buffer.concat(data)
+        : Buffer.from(data),
+      );
     });
   });
 }

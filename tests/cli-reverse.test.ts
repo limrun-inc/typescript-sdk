@@ -10,8 +10,12 @@ describe('parseReversePortMapping', () => {
   });
 
   test('rejects empty mapping halves', () => {
-    expect(() => parseReversePortMapping('57090:')).toThrow('Mapping must be <remotePort> or <remotePort>:<localPort>');
-    expect(() => parseReversePortMapping(':8081')).toThrow('Mapping must be <remotePort> or <remotePort>:<localPort>');
+    expect(() => parseReversePortMapping('57090:')).toThrow(
+      'Mapping must be <remotePort> or <remotePort>:<localPort>',
+    );
+    expect(() => parseReversePortMapping(':8081')).toThrow(
+      'Mapping must be <remotePort> or <remotePort>:<localPort>',
+    );
   });
 
   test('rejects mappings with more than two parts', () => {
