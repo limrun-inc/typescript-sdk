@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.28.5 (2026-05-14)
+
+Full Changelog: [v0.28.4...v0.28.5](https://github.com/limrun-inc/typescript-sdk/compare/v0.28.4...v0.28.5)
+
+### Bug Fixes
+
+* **cli:** preserve skills install json field ([9fd55ea](https://github.com/limrun-inc/typescript-sdk/commit/9fd55ea708fedd96694c02f01c959add7527dffc))
+* **detox:** Expo prompt quote variants and launchApp test typing ([bcc106b](https://github.com/limrun-inc/typescript-sdk/commit/bcc106b0d7c810261da3b3548b38a3be332b2bb2))
+* **detox:** screenshot client reuse, version helper module, CLI dup rationale ([c3d84b9](https://github.com/limrun-inc/typescript-sdk/commit/c3d84b9ceadf1c6d1ce9c6c83ad81217becbd54a))
+
+
+### Chores
+
+* prettier-format android/get.ts to unblock CI lint ([0c6ea0f](https://github.com/limrun-inc/typescript-sdk/commit/0c6ea0fb89b8359741092696aea4093734f44dec))
+
+
+### Documentation
+
+* clarify reverse tunnel protocol scope ([42b7211](https://github.com/limrun-inc/typescript-sdk/commit/42b7211a5f1b6d18e3c304afc9568731d2b5fb16))
+* trim detox example readme and Detox skill ([3571542](https://github.com/limrun-inc/typescript-sdk/commit/357154238ca7fe21b465010fe81f1b77d8c6f431))
+
 ## 0.28.4 (2026-05-10)
 
 Full Changelog: [v0.28.3...v0.28.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.28.3...v0.28.4)
