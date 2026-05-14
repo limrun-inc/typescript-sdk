@@ -247,6 +247,35 @@ export type SoftResetOptions = {
   strategy?: SoftResetStrategy;
 };
 
+export type LaunchAppMode = 'ForegroundIfRunning' | 'RelaunchIfRunning';
+
+export type DetoxLaunchRuntime = {
+  kind: 'detox';
+  serverUrl: string;
+  sessionId: string;
+  version?: string;
+};
+
+export type LaunchAppRuntime = DetoxLaunchRuntime;
+
+type StandardLaunchAppOptions = {
+  /**
+   * Launch behavior when the app may already be running.
+   * Defaults to `ForegroundIfRunning` server-side.
+   */
+  mode?: LaunchAppMode;
+  runtime?: undefined;
+};
+
+type RuntimeLaunchAppOptions = {
+  /** Runtime launches must relaunch so runtime injection is applied. */
+  mode?: Extract<LaunchAppMode, 'RelaunchIfRunning'>;
+  /** Optional app runtime to attach during launch. */
+  runtime: LaunchAppRuntime;
+};
+
+export type LaunchAppOptions = StandardLaunchAppOptions | RuntimeLaunchAppOptions;
+
 /**
  * Result of a {@link InstanceClient.softReset} call.
  */
@@ -462,8 +491,12 @@ export type InstanceClient = {
    * @param mode Optional launch mode:
    *   - 'ForegroundIfRunning' (default): bring to foreground if already running
    *   - 'RelaunchIfRunning': terminate and relaunch if already running
+   *   Or a launch options object with optional mode and launch runtime.
    */
-  launchApp: (bundleId: string, mode?: 'ForegroundIfRunning' | 'RelaunchIfRunning') => Promise<void>;
+  launchApp: {
+    (bundleId: string, mode?: LaunchAppMode): Promise<void>;
+    (bundleId: string, options: LaunchAppOptions): Promise<void>;
+  };
 
   /**
    * Terminate a running app by bundle identifier.
@@ -1328,6 +1361,21 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return `ts-client-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     };
 
+    const redactRequestForDebug = (request: Record<string, unknown>): Record<string, unknown> => {
+      if (request['type'] !== 'launchApp') {
+        return request;
+      }
+
+      const runtime = request['runtime'] as LaunchAppRuntime | undefined;
+      return {
+        type: request['type'],
+        id: request['id'],
+        bundleId: request['bundleId'],
+        mode: request['mode'],
+        runtime: runtime ? { kind: runtime.kind, version: runtime.version } : undefined,
+      };
+    };
+
     // Generic request sender with timeout and response handling
     const sendRequest = <T>(
       type: string,
@@ -1353,7 +1401,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         );
 
         const request = { type, id, ...params };
-        logger.debug('Sending request:', request);
+        logger.debug('Sending request:', redactRequestForDebug(request));
 
         ws.send(JSON.stringify(request), (err?: Error) => {
           if (err) {
@@ -1674,11 +1722,24 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<void>('toggleKeyboard');
     };
 
-    const launchApp = (
-      bundleId: string,
-      mode?: 'ForegroundIfRunning' | 'RelaunchIfRunning',
-    ): Promise<void> => {
-      return sendRequest<void>('launchApp', { bundleId, mode });
+    const launchApp = (bundleId: string, modeOrOptions?: LaunchAppMode | LaunchAppOptions): Promise<void> => {
+      const launchOptions: LaunchAppOptions =
+        typeof modeOrOptions === 'string' ? { mode: modeOrOptions } : modeOrOptions ?? {};
+      const requestedMode =
+        typeof modeOrOptions === 'object' ?
+          (modeOrOptions as { mode?: LaunchAppMode }).mode
+        : launchOptions.mode;
+      if (launchOptions.runtime && requestedMode === 'ForegroundIfRunning') {
+        return Promise.reject(
+          new Error('launchApp runtime launches require RelaunchIfRunning so runtime injection is applied.'),
+        );
+      }
+      const mode = launchOptions.runtime ? 'RelaunchIfRunning' : launchOptions.mode;
+      return sendRequest<void>('launchApp', {
+        bundleId,
+        mode,
+        runtime: launchOptions.runtime,
+      });
     };
 
     const terminateApp = (bundleId: string): Promise<void> => {
