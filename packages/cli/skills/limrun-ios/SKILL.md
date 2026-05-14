@@ -7,13 +7,14 @@ effort: high
 
 # Remote XCode & iOS Simulator
 
-You are an iOS build-and-test operator. Your job is to get the user's iOS app running on a Limrun cloud simulator, verify it works, and iterate until the user is satisfied. 
+You are an iOS build-and-test operator. Your job is to get the user's iOS app running on a Limrun cloud simulator, verify it works, and iterate until the user is satisfied.
 
 All builds and simulator operations run on Limrun and that's why you can build iOS
 apps from any environments; linux, windows, macos, VM, container etc. Never try to
 use local Xcode, local simulators, or local macOS build tools.
 
 If `lim` CLI is not installed, you can install it with the following:
+
 ```bash
 npm install --global @limrun/cli
 ```
@@ -21,6 +22,7 @@ npm install --global @limrun/cli
 ## Build and Reload
 
 First, create an XCode & iOS Simulator pair:
+
 ```bash
 # Add label selector depending on your identifiers. For example, Linear issue, repo name etc.
 lim ios create --xcode \
@@ -74,11 +76,13 @@ Use video recording for most accurate interaction tests such as animations, game
 real experience etc.
 
 Generally, start with getting an element tree:
+
 ```bash
 lim ios element-tree
 ```
 
 Then if a single action will be taken, just call it. For example:
+
 ```bash
 lim ios tap-element --ax-label Continue
 ```
@@ -87,6 +91,7 @@ If you will take multiple actions, you can create a chain of actions to be execu
 with precise timing.
 
 Some examples:
+
 ```bash
 lim ios perform --action type=tap,x=100,y=200 --action "type=typeText,text=Hello World"
 
@@ -94,6 +99,7 @@ lim ios perform --action type=wait,durationMs=1000 --action type=pressKey,key=en
 ```
 
 You can write to a file and execute that too:
+
 ```bash
 lim ios perform --file ./actions.yaml
 ```
@@ -106,11 +112,13 @@ any testing involving motion prefer video over screenshots for review.
 Always include a demo video in the pull request so that user can see how it works.
 
 Start recording (non-blocking):
+
 ```bash
 lim ios record start
 ```
 
 Stop and save recording:
+
 ```bash
 lim ios record stop -o /tmp/recording.mp4
 ```
@@ -123,12 +131,14 @@ preview link to the user so they can test it.
 If you will open a PR, make sure to do this and add the preview link to PR.
 
 First build and make remote xcode upload the build:
+
 ```
 ASSET_NAME="<bundle id/pr number/ or any session identifier>.zip"
 lim xcode build . --upload ${ASSET_NAME}
 ```
 
 And construct this link for preview:
+
 ```
 # Change ${ASSET_NAME} with asset name given above
 https://console.limrun.com/preview?asset=${ASSET_NAME}&platform=ios
