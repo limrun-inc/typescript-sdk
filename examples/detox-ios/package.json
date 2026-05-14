@@ -16,8 +16,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@limrun/api": "file:../..",
-    "@limrun/detox": "file:../../packages/detox",
+    "@limrun/api": "^0.28.5",
+    "@limrun/detox": "20.48.1-lim.1",
     "detox": "20.51.1",
     "jest": "^29.7.0"
   },

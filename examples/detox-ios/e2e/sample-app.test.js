@@ -36,7 +36,7 @@ describe('Limrun Detox Expo sample app', () => {
 
     await element(by.id(selectors.nameInput)).replaceText('Limrun');
     await element(by.id(selectors.nameInput)).tapReturnKey();
-    await expect(element(by.id(selectors.greetingMessage))).toHaveText('Hello, Limrun!');
+    await expect(element(by.id(selectors.greetingMessage))).toHaveText('Hello, Detox!');
     await device.takeScreenshot('limrun-detox-greeting');
 
     await element(by.id(selectors.openDetailButton)).tap();

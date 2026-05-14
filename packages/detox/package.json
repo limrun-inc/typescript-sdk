@@ -1,6 +1,6 @@
 {
   "name": "@limrun/detox",
-  "version": "0.1.0",
+  "version": "20.48.1-lim.1",
   "description": "Limrun integration helpers and driver for Detox on remote iOS simulators",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,15 +27,14 @@
   },
   "license": "Apache-2.0",
   "scripts": {
-    "build": "cd ../.. && yarn build && cd packages/detox && rm -rf dist && ../../node_modules/.bin/tsc",
+    "build": "rm -rf dist && tsc",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "@limrun/api": ">=0.28.5 <1",
     "detox": ">=20.48.1 <21"
   },
   "devDependencies": {
-    "@limrun/api": "file:../..",
+    "@limrun/api": "^0.28.5",
     "@types/node": "^22",
     "typescript": "^5.8.3"
   },

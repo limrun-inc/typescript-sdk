@@ -11,7 +11,7 @@ navigates between screens.
 
 ## 1. Start The Sample App
 
-Clone the sample app next to your SDK checkout:
+Clone the sample React Native app next to your SDK checkout:
 
 ```bash
 git clone https://github.com/limrun-inc/sample-detox-with-expo.git

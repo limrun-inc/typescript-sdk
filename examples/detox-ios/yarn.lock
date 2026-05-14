@@ -661,8 +661,10 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@limrun/api@file:../..":
-  version "0.28.4"
+"@limrun/api@^0.28.5":
+  version "0.28.5"
+  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.28.5.tgz#c143f30c944f7688aa1673212572c49e1b0cd987"
+  integrity sha512-F4ZCePIkUTGiI7OAfJnK3nvSFp8O7kLr7eGjnyCF78OPhz/RcEnoiV489ez0WlET1AaIxPe8qcEH/tWXaRo5+Q==
   dependencies:
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"
@@ -672,8 +674,10 @@
     ws "^8.18.3"
     xdelta3-wasm "^1.0.0"
 
-"@limrun/detox@file:../../packages/detox":
-  version "0.1.0"
+"@limrun/detox@20.48.1-lim.1":
+  version "20.48.1-lim.1"
+  resolved "https://registry.npmjs.org/@limrun/detox/-/detox-20.48.1-lim.1.tgz#0e26577eba06c0337c94ed7ede6774aa9534f894"
+  integrity sha512-jbHyXzAoj7MFSlnhiYmQix9IUdZfAQ2n7b9i5ULTsNr0DbKdLwsuAVOU1RYgjrpDizU2dnwHf6aeHih9+WZo/w==
 
 "@sinclair/typebox@^0.27.8":
   version "0.27.10"
