@@ -464,6 +464,7 @@ export default class SkillsInstall extends Command {
       this.log(
         JSON.stringify(
           {
+            ...(skills.length === 1 ? { skill: skills[0] } : {}),
             skills,
             results,
           },
