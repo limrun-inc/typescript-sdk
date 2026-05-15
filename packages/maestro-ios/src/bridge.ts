@@ -37,8 +37,12 @@ export function createBridgeServer(ios: IosClient): BridgeServer {
       const result = await handleBridgeRequest(ios, state, route, body);
       sendJson(res, 200, result);
     } catch (error) {
-      const status = error instanceof UnsupportedRouteError ? 501 : 500;
-      sendJson(res, status, { error: error instanceof Error ? error.message : String(error) });
+      const isUnsupportedRoute = error instanceof UnsupportedRouteError;
+      const status = isUnsupportedRoute ? 501 : 500;
+      if (!isUnsupportedRoute) {
+        console.error('Bridge request failed:', error);
+      }
+      sendJson(res, status, { error: isUnsupportedRoute ? error.message : 'internal_error' });
     }
   });
   server.on('connection', (socket) => {

@@ -56,11 +56,17 @@ for (const item of routeSupportMatrix) {
 }
 assert.ok(bridgeSource.includes('try {\n        resolve(body ? (JSON.parse(body) as JsonRecord) : {});'), 'bridge JSON parsing must reject parse errors');
 assert.ok(!bridgeSource.includes('function sleep('), 'bridge must not keep unused user-controlled sleep helpers');
+assert.ok(bridgeSource.includes("console.error('Bridge request failed:', error);"), 'bridge must log internal errors locally');
+assert.ok(bridgeSource.includes("isUnsupportedRoute ? error.message : 'internal_error'"), 'bridge must not expose internal 500 error details');
 
 const runSource = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'run.ts'), 'utf8');
 assert.ok(!runSource.includes('iosInstances.create'), 'package runner must not create Limrun instances');
 assert.ok(!runSource.includes('iosInstances.delete'), 'package runner must not delete Limrun instances');
 assert.ok(runSource.includes('const closeLogStreams = () =>'), 'runner must centralize log stream cleanup');
 assert.ok(runSource.includes('closeLogStreams();\n      reject(error);'), 'runner spawn errors must close log streams');
+assert.ok(!runSource.includes('onChild'), 'runner must not keep unused child callback plumbing');
+
+const buildRunnerSource = fs.readFileSync(path.resolve(__dirname, 'build-runner.js'), 'utf8');
+assert.ok(buildRunnerSource.includes("response.on('error', reject);"), 'Gradle download must handle response stream errors');
 
 console.log('maestro-ios package checks passed');

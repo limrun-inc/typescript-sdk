@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { Ios } from '@limrun/api';
 import { createBridgeServer, listen, type BridgeServer, type IosClient } from './bridge';
 import { assertJava17OnPath } from './java';
@@ -42,7 +42,6 @@ export async function runMaestroIos(options: RunOptions): Promise<RunResult> {
 
   const abortController = new AbortController();
   const signalCleanup = installSignalHandlers(abortController);
-  let child: ChildProcess | undefined;
   let bridge: BridgeServer | undefined;
   let ios: IosClient | undefined;
   let runError: unknown;
@@ -73,9 +72,6 @@ export async function runMaestroIos(options: RunOptions): Promise<RunResult> {
       screenshotsDir,
       signal: abortController.signal,
       timeoutMs: options.timeoutMs ?? defaultTimeoutMs,
-      onChild: (nextChild) => {
-        child = nextChild;
-      },
     });
 
     await run;
@@ -124,7 +120,6 @@ type RunRunnerOptions = {
   deviceId: string;
   flowPath: string;
   logsDir: string;
-  onChild: (child: ChildProcess) => void;
   screenshotsDir: string;
   signal: AbortSignal;
   timeoutMs: number;
@@ -170,7 +165,6 @@ function runRunner(options: RunRunnerOptions): Promise<void> {
       ],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
-    options.onChild(child);
     let terminationReason: Error | undefined;
     let forceKillTimeout: NodeJS.Timeout | undefined;
     let exited = false;

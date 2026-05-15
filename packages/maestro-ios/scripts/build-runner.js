@@ -89,6 +89,7 @@ async function downloadGradle() {
 function download(url, destination) {
   return new Promise((resolve, reject) => {
     const request = https.get(url, (response) => {
+      response.on('error', reject);
       if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
         response.resume();
         download(response.headers.location, destination).then(resolve, reject);
