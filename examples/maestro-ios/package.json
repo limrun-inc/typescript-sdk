@@ -1,0 +1,21 @@
+{
+  "name": "maestro-ios",
+  "description": "Run Maestro YAML against Safari on a Limrun iOS simulator",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "build:maestro-ios": "npm install --prefix ../../packages/maestro-ios --no-package-lock && npm --prefix ../../packages/maestro-ios run build",
+    "dev": "npm run build:maestro-ios && tsx watch index.ts",
+    "start": "npm run build && node dist/index.js",
+    "build": "npm run build:maestro-ios && tsc -b"
+  },
+  "dependencies": {
+    "@limrun/api": "^0.28.5",
+    "@limrun/maestro-ios": "file:../../packages/maestro-ios"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.6",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}
