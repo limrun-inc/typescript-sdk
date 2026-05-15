@@ -136,9 +136,20 @@ function runRunner(options: RunRunnerOptions): Promise<void> {
   const stdout = fs.createWriteStream(stdoutPath);
   const stderr = fs.createWriteStream(stderrPath);
   let timeout: NodeJS.Timeout | undefined;
+  let logStreamsClosed = false;
+
+  const closeLogStreams = () => {
+    if (logStreamsClosed) {
+      return;
+    }
+    logStreamsClosed = true;
+    stdout.end();
+    stderr.end();
+  };
 
   return new Promise((resolve, reject) => {
     if (options.signal.aborted) {
+      closeLogStreams();
       reject(new Error('Maestro runner interrupted'));
       return;
     }
@@ -201,6 +212,7 @@ function runRunner(options: RunRunnerOptions): Promise<void> {
         clearTimeout(forceKillTimeout);
       }
       options.signal.removeEventListener('abort', onAbort);
+      closeLogStreams();
       reject(error);
     });
     child.on('close', (code, signal) => {
@@ -212,8 +224,7 @@ function runRunner(options: RunRunnerOptions): Promise<void> {
         clearTimeout(forceKillTimeout);
       }
       options.signal.removeEventListener('abort', onAbort);
-      stdout.end();
-      stderr.end();
+      closeLogStreams();
       if (terminationReason) {
         reject(terminationReason);
         return;

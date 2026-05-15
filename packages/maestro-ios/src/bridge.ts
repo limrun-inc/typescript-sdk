@@ -298,7 +298,13 @@ function readJson(req: http.IncomingMessage): Promise<JsonRecord> {
     req.on('data', (chunk: Buffer) => {
       body += chunk.toString('utf8');
     });
-    req.on('end', () => resolve(body ? (JSON.parse(body) as JsonRecord) : {}));
+    req.on('end', () => {
+      try {
+        resolve(body ? (JSON.parse(body) as JsonRecord) : {});
+      } catch (error) {
+        reject(error);
+      }
+    });
     req.on('error', reject);
   });
 }
@@ -345,10 +351,6 @@ function optionalRecord(body: JsonRecord, key: string): JsonRecord | undefined {
 
 function numberOrDefault(value: unknown, fallback: number): number {
   return typeof value === 'number' ? value : fallback;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function closeServer(server: http.Server, sockets: Set<net.Socket>): Promise<void> {
