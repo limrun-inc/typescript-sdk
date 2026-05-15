@@ -9,6 +9,7 @@ const { spawn, spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'limrun-maestro-ios-pack-'));
+const oneByOnePngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.stack || error.message : String(error));
@@ -101,6 +102,8 @@ async function runInstalledJarFlow(jar, cwd) {
       '- launchApp:',
       '    stopApp: true',
       '    permissions: {}',
+      '- waitForAnimationToEnd:',
+      '    timeout: 1000',
       '- assertVisible: ${MAESTRO_FILENAME}',
       '- assertVisible: ${MAESTRO_PACK_SMOKE}',
       '- assertVisible: ${MAESTRO_DEVICE_UDID}',
@@ -121,6 +124,9 @@ async function runInstalledJarFlow(jar, cwd) {
       },
     });
     assert.ok(bridge.routes.has('contentDescriptor'), 'installed runner did not request the Maestro hierarchy');
+    assert.ok(bridge.routes.has('takeScreenshot'), 'installed runner did not use Maestro screenshot settling');
+    assert.ok(!bridge.routes.has('waitForAppToSettle'), 'installed runner should not delegate app settling to the TypeScript bridge');
+    assert.ok(!bridge.routes.has('waitUntilScreenIsStatic'), 'installed runner should not delegate screen-static waits to the TypeScript bridge');
   } finally {
     await closeServer(bridge.server);
   }
@@ -144,10 +150,11 @@ function responseForRoute(route) {
     case 'stopApp':
     case 'launchApp':
     case 'setPermissions':
-    case 'waitForAppToSettle':
       return {};
     case 'deviceInfo':
       return { widthPixels: 390, heightPixels: 844, widthGrid: 390, heightGrid: 844 };
+    case 'takeScreenshot':
+      return { base64: oneByOnePngBase64 };
     case 'contentDescriptor':
       return {
         attributes: { bounds: '[0,0][390,844]' },

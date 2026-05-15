@@ -21,6 +21,7 @@ import maestro.orchestra.util.Env.withDefaultEnvVars
 import maestro.orchestra.util.Env.withEnv
 import maestro.orchestra.util.Env.withInjectedShellEnvVars
 import maestro.orchestra.yaml.YamlCommandReader
+import maestro.utils.ScreenshotUtils
 import okio.Sink
 import okio.buffer
 import java.io.File
@@ -35,6 +36,8 @@ import java.util.Base64
 
 private const val VERSION = "2.5.1-lim.1"
 private const val MAESTRO_VERSION = "2.5.1"
+private const val SCREEN_SETTLE_TIMEOUT_MS = 3_000L
+private const val SCREENSHOT_DIFF_THRESHOLD = 0.005
 
 fun main(args: Array<String>) {
     val config = RunnerConfig.parse(args) ?: return
@@ -267,12 +270,16 @@ private class LimrunBridgeDriver(
     override fun isUnicodeInputSupported(): Boolean = true
 
     override fun waitUntilScreenIsStatic(timeoutMs: Long): Boolean {
-        return post("waitUntilScreenIsStatic", mapOf("timeoutMs" to timeoutMs))["static"].asBoolean()
+        return ScreenshotUtils.waitUntilScreenIsStatic(timeoutMs, SCREENSHOT_DIFF_THRESHOLD, this)
     }
 
     override fun waitForAppToSettle(initialHierarchy: ViewHierarchy?, appId: String?, timeoutMs: Int?): ViewHierarchy? {
-        post("waitForAppToSettle", mapOf("appId" to appId, "timeoutMs" to timeoutMs))
-        return null
+        val didFinishOnTime = waitUntilScreenIsStatic(SCREEN_SETTLE_TIMEOUT_MS)
+        return if (didFinishOnTime) {
+            null
+        } else {
+            ScreenshotUtils.waitForAppToSettle(initialHierarchy, this, timeoutMs)
+        }
     }
 
     override fun capabilities(): List<Capability> = emptyList()

@@ -5,13 +5,13 @@ Run Maestro YAML flows against Limrun-hosted iOS simulators.
 ```bash
 export LIMRUN_IOS_API_URL=https://...
 export LIMRUN_IOS_TOKEN=lim_...
-npx @limrun/maestro-ios test flows/hacker-news.yaml
+npx @limrun/maestro-ios test flows/example.yaml
 ```
 
 Optional first-release flags:
 
 ```bash
-npx @limrun/maestro-ios test flows/hacker-news.yaml \
+npx @limrun/maestro-ios test flows/example.yaml \
   --test-output-dir artifacts/limrun-maestro
 ```
 
@@ -38,7 +38,7 @@ Implemented:
 - Interaction: `tapOn`, point taps, `longPressOn`, `inputText`, random input commands, `pressKey`, `eraseText`, `hideKeyboard`
 - Navigation/system: `openLink`, `setOrientation`
 - Gestures: `scroll`, `scrollUntilVisible`, `swipe`
-- Assertions and waits backed by hierarchy reads: `assertVisible`, `assertNotVisible`, `extendedWaitUntil`, `assertTrue`, `assertScreenshot`
+- Assertions and waits backed by hierarchy reads and Maestro screenshot settling: `assertVisible`, `assertNotVisible`, `extendedWaitUntil`, `assertTrue`, `waitForAnimationToEnd`, `assertScreenshot`
 - Artifacts: `takeScreenshot`, `startRecording`, `stopRecording`
 - Flow composition inside that entry flow is handled by Maestro: `repeat`, `retry`, relative `runFlow` includes, `runScript`, `evalScript`, `onFlowStart`, `onFlowComplete`, environment variables
 - Clipboard flows handled by Maestro when they reduce to hierarchy reads or text input: `copyTextFrom`, `pasteText`
@@ -48,7 +48,7 @@ Best-effort:
 - `clearState` uses Limrun `softReset` data strategy and relaunches the app.
 - `hideKeyboard` sends Escape.
 - Keyboard visibility reports false because Limrun iOS does not expose keyboard state yet.
-- Screen-static and app-settle waits use conservative waits instead of pixel stability.
+- App-settle waits reuse Maestro's JVM `ScreenshotUtils` with Limrun screenshots and accessibility hierarchy.
 - Direction and element swipes map to Limrun scroll primitives.
 - `launchApp` does not support non-empty `launchArguments` yet.
 

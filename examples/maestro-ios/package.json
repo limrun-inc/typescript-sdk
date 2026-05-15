@@ -1,6 +1,6 @@
 {
   "name": "maestro-ios",
-  "description": "Run Maestro YAML against Safari on a Limrun iOS simulator",
+  "description": "Run Maestro YAML against Expo Go on a Limrun iOS simulator",
   "type": "module",
   "main": "index.ts",
   "scripts": {

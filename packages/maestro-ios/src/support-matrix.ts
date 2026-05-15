@@ -29,8 +29,6 @@ export const routeSupportMatrix = [
   { route: 'takeScreenshot', maestroSurface: 'takeScreenshot / assertScreenshot', status: 'implemented', notes: 'Returns simulator screenshots to Maestro.' },
   { route: 'startScreenRecording', maestroSurface: 'startRecording', status: 'implemented', notes: 'Starts Limrun iOS recording.' },
   { route: 'stopScreenRecording', maestroSurface: 'stopRecording', status: 'implemented', notes: 'Stops recording, downloads video locally, and streams it back to Maestro.' },
-  { route: 'waitUntilScreenIsStatic', maestroSurface: 'waitForAnimationToEnd', status: 'best-effort', notes: 'Waits briefly and reports static; pixel stability is not exposed yet.' },
-  { route: 'waitForAppToSettle', maestroSurface: 'Launch settle wait', status: 'best-effort', notes: 'Waits briefly and lets Maestro continue hierarchy polling.' },
   { route: 'setOrientation', maestroSurface: 'setOrientation', status: 'implemented', notes: 'Maps portrait/landscape orientations to Limrun iOS.' },
   { route: 'eraseText', maestroSurface: 'eraseText', status: 'implemented', notes: 'Sends repeated backspace key presses.' },
   { route: 'clearKeychain', maestroSurface: 'clearKeychain', status: 'unsupported', notes: 'No current Limrun iOS primitive for keychain clearing.' },

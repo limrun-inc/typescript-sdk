@@ -190,12 +190,6 @@ export async function handleBridgeRequest(
       }
       throw new UnsupportedRouteError('setPermissions', 'setPermissions is only supported for empty permission maps in this release');
     }
-    case 'waitUntilScreenIsStatic':
-      await sleep(Math.min(numberOrDefault(body['timeoutMs'], 0), 1_000));
-      return { static: true };
-    case 'waitForAppToSettle':
-      await sleep(500);
-      return {};
     case 'setOrientation':
       await ios.setOrientation(String(body['orientation']).startsWith('LANDSCAPE') ? 'Landscape' : 'Portrait');
       return {};
@@ -214,6 +208,9 @@ function mapTreeNode(node: ElementTreeNode): MaestroTreeNode {
   const text = title || value || label;
   const attributes: Record<string, string> = {
     accessibilityText: label,
+    // Maestro's `id:` selector expects a stable technical id; Limrun exposes iOS accessibilityIdentifier as AXUniqueId.
+    id: node.AXUniqueId ?? '',
+    accessibilityIdentifier: node.AXUniqueId ?? '',
     title,
     value,
     text,
