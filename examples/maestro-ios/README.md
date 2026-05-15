@@ -1,8 +1,9 @@
 # Maestro with Expo Go on Limrun iOS
 
 This example runs a Maestro black-box flow against a small Expo Go sample app on
-a Limrun remote iOS simulator using `@limrun/maestro-ios`. It targets the same
-sample app as the Detox example: `github.com/limrun-inc/sample-detox-with-expo`.
+a Limrun remote iOS simulator using `@limrun/maestro-ios`. It targets
+`github.com/limrun-inc/sample-expo-test-app`, the same controlled app used by
+Limrun automated testing examples.
 
 The goal is to show a real app flow, not only a connectivity smoke test. The
 flow taps buttons, types text, asserts UI state, configures a switch, and
@@ -14,8 +15,8 @@ This sample Expo app exposes a public tunnel URL that the remote simulator can
 open directly. There is no reverse proxy for the app under test.
 
 ```bash
-git clone https://github.com/limrun-inc/sample-detox-with-expo.git
-cd sample-detox-with-expo
+git clone https://github.com/limrun-inc/sample-expo-test-app.git
+cd sample-expo-test-app
 npm install
 npm run tunnel
 ```

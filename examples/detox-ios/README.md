@@ -2,8 +2,8 @@
 
 This example runs Detox tests against a small Expo Go sample app on a Limrun
 remote iOS simulator. It is intentionally opinionated: the test targets
-`github.com/limrun-inc/sample-detox-with-expo`, a controlled app with stable
-React Native `testID`s.
+`github.com/limrun-inc/sample-expo-test-app`, a controlled app with stable
+React Native `testID`s shared by Limrun automated testing examples.
 
 The goal is to show a real Detox flow, not only a connectivity smoke test. The
 test taps buttons, types text, asserts UI state, configures a switch, and
@@ -15,8 +15,8 @@ This is sample Expo app with public URL to connect, you can use your own Expo
 app with a public `exp://` URL for simulator to connect.
 
 ```bash
-git clone https://github.com/limrun-inc/sample-detox-with-expo.git
-cd sample-detox-with-expo
+git clone https://github.com/limrun-inc/sample-expo-test-app.git
+cd sample-expo-test-app
 npm install
 npm run tunnel
 ```

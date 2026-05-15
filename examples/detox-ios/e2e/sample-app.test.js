@@ -18,14 +18,14 @@ const selectors = {
 
 describe('Limrun Detox Expo sample app', () => {
   beforeAll(async () => {
-    process.env.DETOX_EXPECTED_TEXT = 'Limrun Detox Demo';
+    process.env.DETOX_EXPECTED_TEXT = 'Limrun Expo Test App';
     await launchExpoGoDetoxAppFromEnv();
     await device.disableSynchronization();
   }, 120000);
 
   it('drives the sample Expo app on a Limrun iOS simulator', async () => {
     await expect(element(by.id(selectors.homeTitle))).toBeVisible();
-    await expect(element(by.text('Limrun Detox Demo'))).toBeVisible();
+    await expect(element(by.text('Limrun Expo Test App'))).toBeVisible();
     await device.takeScreenshot('limrun-detox-home');
 
     await element(by.id(selectors.incrementButton)).tap();
@@ -36,7 +36,7 @@ describe('Limrun Detox Expo sample app', () => {
 
     await element(by.id(selectors.nameInput)).replaceText('Limrun');
     await element(by.id(selectors.nameInput)).tapReturnKey();
-    await expect(element(by.id(selectors.greetingMessage))).toHaveText('Hello, Detox!');
+    await expect(element(by.id(selectors.greetingMessage))).toHaveText('Hello, Limrun!');
     await device.takeScreenshot('limrun-detox-greeting');
 
     await element(by.id(selectors.openDetailButton)).tap();

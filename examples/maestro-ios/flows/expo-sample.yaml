@@ -7,7 +7,7 @@ appId: host.exp.Exponent
     commands:
       - tapOn: Open
 - extendedWaitUntil:
-    visible: Limrun Detox Demo
+    visible: Limrun Expo Test App
     timeout: 90000
 - takeScreenshot: limrun-maestro-home
 
@@ -35,5 +35,5 @@ appId: host.exp.Exponent
     id: demo-automation-switch
 - tapOn:
     id: demo-complete-task-button
-- assertVisible: "Success: Limrun Detox completed the demo flow."
+- assertVisible: "Success: Limrun completed the automated test flow."
 - takeScreenshot: limrun-maestro-success
