@@ -46,6 +46,7 @@ npx detox test --no-start
 ```
 
 Prefer starting the tester before the app connects, or use the maintained orchestration in `examples/detox-ios`, to avoid benign mediator "cannot forward" noise.
+If you manually launch the app before `npx detox test --no-start`, that mediator message is expected until the tester connects.
 
 ## Detox Test Setup
 
@@ -58,11 +59,36 @@ Prefer starting the tester before the app connects, or use the maintained orches
 
 Use `examples/detox-ios` as the maintained happy path for exact config/env wiring. Use `-l trace` on `detox run-server` only when verbose logs are not enough.
 
+For native SwiftUI apps, a minimal Detox configuration usually looks like:
+
+```js
+module.exports = {
+  testRunner: { args: { $0: 'jest' }, jest: { setupTimeout: 120000 } },
+  apps: { ios: { type: 'ios.app', binaryPath: 'unused-by-limrun' } },
+  devices: {
+    limrun: {
+      type: '@limrun/detox/driver',
+      device: { id: process.env.LIMRUN_IOS_ID },
+    },
+  },
+  configurations: {
+    'ios.limrun': {
+      device: 'limrun',
+      app: 'ios',
+      behavior: { init: { reinstallApp: false }, cleanup: { shutdownDevice: false } },
+    },
+  },
+};
+```
+
+Then launch with `lim ios launch-app <bundle-id> --runtime detox ...` and run `npx detox test --no-start`.
+
 ## Validation Signals
 
 - App connected: `detox run-server` logs `role:"app"` and `appConnected:true`.
 - Tester connected: the same session reaches `testerConnected:true, appConnected:true`.
 - Runtime loaded: the app connects to the mediator after the `--runtime detox` launch.
+- UI visible: `lim ios element-tree --id <ios-id>` shows the expected app screen.
 
 ## Gotchas
 
@@ -70,4 +96,7 @@ Use `examples/detox-ios` as the maintained happy path for exact config/env wirin
 - `--detox-version` should match the local `detox` package version used by the tester. If omitted, `lim ios launch-app` resolves it from the current working directory; pass it explicitly when running outside the Detox project.
 - Unsupported bundled Detox versions should fail with a clear supported-version list.
 - `Cannot forward the message to the Detox client` can simply mean the app connected before the tester did.
+- For SwiftUI, prefer stable accessibility identifiers, e.g. `.accessibilityIdentifier("greetingText")` with `by.id('greetingText')`; `by.text(...)` can miss labels that appear in `lim ios element-tree`.
+- Debug failures by checking `lim ios element-tree --id <ios-id>` first, then mediator logs for app/tester connection state.
+- Cleanup manual runs by stopping `detox run-server`, stopping `lim ios reverse`, and deleting the instance with `lim ios delete <ios-id>` (`--id` is not valid for delete).
 - This does not make Detox own the iOS lifecycle; prepare or reuse the Limrun instance separately.
