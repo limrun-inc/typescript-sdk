@@ -6,9 +6,7 @@
   "main": "index.ts",
   "scripts": {
     "dev": "tsx watch index.ts",
-    "prestart": "yarn --cwd ../../packages/detox build",
     "start": "tsc -b && node dist/index.js",
-    "prebuild": "yarn --cwd ../../packages/detox build",
     "build": "tsc -b",
     "detox:test": "detox test -C ./.detoxrc.cjs -c ios.limrun.expo-go --no-start"
   },

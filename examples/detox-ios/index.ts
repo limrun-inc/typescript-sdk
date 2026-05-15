@@ -7,11 +7,12 @@ const apiKey = process.env['LIM_API_KEY'];
 const expoUrl = process.env['EXPO_URL'];
 
 if (!apiKey) {
-  console.error('Error: Missing required environment variable LIM_API_KEY.');
+  console.error('Error: Missing required environment variables (LIM_API_KEY).');
   process.exit(1);
 }
+
 if (!expoUrl) {
-  console.error('Error: Missing required environment variable EXPO_URL.');
+  console.error('Error: Missing required environment variables (EXPO_URL).');
   process.exit(1);
 }
 
@@ -33,7 +34,7 @@ const relativePath = (targetPath: string): string => {
 console.time('create');
 const instance = await limrun.iosInstances.create({
   wait: true,
-  reuseIfExists: true,
+  reuseIfExists: false,
   metadata: {
     labels: {
       name: 'detox-ios-example',
@@ -81,6 +82,8 @@ try {
   console.log('Detox runtime version:', prepared.version);
 
   console.log('Running Detox tests...');
+  console.log('Starting the recording...');
+  await client.startRecording();
   const result = await runDetoxTest({
     configPath: './.detoxrc.cjs',
     configuration: 'ios.limrun.expo-go',
@@ -97,7 +100,9 @@ try {
       DETOX_VERSION: prepared.version,
     },
   });
-
+  console.log('Stopping the recording...');
+  await client.stopRecording({ localPath: 'detox-video.mp4' });
+  console.log('Recording saved to detox-video.mp4');
   if (result.code !== 0) {
     throw new Error(`Detox test failed with exit code ${result.code}`);
   }
