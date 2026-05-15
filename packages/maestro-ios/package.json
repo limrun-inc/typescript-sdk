@@ -1,0 +1,53 @@
+{
+  "name": "@limrun/maestro-ios",
+  "version": "2.5.1-lim.1",
+  "description": "Run Maestro YAML flows against Limrun iOS simulators",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "limrun-maestro-ios": "./bin/limrun-maestro-ios.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./support-matrix": {
+      "types": "./dist/support-matrix.d.ts",
+      "require": "./dist/support-matrix.js",
+      "default": "./dist/support-matrix.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/limrun-inc/typescript-sdk.git",
+    "directory": "packages/maestro-ios"
+  },
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "node scripts/clean.js && tsc && npm run build:runner && node scripts/verify-runner.js",
+    "build:runner": "node scripts/build-runner.js",
+    "test": "npm run build && node scripts/test.js && node scripts/pack-smoke.js",
+    "prepack": "node scripts/ensure-built.js",
+    "prepublishOnly": "npm run test"
+  },
+  "dependencies": {
+    "@limrun/api": "^0.28.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "extract-zip": "^2.0.1",
+    "typescript": "^5.8.3"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "runner/build/libs/limrun-maestro-ios-runner.jar",
+    "README.md"
+  ]
+}
