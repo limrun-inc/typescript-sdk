@@ -284,15 +284,16 @@ function mapKeyCode(code: string): string {
 }
 
 function mapSwipeDirection(direction: string): 'up' | 'down' | 'left' | 'right' {
+  // Maestro names the finger movement; Limrun scroll names the resulting content movement.
   switch (direction.toUpperCase()) {
     case 'DOWN':
-      return 'down';
-    case 'LEFT':
-      return 'left';
-    case 'RIGHT':
-      return 'right';
-    default:
       return 'up';
+    case 'LEFT':
+      return 'right';
+    case 'RIGHT':
+      return 'left';
+    default:
+      return 'down';
   }
 }
 

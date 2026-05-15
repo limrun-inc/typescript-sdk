@@ -2,8 +2,8 @@
 
 This example runs a Maestro black-box flow against a small Expo Go sample app on
 a Limrun remote iOS simulator using `@limrun/maestro-ios`. It targets
-`github.com/limrun-inc/sample-expo-test-app`, the same controlled app used by
-Limrun automated testing examples.
+[github.com/limrun-inc/sample-expo-test-app](https://github.com/limrun-inc/sample-expo-test-app),
+the same controlled app used by Limrun automated testing examples.
 
 The goal is to show a real app flow, not only a connectivity smoke test. The
 flow taps buttons, types text, asserts UI state, configures a switch, and
@@ -47,7 +47,6 @@ export EXPO_URL='exp://...'
 Requirements:
 
 - Java 17 or newer available as `java` on `PATH`
-- No Gradle, Kotlin, Maestro CLI, `JAVA_HOME`, or `GRADLE_CMD` is required at runtime
 
 The example script owns the Limrun instance lifecycle: it creates a simulator
 with Expo Go preinstalled, passes the simulator API URL and token to
@@ -59,13 +58,6 @@ script first builds the local `packages/maestro-ios` package so the gitignored
 
 ```bash
 npm install
-npm start
-```
-
-For staging:
-
-```bash
-lim-env -stg
 npm start
 ```
 
@@ -86,4 +78,4 @@ npm start
 The default flow lives in `flows/expo-sample.yaml`.
 
 For direct package CLI usage against an existing Limrun iOS target, see
-`../../packages/maestro-ios/README.md`.
+[the package README](../../packages/maestro-ios/README.md).

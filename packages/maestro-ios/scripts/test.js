@@ -58,6 +58,10 @@ assert.ok(bridgeSource.includes('try {\n        resolve(body ? (JSON.parse(body)
 assert.ok(!bridgeSource.includes('function sleep('), 'bridge must not keep unused user-controlled sleep helpers');
 assert.ok(bridgeSource.includes("console.error('Bridge request failed:', error);"), 'bridge must log internal errors locally');
 assert.ok(bridgeSource.includes("isUnsupportedRoute ? error.message : 'internal_error'"), 'bridge must not expose internal 500 error details');
+assert.ok(bridgeSource.includes("case 'DOWN':\n      return 'up';"), 'Maestro swipe DOWN must map to Limrun scroll up');
+assert.ok(bridgeSource.includes("case 'LEFT':\n      return 'right';"), 'Maestro swipe LEFT must map to Limrun scroll right');
+assert.ok(bridgeSource.includes("case 'RIGHT':\n      return 'left';"), 'Maestro swipe RIGHT must map to Limrun scroll left');
+assert.ok(bridgeSource.includes("default:\n      return 'down';"), 'Maestro swipe UP must map to Limrun scroll down');
 
 const runSource = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'run.ts'), 'utf8');
 assert.ok(!runSource.includes('iosInstances.create'), 'package runner must not create Limrun instances');
