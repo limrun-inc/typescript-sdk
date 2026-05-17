@@ -9,10 +9,14 @@ export default defineConfig({
   plugins: [react(), libInjectCss(), dts({ include: ['src'] })],
   build: {
     lib: {
-      entry: resolve(__dirname, 'src/index.ts'),
+      entry: {
+        index: resolve(__dirname, 'src/index.ts'),
+        'device-install/index': resolve(__dirname, 'src/device-install/index.ts'),
+        'device-install/react': resolve(__dirname, 'src/device-install/react.ts'),
+      },
       name: 'LimrunUI',
       formats: ['es', 'cjs'],
-      fileName: (format) => `index.${format === 'es' ? 'js' : 'cjs'}`,
+      fileName: (format, entryName) => `${entryName}.${format === 'es' ? 'js' : 'cjs'}`,
     },
     rollupOptions: {
       external: ['react', 'react-dom', 'react/jsx-runtime'],
