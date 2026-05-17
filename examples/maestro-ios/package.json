@@ -1,0 +1,22 @@
+{
+  "name": "maestro-ios",
+  "version": "1.0.0",
+  "description": "Run upstream Maestro YAML against Expo Go on a Limrun iOS simulator",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "dev": "tsx watch index.ts",
+    "prestart": "yarn --cwd ../../packages/maestro build",
+    "start": "tsc -b && node dist/index.js",
+    "prebuild": "yarn --cwd ../../packages/maestro build",
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@limrun/api": "^0.28.5",
+    "@limrun/maestro": "file:../../packages/maestro"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}
