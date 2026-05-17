@@ -347,13 +347,18 @@ function assertInstanceReady(instance: MaestroIosInstance): void {
   }
 }
 
+function stripAppStorePrefix(assetName: string): string {
+  const prefix = 'appstore/';
+  return assetName.startsWith(prefix) ? assetName.slice(prefix.length) : assetName;
+}
+
 async function resolveRunnerAsset(limrun: LimrunMaestroApi, runnerAssetName: string): Promise<MaestroRunnerAsset> {
   const appStoreAssets = await limrun.assets.list({
     includeAppStore: true,
     includeDownloadUrl: true,
     nameFilter: runnerAssetName,
   });
-  const fallbackAssetName = runnerAssetName.replace(/^appstore\//, '');
+  const fallbackAssetName = stripAppStorePrefix(runnerAssetName);
   const fallbackAssets =
     appStoreAssets.length > 0 ?
       []
@@ -432,12 +437,20 @@ async function waitForSuccessfulSimctl(client: LimrunMaestroClient, args: string
   return result;
 }
 
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) {
+    end--;
+  }
+  return end === value.length ? value : value.slice(0, end);
+}
+
 function remoteRunnerBaseUrl(instance: MaestroIosInstance, runnerPort: number): string {
   const prefix = instance.status.targetHttpPortUrlPrefix;
   if (!prefix) {
     throw new Error('Limrun iOS instance is missing status.targetHttpPortUrlPrefix.');
   }
-  return `${prefix.replace(/\/+$/, '')}${runnerPort}`;
+  return `${trimTrailingSlashes(prefix)}${runnerPort}`;
 }
 
 async function waitForRemoteStatus(remoteBaseUrl: string, token: string, timeoutMs = 30_000): Promise<void> {
@@ -445,7 +458,7 @@ async function waitForRemoteStatus(remoteBaseUrl: string, token: string, timeout
   let lastError = '';
   while (Date.now() < deadline) {
     try {
-      const status = await requestText(`${remoteBaseUrl.replace(/\/+$/, '')}/status`, {
+      const status = await requestText(`${trimTrailingSlashes(remoteBaseUrl)}/status`, {
         Authorization: `Bearer ${token}`,
       });
       if (status.response.statusCode && status.response.statusCode >= 200 && status.response.statusCode < 300) {
@@ -469,7 +482,7 @@ async function startXCTestProxy({
   remoteBaseUrl: string;
   token: string;
 }): Promise<ProxyServer> {
-  const base = remoteBaseUrl.replace(/\/+$/, '');
+  const base = trimTrailingSlashes(remoteBaseUrl);
   const server = http.createServer((req, res) => {
     const pathAndQuery = req.url || '/';
     const upstreamUrl = new URL(`${base}${pathAndQuery.startsWith('/') ? pathAndQuery : `/${pathAndQuery}`}`);
@@ -519,11 +532,11 @@ async function startShimServer({ client, udid }: { client: LimrunMaestroClient; 
       const args = body.args ?? [];
       const result = await handleShimmedXcrun(client, udid, args);
       sendJson(res, 200, result);
-    } catch (error) {
+    } catch {
       sendJson(res, 200, {
         code: 1,
         stdout: '',
-        stderr: error instanceof Error ? error.message : String(error),
+        stderr: 'limrun maestro xcrun shim failed to execute the requested command.',
       });
     }
   });
