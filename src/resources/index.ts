@@ -36,4 +36,5 @@ export {
   type XcodeClient,
   type XcodeProjectConfig,
   type XcodeBuildOptions,
+  type ReactNativeBuildConfig,
 } from './xcode-instances-helpers';

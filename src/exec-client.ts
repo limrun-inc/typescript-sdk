@@ -21,6 +21,10 @@ export type ExecRequest = {
     sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos';
     configuration?: 'Debug' | 'Release';
   };
+  reactNative?: {
+    expoAppDir?: string;
+    devServerURL?: string;
+  };
   signing?: {
     certificateP12Base64?: string;
     certificatePassword?: string;

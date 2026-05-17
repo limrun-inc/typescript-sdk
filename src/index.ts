@@ -20,6 +20,7 @@ export {
   type XcodeClient,
   type XcodeProjectConfig,
   type XcodeBuildOptions,
+  type ReactNativeBuildConfig,
 } from './resources/xcode-instances-helpers';
 export {
   LimrunError,
