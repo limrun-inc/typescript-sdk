@@ -36,6 +36,9 @@ export function DeviceInstallDialog({
   ...hookOptions
 }: DeviceInstallDialogProps) {
   const [open, setOpen] = useState(false);
+  const [appleAccountName, setAppleAccountName] = useState('');
+  const [applePassword, setApplePassword] = useState('');
+  const [appleTwoFactorCode, setAppleTwoFactorCode] = useState('');
   const dialogTitleId = useId();
   const deviceInstall = useDeviceInstall(hookOptions);
 
@@ -89,6 +92,110 @@ export function DeviceInstallDialog({
                     <div className="lr-device-install__step-body">
                       <div className="lr-device-install__grid">
                         <label className="lr-device-install__field">
+                          <span>Apple ID</span>
+                          <input
+                            type="email"
+                            autoComplete="username"
+                            placeholder="name@example.com"
+                            value={appleAccountName}
+                            onChange={(event) => setAppleAccountName(event.currentTarget.value)}
+                          />
+                        </label>
+                        <label className="lr-device-install__field">
+                          <span>Apple ID password</span>
+                          <input
+                            type="password"
+                            autoComplete="current-password"
+                            placeholder="Password stays in this browser"
+                            value={applePassword}
+                            onChange={(event) => setApplePassword(event.currentTarget.value)}
+                          />
+                        </label>
+                        <label className="lr-device-install__field">
+                          <span>Generated .p12 password</span>
+                          <input
+                            type="password"
+                            placeholder="Used when exporting Apple certificate"
+                            onChange={(event) =>
+                              deviceInstall.setSigningFiles({ certificatePassword: event.currentTarget.value })
+                            }
+                          />
+                        </label>
+                      </div>
+                      <div className="lr-device-install__actions">
+                        <button
+                          type="button"
+                          className="lr-device-install__secondary"
+                          disabled={
+                            disabled ||
+                            !hookOptions.apiUrl ||
+                            !appleAccountName ||
+                            !applePassword ||
+                            deviceInstall.busyAction === 'build'
+                          }
+                          onClick={() =>
+                            void deviceInstall.startAppleIDLogin({
+                              accountName: appleAccountName,
+                              password: applePassword,
+                            })
+                          }
+                        >
+                          {deviceInstall.appleSigningStatus === 'authenticating'
+                            ? 'Signing in...'
+                            : 'Sign in with Apple ID'}
+                        </button>
+                        <span className="lr-device-install__hint">
+                          Apple password is used only by browser-side SRP. Status: {deviceInstall.appleSigningStatus}
+                        </span>
+                      </div>
+                      {deviceInstall.appleSigningStatus === 'two-factor-required' && (
+                        <div className="lr-device-install__grid">
+                          <label className="lr-device-install__field">
+                            <span>Two-factor code</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              autoComplete="one-time-code"
+                              value={appleTwoFactorCode}
+                              onChange={(event) => setAppleTwoFactorCode(event.currentTarget.value)}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="lr-device-install__secondary"
+                            disabled={!appleTwoFactorCode || deviceInstall.busyAction === 'build'}
+                            onClick={() => void deviceInstall.submitAppleTwoFactorCode(appleTwoFactorCode)}
+                          >
+                            Submit Apple ID code
+                          </button>
+                        </div>
+                      )}
+                      {deviceInstall.appleTeams.length > 0 && (
+                        <label className="lr-device-install__field">
+                          <span>Apple Developer team</span>
+                          <select
+                            value={deviceInstall.selectedAppleTeamID ?? ''}
+                            onChange={(event) =>
+                              deviceInstall.setSelectedAppleTeamID(event.currentTarget.value || undefined)
+                            }
+                          >
+                            {deviceInstall.appleTeams.map((team, index) => {
+                              const teamID =
+                                team.teamId ??
+                                (team.providerId === undefined ? undefined : String(team.providerId)) ??
+                                team.publicProviderId ??
+                                '';
+                              return (
+                                <option key={`${teamID}-${index}`} value={teamID}>
+                                  {team.name ?? 'Apple Developer Team'} {teamID ? `(${teamID})` : ''}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </label>
+                      )}
+                      <div className="lr-device-install__grid">
+                        <label className="lr-device-install__field">
                           <span>Certificate (.p12)</span>
                           <input
                             type="file"
@@ -105,7 +212,7 @@ export function DeviceInstallDialog({
                           />
                         </label>
                         <label className="lr-device-install__field">
-                          <span>.p12 password</span>
+                          <span>Uploaded .p12 password</span>
                           <input
                             type="password"
                             placeholder="Export password"

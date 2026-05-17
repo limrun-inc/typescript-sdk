@@ -56,6 +56,8 @@ export async function getSigningAssets({
   const normalizedBundleID = normalizeBundleID(bundleID);
   if (!normalizedBundleID) return undefined;
   const normalizedUDID = normalizeUDID(deviceUDID);
+  const bundleScoped = await getSigningAssetsByID(signingAssetID('bundle', normalizedBundleID));
+  if (bundleScoped) return bundleScoped;
   if (normalizedUDID) {
     const exact = await getSigningAssetsByID(signingAssetID(normalizedUDID, normalizedBundleID));
     if (exact) return exact;
@@ -77,7 +79,7 @@ export async function putSigningAssets(input: PutSigningAssetsInput) {
     throw new Error('Cannot store signing assets without a bundle ID.');
   }
   const normalizedUDID = normalizeUDID(input.deviceUDID);
-  const id = signingAssetID(normalizedUDID || 'bundle', normalizedBundleID);
+  const id = signingAssetID('bundle', normalizedBundleID);
   const stored: StoredSigningAssets = {
     ...input,
     id,
