@@ -52,6 +52,11 @@ export type XcodeProjectConfig = {
   project?: string;
   scheme?: string;
   sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos';
+  /**
+   * xcodebuild configuration. Omit to use limbuild's project-type default:
+   * Debug for native Xcode builds and Release for React Native / Expo builds.
+   */
+  configuration?: 'Debug' | 'Release';
 };
 
 export type XcodeSigningConfig = {

@@ -19,6 +19,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build ./MyProject --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
+    '<%= config.bin %> xcode build --configuration Debug',
     '<%= config.bin %> xcode build --scheme WatchApp --sdk watchsimulator',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
@@ -49,6 +50,10 @@ export default class XcodeBuild extends BaseCommand {
     sdk: Flags.string({
       description: 'SDK family to build for.',
       options: ['iphonesimulator', 'iphoneos', 'watchsimulator', 'watchos'],
+    }),
+    configuration: Flags.string({
+      description: 'Xcode build configuration.',
+      options: ['Debug', 'Release'],
     }),
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
     'signed-upload-url': Flags.string({
@@ -98,6 +103,7 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.workspace) settings.workspace = flags.workspace;
       if (flags.project) settings.project = flags.project;
       if (flags.sdk) settings.sdk = flags.sdk;
+      if (flags.configuration) settings.configuration = flags.configuration;
 
       const options: Record<string, unknown> = {};
       const signing = await this.buildSigningOptions(flags);
