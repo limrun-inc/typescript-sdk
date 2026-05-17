@@ -13,6 +13,16 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./device-install": {
+      "types": "./dist/device-install/index.d.ts",
+      "import": "./dist/device-install/index.js",
+      "require": "./dist/device-install/index.cjs"
+    },
+    "./device-install/react": {
+      "types": "./dist/device-install/react.d.ts",
+      "import": "./dist/device-install/react.js",
+      "require": "./dist/device-install/react.cjs"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

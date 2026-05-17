@@ -17,3 +17,6 @@ export {
   normalizeIosTree,
   AX_UNAVAILABLE_ERROR,
 } from './core/ax-tree';
+
+export { DeviceInstallDialog, DeviceInstallRelay } from './components/device-install';
+export { useDeviceInstall } from './hooks/use-device-install';
