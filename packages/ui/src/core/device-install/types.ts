@@ -50,7 +50,9 @@ export type ProvisioningProfileInfo = {
 export type StoredSigningAssets = {
   id: string;
   deviceUDID?: string;
+  teamID?: string;
   bundleID: string;
+  certificateID?: string;
   certificateP12Base64: string;
   certificateFileName?: string;
   certificatePassword: string;
