@@ -53,6 +53,7 @@ import {
   XcodeClient,
   XcodeProjectConfig,
   XcodeBuildOptions,
+  ReactNativeBuildConfig,
 } from './resources/xcode-instances-helpers';
 import { type Fetch } from './internal/builtin-types';
 import { HeadersLike, NullableHeaders, buildHeaders } from './internal/headers';
@@ -850,5 +851,6 @@ export declare namespace Limrun {
     type XcodeClient as XcodeClient,
     type XcodeProjectConfig as XcodeProjectConfig,
     type XcodeBuildOptions as XcodeBuildOptions,
+    type ReactNativeBuildConfig as ReactNativeBuildConfig,
   };
 }

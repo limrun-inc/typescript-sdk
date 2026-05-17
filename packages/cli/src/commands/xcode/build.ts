@@ -20,6 +20,8 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./MyProject --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
     '<%= config.bin %> xcode build --configuration Debug',
+    '<%= config.bin %> xcode build --configuration Debug --dev-server-url https://abc123.exp.direct',
+    '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url https://abc123.exp.direct',
     '<%= config.bin %> xcode build --scheme WatchApp --sdk watchsimulator',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
@@ -54,6 +56,14 @@ export default class XcodeBuild extends BaseCommand {
     configuration: Flags.string({
       description: 'Xcode build configuration.',
       options: ['Debug', 'Release'],
+    }),
+    'dev-server-url': Flags.string({
+      description:
+        'Direct Metro / Expo development server URL for RN/Expo Debug builds. Requires --configuration Debug, Expo SDK 52+, React Native 0.76+, and the default Expo Swift AppDelegate.',
+    }),
+    'expo-app-dir': Flags.string({
+      description:
+        'Relative path from the synced workspace root to the Expo app directory. Use for monorepos or ambiguous React Native workspaces.',
     }),
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
     'signed-upload-url': Flags.string({
@@ -91,6 +101,9 @@ export default class XcodeBuild extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeBuild);
     this.setParsedFlags(flags);
+    if (flags['dev-server-url'] && flags.configuration !== 'Debug') {
+      this.error('--dev-server-url requires --configuration Debug.');
+    }
 
     await this.withAuth(async () => {
       const target = await this.resolveXcodeTargetOrCreate(flags.id);
@@ -106,6 +119,12 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.configuration) settings.configuration = flags.configuration;
 
       const options: Record<string, unknown> = {};
+      if (flags['dev-server-url'] || flags['expo-app-dir']) {
+        options.reactNative = {
+          ...(flags['expo-app-dir'] && { expoAppDir: flags['expo-app-dir'] }),
+          ...(flags['dev-server-url'] && { devServerURL: flags['dev-server-url'] }),
+        };
+      }
       const signing = await this.buildSigningOptions(flags);
       if (signing) {
         if (flags.sdk && SIMULATOR_SDKS.has(flags.sdk)) {
