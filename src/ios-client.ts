@@ -9,6 +9,8 @@ import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './fol
 import { createIgnoreFn } from './folder-sync-ignore';
 import { downloadFileToLocalPath } from './internal/download-file';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import { startHttpProxy as startLocalHttpProxy } from './http-proxy';
+import { startXcrunShim as startClientXcrunShim } from './ios-shim';
 
 /**
  * Connection state of the instance client
@@ -196,6 +198,12 @@ export type AppInstallationResult = {
   url: string;
   /** Bundle ID of the installed app */
   bundleId: string;
+};
+
+export type HttpProxyOptions = {
+  targetHttpPortUrlPrefix: string;
+  localPort?: number;
+  remotePort: number;
 };
 
 /**
@@ -696,6 +704,14 @@ export type InstanceClient = {
   startReverseTunnel: (options: ReverseTunnelOptions) => Promise<ReverseTunnel>;
 
   /**
+   * Start a local HTTP proxy to a port exposed by the iOS instance.
+   *
+   * Returns the local port the proxy is listening on. The proxy is closed when
+   * the client disconnects.
+   */
+  startHttpProxy: (options: HttpProxyOptions) => Promise<number>;
+
+  /**
    * Disconnect from the Limrun instance
    */
   disconnect: () => void;
@@ -790,6 +806,14 @@ export type InstanceClient = {
    * ```
    */
   xcrun: (args: string[]) => Promise<CommandResult>;
+
+  /**
+   * Start a local `xcrun` shim for this iOS instance.
+   *
+   * The returned directory contains an `xcrun` executable that can be prepended
+   * to PATH for tools that shell out to `xcrun simctl`.
+   */
+  startXcrunShim: () => Promise<string>;
 
   /**
    * Run `xcodebuild` command with the given arguments.
@@ -1257,6 +1281,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   // Simctl uses streaming, so it needs separate handling
   const simctlExecutions: Map<string, SimctlExecution> = new Map();
 
+  const xcrunShimCleanups: Array<() => Promise<void>> = [];
+  const httpProxyCleanups: Array<() => Promise<void>> = [];
+
   const stateChangeCallbacks: Set<ConnectionStateCallback> = new Set();
 
   // Logger functions
@@ -1301,6 +1328,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   };
 
   const cleanup = (): void => {
+    const shimCleanups = xcrunShimCleanups.splice(0);
+    for (const closeShim of shimCleanups) {
+      closeShim().catch((error) => logger.warn('Failed to close xcrun shim:', error));
+    }
+    const proxyCleanups = httpProxyCleanups.splice(0);
+    for (const closeProxy of proxyCleanups) {
+      closeProxy().catch((error) => logger.warn('Failed to close HTTP proxy:', error));
+    }
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = undefined;
@@ -1638,11 +1673,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             discoverStoreKitConfig,
             softReset,
             startReverseTunnel,
+            startHttpProxy,
             disconnect,
             getConnectionState,
             onConnectionStateChange,
             simctl,
             xcrun,
+            startXcrunShim,
             xcodebuild,
             cp,
             lsof,
@@ -1911,6 +1948,17 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<CommandResult>('xcrun', { args });
     };
 
+    const startXcrunShim = async (): Promise<string> => {
+      const shim = await startClientXcrunShim({
+        deviceInfo: cachedDeviceInfo,
+        listApps,
+        simctl,
+        syncApp,
+      });
+      xcrunShimCleanups.push(shim.close);
+      return shim.dir;
+    };
+
     const xcodebuild = (args: string[]): Promise<CommandResult> => {
       return sendRequest<CommandResult>('xcodebuild', { args });
     };
@@ -2133,6 +2181,22 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         localPort,
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });
+    };
+
+    const startHttpProxy = async (proxyOptions: HttpProxyOptions): Promise<number> => {
+      assertPort(proxyOptions.remotePort, 'remotePort', 1, 65535);
+      const localPort = proxyOptions.localPort ?? proxyOptions.remotePort;
+      assertPort(localPort, 'localPort', 1, 65535);
+
+      const proxy = await startLocalHttpProxy({
+        localPort,
+        remoteBaseUrl: proxyOptions.targetHttpPortUrlPrefix+String(proxyOptions.remotePort),
+        headers: {
+          authorization: `Bearer ${options.token}`,
+        },
+      });
+      httpProxyCleanups.push(proxy.close);
+      return proxy.port;
     };
 
     const disconnect = (): void => {

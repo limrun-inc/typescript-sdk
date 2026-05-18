@@ -32,10 +32,7 @@ export type LimrunMaestroApi = {
   };
 };
 
-export type LimrunMaestroClient = Pick<
-  InstanceClient,
-  'deviceInfo' | 'installApp' | 'listApps' | 'simctl' | 'syncApp' | 'disconnect'
->;
+export type LimrunMaestroClient = InstanceClient;
 
 export type PreparedMaestroRun = {
   instance: MaestroIosInstance;

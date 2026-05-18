@@ -8,6 +8,7 @@ export { Limrun, type ClientOptions } from './client';
 export { PagePromise } from './core/pagination';
 export * from './instance-client';
 export * as Ios from './ios-client';
+export { startHttpProxy, type HttpProxy, type StartHttpProxyOptions } from './http-proxy';
 export {
   exec,
   type ExecRequest,

@@ -1,6 +1,6 @@
 {
   "name": "@limrun/maestro",
-  "version": "2.5.1-lim.1",
+  "version": "2.5.1-lim.2",
   "description": "Limrun integration helpers for running upstream Maestro on remote iOS simulators",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

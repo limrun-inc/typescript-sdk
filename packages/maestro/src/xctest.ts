@@ -1,6 +1,8 @@
 import http, { type IncomingMessage } from 'http';
 import https from 'https';
 
+import { startHttpProxy } from '@limrun/api/http-proxy';
+
 import type {
   LimrunMaestroClient,
   MaestroIosInstance,
@@ -88,43 +90,13 @@ export async function startXCTestProxy({
   remoteBaseUrl: string;
   token: string;
 }): Promise<ProxyServer> {
-  const base = trimTrailingSlashes(remoteBaseUrl);
-  const server = http.createServer((req, res) => {
-    const pathAndQuery = req.url || '/';
-    const upstreamUrl = new URL(`${base}${pathAndQuery.startsWith('/') ? pathAndQuery : `/${pathAndQuery}`}`);
-    const transport = upstreamUrl.protocol === 'https:' ? https : http;
-    const headers = {
-      ...req.headers,
-      host: upstreamUrl.host,
+  return await startHttpProxy({
+    localPort,
+    remoteBaseUrl,
+    headers: {
       authorization: `Bearer ${token}`,
-    };
-
-    const upstream = transport.request(
-      upstreamUrl,
-      {
-        method: req.method,
-        headers,
-      },
-      (upstreamResponse) => {
-        res.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers);
-        upstreamResponse.pipe(res);
-      },
-    );
-
-    upstream.on('error', (error) => {
-      if (!res.headersSent) {
-        res.writeHead(502, { 'content-type': 'text/plain' });
-      }
-      res.end(error.message);
-    });
-    req.pipe(upstream);
+    },
   });
-
-  await listen(server, localPort);
-  return {
-    port: localPort,
-    close: () => closeServer(server),
-  };
 }
 
 async function waitForSuccessfulSimctl(client: LimrunMaestroClient, args: string[]): Promise<SimctlResult> {
@@ -154,28 +126,6 @@ function requestText(
     });
     req.on('error', reject);
     req.end();
-  });
-}
-
-function listen(server: http.Server, port: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(port, '127.0.0.1', () => {
-      server.off('error', reject);
-      resolve();
-    });
-  });
-}
-
-function closeServer(server: http.Server): Promise<void> {
-  return new Promise((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error);
-      } else {
-        resolve();
-      }
-    });
   });
 }
 
