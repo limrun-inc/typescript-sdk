@@ -18,13 +18,39 @@ export type AppleDeveloperPortalTeam = {
   subType?: string;
 };
 
+export type AppleDeveloperPortalDevice = {
+  deviceId?: string;
+  name?: string;
+  deviceNumber?: string;
+  deviceClass?: string;
+  model?: string;
+  status?: string;
+};
+
+export type AppleDeveloperPortalAppID = {
+  appId?: string;
+  appIdId?: string;
+  identifier?: string;
+  bundleId?: string;
+  name?: string;
+  prefix?: string;
+  platform?: string;
+};
+
 export type AppleDeveloperPortalResponse = {
+  resultCode?: number;
+  resultString?: string;
+  userString?: string;
   teams?: AppleDeveloperPortalTeam[];
   provider?: AppleDeveloperPortalTeam;
   availableProviders?: AppleDeveloperPortalTeam[];
-  appIds?: Array<Record<string, unknown>>;
-  devices?: Array<Record<string, unknown>>;
+  appIds?: AppleDeveloperPortalAppID[];
+  devices?: AppleDeveloperPortalDevice[];
   certRequests?: Array<Record<string, unknown>>;
+  certRequest?: Record<string, unknown>;
+  appId?: Record<string, unknown>;
+  device?: Record<string, unknown>;
+  provisioningProfile?: Record<string, unknown>;
   provisioningProfiles?: Array<Record<string, unknown>>;
 };
 
@@ -60,37 +86,49 @@ export function listTeamsRequest(): AppleProvisioningRequest {
 }
 
 export function findBundleIDRequest({ bundleID, teamID = '' }: Pick<AppleProvisioningContext, 'bundleID' | 'teamID'>) {
-  return pagedRequest('/account/ios/identifiers/listAppIds.action', teamID, { search: bundleID });
+  void bundleID;
+  return pagedRequest('/account/ios/identifiers/listAppIds.action', teamID, { sort: 'name=asc' });
 }
 
 export function findDeviceRequest({ deviceUDID, teamID = '' }: Pick<AppleProvisioningContext, 'deviceUDID' | 'teamID'>) {
-  return pagedRequest('/account/ios/device/listDevices.action', teamID, { search: normalizeUDID(deviceUDID) });
+  void deviceUDID;
+  return pagedRequest('/account/ios/device/listDevices.action', teamID, {
+    sort: 'name=asc',
+    includeRemovedDevices: false,
+  });
 }
 
 export function findDevelopmentCertificatesRequest(teamID = '') {
-  return pagedRequest('/account/ios/certificate/listCertRequests.action', teamID);
+  return pagedRequest('/account/ios/certificate/listCertRequests.action', teamID, {
+    sort: 'name=asc',
+    types: '83Q87W3TGH,5QPB9NHCEI',
+  });
 }
 
 export function findDevelopmentProfilesRequest({
   bundleID,
   teamID = '',
 }: Pick<AppleProvisioningContext, 'bundleID' | 'teamID'>) {
-  return pagedRequest('/account/ios/profile/listProvisioningProfiles.action', teamID, { search: bundleID });
+  return pagedRequest('/account/ios/profile/listProvisioningProfiles.action', teamID, {
+    search: bundleID,
+    sort: 'name=asc',
+  });
 }
 
 export function registerDeviceRequest({
   deviceUDID,
   teamID = '',
   name = 'Limrun iPhone',
-}: AppleProvisioningContext & { name?: string }) {
+}: Pick<AppleProvisioningContext, 'deviceUDID' | 'teamID'> & { name?: string }) {
   return {
     method: 'POST',
-    path: '/account/ios/device/addDevice.action',
+    path: '/account/ios/device/addDevices.action',
     payload: {
       teamId: teamID,
-      name,
-      deviceNumber: normalizeUDID(deviceUDID),
-      deviceClass: 'iphone',
+      deviceNames: name,
+      deviceNumbers: normalizeUDID(deviceUDID),
+      deviceClasses: 'iphone',
+      register: 'single',
     },
   } satisfies AppleProvisioningRequest;
 }
@@ -121,9 +159,10 @@ export function submitDevelopmentCSRRequest({
 }) {
   return {
     method: 'POST',
-    path: '/account/ios/certificate/submitDevelopmentCSR.action',
+    path: '/account/ios/certificate/submitCertificateRequest.action',
     payload: {
       teamId: teamID,
+      type: '83Q87W3TGH',
       csrContent: csrPEM,
     },
   } satisfies AppleProvisioningRequest;
@@ -131,11 +170,12 @@ export function submitDevelopmentCSRRequest({
 
 export function downloadCertificateRequest(certificateID: string, teamID = '') {
   return {
-    method: 'POST',
+    method: 'GET',
     path: '/account/ios/certificate/downloadCertificateContent.action',
     payload: {
       teamId: teamID,
       certificateId: certificateID,
+      type: '83Q87W3TGH',
     },
   } satisfies AppleProvisioningRequest;
 }
@@ -158,11 +198,11 @@ export function createDevelopmentProfileRequest({
     path: '/account/ios/profile/createProvisioningProfile.action',
     payload: {
       teamId: teamID,
-      appIdId: appIDID,
+      provisioningProfileName: name ?? `Limrun ${bundleID}`,
       certificateIds: [certificateID],
+      appIdId: appIDID,
       deviceIds: deviceIDs,
-      distributionMethod: 'development',
-      name: name ?? `Limrun ${bundleID}`,
+      distributionType: 'limited',
       subPlatform: 'ios',
     },
   } satisfies AppleProvisioningRequest;
@@ -170,8 +210,8 @@ export function createDevelopmentProfileRequest({
 
 export function downloadProfileRequest(profileID: string, teamID = '') {
   return {
-    method: 'POST',
-    path: '/account/ios/profile/downloadProfileContent.action',
+    method: 'GET',
+    path: '/account/ios/profile/downloadProfileContent',
     payload: {
       teamId: teamID,
       provisioningProfileId: profileID,
@@ -242,14 +282,17 @@ export function teamIDCandidates(body: unknown): string[] {
 }
 
 function pagedRequest(path: string, teamID: string, payload: Record<string, unknown> = {}) {
+  const basePayload: Record<string, unknown> = {
+    pageNumber: 1,
+    pageSize: 200,
+    ...payload,
+  };
+  if (teamID) {
+    basePayload.teamId = teamID;
+  }
   return {
     method: 'POST',
     path,
-    payload: {
-      pageNumber: 1,
-      pageSize: 200,
-      teamId: teamID,
-      ...payload,
-    },
+    payload: basePayload,
   } satisfies AppleProvisioningRequest;
 }
