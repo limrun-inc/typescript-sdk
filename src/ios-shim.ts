@@ -168,14 +168,19 @@ function unsupportedPathBearingCommand(command: string | undefined): IosShimSimc
     return {
       code: 64,
       stdout: '',
-      stderr: 'limrun xcrun shim does not support get_app_container because upstream tools expect a local filesystem path.',
+      stderr:
+        'limrun xcrun shim does not support get_app_container because upstream tools expect a local filesystem path.',
     };
   }
   if (command === 'keychain') {
     return { code: 64, stdout: '', stderr: 'limrun xcrun shim does not support simctl keychain in v1.' };
   }
   if (command === 'io') {
-    return { code: 64, stdout: '', stderr: 'limrun xcrun shim does not support simctl io recordVideo in v1.' };
+    return {
+      code: 64,
+      stdout: '',
+      stderr: 'limrun xcrun shim does not support simctl io recordVideo in v1.',
+    };
   }
   if (command === 'push' || command === 'addmedia') {
     return {
@@ -249,7 +254,9 @@ function toSimctlList(udid: string): Record<string, unknown> {
   };
 }
 
-function toSimctlListApps(apps: InstalledApp[]): Record<string, { CFBundleIdentifier: string; CFBundleName?: string }> {
+function toSimctlListApps(
+  apps: InstalledApp[],
+): Record<string, { CFBundleIdentifier: string; CFBundleName?: string }> {
   return Object.fromEntries(
     apps.map((app) => [
       app.bundleId,

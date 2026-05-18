@@ -74,12 +74,23 @@ try {
 if (!wdaRunning) {
   console.log('Runner is not running, launching it...');
   await lim.simctl(['spawn', 'booted', 'launchctl', 'setenv', 'PORT', String(MAESTRO_RUNNER_PORT)]).wait();
-  await lim.simctl(['launch', '--terminate-running-process', 'booted', 'dev.mobile.maestro-driver-iosUITests.xctrunner']).wait();
+  await lim
+    .simctl([
+      'launch',
+      '--terminate-running-process',
+      'booted',
+      'dev.mobile.maestro-driver-iosUITests.xctrunner',
+    ])
+    .wait();
   console.log('Runner launched');
 }
 
 const shimDir = await lim.startXcrunShim();
-const proxyPort = await lim.startHttpProxy({ targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix, localPort: MAESTRO_DRIVER_PORT, remotePort: MAESTRO_RUNNER_PORT });
+const proxyPort = await lim.startHttpProxy({
+  targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix,
+  localPort: MAESTRO_DRIVER_PORT,
+  remotePort: MAESTRO_RUNNER_PORT,
+});
 console.log(`Proxying local port ${proxyPort} to remote runner port ${MAESTRO_RUNNER_PORT}`);
 await lim.startRecording();
 console.log('Recording started');

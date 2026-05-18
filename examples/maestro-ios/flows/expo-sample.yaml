@@ -17,7 +17,7 @@ appId: host.exp.Exponent
     id: demo-increment-button
 - tapOn:
     id: demo-decrement-button
-- assertVisible: "1"
+- assertVisible: '1'
 - takeScreenshot: maestro-lim-counter
 
 - tapOn:
@@ -35,5 +35,5 @@ appId: host.exp.Exponent
     id: demo-automation-switch
 - tapOn:
     id: demo-complete-task-button
-- assertVisible: "Success: Limrun completed the automated test flow."
+- assertVisible: 'Success: Limrun completed the automated test flow.'
 - takeScreenshot: maestro-lim-success

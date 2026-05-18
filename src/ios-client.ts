@@ -2190,7 +2190,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
       const proxy = await startLocalHttpProxy({
         localPort,
-        remoteBaseUrl: proxyOptions.targetHttpPortUrlPrefix+String(proxyOptions.remotePort),
+        remoteBaseUrl: proxyOptions.targetHttpPortUrlPrefix + String(proxyOptions.remotePort),
         headers: {
           authorization: `Bearer ${options.token}`,
         },
