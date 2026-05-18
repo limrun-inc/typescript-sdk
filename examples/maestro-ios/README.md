@@ -28,6 +28,7 @@ npm install --save-dev @expo/ngrok
 ## 2. Run The Limrun Maestro Example
 
 While Expo is running, clone this example to your local in another terminal:
+
 ```bash
 git clone https://github.com/limrun-inc/typescript-sdk.git
 cd typescript-sdk/examples/maestro-ios
