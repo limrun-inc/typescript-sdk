@@ -1,0 +1,39 @@
+appId: host.exp.Exponent
+---
+- openLink: ${MAESTRO_EXPO_URL}
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible: Limrun Expo Test App
+    timeout: 90000
+- takeScreenshot: maestro-lim-home
+
+- tapOn:
+    id: demo-increment-button
+- tapOn:
+    id: demo-increment-button
+- tapOn:
+    id: demo-decrement-button
+- assertVisible: '1'
+- takeScreenshot: maestro-lim-counter
+
+- tapOn:
+    id: demo-name-input
+- inputText: Limrun
+- tapOn:
+    text: done
+- assertVisible: Hello, Limrun!
+- takeScreenshot: maestro-lim-greeting
+
+- tapOn:
+    id: demo-open-detail-button
+- assertVisible: Remote simulator actions
+- tapOn:
+    id: demo-automation-switch
+- tapOn:
+    id: demo-complete-task-button
+- assertVisible: 'Success: Limrun completed the automated test flow.'
+- takeScreenshot: maestro-lim-success

@@ -20,6 +20,7 @@ cd sample-detox-with-expo
 npm install
 npm run tunnel
 ```
+
 If Expo asks to install tunnel support on first run, accept the prompt or run:
 
 ```bash
