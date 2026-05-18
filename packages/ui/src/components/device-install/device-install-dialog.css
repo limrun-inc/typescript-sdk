@@ -103,9 +103,16 @@
 
 .lr-device-install__step-header {
   align-items: flex-start;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
   display: grid;
   gap: 12px;
   grid-template-columns: auto 1fr auto;
+  padding: 0;
+  text-align: left;
+  width: 100%;
 }
 
 .lr-device-install__step-number {
@@ -154,6 +161,42 @@
   margin-top: 12px;
 }
 
+.lr-device-install__choice-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lr-device-install__choice {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  text-align: left;
+}
+
+.lr-device-install__choice span {
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.lr-device-install__choice--active {
+  border-color: #111827;
+  box-shadow: 0 0 0 1px #111827;
+}
+
+.lr-device-install__section-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
 .lr-device-install__grid {
   display: grid;
   gap: 10px;
@@ -171,11 +214,48 @@
   font-weight: 600;
 }
 
-.lr-device-install__field input {
+.lr-device-install__field input,
+.lr-device-install__field select {
   border: 1px solid #d1d5db;
   border-radius: 8px;
   font: inherit;
   padding: 8px 10px;
+}
+
+.lr-device-install__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.lr-device-install__hint {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.lr-device-install__checklist {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  display: grid;
+  overflow: hidden;
+}
+
+.lr-device-install__check-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.lr-device-install__check-row + .lr-device-install__check-row {
+  border-top: 1px solid #e5e7eb;
+}
+
+.lr-device-install__check-row strong {
+  color: #111827;
+  font-size: 13px;
 }
 
 .lr-device-install__build-logs {
@@ -230,6 +310,7 @@
 }
 
 @media (max-width: 760px) {
+  .lr-device-install__choice-grid,
   .lr-device-install__grid {
     grid-template-columns: 1fr;
   }

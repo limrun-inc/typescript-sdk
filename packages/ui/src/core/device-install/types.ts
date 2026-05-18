@@ -1,10 +1,10 @@
 export type DeviceInstallLog = (message: string, detail?: string) => void;
 
-export type DeviceInstallStep = 'build' | 'usb' | 'pair' | 'install';
+export type DeviceInstallStep = 'signing' | 'connect' | 'build' | 'install';
 
 export type DeviceInstallStepStatus = 'idle' | 'active' | 'complete' | 'error';
 
-export type DeviceInstallBusyAction = 'build' | 'usb' | 'pair' | 'install';
+export type DeviceInstallBusyAction = 'signing' | 'usb' | 'pair' | 'build' | 'install';
 
 export type DeviceInstallBuildStatus =
   | 'idle'
