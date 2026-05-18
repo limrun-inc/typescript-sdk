@@ -118,7 +118,20 @@ export function profileMatchesBundleID(profile: ProvisioningProfileInfo, bundleI
 }
 
 export async function parseProvisioningProfile(file: File) {
-  const text = new TextDecoder('latin1').decode(await file.arrayBuffer());
+  return parseProvisioningProfileBytes(new Uint8Array(await file.arrayBuffer()));
+}
+
+export function parseProvisioningProfileBase64(base64: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return parseProvisioningProfileBytes(bytes);
+}
+
+export function parseProvisioningProfileBytes(bytes: Uint8Array) {
+  const text = new TextDecoder('latin1').decode(bytes);
   const start = text.indexOf('<?xml');
   const end = text.indexOf('</plist>');
   if (start < 0 || end < start) {

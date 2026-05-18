@@ -171,23 +171,49 @@ export function DeviceInstallDialog({
                         </div>
                       )}
                       {deviceInstall.appleTeams.length > 0 && (
+                        <>
+                          <label className="lr-device-install__field">
+                            <span>Apple Developer team</span>
+                            <select
+                              value={deviceInstall.selectedAppleTeamID ?? ''}
+                              onChange={(event) =>
+                                deviceInstall.setSelectedAppleTeamID(event.currentTarget.value || undefined)
+                              }
+                            >
+                              {deviceInstall.appleTeams.map((team, index) => {
+                                const teamID =
+                                  team.teamId ??
+                                  (team.providerId === undefined ? undefined : String(team.providerId)) ??
+                                  team.publicProviderId ??
+                                  '';
+                                return (
+                                  <option key={`${teamID}-${index}`} value={teamID}>
+                                    {team.name ?? 'Apple Developer Team'} {teamID ? `(${teamID})` : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </label>
+                          {deviceInstall.applePortalSummary && (
+                            <p className="lr-device-install__hint">
+                              Found {deviceInstall.applePortalSummary.certificateCount} certificates and{' '}
+                              {deviceInstall.applePortalSummary.profileCount} provisioning profiles.
+                            </p>
+                          )}
+                        </>
+                      )}
+                      {deviceInstall.appleAppIDs.length > 0 && (
                         <label className="lr-device-install__field">
-                          <span>Apple Developer team</span>
+                          <span>Bundle ID</span>
                           <select
-                            value={deviceInstall.selectedAppleTeamID ?? ''}
-                            onChange={(event) =>
-                              deviceInstall.setSelectedAppleTeamID(event.currentTarget.value || undefined)
-                            }
+                            value={deviceInstall.appleBundleID}
+                            onChange={(event) => deviceInstall.setAppleBundleID(event.currentTarget.value)}
                           >
-                            {deviceInstall.appleTeams.map((team, index) => {
-                              const teamID =
-                                team.teamId ??
-                                (team.providerId === undefined ? undefined : String(team.providerId)) ??
-                                team.publicProviderId ??
-                                '';
+                            {deviceInstall.appleAppIDs.map((appID, index) => {
+                              const bundleID = appID.identifier ?? appID.bundleId ?? '';
                               return (
-                                <option key={`${teamID}-${index}`} value={teamID}>
-                                  {team.name ?? 'Apple Developer Team'} {teamID ? `(${teamID})` : ''}
+                                <option key={`${bundleID}-${index}`} value={bundleID}>
+                                  {appID.name ?? bundleID} {bundleID ? `(${bundleID})` : ''}
                                 </option>
                               );
                             })}
@@ -268,6 +294,49 @@ export function DeviceInstallDialog({
                             deviceInstall.device.serialNumber ?? ''
                           }`.trim()}
                         </div>
+                      )}
+                      {deviceInstall.appleDevices.length > 0 && (
+                        <label className="lr-device-install__field">
+                          <span>Apple Developer devices</span>
+                          <select
+                            multiple
+                            value={deviceInstall.selectedAppleDeviceIDs}
+                            onChange={(event) =>
+                              deviceInstall.setSelectedAppleDeviceIDs(
+                                Array.from(event.currentTarget.selectedOptions).map((option) => option.value),
+                              )
+                            }
+                          >
+                            {deviceInstall.appleDevices.map((appleDevice) => (
+                              <option key={appleDevice.deviceId ?? appleDevice.deviceNumber} value={appleDevice.deviceId ?? ''}>
+                                {appleDevice.name ?? appleDevice.model ?? 'Apple device'} {appleDevice.deviceNumber ?? ''}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      {deviceInstall.device && !deviceInstall.connectedAppleDeviceRegistered && (
+                        <button
+                          type="button"
+                          className="lr-device-install__secondary"
+                          disabled={disabled || !!deviceInstall.busyAction}
+                          onClick={() => void deviceInstall.registerConnectedAppleDevice()}
+                        >
+                          Register connected iPhone
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="lr-device-install__secondary"
+                        disabled={disabled || !deviceInstall.canPrepareAppleSigningAssets}
+                        onClick={() => void deviceInstall.prepareAppleSigningAssets()}
+                      >
+                        {deviceInstall.appleSigningStatus === 'preparing-assets'
+                          ? 'Preparing signing assets...'
+                          : 'Generate certificate and profile'}
+                      </button>
+                      {deviceInstall.hasSigningAssets && (
+                        <p>Signing assets are stored in this browser for the selected bundle and device.</p>
                       )}
                     </div>
                   )}
