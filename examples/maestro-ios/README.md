@@ -38,10 +38,8 @@ Requirements:
 
 - Upstream `maestro` installed on `PATH`.
 
-The package first looks for the public App Store asset
-`appstore/maestro-ios-runner-<maestro-version>.tar.gz`. Since `appstore/` is
-reserved, `@limrun/maestro` bundles a matching runner and idempotently seeds it
-as the regular asset `maestro-ios-runner-2.5.1.tar.gz` when it is missing.
+The example creates the simulator with Expo Go and the compatible Maestro XCTest
+runner asset already installed.
 
 Then run:
 
@@ -56,8 +54,8 @@ Set `LIMRUN_KEEP_INSTANCE=true` to keep the simulator after the run.
 
 1. Creates or reuses a remote iOS simulator with Expo Go 54 installed.
 2. Prints the signed stream URL that you can watch.
-3. Uses `@limrun/maestro` to install and launch the compatible Maestro XCTest runner.
-4. Starts a local proxy and scoped `xcrun` shim for upstream Maestro.
+3. Launches the compatible Maestro XCTest runner if it is not already running.
+4. Starts a scoped `xcrun` shim with `lim.startXcrunShim()` for upstream Maestro.
 5. Runs `maestro test --platform ios` against the Limrun simulator.
 6. Opens `${MAESTRO_EXPO_URL}`, accepts the iOS `Open` prompt, waits for the
    sample app, and drives the UI.

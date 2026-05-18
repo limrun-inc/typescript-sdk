@@ -9,6 +9,7 @@ import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './fol
 import { createIgnoreFn } from './folder-sync-ignore';
 import { downloadFileToLocalPath } from './internal/download-file';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import { startXcrunShim as startClientXcrunShim } from './ios-shim';
 
 /**
  * Connection state of the instance client
@@ -792,6 +793,14 @@ export type InstanceClient = {
   xcrun: (args: string[]) => Promise<CommandResult>;
 
   /**
+   * Start a local `xcrun` shim for this iOS instance.
+   *
+   * The returned directory contains an `xcrun` executable that can be prepended
+   * to PATH for tools that shell out to `xcrun simctl`.
+   */
+  startXcrunShim: () => Promise<string>;
+
+  /**
    * Run `xcodebuild` command with the given arguments.
    * Returns the complete output once the command finishes (non-streaming).
    *
@@ -1257,6 +1266,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   // Simctl uses streaming, so it needs separate handling
   const simctlExecutions: Map<string, SimctlExecution> = new Map();
 
+  const xcrunShimCleanups: Array<() => Promise<void>> = [];
+
   const stateChangeCallbacks: Set<ConnectionStateCallback> = new Set();
 
   // Logger functions
@@ -1301,6 +1312,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   };
 
   const cleanup = (): void => {
+    const shimCleanups = xcrunShimCleanups.splice(0);
+    for (const closeShim of shimCleanups) {
+      closeShim().catch((error) => logger.warn('Failed to close xcrun shim:', error));
+    }
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = undefined;
@@ -1643,6 +1658,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             onConnectionStateChange,
             simctl,
             xcrun,
+            startXcrunShim,
             xcodebuild,
             cp,
             lsof,
@@ -1909,6 +1925,17 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const xcrun = (args: string[]): Promise<CommandResult> => {
       return sendRequest<CommandResult>('xcrun', { args });
+    };
+
+    const startXcrunShim = async (): Promise<string> => {
+      const shim = await startClientXcrunShim({
+        deviceInfo: cachedDeviceInfo,
+        listApps,
+        simctl,
+        syncApp,
+      });
+      xcrunShimCleanups.push(shim.close);
+      return shim.dir;
     };
 
     const xcodebuild = (args: string[]): Promise<CommandResult> => {

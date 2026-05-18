@@ -6,14 +6,11 @@
   "main": "index.ts",
   "scripts": {
     "dev": "tsx watch index.ts",
-    "prestart": "yarn --cwd ../../packages/maestro build",
     "start": "tsc -b && node dist/index.js",
-    "prebuild": "yarn --cwd ../../packages/maestro build",
     "build": "tsc -b"
   },
   "dependencies": {
-    "@limrun/api": "^0.28.5",
-    "@limrun/maestro": "file:../../packages/maestro"
+    "@limrun/api": "file:../../dist"
   },
   "devDependencies": {
     "tsx": "^4.20.5",

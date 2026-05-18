@@ -42,6 +42,7 @@ type InstanceClientLease = {
 };
 
 export { runnerAssetNameForMaestroVersion };
+export { createXcrunShim, startShimServer } from './xcrun-shim';
 export type {
   LimrunMaestroApi,
   MaestroIosInstance,
@@ -205,7 +206,7 @@ function maestroChildEnv({
   return {
     LIMRUN_XCRUN_SHIM: '1',
     LIMRUN_IOS_UDID: udid,
-    LIMRUN_MAESTRO_SHIM_URL: shimServer.url,
+    LIMRUN_XCRUN_SHIM_URL: shimServer.url,
     USE_XCODE_TEST_RUNNER: '1',
     PATH: `${shimDir}${path.delimiter}${process.env['PATH'] ?? ''}`,
   };

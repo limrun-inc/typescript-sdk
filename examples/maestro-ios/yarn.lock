@@ -132,10 +132,8 @@
   resolved "https://registry.yarnpkg.com/@esbuild/win32-x64/-/win32-x64-0.28.0.tgz#04d90d5752b4ce65d2b6ac25eba08ff7624fe07c"
   integrity sha512-pEl1bO9mfAmIC+tW5btTmrKaujg3zGtUmWNdCw/xs70FBjwAL3o9OEKNHvNmnyylD6ubxUERiEhdsL0xBQ9efw==
 
-"@limrun/api@^0.28.5":
+"@limrun/api@file:../../dist":
   version "0.28.5"
-  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.28.5.tgz#c143f30c944f7688aa1673212572c49e1b0cd987"
-  integrity sha512-F4ZCePIkUTGiI7OAfJnK3nvSFp8O7kLr7eGjnyCF78OPhz/RcEnoiV489ez0WlET1AaIxPe8qcEH/tWXaRo5+Q==
   dependencies:
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"
@@ -144,9 +142,6 @@
     undici "7.24.7"
     ws "^8.18.3"
     xdelta3-wasm "^1.0.0"
-
-"@limrun/maestro@file:../../packages/maestro":
-  version "2.5.1-lim.1"
 
 agent-base@^7.1.2:
   version "7.1.4"
