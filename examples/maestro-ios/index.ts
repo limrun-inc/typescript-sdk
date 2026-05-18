@@ -62,7 +62,6 @@ let wdaRunning = true;
 try {
   const controller = new AbortController();
   setTimeout(() => controller.abort(), 3000);
-  console.log(`Testing URL: ${runnerUrl + '/status?token=' + instance.status.token}`);
   await fetch(runnerUrl + '/status', {
     headers: {
       Authorization: `Bearer ${instance.status.token}`,
@@ -81,8 +80,9 @@ if (!wdaRunning) {
 
 const shimDir = await lim.startXcrunShim();
 const proxyPort = await lim.startHttpProxy({ targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix, localPort: MAESTRO_DRIVER_PORT, remotePort: MAESTRO_RUNNER_PORT });
-console.log(`Running maestro test with shim in ${shimDir}`);
 console.log(`Proxying local port ${proxyPort} to remote runner port ${MAESTRO_RUNNER_PORT}`);
+await lim.startRecording();
+console.log('Recording started');
 try {
   await runMaestro(
     [
@@ -103,9 +103,10 @@ try {
     },
   );
 } finally {
-  await lim.disconnect();
+  await lim.stopRecording({ localPath: 'video.mp4' });
+  console.log('Recording stopped');
+  lim.disconnect();
 }
-
 async function runMaestro(args: string[], env: Record<string, string>): Promise<void> {
   const proc = spawn('maestro', args, {
     cwd: process.cwd(),

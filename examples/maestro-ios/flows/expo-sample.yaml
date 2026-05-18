@@ -7,96 +7,33 @@ appId: host.exp.Exponent
     commands:
       - tapOn: Open
 - extendedWaitUntil:
-    visible:
-      id: explore-screen
+    visible: Limrun Expo Test App
     timeout: 90000
-- extendedWaitUntil:
-    visible:
-      id: search-pill
-    timeout: 30000
-- extendedWaitUntil:
-    visible:
-      id: category-cabins
-    timeout: 30000
-- takeScreenshot: maestro-liquid-explore
+- takeScreenshot: maestro-lim-home
 
 - tapOn:
-    text: Wishlists
-- extendedWaitUntil:
-    visible:
-      id: wishlists-screen
-    timeout: 30000
+    id: demo-increment-button
 - tapOn:
-    text: Trips
-- extendedWaitUntil:
-    visible:
-      id: trips-screen
-    timeout: 30000
+    id: demo-increment-button
 - tapOn:
-    text: Inbox
-- extendedWaitUntil:
-    visible:
-      id: inbox-screen
-    timeout: 30000
-- tapOn:
-    text: Profile
-- extendedWaitUntil:
-    visible:
-      id: profile-screen
-    timeout: 30000
-- tapOn:
-    text: Explore
-- extendedWaitUntil:
-    visible:
-      id: explore-screen
-    timeout: 30000
-- extendedWaitUntil:
-    visible:
-      id: category-cabins
-    timeout: 30000
-- takeScreenshot: maestro-liquid-tabs
+    id: demo-decrement-button
+- assertVisible: "1"
+- takeScreenshot: maestro-lim-counter
 
 - tapOn:
-    id: category-cabins
-- extendedWaitUntil:
-    visible:
-      id: property-card-p2
-    timeout: 30000
-- assertVisible: Aspen, Colorado
-- assertVisible: A-frame retreat in pine forest
-- takeScreenshot: maestro-liquid-cabins
+    id: demo-name-input
+- inputText: Limrun
+- tapOn:
+    text: done
+- assertVisible: Hello, Limrun!
+- takeScreenshot: maestro-lim-greeting
 
 - tapOn:
-    text: A-frame retreat in pine forest
-- extendedWaitUntil:
-    visible:
-      id: reserve-btn
-    timeout: 30000
-- extendedWaitUntil:
-    visible:
-      id: detail-heart
-    timeout: 30000
-- takeScreenshot: maestro-liquid-detail
-
+    id: demo-open-detail-button
+- assertVisible: Remote simulator actions
 - tapOn:
-    id: reserve-btn
-- extendedWaitUntil:
-    visible:
-      id: booking-screen
-    timeout: 30000
-- extendedWaitUntil:
-    visible:
-      id: nights-plus
-    timeout: 30000
-- extendedWaitUntil:
-    visible:
-      id: guests-plus
-    timeout: 30000
-- takeScreenshot: maestro-liquid-booking
-
+    id: demo-automation-switch
 - tapOn:
-    id: nights-plus
-- tapOn:
-    id: guests-plus
-- assertVisible: Visa · ending 4242
-- takeScreenshot: maestro-liquid-payment
+    id: demo-complete-task-button
+- assertVisible: "Success: Limrun completed the automated test flow."
+- takeScreenshot: maestro-lim-success
