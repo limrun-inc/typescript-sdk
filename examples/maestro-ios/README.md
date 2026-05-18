@@ -48,16 +48,11 @@ yarn install
 yarn start
 ```
 
-Set `LIMRUN_KEEP_INSTANCE=true` to keep the simulator after the run.
-
 ## What The Example Does
 
-1. Creates or reuses a remote iOS simulator with Expo Go 54 installed.
-2. Prints the signed stream URL that you can watch.
-3. Launches the compatible Maestro XCTest runner if it is not already running.
-4. Starts a scoped `xcrun` shim and local HTTP proxy from the iOS client for upstream Maestro.
-5. Runs `maestro test --platform ios` against the Limrun simulator.
-6. Opens `${MAESTRO_EXPO_URL}`, accepts the iOS `Open` prompt, waits for the
-   sample app, and drives the UI.
+1. Creates or reuses a remote iOS simulator with Expo Go 54 and Maestro Runner installed.
+1. Launches the compatible Maestro XCTest runner if it is not already running.
+1. Starts a scoped `xcrun` shim and local HTTP proxy from the iOS client for upstream Maestro.
+1. Runs `maestro test --platform ios` against the Limrun simulator.
 
 The default flow lives in `flows/expo-sample.yaml`.

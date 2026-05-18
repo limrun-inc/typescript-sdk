@@ -5,6 +5,7 @@ import { Limrun, Ios } from '@limrun/api';
 
 const MAESTRO_DRIVER_PORT = 7001;
 const MAESTRO_RUNNER_PORT = 22087;
+
 const apiKey = process.env['LIM_API_KEY'];
 const expoUrl = process.env['EXPO_URL'];
 if (!apiKey) {
@@ -95,39 +96,27 @@ console.log(`Proxying local port ${proxyPort} to remote runner port ${MAESTRO_RU
 await lim.startRecording();
 console.log('Recording started');
 try {
-  await runMaestro(
-    [
-      'test',
-      '--platform',
-      'ios',
-      '--device',
-      lim.deviceInfo.udid,
-      '--no-reinstall-driver',
-      '--test-output-dir',
-      'artifacts',
-      'flows/expo-sample.yaml',
-    ],
-    {
-      MAESTRO_EXPO_URL: expoUrl,
-      PATH: `${shimDir}${path.delimiter}${process.env['PATH'] ?? ''}`,
-      USE_XCODE_TEST_RUNNER: '1',
-    },
-  );
-} finally {
-  await lim.stopRecording({ localPath: 'video.mp4' });
-  console.log('Recording stopped');
-  lim.disconnect();
-}
-async function runMaestro(args: string[], env: Record<string, string>): Promise<void> {
-  const proc = spawn('maestro', args, {
+  const env = {
+    ...process.env,
+    MAESTRO_EXPO_URL: expoUrl,
+    PATH: `${shimDir}${path.delimiter}${process.env['PATH'] ?? ''}`,
+    USE_XCODE_TEST_RUNNER: '1',
+  }
+  const proc = spawn('maestro', [
+    'test',
+    '--platform',
+    'ios',
+    '--device',
+    lim.deviceInfo.udid,
+    '--no-reinstall-driver',
+    '--test-output-dir',
+    'artifacts',
+    'flows/expo-sample.yaml',
+  ], {
     cwd: process.cwd(),
-    env: {
-      ...process.env,
-      ...env,
-    },
+    env,
     stdio: 'inherit',
   });
-
   await new Promise<void>((resolve, reject) => {
     proc.once('error', reject);
     proc.once('close', (code, signal) => {
@@ -138,4 +127,10 @@ async function runMaestro(args: string[], env: Record<string, string>): Promise<
       reject(new Error(`maestro exited with ${signal ? `signal ${signal}` : `code ${code ?? 'unknown'}`}`));
     });
   });
+} finally {
+  await lim.stopRecording({ localPath: 'video.mp4' });
+  console.log('Recording stopped');
+  lim.disconnect();
+  limrun.iosInstances.delete(instance.metadata.id);
+  console.log('Instance deleted');
 }
