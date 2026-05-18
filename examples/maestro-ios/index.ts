@@ -1,10 +1,10 @@
 import path from 'node:path';
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn } from 'node:child_process';
 
 import { Limrun, Ios } from '@limrun/api';
-const execAsync = promisify(exec);
 
+const MAESTRO_DRIVER_PORT = 7001;
+const MAESTRO_RUNNER_PORT = 22087;
 const apiKey = process.env['LIM_API_KEY'];
 const expoUrl = process.env['EXPO_URL'];
 if (!apiKey) {
@@ -53,16 +53,16 @@ const lim = await Ios.createInstanceClient({
 });
 console.log('Device UDID:', lim.deviceInfo.udid);
 // targetHttpPortUrlPrefix allows us to append any port to the URL to connect to that port
-// on the simulator and WDA listens on port 8100 by default.
-// The :443 addition is required by the Appium driver.
-const runnerUrl = instance.status.targetHttpPortUrlPrefix + '8100';
+// on the simulator and the patched Maestro runner listens on MAESTRO_RUNNER_PORT.
+const runnerUrl = instance.status.targetHttpPortUrlPrefix + String(MAESTRO_RUNNER_PORT);
 
-// WDA may crash during the test and launchMode in initialAssets is effective only for
-// the first installation. So, we make sure WDA is running before the test starts.
+// The runner may crash during the test and launchMode in initialAssets is effective only for
+// the first installation. So, we make sure the runner is running before the test starts.
 let wdaRunning = true;
 try {
   const controller = new AbortController();
   setTimeout(() => controller.abort(), 3000);
+  console.log(`Testing URL: ${runnerUrl + '/status?token=' + instance.status.token}`);
   await fetch(runnerUrl + '/status', {
     headers: {
       Authorization: `Bearer ${instance.status.token}`,
@@ -74,41 +74,56 @@ try {
 }
 if (!wdaRunning) {
   console.log('Runner is not running, launching it...');
-
+  await lim.simctl(['spawn', 'booted', 'launchctl', 'setenv', 'PORT', String(MAESTRO_RUNNER_PORT)]).wait();
   await lim.simctl(['launch', '--terminate-running-process', 'booted', 'dev.mobile.maestro-driver-iosUITests.xctrunner']).wait();
   console.log('Runner launched');
 }
 
 const shimDir = await lim.startXcrunShim();
+const proxyPort = await lim.startHttpProxy({ targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix, localPort: MAESTRO_DRIVER_PORT, remotePort: MAESTRO_RUNNER_PORT });
+console.log(`Running maestro test with shim in ${shimDir}`);
+console.log(`Proxying local port ${proxyPort} to remote runner port ${MAESTRO_RUNNER_PORT}`);
 try {
-  const command = [
-    'maestro',
-    'test',
-    '--platform ios',
-    '--device',
-    lim.deviceInfo.udid,
-    '--no-reinstall-driver',
-    '--test-output-dir',
-    'artifacts',
-    'flows/expo-sample.yaml',
-  ].join(' ');
-  const { stdout, stderr } = await execAsync(command, {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
+  await runMaestro(
+    [
+      'test',
+      '--platform',
+      'ios',
+      '--device',
+      lim.deviceInfo.udid,
+      '--no-reinstall-driver',
+      '--test-output-dir',
+      'artifacts',
+      'flows/expo-sample.yaml',
+    ],
+    {
       MAESTRO_EXPO_URL: expoUrl,
       PATH: `${shimDir}${path.delimiter}${process.env['PATH'] ?? ''}`,
       USE_XCODE_TEST_RUNNER: '1',
     },
-    maxBuffer: 10 * 1024 * 1024,
-  });
-
-  if (stdout) {
-    process.stdout.write(stdout);
-  }
-  if (stderr) {
-    process.stderr.write(stderr);
-  }
+  );
 } finally {
   await lim.disconnect();
+}
+
+async function runMaestro(args: string[], env: Record<string, string>): Promise<void> {
+  const proc = spawn('maestro', args, {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      ...env,
+    },
+    stdio: 'inherit',
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    proc.once('error', reject);
+    proc.once('close', (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`maestro exited with ${signal ? `signal ${signal}` : `code ${code ?? 'unknown'}`}`));
+    });
+  });
 }

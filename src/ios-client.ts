@@ -9,6 +9,7 @@ import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './fol
 import { createIgnoreFn } from './folder-sync-ignore';
 import { downloadFileToLocalPath } from './internal/download-file';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import { startHttpProxy as startLocalHttpProxy } from './http-proxy';
 import { startXcrunShim as startClientXcrunShim } from './ios-shim';
 
 /**
@@ -197,6 +198,12 @@ export type AppInstallationResult = {
   url: string;
   /** Bundle ID of the installed app */
   bundleId: string;
+};
+
+export type HttpProxyOptions = {
+  targetHttpPortUrlPrefix: string;
+  localPort?: number;
+  remotePort: number;
 };
 
 /**
@@ -695,6 +702,14 @@ export type InstanceClient = {
    * to a user-local client-first TCP service, such as HTTP or WebSocket.
    */
   startReverseTunnel: (options: ReverseTunnelOptions) => Promise<ReverseTunnel>;
+
+  /**
+   * Start a local HTTP proxy to a port exposed by the iOS instance.
+   *
+   * Returns the local port the proxy is listening on. The proxy is closed when
+   * the client disconnects.
+   */
+  startHttpProxy: (options: HttpProxyOptions) => Promise<number>;
 
   /**
    * Disconnect from the Limrun instance
@@ -1267,6 +1282,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   const simctlExecutions: Map<string, SimctlExecution> = new Map();
 
   const xcrunShimCleanups: Array<() => Promise<void>> = [];
+  const httpProxyCleanups: Array<() => Promise<void>> = [];
 
   const stateChangeCallbacks: Set<ConnectionStateCallback> = new Set();
 
@@ -1315,6 +1331,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const shimCleanups = xcrunShimCleanups.splice(0);
     for (const closeShim of shimCleanups) {
       closeShim().catch((error) => logger.warn('Failed to close xcrun shim:', error));
+    }
+    const proxyCleanups = httpProxyCleanups.splice(0);
+    for (const closeProxy of proxyCleanups) {
+      closeProxy().catch((error) => logger.warn('Failed to close HTTP proxy:', error));
     }
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
@@ -1653,6 +1673,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             discoverStoreKitConfig,
             softReset,
             startReverseTunnel,
+            startHttpProxy,
             disconnect,
             getConnectionState,
             onConnectionStateChange,
@@ -2160,6 +2181,22 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         localPort,
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });
+    };
+
+    const startHttpProxy = async (proxyOptions: HttpProxyOptions): Promise<number> => {
+      assertPort(proxyOptions.remotePort, 'remotePort', 1, 65535);
+      const localPort = proxyOptions.localPort ?? proxyOptions.remotePort;
+      assertPort(localPort, 'localPort', 1, 65535);
+
+      const proxy = await startLocalHttpProxy({
+        localPort,
+        remoteBaseUrl: proxyOptions.targetHttpPortUrlPrefix+String(proxyOptions.remotePort),
+        headers: {
+          authorization: `Bearer ${options.token}`,
+        },
+      });
+      httpProxyCleanups.push(proxy.close);
+      return proxy.port;
     };
 
     const disconnect = (): void => {
