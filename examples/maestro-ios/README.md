@@ -27,19 +27,18 @@ npm install --save-dev @expo/ngrok
 
 ## 2. Run The Limrun Maestro Example
 
+While Expo is running, clone this example to your local in another terminal:
+```bash
+git clone https://github.com/limrun-inc/typescript-sdk.git
+cd typescript-sdk/examples/maestro-ios
+```
+
 Export the API key and Expo URL:
 
 ```bash
 export LIM_API_KEY=lim_...
 export EXPO_URL='exp://...'
 ```
-
-Requirements:
-
-- Upstream `maestro` installed on `PATH`.
-
-The example creates the simulator with Expo Go and the compatible Maestro XCTest
-runner asset already installed.
 
 Then run:
 

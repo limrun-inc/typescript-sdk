@@ -132,8 +132,10 @@
   resolved "https://registry.yarnpkg.com/@esbuild/win32-x64/-/win32-x64-0.28.0.tgz#04d90d5752b4ce65d2b6ac25eba08ff7624fe07c"
   integrity sha512-pEl1bO9mfAmIC+tW5btTmrKaujg3zGtUmWNdCw/xs70FBjwAL3o9OEKNHvNmnyylD6ubxUERiEhdsL0xBQ9efw==
 
-"@limrun/api@file:../../dist":
-  version "0.28.5"
+"@limrun/api@^0.28.7":
+  version "0.28.7"
+  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.28.7.tgz#6877fe8203a748b0a2ece75253bc829137660f62"
+  integrity sha512-YqbLNlAfik2RmP/dvNt+DxykBDzXGPuXMZL91UO+0Tg7348Sf2doPqkk8WiR60g5OWN+pOS3wIrF2q0uQLZQ5w==
   dependencies:
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"
