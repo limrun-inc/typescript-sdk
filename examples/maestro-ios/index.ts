@@ -134,6 +134,6 @@ try {
   await lim.stopRecording({ localPath: 'video.mp4' });
   console.log('Recording stopped');
   lim.disconnect();
-  limrun.iosInstances.delete(instance.metadata.id);
+  await limrun.iosInstances.delete(instance.metadata.id);
   console.log('Instance deleted');
 }

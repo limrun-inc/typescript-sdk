@@ -1326,15 +1326,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     simctlExecutions.clear();
   };
 
-  const cleanup = (): void => {
-    const shimCleanups = xcrunShimCleanups.splice(0);
-    for (const closeShim of shimCleanups) {
-      closeShim().catch((error) => logger.warn('Failed to close xcrun shim:', error));
-    }
-    const proxyCleanups = httpProxyCleanups.splice(0);
-    for (const closeProxy of proxyCleanups) {
-      closeProxy().catch((error) => logger.warn('Failed to close HTTP proxy:', error));
-    }
+  const cleanupConnection = (): void => {
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = undefined;
@@ -1350,6 +1342,22 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }
       ws = undefined;
     }
+  };
+
+  const cleanupClientResources = (): void => {
+    const shimCleanups = xcrunShimCleanups.splice(0);
+    for (const closeShim of shimCleanups) {
+      closeShim().catch((error) => logger.warn('Failed to close xcrun shim:', error));
+    }
+    const proxyCleanups = httpProxyCleanups.splice(0);
+    for (const closeProxy of proxyCleanups) {
+      closeProxy().catch((error) => logger.warn('Failed to close HTTP proxy:', error));
+    }
+  };
+
+  const cleanup = (): void => {
+    cleanupConnection();
+    cleanupClientResources();
   };
 
   let pingInterval: NodeJS.Timeout | undefined;
@@ -1503,7 +1511,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const setupWebSocket = (): void => {
-      cleanup();
+      cleanupConnection();
       updateConnectionState('connecting');
 
       const proxyAgent = nodeProxyTransport.getWebSocketAgent(endpointWebSocketUrl);
