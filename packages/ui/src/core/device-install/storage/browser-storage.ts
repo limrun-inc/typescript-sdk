@@ -73,6 +73,18 @@ export async function getLatestSigningAssets() {
   )[0];
 }
 
+export async function getLatestSigningAssetsWithCertificate(teamID?: string) {
+  const all = await getAllSigningAssets();
+  return all
+    .filter((asset) => {
+      if (!asset.certificateID || !asset.certificateP12Base64 || !asset.certificatePassword) {
+        return false;
+      }
+      return !teamID || !asset.teamID || asset.teamID === teamID;
+    })
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())[0];
+}
+
 export async function putSigningAssets(input: PutSigningAssetsInput) {
   const normalizedBundleID = normalizeBundleID(input.bundleID);
   if (!normalizedBundleID) {

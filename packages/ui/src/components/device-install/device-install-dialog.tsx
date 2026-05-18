@@ -1,4 +1,4 @@
-import { useId, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ChangeEvent, type ReactNode } from 'react';
 import { clsx } from 'clsx';
 import { useDeviceInstall, type UseDeviceInstallOptions } from '../../hooks/use-device-install';
 import type { DeviceInstallStep, DeviceInstallStepStatus } from '../../core/device-install';
@@ -10,19 +10,19 @@ export type DeviceInstallDialogProps = UseDeviceInstallOptions & {
 
 const steps: Array<{ id: DeviceInstallStep; title: string; description: string }> = [
   {
+    id: 'signing',
+    title: 'Prepare signing',
+    description: 'Choose Apple ID login or upload certificates, then confirm the target developer device.',
+  },
+  {
+    id: 'connect',
+    title: 'Connect and pair',
+    description: 'Connect the iPhone with WebUSB, then pair this browser so installs can use the device.',
+  },
+  {
     id: 'build',
-    title: 'Start a device build',
-    description: 'Upload signing assets if needed, then follow the live build logs until the device build succeeds.',
-  },
-  {
-    id: 'usb',
-    title: 'Access USB procedures',
-    description: 'Allow WebUSB access to the connected iPhone from a Chromium browser on a secure origin.',
-  },
-  {
-    id: 'pair',
-    title: 'Pair with this browser',
-    description: 'Pair once and store the pair record locally so future installs can reuse it.',
+    title: 'Check and build',
+    description: 'Verify the device and provisioning profile are ready, then start the signed build.',
   },
   {
     id: 'install',
@@ -31,16 +31,24 @@ const steps: Array<{ id: DeviceInstallStep; title: string; description: string }
   },
 ];
 
+type SigningSection = 'apple-id' | 'upload';
+
 export function DeviceInstallDialog({
   disabled,
   ...hookOptions
 }: DeviceInstallDialogProps) {
   const [open, setOpen] = useState(false);
+  const [openStep, setOpenStep] = useState<DeviceInstallStep>('signing');
+  const [signingSection, setSigningSection] = useState<SigningSection>();
   const [appleAccountName, setAppleAccountName] = useState('');
   const [applePassword, setApplePassword] = useState('');
   const [appleTwoFactorCode, setAppleTwoFactorCode] = useState('');
   const dialogTitleId = useId();
   const deviceInstall = useDeviceInstall(hookOptions);
+
+  useEffect(() => {
+    setOpenStep(deviceInstall.currentStep);
+  }, [deviceInstall.currentStep]);
 
   const updateSigningFiles = (field: 'certificateFile' | 'provisioningProfileFile', event: ChangeEvent<HTMLInputElement>) => {
     deviceInstall.setSigningFiles({
@@ -70,7 +78,7 @@ export function DeviceInstallDialog({
             <header className="lr-device-install__header">
               <div>
                 <h2 id={dialogTitleId}>Install to a real iPhone</h2>
-                <p>Follow each step to build, authorize USB, pair, and install from this browser.</p>
+                <p>Prepare signing, connect and pair the device, build, then install from this browser.</p>
               </div>
               <button type="button" className="lr-device-install__icon-button" onClick={() => setOpen(false)}>
                 Close
@@ -86,168 +94,307 @@ export function DeviceInstallDialog({
                   index={index + 1}
                   step={step}
                   active={deviceInstall.currentStep === step.id}
+                  open={openStep === step.id}
                   status={deviceInstall.stepStatuses[step.id]}
+                  onToggle={() => setOpenStep(step.id)}
                 >
-                  {step.id === 'build' && (
+                  {step.id === 'signing' && (
                     <div className="lr-device-install__step-body">
-                      <div className="lr-device-install__grid">
-                        <label className="lr-device-install__field">
-                          <span>Apple ID</span>
-                          <input
-                            type="email"
-                            autoComplete="username"
-                            placeholder="name@example.com"
-                            value={appleAccountName}
-                            onChange={(event) => setAppleAccountName(event.currentTarget.value)}
-                          />
-                        </label>
-                        <label className="lr-device-install__field">
-                          <span>Apple ID password</span>
-                          <input
-                            type="password"
-                            autoComplete="current-password"
-                            placeholder="Password stays in this browser"
-                            value={applePassword}
-                            onChange={(event) => setApplePassword(event.currentTarget.value)}
-                          />
-                        </label>
-                        <label className="lr-device-install__field">
-                          <span>Generated .p12 password</span>
-                          <input
-                            type="password"
-                            placeholder="Used when exporting Apple certificate"
-                            onChange={(event) =>
-                              deviceInstall.setSigningFiles({ certificatePassword: event.currentTarget.value })
-                            }
-                          />
-                        </label>
-                      </div>
-                      <div className="lr-device-install__actions">
+                      <div className="lr-device-install__choice-grid">
                         <button
                           type="button"
-                          className="lr-device-install__secondary"
-                          disabled={
-                            disabled ||
-                            !hookOptions.apiUrl ||
-                            !appleAccountName ||
-                            !applePassword ||
-                            deviceInstall.busyAction === 'build'
-                          }
-                          onClick={() =>
-                            void deviceInstall.startAppleIDLogin({
-                              accountName: appleAccountName,
-                              password: applePassword,
-                            })
-                          }
+                          className={clsx(
+                            'lr-device-install__choice',
+                            signingSection === 'apple-id' && 'lr-device-install__choice--active',
+                          )}
+                          onClick={() => setSigningSection('apple-id')}
                         >
-                          {deviceInstall.appleSigningStatus === 'authenticating'
-                            ? 'Signing in...'
-                            : 'Sign in with Apple ID'}
+                          <strong>Apple ID login</strong>
+                          <span>Sign in, choose team, bundle ID, devices, then generate signing assets.</span>
                         </button>
-                        <span className="lr-device-install__hint">
-                          Apple password is used only by browser-side SRP. Status: {deviceInstall.appleSigningStatus}
-                        </span>
+                        <button
+                          type="button"
+                          className={clsx(
+                            'lr-device-install__choice',
+                            signingSection === 'upload' && 'lr-device-install__choice--active',
+                          )}
+                          onClick={() => setSigningSection('upload')}
+                        >
+                          <strong>Upload certificates</strong>
+                          <span>Use an existing .p12 certificate and provisioning profile.</span>
+                        </button>
                       </div>
-                      {deviceInstall.appleSigningStatus === 'two-factor-required' && (
-                        <div className="lr-device-install__grid">
-                          <label className="lr-device-install__field">
-                            <span>Two-factor code</span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              autoComplete="one-time-code"
-                              value={appleTwoFactorCode}
-                              onChange={(event) => setAppleTwoFactorCode(event.currentTarget.value)}
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            className="lr-device-install__secondary"
-                            disabled={!appleTwoFactorCode || deviceInstall.busyAction === 'build'}
-                            onClick={() => void deviceInstall.submitAppleTwoFactorCode(appleTwoFactorCode)}
-                          >
-                            Submit Apple ID code
-                          </button>
-                        </div>
-                      )}
-                      {deviceInstall.appleTeams.length > 0 && (
-                        <>
-                          <label className="lr-device-install__field">
-                            <span>Apple Developer team</span>
-                            <select
-                              value={deviceInstall.selectedAppleTeamID ?? ''}
-                              onChange={(event) =>
-                                deviceInstall.setSelectedAppleTeamID(event.currentTarget.value || undefined)
+
+                      {signingSection === 'apple-id' && (
+                        <div className="lr-device-install__section-panel">
+                          <div className="lr-device-install__grid">
+                            <label className="lr-device-install__field">
+                              <span>Apple ID</span>
+                              <input
+                                type="email"
+                                autoComplete="username"
+                                placeholder="name@example.com"
+                                value={appleAccountName}
+                                onChange={(event) => setAppleAccountName(event.currentTarget.value)}
+                              />
+                            </label>
+                            <label className="lr-device-install__field">
+                              <span>Apple ID password</span>
+                              <input
+                                type="password"
+                                autoComplete="current-password"
+                                placeholder="Password stays in this browser"
+                                value={applePassword}
+                                onChange={(event) => setApplePassword(event.currentTarget.value)}
+                              />
+                            </label>
+                            {!deviceInstall.hasReusableAppleCertificate && (
+                              <label className="lr-device-install__field">
+                                <span>Generated .p12 password</span>
+                                <input
+                                  type="password"
+                                  placeholder="Used when exporting Apple certificate"
+                                  onChange={(event) =>
+                                    deviceInstall.setSigningFiles({ certificatePassword: event.currentTarget.value })
+                                  }
+                                />
+                              </label>
+                            )}
+                          </div>
+                          <div className="lr-device-install__actions">
+                            <button
+                              type="button"
+                              className="lr-device-install__secondary"
+                              disabled={
+                                disabled ||
+                                !hookOptions.apiUrl ||
+                                !appleAccountName ||
+                                !applePassword ||
+                                deviceInstall.busyAction === 'signing'
+                              }
+                              onClick={() =>
+                                void deviceInstall.startAppleIDLogin({
+                                  accountName: appleAccountName,
+                                  password: applePassword,
+                                })
                               }
                             >
-                              {deviceInstall.appleTeams.map((team, index) => {
-                                const teamID =
-                                  team.teamId ??
-                                  (team.providerId === undefined ? undefined : String(team.providerId)) ??
-                                  team.publicProviderId ??
-                                  '';
-                                return (
-                                  <option key={`${teamID}-${index}`} value={teamID}>
-                                    {team.name ?? 'Apple Developer Team'} {teamID ? `(${teamID})` : ''}
+                              {deviceInstall.appleSigningStatus === 'authenticating'
+                                ? 'Signing in...'
+                                : 'Sign in with Apple ID'}
+                            </button>
+                            <span className="lr-device-install__hint">
+                              Apple password is used only by browser-side SRP. Status: {deviceInstall.appleSigningStatus}
+                            </span>
+                          </div>
+                          {deviceInstall.appleSigningStatus === 'two-factor-required' && (
+                            <div className="lr-device-install__grid">
+                              <label className="lr-device-install__field">
+                                <span>Two-factor code</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  autoComplete="one-time-code"
+                                  value={appleTwoFactorCode}
+                                  onChange={(event) => setAppleTwoFactorCode(event.currentTarget.value)}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                className="lr-device-install__secondary"
+                                disabled={!appleTwoFactorCode || deviceInstall.busyAction === 'signing'}
+                                onClick={() => void deviceInstall.submitAppleTwoFactorCode(appleTwoFactorCode)}
+                              >
+                                Submit Apple ID code
+                              </button>
+                            </div>
+                          )}
+                          {deviceInstall.appleTeams.length > 0 && (
+                            <label className="lr-device-install__field">
+                              <span>Apple Developer team</span>
+                              <select
+                                value={deviceInstall.selectedAppleTeamID ?? ''}
+                                onChange={(event) =>
+                                  deviceInstall.setSelectedAppleTeamID(event.currentTarget.value || undefined)
+                                }
+                              >
+                                {deviceInstall.appleTeams.map((team, index) => {
+                                  const teamID =
+                                    team.teamId ??
+                                    (team.providerId === undefined ? undefined : String(team.providerId)) ??
+                                    team.publicProviderId ??
+                                    '';
+                                  return (
+                                    <option key={`${teamID}-${index}`} value={teamID}>
+                                      {team.name ?? 'Apple Developer Team'} {teamID ? `(${teamID})` : ''}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </label>
+                          )}
+                          {deviceInstall.appleDevices.length > 0 && (
+                            <label className="lr-device-install__field">
+                              <span>Apple Developer devices</span>
+                              <select
+                                multiple
+                                value={deviceInstall.selectedAppleDeviceIDs}
+                                onChange={(event) =>
+                                  deviceInstall.setSelectedAppleDeviceIDs(
+                                    Array.from(event.currentTarget.selectedOptions).map((option) => option.value),
+                                  )
+                                }
+                              >
+                                {deviceInstall.appleDevices.map((appleDevice) => (
+                                  <option
+                                    key={appleDevice.deviceId ?? appleDevice.deviceNumber}
+                                    value={appleDevice.deviceId ?? ''}
+                                  >
+                                    {appleDevice.name ?? appleDevice.model ?? 'Apple device'} {appleDevice.deviceNumber ?? ''}
                                   </option>
-                                );
-                              })}
-                            </select>
-                          </label>
+                                ))}
+                              </select>
+                            </label>
+                          )}
                           {deviceInstall.applePortalSummary && (
                             <p className="lr-device-install__hint">
                               Found {deviceInstall.applePortalSummary.certificateCount} certificates and{' '}
                               {deviceInstall.applePortalSummary.profileCount} provisioning profiles.
                             </p>
                           )}
-                        </>
-                      )}
-                      {deviceInstall.appleAppIDs.length > 0 && (
-                        <label className="lr-device-install__field">
-                          <span>Bundle ID</span>
-                          <select
-                            value={deviceInstall.appleBundleID}
-                            onChange={(event) => deviceInstall.setAppleBundleID(event.currentTarget.value)}
+                          {deviceInstall.hasReusableAppleCertificate && (
+                            <p className="lr-device-install__hint">
+                              Reusing the certificate and private key stored in this browser.
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            className="lr-device-install__primary"
+                            disabled={disabled || !deviceInstall.canPrepareAppleSigningAssets}
+                            onClick={() => void deviceInstall.prepareAppleSigningAssets()}
                           >
-                            {deviceInstall.appleAppIDs.map((appID, index) => {
-                              const bundleID = appID.identifier ?? appID.bundleId ?? '';
-                              return (
-                                <option key={`${bundleID}-${index}`} value={bundleID}>
-                                  {appID.name ?? bundleID} {bundleID ? `(${bundleID})` : ''}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </label>
+                            {deviceInstall.appleSigningStatus === 'preparing-assets'
+                              ? 'Preparing signing assets...'
+                              : 'Generate certificate and profile'}
+                          </button>
+                        </div>
                       )}
-                      <div className="lr-device-install__grid">
-                        <label className="lr-device-install__field">
-                          <span>Certificate (.p12)</span>
-                          <input
-                            type="file"
-                            accept=".p12,application/x-pkcs12"
-                            onChange={(event) => updateSigningFiles('certificateFile', event)}
-                          />
-                        </label>
-                        <label className="lr-device-install__field">
-                          <span>Provisioning profile</span>
-                          <input
-                            type="file"
-                            accept=".mobileprovision"
-                            onChange={(event) => updateSigningFiles('provisioningProfileFile', event)}
-                          />
-                        </label>
-                        <label className="lr-device-install__field">
-                          <span>Uploaded .p12 password</span>
-                          <input
-                            type="password"
-                            placeholder="Export password"
-                            onChange={(event) =>
-                              deviceInstall.setSigningFiles({ certificatePassword: event.currentTarget.value })
-                            }
-                          />
-                        </label>
+
+                      {signingSection === 'upload' && (
+                        <div className="lr-device-install__section-panel">
+                          <div className="lr-device-install__grid">
+                            <label className="lr-device-install__field">
+                              <span>Certificate (.p12)</span>
+                              <input
+                                type="file"
+                                accept=".p12,application/x-pkcs12"
+                                onChange={(event) => updateSigningFiles('certificateFile', event)}
+                              />
+                            </label>
+                            <label className="lr-device-install__field">
+                              <span>Provisioning profile</span>
+                              <input
+                                type="file"
+                                accept=".mobileprovision"
+                                onChange={(event) => updateSigningFiles('provisioningProfileFile', event)}
+                              />
+                            </label>
+                            <label className="lr-device-install__field">
+                              <span>Uploaded .p12 password</span>
+                              <input
+                                type="password"
+                                placeholder="Export password"
+                                onChange={(event) =>
+                                  deviceInstall.setSigningFiles({ certificatePassword: event.currentTarget.value })
+                                }
+                              />
+                            </label>
+                          </div>
+                          <p className="lr-device-install__hint">
+                            The provisioning profile will be checked against the connected iPhone before the build starts.
+                          </p>
+                        </div>
+                      )}
+
+                      {deviceInstall.hasSigningAssets && (
+                        <p>Signing assets are stored in this browser for the selected bundle and device.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {step.id === 'connect' && (
+                    <div className="lr-device-install__step-body">
+                      <p>
+                        WebUSB works in Chromium browsers on secure origins. Connect the iPhone over USB, approve the
+                        browser permission prompt, then pair this browser.
+                      </p>
+                      <div className="lr-device-install__actions">
+                        <button
+                          type="button"
+                          className="lr-device-install__primary"
+                          disabled={disabled || !deviceInstall.canRequestUSBAccess}
+                          onClick={() => void deviceInstall.requestUSBAccess()}
+                        >
+                          {deviceInstall.busyAction === 'usb' ? 'Selecting iPhone...' : 'Allow USB access'}
+                        </button>
+                        <button
+                          type="button"
+                          className="lr-device-install__secondary"
+                          disabled={disabled || !deviceInstall.canPairBrowser}
+                          onClick={() => void deviceInstall.pairBrowser()}
+                        >
+                          {deviceInstall.busyAction === 'pair'
+                            ? 'Pairing...'
+                            : deviceInstall.pairConfirmationRequired
+                              ? 'Confirm pair record'
+                              : 'Pair browser'}
+                        </button>
                       </div>
+                      {deviceInstall.device && (
+                        <div className="lr-device-install__device">
+                          {`${deviceInstall.device.productName ?? 'iPhone'} ${
+                            deviceInstall.device.serialNumber ?? ''
+                          }`.trim()}
+                        </div>
+                      )}
+                      {deviceInstall.pairConfirmationRequired && (
+                        <p>
+                          Unlock the iPhone and tap <strong>Trust</strong> in the system dialog, then confirm the pair
+                          record.
+                        </p>
+                      )}
+                      <p>
+                        {deviceInstall.hasPairRecord
+                          ? 'Pair record is stored locally. Continue to the build check.'
+                          : 'Pair this browser once before building and installing.'}
+                      </p>
+                    </div>
+                  )}
+
+                  {step.id === 'build' && (
+                    <div className="lr-device-install__step-body">
+                      <div className="lr-device-install__checklist">
+                        <StatusLine label="Signing assets" ready={deviceInstall.hasSigningInputs} pendingText="Ready to verify" />
+                        <StatusLine label="USB device" ready={!!deviceInstall.device} />
+                        <StatusLine label="Pair record" ready={deviceInstall.hasPairRecord} />
+                        <StatusLine
+                          label="Profile includes connected device"
+                          ready={deviceInstall.connectedDeviceInProfile}
+                          pendingText="Checked when the build starts"
+                        />
+                      </div>
+                      {deviceInstall.device &&
+                        deviceInstall.appleTeams.length > 0 &&
+                        !deviceInstall.connectedAppleDeviceRegistered && (
+                        <button
+                          type="button"
+                          className="lr-device-install__secondary"
+                          disabled={disabled || !!deviceInstall.busyAction}
+                          onClick={() => void deviceInstall.registerConnectedAppleDevice()}
+                        >
+                          Register connected iPhone
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="lr-device-install__primary"
@@ -271,101 +418,6 @@ export function DeviceInstallDialog({
                             : 'Build logs will appear here while the device build is running.'}
                         </pre>
                       </details>
-                    </div>
-                  )}
-
-                  {step.id === 'usb' && (
-                    <div className="lr-device-install__step-body">
-                      <p>
-                        WebUSB works in Chromium browsers on secure origins. Connect the iPhone over USB and approve
-                        the browser permission prompt.
-                      </p>
-                      <button
-                        type="button"
-                        className="lr-device-install__primary"
-                        disabled={disabled || !deviceInstall.canRequestUSBAccess}
-                        onClick={() => void deviceInstall.requestUSBAccess()}
-                      >
-                        {deviceInstall.busyAction === 'usb' ? 'Selecting iPhone...' : 'Allow USB access'}
-                      </button>
-                      {deviceInstall.device && (
-                        <div className="lr-device-install__device">
-                          {`${deviceInstall.device.productName ?? 'iPhone'} ${
-                            deviceInstall.device.serialNumber ?? ''
-                          }`.trim()}
-                        </div>
-                      )}
-                      {deviceInstall.appleDevices.length > 0 && (
-                        <label className="lr-device-install__field">
-                          <span>Apple Developer devices</span>
-                          <select
-                            multiple
-                            value={deviceInstall.selectedAppleDeviceIDs}
-                            onChange={(event) =>
-                              deviceInstall.setSelectedAppleDeviceIDs(
-                                Array.from(event.currentTarget.selectedOptions).map((option) => option.value),
-                              )
-                            }
-                          >
-                            {deviceInstall.appleDevices.map((appleDevice) => (
-                              <option key={appleDevice.deviceId ?? appleDevice.deviceNumber} value={appleDevice.deviceId ?? ''}>
-                                {appleDevice.name ?? appleDevice.model ?? 'Apple device'} {appleDevice.deviceNumber ?? ''}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                      {deviceInstall.device && !deviceInstall.connectedAppleDeviceRegistered && (
-                        <button
-                          type="button"
-                          className="lr-device-install__secondary"
-                          disabled={disabled || !!deviceInstall.busyAction}
-                          onClick={() => void deviceInstall.registerConnectedAppleDevice()}
-                        >
-                          Register connected iPhone
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="lr-device-install__secondary"
-                        disabled={disabled || !deviceInstall.canPrepareAppleSigningAssets}
-                        onClick={() => void deviceInstall.prepareAppleSigningAssets()}
-                      >
-                        {deviceInstall.appleSigningStatus === 'preparing-assets'
-                          ? 'Preparing signing assets...'
-                          : 'Generate certificate and profile'}
-                      </button>
-                      {deviceInstall.hasSigningAssets && (
-                        <p>Signing assets are stored in this browser for the selected bundle and device.</p>
-                      )}
-                    </div>
-                  )}
-
-                  {step.id === 'pair' && (
-                    <div className="lr-device-install__step-body">
-                      {deviceInstall.pairConfirmationRequired && (
-                        <p>
-                          Unlock the iPhone and tap <strong>Trust</strong> in the system dialog, then confirm the pair
-                          record.
-                        </p>
-                      )}
-                      <button
-                        type="button"
-                        className="lr-device-install__primary"
-                        disabled={disabled || !deviceInstall.canPairBrowser}
-                        onClick={() => void deviceInstall.pairBrowser()}
-                      >
-                        {deviceInstall.busyAction === 'pair'
-                          ? 'Pairing...'
-                          : deviceInstall.pairConfirmationRequired
-                            ? 'Confirm pair record'
-                            : 'Pair browser'}
-                      </button>
-                      <p>
-                        {deviceInstall.hasPairRecord
-                          ? 'Pair record is stored locally. Installation is available.'
-                          : 'Pair this browser once before installing.'}
-                      </p>
                     </div>
                   )}
 
@@ -407,26 +459,55 @@ function StepCard({
   index,
   step,
   active,
+  open,
   status,
+  onToggle,
   children,
 }: {
   index: number;
   step: { id: DeviceInstallStep; title: string; description: string };
   active: boolean;
+  open: boolean;
   status: DeviceInstallStepStatus;
+  onToggle: () => void;
   children: ReactNode;
 }) {
   return (
     <article className={clsx('lr-device-install__step', active && 'lr-device-install__step--active')}>
-      <div className="lr-device-install__step-header">
+      <button
+        type="button"
+        className="lr-device-install__step-header"
+        aria-expanded={open}
+        onClick={onToggle}
+      >
         <div className="lr-device-install__step-number">{index}</div>
         <div>
           <h3>{step.title}</h3>
           <p>{step.description}</p>
         </div>
-        <span className={clsx('lr-device-install__status', `lr-device-install__status--${status}`)}>{status}</span>
-      </div>
-      {children}
+        <span className={clsx('lr-device-install__status', `lr-device-install__status--${status}`)}>
+          {status === 'complete' ? '✓ Completed' : status}
+        </span>
+      </button>
+      {open && children}
     </article>
+  );
+}
+
+function StatusLine({
+  label,
+  ready,
+  pendingText = 'Not ready',
+}: {
+  label: string;
+  ready?: boolean;
+  pendingText?: string;
+}) {
+  const text = ready === undefined ? pendingText : ready ? 'Ready' : 'Needs attention';
+  return (
+    <div className="lr-device-install__check-row">
+      <span>{label}</span>
+      <strong>{text}</strong>
+    </div>
   );
 }
