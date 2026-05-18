@@ -201,9 +201,8 @@ export type AppInstallationResult = {
 };
 
 export type HttpProxyOptions = {
-  targetHttpPortUrlPrefix: string;
-  localPort?: number;
-  remotePort: number;
+  remoteBaseUrl: string;
+  localPort: number;
 };
 
 /**
@@ -2184,13 +2183,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const startHttpProxy = async (proxyOptions: HttpProxyOptions): Promise<number> => {
-      assertPort(proxyOptions.remotePort, 'remotePort', 1, 65535);
-      const localPort = proxyOptions.localPort ?? proxyOptions.remotePort;
-      assertPort(localPort, 'localPort', 1, 65535);
+      assertPort(proxyOptions.localPort, 'localPort', 1, 65535);
 
       const proxy = await startLocalHttpProxy({
-        localPort,
-        remoteBaseUrl: proxyOptions.targetHttpPortUrlPrefix + String(proxyOptions.remotePort),
+        localPort: proxyOptions.localPort,
+        remoteBaseUrl: proxyOptions.remoteBaseUrl,
         headers: {
           authorization: `Bearer ${options.token}`,
         },

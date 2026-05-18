@@ -88,9 +88,8 @@ if (!wdaRunning) {
 
 const shimDir = await lim.startXcrunShim();
 const proxyPort = await lim.startHttpProxy({
-  targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix,
+  remoteBaseUrl: instance.status.targetHttpPortUrlPrefix + String(MAESTRO_RUNNER_PORT),
   localPort: MAESTRO_DRIVER_PORT,
-  remotePort: MAESTRO_RUNNER_PORT,
 });
 console.log(`Proxying local port ${proxyPort} to remote runner port ${MAESTRO_RUNNER_PORT}`);
 await lim.startRecording();
@@ -101,22 +100,26 @@ try {
     MAESTRO_EXPO_URL: expoUrl,
     PATH: `${shimDir}${path.delimiter}${process.env['PATH'] ?? ''}`,
     USE_XCODE_TEST_RUNNER: '1',
-  }
-  const proc = spawn('maestro', [
-    'test',
-    '--platform',
-    'ios',
-    '--device',
-    lim.deviceInfo.udid,
-    '--no-reinstall-driver',
-    '--test-output-dir',
-    'artifacts',
-    'flows/expo-sample.yaml',
-  ], {
-    cwd: process.cwd(),
-    env,
-    stdio: 'inherit',
-  });
+  };
+  const proc = spawn(
+    'maestro',
+    [
+      'test',
+      '--platform',
+      'ios',
+      '--device',
+      lim.deviceInfo.udid,
+      '--no-reinstall-driver',
+      '--test-output-dir',
+      'artifacts',
+      'flows/expo-sample.yaml',
+    ],
+    {
+      cwd: process.cwd(),
+      env,
+      stdio: 'inherit',
+    },
+  );
   await new Promise<void>((resolve, reject) => {
     proc.once('error', reject);
     proc.once('close', (code, signal) => {
