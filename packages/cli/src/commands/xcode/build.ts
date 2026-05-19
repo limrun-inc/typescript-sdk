@@ -20,8 +20,8 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./MyProject --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
     '<%= config.bin %> xcode build --configuration Debug',
-    '<%= config.bin %> xcode build --configuration Debug --dev-server-url https://abc123.exp.direct',
-    '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url https://abc123.exp.direct',
+    '<%= config.bin %> xcode build ./ExpoApp --configuration Debug --dev-server-url https://abc123.exp.direct',
+    '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url exp://abc123.exp.direct',
     '<%= config.bin %> xcode build --scheme WatchApp --sdk watchsimulator',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
@@ -59,7 +59,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     'dev-server-url': Flags.string({
       description:
-        'Direct Metro / Expo development server URL for RN/Expo Debug builds. Requires --configuration Debug, Expo SDK 52+, React Native 0.76+, and the default Expo Swift AppDelegate.',
+        'Expo development server URL for Debug builds. If the build is installed on an attached iOS simulator, the app opens this URL after build; otherwise this option has no launch effect. Accepts https://, http://, exp://, and exp+... links. For plain http:// URLs, your app must be configured to allow that connection on iOS. HTTPS Expo tunnel URLs do not require this.',
     }),
     'expo-app-dir': Flags.string({
       description:
@@ -101,8 +101,8 @@ export default class XcodeBuild extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeBuild);
     this.setParsedFlags(flags);
-    if (flags['dev-server-url'] && flags.configuration !== 'Debug') {
-      this.error('--dev-server-url requires --configuration Debug.');
+    if (flags['dev-server-url'] && flags.configuration === 'Release') {
+      this.error('--dev-server-url is only supported for Debug builds.');
     }
 
     await this.withAuth(async () => {
