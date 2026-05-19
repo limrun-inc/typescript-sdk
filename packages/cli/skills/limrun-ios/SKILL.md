@@ -21,7 +21,7 @@ npm install --global @limrun/cli
 
 ## Check the CLI for current commands and flags
 
-The CLI is the source of truth for command names, flags, and behavior. Before invoking any `lim` command you have not already used in this session, MUST run its `--help` first. The examples below are happy-path only; this skill intentionally does not embed the full reference because it would rot. Use:
+The CLI is the source of truth for command names, flags, and behavior. Before invoking any `lim` command you have not already used in this session, MUST run its `--help` first. Use:
 
 ```bash
 lim ios --help                  # list all iOS subcommands
