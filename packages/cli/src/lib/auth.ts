@@ -48,7 +48,10 @@ export async function login(consoleEndpoint: string, version: string): Promise<v
     });
 
     server.listen(CALLBACK_PORT, () => {
-      const loginUrl = new URL('/authn/login', consoleEndpoint);
+      // Navigate to /authn/cli directly so the console stores it as `returnTo`
+      // and returns here after sign-in to mint an API key and POST it back.
+      // Routing via /authn/login drops the query string on email magiclink.
+      const loginUrl = new URL('/authn/cli', consoleEndpoint);
       loginUrl.searchParams.set('user-agent', `lim/${version}`);
       open(loginUrl.toString()).catch(() => {
         console.log(`Open this URL in your browser to log in:\n${loginUrl.toString()}`);
