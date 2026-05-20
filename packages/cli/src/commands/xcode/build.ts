@@ -21,7 +21,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
     '<%= config.bin %> xcode build --configuration Debug',
     '<%= config.bin %> xcode build ./ExpoApp --configuration Debug --dev-server-url https://abc123.exp.direct',
-    '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url exp://abc123.exp.direct',
+    '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url "myapp://expo-development-client/?url=http%3A%2F%2F10.244.7.112%3A57090"',
     '<%= config.bin %> xcode build --scheme WatchApp --sdk watchsimulator',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
@@ -59,7 +59,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     'dev-server-url': Flags.string({
       description:
-        'Expo development server URL for Debug builds. If the build is installed on an attached iOS simulator, the app opens this URL after build; otherwise this option has no launch effect. Accepts https://, http://, exp://, and exp+... links. For plain http:// URLs, your app must be configured to allow that connection on iOS. HTTPS Expo tunnel URLs do not require this.',
+        'Launch URL for Debug React Native / Expo builds. If the build is installed on an attached iOS simulator, the app opens this URL unchanged after build; otherwise this option has no launch effect. For Expo dev-client builds, pass the exact dev-client URL or development server URL you want opened.',
     }),
     'expo-app-dir': Flags.string({
       description:

@@ -72,15 +72,13 @@ export type ReactNativeBuildConfig = {
    */
   expoAppDir?: string;
   /**
-   * Expo development server URL for Debug builds, such as the
-   * https://...exp.direct URL printed by `expo start --tunnel`.
+   * Launch URL for Debug React Native / Expo builds.
    *
    * If the build is installed on an attached iOS simulator, the app opens this
-   * URL after build. Otherwise, this option has no launch effect.
+   * URL unchanged after build. Otherwise, this option has no launch effect.
    *
-   * Accepted forms are https://..., http://..., exp://..., and exp+... links.
-   * For plain http:// URLs, your app must be configured to allow that
-   * connection on iOS. HTTPS Expo tunnel URLs do not require this.
+   * For Expo dev-client builds, pass the exact dev-client URL or development
+   * server URL you want opened.
    */
   devServerURL?: string;
 };
