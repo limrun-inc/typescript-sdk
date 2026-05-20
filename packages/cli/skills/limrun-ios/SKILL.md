@@ -68,6 +68,18 @@ lim xcode build . --configuration Debug
 
 If omitted, Limrun uses limbuild's project-type default: `Debug` for native Xcode builds and `Release` for React Native / Expo builds. `--dev-server-url` is only supported with `--configuration Debug`.
 
+For Expo dev-client builds, do not use plain `exp://`; Expo Go may intercept it. Use the app scheme: `expo.scheme` from `app.json` when present, otherwise Expo dev-client's generated default `exp+{expo.slug}`.
+
+When the Metro server runs locally, expose it with `lim ios reverse` first. Use the simulator-facing host printed by that command in both `REACT_NATIVE_PACKAGER_HOSTNAME` and the encoded dev-client URL.
+
+```bash
+# app.json: "scheme": "myapp" or fallback "slug": "myapp" -> exp+myapp
+lim ios reverse 57090:8081 --id <ios-instance-id>
+REACT_NATIVE_PACKAGER_HOSTNAME=<reverse-host> npx expo start --dev-client --host lan --port 8081
+lim xcode build . --configuration Debug \
+  --dev-server-url 'myapp://expo-development-client/?url=http%3A%2F%2F<reverse-host>%3A57090'
+```
+
 Every successful build will automatically re-install the app in iOS Simulator and re-launch it.
 
 ## Interacting with the App
