@@ -1,16 +1,38 @@
 import { useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RemoteControl, RemoteControlHandle } from './components/remote-control';
+import { AxSnapshot } from './core/ax-tree';
+
+type InspectChoice = 'off' | 'hover-only' | 'select';
+
+// Pre-fill from query string so the developer testing the demo can deeplink
+// `?url=...&token=...&inspect=select&autoconnect=1`. Nothing is persisted.
+const initialParams = new URLSearchParams(window.location.search);
+const initialUrl = initialParams.get('url') || 'ws://localhost:8833/signaling';
+const initialToken = initialParams.get('token') || 'token';
+const initialPlatformParam = initialParams.get('platform');
+const initialPlatform: 'ios' | 'android' = initialPlatformParam === 'android' ? 'android' : 'ios';
+const initialInspect = (initialParams.get('inspect') as InspectChoice | null) ?? 'off';
+const initialAutoconnect =
+  initialParams.get('autoconnect') === '1' && initialParams.has('url') && initialParams.has('token');
 
 function Demo() {
-  const [url, setUrl] = useState('ws://localhost:8833/signaling');
-  const [token, setToken] = useState('token');
-  const [platform, setPlatform] = useState<'ios' | 'android'>('ios');
-  const [isConnected, setIsConnected] = useState(false);
+  const [url, setUrl] = useState(initialUrl);
+  const [token, setToken] = useState(initialToken);
+  const [platform, setPlatform] = useState<'ios' | 'android'>(initialPlatform);
+  const [isConnected, setIsConnected] = useState(initialAutoconnect);
   const [key, setKey] = useState(0);
   const [showDebugInfo, setShowDebugInfo] = useState(false);
+  const [inspectChoice, setInspectChoice] = useState<InspectChoice>(initialInspect);
+  const [latestSnapshot, setLatestSnapshot] = useState<AxSnapshot | null>(null);
+  const [latestSelection, setLatestSelection] = useState<string | null>(null);
 
   const remoteControlRef = useRef<RemoteControlHandle>(null);
+
+  const inspectModeProp: boolean | 'hover-only' | undefined =
+    inspectChoice === 'off' ? undefined
+    : inspectChoice === 'hover-only' ? 'hover-only'
+    : true;
 
   const handleConnect = () => {
     if (url) {
@@ -112,6 +134,19 @@ function Demo() {
             </label>
           </div>
 
+          <div className="control-group">
+            <label htmlFor="inspect-mode">Inspect Mode</label>
+            <select
+              id="inspect-mode"
+              value={inspectChoice}
+              onChange={(e) => setInspectChoice(e.target.value as InspectChoice)}
+            >
+              <option value="off">Off</option>
+              <option value="hover-only">Hover-only (input still works)</option>
+              <option value="select">Select (click to pin, ESC to clear)</option>
+            </select>
+          </div>
+
           <div className="button-group">
             {!isConnected ?
               <button className="primary" onClick={handleConnect} disabled={!url}>
@@ -153,14 +188,62 @@ function Demo() {
         )}
 
         {isConnected ?
-          <div className="device-preview">
-            <div className="preview-item">
-              <h3>{platform === 'ios' ? '📱 iOS with Frame' : '🤖 Android (No Frame)'}</h3>
-              <div className="device-wrapper">
-                <RemoteControl key={key} ref={remoteControlRef} url={url} token={token} />
+          <>
+            <div className="device-preview">
+              <div className="preview-item">
+                <h3>{platform === 'ios' ? '📱 iOS with Frame' : '🤖 Android (No Frame)'}</h3>
+                <div className="device-wrapper">
+                  <RemoteControl
+                    key={key}
+                    ref={remoteControlRef}
+                    url={url}
+                    token={token}
+                    inspectMode={inspectModeProp}
+                    onAxSnapshotChange={setLatestSnapshot}
+                    onInspectSelectionChange={(sel) =>
+                      setLatestSelection(
+                        sel ?
+                          `${sel.element.role || sel.element.type} · ${sel.element.label || '(no label)'}`
+                        : null,
+                      )
+                    }
+                  />
+                </div>
               </div>
             </div>
-          </div>
+
+            {inspectChoice !== 'off' && (
+              <div
+                style={{
+                  marginTop: '20px',
+                  background: '#0f172a',
+                  color: '#e2e8f0',
+                  border: '1px solid #1e293b',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontSize: '12px',
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 600,
+                    marginBottom: '6px',
+                    display: 'flex',
+                    gap: '12px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span>Inspect debug (demo-only)</span>
+                  <span style={{ color: '#94a3b8', fontWeight: 400 }}>
+                    elements: {latestSnapshot?.elements.length ?? 0} · screen:{' '}
+                    {latestSnapshot ? `${latestSnapshot.screen.width}×${latestSnapshot.screen.height}` : '—'}{' '}
+                    · platform: {latestSnapshot?.platform ?? '—'} · selection: {latestSelection ?? '(none)'}
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
         : <div
             style={{
               textAlign: 'center',

@@ -18,6 +18,9 @@ import {
   createSetClipboardMessage,
   createTwoFingerTouchControlMessage,
 } from '../core/webrtc-messages';
+import { AxFetcher, AxStatus } from '../core/ax-fetcher';
+import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
+import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
 
 declare global {
   interface Window {
@@ -55,6 +58,88 @@ interface RemoteControlProps {
   // When true, drops after a working session auto-reconnect instead of
   // surfacing the manual "Retry" button. Defaults to false.
   autoReconnect?: boolean;
+
+  /**
+   * Enable the inspect overlay. When set, the component starts polling the
+   * accessibility tree and draws boxes over each element on top of the
+   * video stream.
+   *
+   * - `true` — Select mode. Boxes are clickable, click pins a selection
+   *   with action buttons (Tap / Copy selector / Copy id), ESC clears.
+   *   Device input is blocked while in this mode.
+   * - `'hover-only'` — Boxes follow the cursor as a visual preview. Device
+   *   input still passes through, so you can drive the simulator while
+   *   inspecting.
+   * - `undefined` / `false` (default) — overlay disabled, no polling.
+   */
+  inspectMode?: boolean | 'hover-only';
+
+  /**
+   * Fires whenever a fresh accessibility snapshot is delivered.
+   *
+   * Customers use this to drive their own side panels, agent prompts,
+   * analytics, etc. The built-in overlay does not require this callback —
+   * it renders from internal state regardless.
+   *
+   * Identical-to-previous snapshots (per `axSnapshotsEqual`) are NOT
+   * re-emitted, so a stable UI doesn't generate callback noise.
+   *
+   * Invoked in a microtask so customer code doesn't run synchronously
+   * inside React's commit phase.
+   */
+  onAxSnapshotChange?: (snapshot: AxSnapshot | null) => void;
+
+  /**
+   * Fires when the user clicks an overlay element (only emitted when
+   * `inspectMode === true`). `null` indicates a deselection (ESC, click
+   * outside any box, or programmatic clear).
+   *
+   * The `snapshot` field is the snapshot active at the moment of the
+   * click — useful for capturing context without races against the next
+   * poll cycle.
+   */
+  onInspectSelectionChange?: (selection: { element: AxElement; snapshot: AxSnapshot } | null) => void;
+
+  /**
+   * Fires whenever the accessibility subsystem changes coarse-grained
+   * status. Useful for rendering readiness indicators or error banners in
+   * a customer-built side panel.
+   *
+   * Transitions are deduplicated; no self-loops are emitted. The `error`
+   * argument is populated when status is `error` or `unavailable`.
+   *
+   * Lifecycle: `idle` → `starting` → `ready` (or `unavailable` / `error`).
+   * Recovery from `error` / `unavailable` is automatic — the fetcher
+   * keeps polling and transitions back to `ready` on the next success.
+   */
+  onAxStatusChange?: (status: AxStatus, error?: string) => void;
+
+  /**
+   * Base interval (ms) between successful AX-tree fetches.
+   *
+   * The fetcher will:
+   * - Wait `axPollIntervalMs` after a successful fetch with NEW data.
+   * - Double the wait (up to `axMaxBackoffMs`) when consecutive snapshots
+   *   are byte-identical (e.g. static screen).
+   * - Wait 5 s when the server reports AX is unavailable.
+   *
+   * In addition, after user input (taps, scrolls, keypresses, openUrl,
+   * terminateApp, orientation flips), the fetcher enters a short
+   * "activity boost" window (~1.2 s) during which fetches happen at
+   * ~250 ms regardless of this setting. This captures mid-animation UI
+   * changes without you having to manually call `refreshAxTree`.
+   *
+   * @default 500
+   */
+  axPollIntervalMs?: number;
+
+  /**
+   * Maximum backoff (ms) for the AX-tree polling loop when consecutive
+   * snapshots are unchanged.
+   *
+   * @default 2000
+   */
+  axMaxBackoffMs?: number;
 }
 
 interface ScreenshotData {
@@ -76,6 +161,27 @@ export interface RemoteControlHandle {
   screenshot: () => Promise<ScreenshotData>;
   terminateApp: (bundleId: string) => Promise<void>;
   reconnect: () => void;
+
+  // Inspect-mode helpers. These are no-ops when inspect mode is disabled or
+  // the WebSocket isn't open.
+
+  // Force a fresh accessibility-tree fetch outside the normal poll cadence.
+  refreshAxTree: () => Promise<AxSnapshot>;
+
+  // Pull-based access to the most recent snapshot (the same one passed to
+  // onAxSnapshotChange). Returns null when no snapshot has arrived yet or
+  // when inspect mode is off.
+  getAxSnapshot: () => AxSnapshot | null;
+
+  // Programmatically drive the overlay highlight/selection — useful when a
+  // customer's own side panel wants to cross-highlight with the overlay.
+  // Pass `null` to clear.
+  setInspectHighlight: (element: AxElement | null) => void;
+  setInspectSelection: (element: AxElement | null) => void;
+
+  // Pull-based access to the current AX subsystem status. Mirrors what
+  // onAxStatusChange reports, for customers that don't want to subscribe.
+  getAxStatus: () => AxStatus;
 }
 
 const debugLog = (...args: any[]) => {
@@ -87,6 +193,26 @@ const debugLog = (...args: any[]) => {
 const debugWarn = (...args: any[]) => {
   if (window.debugRemoteControl) {
     console.warn(...args);
+  }
+};
+
+// Invokes a customer-provided callback in isolation. A throw from the
+// customer's code must NOT propagate back into our state-update flow — that
+// would risk corrupting React reconciliation. We log the error to the
+// console so the customer can still debug, but otherwise swallow.
+const safeInvoke = <Args extends unknown[]>(
+  label: string,
+  fn: ((...args: Args) => unknown) | undefined,
+  ...args: Args
+): void => {
+  if (!fn) return;
+  try {
+    fn(...args);
+  } catch (err) {
+    // Surface to the developer regardless of debug flag — this is a bug
+    // in the customer's handler and they'll want to see it.
+    // eslint-disable-next-line no-console
+    console.error(`[RemoteControl] customer callback "${label}" threw:`, err);
   }
 };
 
@@ -206,6 +332,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       openUrl,
       showFrame = true,
       autoReconnect = false,
+      inspectMode,
+      onAxSnapshotChange,
+      onInspectSelectionChange,
+      onAxStatusChange,
+      axPollIntervalMs,
+      axMaxBackoffMs,
     }: RemoteControlProps,
     ref,
   ) => {
@@ -279,6 +411,62 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
     const [hoverPoint, setHoverPoint] = useState<HoverPoint | null>(null);
 
+    // Inspect-mode state.
+    //
+    // Lifecycle of `axFetcherRef`:
+    //   - Created in dataChannel.onopen (last step of WebRTC handshake)
+    //     so we know the signaling WS is healthy and the device is
+    //     responsive to control messages.
+    //   - Started immediately if `inspectMode` is already enabled, or
+    //     started later via the sibling useEffect when inspectMode flips on.
+    //   - Stopped + nulled in teardownConnection (WS close / unmount).
+    //
+    // Customers can observe readiness via the `onAxStatusChange` callback:
+    // `starting` fires when start() runs but no snapshot has landed yet;
+    // `ready` once the first snapshot arrives. Status falls back to
+    // `unavailable` / `error` if the server can't satisfy AX requests.
+    const axFetcherRef = useRef<AxFetcher | null>(null);
+    const [axSnapshot, setAxSnapshot] = useState<AxSnapshot | null>(null);
+    const [axHighlightedId, setAxHighlightedId] = useState<string | null>(null);
+    const [axSelectedId, setAxSelectedId] = useState<string | null>(null);
+    const [overlayGeometry, setOverlayGeometry] = useState<InspectOverlayGeometry | null>(null);
+    // Viewport-space cursor position used to anchor the inspect InfoCard.
+    // Throttled to one update per animation frame to avoid React reconciling
+    // on every native mousemove (~60–120Hz).
+    const [axCursorPosition, setAxCursorPosition] = useState<{ x: number; y: number } | null>(null);
+    const cursorPositionRef = useRef<{ x: number; y: number } | null>(null);
+    const cursorRafIdRef = useRef<number | undefined>(undefined);
+    const scheduleCursorFlush = (next: { x: number; y: number } | null) => {
+      cursorPositionRef.current = next;
+      if (cursorRafIdRef.current !== undefined) return;
+      cursorRafIdRef.current = window.requestAnimationFrame(() => {
+        cursorRafIdRef.current = undefined;
+        setAxCursorPosition(cursorPositionRef.current);
+      });
+    };
+    // Position captured at click-time so the InfoCard "freezes" near where
+    // the user clicked, even as they move the cursor around afterward. The
+    // action buttons (Tap / Copy) stay reachable because the card no longer
+    // chases the cursor while the click target is the active selection.
+    const [axFrozenCursorPosition, setAxFrozenCursorPosition] = useState<{
+      x: number;
+      y: number;
+    } | null>(null);
+    // Mirrors for synchronous access from event handlers without stale closures.
+    const inspectModeRef = useRef<boolean | 'hover-only' | undefined>(inspectMode);
+    inspectModeRef.current = inspectMode;
+    const axSnapshotRef = useRef<AxSnapshot | null>(null);
+    axSnapshotRef.current = axSnapshot;
+    const onAxSnapshotChangeRef = useRef(onAxSnapshotChange);
+    onAxSnapshotChangeRef.current = onAxSnapshotChange;
+    const onInspectSelectionChangeRef = useRef(onInspectSelectionChange);
+    onInspectSelectionChangeRef.current = onInspectSelectionChange;
+    const onAxStatusChangeRef = useRef(onAxStatusChange);
+    onAxStatusChangeRef.current = onAxStatusChange;
+
+    const inspectActive = inspectMode === true || inspectMode === 'hover-only';
+    const inspectModeResolved: InspectMode = inspectMode === 'hover-only' ? 'hover-only' : 'select';
+
     const sessionId = useMemo(
       () =>
         propSessionId ||
@@ -299,6 +487,72 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         return;
       }
       dataChannelRef.current.send(data);
+      // Any binary control message is an input event. Bump the AX poller so
+      // we get a fresh snapshot quickly — the UI almost certainly changed.
+      axFetcherRef.current?.bumpActivity();
+    };
+
+    // Pointer ID used by inspect-driven taps. Distinct from human pointers
+    // (-1 mouse, -2 alt-mirror) and our touch identifiers so they never
+    // interfere with an in-progress drag.
+    const AX_TAP_POINTER_ID = -10;
+
+    // Send a down+up tap at a viewport-space (clientX/Y) position. The point
+    // is mapped through the current video letterbox geometry so the
+    // simulator receives the correct in-stream coordinates regardless of
+    // how the device frame is sized in the DOM.
+    const sendTapAtClient = (clientX: number, clientY: number) => {
+      const ctx = computeVideoMappingContext();
+      if (!ctx) return;
+      const geometry = mapClientPointToVideo(ctx, clientX, clientY);
+      if (!geometry) return;
+      const { videoX, videoY, videoWidth, videoHeight } = geometry;
+      const down = createTouchControlMessage(
+        AMOTION_EVENT.ACTION_DOWN,
+        AX_TAP_POINTER_ID,
+        videoWidth,
+        videoHeight,
+        videoX,
+        videoY,
+        1.0,
+        AMOTION_EVENT.BUTTON_PRIMARY,
+        AMOTION_EVENT.BUTTON_PRIMARY,
+      );
+      if (down) sendBinaryControlMessage(down);
+      window.setTimeout(() => {
+        const up = createTouchControlMessage(
+          AMOTION_EVENT.ACTION_UP,
+          AX_TAP_POINTER_ID,
+          videoWidth,
+          videoHeight,
+          videoX,
+          videoY,
+          0,
+          AMOTION_EVENT.BUTTON_PRIMARY,
+          AMOTION_EVENT.BUTTON_PRIMARY,
+        );
+        if (up) sendBinaryControlMessage(up);
+      }, 60);
+    };
+
+    // Center-of-bounds fallback for programmatic taps when there's no
+    // user-aimed click position (e.g. customer calls `setInspectSelection`
+    // followed by their own "tap selected" handler without forwarding a
+    // pointer position). Maps the element's frame center through the AX
+    // screen-coordinate space to viewport coords, then delegates to
+    // sendTapAtClient.
+    const sendTapAtElementCenter = (element: AxElement, snapshot: AxSnapshot) => {
+      const ctx = computeVideoMappingContext();
+      if (!ctx) return;
+      if (snapshot.screen.width <= 0 || snapshot.screen.height <= 0) return;
+      const cxAx = element.frame.x + element.frame.width / 2;
+      const cyAx = element.frame.y + element.frame.height / 2;
+      // AX screen-fraction → in-video pixel offset → viewport client coord.
+      const inVideoX = (cxAx / snapshot.screen.width) * ctx.actualWidth;
+      const inVideoY = (cyAx / snapshot.screen.height) * ctx.actualHeight;
+      const clientX = ctx.videoRect.left + ctx.offsetX + inVideoX;
+      const clientY = ctx.videoRect.top + ctx.offsetY + inVideoY;
+      sendTapAtClient(clientX, clientY);
     };
 
     // Fixed pointer IDs for Alt-simulated two-finger gestures
@@ -688,6 +942,23 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       setHoverPoint(fullPoint);
     };
 
+    // Map clientX/Y to AX screen-coordinate space using the latest snapshot.
+    // Returns null if there's no snapshot or the click is outside the video.
+    const hitTestAxAtClient = (
+      ctx: VideoMappingContext,
+      clientX: number,
+      clientY: number,
+    ): AxElement | null => {
+      const snapshot = axSnapshotRef.current;
+      if (!snapshot || snapshot.screen.width <= 0 || snapshot.screen.height <= 0) return null;
+      const relX = clientX - ctx.videoRect.left - ctx.offsetX;
+      const relY = clientY - ctx.videoRect.top - ctx.offsetY;
+      if (relX < 0 || relY < 0 || relX > ctx.actualWidth || relY > ctx.actualHeight) return null;
+      const axX = (relX / ctx.actualWidth) * snapshot.screen.width;
+      const axY = (relY / ctx.actualHeight) * snapshot.screen.height;
+      return axElementAtPoint(snapshot, axX, axY);
+    };
+
     // Unified handler for both mouse and touch interactions
     const handleInteraction = (event: React.MouseEvent | React.TouchEvent) => {
       event.preventDefault();
@@ -695,6 +966,36 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       // Compute mapping context once per event (reused for all pointers)
       const ctx = computeVideoMappingContext();
+
+      // Inspect-mode handling.
+      //
+      // We use JS hit-testing (not box-level onMouseEnter/Leave) as the
+      // single source of truth for which element is under the cursor — it
+      // handles overlapping rectangles deterministically by picking the
+      // smallest matching box. The overlay's InspectBox children no longer
+      // attach hover handlers; they just paint themselves based on the
+      // `highlightedId` prop driven from here.
+      //
+      // Cursor position is tracked in both modes so the cursor-anchored
+      // InfoCard can follow the pointer.
+      const isInspecting = inspectModeRef.current === true || inspectModeRef.current === 'hover-only';
+      if (isInspecting && !('touches' in event)) {
+        if (event.type === 'mousemove') {
+          scheduleCursorFlush({ x: event.clientX, y: event.clientY });
+          if (ctx) {
+            const hit = hitTestAxAtClient(ctx, event.clientX, event.clientY);
+            setAxHighlightedId(hit?.id ?? null);
+          }
+        } else if (event.type === 'mouseleave') {
+          scheduleCursorFlush(null);
+          setAxHighlightedId(null);
+        }
+      }
+      // Select mode blocks device input — clicks/drags don't reach the
+      // simulator. Hover-only mode falls through to the regular path.
+      if (inspectModeRef.current === true) {
+        return;
+      }
 
       // Handle hover point updates for mouse events (only when Alt is held)
       if (!('touches' in event) && ctx) {
@@ -1138,6 +1439,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       clearConnectionSuccessTimeout();
       clearIceDisconnectedGrace();
       stopRequestFrameLoop();
+      if (axFetcherRef.current) {
+        axFetcherRef.current.stop();
+        axFetcherRef.current = null;
+      }
+      // A scheduled cursor flush would otherwise call setState on a
+      // teardown component once the next frame runs.
+      if (cursorRafIdRef.current !== undefined) {
+        window.cancelAnimationFrame(cursorRafIdRef.current);
+        cursorRafIdRef.current = undefined;
+      }
       if (wsRef.current) {
         wsRef.current.onopen = null;
         wsRef.current.onmessage = null;
@@ -1372,6 +1683,44 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           controlChannelOpenedRef.current = true;
           clearConnectionSuccessTimeout();
           updateStatus('Control channel opened');
+
+          // Spin up the AX fetcher now that we have a stable WS + control
+          // channel. The fetcher's send function reuses this WS; it stops
+          // sending if the WS dies. start() is called lazily based on the
+          // inspectMode prop via a sibling useEffect.
+          if (!axFetcherRef.current) {
+            axFetcherRef.current = new AxFetcher({
+              platform,
+              baseIntervalMs: axPollIntervalMs,
+              maxBackoffMs: axMaxBackoffMs,
+              send: (payload) => {
+                if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return false;
+                try {
+                  wsRef.current.send(JSON.stringify(payload));
+                  return true;
+                } catch {
+                  return false;
+                }
+              },
+              onSnapshot: (snapshot) => {
+                setAxSnapshot((prev) => (axSnapshotsEqual(prev, snapshot) ? prev : snapshot));
+                // Defer to a microtask so customer code (which may DOM-write,
+                // start expensive work, or itself call back into ref
+                // methods) doesn't run synchronously inside our state-setter
+                // path. React then has a chance to schedule its render before
+                // the customer handler kicks off side-effects.
+                queueMicrotask(() => {
+                  safeInvoke('onAxSnapshotChange', onAxSnapshotChangeRef.current, snapshot);
+                });
+              },
+              onStatusChange: (status, error) => {
+                safeInvoke('onAxStatusChange', onAxStatusChangeRef.current, status, error);
+              },
+            });
+            if (inspectModeRef.current === true || inspectModeRef.current === 'hover-only') {
+              axFetcherRef.current.start();
+            }
+          }
           const sendRequestFrame = () => {
             if (
               !isCurrentAttempt() ||
@@ -1423,6 +1772,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 }),
               );
             }
+            // openUrl can take a moment to load the destination — boost
+            // AX polling so the overlay refreshes through the transition.
+            axFetcherRef.current?.bumpActivity();
           }
         };
 
@@ -1527,6 +1879,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             message = JSON.parse(event.data);
           } catch (e) {
             debugWarn('Error parsing message:', e);
+            return;
+          }
+          // Inspect-mode responses are routed to the fetcher first so it
+          // can resolve in-flight requests regardless of which platform's
+          // protocol is in use.
+          if (axFetcherRef.current?.handleMessage(message)) {
             return;
           }
           updateStatus('Received: ' + message.type);
@@ -1724,20 +2082,52 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       };
     }, [url, token, propSessionId]);
 
+    // Recompute the inspect-overlay geometry (container-local pixel rect of
+    // the actually-rendered video content) from the current mapping context.
+    // The InfoCard places itself in viewport coordinates from pointer events
+    // directly, so no viewport-space origin is needed in the geometry.
+    const recomputeOverlayGeometry = () => {
+      const ctx = computeVideoMappingContext();
+      if (!ctx) {
+        setOverlayGeometry(null);
+        return;
+      }
+      const next: InspectOverlayGeometry = {
+        left: ctx.videoRect.left - ctx.containerRect.left + ctx.offsetX,
+        top: ctx.videoRect.top - ctx.containerRect.top + ctx.offsetY,
+        width: ctx.actualWidth,
+        height: ctx.actualHeight,
+      };
+      setOverlayGeometry((prev) =>
+        (
+          prev &&
+          prev.left === next.left &&
+          prev.top === next.top &&
+          prev.width === next.width &&
+          prev.height === next.height
+        ) ?
+          prev
+        : next,
+      );
+    };
+
     // Calculate video position and border-radius based on frame dimensions
     useEffect(() => {
       const video = videoRef.current;
       const frame = frameRef.current;
+      const container = containerRef.current;
 
       if (!video) return;
 
-      // If no frame, no positioning needed
-      if (!showFrame || !frame) {
-        setVideoStyle({});
-        return;
-      }
-
       const updateVideoPosition = () => {
+        // If no frame, just refresh overlay geometry; no inset/letterbox math
+        // is needed since the video element is its own size.
+        if (!showFrame || !frame) {
+          setVideoStyle({});
+          recomputeOverlayGeometry();
+          return;
+        }
+
         const frameWidth = frame.clientWidth;
         const frameHeight = frame.clientHeight;
 
@@ -1767,17 +2157,19 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           : frameWidth * config.videoBorderRadiusMultiplier
         }px`;
         setVideoStyle(newStyle);
+        recomputeOverlayGeometry();
       };
 
       const resizeObserver = new ResizeObserver(() => {
         updateVideoPosition();
       });
 
-      resizeObserver.observe(frame);
+      if (frame) resizeObserver.observe(frame);
       resizeObserver.observe(video);
+      if (container) resizeObserver.observe(container);
 
       // Also update when the frame image loads
-      frame.addEventListener('load', updateVideoPosition);
+      if (frame) frame.addEventListener('load', updateVideoPosition);
 
       // Update when video metadata loads (to get correct intrinsic dimensions)
       video.addEventListener('loadedmetadata', updateVideoPosition);
@@ -1786,6 +2178,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // (videoWidth/videoHeight) can change without re-firing 'loadedmetadata'.
       // The <video> element emits 'resize' in that case.
       video.addEventListener('resize', updateVideoPosition);
+      // Orientation flips also mean every element's AX frame just changed
+      // (portrait↔landscape rotates the layout). Bump so the overlay
+      // refreshes immediately rather than waiting out the current poll
+      // cycle in a layout that no longer matches the boxes.
+      const bumpOnResize = () => axFetcherRef.current?.bumpActivity();
+      video.addEventListener('resize', bumpOnResize);
 
       // Initial calculation
       updateVideoPosition();
@@ -1794,9 +2192,59 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         resizeObserver.disconnect();
         video.removeEventListener('loadedmetadata', updateVideoPosition);
         video.removeEventListener('resize', updateVideoPosition);
-        frame.removeEventListener('load', updateVideoPosition);
+        video.removeEventListener('resize', bumpOnResize);
+        if (frame) frame.removeEventListener('load', updateVideoPosition);
       };
     }, [config, showFrame]);
+
+    // Start/stop the AX poller and reset inspect state when inspect mode
+    // toggles. Connection state is independent: the fetcher gets created on
+    // dataChannel.onopen and destroyed on teardown.
+    useEffect(() => {
+      const fetcher = axFetcherRef.current;
+      if (inspectActive) {
+        fetcher?.start();
+      } else {
+        fetcher?.stop();
+        setAxSnapshot(null);
+        setAxHighlightedId(null);
+        setAxSelectedId(null);
+        setAxCursorPosition(null);
+        setAxFrozenCursorPosition(null);
+        cursorPositionRef.current = null;
+        if (cursorRafIdRef.current !== undefined) {
+          window.cancelAnimationFrame(cursorRafIdRef.current);
+          cursorRafIdRef.current = undefined;
+        }
+        safeInvoke('onAxSnapshotChange', onAxSnapshotChangeRef.current, null);
+      }
+    }, [inspectActive]);
+
+    // Cancel any pending cursor-rAF on unmount so we don't setState on a
+    // dead component.
+    useEffect(() => {
+      return () => {
+        if (cursorRafIdRef.current !== undefined) {
+          window.cancelAnimationFrame(cursorRafIdRef.current);
+          cursorRafIdRef.current = undefined;
+        }
+      };
+    }, []);
+
+    // ESC clears overlay selection (Chrome DevTools behavior).
+    useEffect(() => {
+      if (!inspectActive) return;
+      const handleEsc = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && (axSelectedId || axHighlightedId)) {
+          setAxSelectedId(null);
+          setAxHighlightedId(null);
+          setAxFrozenCursorPosition(null);
+          safeInvoke('onInspectSelectionChange', onInspectSelectionChangeRef.current, null);
+        }
+      };
+      window.addEventListener('keydown', handleEsc);
+      return () => window.removeEventListener('keydown', handleEsc);
+    }, [inspectActive, axSelectedId, axHighlightedId]);
 
     const handleVideoClick = () => {
       if (videoRef.current) {
@@ -1831,6 +2279,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             }),
           );
         }
+        axFetcherRef.current?.bumpActivity();
       },
 
       sendKeyEvent: (event: ImperativeKeyboardEvent) => {
@@ -1930,6 +2379,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             reject(err);
             return;
           }
+          // Terminating the foreground app drops the user back to the home
+          // screen — bump so the overlay reflects the post-terminate state
+          // through the SpringBoard transition.
+          axFetcherRef.current?.bumpActivity();
 
           setTimeout(() => {
             if (pendingTerminateAppResolversRef.current.has(id)) {
@@ -1942,6 +2395,46 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         });
       },
       reconnect: () => start(),
+
+      refreshAxTree: async (): Promise<AxSnapshot> => {
+        const fetcher = axFetcherRef.current;
+        if (!fetcher) {
+          throw new Error('Inspect mode is not active');
+        }
+        // The fetcher's refresh() runs the result through the same
+        // change-detect path as the poll loop (via deliver()), which calls
+        // back into onSnapshot — already wired to setAxSnapshot +
+        // onAxSnapshotChange (with safe-invoke). We just return the fetched
+        // payload for callers that want it.
+        return fetcher.refresh();
+      },
+
+      getAxSnapshot: () => axSnapshotRef.current,
+
+      setInspectHighlight: (element: AxElement | null) => {
+        setAxHighlightedId(element?.id ?? null);
+      },
+
+      setInspectSelection: (element: AxElement | null) => {
+        setAxSelectedId(element?.id ?? null);
+        // Programmatic selection has no click position — anchor the card at
+        // the last known cursor position (if any), otherwise clear.
+        // Customer-facing UIs that drive selection from their own panels can
+        // call setInspectHighlight separately to move the cursor visual.
+        if (element) {
+          setAxFrozenCursorPosition(cursorPositionRef.current);
+        } else {
+          setAxFrozenCursorPosition(null);
+        }
+        const snapshot = axSnapshotRef.current;
+        if (element && snapshot) {
+          safeInvoke('onInspectSelectionChange', onInspectSelectionChangeRef.current, { element, snapshot });
+        } else {
+          safeInvoke('onInspectSelectionChange', onInspectSelectionChangeRef.current, null);
+        }
+      },
+
+      getAxStatus: () => axFetcherRef.current?.getStatus() ?? 'idle',
     }));
 
     // Show indicators when Alt is held and we have a valid hover point (null when outside)
@@ -2029,6 +2522,51 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             }
           }}
         />
+        {inspectActive && (
+          <InspectOverlay
+            snapshot={axSnapshot}
+            geometry={overlayGeometry}
+            highlightedId={axHighlightedId}
+            selectedId={axSelectedId}
+            mode={inspectModeResolved}
+            cursorPosition={axCursorPosition}
+            frozenCursorPosition={axFrozenCursorPosition}
+            onSelectChange={(element, clickPosition) => {
+              setAxSelectedId(element?.id ?? null);
+              if (element && clickPosition) {
+                setAxFrozenCursorPosition(clickPosition);
+              } else if (!element) {
+                setAxFrozenCursorPosition(null);
+              }
+              const snapshot = axSnapshotRef.current;
+              if (element && snapshot) {
+                safeInvoke('onInspectSelectionChange', onInspectSelectionChangeRef.current, {
+                  element,
+                  snapshot,
+                });
+              } else {
+                safeInvoke('onInspectSelectionChange', onInspectSelectionChangeRef.current, null);
+              }
+            }}
+            onTapElement={(element, tapAt) => {
+              // Use the viewport-space position the user originally aimed at
+              // (the frozen click position). For containers whose children
+              // are absent from the accessibility tree — e.g. iOS UITabBar's
+              // home/diagnostics/settings buttons — this taps the specific
+              // button the user pointed at instead of the container's
+              // averaged center.
+              if (tapAt) {
+                sendTapAtClient(tapAt.x, tapAt.y);
+                return;
+              }
+              // Fallback (defensive): center of element. Should be
+              // unreachable from the InfoCard since it always passes anchor.
+              const snapshot = axSnapshotRef.current;
+              if (!snapshot) return;
+              sendTapAtElementCenter(element, snapshot);
+            }}
+          />
+        )}
         {retryExhausted && (
           <button type="button" className="rc-retry-button" onClick={handleManualRetry}>
             Retry
