@@ -66,7 +66,7 @@ Use `--configuration Debug` or `--configuration Release` when the app needs a sp
 lim xcode build . --configuration Debug
 ```
 
-If omitted, Limrun uses limbuild's project-type default: `Debug` for native Xcode builds and `Release` for React Native / Expo builds. `--dev-server-url` is only supported with `--configuration Debug`.
+If omitted, Limrun uses limbuild's project-type default: `Debug` for native Xcode builds and `Release` for React Native / Expo builds. `--dev-server-url` is only supported with `--configuration Debug` for React Native / Expo builds. It is a post-install launch URL: limbuild validates that it is a parseable absolute URL, then opens it unchanged after installing on the attached simulator.
 
 For Expo dev-client builds, do not use plain `exp://`; Expo Go may intercept it. Use the app scheme: `expo.scheme` from `app.json` when present, otherwise Expo dev-client's generated default `exp+{expo.slug}`.
 
@@ -83,7 +83,7 @@ lim xcode build . --configuration Debug \
   --dev-server-url 'myapp://expo-development-client/?url=http%3A%2F%2F<reverse-host>%3A57090'
 ```
 
-`--dev-server-url` may not auto-open the bundle after install. If the app launches without connecting to Metro, open the same URL explicitly:
+If the app launches without connecting to Metro, open the same URL explicitly to separate build/install issues from dev-client URL issues:
 
 ```bash
 lim ios open-url --id <ios-instance-id> \
