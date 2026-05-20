@@ -70,15 +70,27 @@ If omitted, Limrun uses limbuild's project-type default: `Debug` for native Xcod
 
 For Expo dev-client builds, do not use plain `exp://`; Expo Go may intercept it. Use the app scheme: `expo.scheme` from `app.json` when present, otherwise Expo dev-client's generated default `exp+{expo.slug}`.
 
-When the Metro server runs locally, expose it with `lim ios reverse` first. Use the simulator-facing host printed by that command in both `REACT_NATIVE_PACKAGER_HOSTNAME` and the encoded dev-client URL.
+When Metro runs locally, prefer a same-port reverse tunnel. Expo dev-client can derive or rediscover Metro URLs, so matching the remote tunnel port and local Metro port avoids stale or unreachable advertised ports. Use the simulator-facing host printed by `lim ios reverse` in both `REACT_NATIVE_PACKAGER_HOSTNAME` and the encoded dev-client URL.
 
 ```bash
 # app.json: "scheme": "myapp" or fallback "slug": "myapp" -> exp+myapp
-lim ios reverse 57090:8081 --id <ios-instance-id>
-REACT_NATIVE_PACKAGER_HOSTNAME=<reverse-host> npx expo start --dev-client --host lan --port 8081
+lim ios reverse 57090:57090 --id <ios-instance-id>
+
+REACT_NATIVE_PACKAGER_HOSTNAME=<reverse-host> \
+npx expo start --dev-client --host lan --port 57090
+
 lim xcode build . --configuration Debug \
   --dev-server-url 'myapp://expo-development-client/?url=http%3A%2F%2F<reverse-host>%3A57090'
 ```
+
+`--dev-server-url` may not auto-open the bundle after install. If the app launches without connecting to Metro, open the same URL explicitly:
+
+```bash
+lim ios open-url --id <ios-instance-id> \
+  'myapp://expo-development-client/?url=http%3A%2F%2F<reverse-host>%3A57090'
+```
+
+Mismatched tunnels such as `57090:8081` can work for plain TCP, but Expo dev-client is stricter because multiple URLs may be derived or advertised. Only use mismatched ports after verifying every dev-client URL points to the remote tunnel port, not the local Metro port.
 
 Every successful build will automatically re-install the app in iOS Simulator and re-launch it.
 
@@ -198,3 +210,5 @@ These are common failure points. Check here first when something goes wrong.
 - **`element-tree` can be large.** Pipe through `grep` or `jq` to extract what you need rather than dumping the full tree into context.
 - **Build errors are your job to fix.** If a build fails, read the error output, fix the code, and rebuild. Do not ask the user to fix build errors.
 - **Bundle ID discovery.** If you don't know the bundle ID, check the Xcode project files or run `lim ios list-apps` after a successful build.
+- **Expo dev-client redbox `Operation not permitted` usually means the simulator cannot reach the advertised Metro URL.** First use same-port reverse mapping such as `57090:57090`; do not add iOS ATS/local-network Info.plist exceptions unless a same-port tunnel still fails.
+- **Monorepos need the workspace root.** Build from the repo root and pass `--expo-app-dir <app-path>` so the remote resolver sees the lockfile and workspace metadata.
