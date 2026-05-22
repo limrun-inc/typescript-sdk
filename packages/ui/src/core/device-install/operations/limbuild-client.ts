@@ -59,7 +59,7 @@ export async function startSignedDeviceBuild({
     },
     body: JSON.stringify({
       command: 'xcodebuild',
-      xcodebuild: { sdk: 'iphoneos', configuration: 'Debug' },
+      xcodebuild: { sdk: 'iphoneos' },
       signing: {
         certificateP12Base64,
         certificatePassword,
