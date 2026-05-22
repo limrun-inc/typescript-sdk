@@ -546,11 +546,10 @@ export function useDeviceInstall({
     if (!reusableAppleCertificate && !signingFiles.certificatePassword) {
       throw new Error('Enter a .p12 password before preparing signing assets.');
     }
-    const selectedPortalDevice = appleDevices.find((device) => selectedAppleDeviceIDs.includes(device.deviceId ?? ''));
+    const selectedPortalDevice = appleDevices.find(
+      (device) => !!device.deviceNumber && selectedAppleDeviceIDs.includes(device.deviceId ?? ''),
+    );
     const signingDeviceUDID = selectedDevice?.hello.serialNumber ?? selectedPortalDevice?.deviceNumber;
-    if (!signingDeviceUDID) {
-      throw new Error('Select an Apple Developer device before preparing signing assets.');
-    }
     setBusyAction('signing');
     setError(undefined);
     setCurrentStep('signing');
@@ -585,7 +584,10 @@ export function useDeviceInstall({
       setAppleSigningStatus('assets-ready');
       setStepStatus('signing', 'complete');
       setCurrentStep('build');
-      log('Apple signing assets stored locally', `${bundleID} for ${signingDeviceUDID}`);
+      log(
+        'Apple signing assets stored locally',
+        signingDeviceUDID ? `${bundleID} for ${signingDeviceUDID}` : `${bundleID} for selected Apple devices`,
+      );
     } catch (caught) {
       const message = errorMessage(caught);
       setError(message);
@@ -1025,12 +1027,12 @@ async function prepareAppleSigningAssetsForDevice({
   appleSessionId: string;
   teamID: string;
   bundleID: string;
-  deviceUDID: string;
+  deviceUDID?: string;
   deviceIDs: string[];
   certificatePassword?: string;
   reusableCertificate?: ReusableAppleCertificate;
 }) {
-  const normalizedUDID = deviceUDID.replace(/-/g, '').replace(/[^a-fA-F0-9]/g, '');
+  const normalizedUDID = deviceUDID?.replace(/-/g, '').replace(/[^a-fA-F0-9]/g, '') ?? '';
   const appIDID = await findOrCreateAppleBundleID({
     apiUrl,
     token,
@@ -1119,7 +1121,7 @@ async function prepareAppleSigningAssetsForDevice({
 
   return putAppleGeneratedSigningAssets({
     bundleID,
-    deviceUDID: normalizedUDID,
+    deviceUDID: normalizedUDID || undefined,
     teamID,
     certificateID,
     certificateP12Base64,
