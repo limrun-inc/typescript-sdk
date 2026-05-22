@@ -20,6 +20,7 @@ import {
   parseProvisioningProfile,
   parseProvisioningProfileBase64,
   profileContainsDevice,
+  profileMatchesBundleID,
   proxyProvisioningRequest,
   putAppleGeneratedSigningAssets,
   putPairRecord,
@@ -158,7 +159,7 @@ export function useDeviceInstall({
   const [pairRecord, setPairRecord] = useState<StoredPairRecord | undefined>();
   const [signingAssets, setSigningAssets] = useState<StoredSigningAssets | undefined>();
   const [logs, setLogs] = useState<string[]>([
-    'Ready. Prepare signing assets, connect and pair the iPhone, build, then install.',
+    'Ready. Prepare signing assets, build, connect and pair the iPhone, then install.',
   ]);
   const [buildLogs, setBuildLogs] = useState<BuildLogLine[]>([]);
   const [buildStatus, setBuildStatus] = useState<DeviceInstallBuildStatus>('idle');
@@ -197,7 +198,7 @@ export function useDeviceInstall({
       setStepStatus('signing', ready ? 'complete' : 'active');
       if (ready) {
         setAppleSigningStatus('assets-ready');
-        setCurrentStep('connect');
+        setCurrentStep('build');
       }
       return next;
     });
@@ -212,7 +213,7 @@ export function useDeviceInstall({
       setAppleBundleID(stored.bundleID);
       setAppleSigningStatus('using-cached-profile');
       setStepStatus('signing', 'complete');
-      setCurrentStep('connect');
+      setCurrentStep('build');
       log('Using stored signing assets', stored.bundleID);
     });
     return () => {
@@ -274,13 +275,19 @@ export function useDeviceInstall({
 
   const resolveSigningAssetsForBuild = useCallback(async () => {
     const requestedBundleID = appleBundleID.trim();
+    if (!requestedBundleID || (signingAssets && profileMatchesBundleID(signingAssets.profile, requestedBundleID))) {
+      if (signingAssets) {
+        log('Using prepared signing assets', signingAssets.bundleID);
+        return signingAssets;
+      }
+    }
     const info = requestedBundleID ? undefined : apiUrl ? await fetchStoredBuildInfo(apiUrl, token).catch(() => undefined) : undefined;
     const bundleID = requestedBundleID || info?.lastBuildConfig?.bundleId;
     if (bundleID) {
       const cached = await getReusableAppleSigningAssets({
         bundleID,
         deviceUDID: selectedDevice?.hello.serialNumber,
-        teamID: selectedAppleTeamID,
+        teamID: selectedDeveloperTeamID(),
       });
       if (cached) {
         setAppleSigningStatus('using-cached-profile');
@@ -325,7 +332,7 @@ export function useDeviceInstall({
     setSigningAssets(storedAssets);
     log('Signing assets stored locally', storageBundleId);
     return storedAssets;
-  }, [apiUrl, appleBundleID, log, selectedAppleTeamID, selectedDevice?.hello.serialNumber, signingFiles, token]);
+  }, [apiUrl, appleBundleID, log, selectedDeveloperTeamID, selectedDevice?.hello.serialNumber, signingAssets, signingFiles, token]);
 
   const startAppleIDLogin = useCallback(
     async ({ accountName, password }: DeviceInstallAppleIDLoginInput) => {
@@ -559,7 +566,7 @@ export function useDeviceInstall({
         setSigningAssets(cached);
         setAppleSigningStatus('assets-ready');
         setStepStatus('signing', 'complete');
-        setCurrentStep('connect');
+        setCurrentStep('build');
         log('Using cached Apple signing assets', bundleID);
         return;
       }
@@ -577,7 +584,7 @@ export function useDeviceInstall({
       setSigningAssets(assets);
       setAppleSigningStatus('assets-ready');
       setStepStatus('signing', 'complete');
-      setCurrentStep('connect');
+      setCurrentStep('build');
       log('Apple signing assets stored locally', `${bundleID} for ${signingDeviceUDID}`);
     } catch (caught) {
       const message = errorMessage(caught);
@@ -636,7 +643,8 @@ export function useDeviceInstall({
           setBuildStatus(status);
           if (status === 'succeeded') {
             setStepStatus('build', 'complete');
-            setCurrentStep('install');
+            setStepStatus('connect', 'active');
+            setCurrentStep('connect');
           } else if (status === 'failed' || status === 'cancelled') {
             setStepStatus('build', 'error');
           }
@@ -656,26 +664,25 @@ export function useDeviceInstall({
     } finally {
       setBusyAction(undefined);
     }
-  }, [apiUrl, log, pairRecord, resolveSigningAssetsForBuild, setStepStatus, token]);
+  }, [apiUrl, log, resolveSigningAssetsForBuild, setStepStatus, token]);
 
   const requestUSBAccess = useCallback(async () => {
     setBusyAction('usb');
     setError(undefined);
     setCurrentStep('connect');
     setStepStatus('connect', 'active');
+    let target: DeviceRelayTarget | undefined;
     try {
       await cleanupDeviceAccess();
-      const target = await requestDeviceUSBAccess({ log });
-      setSelectedDevice(target);
+      target = await requestDeviceUSBAccess({ log });
       setPairConfirmationRequired(false);
       const storedPairRecord = await getPairRecord(target.hello.serialNumber);
-      setPairRecord(storedPairRecord);
-      const storedSigningAssets = manualSigningFilesReady ? undefined : await getLatestSigningAssets();
-      if (storedSigningAssets) {
-        if (!profileContainsDevice(storedSigningAssets.profile, target.hello.serialNumber)) {
+      const activeSigningAssets = signingAssets ?? (manualSigningFilesReady ? undefined : await getLatestSigningAssets());
+      if (activeSigningAssets) {
+        if (!profileContainsDevice(activeSigningAssets.profile, target.hello.serialNumber)) {
           throw new Error('Stored provisioning profile does not include the selected iPhone.');
         }
-        setSigningAssets(storedSigningAssets);
+        setSigningAssets(activeSigningAssets);
       }
       if (apiUrl && appleIDLoginRef.current) {
         const teamID = selectedDeveloperTeamID();
@@ -692,10 +699,15 @@ export function useDeviceInstall({
           });
         }
       }
+      setSelectedDevice(target);
+      setPairRecord(storedPairRecord);
       setStepStatus('connect', storedPairRecord ? 'complete' : 'active');
-      setCurrentStep(storedPairRecord ? 'build' : 'connect');
+      setCurrentStep(storedPairRecord ? 'install' : 'connect');
       log(storedPairRecord ? 'Pair record found' : 'No pair record found', target.hello.serialNumber);
     } catch (caught) {
+      await closeDeviceRelayTarget(target, log);
+      setSelectedDevice(undefined);
+      setPairRecord(undefined);
       const message = errorMessage(caught);
       setError(message);
       setStepStatus('connect', 'error');
@@ -703,7 +715,7 @@ export function useDeviceInstall({
     } finally {
       setBusyAction(undefined);
     }
-  }, [apiUrl, cleanupDeviceAccess, log, manualSigningFilesReady, selectedDeveloperTeamID, setStepStatus, token]);
+  }, [apiUrl, cleanupDeviceAccess, log, manualSigningFilesReady, selectedDeveloperTeamID, setStepStatus, signingAssets, token]);
 
   const pairBrowser = useCallback(async () => {
     if (!apiUrl || !selectedDevice) return;
@@ -728,7 +740,7 @@ export function useDeviceInstall({
       setPairRecord(stored);
       setPairConfirmationRequired(false);
       setStepStatus('connect', 'complete');
-      setCurrentStep('build');
+      setCurrentStep('install');
       log('Device paired', 'The pair record was stored locally in this browser.');
     } catch (caught) {
       await closeDeviceRelayTarget(selectedDevice, log);
@@ -803,10 +815,7 @@ export function useDeviceInstall({
     canBuild:
       !!apiUrl &&
       !busyAction &&
-      !!selectedDevice &&
-      !!pairRecord &&
-      signingInputsReady &&
-      connectedDeviceInProfile !== false,
+      signingInputsReady,
     canPrepareAppleSigningAssets:
       !!apiUrl &&
       !busyAction &&
@@ -815,9 +824,9 @@ export function useDeviceInstall({
       !!selectedDeveloperTeamID() &&
       selectedAppleDeviceIDs.length > 0 &&
       (!!reusableAppleCertificate || !!signingFiles.certificatePassword),
-    canRequestUSBAccess: !busyAction && signingInputsReady,
-    canPairBrowser: !!apiUrl && !busyAction && !!selectedDevice,
-    canInstall: !!apiUrl && !busyAction && !!selectedDevice && !!pairRecord,
+    canRequestUSBAccess: !busyAction && buildStatus === 'succeeded',
+    canPairBrowser: !!apiUrl && !busyAction && buildStatus === 'succeeded' && !!selectedDevice,
+    canInstall: !!apiUrl && !busyAction && buildStatus === 'succeeded' && !!selectedDevice && !!pairRecord,
     setSigningFiles,
     setAppleBundleID,
     setSelectedAppleDeviceIDs,

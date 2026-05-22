@@ -12,17 +12,17 @@ const steps: Array<{ id: DeviceInstallStep; title: string; description: string }
   {
     id: 'signing',
     title: 'Prepare signing',
-    description: 'Choose Apple ID login or upload certificates, then confirm the target developer device.',
+    description: 'Choose Apple ID login or upload certificates for a registered developer device.',
+  },
+  {
+    id: 'build',
+    title: 'Build for device',
+    description: 'Start the signed iPhone build before connecting over USB.',
   },
   {
     id: 'connect',
     title: 'Connect and pair',
-    description: 'Connect the iPhone with WebUSB, then pair this browser so installs can use the device.',
-  },
-  {
-    id: 'build',
-    title: 'Check and build',
-    description: 'Verify the device and provisioning profile are ready, then start the signed build.',
+    description: 'After the build succeeds, connect the iPhone with WebUSB and pair this browser.',
   },
   {
     id: 'install',
@@ -78,7 +78,7 @@ export function DeviceInstallDialog({
             <header className="lr-device-install__header">
               <div>
                 <h2 id={dialogTitleId}>Install to a real iPhone</h2>
-                <p>Prepare signing, connect and pair the device, build, then install from this browser.</p>
+                <p>Prepare signing, build for the registered device, connect and pair, then install from this browser.</p>
               </div>
               <button type="button" className="lr-device-install__icon-button" onClick={() => setOpen(false)}>
                 Close
@@ -110,7 +110,7 @@ export function DeviceInstallDialog({
                           onClick={() => setSigningSection('apple-id')}
                         >
                           <strong>Apple ID login</strong>
-                          <span>Sign in, choose team, bundle ID, devices, then generate signing assets.</span>
+                          <span>Sign in, choose team, bundle ID, and registered devices, then generate signing assets.</span>
                         </button>
                         <button
                           type="button"
@@ -311,7 +311,7 @@ export function DeviceInstallDialog({
                             </label>
                           </div>
                           <p className="lr-device-install__hint">
-                            The provisioning profile will be checked against the connected iPhone before the build starts.
+                            The provisioning profile will be checked against the connected iPhone before installation.
                           </p>
                         </div>
                       )}
@@ -325,8 +325,8 @@ export function DeviceInstallDialog({
                   {step.id === 'connect' && (
                     <div className="lr-device-install__step-body">
                       <p>
-                        WebUSB works in Chromium browsers on secure origins. Connect the iPhone over USB, approve the
-                        browser permission prompt, then pair this browser.
+                        WebUSB works in Chromium browsers on secure origins. Once the build succeeds, connect the iPhone
+                        over USB, approve the browser permission prompt, then pair this browser.
                       </p>
                       <div className="lr-device-install__actions">
                         <button
@@ -365,8 +365,8 @@ export function DeviceInstallDialog({
                       )}
                       <p>
                         {deviceInstall.hasPairRecord
-                          ? 'Pair record is stored locally. Continue to the build check.'
-                          : 'Pair this browser once before building and installing.'}
+                          ? 'Pair record is stored locally. Continue to installation.'
+                          : 'Pair this browser once before installing.'}
                       </p>
                     </div>
                   )}
@@ -374,27 +374,9 @@ export function DeviceInstallDialog({
                   {step.id === 'build' && (
                     <div className="lr-device-install__step-body">
                       <div className="lr-device-install__checklist">
-                        <StatusLine label="Signing assets" ready={deviceInstall.hasSigningInputs} pendingText="Ready to verify" />
-                        <StatusLine label="USB device" ready={!!deviceInstall.device} />
-                        <StatusLine label="Pair record" ready={deviceInstall.hasPairRecord} />
-                        <StatusLine
-                          label="Profile includes connected device"
-                          ready={deviceInstall.connectedDeviceInProfile}
-                          pendingText="Checked when the build starts"
-                        />
+                        <StatusLine label="Signing assets" ready={deviceInstall.hasSigningInputs} />
+                        <StatusLine label="Device build" ready={deviceInstall.buildStatus === 'succeeded' ? true : undefined} pendingText="Not started" />
                       </div>
-                      {deviceInstall.device &&
-                        deviceInstall.appleTeams.length > 0 &&
-                        !deviceInstall.connectedAppleDeviceRegistered && (
-                        <button
-                          type="button"
-                          className="lr-device-install__secondary"
-                          disabled={disabled || !!deviceInstall.busyAction}
-                          onClick={() => void deviceInstall.registerConnectedAppleDevice()}
-                        >
-                          Register connected iPhone
-                        </button>
-                      )}
                       <button
                         type="button"
                         className="lr-device-install__primary"
