@@ -29,7 +29,7 @@ export default class XcodeSync extends BaseCommand {
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description:
-        'Xcode instance ID to sync to, or an iOS instance ID with `--xcode` enabled. Defaults to the most recently created Xcode-capable target.',
+        'Xcode instance ID to sync to, or an iOS instance ID with `--xcode` enabled. Defaults to the most recently created Xcode-capable target, creating one if needed.',
     }),
     watch: Flags.boolean({
       description: 'Keep watching the local source tree and push changes automatically',
@@ -64,7 +64,7 @@ export default class XcodeSync extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const target = await this.resolveXcodeTarget(flags.id);
+      const target = await this.resolveXcodeTargetOrCreate(flags.id);
       const id = target.id;
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);
