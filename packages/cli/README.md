@@ -401,6 +401,7 @@ lim asset pull asset_abc123
 # List assets
 lim asset list
 lim asset list --name my-app
+lim asset list --name-prefix builds/
 lim asset list --download-url
 lim asset list --include-app-store
 

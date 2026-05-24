@@ -9,6 +9,7 @@ export default class AssetList extends BaseCommand {
     '<%= config.bin %> asset list',
     '<%= config.bin %> asset list <ID>',
     '<%= config.bin %> asset list --name MyApp --download-url',
+    '<%= config.bin %> asset list --name-prefix builds/',
     '<%= config.bin %> asset list --include-app-store',
   ];
 
@@ -19,6 +20,7 @@ export default class AssetList extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     name: Flags.string({ description: 'Filter listed assets by exact name' }),
+    'name-prefix': Flags.string({ description: 'Filter listed assets by name prefix' }),
     'download-url': Flags.boolean({
       description: 'Include a signed download URL in the output where available',
       default: false,
@@ -38,6 +40,10 @@ export default class AssetList extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
+      if (flags.name && flags['name-prefix']) {
+        this.error('Use either --name for exact matching or --name-prefix for prefix matching, not both.');
+      }
+
       if (args.id) {
         const asset = await this.client.assets.get(args.id, {
           includeDownloadUrl: flags['download-url'],
@@ -67,6 +73,7 @@ export default class AssetList extends BaseCommand {
         includeAppStore: flags['include-app-store'],
       };
       if (flags.name) params.nameFilter = flags.name;
+      if (flags['name-prefix']) params.namePrefixFilter = flags['name-prefix'];
 
       const assets = await this.client.assets.list(params as any);
       const headers = ['ID', 'Name', 'MD5'];
