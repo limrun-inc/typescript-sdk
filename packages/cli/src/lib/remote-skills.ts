@@ -3,7 +3,8 @@ import os from 'os';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import yaml from 'js-yaml';
+
+const yaml = require('js-yaml') as { load(input: string): unknown };
 
 export const DEFAULT_SKILLS_OWNER = 'limrun-inc';
 export const DEFAULT_SKILLS_REPO = 'skills';
