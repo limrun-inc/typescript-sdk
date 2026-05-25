@@ -10,7 +10,7 @@ export const DEFAULT_SKILLS_REPO = 'skills';
 export const DEFAULT_SKILLS_REF = 'main';
 const DEFAULT_CLONE_TIMEOUT_MS = 300_000;
 const CLONE_TIMEOUT_MS = (() => {
-  const raw = process.env.SKILLS_CLONE_TIMEOUT_MS;
+  const raw = process.env['SKILLS_CLONE_TIMEOUT_MS'];
   if (!raw) return DEFAULT_CLONE_TIMEOUT_MS;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CLONE_TIMEOUT_MS;
@@ -94,7 +94,9 @@ function parseCatalog(text: string): CatalogFile {
   try {
     catalog = JSON.parse(text);
   } catch (err) {
-    throw new RemoteSkillsError(`catalog.json is invalid JSON: ${err instanceof Error ? err.message : String(err)}`);
+    throw new RemoteSkillsError(
+      `catalog.json is invalid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   if (!catalog || typeof catalog !== 'object' || Array.isArray(catalog)) {
@@ -126,10 +128,14 @@ function parseSkillFrontmatter(skillName: string, text: string): { name: string;
   if (!match) {
     throw new RemoteSkillsError(`skills/${skillName}/SKILL.md is missing YAML frontmatter`);
   }
+  const frontmatterText = match[1];
+  if (frontmatterText === undefined) {
+    throw new RemoteSkillsError(`skills/${skillName}/SKILL.md is missing YAML frontmatter`);
+  }
 
   let frontmatter: unknown;
   try {
-    frontmatter = yaml.load(match[1]);
+    frontmatter = yaml.load(frontmatterText);
   } catch (err) {
     throw new RemoteSkillsError(
       `skills/${skillName}/SKILL.md has invalid YAML frontmatter: ${
