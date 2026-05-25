@@ -1,28 +1,27 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import yaml from 'js-yaml';
 
 export const DEFAULT_SKILLS_OWNER = 'limrun-inc';
 export const DEFAULT_SKILLS_REPO = 'skills';
 export const DEFAULT_SKILLS_REF = 'main';
+const DEFAULT_CLONE_TIMEOUT_MS = 300_000;
+const CLONE_TIMEOUT_MS = (() => {
+  const raw = process.env.SKILLS_CLONE_TIMEOUT_MS;
+  if (!raw) return DEFAULT_CLONE_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CLONE_TIMEOUT_MS;
+})();
+const execFileAsync = promisify(execFile);
 
 interface CatalogFile {
   schemaVersion: number;
   skills: Array<{
     name: string;
     defaultSelected: boolean;
-  }>;
-}
-
-interface GitHubCommitResponse {
-  sha: string;
-}
-
-interface GitHubTreeResponse {
-  tree: Array<{
-    path?: string;
-    type?: string;
   }>;
 }
 
@@ -48,7 +47,7 @@ export interface LoadRemoteSkillsOptions {
   owner?: string;
   repo?: string;
   ref?: string;
-  fetchImpl?: typeof fetch;
+  cloneImpl?: (owner: string, repo: string, ref: string) => Promise<ClonedSkillsRepo>;
 }
 
 export class RemoteSkillsError extends Error {
@@ -58,12 +57,9 @@ export class RemoteSkillsError extends Error {
   }
 }
 
-function githubApiHeaders(): Record<string, string> {
-  return {
-    Accept: 'application/vnd.github+json',
-    'User-Agent': '@limrun/cli',
-    'X-GitHub-Api-Version': '2022-11-28',
-  };
+export interface ClonedSkillsRepo {
+  rootDir: string;
+  commit: string;
 }
 
 function assertString(value: unknown, label: string): asserts value is string {
@@ -72,66 +68,25 @@ function assertString(value: unknown, label: string): asserts value is string {
   }
 }
 
-function encodeRawPath(filePath: string): string {
-  return filePath.split('/').map(encodeURIComponent).join('/');
+function isPathInside(basePath: string, targetPath: string): boolean {
+  const normalizedBase = path.normalize(path.resolve(basePath));
+  const normalizedTarget = path.normalize(path.resolve(targetPath));
+  return normalizedTarget === normalizedBase || normalizedTarget.startsWith(normalizedBase + path.sep);
 }
 
-async function readErrorBody(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    return '';
+function assertSafeSkillName(value: string, label: string): void {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) {
+    throw new RemoteSkillsError(`${label} must be a lowercase hyphenated skill name`);
   }
 }
 
-async function assertOk(response: Response, operation: string): Promise<void> {
-  if (response.ok) return;
-
-  const body = await readErrorBody(response);
-  const remaining = response.headers.get('x-ratelimit-remaining');
-  const reset = response.headers.get('x-ratelimit-reset');
-  const rateLimitSuffix =
-    remaining === '0' ?
-      ` GitHub API rate limit exhausted${reset ? `; resets at ${new Date(Number(reset) * 1000).toISOString()}` : ''}.`
-    : '';
-  const detail = body ? `: ${body.slice(0, 500)}` : '';
-  throw new RemoteSkillsError(`${operation} failed with HTTP ${response.status}.${rateLimitSuffix}${detail}`);
-}
-
-async function fetchJson<T>(url: string, operation: string, fetchImpl: typeof fetch): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetchImpl(url, { headers: githubApiHeaders() });
-  } catch (err) {
-    throw new RemoteSkillsError(`${operation} failed: ${err instanceof Error ? err.message : String(err)}`);
+function cleanupSkillsTempDir(rootDir: string): void {
+  const tmpRoot = os.tmpdir();
+  if (!isPathInside(tmpRoot, rootDir) || path.resolve(rootDir) === path.resolve(tmpRoot)) {
+    throw new RemoteSkillsError(`Refusing to clean up non-temporary skills directory: ${rootDir}`);
   }
 
-  await assertOk(response, operation);
-  return (await response.json()) as T;
-}
-
-async function fetchText(url: string, operation: string, fetchImpl: typeof fetch): Promise<string> {
-  let response: Response;
-  try {
-    response = await fetchImpl(url, { headers: { 'User-Agent': '@limrun/cli' } });
-  } catch (err) {
-    throw new RemoteSkillsError(`${operation} failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  await assertOk(response, operation);
-  return response.text();
-}
-
-async function fetchBuffer(url: string, operation: string, fetchImpl: typeof fetch): Promise<Buffer> {
-  let response: Response;
-  try {
-    response = await fetchImpl(url, { headers: { 'User-Agent': '@limrun/cli' } });
-  } catch (err) {
-    throw new RemoteSkillsError(`${operation} failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  await assertOk(response, operation);
-  return Buffer.from(await response.arrayBuffer());
+  fs.rmSync(rootDir, { recursive: true, force: true });
 }
 
 function parseCatalog(text: string): CatalogFile {
@@ -158,6 +113,7 @@ function parseCatalog(text: string): CatalogFile {
       throw new RemoteSkillsError(`catalog.json skills[${index}] must be an object`);
     }
     assertString(skill.name, `catalog.json skills[${index}].name`);
+    assertSafeSkillName(skill.name, `catalog.json skills[${index}].name`);
     if (typeof skill.defaultSelected !== 'boolean') {
       throw new RemoteSkillsError(`catalog.json skills[${index}].defaultSelected must be a boolean`);
     }
@@ -187,6 +143,7 @@ function parseSkillFrontmatter(skillName: string, text: string): { name: string;
 
   const parsed = frontmatter as { name?: unknown; description?: unknown };
   assertString(parsed.name, `skills/${skillName}/SKILL.md frontmatter name`);
+  assertSafeSkillName(parsed.name, `skills/${skillName}/SKILL.md frontmatter name`);
   assertString(parsed.description, `skills/${skillName}/SKILL.md frontmatter description`);
   if (parsed.name !== skillName) {
     throw new RemoteSkillsError(`skills/${skillName}/SKILL.md frontmatter name must match directory name`);
@@ -195,119 +152,149 @@ function parseSkillFrontmatter(skillName: string, text: string): { name: string;
   return { name: parsed.name, description: parsed.description };
 }
 
-function relativeSkillNameFromSkillMd(filePath: string): string | undefined {
-  const match = filePath.match(/^skills\/([^/]+)\/SKILL\.md$/);
-  return match?.[1];
+function readJsonFile(filePath: string): string {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (err) {
+    throw new RemoteSkillsError(
+      `Failed to read ${path.basename(filePath)}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
-export async function loadRemoteSkills(options: LoadRemoteSkillsOptions = {}): Promise<LoadedRemoteSkills> {
-  const owner = options.owner ?? DEFAULT_SKILLS_OWNER;
-  const repo = options.repo ?? DEFAULT_SKILLS_REPO;
-  const ref = options.ref ?? DEFAULT_SKILLS_REF;
-  const fetchImpl = options.fetchImpl ?? fetch;
+async function cloneSkillsRepo(owner: string, repo: string, ref: string): Promise<ClonedSkillsRepo> {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'limrun-skills-'));
+  const repoUrl = `https://github.com/${owner}/${repo}.git`;
+  const cloneArgs = [
+    '-c',
+    'filter.lfs.required=false',
+    '-c',
+    'filter.lfs.smudge=',
+    '-c',
+    'filter.lfs.clean=',
+    '-c',
+    'filter.lfs.process=',
+    'clone',
+    '--depth',
+    '1',
+    '--branch',
+    ref,
+    repoUrl,
+    rootDir,
+  ];
+  const env = {
+    ...process.env,
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_LFS_SKIP_SMUDGE: '1',
+  };
 
-  const commitUrl = `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(ref)}`;
-  const commitResponse = await fetchJson<GitHubCommitResponse>(
-    commitUrl,
-    `Fetching ${owner}/${repo}@${ref}`,
-    fetchImpl,
-  );
-  assertString(commitResponse.sha, 'GitHub commit sha');
-  const commit = commitResponse.sha;
-
-  const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${commit}?recursive=1`;
-  const treeResponse = await fetchJson<GitHubTreeResponse>(
-    treeUrl,
-    `Fetching ${owner}/${repo}@${commit} file tree`,
-    fetchImpl,
-  );
-  if (!Array.isArray(treeResponse.tree)) {
-    throw new RemoteSkillsError('GitHub tree response is missing tree array');
+  try {
+    await execFileAsync('git', cloneArgs, { env, timeout: CLONE_TIMEOUT_MS });
+    const { stdout } = await execFileAsync('git', ['-C', rootDir, 'rev-parse', 'HEAD'], {
+      env,
+      timeout: 30_000,
+    });
+    return { rootDir, commit: stdout.trim() };
+  } catch (err) {
+    cleanupSkillsTempDir(rootDir);
+    const message = err instanceof Error ? err.message : String(err);
+    const code = typeof err === 'object' && err && 'code' in err ? String(err.code) : '';
+    if (code === 'ENOENT') {
+      throw new RemoteSkillsError('Failed to clone Limrun skills: git executable was not found');
+    }
+    if (message.includes('timed out') || message.includes('ETIMEDOUT')) {
+      throw new RemoteSkillsError(
+        `Failed to clone Limrun skills: clone timed out after ${Math.round(CLONE_TIMEOUT_MS / 1000)}s`,
+      );
+    }
+    if (
+      message.includes('Authentication failed') ||
+      message.includes('could not read Username') ||
+      message.includes('Permission denied') ||
+      message.includes('Repository not found')
+    ) {
+      throw new RemoteSkillsError(`Failed to clone Limrun skills: authentication failed for ${repoUrl}`);
+    }
+    throw new RemoteSkillsError(`Failed to clone Limrun skills: ${message}`);
   }
+}
 
-  const filePaths = treeResponse.tree
-    .filter((entry) => entry.type === 'blob' && typeof entry.path === 'string')
-    .map((entry) => entry.path as string);
-  const skillMdPaths = filePaths.filter((filePath) => relativeSkillNameFromSkillMd(filePath));
-  if (skillMdPaths.length === 0) {
-    throw new RemoteSkillsError(`${owner}/${repo}@${commit} does not contain any skills/*/SKILL.md files`);
-  }
-
-  const rawBaseUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${commit}`;
-  const catalogText = await fetchText(
-    `${rawBaseUrl}/catalog.json`,
-    `Fetching ${owner}/${repo}@${commit} catalog.json`,
-    fetchImpl,
-  );
-  const catalog = parseCatalog(catalogText);
+function loadSkillsFromCheckout(params: {
+  owner: string;
+  repo: string;
+  ref: string;
+  commit: string;
+  rootDir: string;
+}): LoadedRemoteSkills {
+  const { owner, repo, ref, commit, rootDir } = params;
+  const skillsRoot = path.join(rootDir, 'skills');
+  const catalogPath = path.join(rootDir, 'catalog.json');
+  const catalog = parseCatalog(readJsonFile(catalogPath));
   const catalogNames = catalog.skills.map((skill) => skill.name);
-  const discoveredNames = skillMdPaths.map((filePath) => relativeSkillNameFromSkillMd(filePath)!);
   const duplicateCatalogNames = catalogNames.filter((name, index) => catalogNames.indexOf(name) !== index);
   if (duplicateCatalogNames.length > 0) {
     throw new RemoteSkillsError(
       `catalog.json has duplicate skill names: ${[...new Set(duplicateCatalogNames)].join(', ')}`,
     );
   }
-
-  const missingFromCatalog = discoveredNames.filter((name) => !catalogNames.includes(name));
-  const missingFromTree = catalogNames.filter((name) => !discoveredNames.includes(name));
-  if (missingFromCatalog.length > 0) {
-    throw new RemoteSkillsError(`skills missing from catalog.json: ${missingFromCatalog.join(', ')}`);
-  }
-  if (missingFromTree.length > 0) {
-    throw new RemoteSkillsError(`catalog.json entries missing from skills/: ${missingFromTree.join(', ')}`);
-  }
   if (!catalog.skills.some((skill) => skill.defaultSelected)) {
     throw new RemoteSkillsError('catalog.json must mark at least one skill as defaultSelected');
   }
 
-  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'limrun-skills-'));
-  const skillsRoot = path.join(rootDir, 'skills');
-  try {
-    const skillDirPrefixes = new Set(catalogNames.map((name) => `skills/${name}/`));
-    const filesToDownload = filePaths.filter((filePath) =>
-      [...skillDirPrefixes].some((prefix) => filePath.startsWith(prefix)),
-    );
-
-    await Promise.all(
-      filesToDownload.map(async (filePath) => {
-        const content = await fetchBuffer(
-          `${rawBaseUrl}/${encodeRawPath(filePath)}`,
-          `Fetching ${owner}/${repo}@${commit} ${filePath}`,
-          fetchImpl,
-        );
-        const targetPath = path.join(rootDir, filePath);
-        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-        fs.writeFileSync(targetPath, content);
-      }),
-    );
-
-    const skills = catalog.skills.map((catalogSkill) => {
-      const skillMdPath = path.join(skillsRoot, catalogSkill.name, 'SKILL.md');
-      if (!fs.existsSync(skillMdPath)) {
-        throw new RemoteSkillsError(`Downloaded skill is missing skills/${catalogSkill.name}/SKILL.md`);
-      }
-      const frontmatter = parseSkillFrontmatter(catalogSkill.name, fs.readFileSync(skillMdPath, 'utf8'));
-      return {
-        name: frontmatter.name,
-        description: frontmatter.description,
-        defaultSelected: catalogSkill.defaultSelected,
-        sourceDir: path.join(skillsRoot, catalogSkill.name),
-      };
-    });
-
+  const skills = catalog.skills.map((catalogSkill) => {
+    const sourceDir = path.join(skillsRoot, catalogSkill.name);
+    if (!isPathInside(skillsRoot, sourceDir)) {
+      throw new RemoteSkillsError(`catalog.json skill escapes skills directory: ${catalogSkill.name}`);
+    }
+    if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+      throw new RemoteSkillsError(`catalog.json entries missing from skills/: ${catalogSkill.name}`);
+    }
+    const skillMdPath = path.join(sourceDir, 'SKILL.md');
+    if (!fs.existsSync(skillMdPath)) {
+      throw new RemoteSkillsError(`Downloaded skill is missing skills/${catalogSkill.name}/SKILL.md`);
+    }
+    const frontmatter = parseSkillFrontmatter(catalogSkill.name, fs.readFileSync(skillMdPath, 'utf8'));
     return {
+      name: frontmatter.name,
+      description: frontmatter.description,
+      defaultSelected: catalogSkill.defaultSelected,
+      sourceDir,
+    };
+  });
+
+  return {
+    owner,
+    repo,
+    ref,
+    commit,
+    rootDir,
+    skillsRoot,
+    skills,
+    cleanup: () => cleanupSkillsTempDir(rootDir),
+  };
+}
+
+export async function loadRemoteSkills(options: LoadRemoteSkillsOptions = {}): Promise<LoadedRemoteSkills> {
+  const owner = options.owner ?? DEFAULT_SKILLS_OWNER;
+  const repo = options.repo ?? DEFAULT_SKILLS_REPO;
+  const ref = options.ref ?? DEFAULT_SKILLS_REF;
+  const cloneImpl = options.cloneImpl ?? cloneSkillsRepo;
+  const cloned = await cloneImpl(owner, repo, ref);
+  try {
+    return loadSkillsFromCheckout({
       owner,
       repo,
       ref,
-      commit,
-      rootDir,
-      skillsRoot,
-      skills,
-      cleanup: () => fs.rmSync(rootDir, { recursive: true, force: true }),
-    };
+      commit: cloned.commit,
+      rootDir: cloned.rootDir,
+    });
   } catch (err) {
-    fs.rmSync(rootDir, { recursive: true, force: true });
+    cleanupSkillsTempDir(cloned.rootDir);
     throw err;
   }
 }
+
+export const __remoteSkillsTestUtils = {
+  cleanupSkillsTempDir,
+  loadSkillsFromCheckout,
+};

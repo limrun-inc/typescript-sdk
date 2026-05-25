@@ -173,9 +173,9 @@ async function promptSkills(availableSkills: RemoteSkill[]): Promise<SkillName[]
           choices: availableSkills.map((skill) => ({
             title: `${skill.name} (${skill.description})`,
             value: skill.name,
-            selected: skill.defaultSelected,
+            selected: true,
           })),
-          hint: 'Space to toggle, Enter to confirm (Enter alone picks the highlighted skill)',
+          hint: 'All selected by default. Space toggles, Enter confirms.',
         },
         {
           onCancel: () => {

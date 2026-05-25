@@ -138,7 +138,40 @@ export function planSkillDirectoryCopy(sourceDir: string, targetDir: string): { 
 }
 
 export function applySkillDirectoryCopy(sourceDir: string, targetDir: string): void {
-  fs.rmSync(targetDir, { recursive: true, force: true });
-  fs.mkdirSync(path.dirname(targetDir), { recursive: true });
-  fs.cpSync(sourceDir, targetDir, { recursive: true });
+  const parentDir = path.dirname(targetDir);
+  const baseName = path.basename(targetDir);
+  const suffix = `${process.pid}-${Date.now()}`;
+  const tempDir = path.join(parentDir, `.${baseName}.tmp-${suffix}`);
+  const backupDir = path.join(parentDir, `.${baseName}.backup-${suffix}`);
+  let backedUp = false;
+  let installed = false;
+
+  fs.mkdirSync(parentDir, { recursive: true });
+
+  try {
+    fs.cpSync(sourceDir, tempDir, { recursive: true });
+
+    if (fs.existsSync(targetDir)) {
+      fs.renameSync(targetDir, backupDir);
+      backedUp = true;
+    }
+
+    fs.renameSync(tempDir, targetDir);
+    installed = true;
+  } catch (err) {
+    if (backedUp && !installed && !fs.existsSync(targetDir) && fs.existsSync(backupDir)) {
+      try {
+        fs.renameSync(backupDir, targetDir);
+        backedUp = false;
+      } catch {
+        // Preserve the original error; rollback failure leaves the backup for manual recovery.
+      }
+    }
+    throw err;
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    if (installed || !backedUp) {
+      fs.rmSync(backupDir, { recursive: true, force: true });
+    }
+  }
 }
