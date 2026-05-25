@@ -66,20 +66,8 @@ export const AGENTS: Record<AgentId, AgentSpec> = {
   },
 };
 
-export function sourceSkillDir(skillsRoot: string, skillName: string): string {
-  return path.join(skillsRoot, skillName);
-}
-
-export function sourceSkillMd(skillsRoot: string, skillName: string): string {
-  return path.join(sourceSkillDir(skillsRoot, skillName), 'SKILL.md');
-}
-
 export function targetSkillDir(agent: AgentSpec, scope: Scope, skillName: string): string {
   return path.join(agent.skillsDir(scope), skillName);
-}
-
-export function targetSkillMd(agent: AgentSpec, scope: Scope, skillName: string): string {
-  return path.join(targetSkillDir(agent, scope, skillName), 'SKILL.md');
 }
 
 export type PlanKind = 'install' | 'unchanged' | 'conflict';
@@ -120,6 +108,7 @@ function directoriesEqual(sourceDir: string, targetDir: string): boolean {
     const sourceStat = fs.statSync(sourcePath);
     const targetStat = fs.statSync(targetPath);
     if (!sourceStat.isFile() || !targetStat.isFile()) return false;
+    if (sourceStat.size !== targetStat.size) return false;
 
     const sourceBuf = fs.readFileSync(sourcePath);
     const targetBuf = fs.readFileSync(targetPath);

@@ -11,7 +11,7 @@ export const DEFAULT_SKILLS_REPO = 'skills';
 export const DEFAULT_SKILLS_REF = 'main';
 const DEFAULT_CLONE_TIMEOUT_MS = 300_000;
 const CLONE_TIMEOUT_MS = (() => {
-  const raw = process.env['SKILLS_CLONE_TIMEOUT_MS'];
+  const raw = process.env['LIM_SKILLS_CLONE_TIMEOUT_MS'];
   if (!raw) return DEFAULT_CLONE_TIMEOUT_MS;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CLONE_TIMEOUT_MS;
