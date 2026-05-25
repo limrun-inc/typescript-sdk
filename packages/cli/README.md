@@ -616,7 +616,7 @@ Provide `--certificate-p12`, `--certificate-password`, and `--provisioning-profi
 
 ### Skills
 
-Install Limrun skills into the native skills directory of AI coding agents (Claude Code, Cursor, Codex). After installation, the agent auto-discovers the skill and triggers it when you ask things like "build the iOS app" or "show me a screenshot."
+Fetch the latest Limrun skills from `limrun-inc/skills@main` and install them into the native skills directory of AI coding agents (Claude Code, Cursor, Codex). After installation, the agent auto-discovers the skill and triggers it when you ask things like "build the iOS app" or "show me a screenshot."
 
 ```bash
 # Interactive: prompts for agents (with detected ones pre-checked) and scope
@@ -626,8 +626,9 @@ lim skills install
 lim skills install --agents claude --scope project
 lim skills install --agents claude --agents cursor --scope project
 lim skills install --agents codex --scope global
+lim skills install --agents cursor --scope project --skills limrun-expo-development
 
-# Overwrite existing skill files (otherwise the command refuses on non-interactive runs)
+# Overwrite existing skill directories (otherwise the command refuses on non-interactive runs)
 lim skills install --agents claude --scope project --force
 
 # Machine-readable output for scripts
@@ -639,10 +640,17 @@ lim skills install --agents claude --scope project --json
 | Flag                        | Description                                                                                  |
 | --------------------------- | -------------------------------------------------------------------------------------------- |
 | `--agents <id>`             | Target agent. Repeat to select multiple. One of: `claude`, `cursor`, `codex`.                |
+| `--skills <name>`           | Limrun skill to install. Repeat to select multiple. Defaults to the remote catalog default.  |
 | `--scope <project\|global>` | `project` writes into the current directory; `global` writes into the user's home directory. |
-| `--force`                   | Overwrite existing skill files without confirmation.                                         |
+| `--force`                   | Overwrite existing skill directories without confirmation.                                   |
 | `--json`                    | Emit structured JSON instead of the human summary.                                           |
 | `--quiet`                   | Suppress non-result output.                                                                  |
+
+**Available skills:**
+
+- `limrun-xcode-and-ios-simulator` (default): Build, launch, and control iOS apps with remote XCode and Simulators.
+- `limrun-expo-development`: Iterate on Expo / React Native apps with remote iOS dev-client workflows.
+- `limrun-detox-testing`: Configure, run, and debug Detox against Limrun iOS simulators.
 
 **Install paths:**
 
@@ -654,7 +662,8 @@ lim skills install --agents claude --scope project --json
 
 **Behavior:**
 
-- The command compares bundled vs existing content byte-for-byte. Identical content is reported as `Unchanged` (no writes).
+- The command fetches `limrun-inc/skills@main` at runtime, so skill updates do not require a new `@limrun/cli` release.
+- The command compares fetched vs existing skill directories byte-for-byte. Identical content is reported as `Unchanged` (no writes).
 - Different content: in interactive mode you are asked to confirm each overwrite; in non-interactive mode the command refuses unless `--force` is passed.
 - Non-interactive runs are all-or-nothing: if any selected target conflicts and `--force` is not set, no files are written for any target, and the command exits with status 1.
 - Ctrl-C cancellation at any prompt exits cleanly without writing.

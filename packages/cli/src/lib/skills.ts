@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { type Config } from '@oclif/core';
 
 export type AgentId = 'claude' | 'cursor' | 'codex';
 export type Scope = 'project' | 'global';
@@ -67,30 +66,79 @@ export const AGENTS: Record<AgentId, AgentSpec> = {
   },
 };
 
-export function skillsRoot(config: Config): string {
-  return path.join(config.root, 'skills');
+export function sourceSkillDir(skillsRoot: string, skillName: string): string {
+  return path.join(skillsRoot, skillName);
 }
 
-export function sourceSkillMd(config: Config, skillName: string): string {
-  return path.join(skillsRoot(config), skillName, 'SKILL.md');
+export function sourceSkillMd(skillsRoot: string, skillName: string): string {
+  return path.join(sourceSkillDir(skillsRoot, skillName), 'SKILL.md');
+}
+
+export function targetSkillDir(agent: AgentSpec, scope: Scope, skillName: string): string {
+  return path.join(agent.skillsDir(scope), skillName);
 }
 
 export function targetSkillMd(agent: AgentSpec, scope: Scope, skillName: string): string {
-  return path.join(agent.skillsDir(scope), skillName, 'SKILL.md');
+  return path.join(targetSkillDir(agent, scope, skillName), 'SKILL.md');
 }
 
 export type PlanKind = 'install' | 'unchanged' | 'conflict';
 
-export function planSkillFileCopy(sourceFile: string, targetFile: string): { kind: PlanKind } {
-  if (!fs.existsSync(targetFile)) {
-    return { kind: 'install' };
+function listRelativeFiles(root: string): string[] {
+  const files: string[] = [];
+
+  function walk(current: string, relativePrefix: string): void {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const relativePath = path.join(relativePrefix, entry.name);
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath, relativePath);
+      } else if (entry.isFile()) {
+        files.push(relativePath);
+      } else {
+        files.push(relativePath);
+      }
+    }
   }
-  const sourceBuf = fs.readFileSync(sourceFile);
-  const targetBuf = fs.readFileSync(targetFile);
-  return { kind: sourceBuf.equals(targetBuf) ? 'unchanged' : 'conflict' };
+
+  walk(root, '');
+  return files.sort();
 }
 
-export function applySkillFileCopy(sourceFile: string, targetFile: string): void {
-  fs.mkdirSync(path.dirname(targetFile), { recursive: true });
-  fs.copyFileSync(sourceFile, targetFile);
+function directoriesEqual(sourceDir: string, targetDir: string): boolean {
+  const sourceFiles = listRelativeFiles(sourceDir);
+  const targetFiles = listRelativeFiles(targetDir);
+  if (sourceFiles.length !== targetFiles.length) return false;
+
+  for (let i = 0; i < sourceFiles.length; i += 1) {
+    if (sourceFiles[i] !== targetFiles[i]) return false;
+
+    const sourcePath = path.join(sourceDir, sourceFiles[i]);
+    const targetPath = path.join(targetDir, targetFiles[i]);
+    const sourceStat = fs.statSync(sourcePath);
+    const targetStat = fs.statSync(targetPath);
+    if (!sourceStat.isFile() || !targetStat.isFile()) return false;
+
+    const sourceBuf = fs.readFileSync(sourcePath);
+    const targetBuf = fs.readFileSync(targetPath);
+    if (!sourceBuf.equals(targetBuf)) return false;
+  }
+
+  return true;
+}
+
+export function planSkillDirectoryCopy(sourceDir: string, targetDir: string): { kind: PlanKind } {
+  if (!fs.existsSync(targetDir)) {
+    return { kind: 'install' };
+  }
+  if (!fs.statSync(targetDir).isDirectory()) {
+    return { kind: 'conflict' };
+  }
+  return { kind: directoriesEqual(sourceDir, targetDir) ? 'unchanged' : 'conflict' };
+}
+
+export function applySkillDirectoryCopy(sourceDir: string, targetDir: string): void {
+  fs.rmSync(targetDir, { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+  fs.cpSync(sourceDir, targetDir, { recursive: true });
 }

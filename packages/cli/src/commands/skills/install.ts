@@ -8,30 +8,14 @@ import {
   type AgentId,
   type AgentSpec,
   type Scope,
-  sourceSkillMd,
-  targetSkillMd,
-  planSkillFileCopy,
-  applySkillFileCopy,
+  targetSkillDir,
+  planSkillDirectoryCopy,
+  applySkillDirectoryCopy,
 } from '../../lib/skills';
+import { loadRemoteSkills, type LoadedRemoteSkills, type RemoteSkill } from '../../lib/remote-skills';
 
-const SKILL_CATALOG = [
-  {
-    name: 'limrun-ios',
-    description: 'Build, launch, and control iOS apps with remote Xcode and Simulators',
-    defaultSelected: true,
-  },
-  {
-    name: 'limrun-detox',
-    description: 'Run Detox tests on Limrun iOS with remote simulator launch and networking',
-    defaultSelected: false,
-  },
-] as const;
-type SkillName = (typeof SKILL_CATALOG)[number]['name'];
-const SKILL_NAMES = SKILL_CATALOG.map((skill) => skill.name) as SkillName[];
-const DEFAULT_SKILL_NAMES = SKILL_CATALOG.filter((skill) => skill.defaultSelected).map(
-  (skill) => skill.name,
-) as SkillName[];
-const SKIPPED_REASON_CONFLICT = 'existing content differs; re-run with --force to overwrite';
+type SkillName = string;
+const SKIPPED_REASON_CONFLICT = 'existing skill directory differs; re-run with --force to overwrite';
 const SKIPPED_REASON_BLOCKED = 'blocked: another target requires --force to proceed';
 const SKIPPED_REASON_DECLINED = 'user declined overwrite confirmation';
 
@@ -55,15 +39,12 @@ interface ResultRow {
   reason?: string;
 }
 
-function isSkillName(value: string): value is SkillName {
-  return SKILL_NAMES.includes(value as SkillName);
-}
-
-function uniqueSkillNames(values: string[]): SkillName[] {
+function uniqueSkillNames(values: string[], availableSkills: RemoteSkill[]): SkillName[] {
+  const validNames = availableSkills.map((skill) => skill.name);
   const skills: SkillName[] = [];
   for (const value of values) {
-    if (!isSkillName(value)) {
-      throw new Error(`Unknown skill "${value}". Valid skills: ${SKILL_NAMES.join(', ')}`);
+    if (!validNames.includes(value)) {
+      throw new Error(`Unknown skill "${value}". Valid skills: ${validNames.join(', ')}`);
     }
     if (!skills.includes(value)) {
       skills.push(value);
@@ -162,13 +143,13 @@ async function promptAgents(preselected: Set<AgentId>): Promise<AgentId[]> {
   }
 }
 
-async function promptSkills(): Promise<SkillName[]> {
+async function promptSkills(availableSkills: RemoteSkill[]): Promise<SkillName[]> {
   while (true) {
     let cursor = 0;
     const onKeypress = (_str: string, key: { name?: string; ctrl?: boolean; meta?: boolean }) => {
       if (!key || !key.name) return;
       if (key.meta && key.name !== 'escape') return;
-      const last = SKILL_CATALOG.length - 1;
+      const last = availableSkills.length - 1;
       if (key.ctrl) {
         if (key.name === 'a') cursor = 0;
         else if (key.name === 'e') cursor = last;
@@ -189,7 +170,7 @@ async function promptSkills(): Promise<SkillName[]> {
           name: 'skills',
           message: 'Which Limrun skills do you want to install?',
           instructions: false,
-          choices: SKILL_CATALOG.map((skill) => ({
+          choices: availableSkills.map((skill) => ({
             title: `${skill.name} (${skill.description})`,
             value: skill.name,
             selected: skill.defaultSelected,
@@ -205,9 +186,9 @@ async function promptSkills(): Promise<SkillName[]> {
     } finally {
       process.stdin.off('keypress', onKeypress);
     }
-    let picked = uniqueSkillNames((response.skills ?? []) as string[]);
-    if (picked.length === 0 && cursor >= 0 && cursor < SKILL_CATALOG.length) {
-      picked = [SKILL_CATALOG[cursor].name];
+    let picked = uniqueSkillNames((response.skills ?? []) as string[], availableSkills);
+    if (picked.length === 0 && cursor >= 0 && cursor < availableSkills.length) {
+      picked = [availableSkills[cursor].name];
     }
     if (picked.length > 0) {
       process.stderr.write(`  Selected skills: ${picked.join(', ')}\n`);
@@ -282,11 +263,11 @@ function statusLabel(status: Status): string {
 export default class SkillsInstall extends Command {
   static summary = 'Install Limrun skills for AI coding agents';
   static description =
-    'Copy bundled Limrun skills into the native skills directory for each selected agent (Claude Code, Cursor, Codex). Pre-checks detected agents and lets you pick project or global scope.';
+    'Fetch the latest Limrun skills from limrun-inc/skills and install them into the native skills directory for each selected agent (Claude Code, Cursor, Codex). Pre-checks detected agents and lets you pick project or global scope.';
   static examples = [
     '<%= config.bin %> skills install',
     '<%= config.bin %> skills install --agents claude --agents cursor --scope project',
-    '<%= config.bin %> skills install --agents cursor --scope project --skills limrun-ios --skills limrun-detox',
+    '<%= config.bin %> skills install --agents cursor --scope project --skills limrun-xcode-and-ios-simulator --skills limrun-detox-testing',
     '<%= config.bin %> skills install --agents codex --scope global --force',
   ];
   static flags = {
@@ -296,16 +277,15 @@ export default class SkillsInstall extends Command {
       options: ['claude', 'cursor', 'codex'],
     }),
     skills: Flags.string({
-      description: 'Limrun skill to install. Repeat to pick multiple. Defaults to limrun-ios.',
+      description: 'Limrun skill to install. Repeat to pick multiple. Defaults to the remote catalog default.',
       multiple: true,
-      options: [...SKILL_NAMES],
     }),
     scope: Flags.string({
       description: 'Install scope.',
       options: ['project', 'global'],
     }),
     force: Flags.boolean({
-      description: 'Overwrite existing skill files without confirmation.',
+      description: 'Overwrite existing skill directories without confirmation.',
       default: false,
     }),
     json: Flags.boolean({
@@ -337,6 +317,7 @@ export default class SkillsInstall extends Command {
     let agents: AgentId[];
     let skills: SkillName[];
     let scope: Scope;
+    let source: LoadedRemoteSkills | undefined;
 
     if (flags.agents && flags.agents.length > 0) {
       agents = Array.from(new Set(flags.agents)) as AgentId[];
@@ -349,14 +330,6 @@ export default class SkillsInstall extends Command {
       this.error('--agents requires at least one of: claude, cursor, codex.', { exit: 2 });
     }
 
-    if (flags.skills && flags.skills.length > 0) {
-      skills = uniqueSkillNames(flags.skills);
-    } else if (interactive) {
-      skills = await promptSkills();
-    } else {
-      skills = [...DEFAULT_SKILL_NAMES];
-    }
-
     if (flags.scope) {
       scope = flags.scope as Scope;
     } else if (interactive) {
@@ -365,100 +338,123 @@ export default class SkillsInstall extends Command {
       this.error('Specify --agents and --scope in non-interactive mode.', { exit: 2 });
     }
 
-    const sources = new Map<SkillName, string>();
-    for (const skill of skills) {
-      const source = sourceSkillMd(this.config, skill);
-      if (!fs.existsSync(source)) {
-        this.error(`Bundled skill source missing at ${source}.`, { exit: 1 });
+    try {
+      source = await loadRemoteSkills();
+      const availableSkills = source.skills;
+      if (availableSkills.length === 0) {
+        this.error(`No Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, { exit: 1 });
       }
-      sources.set(skill, source);
-    }
 
-    // Phase 1: Plan.
-    const planned: PlannedTarget[] = [];
-    for (const skill of skills) {
-      const source = sources.get(skill)!;
-      for (const id of agents) {
-        const agent = AGENTS[id];
-        const target = targetSkillMd(agent, scope, skill);
-        const { kind } = planSkillFileCopy(source, target);
-        planned.push({ skill, agent, scope, source, target, kind });
-      }
-    }
-
-    // Phase 2: Confirm.
-    const results: ResultRow[] = [];
-    const anyConflict = planned.some((t) => t.kind === 'conflict');
-
-    if (anyConflict && !flags.force && !interactive) {
-      // Non-interactive + conflict + no force: all-or-nothing. Skip all targets.
-      for (const t of planned) {
-        results.push({
-          skill: t.skill,
-          agent: t.agent.id,
-          scope: t.scope,
-          path: t.target,
-          status: 'skipped',
-          reason: t.kind === 'conflict' ? SKIPPED_REASON_CONFLICT : SKIPPED_REASON_BLOCKED,
-        });
-      }
-      if (!flags.json) {
-        // --quiet still suppresses the human summary, but a hard refusal needs to be visible.
-        process.stderr.write(
-          'Existing skill files would be overwritten. Re-run with --force, or run interactively to confirm per target.\n',
-        );
-      }
-      this.emitOutput(results, flags, skills);
-      this.exit(1);
-    }
-
-    // Decide final status per target (no writes yet).
-    const finalDecisions: Array<{ target: PlannedTarget; status: Status; reason?: string }> = [];
-    for (const t of planned) {
-      if (t.kind === 'install') {
-        finalDecisions.push({ target: t, status: 'installed' });
-      } else if (t.kind === 'unchanged') {
-        finalDecisions.push({ target: t, status: 'unchanged' });
-      } else if (flags.force) {
-        finalDecisions.push({ target: t, status: 'updated' });
+      if (flags.skills && flags.skills.length > 0) {
+        skills = uniqueSkillNames(flags.skills, availableSkills);
+      } else if (interactive) {
+        skills = await promptSkills(availableSkills);
       } else {
-        // Interactive conflict without --force: prompt per target.
-        const displayPath = humanPath(t.target, t.scope);
-        const ok = await promptOverwrite(displayPath);
-        if (ok) {
-          finalDecisions.push({ target: t, status: 'updated' });
-        } else {
-          finalDecisions.push({
-            target: t,
-            status: 'skipped',
-            reason: SKIPPED_REASON_DECLINED,
-          });
+        skills = availableSkills.filter((skill) => skill.defaultSelected).map((skill) => skill.name);
+      }
+
+      if (skills.length === 0) {
+        this.error(`No default Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, { exit: 1 });
+      }
+
+      const sources = new Map<SkillName, string>();
+      for (const skill of skills) {
+        const sourceSkill = availableSkills.find((availableSkill) => availableSkill.name === skill);
+        if (!sourceSkill || !fs.existsSync(sourceSkill.sourceDir)) {
+          this.error(`Fetched skill source missing for "${skill}".`, { exit: 1 });
+        }
+        sources.set(skill, sourceSkill.sourceDir);
+      }
+
+      // Phase 1: Plan.
+      const planned: PlannedTarget[] = [];
+      for (const skill of skills) {
+        const sourceDir = sources.get(skill)!;
+        for (const id of agents) {
+          const agent = AGENTS[id];
+          const target = targetSkillDir(agent, scope, skill);
+          const { kind } = planSkillDirectoryCopy(sourceDir, target);
+          planned.push({ skill, agent, scope, source: sourceDir, target, kind });
         }
       }
-    }
 
-    // Phase 3: Apply.
-    for (const decision of finalDecisions) {
-      if (decision.status === 'installed' || decision.status === 'updated') {
-        applySkillFileCopy(decision.target.source, decision.target.target);
+      // Phase 2: Confirm.
+      const results: ResultRow[] = [];
+      const anyConflict = planned.some((t) => t.kind === 'conflict');
+
+      if (anyConflict && !flags.force && !interactive) {
+        // Non-interactive + conflict + no force: all-or-nothing. Skip all targets.
+        for (const t of planned) {
+          results.push({
+            skill: t.skill,
+            agent: t.agent.id,
+            scope: t.scope,
+            path: t.target,
+            status: 'skipped',
+            reason: t.kind === 'conflict' ? SKIPPED_REASON_CONFLICT : SKIPPED_REASON_BLOCKED,
+          });
+        }
+        if (!flags.json) {
+          // --quiet still suppresses the human summary, but a hard refusal needs to be visible.
+          process.stderr.write(
+            'Existing skill directories would be overwritten. Re-run with --force, or run interactively to confirm per target.\n',
+          );
+        }
+        this.emitOutput(results, flags, skills, source);
+        this.exit(1);
       }
-      results.push({
-        skill: decision.target.skill,
-        agent: decision.target.agent.id,
-        scope: decision.target.scope,
-        path: decision.target.target,
-        status: decision.status,
-        ...(decision.reason ? { reason: decision.reason } : {}),
-      });
-    }
 
-    this.emitOutput(results, flags, skills);
+      // Decide final status per target (no writes yet).
+      const finalDecisions: Array<{ target: PlannedTarget; status: Status; reason?: string }> = [];
+      for (const t of planned) {
+        if (t.kind === 'install') {
+          finalDecisions.push({ target: t, status: 'installed' });
+        } else if (t.kind === 'unchanged') {
+          finalDecisions.push({ target: t, status: 'unchanged' });
+        } else if (flags.force) {
+          finalDecisions.push({ target: t, status: 'updated' });
+        } else {
+          // Interactive conflict without --force: prompt per target.
+          const displayPath = humanPath(t.target, t.scope);
+          const ok = await promptOverwrite(displayPath);
+          if (ok) {
+            finalDecisions.push({ target: t, status: 'updated' });
+          } else {
+            finalDecisions.push({
+              target: t,
+              status: 'skipped',
+              reason: SKIPPED_REASON_DECLINED,
+            });
+          }
+        }
+      }
+
+      // Phase 3: Apply.
+      for (const decision of finalDecisions) {
+        if (decision.status === 'installed' || decision.status === 'updated') {
+          applySkillDirectoryCopy(decision.target.source, decision.target.target);
+        }
+        results.push({
+          skill: decision.target.skill,
+          agent: decision.target.agent.id,
+          scope: decision.target.scope,
+          path: decision.target.target,
+          status: decision.status,
+          ...(decision.reason ? { reason: decision.reason } : {}),
+        });
+      }
+
+      this.emitOutput(results, flags, skills, source);
+    } finally {
+      source?.cleanup();
+    }
   }
 
   private emitOutput(
     results: ResultRow[],
     flags: { json: boolean; quiet: boolean },
     skills: SkillName[],
+    source: LoadedRemoteSkills,
   ): void {
     if (flags.json) {
       this.log(
@@ -466,6 +462,11 @@ export default class SkillsInstall extends Command {
           {
             ...(skills.length === 1 ? { skill: skills[0] } : {}),
             skills,
+            source: {
+              repository: `${source.owner}/${source.repo}`,
+              ref: source.ref,
+              commit: source.commit,
+            },
             results,
           },
           null,
