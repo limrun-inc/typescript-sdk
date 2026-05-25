@@ -53,6 +53,31 @@ function uniqueSkillNames(values: string[], availableSkills: RemoteSkill[]): Ski
   return skills;
 }
 
+function createPromptCursorTracker(itemCount: number): {
+  current(): number;
+  onKeypress(_str: string, key: { name?: string; ctrl?: boolean; meta?: boolean }): void;
+} {
+  let cursor = 0;
+  return {
+    current: () => cursor,
+    onKeypress: (_str, key) => {
+      if (!key || !key.name || itemCount === 0) return;
+      if (key.meta && key.name !== 'escape') return;
+      const last = itemCount - 1;
+      if (key.ctrl) {
+        if (key.name === 'a') cursor = 0;
+        else if (key.name === 'e') cursor = last;
+        return;
+      }
+      if (key.name === 'up' || key.name === 'k') {
+        cursor = cursor === 0 ? last : cursor - 1;
+      } else if (key.name === 'down' || key.name === 'j' || key.name === 'tab') {
+        cursor = cursor === last ? 0 : cursor + 1;
+      }
+    },
+  };
+}
+
 function wrapDescription(value: string, width: number, indentSize = 2): string {
   const indent = ' '.repeat(indentSize);
   const words = value.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
@@ -135,130 +160,80 @@ function detectAgentsForScope(scope: Scope): Set<AgentId> {
 }
 
 async function promptAgents(preselected: Set<AgentId>): Promise<AgentId[]> {
-  // Loop to enforce "at least one agent" without crashing.
-  while (true) {
-    // `prompts` does not expose the multiselect cursor in onState - the state
-    // event only carries {value, aborted, exited}. Track cursor ourselves by
-    // listening to keypress events on stdin and mirror prompts' own dispatch
-    // (see prompts/lib/util/action.js and multiselect.js):
-    //   - up / k  : wrap (cursor === 0 ? last : cursor - 1)
-    //   - down / j / tab : wrap (cursor === last ? 0 : cursor + 1)
-    //   - ctrl+a  : first
-    //   - ctrl+e  : last
-    // Anything else (page nav, home/end) is rare for a 3-row list and not
-    // tracked here; the worst case is the same as the previous clamp bug.
-    let cursor = 0;
-    const onKeypress = (_str: string, key: { name?: string; ctrl?: boolean; meta?: boolean }) => {
-      if (!key || !key.name) return;
-      if (key.meta && key.name !== 'escape') return;
-      const last = AGENT_IDS.length - 1;
-      if (key.ctrl) {
-        if (key.name === 'a') cursor = 0;
-        else if (key.name === 'e') cursor = last;
-        return;
-      }
-      if (key.name === 'up' || key.name === 'k') {
-        cursor = cursor === 0 ? last : cursor - 1;
-      } else if (key.name === 'down' || key.name === 'j' || key.name === 'tab') {
-        cursor = cursor === last ? 0 : cursor + 1;
-      }
-    };
-    process.stdin.on('keypress', onKeypress);
-    let response;
-    try {
-      response = await prompts(
-        {
-          type: 'multiselect',
-          name: 'agents',
-          message: 'Which agents do you want to set up?',
-          instructions: false,
-          choices: AGENT_IDS.map((id) => ({
-            title: AGENTS[id].displayName,
-            value: id,
-            selected: preselected.has(id),
-          })),
-          hint: 'Space to toggle, Enter to confirm (Enter alone picks the highlighted agent)',
+  const cursor = createPromptCursorTracker(AGENT_IDS.length);
+  process.stdin.on('keypress', cursor.onKeypress);
+  let response;
+  try {
+    response = await prompts(
+      {
+        type: 'multiselect',
+        name: 'agents',
+        message: 'Which agents do you want to set up?',
+        instructions: false,
+        choices: AGENT_IDS.map((id) => ({
+          title: AGENTS[id].displayName,
+          value: id,
+          selected: preselected.has(id),
+        })),
+        hint: 'Space to toggle, Enter to confirm (Enter alone picks the highlighted agent)',
+      },
+      {
+        onCancel: () => {
+          throw new PromptCancelled();
         },
-        {
-          onCancel: () => {
-            throw new PromptCancelled();
-          },
-        },
-      );
-    } finally {
-      process.stdin.off('keypress', onKeypress);
-    }
-    let picked = (response.agents ?? []) as AgentId[];
-    // If the user hit Enter without toggling anything, treat the highlighted
-    // row as their pick. Saves a Space keystroke for the common single-agent case.
-    if (picked.length === 0 && cursor >= 0 && cursor < AGENT_IDS.length) {
-      picked = [AGENT_IDS[cursor]];
-    }
-    if (picked.length > 0) {
-      process.stderr.write(`  Selected: ${picked.map((id) => AGENTS[id].displayName).join(', ')}\n`);
-      return picked;
-    }
-    // Re-prompt with a visible inline warning (should not be reachable now).
-    process.stderr.write('Select at least one agent.\n');
+      },
+    );
+  } finally {
+    process.stdin.off('keypress', cursor.onKeypress);
   }
+
+  let picked = (response.agents ?? []) as AgentId[];
+  const highlightedAgent = AGENT_IDS[cursor.current()];
+  if (picked.length === 0 && highlightedAgent) {
+    picked = [highlightedAgent];
+  }
+  process.stderr.write(`  Selected: ${picked.map((id) => AGENTS[id].displayName).join(', ')}\n`);
+  return picked;
 }
 
 async function promptSkills(availableSkills: RemoteSkill[]): Promise<SkillName[]> {
-  while (true) {
-    let cursor = 0;
-    const onKeypress = (_str: string, key: { name?: string; ctrl?: boolean; meta?: boolean }) => {
-      if (!key || !key.name) return;
-      if (key.meta && key.name !== 'escape') return;
-      const last = availableSkills.length - 1;
-      if (key.ctrl) {
-        if (key.name === 'a') cursor = 0;
-        else if (key.name === 'e') cursor = last;
-        return;
-      }
-      if (key.name === 'up' || key.name === 'k') {
-        cursor = cursor === 0 ? last : cursor - 1;
-      } else if (key.name === 'down' || key.name === 'j' || key.name === 'tab') {
-        cursor = cursor === last ? 0 : cursor + 1;
-      }
-    };
-    let response;
-    const restoreMultiselectRenderer = installCompactMultiselectDescriptionRenderer();
-    process.stdin.on('keypress', onKeypress);
-    try {
-      response = await prompts(
-        {
-          type: 'multiselect',
-          name: 'skills',
-          message: 'Which Limrun skills do you want to install?',
-          instructions: false,
-          choices: availableSkills.map((skill) => ({
-            title: skill.name,
-            description: skill.description.replace(/\s+/g, ' ').trim(),
-            value: skill.name,
-            selected: skill.defaultSelected,
-          })),
-          hint: 'Catalog defaults selected. Space toggles, Enter confirms.',
+  const cursor = createPromptCursorTracker(availableSkills.length);
+  let response;
+  const restoreMultiselectRenderer = installCompactMultiselectDescriptionRenderer();
+  process.stdin.on('keypress', cursor.onKeypress);
+  try {
+    response = await prompts(
+      {
+        type: 'multiselect',
+        name: 'skills',
+        message: 'Which Limrun skills do you want to install?',
+        instructions: false,
+        choices: availableSkills.map((skill) => ({
+          title: skill.name,
+          description: skill.description.replace(/\s+/g, ' ').trim(),
+          value: skill.name,
+          selected: skill.defaultSelected,
+        })),
+        hint: 'Catalog defaults selected. Space toggles, Enter confirms.',
+      },
+      {
+        onCancel: () => {
+          throw new PromptCancelled();
         },
-        {
-          onCancel: () => {
-            throw new PromptCancelled();
-          },
-        },
-      );
-    } finally {
-      restoreMultiselectRenderer();
-      process.stdin.off('keypress', onKeypress);
-    }
-    let picked = uniqueSkillNames((response.skills ?? []) as string[], availableSkills);
-    if (picked.length === 0 && cursor >= 0 && cursor < availableSkills.length) {
-      picked = [availableSkills[cursor].name];
-    }
-    if (picked.length > 0) {
-      process.stderr.write(`  Selected skills: ${picked.join(', ')}\n`);
-      return picked;
-    }
-    process.stderr.write('Select at least one skill.\n');
+      },
+    );
+  } finally {
+    restoreMultiselectRenderer();
+    process.stdin.off('keypress', cursor.onKeypress);
   }
+
+  let picked = uniqueSkillNames((response.skills ?? []) as string[], availableSkills);
+  const highlightedSkill = availableSkills[cursor.current()];
+  if (picked.length === 0 && highlightedSkill) {
+    picked = [highlightedSkill.name];
+  }
+  process.stderr.write(`  Selected skills: ${picked.join(', ')}\n`);
+  return picked;
 }
 
 async function promptScope(): Promise<Scope> {
@@ -337,7 +312,7 @@ export default class SkillsInstall extends Command {
     agents: Flags.string({
       description: 'Target agent. Repeat to pick multiple.',
       multiple: true,
-      options: ['claude', 'cursor', 'codex'],
+      options: AGENT_IDS,
     }),
     skills: Flags.string({
       description:
@@ -384,27 +359,38 @@ export default class SkillsInstall extends Command {
     let source: LoadedRemoteSkills | undefined;
 
     try {
+      if (!interactive) {
+        if (!flags.agents || flags.agents.length === 0) {
+          this.error(`--agents requires at least one of: ${AGENT_IDS.join(', ')}.`, { exit: 2 });
+        }
+        if (!flags.scope) {
+          this.error('Specify --agents and --scope in non-interactive mode.', { exit: 2 });
+        }
+      }
+
       if (interactive) {
         process.stderr.write('Fetching latest Limrun skills...\n');
-        source = await loadRemoteSkills();
-        const availableSkills = source.skills;
-        if (availableSkills.length === 0) {
-          this.error(`No Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, {
-            exit: 1,
-          });
-        }
+      }
+      source = await loadRemoteSkills();
+      const availableSkills = source.skills;
+      if (availableSkills.length === 0) {
+        this.error(`No Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, {
+          exit: 1,
+        });
+      }
 
-        if (flags.skills && flags.skills.length > 0) {
-          skills = uniqueSkillNames(flags.skills, availableSkills);
-        } else {
-          skills = await promptSkills(availableSkills);
-        }
+      if (flags.skills && flags.skills.length > 0) {
+        skills = uniqueSkillNames(flags.skills, availableSkills);
+      } else if (interactive) {
+        skills = await promptSkills(availableSkills);
+      } else {
+        skills = availableSkills.filter((skill) => skill.defaultSelected).map((skill) => skill.name);
+      }
 
-        if (skills.length === 0) {
-          this.error(`No default Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, {
-            exit: 1,
-          });
-        }
+      if (skills.length === 0) {
+        this.error(`No default Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, {
+          exit: 1,
+        });
       }
 
       if (flags.agents && flags.agents.length > 0) {
@@ -415,7 +401,7 @@ export default class SkillsInstall extends Command {
         // auto-select them for this specific project's install.
         agents = await promptAgents(detectAgentsForScope('project'));
       } else {
-        this.error('--agents requires at least one of: claude, cursor, codex.', { exit: 2 });
+        this.error(`--agents requires at least one of: ${AGENT_IDS.join(', ')}.`, { exit: 2 });
       }
 
       if (flags.scope) {
@@ -424,28 +410,6 @@ export default class SkillsInstall extends Command {
         scope = await promptScope();
       } else {
         this.error('Specify --agents and --scope in non-interactive mode.', { exit: 2 });
-      }
-
-      if (!source) {
-        source = await loadRemoteSkills();
-      }
-      const availableSkills = source.skills;
-      if (availableSkills.length === 0) {
-        this.error(`No Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, { exit: 1 });
-      }
-
-      if (!interactive) {
-        if (flags.skills && flags.skills.length > 0) {
-          skills = uniqueSkillNames(flags.skills, availableSkills);
-        } else {
-          skills = availableSkills.filter((skill) => skill.defaultSelected).map((skill) => skill.name);
-        }
-      }
-
-      if (skills.length === 0) {
-        this.error(`No default Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, {
-          exit: 1,
-        });
       }
 
       const sources = new Map<SkillName, string>();
