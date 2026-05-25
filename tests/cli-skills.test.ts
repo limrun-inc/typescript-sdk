@@ -102,6 +102,40 @@ description: ${description}
       'Refusing to clean up non-temporary skills directory',
     );
   });
+
+  test('parses SKILL.md frontmatter with CRLF line endings', async () => {
+    const checkoutDir = makeTempDir();
+    try {
+      writeCatalog(checkoutDir, ['limrun-xcode-and-ios-simulator']);
+      const skillDir = path.join(checkoutDir, 'skills', 'limrun-xcode-and-ios-simulator');
+      fs.mkdirSync(skillDir, { recursive: true });
+      // Write SKILL.md using CRLF line endings throughout
+      const crlfContent = [
+        '---',
+        'name: limrun-xcode-and-ios-simulator',
+        'description: Build and run iOS apps remotely.',
+        '---',
+        '',
+        '# limrun-xcode-and-ios-simulator',
+        '',
+      ].join('\r\n');
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), crlfContent);
+
+      const source = await loadRemoteSkills({
+        cloneImpl: async () => ({ rootDir: checkoutDir, commit: 'crlf01' }),
+      });
+      try {
+        expect(source.skills[0]).toMatchObject({
+          name: 'limrun-xcode-and-ios-simulator',
+          description: 'Build and run iOS apps remotely.',
+        });
+      } finally {
+        source.cleanup();
+      }
+    } finally {
+      fs.rmSync(checkoutDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('skill directory copy planning', () => {
