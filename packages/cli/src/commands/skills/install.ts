@@ -337,7 +337,7 @@ export default class SkillsInstall extends Command {
     const interactive = process.stdin.isTTY === true && !flags.json && !flags.quiet;
 
     let agents: AgentId[];
-    let skills: SkillName[];
+    let skills: SkillName[] = [];
     let scope: Scope;
     let source: LoadedRemoteSkills | undefined;
 
