@@ -105,8 +105,8 @@ function directoriesEqual(sourceDir: string, targetDir: string): boolean {
 
     const sourcePath = path.join(sourceDir, sourceFile);
     const targetPath = path.join(targetDir, targetFile);
-    const sourceStat = fs.statSync(sourcePath);
-    const targetStat = fs.statSync(targetPath);
+    const sourceStat = fs.lstatSync(sourcePath);
+    const targetStat = fs.lstatSync(targetPath);
     if (!sourceStat.isFile() || !targetStat.isFile()) return false;
     if (sourceStat.size !== targetStat.size) return false;
 
@@ -122,7 +122,7 @@ export function planSkillDirectoryCopy(sourceDir: string, targetDir: string): { 
   if (!fs.existsSync(targetDir)) {
     return { kind: 'install' };
   }
-  if (!fs.statSync(targetDir).isDirectory()) {
+  if (!fs.lstatSync(targetDir).isDirectory()) {
     return { kind: 'conflict' };
   }
   return { kind: directoriesEqual(sourceDir, targetDir) ? 'unchanged' : 'conflict' };
