@@ -175,4 +175,41 @@ describe('skill directory copy planning', () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  test('treats symlinked target files as conflicts without following them', () => {
+    const tempDir = makeTempDir();
+    try {
+      const sourceDir = path.join(tempDir, 'source-skill');
+      const targetDir = path.join(tempDir, 'target-skill');
+      const outsideDir = path.join(tempDir, 'outside');
+      fs.mkdirSync(sourceDir, { recursive: true });
+      fs.mkdirSync(targetDir, { recursive: true });
+      fs.mkdirSync(outsideDir, { recursive: true });
+      fs.writeFileSync(path.join(sourceDir, 'SKILL.md'), 'same content');
+      fs.writeFileSync(path.join(outsideDir, 'external.md'), 'same content');
+      fs.symlinkSync(path.join(outsideDir, 'external.md'), path.join(targetDir, 'SKILL.md'));
+
+      expect(planSkillDirectoryCopy(sourceDir, targetDir)).toEqual({ kind: 'conflict' });
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('treats a symlinked target directory as a conflict', () => {
+    const tempDir = makeTempDir();
+    try {
+      const sourceDir = path.join(tempDir, 'source-skill');
+      const outsideDir = path.join(tempDir, 'outside-target');
+      const targetDir = path.join(tempDir, 'target-skill');
+      fs.mkdirSync(sourceDir, { recursive: true });
+      fs.mkdirSync(outsideDir, { recursive: true });
+      fs.writeFileSync(path.join(sourceDir, 'SKILL.md'), 'same content');
+      fs.writeFileSync(path.join(outsideDir, 'SKILL.md'), 'same content');
+      fs.symlinkSync(outsideDir, targetDir, 'dir');
+
+      expect(planSkillDirectoryCopy(sourceDir, targetDir)).toEqual({ kind: 'conflict' });
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
