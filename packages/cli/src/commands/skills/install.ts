@@ -53,6 +53,64 @@ function uniqueSkillNames(values: string[], availableSkills: RemoteSkill[]): Ski
   return skills;
 }
 
+function wrapDescription(value: string, width: number, indentSize = 2): string {
+  const indent = ' '.repeat(indentSize);
+  const words = value.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  const lines: string[] = [];
+  let line = indent;
+  for (const word of words) {
+    if (line === indent) {
+      line += word;
+    } else if (line.length + 1 + word.length <= width) {
+      line += ` ${word}`;
+    } else {
+      lines.push(line);
+      line = `${indent}${word}`;
+    }
+  }
+  if (line !== indent) {
+    lines.push(line);
+  }
+  return lines.join('\n');
+}
+
+function installCompactMultiselectDescriptionRenderer(): () => void {
+  // prompts only exposes description text through its default renderer, whose
+  // wrap indent is too deep for long skill descriptions. Patch just this prompt
+  // and restore immediately after it completes.
+  const MultiselectPrompt = require('prompts/lib/elements/multiselect');
+  const color = require('kleur');
+  const { figures } = require('prompts/lib/util');
+  const originalRenderOption = MultiselectPrompt.prototype.renderOption;
+
+  MultiselectPrompt.prototype.renderOption = function renderOption(
+    this: { out: { columns?: number } },
+    cursor: number,
+    choice: { disabled?: boolean; selected?: boolean; title: string; description?: string },
+    index: number,
+    arrowIndicator: string,
+  ): string {
+    const prefix = (choice.selected ? color.green(figures.radioOn) : figures.radioOff) + ' ' + arrowIndicator + ' ';
+    let title: string;
+
+    if (choice.disabled) {
+      title = cursor === index ? color.gray().underline(choice.title) : color.strikethrough().gray(choice.title);
+    } else {
+      title = cursor === index ? color.cyan().underline(choice.title) : choice.title;
+    }
+
+    const description =
+      !choice.disabled && cursor === index && choice.description
+        ? `\n${wrapDescription(choice.description, this.out.columns ?? 100, 4)}`
+        : '';
+    return prefix + title + color.gray(description);
+  };
+
+  return () => {
+    MultiselectPrompt.prototype.renderOption = originalRenderOption;
+  };
+}
+
 class PromptCancelled extends Error {
   constructor() {
     super('cancelled');
@@ -161,8 +219,9 @@ async function promptSkills(availableSkills: RemoteSkill[]): Promise<SkillName[]
         cursor = cursor === last ? 0 : cursor + 1;
       }
     };
-    process.stdin.on('keypress', onKeypress);
     let response;
+    const restoreMultiselectRenderer = installCompactMultiselectDescriptionRenderer();
+    process.stdin.on('keypress', onKeypress);
     try {
       response = await prompts(
         {
@@ -174,10 +233,9 @@ async function promptSkills(availableSkills: RemoteSkill[]): Promise<SkillName[]
             title: skill.name,
             description: skill.description.replace(/\s+/g, ' ').trim(),
             value: skill.name,
-            // Interactive installs are opt-out; non-interactive installs still use catalog defaults.
-            selected: true,
+            selected: skill.defaultSelected,
           })),
-          hint: 'All selected by default. Space toggles, Enter confirms.',
+          hint: 'Catalog defaults selected. Space toggles, Enter confirms.',
         },
         {
           onCancel: () => {
@@ -186,6 +244,7 @@ async function promptSkills(availableSkills: RemoteSkill[]): Promise<SkillName[]
         },
       );
     } finally {
+      restoreMultiselectRenderer();
       process.stdin.off('keypress', onKeypress);
     }
     let picked = uniqueSkillNames((response.skills ?? []) as string[], availableSkills);
