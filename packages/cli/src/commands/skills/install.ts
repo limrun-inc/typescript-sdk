@@ -323,6 +323,7 @@ export default class SkillsInstall extends Command {
 
     try {
       if (interactive) {
+        process.stderr.write('Fetching latest Limrun skills...\n');
         source = await loadRemoteSkills();
         const availableSkills = source.skills;
         if (availableSkills.length === 0) {
