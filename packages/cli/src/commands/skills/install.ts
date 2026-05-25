@@ -18,9 +18,6 @@ type SkillName = string;
 const SKIPPED_REASON_CONFLICT = 'existing skill directory differs; re-run with --force to overwrite';
 const SKIPPED_REASON_BLOCKED = 'blocked: another target requires --force to proceed';
 const SKIPPED_REASON_DECLINED = 'user declined overwrite confirmation';
-const DEFAULT_TERMINAL_COLUMNS = 100;
-const SKILL_DESCRIPTION_MIN_LENGTH = 24;
-const SKILL_DESCRIPTION_MAX_LENGTH = 72;
 
 type Status = 'installed' | 'updated' | 'unchanged' | 'skipped';
 
@@ -54,23 +51,6 @@ function uniqueSkillNames(values: string[], availableSkills: RemoteSkill[]): Ski
     }
   }
   return skills;
-}
-
-function truncateDescription(value: string, maxLength = SKILL_DESCRIPTION_MAX_LENGTH): string {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-  return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
-}
-
-function skillPromptDescription(skill: RemoteSkill): string {
-  const columns = process.stdout.columns ?? process.stderr.columns ?? DEFAULT_TERMINAL_COLUMNS;
-  const maxLength = Math.min(
-    SKILL_DESCRIPTION_MAX_LENGTH,
-    Math.max(SKILL_DESCRIPTION_MIN_LENGTH, columns - skill.name.length - 12),
-  );
-  return truncateDescription(skill.description, maxLength);
 }
 
 class PromptCancelled extends Error {
@@ -192,7 +172,7 @@ async function promptSkills(availableSkills: RemoteSkill[]): Promise<SkillName[]
           instructions: false,
           choices: availableSkills.map((skill) => ({
             title: skill.name,
-            description: skillPromptDescription(skill),
+            description: skill.description.replace(/\s+/g, ' ').trim(),
             value: skill.name,
             // Interactive installs are opt-out; non-interactive installs still use catalog defaults.
             selected: true,
