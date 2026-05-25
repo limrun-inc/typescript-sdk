@@ -15,13 +15,13 @@ export interface AgentSpec {
 }
 
 function claudeGlobalRoot(): string {
-  const override = process.env.CLAUDE_CONFIG_DIR;
+  const override = process.env['CLAUDE_CONFIG_DIR'];
   if (override) return path.resolve(override);
   return path.join(os.homedir(), '.claude');
 }
 
 function codexGlobalRoot(): string {
-  const override = process.env.CODEX_HOME;
+  const override = process.env['CODEX_HOME'];
   if (override) return path.resolve(override);
   return path.join(os.homedir(), '.codex');
 }
@@ -111,10 +111,12 @@ function directoriesEqual(sourceDir: string, targetDir: string): boolean {
   if (sourceFiles.length !== targetFiles.length) return false;
 
   for (let i = 0; i < sourceFiles.length; i += 1) {
-    if (sourceFiles[i] !== targetFiles[i]) return false;
+    const sourceFile = sourceFiles[i];
+    const targetFile = targetFiles[i];
+    if (sourceFile === undefined || targetFile === undefined || sourceFile !== targetFile) return false;
 
-    const sourcePath = path.join(sourceDir, sourceFiles[i]);
-    const targetPath = path.join(targetDir, targetFiles[i]);
+    const sourcePath = path.join(sourceDir, sourceFile);
+    const targetPath = path.join(targetDir, targetFile);
     const sourceStat = fs.statSync(sourcePath);
     const targetStat = fs.statSync(targetPath);
     if (!sourceStat.isFile() || !targetStat.isFile()) return false;

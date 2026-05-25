@@ -2,10 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import {
-  applySkillDirectoryCopy,
-  planSkillDirectoryCopy,
-} from '../packages/cli/src/lib/skills';
+import { applySkillDirectoryCopy, planSkillDirectoryCopy } from '../packages/cli/src/lib/skills';
 import { __remoteSkillsTestUtils, loadRemoteSkills } from '../packages/cli/src/lib/remote-skills';
 
 function makeTempDir(): string {

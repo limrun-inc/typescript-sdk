@@ -90,19 +90,21 @@ function installCompactMultiselectDescriptionRenderer(): () => void {
     index: number,
     arrowIndicator: string,
   ): string {
-    const prefix = (choice.selected ? color.green(figures.radioOn) : figures.radioOff) + ' ' + arrowIndicator + ' ';
+    const prefix =
+      (choice.selected ? color.green(figures.radioOn) : figures.radioOff) + ' ' + arrowIndicator + ' ';
     let title: string;
 
     if (choice.disabled) {
-      title = cursor === index ? color.gray().underline(choice.title) : color.strikethrough().gray(choice.title);
+      title =
+        cursor === index ? color.gray().underline(choice.title) : color.strikethrough().gray(choice.title);
     } else {
       title = cursor === index ? color.cyan().underline(choice.title) : choice.title;
     }
 
     const description =
-      !choice.disabled && cursor === index && choice.description
-        ? `\n${wrapDescription(choice.description, this.out.columns ?? 100, 4)}`
-        : '';
+      !choice.disabled && cursor === index && choice.description ?
+        `\n${wrapDescription(choice.description, this.out.columns ?? 100, 4)}`
+      : '';
     return prefix + title + color.gray(description);
   };
 
@@ -338,7 +340,8 @@ export default class SkillsInstall extends Command {
       options: ['claude', 'cursor', 'codex'],
     }),
     skills: Flags.string({
-      description: 'Limrun skill to install. Repeat to pick multiple. Defaults to the remote catalog default.',
+      description:
+        'Limrun skill to install. Repeat to pick multiple. Defaults to the remote catalog default.',
       multiple: true,
     }),
     scope: Flags.string({
@@ -386,7 +389,9 @@ export default class SkillsInstall extends Command {
         source = await loadRemoteSkills();
         const availableSkills = source.skills;
         if (availableSkills.length === 0) {
-          this.error(`No Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, { exit: 1 });
+          this.error(`No Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, {
+            exit: 1,
+          });
         }
 
         if (flags.skills && flags.skills.length > 0) {
@@ -396,7 +401,9 @@ export default class SkillsInstall extends Command {
         }
 
         if (skills.length === 0) {
-          this.error(`No default Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, { exit: 1 });
+          this.error(`No default Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, {
+            exit: 1,
+          });
         }
       }
 
@@ -436,7 +443,9 @@ export default class SkillsInstall extends Command {
       }
 
       if (skills.length === 0) {
-        this.error(`No default Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, { exit: 1 });
+        this.error(`No default Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, {
+          exit: 1,
+        });
       }
 
       const sources = new Map<SkillName, string>();
