@@ -173,6 +173,7 @@ async function promptSkills(availableSkills: RemoteSkill[]): Promise<SkillName[]
           choices: availableSkills.map((skill) => ({
             title: `${skill.name} (${skill.description})`,
             value: skill.name,
+            // Interactive installs are opt-out; non-interactive installs still use catalog defaults.
             selected: true,
           })),
           hint: 'All selected by default. Space toggles, Enter confirms.',

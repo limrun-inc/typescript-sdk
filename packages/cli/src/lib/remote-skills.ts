@@ -122,7 +122,7 @@ function parseCatalog(text: string): CatalogFile {
 }
 
 function parseSkillFrontmatter(skillName: string, text: string): { name: string; description: string } {
-  const match = text.match(/^---\n([\s\S]*?)\n---\n/);
+  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
   if (!match) {
     throw new RemoteSkillsError(`skills/${skillName}/SKILL.md is missing YAML frontmatter`);
   }
