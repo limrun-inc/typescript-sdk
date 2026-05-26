@@ -7,15 +7,21 @@ import { parseAdditionalFileFlags } from '../../lib/additional-files';
 
 const DEVICE_SDKS = new Set(['iphoneos', 'watchos']);
 const SIMULATOR_SDKS = new Set(['iphonesimulator', 'watchsimulator']);
+type SigningFlags = {
+  'certificate-p12'?: string;
+  'certificate-password'?: string;
+  'provisioning-profile'?: string;
+};
 
 export default class XcodeBuild extends BaseCommand {
   static summary = 'Run xcodebuild on an Xcode sandbox';
   static description =
-    'Sync a local project path once (or the current working directory if omitted), then trigger a remote xcodebuild with streaming output. This works with standalone Xcode instances and can also target an iOS instance with `--xcode` enabled or created via `xcode create --ios` when you pass `--id`.';
+    'Sync a local project path once (or the current working directory if omitted), then trigger a remote xcodebuild with streaming output. Use `--ios` to build and run on an iOS simulator-backed Xcode target.';
 
   static examples = [
     '<%= config.bin %> xcode build',
     '<%= config.bin %> xcode build ./MyProject',
+    '<%= config.bin %> xcode build ./MyProject --ios',
     '<%= config.bin %> xcode build --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build ./MyProject --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
@@ -43,6 +49,11 @@ export default class XcodeBuild extends BaseCommand {
     id: Flags.string({
       description:
         'Xcode instance ID to build on, or an iOS instance ID with `--xcode` enabled. Defaults to the most recently created Xcode-capable target.',
+    }),
+    ios: Flags.boolean({
+      description:
+        'Build on an iOS simulator-backed Xcode target. Reuses a recent iOS-backed target or creates one unless --no-create is passed.',
+      default: false,
     }),
     scheme: Flags.string({ description: 'Xcode scheme to build, such as MyApp' }),
     workspace: Flags.string({
@@ -104,9 +115,16 @@ export default class XcodeBuild extends BaseCommand {
     if (flags['dev-server-url'] && flags.configuration === 'Release') {
       this.error('--dev-server-url is only supported for Debug builds.');
     }
+    if (flags.ios && flags.sdk && DEVICE_SDKS.has(flags.sdk)) {
+      this.error('--ios builds run on a simulator. Use --sdk iphonesimulator, --sdk watchsimulator, or omit --sdk.');
+    }
+    if (flags.ios && hasSigningFlags(flags)) {
+      this.error('--ios builds run on a simulator and cannot use signing flags.');
+    }
 
     await this.withAuth(async () => {
-      const target = await this.resolveXcodeTargetOrCreate(flags.id);
+      const target =
+        flags.ios ? await this.resolveIosXcodeTargetOrCreate(flags.id) : await this.resolveXcodeTargetOrCreate(flags.id);
       const id = target.id;
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);
@@ -184,17 +202,16 @@ export default class XcodeBuild extends BaseCommand {
       }
 
       this.output(`\nBuild succeeded (exit code ${result.exitCode})`);
+      if (flags.ios && target.type === 'ios') {
+        this.output(`iOS Simulator URL: ${this.consoleStreamUrl(target.id)}`);
+      }
       if (flags.upload && result.signedDownloadUrl) {
         this.output(`Artifact download URL: ${result.signedDownloadUrl}`);
       }
     });
   }
 
-  private async buildSigningOptions(flags: {
-    'certificate-p12'?: string;
-    'certificate-password'?: string;
-    'provisioning-profile'?: string;
-  }): Promise<
+  private async buildSigningOptions(flags: SigningFlags): Promise<
     | {
         certificateP12Base64: string;
         certificatePassword: string;
@@ -205,8 +222,7 @@ export default class XcodeBuild extends BaseCommand {
     const hasCertificate = flags['certificate-p12'] !== undefined;
     const hasPassword = flags['certificate-password'] !== undefined;
     const hasProfile = flags['provisioning-profile'] !== undefined;
-    const hasAnySigningFlag = hasCertificate || hasPassword || hasProfile;
-    if (!hasAnySigningFlag) {
+    if (!hasSigningFlags(flags)) {
       return undefined;
     }
     if (!hasCertificate || !hasPassword || !hasProfile) {
@@ -221,4 +237,12 @@ export default class XcodeBuild extends BaseCommand {
       provisioningProfileBase64: (await readFile(flags['provisioning-profile']!)).toString('base64'),
     };
   }
+}
+
+function hasSigningFlags(flags: SigningFlags): boolean {
+  return (
+    flags['certificate-p12'] !== undefined ||
+    flags['certificate-password'] !== undefined ||
+    flags['provisioning-profile'] !== undefined
+  );
 }
