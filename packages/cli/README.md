@@ -46,6 +46,14 @@ lim logout
 
 The CLI stores configuration in `~/.lim/config.yaml`. This file is compatible with the Go-based `lim` CLI — if you've already logged in with the Go version, the TypeScript CLI will use the same credentials.
 
+## Fast First Run
+
+```bash
+lim go
+```
+
+`lim go` is the fastest way to get started with Limrun. Run it inside a clear iOS or Expo project root to install the Limrun agent skills for that project and get the next prompt for your coding agent. Run it anywhere else to clone the native sample app, build it on Limrun, and print a cloud simulator URL.
+
 ## Global Flags
 
 Most commands support these flags (exceptions: `lim skills install` does not take `--api-key` because it does not talk to the API):
@@ -95,6 +103,7 @@ This avoids relying on locally cached "last created" state and keeps the target 
 
 ## Commands
 
+- [Go](#go) — Get started with Limrun on your project or the sample app
 - [iOS](#ios) — Create, manage, and interact with iOS instances
 - [Android](#android) — Create, manage, and interact with Android instances
 - [Xcode](#xcode) — Create and manage Xcode sandbox instances
@@ -102,6 +111,22 @@ This avoids relying on locally cached "last created" state and keeps the target 
 - [Sessions](#sessions) — Persistent connections for fast, interactive device control
 - [Xcode Build Pipeline](#xcode-build-pipeline) — Sync code and run xcodebuild remotely
 - [Skills](#skills) — Install Limrun skills for AI coding agents (Claude Code, Cursor, Codex)
+
+---
+
+### Go
+
+`lim go` logs in if needed, then chooses the fastest useful path:
+
+```bash
+lim go
+```
+
+- In a clear native iOS project, it installs the Limrun iOS/Xcode skill into `.agents/skills/` and `.claude/skills/`.
+- In a clear Expo project, it installs the Limrun iOS/Xcode and Expo skills into `.agents/skills/` and `.claude/skills/`.
+- In any other directory, it clones `limrun-inc/sample-native-app`, builds it with a Limrun iOS simulator + Xcode sandbox, and prints a simulator URL.
+
+After setup, open your coding agent in the project and ask it to build and run the app with Limrun. For manual agent setup, use `lim skills install`.
 
 ---
 

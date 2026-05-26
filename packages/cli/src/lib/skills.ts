@@ -10,7 +10,7 @@ export const AGENT_IDS: AgentId[] = ['claude', 'cursor', 'codex'];
 export interface AgentSpec {
   id: AgentId;
   displayName: string;
-  skillsDir(scope: Scope): string;
+  skillsDir(scope: Scope, projectRoot?: string): string;
   detectionPaths(scope: Scope): string[];
 }
 
@@ -30,9 +30,9 @@ export const AGENTS: Record<AgentId, AgentSpec> = {
   claude: {
     id: 'claude',
     displayName: 'Claude Code',
-    skillsDir: (scope) =>
+    skillsDir: (scope, projectRoot = process.cwd()) =>
       scope === 'project' ?
-        path.join(process.cwd(), '.claude', 'skills')
+        path.join(projectRoot, '.claude', 'skills')
       : path.join(claudeGlobalRoot(), 'skills'),
     detectionPaths: (scope) =>
       scope === 'project' ? [path.join(process.cwd(), '.claude')] : [claudeGlobalRoot()],
@@ -43,9 +43,9 @@ export const AGENTS: Record<AgentId, AgentSpec> = {
     // Cursor auto-discovers .agents/skills/ natively, same as .cursor/skills/.
     // Installing into .agents/skills/ also reaches OpenCode and any other
     // AGENTS.md-aware tool with a single copy, so prefer the broader path.
-    skillsDir: (scope) =>
+    skillsDir: (scope, projectRoot = process.cwd()) =>
       scope === 'project' ?
-        path.join(process.cwd(), '.agents', 'skills')
+        path.join(projectRoot, '.agents', 'skills')
       : path.join(os.homedir(), '.agents', 'skills'),
     // Detect either .cursor/ or .agents/: both are reliable signs the user
     // is on a tool that auto-loads .agents/skills/.
@@ -57,17 +57,17 @@ export const AGENTS: Record<AgentId, AgentSpec> = {
   codex: {
     id: 'codex',
     displayName: 'Codex',
-    skillsDir: (scope) =>
+    skillsDir: (scope, projectRoot = process.cwd()) =>
       scope === 'project' ?
-        path.join(process.cwd(), '.codex', 'skills')
+        path.join(projectRoot, '.codex', 'skills')
       : path.join(codexGlobalRoot(), 'skills'),
     detectionPaths: (scope) =>
       scope === 'project' ? [path.join(process.cwd(), '.codex')] : [codexGlobalRoot()],
   },
 };
 
-export function targetSkillDir(agent: AgentSpec, scope: Scope, skillName: string): string {
-  return path.join(agent.skillsDir(scope), skillName);
+export function targetSkillDir(agent: AgentSpec, scope: Scope, skillName: string, projectRoot?: string): string {
+  return path.join(agent.skillsDir(scope, projectRoot), skillName);
 }
 
 export type PlanKind = 'install' | 'unchanged' | 'conflict';
