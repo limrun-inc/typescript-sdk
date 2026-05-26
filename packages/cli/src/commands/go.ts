@@ -1,13 +1,12 @@
 import path from 'path';
 import { BaseCommand } from '../base-command';
-import { registerCreatedInstance } from '../lib/config';
+import { readConfig, registerCreatedInstance } from '../lib/config';
 import { detectProject, type ProjectDetection } from '../lib/project-detection';
 import {
   ensureLoggedIn,
+  ensureProjectEnvApiKey,
   ensureSampleRepo,
   installProjectSkills,
-  SAMPLE_NATIVE_APP_DIR,
-  verifySampleAgentPaths,
   type SkillInstallResult,
 } from '../lib/onboarding';
 
@@ -35,22 +34,24 @@ export default class Go extends BaseCommand {
       log: (message) => this.info(message),
     });
 
+    const apiKey = flags['api-key'] || readConfig().apiKey;
     const detection = detectProject(process.cwd());
     if (detection.kind === 'native-ios') {
-      await this.setupExistingProject(detection, [IOS_SKILL]);
+      await this.setupExistingProject(detection, [IOS_SKILL], apiKey);
       return;
     }
     if (detection.kind === 'expo') {
-      await this.setupExistingProject(detection, [IOS_SKILL, EXPO_SKILL]);
+      await this.setupExistingProject(detection, [IOS_SKILL, EXPO_SKILL], apiKey);
       return;
     }
 
-    await this.runSampleFlow();
+    await this.runSampleFlow(apiKey);
   }
 
   private async setupExistingProject(
     detection: Extract<ProjectDetection, { kind: 'native-ios' | 'expo' }>,
     skillNames: string[],
+    apiKey: string,
   ): Promise<void> {
     const projectRoot = detection.projectDir;
     const projectPath = humanPath(projectRoot);
@@ -59,6 +60,8 @@ export default class Go extends BaseCommand {
     this.info('Installing Limrun agent skills...');
     const results = await installProjectSkills({ projectRoot, skillNames });
     this.printSkillSummary(results);
+    ensureProjectEnvApiKey(projectRoot, apiKey);
+    this.info('Configured .env for Limrun.');
 
     this.output('');
     if (projectPath !== '.') {
@@ -108,19 +111,13 @@ export default class Go extends BaseCommand {
     return 'lim xcode build .';
   }
 
-  private async runSampleFlow(): Promise<void> {
+  private async runSampleFlow(apiKey: string): Promise<void> {
     const cwd = process.cwd();
     this.info('No iOS or Expo project detected. Setting up the sample app.');
     const sample = await ensureSampleRepo({ cwd });
     this.info(`${sample.reused ? 'Using existing' : 'Cloned'} ${humanPath(sample.path)}.`);
-
-    const unavailableAgentPaths = verifySampleAgentPaths(sample.path);
-    if (unavailableAgentPaths.length > 0) {
-      this.info('Some sample agent skill paths are unavailable:');
-      for (const unavailablePath of unavailableAgentPaths) {
-        this.info(`  ${path.join(SAMPLE_NATIVE_APP_DIR, unavailablePath)}`);
-      }
-    }
+    ensureProjectEnvApiKey(sample.path, apiKey);
+    this.info('Configured .env for Limrun.');
 
     let recoveryPrinted = false;
     try {
