@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { execFileSync } from 'child_process';
 
 import { detectProject } from '../packages/cli/src/lib/project-detection';
 import {
@@ -158,12 +159,14 @@ describe('lim go project env setup', () => {
     const projectRoot = makeTempDir();
     try {
       writeFile(path.join(projectRoot, '.env'), 'EXISTING=value');
+      fs.chmodSync(path.join(projectRoot, '.env'), 0o644);
 
       ensureProjectEnvApiKey(projectRoot, 'lim_test_key');
 
       expect(fs.readFileSync(path.join(projectRoot, '.env'), 'utf8')).toBe(
         'EXISTING=value\nLIM_API_KEY=lim_test_key',
       );
+      expect(fs.statSync(path.join(projectRoot, '.env')).mode & 0o777).toBe(0o600);
     } finally {
       fs.rmSync(projectRoot, { recursive: true, force: true });
     }
@@ -182,6 +185,45 @@ describe('lim go project env setup', () => {
       expect(fs.readFileSync(path.join(projectRoot, '.env'), 'utf8')).toBe(
         ['A=1', 'LIM_API_KEY=lim_new_key', 'B=2', ''].join('\n'),
       );
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects symlinked .env files before writing API keys', () => {
+    const projectRoot = makeTempDir();
+    try {
+      fs.symlinkSync(path.join(projectRoot, 'outside-env'), path.join(projectRoot, '.env'));
+
+      expect(() => ensureProjectEnvApiKey(projectRoot, 'lim_test_key')).toThrow('not a regular file');
+      expect(fs.existsSync(path.join(projectRoot, 'outside-env'))).toBe(false);
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('refuses to write LIM_API_KEY into git-tracked .env files', () => {
+    const projectRoot = makeTempDir();
+    try {
+      execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
+      writeFile(path.join(projectRoot, '.env'), 'EXISTING=value');
+      execFileSync('git', ['add', '.env'], { cwd: projectRoot, stdio: 'ignore' });
+
+      expect(() => ensureProjectEnvApiKey(projectRoot, 'lim_test_key')).toThrow('tracked by git');
+      expect(fs.readFileSync(path.join(projectRoot, '.env'), 'utf8')).toBe('EXISTING=value');
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('warns when .env is not ignored by git', () => {
+    const projectRoot = makeTempDir();
+    try {
+      execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
+
+      const result = ensureProjectEnvApiKey(projectRoot, 'lim_test_key');
+
+      expect(result.warnings).toEqual([expect.stringContaining('not ignored by git')]);
     } finally {
       fs.rmSync(projectRoot, { recursive: true, force: true });
     }

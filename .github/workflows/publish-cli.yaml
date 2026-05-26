@@ -18,9 +18,15 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Bootstrap root SDK
+        run: ./scripts/bootstrap
+
+      - name: Build root SDK
+        run: ./scripts/build
+
       - name: Install dependencies
         working-directory: packages/cli
-        run: npm install
+        run: npm ci
 
       - name: Build
         working-directory: packages/cli
