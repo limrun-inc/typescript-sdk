@@ -4,6 +4,7 @@ import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
+import { type LastIosInstance } from '../../lib/config';
 
 const DEVICE_SDKS = new Set(['iphoneos', 'watchos']);
 const SIMULATOR_SDKS = new Set(['iphonesimulator', 'watchsimulator']);
@@ -203,7 +204,12 @@ export default class XcodeBuild extends BaseCommand {
 
       this.output(`\nBuild succeeded (exit code ${result.exitCode})`);
       if (flags.ios && target.type === 'ios') {
-        this.output(`iOS Simulator URL: ${this.consoleStreamUrl(target.id)}`);
+        const signedStreamUrl = await this.resolveIosSignedStreamUrl(target);
+        if (signedStreamUrl) {
+          this.output(`Signed Stream URL: ${signedStreamUrl}`);
+        } else {
+          this.output(`iOS Simulator URL: ${this.consoleStreamUrl(target.id)}`);
+        }
       }
       if (flags.upload && result.signedDownloadUrl) {
         this.output(`Artifact download URL: ${result.signedDownloadUrl}`);
@@ -236,6 +242,19 @@ export default class XcodeBuild extends BaseCommand {
       certificatePassword: flags['certificate-password']!,
       provisioningProfileBase64: (await readFile(flags['provisioning-profile']!)).toString('base64'),
     };
+  }
+
+  private async resolveIosSignedStreamUrl(target: LastIosInstance): Promise<string | undefined> {
+    const cached = target.signedStreamUrl ?? this.signedStreamUrl(target.status);
+    if (cached) {
+      return cached;
+    }
+    try {
+      const instance = await this.client.iosInstances.get(target.id);
+      return this.signedStreamUrl(instance.status);
+    } catch {
+      return undefined;
+    }
   }
 }
 
