@@ -75,8 +75,6 @@ export default class Go extends BaseCommand {
     } else {
       this.output('"Build and run this iOS app with Limrun. Share the simulator URL when it is ready."');
     }
-    this.output('');
-    this.output(`CLI anchor: ${this.buildCliAnchor(detection)}`);
   }
 
   private printSkillSummary(results: SkillInstallResult[]): void {
@@ -101,14 +99,6 @@ export default class Go extends BaseCommand {
     await this.withAuth(async () => {
       await this.client.iosInstances.list({ state: 'ready' } as any);
     });
-  }
-
-  private buildCliAnchor(detection: Extract<ProjectDetection, { kind: 'native-ios' | 'expo' }>): string {
-    const projectPath = humanPath(detection.projectDir);
-    if (projectPath !== '.') {
-      return `cd ${shellQuote(projectPath)} && lim xcode build .`;
-    }
-    return 'lim xcode build .';
   }
 
   private async runSampleFlow(apiKey: string): Promise<void> {
