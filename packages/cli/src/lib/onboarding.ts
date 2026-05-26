@@ -51,6 +51,8 @@ interface SampleRepoOptions {
   git?: GitRunner;
 }
 
+const ENV_API_KEY_RE = /^\s*(?:export\s+)?LIM_API_KEY\s*=/;
+
 class OnboardingError extends Error {
   constructor(message: string) {
     super(message);
@@ -70,6 +72,53 @@ export async function ensureLoggedIn({ version, apiKey, log }: EnsureLoggedInOpt
   const { login } = await import('./auth');
   await login(config.consoleEndpoint, version);
   log?.('Logged in to Limrun.');
+}
+
+export function ensureProjectEnvApiKey(projectRoot: string, apiKey: string): void {
+  if (!apiKey) {
+    throw new OnboardingError('Limrun API key is missing after login. Run `lim login`, then rerun `lim go`.');
+  }
+  if (/[\r\n]/.test(apiKey)) {
+    throw new OnboardingError('Limrun API key contains an invalid newline.');
+  }
+
+  const envPath = path.join(projectRoot, '.env');
+  const apiKeyLine = `LIM_API_KEY=${apiKey}`;
+  if (!fs.existsSync(envPath)) {
+    fs.writeFileSync(envPath, `${apiKeyLine}\n`, { mode: 0o600 });
+    return;
+  }
+
+  const existing = fs.readFileSync(envPath, 'utf8');
+  const lines = existing.split(/\r?\n/);
+  let replaced = false;
+  const nextLines: string[] = [];
+  for (const line of lines) {
+    if (ENV_API_KEY_RE.test(line)) {
+      if (!replaced) {
+        nextLines.push(apiKeyLine);
+        replaced = true;
+      }
+      continue;
+    }
+    nextLines.push(line);
+  }
+
+  if (!replaced) {
+    const hasTrailingNewline = existing.endsWith('\n');
+    if (existing.length === 0) {
+      nextLines.push(apiKeyLine);
+    } else if (hasTrailingNewline) {
+      nextLines.splice(nextLines.length - 1, 0, apiKeyLine);
+    } else {
+      nextLines.push(apiKeyLine);
+    }
+  }
+
+  const next = nextLines.join('\n');
+  if (next !== existing) {
+    fs.writeFileSync(envPath, next);
+  }
 }
 
 export async function installProjectSkills({
@@ -188,24 +237,6 @@ export async function ensureSampleRepo({
 
   await git(['clone', '--depth', '1', SAMPLE_NATIVE_APP_REPO, SAMPLE_NATIVE_APP_DIR], cwd);
   return { path: sampleDir, reused: false };
-}
-
-export function verifySampleAgentPaths(sampleDir: string): string[] {
-  const unavailable: string[] = [];
-  for (const relativePath of [
-    path.join('.agents', 'skills', 'xcode-and-simulator'),
-    path.join('.claude', 'skills', 'xcode-and-simulator'),
-  ]) {
-    const fullPath = path.join(sampleDir, relativePath);
-    try {
-      if (!fs.statSync(fullPath).isDirectory()) {
-        unavailable.push(relativePath);
-      }
-    } catch {
-      unavailable.push(relativePath);
-    }
-  }
-  return unavailable;
 }
 
 export { OnboardingError };

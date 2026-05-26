@@ -5,10 +5,10 @@ import path from 'path';
 import { detectProject } from '../packages/cli/src/lib/project-detection';
 import {
   ensureSampleRepo,
+  ensureProjectEnvApiKey,
   installProjectSkills,
   SAMPLE_NATIVE_APP_DIR,
   SAMPLE_NATIVE_APP_REPO,
-  verifySampleAgentPaths,
 } from '../packages/cli/src/lib/onboarding';
 import type { LoadedRemoteSkills } from '../packages/cli/src/lib/remote-skills';
 
@@ -140,6 +140,54 @@ describe('lim go skill installation', () => {
   });
 });
 
+describe('lim go project env setup', () => {
+  test('creates missing .env with LIM_API_KEY using private file mode', () => {
+    const projectRoot = makeTempDir();
+    try {
+      ensureProjectEnvApiKey(projectRoot, 'lim_test_key');
+
+      const envPath = path.join(projectRoot, '.env');
+      expect(fs.readFileSync(envPath, 'utf8')).toBe('LIM_API_KEY=lim_test_key\n');
+      expect(fs.statSync(envPath).mode & 0o777).toBe(0o600);
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('appends LIM_API_KEY to existing .env without clobbering variables', () => {
+    const projectRoot = makeTempDir();
+    try {
+      writeFile(path.join(projectRoot, '.env'), 'EXISTING=value');
+
+      ensureProjectEnvApiKey(projectRoot, 'lim_test_key');
+
+      expect(fs.readFileSync(path.join(projectRoot, '.env'), 'utf8')).toBe(
+        'EXISTING=value\nLIM_API_KEY=lim_test_key',
+      );
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('replaces existing LIM_API_KEY variants without duplicating them', () => {
+    const projectRoot = makeTempDir();
+    try {
+      writeFile(
+        path.join(projectRoot, '.env'),
+        ['A=1', 'export LIM_API_KEY=old', 'B=2', 'LIM_API_KEY=older', ''].join('\n'),
+      );
+
+      ensureProjectEnvApiKey(projectRoot, 'lim_new_key');
+
+      expect(fs.readFileSync(path.join(projectRoot, '.env'), 'utf8')).toBe(
+        ['A=1', 'LIM_API_KEY=lim_new_key', 'B=2', ''].join('\n'),
+      );
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('lim go sample repo handling', () => {
   test('clones missing sample dir with the expected repository', async () => {
     const root = makeTempDir();
@@ -195,16 +243,4 @@ describe('lim go sample repo handling', () => {
     }
   });
 
-  test('reports unavailable sample agent paths', () => {
-    const root = makeTempDir();
-    try {
-      const sampleDir = path.join(root, SAMPLE_NATIVE_APP_DIR);
-      fs.mkdirSync(path.join(sampleDir, '.agents', 'skills', 'xcode-and-simulator'), { recursive: true });
-      expect(verifySampleAgentPaths(sampleDir)).toEqual([
-        path.join('.claude', 'skills', 'xcode-and-simulator'),
-      ]);
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
-  });
 });
