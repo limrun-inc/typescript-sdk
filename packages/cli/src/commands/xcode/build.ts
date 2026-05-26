@@ -139,6 +139,7 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.workspace) settings.workspace = flags.workspace;
       if (flags.project) settings.project = flags.project;
       if (flags.sdk) settings.sdk = flags.sdk;
+      if (flags.ios && !flags.sdk) settings.sdk = 'iphonesimulator';
       if (flags.configuration) settings.configuration = flags.configuration;
 
       const options: Record<string, unknown> = {};

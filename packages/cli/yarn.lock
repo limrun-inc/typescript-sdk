@@ -7,10 +7,10 @@
   resolved "https://registry.npmjs.org/@colors/colors/-/colors-1.5.0.tgz"
   integrity sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==
 
-"@limrun/api@0.28.6":
-  version "0.28.6"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.28.6.tgz"
-  integrity sha512-BveQVK7QQh0Oi6OaIVsonFIePI8sY/0MdIeiozN9R5AUJBVEz7nRferZDOko2Z1eG3aPb7Xl5uMxwlYoRhKP1w==
+"@limrun/api@0.28.7":
+  version "0.28.7"
+  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.28.7.tgz"
+  integrity sha512-YqbLNlAfik2RmP/dvNt+DxykBDzXGPuXMZL91UO+0Tg7348Sf2doPqkk8WiR60g5OWN+pOS3wIrF2q0uQLZQ5w==
   dependencies:
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"
@@ -20,7 +20,7 @@
     ws "^8.18.3"
     xdelta3-wasm "^1.0.0"
 
-"@oclif/core@^4":
+"@oclif/core@^4", "@oclif/core@>= 3.0.0":
   version "4.10.5"
   resolved "https://registry.npmjs.org/@oclif/core/-/core-4.10.5.tgz"
   integrity sha512-qcdCF7NrdWPfme6Kr34wwljRCXbCVpL1WVxiNy0Ep6vbWKjxAjFQwuhqkoyL0yjI+KdwtLcOCGn5z2yzdijc8w==
@@ -189,7 +189,7 @@ color-name@~1.1.4:
   resolved "https://registry.npmjs.org/color-name/-/color-name-1.1.4.tgz"
   integrity sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==
 
-debug@4, debug@^4.4.3:
+debug@^4.4.3, debug@4:
   version "4.4.3"
   resolved "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz"
   integrity sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==
@@ -384,7 +384,7 @@ picocolors@^1.1.1:
   resolved "https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz"
   integrity sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==
 
-picomatch@^4.0.4:
+"picomatch@^3 || ^4", picomatch@^4.0.4:
   version "4.0.4"
   resolved "https://registry.npmjs.org/picomatch/-/picomatch-4.0.4.tgz"
   integrity sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==

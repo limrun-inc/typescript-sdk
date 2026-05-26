@@ -36,32 +36,34 @@ export default class Go extends BaseCommand {
     });
 
     const apiKey = flags['api-key'] || readConfig().apiKey;
+    const allowAuthRetry = !flags['api-key'];
     const detection = detectProject(process.cwd());
     if (detection.kind === 'native-ios') {
-      await this.setupExistingProject(detection, [IOS_SKILL], apiKey);
+      await this.setupExistingProject(detection, [IOS_SKILL], apiKey, allowAuthRetry);
       return;
     }
     if (detection.kind === 'expo') {
-      await this.setupExistingProject(detection, [IOS_SKILL, EXPO_SKILL], apiKey);
+      await this.setupExistingProject(detection, [IOS_SKILL, EXPO_SKILL], apiKey, allowAuthRetry);
       return;
     }
 
-    await this.runSampleFlow(apiKey);
+    await this.runSampleFlow(apiKey, allowAuthRetry);
   }
 
   private async setupExistingProject(
     detection: Extract<ProjectDetection, { kind: 'native-ios' | 'expo' }>,
     skillNames: string[],
     apiKey: string,
+    allowAuthRetry: boolean,
   ): Promise<void> {
     const projectRoot = detection.projectDir;
     const projectPath = humanPath(projectRoot);
-    await this.validateAuth();
+    await this.validateAuth(allowAuthRetry);
     this.info('Detected an iOS/Expo project.');
     this.info('Installing Limrun agent skills...');
     const results = await installProjectSkills({ projectRoot, skillNames });
     this.printSkillSummary(results);
-    ensureProjectEnvApiKey(projectRoot, apiKey);
+    this.printEnvWarnings(ensureProjectEnvApiKey(projectRoot, apiKey).warnings);
     this.info('Configured .env for Limrun.');
 
     this.output('');
@@ -96,18 +98,30 @@ export default class Go extends BaseCommand {
     }
   }
 
-  private async validateAuth(): Promise<void> {
-    await this.withAuth(async () => {
-      await this.client.iosInstances.list({ state: 'ready' } as any);
-    });
+  private printEnvWarnings(warnings: string[]): void {
+    for (const warning of warnings) {
+      this.info(`Warning: ${warning}`);
+    }
   }
 
-  private async runSampleFlow(apiKey: string): Promise<void> {
+  private async validateAuth(allowRetry: boolean): Promise<void> {
+    const check = async () => {
+      await this.client.iosInstances.list({ state: 'ready' } as any);
+    };
+    if (allowRetry) {
+      await this.withAuth(check);
+      return;
+    }
+    await check();
+  }
+
+  private async runSampleFlow(apiKey: string, allowAuthRetry: boolean): Promise<void> {
     const cwd = process.cwd();
     this.info('No iOS or Expo project detected. Setting up the sample app.');
+    await this.validateAuth(allowAuthRetry);
     const sample = await ensureSampleRepo({ cwd });
     this.info(`${sample.reused ? 'Using existing' : 'Cloned'} ${humanPath(sample.path)}.`);
-    ensureProjectEnvApiKey(sample.path, apiKey);
+    this.printEnvWarnings(ensureProjectEnvApiKey(sample.path, apiKey).warnings);
     this.info('Configured .env for Limrun.');
 
     let recoveryPrinted = false;

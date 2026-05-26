@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { execFile } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
 
 import { readConfig } from './config';
@@ -51,6 +51,10 @@ interface SampleRepoOptions {
   git?: GitRunner;
 }
 
+export interface EnvApiKeyResult {
+  warnings: string[];
+}
+
 const ENV_API_KEY_RE = /^\s*(?:export\s+)?LIM_API_KEY\s*=/;
 
 class OnboardingError extends Error {
@@ -74,7 +78,7 @@ export async function ensureLoggedIn({ version, apiKey, log }: EnsureLoggedInOpt
   log?.('Logged in to Limrun.');
 }
 
-export function ensureProjectEnvApiKey(projectRoot: string, apiKey: string): void {
+export function ensureProjectEnvApiKey(projectRoot: string, apiKey: string): EnvApiKeyResult {
   if (!apiKey) {
     throw new OnboardingError('Limrun API key is missing after login. Run `lim login`, then rerun `lim go`.');
   }
@@ -83,10 +87,15 @@ export function ensureProjectEnvApiKey(projectRoot: string, apiKey: string): voi
   }
 
   const envPath = path.join(projectRoot, '.env');
+  const warnings = validateProjectEnvPath(projectRoot, envPath);
   const apiKeyLine = `LIM_API_KEY=${apiKey}`;
-  if (!fs.existsSync(envPath)) {
+  const stat = lstatIfExists(envPath);
+  if (!stat) {
     fs.writeFileSync(envPath, `${apiKeyLine}\n`, { mode: 0o600 });
-    return;
+    return { warnings };
+  }
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    throw new OnboardingError(`${envPath} exists but is not a regular file. Refusing to write LIM_API_KEY.`);
   }
 
   const existing = fs.readFileSync(envPath, 'utf8');
@@ -117,7 +126,82 @@ export function ensureProjectEnvApiKey(projectRoot: string, apiKey: string): voi
 
   const next = nextLines.join('\n');
   if (next !== existing) {
-    fs.writeFileSync(envPath, next);
+    writePrivateFile(envPath, next);
+  } else if ((stat.mode & 0o777) !== 0o600) {
+    fs.chmodSync(envPath, 0o600);
+  }
+  return { warnings };
+}
+
+function lstatIfExists(filePath: string): fs.Stats | undefined {
+  try {
+    return fs.lstatSync(filePath);
+  } catch (err) {
+    const code = typeof err === 'object' && err && 'code' in err ? String(err.code) : '';
+    if (code === 'ENOENT') {
+      return undefined;
+    }
+    throw err;
+  }
+}
+
+function writePrivateFile(filePath: string, content: string): void {
+  const tempPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.tmp-${process.pid}-${Date.now()}`,
+  );
+  try {
+    fs.writeFileSync(tempPath, content, { mode: 0o600 });
+    fs.renameSync(tempPath, filePath);
+    fs.chmodSync(filePath, 0o600);
+  } finally {
+    fs.rmSync(tempPath, { force: true });
+  }
+}
+
+function validateProjectEnvPath(projectRoot: string, envPath: string): string[] {
+  const warnings: string[] = [];
+  if (!isGitWorkTree(projectRoot)) {
+    return warnings;
+  }
+  if (isGitTracked(projectRoot, envPath)) {
+    throw new OnboardingError(
+      `${envPath} is tracked by git. Refusing to write LIM_API_KEY into a tracked file.`,
+    );
+  }
+  if (!isGitIgnored(projectRoot, envPath)) {
+    warnings.push(`${envPath} is not ignored by git. Add .env to .gitignore before committing changes.`);
+  }
+  return warnings;
+}
+
+function isGitWorkTree(cwd: string): boolean {
+  try {
+    execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isGitTracked(cwd: string, filePath: string): boolean {
+  try {
+    execFileSync('git', ['ls-files', '--error-unmatch', path.relative(cwd, filePath)], {
+      cwd,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isGitIgnored(cwd: string, filePath: string): boolean {
+  try {
+    execFileSync('git', ['check-ignore', '--quiet', path.relative(cwd, filePath)], { cwd });
+    return true;
+  } catch {
+    return false;
   }
 }
 
