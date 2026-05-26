@@ -77,7 +77,7 @@ function hasExpoDependency(packageJsonPath: string): boolean {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
     };
-    return Boolean(parsed.dependencies?.expo || parsed.devDependencies?.expo);
+    return Boolean(parsed.dependencies?.['expo'] || parsed.devDependencies?.['expo']);
   } catch {
     return false;
   }

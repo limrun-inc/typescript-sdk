@@ -117,7 +117,9 @@ export default class XcodeBuild extends BaseCommand {
       this.error('--dev-server-url is only supported for Debug builds.');
     }
     if (flags.ios && flags.sdk && DEVICE_SDKS.has(flags.sdk)) {
-      this.error('--ios builds run on a simulator. Use --sdk iphonesimulator, --sdk watchsimulator, or omit --sdk.');
+      this.error(
+        '--ios builds run on a simulator. Use --sdk iphonesimulator, --sdk watchsimulator, or omit --sdk.',
+      );
     }
     if (flags.ios && hasSigningFlags(flags)) {
       this.error('--ios builds run on a simulator and cannot use signing flags.');
@@ -125,7 +127,9 @@ export default class XcodeBuild extends BaseCommand {
 
     await this.withAuth(async () => {
       const target =
-        flags.ios ? await this.resolveIosXcodeTargetOrCreate(flags.id) : await this.resolveXcodeTargetOrCreate(flags.id);
+        flags.ios ?
+          await this.resolveIosXcodeTargetOrCreate(flags.id)
+        : await this.resolveXcodeTargetOrCreate(flags.id);
       const id = target.id;
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);

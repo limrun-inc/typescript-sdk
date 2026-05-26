@@ -54,13 +54,13 @@ function writeRawConfig(config: Record<string, string>): void {
 export function readConfig(): LimConfig {
   const raw = readRawConfig();
   return {
-    apiKey: process.env.LIM_API_KEY || raw[CONFIG_KEYS.apiKey] || '',
+    apiKey: process.env['LIM_API_KEY'] || raw[CONFIG_KEYS.apiKey] || '',
     apiEndpoint:
-      process.env.LIM_API_ENDPOINT || raw[CONFIG_KEYS.apiEndpoint] || DEFAULTS[CONFIG_KEYS.apiEndpoint],
+      process.env['LIM_API_ENDPOINT'] || raw[CONFIG_KEYS.apiEndpoint] || DEFAULTS[CONFIG_KEYS.apiEndpoint]!,
     consoleEndpoint:
-      process.env.LIM_CONSOLE_ENDPOINT ||
+      process.env['LIM_CONSOLE_ENDPOINT'] ||
       raw[CONFIG_KEYS.consoleEndpoint] ||
-      DEFAULTS[CONFIG_KEYS.consoleEndpoint],
+      DEFAULTS[CONFIG_KEYS.consoleEndpoint]!,
   };
 }
 
@@ -149,24 +149,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isLastAndroidInstance(value: unknown): value is LastAndroidInstance {
-  return isRecord(value) && value.type === 'android' && typeof value.id === 'string';
+  return isRecord(value) && value['type'] === 'android' && typeof value['id'] === 'string';
 }
 
 function isLastIosInstance(value: unknown): value is LastIosInstance {
-  return isRecord(value) && value.type === 'ios' && typeof value.id === 'string';
+  return isRecord(value) && value['type'] === 'ios' && typeof value['id'] === 'string';
 }
 
 function isLastXcodeInstance(value: unknown): value is LastXcodeInstance {
-  return isRecord(value) && value.type === 'xcode' && typeof value.id === 'string';
+  return isRecord(value) && value['type'] === 'xcode' && typeof value['id'] === 'string';
 }
 
 function isLastInstances(value: unknown): value is LastInstances {
   if (!isRecord(value)) return false;
   const keys = Object.keys(value);
   if (keys.some((key) => !['ios', 'android', 'xcode'].includes(key))) return false;
-  if (value.android !== undefined && !isLastAndroidInstance(value.android)) return false;
-  if (value.ios !== undefined && !isLastIosInstance(value.ios)) return false;
-  if (value.xcode !== undefined && !isLastIosInstance(value.xcode) && !isLastXcodeInstance(value.xcode)) {
+  if (value['android'] !== undefined && !isLastAndroidInstance(value['android'])) return false;
+  if (value['ios'] !== undefined && !isLastIosInstance(value['ios'])) return false;
+  if (
+    value['xcode'] !== undefined &&
+    !isLastIosInstance(value['xcode']) &&
+    !isLastXcodeInstance(value['xcode'])
+  ) {
     return false;
   }
   return true;

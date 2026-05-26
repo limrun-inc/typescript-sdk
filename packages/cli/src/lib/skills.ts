@@ -66,7 +66,12 @@ export const AGENTS: Record<AgentId, AgentSpec> = {
   },
 };
 
-export function targetSkillDir(agent: AgentSpec, scope: Scope, skillName: string, projectRoot?: string): string {
+export function targetSkillDir(
+  agent: AgentSpec,
+  scope: Scope,
+  skillName: string,
+  projectRoot?: string,
+): string {
   return path.join(agent.skillsDir(scope, projectRoot), skillName);
 }
 

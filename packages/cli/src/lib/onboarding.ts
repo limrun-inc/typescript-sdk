@@ -133,7 +133,9 @@ export async function installProjectSkills({
     for (const skillName of skillNames) {
       const skill = loaded.skills.find((candidate) => candidate.name === skillName);
       if (!skill) {
-        throw new OnboardingError(`Limrun skill "${skillName}" was not found in ${loaded.owner}/${loaded.repo}.`);
+        throw new OnboardingError(
+          `Limrun skill "${skillName}" was not found in ${loaded.owner}/${loaded.repo}.`,
+        );
       }
 
       for (const agent of ONBOARDING_AGENTS) {
