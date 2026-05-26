@@ -169,6 +169,11 @@ export abstract class BaseCommand extends Command {
     return `${baseUrl}/stream/${instanceId}`;
   }
 
+  protected consoleBuildUrl(execId: string): string {
+    const baseUrl = readConfig().consoleEndpoint.replace(/\/+$/, '');
+    return `${baseUrl}/builds/${execId}`;
+  }
+
   protected signedStreamUrl(status: { signedStreamUrl?: string } | undefined): string | undefined {
     return status?.signedStreamUrl;
   }

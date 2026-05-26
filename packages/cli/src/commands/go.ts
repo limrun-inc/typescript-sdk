@@ -160,9 +160,11 @@ export default class Go extends BaseCommand {
         await xcode.sync(sample.path, { watch: false });
 
         this.info('Building and launching sample app...');
+        const xcodeSandboxId = xcodeSandboxIdFromUrl(xcodeUrl);
+        if (xcodeSandboxId) {
+          this.outputBuildInProgress(xcodeSandboxId);
+        }
         const build = xcode.xcodebuild();
-        build.stdout.on('data', (line: string) => process.stdout.write(line + '\n'));
-        build.stderr.on('data', (line: string) => process.stderr.write(line + '\n'));
         const result = await build;
         if (result.exitCode !== 0) {
           this.outputSampleRecovery(sample.path);
@@ -170,10 +172,10 @@ export default class Go extends BaseCommand {
           this.error(`Sample build failed with exit code ${result.exitCode}`, { exit: result.exitCode });
         }
 
-        const streamUrl = this.signedStreamUrl(instance.status) ?? this.consoleStreamUrl(instance.metadata.id);
+        this.output('Build completed successfully!');
         this.output('');
-        this.output('Sample app is running in a Limrun cloud simulator:');
-        this.output(streamUrl);
+        this.output('App deployed and running in a Limrun cloud simulator:');
+        this.output(this.consoleStreamUrl(instance.metadata.id));
         this.outputSampleNextStep(sample.path);
       });
     } catch (err) {
@@ -182,6 +184,11 @@ export default class Go extends BaseCommand {
       }
       throw err;
     }
+  }
+
+  private outputBuildInProgress(sandboxId: string): void {
+    this.output('Build is in progress. You can follow the logs from:');
+    this.output(this.consoleBuildUrl(sandboxId));
   }
 
   private outputSampleRecovery(samplePath: string): void {
@@ -194,9 +201,11 @@ export default class Go extends BaseCommand {
     this.output('');
     this.output('Next steps:');
     this.output(`  cd ${shellQuote(humanPath(samplePath))}`);
+    this.output('  Open your favorite coding agent and ask:');
     this.output(
-      '  Open your coding agent and try the following prompt: "Change `Hello, world!` to `Hello, Limrun!`, rebuild with Limrun, and show me the updated simulator."',
+      '  "Change `Hello, world!` to `Hello, Limrun!`, rebuild with Limrun, and show me the updated simulator."',
     );
+    this.output('  Start building your app.');
   }
 }
 
@@ -212,4 +221,8 @@ function shellQuote(value: string): string {
     return value;
   }
   return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function xcodeSandboxIdFromUrl(url: string): string | undefined {
+  return url.match(/\/(sandbox_[^/]+)(?:\/|$)/)?.[1];
 }
