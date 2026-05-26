@@ -520,7 +520,9 @@ export abstract class BaseCommand extends Command {
     saveLastCreatedInstance(instance, ['xcode']);
     const target = loadIosInstanceCache(instance.metadata.id);
     if (!target) {
-      throw new Error(`Created iOS instance ${instance.metadata.id}, but failed to load it from local cache.`);
+      throw new Error(
+        `Created iOS instance ${instance.metadata.id}, but failed to load it from local cache.`,
+      );
     }
     return target;
   }

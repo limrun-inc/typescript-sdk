@@ -196,7 +196,7 @@ describe('lim go sample repo handling', () => {
       const sample = await ensureSampleRepo({
         cwd: root,
         git: async (args, cwd) => {
-          calls.push({ args, cwd });
+          calls.push(cwd === undefined ? { args } : { args, cwd });
           return '';
         },
       });
@@ -242,5 +242,4 @@ describe('lim go sample repo handling', () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
-
 });
