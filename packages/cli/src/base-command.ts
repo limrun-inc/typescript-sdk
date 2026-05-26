@@ -364,6 +364,34 @@ export abstract class BaseCommand extends Command {
     }
   }
 
+  protected async resolveIosXcodeTargetOrCreate(providedId: string | undefined): Promise<LastIosInstance> {
+    this._lastResolvedExpectedType = 'xcode';
+    const id = this._overrideInstanceId ?? providedId;
+    if (id) {
+      const target = this.iosXcodeTargetFromId(id);
+      this._lastResolvedInstanceId = target.id;
+      return target;
+    }
+
+    const target = loadLastXcodeInstance();
+    if (target?.type === 'ios') {
+      this._lastResolvedInstanceId = target.id;
+      return target;
+    }
+
+    if (!this.shouldAutoCreateOnNotFound()) {
+      throw new Error(
+        'No simulator-backed Xcode target found.\n' +
+          'Create one first with: lim xcode create --ios, or rerun without --no-create.',
+      );
+    }
+
+    const replacement = await this.createIosXcodeInstance();
+    this.info(`No recent simulator-backed Xcode target found. Created instance ${replacement.id}.`);
+    this._lastResolvedInstanceId = replacement.id;
+    return replacement;
+  }
+
   private findMissingInstanceId(err: NotFoundError): string | null {
     const match = err.message.match(INSTANCE_ID_PATTERN);
     if (match) {
@@ -405,33 +433,8 @@ export abstract class BaseCommand extends Command {
     const commandType = this._lastResolvedExpectedType;
     const prefix = instanceId?.split('_')[0];
 
-    if (
-      (commandType === 'xcode' && prefix === 'ios') ||
-      (commandType === 'xcode' && instanceId?.startsWith('ios_'))
-    ) {
-      const instance = await this.client.iosInstances.create({
-        wait: true,
-        spec: {
-          sandbox: { xcode: { enabled: true } },
-        },
-      });
-      saveLastCreatedInstance(instance, ['xcode']);
-      return this.xcodeTargetFromRecord(
-        loadLastXcodeInstance() ?? {
-          id: instance.metadata.id,
-          type: 'ios',
-          metadata: instance.metadata,
-          spec: instance.spec,
-          status: instance.status,
-          apiUrl: instance.status.apiUrl,
-          token: instance.status.token,
-          endpointWebSocketUrl: instance.status.endpointWebSocketUrl,
-          mcpUrl: instance.status.mcpUrl,
-          signedStreamUrl: instance.status.signedStreamUrl,
-          targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix,
-          sandboxXcodeUrl: instance.status.sandbox?.xcode?.url,
-        },
-      );
+    if (commandType === 'xcode' && prefix === 'ios') {
+      return this.createIosXcodeInstance();
     }
 
     if (prefix === 'ios' || commandType === 'ios') {
@@ -474,6 +477,14 @@ export abstract class BaseCommand extends Command {
     throw new Error(`Expected an iOS or Xcode target, got ${id}`);
   }
 
+  private iosXcodeTargetFromId(id: string): LastIosInstance {
+    const target = this.xcodeTargetFromId(id);
+    if (target.type === 'ios') {
+      return target;
+    }
+    throw new Error(`--ios requires an iOS instance ID, got ${id}`);
+  }
+
   private androidInstanceFromId(id: string): LastAndroidInstance {
     const type = detectInstanceType(id);
     if (type !== 'android') {
@@ -497,6 +508,21 @@ export abstract class BaseCommand extends Command {
       return record;
     }
     throw new Error(`Expected an iOS or Xcode target, got ${record.id}`);
+  }
+
+  private async createIosXcodeInstance(): Promise<LastIosInstance> {
+    const instance = await this.client.iosInstances.create({
+      wait: true,
+      spec: {
+        sandbox: { xcode: { enabled: true } },
+      },
+    });
+    saveLastCreatedInstance(instance, ['xcode']);
+    const target = loadIosInstanceCache(instance.metadata.id);
+    if (!target) {
+      throw new Error(`Created iOS instance ${instance.metadata.id}, but failed to load it from local cache.`);
+    }
+    return target;
   }
 }
 
