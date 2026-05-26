@@ -1,4 +1,4 @@
-# @limrun/cli
+# lim
 
 The official command-line interface for [Limrun](https://limrun.com) — create and control cloud mobile sandboxes for Android, iOS, and Xcode.
 
@@ -6,10 +6,25 @@ The official command-line interface for [Limrun](https://limrun.com) — create 
 
 ```bash
 # npm
-npm install -g @limrun/cli
+npm install -g lim
 
 # npx (no install)
-npx @limrun/cli <command>
+npx lim <command>
+```
+
+### Migrating from `@limrun/cli`
+
+`lim` is the canonical npm package for the Limrun CLI. If you already installed the older scoped package, remove it before installing `lim` so npm does not hit a global `lim` binary conflict:
+
+```bash
+npm uninstall -g @limrun/cli
+npm install -g lim
+```
+
+If you already have the `lim` package installed globally, update it with:
+
+```bash
+npm install -g lim
 ```
 
 ## Authentication
@@ -662,7 +677,7 @@ lim skills install --agents claude --scope project --json
 
 **Behavior:**
 
-- The command fetches `limrun-inc/skills@main` at runtime, so skill updates do not require a new `@limrun/cli` release.
+- The command fetches `limrun-inc/skills@main` at runtime, so skill updates do not require a new `lim` release.
 - The command compares fetched vs existing skill directories byte-for-byte. Identical content is reported as `Unchanged` (no writes).
 - Different content: in interactive mode you are asked to confirm each overwrite; in non-interactive mode the command refuses unless `--force` is passed.
 - Non-interactive runs are all-or-nothing: if any selected target conflicts and `--force` is not set, no files are written for any target, and the command exits with status 1.
@@ -817,5 +832,5 @@ lim --help
 lim android list
 
 # Unlink when done
-npm unlink -g @limrun/cli
+npm unlink -g lim
 ```
