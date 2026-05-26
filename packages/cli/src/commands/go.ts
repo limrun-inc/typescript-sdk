@@ -9,6 +9,7 @@ import {
   installProjectSkills,
   type SkillInstallResult,
 } from '../lib/onboarding';
+import { xcodeSandboxIdFromUrl } from '../lib/xcode-sandbox';
 
 const VERSION = require('../../package.json').version;
 
@@ -208,8 +209,4 @@ function shellQuote(value: string): string {
     return value;
   }
   return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
-function xcodeSandboxIdFromUrl(url: string): string | undefined {
-  return url.match(/\/(sandbox_[^/]+)(?:\/|$)/)?.[1];
 }

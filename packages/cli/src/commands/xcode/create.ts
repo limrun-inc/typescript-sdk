@@ -2,12 +2,9 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
+import { xcodeSandboxIdFromUrl } from '../../lib/xcode-sandbox';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 import { type XcodeInstanceCreateParams } from '@limrun/api/resources/xcode-instances';
-
-function xcodeSandboxIdFromUrl(url: string): string | undefined {
-  return url.match(/\/(sandbox_[^/]+)(?:\/|$)/)?.[1];
-}
 
 export default class XcodeCreate extends BaseCommand {
   static summary = 'Create a new Xcode instance';
