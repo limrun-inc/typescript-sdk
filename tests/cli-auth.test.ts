@@ -55,7 +55,6 @@ function request(
   });
 }
 
-
 describe('lim login callback server', () => {
   test('writes the api key and resolves promptly after a keep-alive callback', async () => {
     const port = await getAvailablePort();
