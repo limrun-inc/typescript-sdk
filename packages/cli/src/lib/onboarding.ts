@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
+import { parse as parseDotenv } from 'dotenv';
 
 import { readConfig } from './config';
 import {
@@ -24,6 +25,7 @@ const SAMPLE_CLONE_TIMEOUT_MS = 300_000;
 type OnboardingAgent = Extract<AgentId, 'claude' | 'cursor'>;
 type SkillStatus = 'installed' | 'unchanged' | 'skipped';
 const ONBOARDING_AGENTS: OnboardingAgent[] = ['cursor', 'claude'];
+const PROJECT_ENV_FILES = ['.env', '.env.local'];
 
 export interface SkillInstallResult {
   skill: string;
@@ -55,6 +57,11 @@ export interface EnvApiKeyResult {
   warnings: string[];
 }
 
+export interface ProjectEnvApiKeyResult {
+  apiKey?: string;
+  path?: string;
+}
+
 const ENV_API_KEY_RE = /^\s*(?:export\s+)?LIM_API_KEY\s*=/;
 
 class OnboardingError extends Error {
@@ -76,6 +83,20 @@ export async function ensureLoggedIn({ version, apiKey, log }: EnsureLoggedInOpt
   const { login } = await import('./auth');
   await login(config.consoleEndpoint, version);
   log?.('Logged in to Limrun.');
+}
+
+export function applyProjectEnvApiKey(projectRoot: string): ProjectEnvApiKeyResult {
+  const result = readProjectEnvApiKey(projectRoot);
+  if (!result.apiKey) {
+    return result;
+  }
+
+  const dotEnvApiKey = readEnvFileApiKey(path.join(projectRoot, '.env'));
+  const current = process.env['LIM_API_KEY'];
+  if (!current || current === dotEnvApiKey) {
+    process.env['LIM_API_KEY'] = result.apiKey;
+  }
+  return result;
 }
 
 export function ensureProjectEnvApiKey(projectRoot: string, apiKey: string): EnvApiKeyResult {
@@ -131,6 +152,27 @@ export function ensureProjectEnvApiKey(projectRoot: string, apiKey: string): Env
     fs.chmodSync(envPath, 0o600);
   }
   return { warnings };
+}
+
+function readProjectEnvApiKey(projectRoot: string): ProjectEnvApiKeyResult {
+  let result: ProjectEnvApiKeyResult = {};
+  for (const fileName of PROJECT_ENV_FILES) {
+    const envPath = path.join(projectRoot, fileName);
+    const apiKey = readEnvFileApiKey(envPath);
+    if (apiKey) {
+      result = { apiKey, path: envPath };
+    }
+  }
+  return result;
+}
+
+function readEnvFileApiKey(envPath: string): string | undefined {
+  const stat = lstatIfExists(envPath);
+  if (!stat || stat.isSymbolicLink() || !stat.isFile()) {
+    return undefined;
+  }
+  const parsed = parseDotenv(fs.readFileSync(envPath));
+  return parsed['LIM_API_KEY'];
 }
 
 function lstatIfExists(filePath: string): fs.Stats | undefined {

@@ -3,6 +3,7 @@ import { BaseCommand } from '../base-command';
 import { readConfig, registerCreatedInstance } from '../lib/config';
 import { detectProject, type ProjectDetection } from '../lib/project-detection';
 import {
+  applyProjectEnvApiKey,
   ensureLoggedIn,
   ensureProjectEnvApiKey,
   ensureSampleRepo,
@@ -29,6 +30,10 @@ export default class Go extends BaseCommand {
     const { flags } = await this.parse(Go);
     this.setParsedFlags(flags);
 
+    const detection = detectProject(process.cwd());
+    const envRoot = detection.kind === 'sample' ? process.cwd() : detection.projectDir;
+    const projectEnvApiKey = flags['api-key'] ? undefined : applyProjectEnvApiKey(envRoot).apiKey;
+
     await ensureLoggedIn({
       version: VERSION,
       apiKey: flags['api-key'],
@@ -36,8 +41,7 @@ export default class Go extends BaseCommand {
     });
 
     const apiKey = flags['api-key'] || readConfig().apiKey;
-    const allowAuthRetry = !flags['api-key'];
-    const detection = detectProject(process.cwd());
+    const allowAuthRetry = !flags['api-key'] && !projectEnvApiKey && !process.env['LIM_API_KEY'];
     if (detection.kind === 'native-ios') {
       await this.setupExistingProject(detection, [IOS_SKILL], apiKey, allowAuthRetry);
       return;
