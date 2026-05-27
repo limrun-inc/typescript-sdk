@@ -49,11 +49,43 @@ function fakeRemoteSkills(root: string, names: string[]): LoadedRemoteSkills {
 }
 
 describe('lim go project detection', () => {
-  test('detects one native iOS app directory with project and workspace files', () => {
+  test('detects a default Xcode native iOS app without counting bundle internals', () => {
     const root = makeTempDir();
     try {
-      fs.mkdirSync(path.join(root, 'App.xcodeproj'), { recursive: true });
-      fs.mkdirSync(path.join(root, 'App.xcworkspace'), { recursive: true });
+      writeFile(path.join(root, 'App.xcodeproj', 'project.pbxproj'), '');
+      writeFile(path.join(root, 'App.xcodeproj', 'project.xcworkspace', 'contents.xcworkspacedata'), '');
+      writeFile(path.join(root, 'App', 'ContentView.swift'), '');
+
+      expect(detectProject(root)).toMatchObject({
+        kind: 'native-ios',
+        projectDir: root,
+      });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('detects native iOS apps in a conventional ios directory', () => {
+    const root = makeTempDir();
+    try {
+      writeFile(path.join(root, 'ios', 'App.xcodeproj', 'project.pbxproj'), '');
+      writeFile(path.join(root, 'ios', 'App', 'ContentView.swift'), '');
+
+      expect(detectProject(root)).toMatchObject({
+        kind: 'native-ios',
+        projectDir: path.join(root, 'ios'),
+      });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('prefers a root iOS app when nested stale sample projects also exist', () => {
+    const root = makeTempDir();
+    try {
+      writeFile(path.join(root, 'App.xcodeproj', 'project.pbxproj'), '');
+      writeFile(path.join(root, 'App', 'ContentView.swift'), '');
+      writeFile(path.join(root, 'sample-native-app', 'sample-native-app.xcodeproj', 'project.pbxproj'), '');
 
       expect(detectProject(root)).toMatchObject({
         kind: 'native-ios',
