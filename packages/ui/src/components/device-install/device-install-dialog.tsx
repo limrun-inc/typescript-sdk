@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type ChangeEvent, type ReactNode } from 'react';
 import { clsx } from 'clsx';
+import QRCode from 'qrcode';
 import { useDeviceInstall, type UseDeviceInstallOptions } from '../../hooks/use-device-install';
 import type { DeviceInstallStep, DeviceInstallStepStatus } from '../../core/device-install';
 import './device-install-dialog.css';
@@ -17,7 +18,7 @@ const steps: Array<{ id: DeviceInstallStep; title: string; description: string }
   {
     id: 'build',
     title: 'Build for device',
-    description: 'Start the signed iPhone build before connecting over USB.',
+    description: 'Start the signed iPhone build for the selected signing mode.',
   },
   {
     id: 'connect',
@@ -27,7 +28,7 @@ const steps: Array<{ id: DeviceInstallStep; title: string; description: string }
   {
     id: 'install',
     title: 'Start installation',
-    description: 'Relay the last successful device build to the paired iPhone.',
+    description: 'Install the last successful device build.',
   },
 ];
 
@@ -43,12 +44,30 @@ export function DeviceInstallDialog({
   const [appleAccountName, setAppleAccountName] = useState('');
   const [applePassword, setApplePassword] = useState('');
   const [appleTwoFactorCode, setAppleTwoFactorCode] = useState('');
+  const [otaQRCode, setOTAQRCode] = useState<string>();
   const dialogTitleId = useId();
   const deviceInstall = useDeviceInstall(hookOptions);
+  const visibleSteps = steps.filter((step) => deviceInstall.signingMode === 'development' || step.id !== 'connect');
 
   useEffect(() => {
     setOpenStep(deviceInstall.currentStep);
   }, [deviceInstall.currentStep]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!deviceInstall.otaInstall?.landingUrl) {
+      setOTAQRCode(undefined);
+      return;
+    }
+    void QRCode.toDataURL(deviceInstall.otaInstall.landingUrl, { margin: 1, width: 240 }).then((dataUrl) => {
+      if (!cancelled) {
+        setOTAQRCode(dataUrl);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [deviceInstall.otaInstall?.landingUrl]);
 
   const updateSigningFiles = (field: 'certificateFile' | 'provisioningProfileFile', event: ChangeEvent<HTMLInputElement>) => {
     deviceInstall.setSigningFiles({
@@ -78,7 +97,7 @@ export function DeviceInstallDialog({
             <header className="lr-device-install__header">
               <div>
                 <h2 id={dialogTitleId}>Install to a real iPhone</h2>
-                <p>Prepare signing, build for the registered device, connect and pair, then install from this browser.</p>
+                <p>Prepare signing, build for the registered device, then install with QR or WebUSB based on signing mode.</p>
               </div>
               <button type="button" className="lr-device-install__icon-button" onClick={() => setOpen(false)}>
                 Close
@@ -88,7 +107,7 @@ export function DeviceInstallDialog({
             {deviceInstall.error && <div className="lr-device-install__error">{deviceInstall.error}</div>}
 
             <div className="lr-device-install__steps">
-              {steps.map((step, index) => (
+              {visibleSteps.map((step, index) => (
                 <StepCard
                   key={step.id}
                   index={index + 1}
@@ -100,6 +119,31 @@ export function DeviceInstallDialog({
                 >
                   {step.id === 'signing' && (
                     <div className="lr-device-install__step-body">
+                      <div className="lr-device-install__choice-grid">
+                        <button
+                          type="button"
+                          className={clsx(
+                            'lr-device-install__choice',
+                            deviceInstall.signingMode === 'development' && 'lr-device-install__choice--active',
+                          )}
+                          onClick={() => deviceInstall.setSigningMode('development')}
+                        >
+                          <strong>Development + WebUSB</strong>
+                          <span>Use Apple Development signing and install by pairing the iPhone with this browser.</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={clsx(
+                            'lr-device-install__choice',
+                            deviceInstall.signingMode === 'adhoc' && 'lr-device-install__choice--active',
+                          )}
+                          onClick={() => deviceInstall.setSigningMode('adhoc')}
+                        >
+                          <strong>Ad Hoc + QR</strong>
+                          <span>Use registered-device Ad Hoc signing and install from iPhone Camera or Safari.</span>
+                        </button>
+                      </div>
+
                       <div className="lr-device-install__choice-grid">
                         <button
                           type="button"
@@ -148,18 +192,6 @@ export function DeviceInstallDialog({
                                 onChange={(event) => setApplePassword(event.currentTarget.value)}
                               />
                             </label>
-                            {!deviceInstall.hasReusableAppleCertificate && (
-                              <label className="lr-device-install__field">
-                                <span>Generated .p12 password</span>
-                                <input
-                                  type="password"
-                                  placeholder="Used when exporting Apple certificate"
-                                  onChange={(event) =>
-                                    deviceInstall.setSigningFiles({ certificatePassword: event.currentTarget.value })
-                                  }
-                                />
-                              </label>
-                            )}
                           </div>
                           <div className="lr-device-install__actions">
                             <button
@@ -275,7 +307,9 @@ export function DeviceInstallDialog({
                           >
                             {deviceInstall.appleSigningStatus === 'preparing-assets'
                               ? 'Preparing signing assets...'
-                              : 'Generate certificate and profile'}
+                              : deviceInstall.signingMode === 'adhoc'
+                                ? 'Generate Ad Hoc signing assets'
+                                : 'Generate development signing assets'}
                           </button>
                         </div>
                       )}
@@ -300,10 +334,10 @@ export function DeviceInstallDialog({
                               />
                             </label>
                             <label className="lr-device-install__field">
-                              <span>Uploaded .p12 password</span>
+                              <span>Uploaded .p12 password (optional)</span>
                               <input
                                 type="password"
-                                placeholder="Export password"
+                                placeholder="Leave empty if the certificate has no password"
                                 onChange={(event) =>
                                   deviceInstall.setSigningFiles({ certificatePassword: event.currentTarget.value })
                                 }
@@ -405,17 +439,44 @@ export function DeviceInstallDialog({
 
                   {step.id === 'install' && (
                     <div className="lr-device-install__step-body">
-                      <button
-                        type="button"
-                        className="lr-device-install__primary"
-                        disabled={disabled || !deviceInstall.canInstall}
-                        onClick={() => void deviceInstall.startInstallation()}
-                      >
-                        {deviceInstall.busyAction === 'install' ? 'Installing...' : 'Install last build'}
-                      </button>
-                      <button type="button" className="lr-device-install__secondary" onClick={deviceInstall.stopRelay}>
-                        Stop relay
-                      </button>
+                      {deviceInstall.signingMode === 'adhoc' ? (
+                        <div className="lr-device-install__section-panel lr-device-install__ota-panel">
+                          <div>
+                            <h4>Install with iPhone Camera</h4>
+                            <p className="lr-device-install__hint">
+                              Scan this QR code on a registered iPhone to open an HTTPS install page in Safari.
+                            </p>
+                          </div>
+                          {otaQRCode ? (
+                            <img className="lr-device-install__qr" src={otaQRCode} alt="Ad Hoc install QR code" />
+                          ) : (
+                            <div className="lr-device-install__qr-placeholder">Build an Ad Hoc IPA to generate a QR code.</div>
+                          )}
+                          {deviceInstall.otaInstall && (
+                            <label className="lr-device-install__field">
+                              <span>Install page link</span>
+                              <input readOnly value={deviceInstall.otaInstall.landingUrl} />
+                            </label>
+                          )}
+                          <p className="lr-device-install__hint">
+                            Requires HTTPS and an Ad Hoc profile containing this device UDID.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="lr-device-install__primary"
+                            disabled={disabled || !deviceInstall.canInstall}
+                            onClick={() => void deviceInstall.startInstallation()}
+                          >
+                            {deviceInstall.busyAction === 'install' ? 'Installing...' : 'Install last build'}
+                          </button>
+                          <button type="button" className="lr-device-install__secondary" onClick={deviceInstall.stopRelay}>
+                            Stop relay
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </StepCard>

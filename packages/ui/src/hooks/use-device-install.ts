@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   closeDeviceRelayTarget,
+  createAdHocProfileRequest,
   createBundleIDRequest,
   createDevelopmentProfileRequest,
   downloadCertificateRequest,
+  downloadDistributionCertificateRequest,
   downloadProfileRequest,
   exportAppleCertificateP12,
   fetchLimbuildInfo,
+  findAdHocProfilesRequest,
   findDevelopmentCertificatesRequest,
+  findDistributionCertificatesRequest,
   findBundleIDRequest,
   findDeviceRequest,
   findDevelopmentProfilesRequest,
@@ -29,8 +33,10 @@ import {
   requestUSBAccess as requestDeviceUSBAccess,
   startBrowserOwnedAppleIDLogin,
   startSignedDeviceBuild,
+  getIOSOTAInstall,
   startInstallRelay,
   startPairingRelay,
+  submitDistributionCSRRequest,
   submitDevelopmentCSRRequest,
   watchBuildLogEvents,
   type AppleIDLoginResult,
@@ -43,7 +49,9 @@ import {
   type DeviceInstallBusyAction,
   type DeviceInstallStep,
   type DeviceInstallStepStatus,
+  type DeviceInstallSigningMode,
   type DeviceRelayTarget,
+  type IOSOTAInstall,
   type StoredPairRecord,
   type StoredSigningAssets,
 } from '../core/device-install';
@@ -74,6 +82,7 @@ export type UseDeviceInstallResult = {
   logs: string[];
   buildLogs: BuildLogLine[];
   buildStatus: DeviceInstallBuildStatus;
+  currentExecID?: string;
   appleSigningStatus: DeviceInstallAppleSigningStatus;
   appleTeams: AppleDeveloperPortalTeam[];
   appleDevices: AppleDeveloperPortalDevice[];
@@ -81,10 +90,12 @@ export type UseDeviceInstallResult = {
   applePortalSummary?: ApplePortalSummary;
   selectedAppleTeamID?: string;
   selectedAppleDeviceIDs: string[];
+  signingMode: DeviceInstallSigningMode;
   connectedAppleDeviceRegistered: boolean;
   connectedDeviceInProfile?: boolean;
   hasReusableAppleCertificate: boolean;
   appleBundleID: string;
+  otaInstall?: IOSOTAInstall;
   buildLogPanelOpen: boolean;
   busyAction?: DeviceInstallBusyAction;
   error?: string;
@@ -96,6 +107,7 @@ export type UseDeviceInstallResult = {
   setSigningFiles: (files: DeviceInstallSigningFiles) => void;
   setAppleBundleID: (bundleID: string) => void;
   setSelectedAppleDeviceIDs: (deviceIDs: string[]) => void;
+  setSigningMode: (mode: DeviceInstallSigningMode) => void;
   setBuildLogPanelOpen: (open: boolean) => void;
   startAppleIDLogin: (input: DeviceInstallAppleIDLoginInput) => Promise<void>;
   submitAppleTwoFactorCode: (code: string) => Promise<void>;
@@ -167,12 +179,15 @@ export function useDeviceInstall({
   const [appleTeams, setAppleTeams] = useState<AppleDeveloperPortalTeam[]>([]);
   const [appleDevices, setAppleDevices] = useState<AppleDeveloperPortalDevice[]>([]);
   const [appleAppIDs, setAppleAppIDs] = useState<AppleDeveloperPortalAppID[]>([]);
+  const [signingMode, setSigningModeState] = useState<DeviceInstallSigningMode>('development');
   const [selectedAppleDeviceIDs, setSelectedAppleDeviceIDs] = useState<string[]>([]);
   const [applePortalSummary, setApplePortalSummary] = useState<ApplePortalSummary | undefined>();
   const [selectedAppleTeamID, setSelectedAppleTeamID] = useState<string | undefined>();
   const [appleBundleID, setAppleBundleID] = useState('');
   const [reusableAppleCertificate, setReusableAppleCertificate] = useState<ReusableAppleCertificate | undefined>();
   const [buildLogPanelOpen, setBuildLogPanelOpen] = useState(false);
+  const [otaInstall, setOTAInstall] = useState<IOSOTAInstall | undefined>();
+  const [currentExecID, setCurrentExecID] = useState<string | undefined>();
   const [busyAction, setBusyAction] = useState<DeviceInstallBusyAction | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [pairConfirmationRequired, setPairConfirmationRequired] = useState(false);
@@ -194,7 +209,7 @@ export function useDeviceInstall({
   const setSigningFiles = useCallback((files: DeviceInstallSigningFiles) => {
     setSigningFilesState((current) => {
       const next = { ...current, ...files };
-      const ready = !!next.certificateFile && !!next.provisioningProfileFile && !!next.certificatePassword;
+      const ready = !!next.certificateFile && !!next.provisioningProfileFile;
       setStepStatus('signing', ready ? 'complete' : 'active');
       if (ready) {
         setAppleSigningStatus('assets-ready');
@@ -205,9 +220,19 @@ export function useDeviceInstall({
     setSigningAssets(undefined);
   }, [setStepStatus]);
 
+  const setSigningMode = useCallback((mode: DeviceInstallSigningMode) => {
+    setSigningModeState(mode);
+    setSigningAssets(undefined);
+    setOTAInstall(undefined);
+    setCurrentStep('signing');
+    setStepStatuses(initialStepStatuses);
+    setAppleSigningStatus('idle');
+    log(mode === 'adhoc' ? 'Using Ad Hoc signing mode' : 'Using development signing mode');
+  }, [log]);
+
   useEffect(() => {
     let cancelled = false;
-    void getLatestSigningAssets().then((stored) => {
+    void getLatestSigningAssets(signingMode).then((stored) => {
       if (cancelled || !stored) return;
       setSigningAssets(stored);
       setAppleBundleID(stored.bundleID);
@@ -219,7 +244,7 @@ export function useDeviceInstall({
     return () => {
       cancelled = true;
     };
-  }, [log, setStepStatus]);
+  }, [log, setStepStatus, signingMode]);
 
   const selectedDeveloperTeamID = useCallback(() => {
     return developerPortalTeamID(appleTeams.find((team) => appleTeamSelectionID(team) === selectedAppleTeamID));
@@ -232,7 +257,7 @@ export function useDeviceInstall({
       return;
     }
     let cancelled = false;
-    void findReusableAppleCertificate(teamID).then((certificate) => {
+    void findReusableAppleCertificate(teamID, signingMode).then((certificate) => {
       if (!cancelled) {
         setReusableAppleCertificate(certificate);
       }
@@ -240,14 +265,14 @@ export function useDeviceInstall({
     return () => {
       cancelled = true;
     };
-  }, [selectedDeveloperTeamID]);
+  }, [selectedDeveloperTeamID, signingMode]);
 
   const connectedAppleDevice = selectedDevice?.hello.serialNumber
     ? appleDevices.find((device) => normalizeAppleUDID(device.deviceNumber) === normalizeAppleUDID(selectedDevice.hello.serialNumber))
     : undefined;
   const connectedAppleDeviceRegistered = !!connectedAppleDevice?.deviceId;
   const manualSigningFilesReady =
-    !!signingFiles.certificateFile && !!signingFiles.provisioningProfileFile && !!signingFiles.certificatePassword;
+    !!signingFiles.certificateFile && !!signingFiles.provisioningProfileFile;
   const signingInputsReady = !!signingAssets || manualSigningFilesReady;
   const connectedDeviceInProfile =
     selectedDevice?.hello.serialNumber && signingAssets
@@ -288,6 +313,7 @@ export function useDeviceInstall({
         bundleID,
         deviceUDID: selectedDevice?.hello.serialNumber,
         teamID: selectedDeveloperTeamID(),
+        signingMode,
       });
       if (cached) {
         setAppleSigningStatus('using-cached-profile');
@@ -296,7 +322,7 @@ export function useDeviceInstall({
         return cached;
       }
     }
-    const stored = await getLatestSigningAssets();
+    const stored = await getLatestSigningAssets(signingMode);
     if (stored) {
       log('Using stored signing assets', stored.bundleID);
       setSigningAssets(stored);
@@ -304,10 +330,9 @@ export function useDeviceInstall({
     }
     if (
       !signingFiles.certificateFile ||
-      !signingFiles.provisioningProfileFile ||
-      !signingFiles.certificatePassword
+      !signingFiles.provisioningProfileFile
     ) {
-      throw new Error('Upload a certificate, provisioning profile, and certificate password.');
+      throw new Error('Upload a certificate and provisioning profile.');
     }
     log('Preparing signing assets');
     const [certificateP12Base64, provisioningProfileBase64, profile] = await Promise.all([
@@ -318,13 +343,17 @@ export function useDeviceInstall({
     if (selectedDevice?.hello.serialNumber && !profileContainsDevice(profile, selectedDevice.hello.serialNumber)) {
       throw new Error('Provisioning profile does not include the selected iPhone.');
     }
+    if (signingMode === 'adhoc' && profile.getTaskAllow) {
+      throw new Error('Ad Hoc mode requires an Ad Hoc provisioning profile, not a development profile.');
+    }
     const storageBundleId = profile.bundleID ?? profile.applicationIdentifier ?? signingFiles.provisioningProfileFile.name;
     const storedAssets = await putSigningAssets({
       deviceUDID: selectedDevice?.hello.serialNumber,
+      signingMode,
       bundleID: storageBundleId,
       certificateP12Base64,
       certificateFileName: signingFiles.certificateFile.name,
-      certificatePassword: signingFiles.certificatePassword,
+      certificatePassword: signingFiles.certificatePassword || undefined,
       provisioningProfileBase64,
       profileFileName: signingFiles.provisioningProfileFile.name,
       profile,
@@ -332,7 +361,7 @@ export function useDeviceInstall({
     setSigningAssets(storedAssets);
     log('Signing assets stored locally', storageBundleId);
     return storedAssets;
-  }, [apiUrl, appleBundleID, log, selectedDeveloperTeamID, selectedDevice?.hello.serialNumber, signingAssets, signingFiles, token]);
+  }, [apiUrl, appleBundleID, log, selectedDeveloperTeamID, selectedDevice?.hello.serialNumber, signingAssets, signingFiles, signingMode, token]);
 
   const startAppleIDLogin = useCallback(
     async ({ accountName, password }: DeviceInstallAppleIDLoginInput) => {
@@ -368,7 +397,7 @@ export function useDeviceInstall({
               log,
             });
           }
-          await refreshApplePortalSummary(apiUrl, session.appleSessionId, token, teamID, setApplePortalSummary, log);
+          await refreshApplePortalSummary(apiUrl, session.appleSessionId, token, teamID, signingMode, setApplePortalSummary, log);
         }
         setAppleSigningStatus(session.requiresTwoFactor ? 'two-factor-required' : 'authenticated');
         log(
@@ -384,7 +413,7 @@ export function useDeviceInstall({
         setBusyAction(undefined);
       }
     },
-    [apiUrl, log, setStepStatus, token],
+    [apiUrl, log, setStepStatus, signingMode, token],
   );
 
   const submitAppleTwoFactorCode = useCallback(
@@ -421,7 +450,7 @@ export function useDeviceInstall({
               log,
             });
           }
-          await refreshApplePortalSummary(apiUrl, session.appleSessionId, token, teamID, setApplePortalSummary, log);
+          await refreshApplePortalSummary(apiUrl, session.appleSessionId, token, teamID, signingMode, setApplePortalSummary, log);
         }
         setAppleSigningStatus('authenticated');
         log('Apple ID two-factor authentication accepted');
@@ -434,7 +463,7 @@ export function useDeviceInstall({
         setBusyAction(undefined);
       }
     },
-    [apiUrl, log, setStepStatus, token],
+    [apiUrl, log, setStepStatus, signingMode, token],
   );
 
   const clearAppleIDLogin = useCallback(() => {
@@ -468,7 +497,7 @@ export function useDeviceInstall({
       void (async () => {
         try {
           await refreshAppleAppIDs(apiUrl, session.appleSessionId, token, developerTeamID, setAppleAppIDs, setAppleBundleID);
-          await refreshApplePortalSummary(apiUrl, session.appleSessionId, token, developerTeamID, setApplePortalSummary, log);
+          await refreshApplePortalSummary(apiUrl, session.appleSessionId, token, developerTeamID, signingMode, setApplePortalSummary, log);
           await refreshAppleDevices({
             apiUrl,
             token,
@@ -486,7 +515,7 @@ export function useDeviceInstall({
         }
       })();
     },
-    [apiUrl, appleTeams, log, token],
+    [apiUrl, appleTeams, log, signingMode, token],
   );
 
   const registerConnectedAppleDevice = useCallback(async () => {
@@ -543,9 +572,6 @@ export function useDeviceInstall({
     if (selectedAppleDeviceIDs.length === 0) {
       throw new Error('Select at least one Apple Developer device before preparing signing assets.');
     }
-    if (!reusableAppleCertificate && !signingFiles.certificatePassword) {
-      throw new Error('Enter a .p12 password before preparing signing assets.');
-    }
     const selectedPortalDevice = appleDevices.find(
       (device) => !!device.deviceNumber && selectedAppleDeviceIDs.includes(device.deviceId ?? ''),
     );
@@ -560,6 +586,7 @@ export function useDeviceInstall({
         bundleID,
         deviceUDID: signingDeviceUDID,
         teamID,
+        signingMode,
       });
       if (cached) {
         setSigningAssets(cached);
@@ -577,8 +604,9 @@ export function useDeviceInstall({
         bundleID,
         deviceUDID: signingDeviceUDID,
         deviceIDs: selectedAppleDeviceIDs,
-        certificatePassword: signingFiles.certificatePassword,
+        certificatePassword: signingFiles.certificatePassword || undefined,
         reusableCertificate: reusableAppleCertificate,
+        signingMode,
       });
       setSigningAssets(assets);
       setAppleSigningStatus('assets-ready');
@@ -609,6 +637,7 @@ export function useDeviceInstall({
     setStepStatus,
     reusableAppleCertificate,
     signingFiles.certificatePassword,
+    signingMode,
     token,
   ]);
 
@@ -621,6 +650,8 @@ export function useDeviceInstall({
     setBuildLogPanelOpen(true);
     setBuildLogs([]);
     setBuildStatus('queued');
+    setOTAInstall(undefined);
+    setCurrentExecID(undefined);
     stopBuildWatcherRef.current?.();
     try {
       const assets = await resolveSigningAssetsForBuild();
@@ -635,18 +666,38 @@ export function useDeviceInstall({
       if (!result.execId) {
         throw new Error('Build request did not return an exec ID.');
       }
-      log('Signed device build started', result.execId);
+      const execID = result.execId;
+      setCurrentExecID(execID);
+      log('Signed device build started', execID);
       stopBuildWatcherRef.current = watchBuildLogEvents({
         limbuildApiUrl: apiUrl,
-        execId: result.execId,
+        execId: execID,
         token,
         onLine: (line) => setBuildLogs((current) => [...current, line]),
         onStatus: (status) => {
           setBuildStatus(status);
           if (status === 'succeeded') {
             setStepStatus('build', 'complete');
-            setStepStatus('connect', 'active');
-            setCurrentStep('connect');
+            if (signingMode === 'adhoc') {
+              setStepStatus('connect', 'complete');
+              setStepStatus('install', 'active');
+              setCurrentStep('install');
+              void getIOSOTAInstall({ limbuildApiUrl: apiUrl, execId: execID, token })
+                .then((metadata) => {
+                  setOTAInstall(metadata);
+                  setStepStatus('install', 'complete');
+                  log('Ad Hoc install QR is ready');
+                })
+                .catch((caught) => {
+                  const message = errorMessage(caught);
+                  setError(message);
+                  setStepStatus('install', 'error');
+                  log('Ad Hoc install metadata failed', message);
+                });
+            } else {
+              setStepStatus('connect', 'active');
+              setCurrentStep('connect');
+            }
           } else if (status === 'failed' || status === 'cancelled') {
             setStepStatus('build', 'error');
           }
@@ -666,7 +717,7 @@ export function useDeviceInstall({
     } finally {
       setBusyAction(undefined);
     }
-  }, [apiUrl, log, resolveSigningAssetsForBuild, setStepStatus, token]);
+  }, [apiUrl, log, resolveSigningAssetsForBuild, setStepStatus, signingMode, token]);
 
   const requestUSBAccess = useCallback(async () => {
     setBusyAction('usb');
@@ -679,7 +730,7 @@ export function useDeviceInstall({
       target = await requestDeviceUSBAccess({ log });
       setPairConfirmationRequired(false);
       const storedPairRecord = await getPairRecord(target.hello.serialNumber);
-      const activeSigningAssets = signingAssets ?? (manualSigningFilesReady ? undefined : await getLatestSigningAssets());
+      const activeSigningAssets = signingAssets ?? (manualSigningFilesReady ? undefined : await getLatestSigningAssets(signingMode));
       if (activeSigningAssets) {
         if (!profileContainsDevice(activeSigningAssets.profile, target.hello.serialNumber)) {
           throw new Error('Stored provisioning profile does not include the selected iPhone.');
@@ -717,7 +768,7 @@ export function useDeviceInstall({
     } finally {
       setBusyAction(undefined);
     }
-  }, [apiUrl, cleanupDeviceAccess, log, manualSigningFilesReady, selectedDeveloperTeamID, setStepStatus, signingAssets, token]);
+  }, [apiUrl, cleanupDeviceAccess, log, manualSigningFilesReady, selectedDeveloperTeamID, setStepStatus, signingAssets, signingMode, token]);
 
   const pairBrowser = useCallback(async () => {
     if (!apiUrl || !selectedDevice) return;
@@ -800,6 +851,7 @@ export function useDeviceInstall({
     logs,
     buildLogs,
     buildStatus,
+    currentExecID,
     appleSigningStatus,
     appleTeams,
     appleDevices,
@@ -807,10 +859,12 @@ export function useDeviceInstall({
     applePortalSummary,
     selectedAppleTeamID,
     selectedAppleDeviceIDs,
+    signingMode,
     connectedAppleDeviceRegistered,
     connectedDeviceInProfile,
     hasReusableAppleCertificate: !!reusableAppleCertificate,
     appleBundleID,
+    otaInstall,
     buildLogPanelOpen,
     busyAction,
     error,
@@ -824,14 +878,14 @@ export function useDeviceInstall({
       !!appleIDLoginRef.current &&
       !!appleBundleID.trim() &&
       !!selectedDeveloperTeamID() &&
-      selectedAppleDeviceIDs.length > 0 &&
-      (!!reusableAppleCertificate || !!signingFiles.certificatePassword),
-    canRequestUSBAccess: !busyAction && buildStatus === 'succeeded',
-    canPairBrowser: !!apiUrl && !busyAction && buildStatus === 'succeeded' && !!selectedDevice,
-    canInstall: !!apiUrl && !busyAction && buildStatus === 'succeeded' && !!selectedDevice && !!pairRecord,
+      selectedAppleDeviceIDs.length > 0,
+    canRequestUSBAccess: signingMode === 'development' && !busyAction && buildStatus === 'succeeded',
+    canPairBrowser: signingMode === 'development' && !!apiUrl && !busyAction && buildStatus === 'succeeded' && !!selectedDevice,
+    canInstall: signingMode === 'development' && !!apiUrl && !busyAction && buildStatus === 'succeeded' && !!selectedDevice && !!pairRecord,
     setSigningFiles,
     setAppleBundleID,
     setSelectedAppleDeviceIDs,
+    setSigningMode,
     setBuildLogPanelOpen,
     startAppleIDLogin,
     submitAppleTwoFactorCode,
@@ -851,9 +905,12 @@ async function fetchStoredBuildInfo(apiUrl: string, token?: string) {
   return fetchLimbuildInfo(apiUrl, token);
 }
 
-async function findReusableAppleCertificate(teamID: string): Promise<ReusableAppleCertificate | undefined> {
-  const stored = await getLatestSigningAssetsWithCertificate(teamID);
-  if (!stored?.certificateID || !stored.certificateP12Base64 || !stored.certificatePassword) {
+async function findReusableAppleCertificate(
+  teamID: string,
+  signingMode: DeviceInstallSigningMode,
+): Promise<ReusableAppleCertificate | undefined> {
+  const stored = await getLatestSigningAssetsWithCertificate(teamID, signingMode);
+  if (!stored?.certificateID || !stored.certificateP12Base64) {
     return undefined;
   }
   return {
@@ -937,6 +994,7 @@ async function refreshApplePortalSummary(
   appleSessionId: string,
   token: string | undefined,
   teamID: string | undefined,
+  signingMode: DeviceInstallSigningMode,
   setApplePortalSummary: (summary: ApplePortalSummary | undefined) => void,
   log: (message: string, detail?: string) => void,
 ) {
@@ -944,13 +1002,15 @@ async function refreshApplePortalSummary(
     proxyProvisioningRequest<AppleDeveloperPortalResponse>(
       apiUrl,
       appleSessionId,
-      findDevelopmentCertificatesRequest(teamID ?? ''),
+      signingMode === 'adhoc' ? findDistributionCertificatesRequest(teamID ?? '') : findDevelopmentCertificatesRequest(teamID ?? ''),
       token,
     ),
     proxyProvisioningRequest<AppleDeveloperPortalResponse>(
       apiUrl,
       appleSessionId,
-      findDevelopmentProfilesRequest({ bundleID: '', teamID: teamID ?? '' }),
+      signingMode === 'adhoc'
+        ? findAdHocProfilesRequest({ bundleID: '', teamID: teamID ?? '' })
+        : findDevelopmentProfilesRequest({ bundleID: '', teamID: teamID ?? '' }),
       token,
     ),
   ]);
@@ -1021,6 +1081,7 @@ async function prepareAppleSigningAssetsForDevice({
   certificatePassword,
   deviceIDs,
   reusableCertificate,
+  signingMode,
 }: {
   apiUrl: string;
   token?: string;
@@ -1031,6 +1092,7 @@ async function prepareAppleSigningAssetsForDevice({
   deviceIDs: string[];
   certificatePassword?: string;
   reusableCertificate?: ReusableAppleCertificate;
+  signingMode: DeviceInstallSigningMode;
 }) {
   const normalizedUDID = deviceUDID?.replace(/-/g, '').replace(/[^a-fA-F0-9]/g, '') ?? '';
   const appIDID = await findOrCreateAppleBundleID({
@@ -1043,21 +1105,20 @@ async function prepareAppleSigningAssetsForDevice({
 
   let certificateID = reusableCertificate?.certificateID;
   let certificateP12Base64 = reusableCertificate?.certificateP12Base64;
-  let storedCertificatePassword = reusableCertificate?.certificatePassword;
-  if (!certificateID || !certificateP12Base64 || !storedCertificatePassword) {
-    if (!certificatePassword) {
-      throw new Error('Enter a .p12 password before preparing signing assets.');
-    }
+  let storedCertificatePassword = reusableCertificate?.certificatePassword || undefined;
+  if (!certificateID || !certificateP12Base64) {
     const keyMaterial = await generateAppleSigningKeyAndCSR({
       commonName: `Limrun ${bundleID}`,
     });
     const certificateResponse = await proxyProvisioningRequest<AppleDeveloperPortalResponse>(
       apiUrl,
       appleSessionId,
-      submitDevelopmentCSRRequest({ csrPEM: keyMaterial.csrPEM, teamID }),
+      signingMode === 'adhoc'
+        ? submitDistributionCSRRequest({ csrPEM: keyMaterial.csrPEM, teamID })
+        : submitDevelopmentCSRRequest({ csrPEM: keyMaterial.csrPEM, teamID }),
       token,
     );
-    assertApplePortalResponseOK(certificateResponse.body, 'Apple Development certificate creation');
+    assertApplePortalResponseOK(certificateResponse.body, signingMode === 'adhoc' ? 'Apple Distribution certificate creation' : 'Apple Development certificate creation');
     certificateID =
       stringField(certificateResponse.body?.certRequest, 'certificateId') ??
       stringField(certificateResponse.body?.certRequest, 'certRequestId') ??
@@ -1070,7 +1131,9 @@ async function prepareAppleSigningAssetsForDevice({
     const downloadedCertificate = await proxyProvisioningRequest(
       apiUrl,
       appleSessionId,
-      downloadCertificateRequest(certificateID, teamID),
+      signingMode === 'adhoc'
+        ? downloadDistributionCertificateRequest(certificateID, teamID)
+        : downloadCertificateRequest(certificateID, teamID),
       token,
     );
     if (downloadedCertificate.status < 200 || downloadedCertificate.status >= 300 || !downloadedCertificate.rawBodyBase64) {
@@ -1079,24 +1142,33 @@ async function prepareAppleSigningAssetsForDevice({
     certificateP12Base64 = exportAppleCertificateP12({
       privateKeyPKCS8Base64: keyMaterial.privateKeyPKCS8Base64,
       certificateBase64: downloadedCertificate.rawBodyBase64,
-      password: certificatePassword,
-      friendlyName: `Apple Development ${bundleID}`,
+      password: certificatePassword ?? '',
+      friendlyName: signingMode === 'adhoc' ? `Apple Distribution ${bundleID}` : `Apple Development ${bundleID}`,
     });
-    storedCertificatePassword = certificatePassword;
+    storedCertificatePassword = certificatePassword || undefined;
   }
 
-  const profileName = `Limrun ${bundleID}`;
+  const profileName = signingMode === 'adhoc' ? `Limrun Ad Hoc ${bundleID}` : `Limrun ${bundleID}`;
   const profileResponse = await proxyProvisioningRequest<AppleDeveloperPortalResponse>(
     apiUrl,
     appleSessionId,
-    createDevelopmentProfileRequest({
-      bundleID,
-      teamID,
-      appIDID,
-      certificateID,
-      deviceIDs,
-      name: profileName,
-    }),
+    signingMode === 'adhoc'
+      ? createAdHocProfileRequest({
+          bundleID,
+          teamID,
+          appIDID,
+          certificateID,
+          deviceIDs,
+          name: profileName,
+        })
+      : createDevelopmentProfileRequest({
+          bundleID,
+          teamID,
+          appIDID,
+          certificateID,
+          deviceIDs,
+          name: profileName,
+        }),
     token,
   );
   assertApplePortalResponseOK(profileResponse.body, 'Apple provisioning profile creation');
@@ -1118,11 +1190,15 @@ async function prepareAppleSigningAssetsForDevice({
   }
   const provisioningProfileBase64 = downloadedProfile.rawBodyBase64;
   const profile = parseProvisioningProfileBase64(provisioningProfileBase64);
+  if (signingMode === 'adhoc' && profile.getTaskAllow) {
+    throw new Error('Apple returned a development provisioning profile for Ad Hoc signing.');
+  }
 
   return putAppleGeneratedSigningAssets({
     bundleID,
     deviceUDID: normalizedUDID || undefined,
     teamID,
+    signingMode,
     certificateID,
     certificateP12Base64,
     certificatePassword: storedCertificatePassword,

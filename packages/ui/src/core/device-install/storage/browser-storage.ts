@@ -1,4 +1,5 @@
 import type {
+  DeviceInstallSigningMode,
   ProvisioningProfileInfo,
   PutSigningAssetsInput,
   StoredPairRecord,
@@ -49,35 +50,42 @@ export async function putPairRecord(record: PairRecordPayload, metadata: { produ
 export async function getSigningAssets({
   deviceUDID,
   bundleID,
+  signingMode = 'development',
 }: {
   deviceUDID?: string;
   bundleID?: string;
+  signingMode?: DeviceInstallSigningMode;
 }) {
   const normalizedBundleID = normalizeBundleID(bundleID);
   if (!normalizedBundleID) return undefined;
   const normalizedUDID = normalizeUDID(deviceUDID);
-  const bundleScoped = await getSigningAssetsByID(signingAssetID('bundle', normalizedBundleID));
+  const bundleScoped = await getSigningAssetsByID(signingAssetID('bundle', normalizedBundleID, signingMode));
   if (bundleScoped) return bundleScoped;
   if (normalizedUDID) {
-    const exact = await getSigningAssetsByID(signingAssetID(normalizedUDID, normalizedBundleID));
+    const exact = await getSigningAssetsByID(signingAssetID(normalizedUDID, normalizedBundleID, signingMode));
     if (exact) return exact;
   }
-  const candidates = await findSigningAssetsForBundle(normalizedBundleID);
+  const candidates = await findSigningAssetsForBundle(normalizedBundleID, signingMode);
   return candidates[0];
 }
 
-export async function getLatestSigningAssets() {
+export async function getLatestSigningAssets(signingMode: DeviceInstallSigningMode = 'development') {
   const all = await getAllSigningAssets();
-  return all.sort(
-    (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
-  )[0];
+  return all
+    .filter((asset) => (asset.signingMode ?? 'development') === signingMode)
+    .sort(
+      (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
+    )[0];
 }
 
-export async function getLatestSigningAssetsWithCertificate(teamID?: string) {
+export async function getLatestSigningAssetsWithCertificate(teamID?: string, signingMode: DeviceInstallSigningMode = 'development') {
   const all = await getAllSigningAssets();
   return all
     .filter((asset) => {
-      if (!asset.certificateID || !asset.certificateP12Base64 || !asset.certificatePassword) {
+      if (!asset.certificateID || !asset.certificateP12Base64) {
+        return false;
+      }
+      if ((asset.signingMode ?? 'development') !== signingMode) {
         return false;
       }
       return !teamID || !asset.teamID || asset.teamID === teamID;
@@ -91,11 +99,13 @@ export async function putSigningAssets(input: PutSigningAssetsInput) {
     throw new Error('Cannot store signing assets without a bundle ID.');
   }
   const normalizedUDID = normalizeUDID(input.deviceUDID);
-  const id = signingAssetID('bundle', normalizedBundleID);
+  const signingMode = input.signingMode ?? 'development';
+  const id = signingAssetID('bundle', normalizedBundleID, signingMode);
   const stored: StoredSigningAssets = {
     ...input,
     id,
     deviceUDID: normalizedUDID || undefined,
+    signingMode,
     bundleID: normalizedBundleID,
     updatedAt: new Date().toISOString(),
   };
@@ -106,11 +116,11 @@ export async function putSigningAssets(input: PutSigningAssetsInput) {
   return stored;
 }
 
-export async function findSigningAssetsForBundle(bundleID?: string) {
+export async function findSigningAssetsForBundle(bundleID?: string, signingMode: DeviceInstallSigningMode = 'development') {
   const normalized = normalizeBundleID(bundleID);
   if (!normalized) return [];
   const all = await getAllSigningAssets();
-  return all.filter((asset) => asset.bundleID === normalized);
+  return all.filter((asset) => asset.bundleID === normalized && (asset.signingMode ?? 'development') === signingMode);
 }
 
 export function profileContainsDevice(profile: ProvisioningProfileInfo, deviceUDID?: string) {
@@ -174,6 +184,7 @@ export function parseProvisioningProfileBytes(bytes: Uint8Array) {
     applicationIdentifier,
     bundleID,
     provisionedDevices: stringArrayValue(value.ProvisionedDevices),
+    getTaskAllow: booleanValue(entitlements['get-task-allow']),
     expirationDate: stringValue(value.ExpirationDate),
   } satisfies ProvisioningProfileInfo;
 }
@@ -193,8 +204,8 @@ async function getAllSigningAssets() {
   );
 }
 
-function signingAssetID(deviceUDID: string, bundleID: string) {
-  return `${deviceUDID}:${bundleID}`;
+function signingAssetID(deviceUDID: string, bundleID: string, signingMode: DeviceInstallSigningMode) {
+  return `${signingMode}:${deviceUDID}:${bundleID}`;
 }
 
 function bundleIDFromApplicationIdentifier(applicationIdentifier?: string) {
@@ -235,6 +246,10 @@ function stringValue(value: unknown) {
 
 function stringArrayValue(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function booleanValue(value: unknown) {
+  return typeof value === 'boolean' ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,4 +1,4 @@
-import type { ProvisioningProfileInfo, StoredSigningAssets } from '../types';
+import type { DeviceInstallSigningMode, ProvisioningProfileInfo, StoredSigningAssets } from '../types';
 import {
   getSigningAssets,
   normalizeBundleID,
@@ -64,15 +64,17 @@ export type AppleSigningAssetCacheInput = {
   bundleID: string;
   deviceUDID?: string;
   teamID?: string;
+  signingMode?: DeviceInstallSigningMode;
 };
 
 export type PutAppleGeneratedSigningAssetsInput = {
   bundleID: string;
   deviceUDID?: string;
   teamID?: string;
+  signingMode?: DeviceInstallSigningMode;
   certificateID?: string;
   certificateP12Base64: string;
-  certificatePassword: string;
+  certificatePassword?: string;
   provisioningProfileBase64: string;
   profile: ProvisioningProfileInfo;
 };
@@ -105,6 +107,13 @@ export function findDevelopmentCertificatesRequest(teamID = '') {
   });
 }
 
+export function findDistributionCertificatesRequest(teamID = '') {
+  return pagedRequest('/account/ios/certificate/listCertRequests.action', teamID, {
+    sort: 'name=asc',
+    types: 'WXV89964HE,R58UK2EWSO',
+  });
+}
+
 export function findDevelopmentProfilesRequest({
   bundleID,
   teamID = '',
@@ -112,6 +121,17 @@ export function findDevelopmentProfilesRequest({
   return pagedRequest('/account/ios/profile/listProvisioningProfiles.action', teamID, {
     search: bundleID,
     sort: 'name=asc',
+  });
+}
+
+export function findAdHocProfilesRequest({
+  bundleID,
+  teamID = '',
+}: Pick<AppleProvisioningContext, 'bundleID' | 'teamID'>) {
+  return pagedRequest('/account/ios/profile/listProvisioningProfiles.action', teamID, {
+    search: bundleID,
+    sort: 'name=asc',
+    distributionType: 'adhoc',
   });
 }
 
@@ -168,6 +188,24 @@ export function submitDevelopmentCSRRequest({
   } satisfies AppleProvisioningRequest;
 }
 
+export function submitDistributionCSRRequest({
+  csrPEM,
+  teamID = '',
+}: {
+  csrPEM: string;
+  teamID?: string;
+}) {
+  return {
+    method: 'POST',
+    path: '/account/ios/certificate/submitCertificateRequest.action',
+    payload: {
+      teamId: teamID,
+      type: 'WXV89964HE',
+      csrContent: csrPEM,
+    },
+  } satisfies AppleProvisioningRequest;
+}
+
 export function downloadCertificateRequest(certificateID: string, teamID = '') {
   return {
     method: 'GET',
@@ -176,6 +214,18 @@ export function downloadCertificateRequest(certificateID: string, teamID = '') {
       teamId: teamID,
       certificateId: certificateID,
       type: '83Q87W3TGH',
+    },
+  } satisfies AppleProvisioningRequest;
+}
+
+export function downloadDistributionCertificateRequest(certificateID: string, teamID = '') {
+  return {
+    method: 'GET',
+    path: '/account/ios/certificate/downloadCertificateContent.action',
+    payload: {
+      teamId: teamID,
+      certificateId: certificateID,
+      type: 'WXV89964HE',
     },
   } satisfies AppleProvisioningRequest;
 }
@@ -208,6 +258,34 @@ export function createDevelopmentProfileRequest({
   } satisfies AppleProvisioningRequest;
 }
 
+export function createAdHocProfileRequest({
+  bundleID,
+  teamID = '',
+  appIDID,
+  certificateID,
+  deviceIDs,
+  name,
+}: Pick<AppleProvisioningContext, 'bundleID' | 'teamID'> & {
+  appIDID: string;
+  certificateID: string;
+  deviceIDs: string[];
+  name?: string;
+}) {
+  return {
+    method: 'POST',
+    path: '/account/ios/profile/createProvisioningProfile.action',
+    payload: {
+      teamId: teamID,
+      provisioningProfileName: name ?? `Limrun Ad Hoc ${bundleID}`,
+      certificateIds: [certificateID],
+      appIdId: appIDID,
+      deviceIds: deviceIDs,
+      distributionType: 'adhoc',
+      subPlatform: 'ios',
+    },
+  } satisfies AppleProvisioningRequest;
+}
+
 export function downloadProfileRequest(profileID: string, teamID = '') {
   return {
     method: 'GET',
@@ -223,9 +301,10 @@ export async function getReusableAppleSigningAssets({
   bundleID,
   deviceUDID,
   teamID,
+  signingMode,
 }: AppleSigningAssetCacheInput) {
-  const stored = await getSigningAssets({ bundleID, deviceUDID });
-  if (!stored || !storedSigningAssetsReusable(stored, { bundleID, deviceUDID, teamID })) {
+  const stored = await getSigningAssets({ bundleID, deviceUDID, signingMode });
+  if (!stored || !storedSigningAssetsReusable(stored, { bundleID, deviceUDID, teamID, signingMode })) {
     return undefined;
   }
   return stored;
@@ -234,15 +313,20 @@ export async function getReusableAppleSigningAssets({
 export async function putAppleGeneratedSigningAssets(input: PutAppleGeneratedSigningAssetsInput) {
   return putSigningAssets({
     ...input,
-    certificateFileName: input.certificateID ? `${input.certificateID}.p12` : 'apple-development.p12',
-    profileFileName: input.profile.uuid ? `${input.profile.uuid}.mobileprovision` : 'apple-development.mobileprovision',
+    certificateFileName: input.certificateID ? `${input.certificateID}.p12` : `apple-${input.signingMode ?? 'development'}.p12`,
+    certificatePassword: input.certificatePassword || undefined,
+    signingMode: input.signingMode,
+    profileFileName: input.profile.uuid ? `${input.profile.uuid}.mobileprovision` : `${input.signingMode ?? 'development'}.mobileprovision`,
   });
 }
 
 export function storedSigningAssetsReusable(
   stored: StoredSigningAssets,
-  { bundleID, deviceUDID, teamID }: AppleSigningAssetCacheInput,
+  { bundleID, deviceUDID, teamID, signingMode = 'development' }: AppleSigningAssetCacheInput,
 ) {
+  if ((stored.signingMode ?? 'development') !== signingMode) {
+    return false;
+  }
   if (!profileMatchesBundleID(stored.profile, bundleID)) {
     return false;
   }

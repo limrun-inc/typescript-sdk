@@ -1,5 +1,7 @@
 export type DeviceInstallLog = (message: string, detail?: string) => void;
 
+export type DeviceInstallSigningMode = 'development' | 'adhoc';
+
 export type DeviceInstallStep = 'signing' | 'connect' | 'build' | 'install';
 
 export type DeviceInstallStepStatus = 'idle' | 'active' | 'complete' | 'error';
@@ -44,6 +46,7 @@ export type ProvisioningProfileInfo = {
   applicationIdentifier?: string;
   bundleID?: string;
   provisionedDevices: string[];
+  getTaskAllow?: boolean;
   expirationDate?: string;
 };
 
@@ -51,11 +54,12 @@ export type StoredSigningAssets = {
   id: string;
   deviceUDID?: string;
   teamID?: string;
+  signingMode?: DeviceInstallSigningMode;
   bundleID: string;
   certificateID?: string;
   certificateP12Base64: string;
   certificateFileName?: string;
-  certificatePassword: string;
+  certificatePassword?: string;
   provisioningProfileBase64: string;
   profileFileName?: string;
   profile: ProvisioningProfileInfo;

@@ -12,7 +12,7 @@ export type StartSignedDeviceBuildOptions = {
   limbuildApiUrl: string;
   token?: string;
   certificateP12Base64: string;
-  certificatePassword: string;
+  certificatePassword?: string;
   provisioningProfileBase64: string;
 };
 
@@ -23,6 +23,21 @@ export type BuildLogEventsOptions = {
   onLine: (line: BuildLogLine) => void;
   onStatus: (status: DeviceInstallBuildStatus) => void;
   onError?: (error: Error) => void;
+};
+
+export type IOSOTAInstall = {
+  installUrl: string;
+  landingUrl: string;
+  manifestUrl: string;
+  ipaUrl: string;
+  bundleId: string;
+  displayName: string;
+};
+
+export type GetIOSOTAInstallOptions = {
+  limbuildApiUrl: string;
+  execId: string;
+  token?: string;
 };
 
 export async function fetchLimbuildInfo(limbuildApiUrl: string, token?: string) {
@@ -62,7 +77,7 @@ export async function startSignedDeviceBuild({
       xcodebuild: { sdk: 'iphoneos' },
       signing: {
         certificateP12Base64,
-        certificatePassword,
+        ...(certificatePassword ? { certificatePassword } : {}),
         provisioningProfileBase64,
       },
     }),
@@ -72,6 +87,21 @@ export async function startSignedDeviceBuild({
     throw new Error(`Build request failed: HTTP ${response.status} ${body}`);
   }
   return (await response.json()) as { execId?: string };
+}
+
+export async function getIOSOTAInstall({ limbuildApiUrl, execId, token }: GetIOSOTAInstallOptions) {
+  const url = new URL(`${limbuildApiUrl}/exec/${encodeURIComponent(execId)}/ios/ota`);
+  if (token) {
+    url.searchParams.set('token', token);
+  }
+  const response = await fetch(url.toString(), {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`OTA install metadata failed: HTTP ${response.status} ${body}`);
+  }
+  return (await response.json()) as IOSOTAInstall;
 }
 
 export function watchBuildLogEvents({
