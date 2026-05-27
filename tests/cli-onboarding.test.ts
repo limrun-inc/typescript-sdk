@@ -5,6 +5,7 @@ import { execFileSync } from 'child_process';
 
 import { detectProject } from '../packages/cli/src/lib/project-detection';
 import {
+  applyProjectEnvApiKey,
   ensureSampleRepo,
   ensureProjectEnvApiKey,
   installProjectSkills,
@@ -142,6 +143,61 @@ describe('lim go skill installation', () => {
 });
 
 describe('lim go project env setup', () => {
+  const originalApiKey = process.env['LIM_API_KEY'];
+
+  afterEach(() => {
+    if (originalApiKey === undefined) {
+      delete process.env['LIM_API_KEY'];
+    } else {
+      process.env['LIM_API_KEY'] = originalApiKey;
+    }
+  });
+
+  test('loads LIM_API_KEY from project .env.local before login', () => {
+    const projectRoot = makeTempDir();
+    try {
+      delete process.env['LIM_API_KEY'];
+      writeFile(path.join(projectRoot, '.env'), 'LIM_API_KEY=lim_env_key\n');
+      writeFile(path.join(projectRoot, '.env.local'), 'LIM_API_KEY=lim_local_key\n');
+
+      expect(applyProjectEnvApiKey(projectRoot)).toEqual({
+        apiKey: 'lim_local_key',
+        path: path.join(projectRoot, '.env.local'),
+      });
+      expect(process.env['LIM_API_KEY']).toBe('lim_local_key');
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('does not override an explicit process LIM_API_KEY with project env files', () => {
+    const projectRoot = makeTempDir();
+    try {
+      process.env['LIM_API_KEY'] = 'lim_shell_key';
+      writeFile(path.join(projectRoot, '.env.local'), 'LIM_API_KEY=lim_local_key\n');
+
+      expect(applyProjectEnvApiKey(projectRoot).apiKey).toBe('lim_local_key');
+      expect(process.env['LIM_API_KEY']).toBe('lim_shell_key');
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('lets .env.local override a .env value loaded by dotenv/config', () => {
+    const projectRoot = makeTempDir();
+    try {
+      process.env['LIM_API_KEY'] = 'lim_env_key';
+      writeFile(path.join(projectRoot, '.env'), 'LIM_API_KEY=lim_env_key\n');
+      writeFile(path.join(projectRoot, '.env.local'), 'LIM_API_KEY=lim_local_key\n');
+
+      applyProjectEnvApiKey(projectRoot);
+
+      expect(process.env['LIM_API_KEY']).toBe('lim_local_key');
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   test('creates missing .env with LIM_API_KEY using private file mode', () => {
     const projectRoot = makeTempDir();
     try {
