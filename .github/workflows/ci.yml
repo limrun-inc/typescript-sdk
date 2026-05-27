@@ -122,9 +122,9 @@ jobs:
         working-directory: packages/cli
         run: npm run build
 
-      - name: Smoke test lim go help
+      - name: Smoke test lim run help
         working-directory: packages/cli
-        run: node bin/run.js go --help
+        run: node bin/run.js run --help
 
       - name: Check package contents
         working-directory: packages/cli

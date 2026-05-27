@@ -48,7 +48,7 @@ function fakeRemoteSkills(root: string, names: string[]): LoadedRemoteSkills {
   };
 }
 
-describe('lim go project detection', () => {
+describe('lim run project detection', () => {
   test('detects a default Xcode native iOS app without counting bundle internals', () => {
     const root = makeTempDir();
     try {
@@ -132,7 +132,7 @@ describe('lim go project detection', () => {
   });
 });
 
-describe('lim go skill installation', () => {
+describe('lim run skill installation', () => {
   test('installs selected skills into project-local agents and skips divergent conflicts', async () => {
     const projectRoot = makeTempDir();
     const sourceRoot = makeTempDir();
@@ -174,7 +174,7 @@ describe('lim go skill installation', () => {
   });
 });
 
-describe('lim go project env setup', () => {
+describe('lim run project env setup', () => {
   const originalApiKey = process.env['LIM_API_KEY'];
 
   afterEach(() => {
@@ -318,7 +318,7 @@ describe('lim go project env setup', () => {
   });
 });
 
-describe('lim go sample repo handling', () => {
+describe('lim run sample repo handling', () => {
   test('clones missing sample dir with the expected repository', async () => {
     const root = makeTempDir();
     const calls: Array<{ args: string[]; cwd?: string }> = [];

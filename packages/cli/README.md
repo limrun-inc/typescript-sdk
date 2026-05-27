@@ -49,10 +49,10 @@ The CLI stores configuration in `~/.lim/config.yaml`. This file is compatible wi
 ## Fast First Run
 
 ```bash
-lim go
+lim run
 ```
 
-`lim go` is the fastest way to get started with Limrun. Run it inside a clear iOS or Expo project root to install the Limrun agent skills for that project and get the next prompt for your coding agent. Run it anywhere else to clone the native sample app, build it on Limrun, and print a cloud simulator URL.
+`lim run` is the fastest way to get started with Limrun. Run it inside a clear iOS or Expo project root to install the Limrun agent skills for that project and get the next prompt for your coding agent. Run it anywhere else to clone the native sample app, build it on Limrun, and print a cloud simulator URL.
 
 ## Global Flags
 
@@ -103,7 +103,7 @@ This avoids relying on locally cached "last created" state and keeps the target 
 
 ## Commands
 
-- [Go](#go) — Get started with Limrun on your project or the sample app
+- [Run](#run) — Get started with Limrun on your project or the sample app
 - [iOS](#ios) — Create, manage, and interact with iOS instances
 - [Android](#android) — Create, manage, and interact with Android instances
 - [Xcode](#xcode) — Create and manage Xcode sandbox instances
@@ -114,12 +114,12 @@ This avoids relying on locally cached "last created" state and keeps the target 
 
 ---
 
-### Go
+### Run
 
-`lim go` logs in if needed, then chooses the fastest useful path:
+`lim run` logs in if needed, then chooses the fastest useful path:
 
 ```bash
-lim go
+lim run
 ```
 
 - In a clear native iOS project, it installs the Limrun iOS/Xcode skill into `.agents/skills/` and `.claude/skills/`.

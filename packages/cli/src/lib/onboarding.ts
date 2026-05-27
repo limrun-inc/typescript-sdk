@@ -101,7 +101,7 @@ export function applyProjectEnvApiKey(projectRoot: string): ProjectEnvApiKeyResu
 
 export function ensureProjectEnvApiKey(projectRoot: string, apiKey: string): EnvApiKeyResult {
   if (!apiKey) {
-    throw new OnboardingError('Limrun API key is missing after login. Run `lim login`, then rerun `lim go`.');
+    throw new OnboardingError('Limrun API key is missing after login. Run `lim login`, then rerun `lim run`.');
   }
   if (/[\r\n]/.test(apiKey)) {
     throw new OnboardingError('Limrun API key contains an invalid newline.');
@@ -325,7 +325,7 @@ async function runGit(args: string[], cwd?: string): Promise<string> {
   } catch (err) {
     const code = typeof err === 'object' && err && 'code' in err ? String(err.code) : '';
     if (code === 'ENOENT') {
-      throw new OnboardingError('Git is required to fetch the sample app. Install git, then rerun `lim go`.');
+      throw new OnboardingError('Git is required to fetch the sample app. Install git, then rerun `lim run`.');
     }
     throw err;
   }
@@ -338,12 +338,12 @@ async function verifySampleRemote(sampleDir: string, git: GitRunner): Promise<vo
   } catch (err) {
     if (err instanceof OnboardingError) throw err;
     throw new OnboardingError(
-      `${sampleDir} already exists but is not a git checkout of ${SAMPLE_NATIVE_APP_REPO}. Move or delete it, then rerun \`lim go\`.`,
+      `${sampleDir} already exists but is not a git checkout of ${SAMPLE_NATIVE_APP_REPO}. Move or delete it, then rerun \`lim run\`.`,
     );
   }
   if (!isExpectedSampleRemote(remote)) {
     throw new OnboardingError(
-      `${sampleDir} already exists with origin ${remote}. Move or delete it, then rerun \`lim go\`.`,
+      `${sampleDir} already exists with origin ${remote}. Move or delete it, then rerun \`lim run\`.`,
     );
   }
 }
@@ -356,7 +356,7 @@ export async function ensureSampleRepo({
   if (fs.existsSync(sampleDir)) {
     if (!fs.lstatSync(sampleDir).isDirectory()) {
       throw new OnboardingError(
-        `${sampleDir} already exists and is not a directory. Move or delete it, then rerun \`lim go\`.`,
+        `${sampleDir} already exists and is not a directory. Move or delete it, then rerun \`lim run\`.`,
       );
     }
     await verifySampleRemote(sampleDir, git);

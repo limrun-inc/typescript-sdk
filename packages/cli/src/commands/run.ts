@@ -17,17 +17,18 @@ const VERSION = require('../../package.json').version;
 const IOS_SKILL = 'limrun-xcode-and-ios-simulator';
 const EXPO_SKILL = 'limrun-expo-development';
 
-export default class Go extends BaseCommand {
+export default class Run extends BaseCommand {
   static baseFlags = {
     'api-key': BaseCommand.baseFlags['api-key'],
     quiet: BaseCommand.baseFlags.quiet,
   } as unknown as typeof BaseCommand.baseFlags;
+  static hiddenAliases = ['go'];
   static summary = 'Get started with Limrun';
   static description = 'Prepare your app for Limrun, or launch a working sample in a cloud simulator.';
-  static examples = ['<%= config.bin %> go'];
+  static examples = ['<%= config.bin %> run'];
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(Go);
+    const { flags } = await this.parse(Run);
     this.setParsedFlags(flags);
 
     const detection = detectProject(process.cwd());
@@ -136,7 +137,7 @@ export default class Go extends BaseCommand {
           wait: true,
           reuseIfExists: true,
           metadata: {
-            displayName: 'lim-go-sample',
+            displayName: 'lim-run-sample',
             labels: {
               name: 'lim-go-sample',
               repo: 'sample-native-app',
