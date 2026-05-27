@@ -34,6 +34,10 @@ const WALK_EXCLUDES = new Set([
   'Carthage',
 ]);
 
+function isXcodeBundle(name: string): boolean {
+  return name.endsWith('.xcodeproj') || name.endsWith('.xcworkspace');
+}
+
 function safeReadDir(dir: string): fs.Dirent[] {
   try {
     return fs.readdirSync(dir, { withFileTypes: true });
@@ -53,6 +57,7 @@ function walkDirs(root: string, maxDepth = DEFAULT_MAX_DEPTH): string[] {
     for (const entry of safeReadDir(dir)) {
       if (!entry.isDirectory()) continue;
       if (WALK_EXCLUDES.has(entry.name)) continue;
+      if (isXcodeBundle(entry.name)) continue;
       visit(path.join(dir, entry.name), depth + 1);
     }
   }
@@ -108,6 +113,7 @@ function isSameOrInside(parent: string, child: string): boolean {
 }
 
 export function detectProject(root = process.cwd()): ProjectDetection {
+  const rootPath = path.resolve(root);
   const dirs = walkDirs(root);
   const iosCandidates = dirs
     .map((dir) => ({ dir, ...iosProjectFiles(dir) }))
@@ -119,6 +125,13 @@ export function detectProject(root = process.cwd()): ProjectDetection {
     if (iosCandidates.every((candidate) => isSameOrInside(expoDir, candidate.dir))) {
       return { kind: 'expo', projectDir: expoDir };
     }
+  }
+  const rootIosCandidates = iosCandidates.filter((candidate) => path.resolve(candidate.dir) === rootPath);
+  if (rootIosCandidates.length === 1 && expoCandidates.length === 0) {
+    return {
+      kind: 'native-ios',
+      projectDir: rootIosCandidates[0]!.dir,
+    };
   }
   if (iosCandidates.length === 1 && expoCandidates.length === 0) {
     const candidate = iosCandidates[0]!;
