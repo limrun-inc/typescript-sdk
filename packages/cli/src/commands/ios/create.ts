@@ -4,6 +4,7 @@ import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { xcodeSandboxIdFromUrl } from '../../lib/xcode-sandbox';
+import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 
 export default class IosCreate extends BaseCommand {
@@ -16,6 +17,7 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create --rm --model ipad',
     '<%= config.bin %> ios create --region us-west --install-asset my-app.ipa',
     '<%= config.bin %> ios create --install ./MyApp.ipa --xcode',
+    '<%= config.bin %> ios create --attach --xcode-id <xcode-instance-ID>',
   ];
 
   static flags = {
@@ -57,14 +59,35 @@ export default class IosCreate extends BaseCommand {
       description: 'Enable an attached Xcode sandbox for build and sync workflows',
       default: false,
     }),
+    attach: Flags.boolean({
+      description: 'Attach the created simulator to an existing Xcode target',
+      default: false,
+    }),
+    'xcode-id': Flags.string({
+      description:
+        'Xcode target to attach to. Defaults to the most recently created Xcode target when --attach is used.',
+    }),
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(IosCreate);
     this.setParsedFlags(flags);
+    if (flags.attach && flags.xcode) {
+      this.error('Use either --attach or --xcode, not both.');
+    }
+    if (flags['xcode-id'] && !flags.attach) {
+      this.error('--xcode-id requires --attach.');
+    }
 
     await this.withAuth(async () => {
-      // Upload local files first
+      const attachTarget = flags.attach ? await this.resolveXcodeTarget(flags['xcode-id']) : undefined;
+      if (attachTarget?.type === 'ios') {
+        this.error(
+          '--attach requires a standalone Xcode instance. Create one with `lim xcode create`, then rerun with --xcode-id.',
+        );
+      }
+      const attachClient = attachTarget ? await this.resolveXcodeClient(attachTarget) : undefined;
+
       const assetNames: string[] = [...(flags['install-asset'] || [])];
       if (flags.install) {
         for (const filePath of flags.install) {
@@ -77,7 +100,6 @@ export default class IosCreate extends BaseCommand {
         this.info(`Successfully uploaded ${flags.install.length} file(s)`);
       }
 
-      // Build params
       const params: IosInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
@@ -114,6 +136,7 @@ export default class IosCreate extends BaseCommand {
       const xcodeSandboxUrl = instance.status.sandbox?.xcode?.url;
       const xcodeSandboxId = xcodeSandboxUrl ? xcodeSandboxIdFromUrl(xcodeSandboxUrl) : undefined;
       registerCreatedInstance(instance, flags.xcode ? ['xcode'] : []);
+      const attachResult = attachClient ? await attachClient.attachSimulator(instance) : undefined;
       this.info(`Created a new iOS instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.info('iOS Instance:');
       this.info(`  ID: ${instance.metadata.id}`);
@@ -130,9 +153,19 @@ export default class IosCreate extends BaseCommand {
         }
         this.info(`  URL: ${xcodeSandboxUrl}`);
       }
+      if (attachResult && attachTarget) {
+        this.info(formatSimulatorAttachResult(instance.metadata.id, attachTarget.id, attachResult));
+      }
 
       if (flags.json) {
-        this.outputJson(instance);
+        if (attachResult && attachTarget) {
+          this.outputJson({
+            instance,
+            attach: simulatorAttachJson(instance.metadata.id, attachTarget.id, attachResult),
+          });
+        } else {
+          this.outputJson(instance);
+        }
       } else if (this.isQuietEnabled()) {
         this.output(instance.metadata.id);
       }

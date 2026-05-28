@@ -22,6 +22,12 @@ export {
   type XcodeProjectConfig,
   type XcodeBuildOptions,
   type ReactNativeBuildConfig,
+  type SimulatorAttachResult,
+  type SimulatorStatus,
+  type SimulatorBuildStatus,
+  type SimulatorAttachment,
+  type SimulatorDeviceInfo,
+  type SimulatorInstallState,
 } from './resources/xcode-instances-helpers';
 export {
   LimrunError,

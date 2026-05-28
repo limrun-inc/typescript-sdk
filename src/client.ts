@@ -54,6 +54,12 @@ import {
   XcodeProjectConfig,
   XcodeBuildOptions,
   ReactNativeBuildConfig,
+  SimulatorAttachResult,
+  SimulatorStatus,
+  SimulatorBuildStatus,
+  SimulatorAttachment,
+  SimulatorDeviceInfo,
+  SimulatorInstallState,
 } from './resources/xcode-instances-helpers';
 import { type Fetch } from './internal/builtin-types';
 import { HeadersLike, NullableHeaders, buildHeaders } from './internal/headers';
@@ -852,5 +858,11 @@ export declare namespace Limrun {
     type XcodeProjectConfig as XcodeProjectConfig,
     type XcodeBuildOptions as XcodeBuildOptions,
     type ReactNativeBuildConfig as ReactNativeBuildConfig,
+    type SimulatorAttachResult as SimulatorAttachResult,
+    type SimulatorStatus as SimulatorStatus,
+    type SimulatorBuildStatus as SimulatorBuildStatus,
+    type SimulatorAttachment as SimulatorAttachment,
+    type SimulatorDeviceInfo as SimulatorDeviceInfo,
+    type SimulatorInstallState as SimulatorInstallState,
   };
 }

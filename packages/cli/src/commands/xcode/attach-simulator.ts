@@ -1,10 +1,12 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { registerCreatedInstance } from '../../lib/config';
+import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 
 export default class XcodeAttachSimulator extends BaseCommand {
-  static summary = 'Attach an iOS simulator to an Xcode instance';
+  static summary = 'Attach an iOS simulator to an Xcode instance (deprecated)';
   static description =
-    'Attach an existing iOS simulator to an Xcode sandbox so future builds can auto-install on that simulator.';
+    'Deprecated: use `lim ios create --attach` or `lim xcode create --attach` for create-and-attach flows. Attach an existing iOS simulator to an Xcode sandbox so future builds can auto-install on that simulator.';
 
   static examples = [
     '<%= config.bin %> xcode attach-simulator <ios-instance-ID>',
@@ -42,17 +44,15 @@ export default class XcodeAttachSimulator extends BaseCommand {
       const xcodeClient = await this.resolveXcodeClient(xcodeTarget);
 
       this.info(`Attaching simulator ${args.simulatorId} to Xcode target ${xcodeInstanceId}...`);
-      await xcodeClient.attachSimulator(simulator);
+      const result = await xcodeClient.attachSimulator(simulator);
+      registerCreatedInstance(simulator);
 
       if (flags.json) {
-        this.outputJson({
-          xcodeInstanceId,
-          simulatorInstanceId: simulator.metadata.id,
-        });
+        this.outputJson(simulatorAttachJson(simulator.metadata.id, xcodeInstanceId, result));
       } else if (this.isQuietEnabled()) {
         this.output(simulator.metadata.id);
       } else {
-        this.output(`Attached simulator ${simulator.metadata.id} to Xcode target ${xcodeInstanceId}`);
+        this.output(formatSimulatorAttachResult(simulator.metadata.id, xcodeInstanceId, result));
       }
     });
   }

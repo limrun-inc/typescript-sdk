@@ -4,7 +4,8 @@ import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
-import { type LastIosInstance } from '../../lib/config';
+import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
+import { type XcodeClient } from '@limrun/api';
 
 const DEVICE_SDKS = new Set(['iphoneos', 'watchos']);
 const SIMULATOR_SDKS = new Set(['iphonesimulator', 'watchsimulator']);
@@ -128,7 +129,7 @@ export default class XcodeBuild extends BaseCommand {
     await this.withAuth(async () => {
       const target =
         flags.ios ?
-          await this.resolveIosXcodeTargetOrCreate(flags.id)
+          await this.resolveSimulatorBackedXcodeTargetOrCreate(flags.id)
         : await this.resolveXcodeTargetOrCreate(flags.id);
       const id = target.id;
       const syncPath = args.path ?? process.cwd();
@@ -208,11 +209,11 @@ export default class XcodeBuild extends BaseCommand {
       }
 
       this.output(`\nBuild succeeded (exit code ${result.exitCode})`);
-      if (flags.ios && target.type === 'ios') {
-        const signedStreamUrl = await this.resolveIosSignedStreamUrl(target);
+      if (flags.ios) {
+        const signedStreamUrl = await this.resolveSimulatorStreamUrl(target, xcodeClient);
         if (signedStreamUrl) {
           this.output(`Signed Stream URL: ${signedStreamUrl}`);
-        } else {
+        } else if (target.type === 'ios') {
           this.output(`iOS Simulator URL: ${this.consoleStreamUrl(target.id)}`);
         }
       }
@@ -257,6 +258,31 @@ export default class XcodeBuild extends BaseCommand {
     try {
       const instance = await this.client.iosInstances.get(target.id);
       return this.signedStreamUrl(instance.status);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async resolveSimulatorStreamUrl(
+    target: LastIosInstance | LastXcodeInstance,
+    xcodeClient: XcodeClient,
+  ): Promise<string | undefined> {
+    if (target.type === 'ios') {
+      return this.resolveIosSignedStreamUrl(target);
+    }
+    try {
+      const status = await xcodeClient.getSimulator();
+      const iosInstanceId = status.simulator?.iosInstanceId;
+      if (!iosInstanceId) {
+        return undefined;
+      }
+      try {
+        const simulator = await this.client.iosInstances.get(iosInstanceId);
+        registerCreatedInstance(simulator);
+        return this.signedStreamUrl(simulator.status) ?? this.consoleStreamUrl(iosInstanceId);
+      } catch {
+        return this.consoleStreamUrl(iosInstanceId);
+      }
     } catch {
       return undefined;
     }

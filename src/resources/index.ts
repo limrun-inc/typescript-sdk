@@ -37,4 +37,10 @@ export {
   type XcodeProjectConfig,
   type XcodeBuildOptions,
   type ReactNativeBuildConfig,
+  type SimulatorAttachResult,
+  type SimulatorStatus,
+  type SimulatorBuildStatus,
+  type SimulatorAttachment,
+  type SimulatorDeviceInfo,
+  type SimulatorInstallState,
 } from './xcode-instances-helpers';

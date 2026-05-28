@@ -364,17 +364,28 @@ export abstract class BaseCommand extends Command {
     }
   }
 
-  protected async resolveIosXcodeTargetOrCreate(providedId: string | undefined): Promise<LastIosInstance> {
+  protected async resolveSimulatorBackedXcodeTargetOrCreate(
+    providedId: string | undefined,
+  ): Promise<XcodeTarget> {
     this._lastResolvedExpectedType = 'xcode';
     const id = this._overrideInstanceId ?? providedId;
     if (id) {
-      const target = this.iosXcodeTargetFromId(id);
+      const target = this.xcodeTargetFromId(id);
+      if (target.type === 'xcode' && !(await this.xcodeTargetHasAttachedSimulator(target))) {
+        throw new Error(
+          `--ios requires an iOS-backed Xcode target or an Xcode instance with an attached simulator, got ${id}`,
+        );
+      }
       this._lastResolvedInstanceId = target.id;
       return target;
     }
 
     const target = loadLastXcodeInstance();
     if (target?.type === 'ios') {
+      this._lastResolvedInstanceId = target.id;
+      return target;
+    }
+    if (target?.type === 'xcode' && (await this.xcodeTargetHasAttachedSimulator(target))) {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
@@ -390,6 +401,20 @@ export abstract class BaseCommand extends Command {
     this.info(`No recent simulator-backed Xcode target found. Created instance ${replacement.id}.`);
     this._lastResolvedInstanceId = replacement.id;
     return replacement;
+  }
+
+  private async xcodeTargetHasAttachedSimulator(target: LastXcodeInstance): Promise<boolean> {
+    try {
+      const xcodeClient = await this.resolveXcodeClient(target);
+      const status = await xcodeClient.getSimulator();
+      return status.attached;
+    } catch (err) {
+      if (err instanceof NotFoundError || this.isCachedXcodeClientNotFound(err)) {
+        clearLastInstanceId(target.id);
+        return false;
+      }
+      throw err;
+    }
   }
 
   private findMissingInstanceId(err: NotFoundError): string | null {
@@ -475,14 +500,6 @@ export abstract class BaseCommand extends Command {
       return { id, type: 'xcode' };
     }
     throw new Error(`Expected an iOS or Xcode target, got ${id}`);
-  }
-
-  private iosXcodeTargetFromId(id: string): LastIosInstance {
-    const target = this.xcodeTargetFromId(id);
-    if (target.type === 'ios') {
-      return target;
-    }
-    throw new Error(`--ios requires an iOS instance ID, got ${id}`);
   }
 
   private androidInstanceFromId(id: string): LastAndroidInstance {
