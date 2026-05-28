@@ -427,19 +427,20 @@ function formatDurationMs(ms: number): string {
   return remainder === 0 ? `${minutes}m` : `${minutes}m ${remainder}s`;
 }
 
-function shellQuote(value: string): string {
-  if (/^[A-Za-z0-9_./:-]+$/.test(value)) {
-    return value;
-  }
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
 function bold(value: string): string {
   return `\x1b[1m${value}\x1b[22m`;
 }
 
 function environmentUserName(): string {
-  return process.env['USER'] || process.env['USERNAME'] || os.userInfo().username || 'Limrun';
+  return process.env['USER'] || process.env['USERNAME'] || safeOsUserName() || 'Limrun';
+}
+
+function safeOsUserName(): string | undefined {
+  try {
+    return os.userInfo().username;
+  } catch {
+    return undefined;
+  }
 }
 
 function progressLine(line: string): string {
