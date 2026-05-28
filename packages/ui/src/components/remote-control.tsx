@@ -157,10 +157,36 @@ interface RemoteControlProps {
    * (in which case the limulator side switches to a black-frame
    * fallback so the app keeps ticking).
    *
+   * `camera` (optional, only meaningful when `granted === true`)
+   * carries what `MediaStreamTrack.getSettings()` reported for the
+   * active capture: resolution, framerate, device label, facing
+   * mode. Use it to render a richer status indicator (e.g.
+   * "Camera · 1920×1080 · 30 fps · FaceTime HD").
+   *
    * Only iOS instances ever fire this callback; Android instances
    * have no camera-injector path and stay silent.
    */
-  onCameraDemandChange?: (active: boolean, granted?: boolean) => void;
+  onCameraDemandChange?: (
+    active: boolean,
+    granted?: boolean,
+    camera?: CameraCaptureInfo,
+  ) => void;
+}
+
+/**
+ * Snapshot of the browser's webcam capture, mirrored from
+ * `MediaStreamTrack.getSettings()`. Forwarded to the host alongside
+ * `cameraResult` and exposed to the host app via
+ * `onCameraDemandChange` so it can render a status indicator without
+ * having to call `getStats()` itself.
+ */
+export interface CameraCaptureInfo {
+  width?: number;
+  height?: number;
+  frameRate?: number;
+  deviceId?: string;
+  label?: string;
+  facingMode?: string;
 }
 
 interface ScreenshotData {
@@ -1781,7 +1807,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           const senderCaps = RTCRtpSender.getCapabilities('video');
           if (senderCaps && senderCaps.codecs) {
             const vtH264Profiles = new Set(['42e01f', '42e028', '640c1f']);
-            const score = (c: RTCRtpCodecCapability): number => {
+            const score = (c: { mimeType: string; sdpFmtpLine?: string }): number => {
               const mime = c.mimeType.toLowerCase();
               const fmtp = (c.sdpFmtpLine || '').toLowerCase();
               const profileMatch = fmtp.match(/profile-level-id=([0-9a-f]{6})/);
@@ -2159,16 +2185,17 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               }
               let stream: MediaStream | null = null;
               try {
-                // Match the host's IOSurface ring pool (1280×720) so the
-                // CIContext blit on the simulator side becomes
-                // scale-identity. `ideal` is advisory — the browser will
-                // pick the closest webcam mode it supports — and we cap
-                // `frameRate` so the encoder doesn't try to push 60 fps
-                // when our pool is paced at 30.
+                // Capture at the webcam's *native* resolution. We let
+                // the browser pick width × height — the only constraint
+                // we still impose is a 30 fps ceiling so a 60 fps
+                // webcam doesn't double our encoder cost for no
+                // visible benefit (the simulator pool ticks at 30).
+                // The actual captured resolution is reported back to
+                // the host via `cameraResult` (see below) so it can
+                // size its IOSurface pool to match instead of
+                // up/down-scaling every frame.
                 stream = await navigator.mediaDevices.getUserMedia({
                   video: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
                     frameRate: { ideal: 30, max: 30 },
                   },
                   audio: false,
@@ -2224,23 +2251,60 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               } catch {
                 /* older browsers don't support contentHint; ignore */
               }
-              // Trim the outbound bitrate to a value that VideoToolbox
-              // is happy to keep in low-latency mode. The default
-              // `maxBitrate` from `addTransceiver` is unbounded which
-              // can push the HW encoder into longer GoPs at higher
-              // resolutions. 2.5 Mbps is comfortable for 720p30 webcam
-              // content and keeps p99 frame size predictable.
+              // Bound the outbound bitrate generously and let
+              // WebRTC's congestion control (BWE) find the floor.
+              // 8 Mbps is comfortable for native 1080p30 webcam
+              // content over LAN — the encoder will use far less when
+              // the scene is static, and BWE will throttle if a
+              // hop is constrained. Pair with
+              // `maintain-framerate` so the quality scaler steps
+              // down resolution before dropping frames, matching how
+              // Meet/Zoom degrade.
               try {
                 const params = sender.getParameters();
                 if (!params.encodings || params.encodings.length === 0) {
                   params.encodings = [{}];
                 }
-                params.encodings[0].maxBitrate = 2_500_000;
+                params.encodings[0].maxBitrate = 8_000_000;
                 params.encodings[0].maxFramerate = 30;
                 params.degradationPreference = 'maintain-framerate';
                 await sender.setParameters(params);
               } catch (err) {
                 debugWarn('setParameters on outbound camera failed:', err);
+              }
+              // Surface the actual captured geometry to the host so
+              // it can size its IOSurface pool / picture-format
+              // metadata to match. `getSettings()` returns what the
+              // browser actually picked — which may differ from any
+              // hints we sent in the constraints — including the
+              // selected `deviceId` / `label` (useful when a user has
+              // multiple cameras and we eventually expose a picker).
+              let cameraMetadata: {
+                width?: number;
+                height?: number;
+                frameRate?: number;
+                deviceId?: string;
+                label?: string;
+                facingMode?: string;
+              } = {};
+              try {
+                const settings = videoTrack.getSettings();
+                cameraMetadata = {
+                  width: settings.width,
+                  height: settings.height,
+                  frameRate: settings.frameRate,
+                  deviceId: settings.deviceId,
+                  label: videoTrack.label || undefined,
+                  facingMode: settings.facingMode,
+                };
+                // eslint-disable-next-line no-console
+                console.info(
+                  `[RemoteControl] camera capture: ${cameraMetadata.width}x${cameraMetadata.height}` +
+                  ` @ ${cameraMetadata.frameRate ?? '?'}fps` +
+                  (cameraMetadata.label ? ` — ${cameraMetadata.label}` : ''),
+                );
+              } catch (err) {
+                debugWarn('getSettings() on outbound camera track failed:', err);
               }
               // If the browser revokes the track later (extension,
               // user clicks Stop in the camera tab UI, etc.), notify
@@ -2253,8 +2317,21 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 }
                 safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
               };
-              ws.send(JSON.stringify({ type: 'cameraResult', granted: true }));
-              safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, true);
+              ws.send(JSON.stringify({
+                type: 'cameraResult',
+                granted: true,
+                // Forward what the browser actually captured so the
+                // host can size its IOSurface pool, log the device,
+                // and (eventually) surface a status pill / picker.
+                camera: cameraMetadata,
+              }));
+              safeInvoke(
+                'onCameraDemandChange',
+                onCameraDemandChangeRef.current,
+                true,
+                true,
+                cameraMetadata,
+              );
               break;
             }
             case 'terminateAppResult':
