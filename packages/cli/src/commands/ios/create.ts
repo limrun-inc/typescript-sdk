@@ -5,6 +5,7 @@ import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { xcodeSandboxIdFromUrl } from '../../lib/xcode-sandbox';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
+import { type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 
 export default class IosCreate extends BaseCommand {
@@ -136,7 +137,26 @@ export default class IosCreate extends BaseCommand {
       const xcodeSandboxUrl = instance.status.sandbox?.xcode?.url;
       const xcodeSandboxId = xcodeSandboxUrl ? xcodeSandboxIdFromUrl(xcodeSandboxUrl) : undefined;
       registerCreatedInstance(instance, flags.xcode ? ['xcode'] : []);
-      const attachResult = attachClient ? await attachClient.attachSimulator(instance) : undefined;
+      const cleanup = async () => {
+        try {
+          await this.client.iosInstances.delete(instance.metadata.id);
+          this.info(`${instance.metadata.id} is deleted`);
+        } catch (e) {
+          this.info(`Failed to delete instance: ${e}`);
+        }
+      };
+      let attachResult: SimulatorAttachResult | undefined;
+      if (attachClient) {
+        try {
+          attachResult = await attachClient.attachSimulator(instance);
+        } catch (err) {
+          this.info(`Created iOS instance ${instance.metadata.id}, but attach failed.`);
+          if (flags.rm) {
+            await cleanup();
+          }
+          throw err;
+        }
+      }
       this.info(`Created a new iOS instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.info('iOS Instance:');
       this.info(`  ID: ${instance.metadata.id}`);
@@ -160,7 +180,7 @@ export default class IosCreate extends BaseCommand {
       if (flags.json) {
         if (attachResult && attachTarget) {
           this.outputJson({
-            instance,
+            ...instance,
             attach: simulatorAttachJson(instance.metadata.id, attachTarget.id, attachResult),
           });
         } else {
@@ -171,15 +191,6 @@ export default class IosCreate extends BaseCommand {
       }
 
       if (flags.rm) {
-        const cleanup = async () => {
-          try {
-            await this.client.iosInstances.delete(instance.metadata.id);
-            this.info(`${instance.metadata.id} is deleted`);
-          } catch (e) {
-            this.info(`Failed to delete instance: ${e}`);
-          }
-        };
-
         this.info('Instance running. Press Ctrl+C to stop and delete.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);

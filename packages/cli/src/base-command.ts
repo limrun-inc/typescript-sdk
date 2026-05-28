@@ -371,7 +371,7 @@ export abstract class BaseCommand extends Command {
     const id = this._overrideInstanceId ?? providedId;
     if (id) {
       const target = this.xcodeTargetFromId(id);
-      if (target.type === 'xcode' && !(await this.xcodeTargetHasAttachedSimulator(target))) {
+      if (target.type === 'xcode' && !(await this.xcodeTargetHasAttachedSimulator(target, false))) {
         throw new Error(
           `--ios requires an iOS-backed Xcode target or an Xcode instance with an attached simulator, got ${id}`,
         );
@@ -385,7 +385,7 @@ export abstract class BaseCommand extends Command {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
-    if (target?.type === 'xcode' && (await this.xcodeTargetHasAttachedSimulator(target))) {
+    if (target?.type === 'xcode' && (await this.xcodeTargetHasAttachedSimulator(target, true))) {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
@@ -393,7 +393,7 @@ export abstract class BaseCommand extends Command {
     if (!this.shouldAutoCreateOnNotFound()) {
       throw new Error(
         'No simulator-backed Xcode target found.\n' +
-          'Create one first with: lim xcode create --ios, or rerun without --no-create.',
+          'Create one first with: lim xcode create --ios or lim xcode create --attach --simulator-id <ios-instance-ID>, or rerun without --no-create.',
       );
     }
 
@@ -403,13 +403,16 @@ export abstract class BaseCommand extends Command {
     return replacement;
   }
 
-  private async xcodeTargetHasAttachedSimulator(target: LastXcodeInstance): Promise<boolean> {
+  private async xcodeTargetHasAttachedSimulator(
+    target: LastXcodeInstance,
+    clearIfMissing: boolean,
+  ): Promise<boolean> {
     try {
       const xcodeClient = await this.resolveXcodeClient(target);
       const status = await xcodeClient.getSimulator();
       return status.attached;
     } catch (err) {
-      if (err instanceof NotFoundError || this.isCachedXcodeClientNotFound(err)) {
+      if (clearIfMissing && (err instanceof NotFoundError || this.isCachedXcodeClientNotFound(err))) {
         clearLastInstanceId(target.id);
         return false;
       }
@@ -430,7 +433,10 @@ export abstract class BaseCommand extends Command {
   }
 
   private isCachedXcodeClientNotFound(err: unknown): err is Error {
-    return err instanceof Error && err.message.includes('GET /info failed: 404');
+    return (
+      err instanceof Error &&
+      (err.message.includes('GET /info failed: 404') || err.message.includes('GET /simulator failed: 404'))
+    );
   }
 
   private shouldAutoCreateOnNotFound(): boolean {

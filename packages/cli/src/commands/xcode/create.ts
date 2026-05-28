@@ -4,6 +4,7 @@ import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { xcodeSandboxIdFromUrl } from '../../lib/xcode-sandbox';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
+import { type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 import { type XcodeInstanceCreateParams } from '@limrun/api/resources/xcode-instances';
 
@@ -172,10 +173,27 @@ export default class XcodeCreate extends BaseCommand {
         instance.status as { signedStreamUrl?: string } | undefined,
       );
       registerCreatedInstance(instance);
-      const xcodeClient =
-        flags.attach ? await this.client.xcodeInstances.createClient({ instance }) : undefined;
-      const attachResult =
-        xcodeClient && simulator ? await xcodeClient.attachSimulator(simulator) : undefined;
+      const cleanup = async () => {
+        try {
+          await this.client.xcodeInstances.delete(instance.metadata.id);
+          this.info(`${instance.metadata.id} is deleted`);
+        } catch (e) {
+          this.info(`Failed to delete instance: ${e}`);
+        }
+      };
+      let attachResult: SimulatorAttachResult | undefined;
+      if (flags.attach && simulator) {
+        try {
+          const xcodeClient = await this.client.xcodeInstances.createClient({ instance });
+          attachResult = await xcodeClient.attachSimulator(simulator);
+        } catch (err) {
+          this.info(`Created Xcode instance ${instance.metadata.id}, but attach failed.`);
+          if (flags.rm) {
+            await cleanup();
+          }
+          throw err;
+        }
+      }
       this.info(`Created a new Xcode instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.info('Xcode Instance:');
       this.info(`  ID: ${instance.metadata.id}`);
@@ -193,7 +211,7 @@ export default class XcodeCreate extends BaseCommand {
       if (flags.json) {
         if (attachResult && simulator) {
           this.outputJson({
-            instance,
+            ...instance,
             attach: simulatorAttachJson(simulator.metadata.id, instance.metadata.id, attachResult),
           });
         } else {
@@ -204,15 +222,6 @@ export default class XcodeCreate extends BaseCommand {
       }
 
       if (flags.rm) {
-        const cleanup = async () => {
-          try {
-            await this.client.xcodeInstances.delete(instance.metadata.id);
-            this.info(`${instance.metadata.id} is deleted`);
-          } catch (e) {
-            this.info(`Failed to delete instance: ${e}`);
-          }
-        };
-
         this.info('Instance running. Press Ctrl+C to stop and delete.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
