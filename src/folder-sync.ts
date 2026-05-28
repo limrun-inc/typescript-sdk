@@ -597,7 +597,7 @@ async function syncFolderOnce(
       });
     }
     if (retryPayloads.length > 0) {
-      slog('warn', `server requested full for ${retryPayloads.length} files; retrying once`);
+      slog('debug', `server requested full for ${retryPayloads.length} files; retrying once`);
       const retryMeta: FolderSyncHttpMeta = {
         ...meta,
         id: genId('sync'),
