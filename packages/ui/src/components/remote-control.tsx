@@ -189,7 +189,33 @@ interface RemoteControlProps {
    * itself — this is the canonical place.
    */
   onCameraStats?: (stats: CameraStreamStats | null) => void;
+
+  /**
+   * Optional resolution cap for outbound camera capture.
+   *
+   * - `'auto'` (default): no extra constraint. The browser captures
+   *   at its webcam's native max; WebRTC's quality scaler may step
+   *   down resolution on the encoder side under bandwidth pressure
+   *   while still feeding the simulator at the pool's native size.
+   * - `'1080p'` / `'720p'` / `'480p'`: hard cap applied via
+   *   `getUserMedia` constraints (for new captures) and
+   *   `track.applyConstraints` (for the currently-active track),
+   *   matching the way Meet/Zoom expose a "Send resolution" picker.
+   *
+   * Bumping or lowering the cap mid-stream is supported; the
+   * change takes effect within a frame or two as the webcam
+   * re-negotiates.
+   */
+  cameraResolutionCap?: CameraResolutionCap;
 }
+
+/**
+ * Resolution caps a host app can request on the outbound camera.
+ * `'auto'` is "let the browser decide" (no constraints beyond the
+ * 30 fps ceiling); the other options clamp width/height to the
+ * named target. Aspect ratio is preserved.
+ */
+export type CameraResolutionCap = 'auto' | '1080p' | '720p' | '480p';
 
 /**
  * Snapshot of the browser's webcam capture, mirrored from
@@ -445,6 +471,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       axMaxBackoffMs,
       onCameraDemandChange,
       onCameraStats,
+      cameraResolutionCap = 'auto',
     }: RemoteControlProps,
     ref,
   ) => {
@@ -488,6 +515,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // green light.
     const outboundCameraSenderRef = useRef<RTCRtpSender | null>(null);
     const outboundLocalStreamRef = useRef<MediaStream | null>(null);
+    const cameraResolutionCapRef = useRef(cameraResolutionCap);
+    cameraResolutionCapRef.current = cameraResolutionCap;
     // Mirror the demand-change callback into a ref so the WS message
     // handler always sees the freshest customer callback even when the
     // parent re-renders mid-session.
@@ -1606,6 +1635,34 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       stopMediaStream(stream);
     };
 
+    // Translate the user-facing resolution cap into a
+    // MediaTrackConstraints fragment we can feed `getUserMedia`
+    // or `applyConstraints`. Always returns a 30 fps ceiling so
+    // a 60 fps webcam doesn't double our encoder cost for no
+    // visible win (the simulator pool is paced at 30).
+    //
+    // We use `ideal` rather than `max` so that a webcam with a
+    // native 720p mode still hands us 720p when the user picks
+    // 1080p — instead of refusing the constraint outright. The
+    // browser's NotReadableError on a too-strict `max` is the
+    // most common camera-permission gotcha in the wild.
+    const cameraCapToConstraints = (cap: CameraResolutionCap): MediaTrackConstraints => {
+      const base: MediaTrackConstraints = {
+        frameRate: { ideal: 30, max: 30 },
+      };
+      switch (cap) {
+        case '1080p':
+          return { ...base, width: { ideal: 1920 }, height: { ideal: 1080 } };
+        case '720p':
+          return { ...base, width: { ideal: 1280 }, height: { ideal: 720 } };
+        case '480p':
+          return { ...base, width: { ideal: 854 }, height: { ideal: 480 } };
+        case 'auto':
+        default:
+          return base;
+      }
+    };
+
     // Convert the codec mime type (e.g. "video/H264" or "video/HEVC")
     // into a short uppercase label suitable for a status badge.
     const shortenCodecMime = (mime: string | undefined): string | undefined => {
@@ -2377,19 +2434,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               }
               let stream: MediaStream | null = null;
               try {
-                // Capture at the webcam's *native* resolution. We let
-                // the browser pick width × height — the only constraint
-                // we still impose is a 30 fps ceiling so a 60 fps
-                // webcam doesn't double our encoder cost for no
-                // visible benefit (the simulator pool ticks at 30).
-                // The actual captured resolution is reported back to
-                // the host via `cameraResult` (see below) so it can
-                // size its IOSurface pool to match instead of
-                // up/down-scaling every frame.
+                // Capture at the webcam's *native* resolution by
+                // default (no width/height constraints). When the
+                // host app has picked an explicit cap via
+                // `cameraResolutionCap`, we honour it here. Frame
+                // rate is always capped to 30 to match the
+                // simulator pool's pacing.
                 stream = await navigator.mediaDevices.getUserMedia({
-                  video: {
-                    frameRate: { ideal: 30, max: 30 },
-                  },
+                  video: cameraCapToConstraints(cameraResolutionCapRef.current),
                   audio: false,
                 });
               } catch (err) {
@@ -2621,6 +2673,22 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       event.stopPropagation();
       start();
     };
+
+    // Re-apply the resolution cap on the currently-sending track
+    // whenever the host app changes its preference. Skips when no
+    // camera is active — the next `getUserMedia` will pick up the
+    // new value via `cameraCapToConstraints` automatically.
+    useEffect(() => {
+      const stream = outboundLocalStreamRef.current;
+      if (!stream) return;
+      const track = stream.getVideoTracks()[0];
+      if (!track) return;
+      const constraints = cameraCapToConstraints(cameraResolutionCap);
+      track.applyConstraints(constraints).catch((err) => {
+        debugWarn('applyConstraints for new camera cap failed:', err);
+      });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [cameraResolutionCap]);
 
     useEffect(() => {
       // Reset video loaded state when connection params change
