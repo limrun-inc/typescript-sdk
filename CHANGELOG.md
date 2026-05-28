@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.28.8 (2026-05-28)
+
+Full Changelog: [v0.28.7...v0.28.8](https://github.com/limrun-inc/typescript-sdk/compare/v0.28.7...v0.28.8)
+
+### Bug Fixes
+
+* **typescript:** upgrade tsc-multi so that it works with Node 26 ([dae0c33](https://github.com/limrun-inc/typescript-sdk/commit/dae0c3380d016fd439b6a842889ef5b934838cd8))
+
+
+### Chores
+
+* **internal:** codegen related update ([b891012](https://github.com/limrun-inc/typescript-sdk/commit/b891012ece5778311d95b608527c6e3c75ec397c))
+* **tests:** remove redundant File import ([db4f07f](https://github.com/limrun-inc/typescript-sdk/commit/db4f07f6aad4b23fdfc5198f6baec833d8d8e930))
+
 ## 0.28.7 (2026-05-18)
 
 Full Changelog: [v0.28.6...v0.28.7](https://github.com/limrun-inc/typescript-sdk/compare/v0.28.6...v0.28.7)
