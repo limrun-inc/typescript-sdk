@@ -427,7 +427,7 @@ function buildProgressLabel(kind: DetectedProject['kind']): string {
 }
 
 function samplePrompt(): string {
-  return `Change \`Hello, world!\` to \`Hello, ${environmentUserName()}!\``;
+  return `Change \`Hello, world!\` to \`Hello, ${environmentUserName()}!\` and use Limrun skills.`;
 }
 
 function formatDurationMs(ms: number): string {
