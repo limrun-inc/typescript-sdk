@@ -108,7 +108,7 @@ export default class Run extends BaseCommand {
     this.output('');
     this.output('✨ Click here to see your app:');
     this.output(streamUrl);
-    this.outputNextSteps(projectPath, 'Make a change and rebuild with Limrun skills.');
+    this.outputNextSteps(projectRoot, 'Make a change and rebuild with Limrun skills.');
   }
 
   private async shouldUseDetectedProject(detection: DetectedProject): Promise<boolean> {
@@ -206,7 +206,7 @@ export default class Run extends BaseCommand {
     this.output('');
     this.output('✨ Click here to see your app:');
     this.output(streamUrl);
-    this.outputNextSteps(humanPath(sample.path, cwd), samplePrompt());
+    this.outputNextSteps(sample.path, samplePrompt());
   }
 
   private async buildAndLaunchProject({
@@ -292,7 +292,7 @@ export default class Run extends BaseCommand {
     this.output('');
     this.output('Next steps:');
     this.output('');
-    this.output(`- Open ${bold(interactivePathLabel(projectPath))} in your coding agent`);
+    this.output(`- Open ${bold(userFacingAbsolutePath(projectPath))} in your coding agent`);
     this.output('');
     this.output(`- Prompt it: "${prompt}"`);
   }
@@ -397,6 +397,22 @@ function humanPath(absolutePath: string, fromDir = process.cwd()): string {
   if (!relative) return '.';
   if (relative.startsWith('..') || path.isAbsolute(relative)) return absolutePath;
   return relative;
+}
+
+function userFacingAbsolutePath(filePath: string): string {
+  const absolutePath = path.resolve(filePath);
+  const homeDir = os.homedir();
+  if (!homeDir) {
+    return absolutePath;
+  }
+  const relativeToHome = path.relative(homeDir, absolutePath);
+  if (relativeToHome === '') {
+    return '~';
+  }
+  if (!relativeToHome.startsWith('..') && !path.isAbsolute(relativeToHome)) {
+    return path.join('~', relativeToHome);
+  }
+  return absolutePath;
 }
 
 function interactivePathLabel(value: string): string {
