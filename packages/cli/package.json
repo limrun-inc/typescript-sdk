@@ -1,6 +1,6 @@
 {
   "name": "lim",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Use remote XCode, iOS Simulator, Android Emulator and more to build and test apps from Linux, Windows or macOS.",
   "bin": {
     "lim": "./bin/run.js"
@@ -24,7 +24,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@limrun/api": "0.28.7",
+    "@limrun/api": "0.28.8",
     "@oclif/core": "^4",
     "cli-progress": "^3.12.0",
     "cli-table3": "^0.6.5",
