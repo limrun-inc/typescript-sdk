@@ -89,6 +89,52 @@ export type XcodeBuildOptions = {
   reactNative?: ReactNativeBuildConfig;
 };
 
+export type SimulatorInstallState =
+  | 'notInstalled'
+  | 'installedOnAttachedSimulator'
+  | 'installedOnOtherSimulator';
+
+export type SimulatorDeviceInfo = {
+  arch: string;
+  model: string;
+  name: string;
+  osVersion: string;
+  platform: string;
+  screenHeight: number;
+  screenWidth: number;
+  udid: string;
+};
+
+export type SimulatorAttachment = {
+  apiUrl: string;
+  iosInstanceId?: string;
+  target?: SimulatorDeviceInfo;
+};
+
+export type SimulatorBuildStatus = {
+  buildId: string;
+  sdk: string;
+  bundleId?: string;
+  installState: SimulatorInstallState;
+  syncDurationMs?: number;
+  installDurationMs?: number;
+};
+
+export type SimulatorStatus = {
+  attached: boolean;
+  simulator?: SimulatorAttachment;
+  latestBuild?: SimulatorBuildStatus;
+};
+
+export type SimulatorAttachResult = {
+  attached: boolean;
+  alreadyAttached: boolean;
+  installedLastBuild: boolean;
+  simulator?: SimulatorAttachment;
+  latestBuild?: SimulatorBuildStatus;
+  installError?: string;
+};
+
 export type XcodeClient = {
   /**
    * Sync source code to the xcode instance. In watch mode, keeps syncing on changes.
@@ -110,7 +156,14 @@ export type XcodeClient = {
    * Attach a simulator to this xcode instance.
    * After attaching, builds will auto-install on the simulator.
    */
-  attachSimulator: (simulator: IosInstance | { apiUrl: string; token: string }) => Promise<void>;
+  attachSimulator: (
+    simulator: IosInstance | { apiUrl: string; token: string },
+  ) => Promise<SimulatorAttachResult>;
+
+  /**
+   * Return the currently attached simulator and latest installable build state.
+   */
+  getSimulator: () => Promise<SimulatorStatus>;
 };
 
 export type XcodeCreateClientParams =
@@ -156,17 +209,24 @@ async function fetchSandboxInfo(apiUrl: string, token: string): Promise<{ homeDi
       Authorization: `Bearer ${token}`,
     },
   });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`GET /info failed: ${res.status} ${text}`);
-  }
-  const body = JSON.parse(text) as { homeDir?: string };
+  const body = await readJsonResponse<{ homeDir?: string }>(res, 'GET /info');
   if (!body.homeDir) {
     throw new Error('GET /info response is missing homeDir');
   }
   return {
     homeDir: normalizeWorkspaceRelativePath(body.homeDir),
   };
+}
+
+async function readJsonResponse<T>(res: Response, operation: string): Promise<T> {
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`${operation} failed: ${res.status} ${text}`);
+  }
+  if (!text.trim()) {
+    throw new Error(`${operation} returned an empty response`);
+  }
+  return JSON.parse(text) as T;
 }
 
 export class XcodeInstances extends GeneratedXcodeInstances {
@@ -186,7 +246,11 @@ export class XcodeInstances extends GeneratedXcodeInstances {
 
     const log = createLogger(params.logLevel ?? 'info');
     const client = this._client;
-    const sandboxInfo = await fetchSandboxInfo(apiUrl, token);
+    let sandboxInfoPromise: Promise<{ homeDir: string }> | undefined;
+    const getSandboxInfo = () => {
+      sandboxInfoPromise ??= fetchSandboxInfo(apiUrl, token);
+      return sandboxInfoPromise;
+    };
 
     return {
       async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
@@ -195,10 +259,14 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
         const cacheKey = `limsync-cache-${folderName}-${hash}`;
         const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
+        const sandboxInfo =
+          opts?.additionalFiles?.some((file) => file.remotePath.startsWith('~/')) ?
+            await getSandboxInfo()
+          : undefined;
         const additionalFiles = opts?.additionalFiles?.map((file) => ({
           localPath: file.localPath,
           remotePath:
-            file.remotePath.startsWith('~/') ?
+            sandboxInfo && file.remotePath.startsWith('~/') ?
               `${sandboxInfo.homeDir}/${file.remotePath.slice(2)}`
             : file.remotePath,
         }));
@@ -292,7 +360,19 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         return exec(request, { apiUrl, token, log });
       },
 
-      async attachSimulator(simulator: IosInstance | { apiUrl: string; token: string }): Promise<void> {
+      async getSimulator(): Promise<SimulatorStatus> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        return readJsonResponse<SimulatorStatus>(res, 'GET /simulator');
+      },
+
+      async attachSimulator(
+        simulator: IosInstance | { apiUrl: string; token: string },
+      ): Promise<SimulatorAttachResult> {
         let simApiUrl: string;
         let simToken: string;
         if ('status' in simulator) {
@@ -314,10 +394,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           },
           body: JSON.stringify({ apiUrl: simApiUrl, token: simToken }),
         });
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`POST /simulator failed: ${res.status} ${text}`);
-        }
+        return readJsonResponse<SimulatorAttachResult>(res, 'POST /simulator');
       },
     };
   }
