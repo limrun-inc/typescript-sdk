@@ -171,6 +171,24 @@ interface RemoteControlProps {
     granted?: boolean,
     camera?: CameraCaptureInfo,
   ) => void;
+
+  /**
+   * Periodically (~1Hz) fires with a snapshot of the outbound
+   * camera stream's live WebRTC stats — codec, encoder
+   * implementation, hardware acceleration, encoded fps, bitrate,
+   * round-trip-time, and the encoder's
+   * `qualityLimitationReason` (which is what Meet/Zoom use to
+   * decide whether to show "Bandwidth limited" or "CPU limited"
+   * banners).
+   *
+   * Only fires while the simulator is actively pulling the
+   * camera AND `getUserMedia` was granted. `null` is emitted
+   * once when the stream goes back to idle so consumers can
+   * clear their UI without having to maintain their own
+   * timeout. The host app does not need to poll `getStats()`
+   * itself — this is the canonical place.
+   */
+  onCameraStats?: (stats: CameraStreamStats | null) => void;
 }
 
 /**
@@ -187,6 +205,46 @@ export interface CameraCaptureInfo {
   deviceId?: string;
   label?: string;
   facingMode?: string;
+}
+
+/**
+ * Live outbound-camera quality snapshot. Derived from
+ * `RTCPeerConnection.getStats()` and rate-derived deltas, sampled
+ * once per second while the camera is sending. All fields optional:
+ * some browsers omit fields (Safari rarely reports
+ * `encoderImplementation`), and the first sample after camera start
+ * has no delta-derived numbers yet.
+ */
+export interface CameraStreamStats {
+  /** "H264", "HEVC"/"H265", "VP9", "VP8", "AV1", etc. (uppercased). */
+  codec?: string;
+  /** e.g. "VideoToolbox" (hw), "OpenH264" (sw), "ExternalEncoder". */
+  encoderImplementation?: string;
+  /**
+   * Browser-reported hardware-acceleration hint. Some Chromium
+   * versions expose this via `powerEfficientEncoder`; we mirror it
+   * here so consumers don't have to know the spec quirk.
+   */
+  hardwareAccelerated?: boolean;
+  /** Outbound encoded fps over the last sample window. */
+  framesPerSecond?: number;
+  /** Cumulative encoded frame count. */
+  framesEncoded?: number;
+  /** Outbound encoded bitrate (bits/s) over the last window. */
+  bitrateBps?: number;
+  /** Width/height the encoder is currently producing. */
+  width?: number;
+  height?: number;
+  /**
+   * One of `'none' | 'cpu' | 'bandwidth' | 'other'`. Mirrors
+   * Meet/Zoom's "limited by …" banners. Anything other than
+   * `'none'` means the encoder dropped resolution to keep up.
+   */
+  qualityLimitationReason?: string;
+  /** Round-trip time in milliseconds, from the matching RTCP. */
+  rttMs?: number;
+  /** Packet-loss percentage over the last sample window (0..100). */
+  packetsLostPct?: number;
 }
 
 interface ScreenshotData {
@@ -386,6 +444,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       axPollIntervalMs,
       axMaxBackoffMs,
       onCameraDemandChange,
+      onCameraStats,
     }: RemoteControlProps,
     ref,
   ) => {
@@ -434,6 +493,21 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // parent re-renders mid-session.
     const onCameraDemandChangeRef = useRef(onCameraDemandChange);
     onCameraDemandChangeRef.current = onCameraDemandChange;
+    const onCameraStatsRef = useRef(onCameraStats);
+    onCameraStatsRef.current = onCameraStats;
+    // Active outbound-camera stats poller. While the camera is
+    // sending we sample `RTCPeerConnection.getStats()` once per
+    // second, derive deltas (bitrate, fps, packet loss) from the
+    // previous sample, and push the result through `onCameraStats`.
+    // Cleared on teardown so we never leak the timer.
+    const cameraStatsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const cameraStatsPrevRef = useRef<{
+      timestamp: number;
+      framesEncoded?: number;
+      bytesSent?: number;
+      packetsSent?: number;
+      packetsLost?: number;
+    } | null>(null);
     const firstFrameShownRef = useRef(false);
     const pendingScreenshotResolversRef = useRef<
       Map<string, (value: ScreenshotData | PromiseLike<ScreenshotData>) => void>
@@ -1532,6 +1606,122 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       stopMediaStream(stream);
     };
 
+    // Convert the codec mime type (e.g. "video/H264" or "video/HEVC")
+    // into a short uppercase label suitable for a status badge.
+    const shortenCodecMime = (mime: string | undefined): string | undefined => {
+      if (!mime) return undefined;
+      const slash = mime.indexOf('/');
+      const tail = slash >= 0 ? mime.slice(slash + 1) : mime;
+      const upper = tail.toUpperCase();
+      if (upper === 'HEVC') return 'H265';
+      return upper;
+    };
+
+    // Sample outbound-camera stats once and push a normalised
+    // snapshot through `onCameraStats`. Skips silently if the sender
+    // has been torn down between intervals.
+    const sampleOutboundCameraStats = async () => {
+      const sender = outboundCameraSenderRef.current;
+      const handler = onCameraStatsRef.current;
+      if (!sender || !handler) return;
+      let report: RTCStatsReport;
+      try {
+        report = await sender.getStats();
+      } catch {
+        return;
+      }
+      let outbound: any | undefined;
+      let codecMime: string | undefined;
+      let remoteInbound: any | undefined;
+      report.forEach((entry: any) => {
+        if (entry.type === 'outbound-rtp' && entry.kind === 'video') {
+          outbound = entry;
+        } else if (entry.type === 'remote-inbound-rtp' && entry.kind === 'video') {
+          remoteInbound = entry;
+        }
+      });
+      if (outbound?.codecId) {
+        const codec = report.get(outbound.codecId);
+        if (codec) codecMime = (codec as any).mimeType;
+      }
+      if (!outbound) return;
+      const now = (outbound.timestamp as number) ?? Date.now();
+      const prev = cameraStatsPrevRef.current;
+      let fps: number | undefined;
+      let bitrate: number | undefined;
+      let lossPct: number | undefined;
+      if (prev && now > prev.timestamp) {
+        const dt = (now - prev.timestamp) / 1000;
+        if (
+          typeof outbound.framesEncoded === 'number' &&
+          typeof prev.framesEncoded === 'number'
+        ) {
+          fps = Math.max(0, (outbound.framesEncoded - prev.framesEncoded) / dt);
+        }
+        if (typeof outbound.bytesSent === 'number' && typeof prev.bytesSent === 'number') {
+          bitrate = Math.max(0, ((outbound.bytesSent - prev.bytesSent) * 8) / dt);
+        }
+        if (
+          typeof outbound.packetsSent === 'number' &&
+          typeof prev.packetsSent === 'number' &&
+          remoteInbound &&
+          typeof remoteInbound.packetsLost === 'number' &&
+          typeof prev.packetsLost === 'number'
+        ) {
+          const sent = outbound.packetsSent - prev.packetsSent;
+          const lost = remoteInbound.packetsLost - prev.packetsLost;
+          if (sent > 0) lossPct = Math.max(0, Math.min(100, (lost / sent) * 100));
+        }
+      }
+      cameraStatsPrevRef.current = {
+        timestamp: now,
+        framesEncoded: outbound.framesEncoded,
+        bytesSent: outbound.bytesSent,
+        packetsSent: outbound.packetsSent,
+        packetsLost: remoteInbound?.packetsLost,
+      };
+      const stats: CameraStreamStats = {
+        codec: shortenCodecMime(codecMime),
+        encoderImplementation: outbound.encoderImplementation,
+        hardwareAccelerated:
+          typeof outbound.powerEfficientEncoder === 'boolean'
+            ? outbound.powerEfficientEncoder
+            : undefined,
+        framesPerSecond: fps,
+        framesEncoded: outbound.framesEncoded,
+        bitrateBps: bitrate,
+        width: outbound.frameWidth,
+        height: outbound.frameHeight,
+        qualityLimitationReason: outbound.qualityLimitationReason,
+        rttMs:
+          typeof remoteInbound?.roundTripTime === 'number'
+            ? remoteInbound.roundTripTime * 1000
+            : undefined,
+        packetsLostPct: lossPct,
+      };
+      safeInvoke('onCameraStats', onCameraStatsRef.current, stats);
+    };
+
+    const startCameraStatsPoller = () => {
+      if (cameraStatsTimerRef.current !== null) return;
+      cameraStatsPrevRef.current = null;
+      // First sample fires after one interval — the very first
+      // sample has no deltas to compare against, which is fine: the
+      // codec/encoder identity is still useful on its own.
+      cameraStatsTimerRef.current = setInterval(() => {
+        void sampleOutboundCameraStats();
+      }, 1000);
+    };
+
+    const stopCameraStatsPoller = () => {
+      if (cameraStatsTimerRef.current !== null) {
+        clearInterval(cameraStatsTimerRef.current);
+        cameraStatsTimerRef.current = null;
+      }
+      cameraStatsPrevRef.current = null;
+      safeInvoke('onCameraStats', onCameraStatsRef.current, null);
+    };
+
     const teardownConnection = () => {
       clearConnectionSuccessTimeout();
       clearIceDisconnectedGrace();
@@ -1543,6 +1733,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // Drop any active outbound camera before the PC dies so the
       // browser doesn't leave the camera indicator lit between
       // reconnects.
+      stopCameraStatsPoller();
       stopOutboundLocalStream();
       outboundCameraSenderRef.current = null;
       // A scheduled cursor flush would otherwise call setState on a
@@ -2159,6 +2350,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                     debugWarn('replaceTrack(null) on camera detach failed:', err);
                   }
                 }
+                stopCameraStatsPoller();
                 stopOutboundLocalStream();
                 safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, false);
                 break;
@@ -2311,6 +2503,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               // the host so it can switch to black frames.
               videoTrack.onended = () => {
                 if (outboundLocalStreamRef.current !== stream) return;
+                stopCameraStatsPoller();
                 stopOutboundLocalStream();
                 if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
                   ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
@@ -2332,6 +2525,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 true,
                 cameraMetadata,
               );
+              // Kick off the per-second outbound stats sampler. We do
+              // this *after* `setParameters` so the first sample
+              // already sees the encoder under its final bitrate /
+              // degradation policy, and *after* the host-side
+              // attachInboundTrack will have wired up (the
+              // cameraResult ACK is what triggers it on the host),
+              // so framesEncoded starts climbing immediately.
+              startCameraStatsPoller();
               break;
             }
             case 'terminateAppResult':
