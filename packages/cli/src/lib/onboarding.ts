@@ -101,7 +101,9 @@ export function applyProjectEnvApiKey(projectRoot: string): ProjectEnvApiKeyResu
 
 export function ensureProjectEnvApiKey(projectRoot: string, apiKey: string): EnvApiKeyResult {
   if (!apiKey) {
-    throw new OnboardingError('Limrun API key is missing after login. Run `lim login`, then rerun `lim run`.');
+    throw new OnboardingError(
+      'Limrun API key is missing after login. Run `lim login`, then rerun `lim run`.',
+    );
   }
   if (/[\r\n]/.test(apiKey)) {
     throw new OnboardingError('Limrun API key contains an invalid newline.');
@@ -325,7 +327,9 @@ async function runGit(args: string[], cwd?: string): Promise<string> {
   } catch (err) {
     const code = typeof err === 'object' && err && 'code' in err ? String(err.code) : '';
     if (code === 'ENOENT') {
-      throw new OnboardingError('Git is required to fetch the sample app. Install git, then rerun `lim run`.');
+      throw new OnboardingError(
+        'Git is required to fetch the sample app. Install git, then rerun `lim run`.',
+      );
     }
     throw err;
   }
