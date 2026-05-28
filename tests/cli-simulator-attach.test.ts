@@ -1,5 +1,23 @@
 import { EventEmitter } from 'events';
 
+const mockRegisterCreatedInstance = jest.fn();
+
+jest.mock('../packages/cli/src/lib/config', () => ({
+  clearLastInstanceId: jest.fn(),
+  loadAndroidInstanceCache: jest.fn(() => null),
+  loadIosInstanceCache: jest.fn(() => null),
+  loadLastAndroidInstance: jest.fn(() => null),
+  loadLastIosInstance: jest.fn(() => null),
+  loadLastXcodeInstance: jest.fn(() => null),
+  loadXcodeInstanceCache: jest.fn(() => null),
+  readConfig: jest.fn(() => ({
+    apiKey: 'key',
+    apiEndpoint: 'https://api.example.test',
+    consoleEndpoint: 'https://console.example.test',
+  })),
+  registerCreatedInstance: mockRegisterCreatedInstance,
+}));
+
 const IosCreate = require('../packages/cli/src/commands/ios/create').default;
 const XcodeBuild = require('../packages/cli/src/commands/xcode/build').default;
 const XcodeCreate = require('../packages/cli/src/commands/xcode/create').default;
@@ -74,6 +92,10 @@ function buildProcess(exitCode = 0) {
 }
 
 describe('CLI simulator attach flows', () => {
+  beforeEach(() => {
+    mockRegisterCreatedInstance.mockClear();
+  });
+
   test('ios create --attach creates a simulator and attaches it to the Xcode target', async () => {
     const simulator = iosInstance('ios_123');
     const attachSimulator = jest.fn(async () => ({
@@ -149,13 +171,46 @@ describe('CLI simulator attach flows', () => {
     await command.run();
 
     expect(command.outputJson).toHaveBeenCalledWith({
-      instance: simulator,
+      ...simulator,
       attach: {
         xcodeInstanceId: 'xcode_123',
         simulatorInstanceId: 'ios_123',
         ...attachResult,
       },
     });
+  });
+
+  test('ios create --attach --rm deletes the created simulator when attach fails', async () => {
+    const simulator = iosInstance('ios_123');
+    const attachError = new Error('attach failed');
+    const attachSimulator = jest.fn(async () => {
+      throw attachError;
+    });
+    const client = {
+      assets: { getOrUpload: jest.fn() },
+      iosInstances: {
+        create: jest.fn(async () => simulator),
+        delete: jest.fn(async () => undefined),
+      },
+    };
+    const command = makeCommand(
+      IosCreate.prototype,
+      {
+        flags: {
+          attach: true,
+          rm: true,
+          xcode: false,
+          'xcode-id': 'xcode_123',
+        },
+      },
+      client,
+    );
+    command.resolveXcodeTarget = jest.fn(async () => ({ id: 'xcode_123', type: 'xcode' }));
+    command.resolveXcodeClient = jest.fn(async () => ({ attachSimulator }));
+
+    await expect(command.run()).rejects.toThrow('attach failed');
+
+    expect(client.iosInstances.delete).toHaveBeenCalledWith('ios_123');
   });
 
   test('xcode create --attach creates standalone Xcode and attaches the simulator', async () => {
@@ -198,6 +253,38 @@ describe('CLI simulator attach flows', () => {
     );
     expect(client.xcodeInstances.createClient).toHaveBeenCalledWith({ instance: xcode });
     expect(attachSimulator).toHaveBeenCalledWith(simulator);
+  });
+
+  test('xcode create --attach --rm deletes the created Xcode when attach fails', async () => {
+    const simulator = iosInstance('ios_123');
+    const xcode = xcodeInstance('xcode_123');
+    const attachSimulator = jest.fn(async () => {
+      throw new Error('attach failed');
+    });
+    const client = {
+      iosInstances: { get: jest.fn(async () => simulator) },
+      xcodeInstances: {
+        create: jest.fn(async () => xcode),
+        createClient: jest.fn(async () => ({ attachSimulator })),
+        delete: jest.fn(async () => undefined),
+      },
+    };
+    const command = makeCommand(
+      XcodeCreate.prototype,
+      {
+        flags: {
+          attach: true,
+          rm: true,
+          ios: false,
+          'simulator-id': 'ios_123',
+        },
+      },
+      client,
+    );
+
+    await expect(command.run()).rejects.toThrow('attach failed');
+
+    expect(client.xcodeInstances.delete).toHaveBeenCalledWith('xcode_123');
   });
 
   test('xcode build --ios uses the simulator-backed Xcode target without creating another pair', async () => {
