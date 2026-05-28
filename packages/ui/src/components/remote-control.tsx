@@ -207,6 +207,23 @@ interface RemoteControlProps {
    * re-negotiates.
    */
   cameraResolutionCap?: CameraResolutionCap;
+  /**
+   * Aspect ratio the simulator's virtual camera should report to apps.
+   * Picking a value here triggers a `cameraAspect` WS message to the
+   * host, which rebuilds its IOSurface ring at the matching dimensions
+   * (16:9 → 1920×1080, 4:3 → 1440×1080, 1:1 → 1080×1080, 9:16 →
+   * 1080×1920) and signals the in-sim dylib to re-handshake. iOS apps
+   * see CMSampleBuffers at the new dimensions within a frame or two.
+   *
+   * The browser still captures whatever the webcam offers; the host
+   * aspect-fills (cover, center-crop) into the new pool. Switching
+   * aspect at runtime is intentionally cheap so users can A/B preview
+   * styles without restarting the simulator.
+   *
+   * `undefined` leaves the pool untouched (the host's boot default —
+   * 16:9 / 1920×1080 — applies).
+   */
+  cameraAspect?: CameraAspect;
 }
 
 /**
@@ -216,6 +233,13 @@ interface RemoteControlProps {
  * named target. Aspect ratio is preserved.
  */
 export type CameraResolutionCap = 'auto' | '1080p' | '720p' | '480p';
+
+/**
+ * Aspect ratios exposed to the operator for the simulated camera.
+ * The host maps each label to concrete IOSurface dimensions; values
+ * the host doesn't recognise are silently ignored.
+ */
+export type CameraAspect = '16:9' | '4:3' | '1:1' | '9:16';
 
 /**
  * Snapshot of the browser's webcam capture, mirrored from
@@ -472,6 +496,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       onCameraDemandChange,
       onCameraStats,
       cameraResolutionCap = 'auto',
+      cameraAspect,
     }: RemoteControlProps,
     ref,
   ) => {
@@ -517,6 +542,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const outboundLocalStreamRef = useRef<MediaStream | null>(null);
     const cameraResolutionCapRef = useRef(cameraResolutionCap);
     cameraResolutionCapRef.current = cameraResolutionCap;
+    // The aspect prop also rides a ref so the WS `onopen` reconnect
+    // path can replay the operator's last pick without depending on
+    // an in-flight render cycle. We mutate it inline (same render-
+    // time pattern as the cap ref) so a parent prop change is visible
+    // to closures captured during the next render; the useEffect
+    // below handles the actual "send to host" side-effect.
+    const cameraAspectRef = useRef<CameraAspect | undefined>(cameraAspect);
+    cameraAspectRef.current = cameraAspect;
     // Mirror the demand-change callback into a ref so the WS message
     // handler always sees the freshest customer callback even when the
     // parent re-renders mid-session.
@@ -1918,6 +1951,21 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             if (!isCurrentAttempt() || wsRef.current !== ws) {
               return;
             }
+            // Replay the saved camera aspect for fresh connections
+            // (initial mount, autoreconnect, sim reboot). The host's
+            // streamer starts at its boot default (16:9 / 1920×1080)
+            // and a missing message would mean the operator's pick
+            // silently reverts on reconnect. We always send something
+            // when the prop is set, even if it matches the host
+            // default — the host short-circuits no-op rebuilds.
+            const initialAspect = cameraAspectRef.current;
+            if (initialAspect) {
+              try {
+                ws.send(JSON.stringify({ type: 'cameraAspect', aspect: initialAspect }));
+              } catch (err) {
+                debugWarn('initial cameraAspect send failed:', err);
+              }
+            }
             settle(resolve);
           };
 
@@ -2689,6 +2737,25 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       });
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [cameraResolutionCap]);
+
+    // Push the aspect preference to the host whenever it changes.
+    // The host rebuilds its IOSurface pool and bumps `pool_generation`
+    // on its end; the dylib re-handshakes on next sem_wait. No
+    // peer-connection renegotiation is needed — the aspect change is
+    // purely about the pixel buffer dimensions iOS apps observe, not
+    // about WebRTC track layout. The `cameraAspectRef` is mirrored
+    // higher up so the WS `onopen` reconnect path can replay the
+    // latest value on fresh connections.
+    useEffect(() => {
+      if (!cameraAspect) return;
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      try {
+        ws.send(JSON.stringify({ type: 'cameraAspect', aspect: cameraAspect }));
+      } catch (err) {
+        debugWarn('cameraAspect send failed:', err);
+      }
+    }, [cameraAspect]);
 
     useEffect(() => {
       // Reset video loaded state when connection params change
