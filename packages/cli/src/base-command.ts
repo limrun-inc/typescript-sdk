@@ -23,6 +23,7 @@ import { detectInstanceType } from './lib/instance-client-factory';
 const VERSION = require('../package.json').version;
 const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox)_[a-z0-9]+\b/i;
 type XcodeTarget = LastIosInstance | LastXcodeInstance;
+type XcodeReplacementIntent = 'standalone' | 'simulator-backed';
 
 export abstract class BaseCommand extends Command {
   static baseFlags = {
@@ -68,6 +69,7 @@ export abstract class BaseCommand extends Command {
   private _parsedFlags?: Record<string, unknown>;
   private _lastResolvedInstanceId?: string;
   private _lastResolvedExpectedType?: 'ios' | 'android' | 'xcode';
+  private _xcodeReplacementIntent?: XcodeReplacementIntent;
   private _overrideInstanceId?: string;
   private _createRetryCount = 0;
 
@@ -345,29 +347,39 @@ export abstract class BaseCommand extends Command {
   }
 
   protected async resolveXcodeTargetOrCreate(providedId: string | undefined): Promise<XcodeTarget> {
-    try {
-      return await this.resolveXcodeTarget(providedId);
-    } catch (err) {
-      if (!this.isMissingDefaultInstanceError(err) || !this.shouldAutoCreateOnNotFound()) {
-        throw err;
-      }
-
-      const replacement = await this.createReplacementInstance();
-      if (!replacement) {
-        throw err;
-      }
-
-      const target = this.xcodeTargetFromRecord(replacement);
-      this.info(`No recent xcode instance found. Created instance ${target.id}.`);
+    this._lastResolvedExpectedType = 'xcode';
+    this._xcodeReplacementIntent = 'standalone';
+    const id = this._overrideInstanceId ?? providedId;
+    if (id) {
+      const target = this.xcodeTargetFromId(id);
       this._lastResolvedInstanceId = target.id;
       return target;
     }
+
+    const target = loadLastXcodeInstance();
+    if (target?.type === 'xcode') {
+      this._lastResolvedInstanceId = target.id;
+      return target;
+    }
+
+    if (!this.shouldAutoCreateOnNotFound()) {
+      throw new Error(
+        'No standalone Xcode target found.\n' +
+          'Create one first with: lim xcode create, provide --id, or rerun without --no-create.',
+      );
+    }
+
+    const replacement = await this.createStandaloneXcodeInstance();
+    this.info(`No recent standalone Xcode target found. Created instance ${replacement.id}.`);
+    this._lastResolvedInstanceId = replacement.id;
+    return replacement;
   }
 
   protected async resolveSimulatorBackedXcodeTargetOrCreate(
     providedId: string | undefined,
   ): Promise<XcodeTarget> {
     this._lastResolvedExpectedType = 'xcode';
+    this._xcodeReplacementIntent = 'simulator-backed';
     const id = this._overrideInstanceId ?? providedId;
     if (id) {
       const target = this.xcodeTargetFromId(id);
@@ -428,10 +440,6 @@ export abstract class BaseCommand extends Command {
     return this._lastResolvedInstanceId ?? null;
   }
 
-  private isMissingDefaultInstanceError(err: unknown): err is Error {
-    return err instanceof Error && err.message.startsWith('No instance ID provided and no recent');
-  }
-
   private isCachedXcodeClientNotFound(err: unknown): err is Error {
     return (
       err instanceof Error &&
@@ -464,8 +472,11 @@ export abstract class BaseCommand extends Command {
     const commandType = this._lastResolvedExpectedType;
     const prefix = instanceId?.split('_')[0];
 
-    if (commandType === 'xcode' && prefix === 'ios') {
-      return this.createIosXcodeInstance();
+    if (commandType === 'xcode') {
+      if (this._xcodeReplacementIntent === 'simulator-backed') {
+        return this.createIosXcodeInstance();
+      }
+      return this.createStandaloneXcodeInstance();
     }
 
     if (prefix === 'ios' || commandType === 'ios') {
@@ -524,15 +535,6 @@ export abstract class BaseCommand extends Command {
     return loadIosInstanceCache(id) ?? { id, type: 'ios' };
   }
 
-  private xcodeTargetFromRecord(
-    record: LastAndroidInstance | LastIosInstance | LastXcodeInstance,
-  ): XcodeTarget {
-    if (record.type === 'ios' || record.type === 'xcode') {
-      return record;
-    }
-    throw new Error(`Expected an iOS or Xcode target, got ${record.id}`);
-  }
-
   private async createIosXcodeInstance(): Promise<LastIosInstance> {
     const instance = await this.client.iosInstances.create({
       wait: true,
@@ -545,6 +547,18 @@ export abstract class BaseCommand extends Command {
     if (!target) {
       throw new Error(
         `Created iOS instance ${instance.metadata.id}, but failed to load it from local cache.`,
+      );
+    }
+    return target;
+  }
+
+  private async createStandaloneXcodeInstance(): Promise<LastXcodeInstance> {
+    const instance = await this.client.xcodeInstances.create({ wait: true, spec: {} });
+    saveLastCreatedInstance(instance);
+    const target = loadLastXcodeInstance();
+    if (!target || target.type !== 'xcode') {
+      throw new Error(
+        `Created Xcode instance ${instance.metadata.id}, but failed to load it from local cache.`,
       );
     }
     return target;
