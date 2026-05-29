@@ -1,4 +1,5 @@
 import { Args } from '@oclif/core';
+import { type SimulatorBuildStatus, type SimulatorStatus } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 
 export default class XcodeGet extends BaseCommand {
@@ -22,10 +23,11 @@ export default class XcodeGet extends BaseCommand {
 
     await this.withAuth(async () => {
       const target = await this.resolveXcodeTarget(args.id);
+      const simulatorStatus = await (await this.resolveXcodeClient(target)).getSimulator();
       if (target.type === 'ios') {
         const instance = await this.client.iosInstances.get(target.id);
         if (flags.json) {
-          this.outputJson(instance);
+          this.outputJson({ ...instance, simulator: simulatorStatus });
         } else {
           const signedStreamUrl = this.signedStreamUrl(instance.status);
           this.output(`ID: ${instance.metadata.id}`);
@@ -38,12 +40,13 @@ export default class XcodeGet extends BaseCommand {
             this.output(`Xcode Sandbox URL: ${instance.status.sandbox.xcode.url}`);
           }
           if (signedStreamUrl) this.output(`Signed Stream URL: ${signedStreamUrl}`);
+          this.outputSimulatorStatus(simulatorStatus);
         }
         return;
       }
 
       if (flags.json) {
-        this.outputJson(target);
+        this.outputJson({ ...target, simulator: simulatorStatus });
       } else {
         this.output(`ID: ${target.id}`);
         this.output(`Type: Xcode sandbox`);
@@ -52,7 +55,29 @@ export default class XcodeGet extends BaseCommand {
         this.output(`State: ${target.status?.state || ''}`);
         this.output(`Console URL: ${this.consoleStreamUrl(target.id)}`);
         if (target.apiUrl) this.output(`API URL: ${target.apiUrl}`);
+        this.outputSimulatorStatus(simulatorStatus);
       }
     });
   }
+
+  private outputSimulatorStatus(status: SimulatorStatus): void {
+    if (!status.attached) {
+      this.output('Simulator: not attached');
+      if (status.latestBuild) {
+        this.output(`Latest Simulator Build: ${formatBuild(status.latestBuild)}`);
+      }
+      return;
+    }
+
+    const iosInstanceId = status.simulator?.iosInstanceId;
+    this.output(`Simulator: attached${iosInstanceId ? ` (${iosInstanceId})` : ''}`);
+    if (status.latestBuild) {
+      this.output(`Latest Simulator Build: ${formatBuild(status.latestBuild)}`);
+    }
+  }
+}
+
+function formatBuild(build: SimulatorBuildStatus): string {
+  const bundle = build.bundleId ? `, bundle=${build.bundleId}` : '';
+  return `${build.buildId} (${build.installState}${bundle})`;
 }
