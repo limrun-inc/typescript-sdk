@@ -4,9 +4,9 @@ import { registerCreatedInstance } from '../../lib/config';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 
 export default class XcodeAttachSimulator extends BaseCommand {
-  static summary = 'Attach an iOS simulator to an Xcode instance (deprecated)';
+  static summary = 'Attach an iOS simulator to an Xcode instance';
   static description =
-    'Deprecated: use `lim ios create --attach` or `lim xcode create --attach` for create-and-attach flows. Attach an existing iOS simulator to an Xcode sandbox so future builds can auto-install on that simulator.';
+    'Attach an existing iOS simulator to an Xcode sandbox so future builds can auto-install on that simulator.';
 
   static examples = [
     '<%= config.bin %> xcode attach-simulator <ios-instance-ID>',
