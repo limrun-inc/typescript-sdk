@@ -260,9 +260,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         const cacheKey = `limsync-cache-${folderName}-${hash}`;
         const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
         const sandboxInfo =
-          opts?.additionalFiles?.some((file) => file.remotePath.startsWith('~/')) ?
-            await getSandboxInfo()
-          : undefined;
+          opts?.additionalFiles && opts.additionalFiles.length > 0 ? await getSandboxInfo() : undefined;
         const additionalFiles = opts?.additionalFiles?.map((file) => ({
           localPath: file.localPath,
           remotePath:
