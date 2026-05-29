@@ -5,6 +5,7 @@ import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { xcodeSandboxIdFromUrl } from '../../lib/xcode-sandbox';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
+import { formatDurationMs } from '../../lib/duration';
 import { type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 
@@ -133,8 +134,9 @@ export default class IosCreate extends BaseCommand {
         if (labels) params.metadata.labels = labels;
       }
 
-      const start = Date.now();
+      const createStart = Date.now();
       const instance = await this.client.iosInstances.create(params);
+      const createDurationMs = Date.now() - createStart;
       const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
       const signedStreamUrl = this.signedStreamUrl(instance.status);
       const xcodeSandboxUrl = instance.status.sandbox?.xcode?.url;
@@ -149,9 +151,12 @@ export default class IosCreate extends BaseCommand {
         }
       };
       let attachResult: SimulatorAttachResult | undefined;
+      let attachDurationMs: number | undefined;
       if (attachClient) {
         try {
+          const attachStart = Date.now();
           attachResult = await attachClient.attachSimulator(instance);
+          attachDurationMs = Date.now() - attachStart;
         } catch (err) {
           this.info(`Created iOS instance ${instance.metadata.id}, but attach failed.`);
           if (flags.rm) {
@@ -160,7 +165,11 @@ export default class IosCreate extends BaseCommand {
           throw err;
         }
       }
-      this.info(`Created a new iOS instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
+      const createdMessage =
+        flags.xcode ?
+          `Created a new iOS instance with Xcode sandbox in ${formatDurationMs(createDurationMs)}.`
+        : `Created a new iOS instance in ${formatDurationMs(createDurationMs)}.`;
+      this.info(createdMessage);
       this.info('iOS Instance:');
       this.info(`  ID: ${instance.metadata.id}`);
       this.info(`  Console URL: ${consoleUrl}`);
@@ -177,6 +186,9 @@ export default class IosCreate extends BaseCommand {
         this.info(`  URL: ${xcodeSandboxUrl}`);
       }
       if (attachResult && attachTarget) {
+        if (attachDurationMs !== undefined) {
+          this.info(`Attach/install completed in ${formatDurationMs(attachDurationMs)}.`);
+        }
         this.info(formatSimulatorAttachResult(instance.metadata.id, attachTarget.id, attachResult));
       }
 
