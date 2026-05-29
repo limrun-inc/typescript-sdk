@@ -4,7 +4,9 @@ import path from 'path';
 
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
 
-async function withConfigModule<T>(fn: (config: typeof import('../packages/cli/src/lib/config')) => T): Promise<T> {
+async function withConfigModule<T>(
+  fn: (config: typeof import('../packages/cli/src/lib/config')) => T,
+): Promise<T> {
   const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'limrun-cli-config-test-'));
   const homedir = () => homeDir;
   jest.resetModules();
@@ -80,6 +82,20 @@ describe('CLI last instance config', () => {
     });
   });
 
+  test('clears the derived sandbox Xcode target when the owning iOS instance is cleared', async () => {
+    await withConfigModule((config) => {
+      config.registerCreatedInstance(
+        iosInstanceWithXcodeUrl('https://instances.example.test/sandbox_01xcode/api'),
+        ['xcode'],
+      );
+
+      config.clearLastInstanceId('ios_euna_01test');
+
+      expect(config.loadLastIosInstance()).toBeNull();
+      expect(config.loadLastXcodeInstance()).toBeNull();
+    });
+  });
+
   test('keeps legacy iOS xcode slot behavior when no sandbox URL is available', async () => {
     await withConfigModule((config) => {
       config.registerCreatedInstance(iosInstanceWithXcodeUrl(), ['xcode']);
@@ -93,9 +109,10 @@ describe('CLI last instance config', () => {
 
   test('keeps legacy iOS xcode slot behavior when sandbox URL cannot be parsed', async () => {
     await withConfigModule((config) => {
-      config.registerCreatedInstance(iosInstanceWithXcodeUrl('https://instances.example.test/no-sandbox-id'), [
-        'xcode',
-      ]);
+      config.registerCreatedInstance(
+        iosInstanceWithXcodeUrl('https://instances.example.test/no-sandbox-id'),
+        ['xcode'],
+      );
 
       expect(config.loadLastXcodeInstance()).toMatchObject({
         id: 'ios_euna_01test',
