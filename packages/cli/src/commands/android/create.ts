@@ -1,4 +1,5 @@
 import path from 'path';
+import { spawn } from 'child_process';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
@@ -15,6 +16,7 @@ export default class AndroidCreate extends BaseCommand {
     '<%= config.bin %> android create --rm --install ./app.apk',
     '<%= config.bin %> android create --region us-west --label env=dev',
     '<%= config.bin %> android create --no-connect',
+    '<%= config.bin %> android create --daemon=false',
   ];
 
   static flags = {
@@ -31,6 +33,11 @@ export default class AndroidCreate extends BaseCommand {
     'adb-path': Flags.string({
       description: 'Path to the adb binary used for tunnel-driven workflows',
       default: 'adb',
+    }),
+    daemon: Flags.boolean({
+      description: 'Run the ADB tunnel in the background. Use --daemon=false to keep it in the foreground.',
+      default: true,
+      allowNo: true,
     }),
     'display-name': Flags.string({
       description: 'Human-friendly display name shown in listings and the console',
@@ -134,6 +141,33 @@ export default class AndroidCreate extends BaseCommand {
       }
 
       if (flags.connect) {
+        if (flags.daemon && !flags.rm) {
+          const childArgs = [process.argv[1], 'android', 'connect', '--id', instance.metadata.id];
+          if (flags['adb-path']) {
+            childArgs.push('--adb-path', flags['adb-path']);
+          }
+          if (flags['api-key']) {
+            childArgs.push('--api-key', flags['api-key']);
+          }
+
+          const child = spawn(process.execPath, childArgs, {
+            detached: true,
+            stdio: 'ignore',
+          });
+          child.unref();
+          this.output('');
+          this.output(`ADB tunnel starting in background (PID ${child.pid}).`);
+          this.output('');
+          this.output(`Stop the tunnel by either killing the process or deleting the instance:`);
+          this.output(`- kill ${child.pid}`);
+          this.output(`- lim android delete ${instance.metadata.id}`);
+          return;
+        }
+
+        if (flags.daemon && flags.rm) {
+          this.info('--rm keeps the tunnel in the foreground so the instance can be deleted on exit.');
+        }
+
         const { createInstanceClient } = await import('@limrun/api');
         const instanceClient = await createInstanceClient({
           apiUrl: instance.status.apiUrl!,
@@ -142,12 +176,7 @@ export default class AndroidCreate extends BaseCommand {
         });
 
         const tunnel = await instanceClient.startAdbTunnel();
-        this.info(
-          `Open this URL in your browser to stream the device: ${
-            signedStreamUrl || this.consoleStreamUrl(instance.metadata.id)
-          }`,
-        );
-        this.output('Tunnel started. Press Ctrl+C to stop.');
+        this.output('ADB tunnel started. Press Ctrl+C to stop.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
           const shutdown = () => {
