@@ -6,6 +6,7 @@ import yaml from 'js-yaml';
 import { type AndroidInstance } from '@limrun/api/resources/android-instances';
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
 import { type XcodeInstance } from '@limrun/api/resources/xcode-instances';
+import { xcodeSandboxIdFromUrl } from './xcode-sandbox';
 
 const CONFIG_DIR = path.join(os.homedir(), '.lim');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.yaml');
@@ -251,13 +252,63 @@ function buildLastInstanceRecord(
   };
 }
 
+function buildLastXcodeSlotRecord(
+  instanceOrId: InstanceInput,
+): LastIosInstance | LastXcodeInstance | null {
+  const record = buildLastInstanceRecord(instanceOrId);
+  if (record.type === 'xcode') {
+    return record;
+  }
+  if (record.type !== 'ios' || !isIosInstance(instanceOrId)) {
+    return null;
+  }
+
+  const sandboxXcodeUrl = instanceOrId.status.sandbox?.xcode?.url;
+  const sandboxXcodeId = sandboxXcodeUrl ? xcodeSandboxIdFromUrl(sandboxXcodeUrl) : undefined;
+  if (!sandboxXcodeUrl || !sandboxXcodeId) {
+    return record;
+  }
+
+  const metadata: XcodeInstance.Metadata = {
+    id: sandboxXcodeId,
+    createdAt: instanceOrId.metadata.createdAt,
+    organizationId: instanceOrId.metadata.organizationId,
+  };
+  if (instanceOrId.metadata.displayName) {
+    metadata.displayName = instanceOrId.metadata.displayName;
+  }
+
+  const spec: XcodeInstance.Spec = {
+    region: instanceOrId.spec.region,
+    inactivityTimeout: instanceOrId.spec.inactivityTimeout,
+  };
+  if (instanceOrId.spec.hardTimeout) {
+    spec.hardTimeout = instanceOrId.spec.hardTimeout;
+  }
+
+  return {
+    id: sandboxXcodeId,
+    type: 'xcode',
+    metadata,
+    spec,
+    status: {
+      state: instanceOrId.status.state,
+      apiUrl: sandboxXcodeUrl,
+      token: instanceOrId.status.token,
+    },
+    apiUrl: sandboxXcodeUrl,
+    token: instanceOrId.status.token,
+  };
+}
+
 function saveLastInstance(instanceOrId: InstanceInput, slot?: 'xcode'): void {
   ensureConfigDir();
   const record = buildLastInstanceRecord(instanceOrId);
   const data = readLastInstances();
   if (slot === 'xcode') {
-    if (record.type === 'ios' || record.type === 'xcode') {
-      data.xcode = record;
+    const xcodeRecord = buildLastXcodeSlotRecord(instanceOrId);
+    if (xcodeRecord) {
+      data.xcode = xcodeRecord;
     }
   } else if (record.type === 'android') {
     data.android = record;
