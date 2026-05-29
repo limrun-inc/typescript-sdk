@@ -98,6 +98,23 @@ describe('xcode client simulator helpers', () => {
     await expect(xcode.getSimulator()).rejects.toThrow('GET /simulator returned an empty response');
   });
 
+  test('getSimulator maps 404 responses to NotFoundError', async () => {
+    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) => {
+      if (String(input) === 'https://xcode.example.test/simulator') {
+        return notFoundResponse();
+      }
+      throw new Error(`unexpected request: ${input}`);
+    });
+
+    const client = new Limrun({ apiKey: 'key' });
+    const xcode = await client.xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'xcode-token',
+    });
+
+    await expect(xcode.getSimulator()).rejects.toBeInstanceOf(Limrun.NotFoundError);
+  });
+
   test('attachSimulator rejects empty success response', async () => {
     nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
       if (String(input) === 'https://xcode.example.test/simulator' && init?.method === 'POST') {
@@ -119,6 +136,28 @@ describe('xcode client simulator helpers', () => {
       }),
     ).rejects.toThrow('POST /simulator returned an empty response');
   });
+
+  test('attachSimulator maps 404 responses to NotFoundError', async () => {
+    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+      if (String(input) === 'https://xcode.example.test/simulator' && init?.method === 'POST') {
+        return notFoundResponse();
+      }
+      throw new Error(`unexpected request: ${input}`);
+    });
+
+    const client = new Limrun({ apiKey: 'key' });
+    const xcode = await client.xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'xcode-token',
+    });
+
+    await expect(
+      xcode.attachSimulator({
+        apiUrl: 'https://sim.example.test/v1/ios_123/api',
+        token: 'sim-token',
+      }),
+    ).rejects.toBeInstanceOf(Limrun.NotFoundError);
+  });
 });
 
 function jsonResponse(body: unknown): Response {
@@ -130,4 +169,8 @@ function jsonResponse(body: unknown): Response {
 
 function emptyResponse(): Response {
   return new Response('', { status: 200 });
+}
+
+function notFoundResponse(): Response {
+  return new Response('404 page not found', { status: 404 });
 }

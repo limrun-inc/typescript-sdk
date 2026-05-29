@@ -12,6 +12,7 @@ import {
 } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
 import { nodeProxyTransport } from '../internal/proxy-transport';
+import { directInstanceHttpError } from '../internal/direct-instance-errors';
 
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
 
@@ -221,7 +222,7 @@ async function fetchSandboxInfo(apiUrl: string, token: string): Promise<{ homeDi
 async function readJsonResponse<T>(res: Response, operation: string): Promise<T> {
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(`${operation} failed: ${res.status} ${text}`);
+    throw directInstanceHttpError(operation, res.status, text, res.headers);
   }
   if (!text.trim()) {
     throw new Error(`${operation} returned an empty response`);

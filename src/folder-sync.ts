@@ -7,6 +7,7 @@ import { type IgnoreFn } from './folder-sync-ignore';
 import { Readable } from 'stream';
 import * as zlib from 'zlib';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import { directInstanceHttpError } from './internal/direct-instance-errors';
 
 // =============================================================================
 // Folder Sync (HTTP batch)
@@ -247,7 +248,7 @@ async function httpFolderSyncBatch(
     });
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(`folder-sync http failed: ${res.status} ${text}`);
+    throw directInstanceHttpError('folder-sync http', res.status, text, res.headers);
   }
   return JSON.parse(text) as FolderSyncHttpResponse;
 }
