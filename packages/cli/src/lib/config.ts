@@ -252,9 +252,7 @@ function buildLastInstanceRecord(
   };
 }
 
-function buildLastXcodeSlotRecord(
-  instanceOrId: InstanceInput,
-): LastIosInstance | LastXcodeInstance | null {
+function buildLastXcodeSlotRecord(instanceOrId: InstanceInput): LastIosInstance | LastXcodeInstance | null {
   const record = buildLastInstanceRecord(instanceOrId);
   if (record.type === 'xcode') {
     return record;
@@ -345,14 +343,26 @@ export function loadLastXcodeInstance(): LastIosInstance | LastXcodeInstance | n
   return data.xcode ?? null;
 }
 
+function sandboxXcodeIdFromLastIosInstance(instance: LastIosInstance | undefined): string | undefined {
+  const sandboxXcodeUrl = instance?.sandboxXcodeUrl ?? instance?.status?.sandbox?.xcode?.url;
+  return sandboxXcodeUrl ? xcodeSandboxIdFromUrl(sandboxXcodeUrl) : undefined;
+}
+
 export function clearLastInstanceId(instanceId: string): void {
   const data = readLastInstances();
+  const iosRecord = data.ios;
   let changed = false;
   for (const key of Object.keys(data) as (keyof LastInstances)[]) {
     if (data[key]?.id === instanceId) {
       delete data[key];
       changed = true;
     }
+  }
+  const sandboxXcodeId =
+    iosRecord?.id === instanceId ? sandboxXcodeIdFromLastIosInstance(iosRecord) : undefined;
+  if (sandboxXcodeId && data.xcode?.type === 'xcode' && data.xcode.id === sandboxXcodeId) {
+    delete data.xcode;
+    changed = true;
   }
   if (changed) {
     ensureConfigDir();
