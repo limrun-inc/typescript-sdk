@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.28.9 (2026-05-28)
+## 0.28.10 (2026-05-29)
+
+Full Changelog: [v0.28.9...v0.28.10](https://github.com/limrun-inc/typescript-sdk/compare/v0.28.9...v0.28.10)
+
+### Bug Fixes
+
+* release SDK target recovery fixes ([be403a7](https://github.com/limrun-inc/typescript-sdk/commit/be403a7e2daeb6f753702ec66d0b4ff4984dd7c4))
+* restore SDK release metadata ([a11d875](https://github.com/limrun-inc/typescript-sdk/commit/a11d875fdac7e2986f69cd191e6cba8cbafbb2c8))
+
+## 0.28.9 (2026-05-29)
 
 Full Changelog: [v0.28.8...v0.28.9](https://github.com/limrun-inc/typescript-sdk/compare/v0.28.8...v0.28.9)
 
