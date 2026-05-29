@@ -1,5 +1,5 @@
 import path from 'path';
-import { Flags } from '@oclif/core';
+import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
@@ -18,8 +18,15 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create --rm --model ipad',
     '<%= config.bin %> ios create --region us-west --install-asset my-app.ipa',
     '<%= config.bin %> ios create --install ./MyApp.ipa --xcode',
-    '<%= config.bin %> ios create --attach --xcode-id <xcode-instance-ID>',
+    '<%= config.bin %> ios create --attach <xcode-instance-ID>',
   ];
+
+  static args = {
+    xcodeId: Args.string({
+      description: 'Xcode target to attach to. Defaults to the most recently created Xcode target.',
+      required: false,
+    }),
+  };
 
   static flags = {
     ...BaseCommand.baseFlags,
@@ -64,27 +71,23 @@ export default class IosCreate extends BaseCommand {
       description: 'Attach the created simulator to an existing Xcode target',
       default: false,
     }),
-    'xcode-id': Flags.string({
-      description:
-        'Xcode target to attach to. Defaults to the most recently created Xcode target when --attach is used.',
-    }),
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(IosCreate);
+    const { args, flags } = await this.parse(IosCreate);
     this.setParsedFlags(flags);
     if (flags.attach && flags.xcode) {
       this.error('Use either --attach or --xcode, not both.');
     }
-    if (flags['xcode-id'] && !flags.attach) {
-      this.error('--xcode-id requires --attach.');
+    if (args.xcodeId && !flags.attach) {
+      this.error('Xcode target argument requires --attach.');
     }
 
     await this.withAuth(async () => {
-      const attachTarget = flags.attach ? await this.resolveXcodeTarget(flags['xcode-id']) : undefined;
+      const attachTarget = flags.attach ? await this.resolveXcodeTarget(args.xcodeId) : undefined;
       if (attachTarget?.type === 'ios') {
         this.error(
-          '--attach requires a standalone Xcode instance. Create one with `lim xcode create`, then rerun with --xcode-id.',
+          '--attach requires a standalone Xcode instance. Create one with `lim xcode create`, then rerun with its ID.',
         );
       }
       const attachClient = attachTarget ? await this.resolveXcodeClient(attachTarget) : undefined;

@@ -115,10 +115,10 @@ describe('CLI simulator attach flows', () => {
     const command = makeCommand(
       IosCreate.prototype,
       {
+        args: { xcodeId: 'xcode_123' },
         flags: {
           attach: true,
           xcode: false,
-          'xcode-id': 'xcode_123',
           'reuse-if-exists': true,
         },
       },
@@ -156,11 +156,11 @@ describe('CLI simulator attach flows', () => {
     const command = makeCommand(
       IosCreate.prototype,
       {
+        args: { xcodeId: 'xcode_123' },
         flags: {
           attach: true,
           json: true,
           xcode: false,
-          'xcode-id': 'xcode_123',
         },
       },
       client,
@@ -196,11 +196,11 @@ describe('CLI simulator attach flows', () => {
     const command = makeCommand(
       IosCreate.prototype,
       {
+        args: { xcodeId: 'xcode_123' },
         flags: {
           attach: true,
           rm: true,
           xcode: false,
-          'xcode-id': 'xcode_123',
         },
       },
       client,
