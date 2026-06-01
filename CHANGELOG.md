@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.29.0 (2026-06-01)
+
+Full Changelog: [v0.28.10...v0.29.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.28.10...v0.29.0)
+
+### Bug Fixes
+
+* clarify ios create attach timing ([1c331e7](https://github.com/limrun-inc/typescript-sdk/commit/1c331e73797b02e6480b685881a39a8fc919d9f2))
+* clear owned sandbox xcode cache ([036c2d1](https://github.com/limrun-inc/typescript-sdk/commit/036c2d19e45e1c2c2b8905eb69acbdcde42bcd2d))
+* remember sandbox xcode targets ([fd58f0b](https://github.com/limrun-inc/typescript-sdk/commit/fd58f0be5003c6eec001e747bea78872fa7d420c))
+
 ## 0.28.10 (2026-05-29)
 
 Full Changelog: [v0.28.9...v0.28.10](https://github.com/limrun-inc/typescript-sdk/compare/v0.28.9...v0.28.10)
