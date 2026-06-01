@@ -32,6 +32,12 @@ function buildDownloadUrl(apiUrl: string): string {
   return `${apiUrl}/files?path=${encodeURIComponent(ANDROID_RECORDING_PATH)}`;
 }
 
+function assertBandwidthKbps(field: keyof WifiBandwidthOptions, value: number): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${field} must be a non-negative integer Kbps value`);
+  }
+}
+
 /**
  * A client for interacting with a Limbar instance
  */
@@ -82,6 +88,11 @@ export type InstanceClient = {
    * Open a URL/deeplink on Android.
    */
   openUrl: (url: string) => Promise<OpenUrlResult>;
+  /**
+   * Set Android Wi-Fi bandwidth limits in Kbps. Omit a direction to leave it unchanged;
+   * pass `0` to clear that direction's limit.
+   */
+  setWifiBandwidth: (options: WifiBandwidthOptions) => Promise<void>;
   /**
    * Start recording device video. Use stopRecording() to finish the recording.
    * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
@@ -276,6 +287,11 @@ export type OpenUrlResult = {
   url: string;
 };
 
+export type WifiBandwidthOptions = {
+  downKbps?: number;
+  upKbps?: number;
+};
+
 type EmptyCommandResult = Record<string, never>;
 
 type ScreenshotErrorResponse = {
@@ -365,6 +381,13 @@ type OpenUrlResultMessage = {
   error?: CommandError;
 };
 
+type SetWifiBandwidthResultMessage = {
+  type: 'setWifiBandwidthResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
 type StartVideoRecordingResultMessage = {
   type: 'startRecordingResult';
   id: string;
@@ -389,6 +412,7 @@ type KnownCommandResultMessage =
   | ScrollScreenResultMessage
   | ScrollElementResultMessage
   | OpenUrlResultMessage
+  | SetWifiBandwidthResultMessage
   | StartVideoRecordingResultMessage
   | StopVideoRecordingResultMessage;
 
@@ -409,6 +433,7 @@ type CommandRequestMap = {
   scrollScreen: { direction: ScrollDirection; amount?: number };
   scrollElement: AndroidElementTarget & { direction: ScrollDirection; amount?: number };
   openUrl: { url: string };
+  setWifiBandwidth: WifiBandwidthOptions;
   startRecording: { quality?: RecordingQuality };
   stopRecording: { upload?: { presignedUrl: string } };
 };
@@ -423,6 +448,7 @@ type CommandResultMap = {
   scrollScreen: ScrollResult;
   scrollElement: ScrollResult;
   openUrl: OpenUrlResult;
+  setWifiBandwidth: EmptyCommandResult;
   startRecording: EmptyCommandResult;
   stopRecording: EmptyCommandResult;
 };
@@ -588,6 +614,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         case 'scrollScreenResult':
         case 'scrollElementResult':
         case 'openUrlResult':
+        case 'setWifiBandwidthResult':
         case 'startRecordingResult':
         case 'stopRecordingResult':
           return 'id' in message && typeof message.id === 'string';
@@ -827,6 +854,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             scrollScreen,
             scrollElement,
             openUrl,
+            setWifiBandwidth,
             startRecording,
             stopRecording,
             keepAlive,
@@ -917,6 +945,22 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return {
         url: typeof result.url === 'string' ? result.url : url,
       };
+    };
+
+    const setWifiBandwidth = async (bandwidthOptions: WifiBandwidthOptions): Promise<void> => {
+      const request: CommandRequestMap['setWifiBandwidth'] = {};
+      if (bandwidthOptions.downKbps !== undefined) {
+        assertBandwidthKbps('downKbps', bandwidthOptions.downKbps);
+        request.downKbps = bandwidthOptions.downKbps;
+      }
+      if (bandwidthOptions.upKbps !== undefined) {
+        assertBandwidthKbps('upKbps', bandwidthOptions.upKbps);
+        request.upKbps = bandwidthOptions.upKbps;
+      }
+      if (request.downKbps === undefined && request.upKbps === undefined) {
+        throw new Error('setWifiBandwidth requires downKbps, upKbps, or both');
+      }
+      await sendRequest('setWifiBandwidth', request);
     };
 
     const startRecording = async (recordingOptions?: { quality?: RecordingQuality }): Promise<void> => {
