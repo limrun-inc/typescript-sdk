@@ -411,6 +411,12 @@ export function startDaemonServer(): void {
           result = { opened: true, url: args[0] };
           break;
 
+        case 'set-wifi-bandwidth':
+          if (type !== 'android') throw new Error('set-wifi-bandwidth is only supported on Android instances');
+          await (client as any).setWifiBandwidth(args[0]);
+          result = { updated: true, bandwidth: args[0] };
+          break;
+
         case 'launch-app':
           if (type !== 'ios') throw new Error('launch-app is only supported on iOS instances');
           await (client as any).launchApp(args[0], args[1]);

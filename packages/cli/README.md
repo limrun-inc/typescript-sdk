@@ -366,6 +366,11 @@ lim android install-app ./app.apk
 # Open URL
 lim android open-url https://example.com
 
+# Wi-Fi bandwidth limits
+lim android set-wifi-bandwidth --down-kbps 1000
+lim android set-wifi-bandwidth --up-kbps 1000
+lim android set-wifi-bandwidth --up-kbps 0
+
 # Video recording
 lim android record start
 lim android record start --quality 8
