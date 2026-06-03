@@ -11,12 +11,12 @@ import type { RequestInfo } from '../src/internal/builtin-types';
 
 const originalFetch = nodeProxyTransport.fetch;
 
-describe('xcode client app config', () => {
+describe('xcode client build settings', () => {
   afterEach(() => {
     nodeProxyTransport.fetch = originalFetch;
   });
 
-  test('serializes appConfig in limbuild exec request', async () => {
+  test('serializes buildSettings in limbuild exec request', async () => {
     const calls: Array<{ input: RequestInfo; init: RequestInit | undefined }> = [];
     nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
       calls.push({ input, init });
@@ -35,9 +35,9 @@ describe('xcode client app config', () => {
     const result = await xcode.xcodebuild(
       { scheme: 'Scripty' },
       {
-        appConfig: {
-          PREVIEW_BUILD: 'true',
-          DEV_LOGIN_SECRET: 'abc=def',
+        buildSettings: {
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) LIMRUN',
+          APP_CONFIG_DEV_LOGIN_SECRET: 'abc=def',
         },
       },
     );
@@ -47,9 +47,9 @@ describe('xcode client app config', () => {
     expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
       command: 'xcodebuild',
       xcodebuild: { scheme: 'Scripty' },
-      appConfig: {
-        PREVIEW_BUILD: 'true',
-        DEV_LOGIN_SECRET: 'abc=def',
+      buildSettings: {
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) LIMRUN',
+        APP_CONFIG_DEV_LOGIN_SECRET: 'abc=def',
       },
     });
   });

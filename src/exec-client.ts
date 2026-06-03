@@ -30,7 +30,7 @@ export type ExecRequest = {
     certificatePassword?: string;
     provisioningProfileBase64?: string;
   };
-  appConfig?: Record<string, string>;
+  buildSettings?: Record<string, string>;
   signedUploadUrl?: string;
   additionalMetadata?: {
     signedDownloadUrl?: string;
