@@ -13,6 +13,7 @@ import {
 import { createIgnoreFn } from '../folder-sync-ignore';
 import { nodeProxyTransport } from '../internal/proxy-transport';
 import { directInstanceHttpError } from '../internal/direct-instance-errors';
+import { validateAppConfig } from '../app-config';
 
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
 
@@ -88,6 +89,7 @@ export type XcodeBuildOptions = {
   upload?: { assetName: string } | { signedUploadUrl: string };
   signing?: XcodeSigningConfig;
   reactNative?: ReactNativeBuildConfig;
+  appConfig?: Record<string, string>;
 };
 
 export type SimulatorInstallState =
@@ -326,11 +328,15 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         if (options?.reactNative?.devServerURL && settings?.configuration === 'Release') {
           throw new Error('reactNative.devServerURL is only supported for Debug builds');
         }
+        if (options?.appConfig) {
+          validateAppConfig(options.appConfig);
+        }
         const request: ExecRequest = {
           command: 'xcodebuild',
           ...(settings && { xcodebuild: settings }),
           ...(options?.reactNative && { reactNative: options.reactNative }),
           ...(options?.signing && { signing: options.signing }),
+          ...(options?.appConfig && { appConfig: options.appConfig }),
         };
 
         if (options?.upload && 'assetName' in options.upload) {

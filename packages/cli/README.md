@@ -410,6 +410,9 @@ lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 # Build and upload artifact
 lim xcode build ./MyProject --scheme MyApp --upload my-app-build
 
+# Build with app config values available as Xcode build settings
+lim xcode build ./MyProject --scheme MyApp --app-config PREVIEW_BUILD=true --app-config DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"
+
 # Signed device build
 lim xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa
 
@@ -649,6 +652,8 @@ lim asset pull my-app-build -o ./build-output
 #### Build Behavior
 
 `lim xcode build [PATH]` automatically performs a one-shot code sync for the given project path before invoking `xcodebuild`. The sync step automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
+
+Pass `--app-config KEY=VALUE` to provide app config baked into the build. Use a bare key (`^[A-Z0-9_]+$`); the `APP_CONFIG_` prefix is added automatically when the value is passed to xcodebuild. So `--app-config DEV_LOGIN_SECRET=...` is referenced in `Info.plist` as `<string>$(APP_CONFIG_DEV_LOGIN_SECRET)</string>` and read at runtime with `Bundle.main`.
 
 Provide `--certificate-p12`, `--certificate-password`, and `--provisioning-profile` together to sign a real-device build. When signing assets are provided without `--sdk`, the CLI builds with `iphoneos`; pass `--sdk watchos` for signed watchOS device builds.
 

@@ -9,6 +9,7 @@ export { PagePromise } from './core/pagination';
 export * from './instance-client';
 export * as Ios from './ios-client';
 export { startHttpProxy, type HttpProxy, type StartHttpProxyOptions } from './http-proxy';
+export { appConfigKeyPattern, parseAppConfigEntries, validateAppConfig } from './app-config';
 export {
   exec,
   type ExecRequest,
