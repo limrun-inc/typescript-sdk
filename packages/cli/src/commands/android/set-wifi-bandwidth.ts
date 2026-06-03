@@ -21,8 +21,7 @@ export default class AndroidSetWifiBandwidth extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     id: Flags.string({
-      description:
-        'Android instance ID to target. Defaults to the last created Android instance.',
+      description: 'Android instance ID to target. Defaults to the last created Android instance.',
     }),
     'down-kbps': Flags.integer({
       description: 'Download bandwidth limit in Kbps. Use 0 to clear the download limit.',

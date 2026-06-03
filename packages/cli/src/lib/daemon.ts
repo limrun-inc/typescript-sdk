@@ -412,7 +412,8 @@ export function startDaemonServer(): void {
           break;
 
         case 'set-wifi-bandwidth':
-          if (type !== 'android') throw new Error('set-wifi-bandwidth is only supported on Android instances');
+          if (type !== 'android')
+            throw new Error('set-wifi-bandwidth is only supported on Android instances');
           await (client as any).setWifiBandwidth(args[0]);
           result = { updated: true, bandwidth: args[0] };
           break;
