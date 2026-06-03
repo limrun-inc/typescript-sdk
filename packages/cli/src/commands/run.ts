@@ -272,7 +272,11 @@ export default class Run extends BaseCommand {
         }
         this.stopProgress('success', `Built and launched in ${formatDurationMs(Date.now() - buildStart)}`);
 
-        return this.consoleStreamUrl(instance.metadata.id);
+        const streamUrl = this.signedStreamUrl(instance.status);
+        if (!streamUrl) {
+          this.error('The iOS instance is ready, but its signed stream URL is missing.');
+        }
+        return streamUrl;
       });
     } catch (err) {
       if (!recoveryPrinted) {
