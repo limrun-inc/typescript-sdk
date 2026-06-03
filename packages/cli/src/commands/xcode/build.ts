@@ -34,7 +34,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
     '<%= config.bin %> xcode build --signed-upload-url <url>',
-    '<%= config.bin %> xcode build ./MyProject --build-setting SWIFT_ACTIVE_COMPILATION_CONDITIONS="$(inherited) LIMRUN" --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"',
+    `<%= config.bin %> xcode build ./MyProject --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"`,
     '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152',
     '<%= config.bin %> xcode build ./MyProject --ignore "\\\\.xcuserdata/"',
     '<%= config.bin %> xcode build ./MyProject --additional-file ~/.netrc=~/.netrc',
