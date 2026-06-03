@@ -1,10 +1,8 @@
 jest.mock('eventsource-client', () => ({
-  createEventSource: jest.fn(
-    (options: { onMessage: (message: { event: string; data: string }) => void }) => {
-      setTimeout(() => options.onMessage({ event: 'exitCode', data: '0' }), 0);
-      return { close: jest.fn() };
-    },
-  ),
+  createEventSource: jest.fn((options: { onMessage: (message: { event: string; data: string }) => void }) => {
+    setTimeout(() => options.onMessage({ event: 'exitCode', data: '0' }), 0);
+    return { close: jest.fn() };
+  }),
 }));
 
 import Limrun from '@limrun/api';
