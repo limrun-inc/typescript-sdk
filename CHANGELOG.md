@@ -6,7 +6,6 @@ Full Changelog: [v0.29.0...v0.30.0](https://github.com/limrun-inc/typescript-sdk
 
 ### Features
 
-* add appConfig to xcode build ([459185d](https://github.com/limrun-inc/typescript-sdk/commit/459185db09a62de621bee5f2920cc7ea5f0839f1))
 * add buildSettings to xcode build ([f974459](https://github.com/limrun-inc/typescript-sdk/commit/f974459d3bb6b3cf8b4c54f3ef068a6820560662))
 
 
