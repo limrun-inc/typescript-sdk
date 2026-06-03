@@ -5,7 +5,7 @@ import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
-import { type XcodeClient } from '@limrun/api';
+import { parseAppConfigEntries, type XcodeBuildOptions, type XcodeClient } from '@limrun/api';
 
 const DEVICE_SDKS = new Set(['iphoneos', 'watchos']);
 const SIMULATOR_SDKS = new Set(['iphonesimulator', 'watchsimulator']);
@@ -34,6 +34,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
     '<%= config.bin %> xcode build --signed-upload-url <url>',
+    '<%= config.bin %> xcode build ./MyProject --app-config PREVIEW_BUILD=true --app-config DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"',
     '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152',
     '<%= config.bin %> xcode build ./MyProject --ignore "\\\\.xcuserdata/"',
     '<%= config.bin %> xcode build ./MyProject --additional-file ~/.netrc=~/.netrc',
@@ -81,6 +82,11 @@ export default class XcodeBuild extends BaseCommand {
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
     'signed-upload-url': Flags.string({
       description: 'Presigned URL to upload the resulting build artifact to.',
+    }),
+    'app-config': Flags.string({
+      description:
+        'App config value baked into the build, as KEY=VALUE with a bare key (the APP_CONFIG_ prefix is added automatically). Repeat for multiple.',
+      multiple: true,
     }),
     'certificate-p12': Flags.string({
       description:
@@ -143,12 +149,16 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.ios && !flags.sdk) settings.sdk = 'iphonesimulator';
       if (flags.configuration) settings.configuration = flags.configuration;
 
-      const options: Record<string, unknown> = {};
+      const options: XcodeBuildOptions = {};
       if (flags['dev-server-url'] || flags['expo-app-dir']) {
         options.reactNative = {
           ...(flags['expo-app-dir'] && { expoAppDir: flags['expo-app-dir'] }),
           ...(flags['dev-server-url'] && { devServerURL: flags['dev-server-url'] }),
         };
+      }
+      const appConfig = parseAppConfigEntries(flags['app-config'] ?? []);
+      if (appConfig) {
+        options.appConfig = appConfig;
       }
       const signing = await this.buildSigningOptions(flags);
       if (signing) {
