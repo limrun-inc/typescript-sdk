@@ -4,6 +4,7 @@ import path from 'path';
 import { Flags } from '@oclif/core';
 import type { Tunnel } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
+import { writeRbeWorkspaceFiles } from '../../lib/rbe-workspace';
 
 export default class XcodeRbe extends BaseCommand {
   static summary = 'Serve a local Bazel remote-execution endpoint backed by a Limrun Xcode instance';
@@ -35,7 +36,7 @@ export default class XcodeRbe extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      this.validateBazelWorkspace();
+      const isBazelWorkspace = this.validateBazelWorkspace();
       await this.assertLocalPortFree(flags.port);
 
       const target = await this.resolveXcodeTargetOrCreate(flags.id);
@@ -69,28 +70,53 @@ export default class XcodeRbe extends BaseCommand {
           'build --remote_default_exec_properties=OSFamily=Darwin',
           'build --spawn_strategy=remote',
           'build --noremote_local_fallback',
+          'build --action_env=PATH=/usr/bin:/bin',
         ];
+
+        // With the fleet's Xcode version in hand, generate the workspace
+        // companion (.limrun/BUILD pinning the version, .limrun/bazelrc with
+        // the flags under --config=limrun, try-import wiring) so builds need
+        // no manual configuration and survive fleet Xcode upgrades.
+        let generated: ReturnType<typeof writeRbeWorkspaceFiles> | undefined;
+        if (isBazelWorkspace && status.xcodeVersion) {
+          generated = writeRbeWorkspaceFiles(process.cwd(), status.xcodeVersion, flags.port);
+        }
 
         if (flags.json) {
           this.outputJson({
             instanceId: typeof target === 'string' ? target : target.id,
             port: flags.port,
             frontendPort: status.frontendPort,
+            xcodeVersion: status.xcodeVersion,
+            generatedConfig:
+              generated ?
+                { buildFile: generated.buildFile, bazelrcFragment: generated.bazelrcFragment }
+              : undefined,
             bazelrc,
           });
         } else {
           this.output(`Remote execution endpoint ready: grpc://127.0.0.1:${flags.port}`);
           this.output('');
-          this.output('Add to your .bazelrc (or pass as flags):');
-          for (const line of bazelrc) {
-            this.output(`  ${line}`);
+          if (generated) {
+            this.info(
+              `Generated .limrun/ config for the fleet's Xcode ${status.xcodeVersion}` +
+                (generated.bazelrcUpdated ? ' and wired try-import into .bazelrc.' : '.'),
+            );
+            this.output('Build with:');
+            this.output('  bazelisk build --config=limrun //your:target');
+          } else {
+            this.output('Add to your .bazelrc (or pass as flags):');
+            for (const line of bazelrc) {
+              this.output(`  ${line}`);
+            }
+            if (status.xcodeVersion) {
+              this.info(
+                `The fleet runs Xcode ${status.xcodeVersion}; declare it with an xcode_version_config ` +
+                  'target or remote actions from a different local Xcode will be rejected.',
+              );
+            }
           }
           this.output('');
-          this.info(
-            'Bazel bakes your local Xcode version into remote action keys; it must match the ' +
-              "fleet's Xcode. If your local Xcode differs, configure --xcode_version_config to " +
-              'declare the remotely available Xcode, otherwise remote actions will be rejected.',
-          );
           this.info('Tunnel started. Press Ctrl+C to stop.');
         }
 
@@ -128,10 +154,10 @@ export default class XcodeRbe extends BaseCommand {
 
   /**
    * Warn (and continue) when the current directory does not look like a Bazel
-   * workspace root: bazel must run where MODULE.bazel or WORKSPACE lives for
-   * the printed .bazelrc block to apply.
+   * workspace root: bazel must run where MODULE.bazel or WORKSPACE lives, and
+   * the generated .limrun/ config is only written into a real workspace.
    */
-  private validateBazelWorkspace(): void {
+  private validateBazelWorkspace(): boolean {
     const markers = ['MODULE.bazel', 'WORKSPACE', 'WORKSPACE.bazel'];
     const found = markers.some((m) => fs.existsSync(path.join(process.cwd(), m)));
     if (!found) {
@@ -140,6 +166,7 @@ export default class XcodeRbe extends BaseCommand {
           'root of the Bazel workspace you want to build.',
       );
     }
+    return found;
   }
 
   /** Fail fast with a helpful message when the local port is already taken. */
