@@ -14,6 +14,9 @@ import { createIgnoreFn } from '../folder-sync-ignore';
 import { nodeProxyTransport } from '../internal/proxy-transport';
 import { directInstanceHttpError } from '../internal/direct-instance-errors';
 import { validateBuildSettings } from '../build-settings';
+import { startTcpTunnel, type Tunnel } from '../tunnel';
+
+export type { Tunnel } from '../tunnel';
 
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
 
@@ -138,6 +141,31 @@ export type SimulatorAttachResult = {
   installError?: string;
 };
 
+/**
+ * Status of the instance's embedded Bazel Remote Build Execution stack, as
+ * reported by limbuild's /rbe endpoints.
+ */
+export type RbeStatus = {
+  state: 'stopped' | 'starting' | 'running' | 'failed';
+  /** Loopback port of the RBE gRPC frontend inside the instance, when running. */
+  frontendPort?: number;
+  error?: string;
+};
+
+export type RbeStartOptions = {
+  casMaxBytes?: number;
+  acMaxBytes?: number;
+  workerConcurrency?: number;
+};
+
+export type RbeTunnelOptions = {
+  /** Local port to listen on. Defaults to 8980. */
+  port?: number;
+  /** Local address to listen on. Defaults to 127.0.0.1. */
+  host?: string;
+  logLevel?: LogLevel;
+};
+
 export type XcodeClient = {
   /**
    * Sync source code to the xcode instance. In watch mode, keeps syncing on changes.
@@ -167,6 +195,25 @@ export type XcodeClient = {
    * Return the currently attached simulator and latest installable build state.
    */
   getSimulator: () => Promise<SimulatorStatus>;
+
+  /**
+   * Start the instance's embedded Bazel Remote Build Execution stack.
+   * Idempotent: returns the running status when already up.
+   */
+  startRbe: (opts?: RbeStartOptions) => Promise<RbeStatus>;
+
+  /** Return the current RBE stack status. */
+  getRbe: () => Promise<RbeStatus>;
+
+  /** Stop the RBE stack. */
+  stopRbe: () => Promise<RbeStatus>;
+
+  /**
+   * Open a local TCP listener bridged to the instance's RBE gRPC frontend
+   * over a multiplexed websocket. Point bazel at it with
+   * --remote_executor=grpc://127.0.0.1:<port>.
+   */
+  startRbeTunnel: (opts?: RbeTunnelOptions) => Promise<Tunnel>;
 };
 
 export type XcodeCreateClientParams =
@@ -219,6 +266,26 @@ async function fetchSandboxInfo(apiUrl: string, token: string): Promise<{ homeDi
   return {
     homeDir: normalizeWorkspaceRelativePath(body.homeDir),
   };
+}
+
+/**
+ * Derives the websocket URL of limbuild's /rbe/tunnel endpoint from the
+ * instance apiUrl, mirroring deriveReverseTunnelUrl in ios-client.ts.
+ */
+export function deriveRbeTunnelUrl(apiUrl: string): string {
+  const url = new URL(apiUrl);
+  if (url.protocol === 'https:') {
+    url.protocol = 'wss:';
+  } else if (url.protocol === 'http:') {
+    url.protocol = 'ws:';
+  } else {
+    throw new Error(`Unsupported apiUrl protocol for rbe tunnel: ${url.protocol}`);
+  }
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/rbe/tunnel`;
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('mode', 'multiplexed');
+  return url.toString();
 }
 
 async function readJsonResponse<T>(res: Response, operation: string): Promise<T> {
@@ -400,6 +467,51 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           body: JSON.stringify({ apiUrl: simApiUrl, token: simToken }),
         });
         return readJsonResponse<SimulatorAttachResult>(res, 'POST /simulator');
+      },
+
+      async startRbe(opts?: RbeStartOptions): Promise<RbeStatus> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/rbe`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(opts ?? {}),
+        });
+        return readJsonResponse<RbeStatus>(res, 'POST /rbe');
+      },
+
+      async getRbe(): Promise<RbeStatus> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/rbe`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        return readJsonResponse<RbeStatus>(res, 'GET /rbe');
+      },
+
+      async stopRbe(): Promise<RbeStatus> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/rbe`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        return readJsonResponse<RbeStatus>(res, 'DELETE /rbe');
+      },
+
+      async startRbeTunnel(opts?: RbeTunnelOptions): Promise<Tunnel> {
+        return startTcpTunnel(
+          deriveRbeTunnelUrl(apiUrl),
+          token,
+          opts?.host ?? '127.0.0.1',
+          opts?.port ?? 8980,
+          {
+            mode: 'multiplexed',
+            logLevel: opts?.logLevel ?? params.logLevel ?? 'info',
+          },
+        );
       },
     };
   }
