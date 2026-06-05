@@ -20,6 +20,11 @@ export {
 export {
   type XcodeCreateClientParams,
   type XcodeClient,
+  type RbeStatus,
+  type RbeStartOptions,
+  type RbeTunnelOptions,
+  type Tunnel,
+  deriveRbeTunnelUrl,
   type XcodeProjectConfig,
   type XcodeBuildOptions,
   type ReactNativeBuildConfig,
