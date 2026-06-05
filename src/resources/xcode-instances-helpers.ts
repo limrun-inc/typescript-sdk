@@ -149,6 +149,12 @@ export type RbeStatus = {
   state: 'stopped' | 'starting' | 'running' | 'failed';
   /** Loopback port of the RBE gRPC frontend inside the instance, when running. */
   frontendPort?: number;
+  /**
+   * The Xcode version key remote actions must declare via
+   * XCODE_VERSION_OVERRIDE (e.g. 26.4.0.17E192), when running. Clients
+   * generate their xcode_version_config from it.
+   */
+  xcodeVersion?: string;
   error?: string;
 };
 
