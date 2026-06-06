@@ -18,7 +18,7 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create',
     '<%= config.bin %> ios create --rm --model ipad',
     '<%= config.bin %> ios create --region us-west --install-asset my-app.ipa',
-    '<%= config.bin %> ios create --install ./MyApp.ipa --xcode',
+    '<%= config.bin %> ios create --install ./MyApp.ipa',
     '<%= config.bin %> ios create --attach <xcode-instance-ID>',
   ];
 
