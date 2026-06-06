@@ -1,6 +1,6 @@
 {
   "name": "@limrun/ui",
-  "version": "0.9.0-rc.11",
+  "version": "0.13.3-rc.1",
   "publishConfig": {
     "access": "public"
   },
@@ -12,6 +12,26 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./app-store-relay": {
+      "types": "./dist/app-store-relay/index.d.ts",
+      "import": "./dist/app-store-relay/index.js",
+      "require": "./dist/app-store-relay/index.cjs"
+    },
+    "./app-store-relay/react": {
+      "types": "./dist/app-store-relay/react.d.ts",
+      "import": "./dist/app-store-relay/react.js",
+      "require": "./dist/app-store-relay/react.cjs"
+    },
+    "./device-build": {
+      "types": "./dist/device-build/index.d.ts",
+      "import": "./dist/device-build/index.js",
+      "require": "./dist/device-build/index.cjs"
+    },
+    "./device-build/react": {
+      "types": "./dist/device-build/react.d.ts",
+      "import": "./dist/device-build/react.js",
+      "require": "./dist/device-build/react.cjs"
     },
     "./device-install": {
       "types": "./dist/device-install/index.d.ts",
@@ -42,7 +62,6 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node-forge": "^1.3.14",
-    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react-swc": "^4.0.1",
@@ -58,7 +77,6 @@
   "dependencies": {
     "@foxt/js-srp": "^0.0.3-patch2",
     "clsx": "^2.1.1",
-    "node-forge": "^1.4.0",
-    "qrcode": "^1.5.4"
+    "node-forge": "^1.4.0"
   }
 }

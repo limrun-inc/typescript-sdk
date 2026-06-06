@@ -1,1 +1,1 @@
-export * from './use-device-install';
+export {};
