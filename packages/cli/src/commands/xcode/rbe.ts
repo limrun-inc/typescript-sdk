@@ -43,7 +43,11 @@ export default class XcodeRbe extends BaseCommand {
       const client = await this.resolveXcodeClient(target);
 
       this.info('Starting the remote-execution stack...');
-      let status = await client.startRbe();
+      // Retry transient gateway failures: right after an instance is created
+      // (or replaced), the proxy can report ready a beat before limbuild fully
+      // serves, so the first POST occasionally fails with 502/EOF. startRbe is
+      // idempotent, making blind retries safe.
+      let status = await this.retryTransient(() => client.startRbe());
       for (let attempt = 0; status.state === 'starting' && attempt < 15; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         status = await client.getRbe();
@@ -167,6 +171,32 @@ export default class XcodeRbe extends BaseCommand {
       );
     }
     return found;
+  }
+
+  /**
+   * Retries fn on transient gateway errors (502/503/504 or dropped
+   * connections), which occur when an instance was just created and its proxy
+   * path is not fully serving yet. Non-transient errors propagate immediately.
+   */
+  private async retryTransient<T>(fn: () => Promise<T>): Promise<T> {
+    const transient = /\b(502|503|504)\b|EOF|ECONNRESET|ECONNREFUSED|socket hang up|fetch failed/i;
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!transient.test(message)) {
+          throw err;
+        }
+        lastErr = err;
+        if (attempt < 5) {
+          this.info(`Instance not serving yet (${message.trim()}); retrying...`);
+          await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+        }
+      }
+    }
+    throw lastErr;
   }
 
   /** Fail fast with a helpful message when the local port is already taken. */
