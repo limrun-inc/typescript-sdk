@@ -48,12 +48,18 @@ export function useDeviceInstallRelay({
   const [pairConfirmationRequired, setPairConfirmationRequired] = useState(false);
   const relayRef = useRef<RelayClient | undefined>(undefined);
   const deviceRef = useRef<DeviceRelayTarget | undefined>(undefined);
+  // Keep the logger in a ref so callbacks below don't change identity when the
+  // consumer passes an unmemoized `log`. Otherwise every render would recreate
+  // cleanupDeviceAccess, re-run the unmount effect, and close the USB device
+  // mid-claim (surfacing as "Unable to claim interface" / "operation in progress").
+  const logRef = useRef(log);
+  logRef.current = log;
 
   const cleanupDeviceAccess = useCallback(async () => {
     relayRef.current?.close();
     relayRef.current = undefined;
-    await closeDeviceRelayTarget(deviceRef.current, log);
-  }, [log]);
+    await closeDeviceRelayTarget(deviceRef.current, logRef.current);
+  }, []);
 
   useEffect(() => {
     deviceRef.current = device;
@@ -72,14 +78,17 @@ export function useDeviceInstallRelay({
     let target: DeviceRelayTarget | undefined;
     try {
       await cleanupDeviceAccess();
-      target = await requestUSBAccess({ log });
+      target = await requestUSBAccess({ log: logRef.current });
       const storedPairRecord = await getPairRecord(target.hello.serialNumber);
       setDevice(target);
       setPairRecord(storedPairRecord);
-      log(storedPairRecord ? 'Pair record found' : 'No pair record found', target.hello.serialNumber);
+      logRef.current(
+        storedPairRecord ? 'Pair record found' : 'No pair record found',
+        target.hello.serialNumber,
+      );
       return target;
     } catch (caught) {
-      await closeDeviceRelayTarget(target, log);
+      await closeDeviceRelayTarget(target, logRef.current);
       setDevice(undefined);
       setPairRecord(undefined);
       setError(errorMessage(caught));
@@ -87,7 +96,7 @@ export function useDeviceInstallRelay({
     } finally {
       setBusyAction(undefined);
     }
-  }, [cleanupDeviceAccess, log]);
+  }, [cleanupDeviceAccess]);
 
   const pairBrowser = useCallback(async () => {
     if (!apiUrl || !device) {
@@ -101,27 +110,27 @@ export function useDeviceInstallRelay({
       const result = await pairDevice({
         limbuildApiUrl: apiUrl,
         token,
-        log,
+        log: logRef.current,
         target: device,
       });
       const stored = await putPairRecord(result.pairRecord, {
         productName: device.hello.productName,
       });
       result.relay.close();
-      await closeDeviceRelayTarget(device, log);
+      await closeDeviceRelayTarget(device, logRef.current);
       setPairRecord(stored);
       setPairConfirmationRequired(false);
-      log('Device paired', 'The pair record was stored locally in this browser.');
+      logRef.current('Device paired', 'The pair record was stored locally in this browser.');
       return stored;
     } catch (caught) {
-      await closeDeviceRelayTarget(device, log);
+      await closeDeviceRelayTarget(device, logRef.current);
       setPairConfirmationRequired(true);
       setError(errorMessage(caught));
       return undefined;
     } finally {
       setBusyAction(undefined);
     }
-  }, [apiUrl, cleanupDeviceAccess, device, log, token]);
+  }, [apiUrl, cleanupDeviceAccess, device, token]);
 
   const startInstallation = useCallback(async () => {
     if (!apiUrl || !device || !pairRecord) {
@@ -134,25 +143,25 @@ export function useDeviceInstallRelay({
       relayRef.current = await startDeviceInstall({
         limbuildApiUrl: apiUrl,
         token,
-        log,
+        log: logRef.current,
         target: device,
         pairRecord,
       });
-      log('Device install started', 'Installation will continue through the connected iPhone.');
+      logRef.current('Device install started', 'Installation will continue through the connected iPhone.');
       return relayRef.current;
     } catch (caught) {
-      await closeDeviceRelayTarget(device, log);
+      await closeDeviceRelayTarget(device, logRef.current);
       setError(errorMessage(caught));
       return undefined;
     } finally {
       setBusyAction(undefined);
     }
-  }, [apiUrl, cleanupDeviceAccess, device, log, pairRecord, token]);
+  }, [apiUrl, cleanupDeviceAccess, device, pairRecord, token]);
 
   const stopRelay = useCallback(() => {
     void cleanupDeviceAccess();
-    log('Device relay stopped');
-  }, [cleanupDeviceAccess, log]);
+    logRef.current('Device relay stopped');
+  }, [cleanupDeviceAccess]);
 
   return {
     device,

@@ -68,9 +68,12 @@ export async function claimUsbmux(device: USBDevice, candidate: UsbmuxCandidate)
     await device.selectConfiguration(candidate.configurationValue);
   }
   await device.claimInterface(candidate.interfaceNumber);
-  if (candidate.alternateSetting !== 0) {
-    await device.selectAlternateInterface(candidate.interfaceNumber, candidate.alternateSetting);
-  }
+  // Always select the alternate (even alt 0). On macOS Chrome the
+  // interface's endpoints are not treated as active until the alternate
+  // is explicitly selected, which otherwise surfaces as
+  // "endpoint is not part of a claimed and selected alternate interface"
+  // on the first transferIn/transferOut.
+  await device.selectAlternateInterface(candidate.interfaceNumber, candidate.alternateSetting);
 }
 
 export function getBulkEndpoints(candidate: UsbmuxCandidate) {
