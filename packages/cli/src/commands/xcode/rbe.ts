@@ -69,12 +69,22 @@ export default class XcodeRbe extends BaseCommand {
           );
         }
 
+        const shortXcode = status.xcodeVersion ? status.xcodeVersion.split('.').slice(0, 2).join('.') : undefined;
+        const isMacClient = process.platform === 'darwin';
         const bazelrc = [
           `build --remote_executor=grpc://127.0.0.1:${flags.port}`,
           'build --remote_default_exec_properties=OSFamily=Darwin',
           'build --spawn_strategy=remote',
           'build --noremote_local_fallback',
-          'build --action_env=PATH=/usr/bin:/bin',
+          'build --strategy=SwiftCompile=remote',
+          'build --strategy=Genrule=remote',
+          ...(shortXcode ? [`build --xcode_version=${shortXcode}`] : []),
+          // Non-mac clients have no auto-detected darwin exec platform; on a mac
+          // this flag is harmful (it pulls exec-config actions onto the host).
+          ...(isMacClient ?
+            []
+          : ['build --extra_execution_platforms=@build_bazel_apple_support//platforms:darwin_arm64']),
+          'build --action_env=PATH=/usr/bin:/bin:/usr/sbin:/sbin',
         ];
 
         // With the fleet's Xcode version in hand, generate the workspace
