@@ -40,10 +40,17 @@ export class RelayClient {
     socket.onclose = () => {
       this.closed = true;
       this.log('Relay socket closed');
-      if (this.pairRecordWaiter) {
-        this.pairRecordWaiter.reject(new Error('Relay socket closed'));
-        this.pairRecordWaiter = undefined;
-      }
+      // The server often sends PairRecordReady and then closes immediately. In
+      // Chromium, onclose can be delivered before the queued onmessage handler
+      // has finished processing that final frame. Drain the frame queue before
+      // rejecting the waiter so a successful pair is not reported as
+      // "Relay socket closed".
+      void this.frameQueue.finally(() => {
+        if (this.pairRecordWaiter) {
+          this.pairRecordWaiter.reject(new Error('Relay socket closed'));
+          this.pairRecordWaiter = undefined;
+        }
+      });
     };
     await new Promise<void>((resolve, reject) => {
       socket.onopen = () => resolve();
