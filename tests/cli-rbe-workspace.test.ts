@@ -4,15 +4,22 @@ import path from 'path';
 
 import {
   TRY_IMPORT_LINE,
+  detectBazelMajorVersion,
   ensureTryImport,
   renderLimrunBazelrc,
   renderXcodeConfigBuild,
   writeRbeWorkspaceFiles,
 } from '../packages/cli/src/lib/rbe-workspace';
 
+const APPLE_SUPPORT_LOADS = [
+  'load("@build_bazel_apple_support//xcode:xcode_version.bzl", "xcode_version")',
+  'load("@build_bazel_apple_support//xcode:available_xcodes.bzl", "available_xcodes")',
+  'load("@build_bazel_apple_support//xcode:xcode_config.bzl", "xcode_config")',
+];
+
 describe('rbe workspace generation', () => {
   test('renderXcodeConfigBuild pins the fleet version and derives sdk defaults', () => {
-    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42');
+    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42', false);
     expect(build).toContain('version = "26.4.0.17E192"');
     expect(build).toContain('default_ios_sdk_version = "26.4"');
     expect(build).toContain('"26.4",');
@@ -21,7 +28,7 @@ describe('rbe workspace generation', () => {
   });
 
   test('renderXcodeConfigBuild uses the remote/local split, never a single default bucket', () => {
-    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42');
+    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42', false);
     expect(build).toContain('name = "remote_xcodes"');
     expect(build).toContain('remote_versions = ":remote_xcodes"');
     expect(build).toContain('local_versions = ":local_xcodes"');
@@ -33,7 +40,7 @@ describe('rbe workspace generation', () => {
   });
 
   test('renderXcodeConfigBuild (distinct local Xcode) declares it as the local set', () => {
-    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42');
+    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42', false);
     // The local Xcode is its own rule so local actions resolve against 26.5...
     expect(build).toContain('name = "local_xcode"');
     expect(build).toContain('version = "26.5.0.17F42"');
@@ -43,7 +50,7 @@ describe('rbe workspace generation', () => {
   });
 
   test('renderXcodeConfigBuild (no local Xcode) emits a synthetic local set pinned to the fleet version', () => {
-    const build = renderXcodeConfigBuild('26.4.0.17E192', null);
+    const build = renderXcodeConfigBuild('26.4.0.17E192', null, false);
     expect(build).not.toContain('@local_config_xcode');
     expect(build).not.toContain('name = "local_xcode"'); // no distinct local rule
     expect(build).toContain('local_versions = ":local_xcodes"');
@@ -52,13 +59,58 @@ describe('rbe workspace generation', () => {
 
   test('renderXcodeConfigBuild (local matches fleet) collapses to the synthetic set', () => {
     // Same major.minor locally and remotely: no separate local_xcode rule.
-    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.4.0.17E192');
+    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.4.0.17E192', false);
     expect(build).not.toContain('name = "local_xcode"');
     expect(build).toMatch(/available_xcodes\(\s*name = "local_xcodes",\s*default = ":remote_xcode"/);
   });
 
   test('renderXcodeConfigBuild rejects malformed version keys', () => {
-    expect(() => renderXcodeConfigBuild('26', null)).toThrow(/unexpected Xcode version key/);
+    expect(() => renderXcodeConfigBuild('26', null, false)).toThrow(/unexpected Xcode version key/);
+  });
+
+  test('renderXcodeConfigBuild (emitLoads) loads the Xcode rules from apple_support before any rule', () => {
+    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42', true);
+    for (const line of APPLE_SUPPORT_LOADS) {
+      expect(build).toContain(line);
+    }
+    // load() must precede the first rule (Starlark requirement).
+    expect(build.indexOf('load(')).toBeLessThan(build.indexOf('xcode_version('));
+  });
+
+  test('renderXcodeConfigBuild (no emitLoads) emits the rules as native globals, no loads', () => {
+    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42', false);
+    expect(build).not.toContain('load(');
+    // Still emits the rules themselves.
+    expect(build).toContain('xcode_config(');
+  });
+
+  describe('detectBazelMajorVersion', () => {
+    let dir: string;
+    beforeEach(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bazelver-'));
+    });
+    afterEach(() => {
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    test.each([
+      ['8.4.2', 8],
+      ['9.x', 9],
+      ['9.1.1', 9],
+      ['7.0.0\n', 7],
+    ])('parses %p as major %p', (contents, expected) => {
+      fs.writeFileSync(path.join(dir, '.bazelversion'), contents);
+      expect(detectBazelMajorVersion(dir)).toBe(expected);
+    });
+
+    test('returns null when .bazelversion is absent', () => {
+      expect(detectBazelMajorVersion(dir)).toBeNull();
+    });
+
+    test('returns null when the first line has no leading integer', () => {
+      fs.writeFileSync(path.join(dir, '.bazelversion'), 'latest\n');
+      expect(detectBazelMajorVersion(dir)).toBeNull();
+    });
   });
 
   test('renderLimrunBazelrc scopes every flag under the limrun config', () => {
@@ -113,6 +165,16 @@ describe('rbe workspace generation', () => {
       expect(fs.readFileSync(path.join(dir, '.limrun', '.gitignore'), 'utf8')).toBe('*\n');
       expect(fs.readFileSync(path.join(dir, '.bazelrc'), 'utf8')).toContain(TRY_IMPORT_LINE);
       expect(result.bazelrcUpdated).toBe(true);
+    });
+
+    test('writeRbeWorkspaceFiles emits apple_support loads only on Bazel 9+ (per .bazelversion)', () => {
+      fs.writeFileSync(path.join(dir, '.bazelversion'), '9.1.1\n');
+      const r9 = writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980);
+      expect(fs.readFileSync(r9.buildFile, 'utf8')).toContain(APPLE_SUPPORT_LOADS[0]);
+
+      fs.writeFileSync(path.join(dir, '.bazelversion'), '8.4.2\n');
+      const r8 = writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980);
+      expect(fs.readFileSync(r8.buildFile, 'utf8')).not.toContain('load(');
     });
 
     test('ensureTryImport is idempotent and preserves existing content', () => {

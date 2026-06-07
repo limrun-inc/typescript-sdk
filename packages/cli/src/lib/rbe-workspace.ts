@@ -15,6 +15,39 @@ export const LIMRUN_DIR = '.limrun';
 export const TRY_IMPORT_LINE = 'try-import %workspace%/.limrun/bazelrc';
 const TRY_IMPORT_COMMENT = '# Added by lim xcode rbe: loads the generated remote-execution config.';
 
+/**
+ * Reads the workspace's pinned Bazel major version from `.bazelversion`, or
+ * null when the file is absent or its first line has no leading integer.
+ *
+ * Used to decide whether the generated BUILD must `load` the Xcode rules from
+ * apple_support: in Bazel 9 they are no longer native globals and must be
+ * loaded, while in Bazel 8 they ARE native globals and the apple_support rule
+ * impls `fail()` on the unmigrated Bazel, so loading them there breaks
+ * analysis. The generator runs in the workspace on the client, so the file is
+ * the authoritative signal for the Bazel that bazelisk will launch.
+ */
+export function detectBazelMajorVersion(workspaceDir: string): number | null {
+  try {
+    const raw = fs.readFileSync(path.join(workspaceDir, '.bazelversion'), 'utf8');
+    const firstLine = raw.split('\n', 1)[0].trim();
+    const match = firstLine.match(/^(\d+)/);
+    return match ? Number(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether to treat the workspace as Bazel 9+ for RBE config: true when the
+ * detected major version is >= 9, OR unknown (no `.bazelversion` means bazelisk
+ * runs the latest release, which is 9+). This single predicate decides both
+ * emitting the apple_support Xcode-rule loads and surfacing the SHA256 digest
+ * hint, so the two stay in lockstep.
+ */
+export function isBazel9OrLater(bazelMajor: number | null): boolean {
+  return bazelMajor === null || bazelMajor >= 9;
+}
+
 /** Major.minor short alias (e.g. "26.4") used for the SDK default and --xcode_version. */
 function shortVersion(versionKey: string): string {
   const parts = versionKey.split('.');
@@ -111,11 +144,26 @@ export function detectLocalXcodeVersionKey(): string | null {
  * - no local Xcode (Linux/Windows): a synthetic set whose default is the same
  *   pinned version, so with `--xcode_version` the version is mutually
  *   available and resolves without demanding a real local DEVELOPER_DIR.
+ *
+ * When `emitLoads` is true (Bazel 9+), the Xcode rules are loaded from
+ * apple_support; on Bazel 8 they are native globals and MUST NOT be loaded
+ * (the apple_support rule impls fail on the unmigrated Bazel).
  */
 export function renderXcodeConfigBuild(
   remoteVersionKey: string,
   localVersionKey: string | null,
+  emitLoads: boolean,
 ): string {
+  // Bazel 9 migrated xcode_version/available_xcodes/xcode_config out of native
+  // globals into apple_support; they must be loaded there. The repo_name
+  // @build_bazel_apple_support is the apple_support module convention.
+  const loads = emitLoads ?
+    `load("@build_bazel_apple_support//xcode:xcode_version.bzl", "xcode_version")
+load("@build_bazel_apple_support//xcode:available_xcodes.bzl", "available_xcodes")
+load("@build_bazel_apple_support//xcode:xcode_config.bzl", "xcode_config")
+
+`
+  : '';
   const remoteRule = renderXcodeVersionRule('remote_xcode', remoteVersionKey);
 
   let localBlock: string;
@@ -150,7 +198,7 @@ ${renderAvailableXcodes('local_xcodes', ':remote_xcode')}
 # fleet's Xcode, independent of the Xcode installed on this machine (or its
 # absence on a Linux/Windows client). Selected via the generated
 # .limrun/bazelrc (--config=limrun).
-${remoteRule}
+${loads}${remoteRule}
 
 # The remote fleet's Xcode set (single pinned version).
 ${renderAvailableXcodes('remote_xcodes', ':remote_xcode')}
@@ -244,12 +292,17 @@ export function writeRbeWorkspaceFiles(
   port: number,
   localXcodeVersionKey: string | null = detectLocalXcodeVersionKey(),
   isMacClient: boolean = process.platform === 'darwin',
+  bazelMajor: number | null = detectBazelMajorVersion(workspaceDir),
 ): RbeWorkspaceFiles {
   const dir = path.join(workspaceDir, LIMRUN_DIR);
   fs.mkdirSync(dir, { recursive: true });
   const buildFile = path.join(dir, 'BUILD');
   const bazelrcFragment = path.join(dir, 'bazelrc');
-  fs.writeFileSync(buildFile, renderXcodeConfigBuild(xcodeVersionKey, localXcodeVersionKey));
+  // Load the Xcode rules from apple_support on Bazel 9+, where they are no
+  // longer native globals. On a known Bazel 8 workspace they ARE native (and
+  // loading would fail), so omit the loads.
+  const emitLoads = isBazel9OrLater(bazelMajor);
+  fs.writeFileSync(buildFile, renderXcodeConfigBuild(xcodeVersionKey, localXcodeVersionKey, emitLoads));
   fs.writeFileSync(bazelrcFragment, renderLimrunBazelrc(port, xcodeVersionKey, isMacClient));
   fs.writeFileSync(path.join(dir, '.gitignore'), '*\n');
   const bazelrcUpdated = ensureTryImport(workspaceDir);
