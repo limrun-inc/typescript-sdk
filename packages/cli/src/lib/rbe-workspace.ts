@@ -26,17 +26,15 @@ function shortVersion(versionKey: string): string {
 
 /** Renders one xcode_version rule from a major.minor.patch.build version key. */
 function renderXcodeVersionRule(name: string, versionKey: string): string {
+  // shortVersion validates the key shape (major.minor.patch[.build]) and yields
+  // the major.minor used for both the SDK defaults and the short alias.
+  const sdk = shortVersion(versionKey);
   const parts = versionKey.split('.');
-  if (parts.length < 3) {
-    throw new Error(`unexpected Xcode version key: ${versionKey}`);
-  }
-  const sdk = `${parts[0]}.${parts[1]}`;
-  const shortAlias = `${parts[0]}.${parts[1]}`;
   const fullAlias = `${parts[0]}.${parts[1]}.${parts[2]}`;
   return `xcode_version(
     name = "${name}",
     aliases = [
-        "${shortAlias}",
+        "${sdk}",
         "${fullAlias}",
     ],
     default_ios_sdk_version = "${sdk}",
@@ -44,6 +42,19 @@ function renderXcodeVersionRule(name: string, versionKey: string): string {
     default_tvos_sdk_version = "${sdk}",
     default_watchos_sdk_version = "${sdk}",
     version = "${versionKey}",
+)`;
+}
+
+/**
+ * Renders an `available_xcodes` set with a single member that is also its
+ * mandatory default. All three sets the BUILD file emits (remote, distinct
+ * local, synthetic local) are single-version sets of this shape.
+ */
+function renderAvailableXcodes(name: string, target: string): string {
+  return `available_xcodes(
+    name = "${name}",
+    default = "${target}",
+    versions = ["${target}"],
 )`;
 }
 
@@ -117,11 +128,7 @@ export function renderXcodeConfigBuild(
 # actions resolve against this; the fleet version above is remote-only.
 ${renderXcodeVersionRule('local_xcode', localVersionKey)}
 
-available_xcodes(
-    name = "local_xcodes",
-    default = ":local_xcode",
-    versions = [":local_xcode"],
-)
+${renderAvailableXcodes('local_xcodes', ':local_xcode')}
 `;
   } else {
     // No distinct local Xcode (Linux/Windows, or the client happens to run the
@@ -133,11 +140,7 @@ available_xcodes(
 # (Linux/Windows). Its mandatory default points at the same version as the
 # remote pin so resolution never demands a real local DEVELOPER_DIR for a
 # version this machine does not physically have.
-available_xcodes(
-    name = "local_xcodes",
-    default = ":remote_xcode",
-    versions = [":remote_xcode"],
-)
+${renderAvailableXcodes('local_xcodes', ':remote_xcode')}
 `;
   }
 
@@ -150,11 +153,7 @@ available_xcodes(
 ${remoteRule}
 
 # The remote fleet's Xcode set (single pinned version).
-available_xcodes(
-    name = "remote_xcodes",
-    default = ":remote_xcode",
-    versions = [":remote_xcode"],
-)
+${renderAvailableXcodes('remote_xcodes', ':remote_xcode')}
 ${localBlock}
 xcode_config(
     name = "remote_xcode_config",
