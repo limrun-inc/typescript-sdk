@@ -4,7 +4,7 @@ import path from 'path';
 import { Flags } from '@oclif/core';
 import type { Tunnel } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
-import { writeRbeWorkspaceFiles } from '../../lib/rbe-workspace';
+import { detectBazelMajorVersion, isBazel9OrLater, writeRbeWorkspaceFiles } from '../../lib/rbe-workspace';
 
 export default class XcodeRbe extends BaseCommand {
   static summary = 'Serve a local Bazel remote-execution endpoint backed by a Limrun Xcode instance';
@@ -116,8 +116,23 @@ export default class XcodeRbe extends BaseCommand {
               `Generated .limrun/ config for the fleet's Xcode ${status.xcodeVersion}` +
                 (generated.bazelrcUpdated ? ' and wired try-import into .bazelrc.' : '.'),
             );
+            // Bazel 9 defaults to BLAKE3 digests, but the limrun cache currently
+            // only speaks SHA256. --digest_function is a STARTUP flag, so it must
+            // precede `build` and can't be scoped to --config=limrun in the
+            // generated rc; surface it as a hint instead of baking it in.
+            const needsSha256 = isBazel9OrLater(detectBazelMajorVersion(process.cwd()));
             this.output('Build with:');
-            this.output('  bazelisk build --config=limrun //your:target');
+            this.output(
+              needsSha256 ?
+                '  bazelisk --digest_function=sha256 build --config=limrun //your:target'
+              : '  bazelisk build --config=limrun //your:target',
+            );
+            if (needsSha256) {
+              this.info(
+                'Bazel 9 defaults to BLAKE3; the limrun cache currently requires SHA256, ' +
+                  'so the --digest_function=sha256 startup flag above is required.',
+              );
+            }
           } else {
             this.output('Add to your .bazelrc (or pass as flags):');
             for (const line of bazelrc) {
