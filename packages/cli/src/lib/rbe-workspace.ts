@@ -29,7 +29,7 @@ const TRY_IMPORT_COMMENT = '# Added by lim xcode rbe: loads the generated remote
 export function detectBazelMajorVersion(workspaceDir: string): number | null {
   try {
     const raw = fs.readFileSync(path.join(workspaceDir, '.bazelversion'), 'utf8');
-    const firstLine = raw.split('\n', 1)[0].trim();
+    const firstLine = (raw.split('\n', 1)[0] ?? '').trim();
     const match = firstLine.match(/^(\d+)/);
     return match ? Number(match[1]) : null;
   } catch {
