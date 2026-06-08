@@ -13,6 +13,7 @@ import {
 import { createIgnoreFn } from '../folder-sync-ignore';
 import { nodeProxyTransport } from '../internal/proxy-transport';
 import { directInstanceHttpError } from '../internal/direct-instance-errors';
+import { LimrunError } from '../core/error';
 import { validateBuildSettings } from '../build-settings';
 import { startTcpTunnel, type Tunnel } from '../tunnel';
 
@@ -301,7 +302,7 @@ export function deriveRbeTunnelUrl(apiUrl: string): string {
  * NOT that the instance is missing. Kept distinct from NotFoundError so the CLI
  * does not mistake it for a vanished instance and spin up replacements.
  */
-export class RbeUnsupportedError extends Error {
+export class RbeUnsupportedError extends LimrunError {
   constructor(operation: string) {
     super(
       `Remote build execution is not available on this Xcode instance (${operation} returned 404). ` +
