@@ -159,14 +159,20 @@ export type RbeStatus = {
   error?: string;
 };
 
+/** Default local TCP port the RBE tunnel listens on. */
+export const DEFAULT_RBE_TUNNEL_PORT = 8980;
+
 export type RbeStartOptions = {
+  /** Max size of the content-addressable store (CAS), in bytes. */
   casMaxBytes?: number;
+  /** Max size of the action cache (AC), in bytes. */
   acMaxBytes?: number;
+  /** Number of concurrent build actions the embedded worker runs. */
   workerConcurrency?: number;
 };
 
 export type RbeTunnelOptions = {
-  /** Local port to listen on. Defaults to 8980. */
+  /** Local port to listen on. Defaults to DEFAULT_RBE_TUNNEL_PORT (8980). */
   port?: number;
   /** Local address to listen on. Defaults to 127.0.0.1. */
   host?: string;
@@ -291,7 +297,8 @@ export function deriveRbeTunnelUrl(apiUrl: string): string {
   url.pathname = `${url.pathname.replace(/\/+$/, '')}/rbe/tunnel`;
   url.search = '';
   url.hash = '';
-  url.searchParams.set('mode', 'multiplexed');
+  // The tunnel layer (startMultiplexedTcpTunnel) appends mode=multiplexed to
+  // the URL itself, so we don't set it here.
   return url.toString();
 }
 
@@ -543,7 +550,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           deriveRbeTunnelUrl(apiUrl),
           token,
           opts?.host ?? '127.0.0.1',
-          opts?.port ?? 8980,
+          opts?.port ?? DEFAULT_RBE_TUNNEL_PORT,
           {
             mode: 'multiplexed',
             logLevel: opts?.logLevel ?? params.logLevel ?? 'info',

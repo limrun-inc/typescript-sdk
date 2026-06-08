@@ -7,6 +7,7 @@ import {
   detectBazelMajorVersion,
   ensureTryImport,
   findBazelWorkspaceRoot,
+  parseXcodeVersionOutput,
   renderLimrunBazelrc,
   renderXcodeConfigBuild,
   writeRbeWorkspaceFiles,
@@ -63,6 +64,19 @@ describe('rbe workspace generation', () => {
     const build = renderXcodeConfigBuild('26.4.0.17E192', '26.4.0.17E192', false);
     expect(build).not.toContain('name = "local_xcode"');
     expect(build).toMatch(/available_xcodes\(\s*name = "local_xcodes",\s*default = ":remote_xcode"/);
+  });
+
+  test('renderXcodeConfigBuild (same major.minor, different build) stays synthetic to avoid an alias collision', () => {
+    // A mac on 26.4.1 vs the fleet's 26.4.0 must NOT get its own local_xcode
+    // rule: both would alias "26.4", which a single xcode_config rejects. The
+    // build only matters for local actions, which never run under RBE.
+    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.4.1.17E193', false);
+    expect(build).not.toContain('name = "local_xcode"');
+    expect(build).not.toContain('26.4.1.17E193');
+    expect(build).toMatch(/available_xcodes\(\s*name = "local_xcodes",\s*default = ":remote_xcode"/);
+    // Exactly one xcode_version rule (only remote_xcode) — a second one would
+    // register a duplicate "26.4" alias and break xcode_config.
+    expect(build.match(/xcode_version\(/g)).toHaveLength(1);
   });
 
   test('renderXcodeConfigBuild rejects malformed version keys', () => {
@@ -142,6 +156,21 @@ describe('rbe workspace generation', () => {
     });
   });
 
+  describe('parseXcodeVersionOutput', () => {
+    test('parses major.minor (patch defaults to 0) and build into a key', () => {
+      expect(parseXcodeVersionOutput('Xcode 26.5\nBuild version 17F42')).toBe('26.5.0.17F42');
+    });
+    test('keeps an explicit patch version', () => {
+      expect(parseXcodeVersionOutput('Xcode 26.4.1\nBuild version 17E193')).toBe('26.4.1.17E193');
+    });
+    test('returns null when the build line is missing', () => {
+      expect(parseXcodeVersionOutput('Xcode 26.5')).toBeNull();
+    });
+    test('returns null on unrelated output', () => {
+      expect(parseXcodeVersionOutput('command not found')).toBeNull();
+    });
+  });
+
   test('renderLimrunBazelrc scopes every flag under the limrun config', () => {
     const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true);
     const flagLines = rc.split('\n').filter((l) => l && !l.startsWith('#'));
@@ -215,6 +244,17 @@ describe('rbe workspace generation', () => {
       expect(after).toContain(TRY_IMPORT_LINE);
       expect(ensureTryImport(dir)).toBe(false);
       expect(fs.readFileSync(bazelrc, 'utf8')).toBe(after);
+    });
+
+    test('ensureTryImport ignores a commented-out occurrence and wires the active line', () => {
+      const bazelrc = path.join(dir, '.bazelrc');
+      // A user disabled it by commenting it out; we must still wire an active line.
+      fs.writeFileSync(bazelrc, `# ${TRY_IMPORT_LINE}\n`);
+      expect(ensureTryImport(dir)).toBe(true);
+      const after = fs.readFileSync(bazelrc, 'utf8');
+      expect(after.split('\n').some((l) => l.trim() === TRY_IMPORT_LINE)).toBe(true);
+      // Now that an active line exists, it is idempotent.
+      expect(ensureTryImport(dir)).toBe(false);
     });
 
     test('regeneration overwrites with a new fleet version', () => {

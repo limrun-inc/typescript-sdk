@@ -33,6 +33,7 @@ export { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './asse
 export {
   XcodeInstances,
   RbeUnsupportedError,
+  DEFAULT_RBE_TUNNEL_PORT,
   type XcodeCreateClientParams,
   type XcodeClient,
   type XcodeProjectConfig,
