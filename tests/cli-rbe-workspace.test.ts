@@ -208,7 +208,7 @@ describe('rbe workspace generation', () => {
   });
 
   test('renderLimrunBazelrc scopes every flag under the limrun config', () => {
-    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true);
+    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
     const flagLines = rc.split('\n').filter((l) => l && !l.startsWith('#'));
     expect(flagLines.length).toBeGreaterThan(0);
     for (const line of flagLines) {
@@ -219,13 +219,13 @@ describe('rbe workspace generation', () => {
   });
 
   test('renderLimrunBazelrc pins --xcode_version to the short alias', () => {
-    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true);
+    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
     expect(rc).toContain('--xcode_version=26.4');
     expect(rc).not.toContain('--xcode_version=26.4.0.17E192');
   });
 
   test('renderLimrunBazelrc overrides per-mnemonic strategies and completes the PATH', () => {
-    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true);
+    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
     // rules_swift defaults SwiftCompile to a local worker; repos pin Genrule
     // standalone. Both must be forced remote or RBE breaks.
     expect(rc).toContain('--strategy=SwiftCompile=remote');
@@ -234,9 +234,18 @@ describe('rbe workspace generation', () => {
     expect(rc).toContain('--action_env=PATH=/usr/bin:/bin:/usr/sbin:/sbin');
   });
 
+  test('renderLimrunBazelrc keeps outputs in CAS and emits BEP for the install verb', () => {
+    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
+    // minimal download keeps the .ipa in the instance CAS (server-side install).
+    expect(rc).toContain('--remote_download_outputs=minimal');
+    // BEP at a fixed path so `lim xcode rbe install` can read the .ipa digest.
+    // Absolute path (not %workspace%, which Bazel doesn't expand in flag values).
+    expect(rc).toContain('--build_event_json_file=/ws/.limrun/bep.json');
+  });
+
   test('renderLimrunBazelrc registers a darwin exec platform only for non-mac clients', () => {
-    const macRc = renderLimrunBazelrc(9123, '26.4.0.17E192', true);
-    const linuxRc = renderLimrunBazelrc(9123, '26.4.0.17E192', false);
+    const macRc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
+    const linuxRc = renderLimrunBazelrc(9123, '26.4.0.17E192', false, '/ws/.limrun/bep.json');
     // On a mac the flag pulls exec-config actions onto the local host, so omit it.
     expect(macRc).not.toContain('--extra_execution_platforms');
     // A Linux client has no auto-detected darwin exec platform, so it needs one.
@@ -261,6 +270,11 @@ describe('rbe workspace generation', () => {
       expect(fs.readFileSync(path.join(dir, '.limrun', '.gitignore'), 'utf8')).toBe('*\n');
       expect(fs.readFileSync(path.join(dir, '.bazelrc'), 'utf8')).toContain(TRY_IMPORT_LINE);
       expect(result.bazelrcUpdated).toBe(true);
+      // BEP path is the ABSOLUTE workspace path, not %workspace% (which Bazel
+      // does not expand in flag values — it would create a junk %workspace%/ dir).
+      const rc = fs.readFileSync(result.bazelrcFragment, 'utf8');
+      expect(rc).toContain(`--build_event_json_file=${path.join(dir, '.limrun', 'bep.json')}`);
+      expect(rc).not.toContain('%workspace%');
     });
 
     test('writeRbeWorkspaceFiles emits apple_support loads only on Bazel 9+ (per .bazelversion)', () => {

@@ -179,6 +179,34 @@ export type RbeTunnelOptions = {
   logLevel?: LogLevel;
 };
 
+/** Content-addressed digest of a build artifact in the instance's RBE cache. */
+export type RbeArtifactDigest = {
+  /** Lowercase hex SHA-256 of the blob (matches --digest_function=sha256). */
+  hash: string;
+  /** Size of the blob in bytes. */
+  sizeBytes: number;
+};
+
+export type RbeInstallOptions = {
+  /** CAS digest of the .ipa to install (read from the Bazel build event protocol). */
+  ipaDigest: RbeArtifactDigest;
+  /** Optional Bazel target label the .ipa came from, for logging only. */
+  target?: string;
+};
+
+export type RbeInstallResult = {
+  /** True when the app was synced and installed on the attached simulator. */
+  installed: boolean;
+  /** CFBundleIdentifier of the installed app, as reported by the simulator. */
+  bundleId?: string;
+  /** The .app bundle name discovered inside the .ipa (Payload/<appName>.app). */
+  appName?: string;
+  /** Differential-sync duration in milliseconds. */
+  syncDurationMs?: number;
+  /** Simulator install duration in milliseconds. */
+  installDurationMs?: number;
+};
+
 export type XcodeClient = {
   /**
    * Sync source code to the xcode instance. In watch mode, keeps syncing on changes.
@@ -220,6 +248,17 @@ export type XcodeClient = {
 
   /** Stop the RBE stack. */
   stopRbe: () => Promise<RbeStatus>;
+
+  /**
+   * Install a Bazel RBE build artifact on the attached simulator, server-side.
+   * Given the .ipa's CAS digest (from the Bazel build event protocol), the
+   * instance fetches the blob from its embedded cache, unpacks the .app, and
+   * pushes it to the attached simulator via the differential-sync path — no
+   * client round-trip. Requires a running RBE stack. If a simulator is attached
+   * it installs now (installed=true); otherwise it records the build so a later
+   * attach auto-installs it (installed=false).
+   */
+  installRbeBuild: (opts: RbeInstallOptions) => Promise<RbeInstallResult>;
 
   /**
    * Open a local TCP listener bridged to the instance's RBE gRPC frontend
@@ -543,6 +582,18 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           },
         });
         return readRbeResponse<RbeStatus>(res, 'DELETE /rbe');
+      },
+
+      async installRbeBuild(opts: RbeInstallOptions): Promise<RbeInstallResult> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/rbe/install`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ ipaDigest: opts.ipaDigest, ...(opts.target ? { target: opts.target } : {}) }),
+        });
+        return readRbeResponse<RbeInstallResult>(res, 'POST /rbe/install');
       },
 
       async startRbeTunnel(opts?: RbeTunnelOptions): Promise<Tunnel> {
