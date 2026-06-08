@@ -19,6 +19,7 @@ import {
   clearRbePidFile,
   defaultSleep,
   isProcessAlive,
+  probePortOpen,
   readRbePidFile,
   retryTransient,
   waitForRbeRunning,
@@ -317,25 +318,41 @@ export default class XcodeRbe extends BaseCommand {
     fs.closeSync(logFd);
     child.unref();
 
-    // Liveness check (no tunnel side effects): race an early `exit` against a
-    // short timer. If the child dies on startup, surface its log and stop the
-    // stack so we don't leak it.
-    const early = await new Promise<number | null | undefined>((resolve) => {
-      const timer = setTimeout(() => {
-        child.off('exit', onExit);
-        resolve(undefined);
-      }, 1500);
-      const onExit = (code: number | null) => {
-        clearTimeout(timer);
-        resolve(code);
-      };
-      child.once('exit', onExit);
+    // Readiness check: wait until the child's local listener actually accepts a
+    // connection (startRbeTunnel binds the port only once openTunnel resolves),
+    // rather than trusting a fixed delay — otherwise we'd advertise the endpoint
+    // before it's bound and an immediate bazel run could hit connection-refused.
+    // Race that probe against the child exiting (startup failure) and an overall
+    // deadline (a child that never binds).
+    let childExit: number | null | undefined;
+    child.once('exit', (code) => {
+      childExit = code ?? 0;
     });
-    if (early !== undefined) {
+    let ready = false;
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      if (childExit !== undefined) break;
+      if (await probePortOpen(opts.port)) {
+        ready = true;
+        break;
+      }
+      await defaultSleep(200);
+    }
+
+    if (!ready) {
       this.reporter.stop('failure');
       await opts.client.stopRbe().catch(() => {});
+      if (childExit !== undefined) {
+        this.error(
+          `The background tunnel exited during startup (code ${childExit}).\n` +
+            `${readLogTail(logPath)}\nSee ${logPath} for details.`,
+        );
+      }
+      // Child is alive but never bound the port within the deadline: reap it so
+      // it doesn't linger holding nothing, then fail.
+      signalIfAlive(child.pid ?? -1, 'SIGKILL');
       this.error(
-        `The background tunnel exited immediately (code ${early ?? 'null'}).\n` +
+        `The background tunnel did not become ready on port ${opts.port} in time.\n` +
           `${readLogTail(logPath)}\nSee ${logPath} for details.`,
       );
     }
