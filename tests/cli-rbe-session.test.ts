@@ -9,6 +9,7 @@ import {
   clearRbePidFile,
   isProcessAlive,
   isTransientError,
+  probePortOpen,
   readRbePidFile,
   retryTransient,
   waitForRbeRunning,
@@ -201,5 +202,18 @@ describe('assertLocalPortFree', () => {
       }),
     ).resolves.toBeUndefined();
     await new Promise<void>((resolve) => after.close(() => resolve()));
+  });
+});
+
+describe('probePortOpen', () => {
+  test('true when something is listening, false once it stops', async () => {
+    const server = net.createServer((s) => s.destroy());
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const port = (server.address() as net.AddressInfo).port;
+
+    await expect(probePortOpen(port)).resolves.toBe(true);
+
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await expect(probePortOpen(port)).resolves.toBe(false);
   });
 });
