@@ -7,6 +7,7 @@ import {
   detectBazelMajorVersion,
   ensureTryImport,
   findBazelWorkspaceRoot,
+  inferBuildTarget,
   renderLimrunBazelrc,
   renderXcodeConfigBuild,
   writeRbeWorkspaceFiles,
@@ -96,6 +97,66 @@ describe('rbe workspace generation', () => {
       const sub = path.join(dir, 'a', 'b');
       fs.mkdirSync(sub, { recursive: true });
       expect(findBazelWorkspaceRoot(sub)).toBeNull();
+    });
+  });
+
+  describe('inferBuildTarget', () => {
+    let dir: string;
+    beforeEach(() => {
+      dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'infer-')));
+    });
+    afterEach(() => {
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    const writeBuild = (pkg: string, body: string) => {
+      const d = path.join(dir, pkg);
+      fs.mkdirSync(d, { recursive: true });
+      fs.writeFileSync(path.join(d, 'BUILD.bazel'), body);
+    };
+    const iosApp = (name: string) =>
+      `load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application")\n\nios_application(\n    name = "${name}",\n    bundle_id = "com.x",\n)\n`;
+
+    test('returns the short label when there is exactly one app target', () => {
+      writeBuild('App', iosApp('App'));
+      // a framework/library nearby must NOT count as an application
+      writeBuild(
+        'Core/UIComponents',
+        'load("@build_bazel_rules_apple//apple:ios.bzl", "ios_framework")\n\nios_framework(\n    name = "UIComponents",\n)\n',
+      );
+      expect(inferBuildTarget(dir)).toBe('//App');
+    });
+
+    test('uses //pkg:name form when the target name differs from the package basename', () => {
+      writeBuild('App', iosApp('MyApp'));
+      expect(inferBuildTarget(dir)).toBe('//App:MyApp');
+    });
+
+    test('returns null when there are multiple app targets (ambiguous)', () => {
+      writeBuild('iOSApp', iosApp('iOSApp'));
+      writeBuild('macOSApp', 'macos_application(\n    name = "macOSApp",\n)\n');
+      expect(inferBuildTarget(dir)).toBeNull();
+    });
+
+    test('returns null when there are no app targets', () => {
+      writeBuild('lib', 'swift_library(\n    name = "lib",\n)\n');
+      expect(inferBuildTarget(dir)).toBeNull();
+    });
+
+    test('does not match the load() import of ios_application', () => {
+      // a BUILD that only imports the symbol but declares no application target
+      writeBuild(
+        'tools',
+        'load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application")\n\nfilegroup(\n    name = "tools",\n)\n',
+      );
+      expect(inferBuildTarget(dir)).toBeNull();
+    });
+
+    test('skips bazel-* and node_modules dirs', () => {
+      writeBuild('App', iosApp('App'));
+      writeBuild('bazel-out/x', iosApp('Generated'));
+      writeBuild('node_modules/pkg', iosApp('Vendored'));
+      expect(inferBuildTarget(dir)).toBe('//App');
     });
   });
 

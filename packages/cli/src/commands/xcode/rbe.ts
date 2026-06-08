@@ -9,6 +9,7 @@ import { clearLastInstanceId } from '../../lib/config';
 import { ProgressReporter } from '../../lib/progress';
 import {
   findBazelWorkspaceRoot,
+  inferBuildTarget,
   writeRbeWorkspaceFiles,
   LIMRUN_DIR,
   type RbeWorkspaceFiles,
@@ -193,7 +194,10 @@ export default class XcodeRbe extends BaseCommand {
       // is already the default — so always emit it. It is a startup flag (can't
       // live in --config=limrun, and would change the digest for ALL the user's
       // builds if put in .bazelrc), hence it precedes `build` in the command.
-      const buildCmd = 'bazelisk --digest_function=sha256 build --config=limrun //your:target';
+      // Infer a real app target so the printed command is runnable as-is; fall
+      // back to a placeholder when there's no single obvious target.
+      const target = inferBuildTarget(workspaceRoot) ?? '//your:target';
+      const buildCmd = `bazelisk --digest_function=sha256 build --config=limrun ${target}`;
 
       if (flags.daemon) {
         await this.spawnBackgroundTunnel({

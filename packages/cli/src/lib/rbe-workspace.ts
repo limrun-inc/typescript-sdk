@@ -38,6 +38,73 @@ export function findBazelWorkspaceRoot(startDir: string): string | null {
   }
 }
 
+const APP_RULE_RE = /\b(?:ios|macos|tvos|watchos)_application\s*\(/;
+const TARGET_NAME_RE = /^\s*name\s*=\s*"([^"]+)"/;
+const TARGET_SCAN_SKIP_DIRS = new Set(['.git', 'node_modules', '.limrun']);
+
+/**
+ * Best-effort guess of a single buildable app target to show in the printed
+ * build command, so it reads `//App` instead of a `//your:target` placeholder.
+ * Scans the workspace's BUILD files (buildifier-formatted) for apple
+ * `*_application` rules — no bazel invocation — and returns the label in short
+ * form (`//pkg` when the target name matches the package's last segment).
+ * Returns null when there are zero or multiple candidates (ambiguous → caller
+ * keeps the placeholder).
+ */
+export function inferBuildTarget(workspaceRoot: string): string | null {
+  const found: string[] = [];
+  const walk = (dir: string): void => {
+    if (found.length > 1) return; // already ambiguous; stop early
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (TARGET_SCAN_SKIP_DIRS.has(entry.name) || entry.name.startsWith('bazel-')) continue;
+        walk(path.join(dir, entry.name));
+      } else if (entry.name === 'BUILD' || entry.name === 'BUILD.bazel') {
+        collectAppTargets(path.join(dir, entry.name), workspaceRoot, found);
+      }
+    }
+  };
+  walk(workspaceRoot);
+  return found.length === 1 ? found[0]! : null;
+}
+
+/** Appends `//pkg[:name]` labels of apple application rules in one BUILD file. */
+function collectAppTargets(buildFile: string, workspaceRoot: string, out: string[]): void {
+  let content: string;
+  try {
+    content = fs.readFileSync(buildFile, 'utf8');
+  } catch {
+    return;
+  }
+  const pkg = path.relative(workspaceRoot, path.dirname(buildFile)).split(path.sep).join('/');
+  let inAppRule = false;
+  for (const line of content.split('\n')) {
+    if (!inAppRule) {
+      if (APP_RULE_RE.test(line)) inAppRule = true;
+      continue;
+    }
+    const match = line.match(TARGET_NAME_RE);
+    if (match) {
+      const name = match[1]!;
+      const last = pkg.split('/').pop();
+      out.push(
+        pkg === '' || pkg === '.' ? `//:${name}`
+        : last === name ? `//${pkg}`
+        : `//${pkg}:${name}`,
+      );
+      inAppRule = false;
+    } else if (/^\)/.test(line)) {
+      inAppRule = false; // rule closed before a name line we could read
+    }
+  }
+}
+
 /**
  * Reads the workspace's pinned Bazel major version from `.bazelversion`, or
  * null when the file is absent or its first line has no leading integer.
