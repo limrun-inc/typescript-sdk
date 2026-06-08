@@ -1,8 +1,8 @@
 import os from 'os';
 import path from 'path';
-import { ux } from '@oclif/core';
 import prompts from 'prompts';
 import { BaseCommand } from '../base-command';
+import { ProgressReporter } from '../lib/progress';
 import { readConfig, registerCreatedInstance } from '../lib/config';
 import { detectProject, type ProjectDetection } from '../lib/project-detection';
 import {
@@ -18,11 +18,6 @@ const VERSION = require('../../package.json').version;
 
 const IOS_SKILL = 'limrun-xcode-and-ios-simulator';
 const EXPO_SKILL = 'limrun-expo-development';
-const SPINNER_FRAMES =
-  process.platform === 'win32' ? ['-', '\\', '|', '/'] : ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const SUCCESS_ICON = process.platform === 'win32' ? '√' : '✔';
-const FAILURE_ICON = process.platform === 'win32' ? '×' : '✖';
-const BUILD_LOG_TAIL_LINES = 10;
 type DetectedProject = Extract<ProjectDetection, { kind: 'native-ios' | 'expo' }>;
 type BuildAndLaunchOptions = {
   projectRoot: string;
@@ -43,7 +38,7 @@ export default class Run extends BaseCommand {
   static summary = 'Get started with Limrun';
   static description = 'Prepare your app for Limrun, or launch a working sample in a cloud simulator.';
   static examples = ['<%= config.bin %> run'];
-  private progress?: ProgressState;
+  private reporter = new ProgressReporter(() => this.shouldSuppressInfo());
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Run);
@@ -83,14 +78,14 @@ export default class Run extends BaseCommand {
   ): Promise<void> {
     const projectRoot = detection.projectDir;
     const projectPath = humanPath(projectRoot);
-    await this.withProgress('Checking Limrun access', () => this.validateAuth(allowAuthRetry));
-    this.success(`Detected an iOS/Expo project at ${projectPath}`);
-    const results = await this.withProgress('Installing Limrun agent skills', () =>
+    await this.reporter.withProgress('Checking Limrun access', () => this.validateAuth(allowAuthRetry));
+    this.reporter.success(`Detected an iOS/Expo project at ${projectPath}`);
+    const results = await this.reporter.withProgress('Installing Limrun agent skills', () =>
       installProjectSkills({ projectRoot, skillNames }),
     );
     this.printSkillSummary(results);
     this.printEnvWarnings(ensureProjectEnvApiKey(projectRoot, apiKey).warnings);
-    this.success('Configured .env for Limrun');
+    this.reporter.success('Configured .env for Limrun');
 
     const streamUrl = await this.buildAndLaunchProject({
       projectRoot,
@@ -141,9 +136,9 @@ export default class Run extends BaseCommand {
     const unchanged = results.filter((result) => result.status === 'unchanged').length;
     const skipped = results.filter((result) => result.status === 'skipped');
     if (installed > 0) {
-      this.success('Limrun skills installed for Claude Code and Cursor/OpenCode-compatible agents');
+      this.reporter.success('Limrun skills installed for Claude Code and Cursor/OpenCode-compatible agents');
     } else if (unchanged > 0 && skipped.length === 0) {
-      this.success(
+      this.reporter.success(
         'Limrun skills are already installed for Claude Code and Cursor/OpenCode-compatible agents',
       );
     }
@@ -162,13 +157,6 @@ export default class Run extends BaseCommand {
     }
   }
 
-  private success(message: string): void {
-    if (this.shouldSuppressInfo()) {
-      return;
-    }
-    process.stderr.write(`${ux.colorize('green', SUCCESS_ICON)} ${message}\n`);
-  }
-
   private async validateAuth(allowRetry: boolean): Promise<void> {
     const check = async () => {
       await this.client.iosInstances.list({ state: 'ready' } as any);
@@ -182,13 +170,13 @@ export default class Run extends BaseCommand {
 
   private async runSampleFlow(apiKey: string, allowAuthRetry: boolean): Promise<void> {
     const cwd = process.cwd();
-    await this.withProgress('Checking Limrun access', () => this.validateAuth(allowAuthRetry));
-    const sample = await this.withProgress('Setting up sample app', () => ensureSampleRepo({ cwd }));
+    await this.reporter.withProgress('Checking Limrun access', () => this.validateAuth(allowAuthRetry));
+    const sample = await this.reporter.withProgress('Setting up sample app', () => ensureSampleRepo({ cwd }));
     const samplePathFromStart = humanPath(sample.path, cwd);
-    this.success(`${sample.reused ? 'Using existing' : 'Cloned'} ${samplePathFromStart}`);
+    this.reporter.success(`${sample.reused ? 'Using existing' : 'Cloned'} ${samplePathFromStart}`);
     process.chdir(sample.path);
     this.printEnvWarnings(ensureProjectEnvApiKey(sample.path, apiKey).warnings);
-    this.success('Configured .env for Limrun');
+    this.reporter.success('Configured .env for Limrun');
 
     const streamUrl = await this.buildAndLaunchProject({
       projectRoot: process.cwd(),
@@ -221,7 +209,7 @@ export default class Run extends BaseCommand {
     let recoveryPrinted = false;
     try {
       return await this.withAuth(async () => {
-        const instance = await this.withProgress('Preparing a Limrun iOS simulator with Xcode', () =>
+        const instance = await this.reporter.withProgress('Preparing a Limrun iOS simulator with Xcode', () =>
           this.client.iosInstances.create({
             wait: true,
             reuseIfExists: true,
@@ -253,24 +241,24 @@ export default class Run extends BaseCommand {
         await xcode.sync(projectRoot, { watch: false });
 
         const build = xcode.xcodebuild();
-        this.startProgress(progressLabel);
-        build.stdout.on('data', (line: string) => this.appendProgressLog(line));
-        build.stderr.on('data', (line: string) => this.appendProgressLog(line));
+        this.reporter.start(progressLabel);
+        build.stdout.on('data', (line: string) => this.reporter.appendLog(line));
+        build.stderr.on('data', (line: string) => this.reporter.appendLog(line));
         const buildStart = Date.now();
         let result: Awaited<typeof build>;
         try {
           result = await build;
         } catch (err) {
-          this.stopProgress('failure');
+          this.reporter.stop('failure');
           throw err;
         }
         if (result.exitCode !== 0) {
-          this.stopProgress('failure');
+          this.reporter.stop('failure');
           this.outputProjectRecovery(recoveryPath, recoveryFromDir);
           recoveryPrinted = true;
           this.error(`${failureLabel} with exit code ${result.exitCode}`, { exit: result.exitCode });
         }
-        this.stopProgress('success', `Built and launched in ${formatDurationMs(Date.now() - buildStart)}`);
+        this.reporter.stop('success', `Built and launched in ${formatDurationMs(Date.now() - buildStart)}`);
 
         const streamUrl = this.signedStreamUrl(instance.status);
         if (!streamUrl) {
@@ -301,100 +289,8 @@ export default class Run extends BaseCommand {
     this.output(`- Prompt it: "${prompt}"`);
   }
 
-  private async withProgress<T>(message: string, run: () => Promise<T>): Promise<T> {
-    this.startProgress(message);
-    try {
-      const result = await run();
-      this.stopProgress('success');
-      return result;
-    } catch (err) {
-      this.stopProgress('failure');
-      throw err;
-    }
-  }
-
-  private startProgress(message: string): void {
-    if (this.shouldSuppressInfo()) {
-      return;
-    }
-    this.progress = { frame: 0, logLines: [], message, renderedRows: 0 };
-    if (process.stderr.isTTY) {
-      this.progress.timer = setInterval(
-        () => this.renderProgress(),
-        process.platform === 'win32' ? 500 : 100,
-      );
-      this.progress.timer.unref();
-      this.renderProgress();
-    }
-  }
-
-  private stopProgress(result: 'success' | 'failure' = 'success', message?: string): void {
-    if (this.shouldSuppressInfo() || !this.progress) {
-      return;
-    }
-    const progress = this.progress;
-    if (progress.timer) {
-      clearInterval(progress.timer);
-    }
-    this.progress = undefined;
-    this.clearProgressBlock(progress);
-    const icon = result === 'success' ? ux.colorize('green', SUCCESS_ICON) : ux.colorize('red', FAILURE_ICON);
-    process.stderr.write(`${icon} ${message ?? progress.message}\n`);
-  }
-
-  private appendProgressLog(chunk: string): void {
-    if (this.shouldSuppressInfo() || !this.progress) {
-      return;
-    }
-    const lines = String(chunk)
-      .replace(/\r/g, '\n')
-      .split('\n')
-      .map((line) => line.trimEnd())
-      .filter((line) => line.length > 0);
-    if (lines.length === 0) {
-      return;
-    }
-    this.progress.logLines.push(...lines);
-    this.progress.logLines = this.progress.logLines.slice(-BUILD_LOG_TAIL_LINES);
-    this.renderProgress();
-  }
-
-  private renderProgress(): void {
-    if (!this.progress || !process.stderr.isTTY) {
-      return;
-    }
-    const frame = SPINNER_FRAMES[this.progress.frame % SPINNER_FRAMES.length]!;
-    this.progress.frame += 1;
-    const lines = [
-      progressLine(`${ux.colorize('magenta', frame)} ${this.progress.message}`),
-      ...this.progress.logLines.map((line) => ux.colorize('dim', `  ${truncateTerminalLine(line, 2)}`)),
-    ];
-    this.clearProgressBlock(this.progress);
-    this.progress.renderedRows = lines.length;
-    process.stderr.write(lines.join('\n'));
-  }
-
-  private clearProgressBlock(progress: ProgressState): void {
-    if (!process.stderr.isTTY) {
-      return;
-    }
-    process.stderr.clearLine(0);
-    process.stderr.cursorTo(0);
-    for (let i = 1; i < progress.renderedRows; i += 1) {
-      process.stderr.moveCursor(0, -1);
-      process.stderr.clearLine(0);
-      process.stderr.cursorTo(0);
-    }
-  }
 }
 
-type ProgressState = {
-  frame: number;
-  logLines: string[];
-  message: string;
-  renderedRows: number;
-  timer?: NodeJS.Timeout;
-};
 
 function humanPath(absolutePath: string, fromDir = process.cwd()): string {
   const relative = path.relative(fromDir, absolutePath);
@@ -463,19 +359,4 @@ function safeOsUserName(): string | undefined {
   }
 }
 
-function progressLine(line: string): string {
-  const width = process.stderr.columns;
-  if (!width || line.length < width - 1) {
-    return line;
-  }
-  return `${line.slice(0, Math.max(0, width - 4))}...`;
-}
 
-function truncateTerminalLine(line: string, indent = 0): string {
-  const width = process.stderr.columns;
-  const max = width ? width - indent - 1 : undefined;
-  if (!max || line.length < max) {
-    return line;
-  }
-  return `${line.slice(0, Math.max(0, max - 3))}...`;
-}
