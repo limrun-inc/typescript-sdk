@@ -166,6 +166,14 @@ export function parseProvisioningProfileBytes(bytes: Uint8Array) {
     throw new Error('Provisioning profile plist not found.');
   }
   const xml = text.slice(start, end + '</plist>'.length);
+  // Defensively reject entity declarations before parsing: they are the vector
+  // for XML entity-expansion (billion-laughs) attacks and never appear in a
+  // real provisioning profile. The standard Apple `<!DOCTYPE plist PUBLIC ...>`
+  // (an external DTD reference with no internal entity subset) is benign —
+  // browsers' DOMParser does not fetch it — so it is intentionally allowed.
+  if (/<!ENTITY/i.test(xml)) {
+    throw new Error('Provisioning profile plist contains a disallowed ENTITY declaration.');
+  }
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
   if (doc.querySelector('parsererror')) {
     throw new Error('Provisioning profile plist could not be parsed.');

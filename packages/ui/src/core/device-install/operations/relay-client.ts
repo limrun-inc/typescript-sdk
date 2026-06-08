@@ -242,26 +242,37 @@ function formatInstallProgress(message: string) {
   if (!message.startsWith(prefix)) {
     return message;
   }
-  const xml = message.slice(prefix.length);
-  const doc = new DOMParser().parseFromString(xml, 'application/xml');
-  const dict = doc.querySelector('plist > dict');
-  if (!dict) {
-    return message;
-  }
-  const values = readPlistDict(dict);
-  const status = values.Status ?? 'Unknown';
-  const percent = values.PercentComplete ? `${values.PercentComplete}% ` : '';
-  return `Install progress: ${percent}${status}`;
+  const plist = message.slice(prefix.length);
+  // The relay message is untrusted device input. Parsing it with DOMParser is
+  // both an XSS DOM sink and an XML entity-expansion (billion-laughs) vector,
+  // so extract only the cosmetic fields we render via plain string scanning
+  // instead of building a DOM.
+  const status = readPlistValue(plist, 'Status') ?? 'Unknown';
+  const percent = readPlistValue(plist, 'PercentComplete');
+  return `Install progress: ${percent ? `${percent}% ` : ''}${status}`;
 }
 
-function readPlistDict(dict: Element) {
-  const result: Record<string, string> = {};
-  const children = Array.from(dict.children);
-  for (let index = 0; index < children.length; index += 2) {
-    const key = children[index];
-    const value = children[index + 1];
-    if (!key || key.tagName !== 'key' || !value) continue;
-    result[key.textContent ?? ''] = value.textContent ?? '';
-  }
-  return result;
+// Returns the <string>/<integer>/<real> value immediately following
+// <key>NAME</key> in an Apple plist fragment, without an XML/DOM parser.
+function readPlistValue(plist: string, key: string): string | undefined {
+  const pattern = new RegExp(
+    `<key>\\s*${escapeRegExp(
+      key,
+    )}\\s*</key>\\s*<(?:string|integer|real)>([\\s\\S]*?)</(?:string|integer|real)>`,
+  );
+  const match = pattern.exec(plist);
+  return match ? decodeBasicXmlEntities(match[1].trim()) : undefined;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function decodeBasicXmlEntities(value: string) {
+  return value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
 }
