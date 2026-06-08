@@ -77,9 +77,7 @@ export async function waitForRbeRunning(
     status = await retryTransient(() => client.getRbe(), { sleep });
   }
   if (status.state !== 'running' || !status.frontendPort || !status.xcodeVersion) {
-    throw new Error(
-      `Remote-execution stack failed to start: ${status.error ?? `state is ${status.state}`}`,
-    );
+    throw new Error(`Remote-execution stack failed to start: ${status.error ?? `state is ${status.state}`}`);
   }
   return status as Required<Pick<RbeStatus, 'frontendPort' | 'xcodeVersion'>> & RbeStatus;
 }
@@ -95,16 +93,7 @@ export function buildServeChildArgs(opts: {
   port: number;
   apiKey?: string;
 }): string[] {
-  const args = [
-    opts.scriptPath,
-    'xcode',
-    'rbe',
-    '--serve',
-    '--id',
-    opts.id,
-    '--port',
-    String(opts.port),
-  ];
+  const args = [opts.scriptPath, 'xcode', 'rbe', '--serve', '--id', opts.id, '--port', String(opts.port)];
   if (opts.apiKey) {
     args.push('--api-key', opts.apiKey);
   }

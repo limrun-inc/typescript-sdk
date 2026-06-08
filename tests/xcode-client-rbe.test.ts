@@ -36,9 +36,7 @@ describe('xcode client RBE helpers', () => {
   });
 
   test('a /rbe non-404 error stays a generic operation error', async () => {
-    nodeProxyTransport.fetch = jest.fn(
-      async () => new Response('boom', { status: 500 }),
-    );
+    nodeProxyTransport.fetch = jest.fn(async () => new Response('boom', { status: 500 }));
     const xcode = await rbeClient();
     await expect(xcode.getRbe()).rejects.not.toBeInstanceOf(RbeUnsupportedError);
     await expect(xcode.getRbe()).rejects.toThrow(/GET \/rbe failed: 500/);
@@ -62,10 +60,13 @@ describe('xcode client RBE helpers', () => {
   test('startRbe returns the parsed status on success', async () => {
     nodeProxyTransport.fetch = jest.fn(
       async () =>
-        new Response(JSON.stringify({ state: 'running', frontendPort: 8980, xcodeVersion: '26.4.0.17E192' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
+        new Response(
+          JSON.stringify({ state: 'running', frontendPort: 8980, xcodeVersion: '26.4.0.17E192' }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
     );
     const xcode = await rbeClient();
     await expect(xcode.startRbe()).resolves.toEqual({

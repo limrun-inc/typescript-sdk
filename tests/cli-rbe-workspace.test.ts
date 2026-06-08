@@ -161,7 +161,9 @@ describe('rbe workspace generation', () => {
     // On a mac the flag pulls exec-config actions onto the local host, so omit it.
     expect(macRc).not.toContain('--extra_execution_platforms');
     // A Linux client has no auto-detected darwin exec platform, so it needs one.
-    expect(linuxRc).toContain('--extra_execution_platforms=@build_bazel_apple_support//platforms:darwin_arm64');
+    expect(linuxRc).toContain(
+      '--extra_execution_platforms=@build_bazel_apple_support//platforms:darwin_arm64',
+    );
   });
 
   describe('filesystem effects', () => {
