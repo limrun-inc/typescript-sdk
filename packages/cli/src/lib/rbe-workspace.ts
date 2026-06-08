@@ -85,6 +85,10 @@ function collectAppTargets(buildFile: string, workspaceRoot: string, out: string
   const pkg = path.relative(workspaceRoot, path.dirname(buildFile)).split(path.sep).join('/');
   let inAppRule = false;
   for (const line of content.split('\n')) {
+    // Skip comment lines so a commented-out `# ios_application(` can't start a
+    // phantom rule (and a commented `# name = ...` can't be captured), which
+    // would otherwise leave inAppRule set and mislabel a later rule's name.
+    if (line.trimStart().startsWith('#')) continue;
     if (!inAppRule) {
       if (APP_RULE_RE.test(line)) inAppRule = true;
       continue;

@@ -158,6 +158,24 @@ describe('rbe workspace generation', () => {
       writeBuild('node_modules/pkg', iosApp('Vendored'));
       expect(inferBuildTarget(dir)).toBe('//App');
     });
+
+    test('ignores a commented-out application rule (no phantom match into a later rule)', () => {
+      // The commented opening must not set the "in app rule" state and capture
+      // the following library's name as an application target.
+      writeBuild(
+        'App',
+        '# ios_application(\n#     name = "OldApp",\n# )\n\nswift_library(\n    name = "AppLib",\n)\n',
+      );
+      expect(inferBuildTarget(dir)).toBeNull();
+    });
+
+    test('picks the real app when a commented rule precedes it', () => {
+      writeBuild(
+        'App',
+        '# ios_application(\n#     name = "OldApp",\n# )\n\nios_application(\n    name = "App",\n    bundle_id = "com.x",\n)\n',
+      );
+      expect(inferBuildTarget(dir)).toBe('//App');
+    });
   });
 
   describe('detectBazelMajorVersion', () => {
