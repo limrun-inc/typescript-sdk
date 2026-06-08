@@ -15,6 +15,30 @@ export const LIMRUN_DIR = '.limrun';
 export const TRY_IMPORT_LINE = 'try-import %workspace%/.limrun/bazelrc';
 const TRY_IMPORT_COMMENT = '# Added by lim xcode rbe: loads the generated remote-execution config.';
 
+const WORKSPACE_MARKERS = ['MODULE.bazel', 'WORKSPACE', 'WORKSPACE.bazel'];
+
+/**
+ * Finds the Bazel workspace root by walking up from `startDir` to the first
+ * ancestor containing a MODULE.bazel / WORKSPACE / WORKSPACE.bazel, mirroring
+ * how Bazel itself locates the workspace when run from a subdirectory. Returns
+ * null when no workspace is found up to the filesystem root. The generated
+ * `.limrun/` and the `try-import` must live at this root, since `%workspace%`
+ * in bazelrc resolves here regardless of the directory the build is run from.
+ */
+export function findBazelWorkspaceRoot(startDir: string): string | null {
+  let dir = path.resolve(startDir);
+  for (;;) {
+    if (WORKSPACE_MARKERS.some((m) => fs.existsSync(path.join(dir, m)))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      return null;
+    }
+    dir = parent;
+  }
+}
+
 /**
  * Reads the workspace's pinned Bazel major version from `.bazelversion`, or
  * null when the file is absent or its first line has no leading integer.

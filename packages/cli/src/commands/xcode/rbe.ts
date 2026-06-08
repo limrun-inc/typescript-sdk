@@ -1,10 +1,13 @@
-import fs from 'fs';
 import net from 'net';
-import path from 'path';
 import { Flags } from '@oclif/core';
 import type { Tunnel } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
-import { detectBazelMajorVersion, isBazel9OrLater, writeRbeWorkspaceFiles } from '../../lib/rbe-workspace';
+import {
+  detectBazelMajorVersion,
+  findBazelWorkspaceRoot,
+  isBazel9OrLater,
+  writeRbeWorkspaceFiles,
+} from '../../lib/rbe-workspace';
 
 export default class XcodeRbe extends BaseCommand {
   static summary = 'Serve a local Bazel remote-execution endpoint backed by a Limrun Xcode instance';
@@ -35,8 +38,20 @@ export default class XcodeRbe extends BaseCommand {
     const { flags } = await this.parse(XcodeRbe);
     this.setParsedFlags(flags);
 
+    // Resolve the Bazel workspace root before doing anything with auth or
+    // instances: `.limrun/` and the try-import must live at the workspace root
+    // (where bazelrc's %workspace% resolves), and failing here avoids creating
+    // an instance when the command is run outside a workspace. Walk up like
+    // Bazel itself does, so the command works from any subdirectory.
+    const workspaceRoot = findBazelWorkspaceRoot(process.cwd());
+    if (!workspaceRoot) {
+      this.error(
+        'Not inside a Bazel workspace. Run `lim xcode rbe` from within the workspace you want ' +
+          'to build (a directory tree containing MODULE.bazel, WORKSPACE, or WORKSPACE.bazel).',
+      );
+    }
+
     await this.withAuth(async () => {
-      const isBazelWorkspace = this.validateBazelWorkspace();
       await this.assertLocalPortFree(flags.port);
 
       const target = await this.resolveXcodeTargetOrCreate(flags.id);
@@ -69,32 +84,23 @@ export default class XcodeRbe extends BaseCommand {
           );
         }
 
-        const shortXcode = status.xcodeVersion ? status.xcodeVersion.split('.').slice(0, 2).join('.') : undefined;
-        const isMacClient = process.platform === 'darwin';
-        const bazelrc = [
-          `build --remote_executor=grpc://127.0.0.1:${flags.port}`,
-          'build --remote_default_exec_properties=OSFamily=Darwin',
-          'build --spawn_strategy=remote',
-          'build --noremote_local_fallback',
-          'build --strategy=SwiftCompile=remote',
-          'build --strategy=Genrule=remote',
-          ...(shortXcode ? [`build --xcode_version=${shortXcode}`] : []),
-          // Non-mac clients have no auto-detected darwin exec platform; on a mac
-          // this flag is harmful (it pulls exec-config actions onto the host).
-          ...(isMacClient ?
-            []
-          : ['build --extra_execution_platforms=@build_bazel_apple_support//platforms:darwin_arm64']),
-          'build --action_env=PATH=/usr/bin:/bin:/usr/sbin:/sbin',
-        ];
-
-        // With the fleet's Xcode version in hand, generate the workspace
-        // companion (.limrun/BUILD pinning the version, .limrun/bazelrc with
-        // the flags under --config=limrun, try-import wiring) so builds need
-        // no manual configuration and survive fleet Xcode upgrades.
-        let generated: ReturnType<typeof writeRbeWorkspaceFiles> | undefined;
-        if (isBazelWorkspace && status.xcodeVersion) {
-          generated = writeRbeWorkspaceFiles(process.cwd(), status.xcodeVersion, flags.port);
-        }
+        // Generate the workspace companion at the workspace root (.limrun/BUILD
+        // pinning the fleet Xcode, .limrun/bazelrc with the flags under
+        // --config=limrun, try-import wiring) so builds need no manual config
+        // and survive fleet Xcode upgrades. status.xcodeVersion is always set
+        // once the stack is running.
+        const generated =
+          status.xcodeVersion ?
+            writeRbeWorkspaceFiles(workspaceRoot, status.xcodeVersion, flags.port)
+          : undefined;
+        // Bazel 9 defaults to BLAKE3 but the limrun cache only speaks SHA256;
+        // --digest_function is a STARTUP flag so it can't be scoped to
+        // --config=limrun in the generated rc — surface it as a hint instead.
+        const needsSha256 = isBazel9OrLater(detectBazelMajorVersion(workspaceRoot));
+        const buildCmd =
+          needsSha256 ?
+            'bazelisk --digest_function=sha256 build --config=limrun //your:target'
+          : 'bazelisk build --config=limrun //your:target';
 
         if (flags.json) {
           this.outputJson({
@@ -102,48 +108,29 @@ export default class XcodeRbe extends BaseCommand {
             port: flags.port,
             frontendPort: status.frontendPort,
             xcodeVersion: status.xcodeVersion,
+            workspaceRoot,
             generatedConfig:
               generated ?
                 { buildFile: generated.buildFile, bazelrcFragment: generated.bazelrcFragment }
               : undefined,
-            bazelrc,
+            buildCommand: buildCmd,
           });
         } else {
           this.output(`Remote execution endpoint ready: grpc://127.0.0.1:${flags.port}`);
           this.output('');
           if (generated) {
             this.info(
-              `Generated .limrun/ config for the fleet's Xcode ${status.xcodeVersion}` +
+              `Generated .limrun/ config in ${workspaceRoot} for the fleet's Xcode ${status.xcodeVersion}` +
                 (generated.bazelrcUpdated ? ' and wired try-import into .bazelrc.' : '.'),
             );
-            // Bazel 9 defaults to BLAKE3 digests, but the limrun cache currently
-            // only speaks SHA256. --digest_function is a STARTUP flag, so it must
-            // precede `build` and can't be scoped to --config=limrun in the
-            // generated rc; surface it as a hint instead of baking it in.
-            const needsSha256 = isBazel9OrLater(detectBazelMajorVersion(process.cwd()));
-            this.output('Build with:');
-            this.output(
-              needsSha256 ?
-                '  bazelisk --digest_function=sha256 build --config=limrun //your:target'
-              : '  bazelisk build --config=limrun //your:target',
+          }
+          this.output('Build with:');
+          this.output(`  ${buildCmd}`);
+          if (needsSha256) {
+            this.info(
+              'Bazel 9 defaults to BLAKE3; the limrun cache currently requires SHA256, ' +
+                'so the --digest_function=sha256 startup flag above is required.',
             );
-            if (needsSha256) {
-              this.info(
-                'Bazel 9 defaults to BLAKE3; the limrun cache currently requires SHA256, ' +
-                  'so the --digest_function=sha256 startup flag above is required.',
-              );
-            }
-          } else {
-            this.output('Add to your .bazelrc (or pass as flags):');
-            for (const line of bazelrc) {
-              this.output(`  ${line}`);
-            }
-            if (status.xcodeVersion) {
-              this.info(
-                `The fleet runs Xcode ${status.xcodeVersion}; declare it with an xcode_version_config ` +
-                  'target or remote actions from a different local Xcode will be rejected.',
-              );
-            }
           }
           this.output('');
           this.info('Tunnel started. Press Ctrl+C to stop.');
@@ -181,22 +168,6 @@ export default class XcodeRbe extends BaseCommand {
     });
   }
 
-  /**
-   * Warn (and continue) when the current directory does not look like a Bazel
-   * workspace root: bazel must run where MODULE.bazel or WORKSPACE lives, and
-   * the generated .limrun/ config is only written into a real workspace.
-   */
-  private validateBazelWorkspace(): boolean {
-    const markers = ['MODULE.bazel', 'WORKSPACE', 'WORKSPACE.bazel'];
-    const found = markers.some((m) => fs.existsSync(path.join(process.cwd(), m)));
-    if (!found) {
-      this.warn(
-        'No MODULE.bazel or WORKSPACE found in the current directory. Run this command from the ' +
-          'root of the Bazel workspace you want to build.',
-      );
-    }
-    return found;
-  }
 
   /**
    * Retries fn on transient gateway errors (502/503/504 or dropped

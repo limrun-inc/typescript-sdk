@@ -6,6 +6,7 @@ import {
   TRY_IMPORT_LINE,
   detectBazelMajorVersion,
   ensureTryImport,
+  findBazelWorkspaceRoot,
   renderLimrunBazelrc,
   renderXcodeConfigBuild,
   writeRbeWorkspaceFiles,
@@ -82,6 +83,34 @@ describe('rbe workspace generation', () => {
     expect(build).not.toContain('load(');
     // Still emits the rules themselves.
     expect(build).toContain('xcode_config(');
+  });
+
+  describe('findBazelWorkspaceRoot', () => {
+    let dir: string;
+    beforeEach(() => {
+      dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ws-root-')));
+    });
+    afterEach(() => {
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    test('walks up from a subdirectory to the MODULE.bazel root', () => {
+      fs.writeFileSync(path.join(dir, 'MODULE.bazel'), '');
+      const sub = path.join(dir, 'examples', 'integration', 'iOSApp');
+      fs.mkdirSync(sub, { recursive: true });
+      expect(findBazelWorkspaceRoot(sub)).toBe(dir);
+    });
+
+    test('recognizes WORKSPACE and WORKSPACE.bazel markers', () => {
+      fs.writeFileSync(path.join(dir, 'WORKSPACE'), '');
+      expect(findBazelWorkspaceRoot(dir)).toBe(dir);
+    });
+
+    test('returns null when no workspace marker is found up to the root', () => {
+      const sub = path.join(dir, 'a', 'b');
+      fs.mkdirSync(sub, { recursive: true });
+      expect(findBazelWorkspaceRoot(sub)).toBeNull();
+    });
   });
 
   describe('detectBazelMajorVersion', () => {
