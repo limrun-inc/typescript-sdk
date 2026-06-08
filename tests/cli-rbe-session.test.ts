@@ -117,12 +117,13 @@ describe('waitForRbeRunning', () => {
 });
 
 describe('buildServeChildArgs', () => {
-  test('builds the serve child argv with id and port', () => {
+  test('builds the serve child argv with id and port, and --no-create (child never creates instances)', () => {
     expect(buildServeChildArgs({ scriptPath: '/bin/lim', id: 'xc_1', port: 8980 })).toEqual([
       '/bin/lim',
       'xcode',
       'rbe',
       '--serve',
+      '--no-create',
       '--id',
       'xc_1',
       '--port',
