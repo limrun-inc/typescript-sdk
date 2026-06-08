@@ -67,9 +67,10 @@ export default class XcodeRbe extends BaseCommand {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         status = await client.getRbe();
       }
-      if (status.state !== 'running' || !status.frontendPort) {
+      if (status.state !== 'running' || !status.frontendPort || !status.xcodeVersion) {
         this.error(`Remote-execution stack failed to start: ${status.error ?? `state is ${status.state}`}`);
       }
+      const xcodeVersion = status.xcodeVersion;
 
       let tunnel: Tunnel | undefined;
       try {
@@ -87,12 +88,8 @@ export default class XcodeRbe extends BaseCommand {
         // Generate the workspace companion at the workspace root (.limrun/BUILD
         // pinning the fleet Xcode, .limrun/bazelrc with the flags under
         // --config=limrun, try-import wiring) so builds need no manual config
-        // and survive fleet Xcode upgrades. status.xcodeVersion is always set
-        // once the stack is running.
-        const generated =
-          status.xcodeVersion ?
-            writeRbeWorkspaceFiles(workspaceRoot, status.xcodeVersion, flags.port)
-          : undefined;
+        // and survive fleet Xcode upgrades.
+        const generated = writeRbeWorkspaceFiles(workspaceRoot, xcodeVersion, flags.port);
         // Bazel 9 defaults to BLAKE3 but the limrun cache only speaks SHA256;
         // --digest_function is a STARTUP flag so it can't be scoped to
         // --config=limrun in the generated rc — surface it as a hint instead.
@@ -107,23 +104,18 @@ export default class XcodeRbe extends BaseCommand {
             instanceId: typeof target === 'string' ? target : target.id,
             port: flags.port,
             frontendPort: status.frontendPort,
-            xcodeVersion: status.xcodeVersion,
+            xcodeVersion,
             workspaceRoot,
-            generatedConfig:
-              generated ?
-                { buildFile: generated.buildFile, bazelrcFragment: generated.bazelrcFragment }
-              : undefined,
+            generatedConfig: { buildFile: generated.buildFile, bazelrcFragment: generated.bazelrcFragment },
             buildCommand: buildCmd,
           });
         } else {
           this.output(`Remote execution endpoint ready: grpc://127.0.0.1:${flags.port}`);
           this.output('');
-          if (generated) {
-            this.info(
-              `Generated .limrun/ config in ${workspaceRoot} for the fleet's Xcode ${status.xcodeVersion}` +
-                (generated.bazelrcUpdated ? ' and wired try-import into .bazelrc.' : '.'),
-            );
-          }
+          this.info(
+            `Generated .limrun/ config in ${workspaceRoot} for the fleet's Xcode ${xcodeVersion}` +
+              (generated.bazelrcUpdated ? ' and wired try-import into .bazelrc.' : '.'),
+          );
           this.output('Build with:');
           this.output(`  ${buildCmd}`);
           if (needsSha256) {
