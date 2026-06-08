@@ -260,11 +260,22 @@ export async function listAppleBundleIDs({
   search = '',
   ...options
 }: ListAppleBundleIDsOptions) {
+  const query = search.trim().toLowerCase();
   return requestAppleProvisioning<AppleDeveloperPortalAppID[]>({
     ...options,
     request: findBundleIDRequest({ bundleID: search, teamID: teamId }),
     label: 'Apple bundle ID list',
-    mapBody: (body) => body?.appIds ?? [],
+    // Apple's listAppIds.action returns the full paginated list and does not
+    // honor a server-side search filter, so apply the `search` filter here.
+    mapBody: (body) => {
+      const appIds = body?.appIds ?? [];
+      if (!query) return appIds;
+      return appIds.filter((appId) =>
+        [appId.identifier, appId.bundleId, appId.name].some(
+          (value) => typeof value === 'string' && value.toLowerCase().includes(query),
+        ),
+      );
+    },
   });
 }
 
@@ -324,12 +335,23 @@ export async function listAppleDevices({
   deviceUDID = '',
   ...options
 }: ListAppleDevicesOptions) {
+  const wantedUDID = normalizeAppleUDID(deviceUDID);
   return requestAppleProvisioning<AppleDeveloperPortalDevice[]>({
     ...options,
     request: findDeviceRequest({ deviceUDID, teamID: teamId }),
     label: 'Apple device list',
-    mapBody: (body) => body?.devices ?? [],
+    // Apple's listDevices.action returns the full paginated list and does not
+    // honor a server-side UDID filter, so apply the `deviceUDID` filter here.
+    mapBody: (body) => {
+      const devices = body?.devices ?? [];
+      if (!wantedUDID) return devices;
+      return devices.filter((device) => normalizeAppleUDID(device.deviceNumber) === wantedUDID);
+    },
   });
+}
+
+function normalizeAppleUDID(udid?: string) {
+  return (udid ?? '').replace(/-/g, '').replace(/[^a-fA-F0-9]/g, '').toUpperCase();
 }
 
 export async function registerAppleDevice({

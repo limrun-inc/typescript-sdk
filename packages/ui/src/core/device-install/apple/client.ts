@@ -66,17 +66,20 @@ export async function startBrowserOwnedAppleIDLogin({
     if (requiresTwoFactor) {
       twoFactorChallengeResponse = await triggerTrustedDeviceTwoFactor(limbuildApiUrl, appleSessionId, token);
       const phone = trustedPhoneNumberFromChallenge(twoFactorChallengeResponse.body);
-      if (phone) {
+      // Only route codes through the phone/SMS endpoint when Apple actually
+      // falls back to phone verification (HTTP 412). The trusted-device
+      // challenge body frequently includes trusted-phone metadata even for a
+      // normal device push; routing those codes to the phone endpoint breaks
+      // trusted-device login.
+      if (twoFactorChallengeResponse.status === 412) {
+        if (!phone) {
+          throw new Error('Apple requested phone verification but did not include a trusted phone number.');
+        }
         twoFactorMethod = {
           type: 'phone',
           phoneNumberId: phone.id,
           mode: phone.pushMode ?? 'sms',
         };
-      }
-      if (twoFactorChallengeResponse.status === 412) {
-        if (!phone) {
-          throw new Error('Apple requested phone verification but did not include a trusted phone number.');
-        }
         twoFactorChallengeResponse = await triggerPhoneTwoFactor(
           limbuildApiUrl,
           appleSessionId,

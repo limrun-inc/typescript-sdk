@@ -100,7 +100,10 @@ export function useDeviceBuild({
                 .catch((caught) => setError(errorMessage(caught)));
             }
           },
-          onError: (caught) => setError(caught.message),
+          onError: (caught) => {
+            setStatus('failed');
+            setError(caught.message);
+          },
         });
         return result.execId;
       } catch (caught) {

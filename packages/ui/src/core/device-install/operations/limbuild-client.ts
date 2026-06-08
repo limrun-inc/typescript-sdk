@@ -132,6 +132,9 @@ export function watchBuildLogEvents({
   });
   events.onerror = () => {
     events.close();
+    // The stream closed without a terminal exitCode event. Mark the build as
+    // failed so consumers don't stay stuck on "running" and can retry.
+    onStatus('failed');
     onError?.(new Error('Build log stream closed before completion.'));
   };
   return () => events.close();

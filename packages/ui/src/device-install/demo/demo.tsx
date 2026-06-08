@@ -123,7 +123,10 @@ function App() {
   const combinedError = prepareError ?? appleLogin.error ?? install.error ?? build.error;
   const selectedUDID = install.device?.hello.serialNumber;
   const selectedTeam = resources.teams.find((team) => appleTeamSelectionId(team) === selectedTeamId);
-  const developerTeamId = selectedTeam?.teamId;
+  // Resolve the team id the same way the <select> value is computed, so teams
+  // whose portal id lives in providerId/publicProviderId (not teamId) still
+  // drive the Apple Developer flow instead of leaving developerTeamId undefined.
+  const developerTeamId = appleTeamSelectionId(selectedTeam);
   const selectedProfile = resources.profiles.find(
     (profile) => stringField(profile, 'provisioningProfileId') === selectedProfileId,
   );
@@ -230,7 +233,9 @@ function App() {
       setResources((current) => ({ ...current, teams }));
       const firstTeamId = teams.map(appleTeamSelectionId).find(Boolean) ?? '';
       setSelectedTeamId(firstTeamId);
-      const firstDeveloperTeamId = teams.find((team) => appleTeamSelectionId(team) === firstTeamId)?.teamId;
+      const firstDeveloperTeamId = appleTeamSelectionId(
+        teams.find((team) => appleTeamSelectionId(team) === firstTeamId),
+      );
       if (firstDeveloperTeamId) {
         await loadAppleResources(firstDeveloperTeamId, appleSessionId);
       }
@@ -674,7 +679,8 @@ function App() {
                     const value = event.currentTarget.value;
                     setSelectedTeamId(value);
                     const team = resources.teams.find((item) => appleTeamSelectionId(item) === value);
-                    if (team?.teamId) void loadAppleResources(team.teamId);
+                    const teamId = appleTeamSelectionId(team);
+                    if (teamId) void loadAppleResources(teamId);
                   }}
                 >
                   <option value="">Sign in to load teams</option>
