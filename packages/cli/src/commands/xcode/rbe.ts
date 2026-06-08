@@ -317,21 +317,25 @@ export default class XcodeRbe extends BaseCommand {
     );
     fs.closeSync(logFd);
     child.unref();
+    const pid = child.pid;
+    if (pid === undefined) {
+      await opts.client.stopRbe().catch(() => {});
+      this.error('Failed to spawn the background tunnel process.');
+    }
 
     // Readiness check: wait until the child's local listener actually accepts a
     // connection (startRbeTunnel binds the port only once openTunnel resolves),
     // rather than trusting a fixed delay — otherwise we'd advertise the endpoint
     // before it's bound and an immediate bazel run could hit connection-refused.
-    // Race that probe against the child exiting (startup failure) and an overall
-    // deadline (a child that never binds).
+    // Loop exits on: port open (success), child exit (startup failure), or the
+    // overall deadline (a child that never binds).
     let childExit: number | null | undefined;
     child.once('exit', (code) => {
       childExit = code ?? 0;
     });
     let ready = false;
     const deadline = Date.now() + 15000;
-    while (Date.now() < deadline) {
-      if (childExit !== undefined) break;
+    while (childExit === undefined && Date.now() < deadline) {
       if (await probePortOpen(opts.port)) {
         ready = true;
         break;
@@ -347,23 +351,18 @@ export default class XcodeRbe extends BaseCommand {
           `The background tunnel exited during startup (code ${childExit}).\n` +
             `${readLogTail(logPath)}\nSee ${logPath} for details.`,
         );
+      } else {
+        // Alive but never bound the port within the deadline: reap it so it
+        // doesn't linger holding nothing, then fail.
+        signalIfAlive(pid, 'SIGKILL');
+        this.error(
+          `The background tunnel did not become ready on port ${opts.port} in time.\n` +
+            `${readLogTail(logPath)}\nSee ${logPath} for details.`,
+        );
       }
-      // Child is alive but never bound the port within the deadline: reap it so
-      // it doesn't linger holding nothing, then fail.
-      signalIfAlive(child.pid ?? -1, 'SIGKILL');
-      this.error(
-        `The background tunnel did not become ready on port ${opts.port} in time.\n` +
-          `${readLogTail(logPath)}\nSee ${logPath} for details.`,
-      );
     }
-    this.reporter.stop('success', `Tunnel running in background (PID ${child.pid})`);
-    if (child.pid) {
-      writeRbePidFile(opts.workspaceRoot, {
-        pid: child.pid,
-        instanceId: opts.instanceId,
-        port: opts.port,
-      });
-    }
+    this.reporter.stop('success', `Tunnel running in background (PID ${pid})`);
+    writeRbePidFile(opts.workspaceRoot, { pid, instanceId: opts.instanceId, port: opts.port });
 
     this.printReady({
       port: opts.port,
@@ -373,7 +372,7 @@ export default class XcodeRbe extends BaseCommand {
       buildCmd: opts.buildCmd,
       instanceId: opts.instanceId,
       background: true,
-      pid: child.pid,
+      pid,
       logPath,
     });
   }

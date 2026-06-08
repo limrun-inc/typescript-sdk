@@ -184,11 +184,11 @@ export async function assertLocalPortFree(port: number, host = '127.0.0.1'): Pro
 
 /**
  * Resolves true if a TCP connection to `host:port` is accepted (something is
- * listening), false otherwise. Used to confirm a backgrounded tunnel's local
- * listener is actually accepting connections before advertising the endpoint,
- * rather than trusting a fixed delay.
+ * listening), false otherwise (connection refused, error, or no answer within
+ * `timeoutMs`). The timeout only bites when a connect neither completes nor is
+ * refused (a dropped SYN); on loopback a closed port refuses instantly.
  */
-export function probePortOpen(port: number, host = '127.0.0.1', timeoutMs = 1000): Promise<boolean> {
+export function probePortOpen(port: number, host = '127.0.0.1', timeoutMs = 500): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = new net.Socket();
     const done = (open: boolean) => {
