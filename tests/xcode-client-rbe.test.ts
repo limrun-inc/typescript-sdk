@@ -44,6 +44,21 @@ describe('xcode client RBE helpers', () => {
     await expect(xcode.getRbe()).rejects.toThrow(/GET \/rbe failed: 500/);
   });
 
+  test('getRbe and stopRbe also map a /rbe 404 to RbeUnsupportedError', async () => {
+    // Proves the 404 mapping lives on readRbeResponse (shared by all verbs),
+    // not just the POST path.
+    nodeProxyTransport.fetch = jest.fn(async () => new Response('404 page not found\n', { status: 404 }));
+    const xcode = await rbeClient();
+    await expect(xcode.getRbe()).rejects.toBeInstanceOf(RbeUnsupportedError);
+    await expect(xcode.stopRbe()).rejects.toBeInstanceOf(RbeUnsupportedError);
+  });
+
+  test('a 200 with an empty body is a clear error, not a JSON parse crash', async () => {
+    nodeProxyTransport.fetch = jest.fn(async () => new Response('', { status: 200 }));
+    const xcode = await rbeClient();
+    await expect(xcode.getRbe()).rejects.toThrow(/returned an empty response/);
+  });
+
   test('startRbe returns the parsed status on success', async () => {
     nodeProxyTransport.fetch = jest.fn(
       async () =>

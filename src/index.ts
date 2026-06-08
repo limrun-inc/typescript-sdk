@@ -26,6 +26,7 @@ export {
   type Tunnel,
   RbeUnsupportedError,
   deriveRbeTunnelUrl,
+  DEFAULT_RBE_TUNNEL_PORT,
   type XcodeProjectConfig,
   type XcodeBuildOptions,
   type ReactNativeBuildConfig,

@@ -1,18 +1,35 @@
 import net from 'net';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { deriveRbeTunnelUrl } from '../src/resources/xcode-instances-helpers';
-import { startTcpTunnel, decodeConnectionHeader, encodeConnectionHeader, type Tunnel } from '../src/tunnel';
+import {
+  startTcpTunnel,
+  decodeConnectionHeader,
+  encodeConnectionHeader,
+  type Tunnel,
+  type TunnelConnectionState,
+} from '../src/tunnel';
+
+async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    if (predicate()) return;
+    if (Date.now() - start > timeoutMs) throw new Error('waitFor timed out');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 describe('rbe tunnel url derivation', () => {
-  test('deriveRbeTunnelUrl converts https apiUrl to wss with multiplexed mode', () => {
+  // The tunnel layer appends ?mode=multiplexed itself, so deriveRbeTunnelUrl
+  // must NOT add it (it would be redundant / double).
+  test('deriveRbeTunnelUrl converts https apiUrl to wss without a mode query', () => {
     expect(deriveRbeTunnelUrl('https://node.example/v1/sandbox_123/xcode')).toBe(
-      'wss://node.example/v1/sandbox_123/xcode/rbe/tunnel?mode=multiplexed',
+      'wss://node.example/v1/sandbox_123/xcode/rbe/tunnel',
     );
   });
 
   test('deriveRbeTunnelUrl clears existing query and hash and trims trailing slash', () => {
     expect(deriveRbeTunnelUrl('http://node.example/v1/sandbox_123/xcode/?token=old#frag')).toBe(
-      'ws://node.example/v1/sandbox_123/xcode/rbe/tunnel?mode=multiplexed',
+      'ws://node.example/v1/sandbox_123/xcode/rbe/tunnel',
     );
   });
 
@@ -148,5 +165,101 @@ describe('multiplexed rbe tunnel framing', () => {
     );
     expect(seenIds.size).toBe(3);
     for (const socket of sockets) socket.destroy();
+  });
+});
+
+describe('multiplexed rbe tunnel reconnect', () => {
+  let server: WebSocketServer;
+  let serverSockets: WebSocket[];
+  let tunnel: Tunnel | undefined;
+
+  beforeEach(async () => {
+    serverSockets = [];
+    server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    server.on('connection', (socket) => {
+      serverSockets.push(socket);
+      mockBackend(socket);
+    });
+    await new Promise<void>((resolve) => server.once('listening', resolve));
+  });
+
+  afterEach(async () => {
+    tunnel?.close();
+    tunnel = undefined;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  function serverUrl(): string {
+    const addr = server.address() as net.AddressInfo;
+    return `ws://127.0.0.1:${addr.port}/rbe/tunnel?mode=multiplexed`;
+  }
+  function connect(port: number): Promise<net.Socket> {
+    return new Promise((resolve, reject) => {
+      const socket = net.connect({ host: '127.0.0.1', port }, () => resolve(socket));
+      socket.once('error', reject);
+    });
+  }
+  function readOnce(socket: net.Socket): Promise<string> {
+    return new Promise((resolve) => socket.once('data', (data) => resolve(data.toString('utf8'))));
+  }
+
+  test('reconnects after a transient WS drop and stays usable', async () => {
+    const states: TunnelConnectionState[] = [];
+    tunnel = await startTcpTunnel(serverUrl(), 'test-token', '127.0.0.1', 0, {
+      mode: 'multiplexed',
+      logLevel: 'none',
+      reconnectDelay: 10,
+      maxReconnectDelay: 30,
+      maxReconnectAttempts: 5,
+    });
+    tunnel.onConnectionStateChange((s) => states.push(s));
+    const port = tunnel.address.port;
+
+    const a = await connect(port);
+    a.write('hello');
+    expect(await readOnce(a)).toBe('HELLO');
+    expect(serverSockets).toHaveLength(1);
+
+    // Simulate a transient network drop on the established WS.
+    serverSockets[0].terminate();
+
+    // The client keeps the listener up and reconnects (a 2nd server-side
+    // connection is accepted), passing through 'reconnecting' back to 'connected'.
+    await waitFor(() => serverSockets.length >= 2);
+    await waitFor(() => tunnel!.getConnectionState() === 'connected');
+    expect(states).toContain('reconnecting');
+
+    // A new connection works after the reconnect.
+    const b = await connect(port);
+    b.write('world');
+    expect(await readOnce(b)).toBe('WORLD');
+    a.destroy();
+    b.destroy();
+  });
+
+  test('gives up with a terminal disconnect after maxReconnectAttempts', async () => {
+    const states: TunnelConnectionState[] = [];
+    tunnel = await startTcpTunnel(serverUrl(), 'test-token', '127.0.0.1', 0, {
+      mode: 'multiplexed',
+      logLevel: 'none',
+      reconnectDelay: 10,
+      maxReconnectDelay: 20,
+      maxReconnectAttempts: 3,
+    });
+    tunnel.onConnectionStateChange((s) => states.push(s));
+
+    const a = await connect(tunnel.address.port);
+    a.write('x');
+    await readOnce(a);
+
+    // Drop the connection AND take the whole server down so every reconnect
+    // attempt fails; after maxReconnectAttempts the tunnel goes terminal.
+    serverSockets[0].terminate();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+
+    await waitFor(() => tunnel!.getConnectionState() === 'disconnected', 5000);
+    expect(states).toContain('reconnecting');
+    expect(tunnel!.getConnectionState()).toBe('disconnected');
+    a.destroy();
   });
 });

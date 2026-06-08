@@ -122,21 +122,30 @@ function renderAvailableXcodes(name: string, target: string): string {
  * the `local_versions` set so local/host-tool actions resolve against the
  * Xcode the client actually has, while the fleet's version stays remote-only.
  */
+/**
+ * Parses the `xcodebuild -version` output into a major.minor.patch.build key
+ * (e.g. "Xcode 26.5\nBuild version 17F42" -> "26.5.0.17F42"). Returns null when
+ * the output doesn't carry both a version and a build line. Pure (no I/O) so it
+ * is unit-testable independent of the host's Xcode.
+ */
+export function parseXcodeVersionOutput(out: string): string | null {
+  const versionMatch = out.match(/Xcode\s+(\d+)\.(\d+)(?:\.(\d+))?/);
+  const buildMatch = out.match(/Build version\s+(\S+)/);
+  if (!versionMatch || !buildMatch) {
+    return null;
+  }
+  const major = versionMatch[1];
+  const minor = versionMatch[2];
+  const patch = versionMatch[3] ?? '0';
+  return `${major}.${minor}.${patch}.${buildMatch[1]}`;
+}
+
 export function detectLocalXcodeVersionKey(): string | null {
   if (process.platform !== 'darwin') {
     return null;
   }
   try {
-    const out = execFileSync('xcodebuild', ['-version'], { encoding: 'utf8' });
-    const versionMatch = out.match(/Xcode\s+(\d+)\.(\d+)(?:\.(\d+))?/);
-    const buildMatch = out.match(/Build version\s+(\S+)/);
-    if (!versionMatch || !buildMatch) {
-      return null;
-    }
-    const major = versionMatch[1];
-    const minor = versionMatch[2];
-    const patch = versionMatch[3] ?? '0';
-    return `${major}.${minor}.${patch}.${buildMatch[1]}`;
+    return parseXcodeVersionOutput(execFileSync('xcodebuild', ['-version'], { encoding: 'utf8' }));
   } catch {
     return null;
   }
@@ -191,10 +200,19 @@ load("@build_bazel_apple_support//xcode:xcode_config.bzl", "xcode_config")
   const remoteRule = renderXcodeVersionRule('remote_xcode', remoteVersionKey);
 
   let localBlock: string;
+  // Split on major.minor, NOT the full key: each xcode_version rule is aliased
+  // by its major.minor (e.g. "26.4"), and a single xcode_config rejects the
+  // same alias registered to two versions. So a distinct local rule is only
+  // safe when its major.minor differs from the fleet's. A client on the same
+  // major.minor but a different build (e.g. local 26.4.1 vs fleet 26.4.0) is
+  // intentionally folded into the synthetic branch below: the build only
+  // matters for LOCAL actions, which never run under --noremote_local_fallback,
+  // and --xcode_version=26.4 resolves against the fleet pin by alias anyway.
   if (localVersionKey && shortVersion(localVersionKey) !== shortVersion(remoteVersionKey)) {
-    // The client has its own Xcode, distinct from the fleet's. Declare it as
-    // the local set so local actions resolve against it; the fleet version is
-    // in remote_versions only, hence remote-only (no client-side locator).
+    // The client has its own Xcode at a different major.minor than the fleet's.
+    // Declare it as the local set so local/host-tool actions resolve against
+    // it; the fleet version is in remote_versions only, hence remote-only (no
+    // client-side locator).
     localBlock = `
 # The client's own local Xcode (distinct from the fleet's). Local/host-tool
 # actions resolve against this; the fleet version above is remote-only.
@@ -203,15 +221,16 @@ ${renderXcodeVersionRule('local_xcode', localVersionKey)}
 ${renderAvailableXcodes('local_xcodes', ':local_xcode')}
 `;
   } else {
-    // No distinct local Xcode (Linux/Windows, or the client happens to run the
-    // same version as the fleet). A synthetic set defaulting to the pinned
-    // version keeps available_xcodes' mandatory default satisfied without
-    // naming an Xcode the machine may not physically have.
+    // No distinct-major.minor local Xcode (Linux/Windows with none, or a client
+    // whose Xcode shares the fleet's major.minor). A synthetic set defaulting to
+    // the pinned version keeps available_xcodes' mandatory default satisfied
+    // without registering a colliding "26.4" alias or naming a build the machine
+    // may not physically have.
     localBlock = `
-# Synthetic local Xcode set for clients with no distinct local Xcode
-# (Linux/Windows). Its mandatory default points at the same version as the
-# remote pin so resolution never demands a real local DEVELOPER_DIR for a
-# version this machine does not physically have.
+# Synthetic local Xcode set for clients with no distinct-major.minor local Xcode
+# (Linux/Windows, or a client sharing the fleet's major.minor). Its mandatory
+# default points at the same version as the remote pin so resolution never
+# demands a real local DEVELOPER_DIR for a version this machine does not have.
 ${renderAvailableXcodes('local_xcodes', ':remote_xcode')}
 `;
   }
@@ -289,7 +308,13 @@ export function ensureTryImport(workspaceDir: string): boolean {
   let current = '';
   if (fs.existsSync(bazelrcPath)) {
     current = fs.readFileSync(bazelrcPath, 'utf8');
-    if (current.includes(TRY_IMPORT_LINE)) {
+    // Match the try-import on a line basis (exact, uncommented) rather than a
+    // raw substring, so a commented-out occurrence (e.g. `# try-import ...`)
+    // doesn't make us skip wiring the active import.
+    const alreadyWired = current
+      .split('\n')
+      .some((line) => line.trim() === TRY_IMPORT_LINE);
+    if (alreadyWired) {
       return false;
     }
   }

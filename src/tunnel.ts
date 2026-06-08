@@ -899,7 +899,18 @@ async function startMultiplexedTcpTunnel(
     let ws: WebSocket | undefined;
     let pingInterval: NodeJS.Timeout | undefined;
     let intentionalDisconnect = false;
+    // True once the initial connect has succeeded. Initial-connect failures
+    // reject the outer promise (no reconnect); only post-establishment drops
+    // reconnect, keeping the local listener open so long builds survive a blip.
+    let established = false;
     let connectionState: TunnelConnectionState = 'connecting';
+
+    const maxReconnectAttempts = options?.maxReconnectAttempts ?? 6;
+    const reconnectDelay = options?.reconnectDelay ?? 1000;
+    const maxReconnectDelay = options?.maxReconnectDelay ?? 30000;
+    let reconnectAttempts = 0;
+    let reconnectTimeout: NodeJS.Timeout | undefined;
+    let lastError: string | undefined;
 
     const stateChangeCallbacks: Set<TunnelConnectionStateCallback> = new Set();
 
@@ -943,12 +954,47 @@ async function startMultiplexedTcpTunnel(
 
     const close = () => {
       intentionalDisconnect = true;
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = undefined;
+      }
       cleanupWebSocket();
       closeAllConnections();
       updateConnectionState('disconnected');
       if (server.listening) {
         server.close();
       }
+    };
+
+    // Single reconnect scheduler. Only ws.on('close') drives it (after the
+    // tunnel is established), so there is no double-scheduling race; the
+    // `reconnectTimeout` guard is belt-and-suspenders. Mirrors the singleton
+    // tunnel's backoff, but tears down per-connection streams on each drop
+    // since a multiplexed connId cannot be resumed across a WS reconnect.
+    const scheduleReconnect = (): void => {
+      if (intentionalDisconnect || reconnectTimeout) {
+        return;
+      }
+      if (isNonRetryableError(lastError ?? '')) {
+        logger.error(`Closing multiplexed tunnel (non-retryable error): ${lastError}`);
+        close();
+        return;
+      }
+      if (reconnectAttempts >= maxReconnectAttempts) {
+        logger.error(`Max reconnection attempts (${maxReconnectAttempts}) reached. Closing tunnel.`);
+        close();
+        return;
+      }
+      const currentDelay = Math.min(reconnectDelay * Math.pow(2, reconnectAttempts), maxReconnectDelay);
+      reconnectAttempts++;
+      updateConnectionState('reconnecting');
+      logger.debug(`Scheduling reconnection attempt ${reconnectAttempts} in ${currentDelay}ms...`);
+      reconnectTimeout = setTimeout(() => {
+        reconnectTimeout = undefined;
+        // On failure the new ws's own 'close' handler schedules the next
+        // attempt, so here we only swallow the rejection.
+        setupWebSocket().catch(() => {});
+      }, currentDelay);
     };
 
     // Send close signal for a connection (header-only packet)
@@ -992,6 +1038,7 @@ async function startMultiplexedTcpTunnel(
 
         ws.on('error', (err: any) => {
           const errMessage = err.message || String(err);
+          lastError = errMessage;
           logger.error('WebSocket error:', errMessage, err.code || '');
           rejectWs(err);
         });
@@ -1001,17 +1048,28 @@ async function startMultiplexedTcpTunnel(
             clearInterval(pingInterval);
             pingInterval = undefined;
           }
-
-          updateConnectionState('disconnected');
           logger.debug(`WebSocket disconnected (code=${code}, reason=${reason.toString()})`);
 
-          // Close all TCP connections when WebSocket closes
+          // Per-connection streams cannot survive a WS drop (their remote peers
+          // are gone), so tear them down; bazel's own gRPC retries re-establish
+          // channels once the WS is back.
           closeAllConnections();
+
+          // Before establishment, the listening handler's catch rejects + closes
+          // (no reconnect). After establishment, a non-intentional drop reconnects
+          // (keeping the listener open) instead of killing the tunnel.
+          if (!established || intentionalDisconnect) {
+            updateConnectionState('disconnected');
+            return;
+          }
+          scheduleReconnect();
         });
 
         ws.on('open', () => {
           const socket = ws as WebSocket;
           logger.debug('WebSocket connected');
+          reconnectAttempts = 0;
+          lastError = undefined;
           updateConnectionState('connected');
 
           pingInterval = setInterval(() => {
@@ -1090,6 +1148,7 @@ async function startMultiplexedTcpTunnel(
       // Start WebSocket connection and wait for it to be ready
       try {
         await setupWebSocket();
+        established = true;
         logger.debug('WebSocket ready, tunnel fully initialized');
         resolve({
           address,
