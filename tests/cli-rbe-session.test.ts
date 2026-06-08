@@ -95,9 +95,9 @@ describe('waitForRbeRunning', () => {
 
   test('throws when the stack ends in failed, surfacing the error', async () => {
     const client = clientReturning([{ state: 'failed', error: 'worker crashed' }]);
-    await expect(
-      waitForRbeRunning(client, { state: 'starting' }, { sleep: noSleep }),
-    ).rejects.toThrow(/worker crashed/);
+    await expect(waitForRbeRunning(client, { state: 'starting' }, { sleep: noSleep })).rejects.toThrow(
+      /worker crashed/,
+    );
   });
 
   test('throws when it stays starting past maxAttempts', async () => {
@@ -131,10 +131,12 @@ describe('buildServeChildArgs', () => {
   });
 
   test('passes through the api key when provided, omits it otherwise', () => {
-    expect(buildServeChildArgs({ scriptPath: '/bin/lim', id: 'xc_1', port: 9980, apiKey: 'lim_k' })).toContain(
-      'lim_k',
+    expect(
+      buildServeChildArgs({ scriptPath: '/bin/lim', id: 'xc_1', port: 9980, apiKey: 'lim_k' }),
+    ).toContain('lim_k');
+    expect(buildServeChildArgs({ scriptPath: '/bin/lim', id: 'xc_1', port: 9980 })).not.toContain(
+      '--api-key',
     );
-    expect(buildServeChildArgs({ scriptPath: '/bin/lim', id: 'xc_1', port: 9980 })).not.toContain('--api-key');
   });
 });
 

@@ -121,8 +121,14 @@ export default class XcodeRbe extends BaseCommand {
     }
 
     await this.withAuth(async () => {
-      await assertLocalPortFree(flags.port).catch((err) =>
-        this.error(err instanceof Error ? err.message : String(err)),
+      // The already-running guard above handles a tracked tunnel; if the port is
+      // still busy here it's an orphan (pidfile gone) or another process, so
+      // point at --stop in addition to --port.
+      await assertLocalPortFree(flags.port).catch(() =>
+        this.error(
+          `Local port ${flags.port} is already in use. If a previous tunnel is still running, ` +
+            'stop it with `lim xcode rbe --stop`; otherwise pass --port to choose another.',
+        ),
       );
 
       // Resolve an instance and start the stack. An auto-resolved instance (no
@@ -240,20 +246,44 @@ export default class XcodeRbe extends BaseCommand {
       return;
     }
     this.reporter.start(`Stopping background tunnel (PID ${info.pid})`);
-    try {
-      process.kill(info.pid, 'SIGTERM');
-    } catch {
-      // exited between the liveness check and the signal
+
+    // SIGTERM first: the child closes the tunnel and stops the remote stack via
+    // DELETE /rbe, whose server-side teardown (tearing down the bb workers/store)
+    // takes ~20s. Allow a generous grace so the stack is actually stopped rather
+    // than orphaned to idle-out; the spinner keeps this from looking hung.
+    const signalled = signalIfAlive(info.pid, 'SIGTERM');
+    if (signalled) {
+      for (let i = 0; i < 300 && isProcessAlive(info.pid); i++) {
+        await defaultSleep(100); // up to ~30s for graceful teardown
+      }
     }
-    for (let i = 0; i < 30 && isProcessAlive(info.pid); i++) {
-      await defaultSleep(100);
+
+    // Escalate to SIGKILL if it's wedged (e.g. stuck stopping the remote stack),
+    // so --stop always frees the port instead of leaving an orphan.
+    let forced = false;
+    if (isProcessAlive(info.pid)) {
+      forced = signalIfAlive(info.pid, 'SIGKILL');
+      for (let i = 0; i < 20 && isProcessAlive(info.pid); i++) {
+        await defaultSleep(100); // up to ~2s
+      }
     }
-    clearRbePidFile(workspaceRoot);
+
+    // Only drop the pidfile once the process is actually gone — otherwise a
+    // re-run of --stop would wrongly report "no tunnel running" while the orphan
+    // keeps holding the port.
     if (isProcessAlive(info.pid)) {
       this.reporter.stop('failure');
       this.error(`Tunnel process ${info.pid} did not exit. Force it with: kill -9 ${info.pid}`);
     }
-    this.reporter.stop('success', `Stopped background tunnel (PID ${info.pid})`);
+    clearRbePidFile(workspaceRoot);
+    if (forced) {
+      this.reporter.stop('success', `Force-stopped background tunnel (PID ${info.pid})`);
+      this.info(
+        'It was killed before it could stop the remote stack; the instance will idle out on its own.',
+      );
+    } else {
+      this.reporter.stop('success', `Stopped background tunnel (PID ${info.pid})`);
+    }
   }
 
   /**
@@ -427,6 +457,16 @@ export default class XcodeRbe extends BaseCommand {
       this.output('');
       this.info('Tunnel is running. Press Ctrl+C to stop.');
     }
+  }
+}
+
+/** Sends `signal` to `pid`, ignoring "already gone". Returns false if the process was absent. */
+function signalIfAlive(pid: number, signal: NodeJS.Signals): boolean {
+  try {
+    process.kill(pid, signal);
+    return true;
+  } catch {
+    return false;
   }
 }
 

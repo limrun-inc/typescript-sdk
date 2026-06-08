@@ -288,9 +288,7 @@ export default class Run extends BaseCommand {
     this.output('');
     this.output(`- Prompt it: "${prompt}"`);
   }
-
 }
-
 
 function humanPath(absolutePath: string, fromDir = process.cwd()): string {
   const relative = path.relative(fromDir, absolutePath);
@@ -358,5 +356,3 @@ function safeOsUserName(): string | undefined {
     return undefined;
   }
 }
-
-
