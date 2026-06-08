@@ -37,6 +37,10 @@ type ActivityLine = {
   detail?: string;
 };
 
+type StepState = 'pending' | 'active' | 'done' | 'error';
+type StepView = { state: StepState; label: string };
+type PillTone = 'neutral' | 'active' | 'success' | 'danger';
+
 type SigningSource = 'apple' | 'upload';
 type CertificateChoice = 'stored' | 'create';
 type ProfileChoice = 'create' | 'existing';
@@ -88,6 +92,8 @@ function App() {
   const [signingAssets, setSigningAssets] = useState<StoredSigningAssets>();
   const [activity, setActivity] = useState<ActivityLine[]>([]);
   const [prepareError, setPrepareError] = useState<string>();
+  const [dismissedError, setDismissedError] = useState<string>();
+  const [installPhase, setInstallPhase] = useState<'idle' | 'installing' | 'done' | 'error'>('idle');
 
   const addActivity = (message: string, detail?: string) => {
     setActivity((current) =>
@@ -101,6 +107,15 @@ function App() {
         ...current,
       ].slice(0, 120),
     );
+    // Derive install completion from relay progress messages (the hook has no
+    // explicit "installed" signal). Only act while an install is in flight so
+    // pairing's "completed" messages don't flip this.
+    setInstallPhase((phase) => {
+      if (phase !== 'installing') return phase;
+      if (/100% complete/i.test(message) || /install completed/i.test(message)) return 'done';
+      if (/^server error/i.test(message) || /install failed/i.test(message)) return 'error';
+      return phase;
+    });
   };
 
   const install = useDeviceInstallRelay({
@@ -121,6 +136,9 @@ function App() {
   });
 
   const combinedError = prepareError ?? appleLogin.error ?? install.error ?? build.error;
+  // Show the error as a floating toast (so it's visible without scrolling up)
+  // until it's dismissed; a different error re-shows it.
+  const visibleError = combinedError && combinedError !== dismissedError ? combinedError : undefined;
   const selectedUDID = install.device?.hello.serialNumber;
   const selectedTeam = resources.teams.find((team) => appleTeamSelectionId(team) === selectedTeamId);
   // Resolve the team id the same way the <select> value is computed, so teams
@@ -134,6 +152,39 @@ function App() {
   const canPrepareSigning = !!certificateFile && !!profileFile;
   const canStartBuild = !!signingAssets && build.status !== 'queued' && build.status !== 'running';
   const canInstall = install.canInstall && build.status === 'succeeded';
+
+  // Live per-step status used by the overview stepper and the section pills.
+  const pairStep: StepView =
+    install.busyAction === 'usb' ? { state: 'active', label: 'Selecting device…' }
+    : install.busyAction === 'pair' ? { state: 'active', label: 'Pairing…' }
+    : install.hasPairRecord ? { state: 'done', label: 'Paired' }
+    : install.device ? { state: 'active', label: 'Device selected' }
+    : { state: 'pending', label: 'Not started' };
+  const signStep: StepView =
+    signingAssets ? { state: 'done', label: 'Assets ready' }
+    : appleBusy === 'signing' ? { state: 'active', label: 'Preparing assets…' }
+    : appleBusy === 'login' || appleLogin.status === 'authenticating' ?
+      { state: 'active', label: 'Signing in…' }
+    : appleLogin.status === 'two-factor-required' ? { state: 'active', label: '2FA required' }
+    : { state: 'pending', label: 'Missing' };
+  const buildStep: StepView =
+    build.status === 'succeeded' ? { state: 'done', label: 'Succeeded' }
+    : build.status === 'failed' || build.status === 'cancelled' ? { state: 'error', label: build.status }
+    : build.status === 'queued' || build.status === 'running' ? { state: 'active', label: build.status }
+    : { state: 'pending', label: 'Idle' };
+  const installStep: StepView =
+    installPhase === 'done' ? { state: 'done', label: 'Installed' }
+    : installPhase === 'error' ? { state: 'error', label: 'Failed' }
+    : install.busyAction === 'install' || installPhase === 'installing' ?
+      { state: 'active', label: 'Installing…' }
+    : canInstall ? { state: 'active', label: 'Ready to install' }
+    : { state: 'pending', label: 'Waiting' };
+
+  async function runInstall() {
+    setInstallPhase('installing');
+    const relay = await install.startInstallation();
+    if (!relay) setInstallPhase('error');
+  }
 
   const buildLogText = useMemo(
     () =>
@@ -351,27 +402,29 @@ function App() {
       let certificateP12Base64 = storedCertificate?.certificateP12Base64;
       let storedCertificatePassword = storedCertificate?.certificatePassword;
 
-      // Reuse whenever we hold the certificate's private key locally (.p12).
-      // Possessing the key is what matters for signing; we do NOT regenerate on
-      // a portal ID-match miss, because Apple's certRequestId/certificateId
-      // fields are inconsistent and a false miss would mint a new cert and hit
-      // the 2-cert development cap. The portal check is informational only.
-      const reuseStoredCertificate =
-        certificateChoice === 'stored' && !!certificateId && !!certificateP12Base64;
-      if (reuseStoredCertificate) {
+      // Reuse the stored private key, but resolve the id the profile API
+      // actually expects. createProvisioningProfile needs the certificate's
+      // canonical `certificateId`; the stored value may be a `certRequestId`,
+      // so match against the live cert list and use the matched certificateId.
+      // If the cert is no longer on the team (revoked), regenerate instead.
+      let reuseStoredCertificate = false;
+      if (certificateChoice === 'stored' && certificateId && certificateP12Base64) {
         const currentCertificates = await listAppleCertificates({
           ...base,
           certificateKind: 'development',
-        }).catch(() => [] as Array<Record<string, unknown>>);
-        const stillCurrent = currentCertificates.some(
+        });
+        const matched = currentCertificates.find(
           (item) =>
             stringField(item, 'certificateId') === certificateId ||
             stringField(item, 'certRequestId') === certificateId,
         );
-        addActivity(
-          'Reusing stored Apple certificate',
-          stillCurrent ? certificateId : `${certificateId} (not matched on portal; reusing local key anyway)`,
-        );
+        if (matched) {
+          certificateId = stringField(matched, 'certificateId') ?? certificateId;
+          reuseStoredCertificate = true;
+          addActivity('Reusing stored Apple certificate', certificateId);
+        } else {
+          addActivity('Stored certificate is no longer on the team', 'Generating a new certificate.');
+        }
       }
 
       if (!reuseStoredCertificate) {
@@ -403,6 +456,13 @@ function App() {
         storedCertificatePassword = certificatePassword || undefined;
       }
 
+      if (certificateChoice === 'stored' && !reuseStoredCertificate) {
+        throw new Error(
+          'The stored certificate is no longer current on this team (it may have been revoked). ' +
+            'Choose "Create new certificate" (needs a free slot in Apple\'s 2-cert limit), or use the ' +
+            '"Upload files" tab with a .p12.',
+        );
+      }
       if (!certificateId || !certificateP12Base64) {
         throw new Error('Select a stored certificate or create a new certificate.');
       }
@@ -476,11 +536,44 @@ function App() {
         </p>
       </header>
 
-      {combinedError && (
-        <section className="error">
-          <strong>Install flow failed</strong>
-          <pre>{combinedError}</pre>
-        </section>
+      <section className="stepper">
+        {[
+          { n: 1, title: 'Pair', step: pairStep },
+          { n: 2, title: 'Sign', step: signStep },
+          { n: 3, title: 'Build', step: buildStep },
+          { n: 4, title: 'Install', step: installStep },
+        ].map(({ n, title, step }) => (
+          <div key={n} className={`step ${step.state}`}>
+            <span className="stepDot">
+              {step.state === 'done' ?
+                '✓'
+              : step.state === 'error' ?
+                '!'
+              : n}
+            </span>
+            <div className="stepText">
+              <span className="stepTitle">{title}</span>
+              <span className="stepLabel">{step.label}</span>
+            </div>
+          </div>
+        ))}
+      </section>
+
+      {visibleError && (
+        <div className="errorToast" role="alert">
+          <div className="errorToastBody">
+            <strong>Something went wrong</strong>
+            <pre>{visibleError}</pre>
+          </div>
+          <button
+            type="button"
+            className="errorToastClose"
+            aria-label="Dismiss"
+            onClick={() => setDismissedError(combinedError)}
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       <section className="card">
@@ -514,9 +607,7 @@ function App() {
             <h2>1. Pair iPhone</h2>
             <p>Select the USB device, then pair. Unlock the iPhone and tap Trust.</p>
           </div>
-          <StatusPill tone={install.hasPairRecord ? 'success' : 'neutral'}>
-            {install.hasPairRecord ? 'Pair record stored' : 'No pair record yet'}
-          </StatusPill>
+          <StatusPill tone={pillTone(pairStep.state)}>{pairStep.label}</StatusPill>
         </div>
         <div className="actions">
           <button
@@ -558,9 +649,7 @@ function App() {
               <code> .mobileprovision</code> directly.
             </p>
           </div>
-          <StatusPill tone={signingAssets ? 'success' : 'neutral'}>
-            {signingAssets ? 'Signing assets ready' : 'Signing assets missing'}
-          </StatusPill>
+          <StatusPill tone={pillTone(signStep.state)}>{signStep.label}</StatusPill>
         </div>
 
         <div className="tabs" role="tablist" aria-label="Signing source">
@@ -595,22 +684,6 @@ function App() {
               type="password"
               value={certificatePassword}
               onChange={(event) => setCertificatePassword(event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            .p12 certificate
-            <input
-              type="file"
-              accept=".p12,application/x-pkcs12"
-              onChange={(event) => updateFile(setCertificateFile, event)}
-            />
-          </label>
-          <label>
-            .mobileprovision profile
-            <input
-              type="file"
-              accept=".mobileprovision"
-              onChange={(event) => updateFile(setProfileFile, event)}
             />
           </label>
         </div>
@@ -873,16 +946,7 @@ function App() {
             <h2>3. Build</h2>
             <p>Starts a signed device build on limbuild and streams xcodebuild logs.</p>
           </div>
-          <StatusPill
-            tone={
-              build.status === 'succeeded' ? 'success'
-              : build.status === 'failed' ?
-                'danger'
-              : 'neutral'
-            }
-          >
-            {build.status}
-          </StatusPill>
+          <StatusPill tone={pillTone(buildStep.state)}>{buildStep.label}</StatusPill>
         </div>
         <div className="actions">
           <button type="button" disabled={!canStartBuild} onClick={() => void startBuild()}>
@@ -898,12 +962,14 @@ function App() {
             <h2>4. Install</h2>
             <p>Installs the latest successful signed build onto the paired iPhone.</p>
           </div>
-          <StatusPill tone={canInstall ? 'success' : 'neutral'}>
-            {canInstall ? 'Ready to install' : 'Waiting'}
-          </StatusPill>
+          <StatusPill tone={pillTone(installStep.state)}>{installStep.label}</StatusPill>
         </div>
         <div className="actions">
-          <button type="button" disabled={!canInstall} onClick={() => void install.startInstallation()}>
+          <button
+            type="button"
+            disabled={!canInstall || installPhase === 'installing'}
+            onClick={() => void runInstall()}
+          >
             Install to iPhone
           </button>
         </div>
@@ -936,7 +1002,16 @@ function App() {
   );
 }
 
-function StatusPill({ tone, children }: { tone: 'neutral' | 'success' | 'danger'; children: ReactNode }) {
+function pillTone(state: StepState): PillTone {
+  return (
+    state === 'done' ? 'success'
+    : state === 'error' ? 'danger'
+    : state === 'active' ? 'active'
+    : 'neutral'
+  );
+}
+
+function StatusPill({ tone, children }: { tone: PillTone; children: ReactNode }) {
   return <span className={`pill ${tone}`}>{children}</span>;
 }
 

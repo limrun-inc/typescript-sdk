@@ -245,8 +245,15 @@ function formatInstallProgress(message: string) {
   const plist = message.slice(prefix.length);
   // The relay message is untrusted device input. Parsing it with DOMParser is
   // both an XSS DOM sink and an XML entity-expansion (billion-laughs) vector,
-  // so extract only the cosmetic fields we render via plain string scanning
-  // instead of building a DOM.
+  // so extract only the fields we render via plain string scanning instead of
+  // building a DOM.
+  // Surface the real failure reason (e.g. ApplicationVerificationFailed) rather
+  // than collapsing it to an opaque numeric code downstream.
+  const error = readPlistValue(plist, 'Error');
+  if (error) {
+    const description = readPlistValue(plist, 'ErrorDescription');
+    return `Install error: ${error}${description ? ` — ${description}` : ''}`;
+  }
   const status = readPlistValue(plist, 'Status') ?? 'Unknown';
   const percent = readPlistValue(plist, 'PercentComplete');
   return `Install progress: ${percent ? `${percent}% ` : ''}${status}`;

@@ -351,7 +351,10 @@ export async function listAppleDevices({
 }
 
 function normalizeAppleUDID(udid?: string) {
-  return (udid ?? '').replace(/-/g, '').replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+  return (udid ?? '')
+    .replace(/-/g, '')
+    .replace(/[^a-fA-F0-9]/g, '')
+    .toUpperCase();
 }
 
 export async function registerAppleDevice({
