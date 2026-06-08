@@ -166,11 +166,7 @@ interface RemoteControlProps {
    * Only iOS instances ever fire this callback; Android instances
    * have no camera-injector path and stay silent.
    */
-  onCameraDemandChange?: (
-    active: boolean,
-    granted?: boolean,
-    camera?: CameraCaptureInfo,
-  ) => void;
+  onCameraDemandChange?: (active: boolean, granted?: boolean, camera?: CameraCaptureInfo) => void;
 
   /**
    * Periodically (~1Hz) fires with a snapshot of the outbound
@@ -1742,10 +1738,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       let lossPct: number | undefined;
       if (prev && now > prev.timestamp) {
         const dt = (now - prev.timestamp) / 1000;
-        if (
-          typeof outbound.framesEncoded === 'number' &&
-          typeof prev.framesEncoded === 'number'
-        ) {
+        if (typeof outbound.framesEncoded === 'number' && typeof prev.framesEncoded === 'number') {
           fps = Math.max(0, (outbound.framesEncoded - prev.framesEncoded) / dt);
         }
         if (typeof outbound.bytesSent === 'number' && typeof prev.bytesSent === 'number') {
@@ -1774,9 +1767,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         codec: shortenCodecMime(codecMime),
         encoderImplementation: outbound.encoderImplementation,
         hardwareAccelerated:
-          typeof outbound.powerEfficientEncoder === 'boolean'
-            ? outbound.powerEfficientEncoder
-            : undefined,
+          typeof outbound.powerEfficientEncoder === 'boolean' ? outbound.powerEfficientEncoder : undefined,
         framesPerSecond: fps,
         framesEncoded: outbound.framesEncoded,
         bitrateBps: bitrate,
@@ -1784,9 +1775,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         height: outbound.frameHeight,
         qualityLimitationReason: outbound.qualityLimitationReason,
         rttMs:
-          typeof remoteInbound?.roundTripTime === 'number'
-            ? remoteInbound.roundTripTime * 1000
-            : undefined,
+          typeof remoteInbound?.roundTripTime === 'number' ? remoteInbound.roundTripTime * 1000 : undefined,
         packetsLostPct: lossPct,
       };
       safeInvoke('onCameraStats', onCameraStatsRef.current, stats);
@@ -2473,8 +2462,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 // eslint-disable-next-line no-console
                 console.warn(
                   '[RemoteControl] navigator.mediaDevices.getUserMedia unavailable. ' +
-                  'getUserMedia requires a secure context (https or http://localhost). ' +
-                  'Replying cameraResult granted=false so limulator falls back to black frames.',
+                    'getUserMedia requires a secure context (https or http://localhost). ' +
+                    'Replying cameraResult granted=false so limulator falls back to black frames.',
                 );
                 ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
                 safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
@@ -2592,8 +2581,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 // eslint-disable-next-line no-console
                 console.info(
                   `[RemoteControl] camera capture: ${cameraMetadata.width}x${cameraMetadata.height}` +
-                  ` @ ${cameraMetadata.frameRate ?? '?'}fps` +
-                  (cameraMetadata.label ? ` — ${cameraMetadata.label}` : ''),
+                    ` @ ${cameraMetadata.frameRate ?? '?'}fps` +
+                    (cameraMetadata.label ? ` — ${cameraMetadata.label}` : ''),
                 );
               } catch (err) {
                 debugWarn('getSettings() on outbound camera track failed:', err);
@@ -2610,21 +2599,17 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 }
                 safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
               };
-              ws.send(JSON.stringify({
-                type: 'cameraResult',
-                granted: true,
-                // Forward what the browser actually captured so the
-                // host can size its IOSurface pool, log the device,
-                // and (eventually) surface a status pill / picker.
-                camera: cameraMetadata,
-              }));
-              safeInvoke(
-                'onCameraDemandChange',
-                onCameraDemandChangeRef.current,
-                true,
-                true,
-                cameraMetadata,
+              ws.send(
+                JSON.stringify({
+                  type: 'cameraResult',
+                  granted: true,
+                  // Forward what the browser actually captured so the
+                  // host can size its IOSurface pool, log the device,
+                  // and (eventually) surface a status pill / picker.
+                  camera: cameraMetadata,
+                }),
               );
+              safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, true, cameraMetadata);
               // Kick off the per-second outbound stats sampler. We do
               // this *after* `setParameters` so the first sample
               // already sees the encoder under its final bitrate /
