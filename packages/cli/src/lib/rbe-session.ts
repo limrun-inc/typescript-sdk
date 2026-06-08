@@ -1,4 +1,6 @@
+import fs from 'fs';
 import net from 'net';
+import path from 'path';
 import type { RbeStatus, XcodeClient } from '@limrun/api';
 
 /**
@@ -107,6 +109,52 @@ export function buildServeChildArgs(opts: {
     args.push('--api-key', opts.apiKey);
   }
   return args;
+}
+
+/**
+ * A running background tunnel's coordinates, persisted to `.limrun/rbe.pid` so
+ * `lim xcode rbe --stop` can find and stop it (adb prints the PID and forgets
+ * it; we keep just enough to offer a discoverable stop). Lives under `.limrun/`,
+ * which is self-gitignored.
+ */
+export type RbePidInfo = { pid: number; instanceId: string; port: number };
+
+export function rbePidFilePath(workspaceRoot: string): string {
+  return path.join(workspaceRoot, '.limrun', 'rbe.pid');
+}
+
+export function writeRbePidFile(workspaceRoot: string, info: RbePidInfo): void {
+  fs.writeFileSync(rbePidFilePath(workspaceRoot), JSON.stringify(info));
+}
+
+export function readRbePidFile(workspaceRoot: string): RbePidInfo | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(rbePidFilePath(workspaceRoot), 'utf8'));
+    if (parsed && typeof parsed.pid === 'number') {
+      return parsed as RbePidInfo;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearRbePidFile(workspaceRoot: string): void {
+  try {
+    fs.unlinkSync(rbePidFilePath(workspaceRoot));
+  } catch {
+    // already gone
+  }
+}
+
+/** Whether `pid` is a live process (treats EPERM — owned by another user — as alive). */
+export function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
 }
 
 /**

@@ -17,8 +17,13 @@ import {
 import {
   assertLocalPortFree,
   buildServeChildArgs,
+  clearRbePidFile,
+  defaultSleep,
+  isProcessAlive,
+  readRbePidFile,
   retryTransient,
   waitForRbeRunning,
+  writeRbePidFile,
 } from '../../lib/rbe-session';
 
 export default class XcodeRbe extends BaseCommand {
@@ -51,6 +56,10 @@ export default class XcodeRbe extends BaseCommand {
         'Run the tunnel as a background process and return the terminal. Use --no-daemon to keep it in the foreground (for CI or debugging).',
       default: true,
       allowNo: true,
+    }),
+    stop: Flags.boolean({
+      description: 'Stop the background tunnel running for this workspace.',
+      default: false,
     }),
     serve: Flags.boolean({
       hidden: true,
@@ -90,6 +99,26 @@ export default class XcodeRbe extends BaseCommand {
         'Not inside a Bazel workspace. Run `lim xcode rbe` from within the workspace you want ' +
           'to build (a directory tree containing MODULE.bazel, WORKSPACE, or WORKSPACE.bazel).',
       );
+    }
+
+    if (flags.stop) {
+      await this.stopBackgroundTunnel(workspaceRoot);
+      return;
+    }
+
+    // If a background tunnel is already running for this workspace, don't start a
+    // second one (and don't fail with a cryptic "port in use"); point at --stop.
+    const existing = readRbePidFile(workspaceRoot);
+    if (existing && isProcessAlive(existing.pid)) {
+      this.info(
+        `A background tunnel is already running for this workspace (PID ${existing.pid}, ` +
+          `grpc://127.0.0.1:${existing.port}).`,
+      );
+      this.info('Stop it with `lim xcode rbe --stop`, then re-run to start fresh.');
+      return;
+    }
+    if (existing) {
+      clearRbePidFile(workspaceRoot); // stale pid from a crashed/old tunnel
     }
 
     await this.withAuth(async () => {
@@ -189,6 +218,35 @@ export default class XcodeRbe extends BaseCommand {
   }
 
   /**
+   * Stop the background tunnel recorded for this workspace. SIGTERM lets the
+   * child close the tunnel and best-effort stop the remote stack; we then clear
+   * the pidfile. No auth needed — this is a local process stop.
+   */
+  private async stopBackgroundTunnel(workspaceRoot: string): Promise<void> {
+    const info = readRbePidFile(workspaceRoot);
+    if (!info || !isProcessAlive(info.pid)) {
+      clearRbePidFile(workspaceRoot);
+      this.info('No background tunnel is running in this workspace.');
+      return;
+    }
+    this.reporter.start(`Stopping background tunnel (PID ${info.pid})`);
+    try {
+      process.kill(info.pid, 'SIGTERM');
+    } catch {
+      // exited between the liveness check and the signal
+    }
+    for (let i = 0; i < 30 && isProcessAlive(info.pid); i++) {
+      await defaultSleep(100);
+    }
+    clearRbePidFile(workspaceRoot);
+    if (isProcessAlive(info.pid)) {
+      this.reporter.stop('failure');
+      this.error(`Tunnel process ${info.pid} did not exit. Force it with: kill -9 ${info.pid}`);
+    }
+    this.reporter.stop('success', `Stopped background tunnel (PID ${info.pid})`);
+  }
+
+  /**
    * Spawn the detached child that holds the tunnel, redirect its output to
    * `.limrun/rbe.log`, confirm it came up, then print and return the terminal.
    */
@@ -243,6 +301,13 @@ export default class XcodeRbe extends BaseCommand {
       );
     }
     this.reporter.stop('success', `Tunnel running in background (PID ${child.pid})`);
+    if (child.pid) {
+      writeRbePidFile(opts.workspaceRoot, {
+        pid: child.pid,
+        instanceId: opts.instanceId,
+        port: opts.port,
+      });
+    }
 
     this.printReady({
       port: opts.port,
@@ -355,7 +420,7 @@ export default class XcodeRbe extends BaseCommand {
     this.output(`Endpoint:  grpc://127.0.0.1:${opts.port}`);
     if (opts.background) {
       this.output(`Logs:      ${opts.logPath}`);
-      this.output(`Stop:      kill ${opts.pid}   (or: lim xcode delete ${opts.instanceId})`);
+      this.output(`Stop:      lim xcode rbe --stop   (or: kill ${opts.pid})`);
     } else {
       this.output('');
       this.info('Tunnel is running. Press Ctrl+C to stop.');
