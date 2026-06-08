@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.31.0 (2026-06-08)
+
+Full Changelog: [v0.30.0...v0.31.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.30.0...v0.31.0)
+
+### Features
+
+* **cli:** add lim xcode rbe for Bazel remote execution ([0eed8c0](https://github.com/limrun-inc/typescript-sdk/commit/0eed8c0854c5f7fd34cea43e06fc6fa69c031868))
+* **cli:** generate the Bazel remote-execution config from the fleet Xcode version ([201505f](https://github.com/limrun-inc/typescript-sdk/commit/201505fd17c2278581ae1a65495f3c3f4e187b2f))
+* **sdk:** add RBE start, stop, status and tunnel helpers to XcodeClient ([cc111bf](https://github.com/limrun-inc/typescript-sdk/commit/cc111bf9cc8842a752e833159c2c406ca74b3d39))
+* **sdk:** expose the fleet Xcode version in RbeStatus ([a281583](https://github.com/limrun-inc/typescript-sdk/commit/a281583228765b1d4881a12e601d276fd061f1a0))
+
+
+### Bug Fixes
+
+* **cli:** drop stray --xcode flag from ios create install example ([1d90afd](https://github.com/limrun-inc/typescript-sdk/commit/1d90afd415c8193118672d2945aae0c82d23c3a7))
+* **cli:** retry transient gateway errors when starting the RBE stack ([8b7c949](https://github.com/limrun-inc/typescript-sdk/commit/8b7c9490aee6e50f864b5c5ce8f0c8895d4d1464))
+
+
+### Chores
+
+* fix prettier formatting in cli files ([5be3f1c](https://github.com/limrun-inc/typescript-sdk/commit/5be3f1c8749c86c63fddae9199e4db05482a7ca4))
+
 ## 0.30.0 (2026-06-03)
 
 Full Changelog: [v0.29.0...v0.30.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.29.0...v0.30.0)
