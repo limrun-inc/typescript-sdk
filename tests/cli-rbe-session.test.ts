@@ -1,11 +1,18 @@
+import fs from 'fs';
 import net from 'net';
+import os from 'os';
+import path from 'path';
 import type { RbeStatus } from '@limrun/api';
 import {
   assertLocalPortFree,
   buildServeChildArgs,
+  clearRbePidFile,
+  isProcessAlive,
   isTransientError,
+  readRbePidFile,
   retryTransient,
   waitForRbeRunning,
+  writeRbePidFile,
 } from '../packages/cli/src/lib/rbe-session';
 
 const noSleep = async () => {};
@@ -128,6 +135,41 @@ describe('buildServeChildArgs', () => {
       'lim_k',
     );
     expect(buildServeChildArgs({ scriptPath: '/bin/lim', id: 'xc_1', port: 9980 })).not.toContain('--api-key');
+  });
+});
+
+describe('rbe pidfile helpers', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rbe-pid-'));
+    fs.mkdirSync(path.join(dir, '.limrun'), { recursive: true });
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('write/read round trips the pid info', () => {
+    writeRbePidFile(dir, { pid: 4321, instanceId: 'xc_1', port: 8980 });
+    expect(readRbePidFile(dir)).toEqual({ pid: 4321, instanceId: 'xc_1', port: 8980 });
+  });
+
+  test('read returns null when absent or malformed', () => {
+    expect(readRbePidFile(dir)).toBeNull();
+    fs.writeFileSync(path.join(dir, '.limrun', 'rbe.pid'), 'not json');
+    expect(readRbePidFile(dir)).toBeNull();
+  });
+
+  test('clear removes the pidfile (and is a no-op when already gone)', () => {
+    writeRbePidFile(dir, { pid: 1, instanceId: 'xc_1', port: 8980 });
+    clearRbePidFile(dir);
+    expect(readRbePidFile(dir)).toBeNull();
+    expect(() => clearRbePidFile(dir)).not.toThrow();
+  });
+
+  test('isProcessAlive reflects this process and a dead pid', () => {
+    expect(isProcessAlive(process.pid)).toBe(true);
+    // A pid that is essentially never live in a test environment.
+    expect(isProcessAlive(2147483647)).toBe(false);
   });
 });
 
