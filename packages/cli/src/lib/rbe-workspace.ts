@@ -1,4 +1,3 @@
-import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -104,8 +103,8 @@ function renderXcodeVersionRule(name: string, versionKey: string): string {
 
 /**
  * Renders an `available_xcodes` set with a single member that is also its
- * mandatory default. All three sets the BUILD file emits (remote, distinct
- * local, synthetic local) are single-version sets of this shape.
+ * mandatory default. Both sets the BUILD file emits (remote, local) are
+ * single-version sets of this shape, pointing at the same fleet pin.
  */
 function renderAvailableXcodes(name: string, target: string): string {
   return `available_xcodes(
@@ -116,77 +115,34 @@ function renderAvailableXcodes(name: string, target: string): string {
 }
 
 /**
- * Detects the client's local Xcode version key (major.minor.patch.build) via
- * `xcodebuild -version`, or returns null when there is no usable local Xcode
- * (a Linux/Windows client, or a mac without command-line tools). Used to build
- * the `local_versions` set so local/host-tool actions resolve against the
- * Xcode the client actually has, while the fleet's version stays remote-only.
- */
-/**
- * Parses the `xcodebuild -version` output into a major.minor.patch.build key
- * (e.g. "Xcode 26.5\nBuild version 17F42" -> "26.5.0.17F42"). Returns null when
- * the output doesn't carry both a version and a build line. Pure (no I/O) so it
- * is unit-testable independent of the host's Xcode.
- */
-export function parseXcodeVersionOutput(out: string): string | null {
-  const versionMatch = out.match(/Xcode\s+(\d+)\.(\d+)(?:\.(\d+))?/);
-  const buildMatch = out.match(/Build version\s+(\S+)/);
-  if (!versionMatch || !buildMatch) {
-    return null;
-  }
-  const major = versionMatch[1];
-  const minor = versionMatch[2];
-  const patch = versionMatch[3] ?? '0';
-  return `${major}.${minor}.${patch}.${buildMatch[1]}`;
-}
-
-export function detectLocalXcodeVersionKey(): string | null {
-  if (process.platform !== 'darwin') {
-    return null;
-  }
-  try {
-    return parseXcodeVersionOutput(execFileSync('xcodebuild', ['-version'], { encoding: 'utf8' }));
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Renders the generated Bazel package pinning the remote Xcode version.
+ * Renders the generated Bazel package pinning the Xcode version to the fleet's.
  *
  * remoteVersionKey is the fleet's `xcodebuild -version` in major.minor.patch.build
- * form (e.g. 26.4.0.17E192). localVersionKey is the client's own Xcode version
- * in the same form, or null when the client has no local Xcode (Linux/Windows).
+ * form (e.g. 26.4.0.17E192).
  *
- * The config uses Bazel's remote/local Xcode split rather than a single
- * version bucket. A single-bucket `xcode_config(default=, versions=)` resolves
- * the pinned version with availability UNKNOWN, which leaves Apple/Swift
- * actions eligible for LOCAL execution; a locally-scheduled action then runs
- * `xcode-locator <version>` on the client to resolve DEVELOPER_DIR and aborts
- * the whole build when the client lacks that exact Xcode (a mac with a
- * different version) or has no Xcode at all (Linux/Windows). Declaring the
- * fleet's version under `remote_versions` ONLY (so it is not also in
- * `local_versions`) resolves it as availability REMOTE, which stamps
- * `no-local` on Apple actions so they never run on the client.
+ * Uses Bazel's remote/local `xcode_config` split with BOTH sets pointing at the
+ * SAME fleet pin (rather than a single `default=/versions=` bucket, which
+ * resolves with availability UNKNOWN and leaves Apple/Swift actions eligible for
+ * local execution). With local == remote, `--xcode_version` resolves as
+ * "mutually available" (BOTH), which declares up front that this build uses only
+ * the fleet's Xcode AND keeps apple_support from emitting its remote-only
+ * "...specified, but it is not available locally..." DEBUG notice (that notice
+ * fires only when the pinned version is in `remote_versions` but not
+ * `local_versions`).
  *
- * `local_versions` is built from the client's own Xcode, not Bazel's
- * `@local_config_xcode//:host_available_xcodes` (that repo is not visible from
- * the main module under bzlmod, and is never generated off-darwin):
- * - mac client: the detected local Xcode (e.g. 26.5), so local/host-tool
- *   actions still run with the dev's real Xcode while 26.4 stays remote-only.
- * - no local Xcode (Linux/Windows): a synthetic set whose default is the same
- *   pinned version, so with `--xcode_version` the version is mutually
- *   available and resolves without demanding a real local DEVELOPER_DIR.
+ * We intentionally do NOT name the client's own local Xcode: under
+ * `--config=limrun` every action runs remotely (`--spawn_strategy=remote` +
+ * `--noremote_local_fallback`), so a local DEVELOPER_DIR is never resolved.
+ * Declaring a distinct local version would only reintroduce that DEBUG notice on
+ * a client whose Xcode differs from the fleet's. (The fleet pin is used, not
+ * Bazel's `@local_config_xcode//:host_available_xcodes`: that repo is not
+ * visible from the main module under bzlmod and is never generated off-darwin.)
  *
  * When `emitLoads` is true (Bazel 9+), the Xcode rules are loaded from
  * apple_support; on Bazel 8 they are native globals and MUST NOT be loaded
  * (the apple_support rule impls fail on the unmigrated Bazel).
  */
-export function renderXcodeConfigBuild(
-  remoteVersionKey: string,
-  localVersionKey: string | null,
-  emitLoads: boolean,
-): string {
+export function renderXcodeConfigBuild(remoteVersionKey: string, emitLoads: boolean): string {
   // Bazel 9 migrated xcode_version/available_xcodes/xcode_config out of native
   // globals into apple_support; they must be loaded there. The repo_name
   // @build_bazel_apple_support is the apple_support module convention.
@@ -199,53 +155,21 @@ load("@build_bazel_apple_support//xcode:xcode_config.bzl", "xcode_config")
   : '';
   const remoteRule = renderXcodeVersionRule('remote_xcode', remoteVersionKey);
 
-  let localBlock: string;
-  // Split on major.minor, NOT the full key: each xcode_version rule is aliased
-  // by its major.minor (e.g. "26.4"), and a single xcode_config rejects the
-  // same alias registered to two versions. So a distinct local rule is only
-  // safe when its major.minor differs from the fleet's. A client on the same
-  // major.minor but a different build (e.g. local 26.4.1 vs fleet 26.4.0) is
-  // intentionally folded into the synthetic branch below: the build only
-  // matters for LOCAL actions, which never run under --noremote_local_fallback,
-  // and --xcode_version=26.4 resolves against the fleet pin by alias anyway.
-  if (localVersionKey && shortVersion(localVersionKey) !== shortVersion(remoteVersionKey)) {
-    // The client has its own Xcode at a different major.minor than the fleet's.
-    // Declare it as the local set so local/host-tool actions resolve against
-    // it; the fleet version is in remote_versions only, hence remote-only (no
-    // client-side locator).
-    localBlock = `
-# The client's own local Xcode (distinct from the fleet's). Local/host-tool
-# actions resolve against this; the fleet version above is remote-only.
-${renderXcodeVersionRule('local_xcode', localVersionKey)}
-
-${renderAvailableXcodes('local_xcodes', ':local_xcode')}
-`;
-  } else {
-    // No distinct-major.minor local Xcode (Linux/Windows with none, or a client
-    // whose Xcode shares the fleet's major.minor). A synthetic set defaulting to
-    // the pinned version keeps available_xcodes' mandatory default satisfied
-    // without registering a colliding "26.4" alias or naming a build the machine
-    // may not physically have.
-    localBlock = `
-# Synthetic local Xcode set for clients with no distinct-major.minor local Xcode
-# (Linux/Windows, or a client sharing the fleet's major.minor). Its mandatory
-# default points at the same version as the remote pin so resolution never
-# demands a real local DEVELOPER_DIR for a version this machine does not have.
-${renderAvailableXcodes('local_xcodes', ':remote_xcode')}
-`;
-  }
-
   return `# Generated by lim xcode rbe. Do not edit; rerun the command to refresh.
 #
-# Pins the Xcode version Bazel declares for remote actions to the limrun
-# fleet's Xcode, independent of the Xcode installed on this machine (or its
-# absence on a Linux/Windows client). Selected via the generated
+# Pins the Xcode version Bazel uses to the limrun fleet's Xcode, independent of
+# any Xcode installed on this machine. Both the remote and local sets point at
+# the SAME pin so --xcode_version resolves as mutually available (no
+# apple_support remote-only DEBUG notice); under --config=limrun all actions run
+# remotely, so a local DEVELOPER_DIR is never resolved. Selected via
 # .limrun/bazelrc (--config=limrun).
 ${loads}${remoteRule}
 
-# The remote fleet's Xcode set (single pinned version).
+# Both sets point at the single fleet pin.
 ${renderAvailableXcodes('remote_xcodes', ':remote_xcode')}
-${localBlock}
+
+${renderAvailableXcodes('local_xcodes', ':remote_xcode')}
+
 xcode_config(
     name = "remote_xcode_config",
     remote_versions = ":remote_xcodes",
@@ -339,7 +263,6 @@ export function writeRbeWorkspaceFiles(
   workspaceDir: string,
   xcodeVersionKey: string,
   port: number,
-  localXcodeVersionKey: string | null = detectLocalXcodeVersionKey(),
   isMacClient: boolean = process.platform === 'darwin',
   bazelMajor: number | null = detectBazelMajorVersion(workspaceDir),
 ): RbeWorkspaceFiles {
@@ -351,7 +274,7 @@ export function writeRbeWorkspaceFiles(
   // longer native globals. On a known Bazel 8 workspace they ARE native (and
   // loading would fail), so omit the loads.
   const emitLoads = isBazel9OrLater(bazelMajor);
-  fs.writeFileSync(buildFile, renderXcodeConfigBuild(xcodeVersionKey, localXcodeVersionKey, emitLoads));
+  fs.writeFileSync(buildFile, renderXcodeConfigBuild(xcodeVersionKey, emitLoads));
   fs.writeFileSync(bazelrcFragment, renderLimrunBazelrc(port, xcodeVersionKey, isMacClient));
   fs.writeFileSync(path.join(dir, '.gitignore'), '*\n');
   const bazelrcUpdated = ensureTryImport(workspaceDir);

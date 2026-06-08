@@ -7,7 +7,6 @@ import {
   detectBazelMajorVersion,
   ensureTryImport,
   findBazelWorkspaceRoot,
-  parseXcodeVersionOutput,
   renderLimrunBazelrc,
   renderXcodeConfigBuild,
   writeRbeWorkspaceFiles,
@@ -21,7 +20,7 @@ const APPLE_SUPPORT_LOADS = [
 
 describe('rbe workspace generation', () => {
   test('renderXcodeConfigBuild pins the fleet version and derives sdk defaults', () => {
-    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42', false);
+    const build = renderXcodeConfigBuild('26.4.0.17E192', false);
     expect(build).toContain('version = "26.4.0.17E192"');
     expect(build).toContain('default_ios_sdk_version = "26.4"');
     expect(build).toContain('"26.4",');
@@ -30,7 +29,7 @@ describe('rbe workspace generation', () => {
   });
 
   test('renderXcodeConfigBuild uses the remote/local split, never a single default bucket', () => {
-    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42', false);
+    const build = renderXcodeConfigBuild('26.4.0.17E192', false);
     expect(build).toContain('name = "remote_xcodes"');
     expect(build).toContain('remote_versions = ":remote_xcodes"');
     expect(build).toContain('local_versions = ":local_xcodes"');
@@ -41,50 +40,23 @@ describe('rbe workspace generation', () => {
     expect(build).not.toContain('@local_config_xcode');
   });
 
-  test('renderXcodeConfigBuild (distinct local Xcode) declares it as the local set', () => {
-    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42', false);
-    // The local Xcode is its own rule so local actions resolve against 26.5...
-    expect(build).toContain('name = "local_xcode"');
-    expect(build).toContain('version = "26.5.0.17F42"');
-    expect(build).toContain('default = ":local_xcode"');
-    // ...while the fleet 26.4 stays remote-only (not in the local set).
-    expect(build).toMatch(/available_xcodes\(\s*name = "local_xcodes",\s*default = ":local_xcode"/);
-  });
-
-  test('renderXcodeConfigBuild (no local Xcode) emits a synthetic local set pinned to the fleet version', () => {
-    const build = renderXcodeConfigBuild('26.4.0.17E192', null, false);
-    expect(build).not.toContain('@local_config_xcode');
-    expect(build).not.toContain('name = "local_xcode"'); // no distinct local rule
-    expect(build).toContain('local_versions = ":local_xcodes"');
-    expect(build).toMatch(/available_xcodes\(\s*name = "local_xcodes",\s*default = ":remote_xcode"/);
-  });
-
-  test('renderXcodeConfigBuild (local matches fleet) collapses to the synthetic set', () => {
-    // Same major.minor locally and remotely: no separate local_xcode rule.
-    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.4.0.17E192', false);
-    expect(build).not.toContain('name = "local_xcode"');
-    expect(build).toMatch(/available_xcodes\(\s*name = "local_xcodes",\s*default = ":remote_xcode"/);
-  });
-
-  test('renderXcodeConfigBuild (same major.minor, different build) stays synthetic to avoid an alias collision', () => {
-    // A mac on 26.4.1 vs the fleet's 26.4.0 must NOT get its own local_xcode
-    // rule: both would alias "26.4", which a single xcode_config rejects. The
-    // build only matters for local actions, which never run under RBE.
-    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.4.1.17E193', false);
-    expect(build).not.toContain('name = "local_xcode"');
-    expect(build).not.toContain('26.4.1.17E193');
-    expect(build).toMatch(/available_xcodes\(\s*name = "local_xcodes",\s*default = ":remote_xcode"/);
-    // Exactly one xcode_version rule (only remote_xcode) — a second one would
-    // register a duplicate "26.4" alias and break xcode_config.
+  test('renderXcodeConfigBuild points BOTH sets at the single fleet pin (mutually available, no remote-only DEBUG)', () => {
+    const build = renderXcodeConfigBuild('26.4.0.17E192', false);
+    // Only one xcode_version rule (the fleet pin); both sets default to it, so
+    // --xcode_version resolves as BOTH and apple_support emits no "not available
+    // locally" notice. A second rule would also risk a duplicate "26.4" alias.
     expect(build.match(/xcode_version\(/g)).toHaveLength(1);
+    expect(build).not.toContain('name = "local_xcode"');
+    expect(build).toMatch(/available_xcodes\(\s*name = "remote_xcodes",\s*default = ":remote_xcode"/);
+    expect(build).toMatch(/available_xcodes\(\s*name = "local_xcodes",\s*default = ":remote_xcode"/);
   });
 
   test('renderXcodeConfigBuild rejects malformed version keys', () => {
-    expect(() => renderXcodeConfigBuild('26', null, false)).toThrow(/unexpected Xcode version key/);
+    expect(() => renderXcodeConfigBuild('26', false)).toThrow(/unexpected Xcode version key/);
   });
 
   test('renderXcodeConfigBuild (emitLoads) loads the Xcode rules from apple_support before any rule', () => {
-    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42', true);
+    const build = renderXcodeConfigBuild('26.4.0.17E192', true);
     for (const line of APPLE_SUPPORT_LOADS) {
       expect(build).toContain(line);
     }
@@ -93,7 +65,7 @@ describe('rbe workspace generation', () => {
   });
 
   test('renderXcodeConfigBuild (no emitLoads) emits the rules as native globals, no loads', () => {
-    const build = renderXcodeConfigBuild('26.4.0.17E192', '26.5.0.17F42', false);
+    const build = renderXcodeConfigBuild('26.4.0.17E192', false);
     expect(build).not.toContain('load(');
     // Still emits the rules themselves.
     expect(build).toContain('xcode_config(');
@@ -153,21 +125,6 @@ describe('rbe workspace generation', () => {
     test('returns null when the first line has no leading integer', () => {
       fs.writeFileSync(path.join(dir, '.bazelversion'), 'latest\n');
       expect(detectBazelMajorVersion(dir)).toBeNull();
-    });
-  });
-
-  describe('parseXcodeVersionOutput', () => {
-    test('parses major.minor (patch defaults to 0) and build into a key', () => {
-      expect(parseXcodeVersionOutput('Xcode 26.5\nBuild version 17F42')).toBe('26.5.0.17F42');
-    });
-    test('keeps an explicit patch version', () => {
-      expect(parseXcodeVersionOutput('Xcode 26.4.1\nBuild version 17E193')).toBe('26.4.1.17E193');
-    });
-    test('returns null when the build line is missing', () => {
-      expect(parseXcodeVersionOutput('Xcode 26.5')).toBeNull();
-    });
-    test('returns null on unrelated output', () => {
-      expect(parseXcodeVersionOutput('command not found')).toBeNull();
     });
   });
 
