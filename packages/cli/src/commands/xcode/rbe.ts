@@ -8,9 +8,7 @@ import { BaseCommand } from '../../base-command';
 import { clearLastInstanceId } from '../../lib/config';
 import { ProgressReporter } from '../../lib/progress';
 import {
-  detectBazelMajorVersion,
   findBazelWorkspaceRoot,
-  isBazel9OrLater,
   writeRbeWorkspaceFiles,
   LIMRUN_DIR,
   type RbeWorkspaceFiles,
@@ -183,11 +181,12 @@ export default class XcodeRbe extends BaseCommand {
         `Generated .limrun/ config${generated.bazelrcUpdated ? ' (try-import wired into .bazelrc)' : ''}`,
       );
 
-      const needsSha256 = isBazel9OrLater(detectBazelMajorVersion(workspaceRoot));
-      const buildCmd =
-        needsSha256 ?
-          'bazelisk --digest_function=sha256 build --config=limrun //your:target'
-        : 'bazelisk build --config=limrun //your:target';
+      // --digest_function=sha256 is required on Bazel 9 (BLAKE3 default) and on
+      // any workspace configured for BLAKE3, and is a harmless no-op where SHA256
+      // is already the default — so always emit it. It is a startup flag (can't
+      // live in --config=limrun, and would change the digest for ALL the user's
+      // builds if put in .bazelrc), hence it precedes `build` in the command.
+      const buildCmd = 'bazelisk --digest_function=sha256 build --config=limrun //your:target';
 
       if (flags.daemon) {
         await this.spawnBackgroundTunnel({
@@ -198,7 +197,6 @@ export default class XcodeRbe extends BaseCommand {
           xcodeVersion,
           generated,
           buildCmd,
-          needsSha256,
         });
         return;
       }
@@ -222,7 +220,6 @@ export default class XcodeRbe extends BaseCommand {
         xcodeVersion,
         generated,
         buildCmd,
-        needsSha256,
         instanceId,
         background: false,
       });
@@ -271,7 +268,6 @@ export default class XcodeRbe extends BaseCommand {
     xcodeVersion: string;
     generated: RbeWorkspaceFiles;
     buildCmd: string;
-    needsSha256: boolean;
   }): Promise<void> {
     const apiKey = this.parsedFlags?.['api-key'] as string | undefined;
     const logPath = path.join(opts.workspaceRoot, LIMRUN_DIR, 'rbe.log');
@@ -328,7 +324,6 @@ export default class XcodeRbe extends BaseCommand {
       xcodeVersion: opts.xcodeVersion,
       generated: opts.generated,
       buildCmd: opts.buildCmd,
-      needsSha256: opts.needsSha256,
       instanceId: opts.instanceId,
       background: true,
       pid: child.pid,
@@ -397,7 +392,6 @@ export default class XcodeRbe extends BaseCommand {
     xcodeVersion: string;
     generated: RbeWorkspaceFiles;
     buildCmd: string;
-    needsSha256: boolean;
     instanceId: string;
     background: boolean;
     pid?: number;
@@ -424,11 +418,6 @@ export default class XcodeRbe extends BaseCommand {
     this.output('');
     this.output('Build with:');
     this.output(`  ${opts.buildCmd}`);
-    if (opts.needsSha256) {
-      this.output('');
-      this.info('Bazel 9 uses BLAKE3 by default; the Limrun cache needs SHA256, so the');
-      this.info('--digest_function=sha256 startup flag above is required.');
-    }
     this.output('');
     this.output(`Endpoint:  grpc://127.0.0.1:${opts.port}`);
     if (opts.background) {
