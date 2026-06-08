@@ -3,8 +3,9 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { Flags } from '@oclif/core';
 import type { Tunnel, XcodeClient } from '@limrun/api';
-import { DEFAULT_RBE_TUNNEL_PORT } from '@limrun/api';
+import { DEFAULT_RBE_TUNNEL_PORT, RbeUnsupportedError } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
+import { clearLastInstanceId } from '../../lib/config';
 import { ProgressReporter } from '../../lib/progress';
 import {
   detectBazelMajorVersion,
@@ -126,38 +127,50 @@ export default class XcodeRbe extends BaseCommand {
         this.error(err instanceof Error ? err.message : String(err)),
       );
 
-      const target = await this.resolveXcodeTargetOrCreate(flags.id);
-      const instanceId = typeof target === 'string' ? target : target.id;
-      const client = await this.resolveXcodeClient(target);
+      // Resolve an instance and start the stack. An auto-resolved instance (no
+      // --id) may be a stale cache pointer to an instance that still exists but
+      // whose limbuild lacks /rbe; in that case drop it and create a fresh one
+      // (once). A user-pinned --id is never silently swapped.
+      let client!: XcodeClient;
+      let instanceId!: string;
+      let xcodeVersion!: string;
+      for (let attempt = 0; ; attempt++) {
+        const target = await this.resolveXcodeTargetOrCreate(flags.id);
+        instanceId = typeof target === 'string' ? target : target.id;
+        client = await this.resolveXcodeClient(target);
 
-      // resolveXcodeClient validates an iOS-backed target via iosInstances.get,
-      // but a cached standalone Xcode target is trusted without a round-trip.
-      // Validate it so a stale "last instance" pointer or a deleted instance
-      // throws NotFoundError here (→ withAuth clears the cache and recreates),
-      // instead of surfacing as a misleading RbeUnsupportedError from the /rbe
-      // 404 of a dead instance.
-      if (typeof target !== 'string' && target.type === 'xcode') {
-        await this.client.xcodeInstances.get(instanceId);
-      }
+        // resolveXcodeClient validates an iOS-backed target via iosInstances.get,
+        // but a cached standalone Xcode target is trusted without a round-trip.
+        // Validate it so a deleted instance throws NotFoundError here (→ withAuth
+        // clears the cache and recreates) rather than a misleading /rbe 404.
+        if (typeof target !== 'string' && target.type === 'xcode') {
+          await this.client.xcodeInstances.get(instanceId);
+        }
 
-      // Start the stack (retrying transient gateway blips right after instance
-      // creation) and poll to running. From here the stack may be (partially)
-      // up: any failure before the tunnel owner takes over best-effort stops it
-      // so we never leak a running stack with no client attached.
-      this.reporter.start('Starting remote build execution');
-      let xcodeVersion: string;
-      try {
-        const initial = await retryTransient(() => client.startRbe(), {
-          log: (m) => this.reporter.appendLog(m),
-        });
-        const status = await waitForRbeRunning(client, initial);
-        xcodeVersion = status.xcodeVersion;
-      } catch (err) {
-        this.reporter.stop('failure');
-        await client.stopRbe().catch(() => {});
-        this.error(err instanceof Error ? err.message : String(err));
+        // Start the stack (retrying transient gateway blips right after instance
+        // creation) and poll to running. From here the stack may be (partially)
+        // up: any failure before the tunnel owner takes over best-effort stops it
+        // so we never leak a running stack with no client attached.
+        this.reporter.start('Starting remote build execution');
+        try {
+          const initial = await retryTransient(() => client.startRbe(), {
+            log: (m) => this.reporter.appendLog(m),
+          });
+          const status = await waitForRbeRunning(client, initial);
+          xcodeVersion = status.xcodeVersion;
+          this.reporter.stop('success', `Remote build execution ready (Xcode ${xcodeVersion})`);
+          break;
+        } catch (err) {
+          this.reporter.stop('failure');
+          if (err instanceof RbeUnsupportedError && !flags.id && attempt === 0) {
+            this.info('That Xcode instance does not support remote build execution; creating a fresh one...');
+            clearLastInstanceId(instanceId);
+            continue;
+          }
+          await client.stopRbe().catch(() => {});
+          this.error(err instanceof Error ? err.message : String(err));
+        }
       }
-      this.reporter.stop('success', `Remote build execution ready (Xcode ${xcodeVersion})`);
 
       let generated: RbeWorkspaceFiles;
       try {
