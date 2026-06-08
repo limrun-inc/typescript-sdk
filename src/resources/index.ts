@@ -32,6 +32,7 @@ export {
 export { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './assets-helpers';
 export {
   XcodeInstances,
+  RbeUnsupportedError,
   type XcodeCreateClientParams,
   type XcodeClient,
   type XcodeProjectConfig,

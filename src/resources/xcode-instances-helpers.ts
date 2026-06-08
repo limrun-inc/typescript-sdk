@@ -294,6 +294,36 @@ export function deriveRbeTunnelUrl(apiUrl: string): string {
   return url.toString();
 }
 
+/**
+ * Raised when an `/rbe` request returns 404. limbuild's `/rbe` routes only
+ * exist on builds with remote-execution support, so a 404 there means RBE is
+ * unavailable on this instance (an older limbuild, or the wrong environment) —
+ * NOT that the instance is missing. Kept distinct from NotFoundError so the CLI
+ * does not mistake it for a vanished instance and spin up replacements.
+ */
+export class RbeUnsupportedError extends Error {
+  constructor(operation: string) {
+    super(
+      `Remote build execution is not available on this Xcode instance (${operation} returned 404). ` +
+        'Its limbuild may predate RBE support, or you may be targeting the wrong environment ' +
+        '(for example production instead of staging).',
+    );
+    this.name = 'RbeUnsupportedError';
+  }
+}
+
+/**
+ * Reads an `/rbe` JSON response, mapping a 404 to RbeUnsupportedError (a route
+ * 404 means RBE is not supported here, never a missing instance).
+ */
+async function readRbeResponse<T>(res: Response, operation: string): Promise<T> {
+  if (res.status === 404) {
+    await res.text().catch(() => undefined);
+    throw new RbeUnsupportedError(operation);
+  }
+  return readJsonResponse<T>(res, operation);
+}
+
 async function readJsonResponse<T>(res: Response, operation: string): Promise<T> {
   const text = await res.text();
   if (!res.ok) {
@@ -484,7 +514,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           },
           body: JSON.stringify(opts ?? {}),
         });
-        return readJsonResponse<RbeStatus>(res, 'POST /rbe');
+        return readRbeResponse<RbeStatus>(res, 'POST /rbe');
       },
 
       async getRbe(): Promise<RbeStatus> {
@@ -494,7 +524,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
             Authorization: `Bearer ${token}`,
           },
         });
-        return readJsonResponse<RbeStatus>(res, 'GET /rbe');
+        return readRbeResponse<RbeStatus>(res, 'GET /rbe');
       },
 
       async stopRbe(): Promise<RbeStatus> {
@@ -504,7 +534,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
             Authorization: `Bearer ${token}`,
           },
         });
-        return readJsonResponse<RbeStatus>(res, 'DELETE /rbe');
+        return readRbeResponse<RbeStatus>(res, 'DELETE /rbe');
       },
 
       async startRbeTunnel(opts?: RbeTunnelOptions): Promise<Tunnel> {

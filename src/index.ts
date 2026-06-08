@@ -24,6 +24,7 @@ export {
   type RbeStartOptions,
   type RbeTunnelOptions,
   type Tunnel,
+  RbeUnsupportedError,
   deriveRbeTunnelUrl,
   type XcodeProjectConfig,
   type XcodeBuildOptions,
