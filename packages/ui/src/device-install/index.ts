@@ -17,11 +17,7 @@ export {
   type StartInstallRelayOptions,
   type StartPairingRelayOptions,
 } from '../core/device-install/operations';
-export {
-  getPairRecord,
-  normalizeUDID,
-  putPairRecord,
-} from '../core/device-install/storage';
+export { getPairRecord, normalizeUDID, putPairRecord } from '../core/device-install/storage';
 export type {
   DeviceHello,
   DeviceInstallLog,
@@ -36,11 +32,15 @@ export async function requestUSBAccess(options: RequestUSBAccessOptions = {}) {
   return requestCoreUSBAccess({ log: options.log ?? noopLog });
 }
 
-export async function pairDevice(options: Omit<StartPairingRelayOptions, 'log'> & { log?: DeviceInstallLog }) {
+export async function pairDevice(
+  options: Omit<StartPairingRelayOptions, 'log'> & { log?: DeviceInstallLog },
+) {
   return startPairingRelay({ ...options, log: options.log ?? noopLog });
 }
 
-export async function startDeviceInstall(options: Omit<StartInstallRelayOptions, 'log'> & { log?: DeviceInstallLog }) {
+export async function startDeviceInstall(
+  options: Omit<StartInstallRelayOptions, 'log'> & { log?: DeviceInstallLog },
+) {
   return startInstallRelay({ ...options, log: options.log ?? noopLog });
 }
 

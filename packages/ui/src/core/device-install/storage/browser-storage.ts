@@ -73,12 +73,13 @@ export async function getLatestSigningAssets(signingMode: DeviceInstallSigningMo
   const all = await getAllSigningAssets();
   return all
     .filter((asset) => (asset.signingMode ?? 'development') === signingMode)
-    .sort(
-      (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
-    )[0];
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())[0];
 }
 
-export async function getLatestSigningAssetsWithCertificate(teamID?: string, signingMode: DeviceInstallSigningMode = 'development') {
+export async function getLatestSigningAssetsWithCertificate(
+  teamID?: string,
+  signingMode: DeviceInstallSigningMode = 'development',
+) {
   const all = await getAllSigningAssets();
   return all
     .filter((asset) => {
@@ -116,11 +117,16 @@ export async function putSigningAssets(input: PutSigningAssetsInput) {
   return stored;
 }
 
-export async function findSigningAssetsForBundle(bundleID?: string, signingMode: DeviceInstallSigningMode = 'development') {
+export async function findSigningAssetsForBundle(
+  bundleID?: string,
+  signingMode: DeviceInstallSigningMode = 'development',
+) {
   const normalized = normalizeBundleID(bundleID);
   if (!normalized) return [];
   const all = await getAllSigningAssets();
-  return all.filter((asset) => asset.bundleID === normalized && (asset.signingMode ?? 'development') === signingMode);
+  return all.filter(
+    (asset) => asset.bundleID === normalized && (asset.signingMode ?? 'development') === signingMode,
+  );
 }
 
 export function profileContainsDevice(profile: ProvisioningProfileInfo, deviceUDID?: string) {

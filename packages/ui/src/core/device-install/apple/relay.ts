@@ -26,7 +26,11 @@ export async function createAppleRelaySession(limbuildApiUrl: string, token?: st
   return (await response.json()) as { appleSessionId: string };
 }
 
-export async function deleteAppleRelaySession(limbuildApiUrl: string, appleSessionId: string, token?: string) {
+export async function deleteAppleRelaySession(
+  limbuildApiUrl: string,
+  appleSessionId: string,
+  token?: string,
+) {
   const response = await fetch(limbuildURL(limbuildApiUrl, '/apple/auth/session/delete', token), {
     method: 'POST',
     headers: jsonHeaders(token),

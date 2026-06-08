@@ -21,7 +21,9 @@ export type UseAppleIDLoginResult = {
   completeResponse?: AppleRelayResponse;
   twoFactorChallengeResponse?: AppleRelayResponse;
   error?: string;
-  startLogin: (input: Pick<AppleIDLoginInput, 'accountName' | 'password'>) => Promise<AppleIDLoginResult | undefined>;
+  startLogin: (
+    input: Pick<AppleIDLoginInput, 'accountName' | 'password'>,
+  ) => Promise<AppleIDLoginResult | undefined>;
   submitTwoFactorCode: (code: string) => Promise<AppleRelayResponse | undefined>;
   finalize: () => Promise<AppleRelayResponse | undefined>;
   close: () => Promise<void>;
@@ -31,7 +33,9 @@ export function useAppleIDLogin({ limbuildApiUrl, token }: UseAppleIDLoginOption
   const [status, setStatus] = useState<AppleIDLoginStatus>('idle');
   const [session, setSession] = useState<AppleIDLoginResult | undefined>();
   const [completeResponse, setCompleteResponse] = useState<AppleRelayResponse | undefined>();
-  const [twoFactorChallengeResponse, setTwoFactorChallengeResponse] = useState<AppleRelayResponse | undefined>();
+  const [twoFactorChallengeResponse, setTwoFactorChallengeResponse] = useState<
+    AppleRelayResponse | undefined
+  >();
   const [error, setError] = useState<string | undefined>();
   const sessionRef = useRef<AppleIDLoginResult | undefined>(undefined);
 

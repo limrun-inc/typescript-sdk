@@ -79,13 +79,9 @@ async function deriveApplePassword(
   if (protocol === 's2k_fo') {
     passHash = stringToBytes(util.toHex(passHash));
   }
-  const imported = await crypto.subtle.importKey(
-    'raw',
-    toArrayBuffer(passHash),
-    { name: 'PBKDF2' },
-    false,
-    ['deriveBits'],
-  );
+  const imported = await crypto.subtle.importKey('raw', toArrayBuffer(passHash), { name: 'PBKDF2' }, false, [
+    'deriveBits',
+  ]);
   const derived = await crypto.subtle.deriveBits(
     {
       name: 'PBKDF2',

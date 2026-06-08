@@ -1,11 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import {
-  assertAppleDeveloperPortalResponseOK,
-  deleteAppleProfile,
-  listAppleTeams,
-} from './index';
+import { assertAppleDeveloperPortalResponseOK, deleteAppleProfile, listAppleTeams } from './index';
 
 describe('App Store relay primitives', () => {
   afterEach(() => {

@@ -8,13 +8,7 @@ export type DeviceInstallStepStatus = 'idle' | 'active' | 'complete' | 'error';
 
 export type DeviceInstallBusyAction = 'signing' | 'usb' | 'pair' | 'build' | 'install';
 
-export type DeviceInstallBuildStatus =
-  | 'idle'
-  | 'queued'
-  | 'running'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled';
+export type DeviceInstallBuildStatus = 'idle' | 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export type BuildLogLine = {
   type: 'command' | 'stdout' | 'stderr' | 'meta';

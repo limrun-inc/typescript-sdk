@@ -123,7 +123,11 @@ export function watchBuildLogEvents({
   events.addEventListener('stderr', (event) => onLine({ type: 'stderr', data: event.data }));
   events.addEventListener('exitCode', (event) => {
     const code = parseInt(event.data, 10);
-    onStatus(code === 0 ? 'succeeded' : code < 0 ? 'cancelled' : 'failed');
+    onStatus(
+      code === 0 ? 'succeeded'
+      : code < 0 ? 'cancelled'
+      : 'failed',
+    );
     events.close();
   });
   events.onerror = () => {

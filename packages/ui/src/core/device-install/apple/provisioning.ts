@@ -87,12 +87,18 @@ export function listTeamsRequest(): AppleProvisioningRequest {
   };
 }
 
-export function findBundleIDRequest({ bundleID, teamID = '' }: Pick<AppleProvisioningContext, 'bundleID' | 'teamID'>) {
+export function findBundleIDRequest({
+  bundleID,
+  teamID = '',
+}: Pick<AppleProvisioningContext, 'bundleID' | 'teamID'>) {
   void bundleID;
   return pagedRequest('/account/ios/identifiers/listAppIds.action', teamID, { sort: 'name=asc' });
 }
 
-export function findDeviceRequest({ deviceUDID, teamID = '' }: Pick<AppleProvisioningContext, 'deviceUDID' | 'teamID'>) {
+export function findDeviceRequest({
+  deviceUDID,
+  teamID = '',
+}: Pick<AppleProvisioningContext, 'deviceUDID' | 'teamID'>) {
   void deviceUDID;
   return pagedRequest('/account/ios/device/listDevices.action', teamID, {
     sort: 'name=asc',
@@ -170,13 +176,7 @@ export function createBundleIDRequest({
   } satisfies AppleProvisioningRequest;
 }
 
-export function submitDevelopmentCSRRequest({
-  csrPEM,
-  teamID = '',
-}: {
-  csrPEM: string;
-  teamID?: string;
-}) {
+export function submitDevelopmentCSRRequest({ csrPEM, teamID = '' }: { csrPEM: string; teamID?: string }) {
   return {
     method: 'POST',
     path: '/account/ios/certificate/submitCertificateRequest.action',
@@ -188,13 +188,7 @@ export function submitDevelopmentCSRRequest({
   } satisfies AppleProvisioningRequest;
 }
 
-export function submitDistributionCSRRequest({
-  csrPEM,
-  teamID = '',
-}: {
-  csrPEM: string;
-  teamID?: string;
-}) {
+export function submitDistributionCSRRequest({ csrPEM, teamID = '' }: { csrPEM: string; teamID?: string }) {
   return {
     method: 'POST',
     path: '/account/ios/certificate/submitCertificateRequest.action',
@@ -313,10 +307,14 @@ export async function getReusableAppleSigningAssets({
 export async function putAppleGeneratedSigningAssets(input: PutAppleGeneratedSigningAssetsInput) {
   return putSigningAssets({
     ...input,
-    certificateFileName: input.certificateID ? `${input.certificateID}.p12` : `apple-${input.signingMode ?? 'development'}.p12`,
+    certificateFileName:
+      input.certificateID ? `${input.certificateID}.p12` : `apple-${input.signingMode ?? 'development'}.p12`,
     certificatePassword: input.certificatePassword || undefined,
     signingMode: input.signingMode,
-    profileFileName: input.profile.uuid ? `${input.profile.uuid}.mobileprovision` : `${input.signingMode ?? 'development'}.mobileprovision`,
+    profileFileName:
+      input.profile.uuid ?
+        `${input.profile.uuid}.mobileprovision`
+      : `${input.signingMode ?? 'development'}.mobileprovision`,
   });
 }
 

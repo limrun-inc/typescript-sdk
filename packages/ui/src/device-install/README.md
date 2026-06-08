@@ -91,10 +91,7 @@ This example shows the most direct integration. It assumes your app already has
 
 ```tsx
 import { useState } from 'react';
-import {
-  importSigningAssetsFromFiles,
-  type StoredSigningAssets,
-} from '@limrun/ui/device-build';
+import { importSigningAssetsFromFiles, type StoredSigningAssets } from '@limrun/ui/device-build';
 import { useDeviceBuild } from '@limrun/ui/device-build/react';
 import { useDeviceInstallRelay } from '@limrun/ui/device-install/react';
 
@@ -114,10 +111,7 @@ export function RealDeviceInstall({
   const [messages, setMessages] = useState<string[]>([]);
 
   const log = (message: string, detail?: string) => {
-    setMessages((current) => [
-      detail ? `${message}: ${detail}` : message,
-      ...current,
-    ]);
+    setMessages((current) => [detail ? `${message}: ${detail}` : message, ...current]);
   };
 
   const install = useDeviceInstallRelay({
@@ -157,34 +151,18 @@ export function RealDeviceInstall({
     <div>
       <h2>Install to iPhone</h2>
 
-      {(install.error || build.error) && (
-        <pre>{install.error ?? build.error}</pre>
-      )}
+      {(install.error || build.error) && <pre>{install.error ?? build.error}</pre>}
 
       <section>
         <h3>1. Pair iPhone</h3>
-        <button
-          type="button"
-          disabled={!!install.busyAction}
-          onClick={() => void install.requestUSBAccess()}
-        >
+        <button type="button" disabled={!!install.busyAction} onClick={() => void install.requestUSBAccess()}>
           Select iPhone
         </button>
-        <button
-          type="button"
-          disabled={!install.canPair}
-          onClick={() => void install.pairBrowser()}
-        >
+        <button type="button" disabled={!install.canPair} onClick={() => void install.pairBrowser()}>
           Pair
         </button>
-        <p>
-          Selected device:{' '}
-          {install.device?.hello.serialNumber ?? 'none'}
-        </p>
-        <p>
-          Pair record:{' '}
-          {install.hasPairRecord ? 'stored' : 'not found'}
-        </p>
+        <p>Selected device: {install.device?.hello.serialNumber ?? 'none'}</p>
+        <p>Pair record: {install.hasPairRecord ? 'stored' : 'not found'}</p>
       </section>
 
       <section>
@@ -194,9 +172,7 @@ export function RealDeviceInstall({
           <input
             type="file"
             accept=".p12,application/x-pkcs12"
-            onChange={(event) =>
-              setCertificateFile(event.currentTarget.files?.[0])
-            }
+            onChange={(event) => setCertificateFile(event.currentTarget.files?.[0])}
           />
         </label>
         <label>
@@ -204,9 +180,7 @@ export function RealDeviceInstall({
           <input
             type="file"
             accept=".mobileprovision"
-            onChange={(event) =>
-              setProfileFile(event.currentTarget.files?.[0])
-            }
+            onChange={(event) => setProfileFile(event.currentTarget.files?.[0])}
           />
         </label>
         <label>
@@ -237,7 +211,10 @@ export function RealDeviceInstall({
         </button>
         <p>Build status: {build.status}</p>
         <pre style={{ whiteSpace: 'pre-wrap', overflow: 'auto' }}>
-          {build.logs.slice(-40).map((line) => line.data).join('\\n')}
+          {build.logs
+            .slice(-40)
+            .map((line) => line.data)
+            .join('\\n')}
         </pre>
       </section>
 
@@ -397,4 +374,3 @@ app's bundle ID.
 - Wrap build logs in the UI; `xcodebuild` can emit very long lines.
 - Keep install logs visible; they are critical for debugging profile/device
   mismatches.
-

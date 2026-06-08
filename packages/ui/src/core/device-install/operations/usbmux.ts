@@ -150,9 +150,9 @@ async function sendMux(session: UsbmuxSession, protocol: number, payload: Uint8A
   session.writeChain = session.writeChain.then(async () => {
     if (session.closed) return;
     const packet =
-      session.muxVersion >= 2
-        ? buildV2Packet(protocol, payload, session.txSeq++, session.rxSeq)
-        : buildV1Packet(protocol, payload);
+      session.muxVersion >= 2 ?
+        buildV2Packet(protocol, payload, session.txSeq++, session.rxSeq)
+      : buildV1Packet(protocol, payload);
     await transferOutWithZlp(session.device, session.outEndpoint, packet);
   });
   return session.writeChain;

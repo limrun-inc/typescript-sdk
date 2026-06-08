@@ -170,7 +170,12 @@ export async function listAppleTeams(options: AppleRelayClientOptions) {
     ...options,
     request: listTeamsRequest(),
     label: 'Apple Developer team list',
-    mapBody: (body) => uniqueAppleTeams([...(body?.teams ?? []), ...(body?.availableProviders ?? []), ...(body?.provider ? [body.provider] : [])]),
+    mapBody: (body) =>
+      uniqueAppleTeams([
+        ...(body?.teams ?? []),
+        ...(body?.availableProviders ?? []),
+        ...(body?.provider ? [body.provider] : []),
+      ]),
   });
 }
 
@@ -182,9 +187,9 @@ export async function listAppleCertificates({
   return requestAppleProvisioning<Array<Record<string, unknown>>>({
     ...options,
     request:
-      certificateKind === 'distribution'
-        ? findDistributionCertificatesRequest(teamId)
-        : findDevelopmentCertificatesRequest(teamId),
+      certificateKind === 'distribution' ?
+        findDistributionCertificatesRequest(teamId)
+      : findDevelopmentCertificatesRequest(teamId),
     label: 'Apple Developer certificate list',
     mapBody: (body) => body?.certRequests ?? [],
   });
@@ -199,10 +204,13 @@ export async function createAppleCertificate({
   return requestAppleProvisioning<Record<string, unknown> | undefined>({
     ...options,
     request:
-      certificateKind === 'distribution'
-        ? submitDistributionCSRRequest({ csrPEM, teamID: teamId })
-        : submitDevelopmentCSRRequest({ csrPEM, teamID: teamId }),
-    label: certificateKind === 'distribution' ? 'Apple Distribution certificate creation' : 'Apple Development certificate creation',
+      certificateKind === 'distribution' ?
+        submitDistributionCSRRequest({ csrPEM, teamID: teamId })
+      : submitDevelopmentCSRRequest({ csrPEM, teamID: teamId }),
+    label:
+      certificateKind === 'distribution' ?
+        'Apple Distribution certificate creation'
+      : 'Apple Development certificate creation',
     mapBody: (body) => body?.certRequest,
   });
 }
@@ -216,9 +224,9 @@ export async function downloadAppleCertificate({
   return requestAppleProvisioning<AppleRelayResponse>({
     ...options,
     request:
-      certificateKind === 'distribution'
-        ? downloadDistributionCertificateRequest(certificateId, teamId)
-        : downloadCertificateRequest(certificateId, teamId),
+      certificateKind === 'distribution' ?
+        downloadDistributionCertificateRequest(certificateId, teamId)
+      : downloadCertificateRequest(certificateId, teamId),
     label: 'Apple certificate download',
     validatePortalResponse: false,
     mapBody: (_body, response) => response,
@@ -247,7 +255,11 @@ export async function deleteAppleCertificate({
   });
 }
 
-export async function listAppleBundleIDs({ teamId = '', search = '', ...options }: ListAppleBundleIDsOptions) {
+export async function listAppleBundleIDs({
+  teamId = '',
+  search = '',
+  ...options
+}: ListAppleBundleIDsOptions) {
   return requestAppleProvisioning<AppleDeveloperPortalAppID[]>({
     ...options,
     request: findBundleIDRequest({ bundleID: search, teamID: teamId }),
@@ -256,7 +268,12 @@ export async function listAppleBundleIDs({ teamId = '', search = '', ...options 
   });
 }
 
-export async function createAppleBundleID({ teamId = '', bundleId, name, ...options }: CreateAppleBundleIDOptions) {
+export async function createAppleBundleID({
+  teamId = '',
+  bundleId,
+  name,
+  ...options
+}: CreateAppleBundleIDOptions) {
   return requestAppleProvisioning<Record<string, unknown> | undefined>({
     ...options,
     request: createBundleIDRequest({ bundleID: bundleId, teamID: teamId, name }),
@@ -302,7 +319,11 @@ export async function deleteAppleBundleID({ teamId = '', appIdId, ...options }: 
   });
 }
 
-export async function listAppleDevices({ teamId = '', deviceUDID = '', ...options }: ListAppleDevicesOptions) {
+export async function listAppleDevices({
+  teamId = '',
+  deviceUDID = '',
+  ...options
+}: ListAppleDevicesOptions) {
   return requestAppleProvisioning<AppleDeveloperPortalDevice[]>({
     ...options,
     request: findDeviceRequest({ deviceUDID, teamID: teamId }),
@@ -311,7 +332,12 @@ export async function listAppleDevices({ teamId = '', deviceUDID = '', ...option
   });
 }
 
-export async function registerAppleDevice({ teamId = '', deviceUDID, name, ...options }: RegisterAppleDeviceOptions) {
+export async function registerAppleDevice({
+  teamId = '',
+  deviceUDID,
+  name,
+  ...options
+}: RegisterAppleDeviceOptions) {
   return requestAppleProvisioning<Record<string, unknown> | undefined>({
     ...options,
     request: registerDeviceRequest({ deviceUDID, teamID: teamId, name }),
@@ -320,7 +346,12 @@ export async function registerAppleDevice({ teamId = '', deviceUDID, name, ...op
   });
 }
 
-export async function updateAppleDevice({ teamId = '', deviceId, name, ...options }: UpdateAppleDeviceOptions) {
+export async function updateAppleDevice({
+  teamId = '',
+  deviceId,
+  name,
+  ...options
+}: UpdateAppleDeviceOptions) {
   return requestAppleProvisioning<Record<string, unknown> | undefined>({
     ...options,
     request: {
@@ -355,9 +386,9 @@ export async function listAppleProfiles({
   return requestAppleProvisioning<Array<Record<string, unknown>>>({
     ...options,
     request:
-      profileKind === 'adhoc'
-        ? findAdHocProfilesRequest({ bundleID: bundleId, teamID: teamId })
-        : findDevelopmentProfilesRequest({ bundleID: bundleId, teamID: teamId }),
+      profileKind === 'adhoc' ?
+        findAdHocProfilesRequest({ bundleID: bundleId, teamID: teamId })
+      : findDevelopmentProfilesRequest({ bundleID: bundleId, teamID: teamId }),
     label: 'Apple provisioning profile list',
     mapBody: (body) => body?.provisioningProfiles ?? [],
   });
@@ -380,29 +411,33 @@ export async function createAppleProfile({
   return requestAppleProvisioning<Record<string, unknown> | undefined>({
     ...options,
     request:
-      profileKind === 'adhoc'
-        ? createAdHocProfileRequest({
-            bundleID: bundleId,
-            teamID: teamId,
-            appIDID: appIdId,
-            certificateID: certificateId,
-            deviceIDs: deviceIds,
-            name,
-          })
-        : createDevelopmentProfileRequest({
-            bundleID: bundleId,
-            teamID: teamId,
-            appIDID: appIdId,
-            certificateID: certificateId,
-            deviceIDs: deviceIds,
-            name,
-          }),
+      profileKind === 'adhoc' ?
+        createAdHocProfileRequest({
+          bundleID: bundleId,
+          teamID: teamId,
+          appIDID: appIdId,
+          certificateID: certificateId,
+          deviceIDs: deviceIds,
+          name,
+        })
+      : createDevelopmentProfileRequest({
+          bundleID: bundleId,
+          teamID: teamId,
+          appIDID: appIdId,
+          certificateID: certificateId,
+          deviceIDs: deviceIds,
+          name,
+        }),
     label: 'Apple provisioning profile creation',
     mapBody: (body) => body?.provisioningProfile,
   });
 }
 
-export async function downloadAppleProfile({ teamId = '', profileId, ...options }: DownloadAppleProfileOptions) {
+export async function downloadAppleProfile({
+  teamId = '',
+  profileId,
+  ...options
+}: DownloadAppleProfileOptions) {
   return requestAppleProvisioning<AppleRelayResponse>({
     ...options,
     request: downloadProfileRequest(profileId, teamId),
@@ -425,12 +460,17 @@ export async function deleteAppleProfile({ teamId = '', profileId, ...options }:
   });
 }
 
-export function assertAppleDeveloperPortalResponseOK(response: AppleDeveloperPortalResponse | undefined, label: string) {
+export function assertAppleDeveloperPortalResponseOK(
+  response: AppleDeveloperPortalResponse | undefined,
+  label: string,
+) {
   if (!response) {
     throw new Error(`${label} returned an empty response.`);
   }
   if (response.resultCode !== undefined && response.resultCode !== 0) {
-    throw new Error(`${label} failed: ${response.userString ?? response.resultString ?? response.resultCode}`);
+    throw new Error(
+      `${label} failed: ${response.userString ?? response.resultString ?? response.resultCode}`,
+    );
   }
 }
 
@@ -438,7 +478,9 @@ function uniqueAppleTeams(teams: AppleDeveloperPortalTeam[]) {
   const seen = new Set<string>();
   const result: AppleDeveloperPortalTeam[] = [];
   for (const team of teams) {
-    const key = String(team.teamId ?? team.providerId ?? team.publicProviderId ?? team.name ?? JSON.stringify(team));
+    const key = String(
+      team.teamId ?? team.providerId ?? team.publicProviderId ?? team.name ?? JSON.stringify(team),
+    );
     if (seen.has(key)) continue;
     seen.add(key);
     result.push(team);

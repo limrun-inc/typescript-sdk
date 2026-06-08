@@ -29,9 +29,7 @@ export type AppleIDLoginResult = {
   close: () => Promise<void>;
 };
 
-type TwoFactorMethod =
-  | { type: 'trustedDevice' }
-  | { type: 'phone'; phoneNumberId: number; mode: string };
+type TwoFactorMethod = { type: 'trustedDevice' } | { type: 'phone'; phoneNumberId: number; mode: string };
 
 export async function startBrowserOwnedAppleIDLogin({
   limbuildApiUrl,
@@ -44,7 +42,9 @@ export async function startBrowserOwnedAppleIDLogin({
     const srp = new AppleGsaSrpClient(accountName);
     const initResponse = await proxySrpInit(limbuildApiUrl, appleSessionId, await srp.init(), token);
     if (initResponse.status < 200 || initResponse.status >= 300) {
-      throw new Error(`Apple SRP init failed: HTTP ${initResponse.status} ${initResponse.rawBody ?? ''}`.trim());
+      throw new Error(
+        `Apple SRP init failed: HTTP ${initResponse.status} ${initResponse.rawBody ?? ''}`.trim(),
+      );
     }
     if (!initResponse.body) {
       throw new Error('Apple SRP init response did not include a body.');
@@ -93,7 +93,9 @@ export async function startBrowserOwnedAppleIDLogin({
         );
       }
     } else if (completeResponse.status < 200 || completeResponse.status >= 300) {
-      throw new Error(`Apple SRP complete failed: HTTP ${completeResponse.status} ${completeResponse.rawBody ?? ''}`.trim());
+      throw new Error(
+        `Apple SRP complete failed: HTTP ${completeResponse.status} ${completeResponse.rawBody ?? ''}`.trim(),
+      );
     }
     return {
       appleSessionId,
@@ -102,18 +104,20 @@ export async function startBrowserOwnedAppleIDLogin({
       requiresTwoFactor,
       finishTwoFactor: async (code) => {
         const response =
-          twoFactorMethod.type === 'phone'
-            ? await proxyPhoneTwoFactorCode(
-                limbuildApiUrl,
-                appleSessionId,
-                twoFactorMethod.phoneNumberId,
-                code,
-                twoFactorMethod.mode,
-                token,
-              )
-            : await proxyTwoFactorCode(limbuildApiUrl, appleSessionId, code, token);
+          twoFactorMethod.type === 'phone' ?
+            await proxyPhoneTwoFactorCode(
+              limbuildApiUrl,
+              appleSessionId,
+              twoFactorMethod.phoneNumberId,
+              code,
+              twoFactorMethod.mode,
+              token,
+            )
+          : await proxyTwoFactorCode(limbuildApiUrl, appleSessionId, code, token);
         if (response.status < 200 || response.status >= 300) {
-          throw new Error(`Apple two-factor code failed: HTTP ${response.status} ${response.rawBody ?? ''}`.trim());
+          throw new Error(
+            `Apple two-factor code failed: HTTP ${response.status} ${response.rawBody ?? ''}`.trim(),
+          );
         }
         return response;
       },

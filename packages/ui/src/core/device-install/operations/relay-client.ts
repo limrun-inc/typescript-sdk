@@ -99,9 +99,11 @@ export class RelayClient {
   }
 
   private enqueueFrame(data: Uint8Array) {
-    this.frameQueue = this.frameQueue.then(() => this.handleFrame(decodeFrame(data))).catch((error) => {
-      this.log('Relay frame handling failed', error instanceof Error ? error.message : String(error));
-    });
+    this.frameQueue = this.frameQueue
+      .then(() => this.handleFrame(decodeFrame(data)))
+      .catch((error) => {
+        this.log('Relay frame handling failed', error instanceof Error ? error.message : String(error));
+      });
   }
 
   private async handleFrame(frame: ReturnType<typeof decodeFrame>) {
@@ -170,7 +172,10 @@ export class RelayClient {
       this.log(`Opened device stream ${streamId} to port ${port}`);
       void this.pumpDeviceToServer(streamId, stream);
     } catch (error) {
-      this.log(`Open device stream ${streamId} failed`, error instanceof Error ? error.message : String(error));
+      this.log(
+        `Open device stream ${streamId} failed`,
+        error instanceof Error ? error.message : String(error),
+      );
       await this.send({
         type: RelayMessageType.OpenResult,
         requestId,

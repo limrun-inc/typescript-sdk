@@ -39,7 +39,9 @@ export function findUsbmuxCandidates(device: USBDevice): UsbmuxCandidate[] {
   return candidates;
 }
 
-function findConfigurationUsbmuxCandidates(configuration: USBDevice['configurations'][number]): UsbmuxCandidate[] {
+function findConfigurationUsbmuxCandidates(
+  configuration: USBDevice['configurations'][number],
+): UsbmuxCandidate[] {
   const candidates: UsbmuxCandidate[] = [];
   for (const usbInterface of configuration.interfaces) {
     for (const alternate of usbInterface.alternates) {

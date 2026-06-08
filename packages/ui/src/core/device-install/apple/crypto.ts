@@ -41,7 +41,11 @@ export async function generateAppleSigningKeyAndCSR(input: AppleCSRInput): Promi
     derContext(0, new Uint8Array()),
   );
   const signature = new Uint8Array(
-    await crypto.subtle.sign('RSASSA-PKCS1-v1_5', keyPair.privateKey, toArrayBuffer(certificationRequestInfo)),
+    await crypto.subtle.sign(
+      'RSASSA-PKCS1-v1_5',
+      keyPair.privateKey,
+      toArrayBuffer(certificationRequestInfo),
+    ),
   );
   const csrDER = derSequence(
     certificationRequestInfo,
@@ -62,11 +66,10 @@ export function exportAppleCertificateP12(input: ExportP12Input) {
   if (!input.certificateBase64 && !input.certificatePEM) {
     throw new Error('certificateBase64 or certificatePEM is required.');
   }
-  const privateKey = forge.pki.privateKeyFromPem(
-    pemFromBase64('PRIVATE KEY', input.privateKeyPKCS8Base64),
-  );
-  const certificate = input.certificatePEM
-    ? forge.pki.certificateFromPem(input.certificatePEM)
+  const privateKey = forge.pki.privateKeyFromPem(pemFromBase64('PRIVATE KEY', input.privateKeyPKCS8Base64));
+  const certificate =
+    input.certificatePEM ?
+      forge.pki.certificateFromPem(input.certificatePEM)
     : forge.pki.certificateFromAsn1(
         forge.asn1.fromDer(forge.util.createBuffer(base64ToBinary(input.certificateBase64!))),
       );

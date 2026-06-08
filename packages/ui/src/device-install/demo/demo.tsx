@@ -70,10 +70,7 @@ function App() {
   const [token, setToken] = useLocalStorage(storageKeys.token, '');
   const [bundleId, setBundleId] = useLocalStorage(storageKeys.bundleId, '');
   const [appleAccount, setAppleAccount] = useLocalStorage(storageKeys.appleAccount, '');
-  const [certificatePassword, setCertificatePassword] = useLocalStorage(
-    storageKeys.certificatePassword,
-    '',
-  );
+  const [certificatePassword, setCertificatePassword] = useLocalStorage(storageKeys.certificatePassword, '');
   const [signingSource, setSigningSource] = useState<SigningSource>('apple');
   const [applePassword, setApplePassword] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
@@ -93,15 +90,17 @@ function App() {
   const [prepareError, setPrepareError] = useState<string>();
 
   const addActivity = (message: string, detail?: string) => {
-    setActivity((current) => [
-      {
-        id: Date.now() + Math.random(),
-        time: new Date().toLocaleTimeString(),
-        message,
-        detail,
-      },
-      ...current,
-    ].slice(0, 120));
+    setActivity((current) =>
+      [
+        {
+          id: Date.now() + Math.random(),
+          time: new Date().toLocaleTimeString(),
+          message,
+          detail,
+        },
+        ...current,
+      ].slice(0, 120),
+    );
   };
 
   const install = useDeviceInstallRelay({
@@ -134,7 +133,11 @@ function App() {
   const canInstall = install.canInstall && build.status === 'succeeded';
 
   const buildLogText = useMemo(
-    () => build.logs.slice(-80).map((line) => line.data).join('\n'),
+    () =>
+      build.logs
+        .slice(-80)
+        .map((line) => line.data)
+        .join('\n'),
     [build.logs],
   );
 
@@ -238,7 +241,10 @@ function App() {
     }
   }
 
-  async function loadAppleResources(teamId = developerTeamId, appleSessionId = appleLogin.session?.appleSessionId) {
+  async function loadAppleResources(
+    teamId = developerTeamId,
+    appleSessionId = appleLogin.session?.appleSessionId,
+  ) {
     if (!apiUrl.trim() || !appleSessionId || !teamId) return;
     const base = {
       apiUrl: apiUrl.trim(),
@@ -258,12 +264,13 @@ function App() {
     const firstBundleId = appIdBundleId(firstApp);
     setSelectedAppIdId(firstAppId);
     if (!bundleId.trim() && firstBundleId) setBundleId(firstBundleId);
-    const matchingDevice = selectedUDID
-      ? devices.find((device) => sameUDID(device.deviceNumber, selectedUDID))
-      : undefined;
+    const matchingDevice =
+      selectedUDID ? devices.find((device) => sameUDID(device.deviceNumber, selectedUDID)) : undefined;
     const firstDeviceId = matchingDevice?.deviceId ?? devices.find((device) => !!device.deviceId)?.deviceId;
     setSelectedDeviceIds(firstDeviceId ? [firstDeviceId] : []);
-    setSelectedProfileId(profiles.map((profile) => stringField(profile, 'provisioningProfileId')).find(Boolean) ?? '');
+    setSelectedProfileId(
+      profiles.map((profile) => stringField(profile, 'provisioningProfileId')).find(Boolean) ?? '',
+    );
     addActivity('Apple Developer resources loaded', `${devices.length} devices, ${profiles.length} profiles`);
   }
 
@@ -371,7 +378,8 @@ function App() {
           certificateKind: 'development',
           csrPEM: keyMaterial.csrPEM,
         });
-        certificateId = stringField(certificate, 'certificateId') ?? stringField(certificate, 'certRequestId');
+        certificateId =
+          stringField(certificate, 'certificateId') ?? stringField(certificate, 'certRequestId');
         if (!certificateId) throw new Error('Apple certificate creation did not return a certificate ID.');
         const downloadedCertificate = await downloadAppleCertificate({
           ...base,
@@ -430,13 +438,14 @@ function App() {
     } catch (error) {
       setSigningAssets(undefined);
       const message = errorMessage(error);
-      const capHit = /current Development certificate|pending certificate request|Maximum number of certificates/i.test(
-        message,
-      );
+      const capHit =
+        /current Development certificate|pending certificate request|Maximum number of certificates/i.test(
+          message,
+        );
       setPrepareError(
-        capHit
-          ? `${message}\n\nApple caps development certificates at 2. Either pick "Use stored local certificate" (if this browser already created one), upload a .p12 instead, or revoke an existing certificate at developer.apple.com and retry.`
-          : message,
+        capHit ?
+          `${message}\n\nApple caps development certificates at 2. Either pick "Use stored local certificate" (if this browser already created one), upload a .p12 instead, or revoke an existing certificate at developer.apple.com and retry.`
+        : message,
       );
     } finally {
       setAppleBusy(undefined);
@@ -457,9 +466,8 @@ function App() {
         <h1>Install a signed iOS build onto a physical iPhone</h1>
         <p>
           This page demonstrates the upload-signing path from
-          <code> REAL_DEVICE_INSTALL_README.md</code>: select an iPhone, pair it,
-          upload signing assets, start a signed <code>iphoneos</code> build, and
-          install over WebUSB.
+          <code> REAL_DEVICE_INSTALL_README.md</code>: select an iPhone, pair it, upload signing assets, start
+          a signed <code>iphoneos</code> build, and install over WebUSB.
         </p>
       </header>
 
@@ -491,8 +499,7 @@ function App() {
           </label>
         </div>
         <p className="hint">
-          Run this page on <code>localhost</code> or HTTPS. WebUSB is available in
-          Chromium browsers only.
+          Run this page on <code>localhost</code> or HTTPS. WebUSB is available in Chromium browsers only.
         </p>
       </section>
 
@@ -514,11 +521,7 @@ function App() {
           >
             Select iPhone
           </button>
-          <button
-            type="button"
-            disabled={!install.canPair}
-            onClick={() => void install.pairBrowser()}
-          >
+          <button type="button" disabled={!install.canPair} onClick={() => void install.pairBrowser()}>
             Pair
           </button>
           <button type="button" className="secondary" onClick={install.stopRelay}>
@@ -607,7 +610,7 @@ function App() {
           </label>
         </div>
 
-        {signingSource === 'apple' ? (
+        {signingSource === 'apple' ?
           <div className="subPanel">
             <div className="sectionHeader compact">
               <div>
@@ -796,9 +799,8 @@ function App() {
               </label>
             </div>
             <p className="hint">
-              Apple account has {resources.certificates.length} matching development
-              certificates. Existing Apple certs can only be reused when this browser
-              already has the private key.
+              Apple account has {resources.certificates.length} matching development certificates. Existing
+              Apple certs can only be reused when this browser already has the private key.
             </p>
             <div className="actions">
               <button
@@ -810,11 +812,10 @@ function App() {
               </button>
             </div>
           </div>
-        ) : (
-          <div className="subPanel">
+        : <div className="subPanel">
             <p className="hint">
-              Use a development <code>.mobileprovision</code> that includes the
-              selected iPhone UDID and covers the app bundle ID.
+              Use a development <code>.mobileprovision</code> that includes the selected iPhone UDID and
+              covers the app bundle ID.
             </p>
             <div className="grid two">
               <label>
@@ -835,16 +836,12 @@ function App() {
               </label>
             </div>
             <div className="actions">
-              <button
-                type="button"
-                disabled={!canPrepareSigning}
-                onClick={() => void prepareSigningAssets()}
-              >
+              <button type="button" disabled={!canPrepareSigning} onClick={() => void prepareSigningAssets()}>
                 Prepare uploaded signing assets
               </button>
             </div>
           </div>
-        )}
+        }
 
         {signingAssets && (
           <dl className="facts">
@@ -870,16 +867,19 @@ function App() {
             <h2>3. Build</h2>
             <p>Starts a signed device build on limbuild and streams xcodebuild logs.</p>
           </div>
-          <StatusPill tone={build.status === 'succeeded' ? 'success' : build.status === 'failed' ? 'danger' : 'neutral'}>
+          <StatusPill
+            tone={
+              build.status === 'succeeded' ? 'success'
+              : build.status === 'failed' ?
+                'danger'
+              : 'neutral'
+            }
+          >
             {build.status}
           </StatusPill>
         </div>
         <div className="actions">
-          <button
-            type="button"
-            disabled={!canStartBuild}
-            onClick={() => void startBuild()}
-          >
+          <button type="button" disabled={!canStartBuild} onClick={() => void startBuild()}>
             Start signed build
           </button>
         </div>
@@ -897,11 +897,7 @@ function App() {
           </StatusPill>
         </div>
         <div className="actions">
-          <button
-            type="button"
-            disabled={!canInstall}
-            onClick={() => void install.startInstallation()}
-          >
+          <button type="button" disabled={!canInstall} onClick={() => void install.startInstallation()}>
             Install to iPhone
           </button>
         </div>
@@ -918,17 +914,16 @@ function App() {
           </button>
         </div>
         <div className="activity">
-          {activity.length === 0 ? (
+          {activity.length === 0 ?
             <p className="hint">No activity yet.</p>
-          ) : (
-            activity.map((line) => (
+          : activity.map((line) => (
               <div key={line.id} className="activityLine">
                 <span>{line.time}</span>
                 <strong>{line.message}</strong>
                 {line.detail && <pre>{line.detail}</pre>}
               </div>
             ))
-          )}
+          }
         </div>
       </section>
     </main>
@@ -968,7 +963,10 @@ function sameUDID(left?: string, right?: string) {
 }
 
 function normalizeUDID(udid?: string) {
-  return (udid ?? '').replace(/-/g, '').replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+  return (udid ?? '')
+    .replace(/-/g, '')
+    .replace(/[^a-fA-F0-9]/g, '')
+    .toUpperCase();
 }
 
 function useLocalStorage(key: string, initialValue: string) {

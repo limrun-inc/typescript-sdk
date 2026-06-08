@@ -155,7 +155,9 @@ async function claimBestUsbmuxCandidate(target: DeviceRelayTarget, log: DeviceIn
         lastError = error;
         log(
           'USB interface claim failed',
-          `configuration ${candidate.configurationValue}, interface ${candidate.interfaceNumber}: ${errorMessage(error)}`,
+          `configuration ${candidate.configurationValue}, interface ${
+            candidate.interfaceNumber
+          }: ${errorMessage(error)}`,
         );
         await resetUSBDevice(target);
         await sleep(250);
