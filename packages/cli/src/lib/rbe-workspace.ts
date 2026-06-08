@@ -267,6 +267,18 @@ xcode_config(
  *   pins, so these explicit overrides are required.
  * - PATH includes /usr/sbin:/sbin so genrules that probe `sysctl` (e.g.
  *   `hw.logicalcpu` for `make -j`) resolve it on the worker.
+ * - `--remote_download_outputs=minimal` keeps build outputs (the .ipa) in the
+ *   instance's CAS instead of downloading them to the client. `lim xcode rbe
+ *   install` then installs the artifact on the attached simulator server-side
+ *   (fast diff-sync), so the bytes never round-trip — pointless on a Linux
+ *   client, and the artifact is produced in the instance anyway. Scoped to
+ *   --config=limrun, so a plain `bazel build` still materializes outputs.
+ * - `--build_event_json_file` writes the Build Event Protocol to .limrun/bep.json;
+ *   `lim xcode rbe install` reads the built target's .ipa CAS digest from it. The
+ *   path is ABSOLUTE on purpose: Bazel expands `%workspace%` only in
+ *   import/try-import, NOT in flag values (it would be taken literally and create
+ *   a junk `%workspace%/` dir), and a relative path resolves against bazel's cwd
+ *   rather than the workspace root.
  * - `--extra_execution_platforms` is emitted ONLY for non-mac clients: a Linux
  *   host has no auto-detected darwin execution platform, so the Apple/Swift
  *   toolchain (exec_compatible_with macos) needs one registered to route
@@ -274,7 +286,12 @@ xcode_config(
  *   exec-config actions on the local host instead of the remote worker, which
  *   then demand a local Xcode.
  */
-export function renderLimrunBazelrc(port: number, versionKey: string, isMacClient: boolean): string {
+export function renderLimrunBazelrc(
+  port: number,
+  versionKey: string,
+  isMacClient: boolean,
+  bepPath: string,
+): string {
   const execPlatform =
     isMacClient ? '' : (
       'build:limrun --extra_execution_platforms=@build_bazel_apple_support//platforms:darwin_arm64\n'
@@ -288,6 +305,8 @@ build:limrun --strategy=SwiftCompile=remote
 build:limrun --strategy=Genrule=remote
 build:limrun --xcode_version_config=//.limrun:remote_xcode_config
 build:limrun --xcode_version=${shortVersion(versionKey)}
+build:limrun --remote_download_outputs=minimal
+build:limrun --build_event_json_file=${bepPath}
 ${execPlatform}build:limrun --action_env=PATH=/usr/bin:/bin:/usr/sbin:/sbin
 `;
 }
@@ -341,8 +360,12 @@ export function writeRbeWorkspaceFiles(
   // longer native globals. On a known Bazel 8 workspace they ARE native (and
   // loading would fail), so omit the loads.
   const emitLoads = isBazel9OrLater(bazelMajor);
+  // Absolute BEP path so it resolves regardless of bazel's cwd; lim xcode rbe
+  // install reads the same path. .limrun/ is gitignored and regenerated per run,
+  // so a machine-specific absolute path here is fine.
+  const bepFile = path.join(dir, 'bep.json');
   fs.writeFileSync(buildFile, renderXcodeConfigBuild(xcodeVersionKey, emitLoads));
-  fs.writeFileSync(bazelrcFragment, renderLimrunBazelrc(port, xcodeVersionKey, isMacClient));
+  fs.writeFileSync(bazelrcFragment, renderLimrunBazelrc(port, xcodeVersionKey, isMacClient, bepFile));
   fs.writeFileSync(path.join(dir, '.gitignore'), '*\n');
   const bazelrcUpdated = ensureTryImport(workspaceDir);
   return { buildFile, bazelrcFragment, bazelrcUpdated };

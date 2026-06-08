@@ -120,7 +120,13 @@ export function buildServeChildArgs(opts: {
  * it; we keep just enough to offer a discoverable stop). Lives under `.limrun/`,
  * which is self-gitignored.
  */
-export type RbePidInfo = { pid: number; instanceId: string; port: number };
+export type RbePidInfo = {
+  pid: number;
+  instanceId: string;
+  port: number;
+  /** iOS simulator created by `--ios`, torn down on --stop. Absent otherwise. */
+  simInstanceId?: string;
+};
 
 export function rbePidFilePath(workspaceRoot: string): string {
   return path.join(workspaceRoot, '.limrun', 'rbe.pid');
