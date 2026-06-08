@@ -221,7 +221,7 @@ describe('multiplexed rbe tunnel reconnect', () => {
     expect(serverSockets).toHaveLength(1);
 
     // Simulate a transient network drop on the established WS.
-    serverSockets[0].terminate();
+    serverSockets[0]!.terminate();
 
     // The client keeps the listener up and reconnects (a 2nd server-side
     // connection is accepted), passing through 'reconnecting' back to 'connected'.
@@ -254,7 +254,7 @@ describe('multiplexed rbe tunnel reconnect', () => {
 
     // Drop the connection AND take the whole server down so every reconnect
     // attempt fails; after maxReconnectAttempts the tunnel goes terminal.
-    serverSockets[0].terminate();
+    serverSockets[0]!.terminate();
     await new Promise<void>((resolve) => server.close(() => resolve()));
 
     await waitFor(() => tunnel!.getConnectionState() === 'disconnected', 5000);

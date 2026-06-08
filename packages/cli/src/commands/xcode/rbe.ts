@@ -5,6 +5,7 @@ import { Flags } from '@oclif/core';
 import type { Tunnel, XcodeClient } from '@limrun/api';
 import { DEFAULT_RBE_TUNNEL_PORT } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
+import { ProgressReporter } from '../../lib/progress';
 import {
   detectBazelMajorVersion,
   findBazelWorkspaceRoot,
@@ -58,6 +59,8 @@ export default class XcodeRbe extends BaseCommand {
     }),
   };
 
+  private reporter = new ProgressReporter(() => this.shouldSuppressInfo());
+
   async run(): Promise<void> {
     const { flags } = await this.parse(XcodeRbe);
     this.setParsedFlags(flags);
@@ -98,18 +101,45 @@ export default class XcodeRbe extends BaseCommand {
       const instanceId = typeof target === 'string' ? target : target.id;
       const client = await this.resolveXcodeClient(target);
 
-      this.info('Starting the remote-execution stack...');
-      // Retry transient gateway failures: right after an instance is created
-      // (or replaced), the proxy can report ready a beat before limbuild fully
-      // serves, so the first POST occasionally fails with 502/EOF. startRbe is
-      // idempotent, making blind retries safe.
-      const initial = await retryTransient(() => client.startRbe(), { log: (m) => this.info(m) });
+      // resolveXcodeClient validates an iOS-backed target via iosInstances.get,
+      // but a cached standalone Xcode target is trusted without a round-trip.
+      // Validate it so a stale "last instance" pointer or a deleted instance
+      // throws NotFoundError here (→ withAuth clears the cache and recreates),
+      // instead of surfacing as a misleading RbeUnsupportedError from the /rbe
+      // 404 of a dead instance.
+      if (typeof target !== 'string' && target.type === 'xcode') {
+        await this.client.xcodeInstances.get(instanceId);
+      }
 
-      // From here the stack may be (partially) up: any failure before the tunnel
-      // owner takes over must best-effort stop it so we never leak a running
-      // stack with no client attached.
-      const xcodeVersion = await this.prepareOrCleanup(client, initial);
-      const generated = await this.generateOrCleanup(client, workspaceRoot, xcodeVersion, flags.port);
+      // Start the stack (retrying transient gateway blips right after instance
+      // creation) and poll to running. From here the stack may be (partially)
+      // up: any failure before the tunnel owner takes over best-effort stops it
+      // so we never leak a running stack with no client attached.
+      this.reporter.start('Starting remote build execution');
+      let xcodeVersion: string;
+      try {
+        const initial = await retryTransient(() => client.startRbe(), {
+          log: (m) => this.reporter.appendLog(m),
+        });
+        const status = await waitForRbeRunning(client, initial);
+        xcodeVersion = status.xcodeVersion;
+      } catch (err) {
+        this.reporter.stop('failure');
+        await client.stopRbe().catch(() => {});
+        this.error(err instanceof Error ? err.message : String(err));
+      }
+      this.reporter.stop('success', `Remote build execution ready (Xcode ${xcodeVersion})`);
+
+      let generated: RbeWorkspaceFiles;
+      try {
+        generated = writeRbeWorkspaceFiles(workspaceRoot, xcodeVersion, flags.port);
+      } catch (err) {
+        await client.stopRbe().catch(() => {});
+        this.error(`Failed to generate .limrun config: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      this.reporter.success(
+        `Generated .limrun/ config${generated.bazelrcUpdated ? ' (try-import wired into .bazelrc)' : ''}`,
+      );
 
       const needsSha256 = isBazel9OrLater(detectBazelMajorVersion(workspaceRoot));
       const buildCmd =
@@ -132,15 +162,18 @@ export default class XcodeRbe extends BaseCommand {
       }
 
       // Foreground (--no-daemon): open the tunnel here, print, then block.
+      this.reporter.start('Opening tunnel');
       let tunnel: Tunnel;
       try {
         tunnel = await this.openTunnel(client, flags.port);
       } catch (err) {
+        this.reporter.stop('failure');
         await client.stopRbe().catch(() => {});
         this.error(
           `Failed to open the remote-execution tunnel: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
+      this.reporter.stop('success', `Tunnel open on grpc://127.0.0.1:${flags.port}`);
       this.printReady({
         port: flags.port,
         workspaceRoot,
@@ -149,42 +182,10 @@ export default class XcodeRbe extends BaseCommand {
         buildCmd,
         needsSha256,
         instanceId,
-        frontendPort: initial.frontendPort,
         background: false,
       });
       await this.awaitTunnel(tunnel, client);
     });
-  }
-
-  /** Poll the stack to running; stop it and exit on failure (fixes the cleanup gap). */
-  private async prepareOrCleanup(
-    client: XcodeClient,
-    initial: Awaited<ReturnType<XcodeClient['startRbe']>>,
-  ): Promise<string> {
-    try {
-      const status = await waitForRbeRunning(client, initial);
-      return status.xcodeVersion;
-    } catch (err) {
-      await client.stopRbe().catch(() => {});
-      this.error(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  /** Generate `.limrun/`; stop the stack and exit on failure. */
-  private async generateOrCleanup(
-    client: XcodeClient,
-    workspaceRoot: string,
-    xcodeVersion: string,
-    port: number,
-  ): Promise<RbeWorkspaceFiles> {
-    try {
-      return writeRbeWorkspaceFiles(workspaceRoot, xcodeVersion, port);
-    } catch (err) {
-      await client.stopRbe().catch(() => {});
-      this.error(
-        `Failed to generate .limrun config: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
   }
 
   /**
@@ -203,6 +204,8 @@ export default class XcodeRbe extends BaseCommand {
   }): Promise<void> {
     const apiKey = this.parsedFlags?.['api-key'] as string | undefined;
     const logPath = path.join(opts.workspaceRoot, LIMRUN_DIR, 'rbe.log');
+
+    this.reporter.start('Starting background tunnel');
     const logFd = fs.openSync(logPath, 'w');
     const child = spawn(
       process.execPath,
@@ -232,12 +235,14 @@ export default class XcodeRbe extends BaseCommand {
       child.once('exit', onExit);
     });
     if (early !== undefined) {
+      this.reporter.stop('failure');
       await opts.client.stopRbe().catch(() => {});
       this.error(
         `The background tunnel exited immediately (code ${early ?? 'null'}).\n` +
           `${readLogTail(logPath)}\nSee ${logPath} for details.`,
       );
     }
+    this.reporter.stop('success', `Tunnel running in background (PID ${child.pid})`);
 
     this.printReady({
       port: opts.port,
@@ -247,7 +252,6 @@ export default class XcodeRbe extends BaseCommand {
       buildCmd: opts.buildCmd,
       needsSha256: opts.needsSha256,
       instanceId: opts.instanceId,
-      frontendPort: undefined,
       background: true,
       pid: child.pid,
       logPath,
@@ -317,7 +321,6 @@ export default class XcodeRbe extends BaseCommand {
     buildCmd: string;
     needsSha256: boolean;
     instanceId: string;
-    frontendPort?: number;
     background: boolean;
     pid?: number;
     logPath?: string;
@@ -326,7 +329,6 @@ export default class XcodeRbe extends BaseCommand {
       this.outputJson({
         instanceId: opts.instanceId,
         port: opts.port,
-        frontendPort: opts.frontendPort,
         xcodeVersion: opts.xcodeVersion,
         workspaceRoot: opts.workspaceRoot,
         generatedConfig: {
@@ -339,31 +341,24 @@ export default class XcodeRbe extends BaseCommand {
       return;
     }
 
-    this.output(`Remote execution endpoint ready: grpc://127.0.0.1:${opts.port}`);
+    // The build command goes to stdout (copy-paste friendly); status/checkmarks
+    // already went to stderr via the reporter.
     this.output('');
-    this.info(
-      `Generated .limrun/ config in ${opts.workspaceRoot} for the fleet's Xcode ${opts.xcodeVersion}` +
-        (opts.generated.bazelrcUpdated ? ' and wired try-import into .bazelrc.' : '.'),
-    );
     this.output('Build with:');
     this.output(`  ${opts.buildCmd}`);
     if (opts.needsSha256) {
-      this.info(
-        'Bazel 9 defaults to BLAKE3; the limrun cache currently requires SHA256, ' +
-          'so the --digest_function=sha256 startup flag above is required.',
-      );
+      this.output('');
+      this.info('Bazel 9 uses BLAKE3 by default; the Limrun cache needs SHA256, so the');
+      this.info('--digest_function=sha256 startup flag above is required.');
     }
     this.output('');
+    this.output(`Endpoint:  grpc://127.0.0.1:${opts.port}`);
     if (opts.background) {
-      this.info(`Tunnel running in background (PID ${opts.pid}).`);
-      this.info('Stop it by either killing the process or deleting the instance:');
-      this.info(`  kill ${opts.pid}`);
-      this.info(`  lim xcode delete ${opts.instanceId}`);
-      if (opts.logPath) {
-        this.info(`Logs: ${opts.logPath}`);
-      }
+      this.output(`Logs:      ${opts.logPath}`);
+      this.output(`Stop:      kill ${opts.pid}   (or: lim xcode delete ${opts.instanceId})`);
     } else {
-      this.info('Tunnel started. Press Ctrl+C to stop.');
+      this.output('');
+      this.info('Tunnel is running. Press Ctrl+C to stop.');
     }
   }
 }
