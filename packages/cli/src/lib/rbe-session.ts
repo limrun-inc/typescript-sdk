@@ -93,7 +93,21 @@ export function buildServeChildArgs(opts: {
   port: number;
   apiKey?: string;
 }): string[] {
-  const args = [opts.scriptPath, 'xcode', 'rbe', '--serve', '--id', opts.id, '--port', String(opts.port)];
+  // --no-create: the child must never own instance creation. The parent already
+  // resolved/created the instance and started RBE on it; if that instance has
+  // vanished by the time the child resolves it, the child should fail cleanly
+  // rather than spin up a stray instance the parent never started a stack on.
+  const args = [
+    opts.scriptPath,
+    'xcode',
+    'rbe',
+    '--serve',
+    '--no-create',
+    '--id',
+    opts.id,
+    '--port',
+    String(opts.port),
+  ];
   if (opts.apiKey) {
     args.push('--api-key', opts.apiKey);
   }

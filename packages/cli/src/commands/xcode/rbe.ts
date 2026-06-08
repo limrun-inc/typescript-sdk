@@ -372,9 +372,22 @@ export default class XcodeRbe extends BaseCommand {
   /**
    * Open the tunnel, then block until SIGINT/SIGTERM, closing the tunnel and
    * best-effort stopping the remote stack on exit. Used by the `--serve` child.
+   *
+   * Opening the tunnel happens BEFORE awaitTunnel's steady-state finally, so a
+   * failure here must stop the stack itself: the parent detached and only reaps
+   * the child if it exits within a short liveness window, so a slow tunnel-open
+   * failure would otherwise leave the remote stack running with no owner.
    */
   private async runTunnel(client: XcodeClient, port: number): Promise<void> {
-    const tunnel = await this.openTunnel(client, port);
+    let tunnel: Tunnel;
+    try {
+      tunnel = await this.openTunnel(client, port);
+    } catch (err) {
+      await client.stopRbe().catch(() => {});
+      this.error(
+        `Failed to open the remote-execution tunnel: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     await this.awaitTunnel(tunnel, client);
   }
 
