@@ -3,11 +3,14 @@
  * newline-delimited JSON) to find a built target's top-level `.ipa` and its
  * content-addressed (CAS) digest.
  *
- * Under `--config=limrun` the generated bazelrc sets `--remote_download_outputs=
- * minimal`, so outputs are NOT downloaded to the client; their BEP `file`
- * entries instead carry a `bytestream://<host>[/<instance>]/blobs/<hash>/<size>`
- * URI. `lim xcode rbe install` reads that digest and hands it to the instance,
- * which fetches the blob from its own RBE cache and installs it — no round-trip.
+ * A remotely-executed output carries a `bytestream://<host>[/<instance>]/blobs/
+ * <hash>/<size>` URI in its BEP `file` entry regardless of whether Bazel also
+ * downloads the bytes (`--remote_download_outputs`), because the URI names the
+ * output's CAS identity, not its local availability. `lim xcode rbe install`
+ * reads that digest and hands it to the instance, which fetches the blob from
+ * its own RBE cache and installs it — no round-trip. The printed build command
+ * passes `--remote_download_outputs=minimal` to skip the (unneeded) local
+ * download by default; dropping it does not affect this parser.
  */
 
 export type BepIpaDigest = {
@@ -146,9 +149,9 @@ export function parseTopLevelIpaDigest(bepJson: string, label: string): BepIpaDi
 
   if (localOnlyIpa) {
     throw new Error(
-      `Found ${label}'s .ipa (${localOnlyIpa}) but it has no remote (bytestream) digest — its ` +
-        `output was downloaded locally. Ensure you built with --config=limrun (which keeps outputs ` +
-        `in the instance cache via --remote_download_outputs=minimal).`,
+      `Found ${label}'s .ipa (${localOnlyIpa}) but it has no remote (bytestream) digest — it was ` +
+        `built locally, not remotely executed. Ensure you built with --config=limrun so the .ipa is ` +
+        `produced in the instance's cache.`,
     );
   }
   throw new Error(`No .ipa output found for ${label} in the build event log.`);

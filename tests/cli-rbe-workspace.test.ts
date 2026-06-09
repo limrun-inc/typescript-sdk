@@ -243,13 +243,14 @@ describe('rbe workspace generation', () => {
     expect(rc).toContain('--action_env=PATH=/usr/bin:/bin:/usr/sbin:/sbin');
   });
 
-  test('renderLimrunBazelrc keeps outputs in CAS and emits BEP for the install verb', () => {
+  test('renderLimrunBazelrc emits BEP for the install verb and omits the download-mode flag', () => {
     const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
-    // minimal download keeps the .ipa in the instance CAS (server-side install).
-    expect(rc).toContain('--remote_download_outputs=minimal');
     // BEP at a fixed path so `lim xcode rbe install` can read the .ipa digest.
     // Absolute path (not %workspace%, which Bazel doesn't expand in flag values).
     expect(rc).toContain('--build_event_json_file=/ws/.limrun/bep.json');
+    // --remote_download_outputs lives on the printed build command (visible and
+    // droppable), not the generated config, so it must NOT appear here.
+    expect(rc).not.toContain('--remote_download_outputs');
   });
 
   test('renderLimrunBazelrc registers a darwin exec platform only for non-mac clients', () => {
