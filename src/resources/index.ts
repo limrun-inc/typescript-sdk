@@ -45,7 +45,5 @@ export {
   type SimulatorAttachment,
   type SimulatorDeviceInfo,
   type SimulatorInstallState,
-  type RbeArtifactDigest,
-  type RbeInstallOptions,
   type RbeInstallResult,
 } from './xcode-instances-helpers';

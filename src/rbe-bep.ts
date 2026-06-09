@@ -34,10 +34,14 @@ type BepEvent = {
   };
 };
 
+/** A SHA-256 digest is exactly 64 lowercase hex chars; the instance CAS is keyed by it. */
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
 /** Extracts (hash, size) from a `bytestream://…/blobs/<hash>/<size>` URI. */
 function parseBytestreamDigest(uri: string): { hash: string; sizeBytes: number } | null {
   // Tolerate an optional instance-name segment before /blobs/ by anchoring on
-  // the /blobs/<hash>/<size> tail rather than a fixed segment count.
+  // the /blobs/<hash>/<size> tail rather than a fixed segment count. The hash is
+  // left length-agnostic here (validated as SHA-256 by the caller).
   const m = uri.match(/\/blobs\/([0-9a-f]+)\/(\d+)(?:$|\/)/);
   if (!m || m[1] === undefined || m[2] === undefined) return null;
   return { hash: m[1], sizeBytes: Number(m[2]) };
@@ -50,15 +54,20 @@ function parseBytestreamDigest(uri: string): { hash: string; sizeBytes: number }
  */
 function canonicalizeLabel(label: string): string {
   if (label.includes(':')) return label;
-  const pkg = label.replace(/\/+$/, ''); // strip any trailing slash
+  // Strip trailing slashes with a linear scan rather than a regex: `/\/+$/`
+  // backtracks quadratically on a label of many trailing slashes (CodeQL ReDoS).
+  let end = label.length;
+  while (end > 0 && label[end - 1] === '/') end--;
+  const pkg = label.slice(0, end);
   const name = pkg.split('/').pop() ?? '';
   return name ? `${pkg}:${name}` : pkg;
 }
 
 /**
  * Finds the `.ipa` produced for `label` in a BEP stream and returns its CAS
- * digest. Throws a descriptive Error when the target/.ipa is absent or its
- * output was materialized locally (a `file://` URI) instead of left in CAS.
+ * digest. Throws a descriptive Error when the target/.ipa is absent, its output
+ * was materialized locally (a `file://` URI) instead of left in CAS, or it was
+ * built with a non-SHA256 digest the instance cache cannot resolve.
  */
 export function parseTopLevelIpaDigest(bepJson: string, label: string): BepIpaDigest {
   const canonical = canonicalizeLabel(label);
@@ -75,9 +84,8 @@ export function parseTopLevelIpaDigest(bepJson: string, label: string): BepIpaDi
 
   // The successful TargetComplete for the requested label (matched against the
   // canonical //pkg:name form Bazel records, so `//App` matches `//App:App`).
-  const completed = events.find(
-    (e) => e.id?.targetCompleted?.label === canonical && e.completed?.success,
-  )?.completed;
+  const completed = events.find((e) => e.id?.targetCompleted?.label === canonical && e.completed?.success)
+    ?.completed;
   if (!completed) {
     throw new Error(
       `No successful build of ${label} found in the build event log. ` +
@@ -116,6 +124,17 @@ export function parseTopLevelIpaDigest(bepJson: string, label: string): BepIpaDi
       if (!f.name || !f.name.endsWith('.ipa')) continue;
       const digest = f.uri ? parseBytestreamDigest(f.uri) : null;
       if (digest) {
+        // The instance cache is keyed by SHA-256. A non-64-hex digest means the
+        // build used a different digest function (Bazel 9 defaults to BLAKE3),
+        // which the server CAS cannot resolve — surface that clearly here rather
+        // than letting it fail later as a cryptic cache miss.
+        if (!SHA256_HEX.test(digest.hash)) {
+          throw new Error(
+            `Built ${f.name} with a non-SHA256 digest (got ${digest.hash.length} hex chars, expected 64; ` +
+              `likely BLAKE3 on Bazel 9). The instance cache is keyed by SHA-256 — rebuild with ` +
+              `--digest_function=sha256, e.g. \`bazelisk --digest_function=sha256 build --config=limrun ${label}\`.`,
+          );
+        }
         return { hash: digest.hash, sizeBytes: digest.sizeBytes, ipaName: f.name };
       }
       localOnlyIpa = f.name;

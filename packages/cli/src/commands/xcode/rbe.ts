@@ -7,7 +7,6 @@ import { DEFAULT_RBE_TUNNEL_PORT, RbeUnsupportedError } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { clearLastInstanceId } from '../../lib/config';
 import { ProgressReporter } from '../../lib/progress';
-import { parseTopLevelIpaDigest } from '../../lib/rbe-bep';
 import {
   findBazelWorkspaceRoot,
   inferBuildTarget,
@@ -65,7 +64,7 @@ export default class XcodeRbe extends BaseCommand {
     }),
     ios: Flags.boolean({
       description:
-        'Also create an iOS simulator and attach it, so builds auto-install on it and you can watch them live. The simulator is torn down on --stop.',
+        'Also create an iOS simulator and attach it, so `lim xcode rbe install` installs on it and you can watch it live. The simulator is torn down on --stop.',
       default: false,
     }),
     serve: Flags.boolean({
@@ -88,13 +87,10 @@ export default class XcodeRbe extends BaseCommand {
       if (!flags.id) {
         this.error('--serve requires --id (it is set automatically by the background launcher).');
       }
-      // The child inherits the parent's cwd (the workspace), so locate the root
-      // from there for the auto-install watcher (best-effort; null disables it).
-      const serveWorkspaceRoot = findBazelWorkspaceRoot(process.cwd());
       await this.withAuth(async () => {
         const target = await this.resolveXcodeTarget(flags.id);
         const client = await this.resolveXcodeClient(target);
-        await this.runTunnel(client, flags.port, serveWorkspaceRoot);
+        await this.runTunnel(client, flags.port);
       });
       return;
     }
@@ -131,8 +127,16 @@ export default class XcodeRbe extends BaseCommand {
       // Stale pid from a crashed/old tunnel. If it was an --ios daemon, its
       // simulator (an independent server-side instance) is still running and only
       // recorded here — reap it before dropping the pidfile, else it's orphaned.
-      if (await this.deleteSim(existing.simInstanceId)) {
-        this.info(`Reaped the simulator ${existing.simInstanceId} from a previous tunnel.`);
+      // If the delete fails, surface the id (the pidfile is gone after this) so
+      // the user can clean it up; otherwise it idles out on its own.
+      if (existing.simInstanceId) {
+        if (await this.deleteSim(existing.simInstanceId)) {
+          this.info(`Reaped the simulator ${existing.simInstanceId} from a previous tunnel.`);
+        } else {
+          this.info(
+            `Could not delete the previous simulator ${existing.simInstanceId}; it will idle out on its own.`,
+          );
+        }
       }
       clearRbePidFile(workspaceRoot);
     }
@@ -214,9 +218,9 @@ export default class XcodeRbe extends BaseCommand {
       const target = inferBuildTarget(workspaceRoot) ?? '//your:target';
       const buildCmd = `bazelisk --digest_function=sha256 build --config=limrun ${target}`;
 
-      // --ios: create + attach a simulator so builds auto-install on it and the
-      // stream URL is printed, mirroring `lim xcode build --ios`. Recorded in the
-      // pidfile so --stop tears it down too.
+      // --ios: create + attach a simulator so `lim xcode rbe install` installs on
+      // it and the stream URL is printed. Recorded in the pidfile so --stop tears
+      // it down too.
       let simInstanceId: string | undefined;
       if (flags.ios) {
         try {
@@ -279,11 +283,9 @@ export default class XcodeRbe extends BaseCommand {
         instanceId,
         background: false,
       });
-      const stopWatcher = this.startAutoInstallWatcher(client, workspaceRoot);
       try {
         await this.awaitTunnel(tunnel, client);
       } finally {
-        stopWatcher();
         await this.deleteSim(simInstanceId);
       }
     });
@@ -300,8 +302,14 @@ export default class XcodeRbe extends BaseCommand {
       // The daemon already died (crash, reboot, or `kill -9`). Its --ios sim is an
       // independent server-side instance, still running and recorded only in the
       // pidfile — reap it before clearing the pidfile, else it can never be reaped.
-      if (info && (await this.deleteSim(info.simInstanceId))) {
-        this.info(`Deleted the attached simulator ${info.simInstanceId}.`);
+      // If the delete fails, surface the id (the pidfile is gone after this) so the
+      // user can clean it up; otherwise it idles out on its own.
+      if (info?.simInstanceId) {
+        if (await this.deleteSim(info.simInstanceId)) {
+          this.info(`Deleted the attached simulator ${info.simInstanceId}.`);
+        } else {
+          this.info(`Could not delete simulator ${info.simInstanceId}; it will idle out on its own.`);
+        }
       }
       clearRbePidFile(workspaceRoot);
       this.info('No background tunnel is running in this workspace.');
@@ -359,26 +367,20 @@ export default class XcodeRbe extends BaseCommand {
   }
 
   /**
-   * Create an iOS simulator and attach it to the RBE Xcode instance, so the
-   * auto-install watcher has a target and the user can watch builds live. Prints
+   * Create an iOS simulator and attach it to the RBE Xcode instance, so
+   * `lim xcode rbe install` installs on it and the user can watch it live. Prints
    * the stream URL and returns the new simulator's instance id (recorded in the
-   * pidfile for --stop teardown). Mirrors `lim xcode build --ios`.
+   * pidfile for --stop teardown).
    */
   private async createAndAttachSimulator(client: XcodeClient): Promise<string> {
     this.reporter.start('Creating iOS simulator');
-    const sim = await this.client.iosInstances.create({ wait: true });
-    // From here the sim exists; if attach fails, delete it so we don't leak an
-    // orphan the pidfile never recorded (and --stop therefore couldn't reap).
-    try {
-      await client.attachSimulator(sim);
-    } catch (err) {
-      await this.deleteSim(sim.metadata.id);
-      throw err;
-    }
-    this.reporter.stop('success', `Simulator ${sim.metadata.id} created and attached`);
-    const streamUrl = this.signedStreamUrl(sim.status) ?? this.consoleStreamUrl(sim.metadata.id);
+    // The SDK creates + attaches and deletes the sim itself if attach fails, so we
+    // never leak an orphan the pidfile never recorded.
+    const { iosInstanceId, simulator } = await client.attachNewSimulator();
+    this.reporter.stop('success', `Simulator ${iosInstanceId} created and attached`);
+    const streamUrl = this.signedStreamUrl(simulator.status) ?? this.consoleStreamUrl(iosInstanceId);
     this.info(`Watch the simulator: ${streamUrl}`);
-    return sim.metadata.id;
+    return iosInstanceId;
   }
 
   /**
@@ -515,7 +517,7 @@ export default class XcodeRbe extends BaseCommand {
    * the child if it exits within a short liveness window, so a slow tunnel-open
    * failure would otherwise leave the remote stack running with no owner.
    */
-  private async runTunnel(client: XcodeClient, port: number, workspaceRoot: string | null): Promise<void> {
+  private async runTunnel(client: XcodeClient, port: number): Promise<void> {
     let tunnel: Tunnel;
     try {
       tunnel = await this.openTunnel(client, port);
@@ -525,94 +527,7 @@ export default class XcodeRbe extends BaseCommand {
         `Failed to open the remote-execution tunnel: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    // While the tunnel is up, watch the build event log and auto-install each
-    // completed build on the attached simulator (mirrors the xcodebuild flow).
-    const stopWatcher = workspaceRoot ? this.startAutoInstallWatcher(client, workspaceRoot) : () => {};
-    try {
-      await this.awaitTunnel(tunnel, client);
-    } finally {
-      stopWatcher();
-    }
-  }
-
-  /**
-   * Polls .limrun/bep.json and, when a new build of the workspace's app target
-   * completes, calls the instance to install it on the attached simulator. Runs
-   * only in the detached serve child; its output goes to .limrun/rbe.log.
-   *
-   * The .ipa's CAS digest already appears in BEP once the target completes (the
-   * blob is in the instance cache), so we install on digest change. We seed the
-   * last-seen digest from any pre-existing BEP so a stale prior build is not
-   * re-installed on startup — only builds made while the tunnel is up trigger it.
-   * Returns a function that stops the watcher.
-   */
-  private startAutoInstallWatcher(client: XcodeClient, workspaceRoot: string): () => void {
-    const target = inferBuildTarget(workspaceRoot);
-    if (!target) {
-      console.log(
-        '[rbe] auto-install disabled: no single app target inferred; run `lim xcode rbe install <target>` manually.',
-      );
-      return () => {};
-    }
-    const bepPath = path.join(workspaceRoot, LIMRUN_DIR, 'bep.json');
-    let lastMtimeMs = -1;
-    let lastHash: string | undefined;
-    try {
-      lastHash = parseTopLevelIpaDigest(fs.readFileSync(bepPath, 'utf8'), target).hash;
-      lastMtimeMs = fs.statSync(bepPath).mtimeMs;
-    } catch {
-      // No prior build (or no .ipa yet) — start fresh.
-    }
-
-    let busy = false;
-    const timer = setInterval(() => {
-      void (async () => {
-        if (busy) return;
-        let mtimeMs: number;
-        try {
-          mtimeMs = fs.statSync(bepPath).mtimeMs;
-        } catch {
-          return; // no BEP yet
-        }
-        if (mtimeMs === lastMtimeMs) return;
-        // Consume this mtime up front. A build still in progress keeps rewriting
-        // bep.json (each flush bumps mtime), so we re-parse on the next change
-        // anyway; but a finished build that produced no installable .ipa (failed,
-        // or a different target) stops bumping mtime, so we stop re-parsing it.
-        lastMtimeMs = mtimeMs;
-        let digest;
-        try {
-          digest = parseTopLevelIpaDigest(fs.readFileSync(bepPath, 'utf8'), target);
-        } catch {
-          return; // build in progress / no .ipa yet — wait for the next change
-        }
-        if (digest.hash === lastHash) return;
-        busy = true;
-        try {
-          const r = await client.installRbeBuild({
-            ipaDigest: { hash: digest.hash, sizeBytes: digest.sizeBytes },
-            target,
-          });
-          lastHash = digest.hash;
-          if (r.installed) {
-            console.log(`[rbe] auto-installed ${r.appName ?? target} (synced ${r.syncDurationMs ?? '?'}ms)`);
-          } else {
-            console.log(`[rbe] built ${r.appName ?? target}; attach a simulator to install it`);
-          }
-        } catch (err) {
-          // Transient failure (network blip, stack restarting): roll back the
-          // committed mtime so the next poll re-parses and retries this same
-          // build. lastHash was not advanced, so the retry self-stops once the
-          // install succeeds or a newer build supersedes it.
-          lastMtimeMs = -1;
-          console.log(`[rbe] auto-install failed: ${err instanceof Error ? err.message : String(err)}`);
-        } finally {
-          busy = false;
-        }
-      })();
-    }, 1500);
-    timer.unref();
-    return () => clearInterval(timer);
+    await this.awaitTunnel(tunnel, client);
   }
 
   /**

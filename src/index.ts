@@ -10,6 +10,7 @@ export * from './instance-client';
 export * as Ios from './ios-client';
 export { startHttpProxy, type HttpProxy, type StartHttpProxyOptions } from './http-proxy';
 export { buildSettingKeyPattern, parseBuildSettingEntries, validateBuildSettings } from './build-settings';
+export { parseTopLevelIpaDigest, type BepIpaDigest } from './rbe-bep';
 export {
   exec,
   type ExecRequest,
@@ -23,8 +24,6 @@ export {
   type RbeStatus,
   type RbeStartOptions,
   type RbeTunnelOptions,
-  type RbeArtifactDigest,
-  type RbeInstallOptions,
   type RbeInstallResult,
   type Tunnel,
   RbeUnsupportedError,
