@@ -53,9 +53,9 @@ describe('parseTopLevelIpaDigest', () => {
     );
   });
 
-  test('errors when the output was downloaded locally (file:// URI, no remote digest)', () => {
+  test('errors when the output was built locally (file:// URI, no remote digest)', () => {
     const local = bep('file:///Users/me/bazel-bin/App/App.ipa');
-    expect(() => parseTopLevelIpaDigest(local, '//App:App')).toThrow(/downloaded locally/);
+    expect(() => parseTopLevelIpaDigest(local, '//App:App')).toThrow(/built locally, not remotely executed/);
   });
 
   test('errors when there is no .ipa output for the target', () => {
