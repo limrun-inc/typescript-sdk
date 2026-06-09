@@ -265,6 +265,14 @@ xcode_config(
  *   run on a Linux client at all, and on a mac it would demand the fleet's
  *   Xcode locally. --spawn_strategy=remote does not override per-mnemonic
  *   pins, so these explicit overrides are required.
+ * - `--ios_multi_cpus=sim_arm64` pins the app to the **arm64 iOS simulator**.
+ *   Limrun's Mac fleet (workers and the attached simulators) is Apple Silicon,
+ *   so the build product must be arm64. Without this, the simulator cpu follows
+ *   the CLIENT's Bazel default — `sim_arm64` on an Apple Silicon Mac, but
+ *   `x86_64` on an Intel Mac or a Linux client — and an x86_64 app installed on
+ *   the arm64 fleet simulator fails to launch with "needs to be updated by the
+ *   developer to work on this version of iOS". The pin makes the artifact match
+ *   the fleet regardless of where bazel runs (the whole point of RBE).
  * - PATH includes /usr/sbin:/sbin so genrules that probe `sysctl` (e.g.
  *   `hw.logicalcpu` for `make -j`) resolve it on the worker.
  * - `--remote_download_outputs=minimal` keeps build outputs (the .ipa) in the
@@ -305,6 +313,7 @@ build:limrun --strategy=SwiftCompile=remote
 build:limrun --strategy=Genrule=remote
 build:limrun --xcode_version_config=//.limrun:remote_xcode_config
 build:limrun --xcode_version=${shortVersion(versionKey)}
+build:limrun --ios_multi_cpus=sim_arm64
 build:limrun --remote_download_outputs=minimal
 build:limrun --build_event_json_file=${bepPath}
 ${execPlatform}build:limrun --action_env=PATH=/usr/bin:/bin:/usr/sbin:/sbin

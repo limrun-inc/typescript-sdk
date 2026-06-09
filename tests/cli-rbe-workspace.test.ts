@@ -224,6 +224,15 @@ describe('rbe workspace generation', () => {
     expect(rc).not.toContain('--xcode_version=26.4.0.17E192');
   });
 
+  test('renderLimrunBazelrc pins the arm64 iOS simulator (the fleet is Apple Silicon)', () => {
+    // Without this the app's cpu follows the client default (x86_64 on Intel/Linux)
+    // and won't launch on the arm64 fleet simulator. Pinned on both client kinds.
+    for (const isMac of [true, false]) {
+      const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', isMac, '/ws/.limrun/bep.json');
+      expect(rc).toContain('--ios_multi_cpus=sim_arm64');
+    }
+  });
+
   test('renderLimrunBazelrc overrides per-mnemonic strategies and completes the PATH', () => {
     const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
     // rules_swift defaults SwiftCompile to a local worker; repos pin Genrule
