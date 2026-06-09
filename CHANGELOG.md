@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.31.2 (2026-06-09)
+
+Full Changelog: [v0.31.1...v0.31.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.31.1...v0.31.2)
+
+### Chores
+
+* bump cli version ([556bd22](https://github.com/limrun-inc/typescript-sdk/commit/556bd22ef59dd480015db5cc9c35f2d224d7741d))
+
 ## 0.31.1 (2026-06-09)
 
 Full Changelog: [v0.31.0...v0.31.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.31.0...v0.31.1)
