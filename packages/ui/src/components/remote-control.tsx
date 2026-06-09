@@ -536,6 +536,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // green light.
     const outboundCameraSenderRef = useRef<RTCRtpSender | null>(null);
     const outboundLocalStreamRef = useRef<MediaStream | null>(null);
+    // Bumped on every `cameraRequest` so a handler suspended on an
+    // await (e.g. the getUserMedia prompt) can detect it was superseded
+    // by a newer request and bail instead of re-attaching the camera.
+    const cameraRequestGenerationRef = useRef(0);
     const cameraResolutionCapRef = useRef(cameraResolutionCap);
     cameraResolutionCapRef.current = cameraResolutionCap;
     // The aspect prop also rides a ref so the WS `onopen` reconnect
@@ -2427,6 +2431,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               break;
             case 'cameraRequest': {
               const active = message.active === true;
+              // Bump up front so any earlier in-flight handler bails.
+              const cameraGeneration = ++cameraRequestGenerationRef.current;
+              const isCurrentCameraRequest = () =>
+                isCurrentAttempt() &&
+                wsRef.current === ws &&
+                cameraGeneration === cameraRequestGenerationRef.current;
               // Log unconditionally — this is one of the few places we
               // hand control to the browser's permission UI, and a
               // silent failure here looks identical to "limulator
@@ -2489,7 +2499,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 // eslint-disable-next-line no-console
                 console.warn('[RemoteControl] getUserMedia denied/failed:', err);
               }
-              if (!isCurrentAttempt() || wsRef.current !== ws) {
+              if (!isCurrentCameraRequest()) {
+                // Superseded during the prompt; drop the stream we got.
                 if (stream) stopMediaStream(stream);
                 return;
               }
@@ -2521,6 +2532,19 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
                 safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
                 break;
+              }
+              if (!isCurrentCameraRequest()) {
+                // Superseded mid-attach; detach and skip the ACK/poller.
+                try {
+                  await sender.replaceTrack(null);
+                } catch (err) {
+                  debugWarn('replaceTrack(null) on stale camera attach failed:', err);
+                }
+                stopMediaStream(stream);
+                if (outboundLocalStreamRef.current === stream) {
+                  outboundLocalStreamRef.current = null;
+                }
+                return;
               }
               // Tell the encoder this is real motion content (a
               // physical camera), not text/slides. With `'motion'`
@@ -2599,6 +2623,20 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 }
                 safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
               };
+              if (!isCurrentCameraRequest()) {
+                // Superseded during setParameters; detach and bail.
+                videoTrack.onended = null;
+                try {
+                  await sender.replaceTrack(null);
+                } catch (err) {
+                  debugWarn('replaceTrack(null) on stale camera finalize failed:', err);
+                }
+                stopMediaStream(stream);
+                if (outboundLocalStreamRef.current === stream) {
+                  outboundLocalStreamRef.current = null;
+                }
+                return;
+              }
               ws.send(
                 JSON.stringify({
                   type: 'cameraResult',
