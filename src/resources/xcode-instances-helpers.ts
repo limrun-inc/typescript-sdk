@@ -4,6 +4,7 @@ import crypto from 'crypto';
 
 import { XcodeInstances as GeneratedXcodeInstances, type XcodeInstance } from './xcode-instances';
 import { type IosInstance } from './ios-instances';
+import { parseTopLevelIpaDigest } from '../rbe-bep';
 import { exec, type ExecChildProcess, type ExecRequest } from '../exec-client';
 import {
   syncFolder as syncFolderImpl,
@@ -180,18 +181,11 @@ export type RbeTunnelOptions = {
 };
 
 /** Content-addressed digest of a build artifact in the instance's RBE cache. */
-export type RbeArtifactDigest = {
+type RbeArtifactDigest = {
   /** Lowercase hex SHA-256 of the blob (matches --digest_function=sha256). */
   hash: string;
   /** Size of the blob in bytes. */
   sizeBytes: number;
-};
-
-export type RbeInstallOptions = {
-  /** CAS digest of the .ipa to install (read from the Bazel build event protocol). */
-  ipaDigest: RbeArtifactDigest;
-  /** Optional Bazel target label the .ipa came from, for logging only. */
-  target?: string;
 };
 
 export type RbeInstallResult = {
@@ -226,7 +220,9 @@ export type XcodeClient = {
 
   /**
    * Attach a simulator to this xcode instance.
-   * After attaching, builds will auto-install on the simulator.
+   * After attaching, the latest xcodebuild build (if any) is installed on the
+   * simulator. RBE builds are not auto-installed on attach — install them
+   * explicitly with `installRbeBuildFromBep` while a simulator is attached.
    */
   attachSimulator: (
     simulator: IosInstance | { apiUrl: string; token: string },
@@ -250,15 +246,21 @@ export type XcodeClient = {
   stopRbe: () => Promise<RbeStatus>;
 
   /**
-   * Install a Bazel RBE build artifact on the attached simulator, server-side.
-   * Given the .ipa's CAS digest (from the Bazel build event protocol), the
-   * instance fetches the blob from its embedded cache, unpacks the .app, and
-   * pushes it to the attached simulator via the differential-sync path — no
-   * client round-trip. Requires a running RBE stack. If a simulator is attached
-   * it installs now (installed=true); otherwise it records the build so a later
-   * attach auto-installs it (installed=false).
+   * Install a Bazel RBE build on the attached simulator, server-side, from its
+   * build event log (BEP). Parses the top-level `.ipa`'s CAS digest for `target`
+   * out of `bep` (the contents of `--build_event_json_file`); the instance fetches
+   * the blob from its embedded cache, unpacks the .app, and pushes it to the
+   * attached simulator via the differential-sync path — no client round-trip.
+   * Requires a running RBE stack and an attached simulator (installed=false when
+   * none is attached — attach one and call again). Throws a descriptive error if
+   * the target/.ipa is absent, was downloaded locally, or was built with a
+   * non-SHA256 digest (e.g. BLAKE3) the instance cache can't resolve. `ipaName` is
+   * the `.ipa` file name Bazel reported.
    */
-  installRbeBuild: (opts: RbeInstallOptions) => Promise<RbeInstallResult>;
+  installRbeBuildFromBep: (opts: {
+    bep: string;
+    target: string;
+  }) => Promise<RbeInstallResult & { ipaName: string }>;
 
   /**
    * Open a local TCP listener bridged to the instance's RBE gRPC frontend
@@ -266,6 +268,16 @@ export type XcodeClient = {
    * --remote_executor=grpc://127.0.0.1:<port>.
    */
   startRbeTunnel: (opts?: RbeTunnelOptions) => Promise<Tunnel>;
+
+  /**
+   * Create a new iOS simulator instance and attach it to this xcode instance.
+   * Deletes the simulator if attach fails so it is never leaked. Returns the new
+   * simulator's instance id (record it for teardown) and the instance itself.
+   */
+  attachNewSimulator: () => Promise<{ iosInstanceId: string; simulator: IosInstance }>;
+
+  /** Best-effort delete of a simulator instance. Never throws; returns success. */
+  deleteSimulator: (iosInstanceId: string) => Promise<boolean>;
 };
 
 export type XcodeCreateClientParams =
@@ -405,6 +417,84 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       return sandboxInfoPromise;
     };
 
+    // Shared local closures. The methods below live in an object literal over
+    // these closures (not `this`), so anything reused across methods is defined
+    // here once and called from each method.
+    const postRbeInstall = async (
+      ipaDigest: RbeArtifactDigest,
+      target?: string,
+    ): Promise<RbeInstallResult> => {
+      const res = await nodeProxyTransport.fetch(`${apiUrl}/rbe/install`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ipaDigest, ...(target ? { target } : {}) }),
+      });
+      return readRbeResponse<RbeInstallResult>(res, 'POST /rbe/install');
+    };
+
+    const installFromBep = async (
+      bep: string,
+      target: string,
+    ): Promise<RbeInstallResult & { ipaName: string }> => {
+      const digest = parseTopLevelIpaDigest(bep, target); // throws BLAKE3 / no-ipa errors
+      const result = await postRbeInstall({ hash: digest.hash, sizeBytes: digest.sizeBytes }, target);
+      return { ...result, ipaName: digest.ipaName };
+    };
+
+    const attachSimulatorImpl = async (
+      simulator: IosInstance | { apiUrl: string; token: string },
+    ): Promise<SimulatorAttachResult> => {
+      let simApiUrl: string;
+      let simToken: string;
+      if ('status' in simulator) {
+        if (!simulator.status.apiUrl) {
+          throw new Error('Simulator instance not ready: apiUrl is not available');
+        }
+        simApiUrl = simulator.status.apiUrl;
+        simToken = simulator.status.token;
+      } else {
+        simApiUrl = simulator.apiUrl;
+        simToken = simulator.token;
+      }
+      const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ apiUrl: simApiUrl, token: simToken }),
+      });
+      return readJsonResponse<SimulatorAttachResult>(res, 'POST /simulator');
+    };
+
+    const deleteSimulatorImpl = async (iosInstanceId: string): Promise<boolean> => {
+      try {
+        await client.iosInstances.delete(iosInstanceId);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const attachNewSimulatorImpl = async (): Promise<{
+      iosInstanceId: string;
+      simulator: IosInstance;
+    }> => {
+      const simulator = await client.iosInstances.create({ wait: true });
+      // The sim exists from here; if attach fails, delete it so we never leak an
+      // orphan the caller can't reap.
+      try {
+        await attachSimulatorImpl(simulator);
+      } catch (err) {
+        await deleteSimulatorImpl(simulator.metadata.id);
+        throw err;
+      }
+      return { iosInstanceId: simulator.metadata.id, simulator };
+    };
+
     return {
       async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
         const resolvedPath = path.resolve(localCodePath);
@@ -525,32 +615,9 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         return readJsonResponse<SimulatorStatus>(res, 'GET /simulator');
       },
 
-      async attachSimulator(
-        simulator: IosInstance | { apiUrl: string; token: string },
-      ): Promise<SimulatorAttachResult> {
-        let simApiUrl: string;
-        let simToken: string;
-        if ('status' in simulator) {
-          if (!simulator.status.apiUrl) {
-            throw new Error('Simulator instance not ready: apiUrl is not available');
-          }
-          simApiUrl = simulator.status.apiUrl;
-          simToken = simulator.status.token;
-        } else {
-          simApiUrl = simulator.apiUrl;
-          simToken = simulator.token;
-        }
-
-        const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ apiUrl: simApiUrl, token: simToken }),
-        });
-        return readJsonResponse<SimulatorAttachResult>(res, 'POST /simulator');
-      },
+      attachSimulator: attachSimulatorImpl,
+      attachNewSimulator: attachNewSimulatorImpl,
+      deleteSimulator: deleteSimulatorImpl,
 
       async startRbe(opts?: RbeStartOptions): Promise<RbeStatus> {
         const res = await nodeProxyTransport.fetch(`${apiUrl}/rbe`, {
@@ -584,17 +651,8 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         return readRbeResponse<RbeStatus>(res, 'DELETE /rbe');
       },
 
-      async installRbeBuild(opts: RbeInstallOptions): Promise<RbeInstallResult> {
-        const res = await nodeProxyTransport.fetch(`${apiUrl}/rbe/install`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ ipaDigest: opts.ipaDigest, ...(opts.target ? { target: opts.target } : {}) }),
-        });
-        return readRbeResponse<RbeInstallResult>(res, 'POST /rbe/install');
-      },
+      installRbeBuildFromBep: (opts: { bep: string; target: string }) =>
+        installFromBep(opts.bep, opts.target),
 
       async startRbeTunnel(opts?: RbeTunnelOptions): Promise<Tunnel> {
         return startTcpTunnel(

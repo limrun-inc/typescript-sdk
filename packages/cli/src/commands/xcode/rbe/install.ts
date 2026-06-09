@@ -2,8 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
-import { findBazelWorkspaceRoot, LIMRUN_DIR } from '../../../lib/rbe-workspace';
-import { parseTopLevelIpaDigest } from '../../../lib/rbe-bep';
+import { findBazelWorkspaceRoot, inferBuildTarget, LIMRUN_DIR } from '../../../lib/rbe-workspace';
 import { readRbePidFile } from '../../../lib/rbe-session';
 
 export default class XcodeRbeInstall extends BaseCommand {
@@ -13,13 +12,15 @@ export default class XcodeRbeInstall extends BaseCommand {
     "instance's attached simulator. The .ipa stays in the instance cache (it is never downloaded " +
     'to this machine); its CAS digest is read from the Bazel build event log (.limrun/bep.json) ' +
     'and the instance fetches, unpacks, and diff-syncs the app to the simulator. Run it AFTER the ' +
-    'build, and attach a simulator first (the same one `lim xcode rbe` targeted).';
-  static examples = ['<%= config.bin %> xcode rbe install //App:App'];
+    'build, with a simulator attached (e.g. via `lim xcode rbe --ios`). The target is optional ' +
+    'when the workspace has a single app target.';
+  static examples = ['<%= config.bin %> xcode rbe install', '<%= config.bin %> xcode rbe install //App:App'];
 
   static args = {
     target: Args.string({
-      description: 'The Bazel target that was built (e.g. //App:App).',
-      required: true,
+      description:
+        'The Bazel target that was built (e.g. //App:App). Optional: inferred when the workspace has exactly one app target.',
+      required: false,
     }),
   };
 
@@ -46,6 +47,16 @@ export default class XcodeRbeInstall extends BaseCommand {
       );
     }
 
+    // The target may be omitted when the workspace has exactly one app target;
+    // otherwise it must be given explicitly (we never guess between several).
+    const buildTarget = args.target ?? inferBuildTarget(workspaceRoot);
+    if (!buildTarget) {
+      this.error(
+        'Could not infer a single app target. Pass the target explicitly, e.g. ' +
+          '`lim xcode rbe install //App:App`.',
+      );
+    }
+
     // The generated bazelrc writes the build event log here on every
     // --config=limrun build; read the just-built target's .ipa digest from it.
     const bepPath = path.join(workspaceRoot, LIMRUN_DIR, 'bep.json');
@@ -55,15 +66,8 @@ export default class XcodeRbeInstall extends BaseCommand {
     } catch {
       this.error(
         `No build event log at ${bepPath}. Build first with --config=limrun ` +
-          `(e.g. \`bazelisk --digest_function=sha256 build --config=limrun ${args.target}\`), then re-run.`,
+          `(e.g. \`bazelisk --digest_function=sha256 build --config=limrun ${buildTarget}\`), then re-run.`,
       );
-    }
-
-    let digest;
-    try {
-      digest = parseTopLevelIpaDigest(bepJson, args.target);
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err));
     }
 
     // Target the instance the background tunnel is serving for this workspace
@@ -78,21 +82,28 @@ export default class XcodeRbeInstall extends BaseCommand {
       const target = await this.resolveXcodeTarget(instanceId);
       const client = await this.resolveXcodeClient(target);
 
-      this.info(`Installing ${digest.ipaName} on the attached simulator...`);
-      const result = await client.installRbeBuild({
-        ipaDigest: { hash: digest.hash, sizeBytes: digest.sizeBytes },
-        target: args.target,
-      });
+      this.info(`Installing ${buildTarget} on the attached simulator...`);
+      // The SDK parses the .ipa's CAS digest out of the BEP and installs it; a
+      // missing target/.ipa or a non-SHA256 (BLAKE3) digest surfaces clearly here.
+      let result;
+      try {
+        result = await client.installRbeBuildFromBep({ bep: bepJson, target: buildTarget });
+      } catch (err) {
+        this.error(err instanceof Error ? err.message : String(err));
+      }
 
       if (flags.json) {
-        this.outputJson({ ...result, target: args.target });
+        this.outputJson({ ...result, target: buildTarget });
         return;
       }
-      const appName = result.appName ?? digest.ipaName;
+      const appName = result.appName ?? result.ipaName;
       if (!result.installed) {
-        // No simulator attached: the build was fetched and recorded; a later
-        // attach (`lim xcode attach-simulator`) will auto-install it.
-        this.output(`Recorded ${appName}. Attach a simulator to install it.`);
+        // No simulator attached: nothing was installed. Attach one and re-run
+        // (e.g. `lim xcode rbe --ios`, then `lim xcode rbe install`).
+        this.output(
+          `No simulator attached, so ${appName} was not installed. ` +
+            'Attach one (e.g. `lim xcode rbe --ios`) and re-run.',
+        );
         return;
       }
       const timing =

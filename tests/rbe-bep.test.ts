@@ -1,4 +1,4 @@
-import { parseTopLevelIpaDigest } from '../packages/cli/src/lib/rbe-bep';
+import { parseTopLevelIpaDigest } from '@limrun/api';
 
 // A minimal BEP stream mirroring the validated shape:
 // targetCompleted{label} -> outputGroup "default" -> fileSet id -> namedSet ->
@@ -17,7 +17,8 @@ function bep(uri: string, label = '//App:App', ipaName = 'App/App.ipa'): string 
     .join('\n');
 }
 
-const REMOTE_URI = 'bytestream://127.0.0.1:8980/blobs/deadbeefcafe0000111122223333444455556666777788889999aaaabbbbcccc/40960';
+const REMOTE_URI =
+  'bytestream://127.0.0.1:8980/blobs/deadbeefcafe0000111122223333444455556666777788889999aaaabbbbcccc/40960';
 
 describe('parseTopLevelIpaDigest', () => {
   test('extracts the .ipa CAS digest from a bytestream URI', () => {
@@ -28,15 +29,21 @@ describe('parseTopLevelIpaDigest', () => {
   });
 
   test('tolerates an optional instance-name segment before /blobs/', () => {
-    const uri = 'bytestream://host:1234/some-instance/blobs/abcabcabc123/77';
+    const hash = 'abcabc1234567890abcabc1234567890abcabc1234567890abcabc1234567890';
+    const uri = `bytestream://host:1234/some-instance/blobs/${hash}/77`;
     const d = parseTopLevelIpaDigest(bep(uri), '//App:App');
-    expect(d.hash).toBe('abcabcabc123');
+    expect(d.hash).toBe(hash);
     expect(d.sizeBytes).toBe(77);
   });
 
-  test('matches the //pkg shorthand against BEP\'s canonical //pkg:name label', () => {
+  test("matches the //pkg shorthand against BEP's canonical //pkg:name label", () => {
     // BEP records //App:App even when the user built (and installs) //App.
     const d = parseTopLevelIpaDigest(bep(REMOTE_URI, '//App:App'), '//App');
+    expect(d.hash).toBe('deadbeefcafe0000111122223333444455556666777788889999aaaabbbbcccc');
+  });
+
+  test('canonicalizes a label with trailing slashes', () => {
+    const d = parseTopLevelIpaDigest(bep(REMOTE_URI, '//App:App'), '//App//');
     expect(d.hash).toBe('deadbeefcafe0000111122223333444455556666777788889999aaaabbbbcccc');
   });
 
@@ -53,7 +60,10 @@ describe('parseTopLevelIpaDigest', () => {
 
   test('errors when there is no .ipa output for the target', () => {
     const noIpa = [
-      { id: { namedSet: { id: '0' } }, namedSetOfFiles: { files: [{ name: 'App/App.txt', uri: REMOTE_URI }] } },
+      {
+        id: { namedSet: { id: '0' } },
+        namedSetOfFiles: { files: [{ name: 'App/App.txt', uri: REMOTE_URI }] },
+      },
       {
         id: { targetCompleted: { label: '//App:App' } },
         completed: { success: true, outputGroup: [{ name: 'default', fileSets: [{ id: '0' }] }] },
@@ -64,9 +74,21 @@ describe('parseTopLevelIpaDigest', () => {
     expect(() => parseTopLevelIpaDigest(noIpa, '//App:App')).toThrow(/No \.ipa output/);
   });
 
+  test('rejects a non-SHA256 (e.g. BLAKE3) digest with an actionable error', () => {
+    // A BLAKE3 digest is not 64 hex chars; the sha256-keyed instance CAS can't
+    // resolve it, so the parser must flag it instead of passing it through.
+    const blake3 = bep('bytestream://127.0.0.1:8980/blobs/abcabcabcabcabcabcabcabcabcabcab/40960');
+    expect(() => parseTopLevelIpaDigest(blake3, '//App:App')).toThrow(
+      /non-SHA256 digest|--digest_function=sha256/,
+    );
+  });
+
   test('resolves a .ipa nested in a child fileSet', () => {
     const nested = [
-      { id: { namedSet: { id: 'child' } }, namedSetOfFiles: { files: [{ name: 'App/App.ipa', uri: REMOTE_URI }] } },
+      {
+        id: { namedSet: { id: 'child' } },
+        namedSetOfFiles: { files: [{ name: 'App/App.ipa', uri: REMOTE_URI }] },
+      },
       { id: { namedSet: { id: 'root' } }, namedSetOfFiles: { files: [], fileSets: [{ id: 'child' }] } },
       {
         id: { targetCompleted: { label: '//App:App' } },
