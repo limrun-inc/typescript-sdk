@@ -233,14 +233,7 @@ export default class XcodeRbe extends BaseCommand {
       // Infer a real app target so the printed command is runnable as-is; fall
       // back to a placeholder when there's no single obvious target.
       const target = inferBuildTarget(workspaceRoot) ?? '//your:target';
-      // --remote_download_outputs=minimal keeps the built .ipa in the instance's
-      // CAS instead of downloading it; `lim xcode rbe install` installs it
-      // server-side from there, so the bytes never round-trip. It lives on the
-      // printed command (not the generated bazelrc) so it's visible and the user
-      // can drop it to materialize the .ipa locally. It's not needed for install
-      // to work: a remote output carries a bytestream:// CAS URI in the BEP under
-      // either download mode, so dropping it only adds a local download.
-      const buildCmd = `bazelisk --digest_function=sha256 build --config=limrun --remote_download_outputs=minimal ${target}`;
+      const buildCmd = `bazelisk --digest_function=sha256 build --config=limrun ${target}`;
 
       // --ios: create + attach a simulator so `lim xcode rbe install` installs on
       // it and the stream URL is printed. Recorded in the pidfile so --stop tears
@@ -636,7 +629,7 @@ export default class XcodeRbe extends BaseCommand {
     this.output('');
     this.info(
       'The built .ipa stays in the instance cache (install it with `lim xcode rbe install`); ' +
-        'drop --remote_download_outputs=minimal to download it to this machine.',
+        'to download it to this machine, add --remote_download_outputs=toplevel to the build command.',
     );
   }
 }
