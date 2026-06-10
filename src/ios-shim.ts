@@ -13,7 +13,6 @@ const FORWARDED_SIMCTL_COMMANDS = new Set([
   'privacy',
   'location',
   'status_bar',
-  'spawn',
 ]);
 
 export type IosXcrunShimServer = {
