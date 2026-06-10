@@ -8,9 +8,10 @@
  * downloads the bytes (`--remote_download_outputs`), because the URI names the
  * output's CAS identity, not its local availability. `lim xcode rbe install`
  * reads that digest and hands it to the instance, which fetches the blob from
- * its own RBE cache and installs it — no round-trip. The printed build command
- * passes `--remote_download_outputs=minimal` to skip the (unneeded) local
- * download by default; dropping it does not affect this parser.
+ * its own RBE cache and installs it — no round-trip. The generated bazelrc sets
+ * `--remote_download_outputs=minimal` to skip the (unneeded) local download by
+ * default; overriding it (e.g. `--remote_download_outputs=toplevel` on the command
+ * line) to materialize the .ipa locally does not affect this parser.
  */
 
 export type BepIpaDigest = {

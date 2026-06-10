@@ -275,6 +275,13 @@ xcode_config(
  *   the fleet regardless of where bazel runs (the whole point of RBE).
  * - PATH includes /usr/sbin:/sbin so genrules that probe `sysctl` (e.g.
  *   `hw.logicalcpu` for `make -j`) resolve it on the worker.
+ * - `--remote_download_outputs=minimal` keeps the built .ipa in the instance's
+ *   CAS instead of downloading it; `lim xcode rbe install` installs it server-side
+ *   from there, so the bytes never round-trip. It's not needed for install to work
+ *   (a remote output keeps its bytestream:// CAS digest in the BEP either way), so
+ *   the printed `lim xcode rbe` output tells users to add
+ *   `--remote_download_outputs=toplevel` on the command line when they want the
+ *   .ipa materialized locally (a command-line flag overrides this rc setting).
  * - `--build_event_json_file` writes the Build Event Protocol to .limrun/bep.json;
  *   `lim xcode rbe install` reads the built target's .ipa CAS digest from it. The
  *   path is ABSOLUTE on purpose: Bazel expands `%workspace%` only in
@@ -308,6 +315,7 @@ build:limrun --strategy=Genrule=remote
 build:limrun --xcode_version_config=//.limrun:remote_xcode_config
 build:limrun --xcode_version=${shortVersion(versionKey)}
 build:limrun --ios_multi_cpus=sim_arm64
+build:limrun --remote_download_outputs=minimal
 build:limrun --build_event_json_file=${bepPath}
 ${execPlatform}build:limrun --action_env=PATH=/usr/bin:/bin:/usr/sbin:/sbin
 `;
