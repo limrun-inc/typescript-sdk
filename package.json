@@ -89,5 +89,9 @@
       "import": "./dist/*.mjs",
       "require": "./dist/*.js"
     }
+  },
+  "homepage": "https://lim.run",
+  "bugs": {
+    "url": "https://github.com/limrun-inc/typescript-sdk/issues"
   }
 }
