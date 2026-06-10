@@ -19,6 +19,7 @@ import { login } from './lib/auth';
 import { renderTable } from './lib/formatting';
 import { stopDaemon } from './lib/daemon';
 import { detectInstanceType } from './lib/instance-client-factory';
+import { deleteCreatedXcodeInstance } from './lib/instance-cleanup';
 
 const VERSION = require('../package.json').version;
 const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox)_[a-z0-9]+\b/i;
@@ -520,19 +521,13 @@ export abstract class BaseCommand extends Command {
    * RBE) does not leak a billed server-side instance. Deletes directly (not via
    * withAuth) so a 404 during cleanup can't trigger replacement creation, mirrors
    * `deleteSim`, and never throws. No-op for an instance we did not create (a user
-   * --id or a pre-existing cached one) or a non-xcode id. Returns whether it
-   * deleted. Idempotent: the id is dropped from the set on success.
+   * --id or a pre-existing cached one) or a non-xcode id. The decision lives in
+   * `deleteCreatedXcodeInstance` (unit-tested without the oclif runtime).
    */
-  protected async deleteCreatedInstance(id: string | undefined): Promise<boolean> {
-    if (!id || !this._instancesCreatedThisRun.has(id)) return false;
-    try {
-      if (detectInstanceType(id) !== 'xcode') return false;
-      await this.client.xcodeInstances.delete(id);
-      this._instancesCreatedThisRun.delete(id);
-      return true;
-    } catch {
-      return false;
-    }
+  protected deleteCreatedInstance(id: string | undefined): Promise<boolean> {
+    return deleteCreatedXcodeInstance(this._instancesCreatedThisRun, id, async (xcodeId) => {
+      await this.client.xcodeInstances.delete(xcodeId);
+    });
   }
 
   private getCommandParts(): string[] {
