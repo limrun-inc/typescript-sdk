@@ -74,8 +74,8 @@ try {
 }
 if (!wdaRunning) {
   console.log('Runner is not running, launching it...');
-  await lim.simctl(['spawn', 'booted', 'launchctl', 'setenv', 'PORT', String(MAESTRO_RUNNER_PORT)]).wait();
-  await lim
+  // The patched runner listens on MAESTRO_RUNNER_PORT by default, so launching it is enough.
+  const launch = await lim
     .simctl([
       'launch',
       '--terminate-running-process',
@@ -83,6 +83,9 @@ if (!wdaRunning) {
       'dev.mobile.maestro-driver-iosUITests.xctrunner',
     ])
     .wait();
+  if (launch.code !== 0) {
+    throw new Error(`Failed to launch the Maestro runner (exit code ${launch.code}): ${launch.stderr}`);
+  }
   console.log('Runner launched');
 }
 
