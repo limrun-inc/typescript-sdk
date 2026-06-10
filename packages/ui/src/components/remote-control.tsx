@@ -2035,18 +2035,22 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         peerConnection.addTransceiver('audio', { direction: 'recvonly' });
         const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
 
-        // Pre-allocate a sendonly video slot for the user's camera.
-        // The track stays `null` until the limulator side asks for one
-        // (via the `cameraRequest` WS message), at which point we call
-        // `replaceTrack` with a `getUserMedia` result. Allocating
-        // up-front means we don't have to renegotiate the SDP when the
-        // simulator app actually opens its `AVCaptureSession` — the
-        // codec/SSRC negotiation happens once, here, and turning the
-        // camera on/off later is just a track-replace.
-        const outboundCameraTransceiver = peerConnection.addTransceiver('video', {
-          direction: 'sendonly',
-        });
-        outboundCameraSenderRef.current = outboundCameraTransceiver.sender;
+        // Pre-allocate a sendonly slot for the user's camera so the
+        // sim can pull frames later without renegotiating SDP.
+        // Allocating up-front means we don't have to renegotiate the
+        // SDP when the simulator app actually opens its
+        // `AVCaptureSession` — the codec/SSRC negotiation happens
+        // once, here, and turning the camera on/off later is just a
+        // `replaceTrack`.
+        // iOS only: Android has no camera consumer, and the extra
+        // m=video line crashes Android 14's scrcpy/libwebrtc.
+        const outboundCameraTransceiver =
+          platform === 'ios' ?
+            peerConnection.addTransceiver('video', {
+              direction: 'sendonly',
+            })
+          : null;
+        outboundCameraSenderRef.current = outboundCameraTransceiver?.sender ?? null;
 
         // As hardware encoder, we use H265 for iOS and VP9 for Android.
         // We make sure these two are the first ones in the list.
@@ -2092,7 +2096,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         // Chrome falls back to *software* HEVC, not H.264 — no spec
         // hook for runtime re-negotiation. The host-side stats
         // logger will surface this as decoder=ffmpeg / hw=false.
-        if (RTCRtpSender.getCapabilities) {
+        if (outboundCameraTransceiver && RTCRtpSender.getCapabilities) {
           const senderCaps = RTCRtpSender.getCapabilities('video');
           if (senderCaps && senderCaps.codecs) {
             const vtH264Profiles = new Set(['42e01f', '42e028', '640c1f']);
