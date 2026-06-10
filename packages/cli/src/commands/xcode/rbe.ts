@@ -188,11 +188,28 @@ export default class XcodeRbe extends BaseCommand {
         } catch (err) {
           this.reporter.stop('failure');
           if (err instanceof RbeUnsupportedError && !flags.id && attempt === 0) {
-            this.info('That Xcode instance does not support remote build execution; creating a fresh one...');
+            // If WE just created this instance and it can't do RBE, delete it so
+            // we don't leak a billed instance before creating a fresh one. A
+            // pre-existing cached instance is only dropped from the cache below,
+            // never deleted (the user may still want it).
+            if (this.wasCreatedThisRun(instanceId)) {
+              this.info(
+                'The Xcode instance we created does not support remote build execution; replacing it...',
+              );
+              await this.deleteCreatedInstance(instanceId);
+            } else {
+              this.info(
+                'That Xcode instance does not support remote build execution; creating a fresh one...',
+              );
+            }
             clearLastInstanceId(instanceId);
             continue;
           }
           await client.stopRbe().catch(() => {});
+          // Best-effort: delete an instance we created this run before failing,
+          // so a non-RbeUnsupported startup error doesn't leak it. No-op for a
+          // user --id or a pre-existing cached instance.
+          await this.deleteCreatedInstance(instanceId);
           this.error(err instanceof Error ? err.message : String(err));
         }
       }

@@ -72,6 +72,12 @@ export abstract class BaseCommand extends Command {
   private _xcodeReplacementIntent?: XcodeReplacementIntent;
   private _overrideInstanceId?: string;
   private _createRetryCount = 0;
+  // Server-side instances THIS invocation created, so a path that abandons one
+  // (e.g. it turns out not to support RBE) can delete it instead of leaking a
+  // billed instance. Only instances we created are eligible — never a user
+  // --id or a pre-existing cached instance. Protected so the factories that
+  // populate it and the helpers that read it stay in one visibility tier.
+  protected _instancesCreatedThisRun = new Set<string>();
 
   protected get parsedFlags(): Record<string, unknown> | undefined {
     return this._parsedFlags;
@@ -481,23 +487,52 @@ export abstract class BaseCommand extends Command {
 
     if (prefix === 'ios' || commandType === 'ios') {
       const instance = await this.client.iosInstances.create({ wait: true, spec: {} });
+      this._instancesCreatedThisRun.add(instance.metadata.id);
       saveLastCreatedInstance(instance);
       return loadLastIosInstance();
     }
 
     if (prefix === 'android' || commandType === 'android') {
       const instance = await this.client.androidInstances.create({ wait: true, spec: {} });
+      this._instancesCreatedThisRun.add(instance.metadata.id);
       saveLastCreatedInstance(instance);
       return loadLastAndroidInstance();
     }
 
     if (prefix === 'xcode' || prefix === 'sandbox' || commandType === 'xcode') {
       const instance = await this.client.xcodeInstances.create({ wait: true, spec: {} });
+      this._instancesCreatedThisRun.add(instance.metadata.id);
       saveLastCreatedInstance(instance);
       return loadLastXcodeInstance();
     }
 
     return null;
+  }
+
+  /** Whether `id` is a server-side instance THIS invocation auto-created. */
+  protected wasCreatedThisRun(id: string | undefined): boolean {
+    return !!id && this._instancesCreatedThisRun.has(id);
+  }
+
+  /**
+   * Best-effort delete of an Xcode instance THIS invocation auto-created, so a
+   * path that creates an instance and then abandons it (e.g. it does not support
+   * RBE) does not leak a billed server-side instance. Deletes directly (not via
+   * withAuth) so a 404 during cleanup can't trigger replacement creation, mirrors
+   * `deleteSim`, and never throws. No-op for an instance we did not create (a user
+   * --id or a pre-existing cached one) or a non-xcode id. Returns whether it
+   * deleted. Idempotent: the id is dropped from the set on success.
+   */
+  protected async deleteCreatedInstance(id: string | undefined): Promise<boolean> {
+    if (!id || !this._instancesCreatedThisRun.has(id)) return false;
+    try {
+      if (detectInstanceType(id) !== 'xcode') return false;
+      await this.client.xcodeInstances.delete(id);
+      this._instancesCreatedThisRun.delete(id);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private getCommandParts(): string[] {
@@ -542,6 +577,7 @@ export abstract class BaseCommand extends Command {
         sandbox: { xcode: { enabled: true } },
       },
     });
+    this._instancesCreatedThisRun.add(instance.metadata.id);
     saveLastCreatedInstance(instance, ['xcode']);
     const target = loadIosInstanceCache(instance.metadata.id);
     if (!target) {
@@ -554,6 +590,7 @@ export abstract class BaseCommand extends Command {
 
   private async createStandaloneXcodeInstance(): Promise<LastXcodeInstance> {
     const instance = await this.client.xcodeInstances.create({ wait: true, spec: {} });
+    this._instancesCreatedThisRun.add(instance.metadata.id);
     saveLastCreatedInstance(instance);
     const target = loadLastXcodeInstance();
     if (!target || target.type !== 'xcode') {
