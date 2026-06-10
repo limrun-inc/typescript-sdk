@@ -7,6 +7,10 @@
   "main": "dist/index.js",
   "type": "commonjs",
   "repository": "github:limrun-inc/typescript-sdk",
+  "homepage": "https://lim.run",
+  "bugs": {
+    "url": "https://github.com/limrun-inc/typescript-sdk/issues"
+  },
   "license": "Apache-2.0",
   "packageManager": "yarn@1.22.22",
   "files": [
