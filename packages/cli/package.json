@@ -20,7 +20,7 @@
     "prebuild": "yarn --cwd ../.. build",
     "build": "rm -rf dist && tsc",
     "dev": "node bin/dev.js",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "tsc --noEmit -p tsconfig.publish.json && npm run build",
     "lint": "eslint src/",
     "test": "jest"
   },
