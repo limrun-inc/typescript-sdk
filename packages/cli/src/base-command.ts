@@ -16,6 +16,7 @@ import {
   type LastXcodeInstance,
 } from './lib/config';
 import { login } from './lib/auth';
+import { describeScope, setScopeOverride } from './lib/scope';
 import { renderTable } from './lib/formatting';
 import { stopDaemon } from './lib/daemon';
 import { detectInstanceType } from './lib/instance-client-factory';
@@ -46,6 +47,11 @@ export abstract class BaseCommand extends Command {
       description: 'Create a replacement instance automatically if the target instance is not found.',
       default: true,
       allowNo: true,
+    }),
+    scope: Flags.string({
+      description:
+        'Scope used to resolve the most recent instance when no ID is given. Inside a git worktree the scope is that worktree (so parallel agents stay isolated); elsewhere a shared default is used. Pass an explicit value (or set LIM_INSTANCE_SCOPE) to isolate agents that run in separate clones rather than worktrees.',
+      env: 'LIM_INSTANCE_SCOPE',
     }),
   };
 
@@ -86,6 +92,10 @@ export abstract class BaseCommand extends Command {
 
   protected setParsedFlags(flags: Record<string, unknown>): void {
     this._parsedFlags = flags;
+    const scope = flags['scope'];
+    if (typeof scope === 'string' && scope.trim()) {
+      setScopeOverride(scope.trim());
+    }
   }
 
   protected isJsonEnabled(): boolean {
@@ -269,7 +279,7 @@ export abstract class BaseCommand extends Command {
     }
 
     throw new Error(
-      'No instance ID provided and no recentandroid instance found.\n' +
+      `No instance ID provided and no recent android instance for ${describeScope()}.\n` +
         'Provide an instance ID or create one first with: lim android create',
     );
   }
@@ -290,7 +300,7 @@ export abstract class BaseCommand extends Command {
     }
 
     throw new Error(
-      'No instance ID provided and no recentios instance found.\n' +
+      `No instance ID provided and no recent ios instance for ${describeScope()}.\n` +
         'Provide an instance ID or create one first with: lim ios create',
     );
   }
@@ -322,7 +332,7 @@ export abstract class BaseCommand extends Command {
     }
 
     throw new Error(
-      'No instance ID provided and no recentios or android instance found.\n' +
+      `No instance ID provided and no recent ios or android instance for ${describeScope()}.\n` +
         'Provide an instance ID or create one first with: lim ios create or lim android create',
     );
   }
@@ -348,7 +358,7 @@ export abstract class BaseCommand extends Command {
 
     const noun = parts[0] ?? 'xcode';
     throw new Error(
-      `No instance ID provided and no recent${noun} instance found.\n` +
+      `No instance ID provided and no recent ${noun} instance for ${describeScope()}.\n` +
         `Provide an instance ID or create one first with: lim ${noun} create`,
     );
   }
