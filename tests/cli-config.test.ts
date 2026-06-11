@@ -239,6 +239,33 @@ describe('CLI last instance config', () => {
     });
   });
 
+  test('migrates the pre-rename global slot key (__global__) onto the current global key', async () => {
+    await withConfigModule((config, ctx) => {
+      fs.mkdirSync(path.dirname(ctx.configFile), { recursive: true });
+      fs.writeFileSync(
+        ctx.configFile,
+        JSON.stringify({
+          version: 2,
+          scopes: {
+            __global__: {
+              ios: { id: 'ios_euna_01oldglobal', type: 'ios', apiUrl: 'https://ios.example.test' },
+            },
+          },
+        }),
+      );
+
+      // Resolving the global slot finds the pre-rename data immediately (read-time remap).
+      ctx.setScope(GLOBAL_SCOPE_KEY);
+      expect(config.loadLastIosInstance()).toMatchObject({ id: 'ios_euna_01oldglobal' });
+
+      // A write persists the data under the current key and drops the old one.
+      config.registerCreatedInstance(iosInstanceWithId('ios_euna_01newglobal'));
+      const persisted = JSON.parse(fs.readFileSync(ctx.configFile, 'utf-8'));
+      expect(persisted.scopes.__global__).toBeUndefined();
+      expect(persisted.scopes[GLOBAL_SCOPE_KEY].ios).toMatchObject({ id: 'ios_euna_01newglobal' });
+    });
+  });
+
   test('keeps the global (non-repo) slot but prunes stale directory scopes', async () => {
     await withConfigModule((config, ctx) => {
       const stale = new Date('2000-01-01T00:00:00Z').toISOString();

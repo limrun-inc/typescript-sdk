@@ -85,6 +85,8 @@ const LAST_INSTANCE_LOCK = `${LAST_INSTANCE_FILE}.lock`;
 const SCHEMA_VERSION = 2;
 /** Reserved scope key holding pre-scoping (legacy flat-file) data until the next write migrates it. */
 const LEGACY_SCOPE_KEY = '__lim_legacy__';
+/** Pre-rename key for the shared non-repo slot; remapped to GLOBAL_SCOPE_KEY on read. */
+const LEGACY_GLOBAL_SCOPE_KEY = '__global__';
 /** Cap on how many directory scopes we retain; least-recently-used are pruned beyond this. */
 const MAX_SCOPES = 200;
 /** Drop scopes untouched for this long so abandoned worktrees don't accumulate. */
@@ -172,10 +174,24 @@ function scopeHasInstance(scope: ScopeInstances): boolean {
   return Boolean(scope.ios || scope.android || scope.xcode);
 }
 
+/** Copy any slots missing from `primary` out of `fallback`. */
+function fillMissingScope(primary: ScopeInstances, fallback: ScopeInstances): ScopeInstances {
+  const out: ScopeInstances = { ...primary };
+  if (!out.ios && fallback.ios) out.ios = fallback.ios;
+  if (!out.android && fallback.android) out.android = fallback.android;
+  if (!out.xcode && fallback.xcode) out.xcode = fallback.xcode;
+  if (!out.lastUsedAt && fallback.lastUsedAt) out.lastUsedAt = fallback.lastUsedAt;
+  return out;
+}
+
 /**
- * Parse the on-disk file into the current scoped schema. A legacy flat file
- * (`{ios,android,xcode}` with no `scopes`) is surfaced under LEGACY_SCOPE_KEY so
- * reads keep working out of the box; the next write folds it into the active scope.
+ * Parse the on-disk file into the current scoped schema. Two migrations happen
+ * here so upgrades keep resolving instances without recreating them:
+ *   - a legacy flat file (`{ios,android,xcode}` with no `scopes`) is surfaced
+ *     under LEGACY_SCOPE_KEY (folded into the active scope on the next write), and
+ *   - the pre-rename global slot key (`__global__`) is remapped onto the current
+ *     GLOBAL_SCOPE_KEY (the current key wins for any overlapping slots).
+ * Both are persisted on the next write.
  */
 function readNormalizedFile(): LastInstancesFile {
   const parsed = readParsedLastInstances();
@@ -183,8 +199,17 @@ function readNormalizedFile(): LastInstancesFile {
   if (!isRecord(parsed)) return file;
 
   if (typeof parsed['version'] === 'number' && isRecord(parsed['scopes'])) {
+    let legacyGlobal: ScopeInstances | undefined;
     for (const [key, value] of Object.entries(parsed['scopes'])) {
+      if (key === LEGACY_GLOBAL_SCOPE_KEY) {
+        legacyGlobal = sanitizeScope(value);
+        continue;
+      }
       file.scopes[key] = sanitizeScope(value);
+    }
+    if (legacyGlobal && scopeHasInstance(legacyGlobal)) {
+      const current = file.scopes[GLOBAL_SCOPE_KEY];
+      file.scopes[GLOBAL_SCOPE_KEY] = current ? fillMissingScope(current, legacyGlobal) : legacyGlobal;
     }
     return file;
   }
