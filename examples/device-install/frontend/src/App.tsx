@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createAppleBundleID,
   createAppleCertificate,
@@ -86,8 +86,8 @@ function App() {
 
   const pushLog = useCallback((message: string, detail?: unknown) => {
     setLog((current) => [
-      { at: new Date().toLocaleTimeString(), message, detail: detail ? String(detail) : undefined },
       ...current,
+      { at: new Date().toLocaleTimeString(), message, detail: detail ? String(detail) : undefined },
     ]);
   }, []);
 
@@ -579,13 +579,6 @@ function App() {
                 value={bundleId}
                 onChange={(e) => setBundleId(e.target.value)}
               />
-              <label style={labelStyle}>Certificate password</label>
-              <input
-                style={inputStyle}
-                type="password"
-                value={certificatePassword}
-                onChange={(e) => setCertificatePassword(e.target.value)}
-              />
 
               {signingSource === 'apple' ?
                 <>
@@ -777,6 +770,13 @@ function App() {
                     accept=".p12,application/x-pkcs12"
                     onChange={(e) => setCertificateFile(e.currentTarget.files?.[0])}
                   />
+                  <label style={labelStyle}>Certificate password</label>
+                  <input
+                    style={inputStyle}
+                    type="password"
+                    value={certificatePassword}
+                    onChange={(e) => setCertificatePassword(e.target.value)}
+                  />
                   <label style={labelStyle}>Provisioning profile (.mobileprovision)</label>
                   <input
                     type="file"
@@ -832,25 +832,25 @@ function App() {
         <Stepper steps={steps} />
 
         <div style={{ display: 'flex', gap: '20px', flex: 1, minHeight: 0 }}>
-          <LogPanel title="Build log">
+          <LogPanel title="Build log" scrollKey={build.logs.length}>
             {build.logs.length === 0 ?
-              <span style={{ color: '#999' }}>No build output yet.</span>
+              <span style={{ color: '#8b949e' }}>No build output yet.</span>
             : build.logs.map((line, i) => (
-                <div key={i} style={{ color: line.type === 'stderr' ? '#c33' : '#222' }}>
+                <div key={i} style={{ color: line.type === 'stderr' ? '#ff7b72' : '#c9d1d9' }}>
                   {line.data}
                 </div>
               ))
             }
           </LogPanel>
 
-          <LogPanel title="Activity">
+          <LogPanel title="Activity" scrollKey={log.length}>
             {log.length === 0 ?
-              <span style={{ color: '#999' }}>Nothing yet.</span>
+              <span style={{ color: '#8b949e' }}>Nothing yet.</span>
             : log.map((entry, i) => (
-                <div key={i}>
-                  <span style={{ color: '#999' }}>{entry.at} </span>
+                <div key={i} style={{ color: '#e6edf3', marginBottom: '2px' }}>
+                  <span style={{ color: '#8b949e' }}>{entry.at} </span>
                   {entry.message}
-                  {entry.detail ? <span style={{ color: '#666' }}> — {entry.detail}</span> : null}
+                  {entry.detail ? <span style={{ color: '#9aa6b2' }}> — {entry.detail}</span> : null}
                 </div>
               ))
             }
@@ -894,11 +894,28 @@ function Stepper({ steps }: { steps: { label: string; done: boolean; active: boo
   );
 }
 
-function LogPanel({ title, children }: { title: string; children: React.ReactNode }) {
+function LogPanel({
+  title,
+  scrollKey,
+  children,
+}: {
+  title: string;
+  scrollKey?: number;
+  children: React.ReactNode;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Keep the newest line in view as content grows.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [scrollKey]);
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
       <div style={{ fontSize: '13px', fontWeight: 600, color: '#444', marginBottom: '8px' }}>{title}</div>
       <div
+        ref={scrollRef}
         style={{
           flex: 1,
           overflow: 'auto',
