@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
+import { GLOBAL_SCOPE_KEY } from '../packages/cli/src/lib/scope';
 
 interface ConfigTestContext {
   homeDir: string;
@@ -12,16 +13,14 @@ interface ConfigTestContext {
 }
 
 const DEFAULT_TEST_SCOPE = '/limrun-test-scope-default';
-// Must match GLOBAL_SCOPE_KEY in packages/cli/src/lib/scope.ts.
-const GLOBAL_SCOPE_KEY = '__global__';
 
 async function withConfigModule<T>(
   fn: (config: typeof import('../packages/cli/src/lib/config'), ctx: ConfigTestContext) => T,
 ): Promise<T> {
   const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'limrun-cli-config-test-'));
   const homedir = () => homeDir;
-  const previousScope = process.env['LIM_INSTANCE_SCOPE'];
-  process.env['LIM_INSTANCE_SCOPE'] = DEFAULT_TEST_SCOPE;
+  const previousScope = process.env['LIM_WORKSPACE'];
+  process.env['LIM_WORKSPACE'] = DEFAULT_TEST_SCOPE;
   jest.resetModules();
   jest.doMock('os', () => {
     const actual = jest.requireActual<typeof import('os')>('os');
@@ -34,15 +33,15 @@ async function withConfigModule<T>(
       homeDir,
       configFile: path.join(homeDir, '.lim', 'last-instances.json'),
       setScope: (key: string) => {
-        process.env['LIM_INSTANCE_SCOPE'] = key;
+        process.env['LIM_WORKSPACE'] = key;
       },
     };
     return fn(config, ctx);
   } finally {
     if (previousScope === undefined) {
-      delete process.env['LIM_INSTANCE_SCOPE'];
+      delete process.env['LIM_WORKSPACE'];
     } else {
-      process.env['LIM_INSTANCE_SCOPE'] = previousScope;
+      process.env['LIM_WORKSPACE'] = previousScope;
     }
     jest.dontMock('os');
     jest.resetModules();
@@ -212,7 +211,7 @@ describe('CLI last instance config', () => {
     });
   });
 
-  test('migrates a legacy flat file onto the global scope, not worktrees', async () => {
+  test('migrates a legacy flat last-instances file into the active scope', async () => {
     await withConfigModule((config, ctx) => {
       fs.mkdirSync(path.dirname(ctx.configFile), { recursive: true });
       fs.writeFileSync(
@@ -222,41 +221,56 @@ describe('CLI last instance config', () => {
         }),
       );
 
-      // A worktree must NOT inherit the legacy/global instance.
-      ctx.setScope('/work/worktree-a');
-      expect(config.loadLastIosInstance()).toBeNull();
-
-      // The global (non-worktree) context reads the legacy instance out of the box.
-      ctx.setScope(GLOBAL_SCOPE_KEY);
+      ctx.setScope('/work/first-dir');
+      // Reads bridge the legacy data so it is usable out of the box.
       expect(config.loadLastIosInstance()).toMatchObject({ id: 'ios_euna_01legacy' });
 
-      // A write rewrites the file in the new shape with legacy data under the global key.
+      // A write migrates the legacy data into the active scope and rewrites the file.
       config.registerCreatedInstance(iosInstanceWithId('ios_euna_01new'));
+
       const persisted = JSON.parse(fs.readFileSync(ctx.configFile, 'utf-8'));
       expect(persisted.version).toBe(2);
       expect(persisted.ios).toBeUndefined();
-      expect(persisted.scopes[GLOBAL_SCOPE_KEY].ios).toMatchObject({ id: 'ios_euna_01new' });
+      expect(persisted.scopes['/work/first-dir'].ios).toMatchObject({ id: 'ios_euna_01new' });
+
+      // The legacy bridge no longer applies to other scopes once migrated.
+      ctx.setScope('/work/other-dir');
+      expect(config.loadLastIosInstance()).toBeNull();
     });
   });
 
-  test('shares the global scope across non-worktree contexts but isolates worktrees', async () => {
+  test('keeps the global (non-repo) slot but prunes stale directory scopes', async () => {
     await withConfigModule((config, ctx) => {
-      ctx.setScope(GLOBAL_SCOPE_KEY);
-      config.registerCreatedInstance(iosInstanceWithId('ios_euna_01global'));
+      const stale = new Date('2000-01-01T00:00:00Z').toISOString();
+      fs.mkdirSync(path.dirname(ctx.configFile), { recursive: true });
+      fs.writeFileSync(
+        ctx.configFile,
+        JSON.stringify({
+          version: 2,
+          scopes: {
+            [GLOBAL_SCOPE_KEY]: {
+              lastUsedAt: stale,
+              ios: { id: 'ios_euna_01global', type: 'ios' },
+            },
+            '/work/stale-dir': {
+              lastUsedAt: stale,
+              ios: { id: 'ios_euna_01stale', type: 'ios' },
+            },
+          },
+        }),
+      );
 
-      // Any other non-worktree context resolves the same global instance.
-      expect(config.loadLastIosInstance()).toMatchObject({ id: 'ios_euna_01global' });
+      // Any write triggers pruning.
+      ctx.setScope('/work/fresh-dir');
+      config.registerCreatedInstance(iosInstanceWithId('ios_euna_01fresh'));
 
-      // A worktree does not see the global instance.
-      ctx.setScope('/work/worktree-a');
-      expect(config.loadLastIosInstance()).toBeNull();
-
-      // The worktree gets its own, independent of global.
-      config.registerCreatedInstance(iosInstanceWithId('ios_euna_01wt'));
-      expect(config.loadLastIosInstance()).toMatchObject({ id: 'ios_euna_01wt' });
-
-      ctx.setScope(GLOBAL_SCOPE_KEY);
-      expect(config.loadLastIosInstance()).toMatchObject({ id: 'ios_euna_01global' });
+      const persisted = JSON.parse(fs.readFileSync(ctx.configFile, 'utf-8'));
+      // Global slot survives despite being long stale.
+      expect(persisted.scopes[GLOBAL_SCOPE_KEY].ios).toMatchObject({ id: 'ios_euna_01global' });
+      // A stale directory scope is pruned.
+      expect(persisted.scopes['/work/stale-dir']).toBeUndefined();
+      // The fresh scope we just wrote is kept.
+      expect(persisted.scopes['/work/fresh-dir'].ios).toMatchObject({ id: 'ios_euna_01fresh' });
     });
   });
 });

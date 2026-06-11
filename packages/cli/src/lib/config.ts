@@ -83,6 +83,8 @@ export function clearApiKey(): void {
 const LAST_INSTANCE_FILE = path.join(CONFIG_DIR, 'last-instances.json');
 const LAST_INSTANCE_LOCK = `${LAST_INSTANCE_FILE}.lock`;
 const SCHEMA_VERSION = 2;
+/** Reserved scope key holding pre-scoping (legacy flat-file) data until the next write migrates it. */
+const LEGACY_SCOPE_KEY = '__lim_legacy__';
 /** Cap on how many directory scopes we retain; least-recently-used are pruned beyond this. */
 const MAX_SCOPES = 200;
 /** Drop scopes untouched for this long so abandoned worktrees don't accumulate. */
@@ -172,10 +174,8 @@ function scopeHasInstance(scope: ScopeInstances): boolean {
 
 /**
  * Parse the on-disk file into the current scoped schema. A legacy flat file
- * (`{ios,android,xcode}` with no `scopes`) is mapped onto the GLOBAL scope,
- * since pre-scoping data was a single shared "most recent instance" — exactly
- * what the global (non-worktree) slot represents. It is persisted in the new
- * shape on the next write; reads work out of the box in the meantime.
+ * (`{ios,android,xcode}` with no `scopes`) is surfaced under LEGACY_SCOPE_KEY so
+ * reads keep working out of the box; the next write folds it into the active scope.
  */
 function readNormalizedFile(): LastInstancesFile {
   const parsed = readParsedLastInstances();
@@ -191,13 +191,13 @@ function readNormalizedFile(): LastInstancesFile {
 
   const legacy = sanitizeScope(parsed);
   if (scopeHasInstance(legacy)) {
-    file.scopes[GLOBAL_SCOPE_KEY] = legacy;
+    file.scopes[LEGACY_SCOPE_KEY] = legacy;
   }
   return file;
 }
 
 function getScopeData(file: LastInstancesFile, scopeKey: string): ScopeInstances {
-  return file.scopes[scopeKey] ?? {};
+  return file.scopes[scopeKey] ?? file.scopes[LEGACY_SCOPE_KEY] ?? {};
 }
 
 function readScope(scopeKey: string): ScopeInstances {
@@ -213,29 +213,48 @@ function ensureScope(file: LastInstancesFile, scopeKey: string): ScopeInstances 
   return scope;
 }
 
+/** Fold legacy flat-file data into the active scope (only slots not already set), once. */
+function foldLegacyInto(file: LastInstancesFile, scopeKey: string): boolean {
+  const legacy = file.scopes[LEGACY_SCOPE_KEY];
+  if (!legacy) return false;
+  delete file.scopes[LEGACY_SCOPE_KEY];
+  const scope = ensureScope(file, scopeKey);
+  if (!scope.android && legacy.android) scope.android = legacy.android;
+  if (!scope.ios && legacy.ios) scope.ios = legacy.ios;
+  if (!scope.xcode && legacy.xcode) scope.xcode = legacy.xcode;
+  if (!scope.lastUsedAt) scope.lastUsedAt = legacy.lastUsedAt ?? new Date().toISOString();
+  return true;
+}
+
 function scopeTimestamp(scope: ScopeInstances): number {
   const ts = scope.lastUsedAt ? Date.parse(scope.lastUsedAt) : NaN;
   return Number.isNaN(ts) ? 0 : ts;
 }
 
 /**
- * Drop empty scopes, TTL-expired worktree scopes, and the least-recently-used
- * beyond the cap. The GLOBAL scope is exempt from TTL/LRU eviction (it is the
- * shared default slot), but is still removed once it holds no instances.
+ * Drop empty scopes, TTL-expired scopes, and the least-recently-used beyond the
+ * cap. The global (non-repo) slot is exempt from TTL/LRU pruning so the "use my
+ * most recent instance" fallback persists like the old single-slot behavior; it
+ * is still removed once empty.
  */
 function pruneScopes(file: LastInstancesFile): boolean {
   let changed = false;
   const now = Date.now();
   for (const key of Object.keys(file.scopes)) {
+    if (key === LEGACY_SCOPE_KEY) continue;
     const scope = file.scopes[key]!;
-    const isGlobal = key === GLOBAL_SCOPE_KEY;
-    const expired = !isGlobal && scope.lastUsedAt ? now - scopeTimestamp(scope) > SCOPE_TTL_MS : false;
-    if (!scopeHasInstance(scope) || expired) {
+    if (!scopeHasInstance(scope)) {
+      delete file.scopes[key];
+      changed = true;
+      continue;
+    }
+    if (key === GLOBAL_SCOPE_KEY) continue;
+    if (scope.lastUsedAt && now - scopeTimestamp(scope) > SCOPE_TTL_MS) {
       delete file.scopes[key];
       changed = true;
     }
   }
-  const keys = Object.keys(file.scopes).filter((k) => k !== GLOBAL_SCOPE_KEY);
+  const keys = Object.keys(file.scopes).filter((k) => k !== LEGACY_SCOPE_KEY && k !== GLOBAL_SCOPE_KEY);
   if (keys.length > MAX_SCOPES) {
     keys
       .sort((a, b) => scopeTimestamp(file.scopes[a]!) - scopeTimestamp(file.scopes[b]!))
@@ -313,8 +332,7 @@ function releaseLock(fd: number | null): void {
  * Serialized, atomic read-modify-write of the last-instances file. The mutator
  * receives the parsed file plus the active scope key; returning `false` signals
  * no change so we can skip the write (and avoid needless lock churn for parallel
- * agents). A legacy flat file is normalized onto the GLOBAL scope on read, so it
- * is rewritten in the new shape whenever any mutation persists.
+ * agents). Legacy data is migrated into the active scope before the mutator runs.
  */
 function mutate(fn: (file: LastInstancesFile, scopeKey: string) => boolean | void): void {
   ensureConfigDir();
@@ -322,7 +340,7 @@ function mutate(fn: (file: LastInstancesFile, scopeKey: string) => boolean | voi
   try {
     const file = readNormalizedFile();
     const scopeKey = getScopeKey();
-    let changed = false;
+    let changed = foldLegacyInto(file, scopeKey);
     if (fn(file, scopeKey) !== false) changed = true;
     if (pruneScopes(file)) changed = true;
     if (changed) atomicWriteFile(file);
