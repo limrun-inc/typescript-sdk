@@ -7,6 +7,7 @@ import { type AndroidInstance } from '@limrun/api/resources/android-instances';
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
 import { type XcodeInstance } from '@limrun/api/resources/xcode-instances';
 import { xcodeSandboxIdFromUrl } from './xcode-sandbox';
+import { getScopeKey, GLOBAL_SCOPE_KEY } from './scope';
 
 const CONFIG_DIR = path.join(os.homedir(), '.lim');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.yaml');
@@ -80,6 +81,12 @@ export function clearApiKey(): void {
 // ---------- Last used instance per type ----------
 
 const LAST_INSTANCE_FILE = path.join(CONFIG_DIR, 'last-instances.json');
+const LAST_INSTANCE_LOCK = `${LAST_INSTANCE_FILE}.lock`;
+const SCHEMA_VERSION = 2;
+/** Cap on how many directory scopes we retain; least-recently-used are pruned beyond this. */
+const MAX_SCOPES = 200;
+/** Drop scopes untouched for this long so abandoned worktrees don't accumulate. */
+const SCOPE_TTL_MS = 60 * 24 * 60 * 60 * 1000;
 
 export interface LastAndroidInstance {
   id: string;
@@ -121,28 +128,207 @@ export interface LastXcodeInstance {
   token?: XcodeInstance.Status['token'];
 }
 
-interface LastInstances {
+/** The set of last-used instances bound to a single directory scope. */
+interface ScopeInstances {
+  lastUsedAt?: string;
   ios?: LastIosInstance;
   android?: LastAndroidInstance;
   xcode?: LastIosInstance | LastXcodeInstance;
 }
 
-function readLastInstances(): LastInstances {
-  if (!fs.existsSync(LAST_INSTANCE_FILE)) return {};
-  try {
-    const parsed = JSON.parse(fs.readFileSync(LAST_INSTANCE_FILE, 'utf-8'));
-    if (isLastInstances(parsed)) {
-      return parsed;
-    }
-  } catch {}
-  deleteLastInstancesFile();
-  return {};
+/** On-disk schema: a map of directory scope key -> its last-used instances. */
+interface LastInstancesFile {
+  version: number;
+  scopes: Record<string, ScopeInstances>;
 }
 
-function deleteLastInstancesFile(): void {
+function readParsedLastInstances(): unknown {
+  if (!fs.existsSync(LAST_INSTANCE_FILE)) return null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return JSON.parse(fs.readFileSync(LAST_INSTANCE_FILE, 'utf-8'));
+    } catch {
+      // A concurrent atomic rename can momentarily race a read; retry once.
+    }
+  }
+  return null;
+}
+
+function sanitizeScope(value: unknown): ScopeInstances {
+  const scope: ScopeInstances = {};
+  if (!isRecord(value)) return scope;
+  if (typeof value['lastUsedAt'] === 'string') scope.lastUsedAt = value['lastUsedAt'];
+  if (isLastAndroidInstance(value['android'])) scope.android = value['android'];
+  if (isLastIosInstance(value['ios'])) scope.ios = value['ios'];
+  if (isLastIosInstance(value['xcode']) || isLastXcodeInstance(value['xcode'])) {
+    scope.xcode = value['xcode'] as LastIosInstance | LastXcodeInstance;
+  }
+  return scope;
+}
+
+function scopeHasInstance(scope: ScopeInstances): boolean {
+  return Boolean(scope.ios || scope.android || scope.xcode);
+}
+
+/**
+ * Parse the on-disk file into the current scoped schema. A legacy flat file
+ * (`{ios,android,xcode}` with no `scopes`) is mapped onto the GLOBAL scope,
+ * since pre-scoping data was a single shared "most recent instance" — exactly
+ * what the global (non-worktree) slot represents. It is persisted in the new
+ * shape on the next write; reads work out of the box in the meantime.
+ */
+function readNormalizedFile(): LastInstancesFile {
+  const parsed = readParsedLastInstances();
+  const file: LastInstancesFile = { version: SCHEMA_VERSION, scopes: {} };
+  if (!isRecord(parsed)) return file;
+
+  if (typeof parsed['version'] === 'number' && isRecord(parsed['scopes'])) {
+    for (const [key, value] of Object.entries(parsed['scopes'])) {
+      file.scopes[key] = sanitizeScope(value);
+    }
+    return file;
+  }
+
+  const legacy = sanitizeScope(parsed);
+  if (scopeHasInstance(legacy)) {
+    file.scopes[GLOBAL_SCOPE_KEY] = legacy;
+  }
+  return file;
+}
+
+function getScopeData(file: LastInstancesFile, scopeKey: string): ScopeInstances {
+  return file.scopes[scopeKey] ?? {};
+}
+
+function readScope(scopeKey: string): ScopeInstances {
+  return getScopeData(readNormalizedFile(), scopeKey);
+}
+
+function ensureScope(file: LastInstancesFile, scopeKey: string): ScopeInstances {
+  let scope = file.scopes[scopeKey];
+  if (!scope) {
+    scope = {};
+    file.scopes[scopeKey] = scope;
+  }
+  return scope;
+}
+
+function scopeTimestamp(scope: ScopeInstances): number {
+  const ts = scope.lastUsedAt ? Date.parse(scope.lastUsedAt) : NaN;
+  return Number.isNaN(ts) ? 0 : ts;
+}
+
+/**
+ * Drop empty scopes, TTL-expired worktree scopes, and the least-recently-used
+ * beyond the cap. The GLOBAL scope is exempt from TTL/LRU eviction (it is the
+ * shared default slot), but is still removed once it holds no instances.
+ */
+function pruneScopes(file: LastInstancesFile): boolean {
+  let changed = false;
+  const now = Date.now();
+  for (const key of Object.keys(file.scopes)) {
+    const scope = file.scopes[key]!;
+    const isGlobal = key === GLOBAL_SCOPE_KEY;
+    const expired = !isGlobal && scope.lastUsedAt ? now - scopeTimestamp(scope) > SCOPE_TTL_MS : false;
+    if (!scopeHasInstance(scope) || expired) {
+      delete file.scopes[key];
+      changed = true;
+    }
+  }
+  const keys = Object.keys(file.scopes).filter((k) => k !== GLOBAL_SCOPE_KEY);
+  if (keys.length > MAX_SCOPES) {
+    keys
+      .sort((a, b) => scopeTimestamp(file.scopes[a]!) - scopeTimestamp(file.scopes[b]!))
+      .slice(0, keys.length - MAX_SCOPES)
+      .forEach((key) => {
+        delete file.scopes[key];
+        changed = true;
+      });
+  }
+  return changed;
+}
+
+function atomicWriteFile(file: LastInstancesFile): void {
+  ensureConfigDir();
+  const tmp = `${LAST_INSTANCE_FILE}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(file, null, 2), { mode: 0o600 });
+  fs.renameSync(tmp, LAST_INSTANCE_FILE);
+}
+
+function sleepSync(ms: number): void {
   try {
-    fs.unlinkSync(LAST_INSTANCE_FILE);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      /* SharedArrayBuffer unavailable; brief busy wait */
+    }
+  }
+}
+
+const LOCK_TIMEOUT_MS = 3000;
+const LOCK_STALE_MS = 15000;
+
+function acquireLock(): number | null {
+  const start = Date.now();
+  for (;;) {
+    try {
+      const fd = fs.openSync(LAST_INSTANCE_LOCK, 'wx');
+      try {
+        fs.writeSync(fd, String(process.pid));
+      } catch {}
+      return fd;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
+        return null; // can't create lock (e.g. permissions); proceed best-effort
+      }
+      try {
+        const stat = fs.statSync(LAST_INSTANCE_LOCK);
+        if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
+          try {
+            fs.unlinkSync(LAST_INSTANCE_LOCK);
+          } catch {}
+          continue;
+        }
+      } catch {
+        continue; // lock vanished between open and stat; retry immediately
+      }
+      if (Date.now() - start > LOCK_TIMEOUT_MS) return null;
+      sleepSync(20 + Math.floor(Math.random() * 30));
+    }
+  }
+}
+
+function releaseLock(fd: number | null): void {
+  if (fd === null) return;
+  try {
+    fs.closeSync(fd);
   } catch {}
+  try {
+    fs.unlinkSync(LAST_INSTANCE_LOCK);
+  } catch {}
+}
+
+/**
+ * Serialized, atomic read-modify-write of the last-instances file. The mutator
+ * receives the parsed file plus the active scope key; returning `false` signals
+ * no change so we can skip the write (and avoid needless lock churn for parallel
+ * agents). A legacy flat file is normalized onto the GLOBAL scope on read, so it
+ * is rewritten in the new shape whenever any mutation persists.
+ */
+function mutate(fn: (file: LastInstancesFile, scopeKey: string) => boolean | void): void {
+  ensureConfigDir();
+  const fd = acquireLock();
+  try {
+    const file = readNormalizedFile();
+    const scopeKey = getScopeKey();
+    let changed = false;
+    if (fn(file, scopeKey) !== false) changed = true;
+    if (pruneScopes(file)) changed = true;
+    if (changed) atomicWriteFile(file);
+  } finally {
+    releaseLock(fd);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -159,22 +345,6 @@ function isLastIosInstance(value: unknown): value is LastIosInstance {
 
 function isLastXcodeInstance(value: unknown): value is LastXcodeInstance {
   return isRecord(value) && value['type'] === 'xcode' && typeof value['id'] === 'string';
-}
-
-function isLastInstances(value: unknown): value is LastInstances {
-  if (!isRecord(value)) return false;
-  const keys = Object.keys(value);
-  if (keys.some((key) => !['ios', 'android', 'xcode'].includes(key))) return false;
-  if (value['android'] !== undefined && !isLastAndroidInstance(value['android'])) return false;
-  if (value['ios'] !== undefined && !isLastIosInstance(value['ios'])) return false;
-  if (
-    value['xcode'] !== undefined &&
-    !isLastIosInstance(value['xcode']) &&
-    !isLastXcodeInstance(value['xcode'])
-  ) {
-    return false;
-  }
-  return true;
 }
 
 function detectLastInstanceType(instanceId: string): 'ios' | 'android' | 'xcode' {
@@ -300,22 +470,21 @@ function buildLastXcodeSlotRecord(instanceOrId: InstanceInput): LastIosInstance 
 }
 
 function saveLastInstance(instanceOrId: InstanceInput, slot?: 'xcode'): void {
-  ensureConfigDir();
   const record = buildLastInstanceRecord(instanceOrId);
-  const data = readLastInstances();
-  if (slot === 'xcode') {
-    const xcodeRecord = buildLastXcodeSlotRecord(instanceOrId);
-    if (xcodeRecord) {
-      data.xcode = xcodeRecord;
+  mutate((file, scopeKey) => {
+    const scope = ensureScope(file, scopeKey);
+    if (slot === 'xcode') {
+      const xcodeRecord = buildLastXcodeSlotRecord(instanceOrId);
+      if (xcodeRecord) scope.xcode = xcodeRecord;
+    } else if (record.type === 'android') {
+      scope.android = record;
+    } else if (record.type === 'ios') {
+      scope.ios = record;
+    } else {
+      scope.xcode = record;
     }
-  } else if (record.type === 'android') {
-    data.android = record;
-  } else if (record.type === 'ios') {
-    data.ios = record;
-  } else {
-    data.xcode = record;
-  }
-  fs.writeFileSync(LAST_INSTANCE_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
+    scope.lastUsedAt = new Date().toISOString();
+  });
 }
 
 export function registerCreatedInstance(
@@ -329,18 +498,15 @@ export function registerCreatedInstance(
 }
 
 export function loadLastAndroidInstance(): LastAndroidInstance | null {
-  const data = readLastInstances();
-  return data.android ?? null;
+  return readScope(getScopeKey()).android ?? null;
 }
 
 export function loadLastIosInstance(): LastIosInstance | null {
-  const data = readLastInstances();
-  return data.ios ?? null;
+  return readScope(getScopeKey()).ios ?? null;
 }
 
 export function loadLastXcodeInstance(): LastIosInstance | LastXcodeInstance | null {
-  const data = readLastInstances();
-  return data.xcode ?? null;
+  return readScope(getScopeKey()).xcode ?? null;
 }
 
 function sandboxXcodeIdFromLastIosInstance(instance: LastIosInstance | undefined): string | undefined {
@@ -349,75 +515,80 @@ function sandboxXcodeIdFromLastIosInstance(instance: LastIosInstance | undefined
 }
 
 export function clearLastInstanceId(instanceId: string): void {
-  const data = readLastInstances();
-  const iosRecord = data.ios;
-  let changed = false;
-  for (const key of Object.keys(data) as (keyof LastInstances)[]) {
-    if (data[key]?.id === instanceId) {
-      delete data[key];
-      changed = true;
+  mutate((file) => {
+    let changed = false;
+    for (const scope of Object.values(file.scopes)) {
+      const iosRecord = scope.ios;
+      for (const key of ['ios', 'android', 'xcode'] as const) {
+        if (scope[key]?.id === instanceId) {
+          delete scope[key];
+          changed = true;
+        }
+      }
+      const sandboxXcodeId =
+        iosRecord?.id === instanceId ? sandboxXcodeIdFromLastIosInstance(iosRecord) : undefined;
+      if (sandboxXcodeId && scope.xcode?.type === 'xcode' && scope.xcode.id === sandboxXcodeId) {
+        delete scope.xcode;
+        changed = true;
+      }
     }
-  }
-  const sandboxXcodeId =
-    iosRecord?.id === instanceId ? sandboxXcodeIdFromLastIosInstance(iosRecord) : undefined;
-  if (sandboxXcodeId && data.xcode?.type === 'xcode' && data.xcode.id === sandboxXcodeId) {
-    delete data.xcode;
-    changed = true;
-  }
-  if (changed) {
-    ensureConfigDir();
-    fs.writeFileSync(LAST_INSTANCE_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
-  }
+    return changed;
+  });
 }
 
 export function saveInstanceCache(
   instanceId: string,
   data: Partial<LastAndroidInstance> | Partial<LastIosInstance> | Partial<LastXcodeInstance>,
 ): void {
-  const lastInstances = readLastInstances();
-  let changed = false;
-  if (lastInstances.android?.id === instanceId) {
-    lastInstances.android = {
-      ...lastInstances.android,
-      ...(data as Partial<LastAndroidInstance>),
-      type: 'android',
-    };
-    changed = true;
-  }
-  if (lastInstances.ios?.id === instanceId) {
-    lastInstances.ios = {
-      ...lastInstances.ios,
-      ...(data as Partial<LastIosInstance>),
-      type: 'ios',
-    };
-    changed = true;
-  }
-  if (lastInstances.xcode?.id === instanceId) {
-    lastInstances.xcode =
-      lastInstances.xcode.type === 'ios' ?
-        { ...lastInstances.xcode, ...(data as Partial<LastIosInstance>), type: 'ios' }
-      : { ...lastInstances.xcode, ...(data as Partial<LastXcodeInstance>), type: 'xcode' };
-    changed = true;
-  }
-  if (changed) {
-    ensureConfigDir();
-    fs.writeFileSync(LAST_INSTANCE_FILE, JSON.stringify(lastInstances, null, 2), { mode: 0o600 });
-  }
+  mutate((file) => {
+    let changed = false;
+    for (const scope of Object.values(file.scopes)) {
+      if (scope.android?.id === instanceId) {
+        scope.android = {
+          ...scope.android,
+          ...(data as Partial<LastAndroidInstance>),
+          type: 'android',
+        };
+        changed = true;
+      }
+      if (scope.ios?.id === instanceId) {
+        scope.ios = {
+          ...scope.ios,
+          ...(data as Partial<LastIosInstance>),
+          type: 'ios',
+        };
+        changed = true;
+      }
+      if (scope.xcode?.id === instanceId) {
+        scope.xcode =
+          scope.xcode.type === 'ios' ?
+            { ...scope.xcode, ...(data as Partial<LastIosInstance>), type: 'ios' }
+          : { ...scope.xcode, ...(data as Partial<LastXcodeInstance>), type: 'xcode' };
+        changed = true;
+      }
+    }
+    return changed;
+  });
 }
 
 export function loadAndroidInstanceCache(instanceId: string): LastAndroidInstance | null {
-  const record = readLastInstances().android;
-  return record?.id === instanceId ? record : null;
+  for (const scope of Object.values(readNormalizedFile().scopes)) {
+    if (scope.android?.id === instanceId) return scope.android;
+  }
+  return null;
 }
 
 export function loadIosInstanceCache(instanceId: string): LastIosInstance | null {
-  const data = readLastInstances();
-  if (data.ios?.id === instanceId) return data.ios;
-  if (data.xcode?.type === 'ios' && data.xcode.id === instanceId) return data.xcode;
+  for (const scope of Object.values(readNormalizedFile().scopes)) {
+    if (scope.ios?.id === instanceId) return scope.ios;
+    if (scope.xcode?.type === 'ios' && scope.xcode.id === instanceId) return scope.xcode;
+  }
   return null;
 }
 
 export function loadXcodeInstanceCache(instanceId: string): LastXcodeInstance | null {
-  const record = readLastInstances().xcode;
-  return record?.type === 'xcode' && record.id === instanceId ? record : null;
+  for (const scope of Object.values(readNormalizedFile().scopes)) {
+    if (scope.xcode?.type === 'xcode' && scope.xcode.id === instanceId) return scope.xcode;
+  }
+  return null;
 }
