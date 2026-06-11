@@ -1,6 +1,6 @@
 {
   "name": "lim",
-  "version": "0.14.4",
+  "version": "0.14.5",
   "description": "Use remote XCode, iOS Simulator, Android Emulator and more to build and test apps from Linux, Windows or macOS.",
   "bin": {
     "lim": "./bin/run.js"

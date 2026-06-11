@@ -16,7 +16,7 @@ import {
   type LastXcodeInstance,
 } from './lib/config';
 import { login } from './lib/auth';
-import { describeScope, setScopeOverride } from './lib/scope';
+import { getScopeKey, isGlobalScopeKey, setScopeOverride } from './lib/scope';
 import { renderTable } from './lib/formatting';
 import { stopDaemon } from './lib/daemon';
 import { detectInstanceType } from './lib/instance-client-factory';
@@ -48,10 +48,10 @@ export abstract class BaseCommand extends Command {
       default: true,
       allowNo: true,
     }),
-    scope: Flags.string({
+    workspace: Flags.string({
       description:
-        'Scope used to resolve the most recent instance when no ID is given. Inside a git worktree the scope is that worktree (so parallel agents stay isolated); elsewhere a shared default is used. Pass an explicit value (or set LIM_INSTANCE_SCOPE) to isolate agents that run in separate clones rather than worktrees.',
-      env: 'LIM_INSTANCE_SCOPE',
+        'Workspace used to resolve the most recent instance when no ID is given. Defaults to the current git repo/worktree (or a `lim set-workspace-dir` assignment), so parallel agents in separate worktrees stay isolated automatically. Can also be set via LIM_WORKSPACE.',
+      env: 'LIM_WORKSPACE',
     }),
   };
 
@@ -92,9 +92,9 @@ export abstract class BaseCommand extends Command {
 
   protected setParsedFlags(flags: Record<string, unknown>): void {
     this._parsedFlags = flags;
-    const scope = flags['scope'];
-    if (typeof scope === 'string' && scope.trim()) {
-      setScopeOverride(scope.trim());
+    const workspace = flags['workspace'];
+    if (typeof workspace === 'string' && workspace.trim()) {
+      setScopeOverride(workspace.trim());
     }
   }
 
@@ -108,6 +108,12 @@ export abstract class BaseCommand extends Command {
 
   protected shouldSuppressInfo(): boolean {
     return this.isJsonEnabled() || this.isQuietEnabled();
+  }
+
+  /** ` in this workspace (<key>)`, or empty when resolved to the shared global slot. */
+  private scopeSuffix(): string {
+    const key = getScopeKey();
+    return isGlobalScopeKey(key) ? '' : ` in this workspace (${key})`;
   }
 
   protected info(message = ''): void {
@@ -279,7 +285,7 @@ export abstract class BaseCommand extends Command {
     }
 
     throw new Error(
-      `No instance ID provided and no recent android instance for ${describeScope()}.\n` +
+      `No instance ID provided and no recent android instance found${this.scopeSuffix()}.\n` +
         'Provide an instance ID or create one first with: lim android create',
     );
   }
@@ -300,7 +306,7 @@ export abstract class BaseCommand extends Command {
     }
 
     throw new Error(
-      `No instance ID provided and no recent ios instance for ${describeScope()}.\n` +
+      `No instance ID provided and no recent ios instance found${this.scopeSuffix()}.\n` +
         'Provide an instance ID or create one first with: lim ios create',
     );
   }
@@ -332,7 +338,7 @@ export abstract class BaseCommand extends Command {
     }
 
     throw new Error(
-      `No instance ID provided and no recent ios or android instance for ${describeScope()}.\n` +
+      `No instance ID provided and no recent ios or android instance found${this.scopeSuffix()}.\n` +
         'Provide an instance ID or create one first with: lim ios create or lim android create',
     );
   }
@@ -358,7 +364,7 @@ export abstract class BaseCommand extends Command {
 
     const noun = parts[0] ?? 'xcode';
     throw new Error(
-      `No instance ID provided and no recent ${noun} instance for ${describeScope()}.\n` +
+      `No instance ID provided and no recent ${noun} instance found${this.scopeSuffix()}.\n` +
         `Provide an instance ID or create one first with: lim ${noun} create`,
     );
   }
