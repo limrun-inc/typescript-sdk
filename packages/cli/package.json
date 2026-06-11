@@ -17,6 +17,7 @@
   },
   "license": "Apache-2.0",
   "scripts": {
+    "prebuild": "yarn --cwd ../.. build",
     "build": "rm -rf dist && tsc",
     "dev": "node bin/dev.js",
     "prepublishOnly": "npm run build",
