@@ -523,8 +523,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       request.reject(new Error(reason));
     });
     pendingRequests.clear();
-    // Also drain the offline queue
-    offlineQueue.splice(0);
+    offlineQueue.length = 0;
     pendingAssetRequestsByUrl.forEach((requests) => {
       requests.forEach((request) => {
         clearTimeout(request.timeout);
@@ -534,19 +533,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     pendingAssetRequestsByUrl.clear();
   };
 
-  /** Pause all pending request timeouts (called on temporary disconnect). */
-  const pausePendingTimeouts = (): void => {
-    pendingRequests.forEach((request) => {
-      clearTimeout(request.timeout);
-    });
-  };
-
   /** Flush the offline queue over the live socket and restart timeouts. */
   const flushOfflineQueue = (): void => {
     const queued = offlineQueue.splice(0);
     for (const item of queued) {
       const request = pendingRequests.get(item.id);
       if (!request) continue; // already timed-out or cancelled
+
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        // Connection dropped again before we could flush — re-queue
+        offlineQueue.push(item);
+        continue;
+      }
 
       // Restart the timeout clock for this request
       const freshTimeout = setTimeout(() => {
@@ -556,12 +554,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
       }, item.timeoutMs);
       request.timeout = freshTimeout;
-
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        // Connection dropped again before we could flush — re-queue
-        offlineQueue.push(item);
-        continue;
-      }
 
       logger.debug(`Replaying queued request: ${item.type} (${item.id})`);
       ws.send(item.payload, (err?: Error) => {
@@ -698,6 +690,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         const payload = JSON.stringify(command);
 
         if (!isOpen) {
+          clearTimeout(timeout);
           // Queue for replay once connection is re-established
           logger.debug(`Queueing request (offline): ${type} (${id})`);
           offlineQueue.push({ payload, id, type, timeoutMs });
@@ -732,6 +725,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           lastError ? `Last error: ${lastError}` : '',
         );
         updateConnectionState('disconnected');
+        failPendingRequests('Max reconnection attempts reached');
         return;
       }
 
@@ -876,8 +870,24 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         logger.debug('Disconnected from server.');
 
         if (shouldReconnect) {
-          // Pause timeouts instead of failing — requests stay alive for replay
-          pausePendingTimeouts();
+          // Reject any requests that were already in-flight before the drop
+          const queuedIds = new Set(offlineQueue.map((q) => q.id));
+          pendingRequests.forEach((request, id) => {
+            if (!queuedIds.has(id)) {
+              clearTimeout(request.timeout);
+              request.reject(new Error('Connection closed during request'));
+              pendingRequests.delete(id);
+            }
+          });
+          // Also reject all in-flight asset requests (we don't queue them offline)
+          pendingAssetRequestsByUrl.forEach((requests) => {
+            requests.forEach((request) => {
+              clearTimeout(request.timeout);
+              request.reject(new Error('Connection closed during request'));
+            });
+          });
+          pendingAssetRequestsByUrl.clear();
+
           scheduleReconnect();
         } else if (isNonRetryableError(lastError ?? '')) {
           logger.error(`Closing connection due to non-retryable error: ${lastError}`);
