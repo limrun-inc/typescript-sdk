@@ -1444,17 +1444,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
         const id = generateId();
 
+        let timeout: ReturnType<typeof setTimeout> | undefined;
         let abortListener: (() => void) | undefined;
-        if (signal) {
-          abortListener = () => {
-            clearTimeout(timeout);
-            pendingRequests.delete(id);
-            const err = new Error('The operation was aborted');
-            err.name = 'AbortError';
-            reject(err);
-          };
-          signal.addEventListener('abort', abortListener);
-        }
 
         const cleanupAndResolve = (val: T | PromiseLike<T>) => {
           if (signal && abortListener) signal.removeEventListener('abort', abortListener);
@@ -1466,7 +1457,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           reject(reason);
         };
 
-        const timeout = setTimeout(() => {
+        if (signal) {
+          abortListener = () => {
+            if (timeout) clearTimeout(timeout);
+            pendingRequests.delete(id);
+            const err = new Error('The operation was aborted');
+            err.name = 'AbortError';
+            cleanupAndReject(err);
+          };
+          signal.addEventListener('abort', abortListener, { once: true });
+        }
+
+        timeout = setTimeout(() => {
           pendingRequests.delete(id);
           cleanupAndReject(new Error(`Request ${type} timed out`));
         }, timeoutMs);
