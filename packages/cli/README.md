@@ -842,18 +842,21 @@ lim asset pull asset_abc123 -o ./build-output
 
 ```bash
 cd packages/cli
-npm install
-npm run build
+yarn install
+yarn build
 ```
+
+This repo uses yarn (`packageManager: yarn@1.22.22`). Use `yarn`, not `npm`: a stray `npm install`
+writes a competing `package-lock.json` and rewrites `node_modules` to match it.
 
 ### Run commands during development
 
 ```bash
 # After making changes, rebuild and run
-npm run build && node bin/run.js <command>
+yarn build && node bin/run.js <command>
 
 # Or use watch mode in one terminal, run in another
-npx tsc --watch           # Terminal 1
+yarn tsc --watch           # Terminal 1
 node bin/run.js ios list   # Terminal 2
 ```
 
