@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.32.0 (2026-06-17)
+
+Full Changelog: [v0.31.4...v0.32.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.31.4...v0.32.0)
+
+### Features
+
+* **api:** add version to android playwright ([398f27a](https://github.com/limrun-inc/typescript-sdk/commit/398f27a38226067775adc030231173932a921c41))
+
+
+### Chores
+
+* bump cli version and deps with vulns ([c9562cb](https://github.com/limrun-inc/typescript-sdk/commit/c9562cb6e318b433acda39aa3f34324179a8fc43))
+* helper script for local cli changes ([37670de](https://github.com/limrun-inc/typescript-sdk/commit/37670deaa2e78c4a12d78a7fcab70dedd451638b))
+
 ## 0.31.4 (2026-06-17)
 
 Full Changelog: [v0.31.3...v0.31.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.31.3...v0.31.4)
