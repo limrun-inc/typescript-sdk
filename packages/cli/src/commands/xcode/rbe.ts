@@ -81,7 +81,12 @@ export default class XcodeRbe extends BaseCommand {
     }),
     'bep-file': Flags.string({
       description:
-        "Where the generated config writes Bazel's build event log, and where the auto-install watcher reads it. Defaults to .limrun/bep.json. Set this if you already direct --build_event_json_file elsewhere.",
+        "Where the generated .limrun config points Bazel's --build_event_json_file, and where the " +
+        'auto-install watcher reads the built .ipa digest from after each build. Defaults to ' +
+        '.limrun/bep.json. Set this only if your build already directs --build_event_json_file to a ' +
+        'specific path (so the config matches it instead of clobbering it), or to keep the log out of ' +
+        '.limrun/. `lim xcode rbe install` picks up the same path automatically, so you do not need to ' +
+        'repeat it there.',
     }),
     serve: Flags.boolean({
       hidden: true,
