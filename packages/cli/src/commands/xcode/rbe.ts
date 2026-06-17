@@ -213,9 +213,13 @@ export default class XcodeRbe extends BaseCommand {
 
         // resolveXcodeClient validates an iOS-backed target via iosInstances.get,
         // but a cached standalone Xcode target is trusted without a round-trip.
-        // Validate it so a deleted instance throws NotFoundError here (→ withAuth
-        // clears the cache and recreates) rather than a misleading /rbe 404.
-        if (typeof target !== 'string' && target.type === 'xcode') {
+        // Validate it so a stale "last instance" pointer or a deleted instance throws
+        // NotFoundError here (→ withAuth clears the cache and recreates) rather than a
+        // misleading /rbe 404. Skip an instance we created this run: create({wait:true})
+        // already proved it exists, and get() reads the central read-model that the region
+        // populates asynchronously, so validating it here would race that lag and tear down
+        // a live session for nothing.
+        if (typeof target !== 'string' && target.type === 'xcode' && !this.wasCreatedThisRun(instanceId)) {
           await this.client.xcodeInstances.get(instanceId);
         }
 
