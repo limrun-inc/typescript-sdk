@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.31.4 (2026-06-17)
+
+Full Changelog: [v0.31.3...v0.31.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.31.3...v0.31.4)
+
+### Bug Fixes
+
+* **client:** send content-type header for requests with an omitted optional body ([55ae1cf](https://github.com/limrun-inc/typescript-sdk/commit/55ae1cf65d75e76408bd3ac71d4a13777cd1e0e4))
+
+
+### Chores
+
+* bump cli version ([8835307](https://github.com/limrun-inc/typescript-sdk/commit/88353073492be97f536304fc32f7895524d5abb9))
+
 ## 0.31.3 (2026-06-11)
 
 Full Changelog: [v0.31.2...v0.31.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.31.2...v0.31.3)
