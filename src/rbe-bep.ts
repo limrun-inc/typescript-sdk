@@ -234,7 +234,9 @@ function resolveIpaDigest(
         // it here with the fix rather than letting it fail later as a cryptic
         // server cache miss.
         const isSha256 =
-          digest.digestFunction === undefined ? SHA256_HEX.test(digest.hash) : digest.digestFunction === 'sha256';
+          digest.digestFunction === undefined ?
+            SHA256_HEX.test(digest.hash)
+          : digest.digestFunction === 'sha256';
         if (!isSha256) {
           const got = digest.digestFunction ?? `${digest.hash.length} hex chars`;
           throw new RbeBepError(

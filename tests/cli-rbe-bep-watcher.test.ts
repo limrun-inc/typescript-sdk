@@ -140,6 +140,75 @@ describe('startBepWatcher', () => {
     }
   });
 
+  test('retries a transient install failure and eventually installs the same build', async () => {
+    const { root, bepPath } = setupWorkspace();
+    let attempt = 0;
+    const calls: string[] = [];
+    const client = {
+      installRbeBuildFromBep: async (opts: { bep: string; target: string }) => {
+        attempt++;
+        if (attempt < 3) throw new Error('POST /rbe/install failed: 503 instance warming up');
+        const m = opts.bep.match(/\/blobs\/([0-9a-f]+)\//);
+        calls.push(m?.[1] ?? '');
+        return { installed: true, ipaName: 'App/App.ipa' };
+      },
+    } as unknown as XcodeClient;
+    const watcher = startBepWatcher({
+      bepPath,
+      target: '//App:App',
+      getClient: () => client,
+      log: () => {},
+      debounceMs: 20,
+      pollIntervalMs: 5000, // keep the poll out of the way; retries drive this
+      retryDelayMs: 30,
+      maxRetries: 5,
+    });
+    try {
+      fs.writeFileSync(bepPath, completedBep({ invocation: 'inv-1', hash: HASH_A }));
+      // No new build is written; the same build must be retried until it installs.
+      await waitFor(() => calls.length === 1);
+      expect(calls[0]).toBe(HASH_A);
+      expect(attempt).toBeGreaterThanOrEqual(3);
+    } finally {
+      await watcher.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('gives up after maxRetries transient failures (bounded, no infinite retry)', async () => {
+    const { root, bepPath } = setupWorkspace();
+    let attempt = 0;
+    const calls: string[] = [];
+    const logs: string[] = [];
+    const client = {
+      installRbeBuildFromBep: async () => {
+        attempt++;
+        throw new Error('POST /rbe/install failed: 503 still down');
+      },
+    } as unknown as XcodeClient;
+    const watcher = startBepWatcher({
+      bepPath,
+      target: '//App:App',
+      getClient: () => client,
+      log: (m) => logs.push(m),
+      debounceMs: 20,
+      pollIntervalMs: 5000,
+      retryDelayMs: 20,
+      maxRetries: 2,
+    });
+    try {
+      fs.writeFileSync(bepPath, completedBep({ invocation: 'inv-1', hash: HASH_A }));
+      await waitFor(() => logs.some((l) => /gave up/.test(l)));
+      const settled = attempt; // initial + maxRetries
+      await new Promise((r) => setTimeout(r, 120));
+      expect(attempt).toBe(settled); // bounded — no further retries after giving up
+      expect(calls.length).toBe(0);
+    } finally {
+      await watcher.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('gates on lastMessage: a parseable-but-not-flushed BEP does not install until terminal', async () => {
     const { root, bepPath } = setupWorkspace();
     const calls: string[] = [];
@@ -181,7 +250,13 @@ describe('startBepWatcher', () => {
         return { installed: true, ipaName: 'App/App.ipa' };
       },
     } as unknown as XcodeClient;
-    const watcher = startBepWatcher({ bepPath, target: '//App:App', getClient: () => client, log: () => {}, ...fast });
+    const watcher = startBepWatcher({
+      bepPath,
+      target: '//App:App',
+      getClient: () => client,
+      log: () => {},
+      ...fast,
+    });
     try {
       fs.writeFileSync(bepPath, completedBep({ invocation: 'inv-1', hash: HASH_A }));
       await new Promise((r) => setTimeout(r, 200)); // first attempt throws the 502-with-401
@@ -210,7 +285,13 @@ describe('startBepWatcher', () => {
         return { installed: true, ipaName: 'App/App.ipa' };
       },
     } as unknown as XcodeClient;
-    const watcher = startBepWatcher({ bepPath, target: '//App:App', getClient: () => client, log: () => {}, ...fast });
+    const watcher = startBepWatcher({
+      bepPath,
+      target: '//App:App',
+      getClient: () => client,
+      log: () => {},
+      ...fast,
+    });
     try {
       fs.writeFileSync(bepPath, completedBep({ invocation: 'inv-1', hash: HASH_A }));
       await waitFor(() => calls.length === 1); // install A is now in-flight, blocked on the gate
