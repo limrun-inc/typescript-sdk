@@ -32,12 +32,9 @@ export default class XcodeRbeInstall extends BaseCommand {
     }),
     'bep-file': Flags.string({
       description:
-        "Path to the Bazel build event log (--build_event_json_file) to read the built .ipa's CAS digest " +
-        'from; that digest is what tells the instance which cached artifact to install. ' +
-        'By default the path is taken from the running `lim xcode rbe` (it records the log location it ' +
-        'configured, including any --bep-file it was started with), falling back to .limrun/bep.json. ' +
-        'You only need to set this when there is no matching `lim xcode rbe` to read it from (e.g. a CI or ' +
-        'one-off run) AND your build wrote the event log somewhere other than .limrun/bep.json.',
+        "Bazel build event log to read the built .ipa's CAS digest from. Defaults to the path " +
+        '`lim xcode rbe` recorded, then .limrun/bep.json; set it only for a standalone run (no running ' +
+        '`lim xcode rbe`) whose build wrote the log to a non-default path.',
     }),
   };
 
