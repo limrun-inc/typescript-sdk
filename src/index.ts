@@ -10,12 +10,7 @@ export * from './instance-client';
 export * as Ios from './ios-client';
 export { startHttpProxy, type HttpProxy, type StartHttpProxyOptions } from './http-proxy';
 export { buildSettingKeyPattern, parseBuildSettingEntries, validateBuildSettings } from './build-settings';
-export {
-  parseTopLevelIpaDigest,
-  inspectBuildCompletion,
-  RbeBepError,
-  type BepIpaDigest,
-} from './rbe-bep';
+export { parseTopLevelIpaDigest, inspectBuildCompletion, RbeBepError, type BepIpaDigest } from './rbe-bep';
 export {
   exec,
   type ExecRequest,

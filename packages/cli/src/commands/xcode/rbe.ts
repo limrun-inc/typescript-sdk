@@ -90,7 +90,8 @@ export default class XcodeRbe extends BaseCommand {
     }),
     'workspace-root': Flags.string({
       hidden: true,
-      description: 'Internal: workspace root passed to the detached serve process for the auto-install watcher.',
+      description:
+        'Internal: workspace root passed to the detached serve process for the auto-install watcher.',
     }),
   };
 
@@ -585,9 +586,11 @@ export default class XcodeRbe extends BaseCommand {
       instanceId: opts.instanceId,
       port: opts.port,
       ...(opts.simInstanceId ? { simInstanceId: opts.simInstanceId } : {}),
-      // Record target+bepFile (when auto-installing) so `lim xcode rbe install`
-      // can recover a custom --bep-file path.
-      ...(opts.autoInstall && opts.target ? { target: opts.target, bepFile: opts.bepPath } : {}),
+      // Always record where the build event log is written (it follows --bep-file
+      // regardless of auto-install), so `lim xcode rbe install` finds it even with
+      // --no-auto-install. `target` is the watcher's, recorded only when watching.
+      bepFile: opts.bepPath,
+      ...(opts.autoInstall && opts.target ? { target: opts.target } : {}),
     });
 
     this.printReady({
@@ -620,7 +623,11 @@ export default class XcodeRbe extends BaseCommand {
    * the child if it exits within a short liveness window, so a slow tunnel-open
    * failure would otherwise leave the remote stack running with no owner.
    */
-  private async runTunnel(client: XcodeClient, port: number, beforeStop?: () => Promise<void>): Promise<void> {
+  private async runTunnel(
+    client: XcodeClient,
+    port: number,
+    beforeStop?: () => Promise<void>,
+  ): Promise<void> {
     let tunnel: Tunnel;
     try {
       tunnel = await this.openTunnel(client, port);

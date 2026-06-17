@@ -33,6 +33,10 @@ export type BepWatcherOptions = {
   debounceMs?: number;
   /** mtime-poll backstop interval (covers FSEvents coalescing/drops on macOS). */
   pollIntervalMs?: number;
+  /** Delay before retrying a build after a transient install failure. */
+  retryDelayMs?: number;
+  /** Max transient-failure retries for one build before giving up (rebuild to retry). */
+  maxRetries?: number;
 };
 
 export type BepWatcher = {
@@ -41,7 +45,16 @@ export type BepWatcher = {
 };
 
 export function startBepWatcher(opts: BepWatcherOptions): BepWatcher {
-  const { bepPath, target, getClient, log, debounceMs = 400, pollIntervalMs = 1500 } = opts;
+  const {
+    bepPath,
+    target,
+    getClient,
+    log,
+    debounceMs = 400,
+    pollIntervalMs = 1500,
+    retryDelayMs = 5000,
+    maxRetries = 3,
+  } = opts;
 
   const watchDir = path.dirname(bepPath);
   const bepName = path.basename(bepPath);
@@ -60,6 +73,11 @@ export function startBepWatcher(opts: BepWatcherOptions): BepWatcher {
   let closed = false;
   let dirty = false;
   let currentTick: Promise<void> | null = null;
+  // Bounded retry for transient install failures (the mtime/size poll only fires
+  // on a file change, so a settled build wouldn't otherwise be retried).
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryInvocation: string | undefined;
+  let retryCount = 0;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   // Seed from the current file (if any) so the first poll doesn't spuriously fire,
   // and so we notice a rewrite by size even when mtime granularity is coarse.
@@ -161,6 +179,35 @@ export function startBepWatcher(opts: BepWatcherOptions): BepWatcher {
     if (hash !== undefined) lastHandledHash = hash;
   }
 
+  /**
+   * Schedules a re-attempt after a transient install failure (the build is not
+   * marked handled, so the re-triggered tick re-reads and retries the same
+   * build). Bounded per build: after maxRetries we give up and mark it handled so
+   * a permanent failure can't loop forever — the user rebuilds to retry.
+   */
+  function scheduleRetry(invocationId: string | undefined, digest: BepIpaDigest): void {
+    if (closed) return;
+    if (invocationId !== retryInvocation) {
+      retryInvocation = invocationId;
+      retryCount = 0;
+    }
+    if (retryCount >= maxRetries) {
+      logOnce(
+        `giveup:${invocationId ?? digest.hash}`,
+        `auto-install: gave up installing ${digest.ipaName} after ${maxRetries} retries; rebuild to retry.`,
+      );
+      markHandled(invocationId, digest.hash);
+      return;
+    }
+    retryCount++;
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      trigger();
+    }, retryDelayMs);
+    if (typeof retryTimer.unref === 'function') retryTimer.unref();
+  }
+
   async function register(bep: string, digest: BepIpaDigest, invocationId?: string): Promise<void> {
     let result;
     try {
@@ -171,9 +218,11 @@ export function startBepWatcher(opts: BepWatcherOptions): BepWatcher {
         logOnce('auth', 'auto-install: session expired; restart `lim xcode rbe` to resume auto-install.');
         return;
       }
-      // Transient (network/instance blip): do NOT mark handled, so the next BEP
-      // change or poll retries this build.
+      // Transient (network/instance blip). The mtime/size poll won't re-fire for
+      // a settled build, so schedule a bounded retry rather than dropping it until
+      // the next build.
       log(`auto-install: failed to install ${digest.ipaName}: ${errMsg(err)}`);
+      scheduleRetry(invocationId, digest);
       return;
     }
 
@@ -230,6 +279,7 @@ export function startBepWatcher(opts: BepWatcherOptions): BepWatcher {
     async close(): Promise<void> {
       closed = true;
       if (debounceTimer) clearTimeout(debounceTimer);
+      if (retryTimer) clearTimeout(retryTimer);
       clearInterval(poll);
       watcher?.close();
       if (currentTick) {
