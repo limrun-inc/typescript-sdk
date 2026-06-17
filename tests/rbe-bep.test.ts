@@ -1,4 +1,4 @@
-import { parseTopLevelIpaDigest } from '@limrun/api';
+import { parseTopLevelIpaDigest, inspectBuildCompletion, RbeBepError } from '@limrun/api';
 
 // A minimal BEP stream mirroring the validated shape:
 // targetCompleted{label} -> outputGroup "default" -> fileSet id -> namedSet ->
@@ -99,5 +99,108 @@ describe('parseTopLevelIpaDigest', () => {
       .join('\n');
     const d = parseTopLevelIpaDigest(nested, '//App:App');
     expect(d.sizeBytes).toBe(40960);
+  });
+
+  test('classifies BLAKE3 and local-only as terminal, missing target as transient', () => {
+    const blake3 = bep('bytestream://127.0.0.1:8980/blobs/abcabcabcabcabcabcabcabcabcabcab/40960');
+    try {
+      parseTopLevelIpaDigest(blake3, '//App:App');
+      throw new Error('expected throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(RbeBepError);
+      expect((err as RbeBepError).kind).toBe('non-sha256');
+      expect((err as RbeBepError).terminal).toBe(true);
+    }
+    try {
+      parseTopLevelIpaDigest(bep('file:///tmp/App.ipa'), '//App:App');
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as RbeBepError).kind).toBe('local-only');
+      expect((err as RbeBepError).terminal).toBe(true);
+    }
+    try {
+      parseTopLevelIpaDigest(bep(REMOTE_URI, '//App:App'), '//Other');
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as RbeBepError).kind).toBe('no-build');
+      expect((err as RbeBepError).terminal).toBe(false);
+    }
+  });
+});
+
+describe('inspectBuildCompletion', () => {
+  // The terminal BEP order is buildFinished -> buildToolLogs -> buildMetrics(lastMessage),
+  // so completion gates on lastMessage, not on buildFinished being the last line.
+  const stream = (events: object[]) => events.map((e) => JSON.stringify(e)).join('\n');
+
+  test('is incomplete until the lastMessage event is flushed', () => {
+    const midBuild = stream([
+      { started: { uuid: 'inv-1' } },
+      { id: { targetCompleted: { label: '//App:App' } }, completed: { success: true } },
+      { id: { buildFinished: {} }, finished: { overallSuccess: true } },
+    ]);
+    const r = inspectBuildCompletion(midBuild);
+    expect(r.complete).toBe(false);
+    expect(r.invocationId).toBe('inv-1');
+  });
+
+  test('reports complete + success once lastMessage arrives after buildFinished', () => {
+    const done = stream([
+      { started: { uuid: 'inv-2' } },
+      { id: { buildFinished: {} }, finished: { overallSuccess: true } },
+      { id: { buildToolLogs: {} } },
+      { id: { buildMetrics: {} }, lastMessage: true },
+    ]);
+    const r = inspectBuildCompletion(done);
+    expect(r.complete).toBe(true);
+    expect(r.success).toBe(true);
+    expect(r.invocationId).toBe('inv-2');
+  });
+
+  test('reports a failed build as not successful', () => {
+    const failed = stream([
+      { started: { uuid: 'inv-3' } },
+      { id: { buildFinished: {} }, finished: { overallSuccess: false, exitCode: { code: 1 } } },
+      { id: { buildMetrics: {} }, lastMessage: true },
+    ]);
+    const r = inspectBuildCompletion(failed);
+    expect(r.complete).toBe(true);
+    expect(r.success).toBe(false);
+  });
+
+  test('reports success via the exit code name when overallSuccess is absent (proto3 omits it)', () => {
+    const done = [
+      { started: { uuid: 'inv-x' } },
+      { id: { buildFinished: {} }, finished: { exitCode: { name: 'SUCCESS' } } },
+      { id: { buildMetrics: {} }, lastMessage: true },
+    ]
+      .map((e) => JSON.stringify(e))
+      .join('\n');
+    const r = inspectBuildCompletion(done);
+    expect(r.complete).toBe(true);
+    expect(r.success).toBe(true);
+  });
+});
+
+describe('parseTopLevelIpaDigest BLAKE3 handling', () => {
+  test('rejects a BLAKE3 build (function segment in the bytestream URI) with the sha256 fix', () => {
+    // Bazel 9 default: /blobs/blake3/<64hex>/<size>. The 64-hex hash is
+    // indistinguishable from sha256 by length, so the function segment is what
+    // catches it.
+    const blake3Hash = 'b'.repeat(64);
+    const blake3 = bep(`bytestream://127.0.0.1:8980/blobs/blake3/${blake3Hash}/40960`);
+    try {
+      parseTopLevelIpaDigest(blake3, '//App:App');
+      throw new Error('expected throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(RbeBepError);
+      expect((err as RbeBepError).kind).toBe('non-sha256');
+      expect((err as Error).message).toMatch(/--digest_function=sha256/);
+    }
+  });
+
+  test('still resolves the plain sha256 URI shape (no function segment)', () => {
+    const d = parseTopLevelIpaDigest(bep(REMOTE_URI), '//App:App');
+    expect(d.hash).toBe('deadbeefcafe0000111122223333444455556666777788889999aaaabbbbcccc');
   });
 });

@@ -14,6 +14,25 @@ export const LIMRUN_DIR = '.limrun';
 export const TRY_IMPORT_LINE = 'try-import %workspace%/.limrun/bazelrc';
 const TRY_IMPORT_COMMENT = '# Added by lim xcode rbe: loads the generated remote-execution config.';
 
+/**
+ * Where Bazel writes its build-event log by default — under the self-gitignored
+ * `.limrun/`, the directory this module owns and writes the generated config
+ * into. Single source of truth for the default path the watcher reads and the
+ * generated bazelrc points `--build_event_json_file` at.
+ */
+export function defaultBepPath(workspaceRoot: string): string {
+  return path.join(workspaceRoot, LIMRUN_DIR, 'bep.json');
+}
+
+/**
+ * Resolves the BEP path for a run: an explicit `--bep-file` (made absolute
+ * against the invocation cwd, so it resolves regardless of bazel's cwd) or the
+ * default under `.limrun/`.
+ */
+export function resolveBepPath(workspaceRoot: string, bepFileFlag?: string): string {
+  return bepFileFlag ? path.resolve(bepFileFlag) : defaultBepPath(workspaceRoot);
+}
+
 const WORKSPACE_MARKERS = ['MODULE.bazel', 'WORKSPACE', 'WORKSPACE.bazel'];
 
 /**
@@ -359,6 +378,7 @@ export function writeRbeWorkspaceFiles(
   workspaceDir: string,
   xcodeVersionKey: string,
   port: number,
+  bepFile: string = defaultBepPath(workspaceDir),
   isMacClient: boolean = process.platform === 'darwin',
   bazelMajor: number | null = detectBazelMajorVersion(workspaceDir),
 ): RbeWorkspaceFiles {
@@ -370,10 +390,11 @@ export function writeRbeWorkspaceFiles(
   // longer native globals. On a known Bazel 8 workspace they ARE native (and
   // loading would fail), so omit the loads.
   const emitLoads = isBazel9OrLater(bazelMajor);
-  // Absolute BEP path so it resolves regardless of bazel's cwd; lim xcode rbe
-  // install reads the same path. .limrun/ is gitignored and regenerated per run,
-  // so a machine-specific absolute path here is fine.
-  const bepFile = path.join(dir, 'bep.json');
+  // The BEP path is absolute so it resolves regardless of bazel's cwd; the
+  // watcher and `lim xcode rbe install` read the same path. Defaults under the
+  // self-gitignored .limrun/; a custom --bep-file may point elsewhere, so make
+  // sure its parent exists before bazel tries to write it.
+  fs.mkdirSync(path.dirname(bepFile), { recursive: true });
   fs.writeFileSync(buildFile, renderXcodeConfigBuild(xcodeVersionKey, emitLoads));
   fs.writeFileSync(bazelrcFragment, renderLimrunBazelrc(port, xcodeVersionKey, isMacClient, bepFile));
   fs.writeFileSync(path.join(dir, '.gitignore'), '*\n');

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
-import { findBazelWorkspaceRoot, inferBuildTarget, LIMRUN_DIR } from '../../../lib/rbe-workspace';
+import { findBazelWorkspaceRoot, inferBuildTarget, defaultBepPath } from '../../../lib/rbe-workspace';
 import { readRbePidFile } from '../../../lib/rbe-session';
 
 export default class XcodeRbeInstall extends BaseCommand {
@@ -29,6 +29,10 @@ export default class XcodeRbeInstall extends BaseCommand {
     id: Flags.string({
       description:
         'Xcode instance ID to target. Defaults to the most recent standalone Xcode target (the one `lim xcode rbe` used).',
+    }),
+    'bep-file': Flags.string({
+      description:
+        "Path to Bazel's build event log to read the .ipa digest from. Defaults to the path `lim xcode rbe` recorded, or .limrun/bep.json.",
     }),
   };
 
@@ -57,9 +61,15 @@ export default class XcodeRbeInstall extends BaseCommand {
       );
     }
 
-    // The generated bazelrc writes the build event log here on every
-    // --config=limrun build; read the just-built target's .ipa digest from it.
-    const bepPath = path.join(workspaceRoot, LIMRUN_DIR, 'bep.json');
+    // The generated bazelrc writes the build event log on every --config=limrun
+    // build; read the just-built target's .ipa digest from it. Prefer an explicit
+    // --bep-file, then the path `lim xcode rbe` recorded in the pidfile (in case a
+    // custom --bep-file was used), then the default under .limrun/.
+    const pidInfo = readRbePidFile(workspaceRoot);
+    const bepPath =
+      (flags['bep-file'] ? path.resolve(flags['bep-file']) : undefined) ??
+      pidInfo?.bepFile ??
+      defaultBepPath(workspaceRoot);
     let bepJson: string;
     try {
       bepJson = fs.readFileSync(bepPath, 'utf8');
@@ -74,7 +84,7 @@ export default class XcodeRbeInstall extends BaseCommand {
     // (recorded in .limrun/rbe.pid by `lim xcode rbe`), since that's the one
     // whose CAS holds the build. An explicit --id wins; otherwise fall back to
     // the pidfile, then to the most recent Xcode target.
-    const instanceId = flags.id ?? readRbePidFile(workspaceRoot)?.instanceId;
+    const instanceId = flags.id ?? pidInfo?.instanceId;
 
     await this.withAuth(async () => {
       // Target an existing instance (do not create): install needs the instance

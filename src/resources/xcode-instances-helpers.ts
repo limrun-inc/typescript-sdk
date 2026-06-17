@@ -220,9 +220,9 @@ export type XcodeClient = {
 
   /**
    * Attach a simulator to this xcode instance.
-   * After attaching, the latest xcodebuild build (if any) is installed on the
-   * simulator. RBE builds are not auto-installed on attach — install them
-   * explicitly with `installRbeBuildFromBep` while a simulator is attached.
+   * After attaching, the latest installable build is installed on the simulator:
+   * the latest xcodebuild build or the latest RBE build (whichever is newer),
+   * unless that build's exact digest is already on the simulator.
    */
   attachSimulator: (
     simulator: IosInstance | { apiUrl: string; token: string },
