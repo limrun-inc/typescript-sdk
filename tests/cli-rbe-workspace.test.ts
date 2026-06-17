@@ -287,6 +287,16 @@ describe('rbe workspace generation', () => {
       expect(rc).not.toContain('%workspace%');
     });
 
+    test('writeRbeWorkspaceFiles honors a custom bep path and creates its parent dir', () => {
+      const customBep = path.join(dir, 'out', 'events', 'bep.json');
+      const result = writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980, customBep);
+      const rc = fs.readFileSync(result.bazelrcFragment, 'utf8');
+      expect(rc).toContain(`--build_event_json_file=${customBep}`);
+      expect(rc).not.toContain(path.join(dir, '.limrun', 'bep.json'));
+      // The parent of a custom path is created so bazel can write there.
+      expect(fs.existsSync(path.dirname(customBep))).toBe(true);
+    });
+
     test('writeRbeWorkspaceFiles emits apple_support loads only on Bazel 9+ (per .bazelversion)', () => {
       fs.writeFileSync(path.join(dir, '.bazelversion'), '9.1.1\n');
       const r9 = writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980);

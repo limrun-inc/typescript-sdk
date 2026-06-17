@@ -86,12 +86,21 @@ export async function waitForRbeRunning(
  * Builds the argv for the detached child that holds the tunnel: re-invokes this
  * same CLI as `xcode rbe --serve --id <id> --port <port> [--api-key <key>]`.
  * `scriptPath` is the CLI entry (process.argv[1]).
+ *
+ * When `workspaceRoot` and `target` are both present the child also starts the
+ * BEP auto-install watcher (watching `<workspaceRoot>/.limrun/bep.json` and
+ * registering the built `target`'s `.ipa` after each build). argv is the source
+ * of truth here because the child needs these at startup, before any pidfile is
+ * written.
  */
 export function buildServeChildArgs(opts: {
   scriptPath: string;
   id: string;
   port: number;
   apiKey?: string;
+  workspaceRoot?: string;
+  target?: string;
+  bepFile?: string;
 }): string[] {
   // --no-create: the child must never own instance creation. The parent already
   // resolved/created the instance and started RBE on it; if that instance has
@@ -108,6 +117,15 @@ export function buildServeChildArgs(opts: {
     '--port',
     String(opts.port),
   ];
+  if (opts.workspaceRoot) {
+    args.push('--workspace-root', opts.workspaceRoot);
+  }
+  if (opts.target) {
+    args.push('--target', opts.target);
+  }
+  if (opts.bepFile) {
+    args.push('--bep-file', opts.bepFile);
+  }
   if (opts.apiKey) {
     args.push('--api-key', opts.apiKey);
   }
@@ -126,6 +144,10 @@ export type RbePidInfo = {
   port: number;
   /** iOS simulator created by `--ios`, torn down on --stop. Absent otherwise. */
   simInstanceId?: string;
+  /** Build target the auto-install watcher tracks, when enabled. */
+  target?: string;
+  /** Absolute path to the build-event log the watcher reads (`--bep-file`); absent means the default. */
+  bepFile?: string;
 };
 
 export function rbePidFilePath(workspaceRoot: string): string {
