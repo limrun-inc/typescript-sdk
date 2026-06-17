@@ -227,6 +227,8 @@ export namespace AndroidInstanceCreateParams {
     export namespace Sandbox {
       export interface PlaywrightAndroid {
         enabled?: boolean;
+
+        version?: '1.56.1-lim.1' | '1.60.0-lim.1';
       }
     }
   }
