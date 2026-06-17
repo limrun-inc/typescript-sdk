@@ -869,3 +869,34 @@ lim android list
 # Unlink when done
 npm unlink -g lim
 ```
+
+### End-to-end testing with local SDK changes (`limx`)
+
+Most CLI changes also touch the SDK (`@limrun/api`). `npm link` only links the CLI, so it
+keeps running the published SDK from the registry. The `limx-from` helper builds both the SDK
+and the CLI from a checkout, links the locally built SDK into the CLI, and installs a separate
+`limx` binary that runs that build, so it never clashes with a real `lim` on your PATH.
+
+```bash
+# From the repo root (first run also installs the global `limx-from`)
+./hack/limx-from
+
+# limx now runs the local SDK + CLI build
+limx ios list
+limx --where          # prints which checkout limx points at
+
+# Point limx at another worktree (builds + relinks it)
+limx-from /path/to/other-worktree
+
+# Stop using limx
+limx-from --unlink
+```
+
+Iterating after the initial link:
+
+- SDK change: `yarn build` (the link tracks `dist/`, no relink needed)
+- CLI change: `yarn --cwd packages/cli build`
+
+Note: any `yarn install` inside `packages/cli` restores the published copy of `@limrun/api`.
+Re-run `limx-from` to re-link the local build. `limx --where` always tells you the current
+state. (`limx --version` and `--help` still self-identify as `lim`; that's expected.)
