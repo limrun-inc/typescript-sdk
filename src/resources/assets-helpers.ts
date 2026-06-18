@@ -16,6 +16,13 @@ export interface AssetGetOrUploadParams {
    * The name for the asset. Defaults to the name of the file given in the filePath parameter.
    */
   name?: string;
+
+  /**
+   * Optional time-to-live as a Go duration string (e.g. "24h"). When set, the asset is deleted
+   * this long after now; minimum is 1m. Omit for no expiry. On re-upload of an existing asset,
+   * a value updates the expiry while omitting it leaves the current expiry unchanged.
+   */
+  ttl?: string;
 }
 
 export interface AssetGetOrUploadResponse {
@@ -23,6 +30,7 @@ export interface AssetGetOrUploadResponse {
   name: string;
   signedDownloadUrl: string;
   md5: string;
+  expiresAt?: string;
 }
 
 export class Assets extends GeneratedAssets {
@@ -33,6 +41,7 @@ export class Assets extends GeneratedAssets {
     const creationResponse = await this.getOrCreate(
       {
         name: body.name ?? basename(body.path),
+        ...(body.ttl && { ttl: body.ttl }),
       },
       options,
     );
@@ -44,6 +53,7 @@ export class Assets extends GeneratedAssets {
         name: creationResponse.name,
         signedDownloadUrl: creationResponse.signedDownloadUrl,
         md5: creationResponse.md5,
+        ...(creationResponse.expiresAt && { expiresAt: creationResponse.expiresAt }),
       };
     }
     const uploadResponse = await nodeProxyTransport.fetch(creationResponse.signedUploadUrl, {
@@ -62,6 +72,7 @@ export class Assets extends GeneratedAssets {
       name: creationResponse.name,
       signedDownloadUrl: creationResponse.signedDownloadUrl,
       md5,
+      ...(creationResponse.expiresAt && { expiresAt: creationResponse.expiresAt }),
     };
   }
 }

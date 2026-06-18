@@ -64,6 +64,10 @@ export default class IosCreate extends BaseCommand {
         'Local app file to upload and install automatically after creation. Repeat for multiple files.',
       multiple: true,
     }),
+    'asset-ttl': Flags.string({
+      description:
+        'Asset time-to-live for files uploaded via --install, as a Go duration (e.g. "24h", min 1m). Does not affect --install-asset. Defaults to no expiry.',
+    }),
     xcode: Flags.boolean({
       description: 'Enable an attached Xcode sandbox for build and sync workflows',
       default: false,
@@ -99,7 +103,11 @@ export default class IosCreate extends BaseCommand {
           const resolved = path.resolve(filePath);
           const name = path.basename(resolved);
           this.info(`Uploading ${name}...`);
-          const asset = await this.client.assets.getOrUpload({ path: resolved, name });
+          const asset = await this.client.assets.getOrUpload({
+            path: resolved,
+            name,
+            ttl: flags['asset-ttl'],
+          });
           assetNames.push(asset.name);
         }
         this.info(`Successfully uploaded ${flags.install.length} file(s)`);
