@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.33.0 (2026-06-18)
+
+Full Changelog: [v0.32.0...v0.33.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.32.0...v0.33.0)
+
+### Features
+
+* **api:** update to latest main ([ebe0f33](https://github.com/limrun-inc/typescript-sdk/commit/ebe0f33acf0ff41dbf0f574d07fe6d05d0017d45))
+
 ## 0.32.0 (2026-06-17)
 
 Full Changelog: [v0.31.4...v0.32.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.31.4...v0.32.0)
