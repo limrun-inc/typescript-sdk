@@ -17,8 +17,8 @@
 #   - CLI change:  `yarn --cwd packages/cli build`
 #   - check state: `limx --where`
 #
-# Note: any `yarn install` inside packages/cli restores the registry copy of
-# @limrun/api. Re-run `limx-from` to re-link the local build.
+# Note: any `npm ci`/`npm install` inside packages/cli restores the registry copy
+# of @limrun/api. Re-run `limx-from` to re-link the local build.
 
 set -euo pipefail
 
@@ -85,11 +85,12 @@ cmd_link() {
   [ -f "$repo/packages/cli/package.json" ] || die "no packages/cli in $repo"
 
   # Ensure dependencies are installed (fresh worktrees have no node_modules).
+  # Root SDK is yarn-managed; the CLI is npm-managed (CI runs `npm ci` in packages/cli).
   [ -d "$repo/node_modules" ] || yarn --cwd "$repo" install
-  [ -d "$repo/packages/cli/node_modules" ] || yarn --cwd "$repo/packages/cli" install
+  [ -d "$repo/packages/cli/node_modules" ] || npm --prefix "$repo/packages/cli" ci
 
-  # Build SDK (via prebuild) then CLI.
-  yarn --cwd "$repo/packages/cli" build
+  # Build SDK (via the CLI's prebuild, which runs yarn at the root) then the CLI.
+  npm --prefix "$repo/packages/cli" run build
 
   # Link the locally built SDK into the CLI's node_modules.
   local link="$repo/packages/cli/node_modules/@limrun/api"
@@ -114,7 +115,7 @@ esac
 link="$LIMX_SOURCE/packages/cli/node_modules/@limrun/api"
 if [ ! -L "$link" ]; then
   echo "limx: local SDK link missing at $link" >&2
-  echo "limx: a 'yarn install' likely restored the published copy; run 'limx-from \"$LIMX_SOURCE\"' to relink" >&2
+  echo "limx: an 'npm ci'/install likely restored the published copy; run 'limx-from \"$LIMX_SOURCE\"' to relink" >&2
   exit 1
 fi
 exec node "$LIMX_SOURCE/packages/cli/bin/run.js" "$@"
@@ -129,7 +130,7 @@ EOF
   echo "  SDK: $repo/dist (linked into packages/cli/node_modules/@limrun/api)"
   echo "  CLI: built (bin/run.js)"
   echo "check anytime:  limx --where"
-  echo "note: re-run limx-from after any \`yarn install\` in packages/cli (it restores the registry copy)"
+  echo "note: re-run limx-from after any \`npm ci\`/install in packages/cli (it restores the registry copy)"
 
   case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
