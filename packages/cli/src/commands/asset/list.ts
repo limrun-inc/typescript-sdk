@@ -53,8 +53,8 @@ export default class AssetList extends BaseCommand {
           this.outputJson(asset);
           return;
         }
-        const headers = ['ID', 'Name', 'MD5'];
-        const row = [asset.id, asset.name, asset.md5 || ''];
+        const headers = ['ID', 'Name', 'MD5', 'Expires At'];
+        const row = [asset.id, asset.name, asset.md5 || '', asset.expiresAt || ''];
         if (flags['download-url']) {
           headers.push('Download URL');
           row.push(asset.signedDownloadUrl || '');
@@ -76,12 +76,12 @@ export default class AssetList extends BaseCommand {
       if (flags['name-prefix']) params.namePrefixFilter = flags['name-prefix'];
 
       const assets = await this.client.assets.list(params as any);
-      const headers = ['ID', 'Name', 'MD5'];
+      const headers = ['ID', 'Name', 'MD5', 'Expires At'];
       if (flags['download-url']) headers.push('Download URL');
       if (flags['upload-url']) headers.push('Upload URL');
 
       const rows = (assets as any[]).map((a: any) => {
-        const row = [a.id, a.name, a.md5 || ''];
+        const row = [a.id, a.name, a.md5 || '', a.expiresAt || ''];
         if (flags['download-url']) row.push(a.signedDownloadUrl || '');
         if (flags['upload-url']) row.push(a.signedUploadUrl || '');
         return row;

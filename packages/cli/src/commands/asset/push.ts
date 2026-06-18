@@ -10,6 +10,7 @@ export default class AssetPush extends BaseCommand {
   static examples = [
     '<%= config.bin %> asset push ./app.apk',
     '<%= config.bin %> asset push ./app.ipa -n my-app',
+    '<%= config.bin %> asset push ./app.ipa --ttl 24h',
   ];
 
   static args = {
@@ -19,6 +20,9 @@ export default class AssetPush extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     name: Flags.string({ char: 'n', description: 'Asset name to store. Defaults to the source filename.' }),
+    ttl: Flags.string({
+      description: 'Time-to-live as a Go duration (e.g. "24h", min 1m). Defaults to no expiry.',
+    }),
   };
 
   async run(): Promise<void> {
@@ -37,9 +41,13 @@ export default class AssetPush extends BaseCommand {
       const asset = await this.client.assets.getOrUpload({
         path: filePath,
         name: assetName,
+        ttl: flags.ttl,
       });
 
       this.output(`ID: ${asset.id}`);
+      if (asset.expiresAt) {
+        this.output(`Expires At: ${asset.expiresAt}`);
+      }
     });
   }
 }

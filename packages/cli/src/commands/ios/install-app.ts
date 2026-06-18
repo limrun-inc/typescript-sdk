@@ -40,6 +40,10 @@ export default class IosInstallApp extends BaseCommand {
       description: 'Launch behavior after installation. Omit to install without launching.',
       options: ['ForegroundIfRunning', 'RelaunchIfRunning'],
     }),
+    'asset-ttl': Flags.string({
+      description:
+        'When uploading a local file, set its asset time-to-live as a Go duration (e.g. "24h", min 1m). Defaults to no expiry.',
+    }),
   };
 
   async run(): Promise<void> {
@@ -63,7 +67,7 @@ export default class IosInstallApp extends BaseCommand {
         }
         const name = path.basename(filePath);
         this.info(`Uploading ${name}...`);
-        const asset = await this.client.assets.getOrUpload({ path: filePath, name });
+        const asset = await this.client.assets.getOrUpload({ path: filePath, name, ttl: flags['asset-ttl'] });
         downloadUrl = asset.signedDownloadUrl;
       }
 
