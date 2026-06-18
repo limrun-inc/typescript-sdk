@@ -62,6 +62,11 @@ export interface Asset {
   displayName?: string;
 
   /**
+   * When set, the time after which the asset is automatically deleted.
+   */
+  expiresAt?: string;
+
+  /**
    * Returned only if there is a corresponding file uploaded already.
    */
   md5?: string;
@@ -87,6 +92,11 @@ export interface AssetGetOrCreateResponse {
   signedDownloadUrl: string;
 
   signedUploadUrl: string;
+
+  /**
+   * When set, the time after which the asset is automatically deleted.
+   */
+  expiresAt?: string;
 
   /**
    * Returned only if there is a corresponding file uploaded already.
@@ -149,6 +159,14 @@ export interface AssetGetParams {
 
 export interface AssetGetOrCreateParams {
   name: string;
+
+  /**
+   * Optional time-to-live as a Go duration string (e.g. "24h"). When set, the asset
+   * is deleted this long after now; minimum is 1m. Omit for no expiry. On re-upload
+   * of an existing asset, a value updates the expiry while omitting it leaves the
+   * current expiry unchanged.
+   */
+  ttl?: string;
 }
 
 export declare namespace Assets {
