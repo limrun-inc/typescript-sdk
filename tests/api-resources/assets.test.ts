@@ -88,6 +88,6 @@ describe('resource assets', () => {
 
   // Mock server tests are disabled
   test.skip('getOrCreate: required and optional params', async () => {
-    const response = await client.assets.getOrCreate({ name: 'name' });
+    const response = await client.assets.getOrCreate({ name: 'name', ttl: 'ttl' });
   });
 });
