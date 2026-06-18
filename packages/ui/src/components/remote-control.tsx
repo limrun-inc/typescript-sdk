@@ -345,7 +345,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
     const [videoLoaded, setVideoLoaded] = useState(false);
-    const [unmuted, setUnmuted] = useState(false);
     const [retryExhausted, setRetryExhausted] = useState(false);
     const [isLandscape, setIsLandscape] = useState(false);
     const [useAndroidTabletFrame, setUseAndroidTabletFrame] = useState(false);
@@ -478,31 +477,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const platform = useMemo(() => detectPlatform(url), [url]);
     const config = deviceConfig[platform];
 
-    useEffect(() => {
-      setUnmuted(false);
-      if (videoRef.current) {
-        videoRef.current.muted = true;
-      }
-    }, [platform, url]);
-
     const updateStatus = (message: string) => {
       // Use the wrapper for conditional logging
       debugLog(message);
-    };
-
-    const unmute = () => {
-      if (unmuted) {
-        return;
-      }
-
-      setUnmuted(true);
-      const video = videoRef.current;
-      if (video) {
-        video.muted = false;
-        video.play().catch((err: unknown) => {
-          debugWarn('Unable to unmute after user interaction:', err);
-        });
-      }
     };
 
     const sendBinaryControlMessage = (data: ArrayBuffer) => {
@@ -986,10 +963,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const handleInteraction = (event: React.MouseEvent | React.TouchEvent) => {
       event.preventDefault();
       event.stopPropagation();
-
-      if (event.type === 'mousedown' || event.type === 'touchstart') {
-        unmute();
-      }
 
       // Compute mapping context once per event (reused for all pointers)
       const ctx = computeVideoMappingContext();
@@ -2532,7 +2505,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }}
           autoPlay
           playsInline
-          muted={!unmuted}
+          muted
           tabIndex={0}
           onKeyDown={handleKeyboard}
           onKeyUp={handleKeyboard}
