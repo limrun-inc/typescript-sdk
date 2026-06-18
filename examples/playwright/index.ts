@@ -32,6 +32,7 @@ const instance = await limrun.androidInstances.create({
     sandbox: {
       playwrightAndroid: {
         enabled: true,
+        version: '1.60.0-lim.1',
       },
     },
     clues: [

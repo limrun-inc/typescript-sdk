@@ -132,10 +132,10 @@
   resolved "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.9.tgz#585624dc829cfb6e7c0aa6c3ca7d7e6daa87e34f"
   integrity sha512-PPOl1mi6lpLNQxnGoyAfschAodRFYXJ+9fs6WHXz7CSWKbOqiMZsubC+BQsVKuul+3vKLuwTHsS2c2y9EoKwxQ==
 
-"@limrun/api@0.24.0":
-  version "0.24.0"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.24.0.tgz#5c8b1264d1ca667c6fa6ea2fa038f8ea59e8d666"
-  integrity sha512-3i3mODJzsu600g248F5rclqU/DP2H8Uc/hWtEodw2XzHONdZ/lLJl0bBtnAqWaiWiXIsRYKSadlt67eN9nKgaA==
+"@limrun/api@0.32.0":
+  version "0.32.0"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.32.0.tgz#a32efde2d589a2ce553d11220f1b93b12519f34a"
+  integrity sha512-kjoh21qA0QJhPjfHuFmyMhKC12zLzgygB+eU1SbNr2lOaTTFhA2W5j8LGwVnG7ON3xVEIFAsVxFAU0i5J05WzQ==
   dependencies:
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"
@@ -143,6 +143,7 @@
     proxy-from-env "^2.1.0"
     undici "7.24.7"
     ws "^8.18.3"
+    xdelta3-wasm "^1.0.0"
 
 "@types/node@^24.10.1":
   version "24.10.1"
@@ -242,17 +243,17 @@ ms@^2.1.3:
   resolved "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz#574c8138ce1d2b5861f0b44579dbadd60c6615b2"
   integrity sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==
 
-playwright-core@1.56.1:
-  version "1.56.1"
-  resolved "https://registry.npmjs.org/playwright-core/-/playwright-core-1.56.1.tgz"
-  integrity sha512-hutraynyn31F+Bifme+Ps9Vq59hKuUCz7H1kDOcBs+2oGguKkWTU50bBWrtz34OUWmIwpBTWDxaRPXrIXkgvmQ==
+playwright-core@1.60.0:
+  version "1.60.0"
+  resolved "https://registry.yarnpkg.com/playwright-core/-/playwright-core-1.60.0.tgz#24e0d9cc4730713db5dffcace29b5e4696b1907a"
+  integrity sha512-9bW6zvX/m0lEbgTKJ6YppOKx8H3VOPBMOCFh2irXFOT4BbHgrx5hPjwJYLT40Lu+4qtD36qKc/Hn56StUW57IA==
 
-playwright@1.56.1:
-  version "1.56.1"
-  resolved "https://registry.npmjs.org/playwright/-/playwright-1.56.1.tgz"
-  integrity sha512-aFi5B0WovBHTEvpM3DzXTUaeN6eN0qWnTkKx4NQaH4Wvcmc153PdaY2UBdSYKaGYw+UyWXSVyxDUg5DoPEttjw==
+playwright@1.60.0:
+  version "1.60.0"
+  resolved "https://registry.yarnpkg.com/playwright/-/playwright-1.60.0.tgz#89710863a51f21112633ef8b6b182594d3bfd7b5"
+  integrity sha512-hheHdokM8cdqCb0lcE3s+zT4t4W+vvjpGxsZlDnikarzx8tSzMebh3UiFtgqwFwnTnjYQcsyMF8ei2mCO/tpeA==
   dependencies:
-    playwright-core "1.56.1"
+    playwright-core "1.60.0"
   optionalDependencies:
     fsevents "2.3.2"
 
@@ -295,3 +296,8 @@ ws@^8.18.3:
   version "8.18.3"
   resolved "https://registry.npmjs.org/ws/-/ws-8.18.3.tgz"
   integrity sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==
+
+xdelta3-wasm@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/xdelta3-wasm/-/xdelta3-wasm-1.0.0.tgz#43b6ef9e9649830e25713914e40324217f8565fd"
+  integrity sha512-vhS28BhVaE3S/PGG1KQIwjBVqJecuS5Sdh82UAZysbnYaU93KS6l8ZPtsqonNZMeuyFgrGW9D44hh2lwQCsidA==
