@@ -335,6 +335,8 @@ export type AppInstallationOptions = {
    * - undefined: Don't launch after installation
    */
   launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
+  /** Optional AbortSignal to cancel the installation request locally */
+  signal?: AbortSignal;
 };
 
 // ============================================================================
@@ -594,11 +596,12 @@ export type InstanceClient = {
    *
    * @param actions The actions to run in order.
    * @param options.timeoutMs Custom client-side timeout in milliseconds.
+   * @param options.signal Optional AbortSignal to cancel the request locally.
    * @throws If any action fails — subsequent actions are not executed.
    */
   performActions: (
     actions: PerformAction[],
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; signal?: AbortSignal },
   ) => Promise<PerformActionsResult>;
 
   /**
@@ -1424,22 +1427,55 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       params: Record<string, unknown> = {},
       transform?: (message: ServerResponse) => T,
       timeoutMs: number = 30000,
+      signal?: AbortSignal,
     ): Promise<T> => {
       return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+          const err = new Error('The operation was aborted');
+          err.name = 'AbortError';
+          reject(err);
+          return;
+        }
+
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           reject(new Error('WebSocket is not connected or connection is not open.'));
           return;
         }
 
         const id = generateId();
-        const timeout = setTimeout(() => {
+
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        let abortListener: (() => void) | undefined;
+
+        const cleanupAndResolve = (val: T | PromiseLike<T>) => {
+          if (signal && abortListener) signal.removeEventListener('abort', abortListener);
+          resolve(val);
+        };
+
+        const cleanupAndReject = (reason?: any) => {
+          if (signal && abortListener) signal.removeEventListener('abort', abortListener);
+          reject(reason);
+        };
+
+        if (signal) {
+          abortListener = () => {
+            if (timeout) clearTimeout(timeout);
+            pendingRequests.delete(id);
+            const err = new Error('The operation was aborted');
+            err.name = 'AbortError';
+            cleanupAndReject(err);
+          };
+          signal.addEventListener('abort', abortListener, { once: true });
+        }
+
+        timeout = setTimeout(() => {
           pendingRequests.delete(id);
-          reject(new Error(`Request ${type} timed out`));
+          cleanupAndReject(new Error(`Request ${type} timed out`));
         }, timeoutMs);
 
         pendingRequests.set(
           id,
-          transform ? { resolve, reject, timeout, transform } : { resolve, reject, timeout },
+          transform ? { resolve: cleanupAndResolve, reject: cleanupAndReject, timeout, transform } : { resolve: cleanupAndResolve, reject: cleanupAndReject, timeout },
         );
 
         const request = { type, id, ...params };
@@ -1450,7 +1486,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             clearTimeout(timeout);
             pendingRequests.delete(id);
             logger.error(`Failed to send ${type} request:`, err);
-            reject(err);
+            cleanupAndReject(err);
           }
         });
       });
@@ -1824,6 +1860,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         },
         undefined,
         options?.timeoutMs ?? 120_000,
+        options?.signal,
       );
     };
 
@@ -1846,14 +1883,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const performActions = (
       actions: PerformAction[],
-      options?: { timeoutMs?: number },
+      options?: { timeoutMs?: number; signal?: AbortSignal },
     ): Promise<PerformActionsResult> => {
       // Batch duration is unbounded (user-supplied `wait` durations, plus
       // per-action server work), so we grow the timeout with the batch
       // rather than sticking to sendRequest's 30s default.
       const waitMs = actions.reduce((acc, a) => acc + (a.type === 'wait' ? Math.max(0, a.durationMs) : 0), 0);
       const timeoutMs = options?.timeoutMs ?? 30_000 + waitMs + actions.length * 2_000;
-      return sendRequest<PerformActionsResult>('performActions', { actions }, undefined, timeoutMs);
+      return sendRequest<PerformActionsResult>('performActions', { actions }, undefined, timeoutMs, options?.signal);
     };
 
     const startRecording = async (opts?: { quality?: RecordingQuality }): Promise<void> => {
