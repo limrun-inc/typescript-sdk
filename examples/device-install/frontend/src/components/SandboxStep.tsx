@@ -17,7 +17,7 @@ type Props = {
  */
 export function SandboxStep({ sandbox, provisioning, stopping, onCreate, onStop }: Props) {
   return (
-    <Section title="1. Build sandbox">
+    <Section title="Build sandbox">
       {!sandbox ?
         <button style={primaryButton(provisioning)} onClick={onCreate} disabled={provisioning}>
           {provisioning ? 'Provisioning...' : 'Create Xcode sandbox'}
