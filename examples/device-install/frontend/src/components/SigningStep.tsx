@@ -10,7 +10,7 @@ import { UploadSigningPanel } from './UploadSigningPanel';
  */
 export function SigningStep({ signing }: { signing: SigningController }) {
   return (
-    <Section title="3. Signing assets">
+    <Section title="Signing assets">
       <div style={tabRow}>
         <button style={tabButton(signing.source === 'apple')} onClick={() => signing.setSource('apple')}>
           Apple ID

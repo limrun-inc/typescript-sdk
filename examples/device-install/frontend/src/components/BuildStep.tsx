@@ -18,7 +18,7 @@ export function BuildStep({ build, sandboxId, signingReady, log, onError }: Prop
   const busy = build.status === 'running' || build.status === 'queued';
 
   return (
-    <Section title="4. Build">
+    <Section title="Build signed IPA">
       <div style={hintText}>
         Make sure you ran <code>lim xcode sync . --id {sandboxId}</code> first — builds run against the synced
         source.

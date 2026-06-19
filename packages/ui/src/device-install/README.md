@@ -3,7 +3,7 @@
 Build a signed iOS app on Limrun and install it onto a physical iPhone that's
 plugged into the user's own computer — straight from the browser, no Mac and no
 Xcode on their machine. The browser talks to the iPhone over WebUSB; Limrun runs
-the native pairing and install (`libimobiledevice`) on its side and relays the
+the native pairing and install on its side and relays the
 USB traffic over a WebSocket.
 
 `@limrun/ui` ships the browser primitives and React hooks; your app owns the UI.

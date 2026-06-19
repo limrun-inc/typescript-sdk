@@ -5,9 +5,10 @@ import { useActivityLog } from './hooks/useActivityLog';
 import { useSigning } from './hooks/useSigning';
 import * as sandboxApi from './lib/sandboxApi';
 import { errorMessage } from './lib/apple';
-import type { Sandbox, StepStatus } from './types';
+import type { Sandbox } from './types';
 import { errorBox, layout } from './theme';
-import { Stepper } from './components/Stepper';
+import { PhaseProgress } from './components/PhaseProgress';
+import { Phase } from './components/Phase';
 import { LogPanel } from './components/LogPanel';
 import { SandboxStep } from './components/SandboxStep';
 import { PairStep } from './components/PairStep';
@@ -16,10 +17,16 @@ import { BuildStep } from './components/BuildStep';
 import { InstallStep } from './components/InstallStep';
 
 /**
- * Top-level orchestrator. It wires the three Limrun hooks together and renders
- * one component per step. The end-to-end flow is:
+ * Top-level orchestrator. It wires the three Limrun hooks together and splits
+ * the work into the two tasks users actually have:
  *
- *   provision sandbox → pair iPhone → sign → build → install
+ *   Phase 1 — Build a signed artifact:  sign → build  (on the sandbox)
+ *   Phase 2 — Install to a device:       pair → install
+ *
+ * The phases are deliberately separate: producing the artifact and installing
+ * it are often done at different times. They join at install, which needs both
+ * Phase 1's succeeded build and a paired device. The sandbox is the shared
+ * infrastructure that hosts the build and the WebUSB install relay.
  *
  * Each step lives in its own component under `components/`, and the signing
  * logic lives in `hooks/useSigning.ts`. Read those for the details; this file
@@ -80,14 +87,28 @@ function App() {
     }
   }
 
-  const steps = useMemo<StepStatus[]>(
+  const phases = useMemo(
     () => [
-      { label: 'Pair iPhone', done: install.hasPairRecord, active: !!install.device },
-      { label: 'Sign', done: !!signing.signingAssets, active: install.hasPairRecord },
-      { label: 'Build', done: build.status === 'succeeded', active: !!signing.signingAssets },
-      { label: 'Install', done: false, active: install.canInstall && build.status === 'succeeded' },
+      {
+        title: 'Phase 1 · Build artifact',
+        steps: [
+          { label: 'Sign', done: !!signing.signingAssets, active: !!sandbox },
+          { label: 'Build', done: build.status === 'succeeded', active: !!signing.signingAssets },
+        ],
+      },
+      {
+        title: 'Phase 2 · Install',
+        steps: [
+          { label: 'Pair iPhone', done: install.hasPairRecord, active: !!install.device },
+          {
+            label: 'Install',
+            done: false,
+            active: install.canInstall && build.status === 'succeeded',
+          },
+        ],
+      },
     ],
-    [install.device, install.hasPairRecord, install.canInstall, signing.signingAssets, build.status],
+    [sandbox, install.device, install.hasPairRecord, install.canInstall, signing.signingAssets, build.status],
   );
 
   return (
@@ -105,16 +126,29 @@ function App() {
 
         {sandbox && (
           <>
-            <PairStep install={install} onError={setError} />
-            <SigningStep signing={signing} />
-            <BuildStep
-              build={build}
-              sandboxId={sandbox.id}
-              signingReady={!!signing.signingAssets}
-              log={activity.push}
-              onError={setError}
-            />
-            <InstallStep install={install} build={build} onError={setError} />
+            <Phase
+              index={1}
+              title="Build a signed artifact"
+              subtitle="Prepare signing assets and build a signed IPA on the sandbox. No device needed yet."
+            >
+              <SigningStep signing={signing} />
+              <BuildStep
+                build={build}
+                sandboxId={sandbox.id}
+                signingReady={!!signing.signingAssets}
+                log={activity.push}
+                onError={setError}
+              />
+            </Phase>
+
+            <Phase
+              index={2}
+              title="Install to a device"
+              subtitle="Pair an iPhone and install the artifact from Phase 1 over WebUSB."
+            >
+              <PairStep install={install} onError={setError} />
+              <InstallStep install={install} build={build} onError={setError} />
+            </Phase>
           </>
         )}
 
@@ -124,7 +158,7 @@ function App() {
       </aside>
 
       <main style={layout.main}>
-        <Stepper steps={steps} />
+        <PhaseProgress phases={phases} />
 
         <div style={layout.panels}>
           <LogPanel title="Build log" scrollKey={build.logs.length}>

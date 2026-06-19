@@ -13,7 +13,17 @@ It has two components:
   installs it onto the device — with the `useDeviceInstallRelay`,
   `useDeviceBuild`, and `useAppleIDLogin` hooks.
 
-The full flow: **provision sandbox → pair iPhone → sign → build → install**.
+Building a signed artifact and installing it onto a device are separate tasks,
+so the example is organised into two phases that join at install:
+
+- **Phase 1 — Build a signed artifact:** prepare signing assets → build a signed
+  IPA on the sandbox. No device required yet.
+- **Phase 2 — Install to a device:** pair an iPhone over WebUSB → install the
+  Phase 1 artifact. Needs a succeeded build, and the paired device must be in the
+  signing profile used for that build.
+
+The sandbox is shared infrastructure: it hosts both the build and the WebUSB
+install relay.
 
 ## Requirements
 
@@ -53,14 +63,14 @@ git clone https://github.com/limrun-inc/typescript-sdk.git
    yarn --cwd examples/device-install/frontend install
    yarn --cwd examples/device-install/frontend run dev
    ```
-1. Go to `localhost:5173`, click **Create Xcode sandbox**, then walk through
-   pair → sign → build → install.
+1. Go to `localhost:5173`, click **Create Xcode sandbox**, then work through
+   Phase 1 (sign → build) and Phase 2 (pair → install).
 
 ## Sync your project before building
 
 A build runs against whatever source is **synced** into the sandbox. After the
 backend provisions one, sync your Xcode/Expo project into it from the CLI. Pass
-`--id` with the sandbox id shown in the app (the **1. Build sandbox** step) so
+`--id` with the sandbox id shown in the app (the **Build sandbox** step) so
 the CLI targets that exact instance instead of your most recent one:
 
 ```bash

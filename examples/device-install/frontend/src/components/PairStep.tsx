@@ -14,7 +14,7 @@ type Props = {
  */
 export function PairStep({ install, onError }: Props) {
   return (
-    <Section title="2. Pair iPhone">
+    <Section title="Pair iPhone">
       <button
         style={secondaryButton(install.busyAction === 'usb')}
         onClick={() => {
