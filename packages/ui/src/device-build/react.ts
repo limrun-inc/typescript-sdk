@@ -18,6 +18,7 @@ export type UseDeviceBuildOptions = {
 
 export type StartDeviceBuildInput = {
   signingAssets?: StoredSigningAssets;
+  signedUploadUrl?: string;
 };
 
 export type UseDeviceBuildResult = {
@@ -82,6 +83,7 @@ export function useDeviceBuild({
           certificateP12Base64: activeSigningAssets.certificateP12Base64,
           certificatePassword: activeSigningAssets.certificatePassword,
           provisioningProfileBase64: activeSigningAssets.provisioningProfileBase64,
+          signedUploadUrl: input.signedUploadUrl,
         });
         if (!result.execId) {
           throw new Error('Build request did not return an exec ID.');
