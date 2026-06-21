@@ -89,6 +89,12 @@ export type InstanceClient = {
    */
   openUrl: (url: string) => Promise<OpenUrlResult>;
   /**
+   * Play an on-device WAV/MP3 file as microphone input.
+   *
+   * The file must already exist on the Android instance, for example after pushing it with ADB.
+   */
+  playOnMicrophone: (path: string, options?: PlayOnMicrophoneOptions) => Promise<PlayOnMicrophoneResult>;
+  /**
    * Set Android Wi-Fi bandwidth limits in Kbps. Omit a direction to leave it unchanged;
    * pass `0` to clear that direction's limit.
    */
@@ -287,6 +293,17 @@ export type OpenUrlResult = {
   url: string;
 };
 
+export type PlayOnMicrophoneOptions = {
+  once?: boolean;
+};
+
+export type PlayOnMicrophoneResult = {
+  /** Duration of the decoded audio in microseconds. */
+  duration: number;
+  once: boolean;
+  generation: number;
+};
+
 export type WifiBandwidthOptions = {
   downKbps?: number;
   upKbps?: number;
@@ -381,6 +398,13 @@ type OpenUrlResultMessage = {
   error?: CommandError;
 };
 
+type PlayOnMicrophoneResultMessage = {
+  type: 'playOnMicrophoneResult';
+  id: string;
+  payload?: PlayOnMicrophoneResult;
+  error?: CommandError;
+};
+
 type SetWifiBandwidthResultMessage = {
   type: 'setWifiBandwidthResult';
   id: string;
@@ -412,6 +436,7 @@ type KnownCommandResultMessage =
   | ScrollScreenResultMessage
   | ScrollElementResultMessage
   | OpenUrlResultMessage
+  | PlayOnMicrophoneResultMessage
   | SetWifiBandwidthResultMessage
   | StartVideoRecordingResultMessage
   | StopVideoRecordingResultMessage;
@@ -433,6 +458,7 @@ type CommandRequestMap = {
   scrollScreen: { direction: ScrollDirection; amount?: number };
   scrollElement: AndroidElementTarget & { direction: ScrollDirection; amount?: number };
   openUrl: { url: string };
+  playOnMicrophone: { path: string; once?: boolean };
   setWifiBandwidth: WifiBandwidthOptions;
   startRecording: { quality?: RecordingQuality };
   stopRecording: { upload?: { presignedUrl: string } };
@@ -448,6 +474,7 @@ type CommandResultMap = {
   scrollScreen: ScrollResult;
   scrollElement: ScrollResult;
   openUrl: OpenUrlResult;
+  playOnMicrophone: PlayOnMicrophoneResult;
   setWifiBandwidth: EmptyCommandResult;
   startRecording: EmptyCommandResult;
   stopRecording: EmptyCommandResult;
@@ -614,6 +641,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         case 'scrollScreenResult':
         case 'scrollElementResult':
         case 'openUrlResult':
+        case 'playOnMicrophoneResult':
         case 'setWifiBandwidthResult':
         case 'startRecordingResult':
         case 'stopRecordingResult':
@@ -854,6 +882,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             scrollScreen,
             scrollElement,
             openUrl,
+            playOnMicrophone,
             setWifiBandwidth,
             startRecording,
             stopRecording,
@@ -945,6 +974,19 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return {
         url: typeof result.url === 'string' ? result.url : url,
       };
+    };
+
+    const playOnMicrophone = async (
+      inputPath: string,
+      microphoneOptions?: PlayOnMicrophoneOptions,
+    ): Promise<PlayOnMicrophoneResult> => {
+      if (!inputPath) {
+        throw new Error('path must be a non-empty string');
+      }
+      return sendRequest('playOnMicrophone', {
+        path: inputPath,
+        ...(microphoneOptions?.once === undefined ? {} : { once: microphoneOptions.once }),
+      });
     };
 
     const setWifiBandwidth = async (bandwidthOptions: WifiBandwidthOptions): Promise<void> => {

@@ -52,12 +52,14 @@ export function sendSessionCommand(
 export async function getAndroidInstanceClient(
   lim: Limrun,
   target: LastAndroidInstance,
+  options: { adbPath?: string } = {},
 ): Promise<ResolvedAndroidInstanceClient> {
   if (target.apiUrl && target.token) {
     const client = await createInstanceClient({
       apiUrl: target.apiUrl,
       adbUrl: target.adbWebSocketUrl,
       token: target.token,
+      adbPath: options.adbPath,
     });
     return { type: 'android', client, disconnect: () => client.disconnect(), isSession: false };
   }
@@ -81,6 +83,7 @@ export async function getAndroidInstanceClient(
     apiUrl,
     adbUrl: instance.status.adbWebSocketUrl,
     token,
+    adbPath: options.adbPath,
   });
   return { type: 'android', client, disconnect: () => client.disconnect(), isSession: false };
 }
