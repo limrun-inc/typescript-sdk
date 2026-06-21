@@ -18,14 +18,21 @@ export type RequestUSBAccessOptions = {
 };
 
 export type StartPairingRelayOptions = {
-  limbuildApiUrl: string;
+  registryApiUrl: string;
   token?: string;
+  organizationId?: string;
   log: DeviceInstallLog;
   target: DeviceRelayTarget;
 };
 
+export type InstallSource =
+  | { assetId: string; assetName?: never; downloadUrl?: never }
+  | { assetId?: never; assetName: string; downloadUrl?: never }
+  | { assetId?: never; assetName?: never; downloadUrl: string };
+
 export type StartInstallRelayOptions = StartPairingRelayOptions & {
   pairRecord: PairRecordPayload;
+  installSource: InstallSource;
 };
 
 export async function requestUSBAccess({ log }: RequestUSBAccessOptions) {
@@ -39,8 +46,8 @@ export async function requestUSBAccess({ log }: RequestUSBAccessOptions) {
   return target;
 }
 
-export async function startPairingRelay({ limbuildApiUrl, token, log, target }: StartPairingRelayOptions) {
-  const deviceRelayUrl = deviceRelayWebSocketUrl(limbuildApiUrl, token);
+export async function startPairingRelay({ registryApiUrl, token, organizationId, log, target }: StartPairingRelayOptions) {
+  const deviceRelayUrl = deviceRelayWebSocketUrl(registryApiUrl, token, organizationId);
   let relay: RelayClient | undefined;
   try {
     relay = await connectRelay(deviceRelayUrl, target, log);
@@ -53,17 +60,19 @@ export async function startPairingRelay({ limbuildApiUrl, token, log, target }: 
 }
 
 export async function startInstallRelay({
-  limbuildApiUrl,
+  registryApiUrl,
   token,
+  organizationId,
   log,
   target,
   pairRecord,
+  installSource,
 }: StartInstallRelayOptions) {
-  const deviceRelayUrl = deviceRelayWebSocketUrl(limbuildApiUrl, token);
+  const deviceRelayUrl = deviceRelayWebSocketUrl(registryApiUrl, token, organizationId);
   let relay: RelayClient | undefined;
   try {
     relay = await connectRelay(deviceRelayUrl, target, log);
-    await relay.startInstall(pairRecord);
+    await relay.startInstall(pairRecord, installSource);
     return relay;
   } catch (error) {
     relay?.close();
@@ -182,12 +191,15 @@ function orderedUsbmuxCandidates(device: USBDevice) {
   ];
 }
 
-export function deviceRelayWebSocketUrl(limbuildApiUrl: string, token?: string) {
-  const url = new URL(limbuildApiUrl);
+export function deviceRelayWebSocketUrl(registryApiUrl: string, token?: string, organizationId?: string) {
+  const url = new URL(registryApiUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  url.pathname = `${url.pathname.replace(/\/$/, '')}/device/ws`;
+  url.pathname = `${url.pathname.replace(/\/$/, '')}/ios/device/ws`;
   if (token) {
     url.searchParams.set('token', token);
+  }
+  if (organizationId) {
+    url.searchParams.set('organization', organizationId);
   }
   return url.toString();
 }

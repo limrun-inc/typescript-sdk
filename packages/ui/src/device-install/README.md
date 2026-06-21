@@ -83,7 +83,7 @@ user only taps **Trust** once per device.
 ```tsx
 import { useDeviceInstallRelay } from '@limrun/ui/device-install/react';
 
-const install = useDeviceInstallRelay({ apiUrl, token, log: (m, d) => console.log(m, d) });
+const install = useDeviceInstallRelay({ apiUrl, token, organizationId, log: (m, d) => console.log(m, d) });
 
 // 1. Pick the iPhone (shows Chrome's WebUSB chooser).
 await install.requestUSBAccess();
@@ -156,13 +156,13 @@ import {
   putAppleGeneratedSigningAssets,
 } from '@limrun/ui/device-build';
 
-const appleLogin = useAppleIDLogin({ limbuildApiUrl: apiUrl, token });
+const appleLogin = useAppleIDLogin({ registryApiUrl: apiUrl, token, organizationId });
 const session = await appleLogin.startLogin({ accountName, password });
 if (session?.requiresTwoFactor) await appleLogin.submitTwoFactorCode(code);
 
 // Resolve the team id across all three fields Apple may use.
 const teamId = team.teamId ?? String(team.providerId ?? team.publicProviderId ?? '');
-const base = { apiUrl, token, appleSessionId: appleLogin.session!.appleSessionId, teamId };
+const base = { relay: appleLogin.session!.relay, teamId };
 
 // Register the paired iPhone (no-op if already registered).
 await registerAppleDevice({ ...base, deviceUDID, name: 'My iPhone' });
@@ -298,7 +298,7 @@ export function InstallToIPhone({
   const [log, setLog] = useState<string[]>([]);
   const append = (m: string, d?: string) => setLog((l) => [d ? `${m}: ${d}` : m, ...l]);
 
-  const install = useDeviceInstallRelay({ apiUrl, token, log: append });
+  const install = useDeviceInstallRelay({ apiUrl, token, organizationId, log: append });
   const build = useDeviceBuild({ apiUrl, token, signingAssets });
 
   async function prepare() {
