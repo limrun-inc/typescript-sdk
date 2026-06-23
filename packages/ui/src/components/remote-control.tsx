@@ -2434,6 +2434,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               pendingScreenshotRejectersRef.current.delete(message.id);
               break;
             case 'cameraRequest': {
+              // Only iOS sessions allocate the sendonly outbound-camera
+              // transceiver; without it there is nothing to feed the sim, so
+              // ignore camera requests entirely — no getUserMedia prompt and
+              // no onCameraDemandChange callbacks. Android intentionally stays
+              // silent, as the API docs promise.
+              if (platform !== 'ios' || !outboundCameraSenderRef.current) {
+                break;
+              }
               const active = message.active === true;
               // Bump up front so any earlier in-flight handler bails.
               const cameraGeneration = ++cameraRequestGenerationRef.current;
