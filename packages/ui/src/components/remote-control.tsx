@@ -153,6 +153,157 @@ interface RemoteControlProps {
    * @default 2000
    */
   axMaxBackoffMs?: number;
+
+  /**
+   * Fires whenever the iOS simulator's camera demand state changes —
+   * i.e. an app inside the sim called
+   * `[AVCaptureSession startRunning]` or `[stopRunning]`. The
+   * component handles the `navigator.mediaDevices.getUserMedia` prompt
+   * and SDP plumbing internally; this callback is purely so the host
+   * UI can render a status indicator ("simulator is using your
+   * camera", etc.).
+   *
+   * `active` reflects whether the sim is currently asking for
+   * frames. `granted` is set only on the call that follows a
+   * `getUserMedia` attempt: `true` when the user accepted the
+   * browser prompt, `false` when they denied or the call failed
+   * (in which case the limulator side switches to a black-frame
+   * fallback so the app keeps ticking).
+   *
+   * `camera` (optional, only meaningful when `granted === true`)
+   * carries what `MediaStreamTrack.getSettings()` reported for the
+   * active capture: resolution, framerate, device label, facing
+   * mode. Use it to render a richer status indicator (e.g.
+   * "Camera · 1920×1080 · 30 fps · FaceTime HD").
+   *
+   * Only iOS instances ever fire this callback; Android instances
+   * have no camera-injector path and stay silent.
+   */
+  onCameraDemandChange?: (active: boolean, granted?: boolean, camera?: CameraCaptureInfo) => void;
+
+  /**
+   * Periodically (~1Hz) fires with a snapshot of the outbound
+   * camera stream's live WebRTC stats — codec, encoder
+   * implementation, hardware acceleration, encoded fps, bitrate,
+   * round-trip-time, and the encoder's
+   * `qualityLimitationReason` (which is what Meet/Zoom use to
+   * decide whether to show "Bandwidth limited" or "CPU limited"
+   * banners).
+   *
+   * Only fires while the simulator is actively pulling the
+   * camera AND `getUserMedia` was granted. `null` is emitted
+   * once when the stream goes back to idle so consumers can
+   * clear their UI without having to maintain their own
+   * timeout. The host app does not need to poll `getStats()`
+   * itself — this is the canonical place.
+   */
+  onCameraStats?: (stats: CameraStreamStats | null) => void;
+
+  /**
+   * Optional resolution cap for outbound camera capture.
+   *
+   * - `'auto'` (default): no extra constraint. The browser captures
+   *   at its webcam's native max; WebRTC's quality scaler may step
+   *   down resolution on the encoder side under bandwidth pressure
+   *   while still feeding the simulator at the pool's native size.
+   * - `'1080p'` / `'720p'` / `'480p'`: hard cap applied via
+   *   `getUserMedia` constraints (for new captures) and
+   *   `track.applyConstraints` (for the currently-active track),
+   *   matching the way Meet/Zoom expose a "Send resolution" picker.
+   *
+   * Bumping or lowering the cap mid-stream is supported; the
+   * change takes effect within a frame or two as the webcam
+   * re-negotiates.
+   */
+  cameraResolutionCap?: CameraResolutionCap;
+  /**
+   * Aspect ratio the simulator's virtual camera should report to apps.
+   * Picking a value here triggers a `cameraAspect` WS message to the
+   * host, which rebuilds its IOSurface ring at the matching dimensions
+   * (16:9 → 1920×1080, 4:3 → 1440×1080, 1:1 → 1080×1080, 9:16 →
+   * 1080×1920) and signals the in-sim dylib to re-handshake. iOS apps
+   * see CMSampleBuffers at the new dimensions within a frame or two.
+   *
+   * The browser still captures whatever the webcam offers; the host
+   * aspect-fills (cover, center-crop) into the new pool. Switching
+   * aspect at runtime is intentionally cheap so users can A/B preview
+   * styles without restarting the simulator.
+   *
+   * `undefined` leaves the pool untouched (the host's boot default —
+   * 16:9 / 1920×1080 — applies).
+   */
+  cameraAspect?: CameraAspect;
+}
+
+/**
+ * Resolution caps a host app can request on the outbound camera.
+ * `'auto'` is "let the browser decide" (no constraints beyond the
+ * 30 fps ceiling); the other options clamp width/height to the
+ * named target. Aspect ratio is preserved.
+ */
+export type CameraResolutionCap = 'auto' | '1080p' | '720p' | '480p';
+
+/**
+ * Aspect ratios exposed to the operator for the simulated camera.
+ * The host maps each label to concrete IOSurface dimensions; values
+ * the host doesn't recognise are silently ignored.
+ */
+export type CameraAspect = '16:9' | '4:3' | '1:1' | '9:16';
+
+/**
+ * Snapshot of the browser's webcam capture, mirrored from
+ * `MediaStreamTrack.getSettings()`. Forwarded to the host alongside
+ * `cameraResult` and exposed to the host app via
+ * `onCameraDemandChange` so it can render a status indicator without
+ * having to call `getStats()` itself.
+ */
+export interface CameraCaptureInfo {
+  width?: number;
+  height?: number;
+  frameRate?: number;
+  deviceId?: string;
+  label?: string;
+  facingMode?: string;
+}
+
+/**
+ * Live outbound-camera quality snapshot. Derived from
+ * `RTCPeerConnection.getStats()` and rate-derived deltas, sampled
+ * once per second while the camera is sending. All fields optional:
+ * some browsers omit fields (Safari rarely reports
+ * `encoderImplementation`), and the first sample after camera start
+ * has no delta-derived numbers yet.
+ */
+export interface CameraStreamStats {
+  /** "H264", "HEVC"/"H265", "VP9", "VP8", "AV1", etc. (uppercased). */
+  codec?: string;
+  /** e.g. "VideoToolbox" (hw), "OpenH264" (sw), "ExternalEncoder". */
+  encoderImplementation?: string;
+  /**
+   * Browser-reported hardware-acceleration hint. Some Chromium
+   * versions expose this via `powerEfficientEncoder`; we mirror it
+   * here so consumers don't have to know the spec quirk.
+   */
+  hardwareAccelerated?: boolean;
+  /** Outbound encoded fps over the last sample window. */
+  framesPerSecond?: number;
+  /** Cumulative encoded frame count. */
+  framesEncoded?: number;
+  /** Outbound encoded bitrate (bits/s) over the last window. */
+  bitrateBps?: number;
+  /** Width/height the encoder is currently producing. */
+  width?: number;
+  height?: number;
+  /**
+   * One of `'none' | 'cpu' | 'bandwidth' | 'other'`. Mirrors
+   * Meet/Zoom's "limited by …" banners. Anything other than
+   * `'none'` means the encoder dropped resolution to keep up.
+   */
+  qualityLimitationReason?: string;
+  /** Round-trip time in milliseconds, from the matching RTCP. */
+  rttMs?: number;
+  /** Packet-loss percentage over the last sample window (0..100). */
+  packetsLostPct?: number;
 }
 
 interface ScreenshotData {
@@ -355,6 +506,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       onAxStatusChange,
       axPollIntervalMs,
       axMaxBackoffMs,
+      onCameraDemandChange,
+      onCameraStats,
+      cameraResolutionCap = 'auto',
+      cameraAspect,
     }: RemoteControlProps,
     ref,
   ) => {
@@ -387,6 +542,58 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // Mirrored to a ref so stale closures in event handlers see the latest value.
     const autoReconnectRef = useRef(autoReconnect);
     autoReconnectRef.current = autoReconnect;
+    // Demand-driven outbound camera state.
+    //
+    // The limulator side broadcasts a `cameraRequest` WS message whenever
+    // an app inside the simulator opens/closes an `AVCaptureSession`.
+    // We respond by calling `navigator.mediaDevices.getUserMedia(...)`
+    // and `replaceTrack`ing the result onto a pre-allocated sendonly
+    // video transceiver. Pre-allocating the transceiver lets us
+    // attach/detach the local camera without renegotiating the SDP
+    // (the slot is already in the answer's a=video block, just with
+    // `inactive`/empty until we install the track).
+    //
+    // Refs (not state) because all callers live inside event-handler
+    // closures and the ref read happens during message processing, not
+    // during render. We keep both the sender and the active local
+    // stream so teardown can stop tracks without leaking the camera
+    // green light.
+    const outboundCameraSenderRef = useRef<RTCRtpSender | null>(null);
+    const outboundLocalStreamRef = useRef<MediaStream | null>(null);
+    // Bumped on every `cameraRequest` so a handler suspended on an
+    // await (e.g. the getUserMedia prompt) can detect it was superseded
+    // by a newer request and bail instead of re-attaching the camera.
+    const cameraRequestGenerationRef = useRef(0);
+    const cameraResolutionCapRef = useRef(cameraResolutionCap);
+    cameraResolutionCapRef.current = cameraResolutionCap;
+    // The aspect prop also rides a ref so the WS `onopen` reconnect
+    // path can replay the operator's last pick without depending on
+    // an in-flight render cycle. We mutate it inline (same render-
+    // time pattern as the cap ref) so a parent prop change is visible
+    // to closures captured during the next render; the useEffect
+    // below handles the actual "send to host" side-effect.
+    const cameraAspectRef = useRef<CameraAspect | undefined>(cameraAspect);
+    cameraAspectRef.current = cameraAspect;
+    // Mirror the demand-change callback into a ref so the WS message
+    // handler always sees the freshest customer callback even when the
+    // parent re-renders mid-session.
+    const onCameraDemandChangeRef = useRef(onCameraDemandChange);
+    onCameraDemandChangeRef.current = onCameraDemandChange;
+    const onCameraStatsRef = useRef(onCameraStats);
+    onCameraStatsRef.current = onCameraStats;
+    // Active outbound-camera stats poller. While the camera is
+    // sending we sample `RTCPeerConnection.getStats()` once per
+    // second, derive deltas (bitrate, fps, packet loss) from the
+    // previous sample, and push the result through `onCameraStats`.
+    // Cleared on teardown so we never leak the timer.
+    const cameraStatsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const cameraStatsPrevRef = useRef<{
+      timestamp: number;
+      framesEncoded?: number;
+      bytesSent?: number;
+      packetsSent?: number;
+      packetsLost?: number;
+    } | null>(null);
     const firstFrameShownRef = useRef(false);
     const pendingScreenshotResolversRef = useRef<
       Map<string, (value: ScreenshotData | PromiseLike<ScreenshotData>) => void>
@@ -1461,6 +1668,169 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       setVideoLoaded(true);
     };
 
+    // Stop every track on a MediaStream and release the device handle.
+    // The browser keeps the camera "on" indicator lit until at least
+    // one track on the underlying source is stopped, so we have to
+    // call stop() explicitly — closing the peer connection alone
+    // won't do it.
+    const stopMediaStream = (stream: MediaStream) => {
+      for (const track of stream.getTracks()) {
+        try {
+          track.stop();
+        } catch (err) {
+          debugWarn('track.stop() failed:', err);
+        }
+      }
+    };
+
+    // Stop and forget any currently-attached outbound camera stream.
+    // Safe to call when nothing is attached. Does not touch the
+    // sender — the caller is responsible for `replaceTrack(null)`
+    // separately when it wants the SDP slot itself empty.
+    const stopOutboundLocalStream = () => {
+      const stream = outboundLocalStreamRef.current;
+      if (!stream) return;
+      outboundLocalStreamRef.current = null;
+      stopMediaStream(stream);
+    };
+
+    // Translate the user-facing resolution cap into a
+    // MediaTrackConstraints fragment we can feed `getUserMedia`
+    // or `applyConstraints`. Always returns a 30 fps ceiling so
+    // a 60 fps webcam doesn't double our encoder cost for no
+    // visible win (the simulator pool is paced at 30).
+    //
+    // We use `ideal` rather than `max` so that a webcam with a
+    // native 720p mode still hands us 720p when the user picks
+    // 1080p — instead of refusing the constraint outright. The
+    // browser's NotReadableError on a too-strict `max` is the
+    // most common camera-permission gotcha in the wild.
+    const cameraCapToConstraints = (cap: CameraResolutionCap): MediaTrackConstraints => {
+      const base: MediaTrackConstraints = {
+        frameRate: { ideal: 30, max: 30 },
+      };
+      switch (cap) {
+        case '1080p':
+          return { ...base, width: { ideal: 1920 }, height: { ideal: 1080 } };
+        case '720p':
+          return { ...base, width: { ideal: 1280 }, height: { ideal: 720 } };
+        case '480p':
+          return { ...base, width: { ideal: 854 }, height: { ideal: 480 } };
+        case 'auto':
+        default:
+          return base;
+      }
+    };
+
+    // Convert the codec mime type (e.g. "video/H264" or "video/HEVC")
+    // into a short uppercase label suitable for a status badge.
+    const shortenCodecMime = (mime: string | undefined): string | undefined => {
+      if (!mime) return undefined;
+      const slash = mime.indexOf('/');
+      const tail = slash >= 0 ? mime.slice(slash + 1) : mime;
+      const upper = tail.toUpperCase();
+      if (upper === 'HEVC') return 'H265';
+      return upper;
+    };
+
+    // Sample outbound-camera stats once and push a normalised
+    // snapshot through `onCameraStats`. Skips silently if the sender
+    // has been torn down between intervals.
+    const sampleOutboundCameraStats = async () => {
+      const sender = outboundCameraSenderRef.current;
+      const handler = onCameraStatsRef.current;
+      if (!sender || !handler) return;
+      let report: RTCStatsReport;
+      try {
+        report = await sender.getStats();
+      } catch {
+        return;
+      }
+      let outbound: any | undefined;
+      let codecMime: string | undefined;
+      let remoteInbound: any | undefined;
+      report.forEach((entry: any) => {
+        if (entry.type === 'outbound-rtp' && entry.kind === 'video') {
+          outbound = entry;
+        } else if (entry.type === 'remote-inbound-rtp' && entry.kind === 'video') {
+          remoteInbound = entry;
+        }
+      });
+      if (outbound?.codecId) {
+        const codec = report.get(outbound.codecId);
+        if (codec) codecMime = (codec as any).mimeType;
+      }
+      if (!outbound) return;
+      const now = (outbound.timestamp as number) ?? Date.now();
+      const prev = cameraStatsPrevRef.current;
+      let fps: number | undefined;
+      let bitrate: number | undefined;
+      let lossPct: number | undefined;
+      if (prev && now > prev.timestamp) {
+        const dt = (now - prev.timestamp) / 1000;
+        if (typeof outbound.framesEncoded === 'number' && typeof prev.framesEncoded === 'number') {
+          fps = Math.max(0, (outbound.framesEncoded - prev.framesEncoded) / dt);
+        }
+        if (typeof outbound.bytesSent === 'number' && typeof prev.bytesSent === 'number') {
+          bitrate = Math.max(0, ((outbound.bytesSent - prev.bytesSent) * 8) / dt);
+        }
+        if (
+          typeof outbound.packetsSent === 'number' &&
+          typeof prev.packetsSent === 'number' &&
+          remoteInbound &&
+          typeof remoteInbound.packetsLost === 'number' &&
+          typeof prev.packetsLost === 'number'
+        ) {
+          const sent = outbound.packetsSent - prev.packetsSent;
+          const lost = remoteInbound.packetsLost - prev.packetsLost;
+          if (sent > 0) lossPct = Math.max(0, Math.min(100, (lost / sent) * 100));
+        }
+      }
+      cameraStatsPrevRef.current = {
+        timestamp: now,
+        framesEncoded: outbound.framesEncoded,
+        bytesSent: outbound.bytesSent,
+        packetsSent: outbound.packetsSent,
+        packetsLost: remoteInbound?.packetsLost,
+      };
+      const stats: CameraStreamStats = {
+        codec: shortenCodecMime(codecMime),
+        encoderImplementation: outbound.encoderImplementation,
+        hardwareAccelerated:
+          typeof outbound.powerEfficientEncoder === 'boolean' ? outbound.powerEfficientEncoder : undefined,
+        framesPerSecond: fps,
+        framesEncoded: outbound.framesEncoded,
+        bitrateBps: bitrate,
+        width: outbound.frameWidth,
+        height: outbound.frameHeight,
+        qualityLimitationReason: outbound.qualityLimitationReason,
+        rttMs:
+          typeof remoteInbound?.roundTripTime === 'number' ? remoteInbound.roundTripTime * 1000 : undefined,
+        packetsLostPct: lossPct,
+      };
+      safeInvoke('onCameraStats', onCameraStatsRef.current, stats);
+    };
+
+    const startCameraStatsPoller = () => {
+      if (cameraStatsTimerRef.current !== null) return;
+      cameraStatsPrevRef.current = null;
+      // First sample fires after one interval — the very first
+      // sample has no deltas to compare against, which is fine: the
+      // codec/encoder identity is still useful on its own.
+      cameraStatsTimerRef.current = setInterval(() => {
+        void sampleOutboundCameraStats();
+      }, 1000);
+    };
+
+    const stopCameraStatsPoller = () => {
+      if (cameraStatsTimerRef.current !== null) {
+        clearInterval(cameraStatsTimerRef.current);
+        cameraStatsTimerRef.current = null;
+      }
+      cameraStatsPrevRef.current = null;
+      safeInvoke('onCameraStats', onCameraStatsRef.current, null);
+    };
+
     const teardownConnection = () => {
       clearConnectionSuccessTimeout();
       clearIceDisconnectedGrace();
@@ -1469,6 +1839,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         axFetcherRef.current.stop();
         axFetcherRef.current = null;
       }
+      // Drop any active outbound camera before the PC dies so the
+      // browser doesn't leave the camera indicator lit between
+      // reconnects.
+      stopCameraStatsPoller();
+      stopOutboundLocalStream();
+      outboundCameraSenderRef.current = null;
       // A scheduled cursor flush would otherwise call setState on a
       // teardown component once the next frame runs.
       if (cursorRafIdRef.current !== undefined) {
@@ -1678,6 +2054,21 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             if (!isCurrentAttempt() || wsRef.current !== ws) {
               return;
             }
+            // Replay the saved camera aspect for fresh connections
+            // (initial mount, autoreconnect, sim reboot). The host's
+            // streamer starts at its boot default (16:9 / 1920×1080)
+            // and a missing message would mean the operator's pick
+            // silently reverts on reconnect. We always send something
+            // when the prop is set, even if it matches the host
+            // default — the host short-circuits no-op rebuilds.
+            const initialAspect = cameraAspectRef.current;
+            if (initialAspect) {
+              try {
+                ws.send(JSON.stringify({ type: 'cameraAspect', aspect: initialAspect }));
+              } catch (err) {
+                debugWarn('initial cameraAspect send failed:', err);
+              }
+            }
             settle(resolve);
           };
 
@@ -1754,6 +2145,23 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         peerConnection.addTransceiver('audio', { direction: 'recvonly' });
         const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
 
+        // Pre-allocate a sendonly slot for the user's camera so the
+        // sim can pull frames later without renegotiating SDP.
+        // Allocating up-front means we don't have to renegotiate the
+        // SDP when the simulator app actually opens its
+        // `AVCaptureSession` — the codec/SSRC negotiation happens
+        // once, here, and turning the camera on/off later is just a
+        // `replaceTrack`.
+        // iOS only: Android has no camera consumer, and the extra
+        // m=video line crashes Android 14's scrcpy/libwebrtc.
+        const outboundCameraTransceiver =
+          platform === 'ios' ?
+            peerConnection.addTransceiver('video', {
+              direction: 'sendonly',
+            })
+          : null;
+        outboundCameraSenderRef.current = outboundCameraTransceiver?.sender ?? null;
+
         // As hardware encoder, we use H265 for iOS and VP9 for Android.
         // We make sure these two are the first ones in the list.
         // If not, the fallback is H264 which is also hardware accelerated, although not as good,
@@ -1776,6 +2184,59 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             });
             videoTransceiver.setCodecPreferences(sortedCodecs);
             debugLog('Set codec preferences:', sortedCodecs.map((c) => c.mimeType).join(', '));
+          }
+        }
+
+        // Pin the outbound camera transceiver's codec order with
+        // negotiation-time fallback. Preference order:
+        //   1. H.265 / HEVC  — VideoToolbox HW on M-series + recent
+        //      Chrome. ~30% less bitrate at equal quality. If the
+        //      answerer (limulator) supports HEVC, this wins.
+        //   2. H.264 with VideoToolbox-friendly profile-level-ids
+        //      (42e01f / 42e028 / 640c1f). Universally HW-accelerated
+        //      on every Mac since 2009. SDP-time fallback when HEVC
+        //      isn't in the answer.
+        //   3. Any other H.264 profile. Often resolves to OpenH264
+        //      (software) so we keep it explicitly last among H.264
+        //      to avoid Chrome's default pick.
+        //   4. VP9 / VP8 (libvpx software on Mac). Last resort.
+        //
+        // Caveat: this is *negotiation* fallback. If HEVC HW encoder
+        // init fails at session start or gets demoted mid-stream,
+        // Chrome falls back to *software* HEVC, not H.264 — no spec
+        // hook for runtime re-negotiation. The host-side stats
+        // logger will surface this as decoder=ffmpeg / hw=false.
+        if (outboundCameraTransceiver && RTCRtpSender.getCapabilities) {
+          const senderCaps = RTCRtpSender.getCapabilities('video');
+          if (senderCaps && senderCaps.codecs) {
+            const vtH264Profiles = new Set(['42e01f', '42e028', '640c1f']);
+            const score = (c: { mimeType: string; sdpFmtpLine?: string }): number => {
+              const mime = c.mimeType.toLowerCase();
+              const fmtp = (c.sdpFmtpLine || '').toLowerCase();
+              const profileMatch = fmtp.match(/profile-level-id=([0-9a-f]{6})/);
+              const profile = profileMatch ? profileMatch[1] : '';
+              if (mime === 'video/h265' || mime === 'video/hevc') return 1;
+              if (mime === 'video/h264' && vtH264Profiles.has(profile)) return 2;
+              if (mime === 'video/h264') return 3;
+              if (mime === 'video/vp9') return 4;
+              if (mime === 'video/vp8') return 5;
+              if (mime === 'video/rtx' || mime === 'video/red' || mime === 'video/ulpfec') {
+                return 0; // Keep RTX/FEC available alongside everything else.
+              }
+              return 6;
+            };
+            const sortedSendCodecs = [...senderCaps.codecs].sort((a, b) => score(a) - score(b));
+            try {
+              outboundCameraTransceiver.setCodecPreferences(sortedSendCodecs);
+              debugLog(
+                'Outbound camera codec preferences:',
+                sortedSendCodecs
+                  .map((c) => `${c.mimeType}${c.sdpFmtpLine ? `[${c.sdpFmtpLine}]` : ''}`)
+                  .join(', '),
+              );
+            } catch (err) {
+              debugWarn('Failed to set outbound camera codec preferences:', err);
+            }
           }
         }
 
@@ -2082,6 +2543,243 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               pendingScreenshotResolversRef.current.delete(message.id);
               pendingScreenshotRejectersRef.current.delete(message.id);
               break;
+            case 'cameraRequest': {
+              // Only iOS sessions allocate the sendonly outbound-camera
+              // transceiver; without it there is nothing to feed the sim, so
+              // ignore camera requests entirely — no getUserMedia prompt and
+              // no onCameraDemandChange callbacks. Android intentionally stays
+              // silent, as the API docs promise.
+              if (platform !== 'ios' || !outboundCameraSenderRef.current) {
+                break;
+              }
+              const active = message.active === true;
+              // Bump up front so any earlier in-flight handler bails.
+              const cameraGeneration = ++cameraRequestGenerationRef.current;
+              const isCurrentCameraRequest = () =>
+                isCurrentAttempt() &&
+                wsRef.current === ws &&
+                cameraGeneration === cameraRequestGenerationRef.current;
+              // Log unconditionally — this is one of the few places we
+              // hand control to the browser's permission UI, and a
+              // silent failure here looks identical to "limulator
+              // never asked" from the user's point of view.
+              // eslint-disable-next-line no-console
+              console.info('[RemoteControl] cameraRequest received, active=', active);
+              if (!active) {
+                // Sim no longer wants frames. Drop our local track and
+                // shut the browser's camera green light off.
+                const sender = outboundCameraSenderRef.current;
+                if (sender) {
+                  try {
+                    await sender.replaceTrack(null);
+                  } catch (err) {
+                    debugWarn('replaceTrack(null) on camera detach failed:', err);
+                  }
+                }
+                stopCameraStatsPoller();
+                stopOutboundLocalStream();
+                safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, false);
+                break;
+              }
+              // Sim is asking for camera. Ask the browser; the user's
+              // prompt response is reported back to the host via a
+              // `cameraResult` message so it can swap to a
+              // black-frame fallback on denial.
+              safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true);
+              if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+                // Likely an insecure context (http on a non-localhost
+                // origin) — Chrome strips `mediaDevices` off
+                // `navigator` in that case and the only signal is
+                // this undefined check.
+                // eslint-disable-next-line no-console
+                console.warn(
+                  '[RemoteControl] navigator.mediaDevices.getUserMedia unavailable. ' +
+                    'getUserMedia requires a secure context (https or http://localhost). ' +
+                    'Replying cameraResult granted=false so limulator falls back to black frames.',
+                );
+                ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
+                safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
+                break;
+              }
+              let stream: MediaStream | null = null;
+              try {
+                // Capture at the webcam's *native* resolution by
+                // default (no width/height constraints). When the
+                // host app has picked an explicit cap via
+                // `cameraResolutionCap`, we honour it here. Frame
+                // rate is always capped to 30 to match the
+                // simulator pool's pacing.
+                stream = await navigator.mediaDevices.getUserMedia({
+                  video: cameraCapToConstraints(cameraResolutionCapRef.current),
+                  audio: false,
+                });
+              } catch (err) {
+                // Surface unconditionally — the user is the only one
+                // who can fix this (permission denied, no device,
+                // dismissed prompt, etc.). `debugWarn` alone would
+                // hide it in normal builds.
+                // eslint-disable-next-line no-console
+                console.warn('[RemoteControl] getUserMedia denied/failed:', err);
+              }
+              if (!isCurrentCameraRequest()) {
+                // Superseded during the prompt; drop the stream we got.
+                if (stream) stopMediaStream(stream);
+                return;
+              }
+              if (!stream) {
+                ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
+                safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
+                break;
+              }
+              // Replace any previous local stream (e.g. an earlier
+              // cameraRequest that resolved with a different device)
+              // before we install the new tracks.
+              stopOutboundLocalStream();
+              outboundLocalStreamRef.current = stream;
+              const sender = outboundCameraSenderRef.current;
+              const videoTrack = stream.getVideoTracks()[0] ?? null;
+              if (!sender || !videoTrack) {
+                if (stream) stopMediaStream(stream);
+                outboundLocalStreamRef.current = null;
+                ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
+                safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
+                break;
+              }
+              try {
+                await sender.replaceTrack(videoTrack);
+              } catch (err) {
+                debugWarn('replaceTrack(videoTrack) failed:', err);
+                stopMediaStream(stream);
+                outboundLocalStreamRef.current = null;
+                ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
+                safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
+                break;
+              }
+              if (!isCurrentCameraRequest()) {
+                // Superseded mid-attach; detach and skip the ACK/poller.
+                try {
+                  await sender.replaceTrack(null);
+                } catch (err) {
+                  debugWarn('replaceTrack(null) on stale camera attach failed:', err);
+                }
+                stopMediaStream(stream);
+                if (outboundLocalStreamRef.current === stream) {
+                  outboundLocalStreamRef.current = null;
+                }
+                return;
+              }
+              // Tell the encoder this is real motion content (a
+              // physical camera), not text/slides. With `'motion'`
+              // VideoToolbox / libvpx pick latency-friendly tuning
+              // (no extra B-frames, shorter GoP smoothing). Set
+              // before the first frame so the encoder init reads it.
+              try {
+                videoTrack.contentHint = 'motion';
+              } catch {
+                /* older browsers don't support contentHint; ignore */
+              }
+              // Bound the outbound bitrate generously and let
+              // WebRTC's congestion control (BWE) find the floor.
+              // 8 Mbps is comfortable for native 1080p30 webcam
+              // content over LAN — the encoder will use far less when
+              // the scene is static, and BWE will throttle if a
+              // hop is constrained. Pair with
+              // `maintain-framerate` so the quality scaler steps
+              // down resolution before dropping frames, matching how
+              // Meet/Zoom degrade.
+              try {
+                const params = sender.getParameters();
+                if (!params.encodings || params.encodings.length === 0) {
+                  params.encodings = [{}];
+                }
+                params.encodings[0].maxBitrate = 8_000_000;
+                params.encodings[0].maxFramerate = 30;
+                params.degradationPreference = 'maintain-framerate';
+                await sender.setParameters(params);
+              } catch (err) {
+                debugWarn('setParameters on outbound camera failed:', err);
+              }
+              // Surface the actual captured geometry to the host so
+              // it can size its IOSurface pool / picture-format
+              // metadata to match. `getSettings()` returns what the
+              // browser actually picked — which may differ from any
+              // hints we sent in the constraints — including the
+              // selected `deviceId` / `label` (useful when a user has
+              // multiple cameras and we eventually expose a picker).
+              let cameraMetadata: {
+                width?: number;
+                height?: number;
+                frameRate?: number;
+                deviceId?: string;
+                label?: string;
+                facingMode?: string;
+              } = {};
+              try {
+                const settings = videoTrack.getSettings();
+                cameraMetadata = {
+                  width: settings.width,
+                  height: settings.height,
+                  frameRate: settings.frameRate,
+                  deviceId: settings.deviceId,
+                  label: videoTrack.label || undefined,
+                  facingMode: settings.facingMode,
+                };
+                // eslint-disable-next-line no-console
+                console.info(
+                  `[RemoteControl] camera capture: ${cameraMetadata.width}x${cameraMetadata.height}` +
+                    ` @ ${cameraMetadata.frameRate ?? '?'}fps` +
+                    (cameraMetadata.label ? ` — ${cameraMetadata.label}` : ''),
+                );
+              } catch (err) {
+                debugWarn('getSettings() on outbound camera track failed:', err);
+              }
+              // If the browser revokes the track later (extension,
+              // user clicks Stop in the camera tab UI, etc.), notify
+              // the host so it can switch to black frames.
+              videoTrack.onended = () => {
+                if (outboundLocalStreamRef.current !== stream) return;
+                stopCameraStatsPoller();
+                stopOutboundLocalStream();
+                if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
+                }
+                safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
+              };
+              if (!isCurrentCameraRequest()) {
+                // Superseded during setParameters; detach and bail.
+                videoTrack.onended = null;
+                try {
+                  await sender.replaceTrack(null);
+                } catch (err) {
+                  debugWarn('replaceTrack(null) on stale camera finalize failed:', err);
+                }
+                stopMediaStream(stream);
+                if (outboundLocalStreamRef.current === stream) {
+                  outboundLocalStreamRef.current = null;
+                }
+                return;
+              }
+              ws.send(
+                JSON.stringify({
+                  type: 'cameraResult',
+                  granted: true,
+                  // Forward what the browser actually captured so the
+                  // host can size its IOSurface pool, log the device,
+                  // and (eventually) surface a status pill / picker.
+                  camera: cameraMetadata,
+                }),
+              );
+              safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, true, cameraMetadata);
+              // Kick off the per-second outbound stats sampler. We do
+              // this *after* `setParameters` so the first sample
+              // already sees the encoder under its final bitrate /
+              // degradation policy, and *after* the host-side
+              // attachInboundTrack will have wired up (the
+              // cameraResult ACK is what triggers it on the host),
+              // so framesEncoded starts climbing immediately.
+              startCameraStatsPoller();
+              break;
+            }
             case 'terminateAppResult':
               if (typeof message.id !== 'string') {
                 debugWarn('Received invalid terminateApp result message:', message);
@@ -2173,6 +2871,41 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       start();
     };
 
+    // Re-apply the resolution cap on the currently-sending track
+    // whenever the host app changes its preference. Skips when no
+    // camera is active — the next `getUserMedia` will pick up the
+    // new value via `cameraCapToConstraints` automatically.
+    useEffect(() => {
+      const stream = outboundLocalStreamRef.current;
+      if (!stream) return;
+      const track = stream.getVideoTracks()[0];
+      if (!track) return;
+      const constraints = cameraCapToConstraints(cameraResolutionCap);
+      track.applyConstraints(constraints).catch((err) => {
+        debugWarn('applyConstraints for new camera cap failed:', err);
+      });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [cameraResolutionCap]);
+
+    // Push the aspect preference to the host whenever it changes.
+    // The host rebuilds its IOSurface pool and bumps `pool_generation`
+    // on its end; the dylib re-handshakes on next sem_wait. No
+    // peer-connection renegotiation is needed — the aspect change is
+    // purely about the pixel buffer dimensions iOS apps observe, not
+    // about WebRTC track layout. The `cameraAspectRef` is mirrored
+    // higher up so the WS `onopen` reconnect path can replay the
+    // latest value on fresh connections.
+    useEffect(() => {
+      if (!cameraAspect) return;
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      try {
+        ws.send(JSON.stringify({ type: 'cameraAspect', aspect: cameraAspect }));
+      } catch (err) {
+        debugWarn('cameraAspect send failed:', err);
+      }
+    }, [cameraAspect]);
+
     useEffect(() => {
       // Reset video loaded state when connection params change
       setVideoLoaded(false);
@@ -2194,6 +2927,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         stop();
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
+      // Camera attach/detach happens entirely inside the WS message
+      // loop now (sendonly transceiver + `replaceTrack`), so the
+      // connection effect doesn't need to bounce when the camera
+      // turns on/off — no SDP-affecting change.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [url, token, propSessionId]);
 
     // Recompute the inspect-overlay geometry (container-local pixel rect of
