@@ -20,6 +20,10 @@ export type ArchiveWatcher = {
 
 const noopLogger: LogFn = () => {};
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function stableArchiveRoot(archivePath: string): string {
   const resolved = path.resolve(archivePath);
   const hash = crypto.createHash('sha1').update(resolved).digest('hex').slice(0, 12);
@@ -261,6 +265,32 @@ export async function prepareAppBundlePath(inputPath: string): Promise<PreparedA
   return await extractAppArchiveToStablePath(resolvedPath);
 }
 
+async function waitForStableArchiveFile(archivePath: string, shouldStop: () => boolean): Promise<boolean> {
+  const deadline = Date.now() + 10_000;
+  let previous: { size: number; mtimeMs: number } | undefined;
+
+  while (!shouldStop() && Date.now() < deadline) {
+    const stat = await fs.promises.stat(archivePath).catch((err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') return null;
+      throw err;
+    });
+
+    if (stat?.isFile()) {
+      const current = { size: stat.size, mtimeMs: stat.mtimeMs };
+      if (previous && previous.size === current.size && previous.mtimeMs === current.mtimeMs) {
+        return true;
+      }
+      previous = current;
+    } else {
+      previous = undefined;
+    }
+
+    await sleep(100);
+  }
+
+  return false;
+}
+
 export function watchAppArchive(opts: { archivePath: string; log?: LogFn }): ArchiveWatcher {
   const archivePath = path.resolve(opts.archivePath);
   const log = opts.log ?? noopLogger;
@@ -279,6 +309,13 @@ export function watchAppArchive(opts: { archivePath: string; log?: LogFn }): Arc
     }
     inFlight = true;
     try {
+      const ready = await waitForStableArchiveFile(archivePath, () => closed);
+      if (!ready) {
+        if (!closed) {
+          log('warn', `ZIP/IPA archive did not become readable after change: ${archivePath}`);
+        }
+        return;
+      }
       await extractAppArchiveToStablePath(archivePath);
       log('debug', `re-extracted ZIP/IPA archive: ${archivePath}`);
     } catch (err) {

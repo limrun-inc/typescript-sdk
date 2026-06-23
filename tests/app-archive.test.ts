@@ -148,4 +148,27 @@ describe('app archive preparation', () => {
     expect(close).toHaveBeenCalled();
     watchSpy.mockRestore();
   });
+
+  test('archive watcher waits for a deleted archive to reappear before extracting', async () => {
+    let onChange: ((eventType: string, filename: string) => void) | undefined;
+    const watchSpy = jest.spyOn(fs, 'watch').mockImplementation((_path, listener) => {
+      onChange = listener as (eventType: string, filename: string) => void;
+      return { close: jest.fn() } as unknown as fs.FSWatcher;
+    });
+    const work = tempDir();
+    const ipaPath = path.join(work, 'WatchMe.ipa');
+    writeIpa(ipaPath, 'WatchMe.app', { 'Info.plist': 'first' });
+    const prepared = await extractAppArchiveToStablePath(ipaPath);
+
+    const watcher = watchAppArchive({ archivePath: ipaPath });
+    fs.rmSync(ipaPath);
+    onChange?.('rename', path.basename(ipaPath));
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    writeIpa(ipaPath, 'WatchMe.app', { 'Info.plist': 'second' });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(fs.readFileSync(path.join(prepared.appPath, 'Info.plist'), 'utf8')).toBe('second');
+    watcher.close();
+    watchSpy.mockRestore();
+  });
 });
