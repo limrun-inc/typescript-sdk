@@ -326,7 +326,7 @@ export function watchAppArchive(opts: {
   };
 
   const watcher = fs.watch(parentDir, (_eventType, filename) => {
-    if (!filename || filename.toString() === archiveBase) {
+    if (filename?.toString() === archiveBase) {
       schedule();
     }
   });
