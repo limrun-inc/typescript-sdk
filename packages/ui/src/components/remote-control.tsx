@@ -60,6 +60,19 @@ interface RemoteControlProps {
   autoReconnect?: boolean;
 
   /**
+   * Fires once when the component concludes the instance is permanently
+   * gone rather than suffering a recoverable connection blip.
+   *
+   * After a drop, the component probes the instance endpoint over HTTP;
+   * a 404 means the instance no longer exists (terminated/deleted). When
+   * that happens the component stops reconnecting and renders a built-in
+   * "terminated" message in place of the "Retry" button, and invokes this
+   * callback so the host can react (navigate away, surface its own UI,
+   * etc.). It is not called for ordinary network drops.
+   */
+  onTerminated?: () => void;
+
+  /**
    * Enable the inspect overlay. When set, the component starts polling the
    * accessibility tree and draws boxes over each element on top of the
    * video stream.
@@ -254,6 +267,9 @@ const MAX_CONNECTION_ATTEMPTS = 3;
 const CONNECTION_RETRY_DELAY_MS = 1000;
 const CONNECTION_SUCCESS_TIMEOUT_MS = 15000;
 const ICE_DISCONNECTED_GRACE_MS = 3000;
+// Upper bound for the one-shot HTTP probe that disambiguates a terminated
+// instance (endpoint 404s) from a transient connection drop.
+const TERMINATION_PROBE_TIMEOUT_MS = 4000;
 
 const isAndroidTabletVideo = (width: number, height: number): boolean =>
   (width === ANDROID_TABLET_VIDEO_WIDTH && height === ANDROID_TABLET_VIDEO_HEIGHT) ||
@@ -332,6 +348,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       openUrl,
       showFrame = true,
       autoReconnect = false,
+      onTerminated,
       inspectMode,
       onAxSnapshotChange,
       onInspectSelectionChange,
@@ -346,6 +363,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const frameRef = useRef<HTMLImageElement>(null);
     const [videoLoaded, setVideoLoaded] = useState(false);
     const [retryExhausted, setRetryExhausted] = useState(false);
+    // Set once we've concluded the instance is permanently gone (its
+    // endpoint 404s after a drop), as opposed to a recoverable blip. When
+    // set, reconnection stops and a terminated message replaces "Retry".
+    const [terminated, setTerminated] = useState(false);
+    const terminatedRef = useRef(false);
+    // Guards against firing overlapping termination probes.
+    const terminationProbeInFlightRef = useRef(false);
     const [isLandscape, setIsLandscape] = useState(false);
     const [useAndroidTabletFrame, setUseAndroidTabletFrame] = useState(false);
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
@@ -463,6 +487,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     onInspectSelectionChangeRef.current = onInspectSelectionChange;
     const onAxStatusChangeRef = useRef(onAxStatusChange);
     onAxStatusChangeRef.current = onAxStatusChange;
+    const onTerminatedRef = useRef(onTerminated);
+    onTerminatedRef.current = onTerminated;
 
     const inspectActive = inspectMode === true || inspectMode === 'hover-only';
     const inspectModeResolved: InspectMode = inspectMode === 'hover-only' ? 'hover-only' : 'select';
@@ -1485,10 +1511,91 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
     };
 
+    // Probe the instance endpoint over HTTP to tell a permanent termination
+    // apart from a recoverable connection drop. The router serves the same
+    // path the WebSocket uses and returns 404 once the instance is gone
+    // (deleted / terminated), while a live instance returns something else.
+    //
+    // Only an authoritative, freshly-fetched 404 counts as terminated. A
+    // network outage, a non-404 status, or a CORS-blocked (unreadable)
+    // response all resolve to `false` so we keep the normal retry/reconnect
+    // behavior and never mistake a connectivity problem for a termination.
+    const probeTerminated = async (): Promise<boolean> => {
+      // The browser knows it has no network — this is a connectivity drop,
+      // not a termination. Don't probe (and don't risk a cached 404).
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        return false;
+      }
+      let probeUrl: string;
+      try {
+        const parsed = new URL(url);
+        parsed.protocol =
+          parsed.protocol === 'wss:' ? 'https:'
+          : parsed.protocol === 'ws:' ? 'http:'
+          : parsed.protocol;
+        parsed.searchParams.set('token', token);
+        probeUrl = parsed.toString();
+      } catch {
+        return false;
+      }
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), TERMINATION_PROBE_TIMEOUT_MS);
+      try {
+        // `no-store` so a prior response can't be served from the HTTP cache
+        // (e.g. a stale 404 returned while offline would look like a
+        // termination); the probe must always reach the live router.
+        const res = await fetch(probeUrl, { method: 'GET', cache: 'no-store', signal: controller.signal });
+        return res.status === 404;
+      } catch {
+        return false;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    };
+
+    const markTerminated = () => {
+      if (terminatedRef.current) return;
+      terminatedRef.current = true;
+      setTerminated(true);
+      setRetryExhausted(false);
+      // Invalidate any in-flight/scheduled attempt and stop all activity so
+      // we don't keep hammering an endpoint that will never come back.
+      connectionGenerationRef.current += 1;
+      clearScheduledRetry();
+      clearConnectionSuccessTimeout();
+      clearIceDisconnectedGrace();
+      teardownConnection();
+      updateStatus('Instance terminated');
+      safeInvoke('onTerminated', onTerminatedRef.current);
+    };
+
+    // Run a one-shot termination check in reaction to a drop. Event-driven
+    // (no polling), deduped while one is already in flight, and a no-op once
+    // we've concluded the instance is gone.
+    const checkTerminated = () => {
+      if (terminatedRef.current || terminationProbeInFlightRef.current) return;
+      terminationProbeInFlightRef.current = true;
+      void probeTerminated().then((isTerminated) => {
+        terminationProbeInFlightRef.current = false;
+        if (isTerminated) {
+          markTerminated();
+        }
+      });
+    };
+
     const scheduleRetry = (reason: string, generation: number) => {
+      if (terminatedRef.current) {
+        return;
+      }
       if (generation !== connectionGenerationRef.current) {
         return;
       }
+
+      // A drop just happened. Find out whether the instance is gone for good
+      // (404) rather than a recoverable blip; if so the probe stops retries
+      // and surfaces the terminated message. Meanwhile the normal retry path
+      // below proceeds and is short-circuited once the verdict lands.
+      checkTerminated();
 
       if (controlChannelOpenedRef.current) {
         if (!autoReconnectRef.current) {
@@ -1525,6 +1632,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
 
     const startAttempt = async (attemptNumber = 0) => {
+      // Never reconnect to an instance we've concluded is gone. `start()`
+      // clears this when a deliberate fresh connection is requested.
+      if (terminatedRef.current) return;
       const generation = connectionGenerationRef.current + 1;
       connectionGenerationRef.current = generation;
       connectionAttemptRef.current = attemptNumber;
@@ -2041,6 +2151,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
 
     const start = () => {
+      // A fresh connection (mount, prop change, manual retry, reconnect())
+      // clears any prior terminated verdict so we re-evaluate from scratch.
+      terminatedRef.current = false;
+      setTerminated(false);
       void startAttempt(0);
     };
 
@@ -2567,11 +2681,19 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             }}
           />
         )}
-        {retryExhausted && (
-          <button type="button" className="rc-retry-button" onClick={handleManualRetry}>
-            Retry
-          </button>
-        )}
+        {terminated ?
+          <div className="rc-terminated" role="status">
+            <div className="rc-terminated-title">Instance terminated</div>
+            <div className="rc-terminated-message">
+              This instance no longer exists and can&apos;t be reconnected.
+            </div>
+          </div>
+        : retryExhausted && (
+            <button type="button" className="rc-retry-button" onClick={handleManualRetry}>
+              Retry
+            </button>
+          )
+        }
       </div>
     );
   },
