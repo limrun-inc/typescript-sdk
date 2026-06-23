@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 import { assertPort, isNonRetryableError, startReverseTcpTunnel, type ReverseTunnel } from './tunnel';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
 import { createIgnoreFn } from './folder-sync-ignore';
+import { prepareAppBundlePath, watchAppArchive } from './app-archive';
 import { downloadFileToLocalPath } from './internal/download-file';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import { startHttpProxy as startLocalHttpProxy } from './http-proxy';
@@ -1900,7 +1901,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         watch?: boolean;
       },
     ): Promise<SyncFolderResult> => {
-      const infoPlistPath = path.join(localAppBundlePath, 'Info.plist');
+      const preparedApp = await prepareAppBundlePath(localAppBundlePath);
+      const appBundlePath = preparedApp.appPath;
+      const infoPlistPath = path.join(appBundlePath, 'Info.plist');
       const infoPlistStat = await fs.promises.stat(infoPlistPath).catch(() => null);
       if (!infoPlistStat?.isFile()) {
         throw new Error(`The folder is not a valid app bundle: missing Info.plist at ${infoPlistPath}`);
@@ -1908,7 +1911,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       if (!cachedDeviceInfo) {
         throw new Error('Device info not available yet; wait for client connection to be established.');
       }
-      const resolvedPath = path.resolve(localAppBundlePath);
+      const resolvedPath = path.resolve(preparedApp.cacheIdentityPath);
       const folderName = path.basename(resolvedPath);
       const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
       const cacheKey = `limsync-cache-${folderName}-${hash}`;
@@ -1936,7 +1939,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         apiUrl: options.apiUrl,
         token: options.token,
         udid: cacheKey,
-        ignoreFn: await createIgnoreFn(localAppBundlePath, { basisCacheDir, log: syncLog }),
+        ignoreFn: await createIgnoreFn(appBundlePath, { basisCacheDir, log: syncLog }),
         basisCacheDir,
         log: syncLog,
         install: opts?.install ?? true,
@@ -1944,7 +1947,19 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         launchMode: opts?.launchMode ?? 'ForegroundIfRunning',
         watch: opts?.watch ?? true,
       };
-      return await syncFolder(localAppBundlePath, folderSyncOpts);
+      const result = await syncFolder(appBundlePath, folderSyncOpts);
+      if (!preparedApp.isArchive || !preparedApp.archivePath || !folderSyncOpts.watch) {
+        return result;
+      }
+      const archiveWatcher = watchAppArchive({ archivePath: preparedApp.archivePath, log: syncLog });
+      const stopWatching = result.stopWatching;
+      return {
+        ...result,
+        stopWatching: () => {
+          archiveWatcher.close();
+          stopWatching?.();
+        },
+      };
     };
 
     const lsof = (): Promise<LsofEntry[]> => {
