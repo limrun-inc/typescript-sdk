@@ -144,24 +144,6 @@ function discoverPayloadApp(entries: yauzl.Entry[], archivePath: string): string
   return appName;
 }
 
-async function copyExtractedAppIntoStableRoot(stagingAppPath: string, appPath: string): Promise<void> {
-  await ensureDirectoryNotSymlink(appPath);
-  const existing = await fs.promises.readdir(appPath).catch((err: NodeJS.ErrnoException) => {
-    if (err.code === 'ENOENT') return [];
-    throw err;
-  });
-  await Promise.all(
-    existing.map((name) => fs.promises.rm(path.join(appPath, name), { recursive: true, force: true })),
-  );
-  await fs.promises.cp(stagingAppPath, appPath, {
-    recursive: true,
-    force: true,
-    errorOnExist: false,
-    dereference: false,
-    verbatimSymlinks: true,
-  });
-}
-
 async function extractEntry(
   zip: yauzl.ZipFile,
   entry: yauzl.Entry,
@@ -200,7 +182,6 @@ export async function extractAppArchiveToStablePath(archivePath: string): Promis
   const resolvedArchivePath = path.resolve(archivePath);
   const appPath = stableAppPath(resolvedArchivePath);
   const stableRoot = path.dirname(appPath);
-  const stagingRoot = path.join(stableRoot, `.staging-${process.pid}-${Date.now()}`);
 
   await ensureDirectoryNotSymlink(stableRoot);
   const zip = await openZip(resolvedArchivePath);
@@ -208,8 +189,8 @@ export async function extractAppArchiveToStablePath(archivePath: string): Promis
     const entries = await readEntries(zip);
     const appName = discoverPayloadApp(entries, resolvedArchivePath);
     const payloadPrefix = `Payload/${appName}/`;
-    const stagingAppPath = path.join(stagingRoot, path.basename(appPath));
-    await fs.promises.rm(stagingRoot, { recursive: true, force: true });
+    await fs.promises.rm(appPath, { recursive: true, force: true });
+    await ensureDirectoryNotSymlink(appPath);
 
     for (const entry of entries) {
       const name = toZipPath(entry.fileName);
@@ -218,14 +199,14 @@ export async function extractAppArchiveToStablePath(archivePath: string): Promis
       }
       const rel = name === `Payload/${appName}` ? '' : name.slice(payloadPrefix.length);
       if (rel === '') {
-        await fs.promises.mkdir(stagingAppPath, { recursive: true });
+        await fs.promises.mkdir(appPath, { recursive: true });
         continue;
       }
       if (isUnsafeZipPath(rel)) {
         throw new Error(`ZIP entry has an unsafe app-relative path: ${entry.fileName}`);
       }
-      const target = path.join(stagingAppPath, rel.split('/').join(path.sep));
-      const stagingAppResolved = path.resolve(stagingAppPath);
+      const target = path.join(appPath, rel.split('/').join(path.sep));
+      const stagingAppResolved = path.resolve(appPath);
       const targetResolved = path.resolve(target);
       if (
         targetResolved !== stagingAppResolved &&
@@ -233,10 +214,9 @@ export async function extractAppArchiveToStablePath(archivePath: string): Promis
       ) {
         throw new Error(`ZIP entry escapes app bundle: ${entry.fileName}`);
       }
-      await extractEntry(zip, entry, target, stagingAppPath);
+      await extractEntry(zip, entry, target, appPath);
     }
 
-    await copyExtractedAppIntoStableRoot(stagingAppPath, appPath);
     return {
       appPath,
       cacheIdentityPath: resolvedArchivePath,
@@ -245,7 +225,6 @@ export async function extractAppArchiveToStablePath(archivePath: string): Promis
     };
   } finally {
     zip.close();
-    await fs.promises.rm(stagingRoot, { recursive: true, force: true });
   }
 }
 
@@ -291,7 +270,11 @@ async function waitForStableArchiveFile(archivePath: string, shouldStop: () => b
   return false;
 }
 
-export function watchAppArchive(opts: { archivePath: string; log?: LogFn }): ArchiveWatcher {
+export function watchAppArchive(opts: {
+  archivePath: string;
+  log?: LogFn;
+  onExtracted?: () => void | Promise<void>;
+}): ArchiveWatcher {
   const archivePath = path.resolve(opts.archivePath);
   const log = opts.log ?? noopLogger;
   const parentDir = path.dirname(archivePath);
@@ -318,6 +301,7 @@ export function watchAppArchive(opts: { archivePath: string; log?: LogFn }): Arc
       }
       await extractAppArchiveToStablePath(archivePath);
       log('debug', `re-extracted ZIP/IPA archive: ${archivePath}`);
+      await opts.onExtracted?.();
     } catch (err) {
       log(
         'error',

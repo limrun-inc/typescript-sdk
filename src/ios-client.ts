@@ -1916,6 +1916,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
       const cacheKey = `limsync-cache-${folderName}-${hash}`;
       const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
+      const shouldWatch = opts?.watch ?? true;
       const syncLog: FolderSyncOptions['log'] = (level, msg) => {
         switch (level) {
           case 'debug':
@@ -1945,19 +1946,23 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         install: opts?.install ?? true,
         maxPatchBytes: opts?.maxPatchBytes ?? 4 * 1024 * 1024,
         launchMode: opts?.launchMode ?? 'ForegroundIfRunning',
-        watch: opts?.watch ?? true,
+        watch: preparedApp.isArchive ? false : shouldWatch,
       };
       const result = await syncFolder(appBundlePath, folderSyncOpts);
-      if (!preparedApp.isArchive || !preparedApp.archivePath || !folderSyncOpts.watch) {
+      if (!preparedApp.isArchive || !preparedApp.archivePath || !shouldWatch) {
         return result;
       }
-      const archiveWatcher = watchAppArchive({ archivePath: preparedApp.archivePath, log: syncLog });
-      const stopWatching = result.stopWatching;
+      const archiveWatcher = watchAppArchive({
+        archivePath: preparedApp.archivePath,
+        log: syncLog,
+        onExtracted: async () => {
+          await syncFolder(appBundlePath, folderSyncOpts);
+        },
+      });
       return {
         ...result,
         stopWatching: () => {
           archiveWatcher.close();
-          stopWatching?.();
         },
       };
     };

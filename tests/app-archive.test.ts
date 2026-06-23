@@ -159,8 +159,9 @@ describe('app archive preparation', () => {
     const ipaPath = path.join(work, 'WatchMe.ipa');
     writeIpa(ipaPath, 'WatchMe.app', { 'Info.plist': 'first' });
     const prepared = await extractAppArchiveToStablePath(ipaPath);
+    const onExtracted = jest.fn();
 
-    const watcher = watchAppArchive({ archivePath: ipaPath });
+    const watcher = watchAppArchive({ archivePath: ipaPath, onExtracted });
     fs.rmSync(ipaPath);
     onChange?.('rename', path.basename(ipaPath));
     await new Promise((resolve) => setTimeout(resolve, 650));
@@ -168,6 +169,7 @@ describe('app archive preparation', () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
 
     expect(fs.readFileSync(path.join(prepared.appPath, 'Info.plist'), 'utf8')).toBe('second');
+    expect(onExtracted).toHaveBeenCalledTimes(1);
     watcher.close();
     watchSpy.mockRestore();
   });
