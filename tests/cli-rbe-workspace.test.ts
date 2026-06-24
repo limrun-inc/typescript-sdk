@@ -209,7 +209,9 @@ describe('rbe workspace generation', () => {
 
   test('renderLimrunBazelrc scopes every flag under the limrun config', () => {
     const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
-    const flagLines = rc.split('\n').filter((l) => l && !l.startsWith('#'));
+    // Every flag is config-scoped; the trailing user-override try-import is a
+    // directive, not a flag, so it is excluded from this check.
+    const flagLines = rc.split('\n').filter((l) => l && !l.startsWith('#') && !l.startsWith('try-import '));
     expect(flagLines.length).toBeGreaterThan(0);
     for (const line of flagLines) {
       expect(line).toMatch(/^build:limrun /);
@@ -241,6 +243,26 @@ describe('rbe workspace generation', () => {
     expect(rc).toContain('--strategy=Genrule=remote');
     // sysctl (hw.logicalcpu) lives in /usr/sbin.
     expect(rc).toContain('--action_env=PATH=/usr/bin:/bin:/usr/sbin:/sbin');
+  });
+
+  test('renderLimrunBazelrc strips rules_apple no-remote tags so every action can run remotely', () => {
+    // Under --config=limrun everything runs remotely; rules_apple's no-remote /
+    // no-remote-exec tags would otherwise leave bundling/linking/signing with no
+    // usable strategy. Stripped on both client kinds (the config forces remote
+    // for mac too).
+    for (const isMac of [true, false]) {
+      const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', isMac, '/ws/.limrun/bep.json');
+      expect(rc).toContain('--modify_execution_info=.*=-no-remote,.*=-no-remote-exec');
+    }
+  });
+
+  test('renderLimrunBazelrc try-imports a user override file last so overrides win', () => {
+    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
+    expect(rc).toContain('try-import %workspace%/user.limrun.bazelrc');
+    const lines = rc.split('\n');
+    const lastFlag = lines.map((l) => l.startsWith('build:limrun')).lastIndexOf(true);
+    const userImport = lines.findIndex((l) => l.startsWith('try-import %workspace%/user.limrun.bazelrc'));
+    expect(userImport).toBeGreaterThan(lastFlag);
   });
 
   test('renderLimrunBazelrc keeps outputs in CAS and emits BEP for the install verb', () => {
@@ -280,11 +302,15 @@ describe('rbe workspace generation', () => {
       expect(fs.readFileSync(path.join(dir, '.limrun', '.gitignore'), 'utf8')).toBe('*\n');
       expect(fs.readFileSync(path.join(dir, '.bazelrc'), 'utf8')).toContain(TRY_IMPORT_LINE);
       expect(result.bazelrcUpdated).toBe(true);
-      // BEP path is the ABSOLUTE workspace path, not %workspace% (which Bazel
-      // does not expand in flag values — it would create a junk %workspace%/ dir).
+      // BEP path is the ABSOLUTE workspace path, not %workspace%. Bazel does not
+      // expand %workspace% in flag values, so it must not appear in any flag line
+      // (it is valid only in the trailing user-override try-import directive).
       const rc = fs.readFileSync(result.bazelrcFragment, 'utf8');
       expect(rc).toContain(`--build_event_json_file=${path.join(dir, '.limrun', 'bep.json')}`);
-      expect(rc).not.toContain('%workspace%');
+      for (const line of rc.split('\n').filter((l) => l.startsWith('build:limrun'))) {
+        expect(line).not.toContain('%workspace%');
+      }
+      expect(rc).toContain('try-import %workspace%/user.limrun.bazelrc');
     });
 
     test('writeRbeWorkspaceFiles honors a custom bep path and creates its parent dir', () => {

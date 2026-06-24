@@ -313,6 +313,19 @@ xcode_config(
  *   actions to the mac RBE pool. On a mac it is HARMFUL: it makes bazel run
  *   exec-config actions on the local host instead of the remote worker, which
  *   then demand a local Xcode.
+ * - `--modify_execution_info=.*=-no-remote,.*=-no-remote-exec` strips the
+ *   `no-remote`/`no-remote-exec` execution-info tags rules_apple sets on
+ *   bundling/linking/signing actions (in-code on device builds, and via its
+ *   recommended `+no-remote` bazelrc that real iOS repos carry). Under
+ *   --config=limrun every action runs remotely, so any such tag leaves the
+ *   action with no usable strategy ("cannot be executed with any of the
+ *   available strategies: [remote]") and the build fails. That is the exact
+ *   breakage a Linux client (no local Xcode) hits. This is the execution-info
+ *   analog of the --strategy=...=remote overrides above; stripping globally is
+ *   safe because removing a tag an action never had is a no-op.
+ * - A `user.limrun.bazelrc` at the workspace root is try-imported last as a user
+ *   override hook, so callers can extend or override the generated config
+ *   without editing this file or passing flags on the command line.
  */
 export function renderLimrunBazelrc(
   port: number,
@@ -331,12 +344,18 @@ build:limrun --spawn_strategy=remote
 build:limrun --noremote_local_fallback
 build:limrun --strategy=SwiftCompile=remote
 build:limrun --strategy=Genrule=remote
+build:limrun --modify_execution_info=.*=-no-remote,.*=-no-remote-exec
 build:limrun --xcode_version_config=//.limrun:remote_xcode_config
 build:limrun --xcode_version=${shortVersion(versionKey)}
 build:limrun --ios_multi_cpus=sim_arm64
 build:limrun --remote_download_outputs=minimal
 build:limrun --build_event_json_file=${bepPath}
 ${execPlatform}build:limrun --action_env=PATH=/usr/bin:/bin:/usr/sbin:/sbin
+
+# A user.limrun.bazelrc at the workspace root is try-imported last, so it can
+# extend or override anything above without editing this generated file or
+# passing flags on the command line. A missing file is silently skipped.
+try-import %workspace%/user.limrun.bazelrc
 `;
 }
 
