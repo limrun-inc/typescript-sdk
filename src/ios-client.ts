@@ -201,6 +201,12 @@ export type AppInstallationResult = {
   bundleId: string;
 };
 
+export type OverlayImportResult = {
+  ok: boolean;
+  filesApplied: string[];
+  durationMs: number;
+};
+
 export type HttpProxyOptions = {
   remoteBaseUrl: string;
   localPort: number;
@@ -553,6 +559,16 @@ export type InstanceClient = {
    * @throws Error if installation fails (e.g., invalid app, download failure)
    */
   installApp: (url: string, options?: AppInstallationOptions) => Promise<AppInstallationResult>;
+
+  /**
+   * Export the simulator account overlay and upload it to a presigned asset-storage URL.
+   */
+  exportOverlay: (options: { url: string }) => Promise<void>;
+
+  /**
+   * Download an account overlay from a presigned asset-storage URL and apply it.
+   */
+  importOverlay: (options: { url: string }) => Promise<OverlayImportResult>;
 
   /**
    * Set the device orientation
@@ -952,6 +968,9 @@ type ServerResponse = {
   lines?: string[];
   // performActions batch result fields
   results?: PerformActionResult[];
+  // Overlay transfer result fields
+  filesApplied?: string[];
+  durationMs?: number;
 };
 
 /**
@@ -1492,6 +1511,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         url: msg.url || '',
         bundleId: msg.bundleId || '',
       }),
+      overlayExportResult: () => undefined,
+      overlayImportResult: (msg): OverlayImportResult => ({
+        ok: true,
+        filesApplied: msg.filesApplied ?? [],
+        durationMs: msg.durationMs ?? 0,
+      }),
       startVideoRecordingResult: () => undefined,
       stopVideoRecordingResult: () => undefined,
       setOrientationResult: () => undefined,
@@ -1669,6 +1694,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             listApps,
             openUrl,
             installApp,
+            exportOverlay,
+            importOverlay,
             setOrientation,
             scroll,
             performActions,
@@ -1826,6 +1853,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         undefined,
         options?.timeoutMs ?? 120_000,
       );
+    };
+
+    const exportOverlay = async (overlayOptions: { url: string }): Promise<void> => {
+      await sendRequest<void>('exportOverlay', { url: overlayOptions.url }, undefined, 120_000);
+    };
+
+    const importOverlay = async (overlayOptions: { url: string }): Promise<OverlayImportResult> => {
+      return sendRequest<OverlayImportResult>('importOverlay', { url: overlayOptions.url }, undefined, 120_000);
     };
 
     const setOrientation = (orientation: 'Portrait' | 'Landscape'): Promise<void> => {

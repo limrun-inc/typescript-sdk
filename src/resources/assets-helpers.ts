@@ -4,7 +4,7 @@ import { promises as fs } from 'fs';
 
 import { RequestOptions } from '../internal/request-options';
 import { nodeProxyTransport } from '../internal/proxy-transport';
-import { Assets as GeneratedAssets } from './assets';
+import { Assets as GeneratedAssets, type AssetKind, type AssetPlatform } from './assets';
 
 export interface AssetGetOrUploadParams {
   /**
@@ -23,12 +23,24 @@ export interface AssetGetOrUploadParams {
    * a value updates the expiry while omitting it leaves the current expiry unchanged.
    */
   ttl?: string;
+
+  /**
+   * Asset kind. Defaults to App for file uploads.
+   */
+  kind?: Extract<AssetKind, 'App'>;
+
+  /**
+   * Optional platform for the asset.
+   */
+  platform?: AssetPlatform;
 }
 
 export interface AssetGetOrUploadResponse {
   id: string;
   name: string;
   signedDownloadUrl: string;
+  kind: AssetKind;
+  platform?: AssetPlatform;
   md5: string;
   expiresAt?: string;
 }
@@ -41,6 +53,8 @@ export class Assets extends GeneratedAssets {
     const creationResponse = await this.getOrCreate(
       {
         name: body.name ?? basename(body.path),
+        kind: body.kind ?? 'App',
+        ...(body.platform && { platform: body.platform }),
         ...(body.ttl && { ttl: body.ttl }),
       },
       options,
@@ -52,6 +66,8 @@ export class Assets extends GeneratedAssets {
         id: creationResponse.id,
         name: creationResponse.name,
         signedDownloadUrl: creationResponse.signedDownloadUrl,
+        kind: creationResponse.kind,
+        ...(creationResponse.platform && { platform: creationResponse.platform }),
         md5: creationResponse.md5,
         ...(creationResponse.expiresAt && { expiresAt: creationResponse.expiresAt }),
       };
@@ -71,6 +87,8 @@ export class Assets extends GeneratedAssets {
       id: creationResponse.id,
       name: creationResponse.name,
       signedDownloadUrl: creationResponse.signedDownloadUrl,
+      kind: creationResponse.kind,
+      ...(creationResponse.platform && { platform: creationResponse.platform }),
       md5,
       ...(creationResponse.expiresAt && { expiresAt: creationResponse.expiresAt }),
     };
