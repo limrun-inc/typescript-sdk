@@ -256,6 +256,16 @@ describe('rbe workspace generation', () => {
     }
   });
 
+  test('renderLimrunBazelrc clears a workspace remote_cache so the executor CAS is the cache', () => {
+    // A repo-level --remote_cache (e.g. BuildBuddy) alongside limrun's executor
+    // splits the CAS and breaks the build ("Lost inputs"). Emptied under
+    // --config=limrun on both client kinds; the executor carries its own CAS.
+    for (const isMac of [true, false]) {
+      const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', isMac, '/ws/.limrun/bep.json');
+      expect(rc).toContain('build:limrun --remote_cache=\n');
+    }
+  });
+
   test('renderLimrunBazelrc try-imports a user override file last so overrides win', () => {
     const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
     expect(rc).toContain('try-import %workspace%/user.limrun.bazelrc');
