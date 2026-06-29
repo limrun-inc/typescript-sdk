@@ -271,7 +271,7 @@ export default class XcodeRbe extends BaseCommand {
 
       let generated: RbeWorkspaceFiles;
       try {
-        const besResultsUrl = this.consoleBazelBuildUrl(instanceId);
+        const besResultsUrl = this.consoleBuildDeepLinkUrl(instanceId);
         generated = writeRbeWorkspaceFiles(workspaceRoot, xcodeVersion, flags.port, besResultsUrl, bepPath);
       } catch (err) {
         await client.stopRbe().catch(() => {});
