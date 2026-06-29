@@ -271,7 +271,8 @@ export default class XcodeRbe extends BaseCommand {
 
       let generated: RbeWorkspaceFiles;
       try {
-        generated = writeRbeWorkspaceFiles(workspaceRoot, xcodeVersion, flags.port, bepPath);
+        const besResultsUrl = this.consoleBazelBuildUrl(instanceId);
+        generated = writeRbeWorkspaceFiles(workspaceRoot, xcodeVersion, flags.port, besResultsUrl, bepPath);
       } catch (err) {
         await client.stopRbe().catch(() => {});
         this.error(`Failed to generate .limrun config: ${err instanceof Error ? err.message : String(err)}`);
