@@ -20,8 +20,8 @@ const APPLE_SUPPORT_LOADS = [
 ];
 
 describe('rbe workspace generation', () => {
-  // bazel appends the invocation id to --bes_results_url; the CLI builds this base.
-  const BES_URL = 'https://console.limrun.com/builds/sandbox_x?invocation=';
+  // bazel appends the build id to --bes_results_url; the CLI builds this base.
+  const BES_URL = 'https://console.limrun.com/builds/sandbox_x?build=';
 
   test('renderXcodeConfigBuild pins the fleet version and derives sdk defaults', () => {
     const build = renderXcodeConfigBuild('26.4.0.17E192', false);
