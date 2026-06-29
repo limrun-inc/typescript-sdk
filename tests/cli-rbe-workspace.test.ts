@@ -20,6 +20,9 @@ const APPLE_SUPPORT_LOADS = [
 ];
 
 describe('rbe workspace generation', () => {
+  // bazel appends the invocation id to --bes_results_url; the CLI builds this base.
+  const BES_URL = 'https://console.limrun.com/builds/sandbox_x?invocation=';
+
   test('renderXcodeConfigBuild pins the fleet version and derives sdk defaults', () => {
     const build = renderXcodeConfigBuild('26.4.0.17E192', false);
     expect(build).toContain('version = "26.4.0.17E192"');
@@ -208,7 +211,7 @@ describe('rbe workspace generation', () => {
   });
 
   test('renderLimrunBazelrc scopes every flag under the limrun config', () => {
-    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
+    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json', BES_URL);
     // Every flag is config-scoped; the trailing user-override try-import is a
     // directive, not a flag, so it is excluded from this check.
     const flagLines = rc.split('\n').filter((l) => l && !l.startsWith('#') && !l.startsWith('try-import '));
@@ -221,7 +224,7 @@ describe('rbe workspace generation', () => {
   });
 
   test('renderLimrunBazelrc pins --xcode_version to the short alias', () => {
-    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
+    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json', BES_URL);
     expect(rc).toContain('--xcode_version=26.4');
     expect(rc).not.toContain('--xcode_version=26.4.0.17E192');
   });
@@ -230,13 +233,13 @@ describe('rbe workspace generation', () => {
     // Without this the app's cpu follows the client default (x86_64 on Intel/Linux)
     // and won't launch on the arm64 fleet simulator. Pinned on both client kinds.
     for (const isMac of [true, false]) {
-      const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', isMac, '/ws/.limrun/bep.json');
+      const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', isMac, '/ws/.limrun/bep.json', BES_URL);
       expect(rc).toContain('--ios_multi_cpus=sim_arm64');
     }
   });
 
   test('renderLimrunBazelrc overrides per-mnemonic strategies and completes the PATH', () => {
-    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
+    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json', BES_URL);
     // rules_swift defaults SwiftCompile to a local worker; repos pin Genrule
     // standalone. Both must be forced remote or RBE breaks.
     expect(rc).toContain('--strategy=SwiftCompile=remote');
@@ -251,7 +254,7 @@ describe('rbe workspace generation', () => {
     // usable strategy. Stripped on both client kinds (the config forces remote
     // for mac too).
     for (const isMac of [true, false]) {
-      const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', isMac, '/ws/.limrun/bep.json');
+      const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', isMac, '/ws/.limrun/bep.json', BES_URL);
       expect(rc).toContain('--modify_execution_info=.*=-no-remote,.*=-no-remote-exec');
     }
   });
@@ -261,13 +264,13 @@ describe('rbe workspace generation', () => {
     // splits the CAS and breaks the build ("Lost inputs"). Emptied under
     // --config=limrun on both client kinds; the executor carries its own CAS.
     for (const isMac of [true, false]) {
-      const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', isMac, '/ws/.limrun/bep.json');
+      const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', isMac, '/ws/.limrun/bep.json', BES_URL);
       expect(rc).toContain('build:limrun --remote_cache=\n');
     }
   });
 
   test('renderLimrunBazelrc try-imports a user override file last so overrides win', () => {
-    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
+    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json', BES_URL);
     expect(rc).toContain('try-import %workspace%/user.limrun.bazelrc');
     const lines = rc.split('\n');
     const lastFlag = lines.map((l) => l.startsWith('build:limrun')).lastIndexOf(true);
@@ -276,7 +279,7 @@ describe('rbe workspace generation', () => {
   });
 
   test('renderLimrunBazelrc keeps outputs in CAS and emits BEP for the install verb', () => {
-    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
+    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json', BES_URL);
     // minimal download keeps the .ipa in the instance CAS (server-side install);
     // users add --remote_download_outputs=toplevel on the command line to override.
     expect(rc).toContain('--remote_download_outputs=minimal');
@@ -286,14 +289,26 @@ describe('rbe workspace generation', () => {
   });
 
   test('renderLimrunBazelrc registers a darwin exec platform only for non-mac clients', () => {
-    const macRc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json');
-    const linuxRc = renderLimrunBazelrc(9123, '26.4.0.17E192', false, '/ws/.limrun/bep.json');
+    const macRc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json', BES_URL);
+    const linuxRc = renderLimrunBazelrc(9123, '26.4.0.17E192', false, '/ws/.limrun/bep.json', BES_URL);
     // On a mac the flag pulls exec-config actions onto the local host, so omit it.
     expect(macRc).not.toContain('--extra_execution_platforms');
     // A Linux client has no auto-detected darwin exec platform, so it needs one.
     expect(linuxRc).toContain(
       '--extra_execution_platforms=@build_bazel_apple_support//platforms:darwin_arm64',
     );
+  });
+
+  test('renderLimrunBazelrc streams BES to the same port as the executor, non-blocking', () => {
+    const rc = renderLimrunBazelrc(9123, '26.4.0.17E192', true, '/ws/.limrun/bep.json', BES_URL);
+    // BES is co-hosted on the executor frontend, so it shares the tunnel port.
+    expect(rc).toContain('build:limrun --bes_backend=grpc://127.0.0.1:9123');
+    // Passed through verbatim: bazel appends the invocation id to it.
+    expect(rc).toContain(`build:limrun --bes_results_url=${BES_URL}`);
+    // Non-blocking upload with a bounded timeout so a slow/absent BES (e.g. an
+    // older daemon image) never stalls or hangs the build.
+    expect(rc).toContain('build:limrun --bes_upload_mode=nowait_for_upload_complete');
+    expect(rc).toContain('build:limrun --bes_timeout=60s');
   });
 
   describe('filesystem effects', () => {
@@ -306,7 +321,7 @@ describe('rbe workspace generation', () => {
     });
 
     test('writeRbeWorkspaceFiles creates the package, fragment, self-gitignore and try-import', () => {
-      const result = writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980);
+      const result = writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980, BES_URL);
       expect(fs.readFileSync(result.buildFile, 'utf8')).toContain('26.4.0.17E192');
       expect(fs.readFileSync(result.bazelrcFragment, 'utf8')).toContain('build:limrun');
       expect(fs.readFileSync(path.join(dir, '.limrun', '.gitignore'), 'utf8')).toBe('*\n');
@@ -325,7 +340,7 @@ describe('rbe workspace generation', () => {
 
     test('writeRbeWorkspaceFiles honors a custom bep path and creates its parent dir', () => {
       const customBep = path.join(dir, 'out', 'events', 'bep.json');
-      const result = writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980, customBep);
+      const result = writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980, BES_URL, customBep);
       const rc = fs.readFileSync(result.bazelrcFragment, 'utf8');
       expect(rc).toContain(`--build_event_json_file=${customBep}`);
       expect(rc).not.toContain(path.join(dir, '.limrun', 'bep.json'));
@@ -335,11 +350,11 @@ describe('rbe workspace generation', () => {
 
     test('writeRbeWorkspaceFiles emits apple_support loads only on Bazel 9+ (per .bazelversion)', () => {
       fs.writeFileSync(path.join(dir, '.bazelversion'), '9.1.1\n');
-      const r9 = writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980);
+      const r9 = writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980, BES_URL);
       expect(fs.readFileSync(r9.buildFile, 'utf8')).toContain(APPLE_SUPPORT_LOADS[0]);
 
       fs.writeFileSync(path.join(dir, '.bazelversion'), '8.4.2\n');
-      const r8 = writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980);
+      const r8 = writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980, BES_URL);
       expect(fs.readFileSync(r8.buildFile, 'utf8')).not.toContain('load(');
     });
 
@@ -366,8 +381,8 @@ describe('rbe workspace generation', () => {
     });
 
     test('regeneration overwrites with a new fleet version', () => {
-      writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980);
-      const result = writeRbeWorkspaceFiles(dir, '26.5.0.17F42', 8980);
+      writeRbeWorkspaceFiles(dir, '26.4.0.17E192', 8980, BES_URL);
+      const result = writeRbeWorkspaceFiles(dir, '26.5.0.17F42', 8980, BES_URL);
       const build = fs.readFileSync(result.buildFile, 'utf8');
       expect(build).toContain('26.5.0.17F42');
       expect(build).not.toContain('26.4.0.17E192');

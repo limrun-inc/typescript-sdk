@@ -199,6 +199,15 @@ export abstract class BaseCommand extends Command {
     return `${baseUrl}/builds/${execId}`;
   }
 
+  // Base URL for a Bazel invocation's live build view, passed to bazel as
+  // --bes_results_url. Bazel appends the build's invocation id to it, so this
+  // intentionally ends with an open `?invocation=` that the console reads to
+  // pre-select that invocation on the instance's builds page.
+  protected consoleBazelBuildUrl(instanceId: string): string {
+    const baseUrl = readConfig().consoleEndpoint.replace(/\/+$/, '');
+    return `${baseUrl}/builds/${instanceId}?invocation=`;
+  }
+
   protected signedStreamUrl(status: { signedStreamUrl?: string } | undefined): string | undefined {
     return status?.signedStreamUrl;
   }
