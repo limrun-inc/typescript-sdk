@@ -271,8 +271,7 @@ export default class XcodeRbe extends BaseCommand {
 
       let generated: RbeWorkspaceFiles;
       try {
-        const besResultsUrl = this.consoleBuildDeepLinkUrl(instanceId);
-        generated = writeRbeWorkspaceFiles(workspaceRoot, xcodeVersion, flags.port, besResultsUrl, bepPath);
+        generated = writeRbeWorkspaceFiles(workspaceRoot, xcodeVersion, flags.port, bepPath);
       } catch (err) {
         await client.stopRbe().catch(() => {});
         this.error(`Failed to generate .limrun config: ${err instanceof Error ? err.message : String(err)}`);
@@ -754,6 +753,7 @@ export default class XcodeRbe extends BaseCommand {
     this.output(`  ${opts.buildCmd}`);
     this.output('');
     this.output(`Endpoint:  grpc://127.0.0.1:${opts.port}`);
+    this.output(`Builds:    ${this.consoleBuildUrl(opts.instanceId)}`);
     if (opts.background) {
       this.output(`Logs:      ${opts.logPath}`);
       this.output(`Stop:      lim xcode rbe --stop   (or: kill ${opts.pid})`);

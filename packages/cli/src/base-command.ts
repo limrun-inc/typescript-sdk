@@ -194,17 +194,9 @@ export abstract class BaseCommand extends Command {
     return `${baseUrl}/stream/${instanceId}`;
   }
 
-  protected consoleBuildUrl(execId: string): string {
-    const baseUrl = readConfig().consoleEndpoint.replace(/\/+$/, '');
-    return `${baseUrl}/builds/${execId}`;
-  }
-
-  // Base URL for a single build's live view, passed to bazel as --bes_results_url.
-  // Bazel appends the build id (its invocation id) as a path segment, yielding
-  // <base>/builds/<instanceId>/<buildId>, which the console route resolves to
-  // pre-select that build. The id is matched against any build id, so the same URL
-  // shape works for xcode builds (whose id is the exec id) with no further change.
-  protected consoleBuildDeepLinkUrl(instanceId: string): string {
+  // The console's builds page for an instance (where its live + persisted builds
+  // appear). bazel streams to it via --bes_backend; this is just the link to view.
+  protected consoleBuildUrl(instanceId: string): string {
     const baseUrl = readConfig().consoleEndpoint.replace(/\/+$/, '');
     return `${baseUrl}/builds/${instanceId}`;
   }
