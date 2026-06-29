@@ -676,10 +676,35 @@ export default class XcodeRbe extends BaseCommand {
           this.info('Stopping the remote-execution tunnel...');
           resolve();
         };
+        // The tunnel reconnects transient WS drops on its own; surface that as
+        // status (once per outage) rather than letting bazel's retries look like a
+        // hang, and only fail the session when reconnection is finally exhausted.
+        let reconnectingNotified = false;
         const unsubscribe = tunnel.onConnectionStateChange((state) => {
-          if (state === 'disconnected' && !stopping) {
+          if (stopping) return;
+          if (state === 'reconnecting') {
+            if (!reconnectingNotified) {
+              reconnectingNotified = true;
+              this.warn('RBE tunnel lost; reconnecting...');
+            }
+            return;
+          }
+          if (state === 'connected') {
+            if (reconnectingNotified) {
+              reconnectingNotified = false;
+              this.info('RBE tunnel reconnected.');
+            }
+            return;
+          }
+          if (state === 'disconnected') {
             cleanup();
-            reject(new Error('Remote-execution tunnel disconnected unexpectedly'));
+            reject(
+              new Error(
+                'Remote-execution tunnel could not be re-established after repeated attempts ' +
+                  '(the instance may have been torn down or lost connectivity). ' +
+                  'Re-run `lim xcode rbe` to start a fresh tunnel.',
+              ),
+            );
           }
         });
         process.once('SIGINT', shutdown);

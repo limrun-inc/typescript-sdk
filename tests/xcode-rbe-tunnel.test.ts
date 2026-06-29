@@ -262,4 +262,39 @@ describe('multiplexed rbe tunnel reconnect', () => {
     expect(tunnel!.getConnectionState()).toBe('disconnected');
     a.destroy();
   });
+
+  test('refuses a new connection cleanly while the WS is down instead of hanging', async () => {
+    tunnel = await startTcpTunnel(serverUrl(), 'test-token', '127.0.0.1', 0, {
+      mode: 'multiplexed',
+      logLevel: 'none',
+      // Long delay so the WS stays down for the whole test window.
+      reconnectDelay: 10_000,
+      maxReconnectDelay: 10_000,
+      maxReconnectAttempts: 5,
+    });
+    const port = tunnel.address.port;
+
+    const a = await connect(port);
+    a.write('x');
+    await readOnce(a);
+
+    // Drop the WS and keep the backend down; the tunnel enters 'reconnecting' but
+    // keeps its local listener up.
+    serverSockets[0]!.terminate();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await waitFor(() => tunnel!.getConnectionState() === 'reconnecting');
+
+    // A connection arriving during the window is closed promptly (clean RST), not
+    // accepted and left to stall on backpressure (which is what surfaced to bazel
+    // as an opaque connection-refused wall).
+    const b = net.connect({ host: '127.0.0.1', port });
+    const refusedPromptly = await new Promise<boolean>((resolve) => {
+      b.once('close', () => resolve(true));
+      b.once('error', () => resolve(true));
+      setTimeout(() => resolve(false), 1_000);
+    });
+    expect(refusedPromptly).toBe(true);
+    b.destroy();
+    a.destroy();
+  });
 });

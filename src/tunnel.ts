@@ -1164,6 +1164,14 @@ async function startMultiplexedTcpTunnel(
 
     // On TCP connection - allow multiple connections in multiplexed mode
     server.on('connection', (socket) => {
+      // While the upstream WS is down (reconnecting), there is no channel to carry
+      // this connection. Accepting it and dropping its bytes builds TCP backpressure
+      // that surfaces to bazel as an opaque ECONNRESET wall; refuse it cleanly so
+      // bazel's gRPC retries instead and succeed once the WS is back.
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        socket.destroy();
+        return;
+      }
       // Assign a unique connection ID
       const connId = nextConnId++;
       // Wrap around at 32-bit max to stay within uint32 range
@@ -1193,11 +1201,13 @@ async function startMultiplexedTcpTunnel(
             }
           });
         } else {
-          logger.debug(
-            `TCP→WS [conn=${connId}] WS not open (state=${ws?.readyState}), dropping ${chunk.length} bytes`,
-          );
+          // The WS dropped mid-stream: close this connection cleanly instead of
+          // silently buffering bytes that can never be delivered (the remote gRPC
+          // peer is gone), so bazel sees a retryable disconnect rather than stalled
+          // backpressure that eventually resets with an opaque error.
+          logger.debug(`TCP→WS [conn=${connId}] WS not open (state=${ws?.readyState}), closing connection`);
+          socket.destroy();
         }
-        // If WebSocket is not ready, data will queue in TCP buffers (backpressure)
       });
 
       socket.on('close', () => {
