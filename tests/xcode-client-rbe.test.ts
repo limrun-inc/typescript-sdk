@@ -1,24 +1,9 @@
 import Limrun from '@limrun/api';
 import { RbeUnsupportedError } from '@limrun/api';
 import { nodeProxyTransport } from '@limrun/api/internal/proxy-transport';
-import type { RequestInfo, RequestInit } from '../src/internal/builtin-types';
+import type { RequestInfo } from '../src/internal/builtin-types';
 
 const originalFetch = nodeProxyTransport.fetch;
-
-const SHA256 = 'deadbeefcafe0000111122223333444455556666777788889999aaaabbbbcccc';
-
-/** Minimal BEP stream: targetCompleted -> default outputGroup -> namedSet -> .ipa file with a URI. */
-function bep(uri: string, label = '//App:App', ipaName = 'App/App.ipa'): string {
-  return [
-    { id: { namedSet: { id: '0' } }, namedSetOfFiles: { files: [{ name: ipaName, uri }] } },
-    {
-      id: { targetCompleted: { label } },
-      completed: { success: true, outputGroup: [{ name: 'default', fileSets: [{ id: '0' }] }] },
-    },
-  ]
-    .map((e) => JSON.stringify(e))
-    .join('\n');
-}
 
 describe('xcode client RBE helpers', () => {
   afterEach(() => {
@@ -89,39 +74,5 @@ describe('xcode client RBE helpers', () => {
       frontendPort: 8980,
       xcodeVersion: '26.4.0.17E192',
     });
-  });
-
-  test('installRbeBuildFromBep parses the digest and posts it, returning ipaName', async () => {
-    let body: { ipaDigest?: { hash: string; sizeBytes: number }; target?: string } | undefined;
-    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
-      if (!String(input).endsWith('/rbe/install')) throw new Error(`unexpected request: ${input}`);
-      body = JSON.parse(String(init?.body));
-      return new Response(JSON.stringify({ installed: true, appName: 'SampleApp', syncDurationMs: 12 }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    });
-
-    const xcode = await rbeClient();
-    const result = await xcode.installRbeBuildFromBep({
-      bep: bep(`bytestream://host/blobs/${SHA256}/40960`),
-      target: '//App:App',
-    });
-    expect(body?.ipaDigest).toEqual({ hash: SHA256, sizeBytes: 40960 });
-    expect(body?.target).toBe('//App:App');
-    expect(result).toMatchObject({ installed: true, appName: 'SampleApp', ipaName: 'App/App.ipa' });
-  });
-
-  test('installRbeBuildFromBep rejects a BLAKE3 digest before any network call', async () => {
-    const fetchMock = jest.fn(async () => new Response('{}', { status: 200 }));
-    nodeProxyTransport.fetch = fetchMock;
-    const xcode = await rbeClient();
-    await expect(
-      xcode.installRbeBuildFromBep({
-        bep: bep('bytestream://host/blobs/abcabcabcabcabcabcabcabcabcabcab/40960'),
-        target: '//App:App',
-      }),
-    ).rejects.toThrow(/non-SHA256 digest|--digest_function=sha256/);
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

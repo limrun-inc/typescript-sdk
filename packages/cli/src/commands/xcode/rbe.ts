@@ -11,7 +11,6 @@ import {
   findBazelWorkspaceRoot,
   inferBuildTarget,
   writeRbeWorkspaceFiles,
-  resolveBepPath,
   LIMRUN_DIR,
   type RbeWorkspaceFiles,
 } from '../../lib/rbe-workspace';
@@ -27,7 +26,6 @@ import {
   waitForRbeRunning,
   writeRbePidFile,
 } from '../../lib/rbe-session';
-import { startBepWatcher, type BepWatcher } from '../../lib/rbe-bep-watcher';
 
 export default class XcodeRbe extends BaseCommand {
   static summary = 'Serve a local Bazel remote-execution endpoint backed by a Limrun Xcode instance';
@@ -69,31 +67,10 @@ export default class XcodeRbe extends BaseCommand {
         'Also create an iOS simulator and attach it, so builds auto-install on it and you can watch it live. The simulator is torn down on --stop.',
       default: false,
     }),
-    'auto-install': Flags.boolean({
-      description:
-        'After each build, automatically install it on the attached simulator (and replay the last build when a simulator is attached later). Use --no-auto-install for a tunnel-only session (e.g. CI).',
-      default: true,
-      allowNo: true,
-    }),
-    target: Flags.string({
-      description:
-        'Build target to auto-install after each build (e.g. //App:App). Defaults to the inferred app target; required to auto-install when the workspace has multiple app targets.',
-    }),
-    'bep-file': Flags.string({
-      description:
-        "Path for Bazel's build event log (--build_event_json_file), which the auto-install watcher reads " +
-        'after each build. Defaults to .limrun/bep.json; set it only if your build already writes the log ' +
-        'elsewhere. `lim xcode rbe install` reuses this path automatically.',
-    }),
     serve: Flags.boolean({
       hidden: true,
       default: false,
       description: 'Internal: run only the tunnel serve loop (used by the detached background process).',
-    }),
-    'workspace-root': Flags.string({
-      hidden: true,
-      description:
-        'Internal: workspace root passed to the detached serve process for the auto-install watcher.',
     }),
   };
 
@@ -110,34 +87,15 @@ export default class XcodeRbe extends BaseCommand {
       if (!flags.id) {
         this.error('--serve requires --id (it is set automatically by the background launcher).');
       }
-      // This detached process holds the only RBE tunnel. The auto-install watcher
-      // runs async work (fs.watch callbacks, BEP parsing, HTTP) whose throws/
-      // rejections would otherwise reach Node's default handler and terminate the
-      // process, silently dropping Bazel's remote executor mid-build. Swallow them
-      // here so a watcher fault can never kill the tunnel; the tunnel's own
+      // This detached process holds the only RBE tunnel. Guard against a floating
+      // rejection (e.g. from the tunnel's reconnect machinery) reaching Node's
+      // default handler and dropping the tunnel mid-build; the tunnel's own
       // terminal-disconnect path is handled in awaitTunnel.
       installDaemonCrashGuards((msg) => console.error(`[lim] ${msg}`));
       await this.withAuth(async () => {
         const xcodeTarget = await this.resolveXcodeTarget(flags.id);
         const client = await this.resolveXcodeClient(xcodeTarget);
-        const workspaceRoot = flags['workspace-root'];
-        const buildTarget = flags.target;
-        let watcher: BepWatcher | undefined;
-        if (workspaceRoot && buildTarget) {
-          // The parent passes an already-absolute --bep-file; resolveBepPath also
-          // handles a manual --serve invocation with a relative path (the child's
-          // cwd is the parent's, not necessarily the workspace root).
-          const bepPath = resolveBepPath(workspaceRoot, flags['bep-file']);
-          watcher = startBepWatcher({
-            bepPath,
-            target: buildTarget,
-            getClient: () => client,
-            log: (msg) => console.error(`[lim] ${msg}`),
-          });
-        }
-        // Close the watcher inside the tunnel teardown, BEFORE the tunnel/stack
-        // are stopped, so an in-flight install never races a dead stack.
-        await this.runTunnel(client, flags.port, watcher ? () => watcher.close() : undefined);
+        await this.runTunnel(client, flags.port);
       });
       return;
     }
@@ -265,13 +223,9 @@ export default class XcodeRbe extends BaseCommand {
         }
       }
 
-      // Where Bazel writes its build event log and the watcher reads it: a custom
-      // --bep-file (absolute) or the default under .limrun/.
-      const bepPath = resolveBepPath(workspaceRoot, flags['bep-file']);
-
       let generated: RbeWorkspaceFiles;
       try {
-        generated = writeRbeWorkspaceFiles(workspaceRoot, xcodeVersion, flags.port, bepPath);
+        generated = writeRbeWorkspaceFiles(workspaceRoot, xcodeVersion, flags.port);
       } catch (err) {
         await client.stopRbe().catch(() => {});
         this.error(`Failed to generate .limrun config: ${err instanceof Error ? err.message : String(err)}`);
@@ -291,20 +245,9 @@ export default class XcodeRbe extends BaseCommand {
       const target = inferredTarget ?? '//your:target';
       const buildCmd = `bazelisk --digest_function=sha256 build --config=limrun ${target}`;
 
-      // Decide auto-install: on by default, but only when we have a concrete
-      // target to watch. An explicit --target wins over inference; an ambiguous
-      // workspace with no --target cannot auto-install.
-      const watchTarget = flags.target ?? inferredTarget ?? undefined;
-      const autoInstall = flags['auto-install'] && !!watchTarget;
-      if (flags['auto-install'] && !watchTarget) {
-        this.info(
-          'Auto-install is off: could not infer a single app target. Pass --target <label> to enable it.',
-        );
-      }
-
-      // --ios: create + attach a simulator so `lim xcode rbe install` installs on
-      // it and the stream URL is printed. Recorded in the pidfile so --stop tears
-      // it down too.
+      // --ios: create + attach a simulator so builds auto-install on it (server-side)
+      // and the stream URL is printed. Recorded in the pidfile so --stop tears it
+      // down too.
       let simInstanceId: string | undefined;
       if (flags.ios) {
         try {
@@ -331,9 +274,6 @@ export default class XcodeRbe extends BaseCommand {
             xcodeVersion,
             generated,
             buildCmd,
-            autoInstall,
-            target: autoInstall ? watchTarget : undefined,
-            bepPath,
           });
         } catch (err) {
           // spawnBackgroundTunnel records simInstanceId in the pidfile only after
@@ -370,20 +310,8 @@ export default class XcodeRbe extends BaseCommand {
         instanceId,
         background: false,
       });
-      // Foreground auto-install: watch the BEP for the lifetime of this tunnel.
-      const watcher =
-        autoInstall && watchTarget ?
-          startBepWatcher({
-            bepPath,
-            target: watchTarget,
-            getClient: () => client,
-            log: (msg) => this.info(msg),
-          })
-        : undefined;
       try {
-        // Close the watcher before the tunnel/stack teardown (inside awaitTunnel),
-        // so an in-flight install never races a stopped stack.
-        await this.awaitTunnel(tunnel, client, watcher ? () => watcher.close() : undefined);
+        await this.awaitTunnel(tunnel, client);
       } finally {
         await this.deleteSim(simInstanceId);
       }
@@ -516,9 +444,6 @@ export default class XcodeRbe extends BaseCommand {
     xcodeVersion: string;
     generated: RbeWorkspaceFiles;
     buildCmd: string;
-    autoInstall: boolean;
-    target?: string;
-    bepPath: string;
   }): Promise<void> {
     const apiKey = this.parsedFlags?.['api-key'] as string | undefined;
     const logPath = path.join(opts.workspaceRoot, LIMRUN_DIR, 'rbe.log');
@@ -532,11 +457,6 @@ export default class XcodeRbe extends BaseCommand {
         id: opts.instanceId,
         port: opts.port,
         apiKey,
-        // Pass the workspace + target (+ bep path) only when auto-install is on,
-        // so the child starts the BEP watcher; otherwise it just holds the tunnel.
-        ...(opts.autoInstall && opts.target ?
-          { workspaceRoot: opts.workspaceRoot, target: opts.target, bepFile: opts.bepPath }
-        : {}),
       }),
       { detached: true, stdio: ['ignore', logFd, logFd] },
     );
@@ -592,11 +512,6 @@ export default class XcodeRbe extends BaseCommand {
       instanceId: opts.instanceId,
       port: opts.port,
       ...(opts.simInstanceId ? { simInstanceId: opts.simInstanceId } : {}),
-      // Always record where the build event log is written (it follows --bep-file
-      // regardless of auto-install), so `lim xcode rbe install` finds it even with
-      // --no-auto-install. `target` is the watcher's, recorded only when watching.
-      bepFile: opts.bepPath,
-      ...(opts.autoInstall && opts.target ? { target: opts.target } : {}),
     });
 
     this.printReady({
@@ -629,24 +544,17 @@ export default class XcodeRbe extends BaseCommand {
    * the child if it exits within a short liveness window, so a slow tunnel-open
    * failure would otherwise leave the remote stack running with no owner.
    */
-  private async runTunnel(
-    client: XcodeClient,
-    port: number,
-    beforeStop?: () => Promise<void>,
-  ): Promise<void> {
+  private async runTunnel(client: XcodeClient, port: number): Promise<void> {
     let tunnel: Tunnel;
     try {
       tunnel = await this.openTunnel(client, port);
     } catch (err) {
-      // The tunnel never opened, so there's no watcher steady state to drain, but
-      // a watcher may already be running — close it before stopping the stack.
-      if (beforeStop) await beforeStop().catch(() => {});
       await client.stopRbe().catch(() => {});
       this.error(
         `Failed to open the remote-execution tunnel: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    await this.awaitTunnel(tunnel, client, beforeStop);
+    await this.awaitTunnel(tunnel, client);
   }
 
   /**
@@ -654,11 +562,7 @@ export default class XcodeRbe extends BaseCommand {
    * best-effort stop the remote stack. Rejects if the tunnel reports a terminal
    * disconnect (after its own reconnect attempts are exhausted).
    */
-  private async awaitTunnel(
-    tunnel: Tunnel,
-    client: XcodeClient,
-    beforeStop?: () => Promise<void>,
-  ): Promise<void> {
+  private async awaitTunnel(tunnel: Tunnel, client: XcodeClient): Promise<void> {
     try {
       await new Promise<void>((resolve, reject) => {
         const keepAlive = setInterval(() => {}, 1 << 30);
@@ -710,9 +614,6 @@ export default class XcodeRbe extends BaseCommand {
         process.once('SIGTERM', shutdown);
       });
     } finally {
-      // Drain the auto-install watcher first, so a registration in flight can't
-      // land against an already-closed tunnel / stopped stack.
-      if (beforeStop) await beforeStop().catch(() => {});
       tunnel.close();
       await client.stopRbe().catch(() => {});
     }
@@ -763,7 +664,7 @@ export default class XcodeRbe extends BaseCommand {
     }
     this.output('');
     this.info(
-      'The built .ipa stays in the instance cache (install it with `lim xcode rbe install`); ' +
+      'The built .ipa stays in the instance cache and auto-installs on the attached simulator; ' +
         'to download it to this machine, add --remote_download_outputs=toplevel to the build command.',
     );
   }
@@ -780,18 +681,17 @@ function signalIfAlive(pid: number, signal: NodeJS.Signals): boolean {
 }
 
 /**
- * Backstops the detached serve daemon. The auto-install watcher already catches
- * its own read/parse/HTTP errors internally, so a floating *rejection* here is
- * almost always benign (e.g. the tunnel's reconnect machinery); log and continue
- * rather than let Node's default crash drop the tunnel mid-build. A thrown
- * *exception* that reaches the top level is a genuine fault we can't reason
- * about: log and exit non-zero so the port frees and the next `lim xcode rbe`
- * reaps the stale pidfile — far better than lingering as a zombie that holds the
- * port with a dead tunnel and blocks restart.
+ * Backstops the detached serve daemon. A floating *rejection* here is almost
+ * always benign (e.g. the tunnel's reconnect machinery); log and continue rather
+ * than let Node's default crash drop the tunnel mid-build. A thrown *exception*
+ * that reaches the top level is a genuine fault we can't reason about: log and
+ * exit non-zero so the port frees and the next `lim xcode rbe` reaps the stale
+ * pidfile — far better than lingering as a zombie that holds the port with a dead
+ * tunnel and blocks restart.
  */
 function installDaemonCrashGuards(log: (msg: string) => void): void {
   process.on('unhandledRejection', (reason) => {
-    log(`auto-install: ignoring unhandled rejection to keep the tunnel alive: ${String(reason)}`);
+    log(`daemon: ignoring unhandled rejection to keep the tunnel alive: ${String(reason)}`);
   });
   process.on('uncaughtException', (err) => {
     log(`daemon: fatal uncaught exception, exiting so the tunnel can be restarted: ${err?.message ?? err}`);

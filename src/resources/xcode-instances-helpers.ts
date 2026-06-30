@@ -4,7 +4,6 @@ import crypto from 'crypto';
 
 import { XcodeInstances as GeneratedXcodeInstances, type XcodeInstance } from './xcode-instances';
 import { type IosInstance } from './ios-instances';
-import { parseTopLevelIpaDigest } from '../rbe-bep';
 import { exec, type ExecChildProcess, type ExecRequest } from '../exec-client';
 import {
   syncFolder as syncFolderImpl,
@@ -180,14 +179,6 @@ export type RbeTunnelOptions = {
   logLevel?: LogLevel;
 };
 
-/** Content-addressed digest of a build artifact in the instance's RBE cache. */
-type RbeArtifactDigest = {
-  /** Lowercase hex SHA-256 of the blob (matches --digest_function=sha256). */
-  hash: string;
-  /** Size of the blob in bytes. */
-  sizeBytes: number;
-};
-
 export type RbeInstallResult = {
   /** True when the app was synced and installed on the attached simulator. */
   installed: boolean;
@@ -244,23 +235,6 @@ export type XcodeClient = {
 
   /** Stop the RBE stack. */
   stopRbe: () => Promise<RbeStatus>;
-
-  /**
-   * Install a Bazel RBE build on the attached simulator, server-side, from its
-   * build event log (BEP). Parses the top-level `.ipa`'s CAS digest for `target`
-   * out of `bep` (the contents of `--build_event_json_file`); the instance fetches
-   * the blob from its embedded cache, unpacks the .app, and pushes it to the
-   * attached simulator via the differential-sync path — no client round-trip.
-   * Requires a running RBE stack and an attached simulator (installed=false when
-   * none is attached — attach one and call again). Throws a descriptive error if
-   * the target/.ipa is absent, was downloaded locally, or was built with a
-   * non-SHA256 digest (e.g. BLAKE3) the instance cache can't resolve. `ipaName` is
-   * the `.ipa` file name Bazel reported.
-   */
-  installRbeBuildFromBep: (opts: {
-    bep: string;
-    target: string;
-  }) => Promise<RbeInstallResult & { ipaName: string }>;
 
   /**
    * Open a local TCP listener bridged to the instance's RBE gRPC frontend
@@ -420,30 +394,6 @@ export class XcodeInstances extends GeneratedXcodeInstances {
     // Shared local closures. The methods below live in an object literal over
     // these closures (not `this`), so anything reused across methods is defined
     // here once and called from each method.
-    const postRbeInstall = async (
-      ipaDigest: RbeArtifactDigest,
-      target?: string,
-    ): Promise<RbeInstallResult> => {
-      const res = await nodeProxyTransport.fetch(`${apiUrl}/rbe/install`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ ipaDigest, ...(target ? { target } : {}) }),
-      });
-      return readRbeResponse<RbeInstallResult>(res, 'POST /rbe/install');
-    };
-
-    const installFromBep = async (
-      bep: string,
-      target: string,
-    ): Promise<RbeInstallResult & { ipaName: string }> => {
-      const digest = parseTopLevelIpaDigest(bep, target); // throws BLAKE3 / no-ipa errors
-      const result = await postRbeInstall({ hash: digest.hash, sizeBytes: digest.sizeBytes }, target);
-      return { ...result, ipaName: digest.ipaName };
-    };
-
     const attachSimulatorImpl = async (
       simulator: IosInstance | { apiUrl: string; token: string },
     ): Promise<SimulatorAttachResult> => {
@@ -650,9 +600,6 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         });
         return readRbeResponse<RbeStatus>(res, 'DELETE /rbe');
       },
-
-      installRbeBuildFromBep: (opts: { bep: string; target: string }) =>
-        installFromBep(opts.bep, opts.target),
 
       async startRbeTunnel(opts?: RbeTunnelOptions): Promise<Tunnel> {
         return startTcpTunnel(
