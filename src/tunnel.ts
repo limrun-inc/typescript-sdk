@@ -1164,10 +1164,13 @@ async function startMultiplexedTcpTunnel(
 
     // On TCP connection - allow multiple connections in multiplexed mode
     server.on('connection', (socket) => {
-      // While the upstream WS is down (reconnecting), there is no channel to carry
-      // this connection. Accepting it and dropping its bytes builds TCP backpressure
-      // that surfaces to bazel as an opaque ECONNRESET wall; refuse it cleanly so
-      // bazel's gRPC retries instead and succeed once the WS is back.
+      // Until the upstream WS is OPEN there is no channel to carry this
+      // connection: either it hasn't connected yet (the listener is up before
+      // setupWebSocket resolves) or it dropped mid-build and is reconnecting.
+      // Accepting it and dropping its bytes builds TCP backpressure that
+      // surfaces to bazel as an opaque ECONNRESET wall; refuse it cleanly so
+      // bazel's gRPC retries instead and succeed once the WS is up. (A real
+      // build connects after the endpoint is advertised, i.e. post-establish.)
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         socket.destroy();
         return;
