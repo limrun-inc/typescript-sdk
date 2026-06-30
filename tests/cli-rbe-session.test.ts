@@ -140,31 +140,6 @@ describe('buildServeChildArgs', () => {
       '--api-key',
     );
   });
-
-  test('passes the watcher workspace/target/bep-file through for the auto-install daemon', () => {
-    const args = buildServeChildArgs({
-      scriptPath: '/bin/lim',
-      id: 'xc_1',
-      port: 8980,
-      workspaceRoot: '/ws',
-      target: '//App:App',
-      bepFile: '/ws/build/bep.json',
-    });
-    expect(args).toEqual(
-      expect.arrayContaining([
-        '--workspace-root',
-        '/ws',
-        '--target',
-        '//App:App',
-        '--bep-file',
-        '/ws/build/bep.json',
-      ]),
-    );
-    // Omitted when not auto-installing.
-    expect(buildServeChildArgs({ scriptPath: '/bin/lim', id: 'xc_1', port: 8980 })).not.toContain(
-      '--bep-file',
-    );
-  });
 });
 
 describe('rbe pidfile helpers', () => {
