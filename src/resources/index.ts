@@ -1,6 +1,20 @@
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 export {
+  Analytics,
+  type AnalyticsEntry,
+  type AnalyticsInstance,
+  type AnalyticsInstanceEntry,
+  type AnalyticsInstancesResponse,
+  type AnalyticsRegionStats,
+  type AnalyticsResponse,
+  type AnalyticsSummary,
+  type BilledBreakdown,
+  type CostBreakdown,
+  type AnalyticsGetParams,
+  type AnalyticsGetInstancesParams,
+} from './analytics';
+export {
   AndroidInstances,
   type AndroidInstance,
   type AndroidInstanceCreateParams,
