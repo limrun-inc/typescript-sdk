@@ -309,6 +309,7 @@ export default class XcodeRbe extends BaseCommand {
         buildCmd,
         instanceId,
         background: false,
+        simulatorAttached: !!simInstanceId,
       });
       try {
         await this.awaitTunnel(tunnel, client);
@@ -522,6 +523,7 @@ export default class XcodeRbe extends BaseCommand {
       buildCmd: opts.buildCmd,
       instanceId: opts.instanceId,
       background: true,
+      simulatorAttached: !!opts.simInstanceId,
       pid,
       logPath,
     });
@@ -628,6 +630,7 @@ export default class XcodeRbe extends BaseCommand {
     buildCmd: string;
     instanceId: string;
     background: boolean;
+    simulatorAttached: boolean;
     pid?: number;
     logPath?: string;
   }): void {
@@ -637,6 +640,7 @@ export default class XcodeRbe extends BaseCommand {
         port: opts.port,
         xcodeVersion: opts.xcodeVersion,
         workspaceRoot: opts.workspaceRoot,
+        simulatorAttached: opts.simulatorAttached,
         generatedConfig: {
           buildFile: opts.generated.buildFile,
           bazelrcFragment: opts.generated.bazelrcFragment,
@@ -664,8 +668,11 @@ export default class XcodeRbe extends BaseCommand {
     }
     this.output('');
     this.info(
-      'The built .ipa stays in the instance cache and auto-installs on the attached simulator; ' +
-        'to download it to this machine, add --remote_download_outputs=toplevel to the build command.',
+      opts.simulatorAttached ?
+        'The built .ipa stays in the instance cache and auto-installs on the attached simulator; ' +
+          'to download it to this machine, add --remote_download_outputs=toplevel to the build command.'
+      : 'The built .ipa stays in the instance cache; attach a simulator (--ios) to auto-install builds on it. ' +
+          'To download the .ipa to this machine, add --remote_download_outputs=toplevel to the build command.',
     );
   }
 }
