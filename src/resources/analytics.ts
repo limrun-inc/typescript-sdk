@@ -24,100 +24,12 @@ export class Analytics extends APIResource {
   }
 }
 
-/**
- * Analytics data for a single time bucket, broken down by platform and region
- */
-export interface AnalyticsEntry {
-  /**
-   * Map of region to analytics stats for Android
-   */
-  android: { [key: string]: AnalyticsRegionStats };
-
-  /**
-   * Map of region to analytics stats for iOS
-   */
-  ios: { [key: string]: AnalyticsRegionStats };
-
-  /**
-   * Map of region to analytics stats for Sandbox
-   */
-  sandbox: { [key: string]: AnalyticsRegionStats };
-
-  /**
-   * RFC3339 timestamp for the start of the bucket in the requested timezone,
-   * including the local offset
-   */
-  timestamp: string;
-
-  /**
-   * Individual instance details for this time bucket
-   */
-  instances?: Array<AnalyticsInstance>;
-}
-
-/**
- * Analytics details for a single instance within a time bucket
- */
-export interface AnalyticsInstance {
-  /**
-   * Billed minutes with platform multiplier applied
-   */
-  billedMinutes: number;
-
-  /**
-   * Total cost in dollars for this instance
-   */
-  cost: number;
-
-  /**
-   * Instance type ID (e.g., ios_xxx, android_xxx)
-   */
-  instanceTid: string;
-
-  /**
-   * Platform name, such as android, ios, or sandbox
-   */
-  platform: string;
-
-  /**
-   * Actual runtime minutes before platform multiplier
-   */
-  runtimeMinutes: number;
-
-  billedBreakdown?: BilledBreakdown;
-
-  /**
-   * Cost breakdown by billing source in dollars
-   */
-  costBreakdown?: CostBreakdown;
-
-  /**
-   * Instance labels at billing time
-   */
-  labels?: { [key: string]: string };
-
-  /**
-   * Region where the instance ran
-   */
-  region?: string;
-}
-
-export interface AnalyticsInstanceEntry {
-  instances: Array<AnalyticsInstance>;
-
-  /**
-   * RFC3339 timestamp for the start of the minute bucket in the requested timezone,
-   * including the local offset
-   */
-  timestamp: string;
-}
-
 export interface AnalyticsInstancesResponse {
   asOf: string;
 
   from: string;
 
-  series: Array<AnalyticsInstanceEntry>;
+  series: Array<AnalyticsInstancesResponse.Series>;
 
   /**
    * IANA timezone used for time bucket grouping
@@ -127,64 +39,108 @@ export interface AnalyticsInstancesResponse {
   to: string;
 }
 
-/**
- * Complete analytics for a specific region including billing breakdown
- */
-export interface AnalyticsRegionStats {
-  /**
-   * Average instance duration in minutes
-   */
-  avgDurationMinutes: number;
+export namespace AnalyticsInstancesResponse {
+  export interface Series {
+    instances: Array<Series.Instance>;
 
-  /**
-   * Billed minutes with platform multiplier applied
-   */
-  billedMinutes: number;
+    /**
+     * RFC3339 timestamp for the start of the minute bucket in the requested timezone,
+     * including the local offset
+     */
+    timestamp: string;
+  }
 
-  /**
-   * Total cost in dollars
-   */
-  cost: number;
+  export namespace Series {
+    /**
+     * Analytics details for a single instance within a time bucket
+     */
+    export interface Instance {
+      /**
+       * Billed minutes with platform multiplier applied
+       */
+      billedMinutes: number;
 
-  /**
-   * Number of unique instances
-   */
-  count: number;
+      /**
+       * Total cost in dollars for this instance
+       */
+      cost: number;
 
-  /**
-   * Minutes billed to credits
-   */
-  creditsBilledMinutes: number;
+      /**
+       * Instance type ID (e.g., ios_xxx, android_xxx)
+       */
+      instanceTid: string;
 
-  /**
-   * Cost from credits (always 0)
-   */
-  creditsCost: number;
+      /**
+       * Platform name, such as android, ios, or sandbox
+       */
+      platform: string;
 
-  /**
-   * Minutes billed on-demand
-   */
-  onDemandBilledMinutes: number;
+      /**
+       * Actual runtime minutes before platform multiplier
+       */
+      runtimeMinutes: number;
 
-  /**
-   * Cost from on-demand billing in dollars
-   */
-  onDemandCost: number;
+      billedBreakdown?: Instance.BilledBreakdown;
 
-  /**
-   * Actual runtime minutes before platform multiplier
-   */
-  runtimeMinutes: number;
+      /**
+       * Cost breakdown by billing source in dollars
+       */
+      costBreakdown?: Instance.CostBreakdown;
 
-  /**
-   * Map of subscription ID to billed minutes
-   */
-  subscriptionBilledMinutes?: { [key: string]: number };
+      /**
+       * Instance labels at billing time
+       */
+      labels?: { [key: string]: string };
 
-  /**
-   * Map of subscription ID to cost in dollars
-   */
-  subscriptionCost?: { [key: string]: number };
+      /**
+       * Region where the instance ran
+       */
+      region?: string;
+    }
+
+    export namespace Instance {
+      export interface BilledBreakdown {
+        creditsBilledMinutes: number;
+
+        onDemandBilledMinutes: number;
+
+        /**
+         * Map of plan ID to billed minutes
+         */
+        planBilledMinutes?: { [key: string]: number };
+
+        /**
+         * Map of subscription ID to billed minutes
+         */
+        subscriptionBilledMinutes?: { [key: string]: number };
+      }
+
+      /**
+       * Cost breakdown by billing source in dollars
+       */
+      export interface CostBreakdown {
+        /**
+         * Cost from credits (always 0)
+         */
+        creditsCost: number;
+
+        /**
+         * Cost from on-demand billing in dollars
+         */
+        onDemandCost: number;
+
+        /**
+         * Map of plan ID to cost in dollars
+         */
+        planCost?: { [key: string]: number };
+
+        /**
+         * Map of subscription ID to cost in dollars
+         */
+        subscriptionCost?: { [key: string]: number };
+      }
+    }
+  }
 }
 
 export interface AnalyticsResponse {
@@ -194,12 +150,12 @@ export interface AnalyticsResponse {
 
   from: string;
 
-  series: Array<AnalyticsEntry>;
+  series: Array<AnalyticsResponse.Series>;
 
   /**
    * Summary of analytics across all time buckets, broken down by platform and region
    */
-  summary: AnalyticsSummary;
+  summary: AnalyticsResponse.Summary;
 
   /**
    * IANA timezone used for time bucket grouping
@@ -209,65 +165,511 @@ export interface AnalyticsResponse {
   to: string;
 }
 
-/**
- * Summary of analytics across all time buckets, broken down by platform and region
- */
-export interface AnalyticsSummary {
+export namespace AnalyticsResponse {
   /**
-   * Map of region to analytics stats for Android
+   * Analytics data for a single time bucket, broken down by platform and region
    */
-  android: { [key: string]: AnalyticsRegionStats };
+  export interface Series {
+    /**
+     * Map of region to analytics stats for Android
+     */
+    android: { [key: string]: Series.Android };
+
+    /**
+     * Map of region to analytics stats for iOS
+     */
+    ios: { [key: string]: Series.Ios };
+
+    /**
+     * Map of region to analytics stats for Sandbox
+     */
+    sandbox: { [key: string]: Series.Sandbox };
+
+    /**
+     * RFC3339 timestamp for the start of the bucket in the requested timezone,
+     * including the local offset
+     */
+    timestamp: string;
+
+    /**
+     * Individual instance details for this time bucket
+     */
+    instances?: Array<Series.Instance>;
+  }
+
+  export namespace Series {
+    /**
+     * Complete analytics for a specific region including billing breakdown
+     */
+    export interface Android {
+      /**
+       * Average instance duration in minutes
+       */
+      avgDurationMinutes: number;
+
+      /**
+       * Billed minutes with platform multiplier applied
+       */
+      billedMinutes: number;
+
+      /**
+       * Total cost in dollars
+       */
+      cost: number;
+
+      /**
+       * Number of unique instances
+       */
+      count: number;
+
+      /**
+       * Minutes billed to credits
+       */
+      creditsBilledMinutes: number;
+
+      /**
+       * Cost from credits (always 0)
+       */
+      creditsCost: number;
+
+      /**
+       * Minutes billed on-demand
+       */
+      onDemandBilledMinutes: number;
+
+      /**
+       * Cost from on-demand billing in dollars
+       */
+      onDemandCost: number;
+
+      /**
+       * Actual runtime minutes before platform multiplier
+       */
+      runtimeMinutes: number;
+
+      /**
+       * Map of subscription ID to billed minutes
+       */
+      subscriptionBilledMinutes?: { [key: string]: number };
+
+      /**
+       * Map of subscription ID to cost in dollars
+       */
+      subscriptionCost?: { [key: string]: number };
+    }
+
+    /**
+     * Complete analytics for a specific region including billing breakdown
+     */
+    export interface Ios {
+      /**
+       * Average instance duration in minutes
+       */
+      avgDurationMinutes: number;
+
+      /**
+       * Billed minutes with platform multiplier applied
+       */
+      billedMinutes: number;
+
+      /**
+       * Total cost in dollars
+       */
+      cost: number;
+
+      /**
+       * Number of unique instances
+       */
+      count: number;
+
+      /**
+       * Minutes billed to credits
+       */
+      creditsBilledMinutes: number;
+
+      /**
+       * Cost from credits (always 0)
+       */
+      creditsCost: number;
+
+      /**
+       * Minutes billed on-demand
+       */
+      onDemandBilledMinutes: number;
+
+      /**
+       * Cost from on-demand billing in dollars
+       */
+      onDemandCost: number;
+
+      /**
+       * Actual runtime minutes before platform multiplier
+       */
+      runtimeMinutes: number;
+
+      /**
+       * Map of subscription ID to billed minutes
+       */
+      subscriptionBilledMinutes?: { [key: string]: number };
+
+      /**
+       * Map of subscription ID to cost in dollars
+       */
+      subscriptionCost?: { [key: string]: number };
+    }
+
+    /**
+     * Complete analytics for a specific region including billing breakdown
+     */
+    export interface Sandbox {
+      /**
+       * Average instance duration in minutes
+       */
+      avgDurationMinutes: number;
+
+      /**
+       * Billed minutes with platform multiplier applied
+       */
+      billedMinutes: number;
+
+      /**
+       * Total cost in dollars
+       */
+      cost: number;
+
+      /**
+       * Number of unique instances
+       */
+      count: number;
+
+      /**
+       * Minutes billed to credits
+       */
+      creditsBilledMinutes: number;
+
+      /**
+       * Cost from credits (always 0)
+       */
+      creditsCost: number;
+
+      /**
+       * Minutes billed on-demand
+       */
+      onDemandBilledMinutes: number;
+
+      /**
+       * Cost from on-demand billing in dollars
+       */
+      onDemandCost: number;
+
+      /**
+       * Actual runtime minutes before platform multiplier
+       */
+      runtimeMinutes: number;
+
+      /**
+       * Map of subscription ID to billed minutes
+       */
+      subscriptionBilledMinutes?: { [key: string]: number };
+
+      /**
+       * Map of subscription ID to cost in dollars
+       */
+      subscriptionCost?: { [key: string]: number };
+    }
+
+    /**
+     * Analytics details for a single instance within a time bucket
+     */
+    export interface Instance {
+      /**
+       * Billed minutes with platform multiplier applied
+       */
+      billedMinutes: number;
+
+      /**
+       * Total cost in dollars for this instance
+       */
+      cost: number;
+
+      /**
+       * Instance type ID (e.g., ios_xxx, android_xxx)
+       */
+      instanceTid: string;
+
+      /**
+       * Platform name, such as android, ios, or sandbox
+       */
+      platform: string;
+
+      /**
+       * Actual runtime minutes before platform multiplier
+       */
+      runtimeMinutes: number;
+
+      billedBreakdown?: Instance.BilledBreakdown;
+
+      /**
+       * Cost breakdown by billing source in dollars
+       */
+      costBreakdown?: Instance.CostBreakdown;
+
+      /**
+       * Instance labels at billing time
+       */
+      labels?: { [key: string]: string };
+
+      /**
+       * Region where the instance ran
+       */
+      region?: string;
+    }
+
+    export namespace Instance {
+      export interface BilledBreakdown {
+        creditsBilledMinutes: number;
+
+        onDemandBilledMinutes: number;
+
+        /**
+         * Map of plan ID to billed minutes
+         */
+        planBilledMinutes?: { [key: string]: number };
+
+        /**
+         * Map of subscription ID to billed minutes
+         */
+        subscriptionBilledMinutes?: { [key: string]: number };
+      }
+
+      /**
+       * Cost breakdown by billing source in dollars
+       */
+      export interface CostBreakdown {
+        /**
+         * Cost from credits (always 0)
+         */
+        creditsCost: number;
+
+        /**
+         * Cost from on-demand billing in dollars
+         */
+        onDemandCost: number;
+
+        /**
+         * Map of plan ID to cost in dollars
+         */
+        planCost?: { [key: string]: number };
+
+        /**
+         * Map of subscription ID to cost in dollars
+         */
+        subscriptionCost?: { [key: string]: number };
+      }
+    }
+  }
 
   /**
-   * Map of region to analytics stats for iOS
+   * Summary of analytics across all time buckets, broken down by platform and region
    */
-  ios: { [key: string]: AnalyticsRegionStats };
+  export interface Summary {
+    /**
+     * Map of region to analytics stats for Android
+     */
+    android: { [key: string]: Summary.Android };
 
-  /**
-   * Map of region to analytics stats for Sandbox
-   */
-  sandbox: { [key: string]: AnalyticsRegionStats };
-}
+    /**
+     * Map of region to analytics stats for iOS
+     */
+    ios: { [key: string]: Summary.Ios };
 
-export interface BilledBreakdown {
-  creditsBilledMinutes: number;
+    /**
+     * Map of region to analytics stats for Sandbox
+     */
+    sandbox: { [key: string]: Summary.Sandbox };
+  }
 
-  onDemandBilledMinutes: number;
+  export namespace Summary {
+    /**
+     * Complete analytics for a specific region including billing breakdown
+     */
+    export interface Android {
+      /**
+       * Average instance duration in minutes
+       */
+      avgDurationMinutes: number;
 
-  /**
-   * Map of plan ID to billed minutes
-   */
-  planBilledMinutes?: { [key: string]: number };
+      /**
+       * Billed minutes with platform multiplier applied
+       */
+      billedMinutes: number;
 
-  /**
-   * Map of subscription ID to billed minutes
-   */
-  subscriptionBilledMinutes?: { [key: string]: number };
-}
+      /**
+       * Total cost in dollars
+       */
+      cost: number;
 
-/**
- * Cost breakdown by billing source in dollars
- */
-export interface CostBreakdown {
-  /**
-   * Cost from credits (always 0)
-   */
-  creditsCost: number;
+      /**
+       * Number of unique instances
+       */
+      count: number;
 
-  /**
-   * Cost from on-demand billing in dollars
-   */
-  onDemandCost: number;
+      /**
+       * Minutes billed to credits
+       */
+      creditsBilledMinutes: number;
 
-  /**
-   * Map of plan ID to cost in dollars
-   */
-  planCost?: { [key: string]: number };
+      /**
+       * Cost from credits (always 0)
+       */
+      creditsCost: number;
 
-  /**
-   * Map of subscription ID to cost in dollars
-   */
-  subscriptionCost?: { [key: string]: number };
+      /**
+       * Minutes billed on-demand
+       */
+      onDemandBilledMinutes: number;
+
+      /**
+       * Cost from on-demand billing in dollars
+       */
+      onDemandCost: number;
+
+      /**
+       * Actual runtime minutes before platform multiplier
+       */
+      runtimeMinutes: number;
+
+      /**
+       * Map of subscription ID to billed minutes
+       */
+      subscriptionBilledMinutes?: { [key: string]: number };
+
+      /**
+       * Map of subscription ID to cost in dollars
+       */
+      subscriptionCost?: { [key: string]: number };
+    }
+
+    /**
+     * Complete analytics for a specific region including billing breakdown
+     */
+    export interface Ios {
+      /**
+       * Average instance duration in minutes
+       */
+      avgDurationMinutes: number;
+
+      /**
+       * Billed minutes with platform multiplier applied
+       */
+      billedMinutes: number;
+
+      /**
+       * Total cost in dollars
+       */
+      cost: number;
+
+      /**
+       * Number of unique instances
+       */
+      count: number;
+
+      /**
+       * Minutes billed to credits
+       */
+      creditsBilledMinutes: number;
+
+      /**
+       * Cost from credits (always 0)
+       */
+      creditsCost: number;
+
+      /**
+       * Minutes billed on-demand
+       */
+      onDemandBilledMinutes: number;
+
+      /**
+       * Cost from on-demand billing in dollars
+       */
+      onDemandCost: number;
+
+      /**
+       * Actual runtime minutes before platform multiplier
+       */
+      runtimeMinutes: number;
+
+      /**
+       * Map of subscription ID to billed minutes
+       */
+      subscriptionBilledMinutes?: { [key: string]: number };
+
+      /**
+       * Map of subscription ID to cost in dollars
+       */
+      subscriptionCost?: { [key: string]: number };
+    }
+
+    /**
+     * Complete analytics for a specific region including billing breakdown
+     */
+    export interface Sandbox {
+      /**
+       * Average instance duration in minutes
+       */
+      avgDurationMinutes: number;
+
+      /**
+       * Billed minutes with platform multiplier applied
+       */
+      billedMinutes: number;
+
+      /**
+       * Total cost in dollars
+       */
+      cost: number;
+
+      /**
+       * Number of unique instances
+       */
+      count: number;
+
+      /**
+       * Minutes billed to credits
+       */
+      creditsBilledMinutes: number;
+
+      /**
+       * Cost from credits (always 0)
+       */
+      creditsCost: number;
+
+      /**
+       * Minutes billed on-demand
+       */
+      onDemandBilledMinutes: number;
+
+      /**
+       * Cost from on-demand billing in dollars
+       */
+      onDemandCost: number;
+
+      /**
+       * Actual runtime minutes before platform multiplier
+       */
+      runtimeMinutes: number;
+
+      /**
+       * Map of subscription ID to billed minutes
+       */
+      subscriptionBilledMinutes?: { [key: string]: number };
+
+      /**
+       * Map of subscription ID to cost in dollars
+       */
+      subscriptionCost?: { [key: string]: number };
+    }
+  }
 }
 
 export interface AnalyticsGetParams {
@@ -333,15 +735,8 @@ export interface AnalyticsGetInstancesParams {
 
 export declare namespace Analytics {
   export {
-    type AnalyticsEntry as AnalyticsEntry,
-    type AnalyticsInstance as AnalyticsInstance,
-    type AnalyticsInstanceEntry as AnalyticsInstanceEntry,
     type AnalyticsInstancesResponse as AnalyticsInstancesResponse,
-    type AnalyticsRegionStats as AnalyticsRegionStats,
     type AnalyticsResponse as AnalyticsResponse,
-    type AnalyticsSummary as AnalyticsSummary,
-    type BilledBreakdown as BilledBreakdown,
-    type CostBreakdown as CostBreakdown,
     type AnalyticsGetParams as AnalyticsGetParams,
     type AnalyticsGetInstancesParams as AnalyticsGetInstancesParams,
   };
