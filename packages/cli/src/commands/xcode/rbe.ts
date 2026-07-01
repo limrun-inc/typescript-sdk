@@ -394,9 +394,9 @@ export default class XcodeRbe extends BaseCommand {
   }
 
   /**
-   * Create an iOS simulator and attach it to the RBE Xcode instance, so
-   * `lim xcode rbe install` installs on it and the user can watch it live. Prints
-   * the stream URL and returns the new simulator's instance id (recorded in the
+   * Create an iOS simulator and attach it to the RBE Xcode instance, so builds
+   * auto-install on it (server-side) and the user can watch it live. Prints the
+   * stream URL and returns the new simulator's instance id (recorded in the
    * pidfile for --stop teardown).
    */
   private async createAndAttachSimulator(client: XcodeClient): Promise<string> {
@@ -686,8 +686,8 @@ function signalIfAlive(pid: number, signal: NodeJS.Signals): boolean {
  * than let Node's default crash drop the tunnel mid-build. A thrown *exception*
  * that reaches the top level is a genuine fault we can't reason about: log and
  * exit non-zero so the port frees and the next `lim xcode rbe` reaps the stale
- * pidfile — far better than lingering as a zombie that holds the port with a dead
- * tunnel and blocks restart.
+ * pidfile. That is far better than lingering as a zombie that holds the port with
+ * a dead tunnel and blocks restart.
  */
 function installDaemonCrashGuards(log: (msg: string) => void): void {
   process.on('unhandledRejection', (reason) => {
