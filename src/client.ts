@@ -20,6 +20,20 @@ import * as Uploads from './core/uploads';
 import * as API from './resources/index';
 import { APIPromise } from './core/api-promise';
 import {
+  Analytics,
+  AnalyticsEntry,
+  AnalyticsGetInstancesParams,
+  AnalyticsGetParams,
+  AnalyticsInstance,
+  AnalyticsInstanceEntry,
+  AnalyticsInstancesResponse,
+  AnalyticsRegionStats,
+  AnalyticsResponse,
+  AnalyticsSummary,
+  BilledBreakdown,
+  CostBreakdown,
+} from './resources/analytics';
+import {
   AndroidInstance,
   AndroidInstanceCreateParams,
   AndroidInstanceListParams,
@@ -803,12 +817,14 @@ export class Limrun {
   assets: API.Assets = new API.Assets(this);
   iosInstances: API.IosInstances = new API.IosInstances(this);
   xcodeInstances: API.XcodeInstances = new API.XcodeInstances(this);
+  analytics: API.Analytics = new API.Analytics(this);
 }
 
 Limrun.AndroidInstances = AndroidInstances;
 Limrun.Assets = Assets;
 Limrun.IosInstances = IosInstances;
 Limrun.XcodeInstances = XcodeInstances;
+Limrun.Analytics = Analytics;
 
 export declare namespace Limrun {
   export type RequestOptions = Opts.RequestOptions;
@@ -848,5 +864,20 @@ export declare namespace Limrun {
     type XcodeInstancesItems as XcodeInstancesItems,
     type XcodeInstanceCreateParams as XcodeInstanceCreateParams,
     type XcodeInstanceListParams as XcodeInstanceListParams,
+  };
+
+  export {
+    Analytics as Analytics,
+    type AnalyticsEntry as AnalyticsEntry,
+    type AnalyticsInstance as AnalyticsInstance,
+    type AnalyticsInstanceEntry as AnalyticsInstanceEntry,
+    type AnalyticsInstancesResponse as AnalyticsInstancesResponse,
+    type AnalyticsRegionStats as AnalyticsRegionStats,
+    type AnalyticsResponse as AnalyticsResponse,
+    type AnalyticsSummary as AnalyticsSummary,
+    type BilledBreakdown as BilledBreakdown,
+    type CostBreakdown as CostBreakdown,
+    type AnalyticsGetParams as AnalyticsGetParams,
+    type AnalyticsGetInstancesParams as AnalyticsGetInstancesParams,
   };
 }
