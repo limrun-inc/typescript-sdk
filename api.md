@@ -51,3 +51,15 @@ Methods:
 - <code title="get /v1/xcode_instances">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">list</a>({ ...params }) -> XcodeInstancesItems</code>
 - <code title="delete /v1/xcode_instances/{id}">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">delete</a>(id) -> void</code>
 - <code title="get /v1/xcode_instances/{id}">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">get</a>(id) -> XcodeInstance</code>
+
+# Analytics
+
+Types:
+
+- <code><a href="./src/resources/analytics.ts">AnalyticsInstancesResponse</a></code>
+- <code><a href="./src/resources/analytics.ts">AnalyticsResponse</a></code>
+
+Methods:
+
+- <code title="get /v1/analytics">client.analytics.<a href="./src/resources/analytics.ts">get</a>({ ...params }) -> AnalyticsResponse</code>
+- <code title="get /v1/analytics/instances">client.analytics.<a href="./src/resources/analytics.ts">getInstances</a>({ ...params }) -> AnalyticsInstancesResponse</code>

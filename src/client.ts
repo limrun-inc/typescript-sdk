@@ -20,6 +20,13 @@ import * as Uploads from './core/uploads';
 import * as API from './resources/index';
 import { APIPromise } from './core/api-promise';
 import {
+  Analytics,
+  AnalyticsGetInstancesParams,
+  AnalyticsGetParams,
+  AnalyticsInstancesResponse,
+  AnalyticsResponse,
+} from './resources/analytics';
+import {
   AndroidInstance,
   AndroidInstances,
   AndroidInstanceCreateParams,
@@ -815,12 +822,14 @@ export class Limrun {
   assets: API.Assets = new API.Assets(this);
   iosInstances: API.IosInstances = new API.IosInstances(this);
   xcodeInstances: API.XcodeInstances = new API.XcodeInstances(this);
+  analytics: API.Analytics = new API.Analytics(this);
 }
 
 Limrun.AndroidInstances = AndroidInstances;
 Limrun.Assets = Assets;
 Limrun.IosInstances = IosInstances;
 Limrun.XcodeInstances = XcodeInstances;
+Limrun.Analytics = Analytics;
 
 export declare namespace Limrun {
   export type RequestOptions = Opts.RequestOptions;
@@ -872,5 +881,13 @@ export declare namespace Limrun {
     type SimulatorAttachment as SimulatorAttachment,
     type SimulatorDeviceInfo as SimulatorDeviceInfo,
     type SimulatorInstallState as SimulatorInstallState,
+  };
+
+  export {
+    Analytics as Analytics,
+    type AnalyticsInstancesResponse as AnalyticsInstancesResponse,
+    type AnalyticsResponse as AnalyticsResponse,
+    type AnalyticsGetParams as AnalyticsGetParams,
+    type AnalyticsGetInstancesParams as AnalyticsGetInstancesParams,
   };
 }

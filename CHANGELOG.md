@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.34.0 (2026-07-01)
+
+Full Changelog: [v0.33.5...v0.34.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.33.5...v0.34.0)
+
+### Features
+
+* **api:** add analytics api ([335336d](https://github.com/limrun-inc/typescript-sdk/commit/335336d3e012f8803f6d0934090d8bf92902cc65))
+* **api:** analytics api, make platform enum ([93a1985](https://github.com/limrun-inc/typescript-sdk/commit/93a19859ef2979529d19d662750c9c00bf44ff7c))
+* **api:** fix indentation ([ee62b89](https://github.com/limrun-inc/typescript-sdk/commit/ee62b89bff99baa1e40f2814153f447871d2776e))
+* **api:** simplify the models for analytics endpoint ([2e44e71](https://github.com/limrun-inc/typescript-sdk/commit/2e44e712fd93f9da9f6f087a931dfc670c43f9b1))
+
+
+### Chores
+
+* bump cli version ([e118520](https://github.com/limrun-inc/typescript-sdk/commit/e1185205c3e42696cfb8ea46b0448881b65d70fa))
+
 ## 0.33.5 (2026-07-01)
 
 Full Changelog: [v0.33.4...v0.33.5](https://github.com/limrun-inc/typescript-sdk/compare/v0.33.4...v0.33.5)
