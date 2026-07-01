@@ -71,9 +71,9 @@ export namespace AnalyticsInstancesResponse {
       instanceTid: string;
 
       /**
-       * Platform name, such as android, ios, or xcode
+       * Platform name.
        */
-      platform: string;
+      platform: 'android' | 'ios' | 'xcode';
 
       /**
        * Actual runtime minutes before platform multiplier
@@ -398,9 +398,9 @@ export namespace AnalyticsResponse {
       instanceTid: string;
 
       /**
-       * Platform name, such as android, ios, or xcode
+       * Platform name.
        */
-      platform: string;
+      platform: 'android' | 'ios' | 'xcode';
 
       /**
        * Actual runtime minutes before platform multiplier
