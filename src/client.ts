@@ -21,17 +21,10 @@ import * as API from './resources/index';
 import { APIPromise } from './core/api-promise';
 import {
   Analytics,
-  AnalyticsEntry,
   AnalyticsGetInstancesParams,
   AnalyticsGetParams,
-  AnalyticsInstance,
-  AnalyticsInstanceEntry,
   AnalyticsInstancesResponse,
-  AnalyticsRegionStats,
   AnalyticsResponse,
-  AnalyticsSummary,
-  BilledBreakdown,
-  CostBreakdown,
 } from './resources/analytics';
 import {
   AndroidInstance,
@@ -868,15 +861,8 @@ export declare namespace Limrun {
 
   export {
     Analytics as Analytics,
-    type AnalyticsEntry as AnalyticsEntry,
-    type AnalyticsInstance as AnalyticsInstance,
-    type AnalyticsInstanceEntry as AnalyticsInstanceEntry,
     type AnalyticsInstancesResponse as AnalyticsInstancesResponse,
-    type AnalyticsRegionStats as AnalyticsRegionStats,
     type AnalyticsResponse as AnalyticsResponse,
-    type AnalyticsSummary as AnalyticsSummary,
-    type BilledBreakdown as BilledBreakdown,
-    type CostBreakdown as CostBreakdown,
     type AnalyticsGetParams as AnalyticsGetParams,
     type AnalyticsGetInstancesParams as AnalyticsGetInstancesParams,
   };

@@ -56,15 +56,8 @@ Methods:
 
 Types:
 
-- <code><a href="./src/resources/analytics.ts">AnalyticsEntry</a></code>
-- <code><a href="./src/resources/analytics.ts">AnalyticsInstance</a></code>
-- <code><a href="./src/resources/analytics.ts">AnalyticsInstanceEntry</a></code>
 - <code><a href="./src/resources/analytics.ts">AnalyticsInstancesResponse</a></code>
-- <code><a href="./src/resources/analytics.ts">AnalyticsRegionStats</a></code>
 - <code><a href="./src/resources/analytics.ts">AnalyticsResponse</a></code>
-- <code><a href="./src/resources/analytics.ts">AnalyticsSummary</a></code>
-- <code><a href="./src/resources/analytics.ts">BilledBreakdown</a></code>
-- <code><a href="./src/resources/analytics.ts">CostBreakdown</a></code>
 
 Methods:
 

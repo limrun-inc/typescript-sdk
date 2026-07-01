@@ -2,15 +2,8 @@
 
 export {
   Analytics,
-  type AnalyticsEntry,
-  type AnalyticsInstance,
-  type AnalyticsInstanceEntry,
   type AnalyticsInstancesResponse,
-  type AnalyticsRegionStats,
   type AnalyticsResponse,
-  type AnalyticsSummary,
-  type BilledBreakdown,
-  type CostBreakdown,
   type AnalyticsGetParams,
   type AnalyticsGetInstancesParams,
 } from './analytics';
