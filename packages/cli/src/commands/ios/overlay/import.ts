@@ -50,7 +50,7 @@ export default class IosOverlayImport extends BaseCommand {
         if (flags.json) {
           this.outputJson(result);
         } else {
-          this.output(`Applied files: ${result.filesApplied.join(', ')}`);
+          this.output(`Overlay applied: ${result.overlayApplied ? 'yes' : 'no'}`);
           this.output(`Duration: ${result.durationMs}ms`);
         }
       } finally {

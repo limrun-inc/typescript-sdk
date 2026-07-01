@@ -203,7 +203,7 @@ export type AppInstallationResult = {
 
 export type OverlayImportResult = {
   ok: boolean;
-  filesApplied: string[];
+  overlayApplied: boolean;
   durationMs: number;
 };
 
@@ -969,7 +969,7 @@ type ServerResponse = {
   // performActions batch result fields
   results?: PerformActionResult[];
   // Overlay transfer result fields
-  filesApplied?: string[];
+  overlayApplied?: boolean;
   durationMs?: number;
 };
 
@@ -1514,7 +1514,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       overlayExportResult: () => undefined,
       overlayImportResult: (msg): OverlayImportResult => ({
         ok: true,
-        filesApplied: msg.filesApplied ?? [],
+        overlayApplied: msg.overlayApplied ?? false,
         durationMs: msg.durationMs ?? 0,
       }),
       startVideoRecordingResult: () => undefined,
