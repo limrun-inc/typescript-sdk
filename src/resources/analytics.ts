@@ -71,7 +71,7 @@ export namespace AnalyticsInstancesResponse {
       instanceTid: string;
 
       /**
-       * Platform name, such as android, ios, or sandbox
+       * Platform name, such as android, ios, or xcode
        */
       platform: string;
 
@@ -181,15 +181,15 @@ export namespace AnalyticsResponse {
     ios: { [key: string]: Series.Ios };
 
     /**
-     * Map of region to analytics stats for Sandbox
-     */
-    sandbox: { [key: string]: Series.Sandbox };
-
-    /**
      * RFC3339 timestamp for the start of the bucket in the requested timezone,
      * including the local offset
      */
     timestamp: string;
+
+    /**
+     * Map of region to analytics stats for Xcode
+     */
+    xcode: { [key: string]: Series.Xcode };
 
     /**
      * Individual instance details for this time bucket
@@ -321,7 +321,7 @@ export namespace AnalyticsResponse {
     /**
      * Complete analytics for a specific region including billing breakdown
      */
-    export interface Sandbox {
+    export interface Xcode {
       /**
        * Average instance duration in minutes
        */
@@ -398,7 +398,7 @@ export namespace AnalyticsResponse {
       instanceTid: string;
 
       /**
-       * Platform name, such as android, ios, or sandbox
+       * Platform name, such as android, ios, or xcode
        */
       platform: string;
 
@@ -484,9 +484,9 @@ export namespace AnalyticsResponse {
     ios: { [key: string]: Summary.Ios };
 
     /**
-     * Map of region to analytics stats for Sandbox
+     * Map of region to analytics stats for Xcode
      */
-    sandbox: { [key: string]: Summary.Sandbox };
+    xcode: { [key: string]: Summary.Xcode };
   }
 
   export namespace Summary {
@@ -613,7 +613,7 @@ export namespace AnalyticsResponse {
     /**
      * Complete analytics for a specific region including billing breakdown
      */
-    export interface Sandbox {
+    export interface Xcode {
       /**
        * Average instance duration in minutes
        */
