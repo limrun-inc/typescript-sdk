@@ -12,7 +12,7 @@ import {
 } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
 import { nodeProxyTransport } from '../internal/proxy-transport';
-import { directInstanceHttpError } from '../internal/direct-instance-errors';
+import { directInstanceHttpError, isDirectInstanceHttpError } from '../internal/direct-instance-errors';
 import { LimrunError } from '../core/error';
 import { validateBuildSettings } from '../build-settings';
 import { startTcpTunnel, type Tunnel } from '../tunnel';
@@ -197,7 +197,7 @@ export type RbeUploadOptions =
   | {
       /** Upload as a named asset: the SDK mints the presigned upload URL via assets.getOrCreate. */
       assetName: string;
-      /** Optional asset TTL, forwarded to assets.getOrCreate. */
+      /** Optional asset TTL as a Go duration (e.g. "24h", "30m"; "1d" is invalid), forwarded to assets.getOrCreate. */
       ttl?: string;
       signedUploadUrl?: never;
     }
@@ -403,6 +403,27 @@ async function readJsonResponse<T>(res: Response, operation: string): Promise<T>
   return JSON.parse(text) as T;
 }
 
+/**
+ * Mints presigned upload/download URLs for a named asset via assets.getOrCreate,
+ * wrapping failures with the asset name (and the original error as cause).
+ * Shared by the xcodebuild `--upload` path and `uploadLatestRbeBuild`.
+ */
+function mintAssetUploadUrls(
+  assets: { getOrCreate: (body: { name: string; ttl?: string }) => Promise<AssetUploadUrls> },
+  name: string,
+  ttl?: string,
+): Promise<AssetUploadUrls> {
+  return assets.getOrCreate({ name, ...(ttl && { ttl }) }).catch((err) => {
+    const message = `Failed to create upload URL for asset '${name}': ${
+      err instanceof Error ? err.message : err
+    }`;
+    // @ts-ignore - not all envs have native support for cause yet
+    throw new Error(message, { cause: err });
+  });
+}
+
+type AssetUploadUrls = { signedUploadUrl: string; signedDownloadUrl: string };
+
 export class XcodeInstances extends GeneratedXcodeInstances {
   async createClient(params: XcodeCreateClientParams): Promise<XcodeClient> {
     let apiUrl: string;
@@ -565,21 +586,13 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         };
 
         if (options?.upload && 'assetName' in options.upload) {
-          const uploadName = options.upload.assetName;
-          const requestPromise = client.assets
-            .getOrCreate({ name: uploadName })
-            .then((asset) => {
+          const requestPromise = mintAssetUploadUrls(client.assets, options.upload.assetName).then(
+            (asset) => {
               request.signedUploadUrl = asset.signedUploadUrl;
               request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
               return request;
-            })
-            .catch((err) => {
-              throw new Error(
-                `Failed to create upload URL for artifact '${uploadName}': ${
-                  err instanceof Error ? err.message : err
-                }`,
-              );
-            });
+            },
+          );
           return exec(requestPromise, { apiUrl, token, log });
         }
 
@@ -656,20 +669,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           if (!opts.assetName) {
             throw new Error('assetName must not be empty');
           }
-          const asset = await client.assets
-            .getOrCreate({ name: opts.assetName, ...(opts.ttl && { ttl: opts.ttl }) })
-            .catch((err) => {
-              // Object.assign because the es2020 lib target predates typed
-              // Error cause; Node still surfaces it.
-              throw Object.assign(
-                new Error(
-                  `Failed to create upload URL for asset '${opts.assetName}': ${
-                    err instanceof Error ? err.message : err
-                  }`,
-                ),
-                { cause: err },
-              );
-            });
+          const asset = await mintAssetUploadUrls(client.assets, opts.assetName, opts.ttl);
           signedUploadUrl = asset.signedUploadUrl;
           signedDownloadUrl = asset.signedDownloadUrl;
         } else {
@@ -678,8 +678,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
 
         const post = async (): Promise<{ appName: string; bundleId?: string }> => {
           // The daemon uploads to asset storage before responding, so this
-          // request can legitimately go minutes without response bytes; plain
-          // fetch would abort it at undici's default 300s headersTimeout.
+          // request can go minutes without response bytes.
           const res = await nodeProxyTransport.fetchLongRequest(`${apiUrl}/rbe/upload`, {
             method: 'POST',
             headers: {
@@ -705,13 +704,10 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         // Build recording is asynchronous on the daemon (it lands moments
         // after bazel reports success), so the no-build 400 fired right at
         // build end is as transient as a gateway blip; retry both classes.
-        const noBuildYet = (err: unknown) =>
-          err instanceof Error &&
-          /failed: 400\b/.test(err.message) &&
-          /no successful RBE app build/i.test(err.message);
-        const result = await retryTransient(post, {
-          retryOn: (err) => isTransientError(err) || noBuildYet(err),
-        });
+        const retryOn = (err: unknown) =>
+          isTransientError(err) ||
+          (isDirectInstanceHttpError(err, 400) && /no successful RBE app build/i.test(err.body));
+        const result = await retryTransient(post, { retryOn });
         return { ...result, ...(signedDownloadUrl && { signedDownloadUrl }) };
       },
     };

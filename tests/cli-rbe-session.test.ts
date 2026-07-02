@@ -3,16 +3,22 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 import type { RbeStatus } from '@limrun/api';
-// The pure session helpers now live in the SDK (src/rbe-session.ts) so
-// pure-SDK consumers can use them; test them through the package export.
-import { isTransientError, retryTransient, waitForRbeRunning } from '@limrun/api';
+// The session helpers are duplicated for now: the canonical copies live in the
+// SDK (src/rbe-session.ts) for pure-SDK consumers, while the CLI still ships
+// its own until it can depend on a published @limrun/api that has them. These
+// tests run against the CLI copy (what `lim` actually executes); the SDK
+// copy's delta (retryTransient's retryOn) is exercised end-to-end by the
+// uploadLatestRbeBuild tests in xcode-client-rbe.test.ts.
 import {
   assertLocalPortFree,
   buildServeChildArgs,
   clearRbePidFile,
   isProcessAlive,
+  isTransientError,
   probePortOpen,
   readRbePidFile,
+  retryTransient,
+  waitForRbeRunning,
   writeRbePidFile,
 } from '../packages/cli/src/lib/rbe-session';
 

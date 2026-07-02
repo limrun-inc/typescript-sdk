@@ -159,18 +159,24 @@ describe('uploadLatestRbeBuild', () => {
 
   test('retries transient gateway errors like its sibling RBE calls', async () => {
     // The proxy path can blip right after instance start; a single 502 must
-    // not fail an upload of a build that succeeded.
-    const fetchMock = jest
-      .fn()
-      .mockResolvedValueOnce(new Response('Bad Gateway', { status: 502 }))
-      .mockResolvedValueOnce(new Response(uploadOk, { status: 200 }));
-    nodeProxyTransport.fetchLongRequest = fetchMock;
-    const { xcode } = await uploadClient();
-    await expect(
-      xcode.uploadLatestRbeBuild({ signedUploadUrl: 'https://bucket.t3.storage.dev/put' }),
-    ).resolves.toMatchObject({ appName: 'MyApp.app' });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  }, 10_000);
+    // not fail an upload of a build that succeeded. Fake timers skip the real
+    // retry backoff.
+    jest.useFakeTimers();
+    try {
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(new Response('Bad Gateway', { status: 502 }))
+        .mockResolvedValueOnce(new Response(uploadOk, { status: 200 }));
+      nodeProxyTransport.fetchLongRequest = fetchMock;
+      const { xcode } = await uploadClient();
+      const upload = xcode.uploadLatestRbeBuild({ signedUploadUrl: 'https://bucket.t3.storage.dev/put' });
+      await jest.advanceTimersByTimeAsync(2000);
+      await expect(upload).resolves.toMatchObject({ appName: 'MyApp.app' });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 
   test('an empty assetName is rejected client-side before any request', async () => {
     const fetchMock = jest.fn();
@@ -186,19 +192,27 @@ describe('uploadLatestRbeBuild', () => {
   test('retries the transient no-build-recorded window, then succeeds', async () => {
     // Build-end recording is asynchronous on the daemon, so the first call
     // right after bazel exits can race it; the client must ride that out.
-    const fetchMock = jest
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ message: 'no successful RBE app build to upload' }), { status: 400 }),
-      )
-      .mockResolvedValueOnce(new Response(uploadOk, { status: 200 }));
-    nodeProxyTransport.fetchLongRequest = fetchMock;
-    const { xcode } = await uploadClient();
-    await expect(
-      xcode.uploadLatestRbeBuild({ signedUploadUrl: 'https://bucket.t3.storage.dev/put' }),
-    ).resolves.toMatchObject({ appName: 'MyApp.app' });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  }, 10_000);
+    // Fake timers skip the real retry backoff.
+    jest.useFakeTimers();
+    try {
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ message: 'no successful RBE app build to upload' }), {
+            status: 400,
+          }),
+        )
+        .mockResolvedValueOnce(new Response(uploadOk, { status: 200 }));
+      nodeProxyTransport.fetchLongRequest = fetchMock;
+      const { xcode } = await uploadClient();
+      const upload = xcode.uploadLatestRbeBuild({ signedUploadUrl: 'https://bucket.t3.storage.dev/put' });
+      await jest.advanceTimersByTimeAsync(2000);
+      await expect(upload).resolves.toMatchObject({ appName: 'MyApp.app' });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 
   test('a non-no-build 400 propagates immediately without retry', async () => {
     const fetchMock = jest.fn(

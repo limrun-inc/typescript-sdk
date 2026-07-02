@@ -55,13 +55,16 @@ export async function retryTransient<T>(
       lastErr = err;
       if (attempt < attempts) {
         const message = err instanceof Error ? err.message : String(err);
-        opts.log?.(`Instance not serving yet (${message.trim()}); retrying...`);
+        opts.log?.(`Retrying after error (${message.trim()})...`);
         await sleep(2000 * attempt);
       }
     }
   }
   throw lastErr;
 }
+
+/** RbeStatus once the stack is running: frontendPort and xcodeVersion are set. */
+export type RunningRbeStatus = RbeStatus & Required<Pick<RbeStatus, 'frontendPort' | 'xcodeVersion'>>;
 
 /**
  * Polls `getRbe` until the stack is `running` (with a usable frontend port and
@@ -74,7 +77,7 @@ export async function waitForRbeRunning(
   client: Pick<XcodeClient, 'getRbe'>,
   initial: RbeStatus,
   opts: { sleep?: Sleep; maxAttempts?: number } = {},
-): Promise<Required<Pick<RbeStatus, 'frontendPort' | 'xcodeVersion'>> & RbeStatus> {
+): Promise<RunningRbeStatus> {
   const sleep = opts.sleep ?? defaultSleep;
   const maxAttempts = opts.maxAttempts ?? 15;
   let status = initial;
@@ -85,5 +88,5 @@ export async function waitForRbeRunning(
   if (status.state !== 'running' || !status.frontendPort || !status.xcodeVersion) {
     throw new Error(`Remote-execution stack failed to start: ${status.error ?? `state is ${status.state}`}`);
   }
-  return status as Required<Pick<RbeStatus, 'frontendPort' | 'xcodeVersion'>> & RbeStatus;
+  return status as RunningRbeStatus;
 }
