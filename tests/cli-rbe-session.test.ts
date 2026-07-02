@@ -3,16 +3,16 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 import type { RbeStatus } from '@limrun/api';
+// The pure session helpers now live in the SDK (src/rbe-session.ts) so
+// pure-SDK consumers can use them; test them through the package export.
+import { isTransientError, retryTransient, waitForRbeRunning } from '@limrun/api';
 import {
   assertLocalPortFree,
   buildServeChildArgs,
   clearRbePidFile,
   isProcessAlive,
-  isTransientError,
   probePortOpen,
   readRbePidFile,
-  retryTransient,
-  waitForRbeRunning,
   writeRbePidFile,
 } from '../packages/cli/src/lib/rbe-session';
 

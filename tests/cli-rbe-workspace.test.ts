@@ -2,6 +2,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
+// The workspace helpers now live in the SDK (src/rbe-workspace.ts) so
+// pure-SDK consumers can use them; test them through the package export.
 import {
   TRY_IMPORT_LINE,
   detectBazelMajorVersion,
@@ -11,7 +13,7 @@ import {
   renderLimrunBazelrc,
   renderXcodeConfigBuild,
   writeRbeWorkspaceFiles,
-} from '../packages/cli/src/lib/rbe-workspace';
+} from '@limrun/api';
 
 const APPLE_SUPPORT_LOADS = [
   'load("@build_bazel_apple_support//xcode:xcode_version.bzl", "xcode_version")',

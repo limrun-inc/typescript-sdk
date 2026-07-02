@@ -16,6 +16,7 @@ import { directInstanceHttpError } from '../internal/direct-instance-errors';
 import { LimrunError } from '../core/error';
 import { validateBuildSettings } from '../build-settings';
 import { startTcpTunnel, type Tunnel } from '../tunnel';
+import { isTransientError, retryTransient } from '../rbe-session';
 
 export type { Tunnel } from '../tunnel';
 
@@ -192,6 +193,30 @@ export type RbeInstallResult = {
   installDurationMs?: number;
 };
 
+export type RbeUploadOptions =
+  | {
+      /** Upload as a named asset: the SDK mints the presigned upload URL via assets.getOrCreate. */
+      assetName: string;
+      /** Optional asset TTL, forwarded to assets.getOrCreate. */
+      ttl?: string;
+      signedUploadUrl?: never;
+    }
+  | {
+      /** Upload to a caller-minted presigned Limrun asset storage URL. */
+      signedUploadUrl: string;
+      assetName?: never;
+      ttl?: never;
+    };
+
+export type RbeUploadResult = {
+  /** The .app bundle name of the uploaded build; it is the root directory of the uploaded tar.gz. */
+  appName: string;
+  /** CFBundleIdentifier of the uploaded app, when known. */
+  bundleId?: string;
+  /** Presigned download URL of the asset; present when uploading by assetName. */
+  signedDownloadUrl?: string;
+};
+
 export type XcodeClient = {
   /**
    * Sync source code to the xcode instance. In watch mode, keeps syncing on changes.
@@ -242,6 +267,16 @@ export type XcodeClient = {
    * --remote_executor=grpc://127.0.0.1:<port>.
    */
   startRbeTunnel: (opts?: RbeTunnelOptions) => Promise<Tunnel>;
+
+  /**
+   * Upload the latest successful RBE build's app as an asset: the daemon
+   * packages the build's .app as a tar.gz (the same artifact format
+   * xcodebuild uploads produce) and pushes it to asset storage. Call after
+   * `bazel build --config=limrun` succeeds. The build is recorded on the
+   * instance asynchronously moments after bazel reports success, so the
+   * brief no-build window right after bazel exits is retried automatically.
+   */
+  uploadLatestRbeBuild: (opts: RbeUploadOptions) => Promise<RbeUploadResult>;
 
   /**
    * Create a new iOS simulator instance and attach it to this xcode instance.
@@ -612,6 +647,72 @@ export class XcodeInstances extends GeneratedXcodeInstances {
             logLevel: opts?.logLevel ?? params.logLevel ?? 'info',
           },
         );
+      },
+
+      async uploadLatestRbeBuild(opts: RbeUploadOptions): Promise<RbeUploadResult> {
+        let signedUploadUrl: string;
+        let signedDownloadUrl: string | undefined;
+        if (opts.assetName !== undefined) {
+          if (!opts.assetName) {
+            throw new Error('assetName must not be empty');
+          }
+          const asset = await client.assets
+            .getOrCreate({ name: opts.assetName, ...(opts.ttl && { ttl: opts.ttl }) })
+            .catch((err) => {
+              // Object.assign because the es2020 lib target predates typed
+              // Error cause; Node still surfaces it.
+              throw Object.assign(
+                new Error(
+                  `Failed to create upload URL for asset '${opts.assetName}': ${
+                    err instanceof Error ? err.message : err
+                  }`,
+                ),
+                { cause: err },
+              );
+            });
+          signedUploadUrl = asset.signedUploadUrl;
+          signedDownloadUrl = asset.signedDownloadUrl;
+        } else {
+          signedUploadUrl = opts.signedUploadUrl;
+        }
+
+        const post = async (): Promise<{ appName: string; bundleId?: string }> => {
+          // The daemon uploads to asset storage before responding, so this
+          // request can legitimately go minutes without response bytes; plain
+          // fetch would abort it at undici's default 300s headersTimeout.
+          const res = await nodeProxyTransport.fetchLongRequest(`${apiUrl}/rbe/upload`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ signedUploadUrl }),
+          });
+          if (res.status === 404) {
+            // A vanished instance and a limbuild that predates the endpoint
+            // 404 indistinguishably (identical bodies), and neither is the
+            // RbeUnsupportedError case (the daemon may well support /rbe),
+            // hence a plain two-cause error.
+            await res.text().catch(() => undefined);
+            throw new Error(
+              'POST /rbe/upload returned 404: the instance may no longer exist, or its limbuild ' +
+                'predates RBE upload support. Recreate the instance and retry.',
+            );
+          }
+          return readJsonResponse<{ appName: string; bundleId?: string }>(res, 'POST /rbe/upload');
+        };
+
+        // Build recording is asynchronous on the daemon (it lands moments
+        // after bazel reports success), so the no-build 400 fired right at
+        // build end is as transient as a gateway blip; retry both classes.
+        const noBuildYet = (err: unknown) =>
+          err instanceof Error &&
+          /failed: 400\b/.test(err.message) &&
+          /no successful RBE app build/i.test(err.message);
+        const result = await retryTransient(post, {
+          retryOn: (err) => isTransientError(err) || noBuildYet(err),
+        });
+        return { ...result, ...(signedDownloadUrl && { signedDownloadUrl }) };
       },
     };
   }

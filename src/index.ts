@@ -24,6 +24,8 @@ export {
   type RbeStartOptions,
   type RbeTunnelOptions,
   type RbeInstallResult,
+  type RbeUploadOptions,
+  type RbeUploadResult,
   type Tunnel,
   RbeUnsupportedError,
   deriveRbeTunnelUrl,
@@ -38,6 +40,20 @@ export {
   type SimulatorDeviceInfo,
   type SimulatorInstallState,
 } from './resources/xcode-instances-helpers';
+export {
+  LIMRUN_DIR,
+  TRY_IMPORT_LINE,
+  findBazelWorkspaceRoot,
+  inferBuildTarget,
+  detectBazelMajorVersion,
+  isBazel9OrLater,
+  renderXcodeConfigBuild,
+  renderLimrunBazelrc,
+  ensureTryImport,
+  writeRbeWorkspaceFiles,
+  type RbeWorkspaceFiles,
+} from './rbe-workspace';
+export { isTransientError, retryTransient, waitForRbeRunning, defaultSleep, type Sleep } from './rbe-session';
 export {
   LimrunError,
   APIError,
