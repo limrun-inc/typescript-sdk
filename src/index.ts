@@ -53,7 +53,14 @@ export {
   writeRbeWorkspaceFiles,
   type RbeWorkspaceFiles,
 } from './rbe-workspace';
-export { isTransientError, retryTransient, waitForRbeRunning, defaultSleep, type Sleep } from './rbe-session';
+export {
+  isTransientError,
+  retryTransient,
+  waitForRbeRunning,
+  defaultSleep,
+  type Sleep,
+  type RunningRbeStatus,
+} from './rbe-session';
 export {
   LimrunError,
   APIError,

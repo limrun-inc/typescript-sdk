@@ -1,3 +1,6 @@
+// Mirrored between src/rbe-workspace.ts (canonical) and packages/cli/src/lib/rbe-workspace.ts
+// until the CLI imports it from a published @limrun/api; tests/rbe-copy-sync.test.ts keeps the
+// two copies byte-identical. Apply any edit to both.
 import fs from 'fs';
 import path from 'path';
 

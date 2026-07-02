@@ -2,7 +2,7 @@ import type { Agent as HttpAgent } from 'http';
 
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { getProxyForUrl } from 'proxy-from-env';
-import { Agent, EnvHttpProxyAgent } from 'undici';
+import { EnvHttpProxyAgent } from 'undici';
 
 import type { Fetch } from './builtin-types';
 
@@ -14,7 +14,7 @@ const longRequestTimeouts = { headersTimeout: 3_600_000, bodyTimeout: 3_600_000 
 
 class NodeProxyTransport {
   private envHttpProxyAgent: EnvHttpProxyAgent | undefined;
-  private longRequestDispatcher: Agent | EnvHttpProxyAgent | undefined;
+  private longRequestDispatcher: EnvHttpProxyAgent | undefined;
   private websocketAgents = new Map<string, HttpAgent>();
 
   fetch: Fetch = async (input, init) => {
@@ -32,10 +32,11 @@ class NodeProxyTransport {
    * fetch for requests that legitimately receive no response bytes for many
    * minutes (the server answers only after completing long work). Plain fetch
    * would abort them at undici's default 300s headersTimeout.
+   * EnvHttpProxyAgent covers the no-proxy case too: it routes non-proxied
+   * origins through an internal Agent built with these same options.
    */
   fetchLongRequest: Fetch = async (input, init) => {
-    this.longRequestDispatcher ??=
-      this.hasProxyEnv() ? new EnvHttpProxyAgent(longRequestTimeouts) : new Agent(longRequestTimeouts);
+    this.longRequestDispatcher ??= new EnvHttpProxyAgent(longRequestTimeouts);
     return (fetch as any)(input, {
       ...(init ?? {}),
       dispatcher: this.longRequestDispatcher,
