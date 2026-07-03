@@ -24,6 +24,15 @@ export default class XcodeRbeUpload extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    // A replacement instance has no recorded build, so auto-creating on a
+    // vanished pidfile instance would "upload" nothing useful from a fresh
+    // instance the tunnel does not even point at (the serve child refuses
+    // creation for the same reason).
+    create: Flags.boolean({
+      ...BaseCommand.baseFlags.create,
+      default: false,
+      hidden: true,
+    }),
     ttl: Flags.string({
       description: 'Asset TTL as a Go duration (e.g. 24h, 30m).',
     }),
