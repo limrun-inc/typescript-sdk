@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.37.0 (2026-07-03)
+
+Full Changelog: [v0.36.1...v0.37.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.36.1...v0.37.0)
+
+### Features
+
+* **xcode:** getRecentRbeBuilds for polling build-end discovery ([8414bba](https://github.com/limrun-inc/typescript-sdk/commit/8414bba4c08cf509525a0906fd459a182faebc4c))
+
 ## 0.36.1 (2026-07-03)
 
 Full Changelog: [v0.36.0...v0.36.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.36.0...v0.36.1)
