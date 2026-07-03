@@ -224,8 +224,9 @@ export type RbeActiveBuild = {
   invocationId: string;
   /** RUNNING while in flight; terminal statuses appear only on the build-end event. */
   status: 'RUNNING' | (string & {});
-  /** The bazel target pattern(s) of the invocation, when known. */
-  pattern?: string[];
+  /** The bazel target pattern(s) of the invocation; null when the build has
+   *  not reported one yet (the wire always carries the key). */
+  pattern?: string[] | null;
 };
 
 /** The terminal summary of a Bazel invocation, from the build stream's end event. */
@@ -233,6 +234,17 @@ export type RbeBuildEnd = {
   invocationId: string;
   status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'INCOMPLETE' | (string & {});
   error?: string;
+};
+
+/** A Bazel invocation from the instance's bounded recent view: in flight or
+ *  recently finished with its terminal status. */
+export type RbeBuildSummary = {
+  invocationId: string;
+  status: 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'INCOMPLETE' | (string & {});
+  /** The bazel target pattern(s) of the invocation; null when the build never
+   *  reported one (e.g. its event stream dropped early). */
+  pattern?: string[] | null;
+  error?: string | null;
 };
 
 export type XcodeClient = {
@@ -301,6 +313,16 @@ export type XcodeClient = {
    * to discover new builds (e.g. to auto-upload on build end).
    */
   getActiveRbeBuilds: () => Promise<RbeActiveBuild[]>;
+
+  /**
+   * List the instance's recent Bazel invocations: in flight plus a bounded
+   * number of recently finished ones with their terminal status. Poll this to
+   * react to build ends (live streams are removed the moment a build ends, so
+   * the recent view is the reliable discovery surface). Retention is scoped
+   * to the RBE session: stopping the stack clears it. Durable history lives
+   * in the build records.
+   */
+  getRecentRbeBuilds: () => Promise<RbeBuildSummary[]>;
 
   /**
    * Wait for a Bazel invocation to finish and return its terminal summary.
@@ -757,6 +779,18 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         // readRbeResponse: a 404 here means a limbuild that predates this
         // route, not a vanished instance (same trap as the other /rbe routes).
         return readRbeResponse<RbeActiveBuild[]>(res, 'GET /rbe/builds/active');
+      },
+
+      async getRecentRbeBuilds(): Promise<RbeBuildSummary[]> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/rbe/builds/recent`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        // readRbeResponse: a 404 here means a limbuild that predates this
+        // route, not a vanished instance (same trap as the other /rbe routes).
+        return readRbeResponse<RbeBuildSummary[]>(res, 'GET /rbe/builds/recent');
       },
 
       waitForRbeBuildEnd(invocationId: string, opts?: { signal?: AbortSignal }): Promise<RbeBuildEnd> {
