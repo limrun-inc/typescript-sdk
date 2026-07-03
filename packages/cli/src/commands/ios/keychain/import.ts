@@ -61,10 +61,7 @@ export default class IosKeychainImport extends BaseCommand {
     });
   }
 
-  private async resolveKeychainAssetDownloadUrl(
-    assetName: string | undefined,
-    assetID: string | undefined,
-  ) {
+  private async resolveKeychainAssetDownloadUrl(assetName: string | undefined, assetID: string | undefined) {
     if (assetName && assetID) {
       this.error('Use either a keychain asset name or --asset-id, not both.');
     }
