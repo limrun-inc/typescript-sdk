@@ -35,7 +35,7 @@ export default class AssetList extends BaseCommand {
     }),
     kind: Flags.string({
       description: 'Filter listed assets by kind.',
-      options: ['App', 'Overlay'],
+      options: ['App', 'Keychain'],
     }),
   };
 

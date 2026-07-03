@@ -1,15 +1,22 @@
-import { Flags } from '@oclif/core';
+import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
 
-export default class IosOverlayExport extends BaseCommand {
-  static summary = 'Export an iOS account overlay to asset storage';
+export default class IosKeychainExport extends BaseCommand {
+  static summary = 'Export iOS keychain state to asset storage';
   static description =
-    'Create or reuse an Overlay asset, ask the target iOS simulator to upload its account overlay tar.gz to asset storage, and print the asset ID.';
+    'Create or reuse a Keychain asset, ask the target iOS simulator to upload its keychain tar.gz to asset storage, and print the asset ID.';
   static examples = [
-    '<%= config.bin %> ios overlay export --asset-name accounts/overlay.tar.gz',
-    '<%= config.bin %> ios overlay export --asset-name accounts/overlay.tar.gz --ttl 24h --json',
+    '<%= config.bin %> ios keychain export keychain/state.tar.gz',
+    '<%= config.bin %> ios keychain export keychain/state.tar.gz --ttl 24h --json',
   ];
+
+  static args = {
+    asset_name: Args.string({
+      description: 'Keychain asset name to store the exported keychain under',
+      required: false,
+    }),
+  };
 
   static flags = {
     ...BaseCommand.baseFlags,
@@ -17,8 +24,8 @@ export default class IosOverlayExport extends BaseCommand {
       description: 'iOS instance ID to export from. Defaults to the last created iOS instance.',
     }),
     'asset-name': Flags.string({
-      description: 'Asset name to store the exported overlay under.',
-      required: true,
+      description:
+        'Asset name to store the exported keychain under. Prefer the positional <asset-name> argument.',
     }),
     ttl: Flags.string({
       description: 'Time-to-live as a Go duration (e.g. "24h", min 1m). Defaults to no expiry.',
@@ -26,21 +33,26 @@ export default class IosOverlayExport extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(IosOverlayExport);
+    const { args, flags } = await this.parse(IosKeychainExport);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
+      const assetName = args.asset_name ?? flags['asset-name'];
+      if (!assetName) {
+        this.error('Provide a keychain asset name, e.g. `lim ios keychain export keychain/state.tar.gz`.');
+      }
+
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const asset = await this.client.assets.getOrCreate({
-        name: flags['asset-name'],
-        kind: 'Overlay',
+        name: assetName,
+        kind: 'Keychain',
         platform: 'ios',
         ttl: flags.ttl,
       });
 
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        await client.exportOverlay({ url: asset.signedUploadUrl });
+        await client.exportKeychain({ url: asset.signedUploadUrl });
       } finally {
         disconnect();
       }

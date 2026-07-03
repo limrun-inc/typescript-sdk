@@ -2,24 +2,24 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
 
-type OverlayAsset = {
+type KeychainAsset = {
   id: string;
   name: string;
   signedDownloadUrl?: string;
 };
 
-export default class IosOverlayImport extends BaseCommand {
-  static summary = 'Import an iOS account overlay from asset storage';
+export default class IosKeychainImport extends BaseCommand {
+  static summary = 'Import iOS keychain state from asset storage';
   static description =
-    'Resolve an Overlay asset by ID or name, then ask the target iOS simulator to download and apply the overlay tar.gz.';
+    'Resolve a Keychain asset by name or ID, then ask the target iOS simulator to download and apply the keychain tar.gz.';
   static examples = [
-    '<%= config.bin %> ios overlay import <asset-ID>',
-    '<%= config.bin %> ios overlay import accounts/overlay.tar.gz --id <instance-ID>',
-    '<%= config.bin %> ios overlay import --url https://example.t3.storage.dev/... --json',
+    '<%= config.bin %> ios keychain import keychain/state.tar.gz',
+    '<%= config.bin %> ios keychain import keychain/state.tar.gz --id <instance-ID>',
+    '<%= config.bin %> ios keychain import --url https://example.t3.storage.dev/... --json',
   ];
 
   static args = {
-    id_or_name: Args.string({ description: 'Overlay asset ID or name to import', required: false }),
+    asset_name: Args.string({ description: 'Keychain asset name or ID to import', required: false }),
   };
 
   static flags = {
@@ -37,20 +37,20 @@ export default class IosOverlayImport extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(IosOverlayImport);
+    const { args, flags } = await this.parse(IosKeychainImport);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
-      const url = flags.url ?? (await this.resolveOverlayAssetDownloadUrl(args.id_or_name, flags.name));
+      const url = flags.url ?? (await this.resolveKeychainAssetDownloadUrl(args.asset_name, flags.name));
 
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        const result = await client.importOverlay({ url });
+        const result = await client.importKeychain({ url });
         if (flags.json) {
           this.outputJson(result);
         } else {
-          this.output(`Overlay applied: ${result.overlayApplied ? 'yes' : 'no'}`);
+          this.output(`Keychain applied: ${result.keychainApplied ? 'yes' : 'no'}`);
           this.output(`Duration: ${result.durationMs}ms`);
         }
       } finally {
@@ -59,12 +59,15 @@ export default class IosOverlayImport extends BaseCommand {
     });
   }
 
-  private async resolveOverlayAssetDownloadUrl(idOrName: string | undefined, explicitName: string | undefined) {
+  private async resolveKeychainAssetDownloadUrl(
+    idOrName: string | undefined,
+    explicitName: string | undefined,
+  ) {
     if (!idOrName && !explicitName) {
-      this.error('Provide an overlay asset ID/name or --url.');
+      this.error('Provide a keychain asset ID/name or --url.');
     }
 
-    let asset: OverlayAsset;
+    let asset: KeychainAsset;
     const value = idOrName ?? explicitName!;
     if (value.includes('_')) {
       asset = await this.client.assets.get(value, { includeDownloadUrl: true });
@@ -72,24 +75,24 @@ export default class IosOverlayImport extends BaseCommand {
       const searchName = explicitName || value;
       const matches = (await this.client.assets.list({
         nameFilter: searchName,
-        kindFilter: 'Overlay',
+        kindFilter: 'Keychain',
         includeDownloadUrl: true,
-      })) as OverlayAsset[];
+      })) as KeychainAsset[];
       if (matches.length === 0) {
-        this.error(`Overlay asset with name "${searchName}" not found`);
+        this.error(`Keychain asset with name "${searchName}" not found`);
       }
       if (matches.length > 1) {
         const ids = matches
           .map((item) => item.id || item.name || '<unknown>')
           .slice(0, 5)
           .join(', ');
-        this.error(`Overlay asset name "${searchName}" matched multiple assets (${ids}). Use an asset ID.`);
+        this.error(`Keychain asset name "${searchName}" matched multiple assets (${ids}). Use an asset ID.`);
       }
       asset = matches[0]!;
     }
 
     if (!asset.signedDownloadUrl) {
-      this.error('Overlay asset does not have a download URL');
+      this.error('Keychain asset does not have a download URL');
     }
     return asset.signedDownloadUrl;
   }

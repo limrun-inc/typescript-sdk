@@ -201,9 +201,9 @@ export type AppInstallationResult = {
   bundleId: string;
 };
 
-export type OverlayImportResult = {
+export type KeychainImportResult = {
   ok: boolean;
-  overlayApplied: boolean;
+  keychainApplied: boolean;
   durationMs: number;
 };
 
@@ -561,14 +561,14 @@ export type InstanceClient = {
   installApp: (url: string, options?: AppInstallationOptions) => Promise<AppInstallationResult>;
 
   /**
-   * Export the simulator account overlay and upload it to a presigned asset-storage URL.
+   * Export the simulator keychain and upload it to a presigned asset-storage URL.
    */
-  exportOverlay: (options: { url: string }) => Promise<void>;
+  exportKeychain: (options: { url: string }) => Promise<void>;
 
   /**
-   * Download an account overlay from a presigned asset-storage URL and apply it.
+   * Download keychain state from a presigned asset-storage URL and apply it.
    */
-  importOverlay: (options: { url: string }) => Promise<OverlayImportResult>;
+  importKeychain: (options: { url: string }) => Promise<KeychainImportResult>;
 
   /**
    * Set the device orientation
@@ -968,8 +968,8 @@ type ServerResponse = {
   lines?: string[];
   // performActions batch result fields
   results?: PerformActionResult[];
-  // Overlay transfer result fields
-  overlayApplied?: boolean;
+  // Keychain transfer result fields
+  keychainApplied?: boolean;
   durationMs?: number;
 };
 
@@ -1511,10 +1511,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         url: msg.url || '',
         bundleId: msg.bundleId || '',
       }),
-      overlayExportResult: () => undefined,
-      overlayImportResult: (msg): OverlayImportResult => ({
+      keychainExportResult: () => undefined,
+      keychainImportResult: (msg): KeychainImportResult => ({
         ok: true,
-        overlayApplied: msg.overlayApplied ?? false,
+        keychainApplied: msg.keychainApplied ?? false,
         durationMs: msg.durationMs ?? 0,
       }),
       startVideoRecordingResult: () => undefined,
@@ -1694,8 +1694,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             listApps,
             openUrl,
             installApp,
-            exportOverlay,
-            importOverlay,
+            exportKeychain,
+            importKeychain,
             setOrientation,
             scroll,
             performActions,
@@ -1855,12 +1855,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       );
     };
 
-    const exportOverlay = async (overlayOptions: { url: string }): Promise<void> => {
-      await sendRequest<void>('exportOverlay', { url: overlayOptions.url }, undefined, 120_000);
+    const exportKeychain = async (keychainOptions: { url: string }): Promise<void> => {
+      await sendRequest<void>('exportKeychain', { url: keychainOptions.url }, undefined, 120_000);
     };
 
-    const importOverlay = async (overlayOptions: { url: string }): Promise<OverlayImportResult> => {
-      return sendRequest<OverlayImportResult>('importOverlay', { url: overlayOptions.url }, undefined, 120_000);
+    const importKeychain = async (keychainOptions: { url: string }): Promise<KeychainImportResult> => {
+      return sendRequest<KeychainImportResult>('importKeychain', { url: keychainOptions.url }, undefined, 120_000);
     };
 
     const setOrientation = (orientation: 'Portrait' | 'Landscape'): Promise<void> => {

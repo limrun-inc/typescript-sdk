@@ -184,7 +184,7 @@ export interface AssetGetOrCreateParams {
   ttl?: string;
 }
 
-export type AssetKind = 'App' | 'Overlay';
+export type AssetKind = 'App' | 'Keychain';
 
 export type AssetPlatform = 'ios' | 'android' | 'xcode';
 

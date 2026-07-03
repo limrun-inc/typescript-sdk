@@ -208,7 +208,7 @@ export namespace IosInstanceCreateParams {
     }
 
     export interface InitialAsset {
-      kind: 'App';
+      kind: 'App' | 'Keychain';
 
       source: 'URL' | 'AssetName' | 'AssetID';
 
