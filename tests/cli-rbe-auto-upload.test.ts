@@ -139,6 +139,39 @@ describe('startAutoUploadWatcher', () => {
     expect(client.getRecentRbeBuilds.mock.calls.length).toBe(pollsAtStop);
   });
 
+  test('a failed upload is re-attempted on a later poll, bounded per build', async () => {
+    // The SDK retries transient errors internally; a longer outage must not
+    // permanently drop a successful build's upload, and a permanent failure
+    // must not retry forever.
+    const client = fakeClient();
+    client.getRecentRbeBuilds
+      .mockResolvedValueOnce([]) // baseline
+      .mockResolvedValue([{ invocationId: 'inv-r', status: 'SUCCEEDED' }]);
+    client.uploadLatestRbeBuild
+      .mockRejectedValueOnce(new Error('asset storage down'))
+      .mockResolvedValue({ appName: 'MyApp.app' });
+    const log = jest.fn();
+    const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log, pollMs: 5 });
+    await settle(60);
+    await watcher.stop();
+    expect(client.uploadLatestRbeBuild).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('upload failed (attempt 1/3)'));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('uploaded MyApp.app'));
+  });
+
+  test('a permanently failing upload stops after the attempt cap', async () => {
+    const client = fakeClient();
+    client.getRecentRbeBuilds
+      .mockResolvedValueOnce([]) // baseline
+      .mockResolvedValue([{ invocationId: 'inv-p', status: 'SUCCEEDED' }]);
+    client.uploadLatestRbeBuild.mockRejectedValue(new Error('invalid ttl'));
+    const log = jest.fn();
+    const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log, pollMs: 5 });
+    await settle(80);
+    await watcher.stop();
+    expect(client.uploadLatestRbeBuild).toHaveBeenCalledTimes(3);
+  });
+
   test('a poll failure is logged once per streak and polling survives', async () => {
     const client = fakeClient();
     client.getRecentRbeBuilds.mockRejectedValue(new Error('daemon restarting'));
