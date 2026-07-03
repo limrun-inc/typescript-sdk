@@ -3,29 +3,31 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { Flags } from '@oclif/core';
 import type { Tunnel, XcodeClient } from '@limrun/api';
-import { DEFAULT_RBE_TUNNEL_PORT, RbeUnsupportedError } from '@limrun/api';
-import { BaseCommand } from '../../base-command';
-import { clearLastInstanceId } from '../../lib/config';
-import { ProgressReporter } from '../../lib/progress';
 import {
+  DEFAULT_RBE_TUNNEL_PORT,
+  RbeUnsupportedError,
+  defaultSleep,
   findBazelWorkspaceRoot,
   inferBuildTarget,
+  retryTransient,
+  waitForRbeRunning,
   writeRbeWorkspaceFiles,
   LIMRUN_DIR,
   type RbeWorkspaceFiles,
-} from '../../lib/rbe-workspace';
+} from '@limrun/api';
+import { BaseCommand } from '../../../base-command';
+import { clearLastInstanceId } from '../../../lib/config';
+import { ProgressReporter } from '../../../lib/progress';
+import { startAutoUploadWatcher } from '../../../lib/rbe-auto-upload';
 import {
   assertLocalPortFree,
   buildServeChildArgs,
   clearRbePidFile,
-  defaultSleep,
   isProcessAlive,
   probePortOpen,
   readRbePidFile,
-  retryTransient,
-  waitForRbeRunning,
   writeRbePidFile,
-} from '../../lib/rbe-session';
+} from '../../../lib/rbe-session';
 
 export default class XcodeRbe extends BaseCommand {
   static summary = 'Serve a local Bazel remote-execution endpoint backed by a Limrun Xcode instance';
@@ -37,6 +39,7 @@ export default class XcodeRbe extends BaseCommand {
     'on start) or by deleting the instance. Pass --no-daemon to keep it in the foreground.';
   static examples = [
     '<%= config.bin %> xcode rbe',
+    '<%= config.bin %> xcode rbe --auto-upload preview/my-app --upload-ttl 24h',
     '<%= config.bin %> xcode rbe --no-daemon',
     '<%= config.bin %> xcode rbe --id <xcode-instance-ID>',
     '<%= config.bin %> xcode rbe --port 9980',
@@ -61,6 +64,17 @@ export default class XcodeRbe extends BaseCommand {
     stop: Flags.boolean({
       description: 'Stop the background tunnel running for this workspace.',
       default: false,
+      exclusive: ['auto-upload'],
+    }),
+    'auto-upload': Flags.string({
+      description:
+        'Upload every successful build as an asset with this name, automatically at build end. ' +
+        'The asset is refreshed on each rebuild; upload results land in the tunnel log.',
+      exclusive: ['stop'],
+    }),
+    'upload-ttl': Flags.string({
+      description: 'Asset TTL for --auto-upload as a Go duration (e.g. 24h, 30m).',
+      dependsOn: ['auto-upload'],
     }),
     ios: Flags.boolean({
       description:
@@ -79,6 +93,8 @@ export default class XcodeRbe extends BaseCommand {
   async run(): Promise<void> {
     const { flags } = await this.parse(XcodeRbe);
     this.setParsedFlags(flags);
+    const autoUpload =
+      flags['auto-upload'] ? { assetName: flags['auto-upload'], ttl: flags['upload-ttl'] } : undefined;
 
     // Serve mode: the detached child. The parent already started the stack and
     // generated the workspace config; this process only holds the tunnel and
@@ -95,7 +111,7 @@ export default class XcodeRbe extends BaseCommand {
       await this.withAuth(async () => {
         const xcodeTarget = await this.resolveXcodeTarget(flags.id);
         const client = await this.resolveXcodeClient(xcodeTarget);
-        await this.runTunnel(client, flags.port);
+        await this.runTunnel(client, flags.port, autoUpload);
       });
       return;
     }
@@ -117,14 +133,33 @@ export default class XcodeRbe extends BaseCommand {
       return;
     }
 
+    // Empty string would be treated as "off" by every truthiness check below,
+    // silently starting a tunnel without the uploads the user asked for.
+    if (flags['auto-upload'] !== undefined && !flags['auto-upload']) {
+      this.error('--auto-upload requires a non-empty asset name.');
+    }
+
     // If a background tunnel is already running for this workspace, don't start a
     // second one (and don't fail with a cryptic "port in use"); point at --stop.
     const existing = readRbePidFile(workspaceRoot);
     if (existing && isProcessAlive(existing.pid)) {
-      this.info(
+      const running =
         `A background tunnel is already running for this workspace (PID ${existing.pid}, ` +
-          `grpc://127.0.0.1:${existing.port}).`,
-      );
+        `grpc://127.0.0.1:${existing.port}` +
+        `${existing.autoUpload ? `, auto-uploading to "${existing.autoUpload}"` : ''}).`;
+      // A requested auto-upload config cannot be applied to a running tunnel;
+      // a silent success here would let CI believe uploads are armed (or the
+      // ttl changed) and ship a stale or early-expiring preview asset.
+      if (
+        flags['auto-upload'] &&
+        (existing.autoUpload !== flags['auto-upload'] || existing.uploadTtl !== flags['upload-ttl'])
+      ) {
+        this.error(
+          `${running} The requested --auto-upload config was NOT applied. ` +
+            'Stop it with `lim xcode rbe --stop` and re-run.',
+        );
+      }
+      this.info(running);
       this.info('Stop it with `lim xcode rbe --stop`, then re-run to start fresh.');
       return;
     }
@@ -274,6 +309,8 @@ export default class XcodeRbe extends BaseCommand {
             xcodeVersion,
             generated,
             buildCmd,
+            autoUpload: flags['auto-upload'],
+            uploadTtl: flags['upload-ttl'],
           });
         } catch (err) {
           // spawnBackgroundTunnel records simInstanceId in the pidfile only after
@@ -310,9 +347,10 @@ export default class XcodeRbe extends BaseCommand {
         instanceId,
         background: false,
         simulatorAttached: !!simInstanceId,
+        autoUpload: flags['auto-upload'],
       });
       try {
-        await this.awaitTunnel(tunnel, client);
+        await this.awaitTunnel(tunnel, client, autoUpload);
       } finally {
         await this.deleteSim(simInstanceId);
       }
@@ -445,6 +483,8 @@ export default class XcodeRbe extends BaseCommand {
     xcodeVersion: string;
     generated: RbeWorkspaceFiles;
     buildCmd: string;
+    autoUpload?: string;
+    uploadTtl?: string;
   }): Promise<void> {
     const apiKey = this.parsedFlags?.['api-key'] as string | undefined;
     const logPath = path.join(opts.workspaceRoot, LIMRUN_DIR, 'rbe.log');
@@ -458,6 +498,8 @@ export default class XcodeRbe extends BaseCommand {
         id: opts.instanceId,
         port: opts.port,
         apiKey,
+        autoUpload: opts.autoUpload,
+        uploadTtl: opts.uploadTtl,
       }),
       { detached: true, stdio: ['ignore', logFd, logFd] },
     );
@@ -513,6 +555,8 @@ export default class XcodeRbe extends BaseCommand {
       instanceId: opts.instanceId,
       port: opts.port,
       ...(opts.simInstanceId ? { simInstanceId: opts.simInstanceId } : {}),
+      ...(opts.autoUpload ? { autoUpload: opts.autoUpload } : {}),
+      ...(opts.uploadTtl ? { uploadTtl: opts.uploadTtl } : {}),
     });
 
     this.printReady({
@@ -524,6 +568,7 @@ export default class XcodeRbe extends BaseCommand {
       instanceId: opts.instanceId,
       background: true,
       simulatorAttached: !!opts.simInstanceId,
+      autoUpload: opts.autoUpload,
       pid,
       logPath,
     });
@@ -546,7 +591,11 @@ export default class XcodeRbe extends BaseCommand {
    * the child if it exits within a short liveness window, so a slow tunnel-open
    * failure would otherwise leave the remote stack running with no owner.
    */
-  private async runTunnel(client: XcodeClient, port: number): Promise<void> {
+  private async runTunnel(
+    client: XcodeClient,
+    port: number,
+    autoUpload?: { assetName: string; ttl?: string },
+  ): Promise<void> {
     let tunnel: Tunnel;
     try {
       tunnel = await this.openTunnel(client, port);
@@ -556,15 +605,30 @@ export default class XcodeRbe extends BaseCommand {
         `Failed to open the remote-execution tunnel: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    await this.awaitTunnel(tunnel, client);
+    await this.awaitTunnel(tunnel, client, autoUpload);
   }
 
   /**
    * Block on an already-open tunnel until a stop signal, then close it and
    * best-effort stop the remote stack. Rejects if the tunnel reports a terminal
-   * disconnect (after its own reconnect attempts are exhausted).
+   * disconnect (after its own reconnect attempts are exhausted). With
+   * autoUpload set, a watcher uploads every successful build as the named
+   * asset for the tunnel's lifetime.
    */
-  private async awaitTunnel(tunnel: Tunnel, client: XcodeClient): Promise<void> {
+  private async awaitTunnel(
+    tunnel: Tunnel,
+    client: XcodeClient,
+    autoUpload?: { assetName: string; ttl?: string },
+  ): Promise<void> {
+    const watcher =
+      autoUpload ?
+        startAutoUploadWatcher({
+          client,
+          assetName: autoUpload.assetName,
+          ttl: autoUpload.ttl,
+          log: (msg) => this.info(msg),
+        })
+      : undefined;
     try {
       await new Promise<void>((resolve, reject) => {
         const keepAlive = setInterval(() => {}, 1 << 30);
@@ -616,6 +680,7 @@ export default class XcodeRbe extends BaseCommand {
         process.once('SIGTERM', shutdown);
       });
     } finally {
+      watcher?.stop();
       tunnel.close();
       await client.stopRbe().catch(() => {});
     }
@@ -631,6 +696,7 @@ export default class XcodeRbe extends BaseCommand {
     instanceId: string;
     background: boolean;
     simulatorAttached: boolean;
+    autoUpload?: string;
     pid?: number;
     logPath?: string;
   }): void {
@@ -641,6 +707,7 @@ export default class XcodeRbe extends BaseCommand {
         xcodeVersion: opts.xcodeVersion,
         workspaceRoot: opts.workspaceRoot,
         simulatorAttached: opts.simulatorAttached,
+        ...(opts.autoUpload ? { autoUpload: opts.autoUpload } : {}),
         generatedConfig: {
           buildFile: opts.generated.buildFile,
           bazelrcFragment: opts.generated.bazelrcFragment,
@@ -659,6 +726,9 @@ export default class XcodeRbe extends BaseCommand {
     this.output('');
     this.output(`Endpoint:  grpc://127.0.0.1:${opts.port}`);
     this.output(`Builds:    ${this.consoleBuildUrl(opts.instanceId)}`);
+    if (opts.autoUpload) {
+      this.output(`Uploads:   every successful build refreshes asset "${opts.autoUpload}"`);
+    }
     if (opts.background) {
       this.output(`Logs:      ${opts.logPath}`);
       this.output(`Stop:      lim xcode rbe --stop   (or: kill ${opts.pid})`);

@@ -3,22 +3,16 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 import type { RbeStatus } from '@limrun/api';
-// The session helpers are duplicated for now: the canonical copies live in the
-// SDK (src/rbe-session.ts) for pure-SDK consumers, while the CLI still ships
-// its own until it can depend on a published @limrun/api that has them. These
-// tests run against the CLI copy (what `lim` actually executes); the SDK
-// copy's delta (retryTransient's retryOn) is exercised end-to-end by the
-// uploadLatestRbeBuild tests in xcode-client-rbe.test.ts.
+// The session helpers live in the SDK; the CLI keeps only its process-model
+// helpers (pidfile, ports, serve args), tested here alongside them.
+import { isTransientError, retryTransient, waitForRbeRunning } from '@limrun/api';
 import {
   assertLocalPortFree,
   buildServeChildArgs,
   clearRbePidFile,
   isProcessAlive,
-  isTransientError,
   probePortOpen,
   readRbePidFile,
-  retryTransient,
-  waitForRbeRunning,
   writeRbePidFile,
 } from '../packages/cli/src/lib/rbe-session';
 
@@ -145,6 +139,21 @@ describe('buildServeChildArgs', () => {
     expect(buildServeChildArgs({ scriptPath: '/bin/lim', id: 'xc_1', port: 9980 })).not.toContain(
       '--api-key',
     );
+  });
+
+  test('forwards auto-upload config to the serve child, omits it otherwise', () => {
+    const armed = buildServeChildArgs({
+      scriptPath: '/bin/lim',
+      id: 'xc_1',
+      port: 8980,
+      autoUpload: 'preview/app',
+      uploadTtl: '24h',
+    });
+    expect(armed).toEqual(expect.arrayContaining(['--auto-upload', 'preview/app', '--upload-ttl', '24h']));
+    // ttl without auto-upload is meaningless and must not leak into the argv.
+    expect(
+      buildServeChildArgs({ scriptPath: '/bin/lim', id: 'xc_1', port: 8980, uploadTtl: '24h' }),
+    ).not.toContain('--upload-ttl');
   });
 });
 
