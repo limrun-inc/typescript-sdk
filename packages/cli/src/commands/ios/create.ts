@@ -111,6 +111,18 @@ export default class IosCreate extends BaseCommand {
       this.error('Use --encryption-key or --encryption-key-stdin only with --keychain or --keychain-url.');
     }
 
+    let keychainEncryptionKey: string | undefined;
+    if (hasKeychainInitialAssets) {
+      try {
+        keychainEncryptionKey = await resolveKeychainEncryptionKey({
+          encryptionKey: flags['encryption-key'],
+          encryptionKeyStdin: flags['encryption-key-stdin'],
+        });
+      } catch (error) {
+        this.error((error as Error).message);
+      }
+    }
+
     await this.withAuth(async () => {
       const attachTarget = flags.attach ? await this.resolveXcodeTarget(args.xcodeId) : undefined;
       if (attachTarget && attachTarget.type !== 'xcode') {
@@ -150,15 +162,7 @@ export default class IosCreate extends BaseCommand {
         }));
       }
       if (hasKeychainInitialAssets) {
-        let encryptionKey: string;
-        try {
-          encryptionKey = await resolveKeychainEncryptionKey({
-            encryptionKey: flags['encryption-key'],
-            encryptionKeyStdin: flags['encryption-key-stdin'],
-          });
-        } catch (error) {
-          this.error((error as Error).message);
-        }
+        const encryptionKey = keychainEncryptionKey!;
         if (!params.spec) params.spec = {};
         params.spec!.initialAssets = [
           ...(params.spec!.initialAssets || []),
