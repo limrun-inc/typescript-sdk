@@ -12,15 +12,16 @@ type KeychainAsset = {
 export default class IosKeychainImport extends BaseCommand {
   static summary = 'Import iOS keychain state from asset storage';
   static description =
-    'Resolve a Keychain asset by name or ID, then ask the target iOS simulator to download and apply the keychain tar.gz.';
+    'Resolve a Keychain asset by name, then ask the target iOS simulator to download and apply the keychain tar.gz. Use --asset-id to import by asset ID.';
   static examples = [
     '<%= config.bin %> ios keychain import keychain/state.tar.gz',
     '<%= config.bin %> ios keychain import keychain/state.tar.gz --id <instance-ID>',
+    '<%= config.bin %> ios keychain import --asset-id <asset-ID>',
     '<%= config.bin %> ios keychain import --url https://example.t3.storage.dev/... --json',
   ];
 
   static args = {
-    asset_name: Args.string({ description: 'Keychain asset name or ID to import', required: false }),
+    asset_name: Args.string({ description: 'Keychain asset name to import', required: false }),
   };
 
   static flags = {
@@ -31,9 +32,8 @@ export default class IosKeychainImport extends BaseCommand {
     url: Flags.string({
       description: 'Presigned download URL to import directly instead of resolving an asset.',
     }),
-    name: Flags.string({
-      char: 'n',
-      description: 'Explicit asset name to search for when the positional argument is not an asset ID.',
+    'asset-id': Flags.string({
+      description: 'Keychain asset ID to import instead of resolving the positional asset name.',
     }),
   };
 
@@ -43,17 +43,18 @@ export default class IosKeychainImport extends BaseCommand {
 
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
-      const url = flags.url ?? (await this.resolveKeychainAssetDownloadUrl(args.asset_name, flags.name));
+      const url =
+        flags.url ?? (await this.resolveKeychainAssetDownloadUrl(args.asset_name, flags['asset-id']));
 
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
         const result = await client.importKeychain({ url });
         if (flags.json) {
           this.outputJson(result);
-        } else {
-          this.output(`Keychain applied: ${result.keychainApplied ? 'yes' : 'no'}`);
-          this.output(`Duration: ${result.durationMs}ms`);
+          return;
         }
+        this.output('Keychain applied');
+        this.output(`Duration: ${result.durationMs}ms`);
       } finally {
         disconnect();
       }
@@ -61,33 +62,34 @@ export default class IosKeychainImport extends BaseCommand {
   }
 
   private async resolveKeychainAssetDownloadUrl(
-    idOrName: string | undefined,
-    explicitName: string | undefined,
+    assetName: string | undefined,
+    assetID: string | undefined,
   ) {
-    if (!idOrName && !explicitName) {
-      this.error('Provide a keychain asset ID/name or --url.');
+    if (assetName && assetID) {
+      this.error('Use either a keychain asset name or --asset-id, not both.');
+    }
+    if (!assetName && !assetID) {
+      this.error('Provide a keychain asset name, --asset-id, or --url.');
     }
 
     let asset: KeychainAsset;
-    const value = idOrName ?? explicitName!;
-    if (value.includes('_')) {
-      asset = await this.client.assets.get(value, { includeDownloadUrl: true });
+    if (assetID) {
+      asset = await this.client.assets.get(assetID, { includeDownloadUrl: true });
     } else {
-      const searchName = explicitName || value;
       const matches = (await this.client.assets.list({
-        nameFilter: searchName,
+        nameFilter: assetName!,
         kindFilter: 'Keychain',
         includeDownloadUrl: true,
       })) as KeychainAsset[];
       if (matches.length === 0) {
-        this.error(`Keychain asset with name "${searchName}" not found`);
+        this.error(`Keychain asset with name "${assetName}" not found`);
       }
       if (matches.length > 1) {
         const ids = matches
           .map((item) => item.id || item.name || '<unknown>')
           .slice(0, 5)
           .join(', ');
-        this.error(`Keychain asset name "${searchName}" matched multiple assets (${ids}). Use an asset ID.`);
+        this.error(`Keychain asset name "${assetName}" matched multiple assets (${ids}). Use --asset-id.`);
       }
       asset = matches[0]!;
     }

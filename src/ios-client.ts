@@ -202,8 +202,6 @@ export type AppInstallationResult = {
 };
 
 export type KeychainImportResult = {
-  ok: boolean;
-  keychainApplied: boolean;
   durationMs: number;
 };
 
@@ -969,7 +967,6 @@ type ServerResponse = {
   // performActions batch result fields
   results?: PerformActionResult[];
   // Keychain transfer result fields
-  keychainApplied?: boolean;
   durationMs?: number;
 };
 
@@ -1513,8 +1510,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }),
       keychainExportResult: () => undefined,
       keychainImportResult: (msg): KeychainImportResult => ({
-        ok: true,
-        keychainApplied: msg.keychainApplied ?? false,
         durationMs: msg.durationMs ?? 0,
       }),
       startVideoRecordingResult: () => undefined,
