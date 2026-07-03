@@ -149,10 +149,12 @@ export default class XcodeRbe extends BaseCommand {
         `${existing.autoUpload ? `, auto-uploading to "${existing.autoUpload}"` : ''}).`;
       // A requested auto-upload config cannot be applied to a running tunnel;
       // a silent success here would let CI believe uploads are armed (or the
-      // ttl changed) and ship a stale or early-expiring preview asset.
+      // ttl changed) and ship a stale or early-expiring preview asset. An
+      // omitted --upload-ttl is not a conflict: it means keep the running ttl.
       if (
         flags['auto-upload'] &&
-        (existing.autoUpload !== flags['auto-upload'] || existing.uploadTtl !== flags['upload-ttl'])
+        (existing.autoUpload !== flags['auto-upload'] ||
+          (flags['upload-ttl'] !== undefined && existing.uploadTtl !== flags['upload-ttl']))
       ) {
         this.error(
           `${running} The requested --auto-upload config was NOT applied. ` +
@@ -680,7 +682,9 @@ export default class XcodeRbe extends BaseCommand {
         process.once('SIGTERM', shutdown);
       });
     } finally {
-      watcher?.stop();
+      // Awaited so an upload already in flight (a completed build's artifact)
+      // finishes before the stack goes down; queued ones are skipped.
+      await watcher?.stop();
       tunnel.close();
       await client.stopRbe().catch(() => {});
     }

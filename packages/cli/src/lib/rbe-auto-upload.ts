@@ -24,7 +24,7 @@ export function startAutoUploadWatcher(opts: {
   log: (msg: string) => void;
   pollMs?: number;
   goneGraceMs?: number;
-}): { stop: () => void } {
+}): { stop: () => Promise<void> } {
   const { client, assetName, ttl, log } = opts;
   const pollMs = opts.pollMs ?? 1000;
   const abort = new AbortController();
@@ -153,6 +153,13 @@ export function startAutoUploadWatcher(opts: {
   void pollLoop();
 
   return {
-    stop: () => abort.abort(),
+    // Aborting skips queued uploads, but an upload already in flight is a
+    // completed build's artifact: return it so shutdown can wait instead of
+    // cancelling it at process exit. Callers' own grace periods (a second
+    // Ctrl-C, --stop's SIGKILL escalation) bound a wedged one.
+    stop: () => {
+      abort.abort();
+      return uploadChain;
+    },
   };
 }
