@@ -73,10 +73,9 @@ export default class XcodeRbeUpload extends BaseCommand {
         this.outputJson(result);
         return;
       }
+      // No presigned download URL here: it is 15-minute ephemeral noise in a
+      // terminal (matching `lim asset push`); --json carries it for scripts.
       this.info(`Uploaded ${result.appName} as asset "${args.name}".`);
-      if (result.signedDownloadUrl) {
-        this.output(result.signedDownloadUrl);
-      }
     });
   }
 }
