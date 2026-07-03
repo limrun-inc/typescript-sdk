@@ -1,19 +1,15 @@
 import { startAutoUploadWatcher } from '../packages/cli/src/lib/rbe-auto-upload';
-import type { RbeActiveBuild, RbeUploadResult, XcodeClient } from '@limrun/api';
+import type { RbeBuildSummary, RbeUploadResult, XcodeClient } from '@limrun/api';
 
-/** Yield until pending microtasks and timers scheduled at 0-1ms have run. */
+/** Yield until pending microtasks and short timers have run. */
 const settle = async (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
 // Mock arg tuples must match the real signatures exactly (property-typed
 // functions are contravariant in their parameters under strictFunctionTypes).
 type FakeClient = {
-  getActiveRbeBuilds: jest.Mock<
-    ReturnType<XcodeClient['getActiveRbeBuilds']>,
-    Parameters<XcodeClient['getActiveRbeBuilds']>
-  >;
-  waitForRbeBuildEnd: jest.Mock<
-    ReturnType<XcodeClient['waitForRbeBuildEnd']>,
-    Parameters<XcodeClient['waitForRbeBuildEnd']>
+  getRecentRbeBuilds: jest.Mock<
+    ReturnType<XcodeClient['getRecentRbeBuilds']>,
+    Parameters<XcodeClient['getRecentRbeBuilds']>
   >;
   uploadLatestRbeBuild: jest.Mock<
     ReturnType<XcodeClient['uploadLatestRbeBuild']>,
@@ -21,24 +17,31 @@ type FakeClient = {
   >;
 };
 
+/** Builds a recent-view payload carrying the wire's undeclared startedAt with
+ *  literal excess-property checking intact (an `as` cast would silence typos). */
+type WireBuild = { invocationId: string; status: string; startedAt?: string };
+function wireBuilds(builds: WireBuild[]): RbeBuildSummary[] {
+  return builds as RbeBuildSummary[];
+}
+
 function fakeClient(): FakeClient {
   return {
-    getActiveRbeBuilds: jest.fn(async (): Promise<RbeActiveBuild[]> => []),
-    waitForRbeBuildEnd: jest.fn(),
+    getRecentRbeBuilds: jest.fn(async (): Promise<RbeBuildSummary[]> => []),
     uploadLatestRbeBuild: jest.fn(async (_opts): Promise<RbeUploadResult> => ({ appName: 'MyApp.app' })),
   };
 }
 
 describe('startAutoUploadWatcher', () => {
-  test('uploads once per successful build', async () => {
+  test('uploads once when a build turns terminal SUCCEEDED', async () => {
     const client = fakeClient();
-    client.getActiveRbeBuilds.mockResolvedValue([{ invocationId: 'inv-1', status: 'RUNNING' }]);
-    client.waitForRbeBuildEnd.mockResolvedValue({ invocationId: 'inv-1', status: 'SUCCEEDED' });
+    client.getRecentRbeBuilds
+      .mockResolvedValueOnce([{ invocationId: 'inv-1', status: 'RUNNING' }]) // baseline
+      .mockResolvedValue([{ invocationId: 'inv-1', status: 'SUCCEEDED' }]);
     const log = jest.fn();
     const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', ttl: '24h', log, pollMs: 5 });
     await settle();
-    watcher.stop();
-    // One upload despite many polls: the invocation is registered once.
+    await watcher.stop();
+    // One upload despite many polls listing the same terminal entry.
     expect(client.uploadLatestRbeBuild).toHaveBeenCalledTimes(1);
     expect(client.uploadLatestRbeBuild).toHaveBeenCalledWith({ assetName: 'preview/app', ttl: '24h' });
     expect(log).toHaveBeenCalledWith(expect.stringContaining('uploaded MyApp.app'));
@@ -46,106 +49,104 @@ describe('startAutoUploadWatcher', () => {
 
   test('skips the upload for a failed build', async () => {
     const client = fakeClient();
-    client.getActiveRbeBuilds.mockResolvedValue([{ invocationId: 'inv-2', status: 'RUNNING' }]);
-    client.waitForRbeBuildEnd.mockResolvedValue({ invocationId: 'inv-2', status: 'FAILED' });
+    client.getRecentRbeBuilds
+      .mockResolvedValueOnce([]) // baseline
+      .mockResolvedValue([{ invocationId: 'inv-2', status: 'FAILED' }]);
     const log = jest.fn();
     const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log, pollMs: 5 });
     await settle();
-    watcher.stop();
+    await watcher.stop();
     expect(client.uploadLatestRbeBuild).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith(expect.stringContaining('FAILED; skipping upload'));
   });
 
-  test('falls back to uploading when the stream drops and the build is gone', async () => {
+  test('builds already terminal at arming are baseline, not uploaded', async () => {
     const client = fakeClient();
-    client.getActiveRbeBuilds
-      .mockResolvedValueOnce([{ invocationId: 'inv-3', status: 'RUNNING' }])
-      .mockResolvedValue([]); // gone from the active list from then on
-    client.waitForRbeBuildEnd.mockRejectedValue(new Error('stream ended without a terminal event'));
-    const log = jest.fn();
-    const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log, pollMs: 5 });
-    await settle();
-    watcher.stop();
-    expect(client.uploadLatestRbeBuild).toHaveBeenCalledTimes(1);
-    expect(log).toHaveBeenCalledWith(expect.stringContaining('unknown status'));
-  });
-
-  test('re-subscribes when the stream drops but the build is still active', async () => {
-    const client = fakeClient();
-    client.getActiveRbeBuilds.mockResolvedValue([{ invocationId: 'inv-4', status: 'RUNNING' }]);
-    client.waitForRbeBuildEnd
-      .mockRejectedValueOnce(new Error('stream blip'))
-      .mockResolvedValue({ invocationId: 'inv-4', status: 'SUCCEEDED' });
+    client.getRecentRbeBuilds.mockResolvedValue([{ invocationId: 'inv-old', status: 'SUCCEEDED' }]);
     const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log: jest.fn(), pollMs: 5 });
     await settle();
-    watcher.stop();
-    expect(client.waitForRbeBuildEnd).toHaveBeenCalledTimes(2);
-    expect(client.uploadLatestRbeBuild).toHaveBeenCalledTimes(1);
+    await watcher.stop();
+    expect(client.uploadLatestRbeBuild).not.toHaveBeenCalled();
   });
 
-  test('aborts a silently hung wait once the build leaves the active list, then uploads via fallback', async () => {
-    // Regression: a half-open SSE kept waitForRbeBuildEnd pending forever
-    // while the build had finished, silently dropping the upload. The
-    // liveness guard must abort the wait and let the fallback fire.
+  test('a post-arm build finishing during an initial poll-failure streak is still uploaded', async () => {
+    // The baseline poll only lands AFTER a failure streak; the build started
+    // after arming (startedAt in the future relative to armedAt) and finished
+    // inside the streak, so it is terminal at the baseline. startedAt must
+    // rescue it from being misclassified as pre-arm.
     const client = fakeClient();
-    client.getActiveRbeBuilds
-      .mockResolvedValueOnce([{ invocationId: 'inv-5', status: 'RUNNING' }])
-      .mockResolvedValue([]); // gone from then on, while the wait hangs
-    client.waitForRbeBuildEnd.mockImplementation(
-      (_id, opts) =>
-        new Promise((_resolve, reject) => {
-          opts?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
-        }),
-    );
-    const log = jest.fn();
-    const watcher = startAutoUploadWatcher({
-      client,
-      assetName: 'preview/app',
-      log,
-      pollMs: 5,
-      goneGraceMs: 10,
-    });
-    await settle(60);
-    watcher.stop();
+    client.getRecentRbeBuilds
+      .mockRejectedValueOnce(new Error('router blip'))
+      .mockRejectedValueOnce(new Error('router blip'))
+      .mockResolvedValue(
+        wireBuilds([
+          {
+            invocationId: 'inv-streak',
+            status: 'SUCCEEDED',
+            startedAt: new Date(Date.now() + 1000).toISOString(),
+          },
+          // A genuinely pre-arm terminal entry stays baselined out.
+          {
+            invocationId: 'inv-old',
+            status: 'SUCCEEDED',
+            startedAt: new Date(Date.now() - 60_000).toISOString(),
+          },
+        ]),
+      );
+    const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log: jest.fn(), pollMs: 1 });
+    await settle(50);
+    await watcher.stop();
     expect(client.uploadLatestRbeBuild).toHaveBeenCalledTimes(1);
-    expect(log).toHaveBeenCalledWith(expect.stringContaining('unknown status'));
   });
 
-  test('stop() halts polling and suppresses further uploads', async () => {
+  test('an unknown non-terminal status is not marked handled, so its terminal state still acts', async () => {
+    // Forward compat: a future daemon adds an in-flight status this CLI
+    // predates; it must behave like RUNNING, not poison the invocation.
+    const client = fakeClient();
+    client.getRecentRbeBuilds
+      .mockResolvedValueOnce([]) // baseline
+      .mockResolvedValueOnce([{ invocationId: 'inv-q', status: 'QUEUED' }])
+      .mockResolvedValue([{ invocationId: 'inv-q', status: 'SUCCEEDED' }]);
+    const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log: jest.fn(), pollMs: 5 });
+    await settle(60);
+    await watcher.stop();
+    expect(client.uploadLatestRbeBuild).toHaveBeenCalledTimes(1);
+  });
+
+  test('a build finishing entirely between polls (or during an outage) is still uploaded', async () => {
+    // Never seen RUNNING: appears directly as terminal after the baseline.
+    const client = fakeClient();
+    client.getRecentRbeBuilds
+      .mockResolvedValueOnce([]) // baseline
+      .mockRejectedValueOnce(new Error('router blip')) // outage
+      .mockResolvedValue([{ invocationId: 'inv-fast', status: 'SUCCEEDED' }]);
+    const log = jest.fn();
+    const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log, pollMs: 5 });
+    await settle(60);
+    await watcher.stop();
+    expect(client.uploadLatestRbeBuild).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('polling failed'));
+  });
+
+  test('stop() halts polling and suppresses queued uploads', async () => {
     const client = fakeClient();
     const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log: jest.fn(), pollMs: 5 });
     await settle(15);
-    watcher.stop();
-    const pollsAtStop = client.getActiveRbeBuilds.mock.calls.length;
+    await watcher.stop();
+    const pollsAtStop = client.getRecentRbeBuilds.mock.calls.length;
     expect(pollsAtStop).toBeGreaterThan(0);
     await settle(25);
-    expect(client.getActiveRbeBuilds.mock.calls.length).toBe(pollsAtStop);
+    expect(client.getRecentRbeBuilds.mock.calls.length).toBe(pollsAtStop);
   });
 
   test('a poll failure is logged once per streak and polling survives', async () => {
     const client = fakeClient();
-    client.getActiveRbeBuilds.mockRejectedValue(new Error('daemon restarting'));
+    client.getRecentRbeBuilds.mockRejectedValue(new Error('daemon restarting'));
     const log = jest.fn();
     const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log, pollMs: 1 });
     await settle(40);
-    void watcher.stop();
-    expect(client.getActiveRbeBuilds.mock.calls.length).toBeGreaterThan(1);
+    await watcher.stop();
+    expect(client.getRecentRbeBuilds.mock.calls.length).toBeGreaterThan(1);
     expect(log.mock.calls.filter(([m]) => String(m).includes('polling failed'))).toHaveLength(1);
-  });
-
-  test('recovering from a multi-poll outage fires a catch-up upload', async () => {
-    // A short build can start and finish inside a backoff gap; the catch-up
-    // upload after recovery covers it. A single blip must not trigger one.
-    const client = fakeClient();
-    client.getActiveRbeBuilds
-      .mockRejectedValueOnce(new Error('router blip'))
-      .mockRejectedValueOnce(new Error('router blip'))
-      .mockResolvedValue([]);
-    const log = jest.fn();
-    const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log, pollMs: 1 });
-    await settle(50);
-    void watcher.stop();
-    expect(client.uploadLatestRbeBuild).toHaveBeenCalledTimes(1);
-    expect(log).toHaveBeenCalledWith(expect.stringContaining('catch up'));
   });
 });
