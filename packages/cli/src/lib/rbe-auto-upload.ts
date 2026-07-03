@@ -6,6 +6,11 @@ import type { RbeBuildSummary, XcodeClient } from '@limrun/api';
 // not permanently marked handled before reaching a terminal state).
 const TERMINAL_STATUSES = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED', 'INCOMPLETE']);
 
+// Full upload attempts per build across polls (each already carries the SDK's
+// internal transient retries), covering an asset-storage outage of a few
+// minutes without letting a permanently failing upload retry forever.
+const MAX_UPLOAD_ATTEMPTS = 3;
+
 /** Whether the build provably started after `armedAt`. The wire carries
  *  startedAt even though the published type does not declare it yet; absent
  *  or unparsable values count as not-after (the conservative baseline side).
@@ -48,20 +53,34 @@ export function startAutoUploadWatcher(opts: {
   // Terminal invocations already acted on (or predating arming). Bounded by
   // builds per tunnel session (one id string each; never evicted).
   const handled = new Set<string>();
+  const uploadAttempts = new Map<string, number>();
   // Serialize uploads: each ships the daemon's latest record, so a second
   // build finishing mid-upload just refreshes the asset again right after.
   let uploadChain = Promise.resolve();
   let baselined = false;
   let pollFailures = 0;
 
-  const upload = () => {
+  const upload = (invocationId: string) => {
     uploadChain = uploadChain.then(async () => {
       if (abort.signal.aborted) return;
       try {
         const result = await client.uploadLatestRbeBuild({ assetName, ...(ttl && { ttl }) });
         log(`auto-upload: uploaded ${result.appName} as "${assetName}"`);
       } catch (err) {
-        log(`auto-upload: upload failed: ${err instanceof Error ? err.message : err}`);
+        // The SDK already retried transient errors internally; ride out a
+        // longer outage by un-handling the build so the next poll re-attempts
+        // the whole upload. Bounded so a permanent error (e.g. a rejected
+        // ttl) cannot retry forever; error classification is deliberately
+        // avoided. A build that exhausts its attempts heals on the next one.
+        const attempts = (uploadAttempts.get(invocationId) ?? 0) + 1;
+        uploadAttempts.set(invocationId, attempts);
+        if (attempts < MAX_UPLOAD_ATTEMPTS && !abort.signal.aborted) {
+          handled.delete(invocationId);
+        }
+        log(
+          `auto-upload: upload failed (attempt ${attempts}/${MAX_UPLOAD_ATTEMPTS}): ` +
+            `${err instanceof Error ? err.message : err}`,
+        );
       }
     });
   };
@@ -83,7 +102,7 @@ export function startAutoUploadWatcher(opts: {
             continue;
           }
           if (build.status === 'SUCCEEDED') {
-            upload();
+            upload(build.invocationId);
           } else {
             log(`auto-upload: build ${build.invocationId} ${build.status}; skipping upload`);
           }
