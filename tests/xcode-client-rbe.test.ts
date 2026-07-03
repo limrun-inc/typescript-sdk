@@ -5,18 +5,34 @@ import type { RequestInfo } from '../src/internal/builtin-types';
 
 const originalFetch = nodeProxyTransport.fetch;
 
-describe('xcode client RBE helpers', () => {
-  afterEach(() => {
-    nodeProxyTransport.fetch = originalFetch;
-  });
+afterEach(() => {
+  nodeProxyTransport.fetch = originalFetch;
+});
 
-  async function rbeClient() {
-    const client = new Limrun({ apiKey: 'key' });
-    return client.xcodeInstances.createClient({
-      apiUrl: 'https://eu-nl1-m14-lim8.example.test/v1/sandbox_euna_abc/xcode',
-      token: 'xcode-token',
-    });
-  }
+async function rbeClient() {
+  const client = new Limrun({ apiKey: 'key' });
+  return client.xcodeInstances.createClient({
+    apiUrl: 'https://eu-nl1-m14-lim8.example.test/v1/sandbox_euna_abc/xcode',
+    token: 'xcode-token',
+  });
+}
+
+describe('xcode client RBE helpers', () => {
+  test('getActiveRbeBuilds returns the parsed invocation list', async () => {
+    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) =>
+      String(input).endsWith('/rbe/builds/active') ?
+        new Response(JSON.stringify([{ invocationId: 'inv-1', status: 'RUNNING', pattern: ['//App'] }]), {
+          status: 200,
+        })
+      : (() => {
+          throw new Error(`unexpected request: ${input}`);
+        })(),
+    );
+    const xcode = await rbeClient();
+    await expect(xcode.getActiveRbeBuilds()).resolves.toEqual([
+      { invocationId: 'inv-1', status: 'RUNNING', pattern: ['//App'] },
+    ]);
+  });
 
   test('startRbe maps a /rbe 404 to RbeUnsupportedError, not NotFoundError', async () => {
     nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) =>
@@ -74,6 +90,89 @@ describe('xcode client RBE helpers', () => {
       frontendPort: 8980,
       xcodeVersion: '26.4.0.17E192',
     });
+  });
+});
+
+describe('waitForRbeBuildEnd', () => {
+  /** A one-shot SSE response streaming the given frames, then closing. The
+   *  `retry: 1` prologue drops eventsource-client's reconnect delay from its
+   *  2s default to ~1ms, so the no-reconnect assertions below actually bite
+   *  within their short observation windows. */
+  function sseResponse(frames: string[]): Response {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('retry: 1\n\n'));
+        for (const frame of frames) {
+          controller.enqueue(new TextEncoder().encode(frame));
+        }
+        controller.close();
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    });
+  }
+
+  test('resolves with the summary from the end frame, ignoring meta and log frames', async () => {
+    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) => {
+      if (!String(input).endsWith('/exec/inv-1/events')) {
+        throw new Error(`unexpected request: ${input}`);
+      }
+      return sseResponse([
+        'event: meta\ndata: {"invocationId":"inv-1","status":"RUNNING"}\n\n',
+        'event: stdout\ndata: Analyzing...\n\n',
+        'event: end\ndata: {"invocationId":"inv-1","status":"SUCCEEDED"}\n\n',
+      ]);
+    });
+    const xcode = await rbeClient();
+    await expect(xcode.waitForRbeBuildEnd('inv-1')).resolves.toEqual({
+      invocationId: 'inv-1',
+      status: 'SUCCEEDED',
+    });
+  });
+
+  test('rejects when the stream closes without an end frame (no reconnect loop)', async () => {
+    const fetchMock = jest.fn(async () =>
+      sseResponse(['event: meta\ndata: {"invocationId":"inv-2","status":"RUNNING"}\n\n']),
+    );
+    nodeProxyTransport.fetch = fetchMock;
+    const xcode = await rbeClient();
+    await expect(xcode.waitForRbeBuildEnd('inv-2')).rejects.toThrow(/without a terminal event/);
+    // The promise must close the source rather than let eventsource-client
+    // auto-reconnect against a stream the daemon has already removed (the
+    // fixture's retry: 1 makes a leaked reconnect land within this window).
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('rejects instead of hanging when the stream is unreachable', async () => {
+    // eventsource-client swallows a rejected fetch into a silent reconnect
+    // loop (onDisconnect never fires); the wrapper must surface it.
+    const fetchMock = jest.fn(async () => {
+      throw new Error('connect ECONNREFUSED');
+    });
+    nodeProxyTransport.fetch = fetchMock;
+    const xcode = await rbeClient();
+    await expect(xcode.waitForRbeBuildEnd('inv-3')).rejects.toThrow(/unreachable.*ECONNREFUSED/);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('rejects on abort and stops the stream', async () => {
+    // A never-ending stream (no close) so only the abort can settle it.
+    nodeProxyTransport.fetch = jest.fn(
+      async () =>
+        new Response(new ReadableStream<Uint8Array>({ start: () => {} }), {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+    );
+    const xcode = await rbeClient();
+    const controller = new AbortController();
+    const wait = xcode.waitForRbeBuildEnd('inv-4', { signal: controller.signal });
+    controller.abort();
+    await expect(wait).rejects.toThrow(/aborted/);
   });
 });
 
