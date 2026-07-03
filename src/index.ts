@@ -28,6 +28,7 @@ export {
   type RbeUploadResult,
   type RbeActiveBuild,
   type RbeBuildEnd,
+  type RbeBuildSummary,
   type Tunnel,
   RbeUnsupportedError,
   deriveRbeTunnelUrl,

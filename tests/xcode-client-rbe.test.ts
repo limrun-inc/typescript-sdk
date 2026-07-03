@@ -34,6 +34,34 @@ describe('xcode client RBE helpers', () => {
     ]);
   });
 
+  test('getRecentRbeBuilds returns terminal and running entries; 404 maps to RbeUnsupportedError', async () => {
+    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) =>
+      String(input).endsWith('/rbe/builds/recent') ?
+        new Response(
+          JSON.stringify([
+            { invocationId: 'inv-1', status: 'RUNNING' },
+            { invocationId: 'inv-0', status: 'SUCCEEDED', pattern: ['//App'] },
+            // The Go wire always carries the pattern key, null when never reported.
+            { invocationId: 'inv-2', status: 'INCOMPLETE', pattern: null },
+          ]),
+          { status: 200 },
+        )
+      : (() => {
+          throw new Error(`unexpected request: ${input}`);
+        })(),
+    );
+    const xcode = await rbeClient();
+    await expect(xcode.getRecentRbeBuilds()).resolves.toEqual([
+      { invocationId: 'inv-1', status: 'RUNNING' },
+      { invocationId: 'inv-0', status: 'SUCCEEDED', pattern: ['//App'] },
+      { invocationId: 'inv-2', status: 'INCOMPLETE', pattern: null },
+    ]);
+
+    // A daemon predating the route must not read as a vanished instance.
+    nodeProxyTransport.fetch = jest.fn(async () => new Response('404 page not found\n', { status: 404 }));
+    await expect(xcode.getRecentRbeBuilds()).rejects.toBeInstanceOf(RbeUnsupportedError);
+  });
+
   test('startRbe maps a /rbe 404 to RbeUnsupportedError, not NotFoundError', async () => {
     nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) =>
       String(input).endsWith('/rbe') ?
