@@ -201,6 +201,10 @@ export type AppInstallationResult = {
   bundleId: string;
 };
 
+export type KeychainImportResult = {
+  durationMs: number;
+};
+
 export type HttpProxyOptions = {
   remoteBaseUrl: string;
   localPort: number;
@@ -553,6 +557,16 @@ export type InstanceClient = {
    * @throws Error if installation fails (e.g., invalid app, download failure)
    */
   installApp: (url: string, options?: AppInstallationOptions) => Promise<AppInstallationResult>;
+
+  /**
+   * Export the simulator keychain and upload it to a presigned asset-storage URL.
+   */
+  exportKeychain: (options: { url: string }) => Promise<void>;
+
+  /**
+   * Download keychain state from a presigned asset-storage URL and apply it.
+   */
+  importKeychain: (options: { url: string }) => Promise<KeychainImportResult>;
 
   /**
    * Set the device orientation
@@ -952,6 +966,8 @@ type ServerResponse = {
   lines?: string[];
   // performActions batch result fields
   results?: PerformActionResult[];
+  // Keychain transfer result fields
+  durationMs?: number;
 };
 
 /**
@@ -1492,6 +1508,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         url: msg.url || '',
         bundleId: msg.bundleId || '',
       }),
+      keychainExportResult: () => undefined,
+      keychainImportResult: (msg): KeychainImportResult => ({
+        durationMs: msg.durationMs ?? 0,
+      }),
       startVideoRecordingResult: () => undefined,
       stopVideoRecordingResult: () => undefined,
       setOrientationResult: () => undefined,
@@ -1669,6 +1689,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             listApps,
             openUrl,
             installApp,
+            exportKeychain,
+            importKeychain,
             setOrientation,
             scroll,
             performActions,
@@ -1825,6 +1847,19 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         },
         undefined,
         options?.timeoutMs ?? 120_000,
+      );
+    };
+
+    const exportKeychain = async (keychainOptions: { url: string }): Promise<void> => {
+      await sendRequest<void>('exportKeychain', { url: keychainOptions.url }, undefined, 120_000);
+    };
+
+    const importKeychain = async (keychainOptions: { url: string }): Promise<KeychainImportResult> => {
+      return sendRequest<KeychainImportResult>(
+        'importKeychain',
+        { url: keychainOptions.url },
+        undefined,
+        120_000,
       );
     };
 

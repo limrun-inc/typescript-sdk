@@ -16,6 +16,8 @@ export {
 } from './android-instances';
 export {
   type Asset,
+  type AssetKind,
+  type AssetPlatform,
   type AssetListResponse,
   type AssetGetOrCreateResponse,
   type AssetListParams,

@@ -49,7 +49,7 @@
     "topicSeparator": " ",
     "topics": {
       "ios": {
-        "description": "Execute any task on remote iOS Simulators: create, list, get, delete, info, list-apps, launch-app, terminate-app, app-log, syslog, sync, screenshot, tap, tap-element, element-tree, type, press-key, toggle-keyboard, scroll, open-url, install-app, record, perform, simctl, cp, xcrun, xcodebuild, lsof, reverse"
+        "description": "Execute any task on remote iOS Simulators: create, list, get, delete, info, list-apps, launch-app, terminate-app, app-log, syslog, sync, screenshot, tap, tap-element, element-tree, type, press-key, toggle-keyboard, scroll, open-url, install-app, keychain, record, perform, simctl, cp, xcrun, xcodebuild, lsof, reverse"
       },
       "android": {
         "description": "Execute any task on remote Android Emulators: create, list, get, delete, connect, screenshot, tap, tap-element, find-element, element-tree, type, press-key, scroll, open-url, install-app, record, play-on-microphone, set-wifi-bandwidth"

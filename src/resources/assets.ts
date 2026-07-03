@@ -56,6 +56,8 @@ export interface Asset {
 
   name: string;
 
+  kind: AssetKind;
+
   /**
    * Human-readable display name for the asset. If not set, the name should be used.
    */
@@ -72,10 +74,10 @@ export interface Asset {
   md5?: string;
 
   /**
-   * The operating system this asset is for. If not set, the asset is available for
+   * The platform this asset is for. If not set, the asset is available for
    * all platforms.
    */
-  os?: 'ios' | 'android';
+  platform?: AssetPlatform;
 
   signedDownloadUrl?: string;
 
@@ -89,9 +91,13 @@ export interface AssetGetOrCreateResponse {
 
   name: string;
 
+  kind: AssetKind;
+
   signedDownloadUrl: string;
 
   signedUploadUrl: string;
+
+  platform?: AssetPlatform;
 
   /**
    * When set, the time after which the asset is automatically deleted.
@@ -120,6 +126,11 @@ export interface AssetListParams {
    * Toggles whether an upload URL should be included in the response
    */
   includeUploadUrl?: boolean;
+
+  /**
+   * Filters assets by kind.
+   */
+  kindFilter?: AssetKind;
 
   /**
    * Maximum number of items to be returned. The default is 50.
@@ -160,6 +171,10 @@ export interface AssetGetParams {
 export interface AssetGetOrCreateParams {
   name: string;
 
+  kind?: AssetKind;
+
+  platform?: AssetPlatform;
+
   /**
    * Optional time-to-live as a Go duration string (e.g. "24h"). When set, the asset
    * is deleted this long after now; minimum is 1m. Omit for no expiry. On re-upload
@@ -169,9 +184,15 @@ export interface AssetGetOrCreateParams {
   ttl?: string;
 }
 
+export type AssetKind = 'App' | 'Keychain';
+
+export type AssetPlatform = 'ios' | 'android' | 'xcode';
+
 export declare namespace Assets {
   export {
     type Asset as Asset,
+    type AssetKind as AssetKind,
+    type AssetPlatform as AssetPlatform,
     type AssetListResponse as AssetListResponse,
     type AssetGetOrCreateResponse as AssetGetOrCreateResponse,
     type AssetListParams as AssetListParams,
