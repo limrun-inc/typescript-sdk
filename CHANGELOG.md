@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.35.0 (2026-07-03)
+
+Full Changelog: [v0.34.0...v0.35.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.34.0...v0.35.0)
+
+### Features
+
+* **xcode:** RBE workspace/session helpers in the SDK and uploadLatestRbeBuild ([fdfb7b0](https://github.com/limrun-inc/typescript-sdk/commit/fdfb7b03010a38e129691aba97789a77887fdf2d))
+
+
+### Refactors
+
+* **xcode:** apply cleanup review to the RBE upload surface ([ae34cb9](https://github.com/limrun-inc/typescript-sdk/commit/ae34cb9d40bc9f689a0cf231f1e474bafefcfbe6))
+
 ## 0.34.0 (2026-07-01)
 
 Full Changelog: [v0.33.5...v0.34.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.33.5...v0.34.0)
