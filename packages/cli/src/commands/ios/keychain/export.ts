@@ -1,6 +1,7 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
+import { resolveKeychainEncryptionKey } from '../../../lib/keychain-encryption-key';
 
 export default class IosKeychainExport extends BaseCommand {
   static summary = 'Export iOS keychain state to asset storage';
@@ -9,6 +10,8 @@ export default class IosKeychainExport extends BaseCommand {
   static examples = [
     '<%= config.bin %> ios keychain export keychain/state.tar.gz',
     '<%= config.bin %> ios keychain export keychain/state.tar.gz --ttl 24h --json',
+    '<%= config.bin %> ios keychain generate-key > keychain.key',
+    '<%= config.bin %> ios keychain export keychain/state.tar.gz --encryption-key-stdin < keychain.key',
   ];
 
   static args = {
@@ -30,18 +33,34 @@ export default class IosKeychainExport extends BaseCommand {
     ttl: Flags.string({
       description: 'Time-to-live as a Go duration (e.g. "24h", min 1m). Defaults to no expiry.',
     }),
+    'encryption-key': Flags.string({
+      description: 'Base64/base64url 32-byte encryption key for the exported keychain archive.',
+    }),
+    'encryption-key-stdin': Flags.boolean({
+      description: 'Read the base64/base64url 32-byte encryption key from stdin.',
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(IosKeychainExport);
     this.setParsedFlags(flags);
 
-    await this.withAuth(async () => {
-      const assetName = args.asset_name ?? flags['asset-name'];
-      if (!assetName) {
-        this.error('Provide a keychain asset name, e.g. `lim ios keychain export keychain/state.tar.gz`.');
-      }
+    const assetName = args.asset_name ?? flags['asset-name'];
+    if (!assetName) {
+      this.error('Provide a keychain asset name, e.g. `lim ios keychain export keychain/state.tar.gz`.');
+    }
+    let encryptionKey: string;
+    try {
+      encryptionKey = await resolveKeychainEncryptionKey({
+        encryptionKey: flags['encryption-key'],
+        encryptionKeyStdin: flags['encryption-key-stdin'],
+      });
+    } catch (error) {
+      this.error((error as Error).message);
+    }
 
+    await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const asset = await this.client.assets.getOrCreate({
         name: assetName,
@@ -52,7 +71,7 @@ export default class IosKeychainExport extends BaseCommand {
 
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        await client.exportKeychain({ url: asset.signedUploadUrl });
+        await client.exportKeychain({ url: asset.signedUploadUrl, encryptionKey });
       } finally {
         disconnect();
       }

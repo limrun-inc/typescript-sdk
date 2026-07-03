@@ -1,6 +1,7 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
+import { resolveKeychainEncryptionKey } from '../../../lib/keychain-encryption-key';
 
 type KeychainAsset = {
   id: string;
@@ -18,6 +19,7 @@ export default class IosKeychainImport extends BaseCommand {
     '<%= config.bin %> ios keychain import keychain/state.tar.gz --id <instance-ID>',
     '<%= config.bin %> ios keychain import --asset-id <asset-ID>',
     '<%= config.bin %> ios keychain import --url https://example.t3.storage.dev/... --json',
+    '<%= config.bin %> ios keychain import keychain/state.tar.gz --encryption-key-stdin < keychain.key',
   ];
 
   static args = {
@@ -35,20 +37,36 @@ export default class IosKeychainImport extends BaseCommand {
     'asset-id': Flags.string({
       description: 'Keychain asset ID to import instead of resolving the positional asset name.',
     }),
+    'encryption-key': Flags.string({
+      description: 'Base64/base64url 32-byte decryption key for the keychain archive.',
+    }),
+    'encryption-key-stdin': Flags.boolean({
+      description: 'Read the base64/base64url 32-byte decryption key from stdin.',
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(IosKeychainImport);
     this.setParsedFlags(flags);
 
+    let encryptionKey: string;
+    try {
+      encryptionKey = await resolveKeychainEncryptionKey({
+        encryptionKey: flags['encryption-key'],
+        encryptionKeyStdin: flags['encryption-key-stdin'],
+      });
+    } catch (error) {
+      this.error((error as Error).message);
+    }
+
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const url =
         flags.url ?? (await this.resolveKeychainAssetDownloadUrl(args.asset_name, flags['asset-id']));
-
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        const result = await client.importKeychain({ url });
+        const result = await client.importKeychain({ url, encryptionKey });
         if (flags.json) {
           this.outputJson(result);
           return;

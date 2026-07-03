@@ -6,6 +6,7 @@ import { registerCreatedInstance } from '../../lib/config';
 import { xcodeSandboxIdFromUrl } from '../../lib/xcode-sandbox';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 import { formatDurationMs } from '../../lib/duration';
+import { resolveKeychainEncryptionKey } from '../../lib/keychain-encryption-key';
 import { type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 
@@ -18,6 +19,8 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create',
     '<%= config.bin %> ios create --rm --model ipad',
     '<%= config.bin %> ios create --region us-west --install-asset my-app.ipa',
+    '<%= config.bin %> ios create --keychain keychain/state.tar.gz --encryption-key-stdin < keychain.key',
+    '<%= config.bin %> ios create --keychain-url https://example.t3.storage.dev/... --encryption-key <key>',
     '<%= config.bin %> ios create --install ./MyApp.ipa',
     '<%= config.bin %> ios create --attach <xcode-instance-ID>',
   ];
@@ -59,6 +62,22 @@ export default class IosCreate extends BaseCommand {
       description: 'Existing asset name to install onto the instance after creation',
       multiple: true,
     }),
+    keychain: Flags.string({
+      description: 'Existing encrypted Keychain asset name to import after creation.',
+      multiple: true,
+    }),
+    'keychain-url': Flags.string({
+      description: 'Presigned encrypted Keychain asset URL to import after creation.',
+      multiple: true,
+    }),
+    'encryption-key': Flags.string({
+      description: 'Base64/base64url 32-byte decryption key for --keychain/--keychain-url.',
+    }),
+    'encryption-key-stdin': Flags.boolean({
+      description:
+        'Read the base64/base64url 32-byte decryption key for --keychain/--keychain-url from stdin.',
+      default: false,
+    }),
     install: Flags.string({
       description:
         'Local app file to upload and install automatically after creation. Repeat for multiple files.',
@@ -86,6 +105,10 @@ export default class IosCreate extends BaseCommand {
     }
     if (args.xcodeId && !flags.attach) {
       this.error('Xcode target argument requires --attach.');
+    }
+    const hasKeychainInitialAssets = Boolean(flags.keychain?.length || flags['keychain-url']?.length);
+    if (!hasKeychainInitialAssets && (flags['encryption-key'] || flags['encryption-key-stdin'])) {
+      this.error('Use --encryption-key or --encryption-key-stdin only with --keychain or --keychain-url.');
     }
 
     await this.withAuth(async () => {
@@ -125,6 +148,33 @@ export default class IosCreate extends BaseCommand {
           source: 'AssetName' as const,
           assetName: name,
         }));
+      }
+      if (hasKeychainInitialAssets) {
+        let encryptionKey: string;
+        try {
+          encryptionKey = await resolveKeychainEncryptionKey({
+            encryptionKey: flags['encryption-key'],
+            encryptionKeyStdin: flags['encryption-key-stdin'],
+          });
+        } catch (error) {
+          this.error((error as Error).message);
+        }
+        if (!params.spec) params.spec = {};
+        params.spec!.initialAssets = [
+          ...(params.spec!.initialAssets || []),
+          ...(flags.keychain || []).map((name) => ({
+            kind: 'Keychain' as const,
+            source: 'AssetName' as const,
+            assetName: name,
+            encryptionKey,
+          })),
+          ...(flags['keychain-url'] || []).map((url) => ({
+            kind: 'Keychain' as const,
+            source: 'URL' as const,
+            url,
+            encryptionKey,
+          })),
+        ];
       }
 
       if (flags.region) params.spec!.region = flags.region;
