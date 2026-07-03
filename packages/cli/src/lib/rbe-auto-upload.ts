@@ -77,6 +77,10 @@ export function startAutoUploadWatcher(opts: {
       const onWatcherStop = () => waitAbort.abort();
       abort.signal.addEventListener('abort', onWatcherStop, { once: true });
       let goneSince: number | undefined;
+      // Set before the liveness abort: the guard has positively observed the
+      // invocation gone, so the catch below can take the fallback directly
+      // instead of re-probing an API that may be flaky at that moment.
+      let confirmedGone = false;
       const liveness = setInterval(() => {
         void client
           .getActiveRbeBuilds()
@@ -86,6 +90,7 @@ export function startAutoUploadWatcher(opts: {
             } else {
               goneSince ??= Date.now();
               if (Date.now() - goneSince >= goneGraceMs) {
+                confirmedGone = true;
                 waitAbort.abort();
               }
             }
@@ -107,11 +112,14 @@ export function startAutoUploadWatcher(opts: {
         // restart or network blip both calls fail together, and treating that
         // as gone would fire the fallback prematurely and permanently abandon
         // a running build (seen never forgets). The liveness guard, which only
-        // counts successful observations, remains the authority on gone-ness.
-        const stillActive = await client
-          .getActiveRbeBuilds()
-          .then((builds) => builds.some((b) => b.invocationId === invocationId))
-          .catch(() => true);
+        // counts successful observations, remains the authority on gone-ness;
+        // when it already confirmed gone, skip the redundant probe.
+        const stillActive =
+          !confirmedGone &&
+          (await client
+            .getActiveRbeBuilds()
+            .then((builds) => builds.some((b) => b.invocationId === invocationId))
+            .catch(() => true));
         if (abort.signal.aborted) return;
         if (!stillActive) {
           log(`auto-upload: build ${invocationId} ended with unknown status; uploading latest build`);
@@ -132,6 +140,16 @@ export function startAutoUploadWatcher(opts: {
     while (!abort.signal.aborted) {
       try {
         const builds = await client.getActiveRbeBuilds();
+        if (pollFailures >= 2) {
+          // Discovery was blind for several seconds (backoff gaps reach 10x
+          // pollMs); a short build can start and finish entirely inside such a
+          // gap and never enter `seen`. Uploading the latest recorded build is
+          // content-idempotent, so a catch-up covers that window. Builds ride
+          // the local tunnel while this poll rides the router, so they can
+          // fail independently.
+          log('auto-upload: recovered from a polling outage; uploading latest build to catch up');
+          void upload('catch-up after poll outage');
+        }
         pollFailures = 0;
         for (const build of builds) {
           if (!seen.has(build.invocationId)) {

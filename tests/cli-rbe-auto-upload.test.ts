@@ -128,8 +128,24 @@ describe('startAutoUploadWatcher', () => {
     const log = jest.fn();
     const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log, pollMs: 1 });
     await settle(40);
-    watcher.stop();
+    void watcher.stop();
     expect(client.getActiveRbeBuilds.mock.calls.length).toBeGreaterThan(1);
     expect(log.mock.calls.filter(([m]) => String(m).includes('polling failed'))).toHaveLength(1);
+  });
+
+  test('recovering from a multi-poll outage fires a catch-up upload', async () => {
+    // A short build can start and finish inside a backoff gap; the catch-up
+    // upload after recovery covers it. A single blip must not trigger one.
+    const client = fakeClient();
+    client.getActiveRbeBuilds
+      .mockRejectedValueOnce(new Error('router blip'))
+      .mockRejectedValueOnce(new Error('router blip'))
+      .mockResolvedValue([]);
+    const log = jest.fn();
+    const watcher = startAutoUploadWatcher({ client, assetName: 'preview/app', log, pollMs: 1 });
+    await settle(50);
+    void watcher.stop();
+    expect(client.uploadLatestRbeBuild).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('catch up'));
   });
 });
