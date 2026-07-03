@@ -1860,7 +1860,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const importKeychain = async (keychainOptions: { url: string }): Promise<KeychainImportResult> => {
-      return sendRequest<KeychainImportResult>('importKeychain', { url: keychainOptions.url }, undefined, 120_000);
+      return sendRequest<KeychainImportResult>(
+        'importKeychain',
+        { url: keychainOptions.url },
+        undefined,
+        120_000,
+      );
     };
 
     const setOrientation = (orientation: 'Portrait' | 'Landscape'): Promise<void> => {

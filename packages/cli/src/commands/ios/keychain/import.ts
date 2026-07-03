@@ -5,6 +5,7 @@ import { getIosInstanceClient } from '../../../lib/instance-client-factory';
 type KeychainAsset = {
   id: string;
   name: string;
+  kind?: string;
   signedDownloadUrl?: string;
 };
 
@@ -91,6 +92,9 @@ export default class IosKeychainImport extends BaseCommand {
       asset = matches[0]!;
     }
 
+    if (asset.kind !== 'Keychain') {
+      this.error(`Asset "${asset.id || asset.name}" is ${asset.kind || 'unknown'} kind, expected Keychain.`);
+    }
     if (!asset.signedDownloadUrl) {
       this.error('Keychain asset does not have a download URL');
     }
