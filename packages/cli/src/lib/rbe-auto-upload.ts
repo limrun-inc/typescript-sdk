@@ -154,12 +154,14 @@ export function startAutoUploadWatcher(opts: {
 
   return {
     // Aborting skips queued uploads, but an upload already in flight is a
-    // completed build's artifact: return it so shutdown can wait instead of
-    // cancelling it at process exit. Callers' own grace periods (a second
-    // Ctrl-C, --stop's SIGKILL escalation) bound a wedged one.
+    // completed build's artifact: give it a bounded grace instead of
+    // cancelling it at process exit. The bound must stay well inside
+    // `--stop`'s 30s SIGKILL escalation so the tunnel teardown that follows
+    // (tunnel.close + stopRbe, only the child runs them) always gets its
+    // turn; a slower upload is abandoned, same as any process exit.
     stop: () => {
       abort.abort();
-      return uploadChain;
+      return Promise.race([uploadChain, sleepFor(10_000, undefined, { ref: false })]).then(() => undefined);
     },
   };
 }
