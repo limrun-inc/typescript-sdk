@@ -561,12 +561,12 @@ export type InstanceClient = {
   /**
    * Export the simulator keychain and upload it to a presigned asset-storage URL.
    */
-  exportKeychain: (options: { url: string }) => Promise<void>;
+  exportKeychain: (options: { url: string; encryptionKey: string }) => Promise<void>;
 
   /**
    * Download keychain state from a presigned asset-storage URL and apply it.
    */
-  importKeychain: (options: { url: string }) => Promise<KeychainImportResult>;
+  importKeychain: (options: { url: string; encryptionKey: string }) => Promise<KeychainImportResult>;
 
   /**
    * Set the device orientation
@@ -1422,7 +1422,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const redactRequestForDebug = (request: Record<string, unknown>): Record<string, unknown> => {
       if (request['type'] !== 'launchApp') {
-        return request;
+        return 'encryptionKey' in request ? { ...request, encryptionKey: '[REDACTED]' } : request;
       }
 
       const runtime = request['runtime'] as LaunchAppRuntime | undefined;
@@ -1850,14 +1850,22 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       );
     };
 
-    const exportKeychain = async (keychainOptions: { url: string }): Promise<void> => {
-      await sendRequest<void>('exportKeychain', { url: keychainOptions.url }, undefined, 120_000);
+    const exportKeychain = async (keychainOptions: { url: string; encryptionKey: string }): Promise<void> => {
+      await sendRequest<void>(
+        'exportKeychain',
+        { url: keychainOptions.url, encryptionKey: keychainOptions.encryptionKey },
+        undefined,
+        120_000,
+      );
     };
 
-    const importKeychain = async (keychainOptions: { url: string }): Promise<KeychainImportResult> => {
+    const importKeychain = async (keychainOptions: {
+      url: string;
+      encryptionKey: string;
+    }): Promise<KeychainImportResult> => {
       return sendRequest<KeychainImportResult>(
         'importKeychain',
-        { url: keychainOptions.url },
+        { url: keychainOptions.url, encryptionKey: keychainOptions.encryptionKey },
         undefined,
         120_000,
       );
