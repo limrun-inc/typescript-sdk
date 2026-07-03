@@ -17,6 +17,8 @@ import { LimrunError } from '../core/error';
 import { validateBuildSettings } from '../build-settings';
 import { startTcpTunnel, type Tunnel } from '../tunnel';
 import { isTransientError, retryTransient } from '../rbe-session';
+import { sseFetch } from '../internal/sse-fetch';
+import { createEventSource } from 'eventsource-client';
 
 export type { Tunnel } from '../tunnel';
 
@@ -217,6 +219,22 @@ export type RbeUploadResult = {
   signedDownloadUrl?: string;
 };
 
+/** An in-flight Bazel invocation on the instance's RBE stack. */
+export type RbeActiveBuild = {
+  invocationId: string;
+  /** RUNNING while in flight; terminal statuses appear only on the build-end event. */
+  status: 'RUNNING' | (string & {});
+  /** The bazel target pattern(s) of the invocation, when known. */
+  pattern?: string[];
+};
+
+/** The terminal summary of a Bazel invocation, from the build stream's end event. */
+export type RbeBuildEnd = {
+  invocationId: string;
+  status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'INCOMPLETE' | (string & {});
+  error?: string;
+};
+
 export type XcodeClient = {
   /**
    * Sync source code to the xcode instance. In watch mode, keeps syncing on changes.
@@ -277,6 +295,24 @@ export type XcodeClient = {
    * brief no-build window right after bazel exits is retried automatically.
    */
   uploadLatestRbeBuild: (opts: RbeUploadOptions) => Promise<RbeUploadResult>;
+
+  /**
+   * List the Bazel invocations currently building on the RBE stack. Poll this
+   * to discover new builds (e.g. to auto-upload on build end).
+   */
+  getActiveRbeBuilds: () => Promise<RbeActiveBuild[]>;
+
+  /**
+   * Wait for a Bazel invocation to finish and return its terminal summary.
+   * Subscribes to the invocation's build event stream (which replays from the
+   * start, so subscribing any time before the build ends is safe) and resolves
+   * on the terminal event. Rejects when the stream drops or cannot be reached,
+   * typically because the build already ended and its live stream was removed,
+   * and on abort via the optional signal. There is no internal retry; the
+   * caller owns that policy (re-subscribe while the invocation is still listed
+   * active, else treat the outcome as unknown).
+   */
+  waitForRbeBuildEnd: (invocationId: string, opts?: { signal?: AbortSignal }) => Promise<RbeBuildEnd>;
 
   /**
    * Create a new iOS simulator instance and attach it to this xcode instance.
@@ -709,6 +745,83 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           (isDirectInstanceHttpError(err, 400) && /no successful RBE app build/i.test(err.body));
         const result = await retryTransient(post, { retryOn });
         return { ...result, ...(signedDownloadUrl && { signedDownloadUrl }) };
+      },
+
+      async getActiveRbeBuilds(): Promise<RbeActiveBuild[]> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/rbe/builds/active`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        // readRbeResponse: a 404 here means a limbuild that predates this
+        // route, not a vanished instance (same trap as the other /rbe routes).
+        return readRbeResponse<RbeActiveBuild[]>(res, 'GET /rbe/builds/active');
+      },
+
+      waitForRbeBuildEnd(invocationId: string, opts?: { signal?: AbortSignal }): Promise<RbeBuildEnd> {
+        return new Promise<RbeBuildEnd>((resolve, reject) => {
+          if (opts?.signal?.aborted) {
+            reject(new Error(`waiting for build ${invocationId} was aborted`));
+            return;
+          }
+          // Both settle paths close the source: eventsource-client
+          // auto-reconnects otherwise, which would retry-loop against the
+          // stream once the daemon removes it.
+          let settled = false;
+          const cleanup = () => {
+            eventSource.close();
+            opts?.signal?.removeEventListener('abort', onAbort);
+          };
+          const settleResolve = (end: RbeBuildEnd) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(end);
+          };
+          const settleReject = (err: Error) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(err);
+          };
+          const onAbort = () => settleReject(new Error(`waiting for build ${invocationId} was aborted`));
+          const eventSource = createEventSource({
+            url: `${apiUrl}/exec/${invocationId}/events`,
+            fetch: sseFetch(nodeProxyTransport.fetch, (err) =>
+              settleReject(
+                new Error(
+                  `build event stream for ${invocationId} is unreachable: ${
+                    err instanceof Error ? err.message : err
+                  }`,
+                ),
+              ),
+            ),
+            headers: { Authorization: `Bearer ${token}` },
+            onMessage: (message) => {
+              if (message.event !== 'end') {
+                return; // meta and log frames
+              }
+              let end: RbeBuildEnd;
+              try {
+                end = JSON.parse(message.data) as RbeBuildEnd;
+              } catch (err) {
+                settleReject(new Error(`invalid build end event for ${invocationId}: ${err}`));
+                return;
+              }
+              settleResolve(end);
+            },
+            onDisconnect: () => {
+              settleReject(
+                new Error(
+                  `build event stream for ${invocationId} ended without a terminal event ` +
+                    '(the build may have finished and its live stream been removed)',
+                ),
+              );
+            },
+          });
+          opts?.signal?.addEventListener('abort', onAbort, { once: true });
+        });
       },
     };
   }
