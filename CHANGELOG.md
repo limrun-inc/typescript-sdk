@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.36.0 (2026-07-03)
+
+Full Changelog: [v0.35.0...v0.36.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.35.0...v0.36.0)
+
+### Features
+
+* **xcode:** RBE build-watch primitives for auto-upload ([d7a1816](https://github.com/limrun-inc/typescript-sdk/commit/d7a181686b84f25fcf6c61bce09305d1bfc0d013))
+
 ## 0.35.0 (2026-07-03)
 
 Full Changelog: [v0.34.0...v0.35.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.34.0...v0.35.0)
