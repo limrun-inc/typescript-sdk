@@ -1,20 +1,31 @@
 import { startAutoUploadWatcher } from '../packages/cli/src/lib/rbe-auto-upload';
-import type { RbeActiveBuild, RbeBuildEnd, RbeUploadResult } from '@limrun/api';
+import type { RbeActiveBuild, RbeUploadResult, XcodeClient } from '@limrun/api';
 
 /** Yield until pending microtasks and timers scheduled at 0-1ms have run. */
 const settle = async (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
+// Mock arg tuples must match the real signatures exactly (property-typed
+// functions are contravariant in their parameters under strictFunctionTypes).
 type FakeClient = {
-  getActiveRbeBuilds: jest.Mock<Promise<RbeActiveBuild[]>, []>;
-  waitForRbeBuildEnd: jest.Mock<Promise<RbeBuildEnd>, [string, { signal?: AbortSignal }?]>;
-  uploadLatestRbeBuild: jest.Mock<Promise<RbeUploadResult>, [{ assetName: string; ttl?: string }]>;
+  getActiveRbeBuilds: jest.Mock<
+    ReturnType<XcodeClient['getActiveRbeBuilds']>,
+    Parameters<XcodeClient['getActiveRbeBuilds']>
+  >;
+  waitForRbeBuildEnd: jest.Mock<
+    ReturnType<XcodeClient['waitForRbeBuildEnd']>,
+    Parameters<XcodeClient['waitForRbeBuildEnd']>
+  >;
+  uploadLatestRbeBuild: jest.Mock<
+    ReturnType<XcodeClient['uploadLatestRbeBuild']>,
+    Parameters<XcodeClient['uploadLatestRbeBuild']>
+  >;
 };
 
 function fakeClient(): FakeClient {
   return {
-    getActiveRbeBuilds: jest.fn(async () => []),
+    getActiveRbeBuilds: jest.fn(async (): Promise<RbeActiveBuild[]> => []),
     waitForRbeBuildEnd: jest.fn(),
-    uploadLatestRbeBuild: jest.fn(async () => ({ appName: 'MyApp.app' })),
+    uploadLatestRbeBuild: jest.fn(async (_opts): Promise<RbeUploadResult> => ({ appName: 'MyApp.app' })),
   };
 }
 
