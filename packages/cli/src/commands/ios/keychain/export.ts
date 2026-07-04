@@ -1,4 +1,5 @@
 import { Args, Flags } from '@oclif/core';
+import prompts from 'prompts';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
 import {
@@ -7,14 +8,21 @@ import {
   resolveKeychainEncryptionKey,
 } from '../../../lib/keychain-encryption-key';
 
+type KeychainAsset = {
+  id?: string;
+  name?: string;
+  kind?: string;
+};
+
 export default class IosKeychainExport extends BaseCommand {
   static summary = 'Export iOS keychain state to asset storage';
   static description =
-    'Create or reuse a Keychain asset, ask the target iOS simulator to upload its keychain tar.gz to asset storage, and print the asset ID.';
+    'Create a Keychain asset or confirm overwriting an existing one, ask the target iOS simulator to upload its keychain tar.gz to asset storage, and print the asset ID.';
   static examples = [
     '<%= config.bin %> ios keychain export',
     '<%= config.bin %> ios keychain export keychain/login.tar.gz',
     '<%= config.bin %> ios keychain export keychain/login.tar.gz --ttl 24h --json',
+    '<%= config.bin %> ios keychain export keychain/login.tar.gz --yes',
     '<%= config.bin %> ios keychain generate-key > keychain.key',
     '<%= config.bin %> ios keychain export keychain/login.tar.gz --encryption-key-stdin < keychain.key',
   ];
@@ -46,6 +54,10 @@ export default class IosKeychainExport extends BaseCommand {
       description: 'Read the base64/base64url 32-byte encryption key from stdin.',
       default: false,
     }),
+    yes: Flags.boolean({
+      description: 'Overwrite an existing keychain asset without prompting.',
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {
@@ -71,6 +83,15 @@ export default class IosKeychainExport extends BaseCommand {
 
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
+      const existingAssets = await this.listExistingKeychainAssets(assetName);
+      if (existingAssets.length > 0) {
+        const shouldOverwrite = await this.confirmOverwrite(assetName, existingAssets, flags.yes);
+        if (!shouldOverwrite) {
+          this.info('Export cancelled.');
+          return;
+        }
+      }
+
       const asset = await this.client.assets.getOrCreate({
         name: assetName,
         kind: 'Keychain',
@@ -99,5 +120,32 @@ export default class IosKeychainExport extends BaseCommand {
       }
       this.output(`You can import with the following command: \n\n$ lim ios keychain import ${asset.name} --encryption-key ${generatedEncryptionKey ? encryptionKey : '<key>'}`);
     });
+  }
+
+  private async listExistingKeychainAssets(assetName: string): Promise<KeychainAsset[]> {
+    return (await this.client.assets.list({
+      nameFilter: assetName,
+      kindFilter: 'Keychain',
+    })) as KeychainAsset[];
+  }
+
+  private async confirmOverwrite(assetName: string, existingAssets: KeychainAsset[], yes: boolean): Promise<boolean> {
+    if (yes) {
+      return true;
+    }
+    if (!process.stdin.isTTY) {
+      this.error(`Keychain asset "${assetName}" already exists. Re-run with --yes to overwrite it.`);
+    }
+
+    const assetLabel =
+      existingAssets.length === 1 ? 'A keychain asset' : `${existingAssets.length} keychain assets`;
+    const response = await prompts({
+      type: 'confirm',
+      name: 'overwrite',
+      message: `${assetLabel} named "${assetName}" already exists. Overwrite?`,
+      initial: false,
+      stdout: process.stderr,
+    });
+    return Boolean(response.overwrite);
   }
 }
