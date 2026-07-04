@@ -19,7 +19,7 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create',
     '<%= config.bin %> ios create --rm --model ipad',
     '<%= config.bin %> ios create --region us-west --install-asset my-app.ipa',
-    '<%= config.bin %> ios create --keychain keychain/state.tar.gz --encryption-key-stdin < keychain.key',
+    '<%= config.bin %> ios create --keychain keychain/login.tar.gz --encryption-key-stdin < keychain.key',
     '<%= config.bin %> ios create --keychain-url https://example.t3.storage.dev/... --encryption-key <key>',
     '<%= config.bin %> ios create --install ./MyApp.ipa',
     '<%= config.bin %> ios create --attach <xcode-instance-ID>',

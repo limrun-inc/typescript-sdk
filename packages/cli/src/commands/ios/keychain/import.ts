@@ -1,7 +1,10 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
-import { resolveKeychainEncryptionKey } from '../../../lib/keychain-encryption-key';
+import {
+  DEFAULT_KEYCHAIN_ASSET_NAME,
+  resolveKeychainEncryptionKey,
+} from '../../../lib/keychain-encryption-key';
 
 type KeychainAsset = {
   id: string;
@@ -15,15 +18,18 @@ export default class IosKeychainImport extends BaseCommand {
   static description =
     'Resolve a Keychain asset by name, then ask the target iOS simulator to download and apply the keychain tar.gz. Use --asset-id to import by asset ID.';
   static examples = [
-    '<%= config.bin %> ios keychain import keychain/state.tar.gz',
-    '<%= config.bin %> ios keychain import keychain/state.tar.gz --id <instance-ID>',
+    '<%= config.bin %> ios keychain import keychain/login.tar.gz',
+    '<%= config.bin %> ios keychain import keychain/login.tar.gz --id <instance-ID>',
     '<%= config.bin %> ios keychain import --asset-id <asset-ID>',
     '<%= config.bin %> ios keychain import --url https://example.t3.storage.dev/... --json',
-    '<%= config.bin %> ios keychain import keychain/state.tar.gz --encryption-key-stdin < keychain.key',
+    '<%= config.bin %> ios keychain import keychain/login.tar.gz --encryption-key-stdin < keychain.key',
   ];
 
   static args = {
-    asset_name: Args.string({ description: 'Keychain asset name to import', required: false }),
+    asset_name: Args.string({
+      description: `Keychain asset name to import. Defaults to ${DEFAULT_KEYCHAIN_ASSET_NAME}.`,
+      required: false,
+    }),
   };
 
   static flags = {
@@ -62,8 +68,10 @@ export default class IosKeychainImport extends BaseCommand {
 
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
+      const assetName =
+        args.asset_name ?? (!flags.url && !flags['asset-id'] ? DEFAULT_KEYCHAIN_ASSET_NAME : undefined);
       const url =
-        flags.url ?? (await this.resolveKeychainAssetDownloadUrl(args.asset_name, flags['asset-id']));
+        flags.url ?? (await this.resolveKeychainAssetDownloadUrl(assetName, flags['asset-id']));
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
         const result = await client.importKeychain({ url, encryptionKey });

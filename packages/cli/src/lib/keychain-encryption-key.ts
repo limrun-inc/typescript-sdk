@@ -1,5 +1,7 @@
 import { randomBytes } from 'crypto';
 
+export const DEFAULT_KEYCHAIN_ASSET_NAME = 'keychain/login.tar.gz';
+
 export function generateKeychainEncryptionKey(): string {
   return randomBytes(32).toString('base64');
 }
