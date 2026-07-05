@@ -40,8 +40,7 @@ export default class IosKeychainSave extends BaseCommand {
       description: 'iOS instance ID to save from. Defaults to the last created iOS instance.',
     }),
     'asset-name': Flags.string({
-      description:
-        `Asset name to store the saved keychain under. Defaults to ${DEFAULT_KEYCHAIN_ASSET_NAME}. Prefer the positional <asset-name> argument.`,
+      description: `Asset name to store the saved keychain under. Defaults to ${DEFAULT_KEYCHAIN_ASSET_NAME}. Prefer the positional <asset-name> argument.`,
     }),
     ttl: Flags.string({
       description: 'Time-to-live as a Go duration (e.g. "24h", min 1m). Defaults to no expiry.',
@@ -119,7 +118,9 @@ export default class IosKeychainSave extends BaseCommand {
         this.output(`Auto-generated the encryption key.`);
       }
       this.output(
-        `You can restore with the following command: \n\n$ lim ios keychain restore ${asset.name} --encryption-key ${generatedEncryptionKey ? encryptionKey : '<key>'}`,
+        `You can restore with the following command: \n\n$ lim ios keychain restore ${
+          asset.name
+        } --encryption-key ${generatedEncryptionKey ? encryptionKey : '<key>'}`,
       );
     });
   }
@@ -131,7 +132,11 @@ export default class IosKeychainSave extends BaseCommand {
     })) as KeychainAsset[];
   }
 
-  private async confirmOverwrite(assetName: string, existingAssets: KeychainAsset[], yes: boolean): Promise<boolean> {
+  private async confirmOverwrite(
+    assetName: string,
+    existingAssets: KeychainAsset[],
+    yes: boolean,
+  ): Promise<boolean> {
     if (yes) {
       return true;
     }

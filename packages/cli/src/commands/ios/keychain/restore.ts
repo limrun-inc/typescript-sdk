@@ -70,8 +70,7 @@ export default class IosKeychainRestore extends BaseCommand {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const assetName =
         args.asset_name ?? (!flags.url && !flags['asset-id'] ? DEFAULT_KEYCHAIN_ASSET_NAME : undefined);
-      const url =
-        flags.url ?? (await this.resolveKeychainAssetDownloadUrl(assetName, flags['asset-id']));
+      const url = flags.url ?? (await this.resolveKeychainAssetDownloadUrl(assetName, flags['asset-id']));
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
         const result = await client.restoreKeychain({ url, encryptionKey });
