@@ -4,7 +4,7 @@ import { generateKeychainEncryptionKey } from '../../../lib/keychain-encryption-
 export default class IosKeychainGenerateKey extends BaseCommand {
   static summary = 'Generate an iOS keychain encryption key';
   static description =
-    'Print a new 32-byte base64 key for encrypted iOS keychain export and import. Store it securely and pass it to export/import on stdin.';
+    'Print a new 32-byte base64 key for encrypted iOS keychain save and restore. Store it securely and pass it to save/restore on stdin.';
   static examples = ['<%= config.bin %> ios keychain generate-key > keychain.key'];
 
   static flags = {

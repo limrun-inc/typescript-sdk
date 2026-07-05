@@ -201,7 +201,7 @@ export type AppInstallationResult = {
   bundleId: string;
 };
 
-export type KeychainImportResult = {
+export type KeychainRestoreResult = {
   durationMs: number;
 };
 
@@ -559,14 +559,14 @@ export type InstanceClient = {
   installApp: (url: string, options?: AppInstallationOptions) => Promise<AppInstallationResult>;
 
   /**
-   * Export the simulator keychain and upload it to a presigned asset-storage URL.
+   * Save the simulator keychain and upload it to a presigned asset-storage URL.
    */
-  exportKeychain: (options: { url: string; encryptionKey: string }) => Promise<void>;
+  saveKeychain: (options: { url: string; encryptionKey: string }) => Promise<void>;
 
   /**
-   * Download keychain state from a presigned asset-storage URL and apply it.
+   * Download saved keychain state from a presigned asset-storage URL and apply it.
    */
-  importKeychain: (options: { url: string; encryptionKey: string }) => Promise<KeychainImportResult>;
+  restoreKeychain: (options: { url: string; encryptionKey: string }) => Promise<KeychainRestoreResult>;
 
   /**
    * Set the device orientation
@@ -1509,7 +1509,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         bundleId: msg.bundleId || '',
       }),
       keychainExportResult: () => undefined,
-      keychainImportResult: (msg): KeychainImportResult => ({
+      keychainImportResult: (msg): KeychainRestoreResult => ({
         durationMs: msg.durationMs ?? 0,
       }),
       startVideoRecordingResult: () => undefined,
@@ -1689,8 +1689,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             listApps,
             openUrl,
             installApp,
-            exportKeychain,
-            importKeychain,
+            saveKeychain,
+            restoreKeychain,
             setOrientation,
             scroll,
             performActions,
@@ -1850,7 +1850,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       );
     };
 
-    const exportKeychain = async (keychainOptions: { url: string; encryptionKey: string }): Promise<void> => {
+    const saveKeychain = async (keychainOptions: { url: string; encryptionKey: string }): Promise<void> => {
       await sendRequest<void>(
         'exportKeychain',
         { url: keychainOptions.url, encryptionKey: keychainOptions.encryptionKey },
@@ -1859,11 +1859,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       );
     };
 
-    const importKeychain = async (keychainOptions: {
+    const restoreKeychain = async (keychainOptions: {
       url: string;
       encryptionKey: string;
-    }): Promise<KeychainImportResult> => {
-      return sendRequest<KeychainImportResult>(
+    }): Promise<KeychainRestoreResult> => {
+      return sendRequest<KeychainRestoreResult>(
         'importKeychain',
         { url: keychainOptions.url, encryptionKey: keychainOptions.encryptionKey },
         undefined,

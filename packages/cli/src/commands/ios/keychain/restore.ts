@@ -13,21 +13,21 @@ type KeychainAsset = {
   signedDownloadUrl?: string;
 };
 
-export default class IosKeychainImport extends BaseCommand {
-  static summary = 'Import iOS keychain state from asset storage';
+export default class IosKeychainRestore extends BaseCommand {
+  static summary = 'Restore iOS keychain state from asset storage';
   static description =
-    'Resolve a Keychain asset by name, then ask the target iOS simulator to download and apply the keychain tar.gz. Use --asset-id to import by asset ID.';
+    'Resolve a Keychain asset by name, then ask the target iOS simulator to download and apply the keychain tar.gz. Use --asset-id to restore by asset ID.';
   static examples = [
-    '<%= config.bin %> ios keychain import keychain/login.tar.gz',
-    '<%= config.bin %> ios keychain import keychain/login.tar.gz --id <instance-ID>',
-    '<%= config.bin %> ios keychain import --asset-id <asset-ID>',
-    '<%= config.bin %> ios keychain import --url https://example.t3.storage.dev/... --json',
-    '<%= config.bin %> ios keychain import keychain/login.tar.gz --encryption-key-stdin < keychain.key',
+    '<%= config.bin %> ios keychain restore keychain/login.tar.gz',
+    '<%= config.bin %> ios keychain restore keychain/login.tar.gz --id <instance-ID>',
+    '<%= config.bin %> ios keychain restore --asset-id <asset-ID>',
+    '<%= config.bin %> ios keychain restore --url https://example.t3.storage.dev/... --json',
+    '<%= config.bin %> ios keychain restore keychain/login.tar.gz --encryption-key-stdin < keychain.key',
   ];
 
   static args = {
     asset_name: Args.string({
-      description: `Keychain asset name to import. Defaults to ${DEFAULT_KEYCHAIN_ASSET_NAME}.`,
+      description: `Keychain asset name to restore. Defaults to ${DEFAULT_KEYCHAIN_ASSET_NAME}.`,
       required: false,
     }),
   };
@@ -35,13 +35,13 @@ export default class IosKeychainImport extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     id: Flags.string({
-      description: 'iOS instance ID to import into. Defaults to the last created iOS instance.',
+      description: 'iOS instance ID to restore into. Defaults to the last created iOS instance.',
     }),
     url: Flags.string({
-      description: 'Presigned download URL to import directly instead of resolving an asset.',
+      description: 'Presigned download URL to restore directly instead of resolving an asset.',
     }),
     'asset-id': Flags.string({
-      description: 'Keychain asset ID to import instead of resolving the positional asset name.',
+      description: 'Keychain asset ID to restore instead of resolving the positional asset name.',
     }),
     'encryption-key': Flags.string({
       description: 'Base64/base64url 32-byte decryption key for the keychain archive.',
@@ -53,7 +53,7 @@ export default class IosKeychainImport extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(IosKeychainImport);
+    const { args, flags } = await this.parse(IosKeychainRestore);
     this.setParsedFlags(flags);
 
     let encryptionKey: string;
@@ -74,12 +74,12 @@ export default class IosKeychainImport extends BaseCommand {
         flags.url ?? (await this.resolveKeychainAssetDownloadUrl(assetName, flags['asset-id']));
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        const result = await client.importKeychain({ url, encryptionKey });
+        const result = await client.restoreKeychain({ url, encryptionKey });
         if (flags.json) {
           this.outputJson(result);
           return;
         }
-        this.output('Keychain applied');
+        this.output('Keychain restored');
         this.output(`Duration: ${result.durationMs}ms`);
       } finally {
         disconnect();

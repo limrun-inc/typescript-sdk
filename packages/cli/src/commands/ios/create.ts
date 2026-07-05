@@ -63,11 +63,11 @@ export default class IosCreate extends BaseCommand {
       multiple: true,
     }),
     keychain: Flags.string({
-      description: 'Existing encrypted Keychain asset name to import after creation.',
+      description: 'Existing encrypted Keychain asset name to restore after creation.',
       multiple: true,
     }),
     'keychain-url': Flags.string({
-      description: 'Presigned encrypted Keychain asset URL to import after creation.',
+      description: 'Presigned encrypted Keychain asset URL to restore after creation.',
       multiple: true,
     }),
     'encryption-key': Flags.string({

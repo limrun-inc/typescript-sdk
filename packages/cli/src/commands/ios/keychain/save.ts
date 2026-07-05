@@ -14,22 +14,22 @@ type KeychainAsset = {
   kind?: string;
 };
 
-export default class IosKeychainExport extends BaseCommand {
-  static summary = 'Export iOS keychain state to asset storage';
+export default class IosKeychainSave extends BaseCommand {
+  static summary = 'Save iOS keychain state to asset storage';
   static description =
     'Create a Keychain asset or confirm overwriting an existing one, ask the target iOS simulator to upload its keychain tar.gz to asset storage, and print the asset ID.';
   static examples = [
-    '<%= config.bin %> ios keychain export',
-    '<%= config.bin %> ios keychain export keychain/login.tar.gz',
-    '<%= config.bin %> ios keychain export keychain/login.tar.gz --ttl 24h --json',
-    '<%= config.bin %> ios keychain export keychain/login.tar.gz --yes',
+    '<%= config.bin %> ios keychain save',
+    '<%= config.bin %> ios keychain save keychain/login.tar.gz',
+    '<%= config.bin %> ios keychain save keychain/login.tar.gz --ttl 24h --json',
+    '<%= config.bin %> ios keychain save keychain/login.tar.gz --yes',
     '<%= config.bin %> ios keychain generate-key > keychain.key',
-    '<%= config.bin %> ios keychain export keychain/login.tar.gz --encryption-key-stdin < keychain.key',
+    '<%= config.bin %> ios keychain save keychain/login.tar.gz --encryption-key-stdin < keychain.key',
   ];
 
   static args = {
     asset_name: Args.string({
-      description: `Keychain asset name to store the exported keychain under. Defaults to ${DEFAULT_KEYCHAIN_ASSET_NAME}.`,
+      description: `Keychain asset name to store the saved keychain under. Defaults to ${DEFAULT_KEYCHAIN_ASSET_NAME}.`,
       required: false,
     }),
   };
@@ -37,18 +37,18 @@ export default class IosKeychainExport extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     id: Flags.string({
-      description: 'iOS instance ID to export from. Defaults to the last created iOS instance.',
+      description: 'iOS instance ID to save from. Defaults to the last created iOS instance.',
     }),
     'asset-name': Flags.string({
       description:
-        `Asset name to store the exported keychain under. Defaults to ${DEFAULT_KEYCHAIN_ASSET_NAME}. Prefer the positional <asset-name> argument.`,
+        `Asset name to store the saved keychain under. Defaults to ${DEFAULT_KEYCHAIN_ASSET_NAME}. Prefer the positional <asset-name> argument.`,
     }),
     ttl: Flags.string({
       description: 'Time-to-live as a Go duration (e.g. "24h", min 1m). Defaults to no expiry.',
     }),
     'encryption-key': Flags.string({
       description:
-        'Base64/base64url 32-byte encryption key for the exported keychain archive. Generated and printed if omitted.',
+        'Base64/base64url 32-byte encryption key for the saved keychain archive. Generated and printed if omitted.',
     }),
     'encryption-key-stdin': Flags.boolean({
       description: 'Read the base64/base64url 32-byte encryption key from stdin.',
@@ -61,7 +61,7 @@ export default class IosKeychainExport extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(IosKeychainExport);
+    const { args, flags } = await this.parse(IosKeychainSave);
     this.setParsedFlags(flags);
 
     const assetName = args.asset_name ?? flags['asset-name'] ?? DEFAULT_KEYCHAIN_ASSET_NAME;
@@ -87,7 +87,7 @@ export default class IosKeychainExport extends BaseCommand {
       if (existingAssets.length > 0) {
         const shouldOverwrite = await this.confirmOverwrite(assetName, existingAssets, flags.yes);
         if (!shouldOverwrite) {
-          this.info('Export cancelled.');
+          this.info('Save cancelled.');
           return;
         }
       }
@@ -101,7 +101,7 @@ export default class IosKeychainExport extends BaseCommand {
 
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        await client.exportKeychain({ url: asset.signedUploadUrl, encryptionKey });
+        await client.saveKeychain({ url: asset.signedUploadUrl, encryptionKey });
       } finally {
         disconnect();
       }
@@ -118,7 +118,9 @@ export default class IosKeychainExport extends BaseCommand {
       if (generatedEncryptionKey) {
         this.output(`Auto-generated the encryption key.`);
       }
-      this.output(`You can import with the following command: \n\n$ lim ios keychain import ${asset.name} --encryption-key ${generatedEncryptionKey ? encryptionKey : '<key>'}`);
+      this.output(
+        `You can restore with the following command: \n\n$ lim ios keychain restore ${asset.name} --encryption-key ${generatedEncryptionKey ? encryptionKey : '<key>'}`,
+      );
     });
   }
 
