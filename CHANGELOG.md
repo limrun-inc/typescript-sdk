@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.37.2 (2026-07-05)
+
+Full Changelog: [v0.37.1...v0.37.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.37.1...v0.37.2)
+
 ## 0.37.1 (2026-07-03)
 
 Full Changelog: [v0.37.0...v0.37.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.37.0...v0.37.1)
