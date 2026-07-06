@@ -93,6 +93,13 @@ export default class XcodeRbe extends BaseCommand {
   async run(): Promise<void> {
     const { flags } = await this.parse(XcodeRbe);
     this.setParsedFlags(flags);
+    // Empty string would be treated as "off" by every truthiness check below,
+    // silently starting a tunnel without the uploads the user asked for.
+    // Checked before the serve branch so a hand-invoked serve child cannot
+    // slip past it either.
+    if (flags['auto-upload'] !== undefined && !flags['auto-upload']) {
+      this.error('--auto-upload requires a non-empty asset name.');
+    }
     const autoUpload =
       flags['auto-upload'] ? { assetName: flags['auto-upload'], ttl: flags['upload-ttl'] } : undefined;
 
@@ -131,12 +138,6 @@ export default class XcodeRbe extends BaseCommand {
     if (flags.stop) {
       await this.stopBackgroundTunnel(workspaceRoot);
       return;
-    }
-
-    // Empty string would be treated as "off" by every truthiness check below,
-    // silently starting a tunnel without the uploads the user asked for.
-    if (flags['auto-upload'] !== undefined && !flags['auto-upload']) {
-      this.error('--auto-upload requires a non-empty asset name.');
     }
 
     // If a background tunnel is already running for this workspace, don't start a
