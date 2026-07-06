@@ -135,7 +135,6 @@ export abstract class BaseCommand extends Command {
         this.info('Session expired. Logging in...');
         await login(config.apiEndpoint, config.consoleEndpoint, VERSION, {
           log: (message) => this.info(message),
-          promptBeforeOpen: !this.shouldSuppressInfo(),
         });
         this.info('You are logged in now.');
         // Reset client so it picks up the new key

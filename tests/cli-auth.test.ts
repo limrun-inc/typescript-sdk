@@ -72,7 +72,6 @@ describe('lim login rendezvous session', () => {
         openedUrls.push(url);
       },
       log: () => {},
-      promptBeforeOpen: false,
       timeoutMs: 1_000,
     });
 
@@ -113,7 +112,6 @@ describe('lim login rendezvous session', () => {
         openedUrls.push(url);
       },
       log: () => {},
-      promptBeforeOpen: false,
       timeoutMs: 1_000,
     });
 
@@ -140,8 +138,7 @@ describe('lim login rendezvous session', () => {
         configWriter: () => {},
         opener: () => undefined,
         log: () => {},
-        promptBeforeOpen: false,
-        timeoutMs: 10,
+          timeoutMs: 10,
       }),
     ).rejects.toThrow('Login timed out waiting for browser authorization');
   });
@@ -168,8 +165,7 @@ describe('lim login rendezvous session', () => {
         },
         opener: () => undefined,
         log: () => {},
-        promptBeforeOpen: false,
-        timeoutMs: 1_000,
+          timeoutMs: 1_000,
       }),
     ).rejects.toThrow('disk full');
   });
@@ -194,14 +190,51 @@ describe('lim login rendezvous session', () => {
       configWriter: () => {},
       opener: () => undefined,
       log: (message) => logs.push(message),
-      promptBeforeOpen: false,
       timeoutMs: 1_000,
     });
 
     expect(logs).toEqual([
-      'Confirm this phrase in your browser: cosmic-otter-band',
-      `Open this URL to log in:\n${CONSOLE_ENDPOINT}/authn/cli?session=clisess_test`,
+      '\nConfirm this phrase in your browser: cosmic-otter-band',
+      `Opening this URL to log in: ${CONSOLE_ENDPOINT}/authn/cli?session=clisess_test`,
+      'Waiting for you to confirm in browser...',
     ]);
+  });
+
+  test('waits for browser opening before completing login', async () => {
+    const configWrites: Array<Partial<Record<string, string>>> = [];
+    const { loginWithOptions } = await import('../packages/cli/src/lib/auth');
+    let finishOpen!: () => void;
+    const openerFinished = new Promise<void>((resolve) => {
+      finishOpen = resolve;
+    });
+
+    const fetcher: typeof fetch = async (input) => {
+      const url = requestUrl(input);
+      if (url.pathname === '/authn/cli/sessions') {
+        return sessionResponse();
+      }
+      return jsonResponse({ apiKey: 'lim_test_key' });
+    };
+
+    const loginPromise = loginWithOptions({
+      apiEndpoint: API_ENDPOINT,
+      consoleEndpoint: CONSOLE_ENDPOINT,
+      version: 'test',
+      fetcher,
+      configWriter: (partial) => {
+        configWrites.push(partial);
+      },
+      opener: () => openerFinished,
+      log: () => {},
+      timeoutMs: 1_000,
+    });
+
+    await expect(Promise.race([loginPromise.then(() => 'done'), Promise.resolve('pending')])).resolves.toBe('pending');
+    expect(configWrites).toEqual([]);
+
+    finishOpen();
+    await loginPromise;
+    expect(configWrites).toEqual([{ 'api-key': 'lim_test_key' }]);
   });
 
   test('aborts a hung session creation at the login deadline', async () => {
@@ -220,8 +253,7 @@ describe('lim login rendezvous session', () => {
         configWriter: () => {},
         opener: () => undefined,
         log: () => {},
-        promptBeforeOpen: false,
-        timeoutMs: 10,
+          timeoutMs: 10,
       }),
     ).rejects.toThrow('Login timed out waiting for browser authorization');
   });
@@ -256,7 +288,6 @@ describe('lim login rendezvous session', () => {
       },
       opener: () => undefined,
       log: () => {},
-      promptBeforeOpen: false,
       timeoutMs: 3_000,
     });
 

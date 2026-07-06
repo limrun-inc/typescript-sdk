@@ -1,6 +1,6 @@
+import { execFileSync } from 'child_process';
 import os from 'os';
 import process from 'process';
-import readline from 'readline/promises';
 import { writeConfig, CONFIG_KEYS } from './config';
 
 const LOGIN_CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
@@ -10,7 +10,6 @@ interface LoginOptions {
   consoleEndpoint: string;
   version: string;
   log?: (message: string) => void;
-  promptBeforeOpen?: boolean;
   configWriter?: typeof writeConfig;
   opener?: (url: string) => Promise<unknown> | unknown;
   fetcher?: typeof fetch;
@@ -61,19 +60,21 @@ export async function loginWithOptions(options: LoginOptions): Promise<void> {
     version,
     configWriter = writeConfig,
     fetcher = fetch,
-    hostname = os.hostname(),
+    hostname = computerName(),
     log = console.log,
-  promptBeforeOpen = true,
   } = options;
 
   const deadline = Date.now() + (options.timeoutMs ?? LOGIN_CALLBACK_TIMEOUT_MS);
   const session = await createSession(fetcher, apiEndpoint, consoleEndpoint, hostname, version, deadline);
-  log(`Confirm this phrase in your browser: ${session.phrase}`);
-  log(`Open this URL to log in:\n${session.verificationUrl}`);
+  log(`\nConfirm this phrase in your browser: ${session.phrase}`);
+  log(`Opening this URL to log in: ${session.verificationUrl}\n\n`);
 
-  Promise.resolve(openBrowser(session.verificationUrl, options.opener ?? openLoginUrl, promptBeforeOpen, log)).catch(() => {
+  try {
+    await (options.opener ?? openLoginUrl)(session.verificationUrl);
+  } catch {
     // The URL is already printed above, so a failed opener does not block login.
-  });
+  }
+  log('Waiting for you to confirm in browser...');
 
   const pollIntervalMs = Math.max(1, session.pollIntervalSeconds ?? 2) * 1000;
   for (;;) {
@@ -100,22 +101,24 @@ export async function loginWithOptions(options: LoginOptions): Promise<void> {
   }
 }
 
-async function openBrowser(
-  url: string,
-  opener: (url: string) => Promise<unknown> | unknown,
-  promptBeforeOpen: boolean,
-  log: (message: string) => void,
-): Promise<void> {
-  if (promptBeforeOpen && process.stdin.isTTY && process.stdout.isTTY) {
-    log('Press Enter to open it in your browser.');
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+function computerName(): string {
+  if (process.platform === 'darwin') {
     try {
-      await rl.question('');
-    } finally {
-      rl.close();
+      const name = execFileSync('scutil', ['--get', 'ComputerName'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+      if (name) {
+        return name;
+      }
+    } catch {
+      // Fall through to generic OS names.
     }
   }
-  await opener(url);
+  if (process.platform === 'win32' && process.env['COMPUTERNAME']) {
+    return process.env['COMPUTERNAME'];
+  }
+  return os.hostname();
 }
 
 async function createSession(

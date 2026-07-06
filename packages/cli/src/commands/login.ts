@@ -17,11 +17,10 @@ export default class Login extends BaseCommand {
     const { flags } = await this.parse(Login);
     this.setParsedFlags(flags);
     const config = readConfig();
-    this.info('Opening browser to log in...');
+    this.info('Authenticating with Limrun...');
     await login(config.apiEndpoint, config.consoleEndpoint, VERSION, {
       log: (message) => this.info(message),
-      promptBeforeOpen: !this.shouldSuppressInfo(),
     });
-    this.info('You are logged in now.');
+    this.info('Authentication successful.');
   }
 }
