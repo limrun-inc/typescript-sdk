@@ -166,7 +166,9 @@ async function pollForToken(
     if (err instanceof LoginTimeoutError) {
       throw err;
     }
-    throw new RetryableLoginError(`Failed while waiting for CLI login approval: ${err instanceof Error ? err.message : String(err)}`);
+    throw new RetryableLoginError(
+      `Failed while waiting for CLI login approval: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   if (response.status === 202) {
     return null;
@@ -213,7 +215,9 @@ async function fetchWithDeadline(
 }
 
 function loginTimeoutError(): LoginTimeoutError {
-  return new LoginTimeoutError('Login timed out waiting for browser authorization. Run `lim login` again to retry.');
+  return new LoginTimeoutError(
+    'Login timed out waiting for browser authorization. Run `lim login` again to retry.',
+  );
 }
 
 async function responseMessage(response: Response): Promise<string> {

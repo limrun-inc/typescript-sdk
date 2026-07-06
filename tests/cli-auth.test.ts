@@ -138,7 +138,7 @@ describe('lim login rendezvous session', () => {
         configWriter: () => {},
         opener: () => undefined,
         log: () => {},
-          timeoutMs: 10,
+        timeoutMs: 10,
       }),
     ).rejects.toThrow('Login timed out waiting for browser authorization');
   });
@@ -165,7 +165,7 @@ describe('lim login rendezvous session', () => {
         },
         opener: () => undefined,
         log: () => {},
-          timeoutMs: 1_000,
+        timeoutMs: 1_000,
       }),
     ).rejects.toThrow('disk full');
   });
@@ -195,7 +195,7 @@ describe('lim login rendezvous session', () => {
 
     expect(logs).toEqual([
       '\nConfirm this phrase in your browser: cosmic-otter-band',
-      `Opening this URL to log in: ${CONSOLE_ENDPOINT}/authn/cli?session=clisess_test`,
+      `Opening this URL to log in: ${CONSOLE_ENDPOINT}/authn/cli?session=clisess_test\n\n`,
       'Waiting for you to confirm in browser...',
     ]);
   });
@@ -229,7 +229,9 @@ describe('lim login rendezvous session', () => {
       timeoutMs: 1_000,
     });
 
-    await expect(Promise.race([loginPromise.then(() => 'done'), Promise.resolve('pending')])).resolves.toBe('pending');
+    await expect(Promise.race([loginPromise.then(() => 'done'), Promise.resolve('pending')])).resolves.toBe(
+      'pending',
+    );
     expect(configWrites).toEqual([]);
 
     finishOpen();
@@ -253,7 +255,7 @@ describe('lim login rendezvous session', () => {
         configWriter: () => {},
         opener: () => undefined,
         log: () => {},
-          timeoutMs: 10,
+        timeoutMs: 10,
       }),
     ).rejects.toThrow('Login timed out waiting for browser authorization');
   });
