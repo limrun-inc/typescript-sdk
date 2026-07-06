@@ -81,7 +81,7 @@ export async function ensureLoggedIn({ version, apiKey, log }: EnsureLoggedInOpt
   }
   log?.('Opening browser for Limrun login...');
   const { login } = await import('./auth');
-  await login(config.consoleEndpoint, version);
+  await login(config.apiEndpoint, config.consoleEndpoint, version);
   log?.('Logged in to Limrun.');
 }
 

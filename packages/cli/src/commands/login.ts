@@ -16,7 +16,7 @@ export default class Login extends BaseCommand {
     this.setParsedFlags(flags);
     const config = readConfig();
     this.log('Opening browser to log in...');
-    await login(config.consoleEndpoint, VERSION);
+    await login(config.apiEndpoint, config.consoleEndpoint, VERSION);
     this.log('You are logged in now.');
   }
 }
