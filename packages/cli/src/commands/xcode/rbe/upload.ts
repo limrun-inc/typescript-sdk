@@ -55,7 +55,10 @@ export default class XcodeRbeUpload extends BaseCommand {
       this.error('The asset name must not be empty.');
     }
     const info = readRbePidFile(workspaceRoot);
-    if (!info || !isProcessAlive(info.pid)) {
+    // instanceId presence matters as much as liveness: without it,
+    // resolveXcodeTarget(undefined) would silently fall back to the most
+    // recent Xcode instance, uploading from the wrong place.
+    if (!info || !info.instanceId || !isProcessAlive(info.pid)) {
       this.error(
         'No background tunnel for this workspace. Start one with `lim xcode rbe` and run ' +
           '`bazel build --config=limrun <target>` before uploading. (A foreground --no-daemon ' +
