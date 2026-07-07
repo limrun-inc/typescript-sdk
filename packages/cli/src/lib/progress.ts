@@ -81,6 +81,15 @@ export class ProgressReporter {
     process.stderr.write(`${icon} ${message ?? progress.message}\n`);
   }
 
+  /** Replace the spinner message in place; the render loop picks it up. */
+  update(message: string): void {
+    if (this.suppressed() || !this.progress) {
+      return;
+    }
+    this.progress.message = message;
+    this.render();
+  }
+
   appendLog(chunk: string): void {
     if (this.suppressed() || !this.progress) {
       return;

@@ -6,6 +6,8 @@ import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
 import { readRepoConfig } from '../../lib/repo-config';
+import { ProgressReporter } from '../../lib/progress';
+import { syncProgressRenderer } from '../../lib/sync-progress';
 import { parseBuildSettingEntries, type XcodeBuildOptions, type XcodeClient } from '@limrun/api';
 
 const DEVICE_SDKS = new Set(['iphoneos', 'watchos']);
@@ -205,7 +207,8 @@ export default class XcodeBuild extends BaseCommand {
         };
       }
 
-      this.info(`Syncing ${syncPath} to instance ${id}...`);
+      const reporter = new ProgressReporter(() => this.shouldSuppressInfo());
+      reporter.start(`Syncing ${syncPath} to instance ${id}...`);
       const syncStart = Date.now();
       const syncOptions = {
         watch: false,
@@ -214,10 +217,15 @@ export default class XcodeBuild extends BaseCommand {
         maxPatchBytes: flags['max-patch-bytes'],
         ignore: compileIgnorePatterns(flags.ignore),
         additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
+        onProgress: syncProgressRenderer(reporter, 'Syncing'),
       };
-      await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
-      const syncDuration = formatDurationMs(Date.now() - syncStart);
-      this.info(`Sync complete in ${syncDuration}.`);
+      try {
+        await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
+      } catch (err) {
+        reporter.stop('failure', 'Sync failed');
+        throw err;
+      }
+      reporter.stop('success', `Sync complete in ${formatDurationMs(Date.now() - syncStart)}.`);
 
       this.info('Starting xcodebuild...');
 

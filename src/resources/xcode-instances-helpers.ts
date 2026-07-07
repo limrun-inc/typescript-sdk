@@ -9,6 +9,7 @@ import {
   syncFolder as syncFolderImpl,
   type AdditionalFileSyncEntry,
   type FolderSyncOptions,
+  type SyncProgressEvent,
 } from '../folder-sync';
 import { createIgnore, type IgnoreFn, type IgnoreLogger, type SyncIgnore } from '../folder-sync-ignore';
 import { nodeProxyTransport } from '../internal/proxy-transport';
@@ -49,6 +50,8 @@ export type SyncOptions = {
    * Extra files to sync on every sync pass.
    */
   additionalFiles?: AdditionalFileSyncEntry[];
+  /** Live progress callback (throttled); see SyncProgressEvent. */
+  onProgress?: (event: SyncProgressEvent) => void;
 };
 
 export type SyncResult = {
@@ -698,6 +701,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           launchMode: 'ForegroundIfRunning',
           log,
           ...(additionalFiles ? { additionalFiles } : {}),
+          ...(opts?.onProgress ? { onProgress: opts.onProgress } : {}),
         };
 
         const result = await syncFolderImpl(localCodePath, codeSyncOpts);

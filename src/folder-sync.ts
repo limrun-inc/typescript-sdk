@@ -59,7 +59,39 @@ export type FolderSyncOptions = {
    * in every sync pass but are not watched directly.
    */
   additionalFiles?: AdditionalFileSyncEntry[];
+  /**
+   * Live progress callback, throttled internally. Callback errors are
+   * swallowed; progress must never fail a sync.
+   */
+  onProgress?: (event: SyncProgressEvent) => void;
 };
+
+export type SyncProgressEvent =
+  /** Walking + hashing the local tree; `hashed` counts actual sha256 passes (cache misses). */
+  | { phase: 'scan'; files: number; hashed: number }
+  /** Comparing against the basis cache to find changed files. */
+  | { phase: 'diff'; checked: number; total: number; changed: number }
+  /** Uploading payload bytes (pre-compression source bytes). */
+  | { phase: 'upload'; sentBytes: number; totalBytes: number; payloads: number };
+
+type ProgressEmitter = (event: SyncProgressEvent, force?: boolean) => void;
+
+const PROGRESS_THROTTLE_MS = 100;
+
+function makeProgressEmitter(onProgress?: (event: SyncProgressEvent) => void): ProgressEmitter {
+  if (!onProgress) return () => {};
+  let lastEmit = 0;
+  return (event, force = false) => {
+    const now = Date.now();
+    if (!force && now - lastEmit < PROGRESS_THROTTLE_MS) return;
+    lastEmit = now;
+    try {
+      onProgress(event);
+    } catch {
+      // Progress must never fail a sync.
+    }
+  };
+}
 
 export type SyncFolderResult = {
   installedAppPath?: string;
@@ -177,6 +209,7 @@ async function httpFolderSyncBatch(
   meta: FolderSyncHttpMeta,
   payloadFiles: { filePath: string }[],
   compression: 'zstd' | 'gzip' | 'identity',
+  progress: ProgressEmitter = () => {},
 ): Promise<FolderSyncHttpResponse> {
   const url = folderSyncHttpUrl(opts.apiUrl);
   const headers: Record<string, string> = {
@@ -187,6 +220,8 @@ async function httpFolderSyncBatch(
 
   const metaBytes = Buffer.from(JSON.stringify(meta), 'utf-8');
   const head = Buffer.concat([u32be(metaBytes.length), metaBytes]);
+  const totalBytes = meta.payloads.reduce((sum, p) => sum + p.length, 0);
+  let sentBytes = 0;
 
   async function* gen(): AsyncGenerator<Buffer> {
     yield head;
@@ -202,11 +237,14 @@ async function httpFolderSyncBatch(
           if (bytesRead <= 0) break;
           offset += bytesRead;
           yield buf.subarray(0, bytesRead);
+          sentBytes += bytesRead;
+          progress({ phase: 'upload', sentBytes, totalBytes, payloads: meta.payloads.length });
         }
       } finally {
         await fd.close();
       }
     }
+    progress({ phase: 'upload', sentBytes, totalBytes, payloads: meta.payloads.length }, true);
   }
 
   const sourceStream = Readable.from(gen());
@@ -275,10 +313,16 @@ type WalkMeta = {
   next: Record<string, FileMetaEntry>;
 };
 
-async function walkFiles(root: string, ignoreFn: IgnoreFn, meta?: WalkMeta): Promise<FileEntry[]> {
+async function walkFiles(
+  root: string,
+  ignoreFn: IgnoreFn,
+  meta?: WalkMeta,
+  progress: ProgressEmitter = () => {},
+): Promise<FileEntry[]> {
   const rootResolved = path.resolve(root);
 
   const out: FileEntry[] = [];
+  let hashed = 0;
   const stack: string[] = [rootResolved];
   while (stack.length) {
     const dir = stack.pop()!;
@@ -302,18 +346,23 @@ async function walkFiles(root: string, ignoreFn: IgnoreFn, meta?: WalkMeta): Pro
 
       const st = await fs.promises.stat(abs);
       const prior = meta?.prior[rel];
-      const sha256 =
-        prior && prior.mtimeMs === st.mtimeMs && prior.size === st.size ?
-          prior.sha256
-        : await sha256FileHex(abs);
+      let sha256: string;
+      if (prior && prior.mtimeMs === st.mtimeMs && prior.size === st.size) {
+        sha256 = prior.sha256;
+      } else {
+        sha256 = await sha256FileHex(abs);
+        hashed++;
+      }
       if (meta) {
         meta.next[rel] = { mtimeMs: st.mtimeMs, size: st.size, sha256 };
       }
       // Preserve POSIX permission bits (including +x). Mask out file-type bits.
       const mode = st.mode & 0o7777;
       out.push({ path: rel, size: st.size, sha256, absPath: abs, mode });
+      progress({ phase: 'scan', files: out.length, hashed });
     }
   }
+  progress({ phase: 'scan', files: out.length, hashed }, true);
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
 }
@@ -506,9 +555,10 @@ async function syncFolderOnce(
   const slog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => log(level, `syncFolder: ${msg}`);
   const maxPatchBytes = opts.maxPatchBytes ?? 4 * 1024 * 1024;
 
+  const progress = makeProgressEmitter(opts.onProgress);
   const metaCache = await loadMetaCache(opts.basisCacheDir);
   const walkMeta: WalkMeta = { prior: metaCache.files, next: {} };
-  const files = await walkFiles(localFolderPath, opts.ignoreFn, walkMeta);
+  const files = await walkFiles(localFolderPath, opts.ignoreFn, walkMeta, progress);
   const additionalFiles = await collectAdditionalFiles(opts.additionalFiles);
   const allFiles = [...files, ...additionalFiles].sort((a, b) => a.path.localeCompare(b.path));
   const fileMap = new Map(allFiles.map((f) => [f.path, f]));
@@ -529,13 +579,17 @@ async function syncFolderOnce(
   // Build payload list by comparing against local basis cache (single-flight/watch assumes server matches cache).
   const encodeLimit = concurrencyLimit();
   const changed: FileEntry[] = [];
+  let checked = 0;
   for (const f of allFiles) {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
     const basisSha = await basisShaFor(metaCache.basis, f.path, basisPath);
     if (basisSha === undefined || basisSha !== f.sha256.toLowerCase()) {
       changed.push(f);
     }
+    checked++;
+    progress({ phase: 'diff', checked, total: allFiles.length, changed: changed.length });
   }
+  progress({ phase: 'diff', checked, total: allFiles.length, changed: changed.length }, true);
 
   const encodedPayloads = await mapLimit(changed, encodeLimit, async (f): Promise<EncodedPayload> => {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
@@ -613,6 +667,7 @@ async function syncFolderOnce(
       meta,
       encodedPayloads.map((p) => ({ filePath: p.filePath })),
       compression,
+      progress,
     );
   } catch (err) {
     if (attempt < 1 && isENOENT(err)) {
@@ -653,6 +708,7 @@ async function syncFolderOnce(
         retryMeta,
         retryPayloads.map((p) => ({ filePath: p.filePath })),
         preferredCompression,
+        progress,
       );
       httpSendMsTotal += nowMs() - retryStart;
     }

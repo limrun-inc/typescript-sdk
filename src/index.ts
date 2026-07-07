@@ -17,6 +17,7 @@ export {
   type ExecResult,
   type ExecChildProcess,
 } from './exec-client';
+export { type SyncProgressEvent } from './folder-sync';
 export {
   type XcodeCreateClientParams,
   type XcodeClient,

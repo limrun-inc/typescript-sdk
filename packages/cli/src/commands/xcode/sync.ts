@@ -3,6 +3,8 @@ import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
+import { ProgressReporter } from '../../lib/progress';
+import { syncProgressRenderer } from '../../lib/sync-progress';
 
 export default class XcodeSync extends BaseCommand {
   static summary = 'Continuously sync local source code to an Xcode sandbox';
@@ -69,7 +71,8 @@ export default class XcodeSync extends BaseCommand {
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);
 
-      this.info(`Syncing ${syncPath} to instance ${id}...`);
+      const reporter = new ProgressReporter(() => this.shouldSuppressInfo());
+      reporter.start(`Syncing ${syncPath} to instance ${id}...`);
       const syncStart = Date.now();
 
       const syncOptions = {
@@ -79,11 +82,16 @@ export default class XcodeSync extends BaseCommand {
         maxPatchBytes: flags['max-patch-bytes'],
         ignore: compileIgnorePatterns(flags.ignore),
         additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
+        onProgress: syncProgressRenderer(reporter, 'Syncing'),
       };
-      const result = await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
-
-      const syncDuration = formatDurationMs(Date.now() - syncStart);
-      this.output(`Sync complete in ${syncDuration}.`);
+      let result: Awaited<ReturnType<typeof xcodeClient.sync>>;
+      try {
+        result = await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
+      } catch (err) {
+        reporter.stop('failure', 'Sync failed');
+        throw err;
+      }
+      reporter.stop('success', `Sync complete in ${formatDurationMs(Date.now() - syncStart)}.`);
 
       if (flags.watch && result.stopWatching) {
         this.output('Watching for changes. Press Ctrl+C to stop.');
