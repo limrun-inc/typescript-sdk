@@ -4,6 +4,12 @@ import os from 'os';
 import crypto from 'crypto';
 import { watchFolderTree } from './folder-sync-watcher';
 import { type IgnoreFn } from './folder-sync-ignore';
+import {
+  loadMetaCache,
+  saveMetaCache,
+  type FileMetaEntry,
+  type SyncMetaCache,
+} from './folder-sync-meta-cache';
 import { Readable } from 'stream';
 import * as zlib from 'zlib';
 import { nodeProxyTransport } from './internal/proxy-transport';
@@ -262,7 +268,14 @@ async function sha256FileHex(filePath: string): Promise<string> {
   });
 }
 
-async function walkFiles(root: string, ignoreFn: IgnoreFn): Promise<FileEntry[]> {
+type WalkMeta = {
+  /** Last-sync entries; an exact (mtimeMs, size) match reuses the recorded sha. */
+  prior: Record<string, FileMetaEntry>;
+  /** Populated with this walk's entries; becomes the next sync's `prior`. */
+  next: Record<string, FileMetaEntry>;
+};
+
+async function walkFiles(root: string, ignoreFn: IgnoreFn, meta?: WalkMeta): Promise<FileEntry[]> {
   const rootResolved = path.resolve(root);
 
   const out: FileEntry[] = [];
@@ -288,7 +301,14 @@ async function walkFiles(root: string, ignoreFn: IgnoreFn): Promise<FileEntry[]>
       if (ignoreFn(rel)) continue;
 
       const st = await fs.promises.stat(abs);
-      const sha256 = await sha256FileHex(abs);
+      const prior = meta?.prior[rel];
+      const sha256 =
+        prior && prior.mtimeMs === st.mtimeMs && prior.size === st.size ?
+          prior.sha256
+        : await sha256FileHex(abs);
+      if (meta) {
+        meta.next[rel] = { mtimeMs: st.mtimeMs, size: st.size, sha256 };
+      }
       // Preserve POSIX permission bits (including +x). Mask out file-type bits.
       const mode = st.mode & 0o7777;
       out.push({ path: rel, size: st.size, sha256, absPath: abs, mode });
@@ -296,6 +316,31 @@ async function walkFiles(root: string, ignoreFn: IgnoreFn): Promise<FileEntry[]>
   }
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
+}
+
+/**
+ * Returns the sha of a basis copy, reusing the metadata cache on an exact
+ * (mtimeMs, size) match and repairing the entry after a re-hash. Returns
+ * undefined when the basis copy doesn't exist.
+ */
+async function basisShaFor(
+  basisMeta: Record<string, FileMetaEntry>,
+  relPath: string,
+  basisPath: string,
+): Promise<string | undefined> {
+  let st: fs.Stats;
+  try {
+    st = await fs.promises.stat(basisPath);
+  } catch {
+    return undefined;
+  }
+  const entry = basisMeta[relPath];
+  if (entry && entry.mtimeMs === st.mtimeMs && entry.size === st.size) {
+    return entry.sha256;
+  }
+  const sha256 = await sha256FileHex(basisPath);
+  basisMeta[relPath] = { mtimeMs: st.mtimeMs, size: st.size, sha256 };
+  return sha256;
 }
 
 async function collectAdditionalFiles(
@@ -461,7 +506,9 @@ async function syncFolderOnce(
   const slog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => log(level, `syncFolder: ${msg}`);
   const maxPatchBytes = opts.maxPatchBytes ?? 4 * 1024 * 1024;
 
-  const files = await walkFiles(localFolderPath, opts.ignoreFn);
+  const metaCache = await loadMetaCache(opts.basisCacheDir);
+  const walkMeta: WalkMeta = { prior: metaCache.files, next: {} };
+  const files = await walkFiles(localFolderPath, opts.ignoreFn, walkMeta);
   const additionalFiles = await collectAdditionalFiles(opts.additionalFiles);
   const allFiles = [...files, ...additionalFiles].sort((a, b) => a.path.localeCompare(b.path));
   const fileMap = new Map(allFiles.map((f) => [f.path, f]));
@@ -484,20 +531,16 @@ async function syncFolderOnce(
   const changed: FileEntry[] = [];
   for (const f of allFiles) {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
-    if (!fs.existsSync(basisPath)) {
-      changed.push(f);
-      continue;
-    }
-    const basisSha = await sha256FileHex(basisPath);
-    if (basisSha !== f.sha256.toLowerCase()) {
+    const basisSha = await basisShaFor(metaCache.basis, f.path, basisPath);
+    if (basisSha === undefined || basisSha !== f.sha256.toLowerCase()) {
       changed.push(f);
     }
   }
 
   const encodedPayloads = await mapLimit(changed, encodeLimit, async (f): Promise<EncodedPayload> => {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
-    if (fs.existsSync(basisPath)) {
-      const basisSha = await sha256FileHex(basisPath);
+    const basisSha = await basisShaFor(metaCache.basis, f.path, basisPath);
+    if (basisSha !== undefined) {
       const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limulator-xdelta3-'));
       const patchPath = path.join(tmpDir, 'patch.xdelta3');
       const encodeStart = nowMs();
@@ -648,8 +691,18 @@ async function syncFolderOnce(
     out.installedBundleId = resp.bundleId;
   }
   // Update local cache optimistically: after a successful sync, cache reflects current local tree.
+  const nextCache: SyncMetaCache = { version: 1, files: walkMeta.next, basis: {} };
   for (const f of allFiles) {
     await cachePut(opts.basisCacheDir, f.path, f.absPath);
+    try {
+      const st = await fs.promises.stat(cacheGet(opts.basisCacheDir, f.path));
+      nextCache.basis[f.path] = { mtimeMs: st.mtimeMs, size: st.size, sha256: f.sha256.toLowerCase() };
+    } catch {
+      // A missing basis copy just re-hashes next sync.
+    }
   }
+  // Saved only after a successful sync, so a failed one never persists
+  // optimistic state; entries for deleted files drop out via the rebuild.
+  await saveMetaCache(opts.basisCacheDir, nextCache);
   return out;
 }
