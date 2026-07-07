@@ -5,6 +5,7 @@ import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
+import { readRepoConfig } from '../../lib/repo-config';
 import { parseBuildSettingEntries, type XcodeBuildOptions, type XcodeClient } from '@limrun/api';
 
 const DEVICE_SDKS = new Set(['iphoneos', 'watchos']);
@@ -38,6 +39,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152',
     '<%= config.bin %> xcode build ./MyProject --ignore "\\\\.xcuserdata/"',
     '<%= config.bin %> xcode build ./MyProject --additional-file ~/.netrc=~/.netrc',
+    '<%= config.bin %> xcode build ./MyMonorepo --project ios/MyApp.xcodeproj --scheme MyApp --prepare "make layers" --prepare "xcodegen generate --spec ios/project.yml"',
   ];
 
   static args = {
@@ -82,6 +84,11 @@ export default class XcodeBuild extends BaseCommand {
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
     'signed-upload-url': Flags.string({
       description: 'Presigned URL to upload the resulting build artifact to.',
+    }),
+    prepare: Flags.string({
+      description:
+        'Shell command to run in the synced workspace root before the build, such as "xcodegen generate". Repeat for multiple commands; overrides the prepare list in limrun.yaml.',
+      multiple: true,
     }),
     'build-setting': Flags.string({
       description:
@@ -141,15 +148,30 @@ export default class XcodeBuild extends BaseCommand {
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);
 
+      // Repo-checked defaults; explicit flags win per field. prepare is a
+      // whole-list replacement, never a merge.
+      const repoConfig = readRepoConfig(syncPath);
+
       const settings: Record<string, string> = {};
-      if (flags.scheme) settings.scheme = flags.scheme;
-      if (flags.workspace) settings.workspace = flags.workspace;
-      if (flags.project) settings.project = flags.project;
+      const scheme = flags.scheme ?? repoConfig?.scheme;
+      // A location flag replaces the repo config's location wholesale so a
+      // --workspace flag never combines with a limrun.yaml project (xcodebuild
+      // rejects the pair).
+      const flagPinsLocation = flags.workspace !== undefined || flags.project !== undefined;
+      const workspace = flagPinsLocation ? flags.workspace : repoConfig?.workspace;
+      const project = flagPinsLocation ? flags.project : repoConfig?.project;
+      if (scheme) settings.scheme = scheme;
+      if (workspace) settings.workspace = workspace;
+      if (project) settings.project = project;
       if (flags.sdk) settings.sdk = flags.sdk;
       if (flags.ios && !flags.sdk) settings.sdk = 'iphonesimulator';
       if (flags.configuration) settings.configuration = flags.configuration;
 
       const options: XcodeBuildOptions = {};
+      const prepare = flags.prepare ?? repoConfig?.prepare;
+      if (prepare?.length) {
+        options.prepare = prepare;
+      }
       if (flags['dev-server-url'] || flags['expo-app-dir']) {
         options.reactNative = {
           ...(flags['expo-app-dir'] && { expoAppDir: flags['expo-app-dir'] }),
