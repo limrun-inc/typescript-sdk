@@ -31,6 +31,8 @@ export {
   type RbeBuildSummary,
   type Tunnel,
   RbeUnsupportedError,
+  PrepareUnsupportedError,
+  FreshUnsupportedError,
   deriveRbeTunnelUrl,
   DEFAULT_RBE_TUNNEL_PORT,
   type XcodeProjectConfig,
