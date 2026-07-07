@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.38.0 (2026-07-07)
+
+Full Changelog: [v0.37.2...v0.38.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.37.2...v0.38.0)
+
+### Features
+
+* **api:** manual updates ([a8a18ec](https://github.com/limrun-inc/typescript-sdk/commit/a8a18ec8c41311e4f361c3843c74b8b72c231400))
+* **cli:** rbe upload subcommand and -auto-upload watcher ([a3e5705](https://github.com/limrun-inc/typescript-sdk/commit/a3e57053670ac3a17faa24c6022fe0656c3fe245))
+
+
+### Bug Fixes
+
+* **cli:** address review findings on the auto-upload watcher ([3aa4935](https://github.com/limrun-inc/typescript-sdk/commit/3aa4935b58371d27bececf6316d170d5f74b60c1))
+* **cli:** bound the shutdown wait for an in-flight auto-upload ([db3b48a](https://github.com/limrun-inc/typescript-sdk/commit/db3b48a0e2dc325f97634475c991f6b209bb3de7))
+* **cli:** drop the presigned download URL from rbe upload's terminal output ([b23bc15](https://github.com/limrun-inc/typescript-sdk/commit/b23bc15d30b375370fde7f8064e6bd97ade382ae))
+* **cli:** harden rbe upload targeting and watcher discovery gaps ([10106ae](https://github.com/limrun-inc/typescript-sdk/commit/10106ae74dac9cd3e47d0271165e4ab5fc644eab))
+* **cli:** re-attempt a failed auto-upload on later polls, bounded per build ([bdc0f7b](https://github.com/limrun-inc/typescript-sdk/commit/bdc0f7b376da150b93c9160cfde6708d99e098c4))
+* **cli:** require instanceId in the pidfile before uploading ([86f6a97](https://github.com/limrun-inc/typescript-sdk/commit/86f6a979e554ae179bdd0bf1ab5cf3d93512bbba))
+* **cli:** validate --auto-upload before the serve branch ([ff76fad](https://github.com/limrun-inc/typescript-sdk/commit/ff76fadd298fdefb6fde27fca7aab159195e4989))
+
+
+### Refactors
+
+* **cli:** rebuild the auto-upload watcher on the recent-builds view ([327a3e3](https://github.com/limrun-inc/typescript-sdk/commit/327a3e3da3edd3773ed24bfae4c279f596a22ae7))
+
 ## 0.37.2 (2026-07-05)
 
 Full Changelog: [v0.37.1...v0.37.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.37.1...v0.37.2)
