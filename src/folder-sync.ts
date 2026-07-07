@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { watchFolderTree } from './folder-sync-watcher';
-import { type IgnoreFn } from './folder-sync-ignore';
+import { type IgnoreFn, type SyncIgnore } from './folder-sync-ignore';
 import {
   loadMetaCache,
   saveMetaCache,
@@ -365,6 +365,60 @@ async function walkFiles(
   progress({ phase: 'scan', files: out.length, hashed }, true);
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
+}
+
+export type SyncPlanEntry = { path: string; size: number };
+export type SyncPlanExcluded = { path: string; source?: string; rule?: string };
+export type SyncPlan = { included: SyncPlanEntry[]; excluded: SyncPlanExcluded[] };
+
+/**
+ * Enumerates what a sync of `root` would upload and what it would exclude
+ * (with the deciding layer and rule), without hashing, caching, or any
+ * network traffic. Excluded directories are reported once, with a trailing
+ * slash, and not descended into. Same traversal as walkFiles.
+ */
+export async function planFolderSync(root: string, ignore: SyncIgnore): Promise<SyncPlan> {
+  const rootResolved = path.resolve(root);
+  const included: SyncPlanEntry[] = [];
+  const excluded: SyncPlanExcluded[] = [];
+  const record = (rel: string) => {
+    const decision = ignore.explain(rel);
+    excluded.push({
+      path: rel,
+      ...(decision.source !== undefined && { source: decision.source }),
+      ...(decision.rule !== undefined && { rule: decision.rule }),
+    });
+  };
+
+  const stack: string[] = [rootResolved];
+  while (stack.length) {
+    const dir = stack.pop()!;
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const ent of entries) {
+      const abs = path.join(dir, ent.name);
+      const rel = path.relative(rootResolved, abs).split(path.sep).join('/');
+
+      if (ent.isDirectory()) {
+        const relDir = rel + '/';
+        if (ignore.ignores(relDir)) {
+          record(relDir);
+          continue;
+        }
+        stack.push(abs);
+        continue;
+      }
+      if (!ent.isFile()) continue;
+      if (ignore.ignores(rel)) {
+        record(rel);
+        continue;
+      }
+      const st = await fs.promises.stat(abs);
+      included.push({ path: rel, size: st.size });
+    }
+  }
+  included.sort((a, b) => a.path.localeCompare(b.path));
+  excluded.sort((a, b) => a.path.localeCompare(b.path));
+  return { included, excluded };
 }
 
 /**
