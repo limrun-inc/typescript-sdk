@@ -47,11 +47,13 @@ export function readRepoConfig(syncRoot: string): RepoConfig | undefined {
   }
   const raw = parsed as Record<string, unknown>;
 
-  const config: RepoConfig = {
-    project: optionalString(raw, 'project'),
-    workspace: optionalString(raw, 'workspace'),
-    scheme: optionalString(raw, 'scheme'),
-  };
+  const config: RepoConfig = {};
+  const project = optionalString(raw, 'project');
+  const workspace = optionalString(raw, 'workspace');
+  const scheme = optionalString(raw, 'scheme');
+  if (project !== undefined) config.project = project;
+  if (workspace !== undefined) config.workspace = workspace;
+  if (scheme !== undefined) config.scheme = scheme;
   if (config.project && config.workspace) {
     throw new Error(`${REPO_CONFIG_FILENAME}: set either 'project' or 'workspace', not both`);
   }

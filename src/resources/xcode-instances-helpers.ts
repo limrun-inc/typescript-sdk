@@ -10,7 +10,7 @@ import {
   type AdditionalFileSyncEntry,
   type FolderSyncOptions,
 } from '../folder-sync';
-import { createIgnoreFn } from '../folder-sync-ignore';
+import { createIgnore, type IgnoreFn, type IgnoreLogger, type SyncIgnore } from '../folder-sync-ignore';
 import { nodeProxyTransport } from '../internal/proxy-transport';
 import { directInstanceHttpError, isDirectInstanceHttpError } from '../internal/direct-instance-errors';
 import { LimrunError } from '../core/error';
@@ -390,6 +390,62 @@ function normalizeWorkspaceRelativePath(remotePath: string): string {
   return parts.join('/');
 }
 
+/**
+ * Xcode/dependency build output that must never sync: it's machine-specific,
+ * huge, and regenerated remotely (pods, SwiftPM checkouts, DerivedData).
+ */
+export const xcodeDefaultSyncExcludes: IgnoreFn = (relativePath: string) => {
+  if (
+    relativePath.startsWith('build/') ||
+    relativePath.startsWith('.build/') ||
+    relativePath.startsWith('DerivedData/') ||
+    relativePath.startsWith('Index.noindex/') ||
+    relativePath.startsWith('ModuleCache.noindex/') ||
+    relativePath.startsWith('.index-build/')
+  ) {
+    return true;
+  }
+  if (
+    relativePath.startsWith('.swiftpm/') ||
+    relativePath.startsWith('Pods/') ||
+    relativePath.startsWith('Carthage/Build/')
+  ) {
+    return true;
+  }
+  if (relativePath.includes('/xcuserdata/')) {
+    return true;
+  }
+  if (relativePath.includes('.dSYM/')) {
+    return true;
+  }
+  return false;
+};
+
+/** The default client-side delta cache dir for a sync root, keyed by its absolute path. */
+export function defaultBasisCacheDir(resolvedPath: string): string {
+  const folderName = path.basename(resolvedPath);
+  const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
+  return path.join(os.tmpdir(), `limsync-cache-${folderName}-${hash}`);
+}
+
+/**
+ * The exact ignore stack `sync()` uses, exported so dry-run reporting can
+ * never diverge from what a real sync would upload.
+ */
+export async function createXcodeSyncIgnore(
+  root: string,
+  opts: { basisCacheDir: string; ignore?: IgnoreFn | undefined; log?: IgnoreLogger | undefined },
+): Promise<SyncIgnore> {
+  return createIgnore(root, {
+    basisCacheDir: opts.basisCacheDir,
+    ...(opts.log && { log: opts.log }),
+    additional: [
+      { source: 'xcode-defaults', fn: xcodeDefaultSyncExcludes },
+      ...(opts.ignore ? [{ source: 'cli-ignore', fn: opts.ignore }] : []),
+    ],
+  });
+}
+
 type SandboxInfo = {
   homeDir: string;
   /** Feature flags the daemon advertises; empty on daemons that predate them. */
@@ -613,10 +669,8 @@ export class XcodeInstances extends GeneratedXcodeInstances {
     return {
       async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
         const resolvedPath = path.resolve(localCodePath);
-        const folderName = path.basename(resolvedPath);
-        const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
-        const cacheKey = `limsync-cache-${folderName}-${hash}`;
-        const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
+        const cacheKey = path.basename(defaultBasisCacheDir(resolvedPath));
+        const basisCacheDir = opts?.basisCacheDir ?? defaultBasisCacheDir(resolvedPath);
         const sandboxInfo =
           opts?.additionalFiles && opts.additionalFiles.length > 0 ? await getSandboxInfo() : undefined;
         const additionalFiles = opts?.additionalFiles?.map((file) => ({
@@ -631,39 +685,13 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           token,
           udid: cacheKey,
           install: opts?.install ?? true,
-          ignoreFn: await createIgnoreFn(localCodePath, {
-            basisCacheDir,
-            log,
-            additional: (relativePath: string) => {
-              if (
-                relativePath.startsWith('build/') ||
-                relativePath.startsWith('.build/') ||
-                relativePath.startsWith('DerivedData/') ||
-                relativePath.startsWith('Index.noindex/') ||
-                relativePath.startsWith('ModuleCache.noindex/') ||
-                relativePath.startsWith('.index-build/')
-              ) {
-                return true;
-              }
-              if (
-                relativePath.startsWith('.swiftpm/') ||
-                relativePath.startsWith('Pods/') ||
-                relativePath.startsWith('Carthage/Build/')
-              ) {
-                return true;
-              }
-              if (relativePath.includes('/xcuserdata/')) {
-                return true;
-              }
-              if (relativePath.includes('.dSYM/')) {
-                return true;
-              }
-              if (opts?.ignore?.(relativePath)) {
-                return true;
-              }
-              return false;
-            },
-          }),
+          ignoreFn: (
+            await createXcodeSyncIgnore(localCodePath, {
+              basisCacheDir,
+              log,
+              ignore: opts?.ignore,
+            })
+          ).ignores,
           basisCacheDir,
           watch: opts?.watch ?? true,
           maxPatchBytes: opts?.maxPatchBytes ?? 4 * 1024 * 1024,
