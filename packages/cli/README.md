@@ -213,6 +213,7 @@ lim ios toggle-keyboard
 
 # Scrolling
 lim ios scroll down --amount 500
+lim ios scroll down --amount 500 --momentum 0.4
 
 # Batch multiple actions in one call
 lim ios perform --action type=tap,x=100,y=200 --action 'type=typeText,text=Hello World'

@@ -357,7 +357,7 @@ export function startDaemonServer(): void {
 
         case 'scroll':
           if (type === 'ios') {
-            await (client as any).scroll(args[0], args[1]);
+            await (client as any).scroll(args[0], args[1], args[2]);
           } else {
             const hasTarget = typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0]);
             const hasUndefinedPlaceholder = args[0] === undefined && typeof args[1] === 'string';
