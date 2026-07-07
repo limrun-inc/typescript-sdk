@@ -108,6 +108,20 @@ export namespace IosInstance {
     signedStreamUrl?: string;
 
     targetHttpPortUrlPrefix?: string;
+
+    /**
+     * Machine-readable reason the instance was terminated. Always present once state
+     * is "terminated", never present before that. New values may be added over time,
+     * so treat any unrecognized value as "Unknown". Known values:
+     *
+     * - "UserRequested": terminated by a delete request to the API.
+     * - "InactivityTimeout": the timeout given in spec.inactivityTimeout elapsed.
+     * - "HardTimeout": the timeout given in spec.hardTimeout elapsed.
+     * - "Unknown": terminated for a cause the platform did not attribute, including
+     *   instances that failed to get ready during creation. See errorMessage for
+     *   details when available.
+     */
+    terminationReason?: string;
   }
 
   export namespace Status {
@@ -217,8 +231,8 @@ export namespace IosInstanceCreateParams {
       assetName?: string;
 
       /**
-       * Base64/base64url-encoded 32-byte key used to decrypt Keychain assets.
-       * Required when kind is Keychain.
+       * Base64/base64url-encoded 32-byte key used to decrypt Keychain assets. Required
+       * when kind is Keychain.
        */
       encryptionKey?: string;
 
