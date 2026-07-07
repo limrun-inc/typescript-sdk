@@ -31,6 +31,8 @@ export default class AndroidGet extends BaseCommand {
         this.output(`Name: ${instance.metadata.displayName || ''}`);
         this.output(`Region: ${instance.spec.region}`);
         this.output(`State: ${instance.status.state}`);
+        if (instance.status.terminationReason)
+          this.output(`Termination Reason: ${instance.status.terminationReason}`);
         this.output(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
         if (instance.status.apiUrl) this.output(`API URL: ${instance.status.apiUrl}`);
         if (instance.status.adbWebSocketUrl)
