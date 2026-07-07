@@ -52,6 +52,13 @@ export type SyncOptions = {
   additionalFiles?: AdditionalFileSyncEntry[];
   /** Live progress callback (throttled); see SyncProgressEvent. */
   onProgress?: (event: SyncProgressEvent) => void;
+  /**
+   * Wipe the remote sync root and the local sync caches before syncing, so
+   * server-generated files (prepare output, stale build state) are removed
+   * too. Requires a daemon that advertises the `fresh` capability; older
+   * instances reject the sync up front.
+   */
+  fresh?: boolean;
 };
 
 export type SyncResult = {
@@ -671,6 +678,15 @@ export class XcodeInstances extends GeneratedXcodeInstances {
 
     return {
       async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
+        if (opts?.fresh) {
+          // Gate before any transfer: an old daemon would silently ignore
+          // the flag and keep stale server-generated files, which is
+          // exactly what a fresh sync promises to remove.
+          const info = await getSandboxInfo();
+          if (!info.capabilities.has('fresh')) {
+            throw new FreshUnsupportedError();
+          }
+        }
         const resolvedPath = path.resolve(localCodePath);
         const cacheKey = path.basename(defaultBasisCacheDir(resolvedPath));
         const basisCacheDir = opts?.basisCacheDir ?? defaultBasisCacheDir(resolvedPath);
@@ -702,6 +718,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           log,
           ...(additionalFiles ? { additionalFiles } : {}),
           ...(opts?.onProgress ? { onProgress: opts.onProgress } : {}),
+          ...(opts?.fresh ? { fresh: true } : {}),
         };
 
         const result = await syncFolderImpl(localCodePath, codeSyncOpts);

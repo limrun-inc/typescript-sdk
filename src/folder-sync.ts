@@ -64,6 +64,14 @@ export type FolderSyncOptions = {
    * swallowed; progress must never fail a sync.
    */
   onProgress?: (event: SyncProgressEvent) => void;
+  /**
+   * Wipe the remote sync root (including server-generated files the sync
+   * manifest never tracked) and the local sync caches before the initial
+   * sync, so everything uploads full. Watch-mode re-syncs after the initial
+   * one are never fresh. Requires a daemon that understands Meta.fresh;
+   * callers gate on the `fresh` capability.
+   */
+  fresh?: boolean;
 };
 
 export type SyncProgressEvent =
@@ -125,6 +133,8 @@ type FolderSyncHttpMeta = {
   rootName: string;
   install?: boolean;
   launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
+  /** Server wipes the sync root + manifest before applying (see FolderSyncOptions.fresh). */
+  fresh?: boolean;
   files: { path: string; size: number; sha256: string; mode: number }[];
   payloads: FolderSyncHttpPayload[];
 };
@@ -557,11 +567,12 @@ export async function syncFolder(
   };
   log('debug', `setup ${localFolderPath} watch=${opts.watch} basisCacheDir=${opts.basisCacheDir}`);
   if (!opts.watch) {
-    const result = await syncFolderOnce(localFolderPath, opts);
+    const result = await syncFolderOnce(localFolderPath, opts, undefined, 0, opts.fresh ?? false);
     return result;
   }
   // Initial sync, then watch for changes and re-run sync in the background.
-  const first = await syncFolderOnce(localFolderPath, opts, 'startup');
+  // Only the initial sync can be fresh; watcher re-syncs never are.
+  const first = await syncFolderOnce(localFolderPath, opts, 'startup', 0, opts.fresh ?? false);
   let inFlight = false;
   let queued = false;
 
@@ -603,6 +614,7 @@ async function syncFolderOnce(
   opts: FolderSyncOptions,
   reason?: string,
   attempt = 0,
+  fresh = false,
 ): Promise<SyncFolderResult> {
   const totalStart = nowMs();
   const log = opts.log ?? noopLogger;
@@ -610,6 +622,12 @@ async function syncFolderOnce(
   const maxPatchBytes = opts.maxPatchBytes ?? 4 * 1024 * 1024;
 
   const progress = makeProgressEmitter(opts.onProgress);
+  if (fresh) {
+    // Local caches must match the wiped server state so every payload
+    // uploads full against an empty basis.
+    slog('debug', 'fresh sync: wiping local basis + metadata caches');
+    await fs.promises.rm(opts.basisCacheDir, { recursive: true, force: true });
+  }
   const metaCache = await loadMetaCache(opts.basisCacheDir);
   const walkMeta: WalkMeta = { prior: metaCache.files, next: {} };
   const files = await walkFiles(localFolderPath, opts.ignoreFn, walkMeta, progress);
@@ -697,6 +715,7 @@ async function syncFolderOnce(
     id: syncId,
     rootName,
     install: opts.install,
+    ...(fresh ? { fresh: true } : {}),
     ...(opts.launchMode ? { launchMode: opts.launchMode } : {}),
     files: allFiles.map((f) => ({
       path: f.path,
@@ -726,7 +745,9 @@ async function syncFolderOnce(
   } catch (err) {
     if (attempt < 1 && isENOENT(err)) {
       slog('warn', `sync retrying after missing file during upload (ENOENT)`);
-      return await syncFolderOnce(localFolderPath, opts, reason, attempt + 1);
+      // The server never responded, so a fresh request may not have been
+      // applied; carrying it into the retry is idempotent either way.
+      return await syncFolderOnce(localFolderPath, opts, reason, attempt + 1, fresh);
     }
     throw err;
   }
@@ -756,6 +777,9 @@ async function syncFolderOnce(
         id: genId('sync'),
         payloads: retryPayloads.map((p) => p.payload),
       };
+      // needFull means the server responded, so a fresh wipe already
+      // happened; wiping again would delete the files the first round applied.
+      delete retryMeta.fresh;
       const retryStart = nowMs();
       resp = await httpFolderSyncBatch(
         opts,

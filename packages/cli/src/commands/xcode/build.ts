@@ -92,6 +92,11 @@ export default class XcodeBuild extends BaseCommand {
         'Shell command to run in the synced workspace root before the build, such as "xcodegen generate". Repeat for multiple commands; overrides the prepare list in limrun.yaml.',
       multiple: true,
     }),
+    fresh: Flags.boolean({
+      description:
+        'Wipe the remote sync root and local sync caches before syncing. Use when the remote workspace or the delta cache is suspected stale (e.g. non-idempotent prepare output, or a copy that preserved file timestamps).',
+      default: false,
+    }),
     'build-setting': Flags.string({
       description:
         'Xcode build setting to pass as KEY=VALUE. Allowed keys are a server-maintained allowlist of safe settings (e.g. SWIFT_ACTIVE_COMPILATION_CONDITIONS) plus any APP_CONFIG_* key. Repeat for multiple.',
@@ -218,6 +223,7 @@ export default class XcodeBuild extends BaseCommand {
         ignore: compileIgnorePatterns(flags.ignore),
         additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
         onProgress: syncProgressRenderer(reporter, 'Syncing'),
+        fresh: flags.fresh,
       };
       try {
         await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);

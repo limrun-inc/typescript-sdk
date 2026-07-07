@@ -67,6 +67,12 @@ export default class XcodeSync extends BaseCommand {
       default: false,
       exclusive: ['watch', 'id'],
     }),
+    fresh: Flags.boolean({
+      description:
+        'Wipe the remote sync root and local sync caches before syncing. Use when the remote workspace or the delta cache is suspected stale (e.g. non-idempotent prepare output, or a copy that preserved file timestamps).',
+      default: false,
+      exclusive: ['dry-run'],
+    }),
   };
 
   async run(): Promise<void> {
@@ -96,6 +102,7 @@ export default class XcodeSync extends BaseCommand {
         ignore: compileIgnorePatterns(flags.ignore),
         additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
         onProgress: syncProgressRenderer(reporter, 'Syncing'),
+        fresh: flags.fresh,
       };
       let result: Awaited<ReturnType<typeof xcodeClient.sync>>;
       try {
