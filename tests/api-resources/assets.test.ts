@@ -29,6 +29,7 @@ describe('resource assets', () => {
           includeAppStore: true,
           includeDownloadUrl: true,
           includeUploadUrl: true,
+          kindFilter: 'App',
           limit: 50,
           nameFilter: 'nameFilter',
           namePrefixFilter: 'namePrefixFilter',
@@ -88,6 +89,11 @@ describe('resource assets', () => {
 
   // Mock server tests are disabled
   test.skip('getOrCreate: required and optional params', async () => {
-    const response = await client.assets.getOrCreate({ name: 'name', ttl: 'ttl' });
+    const response = await client.assets.getOrCreate({
+      name: 'name',
+      kind: 'App',
+      platform: 'ios',
+      ttl: 'ttl',
+    });
   });
 });
