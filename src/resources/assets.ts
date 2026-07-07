@@ -54,6 +54,8 @@ export class Assets extends APIResource {
 export interface Asset {
   id: string;
 
+  kind: 'App' | 'Keychain';
+
   name: string;
 
   /**
@@ -72,10 +74,16 @@ export interface Asset {
   md5?: string;
 
   /**
-   * The operating system this asset is for. If not set, the asset is available for
-   * all platforms.
+   * @deprecated Deprecated: alias of platform, always mirrors it. Use platform
+   * instead.
    */
-  os?: 'ios' | 'android';
+  os?: 'ios' | 'android' | 'xcode';
+
+  /**
+   * The platform this asset is for. If not set, the asset is available for all
+   * platforms.
+   */
+  platform?: 'ios' | 'android' | 'xcode';
 
   signedDownloadUrl?: string;
 
@@ -86,6 +94,8 @@ export type AssetListResponse = Array<Asset>;
 
 export interface AssetGetOrCreateResponse {
   id: string;
+
+  kind: 'App' | 'Keychain';
 
   name: string;
 
@@ -102,6 +112,8 @@ export interface AssetGetOrCreateResponse {
    * Returned only if there is a corresponding file uploaded already.
    */
   md5?: string;
+
+  platform?: 'ios' | 'android' | 'xcode';
 }
 
 export interface AssetListParams {
@@ -120,6 +132,11 @@ export interface AssetListParams {
    * Toggles whether an upload URL should be included in the response
    */
   includeUploadUrl?: boolean;
+
+  /**
+   * Filters assets by kind.
+   */
+  kindFilter?: 'App' | 'Keychain';
 
   /**
    * Maximum number of items to be returned. The default is 50.
@@ -159,6 +176,10 @@ export interface AssetGetParams {
 
 export interface AssetGetOrCreateParams {
   name: string;
+
+  kind?: 'App' | 'Keychain';
+
+  platform?: 'ios' | 'android' | 'xcode';
 
   /**
    * Optional time-to-live as a Go duration string (e.g. "24h"). When set, the asset
