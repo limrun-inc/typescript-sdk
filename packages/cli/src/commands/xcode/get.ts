@@ -35,6 +35,8 @@ export default class XcodeGet extends BaseCommand {
           this.output(`Name: ${instance.metadata.displayName || ''}`);
           this.output(`Region: ${instance.spec.region}`);
           this.output(`State: ${instance.status.state}`);
+          if (instance.status.terminationReason)
+            this.output(`Termination Reason: ${instance.status.terminationReason}`);
           this.output(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
           if (instance.status.sandbox?.xcode?.url) {
             this.output(`Xcode Sandbox URL: ${instance.status.sandbox.xcode.url}`);
