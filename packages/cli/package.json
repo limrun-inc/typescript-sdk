@@ -60,6 +60,9 @@
       "asset": {
         "description": "Upload, download, list, inspect, and delete files that can be used by iOS & Android as pre-installed apps: push, pull, list, delete"
       },
+      "assets": {
+        "description": "Upload, download, list, inspect, and delete files that can be used by iOS & Android as pre-installed apps: push, pull, list, delete"
+      },
       "session": {
         "description": "Manage persistent background sessions for device interaction: start, status, stop. Sessions are used to execute commands on remote devices without the need to reconnect to the device after each command."
       },
