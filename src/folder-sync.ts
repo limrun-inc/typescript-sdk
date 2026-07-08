@@ -3,7 +3,13 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { watchFolderTree } from './folder-sync-watcher';
-import { type IgnoreFn } from './folder-sync-ignore';
+import { type IgnoreFn, type SyncIgnore } from './folder-sync-ignore';
+import {
+  loadMetaCache,
+  saveMetaCache,
+  type FileMetaEntry,
+  type SyncMetaCache,
+} from './folder-sync-meta-cache';
 import { Readable } from 'stream';
 import * as zlib from 'zlib';
 import { nodeProxyTransport } from './internal/proxy-transport';
@@ -53,7 +59,46 @@ export type FolderSyncOptions = {
    * in every sync pass but are not watched directly.
    */
   additionalFiles?: AdditionalFileSyncEntry[];
+  /**
+   * Live progress callback, throttled internally. Callback errors are
+   * swallowed; progress must never fail a sync.
+   */
+  onProgress?: (event: SyncProgressEvent) => void;
+  /**
+   * Wipe the remote sync root (including server-generated files the sync
+   * manifest never tracked) and the local sync caches before the initial
+   * sync, so everything uploads full. Watch-mode re-syncs after the initial
+   * one are never fresh.
+   */
+  fresh?: boolean;
 };
+
+export type SyncProgressEvent =
+  /** Walking + hashing the local tree; `hashed` counts actual sha256 passes (cache misses). */
+  | { phase: 'scan'; files: number; hashed: number }
+  /** Comparing against the basis cache to find changed files. */
+  | { phase: 'diff'; checked: number; total: number; changed: number }
+  /** Uploading payload bytes (pre-compression source bytes). */
+  | { phase: 'upload'; sentBytes: number; totalBytes: number; payloads: number };
+
+type ProgressEmitter = (event: SyncProgressEvent, force?: boolean) => void;
+
+const PROGRESS_THROTTLE_MS = 100;
+
+function makeProgressEmitter(onProgress?: (event: SyncProgressEvent) => void): ProgressEmitter {
+  if (!onProgress) return () => {};
+  let lastEmit = 0;
+  return (event, force = false) => {
+    const now = Date.now();
+    if (!force && now - lastEmit < PROGRESS_THROTTLE_MS) return;
+    lastEmit = now;
+    try {
+      onProgress(event);
+    } catch {
+      // Progress must never fail a sync.
+    }
+  };
+}
 
 export type SyncFolderResult = {
   installedAppPath?: string;
@@ -87,6 +132,8 @@ type FolderSyncHttpMeta = {
   rootName: string;
   install?: boolean;
   launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
+  /** Server wipes the sync root + manifest before applying (see FolderSyncOptions.fresh). */
+  fresh?: boolean;
   files: { path: string; size: number; sha256: string; mode: number }[];
   payloads: FolderSyncHttpPayload[];
 };
@@ -171,6 +218,7 @@ async function httpFolderSyncBatch(
   meta: FolderSyncHttpMeta,
   payloadFiles: { filePath: string }[],
   compression: 'zstd' | 'gzip' | 'identity',
+  progress: ProgressEmitter = () => {},
 ): Promise<FolderSyncHttpResponse> {
   const url = folderSyncHttpUrl(opts.apiUrl);
   const headers: Record<string, string> = {
@@ -181,6 +229,8 @@ async function httpFolderSyncBatch(
 
   const metaBytes = Buffer.from(JSON.stringify(meta), 'utf-8');
   const head = Buffer.concat([u32be(metaBytes.length), metaBytes]);
+  const totalBytes = meta.payloads.reduce((sum, p) => sum + p.length, 0);
+  let sentBytes = 0;
 
   async function* gen(): AsyncGenerator<Buffer> {
     yield head;
@@ -196,11 +246,14 @@ async function httpFolderSyncBatch(
           if (bytesRead <= 0) break;
           offset += bytesRead;
           yield buf.subarray(0, bytesRead);
+          sentBytes += bytesRead;
+          progress({ phase: 'upload', sentBytes, totalBytes, payloads: meta.payloads.length });
         }
       } finally {
         await fd.close();
       }
     }
+    progress({ phase: 'upload', sentBytes, totalBytes, payloads: meta.payloads.length }, true);
   }
 
   const sourceStream = Readable.from(gen());
@@ -262,10 +315,23 @@ async function sha256FileHex(filePath: string): Promise<string> {
   });
 }
 
-async function walkFiles(root: string, ignoreFn: IgnoreFn): Promise<FileEntry[]> {
+type WalkMeta = {
+  /** Last-sync entries; an exact (mtimeMs, size) match reuses the recorded sha. */
+  prior: Record<string, FileMetaEntry>;
+  /** Populated with this walk's entries; becomes the next sync's `prior`. */
+  next: Record<string, FileMetaEntry>;
+};
+
+async function walkFiles(
+  root: string,
+  ignoreFn: IgnoreFn,
+  meta?: WalkMeta,
+  progress: ProgressEmitter = () => {},
+): Promise<FileEntry[]> {
   const rootResolved = path.resolve(root);
 
   const out: FileEntry[] = [];
+  let hashed = 0;
   const stack: string[] = [rootResolved];
   while (stack.length) {
     const dir = stack.pop()!;
@@ -288,14 +354,105 @@ async function walkFiles(root: string, ignoreFn: IgnoreFn): Promise<FileEntry[]>
       if (ignoreFn(rel)) continue;
 
       const st = await fs.promises.stat(abs);
-      const sha256 = await sha256FileHex(abs);
+      const prior = meta?.prior[rel];
+      let sha256: string;
+      if (prior && prior.mtimeMs === st.mtimeMs && prior.size === st.size) {
+        sha256 = prior.sha256;
+      } else {
+        sha256 = await sha256FileHex(abs);
+        hashed++;
+      }
+      if (meta) {
+        meta.next[rel] = { mtimeMs: st.mtimeMs, size: st.size, sha256 };
+      }
       // Preserve POSIX permission bits (including +x). Mask out file-type bits.
       const mode = st.mode & 0o7777;
       out.push({ path: rel, size: st.size, sha256, absPath: abs, mode });
+      progress({ phase: 'scan', files: out.length, hashed });
     }
   }
+  progress({ phase: 'scan', files: out.length, hashed }, true);
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
+}
+
+export type SyncPlanEntry = { path: string; size: number };
+export type SyncPlanExcluded = { path: string; source?: string; rule?: string };
+export type SyncPlan = { included: SyncPlanEntry[]; excluded: SyncPlanExcluded[] };
+
+/**
+ * Enumerates what a sync of `root` would upload and what it would exclude
+ * (with the deciding layer and rule), without hashing, caching, or any
+ * network traffic. Excluded directories are reported once, with a trailing
+ * slash, and not descended into. Same traversal as walkFiles.
+ */
+export async function planFolderSync(root: string, ignore: SyncIgnore): Promise<SyncPlan> {
+  const rootResolved = path.resolve(root);
+  const included: SyncPlanEntry[] = [];
+  const excluded: SyncPlanExcluded[] = [];
+  const record = (rel: string) => {
+    const decision = ignore.explain(rel);
+    excluded.push({
+      path: rel,
+      ...(decision.source !== undefined && { source: decision.source }),
+      ...(decision.rule !== undefined && { rule: decision.rule }),
+    });
+  };
+
+  const stack: string[] = [rootResolved];
+  while (stack.length) {
+    const dir = stack.pop()!;
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const ent of entries) {
+      const abs = path.join(dir, ent.name);
+      const rel = path.relative(rootResolved, abs).split(path.sep).join('/');
+
+      if (ent.isDirectory()) {
+        const relDir = rel + '/';
+        if (ignore.ignores(relDir)) {
+          record(relDir);
+          continue;
+        }
+        stack.push(abs);
+        continue;
+      }
+      if (!ent.isFile()) continue;
+      if (ignore.ignores(rel)) {
+        record(rel);
+        continue;
+      }
+      const st = await fs.promises.stat(abs);
+      included.push({ path: rel, size: st.size });
+    }
+  }
+  included.sort((a, b) => a.path.localeCompare(b.path));
+  excluded.sort((a, b) => a.path.localeCompare(b.path));
+  return { included, excluded };
+}
+
+/**
+ * Returns the sha of a basis copy, reusing the metadata cache on an exact
+ * (mtimeMs, size) match and repairing the entry after a re-hash. Returns
+ * undefined when the basis copy doesn't exist.
+ */
+async function basisShaFor(
+  basisMeta: Record<string, FileMetaEntry>,
+  relPath: string,
+  basisPath: string,
+): Promise<string | undefined> {
+  let st: fs.Stats;
+  try {
+    st = await fs.promises.stat(basisPath);
+  } catch {
+    return undefined;
+  }
+  const entry = basisMeta[relPath];
+  if (entry && entry.mtimeMs === st.mtimeMs && entry.size === st.size) {
+    return entry.sha256;
+  }
+  const sha256 = await sha256FileHex(basisPath);
+  basisMeta[relPath] = { mtimeMs: st.mtimeMs, size: st.size, sha256 };
+  return sha256;
 }
 
 async function collectAdditionalFiles(
@@ -409,11 +566,12 @@ export async function syncFolder(
   };
   log('debug', `setup ${localFolderPath} watch=${opts.watch} basisCacheDir=${opts.basisCacheDir}`);
   if (!opts.watch) {
-    const result = await syncFolderOnce(localFolderPath, opts);
+    const result = await syncFolderOnce(localFolderPath, opts, undefined, 0, opts.fresh ?? false);
     return result;
   }
   // Initial sync, then watch for changes and re-run sync in the background.
-  const first = await syncFolderOnce(localFolderPath, opts, 'startup');
+  // Only the initial sync can be fresh; watcher re-syncs never are.
+  const first = await syncFolderOnce(localFolderPath, opts, 'startup', 0, opts.fresh ?? false);
   let inFlight = false;
   let queued = false;
 
@@ -455,13 +613,23 @@ async function syncFolderOnce(
   opts: FolderSyncOptions,
   reason?: string,
   attempt = 0,
+  fresh = false,
 ): Promise<SyncFolderResult> {
   const totalStart = nowMs();
   const log = opts.log ?? noopLogger;
   const slog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => log(level, `syncFolder: ${msg}`);
   const maxPatchBytes = opts.maxPatchBytes ?? 4 * 1024 * 1024;
 
-  const files = await walkFiles(localFolderPath, opts.ignoreFn);
+  const progress = makeProgressEmitter(opts.onProgress);
+  if (fresh) {
+    // Local caches must match the wiped server state so every payload
+    // uploads full against an empty basis.
+    slog('debug', 'fresh sync: wiping local basis + metadata caches');
+    await fs.promises.rm(opts.basisCacheDir, { recursive: true, force: true });
+  }
+  const metaCache = await loadMetaCache(opts.basisCacheDir);
+  const walkMeta: WalkMeta = { prior: metaCache.files, next: {} };
+  const files = await walkFiles(localFolderPath, opts.ignoreFn, walkMeta, progress);
   const additionalFiles = await collectAdditionalFiles(opts.additionalFiles);
   const allFiles = [...files, ...additionalFiles].sort((a, b) => a.path.localeCompare(b.path));
   const fileMap = new Map(allFiles.map((f) => [f.path, f]));
@@ -482,22 +650,22 @@ async function syncFolderOnce(
   // Build payload list by comparing against local basis cache (single-flight/watch assumes server matches cache).
   const encodeLimit = concurrencyLimit();
   const changed: FileEntry[] = [];
+  let checked = 0;
   for (const f of allFiles) {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
-    if (!fs.existsSync(basisPath)) {
-      changed.push(f);
-      continue;
-    }
-    const basisSha = await sha256FileHex(basisPath);
-    if (basisSha !== f.sha256.toLowerCase()) {
+    const basisSha = await basisShaFor(metaCache.basis, f.path, basisPath);
+    if (basisSha === undefined || basisSha !== f.sha256.toLowerCase()) {
       changed.push(f);
     }
+    checked++;
+    progress({ phase: 'diff', checked, total: allFiles.length, changed: changed.length });
   }
+  progress({ phase: 'diff', checked, total: allFiles.length, changed: changed.length }, true);
 
   const encodedPayloads = await mapLimit(changed, encodeLimit, async (f): Promise<EncodedPayload> => {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
-    if (fs.existsSync(basisPath)) {
-      const basisSha = await sha256FileHex(basisPath);
+    const basisSha = await basisShaFor(metaCache.basis, f.path, basisPath);
+    if (basisSha !== undefined) {
       const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limulator-xdelta3-'));
       const patchPath = path.join(tmpDir, 'patch.xdelta3');
       const encodeStart = nowMs();
@@ -546,6 +714,7 @@ async function syncFolderOnce(
     id: syncId,
     rootName,
     install: opts.install,
+    ...(fresh ? { fresh: true } : {}),
     ...(opts.launchMode ? { launchMode: opts.launchMode } : {}),
     files: allFiles.map((f) => ({
       path: f.path,
@@ -570,11 +739,14 @@ async function syncFolderOnce(
       meta,
       encodedPayloads.map((p) => ({ filePath: p.filePath })),
       compression,
+      progress,
     );
   } catch (err) {
     if (attempt < 1 && isENOENT(err)) {
       slog('warn', `sync retrying after missing file during upload (ENOENT)`);
-      return await syncFolderOnce(localFolderPath, opts, reason, attempt + 1);
+      // The server never responded, so a fresh request may not have been
+      // applied; carrying it into the retry is idempotent either way.
+      return await syncFolderOnce(localFolderPath, opts, reason, attempt + 1, fresh);
     }
     throw err;
   }
@@ -604,12 +776,16 @@ async function syncFolderOnce(
         id: genId('sync'),
         payloads: retryPayloads.map((p) => p.payload),
       };
+      // needFull means the server responded, so a fresh wipe already
+      // happened; wiping again would delete the files the first round applied.
+      delete retryMeta.fresh;
       const retryStart = nowMs();
       resp = await httpFolderSyncBatch(
         opts,
         retryMeta,
         retryPayloads.map((p) => ({ filePath: p.filePath })),
         preferredCompression,
+        progress,
       );
       httpSendMsTotal += nowMs() - retryStart;
     }
@@ -648,8 +824,18 @@ async function syncFolderOnce(
     out.installedBundleId = resp.bundleId;
   }
   // Update local cache optimistically: after a successful sync, cache reflects current local tree.
+  const nextCache: SyncMetaCache = { version: 1, files: walkMeta.next, basis: {} };
   for (const f of allFiles) {
     await cachePut(opts.basisCacheDir, f.path, f.absPath);
+    try {
+      const st = await fs.promises.stat(cacheGet(opts.basisCacheDir, f.path));
+      nextCache.basis[f.path] = { mtimeMs: st.mtimeMs, size: st.size, sha256: f.sha256.toLowerCase() };
+    } catch {
+      // A missing basis copy just re-hashes next sync.
+    }
   }
+  // Saved only after a successful sync, so a failed one never persists
+  // optimistic state; entries for deleted files drop out via the rebuild.
+  await saveMetaCache(opts.basisCacheDir, nextCache);
   return out;
 }

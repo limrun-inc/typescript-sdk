@@ -1,8 +1,12 @@
+import path from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
+import { ProgressReporter } from '../../lib/progress';
+import { formatBytes, syncProgressRenderer } from '../../lib/sync-progress';
+import { createXcodeSyncIgnore, defaultBasisCacheDir, planFolderSync } from '@limrun/api';
 
 export default class XcodeSync extends BaseCommand {
   static summary = 'Continuously sync local source code to an Xcode sandbox';
@@ -57,11 +61,28 @@ export default class XcodeSync extends BaseCommand {
         'Additional file to sync as localPath=remotePath, for example ~/.netrc=~/.netrc. Repeat for multiple files.',
       multiple: true,
     }),
+    'dry-run': Flags.boolean({
+      description:
+        'List what would sync and what is excluded (and by which rule), without contacting any instance.',
+      default: false,
+      exclusive: ['watch', 'id'],
+    }),
+    fresh: Flags.boolean({
+      description:
+        'Wipe the remote sync root and local sync caches before syncing. Use when the remote workspace or the delta cache is suspected stale (e.g. non-idempotent prepare output, or a copy that preserved file timestamps).',
+      default: false,
+      exclusive: ['dry-run'],
+    }),
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeSync);
     this.setParsedFlags(flags);
+
+    if (flags['dry-run']) {
+      await this.dryRun(args.path ?? process.cwd(), flags);
+      return;
+    }
 
     await this.withAuth(async () => {
       const target = await this.resolveXcodeTargetOrCreate(flags.id);
@@ -69,7 +90,8 @@ export default class XcodeSync extends BaseCommand {
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);
 
-      this.info(`Syncing ${syncPath} to instance ${id}...`);
+      const reporter = new ProgressReporter(() => this.shouldSuppressInfo());
+      reporter.start(`Syncing ${syncPath} to instance ${id}...`);
       const syncStart = Date.now();
 
       const syncOptions = {
@@ -79,11 +101,17 @@ export default class XcodeSync extends BaseCommand {
         maxPatchBytes: flags['max-patch-bytes'],
         ignore: compileIgnorePatterns(flags.ignore),
         additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
+        onProgress: syncProgressRenderer(reporter, 'Syncing'),
+        fresh: flags.fresh,
       };
-      const result = await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
-
-      const syncDuration = formatDurationMs(Date.now() - syncStart);
-      this.output(`Sync complete in ${syncDuration}.`);
+      let result: Awaited<ReturnType<typeof xcodeClient.sync>>;
+      try {
+        result = await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
+      } catch (err) {
+        reporter.stop('failure', 'Sync failed');
+        throw err;
+      }
+      reporter.stop('success', `Sync complete in ${formatDurationMs(Date.now() - syncStart)}.`);
 
       if (flags.watch && result.stopWatching) {
         this.output('Watching for changes. Press Ctrl+C to stop.');
@@ -99,5 +127,42 @@ export default class XcodeSync extends BaseCommand {
         });
       }
     });
+  }
+
+  /**
+   * Purely local: builds the exact ignore stack sync() would use and prints
+   * the plan; never touches auth or the instance.
+   */
+  private async dryRun(
+    syncPath: string,
+    flags: { ignore?: string[]; 'basis-cache-dir'?: string },
+  ): Promise<void> {
+    const resolvedPath = path.resolve(syncPath);
+    const basisCacheDir = flags['basis-cache-dir'] ?? defaultBasisCacheDir(resolvedPath);
+    const ignore = await createXcodeSyncIgnore(resolvedPath, {
+      basisCacheDir,
+      ignore: compileIgnorePatterns(flags.ignore),
+    });
+    const plan = await planFolderSync(resolvedPath, ignore);
+
+    if (this.jsonEnabled()) {
+      this.logJson(plan);
+      return;
+    }
+    const totalBytes = plan.included.reduce((sum, f) => sum + f.size, 0);
+    this.output(
+      `Would sync ${plan.included.length.toLocaleString()} files (${formatBytes(
+        totalBytes,
+      )}) from ${resolvedPath}`,
+    );
+    if (plan.excluded.length === 0) {
+      return;
+    }
+    this.output('\nExcluded:');
+    const width = Math.min(60, Math.max(...plan.excluded.map((e) => e.path.length)) + 2);
+    for (const e of plan.excluded) {
+      const by = e.rule !== undefined ? `${e.source} (${e.rule})` : e.source ?? '';
+      this.output(`  ${e.path.padEnd(width)}${by}`);
+    }
   }
 }

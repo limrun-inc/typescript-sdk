@@ -9,8 +9,9 @@ import {
   syncFolder as syncFolderImpl,
   type AdditionalFileSyncEntry,
   type FolderSyncOptions,
+  type SyncProgressEvent,
 } from '../folder-sync';
-import { createIgnoreFn } from '../folder-sync-ignore';
+import { createIgnore, type IgnoreFn, type IgnoreLogger, type SyncIgnore } from '../folder-sync-ignore';
 import { nodeProxyTransport } from '../internal/proxy-transport';
 import { directInstanceHttpError, isDirectInstanceHttpError } from '../internal/direct-instance-errors';
 import { LimrunError } from '../core/error';
@@ -49,6 +50,14 @@ export type SyncOptions = {
    * Extra files to sync on every sync pass.
    */
   additionalFiles?: AdditionalFileSyncEntry[];
+  /** Live progress callback (throttled); see SyncProgressEvent. */
+  onProgress?: (event: SyncProgressEvent) => void;
+  /**
+   * Wipe the remote sync root and the local sync caches before syncing, so
+   * server-generated files (prepare output, stale build state) are removed
+   * too.
+   */
+  fresh?: boolean;
 };
 
 export type SyncResult = {
@@ -97,6 +106,25 @@ export type XcodeBuildOptions = {
   signing?: XcodeSigningConfig;
   reactNative?: ReactNativeBuildConfig;
   buildSettings?: Record<string, string>;
+  /**
+   * Shell commands run in the workspace root before dependency resolution and
+   * xcodebuild (e.g. `xcodegen generate`), for projects whose Xcode project is
+   * generated rather than committed.
+   */
+  prepare?: string[];
+  /**
+   * Checkout state captured at sync time, exported to prepare commands as
+   * GIT_COMMIT/GIT_BRANCH/GIT_DIRTY. Sync never uploads .git, so git commands
+   * fail in the remote workspace; prepare scripts should prefer this
+   * environment.
+   */
+  gitContext?: GitBuildContext;
+};
+
+export type GitBuildContext = {
+  commit?: string;
+  branch?: string;
+  dirty?: boolean;
 };
 
 export type SimulatorInstallState =
@@ -383,6 +411,62 @@ function normalizeWorkspaceRelativePath(remotePath: string): string {
   return parts.join('/');
 }
 
+/**
+ * Xcode/dependency build output that must never sync: it's machine-specific,
+ * huge, and regenerated remotely (pods, SwiftPM checkouts, DerivedData).
+ */
+export const xcodeDefaultSyncExcludes: IgnoreFn = (relativePath: string) => {
+  if (
+    relativePath.startsWith('build/') ||
+    relativePath.startsWith('.build/') ||
+    relativePath.startsWith('DerivedData/') ||
+    relativePath.startsWith('Index.noindex/') ||
+    relativePath.startsWith('ModuleCache.noindex/') ||
+    relativePath.startsWith('.index-build/')
+  ) {
+    return true;
+  }
+  if (
+    relativePath.startsWith('.swiftpm/') ||
+    relativePath.startsWith('Pods/') ||
+    relativePath.startsWith('Carthage/Build/')
+  ) {
+    return true;
+  }
+  if (relativePath.includes('/xcuserdata/')) {
+    return true;
+  }
+  if (relativePath.includes('.dSYM/')) {
+    return true;
+  }
+  return false;
+};
+
+/** The default client-side delta cache dir for a sync root, keyed by its absolute path. */
+export function defaultBasisCacheDir(resolvedPath: string): string {
+  const folderName = path.basename(resolvedPath);
+  const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
+  return path.join(os.tmpdir(), `limsync-cache-${folderName}-${hash}`);
+}
+
+/**
+ * The exact ignore stack `sync()` uses, exported so dry-run reporting can
+ * never diverge from what a real sync would upload.
+ */
+export async function createXcodeSyncIgnore(
+  root: string,
+  opts: { basisCacheDir: string; ignore?: IgnoreFn | undefined; log?: IgnoreLogger | undefined },
+): Promise<SyncIgnore> {
+  return createIgnore(root, {
+    basisCacheDir: opts.basisCacheDir,
+    ...(opts.log && { log: opts.log }),
+    additional: [
+      { source: 'xcode-defaults', fn: xcodeDefaultSyncExcludes },
+      ...(opts.ignore ? [{ source: 'cli-ignore', fn: opts.ignore }] : []),
+    ],
+  });
+}
+
 async function fetchSandboxInfo(apiUrl: string, token: string): Promise<{ homeDir: string }> {
   const res = await nodeProxyTransport.fetch(`${apiUrl}/info`, {
     method: 'GET',
@@ -562,10 +646,8 @@ export class XcodeInstances extends GeneratedXcodeInstances {
     return {
       async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
         const resolvedPath = path.resolve(localCodePath);
-        const folderName = path.basename(resolvedPath);
-        const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
-        const cacheKey = `limsync-cache-${folderName}-${hash}`;
-        const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
+        const cacheKey = path.basename(defaultBasisCacheDir(resolvedPath));
+        const basisCacheDir = opts?.basisCacheDir ?? defaultBasisCacheDir(resolvedPath);
         const sandboxInfo =
           opts?.additionalFiles && opts.additionalFiles.length > 0 ? await getSandboxInfo() : undefined;
         const additionalFiles = opts?.additionalFiles?.map((file) => ({
@@ -580,45 +662,21 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           token,
           udid: cacheKey,
           install: opts?.install ?? true,
-          ignoreFn: await createIgnoreFn(localCodePath, {
-            basisCacheDir,
-            log,
-            additional: (relativePath: string) => {
-              if (
-                relativePath.startsWith('build/') ||
-                relativePath.startsWith('.build/') ||
-                relativePath.startsWith('DerivedData/') ||
-                relativePath.startsWith('Index.noindex/') ||
-                relativePath.startsWith('ModuleCache.noindex/') ||
-                relativePath.startsWith('.index-build/')
-              ) {
-                return true;
-              }
-              if (
-                relativePath.startsWith('.swiftpm/') ||
-                relativePath.startsWith('Pods/') ||
-                relativePath.startsWith('Carthage/Build/')
-              ) {
-                return true;
-              }
-              if (relativePath.includes('/xcuserdata/')) {
-                return true;
-              }
-              if (relativePath.includes('.dSYM/')) {
-                return true;
-              }
-              if (opts?.ignore?.(relativePath)) {
-                return true;
-              }
-              return false;
-            },
-          }),
+          ignoreFn: (
+            await createXcodeSyncIgnore(localCodePath, {
+              basisCacheDir,
+              log,
+              ignore: opts?.ignore,
+            })
+          ).ignores,
           basisCacheDir,
           watch: opts?.watch ?? true,
           maxPatchBytes: opts?.maxPatchBytes ?? 4 * 1024 * 1024,
           launchMode: 'ForegroundIfRunning',
           log,
           ...(additionalFiles ? { additionalFiles } : {}),
+          ...(opts?.onProgress ? { onProgress: opts.onProgress } : {}),
+          ...(opts?.fresh ? { fresh: true } : {}),
         };
 
         const result = await syncFolderImpl(localCodePath, codeSyncOpts);
@@ -635,9 +693,14 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         if (options?.buildSettings) {
           validateBuildSettings(options.buildSettings);
         }
+        if (options?.prepare?.some((cmd) => typeof cmd !== 'string' || cmd.trim() === '')) {
+          throw new Error('prepare commands must be non-empty strings');
+        }
         const request: ExecRequest = {
           command: 'xcodebuild',
           ...(settings && { xcodebuild: settings }),
+          ...(options?.prepare?.length && { prepare: options.prepare }),
+          ...(options?.gitContext && { gitContext: options.gitContext }),
           ...(options?.reactNative && { reactNative: options.reactNative }),
           ...(options?.signing && { signing: options.signing }),
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),

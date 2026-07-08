@@ -18,6 +18,14 @@ export {
   type ExecChildProcess,
 } from './exec-client';
 export {
+  type SyncProgressEvent,
+  planFolderSync,
+  type SyncPlan,
+  type SyncPlanEntry,
+  type SyncPlanExcluded,
+} from './folder-sync';
+export { type SyncIgnore, type IgnoreDecision } from './folder-sync-ignore';
+export {
   type XcodeCreateClientParams,
   type XcodeClient,
   type RbeStatus,
@@ -33,8 +41,12 @@ export {
   RbeUnsupportedError,
   deriveRbeTunnelUrl,
   DEFAULT_RBE_TUNNEL_PORT,
+  createXcodeSyncIgnore,
+  defaultBasisCacheDir,
+  xcodeDefaultSyncExcludes,
   type XcodeProjectConfig,
   type XcodeBuildOptions,
+  type GitBuildContext,
   type ReactNativeBuildConfig,
   type SimulatorAttachResult,
   type SimulatorStatus,

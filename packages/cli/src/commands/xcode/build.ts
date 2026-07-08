@@ -5,6 +5,10 @@ import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
+import { readRepoConfig } from '../../lib/repo-config';
+import { readGitContext } from '../../lib/git-context';
+import { ProgressReporter } from '../../lib/progress';
+import { syncProgressRenderer } from '../../lib/sync-progress';
 import { parseBuildSettingEntries, type XcodeBuildOptions, type XcodeClient } from '@limrun/api';
 
 const DEVICE_SDKS = new Set(['iphoneos', 'watchos']);
@@ -38,6 +42,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152',
     '<%= config.bin %> xcode build ./MyProject --ignore "\\\\.xcuserdata/"',
     '<%= config.bin %> xcode build ./MyProject --additional-file ~/.netrc=~/.netrc',
+    '<%= config.bin %> xcode build ./MyMonorepo --project ios/MyApp.xcodeproj --scheme MyApp --prepare "make layers" --prepare "xcodegen generate --spec ios/project.yml"',
   ];
 
   static args = {
@@ -82,6 +87,16 @@ export default class XcodeBuild extends BaseCommand {
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
     'signed-upload-url': Flags.string({
       description: 'Presigned URL to upload the resulting build artifact to.',
+    }),
+    prepare: Flags.string({
+      description:
+        'Shell command to run in the synced workspace root before the build, such as "xcodegen generate". Repeat for multiple commands; overrides the prepare list in limrun.yaml.',
+      multiple: true,
+    }),
+    fresh: Flags.boolean({
+      description:
+        'Wipe the remote sync root and local sync caches before syncing. Use when the remote workspace or the delta cache is suspected stale (e.g. non-idempotent prepare output, or a copy that preserved file timestamps).',
+      default: false,
     }),
     'build-setting': Flags.string({
       description:
@@ -141,15 +156,36 @@ export default class XcodeBuild extends BaseCommand {
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);
 
+      // Repo-checked defaults; explicit flags win per field. prepare is a
+      // whole-list replacement, never a merge.
+      const repoConfig = readRepoConfig(syncPath);
+
       const settings: Record<string, string> = {};
-      if (flags.scheme) settings.scheme = flags.scheme;
-      if (flags.workspace) settings.workspace = flags.workspace;
-      if (flags.project) settings.project = flags.project;
+      const scheme = flags.scheme ?? repoConfig?.scheme;
+      // A location flag replaces the repo config's location wholesale so a
+      // --workspace flag never combines with a limrun.yaml project (xcodebuild
+      // rejects the pair).
+      const flagPinsLocation = flags.workspace !== undefined || flags.project !== undefined;
+      const workspace = flagPinsLocation ? flags.workspace : repoConfig?.workspace;
+      const project = flagPinsLocation ? flags.project : repoConfig?.project;
+      if (scheme) settings.scheme = scheme;
+      if (workspace) settings.workspace = workspace;
+      if (project) settings.project = project;
       if (flags.sdk) settings.sdk = flags.sdk;
       if (flags.ios && !flags.sdk) settings.sdk = 'iphonesimulator';
       if (flags.configuration) settings.configuration = flags.configuration;
 
       const options: XcodeBuildOptions = {};
+      const prepare = flags.prepare ?? repoConfig?.prepare;
+      if (prepare?.length) {
+        options.prepare = prepare;
+        // The remote workspace has no .git; prepare scripts read GIT_* env
+        // captured here instead of shelling out to git.
+        const gitContext = readGitContext(syncPath);
+        if (gitContext) {
+          options.gitContext = gitContext;
+        }
+      }
       if (flags['dev-server-url'] || flags['expo-app-dir']) {
         options.reactNative = {
           ...(flags['expo-app-dir'] && { expoAppDir: flags['expo-app-dir'] }),
@@ -183,7 +219,8 @@ export default class XcodeBuild extends BaseCommand {
         };
       }
 
-      this.info(`Syncing ${syncPath} to instance ${id}...`);
+      const reporter = new ProgressReporter(() => this.shouldSuppressInfo());
+      reporter.start(`Syncing ${syncPath} to instance ${id}...`);
       const syncStart = Date.now();
       const syncOptions = {
         watch: false,
@@ -192,10 +229,16 @@ export default class XcodeBuild extends BaseCommand {
         maxPatchBytes: flags['max-patch-bytes'],
         ignore: compileIgnorePatterns(flags.ignore),
         additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
+        onProgress: syncProgressRenderer(reporter, 'Syncing'),
+        fresh: flags.fresh,
       };
-      await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
-      const syncDuration = formatDurationMs(Date.now() - syncStart);
-      this.info(`Sync complete in ${syncDuration}.`);
+      try {
+        await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
+      } catch (err) {
+        reporter.stop('failure', 'Sync failed');
+        throw err;
+      }
+      reporter.stop('success', `Sync complete in ${formatDurationMs(Date.now() - syncStart)}.`);
 
       this.info('Starting xcodebuild...');
 

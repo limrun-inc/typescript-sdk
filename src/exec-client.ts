@@ -21,6 +21,21 @@ export type ExecRequest = {
     sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos';
     configuration?: 'Debug' | 'Release';
   };
+  /**
+   * Shell commands run in the workspace root before dependency resolution
+   * and xcodebuild (e.g. `xcodegen generate`), for projects whose Xcode
+   * project is generated rather than committed.
+   */
+  prepare?: string[];
+  /**
+   * Checkout state captured client-side at sync time; the daemon exports it
+   * to prepare commands as GIT_COMMIT/GIT_BRANCH/GIT_DIRTY.
+   */
+  gitContext?: {
+    commit?: string;
+    branch?: string;
+    dirty?: boolean;
+  };
   reactNative?: {
     expoAppDir?: string;
     devServerURL?: string;
