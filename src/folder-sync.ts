@@ -68,8 +68,7 @@ export type FolderSyncOptions = {
    * Wipe the remote sync root (including server-generated files the sync
    * manifest never tracked) and the local sync caches before the initial
    * sync, so everything uploads full. Watch-mode re-syncs after the initial
-   * one are never fresh. Requires a daemon that understands Meta.fresh;
-   * callers gate on the `fresh` capability.
+   * one are never fresh.
    */
   fresh?: boolean;
 };

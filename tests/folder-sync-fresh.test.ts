@@ -4,7 +4,6 @@ import path from 'path';
 import zlib from 'zlib';
 import { syncFolder } from '@limrun/api/folder-sync';
 import { nodeProxyTransport } from '@limrun/api/internal/proxy-transport';
-import Limrun, { FreshUnsupportedError } from '@limrun/api';
 
 const originalFetch = nodeProxyTransport.fetch;
 
@@ -65,26 +64,5 @@ describe('fresh sync', () => {
     const freshBody = await bodies[2]!;
     expect(freshBody.fresh).toBe(true);
     expect(freshBody.payloads.map((p) => p.kind)).toEqual(['full']);
-  });
-
-  test('rejects with FreshUnsupportedError before any /sync on an old daemon', async () => {
-    const calls: string[] = [];
-    nodeProxyTransport.fetch = jest.fn(async (input: unknown) => {
-      calls.push(String(input));
-      if (String(input).endsWith('/info')) {
-        return new Response(JSON.stringify({ homeDir: '.limbuild-sandbox/home' }), { status: 200 });
-      }
-      throw new Error(`unexpected request: ${input}`);
-    }) as typeof nodeProxyTransport.fetch;
-
-    const client = new Limrun({ apiKey: 'key' });
-    const xcode = await client.xcodeInstances.createClient({
-      apiUrl: 'https://xcode.example.test',
-      token: 'xcode-token',
-    });
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'limsync-fresh-gate-'));
-
-    await expect(xcode.sync(root, { watch: false, fresh: true })).rejects.toThrow(FreshUnsupportedError);
-    expect(calls.some((c) => c.endsWith('/sync'))).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
 import { readRepoConfig } from '../../lib/repo-config';
+import { readGitContext } from '../../lib/git-context';
 import { ProgressReporter } from '../../lib/progress';
 import { syncProgressRenderer } from '../../lib/sync-progress';
 import { parseBuildSettingEntries, type XcodeBuildOptions, type XcodeClient } from '@limrun/api';
@@ -178,6 +179,12 @@ export default class XcodeBuild extends BaseCommand {
       const prepare = flags.prepare ?? repoConfig?.prepare;
       if (prepare?.length) {
         options.prepare = prepare;
+        // The remote workspace has no .git; prepare scripts read GIT_* env
+        // captured here instead of shelling out to git.
+        const gitContext = readGitContext(syncPath);
+        if (gitContext) {
+          options.gitContext = gitContext;
+        }
       }
       if (flags['dev-server-url'] || flags['expo-app-dir']) {
         options.reactNative = {

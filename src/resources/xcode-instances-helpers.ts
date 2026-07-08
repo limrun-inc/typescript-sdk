@@ -55,8 +55,7 @@ export type SyncOptions = {
   /**
    * Wipe the remote sync root and the local sync caches before syncing, so
    * server-generated files (prepare output, stale build state) are removed
-   * too. Requires a daemon that advertises the `fresh` capability; older
-   * instances reject the sync up front.
+   * too.
    */
   fresh?: boolean;
 };
@@ -110,10 +109,22 @@ export type XcodeBuildOptions = {
   /**
    * Shell commands run in the workspace root before dependency resolution and
    * xcodebuild (e.g. `xcodegen generate`), for projects whose Xcode project is
-   * generated rather than committed. Requires a daemon that advertises the
-   * `prepare` capability; older instances reject the build up front.
+   * generated rather than committed.
    */
   prepare?: string[];
+  /**
+   * Checkout state captured at sync time, exported to prepare commands as
+   * GIT_COMMIT/GIT_BRANCH/GIT_DIRTY. Sync never uploads .git, so git commands
+   * fail in the remote workspace; prepare scripts should prefer this
+   * environment.
+   */
+  gitContext?: GitBuildContext;
+};
+
+export type GitBuildContext = {
+  commit?: string;
+  branch?: string;
+  dirty?: boolean;
 };
 
 export type SimulatorInstallState =
@@ -456,31 +467,19 @@ export async function createXcodeSyncIgnore(
   });
 }
 
-type SandboxInfo = {
-  homeDir: string;
-  /** Feature flags the daemon advertises; empty on daemons that predate them. */
-  capabilities: Set<string>;
-};
-
-async function fetchSandboxInfo(apiUrl: string, token: string): Promise<SandboxInfo> {
+async function fetchSandboxInfo(apiUrl: string, token: string): Promise<{ homeDir: string }> {
   const res = await nodeProxyTransport.fetch(`${apiUrl}/info`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
     },
   });
-  const body = await readJsonResponse<{ homeDir?: string; capabilities?: unknown }>(res, 'GET /info');
+  const body = await readJsonResponse<{ homeDir?: string }>(res, 'GET /info');
   if (!body.homeDir) {
     throw new Error('GET /info response is missing homeDir');
   }
-  const capabilities = new Set<string>(
-    Array.isArray(body.capabilities) ?
-      body.capabilities.filter((c): c is string => typeof c === 'string')
-    : [],
-  );
   return {
     homeDir: normalizeWorkspaceRelativePath(body.homeDir),
-    capabilities,
   };
 }
 
@@ -520,38 +519,6 @@ export class RbeUnsupportedError extends LimrunError {
         '(for example production instead of staging).',
     );
     this.name = 'RbeUnsupportedError';
-  }
-}
-
-/**
- * Raised when the caller requests prepare commands but the instance's daemon
- * does not advertise the capability, so the request would be silently
- * mishandled rather than rejected.
- */
-export class PrepareUnsupportedError extends LimrunError {
-  constructor() {
-    super(
-      'This Xcode instance does not support prepare commands yet. ' +
-        'Create a new instance and retry, or remove the prepare commands ' +
-        '(limrun.yaml or --prepare) to build without them.',
-    );
-    this.name = 'PrepareUnsupportedError';
-  }
-}
-
-/**
- * Raised when the caller requests a fresh sync but the instance's daemon does
- * not advertise the capability. An old daemon would silently ignore the flag
- * and keep stale server-generated files, which is exactly what a fresh sync
- * promises to remove.
- */
-export class FreshUnsupportedError extends LimrunError {
-  constructor() {
-    super(
-      'This Xcode instance does not support fresh sync yet. ' +
-        'Create a new instance and retry, or run again without --fresh.',
-    );
-    this.name = 'FreshUnsupportedError';
   }
 }
 
@@ -616,7 +583,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
 
     const log = createLogger(params.logLevel ?? 'info');
     const client = this._client;
-    let sandboxInfoPromise: Promise<SandboxInfo> | undefined;
+    let sandboxInfoPromise: Promise<{ homeDir: string }> | undefined;
     const getSandboxInfo = () => {
       sandboxInfoPromise ??= fetchSandboxInfo(apiUrl, token);
       return sandboxInfoPromise;
@@ -678,15 +645,6 @@ export class XcodeInstances extends GeneratedXcodeInstances {
 
     return {
       async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
-        if (opts?.fresh) {
-          // Gate before any transfer: an old daemon would silently ignore
-          // the flag and keep stale server-generated files, which is
-          // exactly what a fresh sync promises to remove.
-          const info = await getSandboxInfo();
-          if (!info.capabilities.has('fresh')) {
-            throw new FreshUnsupportedError();
-          }
-        }
         const resolvedPath = path.resolve(localCodePath);
         const cacheKey = path.basename(defaultBasisCacheDir(resolvedPath));
         const basisCacheDir = opts?.basisCacheDir ?? defaultBasisCacheDir(resolvedPath);
@@ -742,42 +700,28 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           command: 'xcodebuild',
           ...(settings && { xcodebuild: settings }),
           ...(options?.prepare?.length && { prepare: options.prepare }),
+          ...(options?.gitContext && { gitContext: options.gitContext }),
           ...(options?.reactNative && { reactNative: options.reactNative }),
           ...(options?.signing && { signing: options.signing }),
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
         };
 
-        // Gate on the daemon capability before /exec: an older daemon would
-        // ignore the field and build without the customer's codegen, a
-        // confusing failure long after the request.
-        let requestPromise: Promise<ExecRequest> | undefined;
-        if (request.prepare) {
-          requestPromise = getSandboxInfo().then((info) => {
-            if (!info.capabilities.has('prepare')) {
-              throw new PrepareUnsupportedError();
-            }
-            return request;
-          });
-        }
-
         if (options?.upload && 'assetName' in options.upload) {
-          const uploadPromise = (requestPromise ?? Promise.resolve(request)).then(() =>
-            mintAssetUploadUrls(client.assets, (options.upload as { assetName: string }).assetName).then(
-              (asset) => {
-                request.signedUploadUrl = asset.signedUploadUrl;
-                request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
-                return request;
-              },
-            ),
+          const requestPromise = mintAssetUploadUrls(client.assets, options.upload.assetName).then(
+            (asset) => {
+              request.signedUploadUrl = asset.signedUploadUrl;
+              request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
+              return request;
+            },
           );
-          return exec(uploadPromise, { apiUrl, token, log });
+          return exec(requestPromise, { apiUrl, token, log });
         }
 
         if (options?.upload && 'signedUploadUrl' in options.upload) {
           request.signedUploadUrl = options.upload.signedUploadUrl;
         }
 
-        return exec(requestPromise ?? request, { apiUrl, token, log });
+        return exec(request, { apiUrl, token, log });
       },
 
       async getSimulator(): Promise<SimulatorStatus> {
