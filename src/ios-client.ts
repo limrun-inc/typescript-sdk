@@ -270,7 +270,17 @@ export type DetoxLaunchRuntime = {
 
 export type LaunchAppRuntime = DetoxLaunchRuntime;
 
-type StandardLaunchAppOptions = {
+export type LaunchAppShutdownCallback = (exitCode: number, logs: string[]) => Promise<void>;
+
+type LaunchAppShutdownOptions = {
+  /**
+   * Called once when the launched app process exits. The SDK fetches the
+   * server-reported app log tail before invoking this callback.
+   */
+  onShutdown?: LaunchAppShutdownCallback;
+};
+
+type StandardLaunchAppOptions = LaunchAppShutdownOptions & {
   /**
    * Launch behavior when the app may already be running.
    * Defaults to `ForegroundIfRunning` server-side.
@@ -279,7 +289,7 @@ type StandardLaunchAppOptions = {
   runtime?: undefined;
 };
 
-type RuntimeLaunchAppOptions = {
+type RuntimeLaunchAppOptions = LaunchAppShutdownOptions & {
   /** Runtime launches must relaunch so runtime injection is applied. */
   mode?: Extract<LaunchAppMode, 'RelaunchIfRunning'>;
   /** Optional app runtime to attach during launch. */
@@ -936,6 +946,7 @@ type SimctlRequest = {
 type ServerResponse = {
   type: string;
   id: string;
+  execId?: string;
   error?: string;
   // Response-specific fields
   base64?: string;
@@ -960,6 +971,7 @@ type ServerResponse = {
   exitCode?: number;
   // Log tail fields
   logs?: string;
+  logLineCount?: number;
   // App log streaming fields
   lines?: string[];
   // performActions batch result fields
@@ -1294,6 +1306,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
   // Simctl uses streaming, so it needs separate handling
   const simctlExecutions: Map<string, SimctlExecution> = new Map();
+  const appShutdownCallbacks: Map<string, LaunchAppShutdownCallback> = new Map();
 
   const xcrunShimCleanups: Array<() => Promise<void>> = [];
   const httpProxyCleanups: Array<() => Promise<void>> = [];
@@ -1339,6 +1352,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     simctlExecutions.forEach((execution) => execution._handleError(new Error(reason)));
     simctlExecutions.clear();
+    appShutdownCallbacks.clear();
   };
 
   const cleanupConnection = (): void => {
@@ -1427,6 +1441,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return {
         type: request['type'],
         id: request['id'],
+        execId: request['execId'],
         bundleId: request['bundleId'],
         mode: request['mode'],
         runtime: runtime ? { kind: runtime.kind, version: runtime.version } : undefined,
@@ -1529,6 +1544,45 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }),
     };
 
+    const splitAppLogTail = (logs: string): string[] => {
+      if (logs.length === 0) {
+        return [];
+      }
+      return logs.split('\n');
+    };
+
+    const handleAppShutdown = (message: ServerResponse): void => {
+      const execId = message.execId;
+      if (!execId) {
+        logger.warn('Received appShutdown without execId');
+        return;
+      }
+
+      const callback = appShutdownCallbacks.get(execId);
+      if (!callback) {
+        logger.debug(`Received appShutdown for unknown execId: ${execId}`);
+        return;
+      }
+      appShutdownCallbacks.delete(execId);
+
+      const bundleId = message.bundleId;
+      const exitCode = message.exitCode;
+      const logLineCount = message.logLineCount;
+      if (!bundleId || exitCode === undefined || logLineCount === undefined) {
+        logger.warn(`Received incomplete appShutdown for execId: ${execId}`);
+        return;
+      }
+
+      void (async () => {
+        try {
+          const tail = await appLogTail(bundleId, logLineCount);
+          await callback(exitCode, splitAppLogTail(tail));
+        } catch (err) {
+          logger.error('Error in app shutdown callback:', err);
+        }
+      })();
+    };
+
     const setupWebSocket = (): void => {
       cleanupConnection();
       updateConnectionState('connecting');
@@ -1542,6 +1596,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           message = JSON.parse(data.toString());
         } catch (e) {
           logger.error({ data, error: e }, 'Failed to parse JSON message');
+          return;
+        }
+
+        if (message.type === 'appShutdown') {
+          handleAppShutdown(message);
           return;
         }
 
@@ -1800,10 +1859,20 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         );
       }
       const mode = launchOptions.runtime ? 'RelaunchIfRunning' : launchOptions.mode;
+      const execId = launchOptions.onShutdown ? generateId() : undefined;
+      if (execId && launchOptions.onShutdown) {
+        appShutdownCallbacks.set(execId, launchOptions.onShutdown);
+      }
       return sendRequest<void>('launchApp', {
         bundleId,
         mode,
         runtime: launchOptions.runtime,
+        execId,
+      }).catch((error) => {
+        if (execId) {
+          appShutdownCallbacks.delete(execId);
+        }
+        throw error;
       });
     };
 
