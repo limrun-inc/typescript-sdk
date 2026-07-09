@@ -32,7 +32,6 @@ From a fresh checkout of `typescript-sdk`, install JavaScript dependencies and
 initialize the upstream xdelta submodule:
 
 ```sh
-yarn install
 git submodule update --init --recursive packages/xdelta3-wasm/native/xdelta
 ```
 
@@ -40,20 +39,15 @@ Install and activate Emscripten before rebuilding the WASM module. One local
 setup option is:
 
 ```sh
-git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
-~/emsdk/emsdk install latest
-~/emsdk/emsdk activate latest
-source ~/emsdk/emsdk_env.sh
+brew install emscripten
 ```
-
-If Emscripten is installed elsewhere, either make `emcc` available on `PATH` or
-set `EMCC=/path/to/emcc`.
 
 Then build the package:
 
 ```sh
 cd packages/xdelta3-wasm
-npm run build:wasm
+yarn install
+yarn run build:wasm
 ```
 
 `build:wasm` compiles `native/xdelta/xdelta3/xdelta3.c` and `native/xd3w.c`

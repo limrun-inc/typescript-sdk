@@ -22,8 +22,7 @@
   },
   "license": "Apache-2.0",
   "scripts": {
-    "build": "rm -rf dist && tsc",
-    "build:wasm": "rm -rf dist && ./native/build.sh && tsc",
+    "build": "rm -rf dist && ./native/build.sh && tsc",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {

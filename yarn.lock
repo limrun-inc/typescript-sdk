@@ -688,8 +688,10 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@limrun/xdelta3-wasm@file:packages/xdelta3-wasm":
+"@limrun/xdelta3-wasm@^0.1.0":
   version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@limrun/xdelta3-wasm/-/xdelta3-wasm-0.1.0.tgz#227ba764e376eba462c5b0f58cf38bd138504c6c"
+  integrity sha512-Chz7ac5lS1PkEwJbowmdtz7DTIjCtopHNmtqVLZsJh/7FASy6UOH1WH+9rmwala84yyVZMAe9gpjECyLqu6ypw==
 
 "@nodelib/fs.scandir@2.1.5":
   version "2.1.5"
