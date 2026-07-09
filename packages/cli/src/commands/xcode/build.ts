@@ -5,7 +5,12 @@ import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
-import { parseBuildSettingEntries, type XcodeBuildOptions, type XcodeClient } from '@limrun/api';
+import {
+  parseBuildSettingEntries,
+  type TestflightUploadConfig,
+  type XcodeBuildOptions,
+  type XcodeClient,
+} from '@limrun/api';
 
 const DEVICE_SDKS = new Set(['iphoneos', 'watchos']);
 const SIMULATOR_SDKS = new Set(['iphonesimulator', 'watchsimulator']);
@@ -18,6 +23,7 @@ type TestflightFlags = {
   'asc-key-id'?: string;
   'asc-issuer-id'?: string;
   'asc-key'?: string;
+  'asc-wait-timeout'?: number;
 };
 
 export default class XcodeBuild extends BaseCommand {
@@ -114,6 +120,12 @@ export default class XcodeBuild extends BaseCommand {
     }),
     'asc-key': Flags.string({
       description: 'Path to the App Store Connect API private key (.p8). Requires --asc-key-id.',
+    }),
+    'asc-wait-timeout': Flags.integer({
+      description:
+        "How many seconds to watch for App Store Connect's processing verdict after the TestFlight upload. A rejection within the window fails the build; expiry without a verdict succeeds with the build still processing. 0 skips the watch. Defaults to 120, max 1800.",
+      min: 0,
+      max: 1800,
     }),
     'basis-cache-dir': Flags.string({
       description: 'Directory to use for the client-side delta sync cache during the pre-build sync step.',
@@ -273,6 +285,8 @@ export default class XcodeBuild extends BaseCommand {
             result.testflight.uploadId ?? 'unknown'
           }).`,
         );
+      } else if (result.testflight?.state === 'unknown') {
+        this.output('TestFlight: upload status could not be read; check App Store Connect.');
       }
       if (flags.ios) {
         const signedStreamUrl = await this.resolveSimulatorStreamUrl(target, xcodeClient);
@@ -328,14 +342,7 @@ export default class XcodeBuild extends BaseCommand {
 
   // Mirrors the signing convention: passing any asc flag expresses the intent
   // to upload to TestFlight, no separate toggle.
-  private async buildTestflightOptions(flags: TestflightFlags): Promise<
-    | {
-        apiKeyId: string;
-        apiIssuerId?: string;
-        apiPrivateKeyBase64: string;
-      }
-    | undefined
-  > {
+  private async buildTestflightOptions(flags: TestflightFlags): Promise<TestflightUploadConfig | undefined> {
     if (!hasTestflightFlags(flags)) {
       return undefined;
     }
@@ -346,6 +353,7 @@ export default class XcodeBuild extends BaseCommand {
       apiKeyId: flags['asc-key-id'],
       ...(flags['asc-issuer-id'] && { apiIssuerId: flags['asc-issuer-id'] }),
       apiPrivateKeyBase64: await this.readFileBase64(flags['asc-key'], '--asc-key'),
+      ...(flags['asc-wait-timeout'] !== undefined && { waitTimeoutSeconds: flags['asc-wait-timeout'] }),
     };
   }
 
@@ -400,6 +408,7 @@ function hasTestflightFlags(flags: TestflightFlags): boolean {
   return (
     flags['asc-key-id'] !== undefined ||
     flags['asc-issuer-id'] !== undefined ||
-    flags['asc-key'] !== undefined
+    flags['asc-key'] !== undefined ||
+    flags['asc-wait-timeout'] !== undefined
   );
 }
