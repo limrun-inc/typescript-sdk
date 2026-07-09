@@ -1,40 +1,40 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getIosInstanceClient } from '../../lib/instance-client-factory';
+import { getAndroidInstanceClient } from '../../lib/instance-client-factory';
 
-export default class IosSync extends BaseCommand {
-  static summary = 'Sync a built app bundle to a running iOS instance';
+export default class AndroidSync extends BaseCommand {
+  static summary = 'Sync an APK to a running Android instance';
   static description =
-    'Push a built `.app` bundle folder (or the current working directory if omitted) to a running iOS instance and optionally install or relaunch it after each sync. Use `xcode sync` for source code and project file syncing.';
+    'Delta-sync a local APK to a running Android instance using xdelta3 and optionally install or relaunch it after each sync.';
 
   static examples = [
-    '<%= config.bin %> ios sync ./Build/Products/Debug-iphonesimulator/MyApp.app',
-    '<%= config.bin %> ios sync ./MyApp.app --id <ios-instance-ID>',
-    '<%= config.bin %> ios sync ./MyApp.app --watch',
-    '<%= config.bin %> ios sync ./MyApp.app --no-install',
-    '<%= config.bin %> ios sync ./MyApp.app --launch-mode RelaunchIfRunning',
-    '<%= config.bin %> ios sync ./MyApp.app --basis-cache-dir ./.limrun-cache',
+    '<%= config.bin %> android sync ./app-debug.apk',
+    '<%= config.bin %> android sync ./app-debug.apk --id <android-instance-ID>',
+    '<%= config.bin %> android sync ./app-debug.apk --watch',
+    '<%= config.bin %> android sync ./app-debug.apk --no-install',
+    '<%= config.bin %> android sync ./app-debug.apk --launch-mode RelaunchIfRunning',
+    '<%= config.bin %> android sync ./app-debug.apk --basis-cache-dir ./.limrun-cache',
   ];
 
   static args = {
     path: Args.string({
-      description: 'Local `.app` bundle folder to sync. Defaults to the current working directory.',
-      required: false,
+      description: 'Local APK file to sync.',
+      required: true,
     }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
     id: Flags.string({
-      description: 'iOS instance ID to sync to. Defaults to the last created iOS instance.',
+      description: 'Android instance ID to sync to. Defaults to the last created Android instance.',
     }),
     watch: Flags.boolean({
-      description: 'Keep watching the app bundle folder and push changes automatically',
+      description: 'Keep watching the APK file and push changes automatically',
       default: false,
       allowNo: true,
     }),
     install: Flags.boolean({
-      description: 'Install the synced app after each sync',
+      description: 'Install the synced APK after each sync',
       default: true,
       allowNo: true,
     }),
@@ -48,27 +48,26 @@ export default class IosSync extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(IosSync);
+    const { args, flags } = await this.parse(AndroidSync);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const resolvedInstance = this.resolveAndroidInstance(flags.id);
       const id = resolvedInstance.id;
-      const syncPath = args.path ?? process.cwd();
-      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
+      const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
 
-      this.info(`Syncing app bundle ${syncPath} to instance ${id}...`);
+      this.info(`Syncing APK ${args.path} to instance ${id}...`);
 
-      const result = await client.syncApp(syncPath, {
+      const result = await client.syncApp(args.path, {
         watch: flags.watch,
         install: flags.install,
         basisCacheDir: flags['basis-cache-dir'],
         launchMode: flags['launch-mode'] as 'ForegroundIfRunning' | 'RelaunchIfRunning' | undefined,
       });
 
-      this.output('App sync complete.');
+      this.output('APK sync complete.');
       if (result.installedBundleId) {
-        this.output(`Installed bundle ID: ${result.installedBundleId}`);
+        this.output(`Installed package: ${result.installedBundleId}`);
       }
 
       if (flags.watch && result.stopWatching) {
@@ -87,7 +86,7 @@ export default class IosSync extends BaseCommand {
                 await result.stopWatching!();
               } catch (err) {
                 this.warn(
-                  `Failed to stop app watcher cleanly: ${err instanceof Error ? err.message : String(err)}`,
+                  `Failed to stop APK watcher cleanly: ${err instanceof Error ? err.message : String(err)}`,
                 );
               } finally {
                 disconnect();

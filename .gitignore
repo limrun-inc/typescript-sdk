@@ -6,6 +6,7 @@ codegen.log
 Brewfile.lock.json
 dist
 dist-deno
+packages/xdelta3-wasm/native/build/
 /*.tgz
 .idea/
 .eslintcache

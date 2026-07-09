@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { watchFolderTree } from './folder-sync-watcher';
 import { type IgnoreFn } from './folder-sync-ignore';
 import { Readable } from 'stream';
+import { once } from 'events';
 import * as zlib from 'zlib';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import { directInstanceHttpError } from './internal/direct-instance-errors';
@@ -29,8 +30,6 @@ export type FolderSyncOptions = {
   launchMode: 'ForegroundIfRunning' | 'RelaunchIfRunning';
   /** If true, watch the folder and re-sync on any changes (debounced, single-flight). */
   watch: boolean;
-  /** Max patch size (bytes) to send as delta before falling back to full upload. */
-  maxPatchBytes: number;
   /** Controls logging verbosity */
   log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
   /**
@@ -53,13 +52,15 @@ export type FolderSyncOptions = {
    * in every sync pass but are not watched directly.
    */
   additionalFiles?: AdditionalFileSyncEntry[];
+  /** Force transport content encoding. Android APK sync uses identity because APKs are already compressed. */
+  compression?: 'zstd' | 'gzip' | 'identity';
 };
 
 export type SyncFolderResult = {
   installedAppPath?: string;
   installedBundleId?: string;
   /** Present only when watch=true; call to stop watching. */
-  stopWatching?: () => void;
+  stopWatching?: () => Promise<void>;
 };
 
 export type AdditionalFileSyncEntry = { localPath: string; remotePath: string };
@@ -264,6 +265,22 @@ async function sha256FileHex(filePath: string): Promise<string> {
 
 async function walkFiles(root: string, ignoreFn: IgnoreFn): Promise<FileEntry[]> {
   const rootResolved = path.resolve(root);
+  const rootStat = await fs.promises.stat(rootResolved);
+  if (rootStat.isFile()) {
+    const rel = path.basename(rootResolved);
+    if (ignoreFn(rel)) {
+      return [];
+    }
+    return [
+      {
+        path: rel,
+        size: rootStat.size,
+        sha256: await sha256FileHex(rootResolved),
+        absPath: rootResolved,
+        mode: rootStat.mode & 0o7777,
+      },
+    ];
+  }
 
   const out: FileEntry[] = [];
   const stack: string[] = [rootResolved];
@@ -325,37 +342,47 @@ async function collectAdditionalFiles(
   return out;
 }
 
-// xdelta3 encoder backed by a WASM build of the upstream xdelta3 library.
-// Produces VCDIFF-compatible patches identical to `xdelta3 -e -s basis target`,
-// so the server-side decoder continues to apply them without changes.
-type Xdelta3Wasm = {
-  init: () => Promise<void>;
-  xd3_encode_memory: (
-    input: Uint8Array,
-    source: Uint8Array,
-    output_size_max: number,
-    smatch_cfg: number,
-  ) => { ret: number; str: string; output: Uint8Array };
-  xd3_smatch_cfg: { DEFAULT: number };
-  WASI_ERRNO: { ENOSPC: number };
+type Xdelta3SourceReader = {
+  size: number;
+  read(offset: number, into: Uint8Array): number | Promise<number>;
 };
 
-let xdelta3WasmReady: Promise<Xdelta3Wasm> | null = null;
-async function loadXdelta3Wasm(): Promise<Xdelta3Wasm> {
-  if (!xdelta3WasmReady) {
-    xdelta3WasmReady = (async () => {
+type Xdelta3StreamingModule = {
+  encode(target: AsyncIterable<Uint8Array>, source: Xdelta3SourceReader): AsyncIterable<Uint8Array>;
+};
+
+let xdelta3StreamingReady: Promise<Xdelta3StreamingModule> | null = null;
+async function loadXdelta3Streaming(): Promise<Xdelta3StreamingModule> {
+  if (!xdelta3StreamingReady) {
+    xdelta3StreamingReady = (async () => {
       // Dynamic import so the WASM module is only loaded when sync is actually used.
       // Works in both CJS and ESM outputs emitted by tsc-multi.
-      const mod = (await import('xdelta3-wasm')) as unknown as Xdelta3Wasm;
-      await mod.init();
-      return mod;
+      return (await import('@limrun/xdelta3-wasm')) as unknown as Xdelta3StreamingModule;
     })().catch((err) => {
       // Allow retry on a subsequent call if the first init failed.
-      xdelta3WasmReady = null;
+      xdelta3StreamingReady = null;
       throw err;
     });
   }
-  return await xdelta3WasmReady;
+  return await xdelta3StreamingReady;
+}
+
+async function* fileChunks(filePath: string): AsyncIterable<Uint8Array> {
+  for await (const chunk of fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 })) {
+    if (chunk instanceof Uint8Array) {
+      yield chunk;
+    } else {
+      yield Buffer.from(chunk);
+    }
+  }
+}
+
+const MIN_XDELTA_TARGET_BYTES = 64 * 1024;
+const WATCH_DEBOUNCE_MS = 500;
+
+function defaultMaxPatchBytes(targetSize: number): number {
+  // Use the patch only when it is strictly smaller than 90% of the target file.
+  return Math.max(0, Math.ceil(targetSize * 0.9) - 1);
 }
 
 /**
@@ -363,7 +390,7 @@ async function loadXdelta3Wasm(): Promise<Xdelta3Wasm> {
  * to `outPatch`. Returns the size of the resulting patch in bytes.
  *
  * If the encoder would produce a patch larger than `maxPatchBytes`, it short-
- * circuits with ENOSPC and this function returns -1 without writing a file, so
+ * circuits and this function returns -1 without writing a file, so
  * callers can fall back to a full upload cheaply.
  */
 export async function encodeXdelta3Patch(
@@ -372,22 +399,48 @@ export async function encodeXdelta3Patch(
   outPatch: string,
   maxPatchBytes: number,
 ): Promise<number> {
-  const wasm = await loadXdelta3Wasm();
-  const [basisBuf, targetBuf] = await Promise.all([
-    fs.promises.readFile(basis),
-    fs.promises.readFile(target),
-  ]);
-  const basisBytes = new Uint8Array(basisBuf.buffer, basisBuf.byteOffset, basisBuf.byteLength);
-  const targetBytes = new Uint8Array(targetBuf.buffer, targetBuf.byteOffset, targetBuf.byteLength);
-  const res = wasm.xd3_encode_memory(targetBytes, basisBytes, maxPatchBytes, wasm.xd3_smatch_cfg.DEFAULT);
-  if (res.ret === wasm.WASI_ERRNO.ENOSPC) {
+  const xdelta3 = await loadXdelta3Streaming();
+  const basisHandle = await fs.promises.open(basis, 'r');
+  const basisSize = (await basisHandle.stat()).size;
+  const output = fs.createWriteStream(outPatch);
+  let bytesWritten = 0;
+  let exceededLimit = false;
+
+  const source: Xdelta3SourceReader = {
+    size: basisSize,
+    read: async (offset, into) => {
+      const { bytesRead } = await basisHandle.read(into, 0, into.byteLength, offset);
+      return bytesRead;
+    },
+  };
+
+  try {
+    for await (const chunk of xdelta3.encode(fileChunks(target), source)) {
+      bytesWritten += chunk.byteLength;
+      if (bytesWritten > maxPatchBytes) {
+        exceededLimit = true;
+        break;
+      }
+      if (!output.write(chunk)) {
+        await once(output, 'drain');
+      }
+    }
+
+    output.end();
+    await once(output, 'finish');
+  } catch (err) {
+    output.destroy();
+    await fs.promises.rm(outPatch, { force: true });
+    throw err;
+  } finally {
+    await basisHandle.close();
+  }
+
+  if (exceededLimit) {
+    await fs.promises.rm(outPatch, { force: true });
     return -1;
   }
-  if (res.ret !== 0) {
-    throw new Error(`xdelta3 encode failed: ${res.str} (code=${res.ret})`);
-  }
-  await fs.promises.writeFile(outPatch, res.output);
-  return res.output.byteLength;
+  return bytesWritten;
 }
 
 async function cachePut(cacheRoot: string, relPath: string, srcFile: string): Promise<void> {
@@ -416,36 +469,84 @@ export async function syncFolder(
   const first = await syncFolderOnce(localFolderPath, opts, 'startup');
   let inFlight = false;
   let queued = false;
+  let closed = false;
+  let debounceTimer: NodeJS.Timeout | undefined;
+  let activeRun: Promise<void> | undefined;
 
   const run = async (reason: string) => {
-    if (inFlight) {
-      queued = true;
-      return;
-    }
     inFlight = true;
     try {
       await syncFolderOnce(localFolderPath, opts, reason);
     } finally {
       inFlight = false;
-      if (queued) {
+      if (queued && !closed) {
         queued = false;
-        void run('queued-changes');
+        startRun('queued-changes');
       }
     }
   };
-  const watcher = await watchFolderTree({
-    rootPath: localFolderPath,
-    log,
-    ignoreFn: opts.ignoreFn,
-    onChange: (reason) => {
-      void run(reason);
-    },
-  });
+  const startRun = (reason: string) => {
+    if (closed) {
+      return;
+    }
+    if (inFlight) {
+      queued = true;
+      return;
+    }
+    const promise = run(reason).catch((err) => {
+      log('error', `syncFolder: watch sync failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+    activeRun = promise;
+    void promise.finally(() => {
+      if (activeRun === promise) {
+        activeRun = undefined;
+      }
+    });
+  };
+  const schedule = (reason: string) => {
+    if (closed) {
+      return;
+    }
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+    debounceTimer = setTimeout(() => {
+      debounceTimer = undefined;
+      startRun(reason);
+    }, WATCH_DEBOUNCE_MS);
+  };
+  const st = await fs.promises.stat(localFolderPath);
+  let watcher: { close: () => void };
+  if (st.isFile()) {
+    const watchedFile = path.basename(localFolderPath);
+    const parent = path.dirname(localFolderPath);
+    const fsWatcher = fs.watch(parent, (_eventType, filename) => {
+      if (!filename || filename.toString() !== watchedFile) return;
+      schedule(`change:${watchedFile}`);
+    });
+    watcher = { close: () => fsWatcher.close() };
+  } else {
+    watcher = await watchFolderTree({
+      rootPath: localFolderPath,
+      log,
+      ignoreFn: opts.ignoreFn,
+      onChange: (reason) => {
+        schedule(reason);
+      },
+    });
+  }
 
   return {
     ...first,
-    stopWatching: () => {
+    stopWatching: async () => {
+      closed = true;
+      queued = false;
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = undefined;
+      }
       watcher.close();
+      await activeRun;
     },
   };
 }
@@ -459,7 +560,6 @@ async function syncFolderOnce(
   const totalStart = nowMs();
   const log = opts.log ?? noopLogger;
   const slog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => log(level, `syncFolder: ${msg}`);
-  const maxPatchBytes = opts.maxPatchBytes ?? 4 * 1024 * 1024;
 
   const files = await walkFiles(localFolderPath, opts.ignoreFn);
   const additionalFiles = await collectAdditionalFiles(opts.additionalFiles);
@@ -468,7 +568,8 @@ async function syncFolderOnce(
 
   const syncId = genId('sync');
   const rootName = path.basename(path.resolve(localFolderPath));
-  const preferredCompression = (zlib as any).createZstdCompress ? 'zstd' : 'gzip';
+  const preferredCompression: 'zstd' | 'gzip' | 'identity' =
+    opts.compression ?? ((zlib as any).createZstdCompress ? 'zstd' : 'gzip');
 
   await fs.promises.mkdir(opts.basisCacheDir, { recursive: true });
 
@@ -496,12 +597,17 @@ async function syncFolderOnce(
 
   const encodedPayloads = await mapLimit(changed, encodeLimit, async (f): Promise<EncodedPayload> => {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
-    if (fs.existsSync(basisPath)) {
+    if (f.size >= MIN_XDELTA_TARGET_BYTES && fs.existsSync(basisPath)) {
       const basisSha = await sha256FileHex(basisPath);
       const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limulator-xdelta3-'));
       const patchPath = path.join(tmpDir, 'patch.xdelta3');
       const encodeStart = nowMs();
-      const patchSize = await encodeXdelta3Patch(basisPath, f.absPath, patchPath, maxPatchBytes);
+      const patchSize = await encodeXdelta3Patch(
+        basisPath,
+        f.absPath,
+        patchPath,
+        defaultMaxPatchBytes(f.size),
+      );
       const encodeMs = nowMs() - encodeStart;
       deltaEncodeMsTotal += encodeMs;
       if (patchSize >= 0) {
@@ -556,7 +662,8 @@ async function syncFolderOnce(
     payloads: encodedPayloads.map((p) => p.payload),
   };
   const hasDelta = encodedPayloads.some((p) => p.payload.kind === 'delta');
-  const compression: 'zstd' | 'gzip' | 'identity' = hasDelta ? 'identity' : preferredCompression;
+  const compression: 'zstd' | 'gzip' | 'identity' =
+    opts.compression ?? (hasDelta ? 'identity' : preferredCompression);
   slog(
     'debug',
     `sync started files=${allFiles.length}${reason ? ` reason=${reason}` : ''} compression=${compression}`,
@@ -609,7 +716,7 @@ async function syncFolderOnce(
         opts,
         retryMeta,
         retryPayloads.map((p) => ({ filePath: p.filePath })),
-        preferredCompression,
+        opts.compression ?? preferredCompression,
       );
       httpSendMsTotal += nowMs() - retryStart;
     }

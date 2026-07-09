@@ -4,7 +4,7 @@ import unusedImports from 'eslint-plugin-unused-imports';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/', '**/node_modules/'],
+    ignores: ['**/dist/', '**/node_modules/', 'packages/xdelta3-wasm/native/xdelta/**'],
   },
   {
     languageOptions: {

@@ -34,8 +34,6 @@ export type SyncOptions = {
    * Defaults to a temporary directory under the OS temp directory.
    */
   basisCacheDir?: string;
-  /** Max patch size (bytes) to send as delta before falling back to full upload. */
-  maxPatchBytes?: number;
   /** If true, install the app after syncing. Defaults to true. */
   install?: boolean;
   /**
@@ -53,7 +51,7 @@ export type SyncOptions = {
 
 export type SyncResult = {
   /** Present only when watch=true; call to stop watching */
-  stopWatching?: () => void;
+  stopWatching?: () => Promise<void>;
 };
 
 export type XcodeProjectConfig = {
@@ -615,7 +613,6 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           }),
           basisCacheDir,
           watch: opts?.watch ?? true,
-          maxPatchBytes: opts?.maxPatchBytes ?? 4 * 1024 * 1024,
           launchMode: 'ForegroundIfRunning',
           log,
           ...(additionalFiles ? { additionalFiles } : {}),

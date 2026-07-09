@@ -1,0 +1,4 @@
+[submodule "packages/xdelta3-wasm/native/xdelta"]
+	path = packages/xdelta3-wasm/native/xdelta
+	url = https://github.com/jmacd/xdelta.git
+	branch = release3_1_apl
