@@ -7,7 +7,7 @@ import { createIgnoreFn, type IgnoreFn } from '@limrun/api/folder-sync-ignore';
 // (limrun test/integration/limbuild/folder_sync_ignore_test.go). Layers,
 // first decisive answer wins:
 //   1. .git/.DS_Store/basis-cache  2. user include  3. xcode default junk
-//   4. built-in force-include (.xcconfig, .xcodeproj/.xcworkspace)
+//   4. built-in force-include (.xcconfig only)
 //   5. .gitignore chain (root + nested)  6. user ignore
 describe('createIgnoreFn', () => {
   let dir: string;
@@ -38,7 +38,7 @@ describe('createIgnoreFn', () => {
     ignore = await createIgnoreFn(dir, {
       basisCacheDir: path.join(os.tmpdir(), 'some-other-place'),
       xcodeDefaults: true,
-      include: (rel) => rel.startsWith('apps/foo/Generated/Kit/'),
+      include: (rel) => rel.startsWith('apps/foo/Generated/Kit/') || rel.startsWith('pinned/'),
       // Also excludes apps/foo/important.log, which the nested !important.log
       // negation re-includes: proves --ignore still wins over a gitignore
       // re-include (layer 6 runs after a non-decisive gitignore answer).
@@ -78,17 +78,13 @@ describe('createIgnoreFn', () => {
     ['apps/foo/debug.log', true, 'root *.log still applies where not negated'],
     // User include force-syncs past nested gitignore.
     ['apps/foo/Generated/Kit/Package.swift', false, 'include overrides nested gitignore'],
-    // Built-in force-include: gitignored generated projects still sync
-    // (when their parent dir is not itself pruned by gitignore).
-    ['app/App.xcodeproj/project.pbxproj', false, 'gitignored .xcodeproj is force-included'],
-    ['app/App.xcworkspace/contents.xcworkspacedata', false, 'gitignored .xcworkspace is force-included'],
-    ['app/App.xcodeproj/', false, '.xcodeproj directory itself is force-included so the walk descends'],
-    // ...but junk inside project bundles stays out (junk beats force-include).
-    [
-      'app/App.xcodeproj/project.xcworkspace/xcuserdata/u.plist',
-      true,
-      'xcuserdata inside a force-included bundle stays excluded',
-    ],
+    // Gitignored generated projects are NOT force-included: limbuild
+    // regenerates them from project.yml, and exact-version holdouts
+    // force-sync theirs with --include (proven below).
+    ['app/App.xcodeproj/project.pbxproj', true, 'gitignored .xcodeproj respects gitignore'],
+    ['app/App.xcworkspace/contents.xcworkspacedata', true, 'gitignored .xcworkspace respects gitignore'],
+    ['app/App.xcodeproj/', true, 'gitignored .xcodeproj directory is pruned'],
+    ['pinned/Exact.xcodeproj/project.pbxproj', false, '--include rescues a gitignored .xcodeproj'],
     // Default Xcode/dependency excludes (even if not gitignored).
     ['Pods/Manifest.lock', true, 'Pods/ is a default exclude'],
     ['.swiftpm/x', true, '.swiftpm/ is a default exclude'],
@@ -107,10 +103,10 @@ describe('createIgnoreFn', () => {
 });
 
 // The app-bundle install sync calls createIgnoreFn without xcodeDefaults, and
-// must keep the legacy behavior: only the root .gitignore is read, and the
-// .xcodeproj/.xcworkspace force-include does NOT apply (a build artifact is
-// not reshaped by gitignore files or Xcode rules embedded in it). .xcconfig
-// force-include stays unconditional, as it always was.
+// must keep the legacy behavior: only the root .gitignore is read and no
+// default Xcode excludes apply (a build artifact is not reshaped by gitignore
+// files embedded in it). .xcconfig force-include stays unconditional, as it
+// always was.
 describe('createIgnoreFn without xcodeDefaults (app-install legacy mode)', () => {
   let dir: string;
   let ignore: IgnoreFn;
@@ -137,15 +133,5 @@ describe('createIgnoreFn without xcodeDefaults (app-install legacy mode)', () =>
     ['Pods/Manifest.lock', false, 'default junk excludes are off without xcodeDefaults'],
   ])('ignore(%s) = %s  // %s', (rel, want) => {
     expect(ignore(rel)).toBe(want);
-  });
-
-  test('.xcodeproj is NOT force-included when gitignored in legacy mode', async () => {
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'folder-sync-ignore-legacy2-'));
-    fs.writeFileSync(path.join(d, '.gitignore'), ['*.xcodeproj'].join('\n'));
-    const ig = await createIgnoreFn(d, { basisCacheDir: path.join(os.tmpdir(), 'x') });
-    // Without xcodeDefaults the project force-include is off, so the gitignore
-    // rule wins and the bundle is excluded (legacy app-install behavior).
-    expect(ig('App.xcodeproj/project.pbxproj')).toBe(true);
-    fs.rmSync(d, { recursive: true, force: true });
   });
 });
