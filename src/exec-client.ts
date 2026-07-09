@@ -54,6 +54,12 @@ export type ExecResult = {
    * without a testflight request, or when the server predates the feature.
    */
   testflight?: TestflightEvent;
+  /**
+   * True when the client gave up waiting for the build's event stream. The
+   * exit code is fabricated in that case; the remote build may still be
+   * running and may yet succeed.
+   */
+  timedOut?: boolean;
 };
 
 export type TestflightEvent = {
@@ -266,6 +272,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 120) + 900) * 1000;
     }
     let exitCode: number;
+    let timedOut = false;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       exitCode = await Promise.race([
@@ -279,8 +286,11 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
         log('debug', 'Build killed');
         exitCode = -1;
       } else {
+        // The client stopped waiting; the remote build may still be running.
+        // The fabricated exit code must not read as a build failure.
         log('warn', 'SSE completion timeout');
         exitCode = 1;
+        timedOut = true;
       }
     } finally {
       clearTimeout(timeoutId);
@@ -312,6 +322,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       status,
       ...(request.additionalMetadata ?? {}),
       ...(this.testflightEvent ? { testflight: this.testflightEvent } : {}),
+      ...(timedOut ? { timedOut } : {}),
     };
 
     this.log('debug', `Build finished: ${result.status} (exit ${result.exitCode})`);
