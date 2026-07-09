@@ -377,6 +377,9 @@ async function* fileChunks(filePath: string): AsyncIterable<Uint8Array> {
   }
 }
 
+const MIN_XDELTA_TARGET_BYTES = 64 * 1024;
+const WATCH_DEBOUNCE_MS = 500;
+
 function defaultMaxPatchBytes(targetSize: number): number {
   // Use the patch only when it is strictly smaller than 90% of the target file.
   return Math.max(0, Math.ceil(targetSize * 0.9) - 1);
@@ -466,8 +469,13 @@ export async function syncFolder(
   const first = await syncFolderOnce(localFolderPath, opts, 'startup');
   let inFlight = false;
   let queued = false;
+  let closed = false;
+  let debounceTimer: NodeJS.Timeout | undefined;
 
   const run = async (reason: string) => {
+    if (closed) {
+      return;
+    }
     if (inFlight) {
       queued = true;
       return;
@@ -477,11 +485,23 @@ export async function syncFolder(
       await syncFolderOnce(localFolderPath, opts, reason);
     } finally {
       inFlight = false;
-      if (queued) {
+      if (queued && !closed) {
         queued = false;
         void run('queued-changes');
       }
     }
+  };
+  const schedule = (reason: string) => {
+    if (closed) {
+      return;
+    }
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+    debounceTimer = setTimeout(() => {
+      debounceTimer = undefined;
+      void run(reason);
+    }, WATCH_DEBOUNCE_MS);
   };
   const st = await fs.promises.stat(localFolderPath);
   let watcher: { close: () => void };
@@ -490,7 +510,7 @@ export async function syncFolder(
     const parent = path.dirname(localFolderPath);
     const fsWatcher = fs.watch(parent, (_eventType, filename) => {
       if (!filename || filename.toString() !== watchedFile) return;
-      void run(`change:${watchedFile}`);
+      schedule(`change:${watchedFile}`);
     });
     watcher = { close: () => fsWatcher.close() };
   } else {
@@ -499,7 +519,7 @@ export async function syncFolder(
       log,
       ignoreFn: opts.ignoreFn,
       onChange: (reason) => {
-        void run(reason);
+        schedule(reason);
       },
     });
   }
@@ -507,6 +527,11 @@ export async function syncFolder(
   return {
     ...first,
     stopWatching: () => {
+      closed = true;
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = undefined;
+      }
       watcher.close();
     },
   };
@@ -558,7 +583,7 @@ async function syncFolderOnce(
 
   const encodedPayloads = await mapLimit(changed, encodeLimit, async (f): Promise<EncodedPayload> => {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
-    if (fs.existsSync(basisPath)) {
+    if (f.size >= MIN_XDELTA_TARGET_BYTES && fs.existsSync(basisPath)) {
       const basisSha = await sha256FileHex(basisPath);
       const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limulator-xdelta3-'));
       const patchPath = path.join(tmpDir, 'patch.xdelta3');
