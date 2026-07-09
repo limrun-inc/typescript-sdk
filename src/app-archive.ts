@@ -15,7 +15,7 @@ export type PreparedAppBundle = {
 };
 
 export type ArchiveWatcher = {
-  close: () => void;
+  close: () => Promise<void>;
 };
 
 const noopLogger: LogFn = () => {};
@@ -283,13 +283,9 @@ export function watchAppArchive(opts: {
   let inFlight = false;
   let queued = false;
   let closed = false;
+  let activeRun: Promise<void> | undefined;
 
   const run = async () => {
-    if (closed) return;
-    if (inFlight) {
-      queued = true;
-      return;
-    }
     inFlight = true;
     try {
       const ready = await waitForStableArchiveFile(archivePath, () => closed);
@@ -309,11 +305,25 @@ export function watchAppArchive(opts: {
       );
     } finally {
       inFlight = false;
-      if (queued) {
+      if (queued && !closed) {
         queued = false;
-        void run();
+        startRun();
       }
     }
+  };
+  const startRun = () => {
+    if (closed) return;
+    if (inFlight) {
+      queued = true;
+      return;
+    }
+    const promise = run();
+    activeRun = promise;
+    void promise.finally(() => {
+      if (activeRun === promise) {
+        activeRun = undefined;
+      }
+    });
   };
 
   const schedule = () => {
@@ -321,7 +331,7 @@ export function watchAppArchive(opts: {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = undefined;
-      void run();
+      startRun();
     }, 500);
   };
 
@@ -333,13 +343,15 @@ export function watchAppArchive(opts: {
   log('debug', `watchAppArchive: ${archivePath}`);
 
   return {
-    close: () => {
+    close: async () => {
       closed = true;
+      queued = false;
       if (timer) {
         clearTimeout(timer);
         timer = undefined;
       }
       watcher.close();
+      await activeRun;
     },
   };
 }

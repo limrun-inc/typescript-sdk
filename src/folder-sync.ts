@@ -60,7 +60,7 @@ export type SyncFolderResult = {
   installedAppPath?: string;
   installedBundleId?: string;
   /** Present only when watch=true; call to stop watching. */
-  stopWatching?: () => void;
+  stopWatching?: () => Promise<void>;
 };
 
 export type AdditionalFileSyncEntry = { localPath: string; remotePath: string };
@@ -471,15 +471,9 @@ export async function syncFolder(
   let queued = false;
   let closed = false;
   let debounceTimer: NodeJS.Timeout | undefined;
+  let activeRun: Promise<void> | undefined;
 
   const run = async (reason: string) => {
-    if (closed) {
-      return;
-    }
-    if (inFlight) {
-      queued = true;
-      return;
-    }
     inFlight = true;
     try {
       await syncFolderOnce(localFolderPath, opts, reason);
@@ -487,9 +481,27 @@ export async function syncFolder(
       inFlight = false;
       if (queued && !closed) {
         queued = false;
-        void run('queued-changes');
+        startRun('queued-changes');
       }
     }
+  };
+  const startRun = (reason: string) => {
+    if (closed) {
+      return;
+    }
+    if (inFlight) {
+      queued = true;
+      return;
+    }
+    const promise = run(reason).catch((err) => {
+      log('error', `syncFolder: watch sync failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+    activeRun = promise;
+    void promise.finally(() => {
+      if (activeRun === promise) {
+        activeRun = undefined;
+      }
+    });
   };
   const schedule = (reason: string) => {
     if (closed) {
@@ -500,7 +512,7 @@ export async function syncFolder(
     }
     debounceTimer = setTimeout(() => {
       debounceTimer = undefined;
-      void run(reason);
+      startRun(reason);
     }, WATCH_DEBOUNCE_MS);
   };
   const st = await fs.promises.stat(localFolderPath);
@@ -526,13 +538,15 @@ export async function syncFolder(
 
   return {
     ...first,
-    stopWatching: () => {
+    stopWatching: async () => {
       closed = true;
+      queued = false;
       if (debounceTimer) {
         clearTimeout(debounceTimer);
         debounceTimer = undefined;
       }
       watcher.close();
+      await activeRun;
     },
   };
 }

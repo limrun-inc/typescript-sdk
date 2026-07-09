@@ -2000,8 +2000,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
       return {
         ...result,
-        stopWatching: () => {
-          archiveWatcher.close();
+        stopWatching: async () => {
+          await archiveWatcher.close();
         },
       };
     };

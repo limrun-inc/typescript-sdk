@@ -51,7 +51,7 @@ export type SyncOptions = {
 
 export type SyncResult = {
   /** Present only when watch=true; call to stop watching */
-  stopWatching?: () => void;
+  stopWatching?: () => Promise<void>;
 };
 
 export type XcodeProjectConfig = {

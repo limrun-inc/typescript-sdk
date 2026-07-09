@@ -85,10 +85,26 @@ export default class XcodeSync extends BaseCommand {
         this.output('Watching for changes. Press Ctrl+C to stop.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
+          let shuttingDown = false;
           const shutdown = () => {
+            if (shuttingDown) return;
+            shuttingDown = true;
             clearInterval(keepAlive);
-            result.stopWatching!();
-            resolve();
+            process.off('SIGINT', shutdown);
+            process.off('SIGTERM', shutdown);
+            void (async () => {
+              try {
+                await result.stopWatching!();
+              } catch (err) {
+                this.warn(
+                  `Failed to stop source watcher cleanly: ${
+                    err instanceof Error ? err.message : String(err)
+                  }`,
+                );
+              } finally {
+                resolve();
+              }
+            })();
           };
           process.on('SIGINT', shutdown);
           process.on('SIGTERM', shutdown);
