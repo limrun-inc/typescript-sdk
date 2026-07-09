@@ -46,6 +46,12 @@ export type SyncOptions = {
    */
   ignore?: (relativePath: string) => boolean;
   /**
+   * Optional predicate for force-including paths that would otherwise be
+   * dropped (gitignored generated sources, default Xcode excludes). Same
+   * calling convention as `ignore`; return true to force-sync the path.
+   */
+  include?: (relativePath: string) => boolean;
+  /**
    * Extra files to sync on every sync pass.
    */
   additionalFiles?: AdditionalFileSyncEntry[];
@@ -596,40 +602,18 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ignoreFn: await createIgnoreFn(localCodePath, {
             basisCacheDir,
             log,
-            additional: (relativePath: string) => {
-              if (
-                relativePath.startsWith('build/') ||
-                relativePath.startsWith('.build/') ||
-                relativePath.startsWith('DerivedData/') ||
-                relativePath.startsWith('Index.noindex/') ||
-                relativePath.startsWith('ModuleCache.noindex/') ||
-                relativePath.startsWith('.index-build/')
-              ) {
-                return true;
-              }
-              if (
-                relativePath.startsWith('.swiftpm/') ||
-                relativePath.startsWith('Pods/') ||
-                relativePath.startsWith('Carthage/Build/')
-              ) {
-                return true;
-              }
-              if (relativePath.includes('/xcuserdata/')) {
-                return true;
-              }
-              if (relativePath.includes('.dSYM/')) {
-                return true;
-              }
-              if (opts?.ignore?.(relativePath)) {
-                return true;
-              }
-              return false;
-            },
+            xcodeDefaults: true,
+            ...(opts?.include ? { include: opts.include } : {}),
+            ...(opts?.ignore ? { additional: opts.ignore } : {}),
           }),
           basisCacheDir,
           watch: opts?.watch ?? true,
           launchMode: 'ForegroundIfRunning',
           log,
+          // The limbuild workspace sync understands symlink entries; the
+          // limulator app-install sync (ios-client.ts) does not and keeps
+          // the default skip behavior.
+          syncSymlinks: true,
           ...(additionalFiles ? { additionalFiles } : {}),
         };
 

@@ -48,6 +48,12 @@ export type FolderSyncOptions = {
    */
   ignoreFn: IgnoreFn;
   /**
+   * Sync symlinks as symlinks (relative, in-root targets only). Off by
+   * default: only the limbuild workspace sync understands link entries;
+   * the limulator app-install sync keeps the historical skip behavior.
+   */
+  syncSymlinks?: boolean;
+  /**
    * Extra files to sync into limbuild. These are included
    * in every sync pass but are not watched directly.
    */
@@ -77,6 +83,12 @@ type FileEntry = {
   sha256: string;
   absPath: string;
   mode: number;
+  /**
+   * Symlink target (literal readlink output, forward slashes). Non-empty
+   * marks a symlink entry: the target string is the content (sha256/size
+   * describe it) and the entry never carries a payload.
+   */
+  linkTarget?: string;
 };
 
 type FolderSyncHttpPayload = {
@@ -94,7 +106,7 @@ type FolderSyncHttpMeta = {
   rootName: string;
   install?: boolean;
   launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
-  files: { path: string; size: number; sha256: string; mode: number }[];
+  files: { path: string; size: number; sha256: string; mode?: number; link?: string }[];
   payloads: FolderSyncHttpPayload[];
 };
 type FolderSyncHttpResponse = {
@@ -108,6 +120,10 @@ type FolderSyncHttpResponse = {
   bundleId?: string;
   error?: string;
 };
+
+/** Full uploads at or above this size get an info-level notice so "sync is
+ * stuck" turns into "a GB-scale file is being uploaded". */
+const LARGE_UPLOAD_NOTICE_BYTES = 64 * 1024 * 1024;
 
 const noopLogger = (_level: 'debug' | 'info' | 'warn' | 'error', _msg: string) => {
   // Intentionally empty: callers (e.g. ios-client.ts) should provide their own logger
@@ -269,7 +285,28 @@ async function sha256FileHex(filePath: string): Promise<string> {
   });
 }
 
-async function walkFiles(root: string, ignoreFn: IgnoreFn): Promise<FileEntry[]> {
+/**
+ * Validates a symlink's readlink target at sync time: it must be relative
+ * and lexically resolve inside the sync root when joined with the link's
+ * directory (the daemon enforces the same policy on apply).
+ */
+function validateSymlinkTarget(rel: string, target: string): void {
+  const slashTarget = target.split(path.sep).join('/');
+  const outside = () =>
+    new Error(
+      `symlink ${rel} -> ${target} points outside the sync root; ` +
+        'run the sync from the repo root that contains the target, or remove the link',
+    );
+  if (path.posix.isAbsolute(slashTarget) || path.win32.isAbsolute(target)) {
+    throw outside();
+  }
+  const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(rel), slashTarget));
+  if (resolved === '.' || resolved === '..' || resolved.startsWith('../')) {
+    throw outside();
+  }
+}
+
+async function walkFiles(root: string, ignoreFn: IgnoreFn, syncSymlinks: boolean): Promise<FileEntry[]> {
   const rootResolved = path.resolve(root);
   const rootStat = await fs.promises.stat(rootResolved);
   if (rootStat.isFile()) {
@@ -303,6 +340,29 @@ async function walkFiles(root: string, ignoreFn: IgnoreFn): Promise<FileEntry[]>
         // Check custom ignores (directories have trailing slash)
         if (ignoreFn(relDir)) continue;
         stack.push(abs);
+        continue;
+      }
+      if (ent.isSymbolicLink()) {
+        if (!syncSymlinks) continue;
+        // Symlinks ship as link entries with the literal target: a
+        // symlinked directory arrives here too and is sent as a link, not
+        // traversed (git semantics). The target string is the content.
+        // Probe both forms: a symlink named e.g. `Pods` or `build` may point
+        // at a directory, so directory-only excludes (`Pods/`, `build/`)
+        // must match it and skip before validation rejects an out-of-root
+        // target.
+        if (ignoreFn(rel) || ignoreFn(rel + '/')) continue;
+        const target = (await fs.promises.readlink(abs)).split(path.sep).join('/');
+        validateSymlinkTarget(rel, target);
+        const sha256 = crypto.createHash('sha256').update(target).digest('hex');
+        out.push({
+          path: rel,
+          size: Buffer.byteLength(target),
+          sha256,
+          absPath: abs,
+          mode: 0,
+          linkTarget: target,
+        });
         continue;
       }
       if (!ent.isFile()) continue;
@@ -449,9 +509,47 @@ export async function encodeXdelta3Patch(
   return bytesWritten;
 }
 
-async function cachePut(cacheRoot: string, relPath: string, srcFile: string): Promise<void> {
-  const dst = path.join(cacheRoot, relPath.split('/').join(path.sep));
+async function cachePut(
+  cacheRoot: string,
+  relPath: string,
+  srcFile: string,
+  linkTarget?: string,
+  checkedDirs?: Set<string>,
+): Promise<void> {
+  const segments = relPath.split('/');
+  const dst = path.join(cacheRoot, segments.join(path.sep));
+  // Remove any ancestor that is a stale cache symlink before mkdir/write: a
+  // directory that previously synced as a symlink leaves the cache path a
+  // symlink, and writing children through it would corrupt the link target's
+  // cached entries (and dangle after the target moves). Only relevant when
+  // symlink sync is on; the caller passes checkedDirs (which also memoizes
+  // ancestors already confirmed real, so the sorted walk skips shared
+  // prefixes) then and omits it otherwise to skip the sweep entirely.
+  if (checkedDirs) {
+    let ancestor = cacheRoot;
+    for (let i = 0; i < segments.length - 1; i++) {
+      ancestor = path.join(ancestor, segments[i]!);
+      if (checkedDirs.has(ancestor)) continue;
+      const ast = await fs.promises.lstat(ancestor).catch(() => null);
+      if (ast?.isSymbolicLink()) {
+        await fs.promises.rm(ancestor, { recursive: true, force: true });
+      } else if (ast?.isDirectory()) {
+        checkedDirs.add(ancestor);
+      }
+    }
+  }
   await fs.promises.mkdir(path.dirname(dst), { recursive: true });
+  // Replace the destination inode when its type doesn't match what we're
+  // writing: a stale symlink (copyFile would follow it) or a stale directory
+  // (copyFile onto a dir throws EISDIR) left by a since-changed path.
+  const st = await fs.promises.lstat(dst).catch(() => null);
+  if (st && (st.isSymbolicLink() || st.isDirectory() || linkTarget !== undefined)) {
+    await fs.promises.rm(dst, { recursive: true, force: true });
+  }
+  if (linkTarget !== undefined) {
+    await fs.promises.symlink(linkTarget, dst);
+    return;
+  }
   await fs.promises.copyFile(srcFile, dst);
 }
 
@@ -567,7 +665,7 @@ async function syncFolderOnce(
   const log = opts.log ?? noopLogger;
   const slog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => log(level, `syncFolder: ${msg}`);
 
-  const files = await walkFiles(localFolderPath, opts.ignoreFn);
+  const files = await walkFiles(localFolderPath, opts.ignoreFn, opts.syncSymlinks ?? false);
   const additionalFiles = await collectAdditionalFiles(opts.additionalFiles);
   const allFiles = [...files, ...additionalFiles].sort((a, b) => a.path.localeCompare(b.path));
   const fileMap = new Map(allFiles.map((f) => [f.path, f]));
@@ -587,11 +685,30 @@ async function syncFolderOnce(
   type EncodedPayload = { payload: FolderSyncHttpPayload; filePath: string; cleanupDir?: string };
 
   // Build payload list by comparing against local basis cache (single-flight/watch assumes server matches cache).
+  // lstat, never stat/existsSync: those follow symlinks and misreport a
+  // basis symlink (dangling or pointing at another cached file) as the
+  // file itself.
   const encodeLimit = concurrencyLimit();
   const changed: FileEntry[] = [];
   for (const f of allFiles) {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
-    if (!fs.existsSync(basisPath)) {
+    const basisStat = await fs.promises.lstat(basisPath).catch(() => null);
+    if (!basisStat) {
+      changed.push(f);
+      continue;
+    }
+    if (f.linkTarget !== undefined) {
+      if (!basisStat.isSymbolicLink()) {
+        changed.push(f);
+        continue;
+      }
+      const basisTarget = (await fs.promises.readlink(basisPath)).split(path.sep).join('/');
+      if (basisTarget !== f.linkTarget) {
+        changed.push(f);
+      }
+      continue;
+    }
+    if (!basisStat.isFile()) {
       changed.push(f);
       continue;
     }
@@ -601,9 +718,14 @@ async function syncFolderOnce(
     }
   }
 
-  const encodedPayloads = await mapLimit(changed, encodeLimit, async (f): Promise<EncodedPayload> => {
+  // Symlink entries travel in the manifest only — no payloads.
+  const changedFiles = changed.filter((f) => f.linkTarget === undefined);
+
+  const encodedPayloads = await mapLimit(changedFiles, encodeLimit, async (f): Promise<EncodedPayload> => {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
-    if (f.size >= MIN_XDELTA_TARGET_BYTES && fs.existsSync(basisPath)) {
+    const basisStat =
+      f.size >= MIN_XDELTA_TARGET_BYTES ? await fs.promises.lstat(basisPath).catch(() => null) : null;
+    if (basisStat?.isFile()) {
       const basisSha = await sha256FileHex(basisPath);
       const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limulator-xdelta3-'));
       const patchPath = path.join(tmpDir, 'patch.xdelta3');
@@ -642,6 +764,9 @@ async function syncFolderOnce(
       }
     }
     slog('debug', `full(file): ${f.path} size=${f.size}`);
+    if (f.size >= LARGE_UPLOAD_NOTICE_BYTES) {
+      slog('info', `uploading large file ${f.path} (${fmtBytes(f.size)})`);
+    }
     bytesSentFull += f.size;
     return {
       payload: {
@@ -663,7 +788,8 @@ async function syncFolderOnce(
       path: f.path,
       size: f.size,
       sha256: f.sha256.toLowerCase(),
-      mode: f.mode,
+      // Symlink entries carry the target; regular files carry the mode bits.
+      ...(f.linkTarget !== undefined ? { link: f.linkTarget } : { mode: f.mode }),
     })),
     payloads: encodedPayloads.map((p) => p.payload),
   };
@@ -696,6 +822,17 @@ async function syncFolderOnce(
   // Retry once if server needs full for some paths (basis mismatch).
   if (!resp.ok && resp.needFull && resp.needFull.length > 0) {
     const need = new Set(resp.needFull);
+    // A daemon that predates symlink support json-drops the `link` field and
+    // asks for these entries as full files. Streaming absPath would FOLLOW
+    // the link and silently materialize target content remotely — fail loud
+    // instead. (New daemons never put symlink entries in needFull.)
+    const needFullLinks = [...need].filter((p) => fileMap.get(p)?.linkTarget !== undefined);
+    if (needFullLinks.length > 0) {
+      throw new Error(
+        "this instance's build daemon does not support symlinks yet (needs an updated limbuild); " +
+          `recreate the instance or retry later. Paths: ${needFullLinks.join(', ')}`,
+      );
+    }
     const retryPayloads: EncodedPayload[] = [];
     for (const p of need) {
       const entry = fileMap.get(p);
@@ -749,11 +886,12 @@ async function syncFolderOnce(
   const tookMs = nowMs() - totalStart;
   const totalBytes = bytesSentFull + bytesSentDelta;
   slog(
-    'debug',
-    `sync finished files=${allFiles.length} sent=${fmtBytes(totalBytes)} syncWork=${fmtMs(
-      syncWorkMs,
-    )} total=${fmtMs(tookMs)}`,
+    'info',
+    `sync complete: files=${allFiles.length} changed=${changed.length} sent=${fmtBytes(
+      totalBytes,
+    )} in ${fmtMs(tookMs)}`,
   );
+  slog('debug', `sync timing syncWork=${fmtMs(syncWorkMs)} total=${fmtMs(tookMs)}`);
   const out: SyncFolderResult = { bytesSent: totalBytes };
   if (resp.installedAppPath) {
     out.installedAppPath = resp.installedAppPath;
@@ -762,8 +900,12 @@ async function syncFolderOnce(
     out.installedBundleId = resp.bundleId;
   }
   // Update local cache optimistically: after a successful sync, cache reflects current local tree.
+  // The stale-symlink-ancestor sweep only matters when symlink sync is on
+  // (otherwise the cache never holds a symlink); checkedDirs memoizes ancestors
+  // across the sorted walk.
+  const checkedDirs = opts.syncSymlinks ? new Set<string>() : undefined;
   for (const f of allFiles) {
-    await cachePut(opts.basisCacheDir, f.path, f.absPath);
+    await cachePut(opts.basisCacheDir, f.path, f.absPath, f.linkTarget, checkedDirs);
   }
   return out;
 }

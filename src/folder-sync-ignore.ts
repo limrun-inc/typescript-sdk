@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import ignorePkg from 'ignore';
+import ignorePkg, { type Ignore } from 'ignore';
 
 const execFileAsync = promisify(execFile);
 
@@ -11,7 +11,27 @@ export type IgnoreFn = (relativePath: string) => boolean;
 export type IgnoreLogger = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
 
 export type IgnoreFnOptions = {
+  /** User-supplied extra excludes (the CLI's --ignore). Consulted after every built-in layer. */
   additional?: IgnoreFn;
+  /**
+   * User-supplied force-includes (the CLI's --include): matches sync even when
+   * gitignored or covered by the default Xcode excludes. Only `.git`,
+   * `.DS_Store`, and the basis cache stay excluded. Note: the walk prunes
+   * gitignore-excluded directories, so to rescue files under a wholly-ignored
+   * parent the predicate must also match the parent directory paths (probed
+   * with a trailing slash), e.g. `^ios/` reaches `ios/GeneratedKit/...` but
+   * `GeneratedKit/` alone does not.
+   */
+  include?: IgnoreFn;
+  /**
+   * "Xcode project sync mode." Enables the default Xcode/dependency excludes
+   * (build/, Pods/, xcuserdata/, …), nested-.gitignore honoring, and the
+   * `.xcodeproj`/`.xcworkspace` force-include. When unset (e.g. the app-bundle
+   * install sync) only the root .gitignore is read and no project force-
+   * include applies, so a build artifact isn't reshaped by gitignore files
+   * embedded in it.
+   */
+  xcodeDefaults?: boolean;
   basisCacheDir: string;
   log?: IgnoreLogger;
 };
@@ -52,21 +72,98 @@ async function getGitTrackedSets(rootDir: string): Promise<GitTrackedSets | null
   }
 }
 
+// Root-anchored (top-level only) default excludes; nested build junk is the
+// project's own nested .gitignore's job. xcuserdata/.dSYM below are any-depth.
+const XCODE_DEFAULT_EXCLUDE_PREFIXES = [
+  'build/',
+  '.build/',
+  'DerivedData/',
+  'Index.noindex/',
+  'ModuleCache.noindex/',
+  '.index-build/',
+  '.swiftpm/',
+  'Pods/',
+  'Carthage/Build/',
+];
+
+/**
+ * Builds the layered sync ignore predicate. First decisive answer wins:
+ *
+ *  1. `.git`, `.DS_Store`, the basis cache: excluded, never overridable.
+ *  2. User include (--include): explicit intent beats the default excludes.
+ *  3. Default Xcode/dependency excludes (when xcodeDefaults is set).
+ *  4. Built-in force-includes: `*.xcconfig` (all callers) plus `.xcodeproj` /
+ *     `.xcworkspace` bundles (when xcodeDefaults is set) - build-critical
+ *     artifacts customers routinely gitignore. Junk at layer 3 runs first so
+ *     xcuserdata/.dSYM inside a bundle stay out.
+ *  5. `.gitignore` chain: the root file, plus nested ones with git semantics
+ *     when xcodeDefaults is set (rules bind relative to their containing
+ *     directory, deeper files override shallower ones). Only a decisive
+ *     *exclude* short-circuits; a negation re-include defers to layer 6.
+ *     Directory pruning in the walk means only layers 2 and 4 can reach a
+ *     file whose parent directory is gitignore-excluded, and only when the
+ *     predicate matches the pruned parent directory paths too.
+ *  6. User ignore (--ignore).
+ */
 export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions): Promise<IgnoreFn> {
   const rootResolved = path.resolve(rootDir);
+
+  // Per-directory .gitignore instances, lazily loaded; key is the dir path
+  // relative to the root ('' = root), value null when the dir has none.
   // ignorecase: false matches git's default semantics. The package defaults to true,
   // which silently drops e.g. `Vendor/` when .gitignore says `vendor/` (Ruby convention).
   // allowRelativePaths: true so a `../`-style path doesn't throw mid-sync — treat it as
   // "not ignored" and let it through, since the cost of dropping a needed file is higher
   // than including an unexpected one.
-  const ig = ignorePkg({ ignorecase: false, allowRelativePaths: true });
-  const gitignorePath = path.join(rootResolved, '.gitignore');
-  try {
-    const content = await fs.promises.readFile(gitignorePath, 'utf-8');
-    ig.add(content);
-  } catch {
-    // No .gitignore file, return empty ignore instance
-  }
+  const dirIgnores = new Map<string, Ignore | null>();
+  const gitignoreFor = (dirRel: string): Ignore | null => {
+    let ig = dirIgnores.get(dirRel);
+    if (ig !== undefined) return ig;
+    try {
+      const content = fs.readFileSync(
+        path.join(rootResolved, dirRel.split('/').join(path.sep), '.gitignore'),
+        'utf-8',
+      );
+      ig = ignorePkg({ ignorecase: false, allowRelativePaths: true }).add(content);
+    } catch {
+      ig = null;
+    }
+    dirIgnores.set(dirRel, ig);
+    return ig;
+  };
+
+  // xcodeDefaults selects "Xcode project sync mode": besides the default junk
+  // excludes it also enables nested-.gitignore honoring and the project-file
+  // force-includes below. Callers that don't set it (e.g. the app-bundle
+  // install sync) keep the legacy behavior: root-only .gitignore and no
+  // project force-includes, so a build artifact isn't reshaped by gitignore
+  // files or Xcode-specific rules that happen to sit inside it.
+  const nestedGitignore = !!options.xcodeDefaults;
+
+  // Evaluates the .gitignore chain for a path (trailing slash preserved so
+  // dir-only rules like `build/` match the directory itself). Files are
+  // consulted root-to-deepest; the last decisive match wins, so deeper
+  // files naturally override shallower ones. When nestedGitignore is off,
+  // only the root .gitignore is consulted.
+  const gitignoreDecision = (testPath: string): { ignored: boolean; rule?: string } | undefined => {
+    const withoutTrailingSlash = testPath.replace(/\/+$/, '');
+    const trailingSlash = testPath.endsWith('/') ? '/' : '';
+    const parts = withoutTrailingSlash.split('/');
+    let decision: { ignored: boolean; rule?: string } | undefined;
+    const depth = nestedGitignore ? parts.length : 1;
+    for (let i = 0; i < depth; i++) {
+      const ig = gitignoreFor(parts.slice(0, i).join('/'));
+      if (!ig) continue;
+      const result = ig.test(parts.slice(i).join('/') + trailingSlash);
+      if (result.ignored || result.unignored) {
+        decision = { ignored: result.ignored };
+        const rule = (result as { rule?: { pattern?: string } }).rule?.pattern;
+        if (rule !== undefined) decision.rule = rule;
+      }
+    }
+    return decision;
+  };
+
   const basisCacheRelative = normalizeRelativePath(
     path.relative(rootResolved, options.basisCacheDir),
   ).replace(/\/+$/, '');
@@ -86,6 +183,7 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
     if (!normalized) return false;
     const withoutTrailingSlash = normalized.replace(/\/+$/, '');
 
+    // 1. Never overridable.
     if (
       withoutTrailingSlash === '.git' ||
       withoutTrailingSlash.startsWith('.git/') ||
@@ -103,16 +201,38 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
     ) {
       return true;
     }
+    // 2. User include.
+    if (options.include?.(normalized)) return false;
+    // 3. Default Xcode/dependency excludes.
+    if (options.xcodeDefaults) {
+      for (const prefix of XCODE_DEFAULT_EXCLUDE_PREFIXES) {
+        if (normalized.startsWith(prefix)) return true;
+      }
+      if (normalized.includes('/xcuserdata/') || normalized.includes('.dSYM/')) return true;
+    }
+    // 4. Built-in force-includes. `.xcconfig` is unconditional (matches the
+    // long-standing behavior for every caller); the project-bundle force-
+    // include is Xcode-project-specific and gated with the other Xcode rules.
     if (withoutTrailingSlash.endsWith('.xcconfig')) return false;
-    if (ig.ignores(normalized)) {
+    if (options.xcodeDefaults) {
+      for (const segment of withoutTrailingSlash.split('/')) {
+        if (segment.endsWith('.xcodeproj') || segment.endsWith('.xcworkspace')) return false;
+      }
+    }
+    // 5. The .gitignore chain. Only a decisive *exclude* short-circuits; a
+    // negation re-include (decision.ignored === false) still falls through to
+    // the user --ignore layer, matching the pre-restructure precedence where
+    // gitignore never overrode --ignore for a re-included path.
+    const decision = gitignoreDecision(normalized);
+    if (decision?.ignored) {
       if (
         trackedSets &&
         (trackedSets.tracked.has(withoutTrailingSlash) || trackedSets.prefixes.has(withoutTrailingSlash))
       ) {
-        const rule = ig.test(normalized).rule?.pattern ?? '<unknown>';
+        const rule = decision.rule ?? '<unknown>';
         if (!warnedRules.has(rule)) {
           warnedRules.add(rule);
-          const msg = `.gitignore rule '${rule}' is dropping '${withoutTrailingSlash}', which is tracked in git. The remote build will not see this path. Remove or scope the rule if you need it synced.`;
+          const msg = `.gitignore rule '${rule}' is dropping '${withoutTrailingSlash}', which is tracked in git. The remote build will not see this path. Remove or scope the rule, or pass --include, if you need it synced.`;
           if (log) {
             log('warn', msg);
           } else {
@@ -122,6 +242,7 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
       }
       return true;
     }
+    // 6. User ignore.
     if (options.additional?.(normalized)) return true;
     return false;
   };

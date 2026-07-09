@@ -141,6 +141,11 @@ export default class XcodeBuild extends BaseCommand {
         'Regular expression to ignore matching relative paths during the pre-build sync. Repeat for multiple patterns.',
       multiple: true,
     }),
+    include: Flags.string({
+      description:
+        'Regular expression to force-sync matching relative paths even when gitignored (for example generated sources: --include "^ios/GeneratedKit/"). If a parent directory is itself gitignored, the pattern must also match that directory (e.g. use "^ios/" not "GeneratedKit/") or the subtree stays pruned. Repeat for multiple patterns.',
+      multiple: true,
+    }),
     'additional-file': Flags.string({
       description:
         'Additional file to sync before building as localPath=remotePath, for example ~/.netrc=~/.netrc. Repeat for multiple files.',
@@ -240,6 +245,7 @@ export default class XcodeBuild extends BaseCommand {
         install: false,
         basisCacheDir: flags['basis-cache-dir'],
         ignore: compileIgnorePatterns(flags.ignore),
+        include: compileIgnorePatterns(flags.include),
         additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
       };
       const syncResult = await xcodeClient.sync(
