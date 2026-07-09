@@ -37,7 +37,13 @@ type BufferConstructorLike = {
   from(input: string, encoding: 'base64'): Uint8Array;
 };
 
-let wasmReady: Promise<Xdelta3WasmExports> | null = null;
+let wasmModuleReady: Promise<WebAssembly.Module> | null = null;
+
+const wasmImports: WebAssembly.Imports = {
+  env: {
+    emscripten_notify_memory_growth: () => undefined,
+  },
+};
 
 function base64ToBytes(base64: string): Uint8Array {
   const maybeBuffer = (globalThis as { Buffer?: BufferConstructorLike }).Buffer;
@@ -52,23 +58,28 @@ function base64ToBytes(base64: string): Uint8Array {
   return out;
 }
 
-async function loadWasm(): Promise<Xdelta3WasmExports> {
-  if (!wasmReady) {
-    wasmReady = WebAssembly.instantiate(base64ToBytes(xdelta3WasmBase64), {
-      env: {
-        emscripten_notify_memory_growth: () => undefined,
-      },
-    }).then((result) => {
-      const instantiated = result as WebAssembly.Instance | WebAssembly.WebAssemblyInstantiatedSource;
-      const instance = 'instance' in instantiated ? instantiated.instance : instantiated;
-      const exports = instance.exports as unknown as Xdelta3WasmExports & {
-        _initialize?: () => void;
-      };
-      exports._initialize?.();
-      return exports;
-    });
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const bytes = base64ToBytes(base64);
+  const out = new Uint8Array(bytes.byteLength);
+  out.set(bytes);
+  return out.buffer;
+}
+
+async function loadWasmModule(): Promise<WebAssembly.Module> {
+  if (!wasmModuleReady) {
+    wasmModuleReady = WebAssembly.compile(base64ToArrayBuffer(xdelta3WasmBase64));
   }
-  return await wasmReady;
+  return await wasmModuleReady;
+}
+
+async function instantiateWasm(): Promise<Xdelta3WasmExports> {
+  const wasmModule = await loadWasmModule();
+  const instance = await WebAssembly.instantiate(wasmModule, wasmImports);
+  const exports = instance.exports as unknown as Xdelta3WasmExports & {
+    _initialize?: () => void;
+  };
+  exports._initialize?.();
+  return exports;
 }
 
 function memoryBytes(wasm: Xdelta3WasmExports, ptr: number, len: number): Uint8Array {
@@ -190,7 +201,7 @@ export async function* encode(
   target: AsyncIterable<Uint8Array>,
   source: SourceReader,
 ): AsyncIterable<Uint8Array> {
-  const wasm = await loadWasm();
+  const wasm = await instantiateWasm();
   const handle = wasm.xd3w_new(source.size);
   if (handle === 0) {
     throw new Error('failed to allocate xdelta3 encoder');

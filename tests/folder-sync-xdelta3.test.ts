@@ -64,4 +64,27 @@ describe('encodeXdelta3Patch', () => {
     expect(size).toBe(-1);
     expect(fs.existsSync(patchPath)).toBe(false);
   });
+
+  test('supports concurrent patch encodes', async () => {
+    const jobs = Array.from({ length: 6 }, (_, index) => {
+      const basis = Buffer.from(`basis-${index}:` + 'abcd efgh ijkl mnop '.repeat(4096));
+      const target = Buffer.from(`basis-${index}:` + 'abcd efgh ijkl xyz! '.repeat(4096));
+      const basisPath = path.join(tmpDir, `basis-${index}.bin`);
+      const targetPath = path.join(tmpDir, `target-${index}.bin`);
+      const patchPath = path.join(tmpDir, `patch-${index}.xdelta3`);
+      writeFileBytes(basisPath, basis);
+      writeFileBytes(targetPath, target);
+      return { target, basisPath, targetPath, patchPath };
+    });
+
+    const sizes = await Promise.all(
+      jobs.map((job) => encodeXdelta3Patch(job.basisPath, job.targetPath, job.patchPath, 1 << 20)),
+    );
+
+    for (const [index, size] of sizes.entries()) {
+      expect(size).toBeGreaterThan(0);
+      expect(size).toBeLessThan(jobs[index]!.target.length);
+      expect(fs.readFileSync(jobs[index]!.patchPath).length).toBe(size);
+    }
+  });
 });
