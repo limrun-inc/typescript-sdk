@@ -4,7 +4,9 @@ import crypto from 'crypto';
 
 import { XcodeInstances as GeneratedXcodeInstances, type XcodeInstance } from './xcode-instances';
 import { type IosInstance } from './ios-instances';
-import { exec, type ExecChildProcess, type ExecRequest } from '../exec-client';
+import { exec, type ExecChildProcess, type ExecRequest, type TestflightUploadConfig } from '../exec-client';
+
+export type { TestflightUploadConfig } from '../exec-client';
 import {
   syncFolder as syncFolderImpl,
   type AdditionalFileSyncEntry,
@@ -74,6 +76,7 @@ export type XcodeSigningConfig = {
   provisioningProfileBase64?: string;
 };
 
+
 export type ReactNativeBuildConfig = {
   /**
    * Relative path from the synced workspace root to the Expo app directory.
@@ -95,6 +98,13 @@ export type ReactNativeBuildConfig = {
 export type XcodeBuildOptions = {
   upload?: { assetName: string } | { signedUploadUrl: string };
   signing?: XcodeSigningConfig;
+  /**
+   * Upload the signed device IPA to TestFlight after the build. Requires
+   * signing and sdk=iphoneos. Check ExecResult.testflight on completion: it is
+   * absent when the instance's limbuild predates the feature (old servers
+   * silently ignore this option).
+   */
+  testflight?: TestflightUploadConfig;
   reactNative?: ReactNativeBuildConfig;
   buildSettings?: Record<string, string>;
 };
@@ -640,6 +650,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(settings && { xcodebuild: settings }),
           ...(options?.reactNative && { reactNative: options.reactNative }),
           ...(options?.signing && { signing: options.signing }),
+          ...(options?.testflight && { testflight: options.testflight }),
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
         };
 
