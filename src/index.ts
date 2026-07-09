@@ -16,6 +16,8 @@ export {
   type ExecOptions,
   type ExecResult,
   type ExecChildProcess,
+  type TestflightEvent,
+  type TestflightUploadConfig,
 } from './exec-client';
 export {
   type XcodeCreateClientParams,
