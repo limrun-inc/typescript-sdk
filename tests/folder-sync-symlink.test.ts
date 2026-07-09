@@ -115,14 +115,44 @@ describe('folder-sync symlinks', () => {
     expect(meta.files.map((f) => f.path)).not.toContain('ios/link.swift');
   });
 
-  test.each([
-    ['/etc/hosts', 'absolute'],
-    ['../../outside.swift', 'escaping'],
-  ])('rejects %s (%s target) at sync time', async (target) => {
-    fs.symlinkSync(target, path.join(tree, 'ios', 'link.swift'));
+  test('rejects a relative escaping target at sync time', async () => {
+    fs.symlinkSync('../../outside.swift', path.join(tree, 'ios', 'link.swift'));
     const server = await startStubServer({ ok: true });
     try {
       await expect(syncFolder(tree, syncOpts(server, cache))).rejects.toThrow(/points outside the sync root/);
+      expect(server.requests).toHaveLength(0);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('warns and skips an absolute-target symlink instead of failing the sync', async () => {
+    // Absolute targets can never resolve remotely; pre-symlink clients
+    // silently skipped all links, so a decorative /usr/... link must not
+    // turn a working sync into a hard failure.
+    fs.symlinkSync('/etc/hosts', path.join(tree, 'ios', 'abs-link'));
+    const warnings: string[] = [];
+    const server = await startStubServer({ ok: true });
+    try {
+      await syncFolder(tree, {
+        ...syncOpts(server, cache),
+        log: (level, msg) => {
+          if (level === 'warn') warnings.push(msg);
+        },
+      });
+    } finally {
+      await server.close();
+    }
+    expect(server.requests).toHaveLength(1);
+    expect(server.requests[0]!.files.map((f) => f.path)).not.toContain('ios/abs-link');
+    expect(warnings.join('\n')).toMatch(/skipping symlink ios\/abs-link/);
+  });
+
+  test('rejects a backslash-containing target at sync time (daemon parity)', async () => {
+    fs.symlinkSync('weird\\name.swift', path.join(tree, 'ios', 'bs-link'));
+    const server = await startStubServer({ ok: true });
+    try {
+      await expect(syncFolder(tree, syncOpts(server, cache))).rejects.toThrow(/backslash/);
       expect(server.requests).toHaveLength(0);
     } finally {
       await server.close();

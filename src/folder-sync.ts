@@ -286,27 +286,34 @@ async function sha256FileHex(filePath: string): Promise<string> {
 }
 
 /**
- * Validates a symlink's readlink target at sync time: it must be relative
- * and lexically resolve inside the sync root when joined with the link's
- * directory (the daemon enforces the same policy on apply).
+ * Validates a symlink's readlink target at sync time: it must be relative,
+ * backslash-free, and lexically resolve inside the sync root when joined
+ * with the link's directory (the daemon enforces the same policy on apply,
+ * so failing here is the same failure with a better message).
  */
 function validateSymlinkTarget(rel: string, target: string): void {
-  const slashTarget = target.split(path.sep).join('/');
-  const outside = () =>
-    new Error(
-      `symlink ${rel} -> ${target} points outside the sync root; ` +
-        'run the sync from the repo root that contains the target, or remove the link',
+  if (target.includes('\\')) {
+    throw new Error(
+      `symlink ${rel} -> ${target} target contains a backslash, which the daemon rejects; ` +
+        'remove the link or pass --ignore to skip it',
     );
-  if (path.posix.isAbsolute(slashTarget) || path.win32.isAbsolute(target)) {
-    throw outside();
   }
-  const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(rel), slashTarget));
+  const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(rel), target));
   if (resolved === '.' || resolved === '..' || resolved.startsWith('../')) {
-    throw outside();
+    throw new Error(
+      `symlink ${rel} -> ${target} points outside the sync root; ` +
+        'run the sync from the repo root that contains the target, remove the link, ' +
+        'or pass --ignore to skip it',
+    );
   }
 }
 
-async function walkFiles(root: string, ignoreFn: IgnoreFn, syncSymlinks: boolean): Promise<FileEntry[]> {
+async function walkFiles(
+  root: string,
+  ignoreFn: IgnoreFn,
+  syncSymlinks: boolean,
+  log?: FolderSyncOptions['log'],
+): Promise<FileEntry[]> {
   const rootResolved = path.resolve(root);
   const rootStat = await fs.promises.stat(rootResolved);
   if (rootStat.isFile()) {
@@ -353,6 +360,13 @@ async function walkFiles(root: string, ignoreFn: IgnoreFn, syncSymlinks: boolean
         // target.
         if (ignoreFn(rel) || ignoreFn(rel + '/')) continue;
         const target = (await fs.promises.readlink(abs)).split(path.sep).join('/');
+        // An absolute target can never resolve remotely and no sync root
+        // can contain it; skip it like pre-symlink clients did (with a
+        // warning) instead of failing a previously working sync.
+        if (path.posix.isAbsolute(target) || path.win32.isAbsolute(target)) {
+          log?.('warn', `skipping symlink ${rel} -> ${target}: absolute targets cannot resolve remotely`);
+          continue;
+        }
         validateSymlinkTarget(rel, target);
         const sha256 = crypto.createHash('sha256').update(target).digest('hex');
         out.push({
@@ -518,10 +532,11 @@ async function cachePut(
 ): Promise<void> {
   const segments = relPath.split('/');
   const dst = path.join(cacheRoot, segments.join(path.sep));
-  // Remove any ancestor that is a stale cache symlink before mkdir/write: a
-  // directory that previously synced as a symlink leaves the cache path a
-  // symlink, and writing children through it would corrupt the link target's
-  // cached entries (and dangle after the target moves). Only relevant when
+  // Remove any ancestor that is not a real directory before mkdir/write: a
+  // path that previously synced as a symlink (or a regular file that became
+  // a directory) leaves a stale cache inode, and writing children through a
+  // symlink would corrupt the link target's cached entries while mkdir over
+  // a file throws after the server already applied. Only relevant when
   // symlink sync is on; the caller passes checkedDirs (which also memoizes
   // ancestors already confirmed real, so the sorted walk skips shared
   // prefixes) then and omits it otherwise to skip the sweep entirely.
@@ -531,9 +546,9 @@ async function cachePut(
       ancestor = path.join(ancestor, segments[i]!);
       if (checkedDirs.has(ancestor)) continue;
       const ast = await fs.promises.lstat(ancestor).catch(() => null);
-      if (ast?.isSymbolicLink()) {
+      if (ast && !ast.isDirectory()) {
         await fs.promises.rm(ancestor, { recursive: true, force: true });
-      } else if (ast?.isDirectory()) {
+      } else if (ast) {
         checkedDirs.add(ancestor);
       }
     }
@@ -665,7 +680,7 @@ async function syncFolderOnce(
   const log = opts.log ?? noopLogger;
   const slog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => log(level, `syncFolder: ${msg}`);
 
-  const files = await walkFiles(localFolderPath, opts.ignoreFn, opts.syncSymlinks ?? false);
+  const files = await walkFiles(localFolderPath, opts.ignoreFn, opts.syncSymlinks ?? false, slog);
   const additionalFiles = await collectAdditionalFiles(opts.additionalFiles);
   const allFiles = [...files, ...additionalFiles].sort((a, b) => a.path.localeCompare(b.path));
   const fileMap = new Map(allFiles.map((f) => [f.path, f]));
@@ -679,6 +694,7 @@ async function syncFolderOnce(
 
   // Track how many bytes we actually transmit to the server (single HTTP request).
   let bytesSentFull = 0;
+  let retryChanged = 0;
   let bytesSentDelta = 0;
   let httpSendMsTotal = 0;
   let deltaEncodeMsTotal = 0;
@@ -718,7 +734,7 @@ async function syncFolderOnce(
     }
   }
 
-  // Symlink entries travel in the manifest only — no payloads.
+  // Symlink entries travel in the manifest only, with no payloads.
   const changedFiles = changed.filter((f) => f.linkTarget === undefined);
 
   const encodedPayloads = await mapLimit(changedFiles, encodeLimit, async (f): Promise<EncodedPayload> => {
@@ -824,7 +840,7 @@ async function syncFolderOnce(
     const need = new Set(resp.needFull);
     // A daemon that predates symlink support json-drops the `link` field and
     // asks for these entries as full files. Streaming absPath would FOLLOW
-    // the link and silently materialize target content remotely — fail loud
+    // the link and silently materialize target content remotely, so fail loud
     // instead. (New daemons never put symlink entries in needFull.)
     const needFullLinks = [...need].filter((p) => fileMap.get(p)?.linkTarget !== undefined);
     if (needFullLinks.length > 0) {
@@ -833,10 +849,21 @@ async function syncFolderOnce(
           `recreate the instance or retry later. Paths: ${needFullLinks.join(', ')}`,
       );
     }
+    const changedPaths = new Set(changed.map((f) => f.path));
     const retryPayloads: EncodedPayload[] = [];
     for (const p of need) {
       const entry = fileMap.get(p);
       if (!entry) continue;
+      // The retry uploads real bytes: count them (and surface large files)
+      // exactly like first-pass fulls, or a fresh-daemon resync of a warm
+      // cache reports "sent=0B" while gigabytes upload.
+      if (entry.size >= LARGE_UPLOAD_NOTICE_BYTES) {
+        slog('info', `uploading large file ${entry.path} (${fmtBytes(entry.size)})`);
+      }
+      bytesSentFull += entry.size;
+      if (!changedPaths.has(entry.path)) {
+        retryChanged += 1;
+      }
       retryPayloads.push({
         payload: {
           kind: 'full',
@@ -849,7 +876,10 @@ async function syncFolderOnce(
       bytesSentFull += entry.size;
     }
     if (retryPayloads.length > 0) {
-      slog('debug', `server requested full for ${retryPayloads.length} files; retrying once`);
+      slog(
+        'info',
+        `daemon requested a full upload for ${retryPayloads.length} files (no matching basis); retrying once`,
+      );
       const retryMeta: FolderSyncHttpMeta = {
         ...meta,
         id: genId('sync'),
@@ -887,7 +917,7 @@ async function syncFolderOnce(
   const totalBytes = bytesSentFull + bytesSentDelta;
   slog(
     'info',
-    `sync complete: files=${allFiles.length} changed=${changed.length} sent=${fmtBytes(
+    `sync complete: files=${allFiles.length} changed=${changed.length + retryChanged} sent=${fmtBytes(
       totalBytes,
     )} in ${fmtMs(tookMs)}`,
   );
