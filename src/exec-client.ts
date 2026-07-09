@@ -57,7 +57,8 @@ export type ExecResult = {
 };
 
 export type TestflightEvent = {
-  state: 'uploading' | 'processing' | 'accepted' | 'failed';
+  /** 'unknown' means a testflight event arrived but its payload was unreadable. */
+  state: 'uploading' | 'processing' | 'accepted' | 'failed' | 'unknown';
   uploadId?: string;
   buildId?: string;
 };
@@ -347,6 +348,9 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
               try {
                 this.testflightEvent = JSON.parse(data) as TestflightEvent;
               } catch {
+                // The event itself proves the server ran the TestFlight step,
+                // so never let a payload glitch look like a missing feature.
+                this.testflightEvent = { state: 'unknown' };
                 this.log('warn', `SSE testflight event has invalid data: ${data}`);
               }
             } else if (eventType === 'exitCode') {
