@@ -25,11 +25,10 @@ export type IgnoreFnOptions = {
   include?: IgnoreFn;
   /**
    * "Xcode project sync mode." Enables the default Xcode/dependency excludes
-   * (build/, Pods/, xcuserdata/, …), nested-.gitignore honoring, and the
-   * `.xcodeproj`/`.xcworkspace` force-include. When unset (e.g. the app-bundle
-   * install sync) only the root .gitignore is read and no project force-
-   * include applies, so a build artifact isn't reshaped by gitignore files
-   * embedded in it.
+   * (build/, Pods/, xcuserdata/, …) and nested-.gitignore honoring. When
+   * unset (e.g. the app-bundle install sync) only the root .gitignore is
+   * read, so a build artifact isn't reshaped by gitignore files embedded
+   * in it.
    */
   xcodeDefaults?: boolean;
   basisCacheDir: string;
@@ -92,10 +91,10 @@ const XCODE_DEFAULT_EXCLUDE_PREFIXES = [
  *  1. `.git`, `.DS_Store`, the basis cache: excluded, never overridable.
  *  2. User include (--include): explicit intent beats the default excludes.
  *  3. Default Xcode/dependency excludes (when xcodeDefaults is set).
- *  4. Built-in force-includes: `*.xcconfig` (all callers) plus `.xcodeproj` /
- *     `.xcworkspace` bundles (when xcodeDefaults is set) - build-critical
- *     artifacts customers routinely gitignore. Junk at layer 3 runs first so
- *     xcuserdata/.dSYM inside a bundle stay out.
+ *  4. Built-in force-include: `*.xcconfig` (gitignored xcconfigs are still
+ *     required to reproduce the build remotely). Gitignored projects are NOT
+ *     force-included: limbuild regenerates them from project.yml, and
+ *     exact-version holdouts force-sync theirs with `--include`.
  *  5. `.gitignore` chain: the root file, plus nested ones with git semantics
  *     when xcodeDefaults is set (rules bind relative to their containing
  *     directory, deeper files override shallower ones). Only a decisive
@@ -210,15 +209,11 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
       }
       if (normalized.includes('/xcuserdata/') || normalized.includes('.dSYM/')) return true;
     }
-    // 4. Built-in force-includes. `.xcconfig` is unconditional (matches the
-    // long-standing behavior for every caller); the project-bundle force-
-    // include is Xcode-project-specific and gated with the other Xcode rules.
+    // 4. Built-in force-include: gitignored xcconfigs are still required to
+    // reproduce the build remotely. Gitignored .xcodeproj bundles are NOT
+    // force-included: limbuild regenerates them from project.yml, and
+    // exact-version holdouts force-sync theirs with --include.
     if (withoutTrailingSlash.endsWith('.xcconfig')) return false;
-    if (options.xcodeDefaults) {
-      for (const segment of withoutTrailingSlash.split('/')) {
-        if (segment.endsWith('.xcodeproj') || segment.endsWith('.xcworkspace')) return false;
-      }
-    }
     // 5. The .gitignore chain. Only a decisive *exclude* short-circuits; a
     // negation re-include (decision.ignored === false) still falls through to
     // the user --ignore layer, matching the pre-restructure precedence where
