@@ -403,7 +403,9 @@ async function collectAdditionalFiles(
   }
   const out: FileEntry[] = [];
   for (const additionalFile of additionalFiles) {
-    const remotePath = additionalFile.remotePath;
+    // Canonicalize user-supplied remote paths ("./netrc" -> "netrc") so the
+    // manifest key matches what the daemon applies and echoes in needFull.
+    const remotePath = path.posix.normalize(additionalFile.remotePath);
     const absPath = path.resolve(additionalFile.localPath);
     const st = await fs.promises.stat(absPath);
     if (!st.isFile()) {
