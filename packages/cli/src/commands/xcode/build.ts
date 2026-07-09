@@ -110,8 +110,7 @@ export default class XcodeBuild extends BaseCommand {
         'App Store Connect API key ID, e.g. 2X9R4HXF34. Passing the asc flags uploads the signed IPA to TestFlight after the build; requires the signing flags and --asc-key.',
     }),
     'asc-issuer-id': Flags.string({
-      description:
-        'App Store Connect issuer ID for team API keys. Omit when using an individual API key.',
+      description: 'App Store Connect issuer ID for team API keys. Omit when using an individual API key.',
     }),
     'asc-key': Flags.string({
       description: 'Path to the App Store Connect API private key (.p8). Requires --asc-key-id.',
@@ -270,7 +269,9 @@ export default class XcodeBuild extends BaseCommand {
         this.output('TestFlight: accepted by App Store Connect.');
       } else if (result.testflight?.state === 'processing') {
         this.output(
-          `TestFlight: uploaded, still processing on Apple's side (upload ${result.testflight.uploadId ?? 'unknown'}).`,
+          `TestFlight: uploaded, still processing on Apple's side (upload ${
+            result.testflight.uploadId ?? 'unknown'
+          }).`,
         );
       }
       if (flags.ios) {

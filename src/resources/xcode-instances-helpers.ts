@@ -76,7 +76,6 @@ export type XcodeSigningConfig = {
   provisioningProfileBase64?: string;
 };
 
-
 export type ReactNativeBuildConfig = {
   /**
    * Relative path from the synced workspace root to the Expo app directory.
