@@ -263,7 +263,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     // build is not force-failed client-side while the server still succeeds.
     let timeoutMs = 3600 * 1000;
     if (request.testflight) {
-      timeoutMs += ((request.testflight.waitTimeoutSeconds ?? 120) + 900) * 1000;
+      timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 120) + 900) * 1000;
     }
     let exitCode: number;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
