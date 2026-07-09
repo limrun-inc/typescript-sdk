@@ -15,7 +15,6 @@ type SigningFlags = {
   'provisioning-profile'?: string;
 };
 type TestflightFlags = {
-  testflight: boolean;
   'asc-key-id'?: string;
   'asc-issuer-id'?: string;
   'asc-key'?: string;
@@ -38,7 +37,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url "myapp://expo-development-client/?url=http%3A%2F%2F10.244.7.112%3A57090"',
     '<%= config.bin %> xcode build --scheme WatchApp --sdk watchsimulator',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
-    '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --testflight --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8',
+    '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
     '<%= config.bin %> xcode build --signed-upload-url <url>',
     `<%= config.bin %> xcode build ./MyProject --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"`,
@@ -106,24 +105,16 @@ export default class XcodeBuild extends BaseCommand {
       description:
         'Path to a .mobileprovision profile. Requires --certificate-p12 and --certificate-password.',
     }),
-    testflight: Flags.boolean({
-      description:
-        'Upload the signed IPA to TestFlight (App Store Connect) after the build. Requires the signing flags plus --asc-key-id and --asc-key.',
-      default: false,
-    }),
     'asc-key-id': Flags.string({
-      description: 'App Store Connect API key ID for --testflight, e.g. 2X9R4HXF34.',
-      env: 'ASC_KEY_ID',
+      description:
+        'App Store Connect API key ID, e.g. 2X9R4HXF34. Passing the asc flags uploads the signed IPA to TestFlight after the build; requires the signing flags and --asc-key.',
     }),
     'asc-issuer-id': Flags.string({
       description:
         'App Store Connect issuer ID for team API keys. Omit when using an individual API key.',
-      env: 'ASC_ISSUER_ID',
     }),
     'asc-key': Flags.string({
-      description:
-        'Path to the App Store Connect API private key (.p8) for --testflight. Alternatively set ASC_PRIVATE_KEY_B64 to the base64-encoded key content.',
-      env: 'ASC_KEY_PATH',
+      description: 'Path to the App Store Connect API private key (.p8). Requires --asc-key-id.',
     }),
     'basis-cache-dir': Flags.string({
       description: 'Directory to use for the client-side delta sync cache during the pre-build sync step.',
@@ -157,7 +148,7 @@ export default class XcodeBuild extends BaseCommand {
     if (flags.ios && hasSigningFlags(flags)) {
       this.error('--ios builds run on a simulator and cannot use signing flags.');
     }
-    if (flags.ios && flags.testflight) {
+    if (flags.ios && hasTestflightFlags(flags)) {
       this.error('--ios builds run on a simulator and cannot upload to TestFlight.');
     }
 
@@ -201,16 +192,17 @@ export default class XcodeBuild extends BaseCommand {
         }
         options.signing = signing;
       }
-      if (flags.testflight) {
+      const testflight = await this.buildTestflightOptions(flags);
+      if (testflight) {
         if (!signing) {
           this.error(
-            '--testflight uploads the signed IPA, so it requires --certificate-p12, --certificate-password, and --provisioning-profile.',
+            'TestFlight upload delivers the signed IPA, so the asc flags require --certificate-p12, --certificate-password, and --provisioning-profile.',
           );
         }
         if (settings.sdk !== 'iphoneos') {
-          this.error('--testflight requires --sdk iphoneos.');
+          this.error('TestFlight upload requires --sdk iphoneos.');
         }
-        options.testflight = await this.buildTestflightOptions(flags);
+        options.testflight = testflight;
       }
       if (flags.upload && flags['signed-upload-url']) {
         this.error('Use either --upload or --signed-upload-url, not both.');
@@ -267,9 +259,9 @@ export default class XcodeBuild extends BaseCommand {
       // field and report a successful build without ever uploading, so a
       // zero exit without a single testflight event means the feature is
       // missing, not that the upload succeeded.
-      if (flags.testflight && !result.testflight) {
+      if (options.testflight && !result.testflight) {
         this.error(
-          "This instance's limbuild does not support --testflight yet. Recreate the instance or retry later.",
+          "This instance's limbuild does not support TestFlight upload yet. Recreate the instance or retry later.",
         );
       }
 
@@ -333,28 +325,26 @@ export default class XcodeBuild extends BaseCommand {
     }
   }
 
-  private async buildTestflightOptions(flags: TestflightFlags): Promise<{
-    apiKeyId: string;
-    apiIssuerId?: string;
-    apiPrivateKeyBase64: string;
-  }> {
-    if (!flags['asc-key-id']) {
-      this.error('--testflight requires --asc-key-id (or the ASC_KEY_ID environment variable).');
+  // Mirrors the signing convention: passing any asc flag expresses the intent
+  // to upload to TestFlight, no separate toggle.
+  private async buildTestflightOptions(flags: TestflightFlags): Promise<
+    | {
+        apiKeyId: string;
+        apiIssuerId?: string;
+        apiPrivateKeyBase64: string;
+      }
+    | undefined
+  > {
+    if (!hasTestflightFlags(flags)) {
+      return undefined;
     }
-    let apiPrivateKeyBase64: string;
-    if (flags['asc-key']) {
-      apiPrivateKeyBase64 = await this.readFileBase64(flags['asc-key'], '--asc-key');
-    } else if (process.env.ASC_PRIVATE_KEY_B64) {
-      apiPrivateKeyBase64 = process.env.ASC_PRIVATE_KEY_B64;
-    } else {
-      this.error(
-        '--testflight requires the App Store Connect API private key: pass --asc-key <path-to-.p8> or set ASC_PRIVATE_KEY_B64.',
-      );
+    if (!flags['asc-key-id'] || !flags['asc-key']) {
+      this.error('TestFlight upload requires both --asc-key-id and --asc-key.');
     }
     return {
       apiKeyId: flags['asc-key-id'],
       ...(flags['asc-issuer-id'] && { apiIssuerId: flags['asc-issuer-id'] }),
-      apiPrivateKeyBase64,
+      apiPrivateKeyBase64: await this.readFileBase64(flags['asc-key'], '--asc-key'),
     };
   }
 
@@ -402,5 +392,13 @@ function hasSigningFlags(flags: SigningFlags): boolean {
     flags['certificate-p12'] !== undefined ||
     flags['certificate-password'] !== undefined ||
     flags['provisioning-profile'] !== undefined
+  );
+}
+
+function hasTestflightFlags(flags: TestflightFlags): boolean {
+  return (
+    flags['asc-key-id'] !== undefined ||
+    flags['asc-issuer-id'] !== undefined ||
+    flags['asc-key'] !== undefined
   );
 }
