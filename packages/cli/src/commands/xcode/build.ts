@@ -267,6 +267,12 @@ export default class XcodeBuild extends BaseCommand {
       const result = await proc;
 
       if (result.exitCode !== 0) {
+        if (result.timedOut) {
+          this.error(
+            'Timed out waiting for the build to finish; the remote build may still be running. Check the instance before retrying.',
+            { exit: result.exitCode },
+          );
+        }
         if (result.testflight?.state === 'failed') {
           this.error(
             "TestFlight upload failed; the build and signing succeeded. See App Store Connect's response in the log above.",
