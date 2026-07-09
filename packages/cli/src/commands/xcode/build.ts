@@ -266,15 +266,6 @@ export default class XcodeBuild extends BaseCommand {
         }
         this.error(`xcodebuild failed with exit code ${result.exitCode}`, { exit: result.exitCode });
       }
-      // Old limbuild servers silently drop the unknown testflight request
-      // field and report a successful build without ever uploading, so a
-      // zero exit without a single testflight event means the feature is
-      // missing, not that the upload succeeded.
-      if (options.testflight && !result.testflight) {
-        this.error(
-          "This instance's limbuild does not support TestFlight upload yet. Recreate the instance or retry later.",
-        );
-      }
 
       this.output(`\nBuild succeeded (exit code ${result.exitCode})`);
       if (result.testflight?.state === 'accepted') {
