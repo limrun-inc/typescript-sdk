@@ -30,6 +30,7 @@ export type ExecRequest = {
     certificatePassword?: string;
     provisioningProfileBase64?: string;
   };
+  testflight?: TestflightUploadConfig;
   buildSettings?: Record<string, string>;
   signedUploadUrl?: string;
   additionalMetadata?: {
@@ -48,6 +49,33 @@ export type ExecResult = {
   execId: string;
   status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
   signedDownloadUrl?: string;
+  /**
+   * Last TestFlight state streamed by the server. Absent when the build ran
+   * without a testflight request, or when the server predates the feature.
+   */
+  testflight?: TestflightEvent;
+};
+
+export type TestflightEvent = {
+  state: 'uploading' | 'processing' | 'accepted' | 'failed';
+  uploadId?: string;
+  buildId?: string;
+};
+
+export type TestflightUploadConfig = {
+  /** App Store Connect API key ID, e.g. 2X9R4HXF34. */
+  apiKeyId: string;
+  /** Issuer ID for team API keys. Omit for individual API keys. */
+  apiIssuerId?: string;
+  /** Base64-encoded content of the .p8 private key file. */
+  apiPrivateKeyBase64: string;
+  /**
+   * How long the server watches for App Store Connect's processing verdict
+   * after the upload. A FAILED verdict within the window fails the build;
+   * expiry without a verdict succeeds with the build still processing on
+   * Apple's side. 0 skips the watch. Defaults to 120.
+   */
+  waitTimeoutSeconds?: number;
 };
 
 type DataListener = (chunk: string) => void;
@@ -121,6 +149,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private abortController = new AbortController();
   private sseConnection: EventSourceClient | null = null;
   private killed = false;
+  private testflightEvent: TestflightEvent | null = null;
   private readonly options: ExecOptions;
   private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
 
@@ -228,7 +257,13 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     // 2. Stream logs via SSE and wait for exit code
     const eventsUrl = `${apiUrl}/exec/${this.execId}/events`;
 
-    const timeoutMs = 3600 * 1000; // 1 hour max
+    // 1 hour max for the build itself; a TestFlight request extends the
+    // budget by its server-side verdict watch plus upload headroom so a long
+    // build is not force-failed client-side while the server still succeeds.
+    let timeoutMs = 3600 * 1000;
+    if (request.testflight) {
+      timeoutMs += ((request.testflight.waitTimeoutSeconds ?? 120) + 900) * 1000;
+    }
     let exitCode: number;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -275,6 +310,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       execId: this.execId!,
       status,
       ...(request.additionalMetadata ?? {}),
+      ...(this.testflightEvent ? { testflight: this.testflightEvent } : {}),
     };
 
     this.log('debug', `Build finished: ${result.status} (exit ${result.exitCode})`);
@@ -307,6 +343,12 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
               this.stdout.emit('data', data);
             } else if (eventType === 'stderr') {
               this.stderr.emit('data', data);
+            } else if (eventType === 'testflight') {
+              try {
+                this.testflightEvent = JSON.parse(data) as TestflightEvent;
+              } catch {
+                this.log('warn', `SSE testflight event has invalid data: ${data}`);
+              }
             } else if (eventType === 'exitCode') {
               const exitCode = parseInt(data, 10);
               if (Number.isNaN(exitCode)) {
