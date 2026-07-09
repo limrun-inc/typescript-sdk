@@ -31,7 +31,7 @@
     "fix": "./scripts/format"
   },
   "dependencies": {
-    "@limrun/xdelta3-wasm": "^0.1.0",
+    "@limrun/xdelta3-wasm": "0.2.0",
     "eventsource-client": "^1.2.0",
     "https-proxy-agent": "7.0.6",
     "ignore": "^7.0.5",

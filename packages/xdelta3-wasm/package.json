@@ -1,6 +1,6 @@
 {
   "name": "@limrun/xdelta3-wasm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Streaming xdelta3/VCDIFF encoder backed by WebAssembly",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
