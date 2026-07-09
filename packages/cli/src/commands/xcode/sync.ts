@@ -13,7 +13,7 @@ export default class XcodeSync extends BaseCommand {
     '<%= config.bin %> xcode sync --watch',
     '<%= config.bin %> xcode sync ./MyProject --id <ios-instance-ID> --no-install',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp',
-    '<%= config.bin %> xcode sync ./MyProject --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152',
+    '<%= config.bin %> xcode sync ./MyProject --basis-cache-dir ./.limsync-cache',
     '<%= config.bin %> xcode sync ./MyProject --ignore "\\\\.xcuserdata/" --ignore "^DerivedData/"',
     '<%= config.bin %> xcode sync ./MyProject --additional-file ~/.netrc=~/.netrc',
   ];
@@ -44,9 +44,6 @@ export default class XcodeSync extends BaseCommand {
     'basis-cache-dir': Flags.string({
       description: 'Directory to use for the client-side delta sync cache.',
     }),
-    'max-patch-bytes': Flags.integer({
-      description: 'Maximum patch size in bytes before falling back to a full upload.',
-    }),
     ignore: Flags.string({
       description:
         'Regular expression to ignore matching relative paths during sync. Repeat for multiple patterns.',
@@ -76,7 +73,6 @@ export default class XcodeSync extends BaseCommand {
         watch: flags.watch,
         install: flags.install,
         basisCacheDir: flags['basis-cache-dir'],
-        maxPatchBytes: flags['max-patch-bytes'],
         ignore: compileIgnorePatterns(flags.ignore),
         additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
       };

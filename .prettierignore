@@ -5,3 +5,6 @@ CHANGELOG.md
 
 # don't format tsc output, will break source maps
 /dist
+
+# vendored upstream source, kept as copied
+/packages/xdelta3-wasm/native/xdelta

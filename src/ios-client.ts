@@ -641,7 +641,6 @@ export type InstanceClient = {
    * @param opts Optional sync options
    * @param opts.install If true, install the app after syncing. Defaults to true.
    * @param opts.basisCacheDir Directory for the client-side folder-sync cache.
-   * @param opts.maxPatchBytes Max patch size (bytes) to send as delta before falling back to full upload. Defaults to 4MB.
    * @param opts.launchMode Launch mode after installation: "ForegroundIfRunning" (default): bring to foreground if already running, otherwise launch, "RelaunchIfRunning": kill and relaunch if already running
    * @param opts.watch If true, watch the folder and re-sync on any changes (debounced, single-flight).
    */
@@ -650,7 +649,6 @@ export type InstanceClient = {
     opts?: {
       install?: boolean;
       basisCacheDir?: string;
-      maxPatchBytes?: number;
       launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
       watch?: boolean;
     },
@@ -1939,7 +1937,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       opts?: {
         install?: boolean;
         basisCacheDir?: string;
-        maxPatchBytes?: number;
         launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
         watch?: boolean;
       },
@@ -1987,7 +1984,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         basisCacheDir,
         log: syncLog,
         install: opts?.install ?? true,
-        maxPatchBytes: opts?.maxPatchBytes ?? 4 * 1024 * 1024,
         launchMode: opts?.launchMode ?? 'ForegroundIfRunning',
         watch: preparedApp.isArchive ? false : shouldWatch,
       };

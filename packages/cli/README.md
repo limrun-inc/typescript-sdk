@@ -294,8 +294,8 @@ lim ios sync ./Build/Products/Debug-iphonesimulator/MyApp.app
 # Re-sync on changes and relaunch if the app is already running
 lim ios sync ./MyApp.app --watch --launch-mode RelaunchIfRunning
 
-# Tune the delta-sync cache and patch size
-lim ios sync ./MyApp.app --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152
+# Use a custom delta-sync cache
+lim ios sync ./MyApp.app --basis-cache-dir ./.limsync-cache
 ```
 
 ---
@@ -425,8 +425,8 @@ lim xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 -
 # Attach an existing simulator so builds auto-install there
 lim xcode attach-simulator ios_abc123 --id sandbox_def456
 
-# Tune sync cache, patch size, or ignore additional paths
-lim xcode sync ./MyProject --watch --basis-cache-dir ./.limsync-cache --max-patch-bytes 2097152
+# Tune sync cache or ignore additional paths
+lim xcode sync ./MyProject --watch --basis-cache-dir ./.limsync-cache
 lim xcode sync ./MyProject --ignore "\\.xcuserdata/" --ignore "^DerivedData/"
 ```
 

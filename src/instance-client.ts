@@ -1,10 +1,15 @@
 import { WebSocket, Data } from 'ws';
 import { exec } from 'node:child_process';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import crypto from 'crypto';
 
 import { downloadFileToLocalPath } from './internal/download-file';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import { startTcpTunnel, isNonRetryableError } from './tunnel';
 import type { Tunnel } from './tunnel';
+import { syncFolder, type FolderSyncOptions, type SyncFolderResult } from './folder-sync';
 
 const ANDROID_RECORDING_PATH = '/data/local/tmp/recordings/video_recording.mp4';
 const ANDROID_SIGNALING_PATH = '/ws';
@@ -32,10 +37,101 @@ function buildDownloadUrl(apiUrl: string): string {
   return `${apiUrl}/files?path=${encodeURIComponent(ANDROID_RECORDING_PATH)}`;
 }
 
+function buildSyncStateUrl(apiUrl: string): string {
+  return `${apiUrl}/sync/state`;
+}
+
+function buildSyncSeedUrl(apiUrl: string, sha256: string): string {
+  return `${apiUrl}/sync/seeds/${encodeURIComponent(sha256)}`;
+}
+
 function assertBandwidthKbps(field: keyof WifiBandwidthOptions, value: number): void {
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`${field} must be a non-negative integer Kbps value`);
   }
+}
+
+async function sha256FileHex(filePath: string): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('error', reject);
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+async function assertApkFile(filePath: string): Promise<void> {
+  const st = await fs.promises.stat(filePath).catch(() => null);
+  if (!st?.isFile()) {
+    throw new Error(`APK file not found: ${filePath}`);
+  }
+  const fd = await fs.promises.open(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(4);
+    const { bytesRead } = await fd.read(buf, 0, 4, 0);
+    if (bytesRead < 4 || buf[0] !== 0x50 || buf[1] !== 0x4b) {
+      throw new Error(`File is not an APK/ZIP archive: ${filePath}`);
+    }
+  } finally {
+    await fd.close();
+  }
+}
+
+async function fetchAndroidSyncState(apiUrl: string, token: string): Promise<AndroidSyncState> {
+  const response = await nodeProxyTransport.fetch(buildSyncStateUrl(apiUrl), {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to fetch Android sync state: ${response.status} ${text}`);
+  }
+  return (await response.json()) as AndroidSyncState;
+}
+
+async function bootstrapAndroidBasisCache(
+  apkPath: string,
+  basisCacheDir: string,
+  apiUrl: string,
+  token: string,
+  log: FolderSyncOptions['log'],
+): Promise<void> {
+  const remotePath = path.basename(apkPath);
+  const basisPath = path.join(basisCacheDir, remotePath);
+  if (fs.existsSync(basisPath)) {
+    return;
+  }
+  const state = await fetchAndroidSyncState(apiUrl, token).catch((err) => {
+    log('debug', `android sync state unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  });
+  if (!state) {
+    return;
+  }
+  const localSha = await sha256FileHex(apkPath);
+  for (const root of state.roots ?? []) {
+    for (const file of root.files ?? []) {
+      if (file.path === remotePath && file.sha256?.toLowerCase() === localSha) {
+        await fs.promises.mkdir(path.dirname(basisPath), { recursive: true });
+        await fs.promises.copyFile(apkPath, basisPath);
+        log('debug', `seeded Android basis cache from matching server root: ${remotePath}`);
+        return;
+      }
+    }
+  }
+  const seeds = [...(state.seeds ?? [])]
+    .filter(
+      (seed): seed is { sha256: string; size?: number; name?: string; mtime?: number } =>
+        typeof seed.sha256 === 'string' && /^[0-9a-f]{64}$/i.test(seed.sha256),
+    )
+    .sort((a, b) => (b.mtime ?? 0) - (a.mtime ?? 0));
+  const seed = seeds[0];
+  if (!seed) {
+    return;
+  }
+  await downloadFileToLocalPath(buildSyncSeedUrl(apiUrl, seed.sha256), token, basisPath);
+  log('debug', `seeded Android basis cache from instance seed: ${seed.sha256}`);
 }
 
 /**
@@ -130,6 +226,19 @@ export type InstanceClient = {
    * rejects with an Error on failure.
    */
   sendAsset: (url: string, timeoutMs?: number) => Promise<void>;
+
+  /**
+   * Delta-sync a local APK to the instance and install it.
+   */
+  syncApp: (
+    apkPath: string,
+    opts?: {
+      install?: boolean;
+      watch?: boolean;
+      launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
+      basisCacheDir?: string;
+    },
+  ) => Promise<SyncFolderResult>;
 
   /**
    * Get current connection state
@@ -256,6 +365,14 @@ type ScreenshotResponse = {
 
 type ScreenshotData = {
   dataUri: string;
+};
+
+type AndroidSyncState = {
+  roots?: Array<{
+    rootName?: string;
+    files?: Array<{ path?: string; sha256?: string; size?: number; mode?: number }>;
+  }>;
+  seeds?: Array<{ sha256?: string; size?: number; name?: string; mtime?: number }>;
 };
 
 export type ElementTreeData = {
@@ -890,6 +1007,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             disconnect,
             startAdbTunnel,
             sendAsset,
+            syncApp,
             getConnectionState,
             onConnectionStateChange,
           });
@@ -1147,6 +1265,47 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             reject(err);
           }
         });
+      });
+    };
+
+    const syncApp: InstanceClient['syncApp'] = async (apkPath, syncOpts) => {
+      const resolvedPath = path.resolve(apkPath);
+      await assertApkFile(resolvedPath);
+      const fileName = path.basename(resolvedPath);
+      const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
+      const cacheKey = `limsync-cache-android-${fileName}-${hash}`;
+      const basisCacheDir = syncOpts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
+      const syncLog: FolderSyncOptions['log'] = (level, msg) => {
+        switch (level) {
+          case 'debug':
+            logger.debug(msg);
+            break;
+          case 'info':
+            logger.info(msg);
+            break;
+          case 'warn':
+            logger.warn(msg);
+            break;
+          case 'error':
+            logger.error(msg);
+            break;
+          default:
+            logger.info(msg);
+        }
+      };
+      await fs.promises.mkdir(basisCacheDir, { recursive: true });
+      await bootstrapAndroidBasisCache(resolvedPath, basisCacheDir, options.apiUrl, options.token, syncLog);
+      return await syncFolder(resolvedPath, {
+        apiUrl: options.apiUrl,
+        token: options.token,
+        udid: cacheKey,
+        basisCacheDir,
+        install: syncOpts?.install ?? true,
+        launchMode: syncOpts?.launchMode ?? 'ForegroundIfRunning',
+        watch: syncOpts?.watch ?? false,
+        ignoreFn: () => false,
+        log: syncLog,
+        compression: 'identity',
       });
     };
 

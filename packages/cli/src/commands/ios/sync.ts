@@ -13,7 +13,7 @@ export default class IosSync extends BaseCommand {
     '<%= config.bin %> ios sync ./MyApp.app --watch',
     '<%= config.bin %> ios sync ./MyApp.app --no-install',
     '<%= config.bin %> ios sync ./MyApp.app --launch-mode RelaunchIfRunning',
-    '<%= config.bin %> ios sync ./MyApp.app --basis-cache-dir ./.limrun-cache --max-patch-bytes 2097152',
+    '<%= config.bin %> ios sync ./MyApp.app --basis-cache-dir ./.limrun-cache',
   ];
 
   static args = {
@@ -45,9 +45,6 @@ export default class IosSync extends BaseCommand {
     'basis-cache-dir': Flags.string({
       description: 'Directory to use for the client-side delta sync cache.',
     }),
-    'max-patch-bytes': Flags.integer({
-      description: 'Maximum patch size in bytes before falling back to a full upload.',
-    }),
   };
 
   async run(): Promise<void> {
@@ -66,7 +63,6 @@ export default class IosSync extends BaseCommand {
         watch: flags.watch,
         install: flags.install,
         basisCacheDir: flags['basis-cache-dir'],
-        maxPatchBytes: flags['max-patch-bytes'],
         launchMode: flags['launch-mode'] as 'ForegroundIfRunning' | 'RelaunchIfRunning' | undefined,
       });
 

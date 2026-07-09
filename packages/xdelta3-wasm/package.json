@@ -1,0 +1,37 @@
+{
+  "name": "@limrun/xdelta3-wasm",
+  "version": "0.1.0",
+  "description": "Streaming xdelta3/VCDIFF encoder backed by WebAssembly",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/limrun-inc/typescript-sdk.git",
+    "directory": "packages/xdelta3-wasm"
+  },
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "build:wasm": "rm -rf dist && ./native/build.sh && tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.8.3"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}
