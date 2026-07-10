@@ -874,7 +874,6 @@ async function syncFolderOnce(
         },
         filePath: entry.absPath,
       });
-      bytesSentFull += entry.size;
     }
     if (retryPayloads.length > 0) {
       slog(

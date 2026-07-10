@@ -27,8 +27,10 @@ function decodeBody(raw: Buffer, encoding: string | undefined): Buffer {
   return raw;
 }
 
-async function startStubServer(response: object = { ok: true }): Promise<StubServer> {
+async function startStubServer(response: object | object[] = { ok: true }): Promise<StubServer> {
   const requests: WireMeta[] = [];
+  // An array means one response per request, in order (the last one repeats).
+  const responses = Array.isArray(response) ? response : [response];
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (c) => chunks.push(c));
@@ -37,7 +39,7 @@ async function startStubServer(response: object = { ok: true }): Promise<StubSer
       const metaLen = body.readUInt32BE(0);
       requests.push(JSON.parse(body.subarray(4, 4 + metaLen).toString('utf-8')) as WireMeta);
       res.setHeader('content-type', 'application/json');
-      res.end(JSON.stringify(response));
+      res.end(JSON.stringify(responses[Math.min(requests.length - 1, responses.length - 1)]));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -185,6 +187,20 @@ describe('folder-sync symlinks', () => {
       await expect(syncFolder(tree, syncOpts(server, cache))).rejects.toThrow(/does not support symlinks/);
       // No retry request: the target's content must never be uploaded as a file.
       expect(server.requests).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('needFull retry counts resent bytes once', async () => {
+    fs.writeFileSync(path.join(tree, 'ios', 'data.swift'), 'x'.repeat(1000));
+    const server = await startStubServer([{ ok: false, needFull: ['ios/data.swift'] }, { ok: true }]);
+    try {
+      const result = await syncFolder(tree, syncOpts(server, cache));
+      expect(server.requests).toHaveLength(2);
+      // Reported bytes must equal the payload bytes that went over the wire.
+      const wireBytes = server.requests.flatMap((r) => r.payloads).reduce((sum, p) => sum + p.length, 0);
+      expect(result.bytesSent).toBe(wireBytes);
     } finally {
       await server.close();
     }
