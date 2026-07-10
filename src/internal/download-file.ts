@@ -5,7 +5,12 @@ import { pipeline } from 'stream/promises';
 
 import { nodeProxyTransport } from './proxy-transport';
 
-export async function downloadFileToLocalPath(url: string, token: string, localPath: string): Promise<void> {
+export async function downloadFileToLocalPath(
+  url: string,
+  token: string,
+  localPath: string,
+  onProgress?: (downloadedBytes: number, totalBytes: number) => void,
+): Promise<void> {
   const maxRetries = 3;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -27,7 +32,16 @@ export async function downloadFileToLocalPath(url: string, token: string, localP
       throw new Error('Download failed: response body is missing');
     }
     await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-    await pipeline(Readable.fromWeb(response.body as any), fs.createWriteStream(localPath));
+    const source = Readable.fromWeb(response.body as any);
+    if (onProgress) {
+      const totalBytes = Number(response.headers.get('content-length') ?? 0);
+      let downloadedBytes = 0;
+      source.on('data', (chunk: Buffer) => {
+        downloadedBytes += chunk.length;
+        onProgress(downloadedBytes, totalBytes);
+      });
+    }
+    await pipeline(source, fs.createWriteStream(localPath));
     return;
   }
 }

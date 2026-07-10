@@ -96,7 +96,7 @@ async function bootstrapAndroidBasisCache(
   apiUrl: string,
   token: string,
   log: FolderSyncOptions['log'],
-  onBasisDownload?: (sizeBytes?: number) => void,
+  onBasisDownloadProgress?: (downloadedBytes: number, totalBytes: number) => void,
 ): Promise<void> {
   const remotePath = path.basename(apkPath);
   const basisPath = path.join(basisCacheDir, remotePath);
@@ -131,8 +131,15 @@ async function bootstrapAndroidBasisCache(
   if (!seed) {
     return;
   }
-  onBasisDownload?.(seed.size);
-  await downloadFileToLocalPath(buildSyncSeedUrl(apiUrl, seed.sha256), token, basisPath);
+  // Announce the download before any bytes flow so consumers can react to the
+  // expected size even during connection setup / time-to-first-byte.
+  onBasisDownloadProgress?.(0, seed.size ?? 0);
+  await downloadFileToLocalPath(
+    buildSyncSeedUrl(apiUrl, seed.sha256),
+    token,
+    basisPath,
+    onBasisDownloadProgress,
+  );
   log('debug', `seeded Android basis cache from instance seed: ${seed.sha256}`);
 }
 
@@ -239,7 +246,12 @@ export type InstanceClient = {
       watch?: boolean;
       launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
       basisCacheDir?: string;
-      onBasisDownload?: (sizeBytes?: number) => void;
+      /**
+       * Called while the basis seed is downloaded from the instance. Fires once with
+       * `(0, expectedSizeBytes)` before the download starts (expectedSizeBytes is 0 when
+       * unknown), then repeatedly as bytes arrive.
+       */
+      onBasisDownloadProgress?: (downloadedBytes: number, totalBytes: number) => void;
       /** Called after every successful sync, including watch-triggered re-syncs. */
       onSyncComplete?: FolderSyncOptions['onSyncComplete'];
     },
@@ -1305,7 +1317,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         options.apiUrl,
         options.token,
         syncLog,
-        syncOpts?.onBasisDownload,
+        syncOpts?.onBasisDownloadProgress,
       );
       return await syncFolder(resolvedPath, {
         apiUrl: options.apiUrl,
