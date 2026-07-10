@@ -696,7 +696,6 @@ async function syncFolderOnce(
 
   // Track how many bytes we actually transmit to the server (single HTTP request).
   let bytesSentFull = 0;
-  let retryChanged = 0;
   let bytesSentDelta = 0;
   let httpSendMsTotal = 0;
   let deltaEncodeMsTotal = 0;
@@ -738,6 +737,9 @@ async function syncFolderOnce(
 
   // Symlink entries travel in the manifest only, with no payloads.
   const changedFiles = changed.filter((f) => f.linkTarget === undefined);
+  // Grows in the needFull retry below; sized here so the summary counts
+  // every path that actually shipped this sync.
+  const changedPaths = new Set(changed.map((f) => f.path));
 
   const encodedPayloads = await mapLimit(changedFiles, encodeLimit, async (f): Promise<EncodedPayload> => {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
@@ -851,7 +853,6 @@ async function syncFolderOnce(
           `recreate the instance or retry later. Paths: ${needFullLinks.join(', ')}`,
       );
     }
-    const changedPaths = new Set(changed.map((f) => f.path));
     const retryPayloads: EncodedPayload[] = [];
     for (const p of need) {
       const entry = fileMap.get(p);
@@ -863,9 +864,7 @@ async function syncFolderOnce(
         slog('info', `uploading large file ${entry.path} (${fmtBytes(entry.size)})`);
       }
       bytesSentFull += entry.size;
-      if (!changedPaths.has(entry.path)) {
-        retryChanged += 1;
-      }
+      changedPaths.add(entry.path);
       retryPayloads.push({
         payload: {
           kind: 'full',
@@ -919,7 +918,7 @@ async function syncFolderOnce(
   const totalBytes = bytesSentFull + bytesSentDelta;
   slog(
     'info',
-    `sync complete: files=${allFiles.length} changed=${changed.length + retryChanged} sent=${fmtBytes(
+    `sync complete: files=${allFiles.length} changed=${changedPaths.size} sent=${fmtBytes(
       totalBytes,
     )} in ${fmtMs(tookMs)}`,
   );
