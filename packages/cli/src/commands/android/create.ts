@@ -104,6 +104,7 @@ export default class AndroidCreate extends BaseCommand {
           kind: 'App' as const,
           source: 'AssetName' as const,
           assetName: name,
+          launchMode: 'RelaunchIfRunning',
         }));
       }
 

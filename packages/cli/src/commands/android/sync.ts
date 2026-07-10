@@ -66,6 +66,10 @@ export default class AndroidSync extends BaseCommand {
         install: flags.install,
         basisCacheDir: flags['basis-cache-dir'],
         launchMode: flags['launch-mode'] as 'ForegroundIfRunning' | 'RelaunchIfRunning' | undefined,
+        onBasisDownload: (sizeBytes?: number) => {
+          const downloadSize = sizeBytes === undefined ? '' : ` (${formatBytes(sizeBytes)} download)`;
+          this.info(`Fetching Android sync basis from instance${downloadSize}...`);
+        },
       });
 
       const syncDuration = formatDurationMs(Date.now() - syncStart);
