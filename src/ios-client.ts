@@ -270,17 +270,17 @@ export type DetoxLaunchRuntime = {
 
 export type LaunchAppRuntime = DetoxLaunchRuntime;
 
-export type LaunchAppShutdownCallback = (exitCode: number, logs: string[]) => Promise<void>;
+export type LaunchAppExitCallback = (logs: string[]) => Promise<void>;
 
-type LaunchAppShutdownOptions = {
+type LaunchAppExitOptions = {
   /**
    * Called when the launched app exits. The logs array contains one entry per
    * stdout/stderr line produced by that execution, as reported by limulator.
    */
-  onShutdown?: LaunchAppShutdownCallback;
+  onExit?: LaunchAppExitCallback;
 };
 
-type StandardLaunchAppOptions = LaunchAppShutdownOptions & {
+type StandardLaunchAppOptions = LaunchAppExitOptions & {
   /**
    * Launch behavior when the app may already be running.
    * Defaults to `ForegroundIfRunning` server-side.
@@ -289,7 +289,7 @@ type StandardLaunchAppOptions = LaunchAppShutdownOptions & {
   runtime?: undefined;
 };
 
-type RuntimeLaunchAppOptions = LaunchAppShutdownOptions & {
+type RuntimeLaunchAppOptions = LaunchAppExitOptions & {
   /** Runtime launches must relaunch so runtime injection is applied. */
   mode?: Extract<LaunchAppMode, 'RelaunchIfRunning'>;
   /** Optional app runtime to attach during launch. */
@@ -970,7 +970,7 @@ type ServerResponse = {
   exitCode?: number;
   // Log tail fields
   logs?: string;
-  // App shutdown fields
+  // App exit fields
   execId?: string;
   logLineCount?: number;
   // App log streaming fields
@@ -1546,33 +1546,31 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return logs.split(/\r?\n/);
     };
 
-    const handleAppShutdown = (message: ServerResponse): boolean => {
-      if (message.type !== 'appShutdown') {
+    const handleAppExit = (message: ServerResponse): boolean => {
+      if (message.type !== 'appExit') {
         return false;
       }
 
-      const { execId, bundleId, exitCode, logLineCount } = message;
+      const { execId, bundleId, logLineCount } = message;
       if (
         typeof execId !== 'string' ||
         typeof bundleId !== 'string' ||
-        typeof exitCode !== 'number' ||
-        !Number.isInteger(exitCode) ||
         typeof logLineCount !== 'number' ||
         !Number.isInteger(logLineCount) ||
         logLineCount < 0
       ) {
-        logger.warn('Received malformed appShutdown message:', message);
+        logger.warn('Received malformed appExit message:', message);
         return true;
       }
 
-      const notification = takeServerNotification('appShutdown', execId);
+      const notification = takeServerNotification('appExit', execId);
       if (!notification) {
-        logger.debug(`Received appShutdown for unknown or already handled execId: ${execId}`);
+        logger.debug(`Received appExit for unknown or already handled execId: ${execId}`);
         return true;
       }
 
       void notification(message).catch((error) => {
-        logger.error(`Error processing appShutdown notification for execId ${execId}:`, error);
+        logger.error(`Error processing appExit notification for execId ${execId}:`, error);
       });
 
       return true;
@@ -1652,7 +1650,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           return;
         }
 
-        if (handleAppShutdown(message)) {
+        if (handleAppExit(message)) {
           return;
         }
 
@@ -1912,20 +1910,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         );
       }
       const mode = launchOptions.runtime ? 'RelaunchIfRunning' : launchOptions.mode;
-      const onShutdown = launchOptions.onShutdown;
-      const execId = onShutdown ? generateId() : undefined;
-      if (execId && onShutdown) {
-        registerServerNotification('appShutdown', execId, async (message) => {
-          const { bundleId, exitCode, logLineCount } = message;
+      const onExit = launchOptions.onExit;
+      const execId = onExit ? generateId() : undefined;
+      if (execId && onExit) {
+        registerServerNotification('appExit', execId, async (message) => {
+          const { bundleId, logLineCount } = message;
           if (
             typeof bundleId !== 'string' ||
-            typeof exitCode !== 'number' ||
-            !Number.isInteger(exitCode) ||
             typeof logLineCount !== 'number' ||
             !Number.isInteger(logLineCount) ||
             logLineCount < 0
           ) {
-            logger.warn(`Received malformed appShutdown payload for execId ${execId}:`, message);
+            logger.warn(`Received malformed appExit payload for execId ${execId}:`, message);
             return;
           }
 
@@ -1935,13 +1931,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
               await sendRequest<string>('appLogTail', { bundleId, lines: logLineCount }),
             );
           } catch (error) {
-            logger.error(`Failed to fetch app logs for shutdown execId ${execId}:`, error);
+            logger.error(`Failed to fetch app logs for exit execId ${execId}:`, error);
           }
 
           try {
-            await onShutdown(exitCode, logs);
+            await onExit(logs);
           } catch (error) {
-            logger.error(`Error in onShutdown callback for execId ${execId}:`, error);
+            logger.error(`Error in onExit callback for execId ${execId}:`, error);
           }
         });
       }
@@ -1952,7 +1948,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         execId,
       }).catch((error) => {
         if (execId) {
-          deleteServerNotification('appShutdown', execId);
+          deleteServerNotification('appExit', execId);
         }
         throw error;
       });

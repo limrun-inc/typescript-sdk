@@ -193,16 +193,15 @@ describe('iOS launchApp serialization', () => {
     client.disconnect();
   });
 
-  it('sends execId for onShutdown and invokes callback with fetched log lines', async () => {
+  it('sends execId for onExit and invokes callback with fetched log lines', async () => {
     const { createInstanceClient } = await import('../src/ios-client');
-    let resolveShutdown!: () => void;
-    const shutdown = new Promise<void>((resolve) => {
-      resolveShutdown = resolve;
+    let resolveExit!: () => void;
+    const exit = new Promise<void>((resolve) => {
+      resolveExit = resolve;
     });
-    const onShutdown = jest.fn(async (exitCode: number, logs: string[]) => {
-      expect(exitCode).toBe(42);
+    const onExit = jest.fn(async (logs: string[]) => {
       expect(logs).toEqual(['first log line', 'second log line']);
-      resolveShutdown();
+      resolveExit();
     });
     const client = await createInstanceClient({
       apiUrl: 'https://example.test/v1/ios_123/api',
@@ -212,7 +211,7 @@ describe('iOS launchApp serialization', () => {
 
     await client.launchApp('com.example.app', {
       mode: 'RelaunchIfRunning',
-      onShutdown,
+      onExit,
     });
 
     const launch = sentMessages.find((message) => message['type'] === 'launchApp');
@@ -222,7 +221,7 @@ describe('iOS launchApp serialization', () => {
       mode: 'RelaunchIfRunning',
     });
     expect(launch?.['execId']).toEqual(expect.any(String));
-    expect(launch).not.toHaveProperty('onShutdown');
+    expect(launch).not.toHaveProperty('onExit');
     const execId = launch?.['execId'];
     if (typeof execId !== 'string') {
       throw new Error('launchApp did not send execId');
@@ -236,16 +235,15 @@ describe('iOS launchApp serialization', () => {
       'message',
       Buffer.from(
         JSON.stringify({
-          type: 'appShutdown',
+          type: 'appExit',
           execId,
           bundleId: 'com.example.app',
-          exitCode: 42,
           logLineCount: 2,
         }),
       ),
     );
 
-    await shutdown;
+    await exit;
     const appLogTail = sentMessages.find((message) => message['type'] === 'appLogTail');
     expect(appLogTail).toMatchObject({
       type: 'appLogTail',
@@ -257,16 +255,15 @@ describe('iOS launchApp serialization', () => {
       'message',
       Buffer.from(
         JSON.stringify({
-          type: 'appShutdown',
+          type: 'appExit',
           execId,
           bundleId: 'com.example.app',
-          exitCode: 42,
           logLineCount: 2,
         }),
       ),
     );
     await new Promise((resolve) => setImmediate(resolve));
-    expect(onShutdown).toHaveBeenCalledTimes(1);
+    expect(onExit).toHaveBeenCalledTimes(1);
 
     client.disconnect();
   });
