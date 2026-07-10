@@ -132,18 +132,24 @@
   resolved "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.9.tgz#585624dc829cfb6e7c0aa6c3ca7d7e6daa87e34f"
   integrity sha512-PPOl1mi6lpLNQxnGoyAfschAodRFYXJ+9fs6WHXz7CSWKbOqiMZsubC+BQsVKuul+3vKLuwTHsS2c2y9EoKwxQ==
 
-"@limrun/api@0.28.3":
-  version "0.28.3"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.28.3.tgz#9c9f4e265ec290f9cb4ffdf35357882dc9d495ef"
-  integrity sha512-PxE+hIhRd8uOrP+CFLA7XyHyUsX17bB7J7j3xhcu/0eNxBqvEXhrOOT1fq7drn1Ea2TUA8lX/xAPpV9Gx1fIkA==
+"@limrun/api@0.39.4":
+  version "0.39.4"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.39.4.tgz#882aa575943cb025c4bb5b62db6f78112832e093"
+  integrity sha512-KarcBiyNYp+w8is/t7L5x7XuQZQSjOXrsv9cFR9au98ZPhjHEAKkuaJ9BGIl5R+4AONL9Wt+jX4sXL9tJyN/Pw==
   dependencies:
+    "@limrun/xdelta3-wasm" "0.2.0"
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"
     ignore "^7.0.5"
     proxy-from-env "^2.1.0"
     undici "7.24.7"
     ws "^8.18.3"
-    xdelta3-wasm "^1.0.0"
+    yauzl "^3.4.0"
+
+"@limrun/xdelta3-wasm@0.2.0":
+  version "0.2.0"
+  resolved "https://registry.yarnpkg.com/@limrun/xdelta3-wasm/-/xdelta3-wasm-0.2.0.tgz#f74444ba7eb2be90e86e0c24edf55e9505127354"
+  integrity sha512-mEohO7CYj4Gdc0v1Gr/AjlBhfbXQnIz6+2wmMhRfwz8hXZrsIC/yqYQhfoDhu1ysqQwBnU5lDDLPUGdUu+8hPQ==
 
 "@types/body-parser@*":
   version "1.19.6"
@@ -655,6 +661,11 @@ path-to-regexp@^8.0.0:
   resolved "https://registry.npmjs.org/path-to-regexp/-/path-to-regexp-8.3.0.tgz"
   integrity sha512-7jdwVIRtsP8MYpdXSwOS0YdD0Du+qOoF/AEPIt88PcCFrZCzx41oxku1jD88hZBwbNUIEfpqvuhjFaMAqMTWnA==
 
+pend@~1.2.0:
+  version "1.2.0"
+  resolved "https://registry.yarnpkg.com/pend/-/pend-1.2.0.tgz#7a57eb550a6783f9115331fcf4663d5c8e007a50"
+  integrity sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg==
+
 proxy-addr@^2.0.7:
   version "2.0.7"
   resolved "https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.7.tgz"
@@ -857,7 +868,9 @@ ws@^8.18.3:
   resolved "https://registry.npmjs.org/ws/-/ws-8.18.3.tgz"
   integrity sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==
 
-xdelta3-wasm@^1.0.0:
-  version "1.0.0"
-  resolved "https://registry.npmjs.org/xdelta3-wasm/-/xdelta3-wasm-1.0.0.tgz#43b6ef9e9649830e25713914e40324217f8565fd"
-  integrity sha512-vhS28BhVaE3S/PGG1KQIwjBVqJecuS5Sdh82UAZysbnYaU93KS6l8ZPtsqonNZMeuyFgrGW9D44hh2lwQCsidA==
+yauzl@^3.4.0:
+  version "3.4.0"
+  resolved "https://registry.yarnpkg.com/yauzl/-/yauzl-3.4.0.tgz#88b2a21455f37ca7dccf2eeb33bacb4392322719"
+  integrity sha512-jIH9yLR9wqr0wOS0TpBvo/g/2UgZH5qePVbjgRliiF0BYvOZyaBknKsF+x9Iht0O6sqgnB93rCICdOZFecJuDw==
+  dependencies:
+    pend "~1.2.0"

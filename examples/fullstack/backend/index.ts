@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { Limrun } from '@limrun/api';
+import { Ios, Limrun } from '@limrun/api';
 import { AndroidInstanceCreateParams, IosInstanceCreateParams } from '@limrun/api/resources';
 
 const apiKey = process.env['LIM_API_KEY'];
@@ -71,6 +71,22 @@ app.post(
           metadata: { labels: { webSessionId } },
         });
         console.timeEnd('create');
+        if (withExpoGo54 && result.status.apiUrl && result.status.token) {
+          const ios = await Ios.createInstanceClient({
+            apiUrl: result.status.apiUrl,
+            token: result.status.token,
+          });
+          await ios.launchApp('host.exp.Exponent', {
+            mode: 'RelaunchIfRunning',
+            onExit: async (logs) => {
+              console.log(`START - Expo Go exited`);
+              for (const line of logs) {
+                console.log(line);
+              }
+              console.log(`END - Expo Go exited`);
+            },
+          });
+        }
 
         return res.status(200).json({
           id: result.metadata.id,
