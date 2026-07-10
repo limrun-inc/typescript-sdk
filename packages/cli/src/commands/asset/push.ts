@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { ByteProgressBar } from '../../lib/byte-progress';
 
 export default class AssetPush extends BaseCommand {
   static summary = 'Upload an asset file';
@@ -36,14 +37,26 @@ export default class AssetPush extends BaseCommand {
     }
 
     const assetName = flags.name || path.basename(filePath);
-    this.info(`Name: ${assetName}`);
-
     await this.withAuth(async () => {
-      const asset = await this.client.assets.getOrUpload({
-        path: filePath,
-        name: assetName,
-        ttl: flags.ttl,
-      });
+      // Only opt into the streaming upload path when progress would actually be
+      // reported (bar on a TTY, milestone lines otherwise); --json/--quiet keeps
+      // the plain buffered upload.
+      const showProgress = !this.shouldSuppressInfo();
+      const bar = new ByteProgressBar('Pushing', !showProgress);
+      let asset;
+      try {
+        asset = await this.client.assets.getOrUpload({
+          path: filePath,
+          name: assetName,
+          ttl: flags.ttl,
+          ...(showProgress && {
+            onUploadProgress: (uploadedBytes: number, totalBytes: number) =>
+              bar.update(uploadedBytes, totalBytes),
+          }),
+        });
+      } finally {
+        bar.stop();
+      }
 
       this.output(`ID: ${asset.id}`);
       if (asset.expiresAt) {

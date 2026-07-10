@@ -73,7 +73,6 @@ export default class XcodeSync extends BaseCommand {
       const xcodeClient = await this.resolveXcodeClient(target);
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
-      const syncStart = Date.now();
 
       const syncOptions = {
         watch: flags.watch,
@@ -82,12 +81,13 @@ export default class XcodeSync extends BaseCommand {
         ignore: compileIgnorePatterns(flags.ignore),
         include: compileIgnorePatterns(flags.include),
         additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
+        onSyncComplete: (event: { bytesSent: number; durationMs: number }) => {
+          this.output(
+            `Sync completed in ${formatDurationMs(event.durationMs)} (${formatBytes(event.bytesSent)} sent).`,
+          );
+        },
       };
       const result = await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
-
-      const syncDuration = formatDurationMs(Date.now() - syncStart);
-      const syncedSize = result.bytesSent !== undefined ? ` (${formatBytes(result.bytesSent)} sent)` : '';
-      this.output(`Sync completed in ${syncDuration}${syncedSize}.`);
 
       if (flags.watch && result.stopWatching) {
         this.output('Watching for changes. Press Ctrl+C to stop.');

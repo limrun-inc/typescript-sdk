@@ -60,18 +60,19 @@ export default class IosSync extends BaseCommand {
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
 
       this.info(`Syncing app bundle ${syncPath} to instance ${id}...`);
-      const syncStart = Date.now();
 
       const result = await client.syncApp(syncPath, {
         watch: flags.watch,
         install: flags.install,
         basisCacheDir: flags['basis-cache-dir'],
         launchMode: flags['launch-mode'] as 'ForegroundIfRunning' | 'RelaunchIfRunning' | undefined,
+        onSyncComplete: (event) => {
+          this.output(
+            `Sync completed in ${formatDurationMs(event.durationMs)} (${formatBytes(event.bytesSent)} sent).`,
+          );
+        },
       });
 
-      const syncDuration = formatDurationMs(Date.now() - syncStart);
-      const syncedSize = result.bytesSent !== undefined ? ` (${formatBytes(result.bytesSent)} sent)` : '';
-      this.output(`Sync completed in ${syncDuration}${syncedSize}.`);
       if (result.installedBundleId) {
         this.output(`Installed bundle ID: ${result.installedBundleId}`);
       }

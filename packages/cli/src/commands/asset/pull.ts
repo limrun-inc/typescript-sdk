@@ -1,7 +1,10 @@
 import path from 'path';
 import fs from 'fs';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { ByteProgressBar } from '../../lib/byte-progress';
 
 export default class AssetPull extends BaseCommand {
   static summary = 'Download an asset file';
@@ -84,8 +87,23 @@ export default class AssetPull extends BaseCommand {
         this.error(`Failed to download file: ${body}`);
       }
 
-      const buffer = Buffer.from(await resp.arrayBuffer());
-      fs.writeFileSync(fullPath, buffer);
+      const totalBytes = Number(resp.headers.get('content-length') ?? 0);
+      const bar = new ByteProgressBar('Pulling', this.shouldSuppressInfo());
+      try {
+        if (!resp.body) {
+          fs.writeFileSync(fullPath, Buffer.alloc(0));
+        } else {
+          let transferredBytes = 0;
+          const source = Readable.fromWeb(resp.body as any);
+          source.on('data', (chunk: Buffer) => {
+            transferredBytes += chunk.length;
+            bar.update(transferredBytes, totalBytes);
+          });
+          await pipeline(source, fs.createWriteStream(fullPath));
+        }
+      } finally {
+        bar.stop();
+      }
       this.output(`Saved to ${fullPath}`);
     });
   }
