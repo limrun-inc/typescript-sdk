@@ -252,9 +252,14 @@ lim ios install-app https://example.com/app.ipa
 lim ios install-app https://example.com/app.ipa --md5 <hex-digest>
 lim ios install-app ./MyApp.ipa --launch-mode RelaunchIfRunning
 
-# Launch / terminate
+# Launch — streams the app's logs until the app exits or Ctrl+C
 lim ios launch-app com.example.myapp
 lim ios launch-app com.example.myapp --mode RelaunchIfRunning
+
+# Launch and exit immediately without streaming logs
+lim ios launch-app com.example.myapp --detach
+
+# Terminate
 lim ios terminate-app com.example.myapp
 
 # List installed apps
@@ -533,7 +538,7 @@ lim ios create --model iphone
 lim session start
 
 # Fast interaction loop — each command takes ~50ms
-lim ios launch-app com.example.myapp
+lim ios launch-app com.example.myapp --detach
 lim ios element-tree | jq '.tree'
 lim ios tap-element --ax-label "Login"
 lim ios type "user@example.com"
@@ -554,8 +559,8 @@ lim session start --id ios_phone_123
 lim session start --id ios_tablet_456
 
 # Agent controls both devices in parallel — ~50ms per command
-lim ios launch-app com.example.myapp --id ios_phone_123
-lim ios launch-app com.example.myapp --id ios_tablet_456
+lim ios launch-app com.example.myapp --id ios_phone_123 --detach
+lim ios launch-app com.example.myapp --id ios_tablet_456 --detach
 
 lim ios screenshot phone.png --id ios_phone_123
 lim ios screenshot tablet.png --id ios_tablet_456
@@ -584,7 +589,7 @@ done
 
 # Run tests against all devices
 for ID in "${IDS[@]}"; do
-  lim ios launch-app com.example.myapp --id $ID
+  lim ios launch-app com.example.myapp --id $ID --detach
   lim ios screenshot "test_${ID}.png" --id $ID
 done
 
@@ -620,7 +625,7 @@ lim xcode build ./MyProject --id ios_abc123 --scheme MyApp --workspace MyApp.xcw
 lim session start
 
 # 4. Test the built app on the simulator (~50ms per command)
-lim ios launch-app com.example.myapp
+lim ios launch-app com.example.myapp --detach
 lim ios element-tree | jq '.'
 lim ios screenshot built-app.png
 
@@ -770,7 +775,7 @@ lim ios create --install ./build/MyApp.ipa
 lim session start
 
 # Verify — each command takes ~50ms with session
-lim ios launch-app com.example.myapp
+lim ios launch-app com.example.myapp --detach
 sleep 2
 lim ios element-tree | grep "Welcome"
 lim ios screenshot test-result.png
@@ -816,7 +821,7 @@ lim xcode build ./MyiOSProject --id $ID --scheme MyApp --workspace MyApp.xcworks
 
 # Verify the built app on the simulator
 lim session start
-lim ios launch-app com.example.myapp
+lim ios launch-app com.example.myapp --detach
 sleep 2
 lim ios element-tree | grep "Welcome"
 lim ios screenshot test-result.png
