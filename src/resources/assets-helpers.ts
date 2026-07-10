@@ -33,6 +33,13 @@ export interface AssetGetOrUploadParams {
    * Optional platform for the asset.
    */
   platform?: AssetPlatform;
+
+  /**
+   * Optional callback fired as upload bytes are handed to the network, for progress
+   * reporting. Not called when the server already has identical content (md5 match)
+   * and the upload is skipped.
+   */
+  onUploadProgress?: (uploadedBytes: number, totalBytes: number) => void;
 }
 
 export interface AssetGetOrUploadResponse {
@@ -43,6 +50,36 @@ export interface AssetGetOrUploadResponse {
   platform?: AssetPlatform;
   md5: string;
   expiresAt?: string;
+}
+
+/**
+ * Body init for the signed-URL PUT. Without a progress callback the buffer is sent
+ * directly. With one, the buffer is wrapped in a ReadableStream so the callback can
+ * fire as chunks are pulled onto the socket; the explicit Content-Length header set
+ * by the caller keeps the request non-chunked, which signed URLs require.
+ */
+function uploadBodyInit(
+  data: Buffer,
+  onProgress?: (uploadedBytes: number, totalBytes: number) => void,
+): { body: NonNullable<RequestInit['body']>; duplex?: 'half' } {
+  if (!onProgress) {
+    return { body: data as unknown as NonNullable<RequestInit['body']> };
+  }
+  const chunkSize = 256 * 1024;
+  let sent = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (sent >= data.length) {
+        controller.close();
+        return;
+      }
+      const chunk = data.subarray(sent, Math.min(sent + chunkSize, data.length));
+      sent += chunk.length;
+      controller.enqueue(chunk);
+      onProgress(sent, data.length);
+    },
+  });
+  return { body: stream as unknown as NonNullable<RequestInit['body']>, duplex: 'half' };
 }
 
 export class Assets extends GeneratedAssets {
@@ -78,7 +115,7 @@ export class Assets extends GeneratedAssets {
         'Content-Type': 'application/octet-stream',
       },
       method: 'PUT',
-      body: data,
+      ...uploadBodyInit(data, body.onUploadProgress),
     });
     if (uploadResponse.status !== 200) {
       throw new Error(`Failed to upload asset: ${uploadResponse.status} ${await uploadResponse.text()}`);
