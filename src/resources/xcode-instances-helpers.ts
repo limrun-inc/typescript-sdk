@@ -52,6 +52,12 @@ export type SyncOptions = {
 };
 
 export type SyncResult = {
+  /**
+   * Number of bytes transmitted to the server for this sync (full uploads plus
+   * delta patches, before transport compression). In watch mode, this reflects
+   * the initial sync only.
+   */
+  bytesSent?: number;
   /** Present only when watch=true; call to stop watching */
   stopWatching?: () => Promise<void>;
 };
@@ -628,10 +634,14 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         };
 
         const result = await syncFolderImpl(localCodePath, codeSyncOpts);
-        if (result.stopWatching) {
-          return { stopWatching: result.stopWatching };
+        const out: SyncResult = {};
+        if (result.bytesSent !== undefined) {
+          out.bytesSent = result.bytesSent;
         }
-        return {};
+        if (result.stopWatching) {
+          out.stopWatching = result.stopWatching;
+        }
+        return out;
       },
 
       xcodebuild(settings?: XcodeProjectConfig, options?: XcodeBuildOptions): ExecChildProcess {

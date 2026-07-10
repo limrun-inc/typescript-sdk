@@ -59,6 +59,12 @@ export type FolderSyncOptions = {
 export type SyncFolderResult = {
   installedAppPath?: string;
   installedBundleId?: string;
+  /**
+   * Number of bytes transmitted to the server for this sync (full uploads plus
+   * delta patches, before transport compression). In watch mode, this reflects
+   * the initial sync only.
+   */
+  bytesSent?: number;
   /** Present only when watch=true; call to stop watching. */
   stopWatching?: () => Promise<void>;
 };
@@ -703,6 +709,7 @@ async function syncFolderOnce(
         },
         filePath: entry.absPath,
       });
+      bytesSentFull += entry.size;
     }
     if (retryPayloads.length > 0) {
       slog('debug', `server requested full for ${retryPayloads.length} files; retrying once`);
@@ -747,7 +754,7 @@ async function syncFolderOnce(
       syncWorkMs,
     )} total=${fmtMs(tookMs)}`,
   );
-  const out: SyncFolderResult = {};
+  const out: SyncFolderResult = { bytesSent: totalBytes };
   if (resp.installedAppPath) {
     out.installedAppPath = resp.installedAppPath;
   }
