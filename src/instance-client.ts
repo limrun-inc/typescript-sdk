@@ -6,6 +6,7 @@ import os from 'os';
 import crypto from 'crypto';
 
 import { downloadFileToLocalPath } from './internal/download-file';
+import { bootstrapAndroidBasisCache } from './internal/android-basis-cache';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import { startTcpTunnel, isNonRetryableError } from './tunnel';
 import type { Tunnel } from './tunnel';
@@ -37,28 +38,10 @@ function buildDownloadUrl(apiUrl: string): string {
   return `${apiUrl}/files?path=${encodeURIComponent(ANDROID_RECORDING_PATH)}`;
 }
 
-function buildSyncStateUrl(apiUrl: string): string {
-  return `${apiUrl}/sync/state`;
-}
-
-function buildSyncSeedUrl(apiUrl: string, sha256: string): string {
-  return `${apiUrl}/sync/seeds/${encodeURIComponent(sha256)}`;
-}
-
 function assertBandwidthKbps(field: keyof WifiBandwidthOptions, value: number): void {
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`${field} must be a non-negative integer Kbps value`);
   }
-}
-
-async function sha256FileHex(filePath: string): Promise<string> {
-  return await new Promise((resolve, reject) => {
-    const hash = crypto.createHash('sha256');
-    const stream = fs.createReadStream(filePath);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('error', reject);
-    stream.on('end', () => resolve(hash.digest('hex')));
-  });
 }
 
 async function assertApkFile(filePath: string): Promise<void> {
@@ -76,71 +59,6 @@ async function assertApkFile(filePath: string): Promise<void> {
   } finally {
     await fd.close();
   }
-}
-
-async function fetchAndroidSyncState(apiUrl: string, token: string): Promise<AndroidSyncState> {
-  const response = await nodeProxyTransport.fetch(buildSyncStateUrl(apiUrl), {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Failed to fetch Android sync state: ${response.status} ${text}`);
-  }
-  return (await response.json()) as AndroidSyncState;
-}
-
-async function bootstrapAndroidBasisCache(
-  apkPath: string,
-  basisCacheDir: string,
-  apiUrl: string,
-  token: string,
-  log: FolderSyncOptions['log'],
-  onBasisDownloadProgress?: (downloadedBytes: number, totalBytes: number) => void,
-): Promise<void> {
-  const remotePath = path.basename(apkPath);
-  const basisPath = path.join(basisCacheDir, remotePath);
-  if (fs.existsSync(basisPath)) {
-    return;
-  }
-  const state = await fetchAndroidSyncState(apiUrl, token).catch((err) => {
-    log('debug', `android sync state unavailable: ${err instanceof Error ? err.message : String(err)}`);
-    return undefined;
-  });
-  if (!state) {
-    return;
-  }
-  const localSha = await sha256FileHex(apkPath);
-  for (const root of state.roots ?? []) {
-    for (const file of root.files ?? []) {
-      if (file.path === remotePath && file.sha256?.toLowerCase() === localSha) {
-        await fs.promises.mkdir(path.dirname(basisPath), { recursive: true });
-        await fs.promises.copyFile(apkPath, basisPath);
-        log('debug', `seeded Android basis cache from matching server root: ${remotePath}`);
-        return;
-      }
-    }
-  }
-  const seeds = [...(state.seeds ?? [])]
-    .filter(
-      (seed): seed is { sha256: string; size?: number; name?: string; mtime?: number } =>
-        typeof seed.sha256 === 'string' && /^[0-9a-f]{64}$/i.test(seed.sha256),
-    )
-    .sort((a, b) => (b.mtime ?? 0) - (a.mtime ?? 0));
-  const seed = seeds[0];
-  if (!seed) {
-    return;
-  }
-  // Announce the download before any bytes flow so consumers can react to the
-  // expected size even during connection setup / time-to-first-byte.
-  onBasisDownloadProgress?.(0, seed.size ?? 0);
-  await downloadFileToLocalPath(
-    buildSyncSeedUrl(apiUrl, seed.sha256),
-    token,
-    basisPath,
-    onBasisDownloadProgress,
-  );
-  log('debug', `seeded Android basis cache from instance seed: ${seed.sha256}`);
 }
 
 /**
@@ -382,14 +300,6 @@ type ScreenshotResponse = {
 
 type ScreenshotData = {
   dataUri: string;
-};
-
-type AndroidSyncState = {
-  roots?: Array<{
-    rootName?: string;
-    files?: Array<{ path?: string; sha256?: string; size?: number; mode?: number }>;
-  }>;
-  seeds?: Array<{ sha256?: string; size?: number; name?: string; mtime?: number }>;
 };
 
 export type ElementTreeData = {
