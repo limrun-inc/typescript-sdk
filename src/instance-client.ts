@@ -96,6 +96,7 @@ async function bootstrapAndroidBasisCache(
   apiUrl: string,
   token: string,
   log: FolderSyncOptions['log'],
+  onBasisDownload?: (sizeBytes?: number) => void,
 ): Promise<void> {
   const remotePath = path.basename(apkPath);
   const basisPath = path.join(basisCacheDir, remotePath);
@@ -130,6 +131,7 @@ async function bootstrapAndroidBasisCache(
   if (!seed) {
     return;
   }
+  onBasisDownload?.(seed.size);
   await downloadFileToLocalPath(buildSyncSeedUrl(apiUrl, seed.sha256), token, basisPath);
   log('debug', `seeded Android basis cache from instance seed: ${seed.sha256}`);
 }
@@ -237,6 +239,7 @@ export type InstanceClient = {
       watch?: boolean;
       launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
       basisCacheDir?: string;
+      onBasisDownload?: (sizeBytes?: number) => void;
     },
   ) => Promise<SyncFolderResult>;
 
@@ -1294,7 +1297,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
       };
       await fs.promises.mkdir(basisCacheDir, { recursive: true });
-      await bootstrapAndroidBasisCache(resolvedPath, basisCacheDir, options.apiUrl, options.token, syncLog);
+      await bootstrapAndroidBasisCache(
+        resolvedPath,
+        basisCacheDir,
+        options.apiUrl,
+        options.token,
+        syncLog,
+        syncOpts?.onBasisDownload,
+      );
       return await syncFolder(resolvedPath, {
         apiUrl: options.apiUrl,
         token: options.token,
