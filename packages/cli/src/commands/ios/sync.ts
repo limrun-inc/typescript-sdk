@@ -1,6 +1,8 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';
+import { formatDurationMs } from '../../lib/duration';
+import { formatBytes } from '../../lib/bytes';
 
 export default class IosSync extends BaseCommand {
   static summary = 'Sync a built app bundle to a running iOS instance';
@@ -58,6 +60,7 @@ export default class IosSync extends BaseCommand {
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
 
       this.info(`Syncing app bundle ${syncPath} to instance ${id}...`);
+      const syncStart = Date.now();
 
       const result = await client.syncApp(syncPath, {
         watch: flags.watch,
@@ -66,7 +69,9 @@ export default class IosSync extends BaseCommand {
         launchMode: flags['launch-mode'] as 'ForegroundIfRunning' | 'RelaunchIfRunning' | undefined,
       });
 
-      this.output('App sync complete.');
+      const syncDuration = formatDurationMs(Date.now() - syncStart);
+      const syncedSize = result.bytesSent !== undefined ? ` (${formatBytes(result.bytesSent)} sent)` : '';
+      this.output(`Sync completed in ${syncDuration}${syncedSize}.`);
       if (result.installedBundleId) {
         this.output(`Installed bundle ID: ${result.installedBundleId}`);
       }

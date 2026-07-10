@@ -2,6 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
+import { formatBytes } from '../../lib/bytes';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 
 export default class XcodeSync extends BaseCommand {
@@ -79,7 +80,8 @@ export default class XcodeSync extends BaseCommand {
       const result = await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
 
       const syncDuration = formatDurationMs(Date.now() - syncStart);
-      this.output(`Sync complete in ${syncDuration}.`);
+      const syncedSize = result.bytesSent !== undefined ? ` (${formatBytes(result.bytesSent)} sent)` : '';
+      this.output(`Sync completed in ${syncDuration}${syncedSize}.`);
 
       if (flags.watch && result.stopWatching) {
         this.output('Watching for changes. Press Ctrl+C to stop.');
