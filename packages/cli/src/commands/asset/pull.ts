@@ -7,6 +7,7 @@ export default class AssetPull extends BaseCommand {
   static summary = 'Download an asset file';
   static description =
     'Download an asset by ID or by name into a local directory. For reliable automation, prefer an asset ID or ensure the name resolves to exactly one asset.';
+  static aliases = ['assets:pull'];
   static examples = [
     '<%= config.bin %> asset pull <ID>',
     '<%= config.bin %> asset pull my-app.apk',

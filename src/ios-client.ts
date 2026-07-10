@@ -270,7 +270,17 @@ export type DetoxLaunchRuntime = {
 
 export type LaunchAppRuntime = DetoxLaunchRuntime;
 
-type StandardLaunchAppOptions = {
+export type LaunchAppShutdownCallback = (exitCode: number, logs: string[]) => Promise<void>;
+
+type LaunchAppShutdownOptions = {
+  /**
+   * Called when the launched app exits. The logs array contains one entry per
+   * stdout/stderr line produced by that execution, as reported by limulator.
+   */
+  onShutdown?: LaunchAppShutdownCallback;
+};
+
+type StandardLaunchAppOptions = LaunchAppShutdownOptions & {
   /**
    * Launch behavior when the app may already be running.
    * Defaults to `ForegroundIfRunning` server-side.
@@ -279,7 +289,7 @@ type StandardLaunchAppOptions = {
   runtime?: undefined;
 };
 
-type RuntimeLaunchAppOptions = {
+type RuntimeLaunchAppOptions = LaunchAppShutdownOptions & {
   /** Runtime launches must relaunch so runtime injection is applied. */
   mode?: Extract<LaunchAppMode, 'RelaunchIfRunning'>;
   /** Optional app runtime to attach during launch. */
@@ -960,6 +970,9 @@ type ServerResponse = {
   exitCode?: number;
   // Log tail fields
   logs?: string;
+  // App shutdown fields
+  execId?: string;
+  logLineCount?: number;
   // App log streaming fields
   lines?: string[];
   // performActions batch result fields
@@ -1295,6 +1308,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   // Simctl uses streaming, so it needs separate handling
   const simctlExecutions: Map<string, SimctlExecution> = new Map();
 
+  // Server notifications are keyed by notification type and that type's
+  // identifier field. They intentionally survive transient WebSocket reconnects
+  // and are one-shot once a matching notification is processed.
+  type ServerNotificationHandler = (message: ServerResponse) => Promise<void>;
+  const serverNotifications: Map<string, Map<string, ServerNotificationHandler>> = new Map();
+
   const xcrunShimCleanups: Array<() => Promise<void>> = [];
   const httpProxyCleanups: Array<() => Promise<void>> = [];
 
@@ -1375,6 +1394,52 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     cleanupClientResources();
   };
 
+  const registerServerNotification = (
+    type: string,
+    notificationId: string,
+    handler: ServerNotificationHandler,
+  ): void => {
+    const handlers = serverNotifications.get(type) ?? new Map<string, ServerNotificationHandler>();
+    handlers.set(notificationId, handler);
+    serverNotifications.set(type, handlers);
+  };
+
+  const takeServerNotification = (
+    type: string,
+    notificationId: string,
+  ): ServerNotificationHandler | undefined => {
+    const handlers = serverNotifications.get(type);
+    if (!handlers) {
+      return undefined;
+    }
+
+    const handler = handlers.get(notificationId);
+    if (!handler) {
+      return undefined;
+    }
+
+    handlers.delete(notificationId);
+    if (handlers.size === 0) {
+      serverNotifications.delete(type);
+    }
+    return handler;
+  };
+
+  const deleteServerNotification = (type: string, notificationId: string): void => {
+    const handlers = serverNotifications.get(type);
+    if (!handlers) {
+      return;
+    }
+    handlers.delete(notificationId);
+    if (handlers.size === 0) {
+      serverNotifications.delete(type);
+    }
+  };
+
+  const clearServerNotifications = (): void => {
+    serverNotifications.clear();
+  };
+
   let pingInterval: NodeJS.Timeout | undefined;
   const keepAliveSessionId =
     Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -1392,12 +1457,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       if (isNonRetryableError(lastError ?? '')) {
         logger.error(`Skipping reconnection (non-retryable error): ${lastError}`);
         updateConnectionState('disconnected');
+        clearServerNotifications();
         return;
       }
 
       if (reconnectAttempts >= maxReconnectAttempts) {
         logger.error(`Max reconnection attempts (${maxReconnectAttempts}) reached. Giving up.`);
         updateConnectionState('disconnected');
+        clearServerNotifications();
         return;
       }
 
@@ -1427,6 +1494,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return {
         type: request['type'],
         id: request['id'],
+        execId: request['execId'],
         bundleId: request['bundleId'],
         mode: request['mode'],
         runtime: runtime ? { kind: runtime.kind, version: runtime.version } : undefined,
@@ -1469,6 +1537,45 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           }
         });
       });
+    };
+
+    const splitAppLogTail = (logs: string): string[] => {
+      if (logs.length === 0) {
+        return [];
+      }
+      return logs.split(/\r?\n/);
+    };
+
+    const handleAppShutdown = (message: ServerResponse): boolean => {
+      if (message.type !== 'appShutdown') {
+        return false;
+      }
+
+      const { execId, bundleId, exitCode, logLineCount } = message;
+      if (
+        typeof execId !== 'string' ||
+        typeof bundleId !== 'string' ||
+        typeof exitCode !== 'number' ||
+        !Number.isInteger(exitCode) ||
+        typeof logLineCount !== 'number' ||
+        !Number.isInteger(logLineCount) ||
+        logLineCount < 0
+      ) {
+        logger.warn('Received malformed appShutdown message:', message);
+        return true;
+      }
+
+      const notification = takeServerNotification('appShutdown', execId);
+      if (!notification) {
+        logger.debug(`Received appShutdown for unknown or already handled execId: ${execId}`);
+        return true;
+      }
+
+      void notification(message).catch((error) => {
+        logger.error(`Error processing appShutdown notification for execId ${execId}:`, error);
+      });
+
+      return true;
     };
 
     // Response handlers - transform raw responses to typed results
@@ -1542,6 +1649,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           message = JSON.parse(data.toString());
         } catch (e) {
           logger.error({ data, error: e }, 'Failed to parse JSON message');
+          return;
+        }
+
+        if (handleAppShutdown(message)) {
           return;
         }
 
@@ -1638,6 +1749,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           cleanup();
           updateConnectionState('disconnected');
           failPendingRequests('Non-retryable error');
+          clearServerNotifications();
           logger.debug('Non-retryable error. Closing connection.');
         }
       });
@@ -1800,10 +1912,49 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         );
       }
       const mode = launchOptions.runtime ? 'RelaunchIfRunning' : launchOptions.mode;
+      const onShutdown = launchOptions.onShutdown;
+      const execId = onShutdown ? generateId() : undefined;
+      if (execId && onShutdown) {
+        registerServerNotification('appShutdown', execId, async (message) => {
+          const { bundleId, exitCode, logLineCount } = message;
+          if (
+            typeof bundleId !== 'string' ||
+            typeof exitCode !== 'number' ||
+            !Number.isInteger(exitCode) ||
+            typeof logLineCount !== 'number' ||
+            !Number.isInteger(logLineCount) ||
+            logLineCount < 0
+          ) {
+            logger.warn(`Received malformed appShutdown payload for execId ${execId}:`, message);
+            return;
+          }
+
+          let logs: string[] = [];
+          try {
+            logs = splitAppLogTail(
+              await sendRequest<string>('appLogTail', { bundleId, lines: logLineCount }),
+            );
+          } catch (error) {
+            logger.error(`Failed to fetch app logs for shutdown execId ${execId}:`, error);
+          }
+
+          try {
+            await onShutdown(exitCode, logs);
+          } catch (error) {
+            logger.error(`Error in onShutdown callback for execId ${execId}:`, error);
+          }
+        });
+      }
       return sendRequest<void>('launchApp', {
         bundleId,
         mode,
         runtime: launchOptions.runtime,
+        execId,
+      }).catch((error) => {
+        if (execId) {
+          deleteServerNotification('appShutdown', execId);
+        }
+        throw error;
       });
     };
 
@@ -2268,6 +2419,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       cleanup();
       updateConnectionState('disconnected');
       failPendingRequests('Intentional disconnect');
+      clearServerNotifications();
       logger.debug('Intentionally disconnected from WebSocket.');
     };
 
