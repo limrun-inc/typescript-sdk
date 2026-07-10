@@ -60,6 +60,18 @@ export type FolderSyncOptions = {
   additionalFiles?: AdditionalFileSyncEntry[];
   /** Force transport content encoding. Android APK sync uses identity because APKs are already compressed. */
   compression?: 'zstd' | 'gzip' | 'identity';
+  /**
+   * Called after every successful sync: the one-shot sync, the initial sync
+   * in watch mode, and each watch-triggered re-sync.
+   */
+  onSyncComplete?: (result: SyncCompleteEvent) => void;
+};
+
+export type SyncCompleteEvent = {
+  bytesSent: number;
+  durationMs: number;
+  installedAppPath?: string;
+  installedBundleId?: string;
 };
 
 export type SyncFolderResult = {
@@ -582,12 +594,22 @@ export async function syncFolder(
     (opts.log ?? noopLogger)(level, `syncFolder: ${msg}`);
   };
   log('debug', `setup ${localFolderPath} watch=${opts.watch} basisCacheDir=${opts.basisCacheDir}`);
-  if (!opts.watch) {
-    const result = await syncFolderOnce(localFolderPath, opts);
+  const syncOnce = async (reason?: string): Promise<SyncFolderResult> => {
+    const start = nowMs();
+    const result = await syncFolderOnce(localFolderPath, opts, reason);
+    opts.onSyncComplete?.({
+      bytesSent: result.bytesSent ?? 0,
+      durationMs: nowMs() - start,
+      ...(result.installedAppPath !== undefined ? { installedAppPath: result.installedAppPath } : {}),
+      ...(result.installedBundleId !== undefined ? { installedBundleId: result.installedBundleId } : {}),
+    });
     return result;
+  };
+  if (!opts.watch) {
+    return await syncOnce();
   }
   // Initial sync, then watch for changes and re-run sync in the background.
-  const first = await syncFolderOnce(localFolderPath, opts, 'startup');
+  const first = await syncOnce('startup');
   let inFlight = false;
   let queued = false;
   let closed = false;
@@ -597,7 +619,7 @@ export async function syncFolder(
   const run = async (reason: string) => {
     inFlight = true;
     try {
-      await syncFolderOnce(localFolderPath, opts, reason);
+      await syncOnce(reason);
     } finally {
       inFlight = false;
       if (queued && !closed) {
@@ -785,7 +807,7 @@ async function syncFolderOnce(
     }
     slog('debug', `full(file): ${f.path} size=${f.size}`);
     if (f.size >= LARGE_UPLOAD_NOTICE_BYTES) {
-      slog('info', `uploading large file ${f.path} (${fmtBytes(f.size)})`);
+      slog('debug', `uploading large file ${f.path} (${fmtBytes(f.size)})`);
     }
     bytesSentFull += f.size;
     return {
@@ -861,7 +883,7 @@ async function syncFolderOnce(
       // exactly like first-pass fulls, or a fresh-daemon resync of a warm
       // cache reports "sent=0B" while gigabytes upload.
       if (entry.size >= LARGE_UPLOAD_NOTICE_BYTES) {
-        slog('info', `uploading large file ${entry.path} (${fmtBytes(entry.size)})`);
+        slog('debug', `uploading large file ${entry.path} (${fmtBytes(entry.size)})`);
       }
       bytesSentFull += entry.size;
       changedPaths.add(entry.path);
@@ -877,7 +899,7 @@ async function syncFolderOnce(
     }
     if (retryPayloads.length > 0) {
       slog(
-        'info',
+        'debug',
         `daemon requested a full upload for ${retryPayloads.length} files (no matching basis); retrying once`,
       );
       const retryMeta: FolderSyncHttpMeta = {
@@ -916,7 +938,7 @@ async function syncFolderOnce(
   const tookMs = nowMs() - totalStart;
   const totalBytes = bytesSentFull + bytesSentDelta;
   slog(
-    'info',
+    'debug',
     `sync complete: files=${allFiles.length} changed=${changedPaths.size} sent=${fmtBytes(
       totalBytes,
     )} in ${fmtMs(tookMs)}`,

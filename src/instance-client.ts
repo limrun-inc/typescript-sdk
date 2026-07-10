@@ -240,6 +240,8 @@ export type InstanceClient = {
       launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
       basisCacheDir?: string;
       onBasisDownload?: (sizeBytes?: number) => void;
+      /** Called after every successful sync, including watch-triggered re-syncs. */
+      onSyncComplete?: FolderSyncOptions['onSyncComplete'];
     },
   ) => Promise<SyncFolderResult>;
 
@@ -1316,6 +1318,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         ignoreFn: () => false,
         log: syncLog,
         compression: 'identity',
+        ...(syncOpts?.onSyncComplete ? { onSyncComplete: syncOpts.onSyncComplete } : {}),
       });
     };
 

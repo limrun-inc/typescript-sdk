@@ -55,6 +55,8 @@ export type SyncOptions = {
    * Extra files to sync on every sync pass.
    */
   additionalFiles?: AdditionalFileSyncEntry[];
+  /** Called after every successful sync, including watch-triggered re-syncs. */
+  onSyncComplete?: FolderSyncOptions['onSyncComplete'];
 };
 
 export type SyncResult = {
@@ -615,6 +617,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           // the default skip behavior.
           syncSymlinks: true,
           ...(additionalFiles ? { additionalFiles } : {}),
+          ...(opts?.onSyncComplete ? { onSyncComplete: opts.onSyncComplete } : {}),
         };
 
         const result = await syncFolderImpl(localCodePath, codeSyncOpts);

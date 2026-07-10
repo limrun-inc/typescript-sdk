@@ -661,6 +661,8 @@ export type InstanceClient = {
       basisCacheDir?: string;
       launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
       watch?: boolean;
+      /** Called after every successful sync, including watch-triggered re-syncs. */
+      onSyncComplete?: FolderSyncOptions['onSyncComplete'];
     },
   ) => Promise<SyncFolderResult>;
 
@@ -2086,6 +2088,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         basisCacheDir?: string;
         launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
         watch?: boolean;
+        onSyncComplete?: FolderSyncOptions['onSyncComplete'];
       },
     ): Promise<SyncFolderResult> => {
       const preparedApp = await prepareAppBundlePath(localAppBundlePath);
@@ -2133,6 +2136,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         install: opts?.install ?? true,
         launchMode: opts?.launchMode ?? 'ForegroundIfRunning',
         watch: preparedApp.isArchive ? false : shouldWatch,
+        ...(opts?.onSyncComplete ? { onSyncComplete: opts.onSyncComplete } : {}),
       };
       const result = await syncFolder(appBundlePath, folderSyncOpts);
       if (!preparedApp.isArchive || !preparedApp.archivePath || !shouldWatch) {
@@ -2142,6 +2146,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         archivePath: preparedApp.archivePath,
         log: syncLog,
         onExtracted: async () => {
+          // syncFolder fires onSyncComplete itself, so archive re-syncs
+          // surface through the same callback.
           await syncFolder(appBundlePath, folderSyncOpts);
         },
       });
