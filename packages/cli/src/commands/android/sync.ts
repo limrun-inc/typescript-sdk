@@ -1,6 +1,8 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getAndroidInstanceClient } from '../../lib/instance-client-factory';
+import { formatDurationMs } from '../../lib/duration';
+import { formatBytes } from '../../lib/bytes';
 
 export default class AndroidSync extends BaseCommand {
   static summary = 'Sync an APK to a running Android instance';
@@ -57,6 +59,7 @@ export default class AndroidSync extends BaseCommand {
       const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
 
       this.info(`Syncing APK ${args.path} to instance ${id}...`);
+      const syncStart = Date.now();
 
       const result = await client.syncApp(args.path, {
         watch: flags.watch,
@@ -65,10 +68,9 @@ export default class AndroidSync extends BaseCommand {
         launchMode: flags['launch-mode'] as 'ForegroundIfRunning' | 'RelaunchIfRunning' | undefined,
       });
 
-      this.output('APK sync complete.');
-      if (result.installedBundleId) {
-        this.output(`Installed package: ${result.installedBundleId}`);
-      }
+      const syncDuration = formatDurationMs(Date.now() - syncStart);
+      const syncedSize = result.bytesSent !== undefined ? ` (${formatBytes(result.bytesSent)} sent)` : '';
+      this.output(`Sync completed in ${syncDuration}${syncedSize}.`);
 
       if (flags.watch && result.stopWatching) {
         this.output('Watching for changes. Press Ctrl+C to stop.');

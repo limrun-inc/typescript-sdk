@@ -3,6 +3,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
+import { formatBytes } from '../../lib/bytes';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
 import {
@@ -241,9 +242,14 @@ export default class XcodeBuild extends BaseCommand {
         ignore: compileIgnorePatterns(flags.ignore),
         additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
       };
-      await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
+      const syncResult = await xcodeClient.sync(
+        syncPath,
+        syncOptions as Parameters<typeof xcodeClient.sync>[1],
+      );
       const syncDuration = formatDurationMs(Date.now() - syncStart);
-      this.info(`Sync complete in ${syncDuration}.`);
+      const syncedSize =
+        syncResult.bytesSent !== undefined ? ` (${formatBytes(syncResult.bytesSent)} sent)` : '';
+      this.info(`Sync completed in ${syncDuration}${syncedSize}.`);
 
       this.info('Starting xcodebuild...');
 
