@@ -37,6 +37,7 @@ export {
   DEFAULT_RBE_TUNNEL_PORT,
   type XcodeProjectConfig,
   type XcodeBuildOptions,
+  type XcodeGenConfig,
   type ReactNativeBuildConfig,
   type SimulatorAttachResult,
   type SimulatorStatus,

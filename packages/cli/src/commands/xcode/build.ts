@@ -44,6 +44,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./ExpoApp --configuration Debug --dev-server-url https://abc123.exp.direct',
     '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url "myapp://expo-development-client/?url=http%3A%2F%2F10.244.7.112%3A57090"',
     '<%= config.bin %> xcode build --scheme WatchApp --sdk watchsimulator',
+    '<%= config.bin %> xcode build ./MyProject --xcodegen-spec specs/app.yml --xcodegen-project ios',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload-to-testflight --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
@@ -77,6 +78,18 @@ export default class XcodeBuild extends BaseCommand {
       description: 'Workspace file to pass to xcodebuild, such as MyApp.xcworkspace',
     }),
     project: Flags.string({ description: 'Project file to pass to xcodebuild, such as MyApp.xcodeproj' }),
+    'xcodegen-spec': Flags.string({
+      description:
+        'XcodeGen project spec path relative to the synced folder root, like `xcodegen generate --spec`. Forces server-side generation with the bundled XcodeGen. Omit to use project.yml at the root.',
+    }),
+    'xcodegen-project': Flags.string({
+      description:
+        "Directory (relative to the synced folder root) the Xcode project is generated into, like `xcodegen generate --project`. Forces server-side generation. Defaults to the spec file's directory.",
+    }),
+    'xcodegen-project-root': Flags.string({
+      description:
+        "Project root directory (relative to the synced folder root) that relative paths in the spec resolve against, like `xcodegen generate --project-root`. Forces server-side generation. Defaults to the spec file's directory.",
+    }),
     sdk: Flags.string({
       description: 'SDK family to build for.',
       options: ['iphonesimulator', 'iphoneos', 'watchsimulator', 'watchos'],
@@ -164,6 +177,14 @@ export default class XcodeBuild extends BaseCommand {
         '--ios builds run on a simulator. Use --sdk iphonesimulator, --sdk watchsimulator, or omit --sdk.',
       );
     }
+    if (
+      (flags['xcodegen-spec'] || flags['xcodegen-project'] || flags['xcodegen-project-root']) &&
+      (flags['dev-server-url'] || flags['expo-app-dir'])
+    ) {
+      this.error(
+        '--xcodegen-spec/--xcodegen-project apply to native XcodeGen projects and cannot be combined with Expo / React Native flags.',
+      );
+    }
     if (flags.ios && hasSigningFlags(flags)) {
       this.error('--ios builds run on a simulator and cannot use signing flags.');
     }
@@ -189,6 +210,13 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.configuration) settings.configuration = flags.configuration;
 
       const options: XcodeBuildOptions = {};
+      if (flags['xcodegen-spec'] || flags['xcodegen-project'] || flags['xcodegen-project-root']) {
+        options.xcodegen = {
+          ...(flags['xcodegen-spec'] && { spec: flags['xcodegen-spec'] }),
+          ...(flags['xcodegen-project'] && { project: flags['xcodegen-project'] }),
+          ...(flags['xcodegen-project-root'] && { projectRoot: flags['xcodegen-project-root'] }),
+        };
+      }
       if (flags['dev-server-url'] || flags['expo-app-dir']) {
         options.reactNative = {
           ...(flags['expo-app-dir'] && { expoAppDir: flags['expo-app-dir'] }),
