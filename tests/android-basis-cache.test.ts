@@ -19,7 +19,10 @@ function tempDir(): string {
 
 type TestServer = { url: string; requests: string[]; close: () => Promise<void> };
 
-async function startServer(state: AndroidSyncState, seedBodies: Record<string, Buffer> = {}): Promise<TestServer> {
+async function startServer(
+  state: AndroidSyncState,
+  seedBodies: Record<string, Buffer> = {},
+): Promise<TestServer> {
   const requests: string[] = [];
   const server = http.createServer((req, res) => {
     requests.push(req.url ?? '');
@@ -98,7 +101,10 @@ describe('bootstrapAndroidBasisCache', () => {
     fs.writeFileSync(basisPath, Buffer.from('basis this instance never saw'));
     const seedBytes = Buffer.from('seed apk retained on instance');
     const seedSha = sha256Hex(seedBytes);
-    const server = await startServer({ seeds: [{ sha256: seedSha, size: seedBytes.length }] }, { [seedSha]: seedBytes });
+    const server = await startServer(
+      { seeds: [{ sha256: seedSha, size: seedBytes.length }] },
+      { [seedSha]: seedBytes },
+    );
     const progress: Array<[number, number]> = [];
     try {
       await bootstrapAndroidBasisCache(apkPath, basisCacheDir, server.url, 'tok', noopLog, (done, total) =>

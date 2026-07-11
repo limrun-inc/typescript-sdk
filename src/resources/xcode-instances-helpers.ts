@@ -82,6 +82,28 @@ export type XcodeProjectConfig = {
   configuration?: 'Debug' | 'Release';
 };
 
+export type XcodeGenConfig = {
+  /**
+   * Relative path from the synced workspace root to the XcodeGen project
+   * spec file, like `xcodegen generate --spec`. Omit to use project.yml at
+   * the workspace root.
+   */
+  spec?: string;
+  /**
+   * Relative path from the synced workspace root to the directory the Xcode
+   * project is generated into, like `xcodegen generate --project`. Omit to
+   * generate into the spec file's directory.
+   */
+  project?: string;
+  /**
+   * Relative path from the synced workspace root to the project root
+   * directory that relative paths in the spec resolve against, like
+   * `xcodegen generate --project-root`. Omit to use the spec file's
+   * directory.
+   */
+  projectRoot?: string;
+};
+
 export type XcodeSigningConfig = {
   certificateP12Base64?: string;
   certificatePassword?: string;
@@ -117,6 +139,14 @@ export type XcodeBuildOptions = {
    */
   testflight?: TestflightUploadConfig;
   reactNative?: ReactNativeBuildConfig;
+  /**
+   * Explicit XcodeGen inputs for server-side project generation. By default
+   * limbuild only generates from a project.yml it discovers, and only when
+   * the client did not sync the .xcodeproj itself. Setting either field
+   * forces generation with these paths, mirroring `xcodegen generate
+   * --spec/--project` run at the synced workspace root.
+   */
+  xcodegen?: XcodeGenConfig;
   buildSettings?: Record<string, string>;
 };
 
@@ -641,6 +671,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         const request: ExecRequest = {
           command: 'xcodebuild',
           ...(settings && { xcodebuild: settings }),
+          ...(options?.xcodegen && { xcodegen: options.xcodegen }),
           ...(options?.reactNative && { reactNative: options.reactNative }),
           ...(options?.signing && { signing: options.signing }),
           ...(options?.testflight && { testflight: options.testflight }),

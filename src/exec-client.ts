@@ -21,6 +21,11 @@ export type ExecRequest = {
     sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos';
     configuration?: 'Debug' | 'Release';
   };
+  xcodegen?: {
+    spec?: string;
+    project?: string;
+    projectRoot?: string;
+  };
   reactNative?: {
     expoAppDir?: string;
     devServerURL?: string;
