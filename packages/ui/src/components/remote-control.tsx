@@ -20,6 +20,7 @@ import {
 } from '../core/webrtc-messages';
 import { AxFetcher, AxStatus } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
+import { formatTerminationReason } from '../core/termination-reason';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
 
 declare global {
@@ -58,6 +59,13 @@ interface RemoteControlProps {
   // When true, drops after a working session auto-reconnect instead of
   // surfacing the manual "Retry" button. Defaults to false.
   autoReconnect?: boolean;
+
+  /**
+   * Machine-readable reason returned by the instance API after termination.
+   * Known values are rendered as user-friendly labels in the terminated
+   * message. When omitted, the generic terminated message is shown.
+   */
+  terminationReason?: string;
 
   /**
    * Fires once when the component concludes the instance is permanently
@@ -499,6 +507,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       openUrl,
       showFrame = true,
       autoReconnect = false,
+      terminationReason,
       onTerminated,
       inspectMode,
       onAxSnapshotChange,
@@ -3424,6 +3433,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             <div className="rc-terminated-title">Instance terminated</div>
             <div className="rc-terminated-message">
               This instance no longer exists and can&apos;t be reconnected.
+              {terminationReason && (
+                <>
+                  <br />
+                  Termination reason: {formatTerminationReason(terminationReason)}
+                </>
+              )}
             </div>
           </div>
         : retryExhausted && (
