@@ -1,6 +1,6 @@
 {
   "name": "@limrun/api",
-  "version": "0.39.8",
+  "version": "0.40.0",
   "description": "The official TypeScript library for the Limrun API",
   "author": "Limrun <contact@limrun.com>",
   "types": "dist/index.d.ts",
@@ -41,7 +41,7 @@
     "yauzl": "^3.4.0"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.17.0",
+    "@arethetypeswrong/cli": "^0.18.0",
     "@swc/core": "^1.3.102",
     "@swc/jest": "^0.2.29",
     "@types/jest": "^29.4.0",
