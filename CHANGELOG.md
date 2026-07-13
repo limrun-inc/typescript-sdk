@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.40.0 (2026-07-13)
+
+Full Changelog: [v0.39.8...v0.40.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.39.8...v0.40.0)
+
+### Features
+
+* **api:** ios add forceBundleId ([a6c22a0](https://github.com/limrun-inc/typescript-sdk/commit/a6c22a056b093ffb9316ba2326d7134ae4f8cb0f))
+
+
+### Bug Fixes
+
+* **ci:** bump @arethetypeswrong/cli to ^0.18.0 and run CI workflows on Node 24 ([722c87f](https://github.com/limrun-inc/typescript-sdk/commit/722c87febac166192ee4bf376e09bed33802898b))
+
 ## 0.39.8 (2026-07-11)
 
 Full Changelog: [v0.39.7...v0.39.8](https://github.com/limrun-inc/typescript-sdk/compare/v0.39.7...v0.39.8)
