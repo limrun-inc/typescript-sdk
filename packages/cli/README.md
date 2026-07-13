@@ -424,6 +424,9 @@ lim xcode create --rm --region us-west --hard-timeout 1h
 # Build (automatically syncs the project path first)
 lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 
+# Run a project command (syncs the current directory first)
+lim xcode run -- make api
+
 # Build and upload artifact
 lim xcode build ./MyProject --scheme MyApp --upload my-app-build
 
@@ -669,6 +672,19 @@ lim asset pull my-app-build -o ./build-output
 #### Build Behavior
 
 `lim xcode build [PATH]` automatically performs a one-shot code sync for the given project path before invoking `xcodebuild`. The sync step automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
+
+#### Run project commands
+
+`lim xcode run [RELATIVE_CWD] -- <COMMAND...>` syncs the current directory and runs a one-shot command in the Xcode sandbox. The remote working directory defaults to the synced workspace root:
+
+```bash
+lim xcode run -- make api
+lim xcode run apps/api -- make generate
+lim xcode run --env API_ENV=development -- npm run generate
+lim xcode run --no-sync -- mise run build
+```
+
+The sandbox includes Node, Ruby, CMake, Mint, and mise. mise and Mint installs are scoped to the instance's sandbox home. Homebrew is not available because its macOS packages require a shared system prefix; use mise, Mint, SwiftPM, or project-local binaries instead. Commands stream stdout and stderr and return the remote exit code, but do not provide an interactive terminal.
 
 For [XcodeGen](https://github.com/yonaskolb/XcodeGen) projects whose generated `.xcodeproj` is gitignored, the server generates it from your synced `project.yml` automatically before the build — it looks next to a pinned `--project`/`--workspace` path, at the synced folder root, and one directory level down. If your spec has a different name or location, pin it with `--xcodegen-spec <path>`, optionally control the output directory with `--xcodegen-project <dir>`, and anchor relative paths in the spec with `--xcodegen-project-root <dir>`; all paths are relative to the synced folder root and mirror `xcodegen generate --spec/--project/--project-root`. Passing any of these flags always regenerates the project on the server:
 

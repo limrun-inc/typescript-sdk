@@ -12,7 +12,7 @@ import { nodeProxyTransport } from './internal/proxy-transport';
 // Types
 // =============================================================================
 
-export type ExecRequest = XcodeBuildExecRequest | GradleBuildExecRequest;
+export type ExecRequest = XcodeBuildExecRequest | GradleBuildExecRequest | RunExecRequest;
 
 export type XcodeBuildExecRequest = {
   command: 'xcodebuild';
@@ -79,6 +79,14 @@ export type GradleBuildExecRequest = {
   additionalMetadata?: {
     signedDownloadUrl?: string;
   };
+};
+
+export type RunExecRequest = {
+  command: 'run';
+  commandLine: string;
+  cwd?: string;
+  env?: Record<string, string>;
+  timeoutSeconds?: number;
 };
 
 export type ExecOptions = {
@@ -250,7 +258,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       this.sseConnection = null;
     }
     if (!this.execId) {
-      this.log('warn', 'Failed to cancel build: execId is not set');
+      this.log('warn', 'Failed to cancel execution: execId is not set');
       return;
     }
     try {
@@ -260,9 +268,9 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
           Authorization: `Bearer ${this.options.token}`,
         },
       });
-      this.log('info', 'Build cancelled');
+      this.log('info', 'Execution cancelled');
     } catch (err) {
-      this.log('warn', `Failed to cancel build: ${err}`);
+      this.log('warn', `Failed to cancel execution: ${err}`);
     }
   }
 
@@ -275,7 +283,11 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     // spread into ExecResult below so callers can surface the download URL), so
     // it is stripped from the wire body: the daemon OpenAPI schemas do not
     // declare it, and sending it would 400 under strict request validation.
-    const { additionalMetadata: _clientOnly, ...wireRequest } = request;
+    // The 'run' command has no artifact upload and never carries it.
+    const wireRequest = { ...request };
+    if ('additionalMetadata' in wireRequest) {
+      delete wireRequest.additionalMetadata;
+    }
     let execRes: Response;
     try {
       execRes = await nodeProxyTransport.fetch(`${apiUrl}/exec`, {
@@ -315,7 +327,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
 
     const execData = (await execRes.json()) as { execId: string };
     this.execId = execData.execId;
-    log('debug', `Build started: ${this.execId}`);
+    log('debug', `Execution started: ${this.execId}`);
 
     // 2. Stream logs via SSE and wait for exit code
     const eventsUrl = `${apiUrl}/exec/${this.execId}/events`;
@@ -326,6 +338,8 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     let timeoutMs = 3600 * 1000;
     if (request.command === 'xcodebuild' && request.testflight) {
       timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 120) + 900) * 1000;
+    } else if (request.command === 'run') {
+      timeoutMs = (Math.max(1, request.timeoutSeconds ?? 3600) + 60) * 1000;
     }
     let exitCode: number;
     let timedOut = false;
@@ -339,7 +353,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       ]);
     } catch {
       if (this.killed) {
-        log('debug', 'Build killed');
+        log('debug', 'Execution killed');
         exitCode = -1;
       } else {
         // The client stopped waiting; the remote build may still be running.
@@ -376,12 +390,12 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       exitCode,
       execId: this.execId!,
       status,
-      ...(request.additionalMetadata ?? {}),
+      ...('additionalMetadata' in request ? request.additionalMetadata ?? {} : {}),
       ...(this.testflightEvent ? { testflight: this.testflightEvent } : {}),
       ...(timedOut ? { timedOut } : {}),
     };
 
-    this.log('debug', `Build finished: ${result.status} (exit ${result.exitCode})`);
+    this.log('debug', `Execution finished: ${result.status} (exit ${result.exitCode})`);
     return result;
   }
 
@@ -426,7 +440,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
                 this.log('warn', `SSE exitCode event has invalid data: ${data}`);
                 return;
               }
-              this.log('debug', `Build completed via SSE: exitCode=${exitCode}`);
+              this.log('debug', `Execution completed via SSE: exitCode=${exitCode}`);
               resolve(exitCode);
             }
           },

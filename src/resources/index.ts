@@ -53,6 +53,7 @@ export {
   type XcodeClient,
   type XcodeProjectConfig,
   type XcodeBuildOptions,
+  type XcodeRunOptions,
   type XcodeGenConfig,
   type ReactNativeBuildConfig,
   type SimulatorAttachResult,

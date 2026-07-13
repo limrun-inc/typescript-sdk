@@ -25,7 +25,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@limrun/api": "0.42.2",
+    "@limrun/api": "file:../../dist",
     "@oclif/core": "^4",
     "cli-progress": "^3.12.0",
     "cli-table3": "^0.6.5",
@@ -70,7 +70,7 @@
         "description": "Install Limrun skills for AI coding agents (Claude Code, Cursor, Codex). Run `lim skills install` to set up."
       },
       "xcode": {
-        "description": "Execute any task on remote XCode sandboxes: create, list, get, delete, sync, build, attach-simulator"
+        "description": "Execute any task on remote XCode sandboxes: create, list, get, delete, sync, build, run, attach-simulator"
       }
     }
   },
