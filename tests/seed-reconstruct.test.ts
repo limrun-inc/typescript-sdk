@@ -52,7 +52,11 @@ type SeedServer = {
   close: () => Promise<void>;
 };
 
-async function startSeedServer(seed: Buffer, signature: SeedSignature): Promise<SeedServer> {
+async function startSeedServer(
+  seed: Buffer,
+  signature: SeedSignature,
+  servedSeed = seed,
+): Promise<SeedServer> {
   const requests: string[] = [];
   const ranges: string[] = [];
   const server = http.createServer((request, response) => {
@@ -65,8 +69,8 @@ async function startSeedServer(seed: Buffer, signature: SeedSignature): Promise<
     if (request.url === '/seed') {
       const range = request.headers.range;
       if (!range) {
-        response.setHeader('content-length', seed.byteLength);
-        response.end(seed);
+        response.setHeader('content-length', servedSeed.byteLength);
+        response.end(servedSeed);
         return;
       }
       const match = /^bytes=(\d+)-(\d+)$/.exec(range);
@@ -78,7 +82,7 @@ async function startSeedServer(seed: Buffer, signature: SeedSignature): Promise<
       const start = Number(match[1]);
       const end = Number(match[2]);
       ranges.push(range);
-      const body = seed.subarray(start, end + 1);
+      const body = servedSeed.subarray(start, end + 1);
       response.statusCode = 206;
       response.setHeader('content-range', `bytes ${start}-${end}/${seed.byteLength}`);
       response.setHeader('content-length', body.byteLength);
@@ -155,6 +159,42 @@ describe('seed reconstruction', () => {
     expect(missingSeedRanges(signature, matches)).toEqual([{ start: blockSize * 2, end: blockSize * 3 - 1 }]);
   });
 
+  test('uses aligned matches when only a few blocks differ', async () => {
+    const localBytes = Buffer.from(seed);
+    const changedOffset = blockSize * 3 + 5;
+    localBytes[changedOffset] = localBytes[changedOffset]! ^ 0xff;
+    const sourcePath = path.join(workDir, 'local.apk');
+    fs.writeFileSync(sourcePath, localBytes);
+
+    const matches = await findSeedBlockMatches([sourcePath], signature);
+
+    expect(matches.size).toBe(7);
+    expect(missingSeedRanges(signature, matches)).toEqual([{ start: blockSize * 3, end: blockSize * 4 - 1 }]);
+  });
+
+  test('matches a shifted trailing partial block at the source end', async () => {
+    const partialSeed = pseudoRandomBytes(blockSize * 3 + 17);
+    const partialSignature = signatureFor(partialSeed, blockSize);
+    const sourcePath = path.join(workDir, 'local.apk');
+    fs.writeFileSync(sourcePath, Buffer.concat([Buffer.from('shifted'), partialSeed]));
+
+    const matches = await findSeedBlockMatches([sourcePath], partialSignature);
+
+    expect(matches.size).toBe(partialSignature.blocks.length);
+    expect(missingSeedRanges(partialSignature, matches)).toEqual([]);
+  });
+
+  test('coalesces adjacent missing blocks into ranges', () => {
+    const matches = new Map(
+      [0, 1, 4, 5, 7].map((index) => [index, { sourcePath: 'local.apk', sourceOffset: index * blockSize }]),
+    );
+
+    expect(missingSeedRanges(signature, matches)).toEqual([
+      { start: blockSize * 2, end: blockSize * 4 - 1 },
+      { start: blockSize * 6, end: blockSize * 7 - 1 },
+    ]);
+  });
+
   test('reconstructs an identical seed without downloading APK bytes', async () => {
     const sourcePath = path.join(workDir, 'local.apk');
     const outputPath = path.join(workDir, 'basis.apk');
@@ -212,6 +252,23 @@ describe('seed reconstruction', () => {
       expect(result.matchedBlocks).toBe(0);
       expect(server.ranges).toEqual([`bytes=0-${seed.byteLength - 1}`]);
       expect(fs.readFileSync(outputPath)).toEqual(seed);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('rejects a reconstructed seed that fails final SHA-256 verification', async () => {
+    const sourcePath = path.join(workDir, 'local.apk');
+    const outputPath = path.join(workDir, 'basis.apk');
+    fs.writeFileSync(sourcePath, Buffer.alloc(seed.byteLength, 0xff));
+    const corruptedSeed = Buffer.from(seed);
+    corruptedSeed[10] = corruptedSeed[10]! ^ 0xff;
+    const server = await startSeedServer(seed, signature, corruptedSeed);
+    try {
+      await expect(reconstruct(server, signature, sourcePath, outputPath)).rejects.toThrow(
+        'Reconstructed seed SHA-256 mismatch',
+      );
+      expect(fs.existsSync(outputPath)).toBe(false);
     } finally {
       await server.close();
     }

@@ -9,6 +9,8 @@ const SIGNATURE_VERSION = 1;
 const STRONG_HASH_HEX_LENGTH = 32;
 const SCAN_CHUNK_SIZE = 1024 * 1024;
 const MAX_ALIGNED_MISS_BYTES = 32 * 1024 * 1024;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
+const STRONG_HASH_PATTERN = /^[0-9a-f]{32}$/i;
 
 export type SeedSignatureBlock = {
   w: number;
@@ -33,6 +35,16 @@ export type SeedByteRange = {
   end: number;
 };
 
+type BlockSpan = {
+  offset: number;
+  length: number;
+};
+
+type SourceFile = {
+  path: string;
+  size: number;
+};
+
 type ReconstructSeedOptions = {
   signatureUrl: string;
   seedUrl: string;
@@ -45,6 +57,14 @@ type ReconstructSeedOptions = {
 
 function strongHash(buffer: Uint8Array): string {
   return crypto.createHash('sha256').update(buffer).digest('hex').slice(0, STRONG_HASH_HEX_LENGTH);
+}
+
+function blockSpan(signature: SeedSignature, index: number): BlockSpan {
+  const offset = index * signature.blockSize;
+  return {
+    offset,
+    length: Math.min(signature.blockSize, signature.fileSize - offset),
+  };
 }
 
 async function sha256FileHex(filePath: string): Promise<string> {
@@ -84,7 +104,7 @@ function validateSignature(value: unknown, expectedSha256: string): SeedSignatur
   }
   if (
     typeof candidate.sha256 !== 'string' ||
-    !/^[0-9a-f]{64}$/i.test(candidate.sha256) ||
+    !SHA256_PATTERN.test(candidate.sha256) ||
     candidate.sha256.toLowerCase() !== expectedSha256.toLowerCase()
   ) {
     throw new Error('Seed signature sha256 does not match the requested seed');
@@ -105,7 +125,7 @@ function validateSignature(value: unknown, expectedSha256: string): SeedSignatur
       block.w < 0 ||
       block.w > 0xffffffff ||
       typeof block.s !== 'string' ||
-      !new RegExp(`^[0-9a-f]{${STRONG_HASH_HEX_LENGTH}}$`, 'i').test(block.s)
+      !STRONG_HASH_PATTERN.test(block.s)
     ) {
       throw new Error(`Invalid seed signature block at index ${index}`);
     }
@@ -152,18 +172,17 @@ async function readExactly(
   }
 }
 
-async function scanSourceForBlockLength(
-  sourcePath: string,
-  blockLength: number,
+async function scanSourceForFullBlocks(
+  source: SourceFile,
   candidatesByWeak: Map<number, number[]>,
   signature: SeedSignature,
   matches: Map<number, SeedBlockMatch>,
   unmatched: Set<number>,
 ): Promise<void> {
-  const handle = await fs.promises.open(sourcePath, 'r');
+  const blockLength = signature.blockSize;
+  const handle = await fs.promises.open(source.path, 'r');
   try {
-    const sourceSize = (await handle.stat()).size;
-    if (sourceSize < blockLength || unmatched.size === 0) {
+    if (source.size < blockLength || unmatched.size === 0) {
       return;
     }
 
@@ -186,7 +205,7 @@ async function scanSourceForBlockLength(
       const strong = strongHash(candidateBuffer);
       for (const index of candidateIndexes) {
         if (unmatched.has(index) && signature.blocks[index]!.s === strong) {
-          matches.set(index, { sourcePath, sourceOffset });
+          matches.set(index, { sourcePath: source.path, sourceOffset });
           unmatched.delete(index);
         }
       }
@@ -198,8 +217,8 @@ async function scanSourceForBlockLength(
     }
     const incoming = Buffer.allocUnsafe(SCAN_CHUNK_SIZE);
     let readPosition = blockLength;
-    while (readPosition < sourceSize && unmatched.size > 0) {
-      const requested = Math.min(incoming.byteLength, sourceSize - readPosition);
+    while (readPosition < source.size && unmatched.size > 0) {
+      const requested = Math.min(incoming.byteLength, source.size - readPosition);
       const { bytesRead } = await handle.read(incoming, 0, requested, readPosition);
       if (bytesRead <= 0) {
         break;
@@ -227,128 +246,131 @@ async function scanSourceForBlockLength(
   }
 }
 
-export async function findSeedBlockMatches(
-  sourcePaths: string[],
-  signature: SeedSignature,
-): Promise<Map<number, SeedBlockMatch>> {
-  const matches = new Map<number, SeedBlockMatch>();
-
-  // APK rebuilds commonly preserve ZIP entry offsets. Check blocks at their
-  // target offsets first using native SHA-256, which is dramatically faster
-  // than a byte-by-byte rolling scan for large files.
+async function existingSourceFiles(sourcePaths: string[]): Promise<SourceFile[]> {
+  const sources: SourceFile[] = [];
   for (const sourcePath of sourcePaths) {
     const stat = await fs.promises.stat(sourcePath).catch(() => undefined);
-    if (!stat?.isFile()) {
-      continue;
+    if (stat?.isFile()) {
+      sources.push({ path: sourcePath, size: stat.size });
     }
-    const handle = await fs.promises.open(sourcePath, 'r');
+  }
+  return sources;
+}
+
+async function matchAlignedBlocks(
+  sources: SourceFile[],
+  signature: SeedSignature,
+  matches: Map<number, SeedBlockMatch>,
+): Promise<void> {
+  for (const source of sources) {
+    const handle = await fs.promises.open(source.path, 'r');
     const block = Buffer.allocUnsafe(signature.blockSize);
     try {
       for (let index = 0; index < signature.blocks.length; index++) {
         if (matches.has(index)) {
           continue;
         }
-        const sourceOffset = index * signature.blockSize;
-        const length = Math.min(signature.blockSize, signature.fileSize - sourceOffset);
-        if (sourceOffset + length > stat.size) {
+        const span = blockSpan(signature, index);
+        if (span.offset + span.length > source.size) {
           continue;
         }
-        await readExactly(handle, block, length, sourceOffset);
-        if (strongHash(block.subarray(0, length)) === signature.blocks[index]!.s) {
-          matches.set(index, { sourcePath, sourceOffset });
+        await readExactly(handle, block, span.length, span.offset);
+        if (strongHash(block.subarray(0, span.length)) === signature.blocks[index]!.s) {
+          matches.set(index, { sourcePath: source.path, sourceOffset: span.offset });
         }
       }
     } finally {
       await handle.close();
     }
   }
+}
 
-  const alignedMissBytes = signature.blocks.reduce((total, _block, index) => {
-    if (matches.has(index)) {
-      return total;
-    }
-    const offset = index * signature.blockSize;
-    return total + Math.min(signature.blockSize, signature.fileSize - offset);
-  }, 0);
-  const alignedMatchRatio = signature.blocks.length === 0 ? 1 : matches.size / signature.blocks.length;
-  if (alignedMatchRatio >= 0.8 && alignedMissBytes <= MAX_ALIGNED_MISS_BYTES) {
-    return matches;
+async function matchTrailingPartialBlock(
+  sources: SourceFile[],
+  signature: SeedSignature,
+  matches: Map<number, SeedBlockMatch>,
+): Promise<void> {
+  if (signature.fileSize === 0 || signature.fileSize % signature.blockSize === 0) {
+    return;
   }
+  const index = signature.blocks.length - 1;
+  if (matches.has(index)) {
+    return;
+  }
+  const span = blockSpan(signature, index);
+  const expectedStrongHash = signature.blocks[index]!.s;
+  const block = Buffer.allocUnsafe(span.length);
+  for (const source of sources) {
+    if (source.size < span.length) {
+      continue;
+    }
+    const sourceOffset = source.size - span.length;
+    if (sourceOffset === span.offset) {
+      continue; // The aligned pass already checked this offset.
+    }
+    const handle = await fs.promises.open(source.path, 'r');
+    try {
+      await readExactly(handle, block, span.length, sourceOffset);
+      if (strongHash(block) === expectedStrongHash) {
+        matches.set(index, { sourcePath: source.path, sourceOffset });
+        return;
+      }
+    } finally {
+      await handle.close();
+    }
+  }
+}
 
-  const indexesByLength = new Map<number, number[]>();
+function shouldSkipRollingScan(
+  signature: SeedSignature,
+  matches: ReadonlyMap<number, SeedBlockMatch>,
+): boolean {
+  let missingBytes = 0;
   for (let index = 0; index < signature.blocks.length; index++) {
+    if (!matches.has(index)) {
+      missingBytes += blockSpan(signature, index).length;
+    }
+  }
+  const matchRatio = signature.blocks.length === 0 ? 1 : matches.size / signature.blocks.length;
+  return matchRatio >= 0.8 && missingBytes <= MAX_ALIGNED_MISS_BYTES;
+}
+
+async function matchShiftedFullBlocks(
+  sources: SourceFile[],
+  signature: SeedSignature,
+  matches: Map<number, SeedBlockMatch>,
+): Promise<void> {
+  const fullBlockCount = Math.floor(signature.fileSize / signature.blockSize);
+  const unmatched = new Set<number>();
+  const candidatesByWeak = new Map<number, number[]>();
+  for (let index = 0; index < fullBlockCount; index++) {
     if (matches.has(index)) {
       continue;
     }
-    const offset = index * signature.blockSize;
-    const length = Math.min(signature.blockSize, signature.fileSize - offset);
-    const indexes = indexesByLength.get(length) ?? [];
-    indexes.push(index);
-    indexesByLength.set(length, indexes);
+    unmatched.add(index);
+    const weak = signature.blocks[index]!.w;
+    const candidates = candidatesByWeak.get(weak) ?? [];
+    candidates.push(index);
+    candidatesByWeak.set(weak, candidates);
   }
+  for (const source of sources) {
+    if (unmatched.size === 0) {
+      return;
+    }
+    await scanSourceForFullBlocks(source, candidatesByWeak, signature, matches, unmatched);
+  }
+}
 
-  for (const [blockLength, indexes] of indexesByLength) {
-    // A trailing partial block is worth at most one block of transfer savings.
-    // Avoid a second byte-by-byte scan of the whole APK: check the seed's
-    // expected offset and the end of each source, which cover unchanged layout
-    // and suffix-aligned rebuilds respectively.
-    if (blockLength !== signature.blockSize) {
-      const index = indexes[0]!;
-      const expected = signature.blocks[index]!;
-      for (const sourcePath of sourcePaths) {
-        const stat = await fs.promises.stat(sourcePath).catch(() => undefined);
-        if (!stat?.isFile() || stat.size < blockLength) {
-          continue;
-        }
-        const offsets = new Set([index * signature.blockSize, stat.size - blockLength]);
-        const handle = await fs.promises.open(sourcePath, 'r');
-        try {
-          for (const sourceOffset of offsets) {
-            if (sourceOffset < 0 || sourceOffset + blockLength > stat.size) {
-              continue;
-            }
-            const block = Buffer.allocUnsafe(blockLength);
-            await readExactly(handle, block, blockLength, sourceOffset);
-            if (weakRollingChecksum(block) === expected.w && strongHash(block) === expected.s) {
-              matches.set(index, { sourcePath, sourceOffset });
-              break;
-            }
-          }
-        } finally {
-          await handle.close();
-        }
-        if (matches.has(index)) {
-          break;
-        }
-      }
-      continue;
-    }
-
-    const candidatesByWeak = new Map<number, number[]>();
-    for (const index of indexes) {
-      const weak = signature.blocks[index]!.w;
-      const candidates = candidatesByWeak.get(weak) ?? [];
-      candidates.push(index);
-      candidatesByWeak.set(weak, candidates);
-    }
-    const unmatched = new Set(indexes);
-    for (const sourcePath of sourcePaths) {
-      const stat = await fs.promises.stat(sourcePath).catch(() => undefined);
-      if (!stat?.isFile()) {
-        continue;
-      }
-      await scanSourceForBlockLength(
-        sourcePath,
-        blockLength,
-        candidatesByWeak,
-        signature,
-        matches,
-        unmatched,
-      );
-      if (unmatched.size === 0) {
-        break;
-      }
-    }
+export async function findSeedBlockMatches(
+  sourcePaths: string[],
+  signature: SeedSignature,
+): Promise<Map<number, SeedBlockMatch>> {
+  const sources = await existingSourceFiles(sourcePaths);
+  const matches = new Map<number, SeedBlockMatch>();
+  await matchAlignedBlocks(sources, signature, matches);
+  await matchTrailingPartialBlock(sources, signature, matches);
+  if (!shouldSkipRollingScan(signature, matches)) {
+    await matchShiftedFullBlocks(sources, signature, matches);
   }
   return matches;
 }
@@ -364,9 +386,11 @@ export function missingSeedRanges(
     if (missing && startBlock === undefined) {
       startBlock = index;
     } else if (!missing && startBlock !== undefined) {
+      const first = blockSpan(signature, startBlock);
+      const last = blockSpan(signature, index - 1);
       ranges.push({
-        start: startBlock * signature.blockSize,
-        end: Math.min(signature.fileSize, index * signature.blockSize) - 1,
+        start: first.offset,
+        end: last.offset + last.length - 1,
       });
       startBlock = undefined;
     }
@@ -387,11 +411,10 @@ async function copyMatchedBlocks(
         source = await fs.promises.open(match.sourcePath, 'r');
         sourceHandles.set(match.sourcePath, source);
       }
-      const targetOffset = index * signature.blockSize;
-      const length = Math.min(signature.blockSize, signature.fileSize - targetOffset);
-      const block = Buffer.allocUnsafe(length);
-      await readExactly(source, block, length, match.sourceOffset);
-      await writeExactly(output, block, targetOffset);
+      const span = blockSpan(signature, index);
+      const block = Buffer.allocUnsafe(span.length);
+      await readExactly(source, block, span.length, match.sourceOffset);
+      await writeExactly(output, block, span.offset);
     }
   } finally {
     await Promise.all([...sourceHandles.values()].map((handle) => handle.close()));

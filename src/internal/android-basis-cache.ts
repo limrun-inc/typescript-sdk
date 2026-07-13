@@ -11,7 +11,7 @@ export type AndroidSyncState = {
     rootName?: string;
     files?: Array<{ path?: string; sha256?: string; size?: number; mode?: number }>;
   }>;
-  seeds?: Array<{ sha256?: string; size?: number; name?: string; mtime?: number }>;
+  seeds?: Array<{ sha256?: string; size?: number; mtime?: number }>;
 };
 
 type SyncLog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
@@ -86,7 +86,7 @@ export async function bootstrapAndroidBasisCache(
   }
   const seeds = [...(state.seeds ?? [])]
     .filter(
-      (seed): seed is { sha256: string; size?: number; name?: string; mtime?: number } =>
+      (seed): seed is { sha256: string; size?: number; mtime?: number } =>
         typeof seed.sha256 === 'string' && /^[0-9a-f]{64}$/i.test(seed.sha256),
     )
     .sort((a, b) => (b.mtime ?? 0) - (a.mtime ?? 0));
