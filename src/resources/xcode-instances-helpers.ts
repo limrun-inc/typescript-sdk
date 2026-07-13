@@ -13,6 +13,7 @@ import {
   type FolderSyncOptions,
 } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
+import { createDaemonLogger, mintAssetUploadUrls } from './daemon-client-shared';
 import { nodeProxyTransport } from '../internal/proxy-transport';
 import { directInstanceHttpError, isDirectInstanceHttpError } from '../internal/direct-instance-errors';
 import { LimrunError } from '../core/error';
@@ -402,22 +403,6 @@ export type XcodeCreateClientParams =
   | { instance: XcodeInstance; logLevel?: LogLevel }
   | { apiUrl: string; token: string; logLevel?: LogLevel };
 
-function createLogger(logLevel: LogLevel) {
-  const shouldLog = (level: LogLevel) => {
-    const levels: LogLevel[] = ['none', 'error', 'warn', 'info', 'debug'];
-    return levels.indexOf(logLevel) >= levels.indexOf(level);
-  };
-  return (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => {
-    if (!shouldLog(level)) return;
-    const prefix = '[XcodeInstance]';
-    if (level === 'error' || level === 'warn') {
-      console[level](prefix, msg);
-    } else {
-      console.log(prefix, msg);
-    }
-  };
-}
-
 function normalizeWorkspaceRelativePath(remotePath: string): string {
   if (
     remotePath === '' ||
@@ -512,27 +497,6 @@ async function readJsonResponse<T>(res: Response, operation: string): Promise<T>
   return JSON.parse(text) as T;
 }
 
-/**
- * Mints presigned upload/download URLs for a named asset via assets.getOrCreate,
- * wrapping failures with the asset name (and the original error as cause).
- * Shared by the xcodebuild `--upload` path and `uploadLatestRbeBuild`.
- */
-function mintAssetUploadUrls(
-  assets: { getOrCreate: (body: { name: string; ttl?: string }) => Promise<AssetUploadUrls> },
-  name: string,
-  ttl?: string,
-): Promise<AssetUploadUrls> {
-  return assets.getOrCreate({ name, ...(ttl && { ttl }) }).catch((err) => {
-    const message = `Failed to create upload URL for asset '${name}': ${
-      err instanceof Error ? err.message : err
-    }`;
-    // @ts-ignore - not all envs have native support for cause yet
-    throw new Error(message, { cause: err });
-  });
-}
-
-type AssetUploadUrls = { signedUploadUrl: string; signedDownloadUrl: string };
-
 export class XcodeInstances extends GeneratedXcodeInstances {
   async createClient(params: XcodeCreateClientParams): Promise<XcodeClient> {
     let apiUrl: string;
@@ -548,7 +512,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       token = params.token;
     }
 
-    const log = createLogger(params.logLevel ?? 'info');
+    const log = createDaemonLogger('[XcodeInstance]', params.logLevel ?? 'info');
     const client = this._client;
     let sandboxInfoPromise: Promise<{ homeDir: string }> | undefined;
     const getSandboxInfo = () => {

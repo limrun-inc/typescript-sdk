@@ -21,9 +21,10 @@ import { renderTable } from './lib/formatting';
 import { stopDaemon } from './lib/daemon';
 import { detectInstanceType } from './lib/instance-client-factory';
 import { deleteCreatedXcodeInstance } from './lib/instance-cleanup';
+import { loadGradleInstanceCache, loadLastGradleInstance, type LastGradleInstance } from './lib/config';
 
 const VERSION = require('../package.json').version;
-const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox)_[a-z0-9]+\b/i;
+const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox|gradle)_[a-z0-9]+\b/i;
 type XcodeTarget = LastIosInstance | LastXcodeInstance;
 type XcodeReplacementIntent = 'standalone' | 'simulator-backed';
 
@@ -75,7 +76,7 @@ export abstract class BaseCommand extends Command {
 
   private _parsedFlags?: Record<string, unknown>;
   private _lastResolvedInstanceId?: string;
-  private _lastResolvedExpectedType?: 'ios' | 'android' | 'xcode';
+  private _lastResolvedExpectedType?: 'ios' | 'android' | 'xcode' | 'gradle';
   private _xcodeReplacementIntent?: XcodeReplacementIntent;
   private _overrideInstanceId?: string;
   private _createRetryCount = 0;
@@ -499,7 +500,7 @@ export abstract class BaseCommand extends Command {
     const parts = this.getCommandParts();
     const noun = parts[0];
     const verb = parts[1];
-    if (!['ios', 'android', 'xcode'].includes(noun)) {
+    if (!['ios', 'android', 'xcode', 'gradle'].includes(noun)) {
       return false;
     }
     if (['create', 'delete', 'list'].includes(verb)) {
@@ -510,9 +511,13 @@ export abstract class BaseCommand extends Command {
 
   private async createReplacementInstance(
     instanceId?: string,
-  ): Promise<LastAndroidInstance | LastIosInstance | LastXcodeInstance | null> {
+  ): Promise<LastAndroidInstance | LastIosInstance | LastXcodeInstance | LastGradleInstance | null> {
     const commandType = this._lastResolvedExpectedType;
     const prefix = instanceId?.split('_')[0];
+
+    if (prefix === 'gradle' || commandType === 'gradle') {
+      return this.createStandaloneGradleInstance();
+    }
 
     if (commandType === 'xcode') {
       if (this._xcodeReplacementIntent === 'simulator-backed') {
@@ -626,6 +631,80 @@ export abstract class BaseCommand extends Command {
     if (!target || target.type !== 'xcode') {
       throw new Error(
         `Created Xcode instance ${instance.metadata.id}, but failed to load it from local cache.`,
+      );
+    }
+    return target;
+  }
+
+  protected gradleTargetFromId(id: string): LastGradleInstance {
+    if (!id.startsWith('gradle_')) {
+      throw new Error(`Expected a gradle instance, got ${id}`);
+    }
+    return loadGradleInstanceCache(id) ?? { id, type: 'gradle' };
+  }
+
+  protected resolveGradleTarget(providedId: string | undefined): LastGradleInstance {
+    const id = this._overrideInstanceId ?? providedId;
+    if (id) {
+      return this.gradleTargetFromId(id);
+    }
+    const target = loadLastGradleInstance();
+    if (!target) {
+      throw new Error(
+        `No instance ID provided and no recent gradle instance found${this.scopeSuffix()}.\n` +
+          'Provide an instance ID or create one first with: lim gradle create',
+      );
+    }
+    return target;
+  }
+
+  protected async resolveGradleTargetOrCreate(providedId: string | undefined): Promise<LastGradleInstance> {
+    this._lastResolvedExpectedType = 'gradle';
+    const id = this._overrideInstanceId ?? providedId;
+    if (id) {
+      const target = this.gradleTargetFromId(id);
+      this._lastResolvedInstanceId = target.id;
+      return target;
+    }
+
+    const target = loadLastGradleInstance();
+    if (target) {
+      this._lastResolvedInstanceId = target.id;
+      return target;
+    }
+
+    if (!this.shouldAutoCreateOnNotFound()) {
+      throw new Error(
+        'No gradle target found.\n' +
+          'Create one first with: lim gradle create, provide --id, or rerun without --no-create.',
+      );
+    }
+
+    const replacement = await this.createStandaloneGradleInstance();
+    this.info(`No recent gradle target found. Created instance ${replacement.id}.`);
+    this._lastResolvedInstanceId = replacement.id;
+    return replacement;
+  }
+
+  protected async resolveGradleClient(target: string | LastGradleInstance) {
+    const resolvedTarget = typeof target === 'string' ? this.gradleTargetFromId(target) : target;
+    const cached = loadGradleInstanceCache(resolvedTarget.id) ?? resolvedTarget;
+    if (cached.apiUrl && cached.token) {
+      return this.client.gradleInstances.createClient({ apiUrl: cached.apiUrl, token: cached.token });
+    }
+    const instance = await this.client.gradleInstances.get(resolvedTarget.id);
+    saveLastCreatedInstance(instance);
+    return this.client.gradleInstances.createClient({ instance });
+  }
+
+  private async createStandaloneGradleInstance(): Promise<LastGradleInstance> {
+    const instance = await this.client.gradleInstances.create({ wait: true, spec: {} });
+    this._instancesCreatedThisRun.add(instance.metadata.id);
+    saveLastCreatedInstance(instance);
+    const target = loadLastGradleInstance();
+    if (!target) {
+      throw new Error(
+        `Created gradle instance ${instance.metadata.id}, but failed to load it from local cache.`,
       );
     }
     return target;

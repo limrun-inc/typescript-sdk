@@ -13,6 +13,8 @@ export { buildSettingKeyPattern, parseBuildSettingEntries, validateBuildSettings
 export {
   exec,
   type ExecRequest,
+  type XcodeBuildExecRequest,
+  type GradleBuildExecRequest,
   type ExecOptions,
   type ExecResult,
   type ExecChildProcess,
@@ -46,6 +48,12 @@ export {
   type SimulatorDeviceInfo,
   type SimulatorInstallState,
 } from './resources/xcode-instances-helpers';
+export {
+  type GradleCreateClientParams,
+  type GradleClient,
+  type GradleSyncOptions,
+  type GradleBuildOptions,
+} from './resources/gradle-instances-helpers';
 export {
   LIMRUN_DIR,
   TRY_IMPORT_LINE,

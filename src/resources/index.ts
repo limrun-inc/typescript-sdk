@@ -37,6 +37,12 @@ export {
   type XcodeInstanceListParams,
   type XcodeInstancesItems,
 } from './xcode-instances';
+export {
+  type GradleInstance,
+  type GradleInstanceCreateParams,
+  type GradleInstanceListParams,
+  type GradleInstancesItems,
+} from './gradle-instances';
 
 export { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './assets-helpers';
 export {
@@ -57,3 +63,10 @@ export {
   type SimulatorInstallState,
   type RbeInstallResult,
 } from './xcode-instances-helpers';
+export {
+  GradleInstances,
+  type GradleCreateClientParams,
+  type GradleClient,
+  type GradleSyncOptions,
+  type GradleBuildOptions,
+} from './gradle-instances-helpers';

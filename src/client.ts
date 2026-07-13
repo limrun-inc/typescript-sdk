@@ -55,6 +55,19 @@ import {
   XcodeInstancesItems,
 } from './resources/xcode-instances';
 import {
+  GradleInstance,
+  GradleInstanceCreateParams,
+  GradleInstanceListParams,
+  GradleInstancesItems,
+} from './resources/gradle-instances';
+import {
+  GradleInstances,
+  GradleCreateClientParams,
+  GradleClient,
+  GradleSyncOptions,
+  GradleBuildOptions,
+} from './resources/gradle-instances-helpers';
+import {
   XcodeInstances,
   XcodeCreateClientParams,
   XcodeClient,
@@ -822,6 +835,7 @@ export class Limrun {
   assets: API.Assets = new API.Assets(this);
   iosInstances: API.IosInstances = new API.IosInstances(this);
   xcodeInstances: API.XcodeInstances = new API.XcodeInstances(this);
+  gradleInstances: API.GradleInstances = new API.GradleInstances(this);
   analytics: API.Analytics = new API.Analytics(this);
 }
 
@@ -829,6 +843,7 @@ Limrun.AndroidInstances = AndroidInstances;
 Limrun.Assets = Assets;
 Limrun.IosInstances = IosInstances;
 Limrun.XcodeInstances = XcodeInstances;
+Limrun.GradleInstances = GradleInstances;
 Limrun.Analytics = Analytics;
 
 export declare namespace Limrun {
@@ -881,6 +896,18 @@ export declare namespace Limrun {
     type SimulatorAttachment as SimulatorAttachment,
     type SimulatorDeviceInfo as SimulatorDeviceInfo,
     type SimulatorInstallState as SimulatorInstallState,
+  };
+
+  export {
+    GradleInstances as GradleInstances,
+    type GradleInstance as GradleInstance,
+    type GradleInstancesItems as GradleInstancesItems,
+    type GradleInstanceCreateParams as GradleInstanceCreateParams,
+    type GradleInstanceListParams as GradleInstanceListParams,
+    type GradleCreateClientParams as GradleCreateClientParams,
+    type GradleClient as GradleClient,
+    type GradleSyncOptions as GradleSyncOptions,
+    type GradleBuildOptions as GradleBuildOptions,
   };
 
   export {
