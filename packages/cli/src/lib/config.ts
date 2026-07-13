@@ -6,6 +6,7 @@ import yaml from 'js-yaml';
 import { type AndroidInstance } from '@limrun/api/resources/android-instances';
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
 import { type XcodeInstance } from '@limrun/api/resources/xcode-instances';
+import { type GradleInstance } from '@limrun/api/resources/gradle-instances';
 import { xcodeSandboxIdFromUrl } from './xcode-sandbox';
 import { getScopeKey, GLOBAL_SCOPE_KEY } from './scope';
 
@@ -132,12 +133,23 @@ export interface LastXcodeInstance {
   token?: XcodeInstance.Status['token'];
 }
 
+export interface LastGradleInstance {
+  id: string;
+  type: 'gradle';
+  metadata?: GradleInstance.Metadata;
+  spec?: GradleInstance.Spec;
+  status?: GradleInstance.Status;
+  apiUrl?: GradleInstance.Status['apiUrl'];
+  token?: GradleInstance.Status['token'];
+}
+
 /** The set of last-used instances bound to a single directory scope. */
 interface ScopeInstances {
   lastUsedAt?: string;
   ios?: LastIosInstance;
   android?: LastAndroidInstance;
   xcode?: LastIosInstance | LastXcodeInstance;
+  gradle?: LastGradleInstance;
 }
 
 /** On-disk schema: a map of directory scope key -> its last-used instances. */
@@ -167,11 +179,12 @@ function sanitizeScope(value: unknown): ScopeInstances {
   if (isLastIosInstance(value['xcode']) || isLastXcodeInstance(value['xcode'])) {
     scope.xcode = value['xcode'] as LastIosInstance | LastXcodeInstance;
   }
+  if (isLastGradleInstance(value['gradle'])) scope.gradle = value['gradle'];
   return scope;
 }
 
 function scopeHasInstance(scope: ScopeInstances): boolean {
-  return Boolean(scope.ios || scope.android || scope.xcode);
+  return Boolean(scope.ios || scope.android || scope.xcode || scope.gradle);
 }
 
 /** Copy any slots missing from `primary` out of `fallback`. */
@@ -180,6 +193,7 @@ function fillMissingScope(primary: ScopeInstances, fallback: ScopeInstances): Sc
   if (!out.ios && fallback.ios) out.ios = fallback.ios;
   if (!out.android && fallback.android) out.android = fallback.android;
   if (!out.xcode && fallback.xcode) out.xcode = fallback.xcode;
+  if (!out.gradle && fallback.gradle) out.gradle = fallback.gradle;
   if (!out.lastUsedAt && fallback.lastUsedAt) out.lastUsedAt = fallback.lastUsedAt;
   return out;
 }
@@ -247,6 +261,7 @@ function foldLegacyInto(file: LastInstancesFile, scopeKey: string): boolean {
   if (!scope.android && legacy.android) scope.android = legacy.android;
   if (!scope.ios && legacy.ios) scope.ios = legacy.ios;
   if (!scope.xcode && legacy.xcode) scope.xcode = legacy.xcode;
+  if (!scope.gradle && legacy.gradle) scope.gradle = legacy.gradle;
   if (!scope.lastUsedAt) scope.lastUsedAt = legacy.lastUsedAt ?? new Date().toISOString();
   return true;
 }
@@ -390,10 +405,15 @@ function isLastXcodeInstance(value: unknown): value is LastXcodeInstance {
   return isRecord(value) && value['type'] === 'xcode' && typeof value['id'] === 'string';
 }
 
-function detectLastInstanceType(instanceId: string): 'ios' | 'android' | 'xcode' {
+function isLastGradleInstance(value: unknown): value is LastGradleInstance {
+  return isRecord(value) && value['type'] === 'gradle' && typeof value['id'] === 'string';
+}
+
+function detectLastInstanceType(instanceId: string): 'ios' | 'android' | 'xcode' | 'gradle' {
   const rawPrefix = instanceId.split('_')[0];
   if (rawPrefix === 'android') return 'android';
   if (rawPrefix === 'ios') return 'ios';
+  if (rawPrefix === 'gradle') return 'gradle';
   return 'xcode';
 }
 
@@ -409,12 +429,31 @@ function isXcodeInstance(instance: InstanceInput): instance is XcodeInstance {
   return detectLastInstanceType(instance.metadata.id) === 'xcode';
 }
 
-export type InstanceInput = AndroidInstance | IosInstance | XcodeInstance;
+// Deliberately not a type predicate: GradleInstance is structurally identical
+// to XcodeInstance, so excluding it from the union would collapse the
+// remaining arms to never.
+function isGradleInstance(instance: InstanceInput): boolean {
+  return detectLastInstanceType(instance.metadata.id) === 'gradle';
+}
+
+export type InstanceInput = AndroidInstance | IosInstance | XcodeInstance | GradleInstance;
 
 function buildLastInstanceRecord(
   instanceOrId: InstanceInput,
-): LastAndroidInstance | LastIosInstance | LastXcodeInstance {
+): LastAndroidInstance | LastIosInstance | LastXcodeInstance | LastGradleInstance {
   const id = instanceOrId.metadata.id;
+  if (isGradleInstance(instanceOrId)) {
+    const gradle = instanceOrId as GradleInstance;
+    return {
+      id,
+      type: 'gradle',
+      metadata: gradle.metadata,
+      spec: gradle.spec,
+      status: gradle.status,
+      apiUrl: gradle.status.apiUrl,
+      token: gradle.status.token,
+    };
+  }
   if (isAndroidInstance(instanceOrId)) {
     return {
       id,
@@ -523,6 +562,8 @@ function saveLastInstance(instanceOrId: InstanceInput, slot?: 'xcode'): void {
       scope.android = record;
     } else if (record.type === 'ios') {
       scope.ios = record;
+    } else if (record.type === 'gradle') {
+      scope.gradle = record;
     } else {
       scope.xcode = record;
     }
@@ -552,6 +593,10 @@ export function loadLastXcodeInstance(): LastIosInstance | LastXcodeInstance | n
   return readScope(getScopeKey()).xcode ?? null;
 }
 
+export function loadLastGradleInstance(): LastGradleInstance | null {
+  return readScope(getScopeKey()).gradle ?? null;
+}
+
 function sandboxXcodeIdFromLastIosInstance(instance: LastIosInstance | undefined): string | undefined {
   const sandboxXcodeUrl = instance?.sandboxXcodeUrl ?? instance?.status?.sandbox?.xcode?.url;
   return sandboxXcodeUrl ? xcodeSandboxIdFromUrl(sandboxXcodeUrl) : undefined;
@@ -562,7 +607,7 @@ export function clearLastInstanceId(instanceId: string): void {
     let changed = false;
     for (const scope of Object.values(file.scopes)) {
       const iosRecord = scope.ios;
-      for (const key of ['ios', 'android', 'xcode'] as const) {
+      for (const key of ['ios', 'android', 'xcode', 'gradle'] as const) {
         if (scope[key]?.id === instanceId) {
           delete scope[key];
           changed = true;
@@ -581,7 +626,11 @@ export function clearLastInstanceId(instanceId: string): void {
 
 export function saveInstanceCache(
   instanceId: string,
-  data: Partial<LastAndroidInstance> | Partial<LastIosInstance> | Partial<LastXcodeInstance>,
+  data:
+    | Partial<LastAndroidInstance>
+    | Partial<LastIosInstance>
+    | Partial<LastXcodeInstance>
+    | Partial<LastGradleInstance>,
 ): void {
   mutate((file) => {
     let changed = false;
@@ -609,6 +658,14 @@ export function saveInstanceCache(
           : { ...scope.xcode, ...(data as Partial<LastXcodeInstance>), type: 'xcode' };
         changed = true;
       }
+      if (scope.gradle?.id === instanceId) {
+        scope.gradle = {
+          ...scope.gradle,
+          ...(data as Partial<LastGradleInstance>),
+          type: 'gradle',
+        };
+        changed = true;
+      }
     }
     return changed;
   });
@@ -632,6 +689,13 @@ export function loadIosInstanceCache(instanceId: string): LastIosInstance | null
 export function loadXcodeInstanceCache(instanceId: string): LastXcodeInstance | null {
   for (const scope of Object.values(readNormalizedFile().scopes)) {
     if (scope.xcode?.type === 'xcode' && scope.xcode.id === instanceId) return scope.xcode;
+  }
+  return null;
+}
+
+export function loadGradleInstanceCache(instanceId: string): LastGradleInstance | null {
+  for (const scope of Object.values(readNormalizedFile().scopes)) {
+    if (scope.gradle?.id === instanceId) return scope.gradle;
   }
   return null;
 }

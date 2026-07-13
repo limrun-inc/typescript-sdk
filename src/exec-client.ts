@@ -12,7 +12,9 @@ import { nodeProxyTransport } from './internal/proxy-transport';
 // Types
 // =============================================================================
 
-export type ExecRequest = {
+export type ExecRequest = XcodeBuildExecRequest | GradleBuildExecRequest;
+
+export type XcodeBuildExecRequest = {
   command: 'xcodebuild';
   xcodebuild?: {
     workspace?: string;
@@ -37,6 +39,18 @@ export type ExecRequest = {
   };
   testflight?: TestflightUploadConfig;
   buildSettings?: Record<string, string>;
+  signedUploadUrl?: string;
+  additionalMetadata?: {
+    signedDownloadUrl?: string;
+  };
+};
+
+export type GradleBuildExecRequest = {
+  command: 'gradlebuild';
+  /** Gradle tasks to run. Omit for the server default (assembleDebug). */
+  tasks?: string[];
+  /** Relative path to the Gradle root when auto-discovery is ambiguous. */
+  projectPath?: string;
   signedUploadUrl?: string;
   additionalMetadata?: {
     signedDownloadUrl?: string;
@@ -273,7 +287,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     // budget by its server-side verdict watch plus upload headroom so a long
     // build is not force-failed client-side while the server still succeeds.
     let timeoutMs = 3600 * 1000;
-    if (request.testflight) {
+    if (request.command === 'xcodebuild' && request.testflight) {
       timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 120) + 900) * 1000;
     }
     let exitCode: number;
