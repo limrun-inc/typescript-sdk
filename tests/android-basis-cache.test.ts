@@ -6,11 +6,27 @@ import path from 'path';
 import type { AddressInfo } from 'net';
 
 import { bootstrapAndroidBasisCache, type AndroidSyncState } from '../src/internal/android-basis-cache';
+import { type SeedSignature, weakRollingChecksum } from '../src/internal/seed-reconstruct';
 
 const noopLog = () => {};
 
 function sha256Hex(buf: Buffer): string {
   return crypto.createHash('sha256').update(buf).digest('hex');
+}
+
+function signatureFor(seed: Buffer, blockSize: number): SeedSignature {
+  const blocks = [];
+  for (let offset = 0; offset < seed.byteLength; offset += blockSize) {
+    const block = seed.subarray(offset, Math.min(offset + blockSize, seed.byteLength));
+    blocks.push({ w: weakRollingChecksum(block), s: sha256Hex(block).slice(0, 32) });
+  }
+  return {
+    version: 1,
+    blockSize,
+    fileSize: seed.byteLength,
+    sha256: sha256Hex(seed),
+    blocks,
+  };
 }
 
 function tempDir(): string {
@@ -22,6 +38,7 @@ type TestServer = { url: string; requests: string[]; close: () => Promise<void> 
 async function startServer(
   state: AndroidSyncState,
   seedBodies: Record<string, Buffer> = {},
+  signatures: Record<string, SeedSignature> = {},
 ): Promise<TestServer> {
   const requests: string[] = [];
   const server = http.createServer((req, res) => {
@@ -31,11 +48,29 @@ async function startServer(
       res.end(JSON.stringify(state));
       return;
     }
+    const signatureMatch = req.url?.match(/^\/sync\/seeds\/([0-9a-f]{64})\.sig$/);
+    const signature = signatureMatch ? signatures[signatureMatch[1]!] : undefined;
+    if (signature) {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify(signature));
+      return;
+    }
     const match = req.url?.match(/^\/sync\/seeds\/([0-9a-f]{64})$/);
     const body = match ? seedBodies[match[1]!] : undefined;
     if (body) {
-      res.setHeader('content-length', String(body.length));
-      res.end(body);
+      const rangeMatch = /^bytes=(\d+)-(\d+)$/.exec(req.headers.range ?? '');
+      if (rangeMatch) {
+        const start = Number(rangeMatch[1]);
+        const end = Number(rangeMatch[2]);
+        const rangeBody = body.subarray(start, end + 1);
+        res.statusCode = 206;
+        res.setHeader('content-range', `bytes ${start}-${end}/${body.byteLength}`);
+        res.setHeader('content-length', String(rangeBody.length));
+        res.end(rangeBody);
+      } else {
+        res.setHeader('content-length', String(body.length));
+        res.end(body);
+      }
       return;
     }
     res.statusCode = 404;
@@ -117,6 +152,37 @@ describe('bootstrapAndroidBasisCache', () => {
     // Initial (0, expectedSize) announcement, then byte progress ending at the full size.
     expect(progress[0]).toEqual([0, seedBytes.length]);
     expect(progress[progress.length - 1]).toEqual([seedBytes.length, seedBytes.length]);
+  });
+
+  test('reconstructs a basis seed from shifted local APK blocks', async () => {
+    const blockSize = 8;
+    const seedBytes = Buffer.from('abcdefghABCDEFGHijklmnopIJKLMNOP');
+    const insertionOffset = blockSize + 3;
+    const localBytes = Buffer.concat([
+      seedBytes.subarray(0, insertionOffset),
+      Buffer.from('shift'),
+      seedBytes.subarray(insertionOffset),
+    ]);
+    fs.writeFileSync(apkPath, localBytes);
+    const seedSha = sha256Hex(seedBytes);
+    const server = await startServer(
+      { seeds: [{ sha256: seedSha, size: seedBytes.length }] },
+      { [seedSha]: seedBytes },
+      { [seedSha]: signatureFor(seedBytes, blockSize) },
+    );
+    const progress: Array<[number, number]> = [];
+    try {
+      await bootstrapAndroidBasisCache(apkPath, basisCacheDir, server.url, 'tok', noopLog, (done, total) =>
+        progress.push([done, total]),
+      );
+    } finally {
+      await server.close();
+    }
+
+    expect(fs.readFileSync(basisPath)).toEqual(seedBytes);
+    expect(server.requests).toEqual(['/sync/state', `/sync/seeds/${seedSha}.sig`, `/sync/seeds/${seedSha}`]);
+    expect(progress[0]).toEqual([0, blockSize]);
+    expect(progress[progress.length - 1]).toEqual([blockSize, blockSize]);
   });
 
   test('drops a stale local basis when the instance has nothing usable', async () => {

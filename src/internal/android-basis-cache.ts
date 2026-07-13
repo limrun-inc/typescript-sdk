@@ -4,13 +4,14 @@ import path from 'path';
 
 import { downloadFileToLocalPath } from './download-file';
 import { nodeProxyTransport } from './proxy-transport';
+import { reconstructSeedFromLocalFiles } from './seed-reconstruct';
 
 export type AndroidSyncState = {
   roots?: Array<{
     rootName?: string;
     files?: Array<{ path?: string; sha256?: string; size?: number; mode?: number }>;
   }>;
-  seeds?: Array<{ sha256?: string; size?: number; name?: string; mtime?: number }>;
+  seeds?: Array<{ sha256?: string; size?: number; mtime?: number }>;
 };
 
 type SyncLog = (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
@@ -85,7 +86,7 @@ export async function bootstrapAndroidBasisCache(
   }
   const seeds = [...(state.seeds ?? [])]
     .filter(
-      (seed): seed is { sha256: string; size?: number; name?: string; mtime?: number } =>
+      (seed): seed is { sha256: string; size?: number; mtime?: number } =>
         typeof seed.sha256 === 'string' && /^[0-9a-f]{64}$/i.test(seed.sha256),
     )
     .sort((a, b) => (b.mtime ?? 0) - (a.mtime ?? 0));
@@ -93,16 +94,16 @@ export async function bootstrapAndroidBasisCache(
     serverShas.add(seed.sha256.toLowerCase());
   }
 
+  let staleBasisPath: string | undefined;
   if (fs.existsSync(basisPath)) {
     const basisSha = (await sha256FileHex(basisPath)).toLowerCase();
     if (serverShas.has(basisSha)) {
       return;
     }
-    // A delta against a basis this instance doesn't have only earns a needFull
-    // round trip and then a full upload (e.g. a warm cache pointed at a fresh
-    // instance), so drop the stale basis and re-seed below.
+    // Keep the stale basis temporarily: even though the instance cannot use it
+    // directly, many of its blocks may be reusable while reconstructing a seed.
     log('debug', `local basis ${basisSha} unknown to instance; re-seeding basis cache`);
-    await fs.promises.rm(basisPath, { force: true });
+    staleBasisPath = basisPath;
   }
 
   const localSha = (await sha256FileHex(apkPath)).toLowerCase();
@@ -116,16 +117,37 @@ export async function bootstrapAndroidBasisCache(
   }
   const seed = seeds[0];
   if (!seed) {
+    if (staleBasisPath) {
+      await fs.promises.rm(staleBasisPath, { force: true });
+    }
     return;
   }
-  // Announce the download before any bytes flow so consumers can react to the
-  // expected size even during connection setup / time-to-first-byte.
-  onBasisDownloadProgress?.(0, seed.size ?? 0);
-  await downloadFileToLocalPath(
-    buildSyncSeedUrl(apiUrl, seed.sha256),
-    token,
-    basisPath,
-    onBasisDownloadProgress,
-  );
-  log('debug', `seeded Android basis cache from instance seed: ${seed.sha256}`);
+  const seedUrl = buildSyncSeedUrl(apiUrl, seed.sha256);
+  try {
+    const result = await reconstructSeedFromLocalFiles({
+      signatureUrl: `${seedUrl}.sig`,
+      seedUrl,
+      token,
+      sourcePaths: staleBasisPath ? [apkPath, staleBasisPath] : [apkPath],
+      outputPath: basisPath,
+      expectedSha256: seed.sha256,
+      ...(onBasisDownloadProgress ? { onProgress: onBasisDownloadProgress } : {}),
+    });
+    log(
+      'debug',
+      `reconstructed Android basis seed ${seed.sha256}: matched=${result.matchedBlocks} downloaded=${result.downloadedBytes}`,
+    );
+  } catch (err) {
+    log(
+      'debug',
+      `basis seed reconstruction unavailable; downloading full seed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    // A failed reconstruction never replaces basisPath, so it is safe to
+    // truncate the stale basis in place for the full-download fallback.
+    onBasisDownloadProgress?.(0, seed.size ?? 0);
+    await downloadFileToLocalPath(seedUrl, token, basisPath, onBasisDownloadProgress);
+    log('debug', `seeded Android basis cache from full instance seed: ${seed.sha256}`);
+  }
 }

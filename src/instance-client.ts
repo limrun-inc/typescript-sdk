@@ -165,9 +165,9 @@ export type InstanceClient = {
       launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
       basisCacheDir?: string;
       /**
-       * Called while the basis seed is downloaded from the instance. Fires once with
-       * `(0, expectedSizeBytes)` before the download starts (expectedSizeBytes is 0 when
-       * unknown), then repeatedly as bytes arrive.
+       * Called while missing basis-seed ranges are downloaded from the instance. Fires
+       * once with `(0, requiredDownloadBytes)` before transfer, then repeatedly as bytes
+       * arrive. A full-download fallback restarts progress with the complete seed size.
        */
       onBasisDownloadProgress?: (downloadedBytes: number, totalBytes: number) => void;
       /** Called after every successful sync, including watch-triggered re-syncs. */
