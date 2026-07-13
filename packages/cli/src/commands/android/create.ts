@@ -4,6 +4,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
+import { openInBrowser } from '../../lib/browser';
 import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-instances';
 
 export default class AndroidCreate extends BaseCommand {
@@ -68,6 +69,12 @@ export default class AndroidCreate extends BaseCommand {
       description:
         'Asset time-to-live for files uploaded via --install, as a Go duration (e.g. "24h", min 1m). Does not affect --install-asset. Defaults to no expiry.',
     }),
+    open: Flags.boolean({
+      description:
+        'Open the signed stream URL in your browser once the instance is ready. Use --no-open to skip.',
+      default: true,
+      allowNo: true,
+    }),
   };
 
   async run(): Promise<void> {
@@ -128,6 +135,12 @@ export default class AndroidCreate extends BaseCommand {
       this.info(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
       if (signedStreamUrl) {
         this.info(`Signed Stream URL: ${signedStreamUrl}`);
+      }
+
+      if (flags.open && signedStreamUrl && !this.shouldSuppressInfo()) {
+        if (await openInBrowser(signedStreamUrl)) {
+          this.info('Opened the stream in your browser.');
+        }
       }
 
       if (flags.rm) {

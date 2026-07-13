@@ -1,15 +1,17 @@
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { loadLastIosInstance } from '../../lib/config';
 
 export default class IosGet extends BaseCommand {
   static summary = 'Get details for a specific iOS instance';
   static description =
-    'Fetch detailed metadata for a single iOS instance, including region, state, and display name. Use `--json` to inspect the full API response.';
+    'Fetch detailed metadata for a single iOS instance, including region, state, and display name. Falls back to listing all iOS instances when no ID is given and no recent instance is remembered. Use `--json` to inspect the full API response.';
   static examples = ['<%= config.bin %> ios get', '<%= config.bin %> ios get <ID> --json'];
 
   static args = {
     id: Args.string({
-      description: 'iOS instance ID to fetch. Defaults to the last created iOS instance.',
+      description:
+        'iOS instance ID to fetch. Defaults to the last created iOS instance; lists all instances when none is remembered.',
       required: false,
     }),
   };
@@ -19,6 +21,12 @@ export default class IosGet extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(IosGet);
     this.setParsedFlags(flags);
+
+    if (!args.id && !loadLastIosInstance()) {
+      this.info('No recent iOS instance found. Listing iOS instances instead.');
+      await this.runListFallback('ios:list');
+      return;
+    }
 
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(args.id);
