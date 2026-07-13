@@ -1,15 +1,17 @@
 import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { loadLastAndroidInstance } from '../../lib/config';
 
 export default class AndroidGet extends BaseCommand {
   static summary = 'Get details for a specific Android instance';
   static description =
-    'Fetch detailed metadata for a single Android instance, including region, state, and display name. Use `--json` to inspect the full API response.';
+    'Fetch detailed metadata for a single Android instance, including region, state, and display name. Falls back to listing all Android instances when no ID is given and no recent instance is remembered. Use `--json` to inspect the full API response.';
   static examples = ['<%= config.bin %> android get', '<%= config.bin %> android get <ID> --json'];
 
   static args = {
     id: Args.string({
-      description: 'Android instance ID to fetch. Defaults to the last created Android instance.',
+      description:
+        'Android instance ID to fetch. Defaults to the last created Android instance; lists all instances when none is remembered.',
       required: false,
     }),
   };
@@ -19,6 +21,12 @@ export default class AndroidGet extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(AndroidGet);
     this.setParsedFlags(flags);
+
+    if (!args.id && !loadLastAndroidInstance()) {
+      this.info('No recent Android instance found. Listing Android instances instead.');
+      await this.runListFallback('android:list');
+      return;
+    }
 
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveAndroidInstance(args.id);

@@ -3,6 +3,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
+import { openInBrowser } from '../../lib/browser';
 import { xcodeSandboxIdFromUrl } from '../../lib/xcode-sandbox';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 import { formatDurationMs } from '../../lib/duration';
@@ -94,6 +95,12 @@ export default class IosCreate extends BaseCommand {
     attach: Flags.boolean({
       description: 'Attach the created simulator to an existing Xcode target',
       default: false,
+    }),
+    open: Flags.boolean({
+      description:
+        'Open the signed stream URL in your browser once the instance is ready. Use --no-open to skip.',
+      default: true,
+      allowNo: true,
     }),
   };
 
@@ -252,6 +259,12 @@ export default class IosCreate extends BaseCommand {
           this.info(`Attach/install completed in ${formatDurationMs(attachDurationMs)}.`);
         }
         this.info(formatSimulatorAttachResult(instance.metadata.id, attachTarget.id, attachResult));
+      }
+
+      if (flags.open && signedStreamUrl && !this.shouldSuppressInfo()) {
+        if (await openInBrowser(signedStreamUrl)) {
+          this.info('Opened the stream in your browser.');
+        }
       }
 
       if (flags.json) {

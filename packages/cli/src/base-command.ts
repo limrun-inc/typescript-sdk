@@ -191,6 +191,21 @@ export abstract class BaseCommand extends Command {
     this.output(JSON.stringify(data, null, 2));
   }
 
+  /**
+   * Runs the sibling `list` command (e.g. `ios:list` for `ios get`), forwarding
+   * the base output/auth flags. Used by `get` commands to degrade to a listing
+   * when no ID was given and no recent instance is remembered.
+   */
+  protected async runListFallback(commandId: string): Promise<void> {
+    const flags = this.parsedFlags ?? {};
+    const argv: string[] = [];
+    if (flags['json']) argv.push('--json');
+    if (flags['quiet']) argv.push('--quiet');
+    if (typeof flags['api-key'] === 'string') argv.push('--api-key', flags['api-key'] as string);
+    if (typeof flags['workspace'] === 'string') argv.push('--workspace', flags['workspace'] as string);
+    await this.config.runCommand(commandId, argv);
+  }
+
   protected consoleStreamUrl(instanceId: string): string {
     const baseUrl = readConfig().consoleEndpoint.replace(/\/+$/, '');
     return `${baseUrl}/stream/${instanceId}`;

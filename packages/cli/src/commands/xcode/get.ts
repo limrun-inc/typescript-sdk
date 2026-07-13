@@ -1,16 +1,18 @@
 import { Args } from '@oclif/core';
 import { type SimulatorBuildStatus, type SimulatorStatus } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
+import { loadLastXcodeInstance } from '../../lib/config';
 
 export default class XcodeGet extends BaseCommand {
   static summary = 'Get details for a specific Xcode instance';
   static description =
-    'Fetch detailed metadata for a single Xcode sandbox instance, including region, state, and display name. Use `--json` to inspect the full API response.';
+    'Fetch detailed metadata for a single Xcode sandbox instance, including region, state, and display name. Falls back to listing all Xcode instances when no ID is given and no recent target is remembered. Use `--json` to inspect the full API response.';
   static examples = ['<%= config.bin %> xcode get', '<%= config.bin %> xcode get <ID> --json'];
 
   static args = {
     id: Args.string({
-      description: 'Xcode instance ID to fetch. Defaults to the last created Xcode target.',
+      description:
+        'Xcode instance ID to fetch. Defaults to the last created Xcode target; lists all instances when none is remembered.',
       required: false,
     }),
   };
@@ -20,6 +22,12 @@ export default class XcodeGet extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeGet);
     this.setParsedFlags(flags);
+
+    if (!args.id && !loadLastXcodeInstance()) {
+      this.info('No recent Xcode target found. Listing Xcode instances instead.');
+      await this.runListFallback('xcode:list');
+      return;
+    }
 
     await this.withAuth(async () => {
       const target = await this.resolveXcodeTarget(args.id);
