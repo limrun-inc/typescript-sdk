@@ -171,6 +171,13 @@ export namespace IosInstanceCreateParams {
     clues?: Array<Spec.Clue>;
 
     /**
+     * Keeps this app in the foreground after it is first observed there. This does not
+     * launch the app when the simulator starts. Once armed, closing or backgrounding
+     * the app causes it to be brought back to the foreground.
+     */
+    forceBundleId?: string;
+
+    /**
      * After how many minutes should the instance be terminated. Example values 1m,
      * 10m, 3h. Default is "0" which means no hard timeout.
      */
