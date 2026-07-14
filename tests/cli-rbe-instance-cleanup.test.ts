@@ -1,29 +1,29 @@
-import { deleteCreatedXcodeInstance, isXcodeInstanceId } from '../packages/cli/src/lib/instance-cleanup';
+import { deleteCreatedInstance } from '../packages/cli/src/lib/instance-cleanup';
 
 /**
- * Pins the instance-leak guard: `lim xcode rbe` must delete a server-side
- * instance it auto-created and then abandons (e.g. one that turns out not to
- * support RBE), but never delete a user `--id`, a pre-existing cached instance,
- * or a non-xcode instance. The decision is the pure `deleteCreatedXcodeInstance`
- * policy; BaseCommand only supplies its created-id Set and the SDK delete call.
+ * Pins the instance-leak guard: a command must delete a server-side instance it
+ * auto-created and then abandons (e.g. an `lim xcode rbe` instance that turns
+ * out not to support RBE, or an auto-created gradle instance whose retried
+ * command fails), but never delete a user `--id` or a pre-existing cached
+ * instance. Membership in the created-id Set is the whole gate here; dispatching
+ * the delete to the right resource by id prefix is the caller's deleter closure.
  */
 
-const CREATED_XCODE = 'sandbox_euna_01created';
-const USER_XCODE = 'sandbox_user_01pinned';
-const SIM_IOS = 'ios_sim_01attached';
+const CREATED = 'gradle_euna_01created';
+const USER_PINNED = 'sandbox_user_01pinned';
 
-describe('rbe instance-leak cleanup policy', () => {
-  test('deletes an xcode instance we created, and is idempotent', async () => {
-    const created = new Set([CREATED_XCODE]);
+describe('instance-leak cleanup policy', () => {
+  test('deletes an instance we created, and is idempotent', async () => {
+    const created = new Set([CREATED]);
     const del = jest.fn(async () => {});
 
-    await expect(deleteCreatedXcodeInstance(created, CREATED_XCODE, del)).resolves.toBe(true);
+    await expect(deleteCreatedInstance(created, CREATED, del)).resolves.toBe(true);
     expect(del).toHaveBeenCalledTimes(1);
-    expect(del).toHaveBeenCalledWith(CREATED_XCODE);
-    expect(created.has(CREATED_XCODE)).toBe(false);
+    expect(del).toHaveBeenCalledWith(CREATED);
+    expect(created.has(CREATED)).toBe(false);
 
     // Dropped from the set on success, so a second attempt is a no-op.
-    await expect(deleteCreatedXcodeInstance(created, CREATED_XCODE, del)).resolves.toBe(false);
+    await expect(deleteCreatedInstance(created, CREATED, del)).resolves.toBe(false);
     expect(del).toHaveBeenCalledTimes(1);
   });
 
@@ -31,31 +31,20 @@ describe('rbe instance-leak cleanup policy', () => {
     const created = new Set<string>(); // nothing created this run
     const del = jest.fn(async () => {});
 
-    for (const id of [USER_XCODE, SIM_IOS, undefined]) {
-      await expect(deleteCreatedXcodeInstance(created, id, del)).resolves.toBe(false);
+    for (const id of [USER_PINNED, CREATED, undefined]) {
+      await expect(deleteCreatedInstance(created, id, del)).resolves.toBe(false);
     }
     expect(del).not.toHaveBeenCalled();
   });
 
-  test('xcode-scoped: a tracked non-xcode id is not deleted', async () => {
-    const created = new Set([SIM_IOS]); // defense-in-depth: even if tracked
-    const del = jest.fn(async () => {});
-
-    await expect(deleteCreatedXcodeInstance(created, SIM_IOS, del)).resolves.toBe(false);
-    expect(del).not.toHaveBeenCalled();
-    expect(isXcodeInstanceId(SIM_IOS)).toBe(false);
-    expect(isXcodeInstanceId('xcode_x_1')).toBe(true);
-    expect(isXcodeInstanceId('sandbox_x_1')).toBe(true);
-  });
-
   test('best-effort: a failing delete never throws, returns false, and keeps the id', async () => {
-    const created = new Set([CREATED_XCODE]);
+    const created = new Set([CREATED]);
     const del = jest.fn(async () => {
       throw new Error('server unavailable');
     });
 
-    await expect(deleteCreatedXcodeInstance(created, CREATED_XCODE, del)).resolves.toBe(false);
+    await expect(deleteCreatedInstance(created, CREATED, del)).resolves.toBe(false);
     // Retained so it isn't silently forgotten (matches deleteSim semantics).
-    expect(created.has(CREATED_XCODE)).toBe(true);
+    expect(created.has(CREATED)).toBe(true);
   });
 });

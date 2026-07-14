@@ -246,7 +246,12 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     const { log } = this;
     const { apiUrl, token } = this.options;
 
-    // 1. Trigger the build via POST /exec
+    // 1. Trigger the build via POST /exec.
+    // additionalMetadata is a client-only carrier (no daemon reads it; it is
+    // spread into ExecResult below so callers can surface the download URL), so
+    // it is stripped from the wire body: the daemon OpenAPI schemas do not
+    // declare it, and sending it would 400 under strict request validation.
+    const { additionalMetadata: _clientOnly, ...wireRequest } = request;
     let execRes: Response;
     try {
       execRes = await nodeProxyTransport.fetch(`${apiUrl}/exec`, {
@@ -255,7 +260,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(request),
+        body: JSON.stringify(wireRequest),
         signal: this.abortController.signal,
       });
     } catch (err) {

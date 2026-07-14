@@ -13,7 +13,12 @@ import {
   type FolderSyncOptions,
 } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
-import { createDaemonLogger, mintAssetUploadUrls } from './daemon-client-shared';
+import {
+  createDaemonLogger,
+  mintAssetUploadUrls,
+  type LogLevel,
+  type SyncResult,
+} from './daemon-client-shared';
 import { nodeProxyTransport } from '../internal/proxy-transport';
 import { directInstanceHttpError, isDirectInstanceHttpError } from '../internal/direct-instance-errors';
 import { LimrunError } from '../core/error';
@@ -25,7 +30,10 @@ import { createEventSource } from 'eventsource-client';
 
 export type { Tunnel } from '../tunnel';
 
-export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
+// LogLevel and SyncResult are platform-neutral and now live in the shared
+// daemon-client module; re-exported here so existing deep importers of this
+// file keep working.
+export type { LogLevel, SyncResult } from './daemon-client-shared';
 
 export type SyncOptions = {
   /**
@@ -58,17 +66,6 @@ export type SyncOptions = {
   additionalFiles?: AdditionalFileSyncEntry[];
   /** Called after every successful sync, including watch-triggered re-syncs. */
   onSyncComplete?: FolderSyncOptions['onSyncComplete'];
-};
-
-export type SyncResult = {
-  /**
-   * Number of bytes transmitted to the server for this sync (full uploads plus
-   * delta patches, before transport compression). In watch mode, this reflects
-   * the initial sync only.
-   */
-  bytesSent?: number;
-  /** Present only when watch=true; call to stop watching */
-  stopWatching?: () => Promise<void>;
 };
 
 export type XcodeProjectConfig = {

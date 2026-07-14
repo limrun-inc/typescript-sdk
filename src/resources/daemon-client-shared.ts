@@ -1,6 +1,18 @@
-// Helpers shared by the per-instance build-daemon clients (xcode, gradle).
+// Helpers and platform-neutral types shared by the per-instance build-daemon
+// clients (xcode, gradle).
 
-import type { LogLevel } from './xcode-instances-helpers';
+export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
+
+export type SyncResult = {
+  /**
+   * Number of bytes transmitted to the server for this sync (full uploads plus
+   * delta patches, before transport compression). In watch mode, this reflects
+   * the initial sync only.
+   */
+  bytesSent?: number;
+  /** Present only when watch=true; call to stop watching */
+  stopWatching?: () => Promise<void>;
+};
 
 export type AssetUploadUrls = { signedUploadUrl: string; signedDownloadUrl: string };
 

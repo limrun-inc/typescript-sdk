@@ -10,21 +10,26 @@ import {
   loadXcodeInstanceCache,
   readConfig,
   registerCreatedInstance,
+  loadGradleInstanceCache,
+  loadLastGradleInstance,
   type InstanceInput,
   type LastAndroidInstance,
   type LastIosInstance,
   type LastXcodeInstance,
+  type LastGradleInstance,
 } from './lib/config';
 import { login } from './lib/auth';
 import { getScopeKey, isGlobalScopeKey, setScopeOverride } from './lib/scope';
 import { renderTable } from './lib/formatting';
 import { stopDaemon } from './lib/daemon';
 import { detectInstanceType } from './lib/instance-client-factory';
-import { deleteCreatedXcodeInstance } from './lib/instance-cleanup';
-import { loadGradleInstanceCache, loadLastGradleInstance, type LastGradleInstance } from './lib/config';
+import { deleteCreatedInstance } from './lib/instance-cleanup';
 
 const VERSION = require('../package.json').version;
-const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox|gradle)_[a-z0-9]+\b/i;
+// Full instance-id shape only: prefix_region_suffix with a long TypeID suffix.
+// TypeIDs are lowercase, so no /i flag; this avoids matching bare prefix words
+// in error text (e.g. GRADLE_USER_HOME, gradle_wrapper) as if they were ids.
+const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox|gradle)_[a-z0-9]+_[a-z0-9]{20,}\b/;
 type XcodeTarget = LastIosInstance | LastXcodeInstance;
 type XcodeReplacementIntent = 'standalone' | 'simulator-backed';
 
@@ -556,17 +561,35 @@ export abstract class BaseCommand extends Command {
   }
 
   /**
-   * Best-effort delete of an Xcode instance THIS invocation auto-created, so a
-   * path that creates an instance and then abandons it (e.g. it does not support
-   * RBE) does not leak a billed server-side instance. Deletes directly (not via
-   * withAuth) so a 404 during cleanup can't trigger replacement creation, mirrors
-   * `deleteSim`, and never throws. No-op for an instance we did not create (a user
-   * --id or a pre-existing cached one) or a non-xcode id. The decision lives in
-   * `deleteCreatedXcodeInstance` (unit-tested without the oclif runtime).
+   * Best-effort delete of an instance THIS invocation auto-created, so a path
+   * that creates an instance and then abandons it (e.g. it does not support RBE,
+   * or a retried command fails) does not leak a billed server-side instance.
+   * Deletes directly (not via withAuth) so a 404 during cleanup can't trigger
+   * replacement creation, mirrors `deleteSim`, and never throws. No-op for an
+   * instance we did not create (a user --id or a pre-existing cached one). The
+   * decision lives in `deleteCreatedInstance` (unit-tested without the oclif
+   * runtime); the delete itself dispatches on the id prefix.
    */
   protected deleteCreatedInstance(id: string | undefined): Promise<boolean> {
-    return deleteCreatedXcodeInstance(this._instancesCreatedThisRun, id, async (xcodeId) => {
-      await this.client.xcodeInstances.delete(xcodeId);
+    return deleteCreatedInstance(this._instancesCreatedThisRun, id, async (instanceId) => {
+      const prefix = instanceId.split('_')[0];
+      switch (prefix) {
+        case 'gradle':
+          await this.client.gradleInstances.delete(instanceId);
+          break;
+        case 'xcode':
+        case 'sandbox':
+          await this.client.xcodeInstances.delete(instanceId);
+          break;
+        case 'ios':
+          await this.client.iosInstances.delete(instanceId);
+          break;
+        case 'android':
+          await this.client.androidInstances.delete(instanceId);
+          break;
+        default:
+          throw new Error(`cannot delete instance with unrecognized id prefix: ${instanceId}`);
+      }
     });
   }
 
@@ -643,12 +666,28 @@ export abstract class BaseCommand extends Command {
     return loadGradleInstanceCache(id) ?? { id, type: 'gradle' };
   }
 
-  protected resolveGradleTarget(providedId: string | undefined): LastGradleInstance {
+  // Resolves the gradle target from an explicit id (or run override) or the
+  // remembered last-used instance, recording the bookkeeping the self-heal
+  // path relies on. Returns null when neither is available; callers decide
+  // whether that is an error (get/delete) or a create trigger (build).
+  private tryResolveGradleTarget(providedId: string | undefined): LastGradleInstance | null {
+    this._lastResolvedExpectedType = 'gradle';
     const id = this._overrideInstanceId ?? providedId;
     if (id) {
-      return this.gradleTargetFromId(id);
+      const target = this.gradleTargetFromId(id);
+      this._lastResolvedInstanceId = target.id;
+      return target;
     }
     const target = loadLastGradleInstance();
+    if (target) {
+      this._lastResolvedInstanceId = target.id;
+      return target;
+    }
+    return null;
+  }
+
+  protected resolveGradleTarget(providedId: string | undefined): LastGradleInstance {
+    const target = this.tryResolveGradleTarget(providedId);
     if (!target) {
       throw new Error(
         `No instance ID provided and no recent gradle instance found${this.scopeSuffix()}.\n` +
@@ -659,17 +698,8 @@ export abstract class BaseCommand extends Command {
   }
 
   protected async resolveGradleTargetOrCreate(providedId: string | undefined): Promise<LastGradleInstance> {
-    this._lastResolvedExpectedType = 'gradle';
-    const id = this._overrideInstanceId ?? providedId;
-    if (id) {
-      const target = this.gradleTargetFromId(id);
-      this._lastResolvedInstanceId = target.id;
-      return target;
-    }
-
-    const target = loadLastGradleInstance();
+    const target = this.tryResolveGradleTarget(providedId);
     if (target) {
-      this._lastResolvedInstanceId = target.id;
       return target;
     }
 
@@ -686,13 +716,11 @@ export abstract class BaseCommand extends Command {
     return replacement;
   }
 
-  protected async resolveGradleClient(target: string | LastGradleInstance) {
-    const resolvedTarget = typeof target === 'string' ? this.gradleTargetFromId(target) : target;
-    const cached = loadGradleInstanceCache(resolvedTarget.id) ?? resolvedTarget;
-    if (cached.apiUrl && cached.token) {
-      return this.client.gradleInstances.createClient({ apiUrl: cached.apiUrl, token: cached.token });
+  protected async resolveGradleClient(target: LastGradleInstance) {
+    if (target.apiUrl && target.token) {
+      return this.client.gradleInstances.createClient({ apiUrl: target.apiUrl, token: target.token });
     }
-    const instance = await this.client.gradleInstances.get(resolvedTarget.id);
+    const instance = await this.client.gradleInstances.get(target.id);
     saveLastCreatedInstance(instance);
     return this.client.gradleInstances.createClient({ instance });
   }
@@ -701,13 +729,16 @@ export abstract class BaseCommand extends Command {
     const instance = await this.client.gradleInstances.create({ wait: true, spec: {} });
     this._instancesCreatedThisRun.add(instance.metadata.id);
     saveLastCreatedInstance(instance);
-    const target = loadLastGradleInstance();
-    if (!target) {
-      throw new Error(
-        `Created gradle instance ${instance.metadata.id}, but failed to load it from local cache.`,
-      );
-    }
-    return target;
+    // Derived from the instance in hand; no need to reload what we just wrote.
+    return {
+      id: instance.metadata.id,
+      type: 'gradle',
+      metadata: instance.metadata,
+      spec: instance.spec,
+      status: instance.status,
+      apiUrl: instance.status.apiUrl,
+      token: instance.status.token,
+    };
   }
 }
 

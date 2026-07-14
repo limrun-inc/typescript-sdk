@@ -6,8 +6,12 @@ import { GradleInstances as GeneratedGradleInstances, type GradleInstance } from
 import { exec, type ExecChildProcess, type GradleBuildExecRequest } from '../exec-client';
 import { syncFolder as syncFolderImpl, type FolderSyncOptions } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
-import { createDaemonLogger, mintAssetUploadUrls } from './daemon-client-shared';
-import type { LogLevel, SyncResult } from './xcode-instances-helpers';
+import {
+  createDaemonLogger,
+  mintAssetUploadUrls,
+  type LogLevel,
+  type SyncResult,
+} from './daemon-client-shared';
 
 export type GradleCreateClientParams = { logLevel?: LogLevel } & (
   | { instance: GradleInstance }
@@ -15,11 +19,6 @@ export type GradleCreateClientParams = { logLevel?: LogLevel } & (
 );
 
 export type GradleSyncOptions = {
-  /**
-   * If true, watch the folder and re-sync on any changes. Defaults to false:
-   * gradle builds are one-shot, unlike the xcode dev loop.
-   */
-  watch?: boolean;
   /**
    * Directory for the client-side folder-sync cache.
    * Defaults to a temporary directory under the OS temp directory.
@@ -102,11 +101,17 @@ export class GradleInstances extends GeneratedGradleInstances {
             basisCacheDir,
             log,
             xcodeDefaults: false,
+            // Honor nested module .gitignore files (app/.gitignore's /build,
+            // etc.); gradleDefaultIgnore only covers root-level build/.gradle/
+            // .kotlin, so without this a locally-built project would sync its
+            // nested build/ artifact trees.
+            nestedGitignore: true,
             additional: userIgnore ? (p) => gradleDefaultIgnore(p) || userIgnore(p) : gradleDefaultIgnore,
             ...(opts?.include ? { include: opts.include } : {}),
           }),
           basisCacheDir,
-          watch: opts?.watch ?? false,
+          // Gradle builds are one-shot; no dev-loop watch like xcode.
+          watch: false,
           launchMode: 'ForegroundIfRunning',
           log,
           syncSymlinks: true,
@@ -116,9 +121,6 @@ export class GradleInstances extends GeneratedGradleInstances {
         const out: SyncResult = {};
         if (result.bytesSent !== undefined) {
           out.bytesSent = result.bytesSent;
-        }
-        if (result.stopWatching) {
-          out.stopWatching = result.stopWatching;
         }
         return out;
       },
