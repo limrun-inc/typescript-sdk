@@ -24,6 +24,7 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create --keychain-url https://example.t3.storage.dev/... --encryption-key <key>',
     '<%= config.bin %> ios create --install ./MyApp.ipa',
     '<%= config.bin %> ios create --attach <xcode-instance-ID>',
+    '<%= config.bin %> ios create --force-bundle-id com.example.myapp',
   ];
 
   static args = {
@@ -46,6 +47,9 @@ export default class IosCreate extends BaseCommand {
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
     'inactivity-timeout': Flags.string({
       description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default is in organization settings.',
+    }),
+    'force-bundle-id': Flags.string({
+      description: 'Lock the simulator to this app after it first enters the foreground',
     }),
     label: Flags.string({
       description: 'Metadata label in key=value format. Repeat to attach multiple labels.',
@@ -192,6 +196,7 @@ export default class IosCreate extends BaseCommand {
       if (flags.model) params.spec!.model = flags.model as 'iphone' | 'ipad' | 'watch';
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
+      if (flags['force-bundle-id']) params.spec!.forceBundleId = flags['force-bundle-id'];
       if (flags.xcode) {
         params.spec!.sandbox = { xcode: { enabled: true } };
       }

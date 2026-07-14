@@ -155,6 +155,9 @@ lim ios create --install-asset my-app.ipa
 # With Xcode sandbox enabled
 lim ios create --xcode
 
+# Lock the simulator to an app after it first enters the foreground
+lim ios create --force-bundle-id com.example.myapp
+
 # Full options
 lim ios create --region us-west --display-name "CI Test" --label env=ci --rm
 ```
@@ -171,6 +174,7 @@ lim ios create --region us-west --display-name "CI Test" --label env=ci --rm
 | `--label <key=value>`             | Labels (repeatable). Used for filtering and reuse      |
 | `--hard-timeout <duration>`       | Max lifetime (e.g. `1m`, `10m`, `3h`). Default: none   |
 | `--inactivity-timeout <duration>` | Idle timeout. Default: `3m`                            |
+| `--force-bundle-id <bundle-id>`   | Lock to an app after it first enters the foreground    |
 | `--reuse-if-exists`               | Reuse an existing instance with matching labels/region |
 | `--install <file>`                | Local file to install (auto-uploads, repeatable)       |
 | `--install-asset <name>`          | Asset name to install (repeatable)                     |
