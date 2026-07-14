@@ -15,12 +15,11 @@ export type IgnoreFnOptions = {
   additional?: IgnoreFn;
   /**
    * User-supplied force-includes (the CLI's --include): matches sync even when
-   * gitignored or covered by the default Xcode excludes. Only `.git`,
-   * `.DS_Store`, and the basis cache stay excluded. Note: the walk prunes
-   * gitignore-excluded directories, so to rescue files under a wholly-ignored
-   * parent the predicate must also match the parent directory paths (probed
-   * with a trailing slash), e.g. `^ios/` reaches `ios/GeneratedKit/...` but
-   * `GeneratedKit/` alone does not.
+   * covered by a built-in exclude, gitignored, or covered by the default Xcode
+   * excludes. Note: the walk prunes excluded directories, so to rescue files
+   * under a wholly-excluded parent the predicate must also match the parent
+   * directory paths (probed with a trailing slash), e.g. `^ios/` reaches
+   * `ios/GeneratedKit/...` but `GeneratedKit/` alone does not.
    */
   include?: IgnoreFn;
   /**
@@ -88,8 +87,8 @@ const XCODE_DEFAULT_EXCLUDE_PREFIXES = [
 /**
  * Builds the layered sync ignore predicate. First decisive answer wins:
  *
- *  1. `.git`, `.DS_Store`, the basis cache: excluded, never overridable.
- *  2. User include (--include): explicit intent beats the default excludes.
+ *  1. User include (--include): explicit intent beats every exclusion.
+ *  2. `.git`, `.DS_Store`, and the basis cache.
  *  3. Default Xcode/dependency excludes (when xcodeDefaults is set).
  *  4. Built-in force-include: `*.xcconfig` (gitignored xcconfigs are still
  *     required to reproduce the build remotely). Gitignored projects are NOT
@@ -182,7 +181,9 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
     if (!normalized) return false;
     const withoutTrailingSlash = normalized.replace(/\/+$/, '');
 
-    // 1. Never overridable.
+    // 1. User include.
+    if (options.include?.(normalized)) return false;
+    // 2. Built-in excludes.
     if (
       withoutTrailingSlash === '.git' ||
       withoutTrailingSlash.startsWith('.git/') ||
@@ -200,8 +201,6 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
     ) {
       return true;
     }
-    // 2. User include.
-    if (options.include?.(normalized)) return false;
     // 3. Default Xcode/dependency excludes.
     if (options.xcodeDefaults) {
       for (const prefix of XCODE_DEFAULT_EXCLUDE_PREFIXES) {

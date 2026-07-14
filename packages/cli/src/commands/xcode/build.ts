@@ -156,7 +156,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     include: Flags.string({
       description:
-        'Regular expression to force-sync matching relative paths even when gitignored (for example generated sources: --include "^ios/GeneratedKit/"). If a parent directory is itself gitignored, the pattern must also match that directory (e.g. use "^ios/" not "GeneratedKit/") or the subtree stays pruned. Repeat for multiple patterns.',
+        'Regular expression to force-sync matching relative paths even when excluded by a built-in rule or .gitignore (for example --include "^\\\\.git/" or --include "^ios/GeneratedKit/"). If a parent directory is itself excluded, the pattern must also match that directory (e.g. use "^ios/" not "GeneratedKit/") or the subtree stays pruned. Repeat for multiple patterns.',
       multiple: true,
     }),
     'additional-file': Flags.string({

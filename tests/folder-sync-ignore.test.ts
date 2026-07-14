@@ -6,7 +6,7 @@ import { createIgnoreFn, type IgnoreFn } from '@limrun/api/folder-sync-ignore';
 // Precedence table mirroring the Go harness parity test
 // (limrun test/integration/limbuild/folder_sync_ignore_test.go). Layers,
 // first decisive answer wins:
-//   1. .git/.DS_Store/basis-cache  2. user include  3. xcode default junk
+//   1. user include  2. .git/.DS_Store/basis-cache  3. xcode default junk
 //   4. built-in force-include (.xcconfig only)
 //   5. .gitignore chain (root + nested)  6. user ignore
 describe('createIgnoreFn', () => {
@@ -38,7 +38,8 @@ describe('createIgnoreFn', () => {
     ignore = await createIgnoreFn(dir, {
       basisCacheDir: path.join(os.tmpdir(), 'some-other-place'),
       xcodeDefaults: true,
-      include: (rel) => rel.startsWith('apps/foo/Generated/Kit/') || rel.startsWith('pinned/'),
+      include: (rel) =>
+        rel.startsWith('.git/') || rel.startsWith('apps/foo/Generated/Kit/') || rel.startsWith('pinned/'),
       // Also excludes apps/foo/important.log, which the nested !important.log
       // negation re-includes: proves --ignore still wins over a gitignore
       // re-include (layer 6 runs after a non-decisive gitignore answer).
@@ -55,9 +56,9 @@ describe('createIgnoreFn', () => {
     ['.npmrc', false, 'npm config must reach the build'],
     ['.xcode.env', false, 'RN build env, not git/DS_Store, not gitignored'],
     ['App.tsx', false, 'ordinary source file'],
-    // Always-exclude.
-    ['.git/HEAD', true, '.git is always excluded'],
-    ['a/b/.git/config', true, 'nested .git is always excluded'],
+    // Built-in excludes can be selectively overridden by user include.
+    ['.git/HEAD', false, 'user --include rescues the root .git directory'],
+    ['a/b/.git/config', true, 'unmatched nested .git stays excluded'],
     ['.DS_Store', true, '.DS_Store is always excluded'],
     ['sub/.DS_Store', true, 'nested .DS_Store is always excluded'],
     // Always-include override.
