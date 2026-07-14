@@ -6,27 +6,22 @@
  * decision here.
  */
 
-/** True for an Xcode instance id (xcode_ / sandbox_ prefix). */
-export function isXcodeInstanceId(id: string): boolean {
-  const prefix = id.split('_')[0];
-  return prefix === 'xcode' || prefix === 'sandbox';
-}
-
 /**
- * Best-effort delete of an Xcode instance THIS invocation created. Deletes only
- * when `id` is in `created` AND is an Xcode id, so a user `--id`, a pre-existing
- * cached instance, or a non-xcode id is never touched. Drops the id from the set
- * on success (idempotent) and never throws (a failed delete just returns false
- * and keeps the id). Returns whether it deleted.
+ * Best-effort delete of an instance THIS invocation created. Deletes only when
+ * `id` is in `created`, so a user `--id` or a pre-existing cached instance is
+ * never touched; the caller's `deleteInstance` dispatches on the id prefix to
+ * the right resource. Drops the id from the set on success (idempotent) and
+ * never throws (a failed delete just returns false and keeps the id). Returns
+ * whether it deleted.
  */
-export async function deleteCreatedXcodeInstance(
+export async function deleteCreatedInstance(
   created: Set<string>,
   id: string | undefined,
-  deleteXcodeInstance: (id: string) => Promise<void>,
+  deleteInstance: (id: string) => Promise<void>,
 ): Promise<boolean> {
-  if (!id || !created.has(id) || !isXcodeInstanceId(id)) return false;
+  if (!id || !created.has(id)) return false;
   try {
-    await deleteXcodeInstance(id);
+    await deleteInstance(id);
     created.delete(id);
     return true;
   } catch {

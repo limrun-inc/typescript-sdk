@@ -46,11 +46,13 @@ export default class GradleBuild extends BaseCommand {
       description: 'Directory for the client-side folder-sync cache.',
     }),
     ignore: Flags.string({
-      description: 'Glob pattern of paths to exclude from sync. Repeat for multiple patterns.',
+      description:
+        'Regular expression matched against relative paths to exclude from sync. Repeat for multiple patterns.',
       multiple: true,
     }),
     include: Flags.string({
-      description: 'Glob pattern of paths to force-include in sync. Repeat for multiple patterns.',
+      description:
+        'Regular expression matched against relative paths to force-sync even when excluded by a built-in rule or .gitignore. Repeat for multiple patterns.',
       multiple: true,
     }),
   };
@@ -84,7 +86,6 @@ export default class GradleBuild extends BaseCommand {
       this.info(`Syncing ${syncPath} to instance ${id}...`);
       const syncStart = Date.now();
       const syncResult = await gradleClient.sync(syncPath, {
-        watch: false,
         basisCacheDir: flags['basis-cache-dir'],
         ignore: compileIgnorePatterns(flags.ignore),
         include: compileIgnorePatterns(flags.include),
@@ -95,7 +96,7 @@ export default class GradleBuild extends BaseCommand {
       this.info(`Sync completed in ${syncDuration}${syncedSize}.`);
 
       this.info('Starting gradle build...');
-      const proc = gradleClient.gradlebuild(Object.keys(options).length > 0 ? options : undefined);
+      const proc = gradleClient.gradlebuild(options);
 
       proc.stdout.on('data', (line: string) => {
         process.stdout.write(line + '\n');

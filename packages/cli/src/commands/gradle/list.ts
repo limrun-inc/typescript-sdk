@@ -32,7 +32,7 @@ export default class GradleList extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const params: Record<string, unknown> = {};
+      const params: { state?: string; labelSelector?: string } = {};
       if (flags.state) {
         params.state = flags.state;
       } else if (!flags.all) {
@@ -40,9 +40,9 @@ export default class GradleList extends BaseCommand {
       }
       if (flags['label-selector']) params.labelSelector = flags['label-selector'];
 
-      const instances = await this.client.gradleInstances.list(params as any);
+      const instances = await this.client.gradleInstances.list(params);
       const items = instances.items ?? instances.getPaginatedItems();
-      const rows = items.map((i: any) => [
+      const rows = items.map((i) => [
         i.metadata.id,
         i.metadata.displayName || '',
         i.spec.region,

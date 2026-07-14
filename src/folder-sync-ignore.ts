@@ -31,6 +31,14 @@ export type IgnoreFnOptions = {
    * in it.
    */
   xcodeDefaults?: boolean;
+  /**
+   * Honor .gitignore files in nested directories, not just the project root.
+   * Defaults to whatever `xcodeDefaults` is, so existing callers are unchanged;
+   * a caller can enable it independently (e.g. gradle sync, whose nested module
+   * build/ dirs are excluded by their own app/.gitignore) without opting into
+   * the Xcode-specific default excludes and force-includes.
+   */
+  nestedGitignore?: boolean;
   basisCacheDir: string;
   log?: IgnoreLogger;
 };
@@ -138,7 +146,7 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
   // install sync) keep the legacy behavior: root-only .gitignore and no
   // project force-includes, so a build artifact isn't reshaped by gitignore
   // files or Xcode-specific rules that happen to sit inside it.
-  const nestedGitignore = !!options.xcodeDefaults;
+  const nestedGitignore = options.nestedGitignore ?? !!options.xcodeDefaults;
 
   // Evaluates the .gitignore chain for a path (trailing slash preserved so
   // dir-only rules like `build/` match the directory itself). Files are
