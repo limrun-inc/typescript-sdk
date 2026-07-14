@@ -73,7 +73,7 @@ export namespace AnalyticsInstancesResponse {
       /**
        * Platform name.
        */
-      platform: 'android' | 'ios' | 'xcode';
+      platform: 'android' | 'ios' | 'xcode' | 'gradle';
 
       /**
        * Actual runtime minutes before platform multiplier
@@ -176,6 +176,11 @@ export namespace AnalyticsResponse {
     android: { [key: string]: Series.Android };
 
     /**
+     * Map of region to analytics stats for Gradle
+     */
+    gradle: { [key: string]: Series.Gradle };
+
+    /**
      * Map of region to analytics stats for iOS
      */
     ios: { [key: string]: Series.Ios };
@@ -202,6 +207,66 @@ export namespace AnalyticsResponse {
      * Complete analytics for a specific region including billing breakdown
      */
     export interface Android {
+      /**
+       * Average instance duration in minutes
+       */
+      avgDurationMinutes: number;
+
+      /**
+       * Billed minutes with platform multiplier applied
+       */
+      billedMinutes: number;
+
+      /**
+       * Total cost in dollars
+       */
+      cost: number;
+
+      /**
+       * Number of unique instances
+       */
+      count: number;
+
+      /**
+       * Minutes billed to credits
+       */
+      creditsBilledMinutes: number;
+
+      /**
+       * Cost from credits (always 0)
+       */
+      creditsCost: number;
+
+      /**
+       * Minutes billed on-demand
+       */
+      onDemandBilledMinutes: number;
+
+      /**
+       * Cost from on-demand billing in dollars
+       */
+      onDemandCost: number;
+
+      /**
+       * Actual runtime minutes before platform multiplier
+       */
+      runtimeMinutes: number;
+
+      /**
+       * Map of subscription ID to billed minutes
+       */
+      subscriptionBilledMinutes?: { [key: string]: number };
+
+      /**
+       * Map of subscription ID to cost in dollars
+       */
+      subscriptionCost?: { [key: string]: number };
+    }
+
+    /**
+     * Complete analytics for a specific region including billing breakdown
+     */
+    export interface Gradle {
       /**
        * Average instance duration in minutes
        */
@@ -400,7 +465,7 @@ export namespace AnalyticsResponse {
       /**
        * Platform name.
        */
-      platform: 'android' | 'ios' | 'xcode';
+      platform: 'android' | 'ios' | 'xcode' | 'gradle';
 
       /**
        * Actual runtime minutes before platform multiplier
@@ -479,6 +544,11 @@ export namespace AnalyticsResponse {
     android: { [key: string]: Summary.Android };
 
     /**
+     * Map of region to analytics stats for Gradle
+     */
+    gradle: { [key: string]: Summary.Gradle };
+
+    /**
      * Map of region to analytics stats for iOS
      */
     ios: { [key: string]: Summary.Ios };
@@ -494,6 +564,66 @@ export namespace AnalyticsResponse {
      * Complete analytics for a specific region including billing breakdown
      */
     export interface Android {
+      /**
+       * Average instance duration in minutes
+       */
+      avgDurationMinutes: number;
+
+      /**
+       * Billed minutes with platform multiplier applied
+       */
+      billedMinutes: number;
+
+      /**
+       * Total cost in dollars
+       */
+      cost: number;
+
+      /**
+       * Number of unique instances
+       */
+      count: number;
+
+      /**
+       * Minutes billed to credits
+       */
+      creditsBilledMinutes: number;
+
+      /**
+       * Cost from credits (always 0)
+       */
+      creditsCost: number;
+
+      /**
+       * Minutes billed on-demand
+       */
+      onDemandBilledMinutes: number;
+
+      /**
+       * Cost from on-demand billing in dollars
+       */
+      onDemandCost: number;
+
+      /**
+       * Actual runtime minutes before platform multiplier
+       */
+      runtimeMinutes: number;
+
+      /**
+       * Map of subscription ID to billed minutes
+       */
+      subscriptionBilledMinutes?: { [key: string]: number };
+
+      /**
+       * Map of subscription ID to cost in dollars
+       */
+      subscriptionCost?: { [key: string]: number };
+    }
+
+    /**
+     * Complete analytics for a specific region including billing breakdown
+     */
+    export interface Gradle {
       /**
        * Average instance duration in minutes
        */

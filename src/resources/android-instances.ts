@@ -71,9 +71,9 @@ export namespace AndroidInstance {
 
   export interface Spec {
     /**
-     * After how many minutes of inactivity should the instance be terminated. Example
-     * values 1m, 10m, 3h. Default is 3m. Providing "0" uses the organization's default
-     * inactivity timeout.
+     * After how many minutes of inactivity should the instance be terminated. The
+     * timer starts once the instance becomes ready. Example values 1m, 10m, 3h.
+     * Default is 3m. Providing "0" uses the organization's default inactivity timeout.
      */
     inactivityTimeout: string;
 
@@ -179,9 +179,9 @@ export namespace AndroidInstanceCreateParams {
     hardTimeout?: string;
 
     /**
-     * After how many minutes of inactivity should the instance be terminated. Example
-     * values 1m, 10m, 3h. Default is 3m. Providing "0" uses the organization's default
-     * inactivity timeout.
+     * After how many minutes of inactivity should the instance be terminated. The
+     * timer starts once the instance becomes ready. Example values 1m, 10m, 3h.
+     * Default is 3m. Providing "0" uses the organization's default inactivity timeout.
      */
     inactivityTimeout?: string;
 
