@@ -15,12 +15,12 @@ export type IgnoreFnOptions = {
   additional?: IgnoreFn;
   /**
    * User-supplied force-includes (the CLI's --include): matches sync even when
-   * gitignored or covered by the default Xcode excludes. Only `.git`,
-   * `.DS_Store`, and the basis cache stay excluded. Note: the walk prunes
-   * gitignore-excluded directories, so to rescue files under a wholly-ignored
-   * parent the predicate must also match the parent directory paths (probed
-   * with a trailing slash), e.g. `^ios/` reaches `ios/GeneratedKit/...` but
-   * `GeneratedKit/` alone does not.
+   * covered by a built-in exclude, gitignored, or covered by the default Xcode
+   * excludes. The basis cache remains excluded to prevent sync loops. Note:
+   * the walk prunes excluded directories, so to rescue files under a
+   * wholly-excluded parent the predicate must also match the parent directory
+   * paths (probed with a trailing slash), e.g. `^ios/` reaches
+   * `ios/GeneratedKit/...` but `GeneratedKit/` alone does not.
    */
   include?: IgnoreFn;
   /**
@@ -88,21 +88,22 @@ const XCODE_DEFAULT_EXCLUDE_PREFIXES = [
 /**
  * Builds the layered sync ignore predicate. First decisive answer wins:
  *
- *  1. `.git`, `.DS_Store`, the basis cache: excluded, never overridable.
- *  2. User include (--include): explicit intent beats the default excludes.
- *  3. Default Xcode/dependency excludes (when xcodeDefaults is set).
- *  4. Built-in force-include: `*.xcconfig` (gitignored xcconfigs are still
+ *  1. The basis cache: excluded, never overridable.
+ *  2. User include (--include): explicit intent beats every other exclusion.
+ *  3. `.git` and `.DS_Store`.
+ *  4. Default Xcode/dependency excludes (when xcodeDefaults is set).
+ *  5. Built-in force-include: `*.xcconfig` (gitignored xcconfigs are still
  *     required to reproduce the build remotely). Gitignored projects are NOT
  *     force-included: limbuild regenerates them from project.yml, and
  *     exact-version holdouts force-sync theirs with `--include`.
- *  5. `.gitignore` chain: the root file, plus nested ones with git semantics
+ *  6. `.gitignore` chain: the root file, plus nested ones with git semantics
  *     when xcodeDefaults is set (rules bind relative to their containing
  *     directory, deeper files override shallower ones). Only a decisive
- *     *exclude* short-circuits; a negation re-include defers to layer 6.
- *     Directory pruning in the walk means only layers 2 and 4 can reach a
+ *     *exclude* short-circuits; a negation re-include defers to layer 7.
+ *     Directory pruning in the walk means only layers 2 and 5 can reach a
  *     file whose parent directory is gitignore-excluded, and only when the
  *     predicate matches the pruned parent directory paths too.
- *  6. User ignore (--ignore).
+ *  7. User ignore (--ignore).
  */
 export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions): Promise<IgnoreFn> {
   const rootResolved = path.resolve(rootDir);
@@ -182,7 +183,17 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
     if (!normalized) return false;
     const withoutTrailingSlash = normalized.replace(/\/+$/, '');
 
-    // 1. Never overridable.
+    // 1. The basis cache must not sync itself, even when --include matches.
+    if (
+      shouldIgnoreBasisCache &&
+      (withoutTrailingSlash === basisCacheRelative ||
+        withoutTrailingSlash.startsWith(`${basisCacheRelative}/`))
+    ) {
+      return true;
+    }
+    // 2. User include.
+    if (options.include?.(normalized)) return false;
+    // 3. Built-in excludes.
     if (
       withoutTrailingSlash === '.git' ||
       withoutTrailingSlash.startsWith('.git/') ||
@@ -193,28 +204,19 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
     ) {
       return true;
     }
-    if (
-      shouldIgnoreBasisCache &&
-      (withoutTrailingSlash === basisCacheRelative ||
-        withoutTrailingSlash.startsWith(`${basisCacheRelative}/`))
-    ) {
-      return true;
-    }
-    // 2. User include.
-    if (options.include?.(normalized)) return false;
-    // 3. Default Xcode/dependency excludes.
+    // 4. Default Xcode/dependency excludes.
     if (options.xcodeDefaults) {
       for (const prefix of XCODE_DEFAULT_EXCLUDE_PREFIXES) {
         if (normalized.startsWith(prefix)) return true;
       }
       if (normalized.includes('/xcuserdata/') || normalized.includes('.dSYM/')) return true;
     }
-    // 4. Built-in force-include: gitignored xcconfigs are still required to
+    // 5. Built-in force-include: gitignored xcconfigs are still required to
     // reproduce the build remotely. Gitignored .xcodeproj bundles are NOT
     // force-included: limbuild regenerates them from project.yml, and
     // exact-version holdouts force-sync theirs with --include.
     if (withoutTrailingSlash.endsWith('.xcconfig')) return false;
-    // 5. The .gitignore chain. Only a decisive *exclude* short-circuits; a
+    // 6. The .gitignore chain. Only a decisive *exclude* short-circuits; a
     // negation re-include (decision.ignored === false) still falls through to
     // the user --ignore layer, matching the pre-restructure precedence where
     // gitignore never overrode --ignore for a re-included path.
@@ -237,7 +239,7 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
       }
       return true;
     }
-    // 6. User ignore.
+    // 7. User ignore.
     if (options.additional?.(normalized)) return true;
     return false;
   };
