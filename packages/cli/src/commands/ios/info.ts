@@ -1,4 +1,4 @@
-import { Flags } from '@oclif/core';
+import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
@@ -19,11 +19,17 @@ export default class IosInfo extends BaseCommand {
     'Show basic simulator metadata for a running iOS instance, including UDID, model, and screen dimensions. This is useful when building coordinate-based automation or debugging device-specific behavior.';
   static examples = [
     '<%= config.bin %> ios info',
+    '<%= config.bin %> ios info <instance-ID>',
     '<%= config.bin %> ios info --id <instance-ID>',
     '<%= config.bin %> ios info --json',
   ];
 
-  static args = {};
+  static args = {
+    id: Args.string({
+      description: 'iOS instance ID to inspect. Defaults to the last created iOS instance.',
+      required: false,
+    }),
+  };
 
   static flags = {
     ...BaseCommand.baseFlags,
@@ -33,11 +39,11 @@ export default class IosInfo extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(IosInfo);
+    const { args, flags } = await this.parse(IosInfo);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const resolvedInstance = this.resolveIosInstance(args.id ?? flags.id);
       const id = resolvedInstance.id;
 
       let info: DeviceInfo;
