@@ -152,6 +152,11 @@ export abstract class BaseCommand extends Command {
         if (instanceId) {
           stopDaemon(instanceId);
           clearLastInstanceId(instanceId);
+          // If THIS invocation created the now-missing instance (e.g. an
+          // eager auto-create whose target died before use), release it so
+          // the retry's replacement doesn't leave it billing. No-op unless
+          // the id is in the created set; a 404 from the delete is ignored.
+          await this.deleteCreatedInstance(instanceId);
           if (this.shouldAutoCreateOnNotFound()) {
             const replacement = await this.createReplacementInstance(instanceId);
             if (replacement) {
