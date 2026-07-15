@@ -137,36 +137,41 @@ describe('lim run skill installation', () => {
     const projectRoot = makeTempDir();
     const sourceRoot = makeTempDir();
     try {
-      const source = fakeRemoteSkills(sourceRoot, ['limrun-xcode-and-ios-simulator']);
-      writeFile(
-        path.join(projectRoot, '.claude', 'skills', 'limrun-xcode-and-ios-simulator', 'SKILL.md'),
-        'local changes',
-      );
+      const source = fakeRemoteSkills(sourceRoot, ['limrun-xcode', 'limrun-ios-simulator']);
+      writeFile(path.join(projectRoot, '.claude', 'skills', 'limrun-xcode', 'SKILL.md'), 'local changes');
 
       const results = await installProjectSkills({
         projectRoot,
-        skillNames: ['limrun-xcode-and-ios-simulator'],
+        skillNames: ['limrun-xcode', 'limrun-ios-simulator'],
         source,
       });
 
       expect(results).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ agent: 'cursor', status: 'installed' }),
-          expect.objectContaining({ agent: 'claude', status: 'skipped' }),
+          expect.objectContaining({ skill: 'limrun-xcode', agent: 'cursor', status: 'installed' }),
+          expect.objectContaining({ skill: 'limrun-xcode', agent: 'claude', status: 'skipped' }),
+          expect.objectContaining({ skill: 'limrun-ios-simulator', agent: 'cursor', status: 'installed' }),
+          expect.objectContaining({ skill: 'limrun-ios-simulator', agent: 'claude', status: 'installed' }),
         ]),
       );
       expect(
-        fs.readFileSync(
-          path.join(projectRoot, '.agents', 'skills', 'limrun-xcode-and-ios-simulator', 'SKILL.md'),
-          'utf8',
-        ),
-      ).toBe('limrun-xcode-and-ios-simulator');
+        fs.readFileSync(path.join(projectRoot, '.agents', 'skills', 'limrun-xcode', 'SKILL.md'), 'utf8'),
+      ).toBe('limrun-xcode');
+      expect(
+        fs.readFileSync(path.join(projectRoot, '.claude', 'skills', 'limrun-xcode', 'SKILL.md'), 'utf8'),
+      ).toBe('local changes');
       expect(
         fs.readFileSync(
-          path.join(projectRoot, '.claude', 'skills', 'limrun-xcode-and-ios-simulator', 'SKILL.md'),
+          path.join(projectRoot, '.agents', 'skills', 'limrun-ios-simulator', 'SKILL.md'),
           'utf8',
         ),
-      ).toBe('local changes');
+      ).toBe('limrun-ios-simulator');
+      expect(
+        fs.readFileSync(
+          path.join(projectRoot, '.claude', 'skills', 'limrun-ios-simulator', 'SKILL.md'),
+          'utf8',
+        ),
+      ).toBe('limrun-ios-simulator');
     } finally {
       fs.rmSync(projectRoot, { recursive: true, force: true });
       fs.rmSync(sourceRoot, { recursive: true, force: true });

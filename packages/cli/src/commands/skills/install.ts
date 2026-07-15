@@ -305,7 +305,7 @@ export default class SkillsInstall extends Command {
   static examples = [
     '<%= config.bin %> skills install',
     '<%= config.bin %> skills install --agents claude --agents cursor --scope project',
-    '<%= config.bin %> skills install --agents cursor --scope project --skills limrun-xcode-and-ios-simulator --skills limrun-detox-testing',
+    '<%= config.bin %> skills install --agents cursor --scope project --skills limrun-xcode --skills limrun-ios-simulator',
     '<%= config.bin %> skills install --agents codex --scope global --force',
   ];
   static flags = {

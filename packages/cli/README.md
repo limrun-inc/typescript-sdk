@@ -714,7 +714,8 @@ lim skills install --agents claude --scope project --json
 
 **Available skills:**
 
-- `limrun-xcode-and-ios-simulator` (default): Build, launch, and control iOS apps with remote XCode and Simulators.
+- `limrun-xcode` (default): Build and launch iOS apps with remote Xcode.
+- `limrun-ios-simulator` (default): Control and test apps on Limrun iOS simulators.
 - `limrun-expo-development`: Iterate on Expo / React Native apps with remote iOS dev-client workflows.
 - `limrun-detox-testing`: Configure, run, and debug Detox against Limrun iOS simulators.
 
