@@ -41,16 +41,9 @@ description: ${description}
 
   test('loads catalog order, frontmatter descriptions, and skill files from a cloned checkout', async () => {
     const checkoutDir = makeTempDir();
-    writeCatalog(checkoutDir, [
-      'limrun-xcode-and-ios-simulator',
-      'limrun-expo-development',
-      'limrun-detox-testing',
-    ]);
-    writeSkill(checkoutDir, 'limrun-xcode-and-ios-simulator', 'Build and run iOS apps remotely.');
-    fs.writeFileSync(
-      path.join(checkoutDir, 'skills', 'limrun-xcode-and-ios-simulator', 'reference.txt'),
-      'supporting file',
-    );
+    writeCatalog(checkoutDir, ['limrun-xcode', 'limrun-expo-development', 'limrun-detox-testing']);
+    writeSkill(checkoutDir, 'limrun-xcode', 'Build iOS apps remotely.');
+    fs.writeFileSync(path.join(checkoutDir, 'skills', 'limrun-xcode', 'reference.txt'), 'supporting file');
     writeSkill(checkoutDir, 'limrun-expo-development', 'Develop Expo apps on Limrun.');
     writeSkill(checkoutDir, 'limrun-detox-testing', 'Run Detox on Limrun.');
 
@@ -60,20 +53,17 @@ description: ${description}
     try {
       expect(source.commit).toBe('abc123');
       expect(source.skills.map((skill) => skill.name)).toEqual([
-        'limrun-xcode-and-ios-simulator',
+        'limrun-xcode',
         'limrun-expo-development',
         'limrun-detox-testing',
       ]);
       expect(source.skills[0]).toMatchObject({
-        description: 'Build and run iOS apps remotely.',
+        description: 'Build iOS apps remotely.',
         defaultSelected: true,
       });
-      expect(
-        fs.readFileSync(
-          path.join(source.skillsRoot, 'limrun-xcode-and-ios-simulator', 'reference.txt'),
-          'utf8',
-        ),
-      ).toBe('supporting file');
+      expect(fs.readFileSync(path.join(source.skillsRoot, 'limrun-xcode', 'reference.txt'), 'utf8')).toBe(
+        'supporting file',
+      );
     } finally {
       source.cleanup();
     }
@@ -103,17 +93,17 @@ description: ${description}
   test('parses SKILL.md frontmatter with CRLF line endings', async () => {
     const checkoutDir = makeTempDir();
     try {
-      writeCatalog(checkoutDir, ['limrun-xcode-and-ios-simulator']);
-      const skillDir = path.join(checkoutDir, 'skills', 'limrun-xcode-and-ios-simulator');
+      writeCatalog(checkoutDir, ['limrun-xcode']);
+      const skillDir = path.join(checkoutDir, 'skills', 'limrun-xcode');
       fs.mkdirSync(skillDir, { recursive: true });
       // Write SKILL.md using CRLF line endings throughout
       const crlfContent = [
         '---',
-        'name: limrun-xcode-and-ios-simulator',
-        'description: Build and run iOS apps remotely.',
+        'name: limrun-xcode',
+        'description: Build iOS apps remotely.',
         '---',
         '',
-        '# limrun-xcode-and-ios-simulator',
+        '# limrun-xcode',
         '',
       ].join('\r\n');
       fs.writeFileSync(path.join(skillDir, 'SKILL.md'), crlfContent);
@@ -123,8 +113,8 @@ description: ${description}
       });
       try {
         expect(source.skills[0]).toMatchObject({
-          name: 'limrun-xcode-and-ios-simulator',
-          description: 'Build and run iOS apps remotely.',
+          name: 'limrun-xcode',
+          description: 'Build iOS apps remotely.',
         });
       } finally {
         source.cleanup();

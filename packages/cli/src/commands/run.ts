@@ -16,7 +16,8 @@ import {
 
 const VERSION = require('../../package.json').version;
 
-const IOS_SKILL = 'limrun-xcode-and-ios-simulator';
+const XCODE_SKILL = 'limrun-xcode';
+const IOS_SIMULATOR_SKILL = 'limrun-ios-simulator';
 const EXPO_SKILL = 'limrun-expo-development';
 type DetectedProject = Extract<ProjectDetection, { kind: 'native-ios' | 'expo' }>;
 type BuildAndLaunchOptions = {
@@ -59,11 +60,16 @@ export default class Run extends BaseCommand {
     const apiKey = flags['api-key'] || readConfig().apiKey;
     const allowAuthRetry = !flags['api-key'] && !projectEnvApiKey && !process.env['LIM_API_KEY'];
     if (detection.kind === 'native-ios' && useDetectedProject) {
-      await this.setupExistingProject(detection, [IOS_SKILL], apiKey, allowAuthRetry);
+      await this.setupExistingProject(detection, [XCODE_SKILL, IOS_SIMULATOR_SKILL], apiKey, allowAuthRetry);
       return;
     }
     if (detection.kind === 'expo' && useDetectedProject) {
-      await this.setupExistingProject(detection, [IOS_SKILL, EXPO_SKILL], apiKey, allowAuthRetry);
+      await this.setupExistingProject(
+        detection,
+        [XCODE_SKILL, IOS_SIMULATOR_SKILL, EXPO_SKILL],
+        apiKey,
+        allowAuthRetry,
+      );
       return;
     }
 
