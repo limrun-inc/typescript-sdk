@@ -211,6 +211,20 @@ export type HttpProxyOptions = {
 };
 
 /**
+ * Targets a file operation at an installed app's container instead of the
+ * sandbox staging folder. Mirrors `simctl get_app_container` semantics.
+ */
+export type ContainerTargetOptions = {
+  /** Bundle ID of the installed app whose container should be targeted. */
+  bundleId: string;
+  /**
+   * Container to target: `app`, `data`, or a specific App Group identifier.
+   * Defaults to `app` server-side, matching `simctl get_app_container`.
+   */
+  containerType?: string;
+};
+
+/**
  * Result of auto-discovering a StoreKit configuration from the
  * simulator's cached sandbox response.
  */
@@ -794,12 +808,45 @@ export type InstanceClient = {
   simctl: (args: string[], opts?: { disconnectOnExit?: boolean }) => SimctlExecution;
 
   /**
-   * Copy a file to the sandbox of the simulator. Returns the path of the file that can be used in simctl commands.
-   * @param name The name of the file in the sandbox of the simulator.
-   * @param path The path of the file to copy to the sandbox of the simulator.
-   * @returns A promise that resolves to the path of the file that can be used in simctl commands.
+   * Push a local file to the simulator. Returns the path of the file on the simulator host
+   * that can be used in simctl commands.
+   *
+   * When `opts.bundleId` is provided, `destination` is treated as a relative path inside
+   * that app's container on the simulator (intermediate directories are created
+   * as needed) instead of a filename in the sandbox staging folder.
+   *
+   * @param path The path of the local file to copy to the simulator.
+   * @param destination The name of the file in the sandbox of the simulator, or a relative path inside the app container when `opts.bundleId` is set.
+   * @param opts Optional app container targeting.
+   * @param opts.bundleId Bundle ID of the installed app whose container should receive the file.
+   * @param opts.containerType Container to target: `app`, `data`, or a specific App Group identifier. Defaults to `app` server-side, matching `simctl get_app_container`.
+   * @returns A promise that resolves to the path of the file on the simulator host.
    */
-  cp: (name: string, path: string) => Promise<string>;
+  pushFile: (path: string, destination: string, opts?: ContainerTargetOptions) => Promise<string>;
+
+  /**
+   * Read a file from the simulator and return its content.
+   *
+   * When `opts.bundleId` is provided, `name` is treated as a relative path inside
+   * that app's container; otherwise it addresses the sandbox staging folder
+   * (the same namespace `pushFile` uploads to without a bundle ID).
+   *
+   * @param name The name of the file, or a relative path inside the app container when `opts.bundleId` is set.
+   * @param opts Optional app container targeting (see `pushFile`).
+   * @returns A promise that resolves to the file content.
+   */
+  pullFile: (name: string, opts?: ContainerTargetOptions) => Promise<Buffer>;
+
+  /**
+   * Delete a file or folder (recursively) on the simulator.
+   *
+   * When `opts.bundleId` is provided, `name` is treated as a relative path inside
+   * that app's container; otherwise it addresses the sandbox staging folder.
+   *
+   * @param name The name of the file, or a relative path inside the app container when `opts.bundleId` is set.
+   * @param opts Optional app container targeting (see `pushFile`).
+   */
+  deleteFile: (name: string, opts?: ContainerTargetOptions) => Promise<void>;
 
   /**
    * Run `xcrun` command with the given arguments.
@@ -1821,7 +1868,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             xcrun,
             startXcrunShim,
             xcodebuild,
-            cp,
+            pushFile,
+            pullFile,
+            deleteFile,
             lsof,
             deviceInfo: cachedDeviceInfo,
           });
@@ -2245,9 +2294,24 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return execution;
     };
 
-    const cp = async (name: string, filePath: string): Promise<string> => {
+    const buildFilesUrl = (name: string, opts?: ContainerTargetOptions): string => {
+      const params = new URLSearchParams({ name });
+      if (opts?.bundleId) {
+        params.set('bundleId', opts.bundleId);
+        if (opts.containerType) {
+          params.set('containerType', opts.containerType);
+        }
+      }
+      return `${options.apiUrl}/files?${params.toString()}`;
+    };
+
+    const pushFile = async (
+      filePath: string,
+      destination: string,
+      opts?: ContainerTargetOptions,
+    ): Promise<string> => {
       const fileStream = fs.createReadStream(filePath);
-      const uploadUrl = `${options.apiUrl}/files?name=${encodeURIComponent(name)}`;
+      const uploadUrl = buildFilesUrl(destination, opts);
       try {
         // Node's fetch (undici) supports streaming request bodies but TS DOM types may not include
         // `duplex` and may not accept Node ReadStreams as BodyInit in some configs.
@@ -2271,6 +2335,33 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       } catch (err) {
         logger.debug(`Failed to upload file ${filePath}:`, err);
         throw err;
+      }
+    };
+
+    const pullFile = async (name: string, opts?: ContainerTargetOptions): Promise<Buffer> => {
+      const response = await nodeProxyTransport.fetch(buildFilesUrl(name, opts), {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${options.token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Download of '${name}' failed: ${response.status} ${errorBody}`);
+      }
+      return Buffer.from(await response.arrayBuffer());
+    };
+
+    const deleteFile = async (name: string, opts?: ContainerTargetOptions): Promise<void> => {
+      const response = await nodeProxyTransport.fetch(buildFilesUrl(name, opts), {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${options.token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Deletion of '${name}' failed: ${response.status} ${errorBody}`);
       }
     };
 
