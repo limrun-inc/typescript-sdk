@@ -51,6 +51,14 @@ function normalizeRelativePath(relativePath: string): string {
     .replace(/\/+/g, '/');
 }
 
+// Linear-time replacement for `.replace(/\/+$/, '')`: that regex backtracks
+// quadratically on long runs of '/' (flagged by CodeQL as polynomial ReDoS).
+function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s[end - 1] === '/') end--;
+  return end === s.length ? s : s.slice(0, end);
+}
+
 type GitTrackedSets = {
   tracked: Set<string>;
   prefixes: Set<string>;
@@ -154,7 +162,7 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
   // files naturally override shallower ones. When nestedGitignore is off,
   // only the root .gitignore is consulted.
   const gitignoreDecision = (testPath: string): { ignored: boolean; rule?: string } | undefined => {
-    const withoutTrailingSlash = testPath.replace(/\/+$/, '');
+    const withoutTrailingSlash = stripTrailingSlashes(testPath);
     const trailingSlash = testPath.endsWith('/') ? '/' : '';
     const parts = withoutTrailingSlash.split('/');
     let decision: { ignored: boolean; rule?: string } | undefined;
@@ -172,9 +180,9 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
     return decision;
   };
 
-  const basisCacheRelative = normalizeRelativePath(
-    path.relative(rootResolved, options.basisCacheDir),
-  ).replace(/\/+$/, '');
+  const basisCacheRelative = stripTrailingSlashes(
+    normalizeRelativePath(path.relative(rootResolved, options.basisCacheDir)),
+  );
   const shouldIgnoreBasisCache =
     basisCacheRelative &&
     basisCacheRelative !== '.' &&
@@ -189,7 +197,7 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
   return (relativePath: string) => {
     const normalized = normalizeRelativePath(relativePath);
     if (!normalized) return false;
-    const withoutTrailingSlash = normalized.replace(/\/+$/, '');
+    const withoutTrailingSlash = stripTrailingSlashes(normalized);
 
     // 1. The basis cache must not sync itself, even when --include matches.
     if (
