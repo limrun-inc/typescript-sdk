@@ -1,5 +1,7 @@
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
+import { execFileSync } from 'child_process';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
@@ -23,7 +25,8 @@ export default class IosInstallApp extends BaseCommand {
 
   static args = {
     path_or_url: Args.string({
-      description: 'Local app file path or remote URL to an installable iOS package such as .ipa',
+      description:
+        'Local app path (an archive such as .ipa/.zip/.tar.gz, or an .app directory) or remote URL to an installable iOS package',
       required: true,
     }),
   };
@@ -66,9 +69,30 @@ export default class IosInstallApp extends BaseCommand {
           this.error(`File not found: ${filePath}`);
         }
         const name = path.basename(filePath);
-        this.info(`Uploading ${name}...`);
-        const asset = await this.client.assets.getOrUpload({ path: filePath, name, ttl: flags['asset-ttl'] });
-        downloadUrl = asset.signedDownloadUrl;
+        let uploadPath = filePath;
+        let tmpDir: string | undefined;
+        // Directories (e.g. .app bundles) are archived before upload; the
+        // server detects the archive type from content, not the asset name,
+        // so the asset keeps the original directory name.
+        if (fs.statSync(filePath).isDirectory()) {
+          this.info(`Archiving ${name}...`);
+          tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lim-install-app-'));
+          uploadPath = path.join(tmpDir, `${name}.tar.gz`);
+          execFileSync('tar', ['-czf', uploadPath, '-C', path.dirname(filePath), name]);
+        }
+        try {
+          this.info(`Uploading ${name}...`);
+          const asset = await this.client.assets.getOrUpload({
+            path: uploadPath,
+            name,
+            ttl: flags['asset-ttl'],
+          });
+          downloadUrl = asset.signedDownloadUrl;
+        } finally {
+          if (tmpDir) {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+          }
+        }
       }
 
       let installOptions:
