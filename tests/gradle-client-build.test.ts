@@ -62,7 +62,6 @@ test('gradlebuild posts the exec envelope and resolves on exitCode 0', async () 
   const proc = gradle.gradlebuild({
     tasks: ['bundleRelease'],
     projectPath: 'android',
-    reactNative: { expoAppDir: 'apps/mobile', architectures: ['x86_64'] },
     upload: { signedUploadUrl: 'https://storage.example.com/presigned' },
   });
   const stdout: string[] = [];
@@ -78,8 +77,40 @@ test('gradlebuild posts the exec envelope and resolves on exitCode 0', async () 
     command: 'gradlebuild',
     tasks: ['bundleRelease'],
     projectPath: 'android',
-    reactNative: { expoAppDir: 'apps/mobile', architectures: ['x86_64'] },
     signedUploadUrl: 'https://storage.example.com/presigned',
+  });
+});
+
+// Presence is pinned here; absence is pinned by the exact-match envelope
+// assertion in the test above (the server treats any reactNative value as
+// opting into the Expo pipeline, so the key must stay off plain builds).
+test('gradlebuild threads reactNative to the wire when set', async () => {
+  const requests: Array<{ url: string; body?: unknown }> = [];
+  nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+    const url = String(input);
+    requests.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (url.endsWith('/exec')) {
+      return new Response(JSON.stringify({ execId: 'build-rn' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.endsWith('/exec/build-rn/events')) {
+      return sseResponse(['event: exitCode\ndata: 0\n\n']);
+    }
+    throw new Error(`unexpected request: ${url}`);
+  });
+
+  const gradle = await gradleClient();
+  const result = await gradle.gradlebuild({
+    reactNative: { expoAppDir: 'apps/mobile', architectures: ['x86_64'] },
+  });
+
+  expect(result.exitCode).toBe(0);
+  const execReq = requests.find((r) => r.url.endsWith('/exec'));
+  expect(execReq?.body).toEqual({
+    command: 'gradlebuild',
+    reactNative: { expoAppDir: 'apps/mobile', architectures: ['x86_64'] },
   });
 });
 
