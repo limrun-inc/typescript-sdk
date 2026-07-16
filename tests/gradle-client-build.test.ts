@@ -62,6 +62,7 @@ test('gradlebuild posts the exec envelope and resolves on exitCode 0', async () 
   const proc = gradle.gradlebuild({
     tasks: ['bundleRelease'],
     projectPath: 'android',
+    reactNative: { expoAppDir: 'apps/mobile', architectures: ['x86_64'] },
     upload: { signedUploadUrl: 'https://storage.example.com/presigned' },
   });
   const stdout: string[] = [];
@@ -77,6 +78,7 @@ test('gradlebuild posts the exec envelope and resolves on exitCode 0', async () 
     command: 'gradlebuild',
     tasks: ['bundleRelease'],
     projectPath: 'android',
+    reactNative: { expoAppDir: 'apps/mobile', architectures: ['x86_64'] },
     signedUploadUrl: 'https://storage.example.com/presigned',
   });
 });
