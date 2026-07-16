@@ -49,7 +49,7 @@ export type GradleBuildOptions = {
   /** Relative path to the Gradle root when auto-discovery is ambiguous. */
   projectPath?: string;
   /** Upload the built APK as a named org asset, or to a presigned URL. */
-  upload?: { assetName: string } | { signedUploadUrl: string };
+  upload?: { assetName: string; signedUploadUrl?: never } | { signedUploadUrl: string; assetName?: never };
   /** React Native / Expo tuning. */
   reactNative?: GradleReactNativeConfig;
 };

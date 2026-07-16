@@ -16,7 +16,7 @@ export default class GradleList extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     state: Flags.string({
-      description: 'Lifecycle state to filter by: unknown, creating, ready, or terminated',
+      description: 'Lifecycle state to filter by: unknown, creating, assigned, ready, or terminated',
     }),
     'label-selector': Flags.string({
       description: 'Comma-separated label filters, for example env=prod,team=mobile',

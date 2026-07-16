@@ -1,7 +1,8 @@
 import { Args, Flags } from '@oclif/core';
-import { type GradleAndroidABI, type GradleBuildOptions } from '@limrun/api';
+import { type GradleBuildOptions } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
+import { gradleAndroidABIs, gradleBuildOptionsFromFlags } from '../../lib/gradle-build-options';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 
@@ -45,9 +46,9 @@ export default class GradleBuild extends BaseCommand {
     }),
     abi: Flags.string({
       description:
-        "Android ABI to build for Expo projects. Repeat for multiple ABIs; 'all' keeps the project's own configuration. Omitting builds x86_64 (what Limrun Android instances run), except for release and bundle tasks, which keep the project's configuration.",
+        "Android ABI to build. Setting this (or --expo-app-dir) opts the whole build into the Expo pipeline, which requires a detected Expo app. Repeat for multiple ABIs; 'all' keeps the project's own configuration. Omitting builds x86_64 (what Limrun Android instances run) for Expo-pipeline builds, except for release and bundle tasks, which keep the project's configuration.",
       multiple: true,
-      options: ['armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64', 'all'],
+      options: [...gradleAndroidABIs],
     }),
     upload: Flags.string({ description: 'Upload the resulting APK as an asset with this name' }),
     'signed-upload-url': Flags.string({
@@ -71,8 +72,14 @@ export default class GradleBuild extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(GradleBuild);
     this.setParsedFlags(flags);
-    if (flags.upload && flags['signed-upload-url']) {
-      this.error('Use either --upload or --signed-upload-url, not both.');
+    // Validate flags before withAuth: resolveGradleTargetOrCreate may
+    // auto-create a billed instance, which a doomed flag combination must
+    // never reach.
+    let options: GradleBuildOptions;
+    try {
+      options = gradleBuildOptionsFromFlags(flags);
+    } catch (err) {
+      return this.error(err instanceof Error ? err.message : String(err));
     }
 
     await this.withAuth(async () => {
@@ -80,32 +87,6 @@ export default class GradleBuild extends BaseCommand {
       const id = target.id;
       const syncPath = args.path ?? process.cwd();
       const gradleClient = await this.resolveGradleClient(target);
-
-      const options: GradleBuildOptions = {};
-      if (flags.task && flags.task.length > 0) {
-        options.tasks = flags.task;
-      }
-      if (flags['project-path']) {
-        options.projectPath = flags['project-path'];
-      }
-      const expoAppDir = flags['expo-app-dir'];
-      const abis = flags.abi?.length ? (flags.abi as GradleAndroidABI[]) : undefined;
-      if (abis?.includes('all') && abis.length > 1) {
-        this.error(
-          "--abi all keeps the project's own ABI configuration and cannot be combined with specific ABIs.",
-        );
-      }
-      if (expoAppDir || abis) {
-        options.reactNative = {
-          ...(expoAppDir && { expoAppDir }),
-          ...(abis && { architectures: abis }),
-        };
-      }
-      if (flags.upload) {
-        options.upload = { assetName: flags.upload };
-      } else if (flags['signed-upload-url']) {
-        options.upload = { signedUploadUrl: flags['signed-upload-url'] };
-      }
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
       const syncStart = Date.now();

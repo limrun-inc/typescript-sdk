@@ -18,13 +18,18 @@ export async function deleteCreatedInstance(
   created: Set<string>,
   id: string | undefined,
   deleteInstance: (id: string) => Promise<void>,
+  onError?: (err: unknown) => void,
 ): Promise<boolean> {
   if (!id || !created.has(id)) return false;
   try {
     await deleteInstance(id);
     created.delete(id);
     return true;
-  } catch {
+  } catch (err) {
+    // Swallowing keeps cleanup best-effort, but a delete that always fails
+    // (say, an id prefix the dispatcher does not recognize) is a billing
+    // leak; give the caller a hook to at least surface it in debug output.
+    onError?.(err);
     return false;
   }
 }
