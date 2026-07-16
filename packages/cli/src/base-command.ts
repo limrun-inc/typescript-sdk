@@ -513,7 +513,9 @@ export abstract class BaseCommand extends Command {
     if (!['ios', 'android', 'xcode', 'gradle'].includes(noun)) {
       return false;
     }
-    if (['create', 'delete', 'list'].includes(verb)) {
+    // `get` is a read: reporting that a remembered instance is gone is the
+    // right answer, not silently creating (and billing) a replacement.
+    if (['create', 'delete', 'list', 'get'].includes(verb)) {
       return false;
     }
     return true;
