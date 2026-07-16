@@ -45,28 +45,35 @@ export type XcodeBuildExecRequest = {
   };
 };
 
+/** Android ABIs the gradle daemon accepts; 'all' keeps the project's own configuration. */
+export type GradleAndroidABI = 'armeabi-v7a' | 'arm64-v8a' | 'x86' | 'x86_64' | 'all';
+
+/**
+ * React Native / Expo tuning for gradle builds. The server detects Expo
+ * managed-workflow projects automatically when the workspace has no
+ * Gradle root; setting this forces the React Native pipeline (dependency
+ * install, expo prebuild) and is an error for projects with no detected
+ * Expo app.
+ */
+export type GradleReactNativeConfig = {
+  /** Relative path to the Expo app directory in a monorepo. Omit to auto-detect. */
+  expoAppDir?: string;
+  /**
+   * Android ABIs to build. The server defaults to x86_64 (what Limrun
+   * Android instances run) except for release and bundle tasks, which
+   * keep the project's own ABI configuration; pass ['all'] to always
+   * keep it.
+   */
+  architectures?: GradleAndroidABI[];
+};
+
 export type GradleBuildExecRequest = {
   command: 'gradlebuild';
   /** Gradle tasks to run. Omit for the server default (assembleDebug). */
   tasks?: string[];
   /** Relative path to the Gradle root when auto-discovery is ambiguous. */
   projectPath?: string;
-  /**
-   * React Native / Expo tuning. The server detects Expo managed-workflow
-   * projects automatically when the workspace has no Gradle root; setting
-   * this forces the React Native pipeline and is an error for projects
-   * with no detected Expo app.
-   */
-  reactNative?: {
-    /** Relative path to the Expo app directory in a monorepo. Omit to auto-detect. */
-    expoAppDir?: string;
-    /**
-     * Android ABIs to build. The server defaults to x86_64 (what Limrun
-     * Android instances run) except for release and bundle tasks; pass
-     * ['all'] to keep the project's own ABI configuration.
-     */
-    architectures?: string[];
-  };
+  reactNative?: GradleReactNativeConfig;
   signedUploadUrl?: string;
   additionalMetadata?: {
     signedDownloadUrl?: string;
@@ -294,7 +301,15 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
 
     if (!execRes.ok) {
       const text = await execRes.text();
-      throw new Error(`exec failed: ${execRes.status} ${text}`);
+      let message = text;
+      try {
+        // The daemon returns an APIError JSON body; surface its message
+        // instead of the raw escaped JSON.
+        message = (JSON.parse(text) as { message?: string }).message || text;
+      } catch {
+        // Not JSON; keep the raw body.
+      }
+      throw new Error(`exec failed: ${execRes.status} ${message}`);
     }
 
     const execData = (await execRes.json()) as { execId: string };

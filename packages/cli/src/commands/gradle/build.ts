@@ -1,5 +1,5 @@
 import { Args, Flags } from '@oclif/core';
-import { type GradleBuildOptions } from '@limrun/api';
+import { type GradleAndroidABI, type GradleBuildOptions } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
@@ -16,6 +16,7 @@ export default class GradleBuild extends BaseCommand {
     '<%= config.bin %> gradle build ./my-app --upload myapp.apk',
     '<%= config.bin %> gradle build --task bundleRelease',
     '<%= config.bin %> gradle build --id <gradle-instance-ID> --project-path android',
+    '<%= config.bin %> gradle build ./my-monorepo --expo-app-dir apps/mobile',
   ];
 
   static args = {
@@ -40,12 +41,13 @@ export default class GradleBuild extends BaseCommand {
     }),
     'expo-app-dir': Flags.string({
       description:
-        'Relative path to the Expo app directory inside the synced project, for monorepos with multiple apps.',
+        'Relative path from the synced workspace root to the Expo app directory. Use for monorepos or ambiguous workspaces. Setting this (or --abi) opts the whole build into the Expo pipeline (dependency install, expo prebuild), which requires a detected Expo app.',
     }),
     abi: Flags.string({
       description:
-        "Android ABI to build for React Native projects, such as x86_64 or arm64-v8a. Repeat for multiple. Pass 'all' to keep the project defaults. Omit for what Limrun Android instances run.",
+        "Android ABI to build for Expo projects. Repeat for multiple ABIs; 'all' keeps the project's own configuration. Omitting builds x86_64 (what Limrun Android instances run), except for release and bundle tasks, which keep the project's configuration.",
       multiple: true,
+      options: ['armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64', 'all'],
     }),
     upload: Flags.string({ description: 'Upload the resulting APK as an asset with this name' }),
     'signed-upload-url': Flags.string({
@@ -86,10 +88,17 @@ export default class GradleBuild extends BaseCommand {
       if (flags['project-path']) {
         options.projectPath = flags['project-path'];
       }
-      if (flags['expo-app-dir'] || (flags.abi && flags.abi.length > 0)) {
+      const expoAppDir = flags['expo-app-dir'];
+      const abis = flags.abi?.length ? (flags.abi as GradleAndroidABI[]) : undefined;
+      if (abis?.includes('all') && abis.length > 1) {
+        this.error(
+          "--abi all keeps the project's own ABI configuration and cannot be combined with specific ABIs.",
+        );
+      }
+      if (expoAppDir || abis) {
         options.reactNative = {
-          ...(flags['expo-app-dir'] && { expoAppDir: flags['expo-app-dir'] }),
-          ...(flags.abi && flags.abi.length > 0 && { architectures: flags.abi }),
+          ...(expoAppDir && { expoAppDir }),
+          ...(abis && { architectures: abis }),
         };
       }
       if (flags.upload) {

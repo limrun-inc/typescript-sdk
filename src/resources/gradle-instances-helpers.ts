@@ -3,7 +3,12 @@ import path from 'path';
 import crypto from 'crypto';
 
 import { GradleInstances as GeneratedGradleInstances, type GradleInstance } from './gradle-instances';
-import { exec, type ExecChildProcess, type GradleBuildExecRequest } from '../exec-client';
+import {
+  exec,
+  type ExecChildProcess,
+  type GradleBuildExecRequest,
+  type GradleReactNativeConfig,
+} from '../exec-client';
 import { syncFolder as syncFolderImpl, type FolderSyncOptions } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
 import {
@@ -45,8 +50,8 @@ export type GradleBuildOptions = {
   projectPath?: string;
   /** Upload the built APK as a named org asset, or to a presigned URL. */
   upload?: { assetName: string } | { signedUploadUrl: string };
-  /** React Native / Expo tuning; see GradleBuildExecRequest.reactNative. */
-  reactNative?: { expoAppDir?: string; architectures?: string[] };
+  /** React Native / Expo tuning. */
+  reactNative?: GradleReactNativeConfig;
 };
 
 export type GradleClient = {
