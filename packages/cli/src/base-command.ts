@@ -525,42 +525,43 @@ export abstract class BaseCommand extends Command {
   private async createReplacementInstance(
     instanceId?: string,
   ): Promise<LastAndroidInstance | LastIosInstance | LastXcodeInstance | LastGradleInstance | null> {
-    const commandType = this._lastResolvedExpectedType;
-    const prefix = instanceId?.split('_')[0];
-
-    if (prefix === 'gradle' || commandType === 'gradle') {
-      return this.createStandaloneGradleInstance();
-    }
-
-    if (commandType === 'xcode') {
-      if (this._xcodeReplacementIntent === 'simulator-backed') {
-        return this.createIosXcodeInstance();
+    // The command's resolved type outranks the id prefix: the retry re-runs
+    // the SAME command, so the replacement must be what that command can
+    // use. The prefix is only a fallback for 404s that arrive before any
+    // resolution recorded a type (a stray foreign id embedded in an error
+    // message must not switch the replacement's platform).
+    let type = this._lastResolvedExpectedType ?? null;
+    if (!type && instanceId) {
+      try {
+        type = detectInstanceType(instanceId);
+      } catch {
+        type = null;
       }
-      return this.createStandaloneXcodeInstance();
     }
 
-    if (prefix === 'ios' || commandType === 'ios') {
-      const instance = await this.client.iosInstances.create({ wait: true, spec: {} });
-      this._instancesCreatedThisRun.add(instance.metadata.id);
-      saveLastCreatedInstance(instance);
-      return loadLastIosInstance();
+    switch (type) {
+      case 'gradle':
+        return this.createStandaloneGradleInstance();
+      case 'xcode':
+        if (this._xcodeReplacementIntent === 'simulator-backed') {
+          return this.createIosXcodeInstance();
+        }
+        return this.createStandaloneXcodeInstance();
+      case 'ios': {
+        const instance = await this.client.iosInstances.create({ wait: true, spec: {} });
+        this._instancesCreatedThisRun.add(instance.metadata.id);
+        saveLastCreatedInstance(instance);
+        return loadLastIosInstance();
+      }
+      case 'android': {
+        const instance = await this.client.androidInstances.create({ wait: true, spec: {} });
+        this._instancesCreatedThisRun.add(instance.metadata.id);
+        saveLastCreatedInstance(instance);
+        return loadLastAndroidInstance();
+      }
+      default:
+        return null;
     }
-
-    if (prefix === 'android' || commandType === 'android') {
-      const instance = await this.client.androidInstances.create({ wait: true, spec: {} });
-      this._instancesCreatedThisRun.add(instance.metadata.id);
-      saveLastCreatedInstance(instance);
-      return loadLastAndroidInstance();
-    }
-
-    if (prefix === 'xcode' || prefix === 'sandbox' || commandType === 'xcode') {
-      const instance = await this.client.xcodeInstances.create({ wait: true, spec: {} });
-      this._instancesCreatedThisRun.add(instance.metadata.id);
-      saveLastCreatedInstance(instance);
-      return loadLastXcodeInstance();
-    }
-
-    return null;
   }
 
   /** Whether `id` is a server-side instance THIS invocation auto-created. */
