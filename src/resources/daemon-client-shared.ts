@@ -1,7 +1,28 @@
 // Helpers and platform-neutral types shared by the per-instance build-daemon
 // clients (xcode, gradle).
 
+import os from 'os';
+import path from 'path';
+import crypto from 'crypto';
+
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
+
+/**
+ * Derives the client-side folder-sync cache location for a local project.
+ * The key format is a compatibility contract: changing it orphans every
+ * user's existing basis cache, so both daemon clients must share this one
+ * derivation.
+ */
+export function deriveBasisCache(
+  localCodePath: string,
+  override?: string,
+): { cacheKey: string; basisCacheDir: string } {
+  const resolvedPath = path.resolve(localCodePath);
+  const folderName = path.basename(resolvedPath);
+  const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
+  const cacheKey = `limsync-cache-${folderName}-${hash}`;
+  return { cacheKey, basisCacheDir: override ?? path.join(os.tmpdir(), cacheKey) };
+}
 
 export type SyncResult = {
   /**
@@ -34,11 +55,11 @@ export function mintAssetUploadUrls(
   });
 }
 
+const logLevels: LogLevel[] = ['none', 'error', 'warn', 'info', 'debug'];
+
 export function createDaemonLogger(prefix: string, logLevel: LogLevel) {
-  const shouldLog = (level: LogLevel) => {
-    const levels: LogLevel[] = ['none', 'error', 'warn', 'info', 'debug'];
-    return levels.indexOf(logLevel) >= levels.indexOf(level);
-  };
+  const threshold = logLevels.indexOf(logLevel);
+  const shouldLog = (level: LogLevel) => threshold >= logLevels.indexOf(level);
   return (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => {
     if (!shouldLog(level)) return;
     if (level === 'error' || level === 'warn') {

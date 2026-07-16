@@ -1,7 +1,3 @@
-import os from 'os';
-import path from 'path';
-import crypto from 'crypto';
-
 import { GradleInstances as GeneratedGradleInstances, type GradleInstance } from './gradle-instances';
 import {
   exec,
@@ -13,6 +9,7 @@ import { syncFolder as syncFolderImpl, type FolderSyncOptions } from '../folder-
 import { createIgnoreFn } from '../folder-sync-ignore';
 import {
   createDaemonLogger,
+  deriveBasisCache,
   mintAssetUploadUrls,
   type LogLevel,
   type SyncResult,
@@ -93,11 +90,7 @@ export class GradleInstances extends GeneratedGradleInstances {
 
     return {
       async sync(localCodePath: string, opts?: GradleSyncOptions): Promise<SyncResult> {
-        const resolvedPath = path.resolve(localCodePath);
-        const folderName = path.basename(resolvedPath);
-        const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
-        const cacheKey = `limsync-cache-${folderName}-${hash}`;
-        const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
+        const { cacheKey, basisCacheDir } = deriveBasisCache(localCodePath, opts?.basisCacheDir);
         const userIgnore = opts?.ignore;
         const codeSyncOpts: FolderSyncOptions = {
           apiUrl,
@@ -135,7 +128,7 @@ export class GradleInstances extends GeneratedGradleInstances {
       gradlebuild(options?: GradleBuildOptions): ExecChildProcess {
         const request: GradleBuildExecRequest = {
           command: 'gradlebuild',
-          ...(options?.tasks && { tasks: options.tasks }),
+          ...(options?.tasks?.length && { tasks: options.tasks }),
           ...(options?.projectPath && { projectPath: options.projectPath }),
           ...(options?.reactNative && { reactNative: options.reactNative }),
         };

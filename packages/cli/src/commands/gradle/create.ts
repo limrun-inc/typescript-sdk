@@ -40,6 +40,10 @@ export default class GradleCreate extends BaseCommand {
 
     await this.withAuth(async () => {
       const labels = parseLabels(flags.label);
+      const metadata = {
+        ...(flags['display-name'] && { displayName: flags['display-name'] }),
+        ...(labels && { labels }),
+      };
       const params: GradleInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
@@ -48,10 +52,7 @@ export default class GradleCreate extends BaseCommand {
           ...(flags['hard-timeout'] && { hardTimeout: flags['hard-timeout'] }),
           ...(flags['inactivity-timeout'] && { inactivityTimeout: flags['inactivity-timeout'] }),
         },
-        metadata: {
-          ...(flags['display-name'] && { displayName: flags['display-name'] }),
-          ...(labels && { labels }),
-        },
+        ...(Object.keys(metadata).length > 0 && { metadata }),
       };
       const instance = await this.client.gradleInstances.create(params);
       registerCreatedInstance(instance);

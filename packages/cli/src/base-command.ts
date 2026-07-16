@@ -153,20 +153,19 @@ export abstract class BaseCommand extends Command {
         if (instanceId) {
           stopDaemon(instanceId);
           clearLastInstanceId(instanceId);
-          // If THIS invocation created the now-missing instance (e.g. an
-          // eager auto-create whose target died before use), release it so
-          // the retry's replacement doesn't leave it billing. No-op unless
-          // the id is in the created set; a 404 from the delete is ignored.
-          // Only when the error names the instance: a message with no id
-          // (a route-level or transient daemon 404) is attributed to
-          // _lastResolvedInstanceId by fallback, and server-deleting on a
-          // guess would terminate a healthy instance.
+          // Release an instance THIS invocation created so it doesn't keep
+          // billing: eagerly when the error names it as gone, otherwise
+          // only after a replacement is secured, because a 404 attributed
+          // to _lastResolvedInstanceId by fallback may be misattributed
+          // and the instance is only truly abandoned once the run has
+          // switched away. Idempotent via the created-id set.
           if (explicitId) {
             await this.deleteCreatedInstance(explicitId);
           }
           if (this.shouldAutoCreateOnNotFound()) {
             const replacement = await this.createReplacementInstance(instanceId);
             if (replacement) {
+              await this.deleteCreatedInstance(instanceId);
               this.info(
                 `Instance ${instanceId} was not found. Created replacement instance ${replacement.id}.`,
               );
@@ -514,7 +513,10 @@ export abstract class BaseCommand extends Command {
     if (!['ios', 'android', 'xcode', 'gradle'].includes(noun)) {
       return false;
     }
-    if (['create', 'delete', 'list'].includes(verb)) {
+    // Read-only or lifecycle verbs must never conjure an instance: `lim
+    // gradle get <typo>` should fail with not-found, not create-and-show a
+    // brand new sandbox.
+    if (['create', 'delete', 'list', 'get'].includes(verb)) {
       return false;
     }
     return true;
@@ -581,24 +583,13 @@ export abstract class BaseCommand extends Command {
       this._instancesCreatedThisRun,
       id,
       async (instanceId) => {
-        const prefix = instanceId.split('_')[0];
-        switch (prefix) {
-          case 'gradle':
-            await this.client.gradleInstances.delete(instanceId);
-            break;
-          case 'xcode':
-          case 'sandbox':
-            await this.client.xcodeInstances.delete(instanceId);
-            break;
-          case 'ios':
-            await this.client.iosInstances.delete(instanceId);
-            break;
-          case 'android':
-            await this.client.androidInstances.delete(instanceId);
-            break;
-          default:
-            throw new Error(`cannot delete instance with unrecognized id prefix: ${instanceId}`);
-        }
+        const resources = {
+          gradle: this.client.gradleInstances,
+          xcode: this.client.xcodeInstances,
+          ios: this.client.iosInstances,
+          android: this.client.androidInstances,
+        } as const;
+        await resources[detectInstanceType(instanceId)].delete(instanceId);
       },
       (err) => this.debug(`best-effort delete of created instance ${id} failed:`, err),
     );
@@ -671,7 +662,7 @@ export abstract class BaseCommand extends Command {
   }
 
   protected gradleTargetFromId(id: string): LastGradleInstance {
-    if (!id.startsWith('gradle_')) {
+    if (detectInstanceType(id) !== 'gradle') {
       throw new Error(`Expected a gradle instance, got ${id}`);
     }
     return loadGradleInstanceCache(id) ?? { id, type: 'gradle' };
@@ -739,20 +730,12 @@ export abstract class BaseCommand extends Command {
   private async createStandaloneGradleInstance(): Promise<LastGradleInstance> {
     const instance = await this.client.gradleInstances.create({ wait: true, spec: {} });
     this._instancesCreatedThisRun.add(instance.metadata.id);
-    saveLastCreatedInstance(instance);
-    // Derived from the instance in hand; no need to reload what we just wrote.
-    return {
-      id: instance.metadata.id,
-      type: 'gradle',
-      metadata: instance.metadata,
-      spec: instance.spec,
-      status: instance.status,
-      apiUrl: instance.status.apiUrl,
-      token: instance.status.token,
-    };
+    // The save path builds the record from the instance we just created, so
+    // the returned union member is necessarily the gradle shape.
+    return saveLastCreatedInstance(instance) as LastGradleInstance;
   }
 }
 
-function saveLastCreatedInstance(instanceOrId: InstanceInput, relatedTypes: Array<'xcode'> = []): void {
-  registerCreatedInstance(instanceOrId, relatedTypes);
+function saveLastCreatedInstance(instanceOrId: InstanceInput, relatedTypes: Array<'xcode'> = []) {
+  return registerCreatedInstance(instanceOrId, relatedTypes);
 }
