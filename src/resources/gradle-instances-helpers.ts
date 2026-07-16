@@ -45,6 +45,8 @@ export type GradleBuildOptions = {
   projectPath?: string;
   /** Upload the built APK as a named org asset, or to a presigned URL. */
   upload?: { assetName: string } | { signedUploadUrl: string };
+  /** React Native / Expo tuning; see GradleBuildExecRequest.reactNative. */
+  reactNative?: { expoAppDir?: string; architectures?: string[] };
 };
 
 export type GradleClient = {
@@ -130,6 +132,7 @@ export class GradleInstances extends GeneratedGradleInstances {
           command: 'gradlebuild',
           ...(options?.tasks && { tasks: options.tasks }),
           ...(options?.projectPath && { projectPath: options.projectPath }),
+          ...(options?.reactNative && { reactNative: options.reactNative }),
         };
 
         if (options?.upload && 'assetName' in options.upload) {

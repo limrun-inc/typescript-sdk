@@ -38,6 +38,15 @@ export default class GradleBuild extends BaseCommand {
       description:
         'Relative path to the Gradle root inside the synced project, for when auto-discovery is ambiguous.',
     }),
+    'expo-app-dir': Flags.string({
+      description:
+        'Relative path to the Expo app directory inside the synced project, for monorepos with multiple apps.',
+    }),
+    abi: Flags.string({
+      description:
+        "Android ABI to build for React Native projects, such as x86_64 or arm64-v8a. Repeat for multiple. Pass 'all' to keep the project defaults. Omit for what Limrun Android instances run.",
+      multiple: true,
+    }),
     upload: Flags.string({ description: 'Upload the resulting APK as an asset with this name' }),
     'signed-upload-url': Flags.string({
       description: 'Presigned URL to upload the resulting APK to.',
@@ -76,6 +85,12 @@ export default class GradleBuild extends BaseCommand {
       }
       if (flags['project-path']) {
         options.projectPath = flags['project-path'];
+      }
+      if (flags['expo-app-dir'] || (flags.abi && flags.abi.length > 0)) {
+        options.reactNative = {
+          ...(flags['expo-app-dir'] && { expoAppDir: flags['expo-app-dir'] }),
+          ...(flags.abi && flags.abi.length > 0 && { architectures: flags.abi }),
+        };
       }
       if (flags.upload) {
         options.upload = { assetName: flags.upload };
