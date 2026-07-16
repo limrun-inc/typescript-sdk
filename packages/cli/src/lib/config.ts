@@ -551,7 +551,10 @@ function buildLastXcodeSlotRecord(instanceOrId: InstanceInput): LastIosInstance 
   };
 }
 
-function saveLastInstance(instanceOrId: InstanceInput, slot?: 'xcode'): void {
+function saveLastInstance(
+  instanceOrId: InstanceInput,
+  slot?: 'xcode',
+): LastAndroidInstance | LastIosInstance | LastXcodeInstance | LastGradleInstance {
   const record = buildLastInstanceRecord(instanceOrId);
   mutate((file, scopeKey) => {
     const scope = ensureScope(file, scopeKey);
@@ -569,16 +572,19 @@ function saveLastInstance(instanceOrId: InstanceInput, slot?: 'xcode'): void {
     }
     scope.lastUsedAt = new Date().toISOString();
   });
+  return record;
 }
 
+/** Returns the record it persisted, so callers don't rebuild the same shape. */
 export function registerCreatedInstance(
   instanceOrId: InstanceInput,
   relatedTypes: Array<'xcode'> = [],
-): void {
-  saveLastInstance(instanceOrId);
+): LastAndroidInstance | LastIosInstance | LastXcodeInstance | LastGradleInstance {
+  const record = saveLastInstance(instanceOrId);
   if (relatedTypes.includes('xcode')) {
     saveLastInstance(instanceOrId, 'xcode');
   }
+  return record;
 }
 
 export function loadLastAndroidInstance(): LastAndroidInstance | null {

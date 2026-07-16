@@ -35,7 +35,7 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
     throw new Error('Use either --upload or --signed-upload-url, not both.');
   }
   const options: GradleBuildOptions = {};
-  if (flags.task && flags.task.length > 0) {
+  if (flags.task?.length) {
     options.tasks = flags.task;
   }
   if (flags['project-path']) {

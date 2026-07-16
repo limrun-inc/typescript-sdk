@@ -1,7 +1,3 @@
-import os from 'os';
-import path from 'path';
-import crypto from 'crypto';
-
 import { XcodeInstances as GeneratedXcodeInstances, type XcodeInstance } from './xcode-instances';
 import { type IosInstance } from './ios-instances';
 import { exec, type ExecChildProcess, type ExecRequest, type TestflightUploadConfig } from '../exec-client';
@@ -15,6 +11,7 @@ import {
 import { createIgnoreFn } from '../folder-sync-ignore';
 import {
   createDaemonLogger,
+  deriveBasisCache,
   mintAssetUploadUrls,
   type LogLevel,
   type SyncResult,
@@ -573,11 +570,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
 
     return {
       async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
-        const resolvedPath = path.resolve(localCodePath);
-        const folderName = path.basename(resolvedPath);
-        const hash = crypto.createHash('sha1').update(resolvedPath).digest('hex').slice(0, 8);
-        const cacheKey = `limsync-cache-${folderName}-${hash}`;
-        const basisCacheDir = opts?.basisCacheDir ?? path.join(os.tmpdir(), cacheKey);
+        const { cacheKey, basisCacheDir } = deriveBasisCache(localCodePath, opts?.basisCacheDir);
         const sandboxInfo =
           opts?.additionalFiles && opts.additionalFiles.length > 0 ? await getSandboxInfo() : undefined;
         const additionalFiles = opts?.additionalFiles?.map((file) => ({
