@@ -164,8 +164,41 @@ test('gradlebuild --upload mints asset URLs before posting exec', async () => {
   expect(result.signedDownloadUrl).toBe('https://storage.example.com/down');
 
   const execReq = requests.find((r) => r.url.endsWith('/exec'));
-  expect(execReq?.body).toMatchObject({
+  // Exact match: the client-only additionalMetadata (signedDownloadUrl) must
+  // stay OFF the wire; toMatchObject would pass even if it leaked.
+  expect(execReq?.body).toEqual({
     command: 'gradlebuild',
     signedUploadUrl: 'https://storage.example.com/up',
   });
+});
+
+test('gradlebuild surfaces the APIError message from a non-OK exec response', async () => {
+  nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) => {
+    const url = String(input);
+    if (url.endsWith('/exec')) {
+      return new Response(
+        JSON.stringify({ message: 'reactNative is set but no Expo project was detected' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    throw new Error(`unexpected request: ${url}`);
+  });
+
+  const gradle = await gradleClient();
+  await expect(gradle.gradlebuild({ reactNative: {} })).rejects.toThrow(
+    'exec failed: 400 reactNative is set but no Expo project was detected',
+  );
+});
+
+test('gradlebuild falls back to the raw body when the exec error is not JSON', async () => {
+  nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) => {
+    const url = String(input);
+    if (url.endsWith('/exec')) {
+      return new Response('upstream connect error', { status: 502 });
+    }
+    throw new Error(`unexpected request: ${url}`);
+  });
+
+  const gradle = await gradleClient();
+  await expect(gradle.gradlebuild()).rejects.toThrow('exec failed: 502 upstream connect error');
 });

@@ -148,7 +148,8 @@ export abstract class BaseCommand extends Command {
         return this.withAuth(fn);
       }
       if (err instanceof NotFoundError) {
-        const instanceId = this.findMissingInstanceId(err);
+        const explicitId = err.message.match(INSTANCE_ID_PATTERN)?.[0] ?? null;
+        const instanceId = explicitId ?? this._lastResolvedInstanceId ?? null;
         if (instanceId) {
           stopDaemon(instanceId);
           clearLastInstanceId(instanceId);
@@ -156,7 +157,13 @@ export abstract class BaseCommand extends Command {
           // eager auto-create whose target died before use), release it so
           // the retry's replacement doesn't leave it billing. No-op unless
           // the id is in the created set; a 404 from the delete is ignored.
-          await this.deleteCreatedInstance(instanceId);
+          // Only when the error names the instance: a message with no id
+          // (a route-level or transient daemon 404) is attributed to
+          // _lastResolvedInstanceId by fallback, and server-deleting on a
+          // guess would terminate a healthy instance.
+          if (explicitId) {
+            await this.deleteCreatedInstance(explicitId);
+          }
           if (this.shouldAutoCreateOnNotFound()) {
             const replacement = await this.createReplacementInstance(instanceId);
             if (replacement) {
@@ -350,7 +357,9 @@ export abstract class BaseCommand extends Command {
       if (type === 'ios') {
         return this.resolveIosInstance(providedId);
       }
-      throw new Error('Sessions are for device interaction. Xcode instances use sync/build instead.');
+      throw new Error(
+        'Sessions are for device interaction. Xcode and gradle instances use sync/build instead.',
+      );
     }
 
     const ios = loadLastIosInstance();
@@ -485,14 +494,6 @@ export abstract class BaseCommand extends Command {
     }
   }
 
-  private findMissingInstanceId(err: NotFoundError): string | null {
-    const match = err.message.match(INSTANCE_ID_PATTERN);
-    if (match) {
-      return match[0];
-    }
-    return this._lastResolvedInstanceId ?? null;
-  }
-
   private isCachedXcodeClientNotFound(err: unknown): err is Error {
     return (
       err instanceof Error &&
@@ -576,26 +577,31 @@ export abstract class BaseCommand extends Command {
    * runtime); the delete itself dispatches on the id prefix.
    */
   protected deleteCreatedInstance(id: string | undefined): Promise<boolean> {
-    return deleteCreatedInstance(this._instancesCreatedThisRun, id, async (instanceId) => {
-      const prefix = instanceId.split('_')[0];
-      switch (prefix) {
-        case 'gradle':
-          await this.client.gradleInstances.delete(instanceId);
-          break;
-        case 'xcode':
-        case 'sandbox':
-          await this.client.xcodeInstances.delete(instanceId);
-          break;
-        case 'ios':
-          await this.client.iosInstances.delete(instanceId);
-          break;
-        case 'android':
-          await this.client.androidInstances.delete(instanceId);
-          break;
-        default:
-          throw new Error(`cannot delete instance with unrecognized id prefix: ${instanceId}`);
-      }
-    });
+    return deleteCreatedInstance(
+      this._instancesCreatedThisRun,
+      id,
+      async (instanceId) => {
+        const prefix = instanceId.split('_')[0];
+        switch (prefix) {
+          case 'gradle':
+            await this.client.gradleInstances.delete(instanceId);
+            break;
+          case 'xcode':
+          case 'sandbox':
+            await this.client.xcodeInstances.delete(instanceId);
+            break;
+          case 'ios':
+            await this.client.iosInstances.delete(instanceId);
+            break;
+          case 'android':
+            await this.client.androidInstances.delete(instanceId);
+            break;
+          default:
+            throw new Error(`cannot delete instance with unrecognized id prefix: ${instanceId}`);
+        }
+      },
+      (err) => this.debug(`best-effort delete of created instance ${id} failed:`, err),
+    );
   }
 
   private getCommandParts(): string[] {
