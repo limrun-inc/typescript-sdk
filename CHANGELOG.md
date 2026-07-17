@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.42.0 (2026-07-17)
+
+Full Changelog: [v0.41.1...v0.42.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.41.1...v0.42.0)
+
+### Features
+
+* **api,cli:** gradle build sandboxes ([f990245](https://github.com/limrun-inc/typescript-sdk/commit/f99024569d5f8a4bb3f0e2f5d7dd6a39dffdc952))
+
 ## 0.41.1 (2026-07-15)
 
 Full Changelog: [v0.41.0...v0.41.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.41.0...v0.41.1)
