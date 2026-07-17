@@ -17,6 +17,8 @@ export default defineConfig({
         'device-build/react': resolve(__dirname, 'src/device-build/react.ts'),
         'device-install/index': resolve(__dirname, 'src/device-install/index.ts'),
         'device-install/react': resolve(__dirname, 'src/device-install/react.ts'),
+        'play-publish/index': resolve(__dirname, 'src/play-publish/index.ts'),
+        'play-publish/react': resolve(__dirname, 'src/play-publish/react.ts'),
       },
       name: 'LimrunUI',
       formats: ['es', 'cjs'],
