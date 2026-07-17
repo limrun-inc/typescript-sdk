@@ -146,6 +146,11 @@ export type XcodeBuildOptions = {
    */
   xcodegen?: XcodeGenConfig;
   buildSettings?: Record<string, string>;
+  /**
+   * Run `git init` in the synced workspace before project generation,
+   * dependency resolution, and xcodebuild.
+   */
+  gitInit?: boolean;
 };
 
 export type SimulatorInstallState =
@@ -701,6 +706,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.signing && { signing: options.signing }),
           ...(options?.testflight && { testflight: options.testflight }),
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
+          ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
         };
 
         if (options?.upload && 'assetName' in options.upload) {

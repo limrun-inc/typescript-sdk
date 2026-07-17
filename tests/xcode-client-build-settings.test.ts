@@ -35,6 +35,7 @@ describe('xcode client build settings', () => {
     const result = await xcode.xcodebuild(
       { scheme: 'Scripty' },
       {
+        gitInit: true,
         buildSettings: {
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) LIMRUN',
           APP_CONFIG_DEV_LOGIN_SECRET: 'abc=def',
@@ -47,6 +48,7 @@ describe('xcode client build settings', () => {
     expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
       command: 'xcodebuild',
       xcodebuild: { scheme: 'Scripty' },
+      gitInit: true,
       buildSettings: {
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) LIMRUN',
         APP_CONFIG_DEV_LOGIN_SECRET: 'abc=def',

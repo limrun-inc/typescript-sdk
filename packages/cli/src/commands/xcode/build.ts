@@ -98,6 +98,11 @@ export default class XcodeBuild extends BaseCommand {
       description: 'Xcode build configuration.',
       options: ['Debug', 'Release'],
     }),
+    'git-init': Flags.boolean({
+      description:
+        'Run git init in the synced workspace before project generation, dependency resolution, and xcodebuild.',
+      default: false,
+    }),
     'dev-server-url': Flags.string({
       description:
         'Launch URL for Debug React Native / Expo builds. If the build is installed on an attached iOS simulator, the app opens this URL unchanged after build; otherwise this option has no launch effect. For Expo dev-client builds, pass the exact dev-client URL or development server URL you want opened.',
@@ -210,6 +215,9 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.configuration) settings.configuration = flags.configuration;
 
       const options: XcodeBuildOptions = {};
+      if (flags['git-init']) {
+        options.gitInit = true;
+      }
       if (flags['xcodegen-spec'] || flags['xcodegen-project'] || flags['xcodegen-project-root']) {
         options.xcodegen = {
           ...(flags['xcodegen-spec'] && { spec: flags['xcodegen-spec'] }),

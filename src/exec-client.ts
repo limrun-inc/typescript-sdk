@@ -39,6 +39,7 @@ export type XcodeBuildExecRequest = {
   };
   testflight?: TestflightUploadConfig;
   buildSettings?: Record<string, string>;
+  gitInit?: boolean;
   signedUploadUrl?: string;
   additionalMetadata?: {
     signedDownloadUrl?: string;
