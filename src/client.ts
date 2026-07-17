@@ -80,6 +80,8 @@ import {
   SimulatorAttachment,
   SimulatorDeviceInfo,
   SimulatorInstallState,
+  XcodeBuildLog,
+  BazelBuildLog,
 } from './resources/xcode-instances-helpers';
 import { type Fetch } from './internal/builtin-types';
 import { HeadersLike, NullableHeaders, buildHeaders } from './internal/headers';
@@ -896,6 +898,8 @@ export declare namespace Limrun {
     type SimulatorAttachment as SimulatorAttachment,
     type SimulatorDeviceInfo as SimulatorDeviceInfo,
     type SimulatorInstallState as SimulatorInstallState,
+    type XcodeBuildLog as XcodeBuildLog,
+    type BazelBuildLog as BazelBuildLog,
   };
 
   export {

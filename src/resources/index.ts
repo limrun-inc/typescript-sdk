@@ -62,6 +62,8 @@ export {
   type SimulatorDeviceInfo,
   type SimulatorInstallState,
   type RbeInstallResult,
+  type XcodeBuildLog,
+  type BazelBuildLog,
 } from './xcode-instances-helpers';
 export {
   GradleInstances,

@@ -49,6 +49,8 @@ export {
   type SimulatorAttachment,
   type SimulatorDeviceInfo,
   type SimulatorInstallState,
+  type XcodeBuildLog,
+  type BazelBuildLog,
 } from './resources/xcode-instances-helpers';
 export {
   type GradleCreateClientParams,
