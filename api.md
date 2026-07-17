@@ -51,6 +51,8 @@ Methods:
 - <code title="get /v1/xcode_instances">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">list</a>({ ...params }) -> XcodeInstancesItems</code>
 - <code title="delete /v1/xcode_instances/{id}">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">delete</a>(id) -> void</code>
 - <code title="get /v1/xcode_instances/{id}">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">get</a>(id) -> XcodeInstance</code>
+- <code title="get /v1/xcode_instances/{id}/build_logs">client.xcodeInstances.<a href="./src/resources/xcode-instances-helpers.ts">listBuildLogs</a>(id) -> XcodeBuildLog[]</code>
+- <code title="get /v1/xcode_instances/{id}/bazel_build_logs">client.xcodeInstances.<a href="./src/resources/xcode-instances-helpers.ts">listBazelBuildLogs</a>(id) -> BazelBuildLog[]</code>
 
 # GradleInstances
 

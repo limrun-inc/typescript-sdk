@@ -1,5 +1,8 @@
 import { XcodeInstances as GeneratedXcodeInstances, type XcodeInstance } from './xcode-instances';
 import { type IosInstance } from './ios-instances';
+import { APIPromise } from '../core/api-promise';
+import { RequestOptions } from '../internal/request-options';
+import { path } from '../internal/utils/path';
 import { exec, type ExecChildProcess, type ExecRequest, type TestflightUploadConfig } from '../exec-client';
 
 export type { TestflightUploadConfig } from '../exec-client';
@@ -491,7 +494,75 @@ async function readJsonResponse<T>(res: Response, operation: string): Promise<T>
   return JSON.parse(text) as T;
 }
 
+// XcodeBuildLog is one persisted build record from the director's
+// GET /v1/xcode_instances/{id}/build_logs (operationId listXcodeInstanceBuildLogs).
+// Hand-written against api/public/director/openapiv3.yaml; if a Stainless
+// regeneration ever picks that path up, reconcile with the generated surface
+// instead of duplicating it.
+export interface XcodeBuildLog {
+  /** Exec ID assigned by limbuild, e.g. build-1776140344112378000. */
+  id: string;
+
+  /** Terminal status reported by limbuild (e.g. SUCCEEDED, FAILED, CANCELLED). */
+  status: string;
+
+  /** Exit code of xcodebuild, if the build reached completion. */
+  exitCode?: number;
+
+  startedAt?: string;
+
+  finishedAt?: string;
+
+  /** Time spent running xcodebuild, in milliseconds. */
+  buildDurationMs?: number;
+
+  /** Error message captured by limbuild on failure, if any. */
+  error?: string;
+
+  /** Short-lived presigned URL for fetching the full .jsonl log from object storage. */
+  downloadUrl: string;
+}
+
+// BazelBuildLog is one persisted Bazel RBE invocation record from the
+// director's GET /v1/xcode_instances/{id}/bazel_build_logs (operationId
+// listBazelInstanceBuildLogs). Same hand-written caveat as XcodeBuildLog.
+export interface BazelBuildLog {
+  /** Bazel invocation ID (UUID) from the build event stream. */
+  id: string;
+
+  /** Terminal status (SUCCEEDED, FAILED, CANCELLED, INCOMPLETE). */
+  status: string;
+
+  /** The build target patterns, if captured. */
+  pattern?: string[];
+
+  startedAt?: string;
+
+  /** Wall-clock duration of the invocation, in milliseconds. */
+  durationMs?: number;
+
+  /** Error message captured on failure, if any. */
+  error?: string;
+
+  /** Short-lived presigned URL for fetching the full .jsonl record from object storage. */
+  downloadUrl: string;
+}
+
 export class XcodeInstances extends GeneratedXcodeInstances {
+  /**
+   * List the instance's persisted build logs.
+   */
+  listBuildLogs(id: string, options?: RequestOptions): APIPromise<XcodeBuildLog[]> {
+    return this._client.get(path`/v1/xcode_instances/${id}/build_logs`, options);
+  }
+
+  /**
+   * List the instance's persisted Bazel RBE invocation logs.
+   */
+  listBazelBuildLogs(id: string, options?: RequestOptions): APIPromise<BazelBuildLog[]> {
+    return this._client.get(path`/v1/xcode_instances/${id}/bazel_build_logs`, options);
+  }
+
   async createClient(params: XcodeCreateClientParams): Promise<XcodeClient> {
     let apiUrl: string;
     let token: string;
