@@ -67,13 +67,21 @@ export function usePlaystorePublish({
     void loadGoogleIdentityServices().catch(() => undefined);
   }, []);
 
+  // Guard failures replace the whole outcome, like the main paths do: a
+  // stale errorCode or versionCode must not render beside the new error.
+  const failGuard = useCallback((message: string) => {
+    setError(message);
+    setErrorCode(undefined);
+    setVersionCode(undefined);
+    setStatus('error');
+  }, []);
+
   const signInWithGoogle = useCallback(async () => {
     if (busyRef.current) {
       return false;
     }
     if (!googleClientId) {
-      setError('Google OAuth client ID is not configured.');
-      setStatus('error');
+      failGuard('Google OAuth client ID is not configured.');
       return false;
     }
     busyRef.current = true;
@@ -87,6 +95,11 @@ export function usePlaystorePublish({
       setAccessToken(nextToken);
       if (generation === generationRef.current) {
         setStatus('ready');
+      } else {
+        // A reset() during the popup ran before the token landed and left
+        // idle; upgrade it so status agrees with isSignedIn. Anything but
+        // idle belongs to a newer flow and must not be stomped.
+        setStatus((current) => (current === 'idle' ? 'ready' : current));
       }
       return true;
     } catch (caught) {
@@ -106,14 +119,12 @@ export function usePlaystorePublish({
         return undefined;
       }
       if (!registryApiUrl) {
-        setError('Registry URL is not configured.');
-        setStatus('error');
+        failGuard('Registry URL is not configured.');
         return undefined;
       }
       const googleToken = accessTokenRef.current;
       if (!googleToken) {
-        setError('Sign in with Google before publishing.');
-        setStatus('error');
+        failGuard('Sign in with Google before publishing.');
         return undefined;
       }
       busyRef.current = true;
