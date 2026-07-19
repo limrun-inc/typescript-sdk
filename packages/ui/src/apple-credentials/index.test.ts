@@ -5,8 +5,8 @@ import { describe, expect, test } from 'vitest';
 import type { AppleRelayWebSocketClient } from '../core/device-install/apple';
 import {
   APPLE_CERTIFICATE_SECRET_TYPE,
+  appleCertificateSecretName,
   ensureAppleCertificateSecret,
-  withRetries,
   type SigningSecret,
   type SigningSecretMetadata,
   type SigningSecretStore,
@@ -95,68 +95,43 @@ function portalOK(body: Record<string, unknown>) {
 
 describe('ensureAppleCertificateSecret', () => {
   const teamId = 'TEAM1';
+  const secretName = appleCertificateSecretName(teamId, 'DEVELOPMENT');
 
-  test('failed store write parks the key locally and a retry recovers it without minting again', async () => {
+  test('surfaces an actionable error when the store write fails after minting', async () => {
     const state: PortalState = {
       mintedCertificateIds: [],
       certificateBase64: selfSignedCertificateBase64(),
     };
-    const relay = fakePortalRelay(state);
-    const fallback = memorySecretStore();
     const broken = memorySecretStore({ failPuts: () => true });
 
     await expect(
       ensureAppleCertificateSecret({
-        relay,
+        relay: fakePortalRelay(state),
         teamId,
         secretStore: broken.store,
-        localFallbackStore: fallback.store,
-        storeAttempts: 2,
       }),
-    ).rejects.toThrow(/kept safely in this browser/);
-
-    // Exactly one certificate was minted and its p12 survived the failure.
+    ).rejects.toThrow(/revoke certificate CERT1/);
     expect(state.mintedCertificateIds).toEqual(['CERT1']);
-    const parked = await fallback.store.get(APPLE_CERTIFICATE_SECRET_TYPE, teamId);
-    expect(parked?.data.certificateID).toBe('CERT1');
-    expect(parked?.data.certificateP12Base64).toBeTruthy();
-
-    // Once the store works again the parked key is promoted, not re-minted.
-    const working = memorySecretStore();
-    const result = await ensureAppleCertificateSecret({
-      relay,
-      teamId,
-      secretStore: working.store,
-      localFallbackStore: fallback.store,
-      storeAttempts: 2,
-    });
-    expect(state.mintedCertificateIds).toEqual(['CERT1']);
-    expect(result.recovered).toBe(true);
-    expect(result.created).toBe(false);
-    expect(result.certificateId).toBe('CERT1');
-    expect(result.secret.data.certificateP12Base64).toBe(parked?.data.certificateP12Base64);
-    // The parked copy is cleaned up after promotion.
-    expect(await fallback.store.get(APPLE_CERTIFICATE_SECRET_TYPE, teamId)).toBeUndefined();
   });
 
-  test('mints, parks, stores and cleans up the parked copy on success', async () => {
+  test('mints and stores the certificate with its type in the secret name', async () => {
     const state: PortalState = {
       mintedCertificateIds: [],
       certificateBase64: selfSignedCertificateBase64(),
     };
-    const fallback = memorySecretStore();
     const org = memorySecretStore();
 
     const result = await ensureAppleCertificateSecret({
       relay: fakePortalRelay(state),
       teamId,
       secretStore: org.store,
-      localFallbackStore: fallback.store,
     });
     expect(result.created).toBe(true);
     expect(result.certificateId).toBe('CERT1');
-    expect((await org.store.get(APPLE_CERTIFICATE_SECRET_TYPE, teamId))?.data.certificateID).toBe('CERT1');
-    expect(await fallback.store.get(APPLE_CERTIFICATE_SECRET_TYPE, teamId)).toBeUndefined();
+    const stored = await org.store.get(APPLE_CERTIFICATE_SECRET_TYPE, secretName);
+    expect(stored?.data.certificateID).toBe('CERT1');
+    expect(stored?.data.certificateType).toBe('DEVELOPMENT');
+    expect(stored?.data.certificateP12Base64).toBeTruthy();
   });
 
   test('reuses the stored certificate when it is still on the team', async () => {
@@ -165,7 +140,7 @@ describe('ensureAppleCertificateSecret', () => {
       certificateBase64: selfSignedCertificateBase64(),
     };
     const org = memorySecretStore();
-    await org.store.put(APPLE_CERTIFICATE_SECRET_TYPE, teamId, {
+    await org.store.put(APPLE_CERTIFICATE_SECRET_TYPE, secretName, {
       certificateP12Base64: 'cDEy',
       certificateID: 'CERT1',
       teamID: teamId,
@@ -175,39 +150,9 @@ describe('ensureAppleCertificateSecret', () => {
       relay: fakePortalRelay(state),
       teamId,
       secretStore: org.store,
-      localFallbackStore: memorySecretStore().store,
     });
     expect(result.created).toBe(false);
-    expect(result.recovered).toBe(false);
     expect(result.certificateId).toBe('CERT1');
     expect(state.mintedCertificateIds).toEqual(['CERT1']);
-  });
-});
-
-describe('withRetries', () => {
-  test('returns after a transient failure and reports attempts', async () => {
-    const attempts: number[] = [];
-    let calls = 0;
-    const value = await withRetries(
-      async () => {
-        calls += 1;
-        if (calls < 3) throw new Error('transient');
-        return 'ok';
-      },
-      { attempts: 3, initialDelayMs: 1, onAttempt: (attempt) => attempts.push(attempt) },
-    );
-    expect(value).toBe('ok');
-    expect(attempts).toEqual([1, 2, 3]);
-  });
-
-  test('throws the last error when all attempts fail', async () => {
-    await expect(
-      withRetries(
-        async () => {
-          throw new Error('permanent');
-        },
-        { attempts: 2, initialDelayMs: 1 },
-      ),
-    ).rejects.toThrow('permanent');
   });
 });

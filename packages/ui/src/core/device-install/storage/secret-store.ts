@@ -21,8 +21,11 @@ export type SigningSecretMetadata = {
   createdAt?: string;
 };
 
+/** Type-specific flat key-value payload of a signing secret. */
+export type SigningSecretData = Record<string, string>;
+
 export type SigningSecret = SigningSecretMetadata & {
-  data: Record<string, string>;
+  data: SigningSecretData;
 };
 
 export interface SigningSecretStore {
@@ -31,7 +34,7 @@ export interface SigningSecretStore {
    * exists its data is overwritten. Returns the stored secret; callers
    * should use the returned data.
    */
-  put(type: SigningSecretType, name: string, data: Record<string, string>): Promise<SigningSecret>;
+  put(type: SigningSecretType, name: string, data: SigningSecretData): Promise<SigningSecret>;
   /** Returns the secret including its data, or undefined when absent. */
   get(type: SigningSecretType, name: string): Promise<SigningSecret | undefined>;
   /** Lists metadata of all stored signing secrets, never their data. */
@@ -40,35 +43,66 @@ export interface SigningSecretStore {
   delete(type: SigningSecretType, name: string): Promise<void>;
 }
 
+/**
+ * Apple's certificate types as defined by the App Store Connect API
+ * (https://developer.apple.com/documentation/appstoreconnectapi/certificatetype).
+ */
+export type AppleCertificateType =
+  | 'DEVELOPMENT'
+  | 'DISTRIBUTION'
+  | 'IOS_DEVELOPMENT'
+  | 'IOS_DISTRIBUTION'
+  | 'MAC_APP_DEVELOPMENT'
+  | 'MAC_APP_DISTRIBUTION'
+  | 'MAC_INSTALLER_DISTRIBUTION'
+  | 'DEVELOPER_ID_APPLICATION'
+  | 'DEVELOPER_ID_INSTALLER'
+  | 'DEVELOPER_ID_KEXT'
+  | 'PASS_TYPE_ID'
+  | 'PASS_TYPE_ID_WITH_NFC';
+
 /** Data payload of an appleCertificate secret. */
 export type AppleCertificateSecretData = {
   certificateP12Base64: string;
+  /** Which of Apple's certificate types the p12 holds. */
+  certificateType: AppleCertificateType;
   certificatePassword?: string;
   teamID?: string;
+  /** Apple's portal certificate id, never a Limrun DB id. */
   certificateID?: string;
+  /** The certificate's serial number: uppercase hex, no leading zeros. */
   serialNumber?: string;
   expirationDate?: string;
 };
 
-/** Data payload of an appleProvisioningProfile secret. */
+/**
+ * Data payload of an appleProvisioningProfile secret. The
+ * certificateSerialNumbers, bundleIDs and deviceIDs fields duplicate what
+ * the signed profile binds (as comma-separated lists) so profiles can be
+ * filtered by certificate, bundle ID or device without parsing every
+ * entry. Certificates are referenced by serial number, the identifier
+ * Apple embeds in the profile itself.
+ */
 export type AppleProvisioningProfileSecretData = {
   provisioningProfileBase64: string;
+  certificateSerialNumbers?: string;
+  bundleIDs?: string;
+  deviceIDs?: string;
   teamID?: string;
-  bundleID?: string;
   profileName?: string;
   uuid?: string;
   expirationDate?: string;
 };
 
-function compactData(data: Record<string, string | undefined>) {
-  const result: Record<string, string> = {};
+function compactData(data: Record<string, string | undefined>): SigningSecretData {
+  const result: SigningSecretData = {};
   for (const [key, value] of Object.entries(data)) {
     if (value) result[key] = value;
   }
   return result;
 }
 
-/** Stores an Apple development certificate (p12 + password) under the team ID. */
+/** Stores an Apple certificate bundle, conventionally named `${teamID}/${certificateType}`. */
 export async function putAppleCertificateSecret(
   store: SigningSecretStore,
   name: string,
@@ -77,7 +111,11 @@ export async function putAppleCertificateSecret(
   return store.put(APPLE_CERTIFICATE_SECRET_TYPE, name, compactData(data));
 }
 
-/** Stores a provisioning profile, conventionally named `${teamID}/${bundleID}`. */
+/**
+ * Stores a provisioning profile, conventionally named `${teamID}/${uuid}`
+ * so a team can hold many profiles for the same bundle ID and certificate
+ * set; consumers select by the reference fields, not by name.
+ */
 export async function putAppleProvisioningProfileSecret(
   store: SigningSecretStore,
   name: string,
@@ -102,7 +140,7 @@ type BackendSecretResult = {
   type: string;
   name: string;
   organizationId: string;
-  data: Record<string, string>;
+  data: SigningSecretData;
   createdAt: string;
 };
 
@@ -182,7 +220,7 @@ type BrowserStoredSecret = {
   id: string;
   type: string;
   name: string;
-  data: Record<string, string>;
+  data: SigningSecretData;
   createdAt: string;
 };
 

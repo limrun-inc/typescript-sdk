@@ -40,6 +40,12 @@ export type ProvisioningProfileInfo = {
   applicationIdentifier?: string;
   bundleID?: string;
   provisionedDevices: string[];
+  /**
+   * Serial numbers (uppercase hex, no leading zeros) of the developer
+   * certificates embedded in the profile; the profile is only usable for
+   * signing with one of these certificates.
+   */
+  certificateSerialNumbers: string[];
   getTaskAllow?: boolean;
   expirationDate?: string;
 };
