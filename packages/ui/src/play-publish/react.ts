@@ -33,6 +33,11 @@ export type UsePlaystorePublishResult = {
   preloadGoogle: () => void;
   signInWithGoogle: () => Promise<boolean>;
   publish: (request: PlaystorePublishRequest) => Promise<PlaystorePublishResult | undefined>;
+  /**
+   * Clears the outcome state (keeps the Google session). Does not cancel an
+   * in-flight sign-in or publish: their completion is ignored status-wise
+   * and new calls stay refused until the in-flight one settles.
+   */
   reset: () => void;
 };
 
@@ -76,8 +81,10 @@ export function usePlaystorePublish({
     try {
       const nextToken = await requestGoogleAccessToken({ clientId: googleClientId });
       accessTokenRef.current = nextToken;
+      // isSignedIn mirrors token possession, so it is set even when a
+      // reset() during the popup made the flow's status stale.
+      setIsSignedIn(true);
       if (generation === generationRef.current) {
-        setIsSignedIn(true);
         setStatus('ready');
       }
       return true;
@@ -113,6 +120,9 @@ export function usePlaystorePublish({
       setStatus('publishing');
       setError(undefined);
       setErrorCode(undefined);
+      // A stale code from an earlier publish must not render as this
+      // attempt's success next to an error state.
+      setVersionCode(undefined);
       try {
         const result = await publishToPlaystore({
           registryApiUrl,
