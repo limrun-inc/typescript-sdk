@@ -71,11 +71,20 @@ export type RequestGoogleAccessTokenInput = {
  * call loadGoogleIdentityServices beforehand (e.g. when the surrounding
  * dialog opens) to keep this call synchronous with the click.
  */
-export async function requestGoogleAccessToken({
+export function requestGoogleAccessToken(input: RequestGoogleAccessTokenInput): Promise<string> {
+  // When GSI is already loaded the popup must open inside the caller's
+  // click turn: even an await of a resolved promise yields a microtask,
+  // which the strictest popup blockers treat as leaving the gesture.
+  if (googleOAuth2()) {
+    return openTokenPopup(input);
+  }
+  return loadGoogleIdentityServices().then(() => openTokenPopup(input));
+}
+
+function openTokenPopup({
   clientId,
   scope = ANDROID_PUBLISHER_SCOPE,
 }: RequestGoogleAccessTokenInput): Promise<string> {
-  await loadGoogleIdentityServices();
   return new Promise<string>((resolve, reject) => {
     const client = googleOAuth2()!.initTokenClient({
       client_id: clientId,
