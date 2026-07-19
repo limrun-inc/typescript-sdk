@@ -39,9 +39,9 @@ await play.publish({ assetName: 'app-release.aab', packageName: 'com.example.app
 // Render from state: play.status, play.versionCode, play.error, play.errorCode
 ```
 
-`errorCode` values: `invalidRequest`, `assetNotFound`, `internal`, `busy`,
-`listingNotFound`, `permissionDenied`, `versionCodeExists`,
-`uploadKeyMismatch`, `unknown`. The set grows additively.
+`errorCode` carries the registry's machine-readable error code; the
+canonical value list lives on `PlaystorePublishError`'s doc comment and
+grows additively.
 
 Google access tokens expire after about an hour. A `permissionDenied`
 error long after sign-in usually means the token expired; offer "Sign in

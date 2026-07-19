@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { errorMessage } from '../core/errors';
 import {
   loadGoogleIdentityServices,
   PlaystorePublishError,
@@ -48,7 +49,9 @@ export function usePlaystorePublish({
   googleClientId,
 }: UsePlaystorePublishOptions): UsePlaystorePublishResult {
   const [status, setStatus] = useState<PlaystorePublishStatus>('idle');
-  const [isSignedIn, setIsSignedIn] = useState(false);
+  // isSignedIn derives from token possession so the two can never diverge,
+  // even when a reset() during the popup makes the flow's status stale.
+  const [accessToken, setAccessToken] = useState<string | undefined>();
   const [versionCode, setVersionCode] = useState<number | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [errorCode, setErrorCode] = useState<string | undefined>();
@@ -81,9 +84,7 @@ export function usePlaystorePublish({
     try {
       const nextToken = await requestGoogleAccessToken({ clientId: googleClientId });
       accessTokenRef.current = nextToken;
-      // isSignedIn mirrors token possession, so it is set even when a
-      // reset() during the popup made the flow's status stale.
-      setIsSignedIn(true);
+      setAccessToken(nextToken);
       if (generation === generationRef.current) {
         setStatus('ready');
       }
@@ -109,8 +110,8 @@ export function usePlaystorePublish({
         setStatus('error');
         return undefined;
       }
-      const accessToken = accessTokenRef.current;
-      if (!accessToken) {
+      const googleToken = accessTokenRef.current;
+      if (!googleToken) {
         setError('Sign in with Google before publishing.');
         setStatus('error');
         return undefined;
@@ -124,15 +125,19 @@ export function usePlaystorePublish({
       // attempt's success next to an error state.
       setVersionCode(undefined);
       try {
-        // Hook-owned fields spread last: excess-property checking does not
-        // protect wider-typed request objects from smuggling in same-named
-        // credential fields.
+        // Fields picked explicitly: spreading a wider-typed request object
+        // could smuggle same-named credential fields or excess properties
+        // into the request body.
         const result = await publishToPlaystore({
-          ...request,
           registryApiUrl,
           token,
           organizationId,
-          accessToken,
+          accessToken: googleToken,
+          packageName: request.packageName,
+          assetId: request.assetId,
+          assetName: request.assetName,
+          track: request.track,
+          releaseStatus: request.releaseStatus,
         });
         if (generation === generationRef.current) {
           setVersionCode(result.versionCode);
@@ -163,19 +168,20 @@ export function usePlaystorePublish({
     setStatus(accessTokenRef.current ? 'ready' : 'idle');
   }, []);
 
-  return {
-    status,
-    isSignedIn,
-    versionCode,
-    error,
-    errorCode,
-    preloadGoogle,
-    signInWithGoogle,
-    publish,
-    reset,
-  };
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+  // Memoized so the result works as a prop or dependency without
+  // re-rendering consumers on unrelated parent renders.
+  return useMemo(
+    () => ({
+      status,
+      isSignedIn: accessToken !== undefined,
+      versionCode,
+      error,
+      errorCode,
+      preloadGoogle,
+      signInWithGoogle,
+      publish,
+      reset,
+    }),
+    [status, accessToken, versionCode, error, errorCode, preloadGoogle, signInWithGoogle, publish, reset],
+  );
 }
