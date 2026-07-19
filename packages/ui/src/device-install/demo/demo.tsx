@@ -295,10 +295,7 @@ function App() {
     }
   }
 
-  async function loadAppleResources(
-    teamId = developerTeamId,
-    relay = appleLogin.session?.relay,
-  ) {
+  async function loadAppleResources(teamId = developerTeamId, relay = appleLogin.session?.relay) {
     if (!apiUrl.trim() || !relay || !teamId) return;
     const base = {
       relay,

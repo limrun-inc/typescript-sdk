@@ -46,7 +46,13 @@ export async function requestUSBAccess({ log }: RequestUSBAccessOptions) {
   return target;
 }
 
-export async function startPairingRelay({ registryApiUrl, token, organizationId, log, target }: StartPairingRelayOptions) {
+export async function startPairingRelay({
+  registryApiUrl,
+  token,
+  organizationId,
+  log,
+  target,
+}: StartPairingRelayOptions) {
   const deviceRelayUrl = deviceRelayWebSocketUrl(registryApiUrl, token, organizationId);
   let relay: RelayClient | undefined;
   try {

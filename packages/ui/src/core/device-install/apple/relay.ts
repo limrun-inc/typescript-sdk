@@ -104,10 +104,7 @@ export async function openAppleRelayWebSocket(apiUrl: string, token?: string, or
   return client;
 }
 
-export async function proxySrpInit(
-  relay: AppleRelayWebSocketClient,
-  payload: AppleSRPInitRequest,
-) {
+export async function proxySrpInit(relay: AppleRelayWebSocketClient, payload: AppleSRPInitRequest) {
   return relay.request<AppleSRPInitResponse>('srpInit', payload);
 }
 

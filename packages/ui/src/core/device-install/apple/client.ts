@@ -99,12 +99,7 @@ export async function startBrowserOwnedAppleIDLogin({
       finishTwoFactor: async (code) => {
         const response =
           twoFactorMethod.type === 'phone' ?
-            await proxyPhoneTwoFactorCode(
-              relay,
-              twoFactorMethod.phoneNumberId,
-              code,
-              twoFactorMethod.mode,
-            )
+            await proxyPhoneTwoFactorCode(relay, twoFactorMethod.phoneNumberId, code, twoFactorMethod.mode)
           : await proxyTwoFactorCode(relay, code);
         if (response.status < 200 || response.status >= 300) {
           throw new Error(

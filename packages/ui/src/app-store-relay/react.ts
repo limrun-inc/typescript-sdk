@@ -29,7 +29,11 @@ export type UseAppleIDLoginResult = {
   close: () => Promise<void>;
 };
 
-export function useAppleIDLogin({ registryApiUrl, token, organizationId }: UseAppleIDLoginOptions): UseAppleIDLoginResult {
+export function useAppleIDLogin({
+  registryApiUrl,
+  token,
+  organizationId,
+}: UseAppleIDLoginOptions): UseAppleIDLoginResult {
   const [status, setStatus] = useState<AppleIDLoginStatus>('idle');
   const [session, setSession] = useState<AppleIDLoginResult | undefined>();
   const [completeResponse, setCompleteResponse] = useState<AppleRelayResponse | undefined>();

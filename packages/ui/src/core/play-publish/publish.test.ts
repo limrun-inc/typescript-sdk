@@ -37,7 +37,10 @@ describe('publishToPlaystore', () => {
   });
 
   it('surfaces the registry error message and code', async () => {
-    mockFetch(409, JSON.stringify({ message: 'Version code 2 has already been used', code: 'versionCodeExists' }));
+    mockFetch(
+      409,
+      JSON.stringify({ message: 'Version code 2 has already been used', code: 'versionCodeExists' }),
+    );
     const error = await publishToPlaystore({
       registryApiUrl: 'https://registry-staging.limrun.dev',
       accessToken: 'google-token',
