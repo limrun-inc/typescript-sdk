@@ -12,6 +12,7 @@ import {
   type RelayClient,
   type StoredPairRecord,
 } from './index';
+import { errorMessage } from '../core/errors';
 
 export type DeviceInstallRelayBusyAction = 'usb' | 'pair' | 'install';
 
@@ -191,8 +192,4 @@ export function useDeviceInstallRelay({
 
 function noopLog() {
   // Intentionally empty. Consumers can pass a logger for progress messages.
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

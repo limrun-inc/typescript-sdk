@@ -30,8 +30,13 @@ export type UsePlaystorePublishResult = {
   error?: string;
   /** Registry error code driving per-cause UX, e.g. versionCodeExists. */
   errorCode?: string;
-  /** Warm up the Google sign-in script (e.g. on dialog open) so signInWithGoogle stays synchronous with the click. */
-  preloadGoogle: () => void;
+  /**
+   * Warm up the Google sign-in script (e.g. on dialog open) so
+   * signInWithGoogle stays synchronous with the click. Resolves true once
+   * the script is ready; await it to gate the sign-in button, or ignore
+   * the result and rely on the blocked-popup error plus retry.
+   */
+  preloadGoogle: () => Promise<boolean>;
   signInWithGoogle: () => Promise<boolean>;
   publish: (request: PlaystorePublishRequest) => Promise<PlaystorePublishResult | undefined>;
   /**
@@ -63,9 +68,14 @@ export function usePlaystorePublish({
   const generationRef = useRef(0);
   const busyRef = useRef(false);
 
-  const preloadGoogle = useCallback(() => {
-    void loadGoogleIdentityServices().catch(() => undefined);
-  }, []);
+  const preloadGoogle = useCallback(
+    () =>
+      loadGoogleIdentityServices().then(
+        () => true,
+        () => false,
+      ),
+    [],
+  );
 
   // Guard failures replace the whole outcome, like the main paths do: a
   // stale errorCode or versionCode must not render beside the new error.
