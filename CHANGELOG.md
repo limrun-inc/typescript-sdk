@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.43.0 (2026-07-19)
+
+Full Changelog: [v0.42.2...v0.43.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.42.2...v0.43.0)
+
+### Features
+
+* **stlc:** configurable CI runner and private-production-repo support in workflow templates ([8386daa](https://github.com/limrun-inc/typescript-sdk/commit/8386daa153ad643f2fb19bfe228cf8cbb5fc5217))
+
 ## 0.42.2 (2026-07-17)
 
 Full Changelog: [v0.42.1...v0.42.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.42.1...v0.42.2)
