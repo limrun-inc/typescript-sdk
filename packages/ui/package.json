@@ -1,6 +1,6 @@
 {
   "name": "@limrun/ui",
-  "version": "0.14.0-rc.3",
+  "version": "0.14.0-rc.4",
   "publishConfig": {
     "access": "public",
     "tag": "next"
@@ -23,6 +23,11 @@
       "types": "./dist/app-store-relay/react.d.ts",
       "import": "./dist/app-store-relay/react.js",
       "require": "./dist/app-store-relay/react.cjs"
+    },
+    "./apple-credentials": {
+      "types": "./dist/apple-credentials/index.d.ts",
+      "import": "./dist/apple-credentials/index.js",
+      "require": "./dist/apple-credentials/index.cjs"
     },
     "./device-build": {
       "types": "./dist/device-build/index.d.ts",

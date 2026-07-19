@@ -1,3 +1,4 @@
+import forge from 'node-forge';
 import type {
   DeviceInstallSigningMode,
   ProvisioningProfileInfo,
@@ -198,9 +199,41 @@ export function parseProvisioningProfileBytes(bytes: Uint8Array) {
     applicationIdentifier,
     bundleID,
     provisionedDevices: stringArrayValue(value.ProvisionedDevices),
+    certificateSerialNumbers: certificateSerialNumbers(stringArrayValue(value.DeveloperCertificates)),
     getTaskAllow: booleanValue(entitlements['get-task-allow']),
     expirationDate: stringValue(value.ExpirationDate),
   } satisfies ProvisioningProfileInfo;
+}
+
+/**
+ * Normalizes a certificate serial number for comparison: uppercase hex
+ * without leading zeros, the format Apple's portal reports in serialNum.
+ */
+export function normalizeCertificateSerial(serial?: string) {
+  const normalized = (serial ?? '').replace(/^0+/, '').toUpperCase();
+  return normalized || undefined;
+}
+
+/**
+ * Reads the serial numbers of the DER certificates embedded in a profile's
+ * DeveloperCertificates array. Unparseable entries are skipped: a profile
+ * with an exotic certificate should degrade to weaker filtering, not fail
+ * the whole parse.
+ */
+function certificateSerialNumbers(developerCertificatesBase64: string[]) {
+  const serials: string[] = [];
+  for (const entry of developerCertificatesBase64) {
+    try {
+      // Plist <data> payloads wrap base64 across lines; atob rejects whitespace.
+      const der = atob(entry.replace(/\s+/g, ''));
+      const certificate = forge.pki.certificateFromAsn1(forge.asn1.fromDer(forge.util.createBuffer(der)));
+      const serial = normalizeCertificateSerial(certificate.serialNumber);
+      if (serial && !serials.includes(serial)) serials.push(serial);
+    } catch {
+      // Skip certificates forge cannot parse.
+    }
+  }
+  return serials;
 }
 
 async function getSigningAssetsByID(id?: string) {
