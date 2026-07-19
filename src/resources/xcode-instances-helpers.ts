@@ -68,6 +68,14 @@ export type SyncOptions = {
   onSyncComplete?: FolderSyncOptions['onSyncComplete'];
 };
 
+export type XcodeRunOptions = {
+  /** Working directory relative to the synced workspace root. Defaults to ".". */
+  cwd?: string;
+  /** Environment variables to add to limbuild's curated sandbox environment. */
+  env?: Record<string, string>;
+  /** Server-side timeout in seconds. Defaults to 3600; maximum 21600. */
+  timeoutSeconds?: number;
+};
 export type XcodeProjectConfig = {
   workspace?: string;
   project?: string;
@@ -317,6 +325,12 @@ export type XcodeClient = {
    * const { exitCode } = await build;
    */
   xcodebuild: (settings?: XcodeProjectConfig, options?: XcodeBuildOptions) => ExecChildProcess;
+
+  /**
+   * Run a one-shot shell command in the synced workspace.
+   * Output and the remote exit code are streamed through the returned process.
+   */
+  run: (commandLine: string, options?: XcodeRunOptions) => ExecChildProcess;
 
   /**
    * Attach a simulator to this xcode instance.
@@ -724,6 +738,28 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           request.signedUploadUrl = options.upload.signedUploadUrl;
         }
 
+        return exec(request, { apiUrl, token, log });
+      },
+
+      run(commandLine: string, options?: XcodeRunOptions): ExecChildProcess {
+        if (commandLine.trim() === '') {
+          throw new Error('commandLine must not be empty');
+        }
+        if (
+          options?.timeoutSeconds !== undefined &&
+          (!Number.isInteger(options.timeoutSeconds) ||
+            options.timeoutSeconds < 1 ||
+            options.timeoutSeconds > 21600)
+        ) {
+          throw new Error('timeoutSeconds must be an integer between 1 and 21600');
+        }
+        const request: ExecRequest = {
+          command: 'run',
+          commandLine,
+          cwd: options?.cwd ?? '.',
+          ...(options?.env && { env: options.env }),
+          ...(options?.timeoutSeconds !== undefined && { timeoutSeconds: options.timeoutSeconds }),
+        };
         return exec(request, { apiUrl, token, log });
       },
 
