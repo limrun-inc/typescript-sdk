@@ -136,33 +136,36 @@ export function useDeviceInstallRelay({
     }
   }, [apiUrl, cleanupDeviceAccess, device, organizationId, token]);
 
-  const startInstallation = useCallback(async (installSource: InstallSource) => {
-    if (!apiUrl || !device || !pairRecord) {
-      throw new Error('Select and pair a USB device before starting installation.');
-    }
-    setBusyAction('install');
-    setError(undefined);
-    try {
-      await cleanupDeviceAccess();
-      relayRef.current = await startDeviceInstall({
-        registryApiUrl: apiUrl,
-        token,
-        organizationId,
-        log: logRef.current,
-        target: device,
-        pairRecord,
-        installSource,
-      });
-      logRef.current('Device install started', 'Installation will continue through the connected iPhone.');
-      return relayRef.current;
-    } catch (caught) {
-      await closeDeviceRelayTarget(device, logRef.current);
-      setError(errorMessage(caught));
-      return undefined;
-    } finally {
-      setBusyAction(undefined);
-    }
-  }, [apiUrl, cleanupDeviceAccess, device, organizationId, pairRecord, token]);
+  const startInstallation = useCallback(
+    async (installSource: InstallSource) => {
+      if (!apiUrl || !device || !pairRecord) {
+        throw new Error('Select and pair a USB device before starting installation.');
+      }
+      setBusyAction('install');
+      setError(undefined);
+      try {
+        await cleanupDeviceAccess();
+        relayRef.current = await startDeviceInstall({
+          registryApiUrl: apiUrl,
+          token,
+          organizationId,
+          log: logRef.current,
+          target: device,
+          pairRecord,
+          installSource,
+        });
+        logRef.current('Device install started', 'Installation will continue through the connected iPhone.');
+        return relayRef.current;
+      } catch (caught) {
+        await closeDeviceRelayTarget(device, logRef.current);
+        setError(errorMessage(caught));
+        return undefined;
+      } finally {
+        setBusyAction(undefined);
+      }
+    },
+    [apiUrl, cleanupDeviceAccess, device, organizationId, pairRecord, token],
+  );
 
   const stopRelay = useCallback(() => {
     void cleanupDeviceAccess();

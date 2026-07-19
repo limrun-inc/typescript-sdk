@@ -93,9 +93,9 @@ export async function requestGoogleAccessToken({
       },
       error_callback: (error) => {
         const fallback =
-          error?.type === 'popup_failed_to_open'
-            ? 'Google sign-in popup was blocked by the browser.'
-            : 'Google sign-in was cancelled.';
+          error?.type === 'popup_failed_to_open' ?
+            'Google sign-in popup was blocked by the browser.'
+          : 'Google sign-in was cancelled.';
         reject(new Error(error?.message || fallback));
       },
     });

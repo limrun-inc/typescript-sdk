@@ -21,12 +21,12 @@ describe('Registry relay primitives', () => {
     expect(relay.request.mock.calls[0]).toMatchObject([
       'provisioning',
       {
-      method: 'POST',
-      path: '/account/ios/profile/deleteProvisioningProfile.action',
-      payload: {
-        teamId: 'TEAM',
-        provisioningProfileId: 'PROFILE',
-      },
+        method: 'POST',
+        path: '/account/ios/profile/deleteProvisioningProfile.action',
+        payload: {
+          teamId: 'TEAM',
+          provisioningProfileId: 'PROFILE',
+        },
       },
     ]);
   });
