@@ -13,6 +13,7 @@ export default defineConfig({
         index: resolve(__dirname, 'src/index.ts'),
         'app-store-relay/index': resolve(__dirname, 'src/app-store-relay/index.ts'),
         'app-store-relay/react': resolve(__dirname, 'src/app-store-relay/react.ts'),
+        'apple-credentials/index': resolve(__dirname, 'src/apple-credentials/index.ts'),
         'device-build/index': resolve(__dirname, 'src/device-build/index.ts'),
         'device-build/react': resolve(__dirname, 'src/device-build/react.ts'),
         'device-install/index': resolve(__dirname, 'src/device-install/index.ts'),
