@@ -1,7 +1,6 @@
 import { AppleGsaSrpClient } from './gsa-srp';
 import {
-  createAppleRelaySession,
-  deleteAppleRelaySession,
+  openAppleRelayWebSocket,
   fetchAppleAccountSession,
   proxyPhoneTwoFactorCode,
   proxySrpComplete,
@@ -9,18 +8,20 @@ import {
   proxyTwoFactorCode,
   triggerPhoneTwoFactor,
   triggerTrustedDeviceTwoFactor,
+  type AppleRelayWebSocketClient,
   type AppleRelayResponse,
 } from './relay';
 
 export type AppleIDLoginInput = {
-  limbuildApiUrl: string;
+  registryApiUrl: string;
   accountName: string;
   password: string;
   token?: string;
+  organizationId?: string;
 };
 
 export type AppleIDLoginResult = {
-  appleSessionId: string;
+  relay: AppleRelayWebSocketClient;
   completeResponse: AppleRelayResponse;
   twoFactorChallengeResponse?: AppleRelayResponse;
   requiresTwoFactor: boolean;
@@ -32,15 +33,16 @@ export type AppleIDLoginResult = {
 type TwoFactorMethod = { type: 'trustedDevice' } | { type: 'phone'; phoneNumberId: number; mode: string };
 
 export async function startBrowserOwnedAppleIDLogin({
-  limbuildApiUrl,
+  registryApiUrl,
   accountName,
   password,
   token,
+  organizationId,
 }: AppleIDLoginInput): Promise<AppleIDLoginResult> {
-  const { appleSessionId } = await createAppleRelaySession(limbuildApiUrl, token);
+  const relay = await openAppleRelayWebSocket(registryApiUrl, token, organizationId);
   try {
     const srp = new AppleGsaSrpClient(accountName);
-    const initResponse = await proxySrpInit(limbuildApiUrl, appleSessionId, await srp.init(), token);
+    const initResponse = await proxySrpInit(relay, await srp.init());
     if (initResponse.status < 200 || initResponse.status >= 300) {
       throw new Error(
         `Apple SRP init failed: HTTP ${initResponse.status} ${initResponse.rawBody ?? ''}`.trim(),
@@ -50,21 +52,16 @@ export async function startBrowserOwnedAppleIDLogin({
       throw new Error('Apple SRP init response did not include a body.');
     }
     const proof = await srp.complete(password, initResponse.body);
-    const completeResponse = await proxySrpComplete(
-      limbuildApiUrl,
-      appleSessionId,
-      {
-        ...proof,
-        rememberMe: false,
-        trustTokens: [],
-      },
-      token,
-    );
+    const completeResponse = await proxySrpComplete(relay, {
+      ...proof,
+      rememberMe: false,
+      trustTokens: [],
+    });
     const requiresTwoFactor = completeResponse.status === 409;
     let twoFactorChallengeResponse: AppleRelayResponse | undefined;
     let twoFactorMethod: TwoFactorMethod = { type: 'trustedDevice' };
     if (requiresTwoFactor) {
-      twoFactorChallengeResponse = await triggerTrustedDeviceTwoFactor(limbuildApiUrl, appleSessionId, token);
+      twoFactorChallengeResponse = await triggerTrustedDeviceTwoFactor(relay);
       const phone = trustedPhoneNumberFromChallenge(twoFactorChallengeResponse.body);
       // Only route codes through the phone/SMS endpoint when Apple actually
       // falls back to phone verification (HTTP 412). The trusted-device
@@ -80,13 +77,7 @@ export async function startBrowserOwnedAppleIDLogin({
           phoneNumberId: phone.id,
           mode: phone.pushMode ?? 'sms',
         };
-        twoFactorChallengeResponse = await triggerPhoneTwoFactor(
-          limbuildApiUrl,
-          appleSessionId,
-          phone.id,
-          phone.pushMode ?? 'sms',
-          token,
-        );
+        twoFactorChallengeResponse = await triggerPhoneTwoFactor(relay, phone.id, phone.pushMode ?? 'sms');
       }
       if (twoFactorChallengeResponse.status < 200 || twoFactorChallengeResponse.status >= 300) {
         throw new Error(
@@ -101,22 +92,15 @@ export async function startBrowserOwnedAppleIDLogin({
       );
     }
     return {
-      appleSessionId,
+      relay,
       completeResponse,
       twoFactorChallengeResponse,
       requiresTwoFactor,
       finishTwoFactor: async (code) => {
         const response =
           twoFactorMethod.type === 'phone' ?
-            await proxyPhoneTwoFactorCode(
-              limbuildApiUrl,
-              appleSessionId,
-              twoFactorMethod.phoneNumberId,
-              code,
-              twoFactorMethod.mode,
-              token,
-            )
-          : await proxyTwoFactorCode(limbuildApiUrl, appleSessionId, code, token);
+            await proxyPhoneTwoFactorCode(relay, twoFactorMethod.phoneNumberId, code, twoFactorMethod.mode)
+          : await proxyTwoFactorCode(relay, code);
         if (response.status < 200 || response.status >= 300) {
           throw new Error(
             `Apple two-factor code failed: HTTP ${response.status} ${response.rawBody ?? ''}`.trim(),
@@ -124,11 +108,11 @@ export async function startBrowserOwnedAppleIDLogin({
         }
         return response;
       },
-      finalize: async () => fetchAppleAccountSession(limbuildApiUrl, appleSessionId, token),
-      close: () => deleteAppleRelaySession(limbuildApiUrl, appleSessionId, token),
+      finalize: async () => fetchAppleAccountSession(relay),
+      close: async () => relay.close(),
     };
   } catch (error) {
-    await deleteAppleRelaySession(limbuildApiUrl, appleSessionId, token).catch(() => undefined);
+    relay.close();
     throw error;
   }
 }

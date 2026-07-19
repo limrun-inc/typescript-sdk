@@ -14,6 +14,7 @@ export {
   startInstallRelay as startDeviceInstallRelay,
   startPairingRelay as startDevicePairingRelay,
   type DeviceRelayTarget,
+  type InstallSource,
   type StartInstallRelayOptions,
   type StartPairingRelayOptions,
 } from '../core/device-install/operations';

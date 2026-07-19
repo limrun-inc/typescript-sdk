@@ -29,6 +29,7 @@ import {
 import { useDeviceBuild } from '../../device-build/react';
 import { useDeviceInstallRelay } from '../react';
 import './demo.css';
+import { errorMessage } from '../../core/errors';
 
 type ActivityLine = {
   id: number;
@@ -64,6 +65,7 @@ const emptyAppleResources: AppleResourceState = {
 const storageKeys = {
   apiUrl: 'limrun-device-demo-api-url',
   token: 'limrun-device-demo-token',
+  ipaDownloadUrl: 'limrun-device-demo-ipa-download-url',
   bundleId: 'limrun-device-demo-bundle-id',
   certificatePassword: 'limrun-device-demo-certificate-password',
   appleAccount: 'limrun-device-demo-apple-account',
@@ -72,6 +74,7 @@ const storageKeys = {
 function App() {
   const [apiUrl, setApiUrl] = useLocalStorage(storageKeys.apiUrl, 'http://127.0.0.1:8080');
   const [token, setToken] = useLocalStorage(storageKeys.token, '');
+  const [ipaDownloadUrl, setIPADownloadUrl] = useLocalStorage(storageKeys.ipaDownloadUrl, '');
   const [bundleId, setBundleId] = useLocalStorage(storageKeys.bundleId, '');
   const [appleAccount, setAppleAccount] = useLocalStorage(storageKeys.appleAccount, '');
   const [certificatePassword, setCertificatePassword] = useLocalStorage(storageKeys.certificatePassword, '');
@@ -131,7 +134,7 @@ function App() {
   });
 
   const appleLogin = useAppleIDLogin({
-    limbuildApiUrl: apiUrl.trim(),
+    registryApiUrl: apiUrl.trim(),
     token: token.trim() || undefined,
   });
 
@@ -148,10 +151,10 @@ function App() {
   const selectedProfile = resources.profiles.find(
     (profile) => stringField(profile, 'provisioningProfileId') === selectedProfileId,
   );
-  const canUseApple = !!apiUrl.trim() && !!appleLogin.session?.appleSessionId && !!developerTeamId;
+  const canUseApple = !!apiUrl.trim() && !!appleLogin.session?.relay && !!developerTeamId;
   const canPrepareSigning = !!certificateFile && !!profileFile;
   const canStartBuild = !!signingAssets && build.status !== 'queued' && build.status !== 'running';
-  const canInstall = install.canInstall && build.status === 'succeeded';
+  const canInstall = install.canInstall && build.status === 'succeeded' && !!ipaDownloadUrl.trim();
 
   // Live per-step status used by the overview stepper and the section pills.
   const pairStep: StepView =
@@ -182,7 +185,7 @@ function App() {
 
   async function runInstall() {
     setInstallPhase('installing');
-    const relay = await install.startInstallation();
+    const relay = await install.startInstallation({ downloadUrl: ipaDownloadUrl.trim() });
     if (!relay) setInstallPhase('error');
   }
 
@@ -246,7 +249,7 @@ function App() {
       });
       setApplePassword('');
       if (session && !session.requiresTwoFactor) {
-        await loadAppleTeams(session.appleSessionId);
+        await loadAppleTeams(session.relay);
       }
     } catch (error) {
       setPrepareError(errorMessage(error));
@@ -262,7 +265,7 @@ function App() {
     try {
       await appleLogin.submitTwoFactorCode(twoFactorCode);
       setTwoFactorCode('');
-      await loadAppleTeams(appleLogin.session.appleSessionId);
+      await loadAppleTeams(appleLogin.session.relay);
     } catch (error) {
       setPrepareError(errorMessage(error));
     } finally {
@@ -270,17 +273,13 @@ function App() {
     }
   }
 
-  async function loadAppleTeams(appleSessionId = appleLogin.session?.appleSessionId) {
-    if (!apiUrl.trim() || !appleSessionId) return;
+  async function loadAppleTeams(relay = appleLogin.session?.relay) {
+    if (!apiUrl.trim() || !relay) return;
     setAppleBusy('teams');
     setPrepareError(undefined);
     try {
       await appleLogin.finalize().catch(() => undefined);
-      const teams = await listAppleTeams({
-        apiUrl: apiUrl.trim(),
-        token: token.trim() || undefined,
-        appleSessionId,
-      });
+      const teams = await listAppleTeams({ relay });
       setResources((current) => ({ ...current, teams }));
       const firstTeamId = teams.map(appleTeamSelectionId).find(Boolean) ?? '';
       setSelectedTeamId(firstTeamId);
@@ -288,7 +287,7 @@ function App() {
         teams.find((team) => appleTeamSelectionId(team) === firstTeamId),
       );
       if (firstDeveloperTeamId) {
-        await loadAppleResources(firstDeveloperTeamId, appleSessionId);
+        await loadAppleResources(firstDeveloperTeamId, relay);
       }
     } catch (error) {
       setPrepareError(errorMessage(error));
@@ -297,15 +296,10 @@ function App() {
     }
   }
 
-  async function loadAppleResources(
-    teamId = developerTeamId,
-    appleSessionId = appleLogin.session?.appleSessionId,
-  ) {
-    if (!apiUrl.trim() || !appleSessionId || !teamId) return;
+  async function loadAppleResources(teamId = developerTeamId, relay = appleLogin.session?.relay) {
+    if (!apiUrl.trim() || !relay || !teamId) return;
     const base = {
-      apiUrl: apiUrl.trim(),
-      token: token.trim() || undefined,
-      appleSessionId,
+      relay,
       teamId,
     };
     const [appIds, devices, certificates, profiles] = await Promise.all([
@@ -336,9 +330,7 @@ function App() {
     setPrepareError(undefined);
     try {
       const app = await createAppleBundleID({
-        apiUrl: apiUrl.trim(),
-        token: token.trim() || undefined,
-        appleSessionId: appleLogin.session.appleSessionId,
+        relay: appleLogin.session.relay,
         teamId: developerTeamId,
         bundleId: bundleId.trim(),
       });
@@ -359,9 +351,7 @@ function App() {
     setPrepareError(undefined);
     try {
       await registerAppleDevice({
-        apiUrl: apiUrl.trim(),
-        token: token.trim() || undefined,
-        appleSessionId: appleLogin.session.appleSessionId,
+        relay: appleLogin.session.relay,
         teamId: developerTeamId,
         deviceUDID: selectedUDID,
         name: install.device?.hello.productName ?? 'Limrun iPhone',
@@ -393,9 +383,7 @@ function App() {
     setPrepareError(undefined);
     try {
       const base = {
-        apiUrl: apiUrl.trim(),
-        token: token.trim() || undefined,
-        appleSessionId: appleLogin.session.appleSessionId,
+        relay: appleLogin.session.relay,
         teamId: developerTeamId,
       };
       let certificateId = storedCertificate?.certificateID;
@@ -599,6 +587,14 @@ function App() {
         <p className="hint">
           Run this page on <code>localhost</code> or HTTPS. WebUSB is available in Chromium browsers only.
         </p>
+        <label>
+          IPA download URL
+          <input
+            value={ipaDownloadUrl}
+            onChange={(event) => setIPADownloadUrl(event.currentTarget.value)}
+            placeholder="https://asset-storage.example/app.ipa"
+          />
+        </label>
       </section>
 
       <section className="card">
@@ -1056,10 +1052,6 @@ function useLocalStorage(key: string, initialValue: string) {
     localStorage.setItem(key, value);
   }, [key, value]);
   return [value, setValue] as const;
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 createRoot(document.getElementById('root')!).render(

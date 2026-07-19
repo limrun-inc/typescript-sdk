@@ -15,178 +15,143 @@ export type AppleProvisioningRequest = {
   payload?: unknown;
 };
 
-export async function createAppleRelaySession(limbuildApiUrl: string, token?: string) {
-  const response = await fetch(limbuildURL(limbuildApiUrl, '/apple/auth/session', token), {
-    method: 'POST',
-    headers: authHeaders(token),
-  });
-  if (!response.ok) {
-    throw new Error(`Apple relay session failed: HTTP ${response.status} ${await response.text()}`);
+type AppleRelayWebSocketMessage<T = unknown> = {
+  id: string;
+  ok: boolean;
+  response?: AppleRelayResponse<T>;
+  error?: string;
+};
+
+export class AppleRelayWebSocketClient {
+  private socket?: WebSocket;
+  private nextId = 1;
+  private readonly pending = new Map<
+    string,
+    {
+      resolve: (response: AppleRelayResponse) => void;
+      reject: (error: Error) => void;
+    }
+  >();
+
+  constructor(
+    private readonly apiUrl: string,
+    private readonly token?: string,
+    private readonly organizationId?: string,
+  ) {}
+
+  async connect() {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) return;
+    const socket = new WebSocket(appleRelayWebSocketURL(this.apiUrl, this.token, this.organizationId));
+    this.socket = socket;
+    socket.onmessage = (event) => this.handleMessage(event);
+    socket.onclose = () => this.rejectPending(new Error('Apple relay WebSocket closed'));
+    socket.onerror = () => this.rejectPending(new Error('Apple relay WebSocket failed'));
+    await new Promise<void>((resolve, reject) => {
+      socket.onopen = () => resolve();
+      socket.onerror = () => reject(new Error('Apple relay WebSocket connection failed'));
+    });
   }
-  return (await response.json()) as { appleSessionId: string };
+
+  request<T = unknown>(type: string, payload?: unknown) {
+    const socket = this.socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      throw new Error('Apple relay WebSocket is not connected.');
+    }
+    const id = String(this.nextId++);
+    const response = new Promise<AppleRelayResponse<T>>((resolve, reject) => {
+      this.pending.set(id, {
+        resolve: (value) => resolve(normalizeAppleProxyResponse<T>(value as AppleRelayResponse<T>)),
+        reject,
+      });
+    });
+    socket.send(JSON.stringify({ id, type, ...(payload === undefined ? {} : { payload }) }));
+    return response;
+  }
+
+  close() {
+    this.rejectPending(new Error('Apple relay WebSocket closed'));
+    this.socket?.close();
+    this.socket = undefined;
+  }
+
+  private handleMessage(event: MessageEvent) {
+    const message = JSON.parse(String(event.data)) as AppleRelayWebSocketMessage;
+    const waiter = this.pending.get(message.id);
+    if (!waiter) return;
+    this.pending.delete(message.id);
+    if (!message.ok) {
+      waiter.reject(new Error(message.error || 'Apple relay request failed'));
+      return;
+    }
+    if (!message.response) {
+      waiter.reject(new Error('Apple relay response was empty.'));
+      return;
+    }
+    waiter.resolve(message.response);
+  }
+
+  private rejectPending(error: Error) {
+    for (const waiter of this.pending.values()) {
+      waiter.reject(error);
+    }
+    this.pending.clear();
+  }
 }
 
-export async function deleteAppleRelaySession(
-  limbuildApiUrl: string,
-  appleSessionId: string,
-  token?: string,
-) {
-  const response = await fetch(limbuildURL(limbuildApiUrl, '/apple/auth/session/delete', token), {
-    method: 'POST',
-    headers: jsonHeaders(token),
-    body: JSON.stringify({ appleSessionId }),
-  });
-  if (!response.ok) {
-    throw new Error(`Apple relay session delete failed: HTTP ${response.status} ${await response.text()}`);
-  }
+export async function openAppleRelayWebSocket(apiUrl: string, token?: string, organizationId?: string) {
+  const client = new AppleRelayWebSocketClient(apiUrl, token, organizationId);
+  await client.connect();
+  return client;
 }
 
-export async function proxySrpInit(
-  limbuildApiUrl: string,
-  appleSessionId: string,
-  payload: AppleSRPInitRequest,
-  token?: string,
-) {
-  return postAppleProxy<AppleSRPInitResponse>(
-    limbuildApiUrl,
-    '/apple/auth/srp/init',
-    appleSessionId,
-    payload,
-    token,
-  );
+export async function proxySrpInit(relay: AppleRelayWebSocketClient, payload: AppleSRPInitRequest) {
+  return relay.request<AppleSRPInitResponse>('srpInit', payload);
 }
 
 export async function proxySrpComplete(
-  limbuildApiUrl: string,
-  appleSessionId: string,
+  relay: AppleRelayWebSocketClient,
   payload: AppleSRPCompleteProof & {
     rememberMe: boolean;
     trustTokens: string[];
   },
-  token?: string,
 ) {
-  return postAppleProxy(limbuildApiUrl, '/apple/auth/srp/complete', appleSessionId, payload, token);
+  return relay.request('srpComplete', payload);
 }
 
-export async function triggerTrustedDeviceTwoFactor(
-  limbuildApiUrl: string,
-  appleSessionId: string,
-  token?: string,
-) {
-  const response = await fetch(limbuildURL(limbuildApiUrl, '/apple/auth/2fa/trigger', token), {
-    method: 'POST',
-    headers: jsonHeaders(token),
-    body: JSON.stringify({ appleSessionId }),
-  });
-  if (!response.ok) {
-    throw new Error(`Apple 2FA trigger failed: HTTP ${response.status} ${await response.text()}`);
-  }
-  return (await response.json()) as AppleRelayResponse;
+export async function triggerTrustedDeviceTwoFactor(relay: AppleRelayWebSocketClient) {
+  return relay.request('triggerTrustedDevice2FA');
 }
 
 export async function triggerPhoneTwoFactor(
-  limbuildApiUrl: string,
-  appleSessionId: string,
+  relay: AppleRelayWebSocketClient,
   phoneNumberId: number,
   mode = 'sms',
-  token?: string,
 ) {
-  const response = await fetch(limbuildURL(limbuildApiUrl, '/apple/auth/2fa/phone/trigger', token), {
-    method: 'POST',
-    headers: jsonHeaders(token),
-    body: JSON.stringify({ appleSessionId, phoneNumberId, mode }),
-  });
-  if (!response.ok) {
-    throw new Error(`Apple phone 2FA trigger failed: HTTP ${response.status} ${await response.text()}`);
-  }
-  return (await response.json()) as AppleRelayResponse;
+  return relay.request('triggerPhone2FA', { phoneNumberId, mode });
 }
 
-export async function proxyTwoFactorCode(
-  limbuildApiUrl: string,
-  appleSessionId: string,
-  code: string,
-  token?: string,
-) {
-  const response = await fetch(limbuildURL(limbuildApiUrl, '/apple/auth/2fa', token), {
-    method: 'POST',
-    headers: jsonHeaders(token),
-    body: JSON.stringify({ appleSessionId, code }),
-  });
-  if (!response.ok) {
-    throw new Error(`Apple 2FA proxy failed: HTTP ${response.status} ${await response.text()}`);
-  }
-  return (await response.json()) as AppleRelayResponse;
+export async function proxyTwoFactorCode(relay: AppleRelayWebSocketClient, code: string) {
+  return relay.request('submitTrustedDevice2FA', { code });
 }
 
 export async function proxyPhoneTwoFactorCode(
-  limbuildApiUrl: string,
-  appleSessionId: string,
+  relay: AppleRelayWebSocketClient,
   phoneNumberId: number,
   code: string,
   mode = 'sms',
-  token?: string,
 ) {
-  const response = await fetch(limbuildURL(limbuildApiUrl, '/apple/auth/2fa/phone', token), {
-    method: 'POST',
-    headers: jsonHeaders(token),
-    body: JSON.stringify({ appleSessionId, phoneNumberId, mode, code }),
-  });
-  if (!response.ok) {
-    throw new Error(`Apple phone 2FA proxy failed: HTTP ${response.status} ${await response.text()}`);
-  }
-  return (await response.json()) as AppleRelayResponse;
+  return relay.request('submitPhone2FA', { phoneNumberId, mode, code });
 }
 
-export async function fetchAppleAccountSession(
-  limbuildApiUrl: string,
-  appleSessionId: string,
-  token?: string,
-) {
-  const response = await fetch(limbuildURL(limbuildApiUrl, '/apple/auth/finalize', token), {
-    method: 'POST',
-    headers: jsonHeaders(token),
-    body: JSON.stringify({ appleSessionId }),
-  });
-  if (!response.ok) {
-    throw new Error(`Apple session finalization failed: HTTP ${response.status} ${await response.text()}`);
-  }
-  return (await response.json()) as AppleRelayResponse;
+export async function fetchAppleAccountSession(relay: AppleRelayWebSocketClient) {
+  return relay.request('finalize');
 }
 
 export async function proxyProvisioningRequest<T = unknown>(
-  limbuildApiUrl: string,
-  appleSessionId: string,
+  relay: AppleRelayWebSocketClient,
   request: AppleProvisioningRequest,
-  token?: string,
 ) {
-  const response = await fetch(limbuildURL(limbuildApiUrl, '/apple/provisioning', token), {
-    method: 'POST',
-    headers: jsonHeaders(token),
-    body: JSON.stringify({ appleSessionId, ...request }),
-  });
-  if (!response.ok) {
-    throw new Error(`Apple provisioning proxy failed: HTTP ${response.status} ${await response.text()}`);
-  }
-  return normalizeAppleProxyResponse<T>((await response.json()) as AppleRelayResponse<T>);
-}
-
-async function postAppleProxy<T>(
-  limbuildApiUrl: string,
-  path: string,
-  appleSessionId: string,
-  payload: unknown,
-  token?: string,
-) {
-  const response = await fetch(limbuildURL(limbuildApiUrl, path, token), {
-    method: 'POST',
-    headers: jsonHeaders(token),
-    body: JSON.stringify({ appleSessionId, payload }),
-  });
-  if (!response.ok) {
-    throw new Error(`Apple proxy ${path} failed: HTTP ${response.status} ${await response.text()}`);
-  }
-  return normalizeAppleProxyResponse<T>((await response.json()) as AppleRelayResponse<T>);
+  return relay.request<T>('provisioning', request);
 }
 
 function normalizeAppleProxyResponse<T>(response: AppleRelayResponse<T>) {
@@ -203,23 +168,15 @@ function normalizeAppleProxyResponse<T>(response: AppleRelayResponse<T>) {
   }
 }
 
-function limbuildURL(limbuildApiUrl: string, path: string, token?: string) {
-  const base = limbuildApiUrl.replace(/\/$/, '');
-  const suffix = path.startsWith('/') ? path : `/${path}`;
-  const url = new URL(`${base}${suffix}`);
+function appleRelayWebSocketURL(apiUrl: string, token?: string, organizationId?: string) {
+  const url = new URL(apiUrl);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.pathname = `${url.pathname.replace(/\/$/, '')}/ios/appstoreconnect/ws`;
   if (token) {
     url.searchParams.set('token', token);
   }
-  return url;
-}
-
-function jsonHeaders(token?: string): Record<string, string> {
-  return {
-    'Content-Type': 'application/json',
-    ...authHeaders(token),
-  };
-}
-
-function authHeaders(token?: string): Record<string, string> {
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  if (organizationId) {
+    url.searchParams.set('organization', organizationId);
+  }
+  return url.toString();
 }

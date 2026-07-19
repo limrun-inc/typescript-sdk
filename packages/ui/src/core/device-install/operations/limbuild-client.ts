@@ -14,6 +14,7 @@ export type StartSignedDeviceBuildOptions = {
   certificateP12Base64: string;
   certificatePassword?: string;
   provisioningProfileBase64: string;
+  signedUploadUrl?: string;
 };
 
 export type BuildLogEventsOptions = {
@@ -61,6 +62,7 @@ export async function startSignedDeviceBuild({
   certificateP12Base64,
   certificatePassword,
   provisioningProfileBase64,
+  signedUploadUrl,
 }: StartSignedDeviceBuildOptions) {
   const url = new URL(`${limbuildApiUrl}/exec`);
   if (token) {
@@ -75,6 +77,7 @@ export async function startSignedDeviceBuild({
     body: JSON.stringify({
       command: 'xcodebuild',
       xcodebuild: { sdk: 'iphoneos' },
+      ...(signedUploadUrl ? { signedUploadUrl } : {}),
       signing: {
         certificateP12Base64,
         ...(certificatePassword ? { certificatePassword } : {}),

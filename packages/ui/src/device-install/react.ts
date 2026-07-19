@@ -8,15 +8,18 @@ import {
   startDeviceInstall,
   type DeviceInstallLog,
   type DeviceRelayTarget,
+  type InstallSource,
   type RelayClient,
   type StoredPairRecord,
 } from './index';
+import { errorMessage } from '../core/errors';
 
 export type DeviceInstallRelayBusyAction = 'usb' | 'pair' | 'install';
 
 export type UseDeviceInstallRelayOptions = {
   apiUrl?: string;
   token?: string;
+  organizationId?: string;
   log?: DeviceInstallLog;
 };
 
@@ -31,7 +34,7 @@ export type UseDeviceInstallRelayResult = {
   canInstall: boolean;
   requestUSBAccess: () => Promise<DeviceRelayTarget | undefined>;
   pairBrowser: () => Promise<StoredPairRecord | undefined>;
-  startInstallation: () => Promise<RelayClient | undefined>;
+  startInstallation: (installSource: InstallSource) => Promise<RelayClient | undefined>;
   stopRelay: () => void;
   clearError: () => void;
 };
@@ -39,6 +42,7 @@ export type UseDeviceInstallRelayResult = {
 export function useDeviceInstallRelay({
   apiUrl,
   token,
+  organizationId,
   log = noopLog,
 }: UseDeviceInstallRelayOptions): UseDeviceInstallRelayResult {
   const [device, setDevice] = useState<DeviceRelayTarget | undefined>();
@@ -108,8 +112,9 @@ export function useDeviceInstallRelay({
     try {
       await cleanupDeviceAccess();
       const result = await pairDevice({
-        limbuildApiUrl: apiUrl,
+        registryApiUrl: apiUrl,
         token,
+        organizationId,
         log: logRef.current,
         target: device,
       });
@@ -130,33 +135,38 @@ export function useDeviceInstallRelay({
     } finally {
       setBusyAction(undefined);
     }
-  }, [apiUrl, cleanupDeviceAccess, device, token]);
+  }, [apiUrl, cleanupDeviceAccess, device, organizationId, token]);
 
-  const startInstallation = useCallback(async () => {
-    if (!apiUrl || !device || !pairRecord) {
-      throw new Error('Select and pair a USB device before starting installation.');
-    }
-    setBusyAction('install');
-    setError(undefined);
-    try {
-      await cleanupDeviceAccess();
-      relayRef.current = await startDeviceInstall({
-        limbuildApiUrl: apiUrl,
-        token,
-        log: logRef.current,
-        target: device,
-        pairRecord,
-      });
-      logRef.current('Device install started', 'Installation will continue through the connected iPhone.');
-      return relayRef.current;
-    } catch (caught) {
-      await closeDeviceRelayTarget(device, logRef.current);
-      setError(errorMessage(caught));
-      return undefined;
-    } finally {
-      setBusyAction(undefined);
-    }
-  }, [apiUrl, cleanupDeviceAccess, device, pairRecord, token]);
+  const startInstallation = useCallback(
+    async (installSource: InstallSource) => {
+      if (!apiUrl || !device || !pairRecord) {
+        throw new Error('Select and pair a USB device before starting installation.');
+      }
+      setBusyAction('install');
+      setError(undefined);
+      try {
+        await cleanupDeviceAccess();
+        relayRef.current = await startDeviceInstall({
+          registryApiUrl: apiUrl,
+          token,
+          organizationId,
+          log: logRef.current,
+          target: device,
+          pairRecord,
+          installSource,
+        });
+        logRef.current('Device install started', 'Installation will continue through the connected iPhone.');
+        return relayRef.current;
+      } catch (caught) {
+        await closeDeviceRelayTarget(device, logRef.current);
+        setError(errorMessage(caught));
+        return undefined;
+      } finally {
+        setBusyAction(undefined);
+      }
+    },
+    [apiUrl, cleanupDeviceAccess, device, organizationId, pairRecord, token],
+  );
 
   const stopRelay = useCallback(() => {
     void cleanupDeviceAccess();
@@ -182,8 +192,4 @@ export function useDeviceInstallRelay({
 
 function noopLog() {
   // Intentionally empty. Consumers can pass a logger for progress messages.
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

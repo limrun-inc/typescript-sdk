@@ -22,6 +22,7 @@ import {
   type AppleDeveloperPortalTeam,
   type AppleProvisioningRequest,
   type AppleRelayResponse,
+  type AppleRelayWebSocketClient,
 } from '../core/device-install/apple';
 
 export * from '../core/device-install/apple/client';
@@ -36,9 +37,9 @@ export type {
   AppleRelayResponse,
 } from '../core/device-install/apple';
 export {
-  createAppleRelaySession,
-  deleteAppleRelaySession,
+  AppleRelayWebSocketClient,
   fetchAppleAccountSession,
+  openAppleRelayWebSocket,
   proxyPhoneTwoFactorCode,
   proxySrpComplete,
   proxySrpInit,
@@ -48,9 +49,7 @@ export {
 } from '../core/device-install/apple';
 
 export type AppleRelayClientOptions = {
-  apiUrl: string;
-  token?: string;
-  appleSessionId: string;
+  relay: AppleRelayWebSocketClient;
 };
 
 export type AppleTeamScopedOptions = AppleRelayClientOptions & {
@@ -150,15 +149,13 @@ export function requestAppleProvisioning<T = AppleDeveloperPortalResponse>(
   options: RequestAppleProvisioningOptions<T>,
 ): Promise<AppleRelayResponse<T>>;
 export async function requestAppleProvisioning<T = AppleDeveloperPortalResponse>({
-  apiUrl,
-  token,
-  appleSessionId,
+  relay,
   request,
   label = 'Apple Developer Portal request',
   validatePortalResponse = true,
   mapBody,
 }: RequestAppleProvisioningOptions<T>) {
-  const response = await proxyProvisioningRequest<T>(apiUrl, appleSessionId, request, token);
+  const response = await proxyProvisioningRequest<T>(relay, request);
   if (validatePortalResponse) {
     assertAppleDeveloperPortalResponseOK(response.body as AppleDeveloperPortalResponse | undefined, label);
   }

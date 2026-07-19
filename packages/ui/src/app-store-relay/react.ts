@@ -5,8 +5,9 @@ import {
   type AppleIDLoginResult,
   type AppleRelayResponse,
 } from './index';
+import { errorMessage } from '../core/errors';
 
-export type UseAppleIDLoginOptions = Pick<AppleIDLoginInput, 'limbuildApiUrl' | 'token'>;
+export type UseAppleIDLoginOptions = Pick<AppleIDLoginInput, 'registryApiUrl' | 'token' | 'organizationId'>;
 
 export type AppleIDLoginStatus =
   | 'idle'
@@ -29,7 +30,11 @@ export type UseAppleIDLoginResult = {
   close: () => Promise<void>;
 };
 
-export function useAppleIDLogin({ limbuildApiUrl, token }: UseAppleIDLoginOptions): UseAppleIDLoginResult {
+export function useAppleIDLogin({
+  registryApiUrl,
+  token,
+  organizationId,
+}: UseAppleIDLoginOptions): UseAppleIDLoginResult {
   const [status, setStatus] = useState<AppleIDLoginStatus>('idle');
   const [session, setSession] = useState<AppleIDLoginResult | undefined>();
   const [completeResponse, setCompleteResponse] = useState<AppleRelayResponse | undefined>();
@@ -63,8 +68,9 @@ export function useAppleIDLogin({ limbuildApiUrl, token }: UseAppleIDLoginOption
       await sessionRef.current?.close().catch(() => undefined);
       try {
         const next = await startBrowserOwnedAppleIDLogin({
-          limbuildApiUrl,
+          registryApiUrl,
           token,
+          organizationId,
           accountName,
           password,
         });
@@ -82,7 +88,7 @@ export function useAppleIDLogin({ limbuildApiUrl, token }: UseAppleIDLoginOption
         return undefined;
       }
     },
-    [limbuildApiUrl, token],
+    [registryApiUrl, organizationId, token],
   );
 
   const submitTwoFactorCode = useCallback(async (code: string) => {
@@ -122,8 +128,4 @@ export function useAppleIDLogin({ limbuildApiUrl, token }: UseAppleIDLoginOption
     finalize,
     close,
   };
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

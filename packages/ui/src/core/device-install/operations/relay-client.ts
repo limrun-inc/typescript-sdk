@@ -1,5 +1,6 @@
 import type { DeviceHello, DeviceInstallLog, PairRecordPayload } from '../types';
 import { decodeFrame, decodeJson, encodeFrame, encodeJson, RelayMessageType } from './relay-protocol';
+import type { InstallSource } from './operations';
 import {
   openStream,
   receiveStreamData,
@@ -83,12 +84,12 @@ export class RelayClient {
     return recordPromise;
   }
 
-  async startInstall(pairRecord: PairRecordPayload) {
+  async startInstall(pairRecord: PairRecordPayload, installSource: InstallSource) {
     await this.send({
       type: RelayMessageType.StartInstall,
       requestId: 0,
       streamId: 0,
-      payload: encodeJson(pairRecord),
+      payload: encodeJson({ ...pairRecord, ...installSource }),
     });
     this.log('Installation requested');
   }

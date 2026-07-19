@@ -69,7 +69,7 @@ export function useSigning({ apiUrl, token, deviceUDID, deviceName, log, onError
   const [certificatePassword, setCertificatePassword] = useState('');
 
   // Apple ID flow.
-  const appleLogin = useAppleIDLogin({ limbuildApiUrl: apiUrl ?? '', token });
+  const appleLogin = useAppleIDLogin({ registryApiUrl: apiUrl ?? '', token });
   const [appleAccount, setAppleAccount] = useState('');
   const [applePassword, setApplePassword] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
