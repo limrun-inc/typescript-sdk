@@ -4,6 +4,7 @@ import type { DeviceHello, DeviceInstallLog, PairRecordPayload } from '../types'
 import { RelayClient } from './relay-client';
 import { closeUsbmuxSession, createUsbmuxSession, type UsbmuxSession } from './usbmux';
 import { claimUsbmux, findUsbmuxCandidates, requestAppleDevice, type UsbmuxCandidate } from './webusb';
+import { errorMessage } from '../../errors';
 
 export type DeviceRelayTarget = {
   device: USBDevice;
@@ -208,10 +209,6 @@ export function deviceRelayWebSocketUrl(registryApiUrl: string, token?: string, 
     url.searchParams.set('organization', organizationId);
   }
   return url.toString();
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 async function resetUSBDevice(target: DeviceRelayTarget) {

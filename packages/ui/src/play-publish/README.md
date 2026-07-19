@@ -29,7 +29,8 @@ const play = usePlaystorePublish({
   googleClientId: GOOGLE_OAUTH_CLIENT_ID,
 });
 
-// On dialog open, warm the sign-in script so the click stays popup-safe:
+// On dialog open, warm the sign-in script so the click stays popup-safe.
+// Optionally await the returned promise (true = ready) to gate the button:
 play.preloadGoogle();
 
 // Button handlers:

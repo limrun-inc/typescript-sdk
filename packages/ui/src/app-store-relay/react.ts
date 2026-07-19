@@ -5,6 +5,7 @@ import {
   type AppleIDLoginResult,
   type AppleRelayResponse,
 } from './index';
+import { errorMessage } from '../core/errors';
 
 export type UseAppleIDLoginOptions = Pick<AppleIDLoginInput, 'registryApiUrl' | 'token' | 'organizationId'>;
 
@@ -127,8 +128,4 @@ export function useAppleIDLogin({
     finalize,
     close,
   };
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

@@ -29,6 +29,7 @@ import {
 import { useDeviceBuild } from '../../device-build/react';
 import { useDeviceInstallRelay } from '../react';
 import './demo.css';
+import { errorMessage } from '../../core/errors';
 
 type ActivityLine = {
   id: number;
@@ -1051,10 +1052,6 @@ function useLocalStorage(key: string, initialValue: string) {
     localStorage.setItem(key, value);
   }, [key, value]);
   return [value, setValue] as const;
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 createRoot(document.getElementById('root')!).render(

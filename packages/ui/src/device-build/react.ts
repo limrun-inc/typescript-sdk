@@ -8,6 +8,7 @@ import {
   type IOSOTAInstall,
   type StoredSigningAssets,
 } from './index';
+import { errorMessage } from '../core/errors';
 
 export type UseDeviceBuildOptions = {
   apiUrl?: string;
@@ -126,8 +127,4 @@ export function useDeviceBuild({
     startBuild,
     reset,
   };
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
