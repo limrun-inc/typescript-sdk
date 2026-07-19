@@ -124,12 +124,15 @@ export function usePlaystorePublish({
       // attempt's success next to an error state.
       setVersionCode(undefined);
       try {
+        // Hook-owned fields spread last: excess-property checking does not
+        // protect wider-typed request objects from smuggling in same-named
+        // credential fields.
         const result = await publishToPlaystore({
+          ...request,
           registryApiUrl,
           token,
           organizationId,
           accessToken,
-          ...request,
         });
         if (generation === generationRef.current) {
           setVersionCode(result.versionCode);
