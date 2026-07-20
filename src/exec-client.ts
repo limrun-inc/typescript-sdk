@@ -173,7 +173,9 @@ export type TestflightUploadConfig = {
    * How long the server watches for App Store Connect's processing verdict
    * after the upload. A FAILED verdict within the window fails the build;
    * expiry without a verdict succeeds with the build still processing on
-   * Apple's side. 0 skips the watch. Defaults to 120.
+   * Apple's side. Defaults to 0, which returns as soon as the upload
+   * commits without watching the verdict (processing routinely takes many
+   * minutes).
    */
   waitTimeoutSeconds?: number;
 };
@@ -379,7 +381,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     // build is not force-failed client-side while the server still succeeds.
     let timeoutMs = 3600 * 1000;
     if (request.command === 'xcodebuild' && request.testflight) {
-      timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 120) + 900) * 1000;
+      timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 0) + 900) * 1000;
     } else if (request.command === 'run') {
       timeoutMs = (Math.max(1, request.timeoutSeconds ?? 3600) + 60) * 1000;
     }

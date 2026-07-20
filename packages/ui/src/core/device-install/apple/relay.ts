@@ -15,6 +15,19 @@ export type AppleProvisioningRequest = {
   payload?: unknown;
 };
 
+/**
+ * A session-authenticated App Store Connect request proxied by the relay.
+ * Unlike provisioning requests, payloads pass through as JSON and GET
+ * parameters go into an explicit query map because the App Store Connect
+ * API uses bracketed JSON:API keys like fields[apiKeys].
+ */
+export type AppStoreConnectRequest = {
+  method?: 'GET' | 'POST';
+  path: string;
+  query?: Record<string, string>;
+  payload?: unknown;
+};
+
 type AppleRelayWebSocketMessage<T = unknown> = {
   id: string;
   ok: boolean;
@@ -152,6 +165,13 @@ export async function proxyProvisioningRequest<T = unknown>(
   request: AppleProvisioningRequest,
 ) {
   return relay.request<T>('provisioning', request);
+}
+
+export async function proxyAppStoreConnectRequest<T = unknown>(
+  relay: AppleRelayWebSocketClient,
+  request: AppStoreConnectRequest,
+) {
+  return relay.request<T>('appstoreconnect', request);
 }
 
 function normalizeAppleProxyResponse<T>(response: AppleRelayResponse<T>) {
