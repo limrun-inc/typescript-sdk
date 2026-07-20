@@ -29,27 +29,43 @@ export interface GradleBuildFlagValues {
   'save-key'?: boolean;
 }
 
-const byoSigningFlags = ['keystore', 'keystore-password', 'key-alias', 'key-password'] as const;
-
 /**
  * Validates the signing flag combinations. Separate from the options
  * mapping because signing material is resolved asynchronously (file read
  * or escrow round-trip) after validation, while the mapper stays pure.
+ *
+ * The bring-your-own group is anchored on --keystore alone: the password
+ * flags are env-backed (LIM_KEYSTORE_PASSWORD, LIM_KEY_PASSWORD), so an
+ * ambient export must not drag a plain or --sign build into BYO
+ * validation. Presence checks use undefined, not truthiness: empty
+ * keystore passwords are legal.
  */
 export function validateSigningFlags(flags: GradleBuildFlagValues): void {
-  const byoGiven = byoSigningFlags.filter((f) => flags[f]);
-  if (flags.sign && byoGiven.length > 0) {
+  if (flags.sign && flags.keystore) {
     throw new Error('Use either --sign (escrowed key) or --keystore (bring your own key), not both.');
   }
-  if (byoGiven.length > 0 && byoGiven.length < byoSigningFlags.length) {
-    const missing = byoSigningFlags.filter((f) => !flags[f]);
-    throw new Error(`Signing with your own key requires ${missing.map((f) => `--${f}`).join(', ')} as well.`);
+  if (flags.keystore) {
+    const missing = (['keystore-password', 'key-alias', 'key-password'] as const).filter(
+      (f) => flags[f] === undefined,
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Signing with your own key requires ${missing.map((f) => `--${f}`).join(', ')} as well.`,
+      );
+    }
+  } else if (flags['key-alias'] !== undefined) {
+    throw new Error('--key-alias requires --keystore.');
   }
-  if (flags['save-key'] && byoGiven.length === 0) {
+  if (flags['save-key'] && !flags.keystore) {
     throw new Error('--save-key escrows a provided key and requires the --keystore flags.');
   }
   if (flags['application-id'] && !flags.sign && !flags['save-key']) {
     throw new Error('--application-id only applies to --sign or --save-key.');
+  }
+  if (flags.sign && flags.task?.length && !flags.task.some((t) => t.toLowerCase().includes('bundle'))) {
+    throw new Error(
+      '--sign produces a Play-ready signed AAB; include a bundle task (e.g. bundleRelease) in --task or omit --task.',
+    );
   }
 }
 

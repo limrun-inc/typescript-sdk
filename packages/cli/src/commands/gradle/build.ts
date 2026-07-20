@@ -126,9 +126,9 @@ export default class GradleBuild extends BaseCommand {
       if (flags.keystore) {
         options.signing = readProvidedSigning({
           keystore: flags.keystore,
-          keystorePassword: flags['keystore-password']!,
-          keyAlias: flags['key-alias']!,
-          keyPassword: flags['key-password']!,
+          keystorePassword: flags['keystore-password'],
+          keyAlias: flags['key-alias'],
+          keyPassword: flags['key-password'],
         });
       }
     } catch (err) {
@@ -140,23 +140,14 @@ export default class GradleBuild extends BaseCommand {
       // same reason flag validation does: a failure here must not leave a
       // freshly created billed instance behind.
       if (applicationId && flags['save-key'] && options.signing) {
-        const saved = await saveProvidedKey(
-          this.apiCredentials.apiEndpoint,
-          this.apiCredentials.apiKey,
-          applicationId,
-          options.signing,
-        );
+        const saved = await saveProvidedKey(this.apiCredentials, applicationId, options.signing);
         this.info(
           saved.created ?
             `Escrowed the provided keystore as the organization's upload key for ${applicationId}.`
           : `The provided keystore is already escrowed for ${applicationId}.`,
         );
       } else if (applicationId && flags.sign) {
-        const { signing, created } = await resolveEscrowedSigning(
-          this.apiCredentials.apiEndpoint,
-          this.apiCredentials.apiKey,
-          applicationId,
-        );
+        const { signing, created } = await resolveEscrowedSigning(this.apiCredentials, applicationId);
         options.signing = signing;
         this.info(
           `Signing with the organization's upload key for ${applicationId} (${
@@ -204,8 +195,14 @@ export default class GradleBuild extends BaseCommand {
       }
 
       this.output(`\nBuild succeeded (exit code ${result.exitCode})`);
-      if (flags.upload && options.signing) {
-        this.output(`Uploaded the signed artifact as asset '${flags.upload}'.`);
+      // Signing only yields a Play-ready AAB when a bundle task ran (no
+      // explicit tasks means the server defaulted to bundleRelease); a BYO
+      // keystore with an explicit assemble task still produces an APK.
+      const builtSignedBundle =
+        options.signing &&
+        (!flags.task?.length || flags.task.some((t) => t.toLowerCase().includes('bundle')));
+      if (flags.upload && builtSignedBundle) {
+        this.output(`Uploaded the signed app bundle as asset '${flags.upload}'.`);
       } else if (flags.upload) {
         this.output(`Uploaded APK as asset '${flags.upload}'.`);
         this.output(`Run it with: lim android create --install-asset=${flags.upload}`);

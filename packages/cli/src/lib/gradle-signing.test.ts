@@ -49,12 +49,22 @@ describe('resolveApplicationId', () => {
     expect(resolveApplicationId({ syncPath: dir, projectPath: 'android' })).toBe('com.kts');
   });
 
+  it('finds the conventional android/ layout without --project-path (bare React Native)', () => {
+    fs.mkdirSync(path.join(dir, 'android/app'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'android/app/build.gradle'),
+      'android {\n  defaultConfig {\n    applicationId "com.bare.rn"\n  }\n}\n',
+    );
+    expect(resolveApplicationId({ syncPath: dir })).toBe('com.bare.rn');
+  });
+
   it('asks for --application-id when nothing is detectable', () => {
     expect(() => resolveApplicationId({ syncPath: dir })).toThrow(/--application-id/);
   });
 });
 
 describe('saveProvidedKey', () => {
+  const creds = { apiEndpoint: 'https://api', apiKey: 'key' };
   const provided = {
     keystoreBase64: 'a2V5c3RvcmU=',
     keystorePassword: 'store',
@@ -67,16 +77,16 @@ describe('saveProvidedKey', () => {
   it('escrows a new key', async () => {
     jest.spyOn(backend, 'whoAmI').mockResolvedValue({ organizationId: 'org_1' });
     const put = jest.spyOn(backend, 'putSecret').mockResolvedValue({ data: { ...provided }, created: true });
-    await expect(saveProvidedKey('https://api', 'key', 'com.x', provided)).resolves.toEqual({
+    await expect(saveProvidedKey(creds, 'com.x', provided)).resolves.toEqual({
       created: true,
     });
-    expect(put).toHaveBeenCalledWith('https://api', 'key', 'org_1', 'androidSigningKey', 'com.x', provided);
+    expect(put).toHaveBeenCalledWith(creds, 'org_1', 'androidSigningKey', 'com.x', provided);
   });
 
   it('accepts an identical already-escrowed key', async () => {
     jest.spyOn(backend, 'whoAmI').mockResolvedValue({ organizationId: 'org_1' });
     jest.spyOn(backend, 'putSecret').mockResolvedValue({ data: { ...provided }, created: false });
-    await expect(saveProvidedKey('https://api', 'key', 'com.x', provided)).resolves.toEqual({
+    await expect(saveProvidedKey(creds, 'com.x', provided)).resolves.toEqual({
       created: false,
     });
   });
@@ -86,7 +96,7 @@ describe('saveProvidedKey', () => {
     jest
       .spyOn(backend, 'putSecret')
       .mockResolvedValue({ data: { ...provided, keystoreBase64: 'b3RoZXI=' }, created: false });
-    await expect(saveProvidedKey('https://api', 'key', 'com.x', provided)).rejects.toThrow(
+    await expect(saveProvidedKey(creds, 'com.x', provided)).rejects.toThrow(
       /already has a different upload key/,
     );
   });
