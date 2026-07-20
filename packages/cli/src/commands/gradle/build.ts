@@ -3,6 +3,12 @@ import { type GradleBuildOptions } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { gradleAndroidABIs, gradleBuildOptionsFromFlags } from '../../lib/gradle-build-options';
+import {
+  readProvidedSigning,
+  resolveApplicationId,
+  resolveEscrowedSigning,
+  saveProvidedKey,
+} from '../../lib/gradle-signing';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 
@@ -18,6 +24,8 @@ export default class GradleBuild extends BaseCommand {
     '<%= config.bin %> gradle build --task bundleRelease',
     '<%= config.bin %> gradle build --id <gradle-instance-ID> --project-path android',
     '<%= config.bin %> gradle build ./my-monorepo --expo-app-dir apps/mobile',
+    '<%= config.bin %> gradle build --sign --upload myapp.aab',
+    '<%= config.bin %> gradle build --keystore upload.jks --keystore-password *** --key-alias upload --key-password *** --save-key',
   ];
 
   static args = {
@@ -54,6 +62,33 @@ export default class GradleBuild extends BaseCommand {
     'signed-upload-url': Flags.string({
       description: 'Presigned URL to upload the resulting APK to.',
     }),
+    sign: Flags.boolean({
+      description:
+        "Sign the release build with the organization's escrowed upload key for this app, generating and escrowing one on first use. Makes bundleRelease the default task.",
+      default: false,
+    }),
+    'application-id': Flags.string({
+      description:
+        'Android application ID naming the escrowed key. Defaults to the value detected from app.json or app/build.gradle.',
+    }),
+    keystore: Flags.string({
+      description:
+        'Path to your own upload keystore for release signing. Requires --keystore-password, --key-alias and --key-password.',
+    }),
+    'keystore-password': Flags.string({
+      description: 'Password of the --keystore file.',
+      env: 'LIM_KEYSTORE_PASSWORD',
+    }),
+    'key-alias': Flags.string({ description: 'Alias of the signing key inside the --keystore file.' }),
+    'key-password': Flags.string({
+      description: 'Password of the key behind --key-alias.',
+      env: 'LIM_KEY_PASSWORD',
+    }),
+    'save-key': Flags.boolean({
+      description:
+        "Escrow the provided --keystore as the organization's upload key for this app, so later builds can use --sign. Fails if a different key is already escrowed.",
+      default: false,
+    }),
     'basis-cache-dir': Flags.string({
       description: 'Directory for the client-side folder-sync cache.',
     }),
@@ -76,16 +111,62 @@ export default class GradleBuild extends BaseCommand {
     // auto-create a billed instance, which a doomed flag combination must
     // never reach.
     let options: GradleBuildOptions;
+    let applicationId: string | undefined;
+    const syncPath = args.path ?? process.cwd();
     try {
       options = gradleBuildOptionsFromFlags(flags);
+      if (flags.sign || flags['save-key']) {
+        applicationId = resolveApplicationId({
+          explicit: flags['application-id'],
+          syncPath,
+          expoAppDir: flags['expo-app-dir'],
+          projectPath: flags['project-path'],
+        });
+      }
+      if (flags.keystore) {
+        options.signing = readProvidedSigning({
+          keystore: flags.keystore,
+          keystorePassword: flags['keystore-password']!,
+          keyAlias: flags['key-alias']!,
+          keyPassword: flags['key-password']!,
+        });
+      }
     } catch (err) {
       return this.error(err instanceof Error ? err.message : String(err));
     }
 
     await this.withAuth(async () => {
+      // Escrow round-trips run BEFORE resolveGradleTargetOrCreate for the
+      // same reason flag validation does: a failure here must not leave a
+      // freshly created billed instance behind.
+      if (applicationId && flags['save-key'] && options.signing) {
+        const saved = await saveProvidedKey(
+          this.apiCredentials.apiEndpoint,
+          this.apiCredentials.apiKey,
+          applicationId,
+          options.signing,
+        );
+        this.info(
+          saved.created ?
+            `Escrowed the provided keystore as the organization's upload key for ${applicationId}.`
+          : `The provided keystore is already escrowed for ${applicationId}.`,
+        );
+      } else if (applicationId && flags.sign) {
+        const { signing, created } = await resolveEscrowedSigning(
+          this.apiCredentials.apiEndpoint,
+          this.apiCredentials.apiKey,
+          applicationId,
+        );
+        options.signing = signing;
+        this.info(
+          `Signing with the organization's upload key for ${applicationId} (${
+            created ? 'newly generated' : 'existing'
+          }).`,
+        );
+      }
+
       const target = await this.resolveGradleTargetOrCreate(flags.id);
       const id = target.id;
-      const syncPath = args.path ?? process.cwd();
       const gradleClient = await this.resolveGradleClient(target);
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
@@ -123,7 +204,9 @@ export default class GradleBuild extends BaseCommand {
       }
 
       this.output(`\nBuild succeeded (exit code ${result.exitCode})`);
-      if (flags.upload) {
+      if (flags.upload && options.signing) {
+        this.output(`Uploaded the signed artifact as asset '${flags.upload}'.`);
+      } else if (flags.upload) {
         this.output(`Uploaded APK as asset '${flags.upload}'.`);
         this.output(`Run it with: lim android create --install-asset=${flags.upload}`);
       }

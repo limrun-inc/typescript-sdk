@@ -10,10 +10,13 @@
 
 export const APPLE_CERTIFICATE_SECRET_TYPE = 'appleCertificate';
 export const APPLE_PROVISIONING_PROFILE_SECRET_TYPE = 'appleProvisioningProfile';
+/** Android upload keystore; escrowed by the CLI's `lim gradle build --sign`. */
+export const ANDROID_SIGNING_KEY_SECRET_TYPE = 'androidSigningKey';
 
 export type SigningSecretType =
   | typeof APPLE_CERTIFICATE_SECRET_TYPE
-  | typeof APPLE_PROVISIONING_PROFILE_SECRET_TYPE;
+  | typeof APPLE_PROVISIONING_PROFILE_SECRET_TYPE
+  | typeof ANDROID_SIGNING_KEY_SECRET_TYPE;
 
 export type SigningSecretMetadata = {
   type: string;
