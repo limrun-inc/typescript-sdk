@@ -68,6 +68,21 @@ export type GradleReactNativeConfig = {
   architectures?: GradleAndroidABI[];
 };
 
+/**
+ * Release signing config injected via Gradle's android.injected.signing.*
+ * properties. Presence changes the server's default task to bundleRelease
+ * and extends artifact discovery to build/outputs/bundle. The keystore and
+ * passwords live only for the build's duration and never appear in
+ * streamed output.
+ */
+export type GradleSigningConfig = {
+  /** Base64-encoded PKCS12 or JKS upload keystore. */
+  keystoreBase64: string;
+  keystorePassword: string;
+  keyAlias: string;
+  keyPassword: string;
+};
+
 export type GradleBuildExecRequest = {
   command: 'gradlebuild';
   /** Gradle tasks to run. Omit for the server default (assembleDebug). */
@@ -75,6 +90,7 @@ export type GradleBuildExecRequest = {
   /** Relative path to the Gradle root when auto-discovery is ambiguous. */
   projectPath?: string;
   reactNative?: GradleReactNativeConfig;
+  signing?: GradleSigningConfig;
   signedUploadUrl?: string;
   additionalMetadata?: {
     signedDownloadUrl?: string;
