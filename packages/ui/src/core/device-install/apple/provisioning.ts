@@ -120,24 +120,28 @@ export function findDistributionCertificatesRequest(teamID = '') {
   });
 }
 
-export function findDevelopmentProfilesRequest({
-  bundleID,
-  teamID = '',
-}: Pick<AppleProvisioningContext, 'bundleID' | 'teamID'>) {
+// The profile list requests carry no `search` parameter: Apple's
+// listProvisioningProfiles.action validates it against profile names and
+// rejects bundle-id-shaped values outright ("An invalid value ... was
+// provided for the parameter 'search'"). Like listAppIds.action, the full
+// paginated list is fetched and any bundle ID filtering happens client-side.
+export function findDevelopmentProfilesRequest(teamID = '') {
   return pagedRequest('/account/ios/profile/listProvisioningProfiles.action', teamID, {
-    search: bundleID,
     sort: 'name=asc',
   });
 }
 
-export function findAdHocProfilesRequest({
-  bundleID,
-  teamID = '',
-}: Pick<AppleProvisioningContext, 'bundleID' | 'teamID'>) {
+export function findAdHocProfilesRequest(teamID = '') {
   return pagedRequest('/account/ios/profile/listProvisioningProfiles.action', teamID, {
-    search: bundleID,
     sort: 'name=asc',
     distributionType: 'adhoc',
+  });
+}
+
+export function findAppStoreProfilesRequest(teamID = '') {
+  return pagedRequest('/account/ios/profile/listProvisioningProfiles.action', teamID, {
+    sort: 'name=asc',
+    distributionType: 'store',
   });
 }
 
@@ -275,6 +279,34 @@ export function createAdHocProfileRequest({
       appIdId: appIDID,
       deviceIds: deviceIDs,
       distributionType: 'adhoc',
+      subPlatform: 'ios',
+    },
+  } satisfies AppleProvisioningRequest;
+}
+
+/**
+ * App Store distribution profiles bind no devices, and the name is required
+ * because implementors brand profiles themselves; there is no default.
+ */
+export function createAppStoreProfileRequest({
+  teamID = '',
+  appIDID,
+  certificateID,
+  name,
+}: Pick<AppleProvisioningContext, 'teamID'> & {
+  appIDID: string;
+  certificateID: string;
+  name: string;
+}) {
+  return {
+    method: 'POST',
+    path: '/account/ios/profile/createProvisioningProfile.action',
+    payload: {
+      teamId: teamID,
+      provisioningProfileName: name,
+      certificateIds: [certificateID],
+      appIdId: appIDID,
+      distributionType: 'store',
       subPlatform: 'ios',
     },
   } satisfies AppleProvisioningRequest;

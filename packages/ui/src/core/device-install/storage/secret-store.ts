@@ -10,12 +10,14 @@
 
 export const APPLE_CERTIFICATE_SECRET_TYPE = 'appleCertificate';
 export const APPLE_PROVISIONING_PROFILE_SECRET_TYPE = 'appleProvisioningProfile';
+export const APP_STORE_CONNECT_API_KEY_SECRET_TYPE = 'appStoreConnectApiKey';
 /** Android upload keystore; escrowed by the CLI's `lim gradle build --sign`. */
 export const ANDROID_SIGNING_KEY_SECRET_TYPE = 'androidSigningKey';
 
 export type SigningSecretType =
   | typeof APPLE_CERTIFICATE_SECRET_TYPE
   | typeof APPLE_PROVISIONING_PROFILE_SECRET_TYPE
+  | typeof APP_STORE_CONNECT_API_KEY_SECRET_TYPE
   | typeof ANDROID_SIGNING_KEY_SECRET_TYPE;
 
 export type SigningSecretMetadata = {
@@ -97,6 +99,24 @@ export type AppleProvisioningProfileSecretData = {
   expirationDate?: string;
 };
 
+/**
+ * Data payload of an appStoreConnectApiKey secret: the private half of an
+ * App Store Connect API key plus the identifiers needed to sign JWTs with
+ * it. Apple serves the private key exactly once, so the stored copy is the
+ * only one.
+ */
+export type AppStoreConnectApiKeySecretData = {
+  /** Base64 of the .p8 private key PEM. */
+  privateKeyP8Base64: string;
+  /** Apple's key ID, e.g. 2X9R4HXF34. */
+  keyId: string;
+  /** Issuer ID for team keys. Absent for individual keys. */
+  issuerId?: string;
+  nickname?: string;
+  teamID?: string;
+  expirationDate?: string;
+};
+
 function compactData(data: Record<string, string | undefined>): SigningSecretData {
   const result: SigningSecretData = {};
   for (const [key, value] of Object.entries(data)) {
@@ -125,6 +145,18 @@ export async function putAppleProvisioningProfileSecret(
   data: AppleProvisioningProfileSecretData,
 ) {
   return store.put(APPLE_PROVISIONING_PROFILE_SECRET_TYPE, name, compactData(data));
+}
+
+/**
+ * Stores an App Store Connect API key, conventionally named
+ * `${teamID}/APP_STORE_CONNECT_API_KEY`: one shared key per team.
+ */
+export async function putAppStoreConnectApiKeySecret(
+  store: SigningSecretStore,
+  name: string,
+  data: AppStoreConnectApiKeySecretData,
+) {
+  return store.put(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, name, compactData(data));
 }
 
 export type LimrunSecretStoreOptions = {
@@ -207,7 +239,9 @@ export function createLimrunSecretStore(options: LimrunSecretStoreOptions): Sign
       return result
         .filter(
           (s) =>
-            s.type === APPLE_CERTIFICATE_SECRET_TYPE || s.type === APPLE_PROVISIONING_PROFILE_SECRET_TYPE,
+            s.type === APPLE_CERTIFICATE_SECRET_TYPE ||
+            s.type === APPLE_PROVISIONING_PROFILE_SECRET_TYPE ||
+            s.type === APP_STORE_CONNECT_API_KEY_SECRET_TYPE,
         )
         .map((s) => ({ type: s.type, name: s.name, createdAt: s.createdAt }));
     },

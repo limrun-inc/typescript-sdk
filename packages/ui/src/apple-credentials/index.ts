@@ -7,14 +7,20 @@
  */
 import {
   createAppleCertificate,
+  createAppStoreConnectApiKey,
   downloadAppleCertificate,
   downloadAppleProfile,
+  downloadAppStoreConnectApiKeyPrivateKey,
   exportAppleCertificateP12,
+  fetchAppStoreConnectIssuerId,
   generateAppleSigningKeyAndCSR,
   listAppleCertificates,
   listAppleProfiles,
+  listAppStoreConnectApiKeys,
+  switchAppStoreConnectProvider,
   type AppleCertificateKind,
   type AppleProfileKind,
+  type AppStoreConnectApiKeyRole,
 } from '../app-store-relay';
 import type { AppleRelayWebSocketClient } from '../core/device-install/apple';
 import {
@@ -22,25 +28,31 @@ import {
   parseProvisioningProfileBase64,
 } from '../core/device-install/storage/browser-storage';
 import {
+  APP_STORE_CONNECT_API_KEY_SECRET_TYPE,
   APPLE_CERTIFICATE_SECRET_TYPE,
   putAppleCertificateSecret,
   putAppleProvisioningProfileSecret,
+  putAppStoreConnectApiKeySecret,
   type AppleCertificateSecretData,
   type AppleCertificateType,
+  type AppStoreConnectApiKeySecretData,
   type SigningSecret,
   type SigningSecretStore,
 } from '../core/device-install/storage/secret-store';
 
 export {
+  APP_STORE_CONNECT_API_KEY_SECRET_TYPE,
   APPLE_CERTIFICATE_SECRET_TYPE,
   APPLE_PROVISIONING_PROFILE_SECRET_TYPE,
   createBrowserSecretStore,
   createLimrunSecretStore,
   putAppleCertificateSecret,
   putAppleProvisioningProfileSecret,
+  putAppStoreConnectApiKeySecret,
   type AppleCertificateSecretData,
   type AppleCertificateType,
   type AppleProvisioningProfileSecretData,
+  type AppStoreConnectApiKeySecretData,
   type LimrunSecretStoreOptions,
   type SigningSecret,
   type SigningSecretData,
@@ -230,6 +242,134 @@ export async function saveAppleProfileSecret({
   });
   log('Apple provisioning profile stored', name);
   return secret;
+}
+
+/**
+ * Conventional secret name of a team's App Store Connect API key: one
+ * shared key per team.
+ */
+export function appStoreConnectApiKeySecretName(teamId: string) {
+  return `${teamId}/APP_STORE_CONNECT_API_KEY`;
+}
+
+export type EnsureAppStoreConnectApiKeyInput = {
+  relay: AppleRelayWebSocketClient;
+  teamId: string;
+  /**
+   * Numeric provider ID of the team from the Apple team list. When given,
+   * the App Store Connect session is switched to this provider first;
+   * required for accounts that belong to multiple teams.
+   */
+  providerId?: string | number;
+  secretStore: SigningSecretStore;
+  /** Display name for a newly minted key. Required; there is no default. */
+  nickname: string;
+  /** Roles of a newly minted key. Defaults to APP_MANAGER. */
+  roles?: AppStoreConnectApiKeyRole[];
+  log?: (message: string, detail?: string) => void;
+};
+
+export type EnsureAppStoreConnectApiKeyResult = {
+  secret: SigningSecret;
+  keyId: string;
+  /** True when a new key was minted instead of reusing the stored one. */
+  created: boolean;
+};
+
+/**
+ * Returns a usable App Store Connect API key secret for the team, reusing
+ * the stored one when its key is still active and minting a new one
+ * otherwise. Apple serves a key's private half exactly once (at creation
+ * time through the sparse fieldset download), so reuse of the stored .p8
+ * is strongly preferred.
+ *
+ * The session user must be a team Admin to list or create keys.
+ */
+export async function ensureAppStoreConnectApiKeySecret({
+  relay,
+  teamId,
+  providerId,
+  secretStore,
+  nickname,
+  roles,
+  log = () => {},
+}: EnsureAppStoreConnectApiKeyInput): Promise<EnsureAppStoreConnectApiKeyResult> {
+  if (!nickname) {
+    throw new Error('A nickname is required to ensure an App Store Connect API key.');
+  }
+  if (providerId !== undefined) {
+    await switchAppStoreConnectProvider({ relay, providerId });
+  }
+  const secretName = appStoreConnectApiKeySecretName(teamId);
+  // Listing also primes the session's CSRF context, which Apple requires
+  // on the creation POST below.
+  const current = await listAppStoreConnectApiKeys({ relay });
+
+  const stored = await secretStore.get(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, secretName);
+  const storedKeyId = stringField(stored?.data, 'keyId');
+  if (stored && storedKeyId && stored.data.privateKeyP8Base64) {
+    const matched = current.find((item) => item.id === storedKeyId && !keyRevoked(item.attributes));
+    if (matched) {
+      // A team key without its issuer ID signs JWTs Apple rejects with
+      // 401 NOT_AUTHORIZED; backfill it from the session before reuse.
+      if (!stringField(stored.data, 'issuerId')) {
+        const issuerId = await fetchAppStoreConnectIssuerId(relay);
+        if (issuerId) {
+          const repaired = await putAppStoreConnectApiKeySecret(secretStore, secretName, {
+            ...(stored.data as AppStoreConnectApiKeySecretData),
+            issuerId,
+          });
+          log('Backfilled the App Store Connect API key issuer ID', issuerId);
+          return { secret: repaired, keyId: storedKeyId, created: false };
+        }
+      }
+      log('Reusing stored App Store Connect API key', storedKeyId);
+      return { secret: stored, keyId: storedKeyId, created: false };
+    }
+    log('Stored App Store Connect API key is no longer active', 'Minting a new one.');
+  }
+
+  const created = await createAppStoreConnectApiKey({ relay, nickname, roles });
+  const keyId = created.id!;
+  const downloaded = await downloadAppStoreConnectApiKeyPrivateKey({ relay, keyId });
+  const data: AppStoreConnectApiKeySecretData = {
+    privateKeyP8Base64: base64FromText(downloaded.privateKeyPem),
+    keyId,
+    issuerId: downloaded.issuerId,
+    nickname,
+    teamID: teamId,
+  };
+
+  let secret: SigningSecret;
+  try {
+    secret = await putAppStoreConnectApiKeySecret(secretStore, secretName, data);
+  } catch (error) {
+    // Apple never serves the private key again; once this throw unwinds
+    // the downloaded copy is gone and the portal key is unusable.
+    throw new Error(
+      `App Store Connect API key ${keyId} was created but saving its private key to the secret ` +
+        `store failed: ${errorText(error)}. The key cannot be downloaded again; revoke key ` +
+        `${keyId} in App Store Connect before retrying, or the retry will mint another key.`,
+    );
+  }
+  log('App Store Connect API key stored', keyId);
+  return { secret, keyId, created: true };
+}
+
+function keyRevoked(attributes: Record<string, unknown> | undefined) {
+  if (!attributes) return false;
+  if (attributes.isActive === false) return true;
+  const revokingDate = attributes.revokingDate ?? attributes.revocationDate;
+  return typeof revokingDate === 'string' && revokingDate !== '';
+}
+
+function base64FromText(text: string) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
 }
 
 export type ListTeamProfilesInput = {

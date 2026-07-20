@@ -3,9 +3,11 @@
 import { describe, expect, test } from 'vitest';
 import {
   createAdHocProfileRequest,
+  createAppStoreProfileRequest,
   createDevelopmentProfileRequest,
   downloadDistributionCertificateRequest,
   findAdHocProfilesRequest,
+  findAppStoreProfilesRequest,
   findDevelopmentCertificatesRequest,
   findDistributionCertificatesRequest,
   submitDistributionCSRRequest,
@@ -74,11 +76,41 @@ describe('Apple provisioning request helpers', () => {
     });
   });
 
-  test('filters Ad Hoc profile list requests by Ad Hoc distribution type', () => {
-    expect(findAdHocProfilesRequest({ bundleID: 'com.example.app', teamID: 'TEAM' }).payload).toMatchObject({
+  test('filters Ad Hoc profile list requests by Ad Hoc distribution type without a search parameter', () => {
+    const payload = findAdHocProfilesRequest('TEAM').payload;
+    expect(payload).toMatchObject({
       teamId: 'TEAM',
-      search: 'com.example.app',
       distributionType: 'adhoc',
     });
+    // Apple rejects bundle-id-shaped values for `search`; filtering is client-side.
+    expect(payload).not.toHaveProperty('search');
+  });
+
+  test('builds App Store profile payloads without devices and with the caller-provided name', () => {
+    expect(
+      createAppStoreProfileRequest({
+        teamID: 'TEAM',
+        appIDID: 'APP',
+        certificateID: 'CERT',
+        name: 'Acme App Store com.example.app',
+      }).payload,
+    ).toEqual({
+      teamId: 'TEAM',
+      provisioningProfileName: 'Acme App Store com.example.app',
+      certificateIds: ['CERT'],
+      appIdId: 'APP',
+      distributionType: 'store',
+      subPlatform: 'ios',
+    });
+  });
+
+  test('filters App Store profile list requests by store distribution type without a search parameter', () => {
+    const payload = findAppStoreProfilesRequest('TEAM').payload;
+    expect(payload).toMatchObject({
+      teamId: 'TEAM',
+      distributionType: 'store',
+    });
+    // Apple rejects bundle-id-shaped values for `search`; filtering is client-side.
+    expect(payload).not.toHaveProperty('search');
   });
 });

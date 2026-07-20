@@ -148,7 +148,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     'asc-wait-timeout': Flags.integer({
       description:
-        "How many seconds to watch for App Store Connect's processing verdict after the TestFlight upload. A rejection within the window fails the build; expiry without a verdict succeeds with the build still processing. 0 skips the watch. Defaults to 120, max 1800.",
+        "How many seconds to watch for App Store Connect's processing verdict after the TestFlight upload. A rejection within the window fails the build; expiry without a verdict succeeds with the build still processing. Defaults to 0 (return as soon as the upload commits; processing routinely takes many minutes), max 1800.",
       min: 0,
       max: 1800,
     }),
