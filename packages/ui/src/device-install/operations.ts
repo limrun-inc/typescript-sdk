@@ -1,10 +1,10 @@
 /// <reference path="./webusb-dom.d.ts" />
 
-import type { DeviceHello, DeviceInstallLog, PairRecordPayload } from '../types';
+import type { DeviceHello, DeviceInstallLog, PairRecordPayload } from './types';
 import { RelayClient } from './relay-client';
 import { closeUsbmuxSession, createUsbmuxSession, type UsbmuxSession } from './usbmux';
 import { claimUsbmux, findUsbmuxCandidates, requestAppleDevice, type UsbmuxCandidate } from './webusb';
-import { errorMessage } from '../../errors';
+import { errorMessage } from '../core/errors';
 
 export type DeviceRelayTarget = {
   device: USBDevice;
@@ -15,14 +15,14 @@ export type DeviceRelayTarget = {
 };
 
 export type RequestUSBAccessOptions = {
-  log: DeviceInstallLog;
+  log?: DeviceInstallLog;
 };
 
-export type StartPairingRelayOptions = {
+export type PairDeviceOptions = {
   registryApiUrl: string;
   token?: string;
   organizationId?: string;
-  log: DeviceInstallLog;
+  log?: DeviceInstallLog;
   target: DeviceRelayTarget;
 };
 
@@ -31,12 +31,14 @@ export type InstallSource =
   | { assetId?: never; assetName: string; downloadUrl?: never }
   | { assetId?: never; assetName?: never; downloadUrl: string };
 
-export type StartInstallRelayOptions = StartPairingRelayOptions & {
+export type StartDeviceInstallOptions = PairDeviceOptions & {
   pairRecord: PairRecordPayload;
   installSource: InstallSource;
 };
 
-export async function requestUSBAccess({ log }: RequestUSBAccessOptions) {
+const noopLog: DeviceInstallLog = () => {};
+
+export async function requestUSBAccess({ log = noopLog }: RequestUSBAccessOptions = {}) {
   log('Selecting USB device');
   const device = await requestAppleDevice();
   const target = makeDeviceRelayTarget(device);
@@ -47,13 +49,13 @@ export async function requestUSBAccess({ log }: RequestUSBAccessOptions) {
   return target;
 }
 
-export async function startPairingRelay({
+export async function pairDevice({
   registryApiUrl,
   token,
   organizationId,
-  log,
+  log = noopLog,
   target,
-}: StartPairingRelayOptions) {
+}: PairDeviceOptions) {
   const deviceRelayUrl = deviceRelayWebSocketUrl(registryApiUrl, token, organizationId);
   let relay: RelayClient | undefined;
   try {
@@ -66,15 +68,15 @@ export async function startPairingRelay({
   }
 }
 
-export async function startInstallRelay({
+export async function startDeviceInstall({
   registryApiUrl,
   token,
   organizationId,
-  log,
+  log = noopLog,
   target,
   pairRecord,
   installSource,
-}: StartInstallRelayOptions) {
+}: StartDeviceInstallOptions) {
   const deviceRelayUrl = deviceRelayWebSocketUrl(registryApiUrl, token, organizationId);
   let relay: RelayClient | undefined;
   try {

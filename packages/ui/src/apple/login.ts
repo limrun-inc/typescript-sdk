@@ -1,15 +1,9 @@
-import { AppleGsaSrpClient } from './gsa-srp';
+import { AppleGsaSrpClient, type AppleSRPInitResponse } from './gsa-srp';
 import {
-  openAppleRelayWebSocket,
   fetchAppleAccountSession,
-  proxyPhoneTwoFactorCode,
-  proxySrpComplete,
-  proxySrpInit,
-  proxyTwoFactorCode,
-  triggerPhoneTwoFactor,
-  triggerTrustedDeviceTwoFactor,
-  type AppleRelayWebSocketClient,
+  openAppleRelayWebSocket,
   type AppleRelayResponse,
+  type AppleRelayWebSocketClient,
 } from './relay';
 
 export type AppleIDLoginInput = {
@@ -32,6 +26,11 @@ export type AppleIDLoginResult = {
 
 type TwoFactorMethod = { type: 'trustedDevice' } | { type: 'phone'; phoneNumberId: number; mode: string };
 
+/**
+ * Signs into an Apple ID through the relay using SRP, so the password never
+ * leaves the browser in a recoverable form. Returns the connected relay plus
+ * a two-factor continuation when Apple requires one.
+ */
 export async function startBrowserOwnedAppleIDLogin({
   registryApiUrl,
   accountName,
@@ -42,7 +41,7 @@ export async function startBrowserOwnedAppleIDLogin({
   const relay = await openAppleRelayWebSocket(registryApiUrl, token, organizationId);
   try {
     const srp = new AppleGsaSrpClient(accountName);
-    const initResponse = await proxySrpInit(relay, await srp.init());
+    const initResponse = await relay.request<AppleSRPInitResponse>('srpInit', await srp.init());
     if (initResponse.status < 200 || initResponse.status >= 300) {
       throw new Error(
         `Apple SRP init failed: HTTP ${initResponse.status} ${initResponse.rawBody ?? ''}`.trim(),
@@ -52,7 +51,7 @@ export async function startBrowserOwnedAppleIDLogin({
       throw new Error('Apple SRP init response did not include a body.');
     }
     const proof = await srp.complete(password, initResponse.body);
-    const completeResponse = await proxySrpComplete(relay, {
+    const completeResponse = await relay.request('srpComplete', {
       ...proof,
       rememberMe: false,
       trustTokens: [],
@@ -61,7 +60,7 @@ export async function startBrowserOwnedAppleIDLogin({
     let twoFactorChallengeResponse: AppleRelayResponse | undefined;
     let twoFactorMethod: TwoFactorMethod = { type: 'trustedDevice' };
     if (requiresTwoFactor) {
-      twoFactorChallengeResponse = await triggerTrustedDeviceTwoFactor(relay);
+      twoFactorChallengeResponse = await relay.request('triggerTrustedDevice2FA');
       const phone = trustedPhoneNumberFromChallenge(twoFactorChallengeResponse.body);
       // Route codes through the phone/SMS endpoint only when Apple actually
       // falls back to phone verification: HTTP 412 on the trusted-device
@@ -75,12 +74,12 @@ export async function startBrowserOwnedAppleIDLogin({
         if (!phone) {
           throw new Error('Apple requested phone verification but did not include a trusted phone number.');
         }
-        twoFactorMethod = {
-          type: 'phone',
+        const mode = phone.pushMode ?? 'sms';
+        twoFactorMethod = { type: 'phone', phoneNumberId: phone.id, mode };
+        twoFactorChallengeResponse = await relay.request('triggerPhone2FA', {
           phoneNumberId: phone.id,
-          mode: phone.pushMode ?? 'sms',
-        };
-        twoFactorChallengeResponse = await triggerPhoneTwoFactor(relay, phone.id, phone.pushMode ?? 'sms');
+          mode,
+        });
       }
       if (twoFactorChallengeResponse.status < 200 || twoFactorChallengeResponse.status >= 300) {
         throw new Error(
@@ -102,8 +101,12 @@ export async function startBrowserOwnedAppleIDLogin({
       finishTwoFactor: async (code) => {
         const response =
           twoFactorMethod.type === 'phone' ?
-            await proxyPhoneTwoFactorCode(relay, twoFactorMethod.phoneNumberId, code, twoFactorMethod.mode)
-          : await proxyTwoFactorCode(relay, code);
+            await relay.request('submitPhone2FA', {
+              phoneNumberId: twoFactorMethod.phoneNumberId,
+              mode: twoFactorMethod.mode,
+              code,
+            })
+          : await relay.request('submitTrustedDevice2FA', { code });
         if (response.status < 200 || response.status >= 300) {
           throw new Error(
             `Apple two-factor code failed: HTTP ${response.status} ${response.rawBody ?? ''}`.trim(),

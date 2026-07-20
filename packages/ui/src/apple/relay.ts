@@ -1,5 +1,3 @@
-import type { AppleSRPCompleteProof, AppleSRPInitRequest, AppleSRPInitResponse } from './gsa-srp';
-
 export type AppleRelayResponse<T = unknown> = {
   status: number;
   statusText: string;
@@ -9,25 +7,6 @@ export type AppleRelayResponse<T = unknown> = {
   rawBodyBase64?: string;
 };
 
-export type AppleProvisioningRequest = {
-  method?: 'GET' | 'POST';
-  path: string;
-  payload?: unknown;
-};
-
-/**
- * A session-authenticated App Store Connect request proxied by the relay.
- * Unlike provisioning requests, payloads pass through as JSON and GET
- * parameters go into an explicit query map because the App Store Connect
- * API uses bracketed JSON:API keys like fields[apiKeys].
- */
-export type AppStoreConnectRequest = {
-  method?: 'GET' | 'POST';
-  path: string;
-  query?: Record<string, string>;
-  payload?: unknown;
-};
-
 type AppleRelayWebSocketMessage<T = unknown> = {
   id: string;
   ok: boolean;
@@ -35,6 +14,12 @@ type AppleRelayWebSocketMessage<T = unknown> = {
   error?: string;
 };
 
+/**
+ * The browser side of Limrun's Apple relay: a WebSocket that proxies
+ * requests to Apple's login, Developer Portal and App Store Connect
+ * endpoints while the session cookies stay on the relay. Response bytes
+ * always come back to the browser; the relay stores nothing.
+ */
 export class AppleRelayWebSocketClient {
   private socket?: WebSocket;
   private nextId = 1;
@@ -117,61 +102,9 @@ export async function openAppleRelayWebSocket(apiUrl: string, token?: string, or
   return client;
 }
 
-export async function proxySrpInit(relay: AppleRelayWebSocketClient, payload: AppleSRPInitRequest) {
-  return relay.request<AppleSRPInitResponse>('srpInit', payload);
-}
-
-export async function proxySrpComplete(
-  relay: AppleRelayWebSocketClient,
-  payload: AppleSRPCompleteProof & {
-    rememberMe: boolean;
-    trustTokens: string[];
-  },
-) {
-  return relay.request('srpComplete', payload);
-}
-
-export async function triggerTrustedDeviceTwoFactor(relay: AppleRelayWebSocketClient) {
-  return relay.request('triggerTrustedDevice2FA');
-}
-
-export async function triggerPhoneTwoFactor(
-  relay: AppleRelayWebSocketClient,
-  phoneNumberId: number,
-  mode = 'sms',
-) {
-  return relay.request('triggerPhone2FA', { phoneNumberId, mode });
-}
-
-export async function proxyTwoFactorCode(relay: AppleRelayWebSocketClient, code: string) {
-  return relay.request('submitTrustedDevice2FA', { code });
-}
-
-export async function proxyPhoneTwoFactorCode(
-  relay: AppleRelayWebSocketClient,
-  phoneNumberId: number,
-  code: string,
-  mode = 'sms',
-) {
-  return relay.request('submitPhone2FA', { phoneNumberId, mode, code });
-}
-
+/** Fetches the Apple account session, which primes the relay's portal cookies. */
 export async function fetchAppleAccountSession(relay: AppleRelayWebSocketClient) {
   return relay.request('finalize');
-}
-
-export async function proxyProvisioningRequest<T = unknown>(
-  relay: AppleRelayWebSocketClient,
-  request: AppleProvisioningRequest,
-) {
-  return relay.request<T>('provisioning', request);
-}
-
-export async function proxyAppStoreConnectRequest<T = unknown>(
-  relay: AppleRelayWebSocketClient,
-  request: AppStoreConnectRequest,
-) {
-  return relay.request<T>('appstoreconnect', request);
 }
 
 function normalizeAppleProxyResponse<T>(response: AppleRelayResponse<T>) {

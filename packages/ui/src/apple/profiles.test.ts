@@ -1,6 +1,6 @@
 import forge from 'node-forge';
 import { describe, expect, test } from 'vitest';
-import { normalizeCertificateSerial, parseProvisioningProfileBase64 } from './browser-storage';
+import { normalizeCertificateSerial, parseProvisioningProfileBase64 } from './profiles';
 
 function selfSignedCertificateBase64(serialNumber: string) {
   const keys = forge.pki.rsa.generateKeyPair(1024);
