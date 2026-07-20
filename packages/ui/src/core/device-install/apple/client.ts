@@ -63,12 +63,15 @@ export async function startBrowserOwnedAppleIDLogin({
     if (requiresTwoFactor) {
       twoFactorChallengeResponse = await triggerTrustedDeviceTwoFactor(relay);
       const phone = trustedPhoneNumberFromChallenge(twoFactorChallengeResponse.body);
-      // Only route codes through the phone/SMS endpoint when Apple actually
-      // falls back to phone verification (HTTP 412). The trusted-device
-      // challenge body frequently includes trusted-phone metadata even for a
-      // normal device push; routing those codes to the phone endpoint breaks
-      // trusted-device login.
-      if (twoFactorChallengeResponse.status === 412) {
+      // Route codes through the phone/SMS endpoint only when Apple actually
+      // falls back to phone verification: HTTP 412 on the trusted-device
+      // trigger, or a 2xx challenge whose body says noTrustedDevices (seen on
+      // managed Apple accounts). The trusted-device challenge body frequently
+      // includes trusted-phone metadata even for a normal device push;
+      // routing those codes to the phone endpoint breaks trusted-device
+      // login, while submitting an SMS-fallback code to the trusted-device
+      // endpoint returns 201 without completing authentication.
+      if (twoFactorChallengeResponse.status === 412 || challengeHasNoTrustedDevices(twoFactorChallengeResponse.body)) {
         if (!phone) {
           throw new Error('Apple requested phone verification but did not include a trusted phone number.');
         }
@@ -115,6 +118,10 @@ export async function startBrowserOwnedAppleIDLogin({
     relay.close();
     throw error;
   }
+}
+
+function challengeHasNoTrustedDevices(body: unknown) {
+  return isRecord(body) && body.noTrustedDevices === true;
 }
 
 function trustedPhoneNumberFromChallenge(body: unknown) {
