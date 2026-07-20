@@ -65,6 +65,7 @@ export {
   type RbeInstallResult,
   type XcodeBuildLog,
   type BazelBuildLog,
+  type WebhookConfig,
 } from './xcode-instances-helpers';
 export {
   GradleInstances,

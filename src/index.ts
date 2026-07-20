@@ -23,6 +23,7 @@ export {
   type ExecChildProcess,
   type TestflightEvent,
   type TestflightUploadConfig,
+  type WebhookConfig,
 } from './exec-client';
 export {
   type XcodeCreateClientParams,

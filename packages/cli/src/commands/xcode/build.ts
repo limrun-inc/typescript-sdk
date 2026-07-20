@@ -9,6 +9,7 @@ import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance }
 import {
   parseBuildSettingEntries,
   type TestflightUploadConfig,
+  type WebhookConfig,
   type XcodeBuildOptions,
   type XcodeClient,
 } from '@limrun/api';
@@ -51,6 +52,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
     '<%= config.bin %> xcode build --signed-upload-url <url>',
     `<%= config.bin %> xcode build ./MyProject --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"`,
+    '<%= config.bin %> xcode build ./MyProject --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
     '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache',
     '<%= config.bin %> xcode build ./MyProject --ignore "\\\\.xcuserdata/"',
     '<%= config.bin %> xcode build ./MyProject --additional-file ~/.netrc=~/.netrc',
@@ -156,6 +158,15 @@ export default class XcodeBuild extends BaseCommand {
       description:
         'Set the build number to one more than the highest already in App Store Connect (1 for a new app), so repeat uploads never collide on CFBundleVersion. Resolved server-side with the ASC key. Requires --upload-to-testflight and a project using Xcode-standard versioning (CFBundleVersion = $(CURRENT_PROJECT_VERSION)).',
       default: false,
+    }),
+    'webhook-url': Flags.string({
+      description:
+        'HTTPS URL that limbuild POSTs a JSON payload to once the build reaches a terminal state, carrying the result, a console debug link, and a presigned build-log URL. Must be a public DNS host; IP-literal and private targets are rejected. Delivery is best-effort and never fails the build.',
+    }),
+    'webhook-header': Flags.string({
+      description:
+        'Header to set verbatim on the webhook request as NAME=VALUE, for example Authorization="Bearer $SECRET". Requires --webhook-url. Repeat for multiple headers (at most 16).',
+      multiple: true,
     }),
     'basis-cache-dir': Flags.string({
       description: 'Directory to use for the client-side delta sync cache during the pre-build sync step.',
@@ -279,6 +290,10 @@ export default class XcodeBuild extends BaseCommand {
           signedUploadUrl: flags['signed-upload-url'],
         };
       }
+      const webhook = this.buildWebhookOptions(flags);
+      if (webhook) {
+        options.webhook = webhook;
+      }
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
       const syncStart = Date.now();
@@ -356,6 +371,31 @@ export default class XcodeBuild extends BaseCommand {
         this.output(`Artifact download URL: ${result.signedDownloadUrl}`);
       }
     });
+  }
+
+  private buildWebhookOptions(flags: {
+    'webhook-url'?: string;
+    'webhook-header'?: string[];
+  }): WebhookConfig | undefined {
+    const headerEntries = flags['webhook-header'] ?? [];
+    if (!flags['webhook-url']) {
+      if (headerEntries.length > 0) {
+        this.error('--webhook-header requires --webhook-url.');
+      }
+      return undefined;
+    }
+    const headers: Record<string, string> = {};
+    for (const entry of headerEntries) {
+      const separator = entry.indexOf('=');
+      if (separator <= 0) {
+        this.error(`Invalid --webhook-header ${JSON.stringify(entry)}: expected NAME=VALUE.`);
+      }
+      headers[entry.slice(0, separator)] = entry.slice(separator + 1);
+    }
+    return {
+      url: flags['webhook-url'],
+      ...(Object.keys(headers).length > 0 && { headers }),
+    };
   }
 
   private async buildSigningOptions(flags: SigningFlags): Promise<

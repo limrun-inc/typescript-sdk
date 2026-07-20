@@ -436,6 +436,9 @@ lim xcode build ./MyProject --scheme MyApp --build-setting 'SWIFT_ACTIVE_COMPILA
 # Signed device build
 lim xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa
 
+# Get an HTTP callback with the result and a build-log URL when the build finishes
+lim xcode build ./MyProject --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"
+
 # Attach an existing simulator so builds auto-install there
 lim xcode attach-simulator ios_abc123 --id sandbox_def456
 
