@@ -20,6 +20,37 @@ export interface GradleBuildFlagValues {
   abi?: string[];
   upload?: string;
   'signed-upload-url'?: string;
+  sign?: boolean;
+  'application-id'?: string;
+  keystore?: string;
+  'keystore-password'?: string;
+  'key-alias'?: string;
+  'key-password'?: string;
+  'save-key'?: boolean;
+}
+
+const byoSigningFlags = ['keystore', 'keystore-password', 'key-alias', 'key-password'] as const;
+
+/**
+ * Validates the signing flag combinations. Separate from the options
+ * mapping because signing material is resolved asynchronously (file read
+ * or escrow round-trip) after validation, while the mapper stays pure.
+ */
+export function validateSigningFlags(flags: GradleBuildFlagValues): void {
+  const byoGiven = byoSigningFlags.filter((f) => flags[f]);
+  if (flags.sign && byoGiven.length > 0) {
+    throw new Error('Use either --sign (escrowed key) or --keystore (bring your own key), not both.');
+  }
+  if (byoGiven.length > 0 && byoGiven.length < byoSigningFlags.length) {
+    const missing = byoSigningFlags.filter((f) => !flags[f]);
+    throw new Error(`Signing with your own key requires ${missing.map((f) => `--${f}`).join(', ')} as well.`);
+  }
+  if (flags['save-key'] && byoGiven.length === 0) {
+    throw new Error('--save-key escrows a provided key and requires the --keystore flags.');
+  }
+  if (flags['application-id'] && !flags.sign && !flags['save-key']) {
+    throw new Error('--application-id only applies to --sign or --save-key.');
+  }
 }
 
 /**
@@ -34,6 +65,7 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
   if (flags.upload && flags['signed-upload-url']) {
     throw new Error('Use either --upload or --signed-upload-url, not both.');
   }
+  validateSigningFlags(flags);
   const options: GradleBuildOptions = {};
   if (flags.task?.length) {
     options.tasks = flags.task;

@@ -122,6 +122,10 @@ jobs:
         working-directory: packages/cli
         run: npm run build
 
+      - name: Test CLI
+        working-directory: packages/cli
+        run: npm test
+
       - name: Smoke test lim run help
         working-directory: packages/cli
         run: node bin/run.js run --help

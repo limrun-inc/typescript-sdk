@@ -79,6 +79,16 @@ export abstract class BaseCommand extends Command {
     return this._client;
   }
 
+  /** Credentials for backend endpoints outside the generated SDK client. */
+  protected get apiCredentials(): { apiEndpoint: string; apiKey: string } {
+    const config = readConfig();
+    const apiKey = (this.parsedFlags?.['api-key'] as string | undefined) || config.apiKey;
+    if (!apiKey) {
+      this.error('Not authenticated. Run `lim login` first, or provide --api-key.');
+    }
+    return { apiEndpoint: config.apiEndpoint, apiKey };
+  }
+
   private _parsedFlags?: Record<string, unknown>;
   private _lastResolvedInstanceId?: string;
   private _lastResolvedExpectedType?: 'ios' | 'android' | 'xcode' | 'gradle';
