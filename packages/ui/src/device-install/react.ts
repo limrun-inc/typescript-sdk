@@ -17,7 +17,7 @@ import { errorMessage } from '../core/errors';
 export type DeviceInstallRelayBusyAction = 'usb' | 'pair' | 'install';
 
 export type UseDeviceInstallRelayOptions = {
-  apiUrl?: string;
+  registryApiUrl?: string;
   token?: string;
   organizationId?: string;
   log?: DeviceInstallLog;
@@ -40,7 +40,7 @@ export type UseDeviceInstallRelayResult = {
 };
 
 export function useDeviceInstallRelay({
-  apiUrl,
+  registryApiUrl,
   token,
   organizationId,
   log = noopLog,
@@ -103,7 +103,7 @@ export function useDeviceInstallRelay({
   }, [cleanupDeviceAccess]);
 
   const pairBrowser = useCallback(async () => {
-    if (!apiUrl || !device) {
+    if (!registryApiUrl || !device) {
       throw new Error('Select a USB device before pairing.');
     }
     setBusyAction('pair');
@@ -112,7 +112,7 @@ export function useDeviceInstallRelay({
     try {
       await cleanupDeviceAccess();
       const result = await pairDevice({
-        registryApiUrl: apiUrl,
+        registryApiUrl,
         token,
         organizationId,
         log: logRef.current,
@@ -135,11 +135,11 @@ export function useDeviceInstallRelay({
     } finally {
       setBusyAction(undefined);
     }
-  }, [apiUrl, cleanupDeviceAccess, device, organizationId, token]);
+  }, [registryApiUrl, cleanupDeviceAccess, device, organizationId, token]);
 
   const startInstallation = useCallback(
     async (installSource: InstallSource) => {
-      if (!apiUrl || !device || !pairRecord) {
+      if (!registryApiUrl || !device || !pairRecord) {
         throw new Error('Select and pair a USB device before starting installation.');
       }
       setBusyAction('install');
@@ -147,7 +147,7 @@ export function useDeviceInstallRelay({
       try {
         await cleanupDeviceAccess();
         relayRef.current = await startDeviceInstall({
-          registryApiUrl: apiUrl,
+          registryApiUrl,
           token,
           organizationId,
           log: logRef.current,
@@ -165,7 +165,7 @@ export function useDeviceInstallRelay({
         setBusyAction(undefined);
       }
     },
-    [apiUrl, cleanupDeviceAccess, device, organizationId, pairRecord, token],
+    [registryApiUrl, cleanupDeviceAccess, device, organizationId, pairRecord, token],
   );
 
   const stopRelay = useCallback(() => {
@@ -180,8 +180,8 @@ export function useDeviceInstallRelay({
     error,
     pairConfirmationRequired,
     hasPairRecord: !!pairRecord,
-    canPair: !!apiUrl && !busyAction && !!device,
-    canInstall: !!apiUrl && !busyAction && !!device && !!pairRecord,
+    canPair: !!registryApiUrl && !busyAction && !!device,
+    canInstall: !!registryApiUrl && !busyAction && !!device && !!pairRecord,
     requestUSBAccess: selectUSBDevice,
     pairBrowser,
     startInstallation,

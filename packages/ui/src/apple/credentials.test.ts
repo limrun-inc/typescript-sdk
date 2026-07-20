@@ -2,7 +2,7 @@
 
 import forge from 'node-forge';
 import { describe, expect, test } from 'vitest';
-import type { AppleRelayWebSocketClient } from '../core/device-install/apple';
+import type { AppleRelayWebSocketClient } from './relay';
 import {
   APPLE_CERTIFICATE_SECRET_TYPE,
   appleCertificateSecretName,

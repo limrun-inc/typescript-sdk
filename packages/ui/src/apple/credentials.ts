@@ -6,27 +6,24 @@
  * org secret store by default, or a customer-provided one).
  */
 import {
-  createAppleCertificate,
   createAppStoreConnectApiKey,
-  downloadAppleCertificate,
-  downloadAppleProfile,
   downloadAppStoreConnectApiKeyPrivateKey,
-  exportAppleCertificateP12,
   fetchAppStoreConnectIssuerId,
-  generateAppleSigningKeyAndCSR,
-  listAppleCertificates,
-  listAppleProfiles,
   listAppStoreConnectApiKeys,
   switchAppStoreConnectProvider,
-  type AppleCertificateKind,
-  type AppleProfileKind,
   type AppStoreConnectApiKeyRole,
-} from '../app-store-relay';
-import type { AppleRelayWebSocketClient } from '../core/device-install/apple';
+} from './app-store-connect';
+import { exportAppleCertificateP12, generateAppleSigningKeyAndCSR } from './crypto';
 import {
-  normalizeCertificateSerial,
-  parseProvisioningProfileBase64,
-} from '../core/device-install/storage/browser-storage';
+  createAppleCertificate,
+  downloadAppleCertificate,
+  downloadAppleProfile,
+  listAppleCertificates,
+  stringField,
+  type AppleCertificateKind,
+} from './portal';
+import { normalizeCertificateSerial, parseProvisioningProfileBase64 } from './profiles';
+import type { AppleRelayWebSocketClient } from './relay';
 import {
   APP_STORE_CONNECT_API_KEY_SECRET_TYPE,
   APPLE_CERTIFICATE_SECRET_TYPE,
@@ -38,29 +35,7 @@ import {
   type AppStoreConnectApiKeySecretData,
   type SigningSecret,
   type SigningSecretStore,
-} from '../core/device-install/storage/secret-store';
-
-export {
-  APP_STORE_CONNECT_API_KEY_SECRET_TYPE,
-  APPLE_CERTIFICATE_SECRET_TYPE,
-  APPLE_PROVISIONING_PROFILE_SECRET_TYPE,
-  createBrowserSecretStore,
-  createLimrunSecretStore,
-  putAppleCertificateSecret,
-  putAppleProvisioningProfileSecret,
-  putAppStoreConnectApiKeySecret,
-  type AppleCertificateSecretData,
-  type AppleCertificateType,
-  type AppleProvisioningProfileSecretData,
-  type AppStoreConnectApiKeySecretData,
-  type LimrunSecretStoreOptions,
-  type SigningSecret,
-  type SigningSecretData,
-  type SigningSecretMetadata,
-  type SigningSecretStore,
-  type SigningSecretType,
-} from '../core/device-install/storage/secret-store';
-export { normalizeCertificateSerial } from '../core/device-install/storage/browser-storage';
+} from './secret-store';
 
 /**
  * Conventional secret name of a team's certificate bundle. One bundle per
@@ -370,33 +345,4 @@ function base64FromText(text: string) {
     binary += String.fromCharCode(byte);
   }
   return btoa(binary);
-}
-
-export type ListTeamProfilesInput = {
-  relay: AppleRelayWebSocketClient;
-  teamId: string;
-  /**
-   * Which portal profile listing to use. The development listing is
-   * unfiltered on the portal side and returns profiles of every
-   * distribution method; adhoc narrows to ad-hoc profiles. Defaults to
-   * development.
-   */
-  profileKind?: AppleProfileKind;
-};
-
-/** Lists the team's provisioning profiles from the portal. */
-export async function listTeamAppleProfiles({
-  relay,
-  teamId,
-  profileKind = 'development',
-}: ListTeamProfilesInput) {
-  return listAppleProfiles({ relay, teamId, profileKind });
-}
-
-/** Read a string-ish value from a loosely typed portal record. */
-export function stringField(record: Record<string, unknown> | undefined, key: string) {
-  const value = record?.[key];
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  return undefined;
 }

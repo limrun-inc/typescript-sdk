@@ -11,11 +11,8 @@ export default defineConfig({
     lib: {
       entry: {
         index: resolve(__dirname, 'src/index.ts'),
-        'app-store-relay/index': resolve(__dirname, 'src/app-store-relay/index.ts'),
-        'app-store-relay/react': resolve(__dirname, 'src/app-store-relay/react.ts'),
-        'apple-credentials/index': resolve(__dirname, 'src/apple-credentials/index.ts'),
-        'device-build/index': resolve(__dirname, 'src/device-build/index.ts'),
-        'device-build/react': resolve(__dirname, 'src/device-build/react.ts'),
+        'apple/index': resolve(__dirname, 'src/apple/index.ts'),
+        'apple/react': resolve(__dirname, 'src/apple/react.ts'),
         'device-install/index': resolve(__dirname, 'src/device-install/index.ts'),
         'device-install/react': resolve(__dirname, 'src/device-install/react.ts'),
         'play-publish/index': resolve(__dirname, 'src/play-publish/index.ts'),
