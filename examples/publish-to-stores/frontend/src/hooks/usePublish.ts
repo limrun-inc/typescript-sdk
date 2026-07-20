@@ -39,10 +39,7 @@ export function usePublish() {
       setExitCode(finalExit);
       setState(finalExit === 0 ? 'succeeded' : 'failed');
     } catch (error) {
-      setLines((current) => [
-        ...current,
-        { stream: 'error', text: errorMessage(error, 'Publish failed') },
-      ]);
+      setLines((current) => [...current, { stream: 'error', text: errorMessage(error, 'Publish failed') }]);
       setState('failed');
     }
   }, []);

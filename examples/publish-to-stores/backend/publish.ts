@@ -104,10 +104,7 @@ export async function findExpoAppConfigs(root: string, depth = APP_JSON_SEARCH_D
  * value belongs to the project and is not touched, though a mismatch is
  * reported. Returns lines to surface in the publish log.
  */
-export async function ensureExpoBundleIdentifier(
-  projectPath: string,
-  bundleId: string,
-): Promise<string[]> {
+export async function ensureExpoBundleIdentifier(projectPath: string, bundleId: string): Promise<string[]> {
   const configs = await findExpoAppConfigs(projectPath);
   if (configs.length === 0) {
     return []; // Not an Expo project; nothing to do.

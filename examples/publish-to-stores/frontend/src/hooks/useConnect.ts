@@ -186,8 +186,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [secretStore]);
 
   // Existing bundle IDs on the portal for the selected team, so the user can
   // pick one instead of registering a new one. Wildcard app IDs (com.acme.*)
@@ -426,7 +425,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
         const existing = profiles.find((profile) => stringField(profile, 'name') === name);
         let profileId =
           existing ?
-            (stringField(existing, 'provisioningProfileId') ?? stringField(existing, 'profileId'))
+            stringField(existing, 'provisioningProfileId') ?? stringField(existing, 'profileId')
           : undefined;
         if (!profileId) {
           const created = await createAppleProfile({

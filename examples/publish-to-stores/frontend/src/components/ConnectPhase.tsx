@@ -1,7 +1,12 @@
 // The Connect wizard UI: Apple ID login (password + 2FA), team selection,
 // bundle ID / app name inputs, and the action checklist. All behaviour
 // lives in useConnect; this component only renders its state.
-import { CONNECT_ACTIONS, NEW_BUNDLE_ID, type ConnectController, type ActionStatus } from '../hooks/useConnect';
+import {
+  CONNECT_ACTIONS,
+  NEW_BUNDLE_ID,
+  type ConnectController,
+  type ActionStatus,
+} from '../hooks/useConnect';
 import { appIdBundleId, appleTeamSelectionId, stringField } from '../lib/apple';
 import { hintText, infoBox, inputStyle, labelStyle, primaryButton, secondaryButton, warnBox } from '../theme';
 import { Section } from './Section';
@@ -45,8 +50,8 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
         <>
           <p style={hintText}>
             Connect signs into your Apple Developer account through Limrun's Apple relay and creates
-            everything publishing needs: certificates, provisioning profiles, the App Store Connect app
-            record and an API key. It runs once; all material lands in the backend's secret store.
+            everything publishing needs: certificates, provisioning profiles, the App Store Connect app record
+            and an API key. It runs once; all material lands in the backend's secret store.
           </p>
           <form
             onSubmit={(event) => {

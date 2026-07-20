@@ -52,9 +52,9 @@ npm install @limrun/ui
 
 The browser side is split across two subpath entry points:
 
-| Import                                 | Provides                                                                                                                      |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `@limrun/ui/device-install` + `/react` | WebUSB device selection, pairing, install relay, pair-record storage (`useDeviceInstallRelay`).                               |
+| Import                                 | Provides                                                                                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@limrun/ui/device-install` + `/react` | WebUSB device selection, pairing, install relay, pair-record storage (`useDeviceInstallRelay`).                                                                     |
 | `@limrun/ui/apple` + `/react`          | Apple ID login (SRP + 2FA), Apple Developer Portal calls, and `SigningSecretStore`-based credential helpers (`useAppleIDLogin`, `ensureAppleCertificateSecret`, …). |
 
 ## The registry
@@ -77,7 +77,12 @@ user only taps **Trust** once per device.
 ```tsx
 import { useDeviceInstallRelay } from '@limrun/ui/device-install/react';
 
-const install = useDeviceInstallRelay({ registryApiUrl, token, organizationId, log: (m, d) => console.log(m, d) });
+const install = useDeviceInstallRelay({
+  registryApiUrl,
+  token,
+  organizationId,
+  log: (m, d) => console.log(m, d),
+});
 
 // 1. Pick the iPhone (shows Chrome's WebUSB chooser).
 await install.requestUSBAccess();
@@ -88,15 +93,15 @@ await install.pairBrowser();
 // install.hasPairRecord === true
 ```
 
-| Field / method                             | Use                                                                |
-| ------------------------------------------ | ------------------------------------------------------------------ |
-| `requestUSBAccess()`                       | Open the WebUSB picker and select the iPhone.                      |
-| `pairBrowser()`                            | Pair through the relay; persists the pair record.                  |
+| Field / method                             | Use                                                                                                      |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `requestUSBAccess()`                       | Open the WebUSB picker and select the iPhone.                                                            |
+| `pairBrowser()`                            | Pair through the relay; persists the pair record.                                                        |
 | `startInstallation(source)`                | Install an IPA onto the paired device; `source` is `{ assetName }`, `{ assetId }`, or `{ downloadUrl }`. |
-| `device`                                   | Selected device; `device.hello.serialNumber` is the UDID.          |
-| `hasPairRecord` / `canPair` / `canInstall` | Gating flags for your buttons.                                     |
-| `busyAction`                               | `'usb'`, `'pair'`, or `'install'` while an operation is in flight. |
-| `error`                                    | Last error message, if any.                                        |
+| `device`                                   | Selected device; `device.hello.serialNumber` is the UDID.                                                |
+| `hasPairRecord` / `canPair` / `canInstall` | Gating flags for your buttons.                                                                           |
+| `busyAction`                               | `'usb'`, `'pair'`, or `'install'` while an operation is in flight.                                       |
+| `error`                                    | Last error message, if any.                                                                              |
 
 Pairing is independent of the build — you can pair before signing or building.
 Only `startInstallation()` needs both a stored pair record and an artifact to
@@ -160,13 +165,13 @@ const profileSecret = await saveAppleProfileSecret({
 
 These are Apple's rules, not Limrun's, and each one is a common dead end:
 
-| Rule                                                     | Consequence if ignored                                                                                                                          |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| A cert is useless without its private key.               | You can only sign with a cert whose key is in your secret store. Apple never returns private keys.                                              |
-| Max **2** development certs per team.                    | Creating one per build fails with _"you already have a current Development certificate"_. `ensureAppleCertificateSecret` reuses when it can.    |
-| A revoked cert still appears in lists.                   | Signing with it builds fine but the device rejects install with `ApplicationVerificationFailed`. Treat revoked certs as unusable.               |
-| The team id may live in `providerId`/`publicProviderId`. | Reading only `teamId` leaves the flow stuck after sign-in.                                                                                      |
-| Profiles are device-scoped and immutable.                | To authorize a new device you regenerate the profile (see [Adding a device](#add-a-device-to-a-profile)).                                       |
+| Rule                                                     | Consequence if ignored                                                                                                                       |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| A cert is useless without its private key.               | You can only sign with a cert whose key is in your secret store. Apple never returns private keys.                                           |
+| Max **2** development certs per team.                    | Creating one per build fails with _"you already have a current Development certificate"_. `ensureAppleCertificateSecret` reuses when it can. |
+| A revoked cert still appears in lists.                   | Signing with it builds fine but the device rejects install with `ApplicationVerificationFailed`. Treat revoked certs as unusable.            |
+| The team id may live in `providerId`/`publicProviderId`. | Reading only `teamId` leaves the flow stuck after sign-in.                                                                                   |
+| Profiles are device-scoped and immutable.                | To authorize a new device you regenerate the profile (see [Adding a device](#add-a-device-to-a-profile)).                                    |
 
 ## Build a signed IPA (backend)
 

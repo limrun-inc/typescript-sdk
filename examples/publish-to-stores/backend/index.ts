@@ -27,9 +27,7 @@ app.use(cors());
 app.get('/secrets', async (_req: Request, res: Response) => {
   try {
     const secrets = await listSecrets();
-    return res
-      .status(200)
-      .json(secrets.map(({ type, name, createdAt }) => ({ type, name, createdAt })));
+    return res.status(200).json(secrets.map(({ type, name, createdAt }) => ({ type, name, createdAt })));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
     return res.status(500).json({ status: 'error', message });
@@ -51,7 +49,10 @@ app.get('/secrets/:type/:name', async (req: Request<{ type: string; name: string
 
 app.put(
   '/secrets/:type/:name',
-  async (req: Request<{ type: string; name: string }, {}, { data?: Record<string, string> }>, res: Response) => {
+  async (
+    req: Request<{ type: string; name: string }, {}, { data?: Record<string, string> }>,
+    res: Response,
+  ) => {
     try {
       const { data } = req.body;
       if (!data || typeof data !== 'object') {
