@@ -2,7 +2,11 @@ import { Args, Flags } from '@oclif/core';
 import { type GradleBuildOptions } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
-import { gradleAndroidABIs, gradleBuildOptionsFromFlags } from '../../lib/gradle-build-options';
+import {
+  gradleAndroidABIs,
+  gradleBuildOptionsFromFlags,
+  tasksIncludeBundle,
+} from '../../lib/gradle-build-options';
 import {
   readProvidedSigning,
   resolveApplicationId,
@@ -140,14 +144,14 @@ export default class GradleBuild extends BaseCommand {
       // same reason flag validation does: a failure here must not leave a
       // freshly created billed instance behind.
       if (applicationId && flags['save-key'] && options.signing) {
-        const saved = await saveProvidedKey(this.apiCredentials, applicationId, options.signing);
+        const saved = await saveProvidedKey(this.client, applicationId, options.signing);
         this.info(
-          saved.created ?
+          saved ?
             `Escrowed the provided keystore as the organization's upload key for ${applicationId}.`
           : `The provided keystore is already escrowed for ${applicationId}.`,
         );
       } else if (applicationId && flags.sign) {
-        const { signing, created } = await resolveEscrowedSigning(this.apiCredentials, applicationId);
+        const { signing, created } = await resolveEscrowedSigning(this.client, applicationId);
         options.signing = signing;
         this.info(
           `Signing with the organization's upload key for ${applicationId} (${
@@ -198,9 +202,7 @@ export default class GradleBuild extends BaseCommand {
       // Signing only yields a Play-ready AAB when a bundle task ran (no
       // explicit tasks means the server defaulted to bundleRelease); a BYO
       // keystore with an explicit assemble task still produces an APK.
-      const builtSignedBundle =
-        options.signing &&
-        (!flags.task?.length || flags.task.some((t) => t.toLowerCase().includes('bundle')));
+      const builtSignedBundle = options.signing && (!flags.task?.length || tasksIncludeBundle(flags.task));
       if (flags.upload && builtSignedBundle) {
         this.output(`Uploaded the signed app bundle as asset '${flags.upload}'.`);
       } else if (flags.upload) {

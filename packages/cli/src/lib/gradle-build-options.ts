@@ -29,6 +29,11 @@ export interface GradleBuildFlagValues {
   'save-key'?: boolean;
 }
 
+/** Whether any explicit task produces an app bundle (AAB) artifact. */
+export function tasksIncludeBundle(tasks: string[]): boolean {
+  return tasks.some((t) => t.toLowerCase().includes('bundle'));
+}
+
 /**
  * Validates the signing flag combinations. Separate from the options
  * mapping because signing material is resolved asynchronously (file read
@@ -62,7 +67,7 @@ export function validateSigningFlags(flags: GradleBuildFlagValues): void {
   if (flags['application-id'] && !flags.sign && !flags['save-key']) {
     throw new Error('--application-id only applies to --sign or --save-key.');
   }
-  if (flags.sign && flags.task?.length && !flags.task.some((t) => t.toLowerCase().includes('bundle'))) {
+  if (flags.sign && flags.task?.length && !tasksIncludeBundle(flags.task)) {
     throw new Error(
       '--sign produces a Play-ready signed AAB; include a bundle task (e.g. bundleRelease) in --task or omit --task.',
     );

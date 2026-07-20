@@ -79,21 +79,6 @@ export abstract class BaseCommand extends Command {
     return this._client;
   }
 
-  private _apiCredentials?: { apiEndpoint: string; apiKey: string };
-
-  /** Credentials for backend endpoints outside the generated SDK client. */
-  protected get apiCredentials(): { apiEndpoint: string; apiKey: string } {
-    if (!this._apiCredentials) {
-      const config = readConfig();
-      const apiKey = (this.parsedFlags?.['api-key'] as string | undefined) || config.apiKey;
-      if (!apiKey) {
-        this.error('Not authenticated. Run `lim login` first, or provide --api-key.');
-      }
-      this._apiCredentials = { apiEndpoint: config.apiEndpoint, apiKey: apiKey as string };
-    }
-    return this._apiCredentials;
-  }
-
   private _parsedFlags?: Record<string, unknown>;
   private _lastResolvedInstanceId?: string;
   private _lastResolvedExpectedType?: 'ios' | 'android' | 'xcode' | 'gradle';
@@ -158,9 +143,8 @@ export abstract class BaseCommand extends Command {
           log: (message) => this.info(message),
         });
         this.info('You are logged in now.');
-        // Reset cached credentials so the retry picks up the new key
+        // Reset client so it picks up the new key
         this._client = undefined;
-        this._apiCredentials = undefined;
         return this.withAuth(fn);
       }
       if (err instanceof NotFoundError) {
