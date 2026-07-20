@@ -4,13 +4,9 @@ import * as path from 'node:path';
 import type { GradleSigningConfig } from '@limrun/api';
 
 import { generateAndroidSigningKey } from './android-keystore';
-import {
-  androidSigningKeySecretType,
-  getSecret,
-  putSecret,
-  whoAmI,
-  type BackendCredentials,
-} from './backend';
+import type Limrun from '@limrun/api';
+
+import { androidSigningKeySecretType, getSecret, putSecret, whoAmI } from './backend';
 
 const signingFields = ['keystoreBase64', 'keystorePassword', 'keyAlias', 'keyPassword'] as const;
 
@@ -124,17 +120,17 @@ export type EscrowedSigning = {
  * with the same key, because the response data is authoritative.
  */
 export async function resolveEscrowedSigning(
-  creds: BackendCredentials,
+  client: Limrun,
   applicationId: string,
 ): Promise<EscrowedSigning> {
-  const { organizationId } = await whoAmI(creds);
-  const existing = await getSecret(creds, organizationId, androidSigningKeySecretType, applicationId);
+  const organizationId = await whoAmI(client);
+  const existing = await getSecret(client, organizationId, androidSigningKeySecretType, applicationId);
   if (existing) {
     return { signing: asSigningConfig(existing, applicationId), created: false };
   }
   const generated = generateAndroidSigningKey(applicationId);
   const result = await putSecret(
-    creds,
+    client,
     organizationId,
     androidSigningKeySecretType,
     applicationId,
@@ -150,21 +146,25 @@ export async function resolveEscrowedSigning(
  * side effect a build command should have.
  */
 export async function saveProvidedKey(
-  creds: BackendCredentials,
+  client: Limrun,
   applicationId: string,
   provided: GradleSigningConfig,
-): Promise<{ created: boolean }> {
-  const { organizationId } = await whoAmI(creds);
-  const result = await putSecret(creds, organizationId, androidSigningKeySecretType, applicationId, {
-    ...provided,
-  });
+): Promise<boolean> {
+  const organizationId = await whoAmI(client);
+  const result = await putSecret(
+    client,
+    organizationId,
+    androidSigningKeySecretType,
+    applicationId,
+    provided,
+  );
   if (!result.created && !signingFields.every((f) => result.data[f] === provided[f])) {
     throw new Error(
       `The organization already has a different upload key escrowed for ${applicationId}. ` +
         'Builds with --sign use that key; drop --save-key to sign with the provided keystore for this build only.',
     );
   }
-  return { created: result.created };
+  return result.created;
 }
 
 function asSigningConfig(data: Record<string, string>, applicationId: string): GradleSigningConfig {

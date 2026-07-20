@@ -64,7 +64,7 @@ describe('resolveApplicationId', () => {
 });
 
 describe('saveProvidedKey', () => {
-  const creds = { apiEndpoint: 'https://api', apiKey: 'key' };
+  const client = {} as never;
   const provided = {
     keystoreBase64: 'a2V5c3RvcmU=',
     keystorePassword: 'store',
@@ -72,31 +72,28 @@ describe('saveProvidedKey', () => {
     keyPassword: 'key',
   };
 
+  beforeEach(() => {
+    jest.spyOn(backend, 'whoAmI').mockResolvedValue('org_1');
+  });
+
   afterEach(() => jest.restoreAllMocks());
 
   it('escrows a new key', async () => {
-    jest.spyOn(backend, 'whoAmI').mockResolvedValue({ organizationId: 'org_1' });
     const put = jest.spyOn(backend, 'putSecret').mockResolvedValue({ data: { ...provided }, created: true });
-    await expect(saveProvidedKey(creds, 'com.x', provided)).resolves.toEqual({
-      created: true,
-    });
-    expect(put).toHaveBeenCalledWith(creds, 'org_1', 'androidSigningKey', 'com.x', provided);
+    await expect(saveProvidedKey(client, 'com.x', provided)).resolves.toBe(true);
+    expect(put).toHaveBeenCalledWith(client, 'org_1', 'androidSigningKey', 'com.x', provided);
   });
 
   it('accepts an identical already-escrowed key', async () => {
-    jest.spyOn(backend, 'whoAmI').mockResolvedValue({ organizationId: 'org_1' });
     jest.spyOn(backend, 'putSecret').mockResolvedValue({ data: { ...provided }, created: false });
-    await expect(saveProvidedKey(creds, 'com.x', provided)).resolves.toEqual({
-      created: false,
-    });
+    await expect(saveProvidedKey(client, 'com.x', provided)).resolves.toBe(false);
   });
 
   it('hard-fails when a DIFFERENT key is already escrowed', async () => {
-    jest.spyOn(backend, 'whoAmI').mockResolvedValue({ organizationId: 'org_1' });
     jest
       .spyOn(backend, 'putSecret')
       .mockResolvedValue({ data: { ...provided, keystoreBase64: 'b3RoZXI=' }, created: false });
-    await expect(saveProvidedKey(creds, 'com.x', provided)).rejects.toThrow(
+    await expect(saveProvidedKey(client, 'com.x', provided)).rejects.toThrow(
       /already has a different upload key/,
     );
   });
