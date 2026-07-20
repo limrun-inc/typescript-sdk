@@ -97,10 +97,9 @@ function App() {
         <p className="eyebrow">Limrun WebUSB Demo</p>
         <h1>Install a signed IPA onto a physical iPhone</h1>
         <p>
-          Select an iPhone, pair it, and install a signed IPA from your Limrun asset storage (or any
-          HTTPS URL) over WebUSB. The registry downloads the artifact and streams it to the phone;
-          producing the signed IPA is a backend concern (build with <code>@limrun/api</code> and upload
-          it as an asset).
+          Select an iPhone, pair it, and install a signed IPA from your Limrun asset storage (or any HTTPS
+          URL) over WebUSB. The registry downloads the artifact and streams it to the phone; producing the
+          signed IPA is a backend concern (build with <code>@limrun/api</code> and upload it as an asset).
         </p>
       </header>
 
@@ -211,8 +210,8 @@ function App() {
           <div>
             <h2>2. Install</h2>
             <p>
-              Install by asset name (an IPA in your organization's asset storage) or by direct HTTPS URL.
-              The IPA must be signed with a development profile that includes the paired iPhone's UDID.
+              Install by asset name (an IPA in your organization's asset storage) or by direct HTTPS URL. The
+              IPA must be signed with a development profile that includes the paired iPhone's UDID.
             </p>
           </div>
           <StatusPill tone={pillTone(installStep.state)}>{installStep.label}</StatusPill>

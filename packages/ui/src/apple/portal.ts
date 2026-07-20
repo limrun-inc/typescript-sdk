@@ -242,7 +242,12 @@ export type CreateAppleBundleIDOptions = AppleTeamScopedOptions & {
   name?: string;
 };
 
-export async function createAppleBundleID({ relay, teamId = '', bundleId, name }: CreateAppleBundleIDOptions) {
+export async function createAppleBundleID({
+  relay,
+  teamId = '',
+  bundleId,
+  name,
+}: CreateAppleBundleIDOptions) {
   const body = await portalRequest(
     relay,
     {

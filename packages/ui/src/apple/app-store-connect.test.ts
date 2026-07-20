@@ -20,16 +20,16 @@ describe('App Store Connect API key download', () => {
   // limbuild rejected with "not a valid EC private key".
   test('decodes the base64-encoded PEM Apple actually serves', async () => {
     const relay = relayServing(btoa(PEM));
-    await expect(downloadAppStoreConnectApiKeyPrivateKey({ relay, keyId: 'KEY1' })).resolves.toMatchObject(
-      { privateKeyPem: PEM },
-    );
+    await expect(downloadAppStoreConnectApiKeyPrivateKey({ relay, keyId: 'KEY1' })).resolves.toMatchObject({
+      privateKeyPem: PEM,
+    });
   });
 
   test('passes through a key already in PEM form', async () => {
     const relay = relayServing(PEM);
-    await expect(downloadAppStoreConnectApiKeyPrivateKey({ relay, keyId: 'KEY1' })).resolves.toMatchObject(
-      { privateKeyPem: PEM },
-    );
+    await expect(downloadAppStoreConnectApiKeyPrivateKey({ relay, keyId: 'KEY1' })).resolves.toMatchObject({
+      privateKeyPem: PEM,
+    });
   });
 
   test('rejects unrecognizable private key payloads', async () => {

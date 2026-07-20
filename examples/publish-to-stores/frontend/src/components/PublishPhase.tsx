@@ -40,7 +40,12 @@ const METHODS: MethodCardSpec[] = [
     description: 'Same upload; submit the processed build for review in App Store Connect.',
     enabled: true,
   },
-  { id: 'webusb', label: 'WebUSB', description: 'Install to a connected device. Next iteration.', enabled: false },
+  {
+    id: 'webusb',
+    label: 'WebUSB',
+    description: 'Install to a connected device. Next iteration.',
+    enabled: false,
+  },
   { id: 'qr', label: 'QR code', description: 'Ad-hoc install via QR. Next iteration.', enabled: false },
 ];
 
@@ -111,11 +116,7 @@ export function PublishPhase({
           Publish succeeded.{' '}
           {publish.method === 'appstore' ?
             <>
-              <a
-                href={appStoreConnectUrl('appstore', connection.ascAppId)}
-                target="_blank"
-                rel="noreferrer"
-              >
+              <a href={appStoreConnectUrl('appstore', connection.ascAppId)} target="_blank" rel="noreferrer">
                 Open the App Store page in App Store Connect
               </a>{' '}
               to attach the processed build to a version and submit it for review.

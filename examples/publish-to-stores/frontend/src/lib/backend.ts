@@ -1,11 +1,7 @@
 // The frontend's channel to the example backend: the file-based secret
 // store and the publish SSE stream. (The Apple relay WebSocket also rides
 // the backend, but `@limrun/ui` opens that connection itself.)
-import type {
-  SigningSecret,
-  SigningSecretMetadata,
-  SigningSecretStore,
-} from '@limrun/ui/apple';
+import type { SigningSecret, SigningSecretMetadata, SigningSecretStore } from '@limrun/ui/apple';
 import { BACKEND_URL } from '../config';
 
 /**

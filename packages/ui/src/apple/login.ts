@@ -70,7 +70,10 @@ export async function startBrowserOwnedAppleIDLogin({
       // routing those codes to the phone endpoint breaks trusted-device
       // login, while submitting an SMS-fallback code to the trusted-device
       // endpoint returns 201 without completing authentication.
-      if (twoFactorChallengeResponse.status === 412 || challengeHasNoTrustedDevices(twoFactorChallengeResponse.body)) {
+      if (
+        twoFactorChallengeResponse.status === 412 ||
+        challengeHasNoTrustedDevices(twoFactorChallengeResponse.body)
+      ) {
         if (!phone) {
           throw new Error('Apple requested phone verification but did not include a trusted phone number.');
         }
