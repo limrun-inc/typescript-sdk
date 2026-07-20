@@ -220,9 +220,9 @@ function loginTimeoutError(): LoginTimeoutError {
   );
 }
 
-async function responseMessage(response: Response): Promise<string> {
+export async function responseMessage(response: Response): Promise<string> {
   try {
-    const body = (await response.json()) as CollectTokenResponse;
+    const body = (await response.json()) as { message?: string };
     return body.message || `${response.status} ${response.statusText}`;
   } catch {
     return `${response.status} ${response.statusText}`;

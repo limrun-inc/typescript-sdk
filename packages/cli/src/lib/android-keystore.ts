@@ -1,4 +1,4 @@
-import { randomInt } from 'node:crypto';
+import { generateKeyPairSync, randomInt } from 'node:crypto';
 
 import forge from 'node-forge';
 
@@ -35,10 +35,19 @@ function generatePassword(length = 24): string {
  */
 export function generateAndroidSigningKey(applicationId: string): AndroidSigningKey {
   const password = generatePassword();
-  const keys = forge.pki.rsa.generateKeyPair(2048);
+  // Native keygen (hundreds of ms) instead of node-forge's pure-JS one
+  // (many seconds of silent event-loop blocking); forge only assembles
+  // the certificate and PKCS12, mirroring the ui package's apple crypto.
+  const { privateKey: privateKeyPem } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
+  const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
+  const publicKey = forge.pki.setRsaPublicKey(privateKey.n, privateKey.e);
 
   const certificate = forge.pki.createCertificate();
-  certificate.publicKey = keys.publicKey;
+  certificate.publicKey = publicKey;
   certificate.serialNumber = '01' + forge.util.bytesToHex(forge.random.getBytesSync(15));
   certificate.validity.notBefore = new Date();
   certificate.validity.notAfter = new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000);
@@ -47,9 +56,9 @@ export function generateAndroidSigningKey(applicationId: string): AndroidSigning
     { name: 'organizationName', value: 'Limrun' },
   ]);
   certificate.setIssuer(certificate.subject.attributes);
-  certificate.sign(keys.privateKey, forge.md.sha256.create());
+  certificate.sign(privateKey, forge.md.sha256.create());
 
-  const p12 = forge.pkcs12.toPkcs12Asn1(keys.privateKey, [certificate], password, {
+  const p12 = forge.pkcs12.toPkcs12Asn1(privateKey, [certificate], password, {
     algorithm: '3des',
     friendlyName: keyAlias,
   });

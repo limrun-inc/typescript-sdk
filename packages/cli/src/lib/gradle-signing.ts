@@ -4,7 +4,15 @@ import * as path from 'node:path';
 import type { GradleSigningConfig } from '@limrun/api';
 
 import { generateAndroidSigningKey } from './android-keystore';
-import { androidSigningKeySecretType, getSecret, putSecret, whoAmI } from './backend';
+import {
+  androidSigningKeySecretType,
+  getSecret,
+  putSecret,
+  whoAmI,
+  type BackendCredentials,
+} from './backend';
+
+const signingFields = ['keystoreBase64', 'keystorePassword', 'keyAlias', 'keyPassword'] as const;
 
 /**
  * Resolves the Android applicationId that names the escrowed signing key.
@@ -24,9 +32,14 @@ export function resolveApplicationId(opts: {
   if (fromExpo) {
     return fromExpo;
   }
-  const fromGradle = gradleApplicationId(path.join(opts.syncPath, opts.projectPath ?? '.'));
-  if (fromGradle) {
-    return fromGradle;
+  // Probe the explicit gradle root first, then the conventional bare
+  // React Native layout (android/), which users rarely spell out because
+  // the server auto-discovers it.
+  for (const root of [...new Set([opts.projectPath ?? '.', 'android'])]) {
+    const fromGradle = gradleApplicationId(path.join(opts.syncPath, root));
+    if (fromGradle) {
+      return fromGradle;
+    }
   }
   throw new Error(
     'Cannot determine the Android application ID for signing. Pass --application-id <id> (the value of android.package in app.json, or applicationId in app/build.gradle).',
@@ -62,13 +75,23 @@ function gradleApplicationId(gradleRoot: string): string | undefined {
   return undefined;
 }
 
-/** Reads a bring-your-own keystore file into the wire signing shape. */
+/**
+ * Reads a bring-your-own keystore file into the wire signing shape. The
+ * flag validator guarantees the passwords and alias are set; the checks
+ * here keep that invariant local instead of relying on call-site order.
+ */
 export function readProvidedSigning(flags: {
   keystore: string;
-  keystorePassword: string;
-  keyAlias: string;
-  keyPassword: string;
+  keystorePassword?: string;
+  keyAlias?: string;
+  keyPassword?: string;
 }): GradleSigningConfig {
+  const { keystorePassword, keyAlias, keyPassword } = flags;
+  if (keystorePassword === undefined || keyAlias === undefined || keyPassword === undefined) {
+    throw new Error(
+      'Signing with your own key requires --keystore-password, --key-alias and --key-password.',
+    );
+  }
   let keystore: Buffer;
   try {
     keystore = fs.readFileSync(flags.keystore);
@@ -82,9 +105,9 @@ export function readProvidedSigning(flags: {
   }
   return {
     keystoreBase64: keystore.toString('base64'),
-    keystorePassword: flags.keystorePassword,
-    keyAlias: flags.keyAlias,
-    keyPassword: flags.keyPassword,
+    keystorePassword,
+    keyAlias,
+    keyPassword,
   };
 }
 
@@ -101,25 +124,17 @@ export type EscrowedSigning = {
  * with the same key, because the response data is authoritative.
  */
 export async function resolveEscrowedSigning(
-  apiEndpoint: string,
-  apiKey: string,
+  creds: BackendCredentials,
   applicationId: string,
 ): Promise<EscrowedSigning> {
-  const { organizationId } = await whoAmI(apiEndpoint, apiKey);
-  const existing = await getSecret(
-    apiEndpoint,
-    apiKey,
-    organizationId,
-    androidSigningKeySecretType,
-    applicationId,
-  );
+  const { organizationId } = await whoAmI(creds);
+  const existing = await getSecret(creds, organizationId, androidSigningKeySecretType, applicationId);
   if (existing) {
     return { signing: asSigningConfig(existing, applicationId), created: false };
   }
   const generated = generateAndroidSigningKey(applicationId);
   const result = await putSecret(
-    apiEndpoint,
-    apiKey,
+    creds,
     organizationId,
     androidSigningKeySecretType,
     applicationId,
@@ -135,26 +150,15 @@ export async function resolveEscrowedSigning(
  * side effect a build command should have.
  */
 export async function saveProvidedKey(
-  apiEndpoint: string,
-  apiKey: string,
+  creds: BackendCredentials,
   applicationId: string,
   provided: GradleSigningConfig,
 ): Promise<{ created: boolean }> {
-  const { organizationId } = await whoAmI(apiEndpoint, apiKey);
-  const result = await putSecret(
-    apiEndpoint,
-    apiKey,
-    organizationId,
-    androidSigningKeySecretType,
-    applicationId,
-    {
-      keystoreBase64: provided.keystoreBase64,
-      keystorePassword: provided.keystorePassword,
-      keyAlias: provided.keyAlias,
-      keyPassword: provided.keyPassword,
-    },
-  );
-  if (!result.created && !sameSigningData(result.data, provided)) {
+  const { organizationId } = await whoAmI(creds);
+  const result = await putSecret(creds, organizationId, androidSigningKeySecretType, applicationId, {
+    ...provided,
+  });
+  if (!result.created && !signingFields.every((f) => result.data[f] === provided[f])) {
     throw new Error(
       `The organization already has a different upload key escrowed for ${applicationId}. ` +
         'Builds with --sign use that key; drop --save-key to sign with the provided keystore for this build only.',
@@ -163,21 +167,12 @@ export async function saveProvidedKey(
   return { created: result.created };
 }
 
-function sameSigningData(data: Record<string, string>, provided: GradleSigningConfig): boolean {
-  return (
-    data.keystoreBase64 === provided.keystoreBase64 &&
-    data.keystorePassword === provided.keystorePassword &&
-    data.keyAlias === provided.keyAlias &&
-    data.keyPassword === provided.keyPassword
-  );
-}
-
 function asSigningConfig(data: Record<string, string>, applicationId: string): GradleSigningConfig {
-  const { keystoreBase64, keystorePassword, keyAlias, keyPassword } = data;
-  if (!keystoreBase64 || !keystorePassword || !keyAlias || !keyPassword) {
+  if (signingFields.some((f) => !data[f])) {
     throw new Error(
       `The escrowed signing key for ${applicationId} is missing required fields; contact support before retrying.`,
     );
   }
+  const { keystoreBase64, keystorePassword, keyAlias, keyPassword } = data;
   return { keystoreBase64, keystorePassword, keyAlias, keyPassword };
 }
