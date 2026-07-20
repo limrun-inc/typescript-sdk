@@ -58,6 +58,15 @@ describe('resolveApplicationId', () => {
     expect(resolveApplicationId({ syncPath: dir })).toBe('com.bare.rn');
   });
 
+  it('skips commented-out applicationId lines', () => {
+    fs.mkdirSync(path.join(dir, 'app'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'app/build.gradle'),
+      '// applicationId "com.old.name"\napplicationId "com.live.name" // was com.older\n',
+    );
+    expect(resolveApplicationId({ syncPath: dir })).toBe('com.live.name');
+  });
+
   it('asks for --application-id when nothing is detectable', () => {
     expect(() => resolveApplicationId({ syncPath: dir })).toThrow(/--application-id/);
   });

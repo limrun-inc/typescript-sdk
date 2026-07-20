@@ -61,11 +61,15 @@ function gradleApplicationId(gradleRoot: string): string | undefined {
       continue;
     }
     // Matches both Groovy (applicationId "com.x") and Kotlin DSL
-    // (applicationId = "com.x"). First match wins; flavor-specific
-    // overrides are out of heuristic scope.
-    const match = content.match(/applicationId\s*=?\s*["']([A-Za-z0-9_.]+)["']/);
-    if (match) {
-      return match[1];
+    // (applicationId = "com.x"), skipping line comments so a commented-out
+    // previous ID cannot shadow the live one. First live match wins;
+    // flavor-specific overrides are out of heuristic scope.
+    for (const line of content.split('\n')) {
+      const code = line.split('//', 1)[0];
+      const match = code.match(/applicationId\s*=?\s*["']([A-Za-z0-9_.]+)["']/);
+      if (match) {
+        return match[1];
+      }
     }
   }
   return undefined;
