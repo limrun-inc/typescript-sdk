@@ -4,6 +4,7 @@ import {
   type ExecChildProcess,
   type GradleBuildExecRequest,
   type GradleReactNativeConfig,
+  type GradleSigningConfig,
 } from '../exec-client';
 import { syncFolder as syncFolderImpl, type FolderSyncOptions } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
@@ -49,6 +50,8 @@ export type GradleBuildOptions = {
   upload?: { assetName: string; signedUploadUrl?: never } | { signedUploadUrl: string; assetName?: never };
   /** React Native / Expo tuning. */
   reactNative?: GradleReactNativeConfig;
+  /** Release signing config; presence makes bundleRelease the default task. */
+  signing?: GradleSigningConfig;
 };
 
 export type GradleClient = {
@@ -131,6 +134,7 @@ export class GradleInstances extends GeneratedGradleInstances {
           ...(options?.tasks?.length && { tasks: options.tasks }),
           ...(options?.projectPath && { projectPath: options.projectPath }),
           ...(options?.reactNative && { reactNative: options.reactNative }),
+          ...(options?.signing && { signing: options.signing }),
         };
 
         if (options?.upload && 'assetName' in options.upload) {

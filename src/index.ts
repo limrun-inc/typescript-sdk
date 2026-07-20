@@ -17,6 +17,7 @@ export {
   type GradleAndroidABI,
   type GradleBuildExecRequest,
   type GradleReactNativeConfig,
+  type GradleSigningConfig,
   type ExecOptions,
   type ExecResult,
   type ExecChildProcess,
