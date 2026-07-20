@@ -180,7 +180,12 @@ async function claimBestUsbmuxCandidate(target: DeviceRelayTarget, log: DeviceIn
       }
     }
   }
-  throw lastError instanceof Error ? lastError : new Error('Unable to claim any Apple usbmux interface.');
+  const detail = lastError ? ` (${errorMessage(lastError)})` : '';
+  throw new Error(
+    'Could not get exclusive USB access to the iPhone' +
+      `${detail}. Another app on this computer is likely connected to it. ` +
+      'Close other browser tabs that use this device, quit iPhone Mirroring, Xcode, eject iPhone in Finder windows showing the phone and try again.',
+  );
 }
 
 function pickUsbmuxCandidate(device: USBDevice) {

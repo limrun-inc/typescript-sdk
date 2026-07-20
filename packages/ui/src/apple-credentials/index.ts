@@ -13,6 +13,8 @@ import {
   generateAppleSigningKeyAndCSR,
   listAppleCertificates,
   listAppleProfiles,
+  type AppleCertificateKind,
+  type AppleProfileKind,
 } from '../app-store-relay';
 import type { AppleRelayWebSocketClient } from '../core/device-install/apple';
 import {
@@ -61,6 +63,11 @@ export type EnsureAppleCertificateInput = {
   relay: AppleRelayWebSocketClient;
   teamId: string;
   secretStore: SigningSecretStore;
+  /**
+   * Which portal certificate kind to ensure. Ad-hoc and App Store signing
+   * both use the distribution certificate. Defaults to development.
+   */
+  certificateKind?: AppleCertificateKind;
   /** Common name used when minting a new certificate. */
   commonName?: string;
   log?: (message: string, detail?: string) => void;
@@ -74,10 +81,11 @@ export type EnsureAppleCertificateResult = {
 };
 
 /**
- * Returns a usable development certificate secret for the team, reusing the
- * stored one when its certificate is still on the team and minting a new
- * one otherwise. Apple caps development certificates at 2 and never returns
- * private keys, so reuse of the stored p12 is strongly preferred.
+ * Returns a usable certificate secret of the requested kind for the team,
+ * reusing the stored one when its certificate is still on the team and
+ * minting a new one otherwise. Apple caps certificates per kind (2 for
+ * development, 3 for distribution) and never returns private keys, so
+ * reuse of the stored p12 is strongly preferred.
  *
  * Durability of the stored material is the secret store's concern:
  * implementors who want retries or fallbacks build them into their
@@ -87,14 +95,16 @@ export async function ensureAppleCertificateSecret({
   relay,
   teamId,
   secretStore,
+  certificateKind = 'development',
   commonName,
   log = () => {},
 }: EnsureAppleCertificateInput): Promise<EnsureAppleCertificateResult> {
-  // The browser flow mints via the portal's development kind, which is
-  // the DEVELOPMENT certificate type in Apple's App Store Connect enum.
-  const certificateType: AppleCertificateType = 'DEVELOPMENT';
+  // The portal kinds map onto Apple's App Store Connect certificate type
+  // enum, which is what consumers of the stored secret filter on.
+  const certificateType: AppleCertificateType =
+    certificateKind === 'distribution' ? 'DISTRIBUTION' : 'DEVELOPMENT';
   const secretName = appleCertificateSecretName(teamId, certificateType);
-  const current = await listAppleCertificates({ relay, teamId, certificateKind: 'development' });
+  const current = await listAppleCertificates({ relay, teamId, certificateKind });
   const findOnTeam = (certificateId: string | undefined) =>
     certificateId === undefined ? undefined : (
       current.find(
@@ -125,7 +135,7 @@ export async function ensureAppleCertificateSecret({
   const certificate = await createAppleCertificate({
     relay,
     teamId,
-    certificateKind: 'development',
+    certificateKind,
     csrPEM: key.csrPEM,
   });
   const certificateId =
@@ -136,7 +146,7 @@ export async function ensureAppleCertificateSecret({
   const downloaded = await downloadAppleCertificate({
     relay,
     teamId,
-    certificateKind: 'development',
+    certificateKind,
     certificateId,
   });
   if (!downloaded.rawBodyBase64) {
@@ -147,7 +157,7 @@ export async function ensureAppleCertificateSecret({
       privateKeyPKCS8Base64: key.privateKeyPKCS8Base64,
       certificateBase64: downloaded.rawBodyBase64,
       password: '',
-      friendlyName: `Apple Development ${teamId}`,
+      friendlyName: `Apple ${certificateKind === 'distribution' ? 'Distribution' : 'Development'} ${teamId}`,
     }),
     certificateType,
     teamID: teamId,
@@ -225,11 +235,22 @@ export async function saveAppleProfileSecret({
 export type ListTeamProfilesInput = {
   relay: AppleRelayWebSocketClient;
   teamId: string;
+  /**
+   * Which portal profile listing to use. The development listing is
+   * unfiltered on the portal side and returns profiles of every
+   * distribution method; adhoc narrows to ad-hoc profiles. Defaults to
+   * development.
+   */
+  profileKind?: AppleProfileKind;
 };
 
-/** Lists the team's development provisioning profiles from the portal. */
-export async function listTeamAppleProfiles({ relay, teamId }: ListTeamProfilesInput) {
-  return listAppleProfiles({ relay, teamId, profileKind: 'development' });
+/** Lists the team's provisioning profiles from the portal. */
+export async function listTeamAppleProfiles({
+  relay,
+  teamId,
+  profileKind = 'development',
+}: ListTeamProfilesInput) {
+  return listAppleProfiles({ relay, teamId, profileKind });
 }
 
 /** Read a string-ish value from a loosely typed portal record. */
