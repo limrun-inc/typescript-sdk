@@ -199,7 +199,11 @@ export function createLimrunSecretStore(options: LimrunSecretStoreOptions): Sign
         { method: 'GET', headers },
       );
       if (!response.ok) await fail(response, 'list');
-      const result = (await response.json()) as Omit<BackendSecretResult, 'data'>[];
+      // Older backends return a bare array; current ones a {secrets: [...]}
+      // envelope. Accept both so a published package works against either.
+      type ListedSecret = Omit<BackendSecretResult, 'data'>;
+      const body = (await response.json()) as ListedSecret[] | { secrets: ListedSecret[] };
+      const result = Array.isArray(body) ? body : body.secrets;
       return result
         .filter(
           (s) =>
