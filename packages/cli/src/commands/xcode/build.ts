@@ -26,6 +26,7 @@ type TestflightFlags = {
   'asc-issuer-id'?: string;
   'asc-key'?: string;
   'asc-wait-timeout'?: number;
+  'auto-build-number': boolean;
 };
 
 export default class XcodeBuild extends BaseCommand {
@@ -151,6 +152,11 @@ export default class XcodeBuild extends BaseCommand {
       min: 0,
       max: 1800,
     }),
+    'auto-build-number': Flags.boolean({
+      description:
+        'Set the build number to one more than the highest already in App Store Connect (1 for a new app), so repeat uploads never collide on CFBundleVersion. Resolved server-side with the ASC key. Requires --upload-to-testflight and a project using Xcode-standard versioning (CFBundleVersion = $(CURRENT_PROJECT_VERSION)).',
+      default: false,
+    }),
     'basis-cache-dir': Flags.string({
       description: 'Directory to use for the client-side delta sync cache during the pre-build sync step.',
     }),
@@ -250,7 +256,7 @@ export default class XcodeBuild extends BaseCommand {
       if (!flags['upload-to-testflight'] && hasTestflightFlags(flags)) {
         // Reserved: a bare ASC credential may gain other meanings later
         // (managed signing, entitlement preflight), so it never implies one.
-        this.error('The asc flags require --upload-to-testflight.');
+        this.error('The asc flags and --auto-build-number require --upload-to-testflight.');
       }
       if (flags['upload-to-testflight']) {
         if (!signing) {
@@ -390,7 +396,9 @@ export default class XcodeBuild extends BaseCommand {
     }
   }
 
-  private async buildTestflightOptions(flags: TestflightFlags): Promise<TestflightUploadConfig> {
+  private async buildTestflightOptions(
+    flags: TestflightFlags,
+  ): Promise<TestflightUploadConfig & { autoIncrementBuildNumber?: boolean }> {
     if (!flags['asc-key-id'] || !flags['asc-key']) {
       this.error('--upload-to-testflight requires both --asc-key-id and --asc-key.');
     }
@@ -399,6 +407,7 @@ export default class XcodeBuild extends BaseCommand {
       ...(flags['asc-issuer-id'] && { apiIssuerId: flags['asc-issuer-id'] }),
       apiPrivateKeyBase64: await this.readFileBase64(flags['asc-key'], '--asc-key'),
       ...(flags['asc-wait-timeout'] !== undefined && { waitTimeoutSeconds: flags['asc-wait-timeout'] }),
+      ...(flags['auto-build-number'] && { autoIncrementBuildNumber: true }),
     };
   }
 
@@ -454,6 +463,7 @@ function hasTestflightFlags(flags: TestflightFlags): boolean {
     flags['asc-key-id'] !== undefined ||
     flags['asc-issuer-id'] !== undefined ||
     flags['asc-key'] !== undefined ||
-    flags['asc-wait-timeout'] !== undefined
+    flags['asc-wait-timeout'] !== undefined ||
+    flags['auto-build-number']
   );
 }
