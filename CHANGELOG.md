@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.43.1 (2026-07-20)
+
+Full Changelog: [v0.43.0...v0.43.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.43.0...v0.43.1)
+
+### Chores
+
+* apply prettier formatting ([4bf75f0](https://github.com/limrun-inc/typescript-sdk/commit/4bf75f04c268ef85e47499eee509b2546eb87155))
+
 ## 0.43.0 (2026-07-19)
 
 Full Changelog: [v0.42.2...v0.43.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.42.2...v0.43.0)
