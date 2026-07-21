@@ -711,8 +711,8 @@ lim skills install --agents claude --agents cursor
 lim skills install --agents codex --scope global
 lim skills install --agents cursor --skills limrun-expo-development
 
-# Overwrite existing skill directories (otherwise the command refuses on non-interactive runs)
-lim skills install --agents claude --force
+# Keep existing skill directories that differ instead of updating them
+lim skills install --keep-existing
 
 # Machine-readable output for scripts
 lim skills install --json
@@ -725,7 +725,7 @@ lim skills install --json
 | `--agents <id>`             | Target agent. Repeat to select multiple. One of: `claude`, `cursor`, `codex`. Defaults to agents with an existing skills directory, or all agents when none exists. |
 | `--skills <name>`           | Limrun skill to install. Repeat to select multiple. Defaults to all skills, with Expo/Bazel skills included only when the folder scan finds matching clues. |
 | `--scope <project\|global>` | `project` (default) writes into the current directory; `global` writes into the user's home directory.                                      |
-| `--force`                   | Overwrite existing skill directories without confirmation.                                                                                  |
+| `--keep-existing`           | Keep existing skill directories that differ from the fetched version instead of updating them.                                              |
 | `--json`                    | Emit structured JSON instead of the human summary.                                                                                          |
 | `--quiet`                   | Suppress non-result output.                                                                                                                 |
 
@@ -751,9 +751,7 @@ lim skills install --json
 - If an existing skills structure is found for the chosen scope (e.g. `.claude/skills/` or `.cursor/skills/` already exists), the install adopts it: skills are only installed for the agents that already have a skills directory, instead of creating directories for every agent. Pass `--agents` to override.
 - The command fetches `limrun-inc/skills@main` at runtime, so skill updates do not require a new `lim` release.
 - The command compares fetched vs existing skill directories byte-for-byte. Identical content is reported as `Unchanged` (no writes).
-- Different content: in interactive mode you are asked to confirm each overwrite; in non-interactive mode the command refuses unless `--force` is passed.
-- Non-interactive runs are all-or-nothing: if any selected target conflicts and `--force` is not set, no files are written for any target, and the command exits with status 1.
-- Ctrl-C cancellation at any prompt exits cleanly without writing.
+- Different content is updated in place by default and reported as `Updated`. The previous content stays reviewable in your VCS diff, so you can inspect the change or ask your agent to reconcile local edits. Pass `--keep-existing` to leave differing skill directories untouched (reported as `Skipped`).
 
 Cursor reads `.agents/skills/` natively, so we prefer installing there rather than `.cursor/skills/` (an existing `.cursor/skills/` directory is adopted instead of creating a second structure). As a bonus, the `.agents/skills/` install reaches OpenCode and any other tool that follows the AGENTS.md convention - no extra menu options needed.
 

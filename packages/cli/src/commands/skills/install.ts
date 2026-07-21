@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import prompts from 'prompts';
 import { Command, Flags } from '@oclif/core';
 import {
   AGENTS,
@@ -18,9 +17,7 @@ import { scanSkillHints } from '../../lib/project-detection';
 import { loadRemoteSkills, type LoadedRemoteSkills, type RemoteSkill } from '../../lib/remote-skills';
 
 type SkillName = string;
-const SKIPPED_REASON_CONFLICT = 'existing skill directory differs; re-run with --force to overwrite';
-const SKIPPED_REASON_BLOCKED = 'blocked: another target requires --force to proceed';
-const SKIPPED_REASON_DECLINED = 'user declined overwrite confirmation';
+const SKIPPED_REASON_KEPT = 'existing skill directory differs; kept because --keep-existing was passed';
 
 type Status = 'installed' | 'updated' | 'unchanged' | 'skipped';
 
@@ -56,30 +53,6 @@ function uniqueSkillNames(values: string[], availableSkills: RemoteSkill[]): Ski
   return skills;
 }
 
-class PromptCancelled extends Error {
-  constructor() {
-    super('cancelled');
-    this.name = 'PromptCancelled';
-  }
-}
-
-async function promptOverwrite(targetPath: string): Promise<boolean> {
-  const response = await prompts(
-    {
-      type: 'confirm',
-      name: 'ok',
-      message: `Overwrite existing ${targetPath}?`,
-      initial: false,
-    },
-    {
-      onCancel: () => {
-        throw new PromptCancelled();
-      },
-    },
-  );
-  return Boolean(response.ok);
-}
-
 function humanPath(absolutePath: string, scope: Scope): string {
   if (scope !== 'project') {
     return absolutePath;
@@ -107,12 +80,13 @@ function statusLabel(status: Status): string {
 export default class SkillsInstall extends Command {
   static summary = 'Install Limrun skills for AI coding agents';
   static description =
-    'Fetch the latest Limrun skills from limrun-inc/skills and install them into the native skills directory for each agent (Claude Code, Cursor, Codex). By default all skills are installed for all agents; Expo and Bazel skills are only included when the folder scan finds matching clues, and an existing skills structure (e.g. .claude/skills/) is adopted instead of creating directories for every agent.';
+    'Fetch the latest Limrun skills from limrun-inc/skills and install them into the native skills directory for each agent (Claude Code, Cursor, Codex). By default all skills are installed for all agents; Expo and Bazel skills are only included when the folder scan finds matching clues, and an existing skills structure (e.g. .claude/skills/) is adopted instead of creating directories for every agent. Existing skill directories with different content are updated in place; review the change in your VCS diff, or pass --keep-existing to leave them untouched.';
   static examples = [
     '<%= config.bin %> skills install',
     '<%= config.bin %> skills install --agents claude --agents cursor',
     '<%= config.bin %> skills install --agents cursor --skills limrun-xcode --skills limrun-ios-simulator',
-    '<%= config.bin %> skills install --agents codex --scope global --force',
+    '<%= config.bin %> skills install --keep-existing',
+    '<%= config.bin %> skills install --agents codex --scope global',
   ];
   static flags = {
     agents: Flags.string({
@@ -131,9 +105,16 @@ export default class SkillsInstall extends Command {
       options: ['project', 'global'],
       default: 'project',
     }),
-    force: Flags.boolean({
-      description: 'Overwrite existing skill directories without confirmation.',
+    'keep-existing': Flags.boolean({
+      description: 'Keep existing skill directories that differ from the fetched version instead of updating them.',
       default: false,
+    }),
+    // Accepted for backwards compatibility; the flag key is only present when
+    // the user passes it, so the deprecation warning fires only then.
+    force: Flags.boolean({
+      description: 'Deprecated: updating existing skill directories is now the default.',
+      hidden: true,
+      deprecated: { message: 'Updating existing skill directories is now the default; --force has no effect.' },
     }),
     json: Flags.boolean({
       description: 'Emit structured JSON output.',
@@ -146,20 +127,8 @@ export default class SkillsInstall extends Command {
   };
 
   async run(): Promise<void> {
-    try {
-      await this.runInner();
-    } catch (err) {
-      if (err instanceof PromptCancelled) {
-        this.exit(130);
-      }
-      throw err;
-    }
-  }
-
-  private async runInner(): Promise<void> {
     const { flags } = await this.parse(SkillsInstall);
 
-    const interactive = process.stdin.isTTY === true && !flags.json && !flags.quiet;
     const verbose = !flags.json && !flags.quiet;
     const scope = flags.scope as Scope;
 
@@ -240,70 +209,39 @@ export default class SkillsInstall extends Command {
         }
       }
 
-      // Phase 2: Confirm.
+      // Phase 2: Apply. Differing targets are updated in place by default so
+      // installs always converge on the latest fetched skills; the previous
+      // content stays reviewable in the user's VCS diff. --keep-existing opts
+      // out and leaves differing directories untouched.
       const results: ResultRow[] = [];
-      const anyConflict = planned.some((t) => t.kind === 'conflict');
-
-      if (anyConflict && !flags.force && !interactive) {
-        // Non-interactive + conflict + no force: all-or-nothing. Skip all targets.
-        for (const t of planned) {
-          results.push({
-            skill: t.skill,
-            agent: t.agent.id,
-            scope: t.scope,
-            path: t.target,
-            status: 'skipped',
-            reason: t.kind === 'conflict' ? SKIPPED_REASON_CONFLICT : SKIPPED_REASON_BLOCKED,
-          });
-        }
-        if (!flags.json) {
-          // --quiet still suppresses the human summary, but a hard refusal needs to be visible.
-          process.stderr.write(
-            'Existing skill directories would be overwritten. Re-run with --force, or run interactively to confirm per target.\n',
-          );
-        }
-        this.emitOutput(results, flags, skills, source);
-        this.exit(1);
-      }
-
-      // Decide final status per target (no writes yet).
-      const finalDecisions: Array<{ target: PlannedTarget; status: Status; reason?: string }> = [];
+      let anyUpdated = false;
       for (const t of planned) {
-        if (t.kind === 'install') {
-          finalDecisions.push({ target: t, status: 'installed' });
-        } else if (t.kind === 'unchanged') {
-          finalDecisions.push({ target: t, status: 'unchanged' });
-        } else if (flags.force) {
-          finalDecisions.push({ target: t, status: 'updated' });
+        let status: Status;
+        let reason: string | undefined;
+        if (t.kind === 'unchanged') {
+          status = 'unchanged';
+        } else if (t.kind === 'conflict' && flags['keep-existing']) {
+          status = 'skipped';
+          reason = SKIPPED_REASON_KEPT;
         } else {
-          // Interactive conflict without --force: prompt per target.
-          const displayPath = humanPath(t.target, t.scope);
-          const ok = await promptOverwrite(displayPath);
-          if (ok) {
-            finalDecisions.push({ target: t, status: 'updated' });
-          } else {
-            finalDecisions.push({
-              target: t,
-              status: 'skipped',
-              reason: SKIPPED_REASON_DECLINED,
-            });
-          }
-        }
-      }
-
-      // Phase 3: Apply.
-      for (const decision of finalDecisions) {
-        if (decision.status === 'installed' || decision.status === 'updated') {
-          applySkillDirectoryCopy(decision.target.source, decision.target.target);
+          applySkillDirectoryCopy(t.source, t.target);
+          status = t.kind === 'conflict' ? 'updated' : 'installed';
+          anyUpdated = anyUpdated || status === 'updated';
         }
         results.push({
-          skill: decision.target.skill,
-          agent: decision.target.agent.id,
-          scope: decision.target.scope,
-          path: decision.target.target,
-          status: decision.status,
-          ...(decision.reason ? { reason: decision.reason } : {}),
+          skill: t.skill,
+          agent: t.agent.id,
+          scope: t.scope,
+          path: t.target,
+          status,
+          ...(reason ? { reason } : {}),
         });
+      }
+
+      if (verbose && anyUpdated) {
+        process.stderr.write(
+          'Updated skill directories that had local changes. Review the diff in version control and ask your agent to reconcile if needed, or re-run with --keep-existing to leave them untouched.\n',
+        );
       }
 
       this.emitOutput(results, flags, skills, source);

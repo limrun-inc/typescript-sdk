@@ -133,7 +133,7 @@ describe('lim run project detection', () => {
 });
 
 describe('lim run skill installation', () => {
-  test('installs selected skills into project-local agents and skips divergent conflicts', async () => {
+  test('installs selected skills into project-local agents and updates divergent directories', async () => {
     const projectRoot = makeTempDir();
     const sourceRoot = makeTempDir();
     try {
@@ -149,7 +149,7 @@ describe('lim run skill installation', () => {
       expect(results).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ skill: 'limrun-xcode', agent: 'cursor', status: 'installed' }),
-          expect.objectContaining({ skill: 'limrun-xcode', agent: 'claude', status: 'skipped' }),
+          expect.objectContaining({ skill: 'limrun-xcode', agent: 'claude', status: 'updated' }),
           expect.objectContaining({ skill: 'limrun-ios-simulator', agent: 'cursor', status: 'installed' }),
           expect.objectContaining({ skill: 'limrun-ios-simulator', agent: 'claude', status: 'installed' }),
         ]),
@@ -159,7 +159,7 @@ describe('lim run skill installation', () => {
       ).toBe('limrun-xcode');
       expect(
         fs.readFileSync(path.join(projectRoot, '.claude', 'skills', 'limrun-xcode', 'SKILL.md'), 'utf8'),
-      ).toBe('local changes');
+      ).toBe('limrun-xcode');
       expect(
         fs.readFileSync(
           path.join(projectRoot, '.agents', 'skills', 'limrun-ios-simulator', 'SKILL.md'),

@@ -140,20 +140,20 @@ export default class Run extends BaseCommand {
   private printSkillSummary(results: SkillInstallResult[]): void {
     const installed = results.filter((result) => result.status === 'installed').length;
     const unchanged = results.filter((result) => result.status === 'unchanged').length;
-    const skipped = results.filter((result) => result.status === 'skipped');
-    if (installed > 0) {
+    const updated = results.filter((result) => result.status === 'updated');
+    if (installed > 0 || updated.length > 0) {
       this.reporter.success('Limrun skills installed for Claude Code and Cursor/OpenCode-compatible agents');
-    } else if (unchanged > 0 && skipped.length === 0) {
+    } else if (unchanged > 0) {
       this.reporter.success(
         'Limrun skills are already installed for Claude Code and Cursor/OpenCode-compatible agents',
       );
     }
-    if (skipped.length > 0) {
-      this.info('Skipped skill directories with local changes:');
-      for (const result of skipped) {
+    if (updated.length > 0) {
+      this.info('Updated skill directories that had local changes:');
+      for (const result of updated) {
         this.info(`  ${humanPath(result.path)}`);
       }
-      this.info('Run `lim skills install` interactively, or rerun it with `--force`, to update them.');
+      this.info('Review the diff in version control and ask your agent to reconcile if needed.');
     }
   }
 

@@ -23,7 +23,7 @@ export const SAMPLE_NATIVE_APP_DIR = 'sample-native-app';
 const SAMPLE_CLONE_TIMEOUT_MS = 300_000;
 
 type OnboardingAgent = Extract<AgentId, 'claude' | 'cursor'>;
-type SkillStatus = 'installed' | 'unchanged' | 'skipped';
+type SkillStatus = 'installed' | 'updated' | 'unchanged';
 const ONBOARDING_AGENTS: OnboardingAgent[] = ['cursor', 'claude'];
 const PROJECT_ENV_FILES = ['.env', '.env.local'];
 
@@ -292,11 +292,10 @@ function applySkillDecision(kind: PlanKind, sourceDir: string, targetDir: string
   if (kind === 'unchanged') {
     return 'unchanged';
   }
-  if (kind === 'conflict') {
-    return 'skipped';
-  }
+  // Differing directories are updated in place; the previous content stays
+  // reviewable in the user's VCS diff.
   applySkillDirectoryCopy(sourceDir, targetDir);
-  return 'installed';
+  return kind === 'conflict' ? 'updated' : 'installed';
 }
 
 function normalizeGitRemote(remote: string): string {
