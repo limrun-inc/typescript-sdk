@@ -7,10 +7,13 @@ import { readConfig, registerCreatedInstance } from '../lib/config';
 import { detectProject, type ProjectDetection } from '../lib/project-detection';
 import {
   applyProjectEnvApiKey,
+  DEFAULT_SAMPLE_KIND,
   ensureLoggedIn,
   ensureProjectEnvApiKey,
   ensureSampleRepo,
   installProjectSkills,
+  SAMPLE_APPS,
+  type SampleKind,
   type SkillInstallResult,
 } from '../lib/onboarding';
 
@@ -174,10 +177,37 @@ export default class Run extends BaseCommand {
     await check();
   }
 
+  private async promptSampleKind(): Promise<SampleKind> {
+    if (this.shouldSuppressInfo() || !process.stdin.isTTY || !process.stderr.isTTY) {
+      return DEFAULT_SAMPLE_KIND;
+    }
+    const response = await prompts(
+      {
+        type: 'select',
+        name: 'kind',
+        message: 'Which sample project do you want to run?',
+        choices: Object.values(SAMPLE_APPS).map((sample) => ({
+          title: sample.displayName,
+          value: sample.kind,
+        })),
+        initial: 0,
+      },
+      {
+        onCancel: () => {
+          this.error('Cancelled.');
+        },
+      },
+    );
+    return response.kind as SampleKind;
+  }
+
   private async runSampleFlow(apiKey: string, allowAuthRetry: boolean): Promise<void> {
     const cwd = process.cwd();
+    const sampleApp = SAMPLE_APPS[await this.promptSampleKind()];
     await this.reporter.withProgress('Checking Limrun access', () => this.validateAuth(allowAuthRetry));
-    const sample = await this.reporter.withProgress('Setting up sample app', () => ensureSampleRepo({ cwd }));
+    const sample = await this.reporter.withProgress('Setting up sample app', () =>
+      ensureSampleRepo({ cwd, sample: sampleApp }),
+    );
     const samplePathFromStart = humanPath(sample.path, cwd);
     this.reporter.success(`${sample.reused ? 'Using existing' : 'Cloned'} ${samplePathFromStart}`);
     process.chdir(sample.path);
@@ -189,9 +219,9 @@ export default class Run extends BaseCommand {
       displayName: 'lim-run-sample',
       labels: {
         name: 'lim-go-sample',
-        repo: 'sample-native-app',
+        repo: sampleApp.dir,
       },
-      progressLabel: buildProgressLabel('native-ios'),
+      progressLabel: buildProgressLabel(sampleApp.kind === 'expo56' ? 'expo' : 'native-ios'),
       failureLabel: 'Sample build failed',
       recoveryPath: sample.path,
       recoveryFromDir: cwd,
