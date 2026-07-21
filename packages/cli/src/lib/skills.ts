@@ -10,8 +10,12 @@ export const AGENT_IDS: AgentId[] = ['claude', 'cursor', 'codex'];
 export interface AgentSpec {
   id: AgentId;
   displayName: string;
-  skillsDir(scope: Scope, projectRoot?: string): string;
-  detectionPaths(scope: Scope): string[];
+  /**
+   * Skills directories this agent reads, preferred location first. Installs
+   * adopt the first candidate that already exists on disk so we extend an
+   * existing skills structure instead of creating a parallel one.
+   */
+  skillsDirCandidates(scope: Scope, projectRoot?: string): string[];
 }
 
 function claudeGlobalRoot(): string {
@@ -30,12 +34,10 @@ export const AGENTS: Record<AgentId, AgentSpec> = {
   claude: {
     id: 'claude',
     displayName: 'Claude Code',
-    skillsDir: (scope, projectRoot = process.cwd()) =>
+    skillsDirCandidates: (scope, projectRoot = process.cwd()) =>
       scope === 'project' ?
-        path.join(projectRoot, '.claude', 'skills')
-      : path.join(claudeGlobalRoot(), 'skills'),
-    detectionPaths: (scope) =>
-      scope === 'project' ? [path.join(process.cwd(), '.claude')] : [claudeGlobalRoot()],
+        [path.join(projectRoot, '.claude', 'skills')]
+      : [path.join(claudeGlobalRoot(), 'skills')],
   },
   cursor: {
     id: 'cursor',
@@ -43,28 +45,77 @@ export const AGENTS: Record<AgentId, AgentSpec> = {
     // Cursor auto-discovers .agents/skills/ natively, same as .cursor/skills/.
     // Installing into .agents/skills/ also reaches OpenCode and any other
     // AGENTS.md-aware tool with a single copy, so prefer the broader path.
-    skillsDir: (scope, projectRoot = process.cwd()) =>
+    // When only .cursor/skills/ already exists we adopt it instead of
+    // creating a second structure.
+    skillsDirCandidates: (scope, projectRoot = process.cwd()) =>
       scope === 'project' ?
-        path.join(projectRoot, '.agents', 'skills')
-      : path.join(os.homedir(), '.agents', 'skills'),
-    // Detect either .cursor/ or .agents/: both are reliable signs the user
-    // is on a tool that auto-loads .agents/skills/.
-    detectionPaths: (scope) =>
-      scope === 'project' ?
-        [path.join(process.cwd(), '.cursor'), path.join(process.cwd(), '.agents')]
-      : [path.join(os.homedir(), '.cursor'), path.join(os.homedir(), '.agents')],
+        [path.join(projectRoot, '.agents', 'skills'), path.join(projectRoot, '.cursor', 'skills')]
+      : [path.join(os.homedir(), '.agents', 'skills'), path.join(os.homedir(), '.cursor', 'skills')],
   },
   codex: {
     id: 'codex',
     displayName: 'Codex',
-    skillsDir: (scope, projectRoot = process.cwd()) =>
+    skillsDirCandidates: (scope, projectRoot = process.cwd()) =>
       scope === 'project' ?
-        path.join(projectRoot, '.codex', 'skills')
-      : path.join(codexGlobalRoot(), 'skills'),
-    detectionPaths: (scope) =>
-      scope === 'project' ? [path.join(process.cwd(), '.codex')] : [codexGlobalRoot()],
+        [path.join(projectRoot, '.codex', 'skills')]
+      : [path.join(codexGlobalRoot(), 'skills')],
   },
 };
+
+function isExistingDirectory(candidatePath: string): boolean {
+  try {
+    return fs.lstatSync(candidatePath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+export function resolveSkillsDir(agent: AgentSpec, scope: Scope, projectRoot?: string): string {
+  const candidates = agent.skillsDirCandidates(scope, projectRoot);
+  return candidates.find(isExistingDirectory) ?? candidates[0]!;
+}
+
+/**
+ * Agents that already have a skills directory on disk for the given scope.
+ * When any exist, installs adopt that structure instead of creating skill
+ * directories for every supported agent.
+ */
+export function detectAdoptedAgents(scope: Scope, projectRoot?: string): AgentId[] {
+  return AGENT_IDS.filter((id) =>
+    AGENTS[id].skillsDirCandidates(scope, projectRoot).some(isExistingDirectory),
+  );
+}
+
+export interface SkillHints {
+  expo: boolean;
+  bazel: boolean;
+}
+
+export interface DefaultSkillSelection {
+  selected: string[];
+  excluded: Array<{ name: string; reason: string }>;
+}
+
+/**
+ * Default selection installs every catalog skill, except that Expo- and
+ * Bazel-specific skills are only included when the project scan found
+ * matching clues.
+ */
+export function selectDefaultSkills(skillNames: string[], hints: SkillHints): DefaultSkillSelection {
+  const selected: string[] = [];
+  const excluded: Array<{ name: string; reason: string }> = [];
+  for (const name of skillNames) {
+    const tokens = name.split('-');
+    if (tokens.includes('expo') && !hints.expo) {
+      excluded.push({ name, reason: 'no Expo project detected in this folder' });
+    } else if (tokens.includes('bazel') && !hints.bazel) {
+      excluded.push({ name, reason: 'no Bazel workspace detected in this folder' });
+    } else {
+      selected.push(name);
+    }
+  }
+  return { selected, excluded };
+}
 
 export function targetSkillDir(
   agent: AgentSpec,
@@ -72,7 +123,7 @@ export function targetSkillDir(
   skillName: string,
   projectRoot?: string,
 ): string {
-  return path.join(agent.skillsDir(scope, projectRoot), skillName);
+  return path.join(resolveSkillsDir(agent, scope, projectRoot), skillName);
 }
 
 export type PlanKind = 'install' | 'unchanged' | 'conflict';

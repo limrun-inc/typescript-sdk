@@ -2,7 +2,16 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { applySkillDirectoryCopy, planSkillDirectoryCopy } from '../packages/cli/src/lib/skills';
+import {
+  AGENTS,
+  applySkillDirectoryCopy,
+  detectAdoptedAgents,
+  planSkillDirectoryCopy,
+  resolveSkillsDir,
+  selectDefaultSkills,
+  targetSkillDir,
+} from '../packages/cli/src/lib/skills';
+import { scanSkillHints } from '../packages/cli/src/lib/project-detection';
 import { __remoteSkillsTestUtils, loadRemoteSkills } from '../packages/cli/src/lib/remote-skills';
 
 function makeTempDir(): string {
@@ -121,6 +130,161 @@ description: ${description}
       }
     } finally {
       fs.rmSync(checkoutDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('default skill selection', () => {
+  const CATALOG = [
+    'limrun-xcode',
+    'limrun-ios-simulator',
+    'limrun-expo-development',
+    'limrun-detox-testing',
+    'limrun-xcode-bazel',
+  ];
+
+  test('selects every skill when Expo and Bazel clues are present', () => {
+    const selection = selectDefaultSkills(CATALOG, { expo: true, bazel: true });
+    expect(selection.selected).toEqual(CATALOG);
+    expect(selection.excluded).toEqual([]);
+  });
+
+  test('excludes Expo and Bazel skills when the folder has no matching clues', () => {
+    const selection = selectDefaultSkills(CATALOG, { expo: false, bazel: false });
+    expect(selection.selected).toEqual(['limrun-xcode', 'limrun-ios-simulator', 'limrun-detox-testing']);
+    expect(selection.excluded.map((entry) => entry.name)).toEqual([
+      'limrun-expo-development',
+      'limrun-xcode-bazel',
+    ]);
+    expect(selection.excluded[0]!.reason).toContain('Expo');
+    expect(selection.excluded[1]!.reason).toContain('Bazel');
+  });
+
+  test('keeps only the matching conditional skill', () => {
+    const selection = selectDefaultSkills(CATALOG, { expo: true, bazel: false });
+    expect(selection.selected).toEqual([
+      'limrun-xcode',
+      'limrun-ios-simulator',
+      'limrun-expo-development',
+      'limrun-detox-testing',
+    ]);
+  });
+});
+
+describe('skill hint scanning', () => {
+  test('finds no clues in an empty folder', () => {
+    const root = makeTempDir();
+    try {
+      expect(scanSkillHints(root)).toEqual({ expo: false, bazel: false });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('detects an Expo dependency in package.json', () => {
+    const root = makeTempDir();
+    try {
+      fs.writeFileSync(
+        path.join(root, 'package.json'),
+        JSON.stringify({ dependencies: { expo: '~52.0.0' } }),
+      );
+      expect(scanSkillHints(root)).toEqual({ expo: true, bazel: false });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('detects an Expo app nested one level down', () => {
+    const root = makeTempDir();
+    try {
+      const appDir = path.join(root, 'apps', 'mobile');
+      fs.mkdirSync(appDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(appDir, 'package.json'),
+        JSON.stringify({ devDependencies: { expo: '~52.0.0' } }),
+      );
+      expect(scanSkillHints(root).expo).toBe(true);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('detects a Bazel workspace via MODULE.bazel', () => {
+    const root = makeTempDir();
+    try {
+      fs.writeFileSync(path.join(root, 'MODULE.bazel'), 'module(name = "app")\n');
+      expect(scanSkillHints(root)).toEqual({ expo: false, bazel: true });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('does not treat a package.json without expo as an Expo clue', () => {
+    const root = makeTempDir();
+    try {
+      fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ dependencies: { react: '18' } }));
+      expect(scanSkillHints(root).expo).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('existing skills structure adoption', () => {
+  test('reports no adopted agents when nothing exists', () => {
+    const root = makeTempDir();
+    try {
+      expect(detectAdoptedAgents('project', root)).toEqual([]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('adopts only agents with an existing skills directory', () => {
+    const root = makeTempDir();
+    try {
+      fs.mkdirSync(path.join(root, '.claude', 'skills'), { recursive: true });
+      expect(detectAdoptedAgents('project', root)).toEqual(['claude']);
+
+      fs.mkdirSync(path.join(root, '.codex', 'skills'), { recursive: true });
+      expect(detectAdoptedAgents('project', root)).toEqual(['claude', 'codex']);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('recognizes an existing .cursor/skills structure for the cursor agent', () => {
+    const root = makeTempDir();
+    try {
+      fs.mkdirSync(path.join(root, '.cursor', 'skills'), { recursive: true });
+      expect(detectAdoptedAgents('project', root)).toEqual(['cursor']);
+      expect(resolveSkillsDir(AGENTS.cursor, 'project', root)).toBe(path.join(root, '.cursor', 'skills'));
+      expect(targetSkillDir(AGENTS.cursor, 'project', 'limrun-xcode', root)).toBe(
+        path.join(root, '.cursor', 'skills', 'limrun-xcode'),
+      );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('prefers .agents/skills over .cursor/skills when both exist', () => {
+    const root = makeTempDir();
+    try {
+      fs.mkdirSync(path.join(root, '.cursor', 'skills'), { recursive: true });
+      fs.mkdirSync(path.join(root, '.agents', 'skills'), { recursive: true });
+      expect(resolveSkillsDir(AGENTS.cursor, 'project', root)).toBe(path.join(root, '.agents', 'skills'));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('defaults to the preferred directory when nothing exists', () => {
+    const root = makeTempDir();
+    try {
+      expect(resolveSkillsDir(AGENTS.cursor, 'project', root)).toBe(path.join(root, '.agents', 'skills'));
+      expect(resolveSkillsDir(AGENTS.claude, 'project', root)).toBe(path.join(root, '.claude', 'skills'));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 });

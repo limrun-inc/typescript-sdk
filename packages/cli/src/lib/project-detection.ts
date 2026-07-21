@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
+import type { SkillHints } from './skills';
+
 export type ProjectDetection =
   | {
       kind: 'native-ios';
@@ -91,6 +93,33 @@ function hasExpoDependency(packageJsonPath: string): boolean {
 function isExpoAppDir(dir: string): boolean {
   if (!hasExpoDependency(path.join(dir, 'package.json'))) return false;
   return ['app.json', 'app.config.js', 'app.config.ts'].some((name) => fs.existsSync(path.join(dir, name)));
+}
+
+// Unambiguous Bazel workspace markers. Bare BUILD files are intentionally not
+// on this list because they are too weak a signal on their own.
+const BAZEL_MARKERS = [
+  'WORKSPACE',
+  'WORKSPACE.bazel',
+  'WORKSPACE.bzlmod',
+  'MODULE.bazel',
+  '.bazelrc',
+  '.bazelversion',
+];
+
+function isBazelWorkspaceDir(dir: string): boolean {
+  return BAZEL_MARKERS.some((marker) => isPlainFile(path.join(dir, marker)));
+}
+
+/**
+ * Scan the folder for clues that decide whether conditional skills (Expo,
+ * Bazel) should be installed by default.
+ */
+export function scanSkillHints(root = process.cwd()): SkillHints {
+  const dirs = walkDirs(root);
+  return {
+    expo: dirs.some((dir) => hasExpoDependency(path.join(dir, 'package.json'))),
+    bazel: dirs.some(isBazelWorkspaceDir),
+  };
 }
 
 function iosProjectFiles(dir: string): { workspaces: string[]; projects: string[] } {
