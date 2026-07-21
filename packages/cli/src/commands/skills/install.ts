@@ -109,13 +109,6 @@ export default class SkillsInstall extends Command {
       description: 'Keep existing skill directories that differ from the fetched version instead of updating them.',
       default: false,
     }),
-    // Accepted for backwards compatibility; the flag key is only present when
-    // the user passes it, so the deprecation warning fires only then.
-    force: Flags.boolean({
-      description: 'Deprecated: updating existing skill directories is now the default.',
-      hidden: true,
-      deprecated: { message: 'Updating existing skill directories is now the default; --force has no effect.' },
-    }),
     json: Flags.boolean({
       description: 'Emit structured JSON output.',
       default: false,
