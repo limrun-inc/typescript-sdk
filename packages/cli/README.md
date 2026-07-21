@@ -124,7 +124,7 @@ lim run
 
 - In a clear native iOS project, it installs the Limrun iOS/Xcode skill into `.agents/skills/` and `.claude/skills/`.
 - In a clear Expo project, it installs the Limrun iOS/Xcode and Expo skills into `.agents/skills/` and `.claude/skills/`.
-- In any other directory, it asks which sample project you want to run — Swift (`limrun-inc/sample-native-app`), Expo 56 (`limrun-inc/sample-expo56-app`), or Bazel (`limrun-inc/sample-bazel-native-app`) — clones it, builds it with a Limrun iOS simulator + Xcode sandbox, and prints a simulator URL. Non-interactive sessions default to the Swift sample.
+- In any other directory, it asks which sample project you want to run — Swift (`limrun-inc/sample-native-app`), Expo 56 (`limrun-inc/sample-expo56-app`), or Bazel (`limrun-inc/sample-native-bazel-app`) — clones it, builds it with a Limrun iOS simulator + Xcode sandbox, and prints a simulator URL. Non-interactive sessions default to the Swift sample.
 
 After setup, open your coding agent in the project and ask it to build and run the app with Limrun. For manual agent setup, use `lim skills install`.
 

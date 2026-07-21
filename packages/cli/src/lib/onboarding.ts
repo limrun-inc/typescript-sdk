@@ -42,8 +42,8 @@ export const SAMPLE_APPS: Record<SampleKind, SampleApp> = {
   bazel: {
     kind: 'bazel',
     displayName: 'Bazel (native iOS)',
-    repo: 'https://github.com/limrun-inc/sample-bazel-native-app',
-    dir: 'sample-bazel-native-app',
+    repo: 'https://github.com/limrun-inc/sample-native-bazel-app',
+    dir: 'sample-native-bazel-app',
   },
 };
 
