@@ -287,6 +287,33 @@ describe('existing skills structure adoption', () => {
     }
   });
 
+  test('adopts a skills directory that is a symlink to a real directory', () => {
+    const root = makeTempDir();
+    try {
+      const realSkills = path.join(root, 'shared-skills');
+      fs.mkdirSync(realSkills, { recursive: true });
+      fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+      fs.symlinkSync(realSkills, path.join(root, '.claude', 'skills'), 'dir');
+
+      expect(detectAdoptedAgents('project', root)).toEqual(['claude']);
+      expect(resolveSkillsDir(AGENTS.claude, 'project', root)).toBe(path.join(root, '.claude', 'skills'));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('ignores a broken skills directory symlink', () => {
+    const root = makeTempDir();
+    try {
+      fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+      fs.symlinkSync(path.join(root, 'does-not-exist'), path.join(root, '.claude', 'skills'), 'dir');
+
+      expect(detectAdoptedAgents('project', root)).toEqual([]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('prefers .agents/skills over .cursor/skills when both exist', () => {
     const root = makeTempDir();
     try {

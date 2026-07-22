@@ -64,7 +64,11 @@ export const AGENTS: Record<AgentId, AgentSpec> = {
 
 function isExistingDirectory(candidatePath: string): boolean {
   try {
-    return fs.lstatSync(candidatePath).isDirectory();
+    // statSync follows symlinks: a skills dir that is a symlink to a real
+    // directory is a valid existing structure and must be adopted rather
+    // than duplicated at the preferred path. Broken symlinks throw and
+    // count as missing.
+    return fs.statSync(candidatePath).isDirectory();
   } catch {
     return false;
   }
