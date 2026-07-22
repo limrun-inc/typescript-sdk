@@ -88,6 +88,27 @@ export async function streamPublish(input: PublishInput, onEvent: (event: Publis
   return postAndStreamSse('/publish', input, onEvent);
 }
 
+/** Asks the backend to detect the Android application ID from the project. */
+export async function detectAndroidPackage(projectPath: string): Promise<string | undefined> {
+  const response = await fetch(`${BACKEND_URL}/project/android-package`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath }),
+  });
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as { message?: string };
+      if (body.message) message = body.message;
+    } catch {
+      // Non-JSON error body; the status code is the best we have.
+    }
+    throw new Error(`Could not inspect the project: ${message}`);
+  }
+  const body = (await response.json()) as { packageName?: string | null };
+  return body.packageName ?? undefined;
+}
+
 /** The Play Store counterpart: same SSE contract, different endpoint. */
 export async function streamAndroidPublish(
   input: AndroidPublishInput,

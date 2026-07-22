@@ -5,8 +5,11 @@
 // is browser-minted, rides this one request, and is never stored; the
 // Limrun API key never leaves this backend. The AAB is also uploaded as a
 // named asset so a failed publish leaves the artifact for a retry.
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { Response } from 'express';
 import { Limrun, type GradlePlaystoreConfig } from '@limrun/api';
+import { findExpoAppConfigs } from './publish.js';
 import { getSecret } from './secret-store.js';
 
 export type AndroidPublishRequest = {
@@ -17,6 +20,80 @@ export type AndroidPublishRequest = {
   /** Play track ID; the server defaults to internal. */
   track?: string;
 };
+
+/**
+ * Detects the Android application ID from a project, so the wizard can
+ * prefill it from the project path alone. Same heuristics (and the same
+ * comment-skipping) as the lim CLI's signing key resolution: Expo app
+ * config first, then app/build.gradle(.kts) under the conventional roots.
+ */
+export async function detectAndroidPackage(projectPath: string): Promise<string | undefined> {
+  for (const configPath of await findExpoAppConfigs(projectPath)) {
+    try {
+      const config = JSON.parse(await readFile(configPath, 'utf8')) as {
+        expo?: { android?: { package?: string } };
+      };
+      if (config.expo?.android?.package) return config.expo.android.package;
+    } catch {
+      // Unreadable config; keep probing.
+    }
+  }
+  for (const root of ['.', 'android']) {
+    for (const candidate of ['app/build.gradle', 'app/build.gradle.kts']) {
+      let content: string;
+      try {
+        content = await readFile(path.join(projectPath, root, candidate), 'utf8');
+      } catch {
+        continue;
+      }
+      // Skip line comments so a commented-out previous ID cannot shadow
+      // the live one. First live match wins.
+      for (const line of content.split('\n')) {
+        const code = line.split('//', 1)[0]!;
+        const match = code.match(/applicationId\s*=?\s*["']([A-Za-z0-9_.]+)["']/);
+        if (match) return match[1];
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The Android twin of the iOS flow's ensureExpoBundleIdentifier: prebuild
+ * derives the applicationId from expo.android.package, and without it Expo
+ * falls back to a placeholder. Only a missing field is filled in; an
+ * existing different value is reported, not touched. Returns log lines.
+ */
+export async function ensureExpoAndroidPackage(projectPath: string, packageName: string): Promise<string[]> {
+  const configs = await findExpoAppConfigs(projectPath);
+  if (configs.length === 0) {
+    return []; // Not an Expo project; the Gradle project owns its ID.
+  }
+  if (configs.length > 1) {
+    return [
+      `Warning: found more than one Expo app.json (${configs.join(', ')}); ` +
+        'not touching any of them. Set expo.android.package yourself in the one being published.',
+    ];
+  }
+  const appJsonPath = configs[0]!;
+  const config = JSON.parse(await readFile(appJsonPath, 'utf8')) as {
+    expo: { android?: { package?: string } };
+  };
+  const existing = config.expo.android?.package;
+  if (existing) {
+    if (existing !== packageName) {
+      return [
+        `Warning: ${appJsonPath} declares expo.android.package ${existing}, but this publish ` +
+          `targets ${packageName}. Google Play matches on the AAB's applicationId, so the publish will fail ` +
+          'unless they agree.',
+      ];
+    }
+    return [];
+  }
+  config.expo.android = { ...config.expo.android, package: packageName };
+  await writeFile(appJsonPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
+  return [`${appJsonPath} had no expo.android.package; set it to ${packageName}.`];
+}
 
 export const ANDROID_SIGNING_KEY_SECRET_TYPE = 'androidSigningKey';
 
@@ -70,6 +147,9 @@ export async function streamAndroidPublish(
     }
 
     send('stdout', `Publishing ${request.packageName} to the Play ${request.track ?? 'internal'} track...`);
+    for (const line of await ensureExpoAndroidPackage(request.projectPath, request.packageName)) {
+      send('stdout', line);
+    }
     send('stdout', 'Creating a gradle instance...');
     const instance = await limrun.gradleInstances.create({
       wait: true,
