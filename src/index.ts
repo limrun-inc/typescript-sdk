@@ -16,11 +16,13 @@ export {
   type XcodeBuildExecRequest,
   type GradleAndroidABI,
   type GradleBuildExecRequest,
+  type GradlePlaystoreConfig,
   type GradleReactNativeConfig,
   type GradleSigningConfig,
   type ExecOptions,
   type ExecResult,
   type ExecChildProcess,
+  type PlaystoreEvent,
   type TestflightEvent,
   type TestflightUploadConfig,
 } from './exec-client';

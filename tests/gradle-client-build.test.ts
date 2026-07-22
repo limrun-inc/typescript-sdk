@@ -114,6 +114,48 @@ test('gradlebuild threads reactNative to the wire when set', async () => {
   });
 });
 
+// Signing and playstore ride the same presence rule as reactNative: the
+// server keys behavior off the key existing (signing flips the default task
+// to bundleRelease, playstore triggers the publish stage), so they must
+// reach the wire verbatim and stay off otherwise. The playstore SSE event
+// doubles as the capability handshake, so it must land on the result.
+test('gradlebuild threads signing and playstore and captures the playstore event', async () => {
+  const requests: Array<{ url: string; body?: unknown }> = [];
+  nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+    const url = String(input);
+    requests.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (url.endsWith('/exec')) {
+      return new Response(JSON.stringify({ execId: 'build-play' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.endsWith('/exec/build-play/events')) {
+      return sseResponse([
+        'event: playstore\ndata: {"state":"uploading","track":"internal"}\n\n',
+        'event: playstore\ndata: {"state":"accepted","versionCode":12,"track":"internal"}\n\n',
+        'event: exitCode\ndata: 0\n\n',
+      ]);
+    }
+    throw new Error(`unexpected request: ${url}`);
+  });
+
+  const signing = {
+    keystoreBase64: 'a2V5c3RvcmU=',
+    keystorePassword: 'store-pass',
+    keyAlias: 'upload',
+    keyPassword: 'key-pass',
+  };
+  const playstore = { accessToken: 'ya29.token', track: 'internal' };
+  const gradle = await gradleClient();
+  const result = await gradle.gradlebuild({ signing, playstore });
+
+  expect(result.exitCode).toBe(0);
+  expect(result.playstore).toEqual({ state: 'accepted', versionCode: 12, track: 'internal' });
+  const execReq = requests.find((r) => r.url.endsWith('/exec'));
+  expect(execReq?.body).toEqual({ command: 'gradlebuild', signing, playstore });
+});
+
 test('gradlebuild reports failure exit codes from the stream', async () => {
   nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) => {
     const url = String(input);

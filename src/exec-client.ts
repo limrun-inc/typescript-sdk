@@ -85,16 +85,48 @@ export type GradleSigningConfig = {
 
 export type GradleBuildExecRequest = {
   command: 'gradlebuild';
-  /** Gradle tasks to run. Omit for the server default (assembleDebug). */
+  /**
+   * Gradle tasks to run. Omit for the server default (assembleDebug, or
+   * bundleRelease when signing is set).
+   */
   tasks?: string[];
   /** Relative path to the Gradle root when auto-discovery is ambiguous. */
   projectPath?: string;
   reactNative?: GradleReactNativeConfig;
   signing?: GradleSigningConfig;
+  playstore?: GradlePlaystoreConfig;
   signedUploadUrl?: string;
   additionalMetadata?: {
     signedDownloadUrl?: string;
   };
+};
+
+/**
+ * Publish the built AAB to a Google Play track after a successful build.
+ * Requires signing. Exactly one of accessToken or serviceAccountJsonBase64
+ * must be set; the credential is held in memory for the build duration
+ * only. Progress and failure causes stream as `playstore` SSE events.
+ */
+export type GradlePlaystoreConfig = {
+  /** OAuth bearer token carrying the androidpublisher scope. */
+  accessToken?: string;
+  /** Base64-encoded service-account JSON key invited in Play Console. */
+  serviceAccountJsonBase64?: string;
+  /**
+   * Play track ID, passed to Google verbatim: internal (default), alpha,
+   * beta, production, or a custom closed-testing track. Publishing
+   * replaces the track's existing releases, including an in-progress
+   * staged rollout on that track.
+   */
+  track?: string;
+  /**
+   * completed (default) makes the release live on the track; draft
+   * commits it without rollout. Publishing to the production track
+   * requires setting it explicitly.
+   */
+  releaseStatus?: 'draft' | 'completed';
+  /** Package name to publish under. Omit to read it from the built AAB. */
+  packageName?: string;
 };
 
 export type RunExecRequest = {
@@ -122,6 +154,11 @@ export type ExecResult = {
    */
   testflight?: TestflightEvent;
   /**
+   * Last Play Store state streamed by the server. Absent when the build ran
+   * without a playstore request, or when the server predates the feature.
+   */
+  playstore?: PlaystoreEvent;
+  /**
    * True when the client gave up waiting for the build's event stream. The
    * exit code is fabricated in that case; the remote build may still be
    * running and may yet succeed.
@@ -134,6 +171,16 @@ export type TestflightEvent = {
   state: 'uploading' | 'processing' | 'accepted' | 'failed' | 'unknown';
   uploadId?: string;
   buildId?: string;
+};
+
+export type PlaystoreEvent = {
+  /** 'unknown' means a playstore event arrived but its payload was unreadable. */
+  state: 'uploading' | 'accepted' | 'failed' | 'unknown';
+  versionCode?: number;
+  track?: string;
+  /** Machine-readable failure code; present only on failed. */
+  code?: string;
+  message?: string;
 };
 
 export type TestflightUploadConfig = {
@@ -226,6 +273,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private sseConnection: EventSourceClient | null = null;
   private killed = false;
   private testflightEvent: TestflightEvent | null = null;
+  private playstoreEvent: PlaystoreEvent | null = null;
   private readonly options: ExecOptions;
   private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
 
@@ -410,6 +458,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       status,
       ...('additionalMetadata' in request ? request.additionalMetadata ?? {} : {}),
       ...(this.testflightEvent ? { testflight: this.testflightEvent } : {}),
+      ...(this.playstoreEvent ? { playstore: this.playstoreEvent } : {}),
       ...(timedOut ? { timedOut } : {}),
     };
 
@@ -451,6 +500,16 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
                 // so never let a payload glitch look like a missing feature.
                 this.testflightEvent = { state: 'unknown' };
                 this.log('warn', `SSE testflight event has invalid data: ${data}`);
+              }
+            } else if (eventType === 'playstore') {
+              try {
+                this.playstoreEvent = JSON.parse(data) as PlaystoreEvent;
+              } catch {
+                // Same contract as testflight: the event proves the server
+                // ran the Play Store step, so a payload glitch must not
+                // read as a missing feature.
+                this.playstoreEvent = { state: 'unknown' };
+                this.log('warn', `SSE playstore event has invalid data: ${data}`);
               }
             } else if (eventType === 'exitCode') {
               const exitCode = parseInt(data, 10);
