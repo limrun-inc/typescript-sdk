@@ -81,9 +81,13 @@ Prerequisites, in addition to the general ones below:
   `http://localhost:5173` only. Serving from another origin needs your own Web
   application OAuth client with that origin authorized (client IDs are public; the token
   model uses no client secret).
-- Publishes go to the `internal` track, which has no review gate. Each publish must carry
-  a `versionCode` higher than what the track already has (`expo.android.versionCode` for
-  Expo projects); a duplicate fails with `versionCodeExists`.
+- Publishes go to the `internal` track, which has no review gate. The versionCode is
+  managed by the platform: the build resolves the next free one from Google Play and
+  stamps it before building (`Version code: N` in the build log), into the Expo config
+  for Expo projects or the module build script's literal `versionCode` for native Gradle
+  projects, so repeat publishes never collide. A missing `Version code:` line means the
+  daemon predates the feature; the publish then carries the project's own versionCode
+  and a duplicate fails with `versionCodeExists`.
 
 ## Branding
 

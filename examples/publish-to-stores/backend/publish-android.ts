@@ -62,10 +62,11 @@ export async function detectAndroidPackage(projectPath: string): Promise<string 
  * The Android twin of the iOS flow's ensureExpoBundleIdentifier: prebuild
  * derives the applicationId from expo.android.package, and without it Expo
  * falls back to a placeholder. Only a missing field is filled in; an
- * existing different value is reported, not touched. Returns log lines.
+ * existing different value is reported, not touched. Takes the already
+ * discovered Expo configs so the project tree is walked once per publish.
+ * Returns log lines.
  */
-export async function ensureExpoAndroidPackage(projectPath: string, packageName: string): Promise<string[]> {
-  const configs = await findExpoAppConfigs(projectPath);
+export async function ensureExpoAndroidPackage(configs: string[], packageName: string): Promise<string[]> {
   if (configs.length === 0) {
     return []; // Not an Expo project; the Gradle project owns its ID.
   }
@@ -147,7 +148,8 @@ export async function streamAndroidPublish(
     }
 
     send('stdout', `Publishing ${request.packageName} to the Play ${request.track ?? 'internal'} track...`);
-    for (const line of await ensureExpoAndroidPackage(request.projectPath, request.packageName)) {
+    const expoConfigs = await findExpoAppConfigs(request.projectPath);
+    for (const line of await ensureExpoAndroidPackage(expoConfigs, request.packageName)) {
       send('stdout', line);
     }
     send('stdout', 'Creating a gradle instance...');
@@ -164,9 +166,14 @@ export async function streamAndroidPublish(
     const sync = await gradle.sync(request.projectPath);
     send('stdout', `Sync complete${sync.bytesSent !== undefined ? ` (${sync.bytesSent} bytes sent)` : ''}.`);
 
+    // The platform owns the versionCode: the server resolves the next
+    // free one from Google Play and stamps it before the build, into the
+    // Expo config for Expo projects or the module build script's literal
+    // versionCode for native Gradle projects.
     const playstore: GradlePlaystoreConfig = {
       accessToken: request.googleAccessToken,
       packageName: request.packageName,
+      autoIncrementVersionCode: true,
       ...(request.track && { track: request.track }),
     };
     const proc = gradle.gradlebuild({

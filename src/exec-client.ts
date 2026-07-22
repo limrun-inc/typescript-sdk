@@ -127,6 +127,16 @@ export type GradlePlaystoreConfig = {
   releaseStatus?: 'draft' | 'completed';
   /** Package name to publish under. Omit to read it from the built AAB. */
   packageName?: string;
+  /**
+   * Set the versionCode to one more than the highest already known to
+   * Google Play (1 for an app with no artifacts), so repeat publishes
+   * never collide. Resolved with the publish credential before the build
+   * and stamped into the workspace copy: android.versionCode in the Expo
+   * config (requires a static app.json), or the literal versionCode in a
+   * native project's module build script (a computed versionCode fails
+   * the build before it starts).
+   */
+  autoIncrementVersionCode?: boolean;
 };
 
 export type RunExecRequest = {

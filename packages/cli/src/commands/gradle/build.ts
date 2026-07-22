@@ -116,6 +116,10 @@ export default class GradleBuild extends BaseCommand {
     'playstore-package': Flags.string({
       description: 'Package name to publish under. Omit to read it from the built AAB.',
     }),
+    'auto-version-code': Flags.boolean({
+      description:
+        'Set the versionCode to one more than the highest already on Google Play before the build, so repeat publishes never collide. Requires --upload-to-playstore; needs a static app.json (Expo) or a literal versionCode in the module build script (native).',
+    }),
     'basis-cache-dir': Flags.string({
       description: 'Directory for the client-side folder-sync cache.',
     }),
@@ -174,6 +178,7 @@ export default class GradleBuild extends BaseCommand {
       }
       options.playstore = {
         serviceAccountJsonBase64,
+        ...(flags['auto-version-code'] && { autoIncrementVersionCode: true }),
         ...(flags['playstore-track'] && { track: flags['playstore-track'] }),
         ...(flags['playstore-release-status'] && {
           releaseStatus: flags['playstore-release-status'] as 'draft' | 'completed',

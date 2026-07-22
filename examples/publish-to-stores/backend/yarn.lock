@@ -133,7 +133,7 @@
   integrity sha512-bm4Mowrv+GXMlpWX++EcXw/iLyd1o3+bJkC2DkWXYVvgZCqD/bSj9ctZeAMC3cIxgjRVR2Dufaiu4YPxr5gW1A==
 
 "@limrun/api@file:../../../dist":
-  version "0.43.0"
+  version "0.43.1"
   dependencies:
     "@limrun/xdelta3-wasm" "0.2.0"
     eventsource-client "^1.2.0"

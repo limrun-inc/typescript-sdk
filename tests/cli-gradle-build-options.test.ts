@@ -66,6 +66,12 @@ test('playstore flags without --upload-to-playstore throw', () => {
   );
 });
 
+test('auto-version-code without --upload-to-playstore throws', () => {
+  expect(() => gradleBuildOptionsFromFlags({ 'auto-version-code': true })).toThrow(
+    'require --upload-to-playstore',
+  );
+});
+
 test('upload-to-playstore without signing throws before any instance work', () => {
   expect(() =>
     gradleBuildOptionsFromFlags({
