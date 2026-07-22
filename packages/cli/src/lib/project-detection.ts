@@ -142,13 +142,12 @@ function isDetoxDir(dir: string): boolean {
 }
 
 /**
- * Scan the folder for clues that decide whether conditional skills (Expo,
- * Bazel, Detox) should be installed by default.
+ * Scan the folder for clues that decide whether conditional skills (Bazel,
+ * Detox) should be installed by default.
  */
 export function scanSkillHints(root = process.cwd()): SkillHints {
   const dirs = walkDirs(root);
   return {
-    expo: dirs.some((dir) => hasExpoDependency(path.join(dir, 'package.json'))),
     bazel: dirs.some(isBazelWorkspaceDir),
     detox: dirs.some(isDetoxDir),
   };

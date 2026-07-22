@@ -87,7 +87,6 @@ export function detectAdoptedAgents(scope: Scope, projectRoot?: string): AgentId
 }
 
 export interface SkillHints {
-  expo: boolean;
   bazel: boolean;
   detox: boolean;
 }
@@ -98,8 +97,8 @@ export interface DefaultSkillSelection {
 }
 
 /**
- * Default selection installs every catalog skill, except that Expo-, Bazel-,
- * and Detox-specific skills are only included when the project scan found
+ * Default selection installs every catalog skill, except that Bazel- and
+ * Detox-specific skills are only included when the project scan found
  * matching clues.
  */
 export function selectDefaultSkills(skillNames: string[], hints: SkillHints): DefaultSkillSelection {
@@ -107,9 +106,7 @@ export function selectDefaultSkills(skillNames: string[], hints: SkillHints): De
   const excluded: Array<{ name: string; reason: string }> = [];
   for (const name of skillNames) {
     const tokens = name.split('-');
-    if (tokens.includes('expo') && !hints.expo) {
-      excluded.push({ name, reason: 'no Expo project detected in this folder' });
-    } else if (tokens.includes('bazel') && !hints.bazel) {
+    if (tokens.includes('bazel') && !hints.bazel) {
       excluded.push({ name, reason: 'no Bazel workspace detected in this folder' });
     } else if (tokens.includes('detox') && !hints.detox) {
       excluded.push({ name, reason: 'no Detox setup detected in this folder' });

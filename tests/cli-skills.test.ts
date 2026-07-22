@@ -143,28 +143,31 @@ describe('default skill selection', () => {
     'limrun-xcode-bazel',
   ];
 
-  test('selects every skill when Expo, Bazel, and Detox clues are present', () => {
-    const selection = selectDefaultSkills(CATALOG, { expo: true, bazel: true, detox: true });
+  test('selects every skill when Bazel and Detox clues are present', () => {
+    const selection = selectDefaultSkills(CATALOG, { bazel: true, detox: true });
     expect(selection.selected).toEqual(CATALOG);
     expect(selection.excluded).toEqual([]);
   });
 
-  test('excludes conditional skills when the folder has no matching clues', () => {
-    const selection = selectDefaultSkills(CATALOG, { expo: false, bazel: false, detox: false });
-    expect(selection.selected).toEqual(['limrun-xcode', 'limrun-ios-simulator']);
+  test('excludes conditional skills but always keeps Expo when the folder has no clues', () => {
+    const selection = selectDefaultSkills(CATALOG, { bazel: false, detox: false });
+    expect(selection.selected).toEqual(['limrun-xcode', 'limrun-ios-simulator', 'limrun-expo-development']);
     expect(selection.excluded.map((entry) => entry.name)).toEqual([
-      'limrun-expo-development',
       'limrun-detox-testing',
       'limrun-xcode-bazel',
     ]);
-    expect(selection.excluded[0]!.reason).toContain('Expo');
-    expect(selection.excluded[1]!.reason).toContain('Detox');
-    expect(selection.excluded[2]!.reason).toContain('Bazel');
+    expect(selection.excluded[0]!.reason).toContain('Detox');
+    expect(selection.excluded[1]!.reason).toContain('Bazel');
   });
 
   test('keeps only the matching conditional skill', () => {
-    const selection = selectDefaultSkills(CATALOG, { expo: true, bazel: false, detox: false });
-    expect(selection.selected).toEqual(['limrun-xcode', 'limrun-ios-simulator', 'limrun-expo-development']);
+    const selection = selectDefaultSkills(CATALOG, { bazel: true, detox: false });
+    expect(selection.selected).toEqual([
+      'limrun-xcode',
+      'limrun-ios-simulator',
+      'limrun-expo-development',
+      'limrun-xcode-bazel',
+    ]);
   });
 });
 
@@ -172,35 +175,7 @@ describe('skill hint scanning', () => {
   test('finds no clues in an empty folder', () => {
     const root = makeTempDir();
     try {
-      expect(scanSkillHints(root)).toEqual({ expo: false, bazel: false, detox: false });
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test('detects an Expo dependency in package.json', () => {
-    const root = makeTempDir();
-    try {
-      fs.writeFileSync(
-        path.join(root, 'package.json'),
-        JSON.stringify({ dependencies: { expo: '~52.0.0' } }),
-      );
-      expect(scanSkillHints(root)).toEqual({ expo: true, bazel: false, detox: false });
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test('detects an Expo app nested one level down', () => {
-    const root = makeTempDir();
-    try {
-      const appDir = path.join(root, 'apps', 'mobile');
-      fs.mkdirSync(appDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(appDir, 'package.json'),
-        JSON.stringify({ devDependencies: { expo: '~52.0.0' } }),
-      );
-      expect(scanSkillHints(root).expo).toBe(true);
+      expect(scanSkillHints(root)).toEqual({ bazel: false, detox: false });
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -210,7 +185,7 @@ describe('skill hint scanning', () => {
     const root = makeTempDir();
     try {
       fs.writeFileSync(path.join(root, 'MODULE.bazel'), 'module(name = "app")\n');
-      expect(scanSkillHints(root)).toEqual({ expo: false, bazel: true, detox: false });
+      expect(scanSkillHints(root)).toEqual({ bazel: true, detox: false });
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -223,7 +198,22 @@ describe('skill hint scanning', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ devDependencies: { detox: '^20.0.0' } }),
       );
-      expect(scanSkillHints(root)).toEqual({ expo: false, bazel: false, detox: true });
+      expect(scanSkillHints(root)).toEqual({ bazel: false, detox: true });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('detects a Detox setup nested one level down', () => {
+    const root = makeTempDir();
+    try {
+      const appDir = path.join(root, 'apps', 'mobile');
+      fs.mkdirSync(appDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(appDir, 'package.json'),
+        JSON.stringify({ devDependencies: { detox: '^20.0.0' } }),
+      );
+      expect(scanSkillHints(root).detox).toBe(true);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -249,11 +239,11 @@ describe('skill hint scanning', () => {
     }
   });
 
-  test('does not treat a package.json without expo or detox as a clue', () => {
+  test('does not treat a package.json without detox as a clue', () => {
     const root = makeTempDir();
     try {
       fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ dependencies: { react: '18' } }));
-      expect(scanSkillHints(root)).toEqual({ expo: false, bazel: false, detox: false });
+      expect(scanSkillHints(root)).toEqual({ bazel: false, detox: false });
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

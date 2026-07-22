@@ -80,7 +80,7 @@ function statusLabel(status: Status): string {
 export default class SkillsInstall extends Command {
   static summary = 'Install Limrun skills for AI coding agents';
   static description =
-    'Fetch the latest Limrun skills from limrun-inc/skills and install them into the native skills directory for each agent (Claude Code, Cursor, Codex). By default all skills are installed for all agents; Expo, Bazel, and Detox skills are only included when the folder scan finds matching clues, and an existing skills structure (e.g. .claude/skills/) is adopted instead of creating directories for every agent. Existing skill directories with different content are updated in place; review the change in your VCS diff, or pass --keep-existing to leave them untouched.';
+    'Fetch the latest Limrun skills from limrun-inc/skills and install them into the native skills directory for each agent (Claude Code, Cursor, Codex). By default all skills are installed for all agents; in project scope, Bazel and Detox skills are only included when the folder scan finds matching clues, while global installs include every skill. An existing skills structure (e.g. .claude/skills/) is adopted instead of creating directories for every agent. Existing skill directories with different content are updated in place; review the change in your VCS diff, or pass --keep-existing to leave them untouched.';
   static examples = [
     '<%= config.bin %> skills install',
     '<%= config.bin %> skills install --agents claude --agents cursor',
@@ -97,7 +97,7 @@ export default class SkillsInstall extends Command {
     }),
     skills: Flags.string({
       description:
-        'Limrun skill to install. Repeat to pick multiple. Defaults to all skills, with Expo/Bazel/Detox skills included only when the folder scan finds matching clues.',
+        'Limrun skill to install. Repeat to pick multiple. Defaults to all skills; in project scope, Bazel/Detox skills are included only when the folder scan finds matching clues.',
       multiple: true,
     }),
     scope: Flags.string({
@@ -143,6 +143,10 @@ export default class SkillsInstall extends Command {
 
       if (flags.skills && flags.skills.length > 0) {
         skills = uniqueSkillNames(flags.skills, availableSkills);
+      } else if (scope === 'global') {
+        // Global installs are not tied to a project folder, so the folder
+        // scan does not apply: install every skill.
+        skills = availableSkills.map((skill) => skill.name);
       } else {
         const hints = scanSkillHints(process.cwd());
         const selection = selectDefaultSkills(

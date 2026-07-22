@@ -720,20 +720,20 @@ lim skills install --json
 
 **Flags:**
 
-| Flag                        | Description                                                                                                                                                         |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--agents <id>`             | Target agent. Repeat to select multiple. One of: `claude`, `cursor`, `codex`. Defaults to agents with an existing skills directory, or all agents when none exists. |
-| `--skills <name>`           | Limrun skill to install. Repeat to select multiple. Defaults to all skills, with Expo/Bazel/Detox skills included only when the folder scan finds matching clues.   |
-| `--scope <project\|global>` | `project` (default) writes into the current directory; `global` writes into the user's home directory.                                                              |
-| `--keep-existing`           | Keep existing skill directories that differ from the fetched version instead of updating them.                                                                      |
-| `--json`                    | Emit structured JSON instead of the human summary.                                                                                                                  |
-| `--quiet`                   | Suppress non-result output.                                                                                                                                         |
+| Flag                        | Description                                                                                                                                                          |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--agents <id>`             | Target agent. Repeat to select multiple. One of: `claude`, `cursor`, `codex`. Defaults to agents with an existing skills directory, or all agents when none exists.  |
+| `--skills <name>`           | Limrun skill to install. Repeat to select multiple. Defaults to all skills; in project scope, Bazel/Detox skills are included only when the folder scan finds clues. |
+| `--scope <project\|global>` | `project` (default) writes into the current directory; `global` writes into the user's home directory.                                                               |
+| `--keep-existing`           | Keep existing skill directories that differ from the fetched version instead of updating them.                                                                       |
+| `--json`                    | Emit structured JSON instead of the human summary.                                                                                                                   |
+| `--quiet`                   | Suppress non-result output.                                                                                                                                          |
 
 **Available skills:**
 
 - `limrun-xcode`: Build and launch iOS apps with remote Xcode.
 - `limrun-ios-simulator`: Control and test apps on Limrun iOS simulators.
-- `limrun-expo-development` (conditional): Iterate on Expo / React Native apps with remote iOS dev-client workflows.
+- `limrun-expo-development`: Iterate on Expo / React Native apps with remote iOS dev-client workflows.
 - `limrun-detox-testing` (conditional): Configure, run, and debug Detox against Limrun iOS simulators.
 - `limrun-xcode-bazel` (conditional): Build Bazel-based iOS apps with remote Xcode.
 
@@ -747,7 +747,7 @@ lim skills install --json
 
 **Behavior:**
 
-- Without flags, the command installs every skill for every agent. Three skills are conditional: `limrun-expo-development` is only included when the folder scan finds an `expo` dependency in a `package.json`, `limrun-xcode-bazel` when it finds Bazel workspace markers (`WORKSPACE`, `MODULE.bazel`, `.bazelrc`, ...), and `limrun-detox-testing` when it finds a `detox` dependency, a `detox` section in `package.json`, or a Detox config file (`.detoxrc*`, `detox.config.*`). Pass `--skills` to override the scan.
+- Without flags, the command installs every skill for every agent. In project scope, two skills are conditional: `limrun-xcode-bazel` is only included when the folder scan finds Bazel workspace markers (`WORKSPACE`, `MODULE.bazel`, `.bazelrc`, ...), and `limrun-detox-testing` when it finds a `detox` dependency, a `detox` section in `package.json`, or a Detox config file (`.detoxrc*`, `detox.config.*`). Global installs are not tied to a project folder, so they skip the scan and install every skill. Pass `--skills` to override.
 - If an existing skills structure is found for the chosen scope (e.g. `.claude/skills/` or `.cursor/skills/` already exists), the install adopts it: skills are only installed for the agents that already have a skills directory, instead of creating directories for every agent. Pass `--agents` to override.
 - The command fetches `limrun-inc/skills@main` at runtime, so skill updates do not require a new `lim` release.
 - The command compares fetched vs existing skill directories byte-for-byte. Identical content is reported as `Unchanged` (no writes).
