@@ -21,3 +21,13 @@ export const naming = {
  * attached server-side, so no Limrun credential ever reaches the browser.
  */
 export const BACKEND_URL = 'http://localhost:3000';
+
+/**
+ * Google OAuth "Web application" client ID for the Play publish sign-in.
+ * A client ID is public (the token model uses no client secret), but its
+ * authorized JavaScript origins must include this app's origin; this one
+ * whitelists http://localhost:5173. Replace it with your own client ID
+ * when serving from any other origin.
+ */
+export const GOOGLE_OAUTH_CLIENT_ID =
+  '55460095094-d6q9j3op8dsqmahet2d1sil6cudmpfqn.apps.googleusercontent.com';

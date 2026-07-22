@@ -71,13 +71,33 @@ export type PublishEvent = {
   data: string;
 };
 
+export type AndroidPublishInput = {
+  projectPath: string;
+  packageName: string;
+  /** Browser-minted Google OAuth token; rides this one request only. */
+  googleAccessToken: string;
+  track?: string;
+};
+
 /**
  * Posts a publish request and feeds the backend's SSE stream to `onEvent`
  * until the stream ends. EventSource cannot POST, so this parses the SSE
  * frames off a plain fetch body.
  */
 export async function streamPublish(input: PublishInput, onEvent: (event: PublishEvent) => void) {
-  const response = await fetch(`${BACKEND_URL}/publish`, {
+  return postAndStreamSse('/publish', input, onEvent);
+}
+
+/** The Play Store counterpart: same SSE contract, different endpoint. */
+export async function streamAndroidPublish(
+  input: AndroidPublishInput,
+  onEvent: (event: PublishEvent) => void,
+) {
+  return postAndStreamSse('/publish/android', input, onEvent);
+}
+
+async function postAndStreamSse(path: string, input: unknown, onEvent: (event: PublishEvent) => void) {
+  const response = await fetch(`${BACKEND_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),

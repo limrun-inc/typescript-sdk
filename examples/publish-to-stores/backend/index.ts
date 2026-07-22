@@ -3,6 +3,7 @@ import cors from 'cors';
 import { attachAppleRelayProxy } from './relay-proxy.js';
 import { deleteSecret, getSecret, listSecrets, putSecret } from './secret-store.js';
 import { streamPublish, type PublishRequest } from './publish.js';
+import { streamAndroidPublish, type AndroidPublishRequest } from './publish-android.js';
 
 // Used for the Apple relay proxy and by the lim CLI spawned for publishes.
 const apiKey = process.env['LIM_API_KEY'];
@@ -90,6 +91,21 @@ app.post('/publish', async (req: Request<{}, {}, Partial<PublishRequest>>, res: 
     });
   }
   await streamPublish({ projectPath, method, teamId, bundleId, scheme }, res);
+});
+
+// The Play Store counterpart of /publish: provisions a gradle instance via
+// the SDK, builds and signs the AAB with the escrowed upload keystore, and
+// publishes it with the browser-minted Google access token, which rides
+// this one request and is never stored. Streams SSE like /publish.
+app.post('/publish/android', async (req: Request<{}, {}, Partial<AndroidPublishRequest>>, res: Response) => {
+  const { projectPath, packageName, googleAccessToken, track } = req.body;
+  if (!projectPath || !packageName || !googleAccessToken) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'projectPath, packageName and googleAccessToken are required',
+    });
+  }
+  await streamAndroidPublish({ projectPath, packageName, googleAccessToken, track }, apiKey, res);
 });
 
 const server = app.listen(port, () => {
