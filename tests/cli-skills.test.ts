@@ -164,11 +164,7 @@ describe('default skill selection', () => {
 
   test('keeps only the matching conditional skill', () => {
     const selection = selectDefaultSkills(CATALOG, { expo: true, bazel: false, detox: false });
-    expect(selection.selected).toEqual([
-      'limrun-xcode',
-      'limrun-ios-simulator',
-      'limrun-expo-development',
-    ]);
+    expect(selection.selected).toEqual(['limrun-xcode', 'limrun-ios-simulator', 'limrun-expo-development']);
   });
 });
 
@@ -236,10 +232,7 @@ describe('skill hint scanning', () => {
   test('detects a Detox config section in package.json', () => {
     const root = makeTempDir();
     try {
-      fs.writeFileSync(
-        path.join(root, 'package.json'),
-        JSON.stringify({ detox: { configurations: {} } }),
-      );
+      fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ detox: { configurations: {} } }));
       expect(scanSkillHints(root).detox).toBe(true);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
