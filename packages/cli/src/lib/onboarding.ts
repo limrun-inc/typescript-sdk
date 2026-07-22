@@ -17,13 +17,42 @@ import { loadRemoteSkills, type LoadedRemoteSkills } from './remote-skills';
 
 const execFileAsync = promisify(execFile);
 
-export const SAMPLE_NATIVE_APP_REPO = 'https://github.com/limrun-inc/sample-native-app';
-export const SAMPLE_NATIVE_APP_DIR = 'sample-native-app';
+export type SampleKind = 'swift' | 'expo56' | 'bazel';
+
+export interface SampleApp {
+  kind: SampleKind;
+  displayName: string;
+  repo: string;
+  dir: string;
+}
+
+export const SAMPLE_APPS: Record<SampleKind, SampleApp> = {
+  swift: {
+    kind: 'swift',
+    displayName: 'Swift (native iOS)',
+    repo: 'https://github.com/limrun-inc/sample-native-app',
+    dir: 'sample-native-app',
+  },
+  expo56: {
+    kind: 'expo56',
+    displayName: 'Expo 56 (React Native)',
+    repo: 'https://github.com/limrun-inc/sample-expo56-app',
+    dir: 'sample-expo56-app',
+  },
+  bazel: {
+    kind: 'bazel',
+    displayName: 'Bazel (native iOS)',
+    repo: 'https://github.com/limrun-inc/sample-native-bazel-app',
+    dir: 'sample-native-bazel-app',
+  },
+};
+
+export const DEFAULT_SAMPLE_KIND: SampleKind = 'swift';
 
 const SAMPLE_CLONE_TIMEOUT_MS = 300_000;
 
 type OnboardingAgent = Extract<AgentId, 'claude' | 'cursor'>;
-type SkillStatus = 'installed' | 'unchanged' | 'skipped';
+type SkillStatus = 'installed' | 'updated' | 'unchanged';
 const ONBOARDING_AGENTS: OnboardingAgent[] = ['cursor', 'claude'];
 const PROJECT_ENV_FILES = ['.env', '.env.local'];
 
@@ -50,6 +79,7 @@ type GitRunner = (args: string[], cwd?: string) => Promise<string>;
 
 interface SampleRepoOptions {
   cwd: string;
+  sample?: SampleApp;
   git?: GitRunner;
 }
 
@@ -292,11 +322,10 @@ function applySkillDecision(kind: PlanKind, sourceDir: string, targetDir: string
   if (kind === 'unchanged') {
     return 'unchanged';
   }
-  if (kind === 'conflict') {
-    return 'skipped';
-  }
+  // Differing directories are updated in place; the previous content stays
+  // reviewable in the user's VCS diff.
   applySkillDirectoryCopy(sourceDir, targetDir);
-  return 'installed';
+  return kind === 'conflict' ? 'updated' : 'installed';
 }
 
 function normalizeGitRemote(remote: string): string {
@@ -313,8 +342,8 @@ function normalizeGitRemote(remote: string): string {
   return value.toLowerCase();
 }
 
-function isExpectedSampleRemote(remote: string): boolean {
-  return normalizeGitRemote(remote) === normalizeGitRemote(SAMPLE_NATIVE_APP_REPO);
+function isExpectedSampleRemote(remote: string, expectedRepo: string): boolean {
+  return normalizeGitRemote(remote) === normalizeGitRemote(expectedRepo);
 }
 
 async function runGit(args: string[], cwd?: string): Promise<string> {
@@ -337,17 +366,17 @@ async function runGit(args: string[], cwd?: string): Promise<string> {
   }
 }
 
-async function verifySampleRemote(sampleDir: string, git: GitRunner): Promise<void> {
+async function verifySampleRemote(sampleDir: string, git: GitRunner, expectedRepo: string): Promise<void> {
   let remote: string;
   try {
     remote = await git(['remote', 'get-url', 'origin'], sampleDir);
   } catch (err) {
     if (err instanceof OnboardingError) throw err;
     throw new OnboardingError(
-      `${sampleDir} already exists but is not a git checkout of ${SAMPLE_NATIVE_APP_REPO}. Move or delete it, then rerun \`lim run\`.`,
+      `${sampleDir} already exists but is not a git checkout of ${expectedRepo}. Move or delete it, then rerun \`lim run\`.`,
     );
   }
-  if (!isExpectedSampleRemote(remote)) {
+  if (!isExpectedSampleRemote(remote, expectedRepo)) {
     throw new OnboardingError(
       `${sampleDir} already exists with origin ${remote}. Move or delete it, then rerun \`lim run\`.`,
     );
@@ -356,20 +385,21 @@ async function verifySampleRemote(sampleDir: string, git: GitRunner): Promise<vo
 
 export async function ensureSampleRepo({
   cwd,
+  sample = SAMPLE_APPS[DEFAULT_SAMPLE_KIND],
   git = runGit,
 }: SampleRepoOptions): Promise<{ path: string; reused: boolean }> {
-  const sampleDir = path.join(cwd, SAMPLE_NATIVE_APP_DIR);
+  const sampleDir = path.join(cwd, sample.dir);
   if (fs.existsSync(sampleDir)) {
     if (!fs.lstatSync(sampleDir).isDirectory()) {
       throw new OnboardingError(
         `${sampleDir} already exists and is not a directory. Move or delete it, then rerun \`lim run\`.`,
       );
     }
-    await verifySampleRemote(sampleDir, git);
+    await verifySampleRemote(sampleDir, git, sample.repo);
     return { path: sampleDir, reused: true };
   }
 
-  await git(['clone', '--depth', '1', SAMPLE_NATIVE_APP_REPO, SAMPLE_NATIVE_APP_DIR], cwd);
+  await git(['clone', '--depth', '1', sample.repo, sample.dir], cwd);
   return { path: sampleDir, reused: false };
 }
 

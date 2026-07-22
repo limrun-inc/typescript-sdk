@@ -52,7 +52,7 @@ The CLI stores configuration in `~/.lim/config.yaml`. This file is compatible wi
 lim run
 ```
 
-`lim run` is the fastest way to get started with Limrun. Run it inside a clear iOS or Expo project root to install the Limrun agent skills for that project and get the next prompt for your coding agent. Run it anywhere else to clone the native sample app, build it on Limrun, and print a cloud simulator URL.
+`lim run` is the fastest way to get started with Limrun. Run it inside a clear iOS or Expo project root to install the Limrun agent skills for that project and get the next prompt for your coding agent. Run it anywhere else to clone a sample app (Swift, Expo 56, or Bazel — picked interactively, Swift by default), build it on Limrun, and print a cloud simulator URL.
 
 ## Global Flags
 
@@ -124,7 +124,7 @@ lim run
 
 - In a clear native iOS project, it installs the Limrun iOS/Xcode skill into `.agents/skills/` and `.claude/skills/`.
 - In a clear Expo project, it installs the Limrun iOS/Xcode and Expo skills into `.agents/skills/` and `.claude/skills/`.
-- In any other directory, it clones `limrun-inc/sample-native-app`, builds it with a Limrun iOS simulator + Xcode sandbox, and prints a simulator URL.
+- In any other directory, it asks which sample project you want to run — Swift (`limrun-inc/sample-native-app`), Expo 56 (`limrun-inc/sample-expo56-app`), or Bazel (`limrun-inc/sample-native-bazel-app`) — clones it, builds it with a Limrun iOS simulator + Xcode sandbox, and prints a simulator URL. Non-interactive sessions default to the Swift sample.
 
 After setup, open your coding agent in the project and ask it to build and run the app with Limrun. For manual agent setup, use `lim skills install`.
 
@@ -703,39 +703,39 @@ Provide `--certificate-p12`, `--certificate-password`, and `--provisioning-profi
 Fetch the latest Limrun skills from `limrun-inc/skills@main` and install them into the native skills directory of AI coding agents (Claude Code, Cursor, Codex). After installation, the agent auto-discovers the skill and triggers it when you ask things like "build the iOS app" or "show me a screenshot."
 
 ```bash
-# Interactive: prompts for agents (with detected ones pre-checked) and scope
+# Install all skills for all agents (Expo/Bazel skills only when the folder scan finds matching clues)
 lim skills install
 
-# Non-interactive
-lim skills install --agents claude --scope project
-lim skills install --agents claude --agents cursor --scope project
+# Narrow the install with flags
+lim skills install --agents claude --agents cursor
 lim skills install --agents codex --scope global
-lim skills install --agents cursor --scope project --skills limrun-expo-development
+lim skills install --agents cursor --skills limrun-expo-development
 
-# Overwrite existing skill directories (otherwise the command refuses on non-interactive runs)
-lim skills install --agents claude --scope project --force
+# Keep existing skill directories that differ instead of updating them
+lim skills install --keep-existing
 
 # Machine-readable output for scripts
-lim skills install --agents claude --scope project --json
+lim skills install --json
 ```
 
 **Flags:**
 
-| Flag                        | Description                                                                                  |
-| --------------------------- | -------------------------------------------------------------------------------------------- |
-| `--agents <id>`             | Target agent. Repeat to select multiple. One of: `claude`, `cursor`, `codex`.                |
-| `--skills <name>`           | Limrun skill to install. Repeat to select multiple. Defaults to the remote catalog default.  |
-| `--scope <project\|global>` | `project` writes into the current directory; `global` writes into the user's home directory. |
-| `--force`                   | Overwrite existing skill directories without confirmation.                                   |
-| `--json`                    | Emit structured JSON instead of the human summary.                                           |
-| `--quiet`                   | Suppress non-result output.                                                                  |
+| Flag                        | Description                                                                                                                                                          |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--agents <id>`             | Target agent. Repeat to select multiple. One of: `claude`, `cursor`, `codex`. Defaults to agents with an existing skills directory, or all agents when none exists.  |
+| `--skills <name>`           | Limrun skill to install. Repeat to select multiple. Defaults to all skills; in project scope, Bazel/Detox skills are included only when the folder scan finds clues. |
+| `--scope <project\|global>` | `project` (default) writes into the current directory; `global` writes into the user's home directory.                                                               |
+| `--keep-existing`           | Keep existing skill directories that differ from the fetched version instead of updating them.                                                                       |
+| `--json`                    | Emit structured JSON instead of the human summary.                                                                                                                   |
+| `--quiet`                   | Suppress non-result output.                                                                                                                                          |
 
 **Available skills:**
 
-- `limrun-xcode` (default): Build and launch iOS apps with remote Xcode.
-- `limrun-ios-simulator` (default): Control and test apps on Limrun iOS simulators.
+- `limrun-xcode`: Build and launch iOS apps with remote Xcode.
+- `limrun-ios-simulator`: Control and test apps on Limrun iOS simulators.
 - `limrun-expo-development`: Iterate on Expo / React Native apps with remote iOS dev-client workflows.
-- `limrun-detox-testing`: Configure, run, and debug Detox against Limrun iOS simulators.
+- `limrun-detox-testing` (conditional): Configure, run, and debug Detox against Limrun iOS simulators.
+- `limrun-xcode-bazel` (conditional): Build Bazel-based iOS apps with remote Xcode.
 
 **Install paths:**
 
@@ -747,13 +747,13 @@ lim skills install --agents claude --scope project --json
 
 **Behavior:**
 
+- Without flags, the command installs every skill for every agent. In project scope, two skills are conditional: `limrun-xcode-bazel` is only included when the folder scan finds Bazel workspace markers (`WORKSPACE`, `MODULE.bazel`, `.bazelrc`, ...), and `limrun-detox-testing` when it finds a `detox` dependency, a `detox` section in `package.json`, or a Detox config file (`.detoxrc*`, `detox.config.*`). Global installs are not tied to a project folder, so they skip the scan and install every skill. Pass `--skills` to override.
+- If an existing skills structure is found for the chosen scope (e.g. `.claude/skills/` or `.cursor/skills/` already exists), the install adopts it: skills are only installed for the agents that already have a skills directory, instead of creating directories for every agent. Pass `--agents` to override.
 - The command fetches `limrun-inc/skills@main` at runtime, so skill updates do not require a new `lim` release.
 - The command compares fetched vs existing skill directories byte-for-byte. Identical content is reported as `Unchanged` (no writes).
-- Different content: in interactive mode you are asked to confirm each overwrite; in non-interactive mode the command refuses unless `--force` is passed.
-- Non-interactive runs are all-or-nothing: if any selected target conflicts and `--force` is not set, no files are written for any target, and the command exits with status 1.
-- Ctrl-C cancellation at any prompt exits cleanly without writing.
+- Different content is updated in place by default and reported as `Updated`. The previous content stays reviewable in your VCS diff, so you can inspect the change or ask your agent to reconcile local edits. Pass `--keep-existing` to leave differing skill directories untouched (reported as `Skipped`).
 
-Cursor reads `.agents/skills/` natively, so we install there rather than `.cursor/skills/`. As a bonus, the same install reaches OpenCode and any other tool that follows the AGENTS.md convention - no extra menu options needed.
+Cursor reads `.agents/skills/` natively, so we prefer installing there rather than `.cursor/skills/` (an existing `.cursor/skills/` directory is adopted instead of creating a second structure). As a bonus, the `.agents/skills/` install reaches OpenCode and any other tool that follows the AGENTS.md convention - no extra menu options needed.
 
 ---
 
