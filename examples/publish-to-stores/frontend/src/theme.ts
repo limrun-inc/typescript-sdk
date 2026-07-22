@@ -94,6 +94,29 @@ export function secondaryButton(disabled: boolean): CSSProperties {
   return { ...baseButton(disabled), backgroundColor: disabled ? '#ccc' : '#444' };
 }
 
+export const tabBar: CSSProperties = {
+  display: 'flex',
+  gap: '6px',
+  padding: '4px',
+  backgroundColor: '#eceef1',
+  borderRadius: '8px',
+};
+
+export function tabButton(selected: boolean): CSSProperties {
+  return {
+    flex: 1,
+    padding: '8px',
+    fontSize: '14px',
+    fontWeight: 600,
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    backgroundColor: selected ? 'white' : 'transparent',
+    color: selected ? '#111' : '#666',
+    boxShadow: selected ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+  };
+}
+
 export function methodCard(selected: boolean, disabled: boolean): CSSProperties {
   return {
     flex: 1,

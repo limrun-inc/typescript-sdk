@@ -4,6 +4,7 @@ import Limrun from '@limrun/api';
 import localtunnel from 'localtunnel';
 import { deleteSecret, getSecret, listSecrets, putSecret } from './secret-store.js';
 import { getPublishStatus, receivePublishWebhook, startPublish, type PublishRequest } from './publish.js';
+import { streamAndroidPublish, type AndroidPublishRequest } from './publish-android.js';
 
 // Used to mint scoped registry tokens and by the lim CLI spawned for
 // publishes.
@@ -138,6 +139,19 @@ app.get('/publish/:id', (req: Request<{ id: string }>, res: Response) => {
     return res.status(404).json({ status: 'error', message: 'Publish not found' });
   }
   return res.status(200).json(status);
+});
+
+// Builds, signs, and publishes an Android App Bundle while streaming the
+// Gradle/Play output to the browser. The Google token rides this request only.
+app.post('/publish/android', async (req: Request<{}, {}, Partial<AndroidPublishRequest>>, res: Response) => {
+  const { projectPath, packageName, googleAccessToken, track } = req.body;
+  if (!projectPath || !packageName || !googleAccessToken) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'projectPath, packageName and googleAccessToken are required',
+    });
+  }
+  await streamAndroidPublish({ projectPath, packageName, googleAccessToken, track }, apiKey, res);
 });
 
 // The webhook receiver is its own Express app on its own port: the tunnel

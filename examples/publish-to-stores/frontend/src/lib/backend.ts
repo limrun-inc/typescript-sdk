@@ -140,6 +140,19 @@ async function failedResponse(response: Response, action: string): Promise<never
   throw new Error(`${action}: ${message}`);
 }
 
+export type PublishEvent = {
+  event: 'stdout' | 'stderr' | 'exit' | 'error';
+  data: string;
+};
+
+export type AndroidPublishInput = {
+  projectPath: string;
+  packageName: string;
+  /** Browser-minted Google OAuth token; rides this one request only. */
+  googleAccessToken: string;
+  track?: string;
+};
+
 /**
  * Starts a publish and returns its ID. The build runs server-side; its
  * outcome arrives at the backend as a build-finish webhook, which the
@@ -160,4 +173,40 @@ export async function fetchPublishStatus(publishId: string): Promise<PublishStat
   const response = await fetch(`${BACKEND_URL}/publish/${encodeURIComponent(publishId)}`);
   if (!response.ok) await failedResponse(response, 'Publish status check failed');
   return (await response.json()) as PublishStatus;
+}
+
+/** Streams the Gradle and Play output from an Android publish request. */
+export async function streamAndroidPublish(
+  input: AndroidPublishInput,
+  onEvent: (event: PublishEvent) => void,
+) {
+  const response = await fetch(`${BACKEND_URL}/publish/android`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) await failedResponse(response, 'Publish request failed');
+  if (!response.body) throw new Error('Publish request returned no stream.');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let separator: number;
+    while ((separator = buffer.indexOf('\n\n')) >= 0) {
+      const frame = buffer.slice(0, separator);
+      buffer = buffer.slice(separator + 2);
+      let event = 'stdout';
+      const data: string[] = [];
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event: ')) event = line.slice('event: '.length);
+        else if (line.startsWith('data: ')) data.push(line.slice('data: '.length));
+        else if (line === 'data:' || line === 'data: ') data.push('');
+      }
+      onEvent({ event: event as PublishEvent['event'], data: data.join('\n') });
+    }
+  }
 }
