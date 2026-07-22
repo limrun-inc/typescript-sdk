@@ -1,8 +1,10 @@
 # Publish to Stores
 
-A Replit-style publishing pipeline for iOS apps: a two-phase wizard that connects an Apple
+A Replit-style publishing pipeline for mobile apps: a wizard that connects an Apple
 Developer account once, then publishes builds to TestFlight or the App Store with a single
-click, streaming the build log to the browser.
+click, streaming the build log to the browser. A Play Store phase does the same for
+Android: sign in with Google, and a signed AAB is built remotely and published to the
+internal track in one run.
 
 It has two components:
 
@@ -45,6 +47,47 @@ Frontend wizard ──Apple relay ws──> Backend pipe (adds API key) ──> 
 - Both the TestFlight and App Store methods run the same upload. An App Store release is
   that upload plus attaching the processed build to a version and submitting it for review
   in App Store Connect.
+
+## Publish to Google Play
+
+The Play Store card is one phase, not two: Google's model needs no credential minting,
+just an upload keystore the developer already holds and a short-lived OAuth token.
+
+```
+Frontend ──Google sign-in (browser, GIS token model)──> access token
+    │
+    └──POST /publish/android {token}──> Backend ──@limrun/api──> gradle instance
+                                          (sync project, signed bundleRelease,
+                                           playstore publish stage, SSE log back)
+```
+
+- The Google access token is minted in the browser via Google Identity Services (no
+  client secret), rides the one publish request into the build's `playstore` stage, and
+  is never stored. The Limrun API key stays on the backend, same as the Apple flow.
+- The upload keystore is imported once into the secret store (type `androidSigningKey`,
+  name `<packageName>/UPLOAD`) and injected into the remote build via Gradle's
+  `android.injected.signing.*` properties; the project itself is not modified. Expo
+  managed-workflow projects work as-is: the server runs `expo prebuild` remotely.
+- The AAB is also uploaded as a named org asset, so a failed publish leaves the artifact
+  available for a retry or manual upload.
+
+Prerequisites, in addition to the general ones below:
+
+- The app listing must already exist in [Play Console](https://play.google.com/console)
+  with the exact package name (Google does not allow creating listings via API), and the
+  signed-in Google account needs release permission for it.
+- The keystore must be the app's Play **upload key**.
+- The default Google OAuth client ID in `frontend/src/config.ts` authorizes
+  `http://localhost:5173` only. Serving from another origin needs your own Web
+  application OAuth client with that origin authorized (client IDs are public; the token
+  model uses no client secret).
+- Publishes go to the `internal` track, which has no review gate. The versionCode is
+  managed by the platform: the build resolves the next free one from Google Play and
+  stamps it before building (`Version code: N` in the build log), into the Expo config
+  for Expo projects or the module build script's literal `versionCode` for native Gradle
+  projects, so repeat publishes never collide. A missing `Version code:` line means the
+  daemon predates the feature; the publish then carries the project's own versionCode
+  and a duplicate fails with `versionCodeExists`.
 
 ## Branding
 

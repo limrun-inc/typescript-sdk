@@ -71,13 +71,54 @@ export type PublishEvent = {
   data: string;
 };
 
+export type AndroidPublishInput = {
+  projectPath: string;
+  packageName: string;
+  /** Browser-minted Google OAuth token; rides this one request only. */
+  googleAccessToken: string;
+  track?: string;
+};
+
 /**
  * Posts a publish request and feeds the backend's SSE stream to `onEvent`
  * until the stream ends. EventSource cannot POST, so this parses the SSE
  * frames off a plain fetch body.
  */
 export async function streamPublish(input: PublishInput, onEvent: (event: PublishEvent) => void) {
-  const response = await fetch(`${BACKEND_URL}/publish`, {
+  return postAndStreamSse('/publish', input, onEvent);
+}
+
+/** Asks the backend to detect the Android application ID from the project. */
+export async function detectAndroidPackage(projectPath: string): Promise<string | undefined> {
+  const response = await fetch(`${BACKEND_URL}/project/android-package`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath }),
+  });
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as { message?: string };
+      if (body.message) message = body.message;
+    } catch {
+      // Non-JSON error body; the status code is the best we have.
+    }
+    throw new Error(`Could not inspect the project: ${message}`);
+  }
+  const body = (await response.json()) as { packageName?: string | null };
+  return body.packageName ?? undefined;
+}
+
+/** The Play Store counterpart: same SSE contract, different endpoint. */
+export async function streamAndroidPublish(
+  input: AndroidPublishInput,
+  onEvent: (event: PublishEvent) => void,
+) {
+  return postAndStreamSse('/publish/android', input, onEvent);
+}
+
+async function postAndStreamSse(path: string, input: unknown, onEvent: (event: PublishEvent) => void) {
+  const response = await fetch(`${BACKEND_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -96,6 +137,17 @@ export async function streamPublish(input: PublishInput, onEvent: (event: Publis
     throw new Error('Publish request returned no stream.');
   }
 
+  const dispatchFrame = (frame: string) => {
+    let event = 'stdout';
+    const data: string[] = [];
+    for (const line of frame.split('\n')) {
+      if (line.startsWith('event: ')) event = line.slice('event: '.length);
+      else if (line.startsWith('data: ')) data.push(line.slice('data: '.length));
+      else if (line === 'data:' || line === 'data: ') data.push('');
+    }
+    onEvent({ event: event as PublishEvent['event'], data: data.join('\n') });
+  };
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -105,16 +157,12 @@ export async function streamPublish(input: PublishInput, onEvent: (event: Publis
     buffer += decoder.decode(value, { stream: true });
     let separator: number;
     while ((separator = buffer.indexOf('\n\n')) >= 0) {
-      const frame = buffer.slice(0, separator);
+      dispatchFrame(buffer.slice(0, separator));
       buffer = buffer.slice(separator + 2);
-      let event = 'stdout';
-      const data: string[] = [];
-      for (const line of frame.split('\n')) {
-        if (line.startsWith('event: ')) event = line.slice('event: '.length);
-        else if (line.startsWith('data: ')) data.push(line.slice('data: '.length));
-        else if (line === 'data:' || line === 'data: ') data.push('');
-      }
-      onEvent({ event: event as PublishEvent['event'], data: data.join('\n') });
     }
   }
+  // A stream cut mid-frame (backend crash, dropped connection) leaves the
+  // last frame without its blank-line terminator; deliver it anyway.
+  buffer += decoder.decode();
+  if (buffer.trim() !== '') dispatchFrame(buffer);
 }
