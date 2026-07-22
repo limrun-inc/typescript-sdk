@@ -8,11 +8,12 @@ import { ANDROID_SIGNING_KEY_SECRET_TYPE, type SigningSecretStore } from '@limru
 import { loadGoogleIdentityServices, requestGoogleAccessToken } from '@limrun/ui/play-publish';
 import { GOOGLE_OAUTH_CLIENT_ID } from '../config';
 import { errorMessage } from '../lib/apple';
-import { streamAndroidPublish } from '../lib/backend';
+import { detectAndroidPackage, streamAndroidPublish } from '../lib/backend';
 import { probePlayAccess } from '../lib/googlePlay';
 import type { PublishLogLine, PublishState } from './usePublish';
 
 const PACKAGE_STORAGE_KEY = 'publish-to-stores.play.packageName';
+const PROJECT_STORAGE_KEY = 'publish-to-stores.play.projectPath';
 
 /** How often to re-probe while waiting for the user to create the app. */
 const PACKAGE_POLL_INTERVAL_MS = 5000;
@@ -68,32 +69,74 @@ export function usePlay({
     setPackageState({ status: 'unchecked' });
   }, []);
 
-  // --- Package verification ----------------------------------------------
+  // --- Project & package detection -----------------------------------------
+  const [projectPath, setProjectPathState] = useState(() => localStorage.getItem(PROJECT_STORAGE_KEY) ?? '');
   const [packageName, setPackageNameState] = useState(() => localStorage.getItem(PACKAGE_STORAGE_KEY) ?? '');
   const [packageState, setPackageState] = useState<PackageState>({ status: 'unchecked' });
+  const [detecting, setDetecting] = useState(false);
+  /** Set when detection ran and found nothing; the user types the package. */
+  const [detectionMiss, setDetectionMiss] = useState(false);
 
   const setPackageName = useCallback((value: string) => {
     setPackageNameState(value);
     setPackageState({ status: 'unchecked' });
   }, []);
 
-  const verifyPackage = useCallback(async () => {
-    const token = accessTokenRef.current;
-    const trimmed = packageName.trim();
-    if (!token || !trimmed) return;
-    setPackageState((current) => (current.status === 'waiting' ? current : { status: 'checking' }));
-    const probe = await probePlayAccess(token, trimmed);
-    if (probe.result === 'ok') {
-      localStorage.setItem(PACKAGE_STORAGE_KEY, trimmed);
-      setPackageState({ status: 'verified' });
-    } else if (probe.result === 'unauthorized') {
-      // The ~1h token expired; the next sign-in click mints a fresh one.
-      signOut();
-      onError('The Google session expired. Sign in again.');
-    } else {
-      setPackageState({ status: 'waiting', message: probe.message });
+  const setProjectPath = useCallback((value: string) => {
+    setProjectPathState(value);
+    setDetectionMiss(false);
+  }, []);
+
+  const verifyPackage = useCallback(
+    async (explicitName?: string) => {
+      const token = accessTokenRef.current;
+      const trimmed = (explicitName ?? packageName).trim();
+      if (!token || !trimmed) return;
+      setPackageState((current) => (current.status === 'waiting' ? current : { status: 'checking' }));
+      const probe = await probePlayAccess(token, trimmed);
+      if (probe.result === 'ok') {
+        localStorage.setItem(PACKAGE_STORAGE_KEY, trimmed);
+        setPackageState({ status: 'verified' });
+      } else if (probe.result === 'unauthorized') {
+        // The ~1h token expired; the next sign-in click mints a fresh one.
+        signOut();
+        onError('The Google session expired. Sign in again.');
+      } else {
+        setPackageState({ status: 'waiting', message: probe.message });
+      }
+    },
+    [onError, packageName, signOut],
+  );
+
+  /**
+   * The wizard's entry point: inspect the project on the backend host,
+   * prefill the detected application ID, and verify it against Play in one
+   * go. A detection miss leaves the package field for the user; the
+   * backend fills expo.android.package into app.json at publish time.
+   */
+  const detectApp = useCallback(async () => {
+    const trimmedPath = projectPath.trim();
+    if (!trimmedPath) return;
+    onError(undefined);
+    setDetecting(true);
+    setDetectionMiss(false);
+    try {
+      const detected = await detectAndroidPackage(trimmedPath);
+      localStorage.setItem(PROJECT_STORAGE_KEY, trimmedPath);
+      if (detected) {
+        setPackageNameState(detected);
+        await verifyPackage(detected);
+      } else {
+        setDetectionMiss(true);
+        setPackageNameState('');
+        setPackageState({ status: 'unchecked' });
+      }
+    } catch (error) {
+      onError(errorMessage(error, 'Could not inspect the project'));
+    } finally {
+      setDetecting(false);
     }
-  }, [onError, packageName, signOut]);
+  }, [onError, projectPath, verifyPackage]);
 
   // While the app is missing on Play Console, keep probing so the
   // moment the user creates the listing in Play Console the wizard moves
@@ -143,48 +186,46 @@ export function usePlay({
   const [lines, setLines] = useState<PublishLogLine[]>([]);
   const [exitCode, setExitCode] = useState<number>();
 
-  const publish = useCallback(
-    async (input: { projectPath: string }) => {
-      const token = accessTokenRef.current;
-      if (!token) {
-        onError('Sign in with Google first.');
-        return;
-      }
-      setState('running');
-      setLines([]);
-      setExitCode(undefined);
-      try {
-        let finalExit: number | undefined;
-        await streamAndroidPublish(
-          {
-            projectPath: input.projectPath,
-            packageName: packageName.trim(),
-            googleAccessToken: token,
-          },
-          ({ event, data }) => {
-            if (event === 'exit') {
-              finalExit = Number(data);
-              return;
-            }
-            if (event === 'stdout' || event === 'stderr' || event === 'error') {
-              setLines((current) => [...current, { stream: event, text: data }]);
-            }
-          },
-        );
-        setExitCode(finalExit);
-        setState(finalExit === 0 ? 'succeeded' : 'failed');
-      } catch (error) {
-        setLines((current) => [
-          ...current,
-          { stream: 'error', text: errorMessage(error, 'Play publish failed') },
-        ]);
-        setState('failed');
-      }
-    },
-    [onError, packageName],
-  );
+  const publish = useCallback(async () => {
+    const token = accessTokenRef.current;
+    if (!token) {
+      onError('Sign in with Google first.');
+      return;
+    }
+    setState('running');
+    setLines([]);
+    setExitCode(undefined);
+    try {
+      let finalExit: number | undefined;
+      await streamAndroidPublish(
+        {
+          projectPath: projectPath.trim(),
+          packageName: packageName.trim(),
+          googleAccessToken: token,
+        },
+        ({ event, data }) => {
+          if (event === 'exit') {
+            finalExit = Number(data);
+            return;
+          }
+          if (event === 'stdout' || event === 'stderr' || event === 'error') {
+            setLines((current) => [...current, { stream: event, text: data }]);
+          }
+        },
+      );
+      setExitCode(finalExit);
+      setState(finalExit === 0 ? 'succeeded' : 'failed');
+    } catch (error) {
+      setLines((current) => [
+        ...current,
+        { stream: 'error', text: errorMessage(error, 'Play publish failed') },
+      ]);
+      setState('failed');
+    }
+  }, [onError, packageName, projectPath]);
 
-  const connected = isSignedIn && packageState.status === 'verified' && keystoreStored;
+  const connected =
+    isSignedIn && projectPath.trim() !== '' && packageState.status === 'verified' && keystoreStored;
 
   return {
     // Google session
@@ -192,7 +233,12 @@ export function usePlay({
     signingIn,
     signIn,
     signOut,
-    // Package
+    // Project & package
+    projectPath,
+    setProjectPath,
+    detectApp,
+    detecting,
+    detectionMiss,
     packageName,
     setPackageName,
     packageState,

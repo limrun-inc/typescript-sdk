@@ -175,6 +175,18 @@ export async function fetchPublishStatus(publishId: string): Promise<PublishStat
   return (await response.json()) as PublishStatus;
 }
 
+/** Asks the backend to detect the Android application ID from the project. */
+export async function detectAndroidPackage(projectPath: string): Promise<string | undefined> {
+  const response = await fetch(`${BACKEND_URL}/project/android-package`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath }),
+  });
+  if (!response.ok) await failedResponse(response, 'Could not inspect the project');
+  const body = (await response.json()) as { packageName?: string | null };
+  return body.packageName ?? undefined;
+}
+
 /** Streams the Gradle and Play output from an Android publish request. */
 export async function streamAndroidPublish(
   input: AndroidPublishInput,
