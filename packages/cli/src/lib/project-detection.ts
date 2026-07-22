@@ -77,17 +77,29 @@ function isPlainFile(filePath: string): boolean {
   }
 }
 
-function hasExpoDependency(packageJsonPath: string): boolean {
-  if (!isPlainFile(packageJsonPath)) return false;
+interface ParsedPackageJson {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  [key: string]: unknown;
+}
+
+function readPackageJson(packageJsonPath: string): ParsedPackageJson | undefined {
+  if (!isPlainFile(packageJsonPath)) return undefined;
   try {
-    const parsed = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-    return Boolean(parsed.dependencies?.['expo'] || parsed.devDependencies?.['expo']);
+    const parsed = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    return parsed as ParsedPackageJson;
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+function hasDependency(packageJson: ParsedPackageJson | undefined, name: string): boolean {
+  return Boolean(packageJson?.dependencies?.[name] || packageJson?.devDependencies?.[name]);
+}
+
+function hasExpoDependency(packageJsonPath: string): boolean {
+  return hasDependency(readPackageJson(packageJsonPath), 'expo');
 }
 
 function isExpoAppDir(dir: string): boolean {
@@ -110,15 +122,35 @@ function isBazelWorkspaceDir(dir: string): boolean {
   return BAZEL_MARKERS.some((marker) => isPlainFile(path.join(dir, marker)));
 }
 
+// Detox reads its config from a package.json dependency plus one of these
+// config locations (https://wix.github.io/Detox/docs/config/overview).
+const DETOX_CONFIG_FILES = [
+  '.detoxrc',
+  '.detoxrc.js',
+  '.detoxrc.json',
+  '.detoxrc.cjs',
+  'detox.config.js',
+  'detox.config.json',
+  'detox.config.cjs',
+  'detox.config.ts',
+];
+
+function isDetoxDir(dir: string): boolean {
+  const packageJson = readPackageJson(path.join(dir, 'package.json'));
+  if (hasDependency(packageJson, 'detox') || packageJson?.['detox'] !== undefined) return true;
+  return DETOX_CONFIG_FILES.some((name) => isPlainFile(path.join(dir, name)));
+}
+
 /**
  * Scan the folder for clues that decide whether conditional skills (Expo,
- * Bazel) should be installed by default.
+ * Bazel, Detox) should be installed by default.
  */
 export function scanSkillHints(root = process.cwd()): SkillHints {
   const dirs = walkDirs(root);
   return {
     expo: dirs.some((dir) => hasExpoDependency(path.join(dir, 'package.json'))),
     bazel: dirs.some(isBazelWorkspaceDir),
+    detox: dirs.some(isDetoxDir),
   };
 }
 

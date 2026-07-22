@@ -80,7 +80,7 @@ function statusLabel(status: Status): string {
 export default class SkillsInstall extends Command {
   static summary = 'Install Limrun skills for AI coding agents';
   static description =
-    'Fetch the latest Limrun skills from limrun-inc/skills and install them into the native skills directory for each agent (Claude Code, Cursor, Codex). By default all skills are installed for all agents; Expo and Bazel skills are only included when the folder scan finds matching clues, and an existing skills structure (e.g. .claude/skills/) is adopted instead of creating directories for every agent. Existing skill directories with different content are updated in place; review the change in your VCS diff, or pass --keep-existing to leave them untouched.';
+    'Fetch the latest Limrun skills from limrun-inc/skills and install them into the native skills directory for each agent (Claude Code, Cursor, Codex). By default all skills are installed for all agents; Expo, Bazel, and Detox skills are only included when the folder scan finds matching clues, and an existing skills structure (e.g. .claude/skills/) is adopted instead of creating directories for every agent. Existing skill directories with different content are updated in place; review the change in your VCS diff, or pass --keep-existing to leave them untouched.';
   static examples = [
     '<%= config.bin %> skills install',
     '<%= config.bin %> skills install --agents claude --agents cursor',
@@ -97,7 +97,7 @@ export default class SkillsInstall extends Command {
     }),
     skills: Flags.string({
       description:
-        'Limrun skill to install. Repeat to pick multiple. Defaults to all skills, with Expo/Bazel skills included only when the folder scan finds matching clues.',
+        'Limrun skill to install. Repeat to pick multiple. Defaults to all skills, with Expo/Bazel/Detox skills included only when the folder scan finds matching clues.',
       multiple: true,
     }),
     scope: Flags.string({
@@ -273,20 +273,32 @@ export default class SkillsInstall extends Command {
       return;
     }
 
-    // Human summary.
+    // Human summary: one line per skill, with all target folders combined.
     this.log('');
     this.log('  Limrun skills');
-    const skillColWidth = Math.max(...results.map((r) => r.skill.length), 'Skill'.length);
-    const agentColWidth = Math.max(
-      ...results.map((r) => AGENTS[r.agent].displayName.length),
-      'Claude Code'.length,
-    );
+    const bySkill = new Map<SkillName, ResultRow[]>();
     for (const r of results) {
-      const skillLabel = r.skill.padEnd(skillColWidth);
-      const agentLabel = AGENTS[r.agent].displayName.padEnd(agentColWidth);
-      const displayPath = humanPath(r.path, r.scope);
-      const reason = r.reason ? `  (${r.reason})` : '';
-      this.log(`    ${skillLabel}  ${agentLabel}  ->  ${displayPath}    ${statusLabel(r.status)}${reason}`);
+      const rows = bySkill.get(r.skill);
+      if (rows) {
+        rows.push(r);
+      } else {
+        bySkill.set(r.skill, [r]);
+      }
+    }
+    const skillColWidth = Math.max(...results.map((r) => r.skill.length), 'Skill'.length);
+    for (const [skill, rows] of bySkill) {
+      const skillLabel = skill.padEnd(skillColWidth);
+      // The skill name already leads the line, so list the parent skills
+      // directories instead of repeating <dir>/<skill> for every folder.
+      const folders = rows.map((r) => humanPath(path.dirname(r.path), r.scope));
+      const uniformStatus = rows.every((r) => r.status === rows[0]!.status) ? rows[0]!.status : undefined;
+      if (uniformStatus) {
+        const reason = rows[0]!.reason ? `  (${rows[0]!.reason})` : '';
+        this.log(`    ${skillLabel}  ->  ${folders.join(', ')}    ${statusLabel(uniformStatus)}${reason}`);
+      } else {
+        const annotated = rows.map((r, i) => `${folders[i]} (${statusLabel(r.status).toLowerCase()})`);
+        this.log(`    ${skillLabel}  ->  ${annotated.join(', ')}`);
+      }
     }
     this.log('');
   }
