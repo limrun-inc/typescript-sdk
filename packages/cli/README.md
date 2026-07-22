@@ -720,14 +720,14 @@ lim skills install --json
 
 **Flags:**
 
-| Flag                        | Description                                                                                                                                 |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Flag                        | Description                                                                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--agents <id>`             | Target agent. Repeat to select multiple. One of: `claude`, `cursor`, `codex`. Defaults to agents with an existing skills directory, or all agents when none exists. |
-| `--skills <name>`           | Limrun skill to install. Repeat to select multiple. Defaults to all skills, with Expo/Bazel skills included only when the folder scan finds matching clues. |
-| `--scope <project\|global>` | `project` (default) writes into the current directory; `global` writes into the user's home directory.                                      |
-| `--keep-existing`           | Keep existing skill directories that differ from the fetched version instead of updating them.                                              |
-| `--json`                    | Emit structured JSON instead of the human summary.                                                                                          |
-| `--quiet`                   | Suppress non-result output.                                                                                                                 |
+| `--skills <name>`           | Limrun skill to install. Repeat to select multiple. Defaults to all skills, with Expo/Bazel skills included only when the folder scan finds matching clues.         |
+| `--scope <project\|global>` | `project` (default) writes into the current directory; `global` writes into the user's home directory.                                                              |
+| `--keep-existing`           | Keep existing skill directories that differ from the fetched version instead of updating them.                                                                      |
+| `--json`                    | Emit structured JSON instead of the human summary.                                                                                                                  |
+| `--quiet`                   | Suppress non-result output.                                                                                                                                         |
 
 **Available skills:**
 

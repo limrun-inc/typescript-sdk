@@ -106,7 +106,8 @@ export default class SkillsInstall extends Command {
       default: 'project',
     }),
     'keep-existing': Flags.boolean({
-      description: 'Keep existing skill directories that differ from the fetched version instead of updating them.',
+      description:
+        'Keep existing skill directories that differ from the fetched version instead of updating them.',
       default: false,
     }),
     json: Flags.boolean({
