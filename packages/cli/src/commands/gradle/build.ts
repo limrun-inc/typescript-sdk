@@ -118,7 +118,7 @@ export default class GradleBuild extends BaseCommand {
     }),
     'auto-version-code': Flags.boolean({
       description:
-        'Set the versionCode to one more than the highest already on Google Play before the build, so repeat publishes never collide. Requires --upload-to-playstore; needs a static app.json (Expo) or a literal versionCode in the module build script (native).',
+        'Set the versionCode to one more than the highest already on Google Play before the build, so repeat publishes never collide. Requires --upload-to-playstore; needs a static app.json (Expo) or a single literal versionCode in the conventional app/ module build script (native).',
     }),
     'basis-cache-dir': Flags.string({
       description: 'Directory for the client-side folder-sync cache.',

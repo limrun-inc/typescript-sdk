@@ -5,7 +5,11 @@
 // each publish request; the Limrun API key never reaches the browser.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ANDROID_SIGNING_KEY_SECRET_TYPE, type SigningSecretStore } from '@limrun/ui/apple';
-import { loadGoogleIdentityServices, requestGoogleAccessToken } from '@limrun/ui/play-publish';
+import {
+  generateAndroidUploadKeystore,
+  loadGoogleIdentityServices,
+  requestGoogleAccessToken,
+} from '@limrun/ui/play-publish';
 import { GOOGLE_OAUTH_CLIENT_ID } from '../config';
 import { errorMessage } from '../lib/apple';
 import { detectAndroidPackage, streamAndroidPublish } from '../lib/backend';
@@ -77,7 +81,14 @@ export function usePlay({
   /** Set when detection ran and found nothing; the user types the package. */
   const [detectionMiss, setDetectionMiss] = useState(false);
 
+  // Probes race: the user can edit the name while one is in flight, and
+  // the waiting-state poller can deliver answers out of order. Only the
+  // newest probe for the currently entered name may set the state.
+  const packageNameRef = useRef(packageName);
+  const probeSeq = useRef(0);
+
   const setPackageName = useCallback((value: string) => {
+    packageNameRef.current = value;
     setPackageNameState(value);
     setPackageState({ status: 'unchecked' });
   }, []);
@@ -85,6 +96,9 @@ export function usePlay({
   const setProjectPath = useCallback((value: string) => {
     setProjectPathState(value);
     setDetectionMiss(false);
+    // A different path may hold a different app; the verified state must
+    // not carry over to whatever the user points at next.
+    setPackageState({ status: 'unchecked' });
   }, []);
 
   const verifyPackage = useCallback(
@@ -92,8 +106,10 @@ export function usePlay({
       const token = accessTokenRef.current;
       const trimmed = (explicitName ?? packageName).trim();
       if (!token || !trimmed) return;
+      const seq = ++probeSeq.current;
       setPackageState((current) => (current.status === 'waiting' ? current : { status: 'checking' }));
       const probe = await probePlayAccess(token, trimmed);
+      if (seq !== probeSeq.current || trimmed !== packageNameRef.current.trim()) return;
       if (probe.result === 'ok') {
         localStorage.setItem(PACKAGE_STORAGE_KEY, trimmed);
         setPackageState({ status: 'verified' });
@@ -124,10 +140,12 @@ export function usePlay({
       const detected = await detectAndroidPackage(trimmedPath);
       localStorage.setItem(PROJECT_STORAGE_KEY, trimmedPath);
       if (detected) {
+        packageNameRef.current = detected;
         setPackageNameState(detected);
         await verifyPackage(detected);
       } else {
         setDetectionMiss(true);
+        packageNameRef.current = '';
         setPackageNameState('');
         setPackageState({ status: 'unchecked' });
       }
@@ -148,26 +166,42 @@ export function usePlay({
   }, [packageState.status, verifyPackage]);
 
   // --- Upload keystore ----------------------------------------------------
-  const [keystoreStored, setKeystoreStored] = useState(false);
+  // Four states on purpose: only a definitive 'absent' may render the
+  // generate/import forms, because writing over an EXISTING escrowed
+  // upload key silently replaces it and breaks every later upload with an
+  // upload-key mismatch. 'unknown' means a check is in flight; 'error'
+  // means the check failed and the user must retry it.
+  const [keystoreState, setKeystoreState] = useState<'unknown' | 'error' | 'absent' | 'present'>('unknown');
+  const [keystoreCheckSeq, setKeystoreCheckSeq] = useState(0);
+  const recheckKeystore = useCallback(() => setKeystoreCheckSeq((seq) => seq + 1), []);
 
   useEffect(() => {
     const trimmed = packageName.trim();
     if (!trimmed) {
-      setKeystoreStored(false);
+      setKeystoreState('unknown');
       return;
     }
     let cancelled = false;
+    setKeystoreState('unknown');
     void secretStore
       .get(ANDROID_SIGNING_KEY_SECRET_TYPE, `${trimmed}/UPLOAD`)
       .then((secret) => {
-        if (!cancelled) setKeystoreStored(secret !== undefined);
+        if (!cancelled) setKeystoreState(secret !== undefined ? 'present' : 'absent');
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setKeystoreState('error');
+      });
     return () => {
       cancelled = true;
     };
-  }, [packageName, secretStore]);
+  }, [packageName, secretStore, keystoreCheckSeq]);
 
+  /**
+   * Escrows an upload keystore under the package. Re-checks the store
+   * right before writing, for the imported and the generated key alike:
+   * overwriting an existing upload key would break every later upload,
+   * so a racing or previously failed check must abort.
+   */
   const storeKeystore = useCallback(
     async (data: {
       keystoreBase64: string;
@@ -175,11 +209,30 @@ export function usePlay({
       keyAlias: string;
       keyPassword: string;
     }) => {
-      await secretStore.put(ANDROID_SIGNING_KEY_SECRET_TYPE, `${packageName.trim()}/UPLOAD`, data);
-      setKeystoreStored(true);
+      const name = `${packageName.trim()}/UPLOAD`;
+      const existing = await secretStore.get(ANDROID_SIGNING_KEY_SECRET_TYPE, name);
+      if (existing !== undefined) {
+        setKeystoreState('present');
+        throw new Error(
+          'An upload keystore for this app is already in the secret store; not overwriting it.',
+        );
+      }
+      await secretStore.put(ANDROID_SIGNING_KEY_SECRET_TYPE, name, data);
+      setKeystoreState('present');
     },
     [packageName, secretStore],
   );
+
+  /**
+   * The first-app path: generate a fresh upload key in the browser (the
+   * private key never leaves it except into the secret store) and escrow
+   * it under the package, the same custody story as the Apple
+   * certificates. Google's Play App Signing re-signs for distribution,
+   * so this key only ever signs uploads.
+   */
+  const generateKeystore = useCallback(async () => {
+    await storeKeystore(await generateAndroidUploadKeystore(packageName.trim()));
+  }, [packageName, storeKeystore]);
 
   // --- Publish --------------------------------------------------------------
   const [state, setState] = useState<PublishState>('idle');
@@ -225,7 +278,10 @@ export function usePlay({
   }, [onError, packageName, projectPath]);
 
   const connected =
-    isSignedIn && projectPath.trim() !== '' && packageState.status === 'verified' && keystoreStored;
+    isSignedIn &&
+    projectPath.trim() !== '' &&
+    packageState.status === 'verified' &&
+    keystoreState === 'present';
 
   return {
     // Google session
@@ -244,8 +300,10 @@ export function usePlay({
     packageState,
     verifyPackage,
     // Keystore
-    keystoreStored,
+    keystoreState,
+    recheckKeystore,
     storeKeystore,
+    generateKeystore,
     // Publish
     connected,
     state,

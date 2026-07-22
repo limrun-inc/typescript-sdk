@@ -81,7 +81,6 @@ export function validateSigningFlags(flags: GradleBuildFlagValues): void {
 }
 
 const PLAYSTORE_DEPENDENT_FLAGS = [
-  'auto-version-code',
   'playstore-service-account',
   'playstore-track',
   'playstore-release-status',
@@ -95,7 +94,9 @@ const PLAYSTORE_DEPENDENT_FLAGS = [
  */
 export function validatePlaystoreFlags(flags: GradleBuildFlagValues): void {
   if (!flags['upload-to-playstore']) {
-    if (PLAYSTORE_DEPENDENT_FLAGS.some((f) => flags[f] !== undefined)) {
+    // Boolean flags check truthiness, not presence: an explicit false
+    // means off and must not poison a plain build.
+    if (flags['auto-version-code'] || PLAYSTORE_DEPENDENT_FLAGS.some((f) => flags[f] !== undefined)) {
       // Reserved: a bare Play credential may gain other meanings later,
       // so it never implies the publish.
       throw new Error('The playstore flags require --upload-to-playstore.');

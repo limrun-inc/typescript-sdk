@@ -1,4 +1,5 @@
 import forge from 'node-forge';
+import { generateRsaSigningKeyPair, toPkcs12Base64 } from '../core/crypto';
 
 export type AppleSigningKeyMaterial = {
   privateKey: CryptoKey;
@@ -21,18 +22,8 @@ export type ExportP12Input = {
   friendlyName?: string;
 };
 
-const rsaAlgorithm: RsaHashedKeyGenParams = {
-  name: 'RSASSA-PKCS1-v1_5',
-  modulusLength: 2048,
-  publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
-  hash: 'SHA-256',
-};
-
 export async function generateAppleSigningKeyAndCSR(input: AppleCSRInput): Promise<AppleSigningKeyMaterial> {
-  if (!crypto.subtle) {
-    throw new Error('WebCrypto is not available in this browser.');
-  }
-  const keyPair = await crypto.subtle.generateKey(rsaAlgorithm, true, ['sign', 'verify']);
+  const keyPair = await generateRsaSigningKeyPair();
   const publicKeySPKI = new Uint8Array(await crypto.subtle.exportKey('spki', keyPair.publicKey));
   const certificationRequestInfo = derSequence(
     derInteger(0),
@@ -73,12 +64,12 @@ export function exportAppleCertificateP12(input: ExportP12Input) {
     : forge.pki.certificateFromAsn1(
         forge.asn1.fromDer(forge.util.createBuffer(base64ToBinary(input.certificateBase64!))),
       );
-  const p12 = forge.pkcs12.toPkcs12Asn1(privateKey, [certificate], input.password, {
-    algorithm: '3des',
-    friendlyName: input.friendlyName,
-  });
-  const der = forge.asn1.toDer(p12).getBytes();
-  return binaryToBase64(der);
+  return toPkcs12Base64(
+    privateKey as forge.pki.rsa.PrivateKey,
+    [certificate],
+    input.password,
+    input.friendlyName,
+  );
 }
 
 function derName(input: AppleCSRInput) {
@@ -187,10 +178,6 @@ function bytesToBase64(bytes: Uint8Array) {
   for (const byte of bytes) {
     binary += String.fromCharCode(byte);
   }
-  return btoa(binary);
-}
-
-function binaryToBase64(binary: string) {
   return btoa(binary);
 }
 

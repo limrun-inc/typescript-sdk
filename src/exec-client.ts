@@ -132,9 +132,10 @@ export type GradlePlaystoreConfig = {
    * Google Play (1 for an app with no artifacts), so repeat publishes
    * never collide. Resolved with the publish credential before the build
    * and stamped into the workspace copy: android.versionCode in the Expo
-   * config (requires a static app.json), or the literal versionCode in a
-   * native project's module build script (a computed versionCode fails
-   * the build before it starts).
+   * config (requires a static app.json), or the single literal
+   * versionCode in a native project's conventional app/ module build
+   * script (computed or flavor-split versionCodes are rejected at
+   * request time).
    */
   autoIncrementVersionCode?: boolean;
 };

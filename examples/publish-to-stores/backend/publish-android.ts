@@ -130,6 +130,15 @@ export async function streamAndroidPublish(
 
   const limrun = new Limrun({ apiKey });
   let instanceId: string | undefined;
+  // A closed browser tab must not leave work running unattended: before
+  // the build starts, the checkpoints below bail out; once it runs, the
+  // close handler cancels the remote exec.
+  let closed = false;
+  let killBuild: (() => void) | undefined;
+  res.on('close', () => {
+    closed = true;
+    killBuild?.();
+  });
   try {
     const signingSecret = await getSecret(
       ANDROID_SIGNING_KEY_SECRET_TYPE,
@@ -152,6 +161,7 @@ export async function streamAndroidPublish(
     for (const line of await ensureExpoAndroidPackage(expoConfigs, request.packageName)) {
       send('stdout', line);
     }
+    if (closed) return;
     send('stdout', 'Creating a gradle instance...');
     const instance = await limrun.gradleInstances.create({
       wait: true,
@@ -165,6 +175,7 @@ export async function streamAndroidPublish(
     send('stdout', `Syncing ${request.projectPath}...`);
     const sync = await gradle.sync(request.projectPath);
     send('stdout', `Sync complete${sync.bytesSent !== undefined ? ` (${sync.bytesSent} bytes sent)` : ''}.`);
+    if (closed) return;
 
     // The platform owns the versionCode: the server resolves the next
     // free one from Google Play and stamps it before the build, into the
@@ -183,12 +194,10 @@ export async function streamAndroidPublish(
     });
     proc.stdout.on('data', (line: string) => send('stdout', line));
     proc.stderr.on('data', (line: string) => send('stderr', line));
-    // A closed browser tab must not leave a build running unattended.
-    res.on('close', () => {
-      void proc.kill().catch(() => undefined);
-    });
+    killBuild = () => void proc.kill().catch(() => undefined);
 
     const result = await proc;
+    killBuild = undefined;
     if (result.playstore?.state === 'accepted') {
       const versionCode =
         result.playstore.versionCode !== undefined ? ` as versionCode ${result.playstore.versionCode}` : '';
@@ -204,7 +213,12 @@ export async function streamAndroidPublish(
         'The server reported no Play Store publish state; the AAB was built but likely not published.',
       );
     }
-    send('exit', String(result.exitCode));
+    // This stream reports the PUBLISH, not the build: a zero build exit
+    // without a confirmed publish must not light up the success state.
+    send(
+      'exit',
+      String(result.exitCode === 0 && result.playstore?.state !== 'accepted' ? 1 : result.exitCode),
+    );
     res.end();
   } catch (error) {
     send('error', error instanceof Error ? error.message : 'Publish failed');
