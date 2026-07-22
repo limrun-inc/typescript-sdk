@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { type GradleBuildOptions } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
@@ -31,6 +32,7 @@ export default class GradleBuild extends BaseCommand {
     '<%= config.bin %> gradle build --sign --upload myapp.aab',
     '<%= config.bin %> gradle build --keystore upload.jks --keystore-password *** --key-alias upload --key-password *** --save-key',
     '<%= config.bin %> gradle build ./my-app --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
+    '<%= config.bin %> gradle build --sign --upload-to-playstore --playstore-service-account service-account.json',
   ];
 
   static args = {
@@ -103,6 +105,27 @@ export default class GradleBuild extends BaseCommand {
         'Header to set verbatim on the webhook request as NAME=VALUE, for example Authorization="Bearer $SECRET". Requires --webhook-url. Repeat for multiple headers (at most 16).',
       multiple: true,
     }),
+    'upload-to-playstore': Flags.boolean({
+      description:
+        'Publish the signed AAB to a Google Play track after a successful build. Requires --sign or the --keystore flags plus --playstore-service-account; the app listing must already exist in Play Console.',
+      default: false,
+    }),
+    'playstore-service-account': Flags.string({
+      description:
+        'Path to a service-account JSON key whose email is invited in Play Console, for --upload-to-playstore.',
+    }),
+    'playstore-track': Flags.string({
+      description:
+        "Play track ID for --upload-to-playstore: internal (default), alpha, beta, production, or a custom track. Publishing replaces the track's existing releases.",
+    }),
+    'playstore-release-status': Flags.string({
+      description:
+        'completed makes the release live on the track; draft commits it without rollout. Required explicitly for the production track.',
+      options: ['draft', 'completed'],
+    }),
+    'playstore-package': Flags.string({
+      description: 'Package name to publish under. Omit to read it from the built AAB.',
+    }),
     'basis-cache-dir': Flags.string({
       description: 'Directory for the client-side folder-sync cache.',
     }),
@@ -147,6 +170,26 @@ export default class GradleBuild extends BaseCommand {
       }
     } catch (err) {
       return this.error(err instanceof Error ? err.message : String(err));
+    }
+    if (flags['upload-to-playstore'] && flags['playstore-service-account']) {
+      let serviceAccountJsonBase64: string;
+      try {
+        serviceAccountJsonBase64 = (await readFile(flags['playstore-service-account'])).toString('base64');
+      } catch (err) {
+        return this.error(
+          `Failed to read --playstore-service-account file at ${flags['playstore-service-account']}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+      options.playstore = {
+        serviceAccountJsonBase64,
+        ...(flags['playstore-track'] && { track: flags['playstore-track'] }),
+        ...(flags['playstore-release-status'] && {
+          releaseStatus: flags['playstore-release-status'] as 'draft' | 'completed',
+        }),
+        ...(flags['playstore-package'] && { packageName: flags['playstore-package'] }),
+      };
     }
 
     await this.withAuth(async () => {
@@ -205,6 +248,15 @@ export default class GradleBuild extends BaseCommand {
             { exit: result.exitCode },
           );
         }
+        if (result.playstore?.state === 'failed') {
+          const code = result.playstore.code ? ` [${result.playstore.code}]` : '';
+          this.error(
+            `Play Store publish failed${code}: ${
+              result.playstore.message ?? 'see the build log above'
+            }. The build and signing succeeded.`,
+            { exit: result.exitCode },
+          );
+        }
         this.error(`gradle build failed with exit code ${result.exitCode}`, { exit: result.exitCode });
       }
 
@@ -218,6 +270,18 @@ export default class GradleBuild extends BaseCommand {
       } else if (flags.upload) {
         this.output(`Uploaded APK as asset '${flags.upload}'.`);
         this.output(`Run it with: lim android create --install-asset=${flags.upload}`);
+      }
+      if (result.playstore?.state === 'accepted') {
+        const track = result.playstore.track ?? options.playstore?.track ?? 'internal';
+        const versionCode =
+          result.playstore.versionCode !== undefined ? ` as versionCode ${result.playstore.versionCode}` : '';
+        this.output(`Published to the Play ${track} track${versionCode}.`);
+      } else if (options.playstore && !result.playstore) {
+        // The playstore SSE event doubles as the capability handshake: its
+        // absence on success means the server ignored the request.
+        this.warn(
+          'The server reported no Play Store publish state; it may predate --upload-to-playstore. The AAB was built but likely not published.',
+        );
       }
       if (result.signedDownloadUrl) {
         this.output(`Download URL: ${result.signedDownloadUrl}`);

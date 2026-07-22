@@ -54,3 +54,65 @@ test('tasks, project path, and upload map through', () => {
     upload: { assetName: 'app.apk' },
   });
 });
+
+// Play Store flag validation rides the same pre-instance contract as
+// signing: contradictions throw here, never after an instance was billed.
+// The service-account file read and playstore assembly live in the
+// command, so the mapper only validates.
+
+test('playstore flags without --upload-to-playstore throw', () => {
+  expect(() => gradleBuildOptionsFromFlags({ 'playstore-track': 'internal' })).toThrow(
+    'require --upload-to-playstore',
+  );
+});
+
+test('upload-to-playstore without signing throws before any instance work', () => {
+  expect(() =>
+    gradleBuildOptionsFromFlags({
+      'upload-to-playstore': true,
+      'playstore-service-account': 'sa.json',
+    }),
+  ).toThrow('requires --sign or the --keystore flags');
+});
+
+test('upload-to-playstore without a service account throws', () => {
+  expect(() => gradleBuildOptionsFromFlags({ sign: true, 'upload-to-playstore': true })).toThrow(
+    'requires --playstore-service-account',
+  );
+});
+
+test('production track without an explicit release status throws', () => {
+  expect(() =>
+    gradleBuildOptionsFromFlags({
+      sign: true,
+      'upload-to-playstore': true,
+      'playstore-service-account': 'sa.json',
+      'playstore-track': 'production',
+    }),
+  ).toThrow('explicit --playstore-release-status');
+});
+
+test('upload-to-playstore with explicit non-bundle tasks throws', () => {
+  expect(() =>
+    gradleBuildOptionsFromFlags({
+      sign: true,
+      task: ['assembleRelease'],
+      'upload-to-playstore': true,
+      'playstore-service-account': 'sa.json',
+    }),
+  ).toThrow('include a bundle task');
+});
+
+test('a valid playstore combination passes validation without mapping playstore', () => {
+  // The mapper stays pure: the command attaches options.playstore after
+  // reading the service-account file.
+  expect(
+    gradleBuildOptionsFromFlags({
+      sign: true,
+      upload: 'app.aab',
+      'upload-to-playstore': true,
+      'playstore-service-account': 'sa.json',
+      'playstore-track': 'internal',
+    }),
+  ).toEqual({ upload: { assetName: 'app.aab' } });
+});
