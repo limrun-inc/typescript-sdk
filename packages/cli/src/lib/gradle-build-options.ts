@@ -29,6 +29,7 @@ export interface GradleBuildFlagValues extends WebhookFlagValues {
   'key-password'?: string;
   'save-key'?: boolean;
   'upload-to-playstore'?: boolean;
+  'auto-version-code'?: boolean;
   'playstore-service-account'?: string;
   'playstore-track'?: string;
   'playstore-release-status'?: string;
@@ -81,6 +82,7 @@ export function validateSigningFlags(flags: GradleBuildFlagValues): void {
 }
 
 const PLAYSTORE_DEPENDENT_FLAGS = [
+  'auto-version-code',
   'playstore-service-account',
   'playstore-track',
   'playstore-release-status',
