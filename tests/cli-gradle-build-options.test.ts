@@ -72,6 +72,14 @@ test('auto-version-code without --upload-to-playstore throws', () => {
   );
 });
 
+test('an explicit auto-version-code false does not poison plain builds', () => {
+  // Boolean flags carry truthiness semantics in the validator: off is
+  // off, however it was spelled by a programmatic caller.
+  expect(gradleBuildOptionsFromFlags({ 'auto-version-code': false, task: ['assembleDebug'] })).toEqual({
+    tasks: ['assembleDebug'],
+  });
+});
+
 test('upload-to-playstore without signing throws before any instance work', () => {
   expect(() =>
     gradleBuildOptionsFromFlags({

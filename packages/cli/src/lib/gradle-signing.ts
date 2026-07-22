@@ -52,6 +52,9 @@ function expoAndroidPackage(appDir: string): string | undefined {
   }
 }
 
+// Keep in sync with the Go daemon's analyzeModuleVersionCode heuristic
+// (limrun repo, pkg/gradlebuild/versioncode.go); a fix here without the
+// mirror strands the server.
 function gradleApplicationId(gradleRoot: string): string | undefined {
   for (const candidate of ['app/build.gradle', 'app/build.gradle.kts']) {
     let content: string;

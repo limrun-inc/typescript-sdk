@@ -200,6 +200,17 @@ export async function streamAndroidPublish(
   if (!response.ok) await failedResponse(response, 'Publish request failed');
   if (!response.body) throw new Error('Publish request returned no stream.');
 
+  const dispatchFrame = (frame: string) => {
+    let event = 'stdout';
+    const data: string[] = [];
+    for (const line of frame.split('\n')) {
+      if (line.startsWith('event: ')) event = line.slice('event: '.length);
+      else if (line.startsWith('data: ')) data.push(line.slice('data: '.length));
+      else if (line === 'data:' || line === 'data: ') data.push('');
+    }
+    onEvent({ event: event as PublishEvent['event'], data: data.join('\n') });
+  };
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -209,16 +220,12 @@ export async function streamAndroidPublish(
     buffer += decoder.decode(value, { stream: true });
     let separator: number;
     while ((separator = buffer.indexOf('\n\n')) >= 0) {
-      const frame = buffer.slice(0, separator);
+      dispatchFrame(buffer.slice(0, separator));
       buffer = buffer.slice(separator + 2);
-      let event = 'stdout';
-      const data: string[] = [];
-      for (const line of frame.split('\n')) {
-        if (line.startsWith('event: ')) event = line.slice('event: '.length);
-        else if (line.startsWith('data: ')) data.push(line.slice('data: '.length));
-        else if (line === 'data:' || line === 'data: ') data.push('');
-      }
-      onEvent({ event: event as PublishEvent['event'], data: data.join('\n') });
     }
   }
+  // A stream cut mid-frame (backend crash, dropped connection) leaves the
+  // last frame without its blank-line terminator; deliver it anyway.
+  buffer += decoder.decode();
+  if (buffer.trim() !== '') dispatchFrame(buffer);
 }
