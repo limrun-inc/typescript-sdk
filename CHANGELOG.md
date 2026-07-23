@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.44.0 (2026-07-23)
+
+Full Changelog: [v0.43.1...v0.44.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.43.1...v0.44.0)
+
+### Features
+
+* **api:** add scoped tokens to stainless config ([97e2365](https://github.com/limrun-inc/typescript-sdk/commit/97e23652ba275ab77b1ed46f70517c525713a388))
+* **api:** fix stainless models for scoped tokens ([4038158](https://github.com/limrun-inc/typescript-sdk/commit/403815839ced6922a9a87ff7c4b5916aa133df0e))
+* **api:** scoped tokens desc fix ([e87ea81](https://github.com/limrun-inc/typescript-sdk/commit/e87ea81a8ec323c9f63bdc97f0aabfecd4523338))
+
 ## 0.43.1 (2026-07-20)
 
 Full Changelog: [v0.43.0...v0.43.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.43.0...v0.43.1)
