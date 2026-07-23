@@ -48,9 +48,9 @@ export function ResultPanel({ publish }: { publish: PublishController }) {
       <div style={waitingBox}>
         <strong>Waiting for build callback…</strong>
         <br />
-        The build is running remotely. When it finishes, limbuild POSTs a webhook to this
-        backend (through the tunnel) and the payload shows up here. Live output streams to the
-        backend&apos;s terminal.
+        The build is running remotely. When it finishes, limbuild POSTs a webhook to this backend (through the
+        tunnel) and the payload shows up here. The CLI detached after submitting the build, so it does not
+        hold this backend request open.
       </div>
     );
   }

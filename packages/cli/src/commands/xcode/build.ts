@@ -33,7 +33,7 @@ type TestflightFlags = {
 export default class XcodeBuild extends BaseCommand {
   static summary = 'Run xcodebuild on an Xcode sandbox';
   static description =
-    'Sync a local project path once (or the current working directory if omitted), then trigger a remote xcodebuild with streaming output. Use `--ios` to build and run on an iOS simulator-backed Xcode target.';
+    'Sync a local project path once (or the current working directory if omitted), then trigger a remote xcodebuild with streaming output. Use `--detach` with a webhook for headless builds that should return as soon as the build starts. Use `--ios` to build and run on an iOS simulator-backed Xcode target.';
 
   static examples = [
     '<%= config.bin %> xcode build',
@@ -53,6 +53,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --signed-upload-url <url>',
     `<%= config.bin %> xcode build ./MyProject --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"`,
     '<%= config.bin %> xcode build ./MyProject --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
+    '<%= config.bin %> xcode build ./MyProject --detach --inactivity-timeout 3s --webhook-url https://ci.example.com/hooks/limrun',
     '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache',
     '<%= config.bin %> xcode build ./MyProject --ignore "\\\\.xcuserdata/"',
     '<%= config.bin %> xcode build ./MyProject --additional-file ~/.netrc=~/.netrc',
@@ -70,6 +71,10 @@ export default class XcodeBuild extends BaseCommand {
     id: Flags.string({
       description:
         'Xcode instance ID to build on, or an explicit iOS instance ID with `--xcode` enabled. Defaults to the most recent standalone Xcode target.',
+    }),
+    'inactivity-timeout': Flags.string({
+      description:
+        'Inactivity timeout for the instance created by this build (for example 3s, 1m). Forces a fresh instance and cannot be combined with --id. The timeout is measured from the last server-reported activity, so it does not interrupt an active build.',
     }),
     ios: Flags.boolean({
       description:
@@ -168,6 +173,11 @@ export default class XcodeBuild extends BaseCommand {
         'Header to set verbatim on the webhook request as NAME=VALUE, for example Authorization="Bearer $SECRET". Requires --webhook-url. Repeat for multiple headers (at most 16).',
       multiple: true,
     }),
+    detach: Flags.boolean({
+      description:
+        'Return after the remote build is accepted instead of streaming logs and waiting for completion. Requires --webhook-url; use its callback to observe the terminal result.',
+      default: false,
+    }),
     'basis-cache-dir': Flags.string({
       description: 'Directory to use for the client-side delta sync cache during the pre-build sync step.',
     }),
@@ -212,6 +222,12 @@ export default class XcodeBuild extends BaseCommand {
     }
     if (flags.ios && (flags['upload-to-testflight'] || hasTestflightFlags(flags))) {
       this.error('--ios builds run on a simulator and cannot upload to TestFlight.');
+    }
+    if (flags.id && flags['inactivity-timeout']) {
+      this.error('--inactivity-timeout controls a newly created instance and cannot be combined with --id.');
+    }
+    if (flags.detach && !flags['webhook-url']) {
+      this.error('--detach requires --webhook-url so the terminal build result is observable.');
     }
 
     await this.withAuth(async () => {
@@ -324,6 +340,12 @@ export default class XcodeBuild extends BaseCommand {
         Object.keys(settings).length > 0 ? settings : undefined,
         Object.keys(options).length > 0 ? options : undefined,
       );
+
+      if (flags.detach) {
+        const execId = await proc.detach();
+        this.output(`Build started (exec ID ${execId}). Completion will be reported by webhook.`);
+        return;
+      }
 
       proc.stdout.on('data', (line: string) => {
         process.stdout.write(line + '\n');

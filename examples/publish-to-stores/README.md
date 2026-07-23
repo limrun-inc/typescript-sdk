@@ -53,15 +53,20 @@ Frontend wizard ──Apple relay ws (scoped token)──> Limrun registry ─�
   without touching the wizard.
 - Publishing runs entirely server-side: the backend materializes the stored certificate,
   App Store profile, and App Store Connect API key into temp files and spawns the CLI with
-  `--auto-build-number`, so the build number is incremented against App Store Connect
-  automatically before every upload.
+  `--auto-build-number --inactivity-timeout 3s --detach`. The build number is incremented
+  against App Store Connect automatically, the CLI returns as soon as limbuild accepts the
+  build, and the fresh one-shot Xcode instance is reaped shortly after its last activity.
+  The inactivity controller checks every 15 seconds, so a 3-second timeout means teardown
+  typically occurs 3–18 seconds after the build and upload stop reporting activity; it
+  cannot interrupt an active build.
 - The publish outcome travels as a webhook, not a log stream. The backend passes
   `--webhook-url https://<tunnel>/webhook/<id>` (plus a per-publish secret via
   `--webhook-header X-Publish-Token=...`) to the CLI; when the build reaches a terminal
   state, limbuild POSTs a JSON payload carrying the status, timings (`buildDurationMs`),
   a Limrun Console debug link, and a presigned URL for the persisted build log. The
   frontend polls `GET /publish/:id` and, once the callback lands, shows the payload and
-  the build time. The CLI's live output still prints to the backend's terminal.
+  the build time. Because the CLI runs with `--detach`, it does not keep an SSE log stream
+  open while the build runs.
 - Both the TestFlight and App Store methods run the same upload. An App Store release is
   that upload plus attaching the processed build to a version and submitting it for review
   in App Store Connect.

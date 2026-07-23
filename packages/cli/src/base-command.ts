@@ -418,7 +418,10 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = loadLastXcodeInstance();
-    if (target?.type === 'xcode') {
+    // A requested creation-time timeout cannot be applied to an existing
+    // instance. Skip the cached target so headless one-shot commands get a
+    // fresh instance with the requested lifecycle.
+    if (target?.type === 'xcode' && !this.autoCreateInactivityTimeout()) {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
@@ -454,11 +457,16 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = loadLastXcodeInstance();
-    if (target?.type === 'ios') {
+    const forceFresh = Boolean(this.autoCreateInactivityTimeout());
+    if (target?.type === 'ios' && !forceFresh) {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
-    if (target?.type === 'xcode' && (await this.xcodeTargetHasAttachedSimulator(target, true))) {
+    if (
+      target?.type === 'xcode' &&
+      !forceFresh &&
+      (await this.xcodeTargetHasAttachedSimulator(target, true))
+    ) {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
@@ -520,6 +528,12 @@ export abstract class BaseCommand extends Command {
       return false;
     }
     return true;
+  }
+
+  /** Creation-time inactivity timeout requested by commands such as xcode build. */
+  private autoCreateInactivityTimeout(): string | undefined {
+    const value = this.parsedFlags?.['inactivity-timeout'];
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
   }
 
   private async createReplacementInstance(
@@ -632,10 +646,12 @@ export abstract class BaseCommand extends Command {
   }
 
   private async createIosXcodeInstance(): Promise<LastIosInstance> {
+    const inactivityTimeout = this.autoCreateInactivityTimeout();
     const instance = await this.client.iosInstances.create({
       wait: true,
       spec: {
         sandbox: { xcode: { enabled: true } },
+        ...(inactivityTimeout && { inactivityTimeout }),
       },
     });
     this._instancesCreatedThisRun.add(instance.metadata.id);
@@ -650,7 +666,13 @@ export abstract class BaseCommand extends Command {
   }
 
   private async createStandaloneXcodeInstance(): Promise<LastXcodeInstance> {
-    const instance = await this.client.xcodeInstances.create({ wait: true, spec: {} });
+    const inactivityTimeout = this.autoCreateInactivityTimeout();
+    const instance = await this.client.xcodeInstances.create({
+      wait: true,
+      spec: {
+        ...(inactivityTimeout && { inactivityTimeout }),
+      },
+    });
     this._instancesCreatedThisRun.add(instance.metadata.id);
     saveLastCreatedInstance(instance);
     const target = loadLastXcodeInstance();

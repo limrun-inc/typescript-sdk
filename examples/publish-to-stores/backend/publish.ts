@@ -156,11 +156,11 @@ type PublishEntry = {
 // the process, which is all a demo needs. A real service would persist these.
 const publishes = new Map<string, PublishEntry>();
 
-// How long after a clean CLI exit to keep waiting for the webhook. Delivery
-// is near-immediate (limbuild fires it when the build reaches its terminal
-// state, before the CLI's log stream ends) with bounded retries, so a miss
-// past this window means the callback URL is not reachable from the internet.
-const WEBHOOK_GRACE_MS = 2 * 60 * 1000;
+// Upper bound for a detached publish. The CLI exits as soon as limbuild
+// accepts the build, so its process lifetime says nothing about build
+// completion. The webhook normally arrives much sooner; this only prevents a
+// permanently-running UI when the build or callback is lost.
+const PUBLISH_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 /**
  * Marks the publish failed unless a webhook already settled it. Used for
@@ -176,7 +176,8 @@ function failPublish(id: string, message: string) {
 
 /**
  * Records the build-finish webhook for a publish. The token guards the
- * endpoint: the callback URL travels through ngrok and is guessable, so
+ * endpoint: the callback URL travels through a public tunnel and is
+ * guessable, so
  * limbuild proves itself with the per-publish secret it was given via
  * --webhook-header. Returns false when the token does not match.
  */
@@ -209,10 +210,7 @@ export function getPublishStatus(id: string): PublishStatus | undefined {
  * output — that output only goes to this process's console for debugging.
  */
 export async function startPublish(request: PublishRequest, publicUrl: string): Promise<string> {
-  const { certificate, profile, apiKey } = await resolvePublishCredentials(
-    request.teamId,
-    request.bundleId,
-  );
+  const { certificate, profile, apiKey } = await resolvePublishCredentials(request.teamId, request.bundleId);
 
   const workDir = await mkdtemp(path.join(os.tmpdir(), 'publish-to-stores-'));
   const certificatePath = path.join(workDir, 'certificate.p12');
@@ -232,6 +230,9 @@ export async function startPublish(request: PublishRequest, publicUrl: string): 
     status: { id, state: 'running', startedAt: new Date().toISOString() },
     token,
   });
+  setTimeout(() => {
+    failPublish(id, 'No build-finish webhook arrived within two hours.');
+  }, PUBLISH_TIMEOUT_MS).unref();
 
   const args = [
     'xcode',
@@ -262,6 +263,9 @@ export async function startPublish(request: PublishRequest, publicUrl: string): 
     // PUBLIC_URL points somewhere else.
     '--webhook-header',
     'Bypass-Tunnel-Reminder=true',
+    '--inactivity-timeout',
+    '3s',
+    '--detach',
   ];
   if (apiKey.data.issuerId) {
     args.push('--asc-issuer-id', apiKey.data.issuerId);
@@ -299,16 +303,7 @@ export async function startPublish(request: PublishRequest, publicUrl: string): 
       // The build never reached limbuild (bad path, sync failure, ...) or
       // failed client-side; no webhook is coming, so settle the publish here.
       failPublish(id, `lim exited with code ${code ?? 1} before the build finished. See the backend logs.`);
-      return;
     }
-    // A clean exit means limbuild saw the build end and has fired (or is
-    // retrying) the webhook. If it never lands, the tunnel is the suspect.
-    setTimeout(() => {
-      failPublish(
-        id,
-        'The build finished but no webhook arrived. Is the tunnel URL reachable from the internet?',
-      );
-    }, WEBHOOK_GRACE_MS).unref();
   });
 
   return id;
