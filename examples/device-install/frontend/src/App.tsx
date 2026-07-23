@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDeviceInstallRelay } from '@limrun/ui/device-install/react';
 import { useActivityLog } from './hooks/useActivityLog';
 import { BACKEND_URL } from './config';
@@ -7,10 +7,13 @@ import { LogPanel } from './components/LogPanel';
 import { PairStep } from './components/PairStep';
 import { InstallStep } from './components/InstallStep';
 
+type Session = { token: string; registryUrl: string; expiresAt: string };
+
 /**
- * Pair an iPhone over WebUSB, then install a signed IPA onto it. Both run on
- * Limrun's registry, reached through the example backend's WebSocket proxy so
- * the API key stays server-side — `registryApiUrl` points at the backend.
+ * Pair an iPhone over WebUSB, then install a signed IPA onto it. Both talk to
+ * Limrun's registry directly using a short-lived scoped token minted by
+ * the example backend — the API key never reaches the browser, and the token
+ * can only open the device relay and read the granted assets.
  *
  * There is deliberately no build step here: signed IPAs are produced on your
  * backend with `@limrun/api` and uploaded to Limrun asset storage, then
@@ -20,8 +23,37 @@ import { InstallStep } from './components/InstallStep';
 function App() {
   const activity = useActivityLog();
   const [error, setError] = useState<string>();
+  const [session, setSession] = useState<Session>();
 
-  const install = useDeviceInstallRelay({ registryApiUrl: BACKEND_URL, log: activity.push });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        if (!response.ok) throw new Error(`Session request failed with ${response.status}`);
+        const fresh: Session = await response.json();
+        if (cancelled) return;
+        setSession(fresh);
+        activity.push('Registry session ready', `expires at ${fresh.expiresAt}`);
+      } catch (caught) {
+        if (!cancelled) setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const install = useDeviceInstallRelay({
+    registryApiUrl: session?.registryUrl,
+    token: session?.token,
+    log: activity.push,
+  });
 
   return (
     <div style={layout.page}>

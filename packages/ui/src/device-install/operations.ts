@@ -27,9 +27,9 @@ export type PairDeviceOptions = {
 };
 
 export type InstallSource =
-  | { assetId: string; assetName?: never; downloadUrl?: never }
-  | { assetId?: never; assetName: string; downloadUrl?: never }
-  | { assetId?: never; assetName?: never; downloadUrl: string };
+  | { assetId: string; assetName?: never; url?: never }
+  | { assetId?: never; assetName: string; url?: never }
+  | { assetId?: never; assetName?: never; url: string };
 
 export type StartDeviceInstallOptions = PairDeviceOptions & {
   pairRecord: PairRecordPayload;

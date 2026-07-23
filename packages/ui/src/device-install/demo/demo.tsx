@@ -86,7 +86,7 @@ function App() {
   async function runInstall() {
     setInstallPhase('installing');
     const relay = await install.startInstallation(
-      assetName.trim() ? { assetName: assetName.trim() } : { downloadUrl: ipaDownloadUrl.trim() },
+      assetName.trim() ? { assetName: assetName.trim() } : { url: ipaDownloadUrl.trim() },
     );
     if (!relay) setInstallPhase('error');
   }

@@ -27,7 +27,7 @@ your UI calls your backend, and your backend drives the Xcode sandbox with
 `@limrun/api` using the stored signing secrets.
 
 > **Want to see it working first?** A runnable pair-and-install reference with
-> the backend relay proxy lives in
+> scoped-token minting lives in
 > [`examples/device-install`](../../../../examples/device-install); a minimal
 > single-page version lives in [`src/device-install/demo`](./demo). For the
 > Apple sign-in + secret store + backend build flow, see
@@ -61,11 +61,37 @@ The browser side is split across two subpath entry points:
 
 Pairing, install, and the Apple relay all run on **Limrun's registry**
 (`https://registry.limrun.com`), a shared service that authenticates a Limrun
-token. Your org API key works, but it must never reach the browser — pipe the
-relay WebSockets (`/ios/device/ws`, `/ios/appstoreconnect/ws`) through your
-backend, which attaches the key server-side, and point `registryApiUrl` at your
-backend. `examples/device-install/backend/relay-proxy.ts` is a complete
-pass-through you can copy.
+token. Your org API key works, but it must never reach the browser. Instead,
+your backend mints a **scoped token** with `@limrun/api` and hands that to
+the browser, which connects to the registry directly:
+
+```ts
+// Your backend. The API key stays here.
+import Limrun from '@limrun/api';
+
+const limrun = new Limrun({ apiKey: process.env['LIM_API_KEY'] });
+const session = await limrun.scopedTokens.create({
+  scopes: ['device:*:install', `asset:${assetId}:read`],
+  // ttlSeconds: 3600 is the default; maximum is 14400.
+});
+// Return session.token to the browser.
+```
+
+```tsx
+// Your frontend. Point the hook straight at the registry.
+const install = useDeviceInstallRelay({
+  registryApiUrl: 'https://registry.limrun.com',
+  token: session.token,
+});
+```
+
+Scopes have the form `<resource>:<id|*>:<action>` — `device:*:install` opens
+the device relay, `asset:<id>:read` (or `asset:*:read`) lets installs read
+those assets, and `applerelay:*:connect` opens the Apple relay for the
+`@limrun/ui/apple` flow. Scoped tokens are verified offline, expire on
+their own (they cannot be revoked, so keep TTLs short), and can only install
+from assets — the registry rejects `{ url }` sources for them.
+`examples/device-install/backend` is a complete minting backend you can copy.
 
 ## Pair the iPhone
 
@@ -93,15 +119,15 @@ await install.pairBrowser();
 // install.hasPairRecord === true
 ```
 
-| Field / method                             | Use                                                                                                      |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `requestUSBAccess()`                       | Open the WebUSB picker and select the iPhone.                                                            |
-| `pairBrowser()`                            | Pair through the relay; persists the pair record.                                                        |
-| `startInstallation(source)`                | Install an IPA onto the paired device; `source` is `{ assetName }`, `{ assetId }`, or `{ downloadUrl }`. |
-| `device`                                   | Selected device; `device.hello.serialNumber` is the UDID.                                                |
-| `hasPairRecord` / `canPair` / `canInstall` | Gating flags for your buttons.                                                                           |
-| `busyAction`                               | `'usb'`, `'pair'`, or `'install'` while an operation is in flight.                                       |
-| `error`                                    | Last error message, if any.                                                                              |
+| Field / method                             | Use                                                                                              |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `requestUSBAccess()`                       | Open the WebUSB picker and select the iPhone.                                                    |
+| `pairBrowser()`                            | Pair through the relay; persists the pair record.                                                |
+| `startInstallation(source)`                | Install an IPA onto the paired device; `source` is `{ assetName }`, `{ assetId }`, or `{ url }`. |
+| `device`                                   | Selected device; `device.hello.serialNumber` is the UDID.                                        |
+| `hasPairRecord` / `canPair` / `canInstall` | Gating flags for your buttons.                                                                   |
+| `busyAction`                               | `'usb'`, `'pair'`, or `'install'` while an operation is in flight.                               |
+| `error`                                    | Last error message, if any.                                                                      |
 
 Pairing is independent of the build — you can pair before signing or building.
 Only `startInstallation()` needs both a stored pair record and an artifact to
@@ -228,9 +254,11 @@ npx vite src/device-install/demo
 ```
 
 Open the printed `https://localhost` URL in Chrome or Edge, paste a registry URL
-and token, then pair and install an asset by name (or any HTTPS IPA URL).
+and token (a scoped token or, for local experiments, an API key), then pair
+and install an asset by name.
 [`examples/device-install`](../../../../examples/device-install) is the same
-flow with the token kept server-side behind a backend relay proxy.
+flow with a backend that mints scoped tokens so the API key stays
+server-side.
 
 ## Add a device to a profile
 
@@ -254,8 +282,9 @@ can't be amended locally — regenerate it through the Apple flow.
   browser, or your own backend.
 - The **Apple ID password never reaches Limrun** — only SRP proof material does.
 - The registry authenticates a Limrun token — keep your org API key on your
-  backend and proxy the relay WebSockets rather than handing the key to the
-  browser. Serve the UI over HTTPS in production.
+  backend and hand the browser a scoped scoped token
+  (`limrun.scopedTokens.create`) instead. Serve the UI over HTTPS in
+  production.
 
 ## Troubleshooting
 

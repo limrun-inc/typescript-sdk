@@ -132,10 +132,10 @@
   resolved "https://registry.yarnpkg.com/@esbuild/win32-x64/-/win32-x64-0.28.0.tgz#04d90d5752b4ce65d2b6ac25eba08ff7624fe07c"
   integrity sha512-pEl1bO9mfAmIC+tW5btTmrKaujg3zGtUmWNdCw/xs70FBjwAL3o9OEKNHvNmnyylD6ubxUERiEhdsL0xBQ9efw==
 
-"@limrun/api@0.43.1":
-  version "0.43.1"
-  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.43.1.tgz#b36fda376e0f5c425ecca3b0926618464798c94c"
-  integrity sha512-3LMx0AqIfvy6Up7wggqTMSM12diV9QaXUw/wT8hyMh/AxwEjNCsgZtvSgtgKsgBYUqeFxWH7YTOiU6TIl/qwKQ==
+"@limrun/api@^0.44.0":
+  version "0.44.0"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.44.0.tgz#6b598b2e6de18bb69fd39b478ec0d7753a528e8c"
+  integrity sha512-0cV4Au42V39WxGOgjCa4ynWIv4VHRa0PYRse1ScGqoDQbDg0L7KXkycqzWPkoY43gtq0diTNY2Lis7ETPtJ5vg==
   dependencies:
     "@limrun/xdelta3-wasm" "0.2.0"
     eventsource-client "^1.2.0"
@@ -227,13 +227,6 @@
   integrity sha512-8mam4H1NHLtu7nmtalF7eyBH14QyOASmcxHhSfEoRyr0nP/YdoesEtU+uSRvMe96TW/HPTtkoKqQLl53N7UXMQ==
   dependencies:
     "@types/http-errors" "*"
-    "@types/node" "*"
-
-"@types/ws@^8.18.1":
-  version "8.18.1"
-  resolved "https://registry.yarnpkg.com/@types/ws/-/ws-8.18.1.tgz#48464e4bf2ddfd17db13d845467f6070ffea4aa9"
-  integrity sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==
-  dependencies:
     "@types/node" "*"
 
 accepts@^2.0.0:
@@ -829,11 +822,6 @@ wrappy@1:
   version "1.0.2"
   resolved "https://registry.yarnpkg.com/wrappy/-/wrappy-1.0.2.tgz#b5243d8f3ec1aa35f1364605bc0d1036e30ab69f"
   integrity sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==
-
-ws@^8.18.0:
-  version "8.21.1"
-  resolved "https://registry.yarnpkg.com/ws/-/ws-8.21.1.tgz#045650cd4b1207809e7547146223c3814a9af586"
-  integrity sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw==
 
 ws@^8.18.3:
   version "8.21.0"

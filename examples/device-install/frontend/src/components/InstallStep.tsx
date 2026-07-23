@@ -10,9 +10,10 @@ type Props = {
 
 /**
  * Step 2 — install a signed IPA onto the paired iPhone over the WebUSB relay.
- * The registry downloads the artifact — an asset in your organization's
- * storage, or any HTTPS URL — and streams it onto the device. Progress goes
- * through the relay's `log` callback into the Activity panel.
+ * The registry downloads the asset from your organization's storage and
+ * streams it onto the device. Scoped tokens are confined to assets — no
+ * arbitrary download URLs. Progress goes through the relay's `log` callback
+ * into the Activity panel.
  *
  * Producing the signed IPA is a backend concern: build it with `@limrun/api`
  * and upload it as an asset (see examples/publish-to-stores for the full
@@ -20,11 +21,7 @@ type Props = {
  */
 export function InstallStep({ install, onError }: Props) {
   const [assetName, setAssetName] = useState('');
-  const [downloadUrl, setDownloadUrl] = useState('');
-  const source =
-    assetName.trim() ? { assetName: assetName.trim() }
-    : downloadUrl.trim() ? { downloadUrl: downloadUrl.trim() }
-    : undefined;
+  const source = assetName.trim() ? { assetName: assetName.trim() } : undefined;
   const ready = install.canInstall && !!source;
 
   return (
@@ -35,13 +32,6 @@ export function InstallStep({ install, onError }: Props) {
         placeholder="my-app.ipa"
         value={assetName}
         onChange={(e) => setAssetName(e.target.value)}
-      />
-      <label style={labelStyle}>IPA download URL (used when asset name is empty)</label>
-      <input
-        style={inputStyle}
-        placeholder="https://example.com/app.ipa"
-        value={downloadUrl}
-        onChange={(e) => setDownloadUrl(e.target.value)}
       />
       <button
         style={primaryButton(!ready)}
