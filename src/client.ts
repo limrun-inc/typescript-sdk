@@ -49,12 +49,7 @@ import {
   IosInstances,
   IosInstancesItems,
 } from './resources/ios-instances';
-import {
-  ScopedToken,
-  ScopedTokenCreate,
-  ScopedTokenCreateParams,
-  ScopedTokens,
-} from './resources/scoped-tokens';
+import { ScopedToken, ScopedTokenCreateParams, ScopedTokens } from './resources/scoped-tokens';
 import {
   XcodeInstance,
   XcodeInstanceCreateParams,
@@ -878,7 +873,6 @@ export declare namespace Limrun {
   export {
     ScopedTokens as ScopedTokens,
     type ScopedToken as ScopedToken,
-    type ScopedTokenCreate as ScopedTokenCreate,
     type ScopedTokenCreateParams as ScopedTokenCreateParams,
   };
 }

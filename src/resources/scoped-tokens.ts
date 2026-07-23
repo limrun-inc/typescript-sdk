@@ -27,21 +27,6 @@ export interface ScopedToken {
   scopes: Array<string>;
 }
 
-export interface ScopedTokenCreate {
-  /**
-   * Scopes in the form <resource>:<id|_>:<action>, e.g. "device:_:install",
-   * "asset:asset_01h455vb4pex5vsknk084sn02q:read" or "applerelay:\*:connect".
-   * Resource IDs are the customer-visible IDs returned by the API.
-   */
-  scopes: Array<string>;
-
-  /**
-   * How long the token stays valid. Defaults to 3600 (1 hour), maximum is 14400 (4
-   * hours).
-   */
-  ttlSeconds?: number;
-}
-
 export interface ScopedTokenCreateParams {
   /**
    * Scopes in the form <resource>:<id|_>:<action>, e.g. "device:_:install",
@@ -58,9 +43,5 @@ export interface ScopedTokenCreateParams {
 }
 
 export declare namespace ScopedTokens {
-  export {
-    type ScopedToken as ScopedToken,
-    type ScopedTokenCreate as ScopedTokenCreate,
-    type ScopedTokenCreateParams as ScopedTokenCreateParams,
-  };
+  export { type ScopedToken as ScopedToken, type ScopedTokenCreateParams as ScopedTokenCreateParams };
 }

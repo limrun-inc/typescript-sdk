@@ -69,7 +69,6 @@ Methods:
 Types:
 
 - <code><a href="./src/resources/scoped-tokens.ts">ScopedToken</a></code>
-- <code><a href="./src/resources/scoped-tokens.ts">ScopedTokenCreate</a></code>
 
 Methods:
 
