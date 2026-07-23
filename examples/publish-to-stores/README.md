@@ -8,10 +8,13 @@ It has two components:
 
 - `backend/`: Stores signing secrets as files under `backend/.secrets/`, runs
   `lim xcode build --upload-to-testflight` for publishes (streaming output over
-  Server-Sent Events), and pipes the Apple relay WebSocket to Limrun's registry with the
-  API key attached server-side so the browser never holds a Limrun credential.
+  Server-Sent Events), and mints short-lived **scoped registry tokens** with
+  `limrun.scopedTokens.create` from `@limrun/api`. Your API key stays server-side; the
+  browser only ever holds a token that can open the Apple relay, and it expires on its
+  own.
 - `frontend/`: The wizard. **Connect** signs into Apple with `@limrun/ui` components
-  over the Apple relay, registers the bundle ID, mints development and distribution
+  over the Apple relay — talking to Limrun's registry **directly** with the scoped
+  token, no proxying — registers the bundle ID, mints development and distribution
   certificates, provisioning profiles (development, ad-hoc, App Store), the App Store
   Connect app record, and an App Store Connect API key — all stored through the backend.
   **Publish** unlocks afterwards and triggers the upload.
@@ -23,16 +26,21 @@ instance when a publish actually starts.
 ## How it works
 
 ```
-Frontend wizard ──Apple relay ws──> Backend pipe (adds API key) ──> Limrun registry ──> Apple
-      │                                                  (Developer Portal + App Store Connect)
+Frontend wizard ──Apple relay ws (scoped token)──> Limrun registry ──> Apple
+      │                                (Developer Portal + App Store Connect)
+      ├──session──> Backend POST /session ──mints──> scoped token (applerelay:*:connect)
       ├──secrets──> Backend file store (backend/.secrets/)
       └──publish──> Backend POST /publish ──spawns──> lim xcode build --upload-to-testflight
 ```
 
+- The backend exposes `POST /session`, which calls `limrun.scopedTokens.create` with the
+  `applerelay:*:connect` scope. Scopes have the form `<resource>:<id|*>:<action>`; this
+  token can open the Apple relay and nothing else. Tokens default to a 1 hour TTL and
+  cannot be revoked, so keep them short-lived.
 - Apple credentials never touch the example backend during Connect: the browser talks to
-  Apple through Limrun's relay (the backend only pipes frames and attaches the Limrun API
-  key, which never reaches the browser) and writes the resulting signing material into
-  the secret store.
+  Apple through Limrun's relay directly (authenticated with the scoped token — the API
+  key never reaches the browser) and writes the resulting signing material into the
+  secret store.
 - The secret store is deliberately pluggable. The backend's file store implements the same
   REST shape as Limrun's organization secrets API, and the frontend wraps it in a
   `SigningSecretStore` (`frontend/src/lib/backend.ts`). Swap it for
@@ -73,9 +81,9 @@ Clone this repo and enter this example folder:
 git clone https://github.com/limrun-inc/typescript-sdk.git
 ```
 
-1. Make your API key available as environment variable. The backend attaches it to the
-   Apple relay connection against `https://registry.limrun.com` (override with
-   `LIM_REGISTRY_URL`) and passes it to the `lim` CLI for builds.
+1. Make your API key available as environment variable. The backend uses it to mint
+   scoped registry tokens against `https://registry.limrun.com` (override with
+   `LIM_REGISTRY_ENDPOINT`) and passes it to the `lim` CLI for builds.
    ```bash
    export LIM_API_KEY="your api key"
    ```

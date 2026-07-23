@@ -78,10 +78,14 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
             />
             <button
               type="submit"
-              style={primaryButton(connect.busy === 'login')}
-              disabled={connect.busy === 'login'}
+              style={primaryButton(connect.busy === 'login' || !connect.relayReady)}
+              disabled={connect.busy === 'login' || !connect.relayReady}
             >
-              {connect.busy === 'login' ? 'Signing in…' : 'Sign in with Apple'}
+              {connect.busy === 'login' ?
+                'Signing in…'
+              : !connect.relayReady ?
+                'Waiting for the backend…'
+              : 'Sign in with Apple'}
             </button>
           </form>
           {appleLogin.status === 'two-factor-required' && (

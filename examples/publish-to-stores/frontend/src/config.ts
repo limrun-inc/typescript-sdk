@@ -16,8 +16,9 @@ export const naming = {
 };
 
 /**
- * The example backend; assumed to run on the same host. It also serves the
- * Apple relay WebSocket by piping it to Limrun's registry with the API key
- * attached server-side, so no Limrun credential ever reaches the browser.
+ * The example backend; assumed to run on the same host. It mints the
+ * short-lived scoped registry token the browser uses to open the Apple
+ * relay directly against Limrun's registry — the API key never leaves the
+ * backend.
  */
 export const BACKEND_URL = 'http://localhost:3000';

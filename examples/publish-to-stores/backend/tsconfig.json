@@ -10,6 +10,6 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["index.ts", "secret-store.ts", "publish.ts", "relay-proxy.ts"],
+  "include": ["index.ts", "secret-store.ts", "publish.ts"],
   "exclude": ["node_modules"]
 }

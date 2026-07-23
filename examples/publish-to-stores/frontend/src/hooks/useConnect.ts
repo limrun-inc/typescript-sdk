@@ -29,7 +29,7 @@ import {
   type SigningSecretStore,
 } from '@limrun/ui/apple';
 import { useAppleIDLogin } from '@limrun/ui/apple/react';
-import { BACKEND_URL, naming } from '../config';
+import { naming } from '../config';
 import {
   appIdBundleId,
   appIdIdentifier,
@@ -38,6 +38,7 @@ import {
   errorMessage,
   stringField,
 } from '../lib/apple';
+import { fetchRegistrySession, type RegistrySession } from '../lib/backend';
 
 /**
  * The deselectable actions of the Connect checklist. The bundle ID itself is
@@ -115,11 +116,29 @@ export type ConnectController = ReturnType<typeof useConnect>;
 export function useConnect({ secretStore, log, onError }: ConnectContext) {
   const [busy, setBusy] = useState<string>();
 
-  // The Apple relay rides the example backend, which pipes the WebSocket to
-  // Limrun's registry with the API key attached server-side — the key never
-  // reaches the browser. No Xcode instance is created for Connect; the
-  // first one appears when a publish runs the CLI.
-  const appleLogin = useAppleIDLogin({ registryApiUrl: BACKEND_URL });
+  // The Apple relay connection goes straight to Limrun's registry,
+  // authenticated with a short-lived scoped token minted by the example
+  // backend (POST /session) — the API key never reaches the browser, and
+  // the token can only open the Apple relay. No Xcode instance is created
+  // for Connect; the first one appears when a publish runs the CLI.
+  const [registrySession, setRegistrySession] = useState<RegistrySession>();
+  useEffect(() => {
+    let cancelled = false;
+    void fetchRegistrySession()
+      .then((session) => {
+        if (!cancelled) setRegistrySession(session);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) onError(errorMessage(error, 'Could not reach the example backend'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onError]);
+  const appleLogin = useAppleIDLogin({
+    registryApiUrl: registrySession?.registryUrl ?? '',
+    token: registrySession?.token,
+  });
   const [appleAccount, setAppleAccount] = useState('');
   const [applePassword, setApplePassword] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
@@ -276,6 +295,10 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
   );
 
   const signIn = useCallback(async () => {
+    if (!registrySession) {
+      onError('The registry session is not ready yet; is the example backend running?');
+      return;
+    }
     onError(undefined);
     setBusy('login');
     try {
@@ -289,7 +312,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     } finally {
       setBusy(undefined);
     }
-  }, [appleAccount, applePassword, appleLogin, loadTeams, onError]);
+  }, [appleAccount, applePassword, appleLogin, loadTeams, onError, registrySession]);
 
   const submitTwoFactor = useCallback(async () => {
     if (!appleLogin.session) return;
@@ -544,6 +567,9 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
 
   return {
     busy,
+    // The scoped-token session against Limrun's registry; sign-in waits
+    // for it.
+    relayReady: registrySession !== undefined,
     // Apple login
     appleLogin,
     appleAccount,

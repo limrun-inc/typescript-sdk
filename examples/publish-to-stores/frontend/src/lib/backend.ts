@@ -1,8 +1,37 @@
-// The frontend's channel to the example backend: the file-based secret
-// store and the publish SSE stream. (The Apple relay WebSocket also rides
-// the backend, but `@limrun/ui` opens that connection itself.)
+// The frontend's channel to the example backend: the registry session, the
+// file-based secret store, and the publish SSE stream. (The Apple relay
+// WebSocket itself goes straight to Limrun's registry, authenticated with
+// the scoped token from the session.)
 import type { SigningSecret, SigningSecretMetadata, SigningSecretStore } from '@limrun/ui/apple';
 import { BACKEND_URL } from '../config';
+
+export type RegistrySession = {
+  /** Short-lived scoped token; only good for opening the Apple relay. */
+  token: string;
+  /** Limrun registry base URL the browser connects to directly. */
+  registryUrl: string;
+  expiresAt: string;
+};
+
+/**
+ * Asks the backend for a scoped registry token. The Limrun API key stays on
+ * the backend; the browser only ever holds this token, which is confined to
+ * the Apple relay and expires on its own.
+ */
+export async function fetchRegistrySession(): Promise<RegistrySession> {
+  const response = await fetch(`${BACKEND_URL}/session`, { method: 'POST' });
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as { message?: string };
+      if (body.message) message = body.message;
+    } catch {
+      // Non-JSON error body; the status code is the best we have.
+    }
+    throw new Error(`Failed to start a registry session: ${message}`);
+  }
+  return (await response.json()) as RegistrySession;
+}
 
 /**
  * A SigningSecretStore backed by the example backend's file store. This is
