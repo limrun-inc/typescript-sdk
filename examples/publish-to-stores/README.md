@@ -9,11 +9,13 @@ build took.
 It has two components:
 
 - `backend/`: Stores signing secrets as files under `backend/.secrets/`, runs
-  `lim xcode build --upload-to-testflight` for publishes, opens an **ngrok tunnel** and
-  receives the build-finish webhook limbuild POSTs through it, and mints short-lived
-  **scoped registry tokens** with `limrun.scopedTokens.create` from `@limrun/api`. Your
-  API key stays server-side; the browser only ever holds a token that can open the Apple
-  relay, and it expires on its own.
+  `lim xcode build --upload-to-testflight` for publishes, opens a
+  **[localtunnel](https://github.com/localtunnel/localtunnel)** (no account or token
+  needed) in front of the webhook receiver — a separate Express app that serves nothing
+  but the token-guarded webhook route, so the secret store is never publicly reachable —
+  and mints short-lived **scoped registry tokens** with `limrun.scopedTokens.create`
+  from `@limrun/api`. Your API key stays server-side; the browser only ever holds a
+  token that can open the Apple relay, and it expires on its own.
 - `frontend/`: The wizard. **Connect** signs into Apple with `@limrun/ui` components
   over the Apple relay — talking to Limrun's registry **directly** with the scoped
   token, no proxying — registers the bundle ID, mints development and distribution
@@ -33,7 +35,7 @@ Frontend wizard ──Apple relay ws (scoped token)──> Limrun registry ─�
       ├──session──> Backend POST /session ──mints──> scoped token (applerelay:*:connect)
       ├──secrets──> Backend file store (backend/.secrets/)
       ├──publish──> Backend POST /publish ──spawns──> lim xcode build --webhook-url ...
-      └──poll────> Backend GET /publish/:id <──webhook (via ngrok)── limbuild (build done)
+      └──poll────> Backend GET /publish/:id <──webhook (via tunnel)── limbuild (build done)
 ```
 
 - The backend exposes `POST /session`, which calls `limrun.scopedTokens.create` with the
@@ -73,9 +75,6 @@ pipeline by changing that one constant; none of the underlying APIs bake in a de
 ## Prerequisites
 
 - A Limrun API key from `Limrun Console` > `Settings` [here](https://console.limrun.com/settings).
-- An [ngrok](https://ngrok.com) authtoken (free tier works) so the backend can expose its
-  webhook receiver publicly — limbuild rejects private and IP-literal callback URLs. If you
-  already run your own tunnel or have a public URL, set `PUBLIC_URL` instead.
 - The `lim` CLI installed and on the backend host's PATH:
   ```bash
   npm install -g lim
@@ -100,12 +99,12 @@ git clone https://github.com/limrun-inc/typescript-sdk.git
    ```bash
    export LIM_API_KEY="your api key"
    ```
-1. Make your ngrok authtoken available so the backend can open the webhook tunnel
-   (or set `PUBLIC_URL` to a public HTTPS URL you already forward to port 3000).
-   ```bash
-   export NGROK_AUTHTOKEN="your ngrok authtoken"
-   ```
-1. Start the backend.
+1. Start the backend. On boot it opens a localtunnel for the webhook receiver —
+   limbuild rejects private and IP-literal callback URLs, so a public HTTPS front is
+   required, and localtunnel provides one with no account or token. Only the webhook
+   receiver (port 3001) is tunneled; the main API and secret store stay local. If you
+   already have a public URL forwarded to port 3001 (your own ngrok, a reverse proxy),
+   set `PUBLIC_URL` to it instead.
    ```bash
    yarn --cwd examples/publish-to-stores/backend install
    yarn --cwd examples/publish-to-stores/backend run dev

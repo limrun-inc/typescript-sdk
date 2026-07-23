@@ -257,6 +257,11 @@ export async function startPublish(request: PublishRequest, publicUrl: string): 
     `${publicUrl}/webhook/${id}`,
     '--webhook-header',
     `X-Publish-Token=${token}`,
+    // localtunnel interposes a reminder page for browser-looking requests;
+    // this header makes it pass any request straight through. Harmless when
+    // PUBLIC_URL points somewhere else.
+    '--webhook-header',
+    'Bypass-Tunnel-Reminder=true',
   ];
   if (apiKey.data.issuerId) {
     args.push('--asc-issuer-id', apiKey.data.issuerId);

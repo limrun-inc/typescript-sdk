@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import Limrun from '@limrun/api';
-import ngrok from '@ngrok/ngrok';
+import localtunnel from 'localtunnel';
 import { deleteSecret, getSecret, listSecrets, putSecret } from './secret-store.js';
 import { getPublishStatus, receivePublishWebhook, startPublish, type PublishRequest } from './publish.js';
 
@@ -21,6 +21,10 @@ const app = express();
 const port = 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(cors());
+
+// The public HTTPS front for the webhook receiver, assigned once the tunnel
+// (or PUBLIC_URL) is resolved at the bottom of this file.
+let publicUrl: string | undefined;
 
 // The Connect phase's Apple relay session: mints a short-lived scoped token
 // so the browser can speak the Apple relay protocol against Limrun's
@@ -111,6 +115,12 @@ app.post('/publish', async (req: Request<{}, {}, Partial<PublishRequest>>, res: 
       message: 'projectPath, teamId, bundleId and method (testflight | appstore) are required',
     });
   }
+  if (!publicUrl) {
+    return res.status(503).json({
+      status: 'error',
+      message: 'The webhook tunnel is still starting; try again in a few seconds.',
+    });
+  }
   try {
     const id = await startPublish({ projectPath, method, teamId, bundleId, scheme }, publicUrl);
     return res.status(202).json({ publishId: id });
@@ -129,10 +139,18 @@ app.get('/publish/:id', (req: Request<{ id: string }>, res: Response) => {
   return res.status(200).json(status);
 });
 
+// The webhook receiver is its own Express app on its own port: the tunnel
+// makes whatever it fronts reachable by anyone on the internet, and the main
+// app serves the secret store. Only this app — one token-guarded POST route —
+// goes public.
+const hooks = express();
+const webhookPort = 3001;
+hooks.use(express.json({ limit: '1mb' }));
+
 // The build-finish webhook limbuild POSTs to (through the tunnel) once the
 // build reaches a terminal state. Authenticated with the per-publish token
 // the CLI was given via --webhook-header.
-app.post('/webhook/:id', (req: Request<{ id: string }>, res: Response) => {
+hooks.post('/webhook/:id', (req: Request<{ id: string }>, res: Response) => {
   const token = req.header('X-Publish-Token');
   if (!receivePublishWebhook(req.params.id, token, req.body)) {
     // 404 for both unknown IDs and bad tokens: no oracle for URL guessers.
@@ -143,29 +161,34 @@ app.post('/webhook/:id', (req: Request<{ id: string }>, res: Response) => {
 });
 
 // The webhook receiver must be reachable from limbuild, which runs inside
-// Limrun's cloud (and rejects private or IP-literal callback URLs). Either
-// bring your own public URL (PUBLIC_URL, e.g. from `ngrok http 3000` run
-// separately) or let the backend open an ngrok tunnel itself with an
-// NGROK_AUTHTOKEN from https://dashboard.ngrok.com.
+// Limrun's cloud (and rejects private or IP-literal callback URLs). By
+// default the backend opens a localtunnel — no account or token needed, and
+// loca.lt hostnames ride an existing wildcard DNS record, so the URL works
+// the moment it is issued (unlike trycloudflare hostnames, whose DNS can
+// take minutes to propagate). Or bring your own public URL with PUBLIC_URL,
+// forwarded to the webhook receiver's port.
 async function resolvePublicUrl(): Promise<string> {
   const configured = process.env['PUBLIC_URL'];
   if (configured) return configured.replace(/\/$/, '');
-  if (!process.env['NGROK_AUTHTOKEN']) {
-    console.error(
-      'Error: Set NGROK_AUTHTOKEN (the backend opens an ngrok tunnel for build webhooks) ' +
-        'or PUBLIC_URL (a public HTTPS URL you already forward to this backend).',
-    );
-    process.exit(1);
-  }
-  const listener = await ngrok.forward({ addr: port, authtoken_from_env: true });
-  const url = listener.url();
-  if (!url) throw new Error('ngrok returned no tunnel URL');
-  return url;
+  console.log('Opening a localtunnel for the webhook receiver...');
+  const tunnel = await localtunnel({ port: webhookPort });
+  tunnel.on('error', (error: Error) => {
+    console.error(`localtunnel error: ${error.message}; build webhooks may not arrive.`);
+  });
+  tunnel.on('close', () => {
+    console.error('localtunnel closed; build webhooks can no longer arrive.');
+  });
+  return tunnel.url;
 }
 
-const publicUrl = await resolvePublicUrl();
-
+hooks.listen(webhookPort, () => {
+  console.log(`Webhook receiver listening at http://localhost:${webhookPort}`);
+});
 app.listen(port, () => {
   console.log(`Express server listening at http://localhost:${port}`);
-  console.log(`Build webhooks arrive via ${publicUrl}/webhook/:id`);
 });
+
+// The tunnel comes up after the servers; POST /publish returns 503 until
+// this resolves.
+publicUrl = await resolvePublicUrl();
+console.log(`Build webhooks arrive via ${publicUrl}/webhook/:id`);
