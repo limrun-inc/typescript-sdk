@@ -117,6 +117,7 @@ export type GradleBuildExecRequest = {
   reactNative?: GradleReactNativeConfig;
   signing?: GradleSigningConfig;
   signedUploadUrl?: string;
+  webhook?: WebhookConfig;
   additionalMetadata?: {
     signedDownloadUrl?: string;
   };

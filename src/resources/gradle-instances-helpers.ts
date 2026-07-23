@@ -5,6 +5,7 @@ import {
   type GradleBuildExecRequest,
   type GradleReactNativeConfig,
   type GradleSigningConfig,
+  type WebhookConfig,
 } from '../exec-client';
 import { syncFolder as syncFolderImpl, type FolderSyncOptions } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
@@ -52,6 +53,11 @@ export type GradleBuildOptions = {
   reactNative?: GradleReactNativeConfig;
   /** Release signing config; presence makes bundleRelease the default task. */
   signing?: GradleSigningConfig;
+  /**
+   * HTTP callback fired once the build reaches a terminal state, POSTed the
+   * build result. Delivery is best-effort and never fails the build.
+   */
+  webhook?: WebhookConfig;
 };
 
 export type GradleClient = {
@@ -135,6 +141,7 @@ export class GradleInstances extends GeneratedGradleInstances {
           ...(options?.projectPath && { projectPath: options.projectPath }),
           ...(options?.reactNative && { reactNative: options.reactNative }),
           ...(options?.signing && { signing: options.signing }),
+          ...(options?.webhook && { webhook: options.webhook }),
         };
 
         if (options?.upload && 'assetName' in options.upload) {

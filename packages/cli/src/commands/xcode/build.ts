@@ -6,10 +6,10 @@ import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
+import { webhookConfigFromFlags } from '../../lib/webhook-options';
 import {
   parseBuildSettingEntries,
   type TestflightUploadConfig,
-  type WebhookConfig,
   type XcodeBuildOptions,
   type XcodeClient,
 } from '@limrun/api';
@@ -290,9 +290,13 @@ export default class XcodeBuild extends BaseCommand {
           signedUploadUrl: flags['signed-upload-url'],
         };
       }
-      const webhook = this.buildWebhookOptions(flags);
-      if (webhook) {
-        options.webhook = webhook;
+      try {
+        const webhook = webhookConfigFromFlags(flags);
+        if (webhook) {
+          options.webhook = webhook;
+        }
+      } catch (err) {
+        this.error(err instanceof Error ? err.message : String(err));
       }
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
@@ -371,31 +375,6 @@ export default class XcodeBuild extends BaseCommand {
         this.output(`Artifact download URL: ${result.signedDownloadUrl}`);
       }
     });
-  }
-
-  private buildWebhookOptions(flags: {
-    'webhook-url'?: string;
-    'webhook-header'?: string[];
-  }): WebhookConfig | undefined {
-    const headerEntries = flags['webhook-header'] ?? [];
-    if (!flags['webhook-url']) {
-      if (headerEntries.length > 0) {
-        this.error('--webhook-header requires --webhook-url.');
-      }
-      return undefined;
-    }
-    const headers: Record<string, string> = {};
-    for (const entry of headerEntries) {
-      const separator = entry.indexOf('=');
-      if (separator <= 0) {
-        this.error(`Invalid --webhook-header ${JSON.stringify(entry)}: expected NAME=VALUE.`);
-      }
-      headers[entry.slice(0, separator)] = entry.slice(separator + 1);
-    }
-    return {
-      url: flags['webhook-url'],
-      ...(Object.keys(headers).length > 0 && { headers }),
-    };
   }
 
   private async buildSigningOptions(flags: SigningFlags): Promise<

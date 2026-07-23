@@ -30,6 +30,7 @@ export default class GradleBuild extends BaseCommand {
     '<%= config.bin %> gradle build ./my-monorepo --expo-app-dir apps/mobile',
     '<%= config.bin %> gradle build --sign --upload myapp.aab',
     '<%= config.bin %> gradle build --keystore upload.jks --keystore-password *** --key-alias upload --key-password *** --save-key',
+    '<%= config.bin %> gradle build ./my-app --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
   ];
 
   static args = {
@@ -92,6 +93,15 @@ export default class GradleBuild extends BaseCommand {
       description:
         "Escrow the provided --keystore as the organization's upload key for this app, so later builds can use --sign. Fails if a different key is already escrowed.",
       default: false,
+    }),
+    'webhook-url': Flags.string({
+      description:
+        'HTTPS URL that the build daemon POSTs a JSON payload to once the build reaches a terminal state, carrying the result and a console debug link. Must be a public DNS host; IP-literal and private targets are rejected. Delivery is best-effort and never fails the build.',
+    }),
+    'webhook-header': Flags.string({
+      description:
+        'Header to set verbatim on the webhook request as NAME=VALUE, for example Authorization="Bearer $SECRET". Requires --webhook-url. Repeat for multiple headers (at most 16).',
+      multiple: true,
     }),
     'basis-cache-dir': Flags.string({
       description: 'Directory for the client-side folder-sync cache.',
