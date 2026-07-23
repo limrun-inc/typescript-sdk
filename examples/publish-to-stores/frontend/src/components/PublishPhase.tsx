@@ -109,7 +109,7 @@ export function PublishPhase({
           })
         }
       >
-        {running ? 'Publishing…' : `Publish ${connection.bundleId} via ${publish.method}`}
+        {running ? 'Waiting for build callback…' : `Publish ${connection.bundleId} via ${publish.method}`}
       </button>
       {publish.state === 'succeeded' && (
         <div style={infoBox}>
@@ -135,10 +135,7 @@ export function PublishPhase({
         </div>
       )}
       {publish.state === 'failed' && (
-        <div style={errorBox}>
-          Publish failed{publish.exitCode !== undefined ? ` (exit code ${publish.exitCode})` : ''}. See the
-          build log.
-        </div>
+        <div style={errorBox}>Publish failed{publish.error ? `: ${publish.error}` : '.'}</div>
       )}
     </Section>
   );

@@ -1,7 +1,7 @@
 {
   "name": "publish-to-stores-example-backend",
   "version": "1.0.0",
-  "description": "Stores signing secrets in files and runs `lim xcode build` publishes for the publish-to-stores example.",
+  "description": "Stores signing secrets in files, runs `lim xcode build` publishes, and receives build-finish webhooks over an ngrok tunnel for the publish-to-stores example.",
   "type": "module",
   "main": "index.ts",
   "scripts": {
@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "@limrun/api": "^0.44.0",
+    "@ngrok/ngrok": "^1.4.1",
     "cors": "^2.8.5",
     "express": "^5.1.0"
   },

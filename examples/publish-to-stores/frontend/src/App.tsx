@@ -1,10 +1,11 @@
 // Publish-to-stores wizard: a Replit-style publishing pipeline for iOS apps.
 // The sidebar walks through Connect (one-time Apple setup) and Publish
-// (TestFlight / App Store upload); the main panel shows the build log.
+// (TestFlight / App Store upload); the main panel waits for the build-finish
+// webhook and shows its payload.
 import { useMemo, useState } from 'react';
 import { ConnectPhase } from './components/ConnectPhase';
-import { LogPanel } from './components/LogPanel';
 import { PublishPhase } from './components/PublishPhase';
+import { ResultPanel } from './components/ResultPanel';
 import { PUBLISHER_NAME } from './config';
 import { useConnect } from './hooks/useConnect';
 import { usePublish } from './hooks/usePublish';
@@ -43,8 +44,8 @@ export default function App() {
         <PublishPhase connect={connect} publish={publish} />
       </div>
       <div style={layout.main}>
-        <h2 style={{ margin: 0, fontSize: '16px' }}>Build log</h2>
-        <LogPanel lines={publish.lines} />
+        <h2 style={{ margin: 0, fontSize: '16px' }}>Build result</h2>
+        <ResultPanel publish={publish} />
       </div>
     </div>
   );

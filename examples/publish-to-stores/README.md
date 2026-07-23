@@ -2,16 +2,18 @@
 
 A Replit-style publishing pipeline for iOS apps: a two-phase wizard that connects an Apple
 Developer account once, then publishes builds to TestFlight or the App Store with a single
-click, streaming the build log to the browser.
+click. The outcome arrives as a **build-finish webhook**: the UI shows "Waiting for build
+callback" while the build runs remotely, then renders the webhook payload and how long the
+build took.
 
 It has two components:
 
 - `backend/`: Stores signing secrets as files under `backend/.secrets/`, runs
-  `lim xcode build --upload-to-testflight` for publishes (streaming output over
-  Server-Sent Events), and mints short-lived **scoped registry tokens** with
-  `limrun.scopedTokens.create` from `@limrun/api`. Your API key stays server-side; the
-  browser only ever holds a token that can open the Apple relay, and it expires on its
-  own.
+  `lim xcode build --upload-to-testflight` for publishes, opens an **ngrok tunnel** and
+  receives the build-finish webhook limbuild POSTs through it, and mints short-lived
+  **scoped registry tokens** with `limrun.scopedTokens.create` from `@limrun/api`. Your
+  API key stays server-side; the browser only ever holds a token that can open the Apple
+  relay, and it expires on its own.
 - `frontend/`: The wizard. **Connect** signs into Apple with `@limrun/ui` components
   over the Apple relay — talking to Limrun's registry **directly** with the scoped
   token, no proxying — registers the bundle ID, mints development and distribution
@@ -30,7 +32,8 @@ Frontend wizard ──Apple relay ws (scoped token)──> Limrun registry ─�
       │                                (Developer Portal + App Store Connect)
       ├──session──> Backend POST /session ──mints──> scoped token (applerelay:*:connect)
       ├──secrets──> Backend file store (backend/.secrets/)
-      └──publish──> Backend POST /publish ──spawns──> lim xcode build --upload-to-testflight
+      ├──publish──> Backend POST /publish ──spawns──> lim xcode build --webhook-url ...
+      └──poll────> Backend GET /publish/:id <──webhook (via ngrok)── limbuild (build done)
 ```
 
 - The backend exposes `POST /session`, which calls `limrun.scopedTokens.create` with the
@@ -50,6 +53,13 @@ Frontend wizard ──Apple relay ws (scoped token)──> Limrun registry ─�
   App Store profile, and App Store Connect API key into temp files and spawns the CLI with
   `--auto-build-number`, so the build number is incremented against App Store Connect
   automatically before every upload.
+- The publish outcome travels as a webhook, not a log stream. The backend passes
+  `--webhook-url https://<tunnel>/webhook/<id>` (plus a per-publish secret via
+  `--webhook-header X-Publish-Token=...`) to the CLI; when the build reaches a terminal
+  state, limbuild POSTs a JSON payload carrying the status, timings (`buildDurationMs`),
+  a Limrun Console debug link, and a presigned URL for the persisted build log. The
+  frontend polls `GET /publish/:id` and, once the callback lands, shows the payload and
+  the build time. The CLI's live output still prints to the backend's terminal.
 - Both the TestFlight and App Store methods run the same upload. An App Store release is
   that upload plus attaching the processed build to a version and submitting it for review
   in App Store Connect.
@@ -63,9 +73,12 @@ pipeline by changing that one constant; none of the underlying APIs bake in a de
 ## Prerequisites
 
 - A Limrun API key from `Limrun Console` > `Settings` [here](https://console.limrun.com/settings).
+- An [ngrok](https://ngrok.com) authtoken (free tier works) so the backend can expose its
+  webhook receiver publicly — limbuild rejects private and IP-literal callback URLs. If you
+  already run your own tunnel or have a public URL, set `PUBLIC_URL` instead.
 - The `lim` CLI installed and on the backend host's PATH:
   ```bash
-  npm install -g @limrun/cli
+  npm install -g lim
   ```
 - An Apple Developer Program account (Admin role, required to create App Store Connect
   API keys).
@@ -87,6 +100,11 @@ git clone https://github.com/limrun-inc/typescript-sdk.git
    ```bash
    export LIM_API_KEY="your api key"
    ```
+1. Make your ngrok authtoken available so the backend can open the webhook tunnel
+   (or set `PUBLIC_URL` to a public HTTPS URL you already forward to port 3000).
+   ```bash
+   export NGROK_AUTHTOKEN="your ngrok authtoken"
+   ```
 1. Start the backend.
    ```bash
    yarn --cwd examples/publish-to-stores/backend install
@@ -100,15 +118,18 @@ git clone https://github.com/limrun-inc/typescript-sdk.git
 1. Go to `localhost:5173` and walk through Connect, then Publish. After signing in, the
    wizard lists the team's existing bundle IDs so you can pick one, or register a new one.
    The path of your iOS project is asked in the Publish step, where the build needs it.
+   While the build runs, the main panel shows "Waiting for build callback"; when limbuild's
+   webhook lands, it shows the payload JSON, the build duration, and links to the Limrun
+   Console and the persisted build log.
 
 ## Notes
 
 - For Expo projects, a publish searches the project for the Expo `app.json` (monorepo
   layouts like `artifacts/mobile/app.json` included): when `expo.ios.bundleIdentifier`
   is missing, the backend fills it with the bundle ID chosen in the wizard (and says so
-  in the build log), because Expo would otherwise prebuild the app under a placeholder
-  like `com.anonymous.<slug>`. An existing value is never overwritten; if it differs
-  from the chosen bundle ID, the log carries a warning.
+  in its terminal output), because Expo would otherwise prebuild the app under a
+  placeholder like `com.anonymous.<slug>`. An existing value is never overwritten; if it
+  differs from the chosen bundle ID, the backend logs a warning.
 
 - Connect is one-time: on the next visit the wizard sees the stored secrets and jumps
   straight to Publish. "Disconnect and start over" clears the association (stored secrets

@@ -1,14 +1,15 @@
 // Runs one publish: materializes the stored signing secrets into temp files,
-// spawns `lim xcode build ... --upload-to-testflight --auto-build-number`, and
-// streams its output as Server-Sent Events. Both the TestFlight and App Store
-// methods run the same upload — an App Store release is the same App Store
-// Connect upload followed by submitting the processed build to review in the
-// App Store Connect UI.
+// spawns `lim xcode build ... --upload-to-testflight --auto-build-number`
+// armed with a build-finish webhook, and tracks the publish until that
+// webhook arrives. Both the TestFlight and App Store methods run the same
+// upload — an App Store release is the same App Store Connect upload
+// followed by submitting the processed build to review in the App Store
+// Connect UI.
 import { spawn } from 'node:child_process';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { Response } from 'express';
 import { getSecret, listSecrets, type StoredSecret } from './secret-store.js';
 
 export type PublishRequest = {
@@ -134,118 +135,176 @@ export async function ensureExpoBundleIdentifier(projectPath: string, bundleId: 
   return [`${appJsonPath} had no expo.ios.bundleIdentifier; set it to ${bundleId}.`];
 }
 
+export type PublishStatus = {
+  id: string;
+  state: 'running' | 'succeeded' | 'failed';
+  startedAt: string;
+  /** The build-finish webhook payload, verbatim as limbuild POSTed it. */
+  webhook?: unknown;
+  webhookReceivedAt?: string;
+  /** Why the publish failed before (or without) a webhook arriving. */
+  error?: string;
+};
+
+type PublishEntry = {
+  status: PublishStatus;
+  /** Shared secret limbuild echoes back in the X-Publish-Token header. */
+  token: string;
+};
+
+// In-memory publish registry — one entry per POST /publish for the life of
+// the process, which is all a demo needs. A real service would persist these.
+const publishes = new Map<string, PublishEntry>();
+
+// How long after a clean CLI exit to keep waiting for the webhook. Delivery
+// is near-immediate (limbuild fires it when the build reaches its terminal
+// state, before the CLI's log stream ends) with bounded retries, so a miss
+// past this window means the callback URL is not reachable from the internet.
+const WEBHOOK_GRACE_MS = 2 * 60 * 1000;
+
 /**
- * Spawns the CLI and streams stdout/stderr lines plus the exit code to the
- * response as SSE events (`stdout`, `stderr`, `exit`, `error`). Temp files
- * holding the materialized secrets are removed when the process ends.
+ * Marks the publish failed unless a webhook already settled it. Used for
+ * every pre-webhook failure path: spawn errors, non-zero CLI exits, and the
+ * post-exit grace timeout.
  */
-export async function streamPublish(request: PublishRequest, res: Response): Promise<void> {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
+function failPublish(id: string, message: string) {
+  const entry = publishes.get(id);
+  if (!entry || entry.status.state !== 'running') return;
+  entry.status.state = 'failed';
+  entry.status.error = message;
+}
 
-  const send = (event: string, data: string) => {
-    res.write(`event: ${event}\n`);
-    for (const line of data.split('\n')) {
-      res.write(`data: ${line}\n`);
-    }
-    res.write('\n');
-  };
-
-  let workDir: string | undefined;
-  try {
-    const { certificate, profile, apiKey } = await resolvePublishCredentials(
-      request.teamId,
-      request.bundleId,
-    );
-
-    workDir = await mkdtemp(path.join(os.tmpdir(), 'publish-to-stores-'));
-    const certificatePath = path.join(workDir, 'certificate.p12');
-    const profilePath = path.join(workDir, 'profile.mobileprovision');
-    const apiKeyPath = path.join(workDir, 'AuthKey.p8');
-    await writeFile(certificatePath, Buffer.from(certificate.data.certificateP12Base64, 'base64'), {
-      mode: 0o600,
-    });
-    await writeFile(profilePath, Buffer.from(profile.data.provisioningProfileBase64, 'base64'), {
-      mode: 0o600,
-    });
-    await writeFile(apiKeyPath, Buffer.from(apiKey.data.privateKeyP8Base64, 'base64'), { mode: 0o600 });
-
-    const args = [
-      'xcode',
-      'build',
-      request.projectPath,
-      '--sdk',
-      'iphoneos',
-      '--configuration',
-      'Release',
-      '--certificate-p12',
-      certificatePath,
-      '--certificate-password',
-      certificate.data.certificatePassword ?? '',
-      '--provisioning-profile',
-      profilePath,
-      '--upload-to-testflight',
-      '--auto-build-number',
-      '--asc-key-id',
-      apiKey.data.keyId,
-      '--asc-key',
-      apiKeyPath,
-    ];
-    if (apiKey.data.issuerId) {
-      args.push('--asc-issuer-id', apiKey.data.issuerId);
-    }
-    if (request.scheme) {
-      args.push('--scheme', request.scheme);
-    }
-
-    send('stdout', `Publishing ${request.bundleId} via ${request.method}...`);
-    for (const line of await ensureExpoBundleIdentifier(request.projectPath, request.bundleId)) {
-      send('stdout', line);
-    }
-    send('stdout', `$ lim ${args.join(' ')}`);
-    const child = spawn('lim', args, { env: process.env });
-
-    const forwardLines = (event: 'stdout' | 'stderr') => {
-      let buffered = '';
-      return (chunk: Buffer) => {
-        buffered += chunk.toString('utf8');
-        const lines = buffered.split('\n');
-        buffered = lines.pop() ?? '';
-        for (const line of lines) send(event, line);
-      };
-    };
-    child.stdout.on('data', forwardLines('stdout'));
-    child.stderr.on('data', forwardLines('stderr'));
-    child.on('error', (error) => {
-      send('error', `Failed to run the lim CLI: ${error.message}. Is it installed and on PATH?`);
-      res.end();
-    });
-    child.on('close', (code) => {
-      if (request.method === 'appstore' && code === 0) {
-        send(
-          'stdout',
-          'Upload complete. To release on the App Store, open App Store Connect, attach the ' +
-            'processed build to a version, and submit it for review.',
-        );
-      }
-      send('exit', String(code ?? 1));
-      res.end();
-    });
-    // A closed browser tab must not leave a build running unattended.
-    res.on('close', () => {
-      if (child.exitCode === null) child.kill('SIGTERM');
-    });
-  } catch (error) {
-    send('error', error instanceof Error ? error.message : 'Publish failed');
-    res.end();
-  } finally {
-    if (workDir) {
-      const cleanup = workDir;
-      res.on('close', () => {
-        void rm(cleanup, { recursive: true, force: true });
-      });
-    }
+/**
+ * Records the build-finish webhook for a publish. The token guards the
+ * endpoint: the callback URL travels through ngrok and is guessable, so
+ * limbuild proves itself with the per-publish secret it was given via
+ * --webhook-header. Returns false when the token does not match.
+ */
+export function receivePublishWebhook(id: string, token: string | undefined, payload: unknown): boolean {
+  const entry = publishes.get(id);
+  if (!entry) return false;
+  const expected = Buffer.from(entry.token);
+  const got = Buffer.from(token ?? '');
+  if (expected.length !== got.length || !timingSafeEqual(expected, got)) return false;
+  entry.status.webhook = payload;
+  entry.status.webhookReceivedAt = new Date().toISOString();
+  const status = (payload as { status?: string } | null)?.status;
+  entry.status.state = status === 'SUCCEEDED' ? 'succeeded' : 'failed';
+  if (entry.status.state === 'failed') {
+    const buildError = (payload as { error?: string } | null)?.error;
+    entry.status.error = buildError ?? `Build finished with status ${status ?? 'unknown'}.`;
   }
+  return true;
+}
+
+export function getPublishStatus(id: string): PublishStatus | undefined {
+  return publishes.get(id)?.status;
+}
+
+/**
+ * Materializes the stored signing secrets into temp files and spawns
+ * `lim xcode build` with a build-finish webhook pointing back at this
+ * backend (through the public tunnel URL). Returns the publish ID the
+ * frontend polls; the outcome arrives via the webhook, not the CLI's
+ * output — that output only goes to this process's console for debugging.
+ */
+export async function startPublish(request: PublishRequest, publicUrl: string): Promise<string> {
+  const { certificate, profile, apiKey } = await resolvePublishCredentials(
+    request.teamId,
+    request.bundleId,
+  );
+
+  const workDir = await mkdtemp(path.join(os.tmpdir(), 'publish-to-stores-'));
+  const certificatePath = path.join(workDir, 'certificate.p12');
+  const profilePath = path.join(workDir, 'profile.mobileprovision');
+  const apiKeyPath = path.join(workDir, 'AuthKey.p8');
+  await writeFile(certificatePath, Buffer.from(certificate.data.certificateP12Base64, 'base64'), {
+    mode: 0o600,
+  });
+  await writeFile(profilePath, Buffer.from(profile.data.provisioningProfileBase64, 'base64'), {
+    mode: 0o600,
+  });
+  await writeFile(apiKeyPath, Buffer.from(apiKey.data.privateKeyP8Base64, 'base64'), { mode: 0o600 });
+
+  const id = randomUUID();
+  const token = randomBytes(32).toString('hex');
+  publishes.set(id, {
+    status: { id, state: 'running', startedAt: new Date().toISOString() },
+    token,
+  });
+
+  const args = [
+    'xcode',
+    'build',
+    request.projectPath,
+    '--sdk',
+    'iphoneos',
+    '--configuration',
+    'Release',
+    '--certificate-p12',
+    certificatePath,
+    '--certificate-password',
+    certificate.data.certificatePassword ?? '',
+    '--provisioning-profile',
+    profilePath,
+    '--upload-to-testflight',
+    '--auto-build-number',
+    '--asc-key-id',
+    apiKey.data.keyId,
+    '--asc-key',
+    apiKeyPath,
+    '--webhook-url',
+    `${publicUrl}/webhook/${id}`,
+    '--webhook-header',
+    `X-Publish-Token=${token}`,
+  ];
+  if (apiKey.data.issuerId) {
+    args.push('--asc-issuer-id', apiKey.data.issuerId);
+  }
+  if (request.scheme) {
+    args.push('--scheme', request.scheme);
+  }
+
+  const log = (line: string) => console.log(`[publish ${id}] ${line}`);
+  log(`Publishing ${request.bundleId} via ${request.method}...`);
+  for (const line of await ensureExpoBundleIdentifier(request.projectPath, request.bundleId)) {
+    log(line);
+  }
+  log(`$ lim ${args.join(' ')}`);
+
+  const child = spawn('lim', args, { env: process.env });
+  const forwardLines = (stream: NodeJS.ReadableStream) => {
+    let buffered = '';
+    stream.on('data', (chunk: Buffer) => {
+      buffered += chunk.toString('utf8');
+      const lines = buffered.split('\n');
+      buffered = lines.pop() ?? '';
+      for (const line of lines) log(line);
+    });
+  };
+  forwardLines(child.stdout);
+  forwardLines(child.stderr);
+  child.on('error', (error) => {
+    failPublish(id, `Failed to run the lim CLI: ${error.message}. Is it installed and on PATH?`);
+    void rm(workDir, { recursive: true, force: true });
+  });
+  child.on('close', (code) => {
+    void rm(workDir, { recursive: true, force: true });
+    if (code !== 0) {
+      // The build never reached limbuild (bad path, sync failure, ...) or
+      // failed client-side; no webhook is coming, so settle the publish here.
+      failPublish(id, `lim exited with code ${code ?? 1} before the build finished. See the backend logs.`);
+      return;
+    }
+    // A clean exit means limbuild saw the build end and has fired (or is
+    // retrying) the webhook. If it never lands, the tunnel is the suspect.
+    setTimeout(() => {
+      failPublish(
+        id,
+        'The build finished but no webhook arrived. Is the tunnel URL reachable from the internet?',
+      );
+    }, WEBHOOK_GRACE_MS).unref();
+  });
+
+  return id;
 }
