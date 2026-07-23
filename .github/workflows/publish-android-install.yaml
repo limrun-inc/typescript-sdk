@@ -1,0 +1,29 @@
+name: Publish @limrun/android-install
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write # Required for OIDC
+  contents: read
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        working-directory: packages/android-install
+        run: |
+          yarn install
+
+      - name: Publish to NPM
+        working-directory: packages/android-install
+        run: |
+          npm run build
+          npm publish --provenance
