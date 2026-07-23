@@ -3,9 +3,15 @@ import { type IosInstance } from './ios-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
-import { exec, type ExecChildProcess, type ExecRequest, type TestflightUploadConfig } from '../exec-client';
+import {
+  exec,
+  type ExecChildProcess,
+  type ExecRequest,
+  type TestflightUploadConfig,
+  type WebhookConfig,
+} from '../exec-client';
 
-export type { TestflightUploadConfig } from '../exec-client';
+export type { TestflightUploadConfig, WebhookConfig } from '../exec-client';
 import {
   syncFolder as syncFolderImpl,
   type AdditionalFileSyncEntry,
@@ -159,6 +165,15 @@ export type XcodeBuildOptions = {
    * dependency resolution, and xcodebuild.
    */
   gitInit?: boolean;
+  /**
+   * HTTP callback fired once the build reaches a terminal state (SUCCEEDED,
+   * FAILED, or CANCELLED). The payload carries the result (execId, status,
+   * exitCode, timing), the instance's identity with a Limrun Console debug
+   * link, and a presigned URL for the persisted build log. Delivery is
+   * best-effort with bounded retries; a webhook failure never fails the
+   * build. Older limbuild servers silently ignore this option.
+   */
+  webhook?: WebhookConfig;
 };
 
 export type SimulatorInstallState =
@@ -721,6 +736,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.testflight && { testflight: options.testflight }),
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
           ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
+          ...(options?.webhook && { webhook: options.webhook }),
         };
 
         if (options?.upload && 'assetName' in options.upload) {

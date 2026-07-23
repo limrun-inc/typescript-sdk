@@ -1,4 +1,5 @@
 import type { GradleAndroidABI, GradleBuildOptions } from '@limrun/api';
+import { webhookConfigFromFlags, type WebhookFlagValues } from './webhook-options';
 
 /**
  * Single source for the --abi enum: `satisfies` pins every entry to the SDK
@@ -13,7 +14,7 @@ export const gradleAndroidABIs = [
   'all',
 ] as const satisfies readonly GradleAndroidABI[];
 
-export interface GradleBuildFlagValues {
+export interface GradleBuildFlagValues extends WebhookFlagValues {
   task?: string[];
   'project-path'?: string;
   'expo-app-dir'?: string;
@@ -111,6 +112,10 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
     options.upload = { assetName: flags.upload };
   } else if (flags['signed-upload-url']) {
     options.upload = { signedUploadUrl: flags['signed-upload-url'] };
+  }
+  const webhook = webhookConfigFromFlags(flags);
+  if (webhook) {
+    options.webhook = webhook;
   }
   return options;
 }

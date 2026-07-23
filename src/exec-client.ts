@@ -41,9 +41,34 @@ export type XcodeBuildExecRequest = {
   buildSettings?: Record<string, string>;
   gitInit?: boolean;
   signedUploadUrl?: string;
+  webhook?: WebhookConfig;
   additionalMetadata?: {
     signedDownloadUrl?: string;
   };
+};
+
+/**
+ * Build-finish webhook: limbuild POSTs a JSON payload to `url` once the build
+ * reaches a terminal state (SUCCEEDED, FAILED, or CANCELLED), carrying the
+ * result (execId, status, exitCode, timing), the instance's identity with a
+ * Limrun Console debug link, and a presigned URL for the persisted build log
+ * when log persistence is configured. Delivery is best-effort with bounded
+ * retries; a webhook failure never fails the build.
+ */
+export type WebhookConfig = {
+  /**
+   * HTTPS URL the payload is POSTed to. Must be a public DNS host;
+   * IP-literal, private, and cluster-internal targets are rejected by the
+   * server with HTTP 400 at build request time.
+   */
+  url: string;
+  /**
+   * Headers set verbatim on the callback request (e.g. an Authorization
+   * bearer token so your endpoint can authenticate the call). At most 16
+   * headers; hop-by-hop and message-framing headers (Host, Content-Length,
+   * Transfer-Encoding, Connection) are rejected.
+   */
+  headers?: Record<string, string>;
 };
 
 /** Android ABIs the gradle daemon accepts; 'all' keeps the project's own configuration. */
@@ -92,6 +117,7 @@ export type GradleBuildExecRequest = {
   reactNative?: GradleReactNativeConfig;
   signing?: GradleSigningConfig;
   signedUploadUrl?: string;
+  webhook?: WebhookConfig;
   additionalMetadata?: {
     signedDownloadUrl?: string;
   };
