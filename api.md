@@ -78,3 +78,13 @@ Methods:
 
 - <code title="get /v1/analytics">client.analytics.<a href="./src/resources/analytics.ts">get</a>({ ...params }) -> AnalyticsResponse</code>
 - <code title="get /v1/analytics/instances">client.analytics.<a href="./src/resources/analytics.ts">getInstances</a>({ ...params }) -> AnalyticsInstancesResponse</code>
+
+# ScopedTokens
+
+Types:
+
+- <code><a href="./src/resources/scoped-tokens.ts">ScopedToken</a></code>
+
+Methods:
+
+- <code title="post /v1/scoped_tokens">client.scopedTokens.<a href="./src/resources/scoped-tokens.ts">create</a>({ ...params }) -> ScopedToken</code>
