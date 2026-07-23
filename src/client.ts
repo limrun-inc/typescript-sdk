@@ -50,6 +50,12 @@ import {
   IosInstancesItems,
 } from './resources/ios-instances';
 import {
+  ScopedToken,
+  ScopedTokenCreate,
+  ScopedTokenCreateParams,
+  ScopedTokens,
+} from './resources/scoped-tokens';
+import {
   XcodeInstance,
   XcodeInstanceCreateParams,
   XcodeInstanceListParams,
@@ -811,6 +817,7 @@ export class Limrun {
   iosInstances: API.IosInstances = new API.IosInstances(this);
   xcodeInstances: API.XcodeInstances = new API.XcodeInstances(this);
   analytics: API.Analytics = new API.Analytics(this);
+  scopedTokens: API.ScopedTokens = new API.ScopedTokens(this);
 }
 
 Limrun.AndroidInstances = AndroidInstances;
@@ -818,6 +825,7 @@ Limrun.Assets = Assets;
 Limrun.IosInstances = IosInstances;
 Limrun.XcodeInstances = XcodeInstances;
 Limrun.Analytics = Analytics;
+Limrun.ScopedTokens = ScopedTokens;
 
 export declare namespace Limrun {
   export type RequestOptions = Opts.RequestOptions;
@@ -865,5 +873,12 @@ export declare namespace Limrun {
     type AnalyticsResponse as AnalyticsResponse,
     type AnalyticsGetParams as AnalyticsGetParams,
     type AnalyticsGetInstancesParams as AnalyticsGetInstancesParams,
+  };
+
+  export {
+    ScopedTokens as ScopedTokens,
+    type ScopedToken as ScopedToken,
+    type ScopedTokenCreate as ScopedTokenCreate,
+    type ScopedTokenCreateParams as ScopedTokenCreateParams,
   };
 }

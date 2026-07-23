@@ -31,6 +31,12 @@ export {
   type IosInstancesItems,
 } from './ios-instances';
 export {
+  ScopedTokens,
+  type ScopedToken,
+  type ScopedTokenCreate,
+  type ScopedTokenCreateParams,
+} from './scoped-tokens';
+export {
   XcodeInstances,
   type XcodeInstance,
   type XcodeInstanceCreateParams,
