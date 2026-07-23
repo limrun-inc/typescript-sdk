@@ -42,31 +42,6 @@ export const inputStyle: CSSProperties = {
   boxSizing: 'border-box',
 };
 
-export const multiSelectStyle: CSSProperties = { ...inputStyle, height: '88px' };
-
-export const tabRow: CSSProperties = {
-  display: 'flex',
-  gap: '6px',
-  padding: '4px',
-  backgroundColor: '#eef0f2',
-  borderRadius: '8px',
-};
-
-export function tabButton(active: boolean): CSSProperties {
-  return {
-    flex: 1,
-    padding: '8px',
-    fontSize: '13px',
-    fontWeight: 600,
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    backgroundColor: active ? '#fff' : 'transparent',
-    color: active ? '#1565c0' : '#666',
-    boxShadow: active ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-  };
-}
-
 export const infoBox: CSSProperties = {
   padding: '10px',
   backgroundColor: '#e8f5e9',
@@ -97,18 +72,6 @@ export const hintText: CSSProperties = {
   lineHeight: 1.5,
 };
 
-export const codeBlock: CSSProperties = {
-  margin: '8px 0 4px',
-  padding: '8px 10px',
-  backgroundColor: '#0d1117',
-  color: '#c9d1d9',
-  borderRadius: '6px',
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: '12px',
-  whiteSpace: 'pre-wrap',
-  wordBreak: 'break-all',
-};
-
 function baseButton(disabled: boolean): CSSProperties {
   return {
     width: '100%',
@@ -129,8 +92,4 @@ export function primaryButton(disabled: boolean): CSSProperties {
 
 export function secondaryButton(disabled: boolean): CSSProperties {
   return { ...baseButton(disabled), backgroundColor: disabled ? '#ccc' : '#444' };
-}
-
-export function dangerButton(disabled: boolean): CSSProperties {
-  return { ...baseButton(disabled), backgroundColor: disabled ? '#ccc' : '#dc3545' };
 }

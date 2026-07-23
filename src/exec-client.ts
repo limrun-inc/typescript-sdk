@@ -173,7 +173,9 @@ export type TestflightUploadConfig = {
    * How long the server watches for App Store Connect's processing verdict
    * after the upload. A FAILED verdict within the window fails the build;
    * expiry without a verdict succeeds with the build still processing on
-   * Apple's side. 0 skips the watch. Defaults to 120.
+   * Apple's side. Defaults to 0, which returns as soon as the upload
+   * commits without watching the verdict (processing routinely takes many
+   * minutes).
    */
   waitTimeoutSeconds?: number;
 };
@@ -245,10 +247,14 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   execId: string | undefined;
 
   private readonly resultPromise: Promise<ExecResult>;
+  private readonly startedPromise: Promise<string>;
+  private resolveStarted!: (execId: string) => void;
+  private rejectStarted!: (reason: unknown) => void;
   private readonly exitListeners: ExitListener[] = [];
   private abortController = new AbortController();
   private sseConnection: EventSourceClient | null = null;
   private killed = false;
+  private detached = false;
   private testflightEvent: TestflightEvent | null = null;
   private readonly options: ExecOptions;
   private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
@@ -256,11 +262,20 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   constructor(request: ExecRequest | Promise<ExecRequest>, options: ExecOptions) {
     this.options = options;
     this.log = options.log ?? (() => {});
+    this.startedPromise = new Promise<string>((resolve, reject) => {
+      this.resolveStarted = resolve;
+      this.rejectStarted = reject;
+    });
+    // Most callers await the terminal result and never call detach(); keep the
+    // dormant startup promise from becoming an unhandled rejection for them.
+    void this.startedPromise.catch(() => {});
     if (request instanceof Promise) {
       this.resultPromise = request.then((r) => this.run(r));
     } else {
       this.resultPromise = this.run(request);
     }
+    // Fail detach() as well when request preparation or POST /exec fails.
+    void this.resultPromise.catch((err) => this.rejectStarted(err));
   }
 
   /** Implement PromiseLike so this object can be awaited */
@@ -289,6 +304,21 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       this.exitListeners.push(listener);
     }
     return this;
+  }
+
+  /**
+   * Return once the remote execution has been accepted, without opening its
+   * event stream or waiting for completion. Call immediately after creating
+   * the process. The remote execution keeps running; use a build-finish
+   * webhook or the build-log APIs to observe its terminal result.
+   */
+  detach(): Promise<string> {
+    this.detached = true;
+    // The caller observes startup failures through startedPromise. Mark the
+    // completion promise handled because detached callers intentionally never
+    // await it.
+    void this.resultPromise.catch(() => {});
+    return this.startedPromise;
   }
 
   /** Send a signal to terminate the process */
@@ -343,6 +373,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       });
     } catch (err) {
       if (this.killed) {
+        this.rejectStarted(new Error('Execution cancelled before it started'));
         this.command.emit('close');
         this.stdout.emit('close');
         this.stderr.emit('close');
@@ -370,6 +401,17 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     const execData = (await execRes.json()) as { execId: string };
     this.execId = execData.execId;
     log('debug', `Execution started: ${this.execId}`);
+    this.resolveStarted(this.execId);
+
+    if (this.detached) {
+      // An unresolved promise holds no Node.js event-loop resources. Keeping
+      // the terminal result pending accurately reflects that this client
+      // deliberately stopped observing the remote execution.
+      this.command.emit('close');
+      this.stdout.emit('close');
+      this.stderr.emit('close');
+      return new Promise<ExecResult>(() => {});
+    }
 
     // 2. Stream logs via SSE and wait for exit code
     const eventsUrl = `${apiUrl}/exec/${this.execId}/events`;
@@ -379,7 +421,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     // build is not force-failed client-side while the server still succeeds.
     let timeoutMs = 3600 * 1000;
     if (request.command === 'xcodebuild' && request.testflight) {
-      timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 120) + 900) * 1000;
+      timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 0) + 900) * 1000;
     } else if (request.command === 'run') {
       timeoutMs = (Math.max(1, request.timeoutSeconds ?? 3600) + 60) * 1000;
     }

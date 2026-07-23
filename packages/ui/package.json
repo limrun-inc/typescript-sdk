@@ -1,6 +1,6 @@
 {
   "name": "@limrun/ui",
-  "version": "0.14.0-rc.4",
+  "version": "0.14.0-rc.5",
   "publishConfig": {
     "access": "public",
     "tag": "next"
@@ -14,30 +14,15 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./app-store-relay": {
-      "types": "./dist/app-store-relay/index.d.ts",
-      "import": "./dist/app-store-relay/index.js",
-      "require": "./dist/app-store-relay/index.cjs"
+    "./apple": {
+      "types": "./dist/apple/index.d.ts",
+      "import": "./dist/apple/index.js",
+      "require": "./dist/apple/index.cjs"
     },
-    "./app-store-relay/react": {
-      "types": "./dist/app-store-relay/react.d.ts",
-      "import": "./dist/app-store-relay/react.js",
-      "require": "./dist/app-store-relay/react.cjs"
-    },
-    "./apple-credentials": {
-      "types": "./dist/apple-credentials/index.d.ts",
-      "import": "./dist/apple-credentials/index.js",
-      "require": "./dist/apple-credentials/index.cjs"
-    },
-    "./device-build": {
-      "types": "./dist/device-build/index.d.ts",
-      "import": "./dist/device-build/index.js",
-      "require": "./dist/device-build/index.cjs"
-    },
-    "./device-build/react": {
-      "types": "./dist/device-build/react.d.ts",
-      "import": "./dist/device-build/react.js",
-      "require": "./dist/device-build/react.cjs"
+    "./apple/react": {
+      "types": "./dist/apple/react.d.ts",
+      "import": "./dist/apple/react.js",
+      "require": "./dist/apple/react.cjs"
     },
     "./device-install": {
       "types": "./dist/device-install/index.d.ts",
