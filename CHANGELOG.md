@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.45.0 (2026-07-24)
+
+Full Changelog: [v0.44.1...v0.45.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.44.1...v0.45.0)
+
+### Features
+
+* **api:** add gradleInstances.listBuildLogs ([99f69b3](https://github.com/limrun-inc/typescript-sdk/commit/99f69b3d7c3c3d64b111cdfd92aac6dc0a51fbf5))
+
+
+### Refactors
+
+* **api:** share the build-log record shape across daemons ([ca9e062](https://github.com/limrun-inc/typescript-sdk/commit/ca9e0624e980aa59ad961001f7e94c908f10afd6))
+
 ## 0.44.1 (2026-07-23)
 
 Full Changelog: [v0.44.0...v0.44.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.44.0...v0.44.1)
