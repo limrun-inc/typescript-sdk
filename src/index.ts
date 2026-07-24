@@ -59,6 +59,7 @@ export {
   type GradleClient,
   type GradleSyncOptions,
   type GradleBuildOptions,
+  type GradleBuildLog,
 } from './resources/gradle-instances-helpers';
 export {
   LIMRUN_DIR,
