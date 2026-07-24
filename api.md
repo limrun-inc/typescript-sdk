@@ -66,6 +66,7 @@ Methods:
 - <code title="get /v1/gradle_instances">client.gradleInstances.<a href="./src/resources/gradle-instances.ts">list</a>({ ...params }) -> GradleInstancesItems</code>
 - <code title="delete /v1/gradle_instances/{id}">client.gradleInstances.<a href="./src/resources/gradle-instances.ts">delete</a>(id) -> void</code>
 - <code title="get /v1/gradle_instances/{id}">client.gradleInstances.<a href="./src/resources/gradle-instances.ts">get</a>(id) -> GradleInstance</code>
+- <code title="get /v1/gradle_instances/{id}/build_logs">client.gradleInstances.<a href="./src/resources/gradle-instances-helpers.ts">listBuildLogs</a>(id) -> GradleBuildLog[]</code>
 
 # Analytics
 

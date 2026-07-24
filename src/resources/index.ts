@@ -74,4 +74,5 @@ export {
   type GradleClient,
   type GradleSyncOptions,
   type GradleBuildOptions,
+  type GradleBuildLog,
 } from './gradle-instances-helpers';

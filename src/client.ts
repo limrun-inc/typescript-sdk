@@ -67,6 +67,7 @@ import {
   GradleClient,
   GradleSyncOptions,
   GradleBuildOptions,
+  GradleBuildLog,
 } from './resources/gradle-instances-helpers';
 import {
   XcodeInstances,
@@ -917,6 +918,7 @@ export declare namespace Limrun {
     type GradleClient as GradleClient,
     type GradleSyncOptions as GradleSyncOptions,
     type GradleBuildOptions as GradleBuildOptions,
+    type GradleBuildLog as GradleBuildLog,
   };
 
   export {

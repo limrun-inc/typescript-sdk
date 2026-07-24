@@ -1,4 +1,7 @@
 import { GradleInstances as GeneratedGradleInstances, type GradleInstance } from './gradle-instances';
+import { APIPromise } from '../core/api-promise';
+import { RequestOptions } from '../internal/request-options';
+import { path } from '../internal/utils/path';
 import {
   exec,
   type ExecChildProcess,
@@ -79,7 +82,43 @@ function gradleDefaultIgnore(relativePath: string): boolean {
   return segments.length === 1 && (trimmed === '.gradle' || trimmed === '.kotlin' || trimmed === 'build');
 }
 
+// GradleBuildLog is one persisted build record from the director's
+// GET /v1/gradle_instances/{id}/build_logs (operationId
+// listGradleInstanceBuildLogs). Hand-written against
+// api/public/director/openapiv3.yaml; if a Stainless regeneration ever picks
+// that path up, reconcile with the generated surface instead of duplicating it.
+export interface GradleBuildLog {
+  /** Exec ID assigned by gradlebuild, e.g. build-1776140344112378000. */
+  id: string;
+
+  /** Terminal status reported by gradlebuild (e.g. SUCCEEDED, FAILED, CANCELLED). */
+  status: string;
+
+  /** Exit code of gradlew, if the build reached completion. */
+  exitCode?: number;
+
+  startedAt?: string;
+
+  finishedAt?: string;
+
+  /** Time spent running gradlew, in milliseconds. */
+  buildDurationMs?: number;
+
+  /** Error message captured by gradlebuild on failure, if any. */
+  error?: string;
+
+  /** Short-lived presigned URL for fetching the full .jsonl log from object storage. */
+  downloadUrl: string;
+}
+
 export class GradleInstances extends GeneratedGradleInstances {
+  /**
+   * List the instance's persisted build logs.
+   */
+  listBuildLogs(id: string, options?: RequestOptions): APIPromise<GradleBuildLog[]> {
+    return this._client.get(path`/v1/gradle_instances/${id}/build_logs`, options);
+  }
+
   async createClient(params: GradleCreateClientParams): Promise<GradleClient> {
     let apiUrl: string;
     let token: string;
