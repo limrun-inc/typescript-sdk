@@ -7,6 +7,39 @@ import crypto from 'crypto';
 
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
 
+// BuildLog is one persisted build record from the director's per-platform
+// GET /v1/{platform}_instances/{id}/build_logs endpoints. The xcode and
+// gradle responses share this exact shape (their OpenAPI schemas are
+// structurally identical), so it is defined once here and aliased per
+// resource; a platform gaining a field of its own is the signal to split the
+// aliases back into real interfaces. Hand-written against
+// api/public/director/openapiv3.yaml; if a Stainless regeneration ever picks
+// those paths up, reconcile with the generated surface instead of
+// duplicating it.
+export interface BuildLog {
+  /** Exec ID assigned by the build daemon, e.g. build-1776140344112378000. */
+  id: string;
+
+  /** Terminal status reported by the build daemon (e.g. SUCCEEDED, FAILED, CANCELLED). */
+  status: string;
+
+  /** Exit code of the build tool invocation, if the build reached completion. */
+  exitCode?: number;
+
+  startedAt?: string;
+
+  finishedAt?: string;
+
+  /** Time spent running the build tool, in milliseconds. */
+  buildDurationMs?: number;
+
+  /** Error message captured by the build daemon on failure, if any. */
+  error?: string;
+
+  /** Short-lived presigned URL for fetching the full .jsonl log from object storage. */
+  downloadUrl: string;
+}
+
 /**
  * Derives the client-side folder-sync cache location for a local project.
  * The key format is a compatibility contract: changing it orphans every
