@@ -16,6 +16,7 @@ import {
   createDaemonLogger,
   deriveBasisCache,
   mintAssetUploadUrls,
+  type BuildLog,
   type LogLevel,
   type SyncResult,
 } from './daemon-client-shared';
@@ -84,32 +85,9 @@ function gradleDefaultIgnore(relativePath: string): boolean {
 
 // GradleBuildLog is one persisted build record from the director's
 // GET /v1/gradle_instances/{id}/build_logs (operationId
-// listGradleInstanceBuildLogs). Hand-written against
-// api/public/director/openapiv3.yaml; if a Stainless regeneration ever picks
-// that path up, reconcile with the generated surface instead of duplicating it.
-export interface GradleBuildLog {
-  /** Exec ID assigned by gradlebuild, e.g. build-1776140344112378000. */
-  id: string;
-
-  /** Terminal status reported by gradlebuild (e.g. SUCCEEDED, FAILED, CANCELLED). */
-  status: string;
-
-  /** Exit code of gradlew, if the build reached completion. */
-  exitCode?: number;
-
-  startedAt?: string;
-
-  finishedAt?: string;
-
-  /** Time spent running gradlew, in milliseconds. */
-  buildDurationMs?: number;
-
-  /** Error message captured by gradlebuild on failure, if any. */
-  error?: string;
-
-  /** Short-lived presigned URL for fetching the full .jsonl log from object storage. */
-  downloadUrl: string;
-}
+// listGradleInstanceBuildLogs). The record shape is shared with xcode; see
+// BuildLog.
+export type GradleBuildLog = BuildLog;
 
 export class GradleInstances extends GeneratedGradleInstances {
   /**

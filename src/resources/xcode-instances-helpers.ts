@@ -22,6 +22,7 @@ import {
   createDaemonLogger,
   deriveBasisCache,
   mintAssetUploadUrls,
+  type BuildLog,
   type LogLevel,
   type SyncResult,
 } from './daemon-client-shared';
@@ -530,32 +531,8 @@ async function readJsonResponse<T>(res: Response, operation: string): Promise<T>
 
 // XcodeBuildLog is one persisted build record from the director's
 // GET /v1/xcode_instances/{id}/build_logs (operationId listXcodeInstanceBuildLogs).
-// Hand-written against api/public/director/openapiv3.yaml; if a Stainless
-// regeneration ever picks that path up, reconcile with the generated surface
-// instead of duplicating it.
-export interface XcodeBuildLog {
-  /** Exec ID assigned by limbuild, e.g. build-1776140344112378000. */
-  id: string;
-
-  /** Terminal status reported by limbuild (e.g. SUCCEEDED, FAILED, CANCELLED). */
-  status: string;
-
-  /** Exit code of xcodebuild, if the build reached completion. */
-  exitCode?: number;
-
-  startedAt?: string;
-
-  finishedAt?: string;
-
-  /** Time spent running xcodebuild, in milliseconds. */
-  buildDurationMs?: number;
-
-  /** Error message captured by limbuild on failure, if any. */
-  error?: string;
-
-  /** Short-lived presigned URL for fetching the full .jsonl log from object storage. */
-  downloadUrl: string;
-}
+// The record shape is shared with gradle; see BuildLog.
+export type XcodeBuildLog = BuildLog;
 
 // BazelBuildLog is one persisted Bazel RBE invocation record from the
 // director's GET /v1/xcode_instances/{id}/bazel_build_logs (operationId
