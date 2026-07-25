@@ -3,10 +3,10 @@ export {
   loadGoogleIdentityServices,
   requestGoogleAccessToken,
   type RequestGoogleAccessTokenInput,
-} from '../core/play-publish/google';
+} from './google';
 export {
   publishToPlaystore,
   PlaystorePublishError,
   type PlaystorePublishInput,
   type PlaystorePublishResult,
-} from '../core/play-publish/publish';
+} from './publish';

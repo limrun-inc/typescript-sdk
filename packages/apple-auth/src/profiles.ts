@@ -1,5 +1,5 @@
 import forge from 'node-forge';
-import { sameUDID } from '../core/udid';
+import { sameUDID } from './internal/udid';
 
 export type ProvisioningProfileInfo = {
   name?: string;

@@ -5,7 +5,7 @@
  * fetched as one large page and filtered client-side where Apple's own
  * filters are broken (bundle IDs, device UDIDs).
  */
-import { normalizeUDID, sameUDID } from '../core/udid';
+import { normalizeUDID, sameUDID } from './internal/udid';
 import type { AppleRelayResponse, AppleRelayWebSocketClient } from './relay';
 
 export type AppleDeveloperPortalTeam = {

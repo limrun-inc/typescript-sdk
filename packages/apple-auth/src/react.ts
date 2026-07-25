@@ -5,7 +5,7 @@ import {
   type AppleIDLoginResult,
   type AppleRelayResponse,
 } from './index';
-import { errorMessage } from '../core/errors';
+import { errorMessage } from './internal/errors';
 
 export type UseAppleIDLoginOptions = Pick<AppleIDLoginInput, 'registryApiUrl' | 'token' | 'organizationId'>;
 

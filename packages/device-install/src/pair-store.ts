@@ -1,5 +1,5 @@
-import { openDB, requestToPromise } from '../core/indexeddb';
-import { normalizeUDID } from '../core/udid';
+import { openDB, requestToPromise } from './internal/indexeddb';
+import { normalizeUDID } from './internal/udid';
 import type { PairRecordPayload, StoredPairRecord } from './types';
 
 const PAIRING_DB_NAME = 'limbuild-device-pairing';

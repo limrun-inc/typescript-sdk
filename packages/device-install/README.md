@@ -6,7 +6,7 @@ The browser talks to the iPhone over WebUSB; Limrun's **registry** runs the
 native pairing and install on its side and relays the USB traffic over a
 WebSocket.
 
-`@limrun/ui` ships the browser primitives and React hooks; your app owns the UI.
+`@limrun/device-install` ships the browser primitives and React hooks; your app owns the UI.
 There is no prebuilt wizard, so you decide how much of the flow to expose and
 how the steps look in your product.
 
@@ -16,7 +16,7 @@ The flow:
    _Trust_ once).
 2. **Get signing credentials** — sign in with an Apple ID in the browser and
    persist the certificate + provisioning profile into a `SigningSecretStore`
-   (`@limrun/ui/apple`).
+   (`@limrun/apple-auth`).
 3. **Build** a signed `iphoneos` IPA from your backend with `@limrun/api`,
    uploading it to Limrun asset storage.
 4. **Install** the asset onto the paired iPhone over the registry's WebUSB
@@ -47,15 +47,15 @@ your UI calls your backend, and your backend drives the Xcode sandbox with
 ## Install
 
 ```bash
-npm install @limrun/ui
+npm install @limrun/device-install @limrun/apple-auth
 ```
 
 The browser side is split across two subpath entry points:
 
-| Import                                 | Provides                                                                                                                                                            |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@limrun/ui/device-install` + `/react` | WebUSB device selection, pairing, install relay, pair-record storage (`useDeviceInstallRelay`).                                                                     |
-| `@limrun/ui/apple` + `/react`          | Apple ID login (SRP + 2FA), Apple Developer Portal calls, and `SigningSecretStore`-based credential helpers (`useAppleIDLogin`, `ensureAppleCertificateSecret`, …). |
+| Import                              | Provides                                                                                                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@limrun/device-install` + `/react` | WebUSB device selection, pairing, install relay, pair-record storage (`useDeviceInstallRelay`).                                                                     |
+| `@limrun/apple-auth` + `/react`     | Apple ID login (SRP + 2FA), Apple Developer Portal calls, and `SigningSecretStore`-based credential helpers (`useAppleIDLogin`, `ensureAppleCertificateSecret`, …). |
 
 ## The registry
 
@@ -88,7 +88,7 @@ const install = useDeviceInstallRelay({
 Scopes have the form `<resource>:<id|*>:<action>` — `device:*:install` opens
 the device relay, `asset:<id>:read` (or `asset:*:read`) lets installs read
 those assets, and `applerelay:*:connect` opens the Apple relay for the
-`@limrun/ui/apple` flow. Scoped tokens are verified offline, expire on
+`@limrun/apple-auth` flow. Scoped tokens are verified offline, expire on
 their own (they cannot be revoked, so keep TTLs short), and can only install
 from assets — the registry rejects `{ url }` sources for them.
 `examples/device-install/backend` is a complete minting backend you can copy.
@@ -101,7 +101,7 @@ relay and stores the resulting pair record in the browser's IndexedDB, so the
 user only taps **Trust** once per device.
 
 ```tsx
-import { useDeviceInstallRelay } from '@limrun/ui/device-install/react';
+import { useDeviceInstallRelay } from '@limrun/device-install/react';
 
 const install = useDeviceInstallRelay({
   registryApiUrl,
@@ -135,7 +135,7 @@ install.
 
 ## Signing credentials
 
-A real-device install must be signed. The `@limrun/ui/apple` credential helpers
+A real-device install must be signed. The `@limrun/apple-auth` credential helpers
 run the Apple ID login in the browser (the password never leaves it — only SRP
 proof material does) and persist the resulting material into a
 `SigningSecretStore` you provide: Limrun's org secret store
@@ -144,7 +144,7 @@ proof material does) and persist the resulting material into a
 your backend's database, a KMS, anything.
 
 ```tsx
-import { useAppleIDLogin } from '@limrun/ui/apple/react';
+import { useAppleIDLogin } from '@limrun/apple-auth/react';
 import {
   createAppleProfile,
   ensureAppleCertificateSecret,
@@ -152,7 +152,7 @@ import {
   saveAppleProfileSecret,
   stringField,
   type SigningSecretStore,
-} from '@limrun/ui/apple';
+} from '@limrun/apple-auth';
 
 const appleLogin = useAppleIDLogin({ registryApiUrl, token, organizationId });
 const session = await appleLogin.startLogin({ accountName, password });
@@ -291,8 +291,8 @@ can't be amended locally — regenerate it through the Apple flow.
 | Symptom                                                                                          | Cause and fix                                                                                                                                                                                                |
 | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `WebUSB is not available`                                                                        | Use Chrome/Edge on HTTPS or `localhost`. Safari/Firefox are unsupported.                                                                                                                                     |
-| `Unable to claim interface` / "operation in progress"                                            | Unplug/replug the iPhone, unlock it, close other WebUSB tabs, retry. Make sure you're on a current `@limrun/ui`.                                                                                             |
-| First transfer fails with _"endpoint is not part of a claimed and selected alternate interface"_ | Update `@limrun/ui` — recent versions explicitly select the usbmux alternate (incl. alt 0).                                                                                                                  |
+| `Unable to claim interface` / "operation in progress"                                            | Unplug/replug the iPhone, unlock it, close other WebUSB tabs, retry. Make sure you're on a current `@limrun/device-install`.                                                                                 |
+| First transfer fails with _"endpoint is not part of a claimed and selected alternate interface"_ | Update `@limrun/device-install` — recent versions explicitly select the usbmux alternate (incl. alt 0).                                                                                                      |
 | Pairing seems to hang                                                                            | The user must unlock the iPhone and tap **Trust**; the first attempt can fail if the prompt isn't accepted in time. Retry.                                                                                   |
 | `no synced folder found; call /sync first`                                                       | Sync your project into the sandbox before building (`xcode.sync(...)` / `lim xcode sync .`).                                                                                                                 |
 | Install fails, log shows `ApplicationVerificationFailed`                                         | Signed with a **revoked/invalid cert**, or the **device isn't in the profile**, or the **bundle ID isn't covered**. `zsign` doesn't rewrite the bundle ID — it must match (or be wildcarded by) the profile. |

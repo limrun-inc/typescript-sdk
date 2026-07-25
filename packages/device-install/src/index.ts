@@ -13,4 +13,4 @@ export {
 export { getPairRecord, putPairRecord } from './pair-store';
 export { RelayClient } from './relay-client';
 export type { DeviceHello, DeviceInstallLog, PairRecordPayload, StoredPairRecord } from './types';
-export { normalizeUDID } from '../core/udid';
+export { normalizeUDID } from './internal/udid';

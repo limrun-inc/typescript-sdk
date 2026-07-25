@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { errorMessage } from '../core/errors';
+import { errorMessage } from './internal/errors';
 import {
   loadGoogleIdentityServices,
   PlaystorePublishError,

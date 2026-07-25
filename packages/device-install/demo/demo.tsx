@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { useDeviceInstallRelay } from '../react';
+import { useDeviceInstallRelay } from '../src/react';
 import './demo.css';
 
 type ActivityLine = {

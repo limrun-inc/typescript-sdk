@@ -1,4 +1,4 @@
-# @limrun/ui/play-publish
+# @limrun/play-auth
 
 Headless building blocks for publishing an AAB asset from the Limrun
 registry to Google Play, with a browser-owned Google sign-in. No UI ships
@@ -20,7 +20,7 @@ per publish. Limrun never stores it.
 ## React
 
 ```tsx
-import { usePlaystorePublish } from '@limrun/ui/play-publish/react';
+import { usePlaystorePublish } from '@limrun/play-auth/react';
 
 const play = usePlaystorePublish({
   registryApiUrl: 'https://registry.limrun.com',
@@ -52,7 +52,7 @@ permissions.
 ## Without React
 
 ```ts
-import { requestGoogleAccessToken, publishToPlaystore } from '@limrun/ui/play-publish';
+import { requestGoogleAccessToken, publishToPlaystore } from '@limrun/play-auth';
 
 const accessToken = await requestGoogleAccessToken({ clientId: GOOGLE_OAUTH_CLIENT_ID });
 const { versionCode } = await publishToPlaystore({

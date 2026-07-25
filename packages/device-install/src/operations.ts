@@ -4,7 +4,7 @@ import type { DeviceHello, DeviceInstallLog, PairRecordPayload } from './types';
 import { RelayClient } from './relay-client';
 import { closeUsbmuxSession, createUsbmuxSession, type UsbmuxSession } from './usbmux';
 import { claimUsbmux, findUsbmuxCandidates, requestAppleDevice, type UsbmuxCandidate } from './webusb';
-import { errorMessage } from '../core/errors';
+import { errorMessage } from './internal/errors';
 
 export type DeviceRelayTarget = {
   device: USBDevice;

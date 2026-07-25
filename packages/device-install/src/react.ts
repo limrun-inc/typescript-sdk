@@ -12,7 +12,7 @@ import {
   type RelayClient,
   type StoredPairRecord,
 } from './index';
-import { errorMessage } from '../core/errors';
+import { errorMessage } from './internal/errors';
 
 export type DeviceInstallRelayBusyAction = 'usb' | 'pair' | 'install';
 
