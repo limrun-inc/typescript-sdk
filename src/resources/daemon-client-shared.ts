@@ -36,7 +36,7 @@ export interface BuildLog {
   /** Error message captured by the build daemon on failure, if any. */
   error?: string;
 
-  /** Short-lived presigned URL for fetching the full .jsonl log from object storage. */
+  /** Short-lived presigned URL for fetching the plain-text build log from object storage. */
   downloadUrl: string;
 }
 

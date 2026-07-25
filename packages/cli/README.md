@@ -439,6 +439,9 @@ lim xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 -
 # Get an HTTP callback with the result and a build-log URL when the build finishes
 lim xcode build ./MyProject --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"
 
+# Headless one-shot build: return after submission and reap the fresh instance shortly after completion
+lim xcode build ./MyProject --detach --inactivity-timeout 3s --webhook-url https://ci.example.com/hooks/limrun
+
 # Attach an existing simulator so builds auto-install there
 lim xcode attach-simulator ios_abc123 --id sandbox_def456
 
@@ -675,6 +678,8 @@ lim asset pull my-app-build -o ./build-output
 #### Build Behavior
 
 `lim xcode build [PATH]` automatically performs a one-shot code sync for the given project path before invoking `xcodebuild`. The sync step automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
+
+For headless CI-style builds, pass `--detach --webhook-url <url>`. The command still creates or resolves the instance and syncs the project, but returns as soon as limbuild accepts the build rather than holding an SSE log stream open until completion. `--detach` requires a webhook so the terminal result remains observable. Pass `--inactivity-timeout <duration>` (for example `3s`) to skip any cached Xcode target and create a fresh one-shot instance with that timeout; it cannot be combined with `--id`. Active builds continually report activity, so a short timeout only starts expiring once build work stops. The inactivity controller checks approximately every 15 seconds, so actual teardown can lag the configured timeout by that interval.
 
 #### Run project commands
 

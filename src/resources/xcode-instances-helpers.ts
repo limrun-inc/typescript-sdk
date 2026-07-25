@@ -555,8 +555,11 @@ export interface BazelBuildLog {
   /** Error message captured on failure, if any. */
   error?: string;
 
-  /** Short-lived presigned URL for fetching the full .jsonl record from object storage. */
+  /** Short-lived presigned URL for fetching the plain-text Bazel output. */
   downloadUrl: string;
+
+  /** Short-lived URL for the full JSON invocation summary. */
+  metadataDownloadUrl: string;
 }
 
 export class XcodeInstances extends GeneratedXcodeInstances {
