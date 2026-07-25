@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useDeviceInstallRelay } from '@limrun/ui/device-install/react';
+import { useDeviceInstallRelay } from '@limrun/device-install/react';
 import { useActivityLog } from './hooks/useActivityLog';
 import { BACKEND_URL } from './config';
 import { errorBox, layout } from './theme';

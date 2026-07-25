@@ -428,11 +428,10 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@limrun/ui@file:../../../packages/ui":
-  version "0.14.0-rc.4"
+"@limrun/apple-auth@file:../../../packages/apple-auth":
+  version "0.1.0-rc.0"
   dependencies:
     "@foxt/js-srp" "^0.0.3-patch2"
-    clsx "^2.1.1"
     node-forge "^1.4.0"
 
 "@rolldown/pluginutils@1.0.0-rc.3":
@@ -818,11 +817,6 @@ chalk@^4.0.0:
   dependencies:
     ansi-styles "^4.1.0"
     supports-color "^7.1.0"
-
-clsx@^2.1.1:
-  version "2.1.1"
-  resolved "https://registry.yarnpkg.com/clsx/-/clsx-2.1.1.tgz#eed397c9fd8bd882bfb18deab7102049a2f32999"
-  integrity sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==
 
 color-convert@^2.0.1:
   version "2.0.1"

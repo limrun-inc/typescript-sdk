@@ -16,7 +16,7 @@ It has two components:
   and mints short-lived **scoped registry tokens** with `limrun.scopedTokens.create`
   from `@limrun/api`. Your API key stays server-side; the browser only ever holds a
   token that can open the Apple relay, and it expires on its own.
-- `frontend/`: The wizard. **Connect** signs into Apple with `@limrun/ui` components
+- `frontend/`: The wizard. **Connect** signs into Apple with `@limrun/apple-auth`
   over the Apple relay — talking to Limrun's registry **directly** with the scoped
   token, no proxying — registers the bundle ID, mints development and distribution
   certificates, provisioning profiles (development, ad-hoc, App Store), the App Store
@@ -49,7 +49,7 @@ Frontend wizard ──Apple relay ws (scoped token)──> Limrun registry ─�
 - The secret store is deliberately pluggable. The backend's file store implements the same
   REST shape as Limrun's organization secrets API, and the frontend wraps it in a
   `SigningSecretStore` (`frontend/src/lib/backend.ts`). Swap it for
-  `createLimrunSecretStore` from `@limrun/ui/apple` or your own database
+  `createLimrunSecretStore` from `@limrun/apple-auth` or your own database
   without touching the wizard.
 - Publishing runs entirely server-side: the backend materializes the stored certificate,
   App Store profile, and App Store Connect API key into temp files and spawns the CLI with

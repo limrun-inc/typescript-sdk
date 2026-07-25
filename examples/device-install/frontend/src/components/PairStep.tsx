@@ -1,4 +1,4 @@
-import type { useDeviceInstallRelay } from '@limrun/ui/device-install/react';
+import type { useDeviceInstallRelay } from '@limrun/device-install/react';
 import { infoBox, secondaryButton, warnBox } from '../theme';
 import { Section } from './Section';
 

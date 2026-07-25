@@ -2,7 +2,7 @@
 // file-based secret store, and the publish endpoints. (The Apple relay
 // WebSocket itself goes straight to Limrun's registry, authenticated with
 // the scoped token from the session.)
-import type { SigningSecret, SigningSecretMetadata, SigningSecretStore } from '@limrun/ui/apple';
+import type { SigningSecret, SigningSecretMetadata, SigningSecretStore } from '@limrun/apple-auth';
 import { BACKEND_URL } from '../config';
 
 export type RegistrySession = {
@@ -35,7 +35,7 @@ export async function fetchRegistrySession(): Promise<RegistrySession> {
 
 /**
  * A SigningSecretStore backed by the example backend's file store. This is
- * the "bring your own store" demonstration: the `@limrun/ui` credential
+ * the "bring your own store" demonstration: the `@limrun/apple-auth` credential
  * helpers only see the interface, so swapping this for Limrun's org store
  * (`createLimrunSecretStore`) or your own database is a drop-in change.
  */

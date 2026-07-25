@@ -1,7 +1,7 @@
 // Small, pure helpers for working with the Apple Developer Portal data returned
-// by `@limrun/ui/apple`. The portal's JSON is loosely typed and uses
+// by `@limrun/apple-auth`. The portal's JSON is loosely typed and uses
 // different field names across account types, so these helpers normalise it.
-import type { AppleDeveloperPortalAppID, AppleDeveloperPortalTeam } from '@limrun/ui/apple';
+import type { AppleDeveloperPortalAppID, AppleDeveloperPortalTeam } from '@limrun/apple-auth';
 
 /**
  * Apple exposes a team's portal id under one of three fields depending on the

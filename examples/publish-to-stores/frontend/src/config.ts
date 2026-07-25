@@ -2,7 +2,7 @@
  * Publisher branding. Every artifact this example creates on Apple's side
  * (certificate common names, provisioning profile names, App Store Connect
  * API key nickname) is derived from PUBLISHER_NAME, so rebranding the whole
- * pipeline is a one-line change. None of the underlying `@limrun/ui` APIs
+ * pipeline is a one-line change. None of the underlying `@limrun/apple-auth` APIs
  * bake in a default name.
  */
 export const PUBLISHER_NAME = 'Acme Publisher';

@@ -1,7 +1,7 @@
 # Device Install (WebUSB) Integration
 
 This example shows how to install a signed IPA onto a **physical iPhone**
-straight from the browser, using the WebUSB relay in `@limrun/ui` and Limrun's
+straight from the browser, using the WebUSB relay in `@limrun/device-install` and Limrun's
 registry.
 
 It has two components:
@@ -76,7 +76,7 @@ git clone https://github.com/limrun-inc/typescript-sdk.git
   download proxy even if it leaks before expiry.
 - To produce the artifact, your backend builds with `@limrun/api` on an Xcode
   sandbox and uploads the signed IPA to an org asset; the signing material
-  comes out of a `SigningSecretStore` filled by the `@limrun/ui/apple`
+  comes out of a `SigningSecretStore` filled by the `@limrun/apple-auth`
   credential helpers.
 
 For the complete API reference (including signing and troubleshooting), see the

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { useDeviceInstallRelay } from '@limrun/ui/device-install/react';
+import type { useDeviceInstallRelay } from '@limrun/device-install/react';
 import { hintText, inputStyle, labelStyle, primaryButton } from '../theme';
 import { Section } from './Section';
 

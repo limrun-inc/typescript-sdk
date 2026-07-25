@@ -2,7 +2,7 @@
 // team and bundle ID, and materializes everything a publish later needs —
 // certificates, provisioning profiles, the App Store Connect app record and
 // an App Store Connect API key — into the backend's secret store. Read
-// top-to-bottom it doubles as a reference for the `@limrun/ui` publishing
+// top-to-bottom it doubles as a reference for the `@limrun/apple-auth`
 // APIs.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -27,8 +27,8 @@ import {
   type AppleDeveloperPortalTeam,
   type AppleRelayWebSocketClient,
   type SigningSecretStore,
-} from '@limrun/ui/apple';
-import { useAppleIDLogin } from '@limrun/ui/apple/react';
+} from '@limrun/apple-auth';
+import { useAppleIDLogin } from '@limrun/apple-auth/react';
 import { naming } from '../config';
 import {
   appIdBundleId,
