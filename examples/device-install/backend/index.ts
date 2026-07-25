@@ -1,9 +1,9 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { Limrun } from '@limrun/api';
-import { XcodeInstanceCreateParams } from '@limrun/api/resources/xcode-instances';
+import Limrun from '@limrun/api';
 
 const apiKey = process.env['LIM_API_KEY'];
+const registryUrl = process.env['LIM_REGISTRY_ENDPOINT'] ?? 'https://registry.limrun.com';
 
 if (!apiKey) {
   console.error('Error: Missing required environment variable (LIM_API_KEY).');
@@ -17,81 +17,36 @@ const port = 3000;
 app.use(express.json());
 app.use(cors());
 
-// Provision an Xcode build sandbox and hand its per-instance credentials to the
-// browser. The `token` is scoped to this single sandbox, so it is safe to expose
-// to the frontend — it cannot touch the rest of your account.
-app.post('/create-sandbox', async (req: Request<{}, {}, { webSessionId?: string }>, res: Response) => {
+// Mints a short-lived scoped token so the browser can talk to Limrun's
+// registry directly for pairing and installs. The API key never leaves this
+// backend; the token it mints can only open the device relay and read the
+// granted assets, and it expires on its own.
+//
+// Pass assetName to scope the token to that single asset. Without it the
+// token can read any asset in the organization, which is convenient for this
+// demo where the asset name is typed in the browser.
+app.post('/session', async (req: Request<{}, {}, { assetName?: string }>, res: Response) => {
   try {
-    const { webSessionId } = req.body;
-    const forwardedIp =
-      req.headers['x-forwarded-for'] instanceof Array ?
-        req.headers['x-forwarded-for'].join(',')
-      : req.headers['x-forwarded-for'];
-    const clientIp = forwardedIp ? forwardedIp.split(',')[0] : req.socket.remoteAddress;
-
-    const params: XcodeInstanceCreateParams = {
-      // Return only once the sandbox is ready to accept HTTP calls.
-      wait: true,
-      // Reuse a matching sandbox instead of spinning up a new one each time.
-      reuseIfExists: true,
-      spec: {},
-    };
-
-    if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
-      console.log({ clientIp }, 'Adding client IP as scheduling clue');
-      params.spec!.clues = [{ kind: 'ClientIP', clientIp }];
+    const scopes = ['device:*:install'];
+    const assetName = req.body?.assetName?.trim();
+    if (assetName) {
+      const assets = await limrun.assets.list({ nameFilter: assetName });
+      const asset = assets[0];
+      if (!asset) {
+        return res.status(404).json({ status: 'error', message: `No asset named ${assetName} found` });
+      }
+      scopes.push(`asset:${asset.id}:read`);
+    } else {
+      scopes.push('asset:*:read');
     }
-
-    if (webSessionId) {
-      params.metadata = { labels: { webSessionId } };
-    }
-
-    console.time('create');
-    const instance = await limrun.xcodeInstances.create(params);
-    console.timeEnd('create');
-
-    if (!instance.status.apiUrl) {
-      return res.status(502).json({
-        status: 'error',
-        message: 'Sandbox is not ready yet (no apiUrl). Try again in a moment.',
-      });
-    }
-
-    return res.status(200).json({
-      id: instance.metadata.id,
-      apiUrl: instance.status.apiUrl,
-      token: instance.status.token,
-    });
+    const session = await limrun.scopedTokens.create({ scopes });
+    return res.status(200).json({ token: session.token, expiresAt: session.expiresAt, registryUrl });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
-    return res.status(500).json({
-      status: 'error',
-      message: 'Failed to create sandbox: ' + message,
-    });
-  }
-});
-
-app.post('/stop-sandbox', async (req: Request<{}, {}, { sandboxId: string }>, res: Response) => {
-  try {
-    const { sandboxId } = req.body;
-    if (!sandboxId) {
-      return res.status(400).json({ status: 'error', message: 'sandboxId is required' });
-    }
-
-    console.log('Stopping Xcode sandbox', sandboxId);
-    await limrun.xcodeInstances.delete(sandboxId);
-    console.log('Sandbox stopped successfully');
-
-    return res.status(200).json({ status: 'success', message: 'Sandbox stopped successfully' });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'An unknown error occurred';
-    return res.status(500).json({
-      status: 'error',
-      message: 'Failed to stop sandbox: ' + message,
-    });
+    return res.status(500).json({ status: 'error', message });
   }
 });
 
 app.listen(port, () => {
-  console.log(`Express server listening at http://localhost:${port}`);
+  console.log(`Session backend listening at http://localhost:${port}`);
 });

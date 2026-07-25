@@ -1,42 +1,51 @@
-import type { useDeviceBuild } from '@limrun/ui/device-build/react';
+import { useState } from 'react';
 import type { useDeviceInstallRelay } from '@limrun/ui/device-install/react';
-import { hintText, primaryButton, warnBox } from '../theme';
+import { hintText, inputStyle, labelStyle, primaryButton } from '../theme';
 import { Section } from './Section';
 
 type Props = {
   install: ReturnType<typeof useDeviceInstallRelay>;
-  build: ReturnType<typeof useDeviceBuild>;
   onError: (message?: string) => void;
 };
 
 /**
- * Install the signed artifact from Phase 1 onto the paired iPhone over the
- * WebUSB relay. This is the join between the two phases: it needs both a
- * succeeded build (the artifact) and a stored pair record. Progress streams
- * through the relay's `log` callback into the Activity panel.
+ * Step 2 — install a signed IPA onto the paired iPhone over the WebUSB relay.
+ * The registry downloads the asset from your organization's storage and
+ * streams it onto the device. Scoped tokens are confined to assets — no
+ * arbitrary download URLs. Progress goes through the relay's `log` callback
+ * into the Activity panel.
+ *
+ * Producing the signed IPA is a backend concern: build it with `@limrun/api`
+ * and upload it as an asset (see examples/publish-to-stores for the full
+ * signing + build flow).
  */
-export function InstallStep({ install, build, onError }: Props) {
-  const hasArtifact = build.status === 'succeeded';
-  const ready = install.canInstall && hasArtifact;
+export function InstallStep({ install, onError }: Props) {
+  const [assetName, setAssetName] = useState('');
+  const source = assetName.trim() ? { assetName: assetName.trim() } : undefined;
+  const ready = install.canInstall && !!source;
 
   return (
     <Section title="Install">
-      {!hasArtifact && (
-        <div style={warnBox}>Build a signed artifact in Phase 1 first — there's nothing to install yet.</div>
-      )}
+      <label style={labelStyle}>Asset name</label>
+      <input
+        style={inputStyle}
+        placeholder="my-app.ipa"
+        value={assetName}
+        onChange={(e) => setAssetName(e.target.value)}
+      />
       <button
         style={primaryButton(!ready)}
         onClick={() => {
           onError(undefined);
-          void install.startInstallation();
+          if (source) void install.startInstallation(source);
         }}
         disabled={!ready}
       >
         {install.busyAction === 'install' ? 'Installing...' : 'Install onto iPhone'}
       </button>
       <div style={hintText}>
-        The paired device must be included in the provisioning profile used for the build, or the install is
-        rejected with <code>ApplicationVerificationFailed</code>.
+        The IPA must be signed with a development profile that includes the paired iPhone's UDID, or the
+        install is rejected with <code>ApplicationVerificationFailed</code>.
       </div>
     </Section>
   );

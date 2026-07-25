@@ -1,29 +1,25 @@
 # Device Install (WebUSB) Integration
 
-This example shows how to install an Apple-signed build onto a **physical iPhone**
-straight from the browser, using a Limrun Xcode build sandbox and the WebUSB relay
-in `@limrun/ui`.
+This example shows how to install a signed IPA onto a **physical iPhone**
+straight from the browser, using the WebUSB relay in `@limrun/ui` and Limrun's
+registry.
 
 It has two components:
 
-- `backend/`: Provisions an Xcode build sandbox with your Limrun API key and hands
-  the per-instance `apiUrl` + `token` to the frontend.
-- `frontend/`: Pairs the iPhone over WebUSB, prepares signing assets (via Apple
-  ID sign-in **or** uploaded files), builds a signed IPA on the sandbox, and
-  installs it onto the device — with the `useDeviceInstallRelay`,
-  `useDeviceBuild`, and `useAppleIDLogin` hooks.
+- `backend/`: Mints short-lived **scoped registry tokens** with
+  `limrun.scopedTokens.create` from `@limrun/api`. Your API key stays
+  server-side; the browser only ever holds a token that can open the device
+  relay and read the granted assets, and it expires on its own.
+- `frontend/`: Fetches a session token from the backend, then pairs the iPhone
+  over WebUSB and installs a signed IPA onto it with the
+  `useDeviceInstallRelay` hook — talking to Limrun's registry **directly**, no
+  proxying.
 
-Building a signed artifact and installing it onto a device are separate tasks,
-so the example is organised into two phases that join at install:
-
-- **Phase 1 — Build a signed artifact:** prepare signing assets → build a signed
-  IPA on the sandbox. No device required yet.
-- **Phase 2 — Install to a device:** pair an iPhone over WebUSB → install the
-  Phase 1 artifact. Needs a succeeded build, and the paired device must be in the
-  signing profile used for that build.
-
-The sandbox is shared infrastructure: it hosts both the build and the WebUSB
-install relay.
+There is deliberately no build step: signed IPAs are produced on your backend
+with `@limrun/api` (`xcodebuild({ sdk: 'iphoneos' }, { signing, upload: { assetName } })`)
+and uploaded to Limrun asset storage, then installed here by asset name. For
+the full Apple signing flow (Apple ID login, certificate + profile secrets),
+see [`examples/publish-to-stores`](../publish-to-stores).
 
 ## Requirements
 
@@ -32,13 +28,8 @@ install relay.
   works out of the box.
 - A physical iPhone connected over USB. The user unlocks it and taps **Trust**
   once during pairing.
-- An Apple signing identity, obtained one of two ways:
-  - **Sign in with your Apple ID** and let Limrun fetch/create the certificate
-    and provisioning profile for you (the default tab in the Signing step). Your
-    Apple password never leaves the browser — only SRP proof material is sent.
-  - **Upload files** — a development `.p12` (with its private key), its password,
-    and a `.mobileprovision` that covers the app's bundle ID **and** the target
-    device's UDID.
+- A signed IPA uploaded as an asset in your organization's storage. It must be
+  signed with a development profile that includes the target device's UDID.
 
 ## Quick Start
 
@@ -63,45 +54,30 @@ git clone https://github.com/limrun-inc/typescript-sdk.git
    yarn --cwd examples/device-install/frontend install
    yarn --cwd examples/device-install/frontend run dev
    ```
-1. Go to `localhost:5173`, click **Create Xcode sandbox**, then work through
-   Phase 1 (sign → build) and Phase 2 (pair → install).
-
-## Sync your project before building
-
-A build runs against whatever source is **synced** into the sandbox. After the
-backend provisions one, sync your Xcode/Expo project into it from the CLI. Pass
-`--id` with the sandbox id shown in the app (the **Build sandbox** step) so
-the CLI targets that exact instance instead of your most recent one:
-
-```bash
-lim xcode sync . --id <sandbox-id>
-# or build directly: lim xcode build . --id <sandbox-id>
-```
-
-A build against an empty sandbox returns `no synced folder found; call /sync first`.
-See [Build with remote Xcode](https://docs.limrun.com/docs/ios/build-with-xcode).
+1. Go to `localhost:5173`, pair your iPhone, then install an asset by name.
 
 ## How it works
 
-- The backend calls `limrun.xcodeInstances.create({ wait: true, reuseIfExists: true })`
-  and returns `status.apiUrl` + `status.token`. The `token` is **instance-scoped**
-  — safe to hand to the browser for this one sandbox, and it can't touch the rest
-  of your account.
-- `useDeviceInstallRelay({ apiUrl, token })` drives WebUSB: `requestUSBAccess()`
-  opens Chrome's device picker, `pairBrowser()` runs the pairing handshake and
-  stores the pair record in IndexedDB (so the user only taps Trust once), and
-  `startInstallation()` streams the signed IPA onto the device.
-- Signing assets come from one of two tabs in the frontend:
-  - **Apple ID** — `useAppleIDLogin` runs the SRP + 2FA login, then the
-    `@limrun/ui/app-store-relay` helpers (`listAppleTeams`, `createAppleCertificate`,
-    `createAppleProfile`, …) fetch or mint a certificate and provisioning profile,
-    which `putAppleGeneratedSigningAssets` stores as `StoredSigningAssets`.
-  - **Upload files** — `importSigningAssetsFromFiles(...)` turns the uploaded
-    `.p12` + `.mobileprovision` into a `StoredSigningAssets` object and validates
-    the profile against the bundle ID and device UDID.
-- `useDeviceBuild({ apiUrl, token, signingAssets })` triggers the signed build and
-  streams logs back; once `status === 'succeeded'` you can install.
+- The backend exposes `POST /session`, which calls
+  `limrun.scopedTokens.create({ scopes })` with `device:*:install` plus an
+  asset read scope. Scopes have the form `<resource>:<id|*>:<action>`; pass a
+  specific asset id (`asset:asset_…:read`) to confine the token to one
+  artifact, as the route does when you send it an `assetName`. Tokens default
+  to a 1 hour TTL and cannot be revoked, so keep them short-lived.
+- The frontend fetches a session on load and hands `registryUrl` + `token` to
+  `useDeviceInstallRelay`. The browser then connects to Limrun's registry
+  (`LIM_REGISTRY_ENDPOINT`, default `https://registry.limrun.com`) directly:
+  `requestUSBAccess()` opens Chrome's device picker, `pairBrowser()` runs the
+  pairing handshake and stores the pair record in IndexedDB (so the user only
+  taps Trust once), and `startInstallation({ assetName })` has the registry
+  download the signed IPA and stream it onto the device.
+- Scoped tokens can only install from assets — the registry rejects
+  arbitrary download URLs for them — so the token cannot be abused as a
+  download proxy even if it leaks before expiry.
+- To produce the artifact, your backend builds with `@limrun/api` on an Xcode
+  sandbox and uploads the signed IPA to an org asset; the signing material
+  comes out of a `SigningSecretStore` filled by the `@limrun/ui/apple`
+  credential helpers.
 
-For the complete API reference (including the Apple ID signing path and
-troubleshooting), see the
+For the complete API reference (including signing and troubleshooting), see the
 [device-install feature README](../../packages/ui/src/device-install/README.md).
