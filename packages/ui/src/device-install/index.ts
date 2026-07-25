@@ -1,50 +1,16 @@
-import {
-  requestUSBAccess as requestCoreUSBAccess,
-  startInstallRelay,
-  startPairingRelay,
-  type RequestUSBAccessOptions as CoreRequestUSBAccessOptions,
-  type StartInstallRelayOptions,
-  type StartPairingRelayOptions,
-} from '../core/device-install/operations';
-import type { DeviceInstallLog } from '../core/device-install/types';
-
 export {
   closeDeviceRelayTarget,
   deviceRelayWebSocketUrl,
-  startInstallRelay as startDeviceInstallRelay,
-  startPairingRelay as startDevicePairingRelay,
+  pairDevice,
+  requestUSBAccess,
+  startDeviceInstall,
   type DeviceRelayTarget,
   type InstallSource,
-  type StartInstallRelayOptions,
-  type StartPairingRelayOptions,
-} from '../core/device-install/operations';
-export { getPairRecord, normalizeUDID, putPairRecord } from '../core/device-install/storage';
-export type {
-  DeviceHello,
-  DeviceInstallLog,
-  PairRecordPayload,
-  StoredPairRecord,
-} from '../core/device-install/types';
-export { RelayClient } from '../core/device-install/operations';
-
-export type RequestUSBAccessOptions = Partial<CoreRequestUSBAccessOptions>;
-
-export async function requestUSBAccess(options: RequestUSBAccessOptions = {}) {
-  return requestCoreUSBAccess({ log: options.log ?? noopLog });
-}
-
-export async function pairDevice(
-  options: Omit<StartPairingRelayOptions, 'log'> & { log?: DeviceInstallLog },
-) {
-  return startPairingRelay({ ...options, log: options.log ?? noopLog });
-}
-
-export async function startDeviceInstall(
-  options: Omit<StartInstallRelayOptions, 'log'> & { log?: DeviceInstallLog },
-) {
-  return startInstallRelay({ ...options, log: options.log ?? noopLog });
-}
-
-function noopLog() {
-  // Intentionally empty. Consumers can pass a logger for progress messages.
-}
+  type PairDeviceOptions,
+  type RequestUSBAccessOptions,
+  type StartDeviceInstallOptions,
+} from './operations';
+export { getPairRecord, putPairRecord } from './pair-store';
+export { RelayClient } from './relay-client';
+export type { DeviceHello, DeviceInstallLog, PairRecordPayload, StoredPairRecord } from './types';
+export { normalizeUDID } from '../core/udid';

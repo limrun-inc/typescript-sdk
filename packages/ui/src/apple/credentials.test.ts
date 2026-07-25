@@ -2,7 +2,7 @@
 
 import forge from 'node-forge';
 import { describe, expect, test } from 'vitest';
-import type { AppleRelayWebSocketClient } from '../core/device-install/apple';
+import type { AppleRelayWebSocketClient } from './relay';
 import {
   APPLE_CERTIFICATE_SECRET_TYPE,
   appleCertificateSecretName,
@@ -131,6 +131,28 @@ describe('ensureAppleCertificateSecret', () => {
     const stored = await org.store.get(APPLE_CERTIFICATE_SECRET_TYPE, secretName);
     expect(stored?.data.certificateID).toBe('CERT1');
     expect(stored?.data.certificateType).toBe('DEVELOPMENT');
+    expect(stored?.data.certificateP12Base64).toBeTruthy();
+  });
+
+  test('mints distribution certificates under their own secret name', async () => {
+    const state: PortalState = {
+      mintedCertificateIds: [],
+      certificateBase64: selfSignedCertificateBase64(),
+    };
+    const org = memorySecretStore();
+
+    const result = await ensureAppleCertificateSecret({
+      relay: fakePortalRelay(state),
+      teamId,
+      secretStore: org.store,
+      certificateKind: 'distribution',
+    });
+    expect(result.created).toBe(true);
+    const stored = await org.store.get(
+      APPLE_CERTIFICATE_SECRET_TYPE,
+      appleCertificateSecretName(teamId, 'DISTRIBUTION'),
+    );
+    expect(stored?.data.certificateType).toBe('DISTRIBUTION');
     expect(stored?.data.certificateP12Base64).toBeTruthy();
   });
 

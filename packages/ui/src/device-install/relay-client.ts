@@ -1,4 +1,4 @@
-import type { DeviceHello, DeviceInstallLog, PairRecordPayload } from '../types';
+import type { DeviceHello, DeviceInstallLog, PairRecordPayload } from './types';
 import { decodeFrame, decodeJson, encodeFrame, encodeJson, RelayMessageType } from './relay-protocol';
 import type { InstallSource } from './operations';
 import {
