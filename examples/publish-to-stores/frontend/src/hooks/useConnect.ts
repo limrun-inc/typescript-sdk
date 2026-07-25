@@ -21,6 +21,7 @@ import {
   listAppleDevices,
   listAppleProfiles,
   listAppleTeams,
+  registerAppleDevice,
   saveAppleProfileSecret,
   switchAppStoreConnectProvider,
   type AppleDeveloperPortalAppID,
@@ -88,6 +89,12 @@ export type ActionStatus = 'pending' | 'running' | 'done' | 'skipped' | 'error';
 
 export type ActionState = { status: ActionStatus; note?: string };
 
+export type WebUsbEnrollmentState = {
+  status: 'idle' | 'checking' | 'needs-login' | 'ready' | 'error';
+  deviceUDID?: string;
+  note?: string;
+};
+
 export type Connection = {
   teamId: string;
   bundleId: string;
@@ -104,6 +111,23 @@ const CONNECTION_STORAGE_KEY = 'publish-to-stores.connection';
 
 /** Sentinel for the bundle ID picker's "register a new one" option. */
 export const NEW_BUNDLE_ID = '__new__';
+
+function normalizeUDID(value?: string) {
+  return (value ?? '').replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+}
+
+function commaSeparated(value?: string) {
+  return (value ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function isUnexpired(expirationDate?: string) {
+  if (!expirationDate) return true;
+  const expiresAt = Date.parse(expirationDate);
+  return Number.isNaN(expiresAt) || expiresAt > Date.now();
+}
 
 type ConnectContext = {
   secretStore: SigningSecretStore;
@@ -155,6 +179,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
   );
   const [actionStates, setActionStates] = useState<Partial<Record<ConnectActionId, ActionState>>>({});
   const [connection, setConnection] = useState<Connection>();
+  const [webUsbEnrollment, setWebUsbEnrollment] = useState<WebUsbEnrollmentState>({ status: 'idle' });
 
   const selectedTeam = teams.find((team) => appleTeamSelectionId(team) === selectedTeamId);
   const teamId = appleTeamSelectionId(selectedTeam);
@@ -185,11 +210,14 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
             secret.type === APPLE_PROVISIONING_PROFILE_SECRET_TYPE &&
             secret.name.startsWith(`${stored.teamId}/`),
         );
-        if (
+        const storeReady =
           has(APPLE_CERTIFICATE_SECRET_TYPE, appleCertificateSecretName(stored.teamId, 'DISTRIBUTION')) &&
           has(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, appStoreConnectApiKeySecretName(stored.teamId)) &&
-          hasProfile
-        ) {
+          hasProfile;
+        const webUsbReady =
+          has(APPLE_CERTIFICATE_SECRET_TYPE, appleCertificateSecretName(stored.teamId, 'DEVELOPMENT')) &&
+          hasProfile;
+        if (storeReady || webUsbReady) {
           if (!cancelled) {
             setConnection(stored);
             setBundleId(stored.bundleId);
@@ -555,10 +583,144 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     teamId,
   ]);
 
+  const prepareWebUsbDevice = useCallback(
+    async (deviceUDID: string, productName: string) => {
+      if (!connection) {
+        onError('Complete the Connect phase before preparing a WebUSB device.');
+        return false;
+      }
+      const normalizedUDID = normalizeUDID(deviceUDID);
+      if (!normalizedUDID) {
+        onError('The selected USB device did not report an iPhone UDID.');
+        return false;
+      }
+
+      onError(undefined);
+      setWebUsbEnrollment({ status: 'checking', deviceUDID: normalizedUDID });
+      try {
+        const certificateName = appleCertificateSecretName(connection.teamId, 'DEVELOPMENT');
+        const certificate = await secretStore.get(APPLE_CERTIFICATE_SECRET_TYPE, certificateName);
+        const profileMetadata = (await secretStore.list()).filter(
+          (secret) =>
+            secret.type === APPLE_PROVISIONING_PROFILE_SECRET_TYPE &&
+            secret.name.startsWith(`${connection.teamId}/`),
+        );
+        for (const metadata of profileMetadata) {
+          const profile = await secretStore.get(APPLE_PROVISIONING_PROFILE_SECRET_TYPE, metadata.name);
+          if (
+            profile?.data.teamID === connection.teamId &&
+            commaSeparated(profile.data.bundleIDs).includes(connection.bundleId) &&
+            commaSeparated(profile.data.deviceIDs).some(
+              (storedUDID) => normalizeUDID(storedUDID) === normalizedUDID,
+            ) &&
+            !!certificate?.data.serialNumber &&
+            commaSeparated(profile.data.certificateSerialNumbers).includes(certificate.data.serialNumber) &&
+            isUnexpired(certificate.data.expirationDate) &&
+            isUnexpired(profile.data.expirationDate)
+          ) {
+            setWebUsbEnrollment({
+              status: 'ready',
+              deviceUDID: normalizedUDID,
+              note: 'Stored development signing already covers this iPhone.',
+            });
+            return true;
+          }
+        }
+
+        if (!relay || !loggedIn) {
+          setWebUsbEnrollment({
+            status: 'needs-login',
+            deviceUDID: normalizedUDID,
+            note: 'Sign in with Apple again to register this iPhone and refresh development signing.',
+          });
+          return false;
+        }
+
+        setBusy('webusb-enrollment');
+        let devices = await listAppleDevices({ relay, teamId: connection.teamId });
+        let portalDevice = devices.find((device) => normalizeUDID(device.deviceNumber) === normalizedUDID);
+        if (!portalDevice) {
+          await registerAppleDevice({
+            relay,
+            teamId: connection.teamId,
+            deviceUDID: normalizedUDID,
+            name: naming.webUsbDeviceName(productName, normalizedUDID),
+          });
+          devices = await listAppleDevices({ relay, teamId: connection.teamId });
+          portalDevice = devices.find((device) => normalizeUDID(device.deviceNumber) === normalizedUDID);
+          log('Registered iPhone with Apple', normalizedUDID);
+        }
+        if (!portalDevice) {
+          throw new Error('Apple did not return the iPhone after registering it.');
+        }
+
+        const portalDeviceId = portalDevice.deviceId;
+        if (!portalDeviceId) {
+          throw new Error('Apple returned no device ID for the selected iPhone.');
+        }
+        const appIds = await listAppleBundleIDs({
+          relay,
+          teamId: connection.teamId,
+          search: connection.bundleId,
+        });
+        const appId = appIds.find((candidate) => appIdBundleId(candidate) === connection.bundleId);
+        const appIdId = appIdIdentifier(appId);
+        if (!appIdId) {
+          throw new Error(`Could not resolve ${connection.bundleId} on the Apple Developer Portal.`);
+        }
+
+        const developmentCertificate = await ensureAppleCertificateSecret({
+          relay,
+          teamId: connection.teamId,
+          secretStore,
+          certificateKind: 'development',
+          commonName: naming.certificateCommonName(connection.teamId),
+          log,
+        });
+        const created = await createAppleProfile({
+          relay,
+          teamId: connection.teamId,
+          profileKind: 'development',
+          bundleId: connection.bundleId,
+          appIdId,
+          certificateIds: [developmentCertificate.certificateId],
+          deviceIds: [portalDeviceId],
+          name: naming.webUsbProfileName(connection.bundleId, normalizedUDID),
+        });
+        const profileId = stringField(created, 'provisioningProfileId') ?? stringField(created, 'profileId');
+        if (!profileId) {
+          throw new Error('Apple profile creation did not return a profile ID.');
+        }
+        await saveAppleProfileSecret({
+          relay,
+          teamId: connection.teamId,
+          profileId,
+          secretStore,
+          log,
+        });
+        setWebUsbEnrollment({
+          status: 'ready',
+          deviceUDID: normalizedUDID,
+          note: 'The iPhone is registered and covered by development signing.',
+        });
+        return true;
+      } catch (error) {
+        const message = errorMessage(error, 'Could not prepare the iPhone for WebUSB');
+        setWebUsbEnrollment({ status: 'error', deviceUDID: normalizedUDID, note: message });
+        onError(message);
+        return false;
+      } finally {
+        setBusy((current) => (current === 'webusb-enrollment' ? undefined : current));
+      }
+    },
+    [connection, log, loggedIn, onError, relay, secretStore],
+  );
+
   const disconnect = useCallback(() => {
     localStorage.removeItem(CONNECTION_STORAGE_KEY);
     setConnection(undefined);
     setActionStates({});
+    setWebUsbEnrollment({ status: 'idle' });
     setTeams([]);
     void appleLogin.close();
   }, [appleLogin]);
@@ -602,6 +764,8 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     // Result
     connection,
     publishReady,
+    webUsbEnrollment,
+    prepareWebUsbDevice,
     disconnect,
   };
 }

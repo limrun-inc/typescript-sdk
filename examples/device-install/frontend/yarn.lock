@@ -423,8 +423,10 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@limrun/device-install@file:../../../packages/device-install":
-  version "0.1.0-rc.0"
+"@limrun/device-install@^0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@limrun/device-install/-/device-install-0.1.0.tgz#431557c1f9b62f55fc9470282e251590e1d1fd09"
+  integrity sha512-V4NKeSdfNMWX8Twx91F3DHUxg/5EUjUpkxwVXXmsuq6OPq+NrcnNOWRBw6lxDl3C7jDLYa06EQGapGkt9J+C+A==
 
 "@rolldown/pluginutils@1.0.0-rc.3":
   version "1.0.0-rc.3"

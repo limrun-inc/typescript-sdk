@@ -1,10 +1,7 @@
-// Runs one publish: materializes the stored signing secrets into temp files,
-// spawns `lim xcode build ... --upload-to-testflight --auto-build-number`
-// armed with a build-finish webhook, and tracks the publish until that
-// webhook arrives. Both the TestFlight and App Store methods run the same
-// upload — an App Store release is the same App Store Connect upload
-// followed by submitting the processed build to review in the App Store
-// Connect UI.
+// Runs one publish: materializes stored signing secrets into temp files,
+// starts a detached `lim xcode build` with a build-finish webhook, and tracks
+// it until the callback arrives. Store methods upload to App Store Connect;
+// WebUSB uploads a development-signed IPA as a private Limrun asset.
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -14,10 +11,11 @@ import { getSecret, listSecrets, type StoredSecret } from './secret-store.js';
 
 export type PublishRequest = {
   projectPath: string;
-  method: 'testflight' | 'appstore';
+  method: 'testflight' | 'appstore' | 'webusb';
   teamId: string;
   bundleId: string;
   scheme?: string;
+  deviceUDID?: string;
 };
 
 type PublishCredentials = {
@@ -25,6 +23,66 @@ type PublishCredentials = {
   profile: StoredSecret;
   apiKey: StoredSecret;
 };
+
+type WebUsbPublishCredentials = {
+  certificate: StoredSecret;
+  profile: StoredSecret;
+};
+
+function normalizeUDID(value?: string) {
+  return (value ?? '').replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+}
+
+function isUnexpired(expirationDate?: string) {
+  if (!expirationDate) return true;
+  const expiresAt = Date.parse(expirationDate);
+  return Number.isNaN(expiresAt) || expiresAt > Date.now();
+}
+
+/**
+ * Resolves development signing that binds the selected device. Device IDs
+ * are normalized because WebUSB and Apple can represent the same UDID with
+ * different punctuation.
+ */
+export async function resolveWebUsbPublishCredentials(
+  teamId: string,
+  bundleId: string,
+  deviceUDID: string,
+): Promise<WebUsbPublishCredentials> {
+  const certificate = await getSecret('appleCertificate', `${teamId}/DEVELOPMENT`);
+  if (!certificate) {
+    throw new Error(`No development certificate stored for team ${teamId}. Prepare the WebUSB device first.`);
+  }
+  if (!isUnexpired(certificate.data.expirationDate)) {
+    throw new Error(
+      `The development certificate for team ${teamId} is expired. Prepare the WebUSB device again.`,
+    );
+  }
+  const normalizedUDID = normalizeUDID(deviceUDID);
+  const profiles = (await listSecrets())
+    .filter(
+      (secret) =>
+        secret.type === 'appleProvisioningProfile' &&
+        secret.data.teamID === teamId &&
+        (secret.data.bundleIDs ?? '')
+          .split(',')
+          .map((value) => value.trim())
+          .includes(bundleId) &&
+        (secret.data.deviceIDs ?? '').split(',').some((value) => normalizeUDID(value) === normalizedUDID) &&
+        !!certificate.data.serialNumber &&
+        (secret.data.certificateSerialNumbers ?? '')
+          .split(',')
+          .map((value) => value.trim())
+          .includes(certificate.data.serialNumber) &&
+        isUnexpired(secret.data.expirationDate),
+    )
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const profile = profiles[0];
+  if (!profile) {
+    throw new Error(`No development profile for ${bundleId} covers iPhone ${deviceUDID}. Prepare it first.`);
+  }
+  return { certificate, profile };
+}
 
 /**
  * Resolves the three secrets a store upload needs. The distribution
@@ -139,6 +197,10 @@ export type PublishStatus = {
   id: string;
   state: 'running' | 'succeeded' | 'failed';
   startedAt: string;
+  method: PublishRequest['method'];
+  deviceUDID?: string;
+  /** Unique private Limrun asset name for a WebUSB IPA. */
+  assetName?: string;
   /** The build-finish webhook payload, verbatim as limbuild POSTed it. */
   webhook?: unknown;
   webhookReceivedAt?: string;
@@ -210,24 +272,42 @@ export function getPublishStatus(id: string): PublishStatus | undefined {
  * output — that output only goes to this process's console for debugging.
  */
 export async function startPublish(request: PublishRequest, publicUrl: string): Promise<string> {
-  const { certificate, profile, apiKey } = await resolvePublishCredentials(request.teamId, request.bundleId);
+  if (request.method === 'webusb' && !request.deviceUDID) {
+    throw new Error('A selected device UDID is required for WebUSB publishing.');
+  }
+  const storeCredentials =
+    request.method === 'webusb' ?
+      undefined
+    : await resolvePublishCredentials(request.teamId, request.bundleId);
+  const webUsbCredentials =
+    request.method === 'webusb' ?
+      await resolveWebUsbPublishCredentials(request.teamId, request.bundleId, request.deviceUDID!)
+    : undefined;
+  const certificate = storeCredentials?.certificate ?? webUsbCredentials!.certificate;
+  const profile = storeCredentials?.profile ?? webUsbCredentials!.profile;
 
   const workDir = await mkdtemp(path.join(os.tmpdir(), 'publish-to-stores-'));
   const certificatePath = path.join(workDir, 'certificate.p12');
   const profilePath = path.join(workDir, 'profile.mobileprovision');
-  const apiKeyPath = path.join(workDir, 'AuthKey.p8');
   await writeFile(certificatePath, Buffer.from(certificate.data.certificateP12Base64, 'base64'), {
     mode: 0o600,
   });
   await writeFile(profilePath, Buffer.from(profile.data.provisioningProfileBase64, 'base64'), {
     mode: 0o600,
   });
-  await writeFile(apiKeyPath, Buffer.from(apiKey.data.privateKeyP8Base64, 'base64'), { mode: 0o600 });
 
   const id = randomUUID();
   const token = randomBytes(32).toString('hex');
+  const assetName = request.method === 'webusb' ? `webusb-${request.bundleId}-${id}.ipa` : undefined;
   publishes.set(id, {
-    status: { id, state: 'running', startedAt: new Date().toISOString() },
+    status: {
+      id,
+      state: 'running',
+      startedAt: new Date().toISOString(),
+      method: request.method,
+      deviceUDID: request.deviceUDID,
+      assetName,
+    },
     token,
   });
   setTimeout(() => {
@@ -248,12 +328,6 @@ export async function startPublish(request: PublishRequest, publicUrl: string): 
     certificate.data.certificatePassword ?? '',
     '--provisioning-profile',
     profilePath,
-    '--upload-to-testflight',
-    '--auto-build-number',
-    '--asc-key-id',
-    apiKey.data.keyId,
-    '--asc-key',
-    apiKeyPath,
     '--webhook-url',
     `${publicUrl}/webhook/${id}`,
     '--webhook-header',
@@ -267,8 +341,23 @@ export async function startPublish(request: PublishRequest, publicUrl: string): 
     '3s',
     '--detach',
   ];
-  if (apiKey.data.issuerId) {
-    args.push('--asc-issuer-id', apiKey.data.issuerId);
+  if (request.method === 'webusb') {
+    args.push('--upload', assetName!);
+  } else {
+    const apiKey = storeCredentials!.apiKey;
+    const apiKeyPath = path.join(workDir, 'AuthKey.p8');
+    await writeFile(apiKeyPath, Buffer.from(apiKey.data.privateKeyP8Base64, 'base64'), { mode: 0o600 });
+    args.push(
+      '--upload-to-testflight',
+      '--auto-build-number',
+      '--asc-key-id',
+      apiKey.data.keyId,
+      '--asc-key',
+      apiKeyPath,
+    );
+    if (apiKey.data.issuerId) {
+      args.push('--asc-issuer-id', apiKey.data.issuerId);
+    }
   }
   if (request.scheme) {
     args.push('--scheme', request.scheme);

@@ -42,6 +42,51 @@ app.post('/session', async (_req: Request, res: Response) => {
   }
 });
 
+// WebUSB starts with device-only authority for selection and pairing. Once
+// the matching build webhook succeeds, the browser exchanges its publish ID
+// for a fresh token that adds read access to exactly that uploaded IPA.
+app.post('/device-session', async (req: Request<{}, {}, { publishId?: string }>, res: Response) => {
+  try {
+    const scopes = ['device:*:install'];
+    let assetId: string | undefined;
+    let assetName: string | undefined;
+    if (req.body.publishId) {
+      const publish = getPublishStatus(req.body.publishId);
+      if (!publish) {
+        return res.status(404).json({ status: 'error', message: 'Publish not found' });
+      }
+      if (publish.method !== 'webusb' || publish.state !== 'succeeded' || !publish.assetName) {
+        return res.status(409).json({
+          status: 'error',
+          message: 'The WebUSB publish must finish successfully before its asset can be installed.',
+        });
+      }
+      const assets = await limrun.assets.list({ nameFilter: publish.assetName });
+      const asset = assets.find((candidate) => candidate.name === publish.assetName && candidate.md5);
+      if (!asset) {
+        return res.status(404).json({
+          status: 'error',
+          message: `The uploaded asset ${publish.assetName} is not available yet.`,
+        });
+      }
+      assetId = asset.id;
+      assetName = asset.name;
+      scopes.push(`asset:${asset.id}:read`);
+    }
+    const session = await limrun.scopedTokens.create({ scopes });
+    return res.status(200).json({
+      token: session.token,
+      expiresAt: session.expiresAt,
+      registryUrl,
+      assetId,
+      assetName,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'An unknown error occurred';
+    return res.status(500).json({ status: 'error', message });
+  }
+});
+
 // The file-based secret store, exposed with the same response shape as
 // Limrun's organization secrets API so the frontend's SigningSecretStore
 // implementation is a thin fetch wrapper. Secret names contain slashes
@@ -101,19 +146,24 @@ app.delete('/secrets/:type/:name', async (req: Request<{ type: string; name: str
   }
 });
 
-// Starts `lim xcode build --upload-to-testflight` with the stored signing
-// material and a build-finish webhook pointing back at this backend through
-// the public tunnel URL. The CLI provisions (or reuses) its own Xcode
-// instance — the only point in the whole flow where one exists. Responds
-// immediately with the publish ID; the frontend polls GET /publish/:id
-// until the webhook settles it.
+// Starts a detached `lim xcode build` with the stored signing material and a
+// build-finish webhook. Store publishes upload to App Store Connect; WebUSB
+// publishes upload a development-signed IPA as a private Limrun asset.
 app.post('/publish', async (req: Request<{}, {}, Partial<PublishRequest>>, res: Response) => {
-  const { projectPath, method, teamId, bundleId, scheme } = req.body;
-  if (!projectPath || !teamId || !bundleId || (method !== 'testflight' && method !== 'appstore')) {
+  const { projectPath, method, teamId, bundleId, scheme, deviceUDID } = req.body;
+  if (
+    !projectPath ||
+    !teamId ||
+    !bundleId ||
+    (method !== 'testflight' && method !== 'appstore' && method !== 'webusb')
+  ) {
     return res.status(400).json({
       status: 'error',
-      message: 'projectPath, teamId, bundleId and method (testflight | appstore) are required',
+      message: 'projectPath, teamId, bundleId and method (testflight | appstore | webusb) are required',
     });
+  }
+  if (method === 'webusb' && !deviceUDID) {
+    return res.status(400).json({ status: 'error', message: 'deviceUDID is required for WebUSB publishing' });
   }
   if (!publicUrl) {
     return res.status(503).json({
@@ -122,7 +172,7 @@ app.post('/publish', async (req: Request<{}, {}, Partial<PublishRequest>>, res: 
     });
   }
   try {
-    const id = await startPublish({ projectPath, method, teamId, bundleId, scheme }, publicUrl);
+    const id = await startPublish({ projectPath, method, teamId, bundleId, scheme, deviceUDID }, publicUrl);
     return res.status(202).json({ publishId: id });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An unknown error occurred';

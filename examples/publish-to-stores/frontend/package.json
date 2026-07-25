@@ -10,7 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@limrun/apple-auth": "file:../../../packages/apple-auth",
+    "@limrun/apple-auth": "^0.1.0",
+    "@limrun/device-install": "^0.1.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

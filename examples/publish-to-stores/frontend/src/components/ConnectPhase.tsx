@@ -27,9 +27,74 @@ const statusColor: Record<ActionStatus, string> = {
   error: '#c33',
 };
 
-export function ConnectPhase({ connect }: { connect: ConnectController }) {
-  const { appleLogin } = connect;
+function AppleLoginForm({ connect }: { connect: ConnectController }) {
+  return (
+    <>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void connect.signIn();
+        }}
+      >
+        <label style={labelStyle}>Apple ID</label>
+        <input
+          style={inputStyle}
+          type="email"
+          autoComplete="username"
+          value={connect.appleAccount}
+          onChange={(event) => connect.setAppleAccount(event.target.value)}
+          placeholder="developer@example.com"
+        />
+        <label style={labelStyle}>Password</label>
+        <input
+          style={inputStyle}
+          type="password"
+          autoComplete="current-password"
+          value={connect.applePassword}
+          onChange={(event) => connect.setApplePassword(event.target.value)}
+        />
+        <button
+          type="submit"
+          style={primaryButton(connect.busy === 'login' || !connect.relayReady)}
+          disabled={connect.busy === 'login' || !connect.relayReady}
+        >
+          {connect.busy === 'login' ?
+            'Signing in…'
+          : !connect.relayReady ?
+            'Waiting for the backend…'
+          : 'Sign in with Apple'}
+        </button>
+      </form>
+      {connect.appleLogin.status === 'two-factor-required' && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void connect.submitTwoFactor();
+          }}
+        >
+          <div style={warnBox}>Enter the verification code sent to your trusted device or phone.</div>
+          <input
+            style={inputStyle}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={connect.twoFactorCode}
+            onChange={(event) => connect.setTwoFactorCode(event.target.value)}
+            placeholder="123456"
+          />
+          <button
+            type="submit"
+            style={primaryButton(connect.busy === '2fa')}
+            disabled={connect.busy === '2fa'}
+          >
+            {connect.busy === '2fa' ? 'Verifying…' : 'Verify code'}
+          </button>
+        </form>
+      )}
+    </>
+  );
+}
 
+export function ConnectPhase({ connect }: { connect: ConnectController }) {
   if (connect.connection) {
     return (
       <Section title="1. Connect">
@@ -37,6 +102,14 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
           Connected: team {connect.connection.teamId}, bundle ID {connect.connection.bundleId}. Signing
           material is in the secret store, so this phase is skipped.
         </div>
+        {connect.webUsbEnrollment.status === 'needs-login' && (
+          <>
+            <div style={warnBox}>{connect.webUsbEnrollment.note}</div>
+            {!connect.loggedIn ?
+              <AppleLoginForm connect={connect} />
+            : <div style={infoBox}>Apple reauthentication is ready. Prepare the iPhone again below.</div>}
+          </>
+        )}
         <button style={secondaryButton(false)} onClick={connect.disconnect}>
           Disconnect and start over
         </button>
@@ -53,66 +126,7 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
             everything publishing needs: certificates, provisioning profiles, the App Store Connect app record
             and an API key. It runs once; all material lands in the backend's secret store.
           </p>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void connect.signIn();
-            }}
-          >
-            <label style={labelStyle}>Apple ID</label>
-            <input
-              style={inputStyle}
-              type="email"
-              autoComplete="username"
-              value={connect.appleAccount}
-              onChange={(event) => connect.setAppleAccount(event.target.value)}
-              placeholder="developer@example.com"
-            />
-            <label style={labelStyle}>Password</label>
-            <input
-              style={inputStyle}
-              type="password"
-              autoComplete="current-password"
-              value={connect.applePassword}
-              onChange={(event) => connect.setApplePassword(event.target.value)}
-            />
-            <button
-              type="submit"
-              style={primaryButton(connect.busy === 'login' || !connect.relayReady)}
-              disabled={connect.busy === 'login' || !connect.relayReady}
-            >
-              {connect.busy === 'login' ?
-                'Signing in…'
-              : !connect.relayReady ?
-                'Waiting for the backend…'
-              : 'Sign in with Apple'}
-            </button>
-          </form>
-          {appleLogin.status === 'two-factor-required' && (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void connect.submitTwoFactor();
-              }}
-            >
-              <div style={warnBox}>Enter the verification code sent to your trusted device or phone.</div>
-              <input
-                style={inputStyle}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                value={connect.twoFactorCode}
-                onChange={(event) => connect.setTwoFactorCode(event.target.value)}
-                placeholder="123456"
-              />
-              <button
-                type="submit"
-                style={primaryButton(connect.busy === '2fa')}
-                disabled={connect.busy === '2fa'}
-              >
-                {connect.busy === '2fa' ? 'Verifying…' : 'Verify code'}
-              </button>
-            </form>
-          )}
+          <AppleLoginForm connect={connect} />
         </>
       )}
 

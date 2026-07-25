@@ -428,11 +428,18 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@limrun/apple-auth@file:../../../packages/apple-auth":
-  version "0.1.0-rc.0"
+"@limrun/apple-auth@^0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@limrun/apple-auth/-/apple-auth-0.1.0.tgz#e209e5549fafc0bdc64146831c1db5a4083fb25d"
+  integrity sha512-zMrAW568MHcDeF42RorrD7RpM4zP4PXhjI4wrA18eLOj0z3JbgHyytDbelJAoUvGRaDaN4R+R2YN3KLsJmusPA==
   dependencies:
     "@foxt/js-srp" "^0.0.3-patch2"
     node-forge "^1.4.0"
+
+"@limrun/device-install@^0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@limrun/device-install/-/device-install-0.1.0.tgz#431557c1f9b62f55fc9470282e251590e1d1fd09"
+  integrity sha512-V4NKeSdfNMWX8Twx91F3DHUxg/5EUjUpkxwVXXmsuq6OPq+NrcnNOWRBw6lxDl3C7jDLYa06EQGapGkt9J+C+A==
 
 "@rolldown/pluginutils@1.0.0-rc.3":
   version "1.0.0-rc.3"

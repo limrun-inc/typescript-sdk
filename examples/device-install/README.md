@@ -80,4 +80,4 @@ git clone https://github.com/limrun-inc/typescript-sdk.git
   credential helpers.
 
 For the complete API reference (including signing and troubleshooting), see the
-[device-install feature README](../../packages/ui/src/device-install/README.md).
+[device-install package README](../../packages/device-install/README.md).
