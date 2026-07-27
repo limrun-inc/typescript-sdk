@@ -724,7 +724,8 @@ export abstract class BaseCommand extends Command {
 
   protected async resolveGradleTargetOrCreate(providedId: string | undefined): Promise<LastGradleInstance> {
     const target = this.tryResolveGradleTarget(providedId);
-    if (target) {
+    // Creation-time lifecycle settings cannot be applied to a cached target.
+    if (target && !this.autoCreateInactivityTimeout()) {
       return target;
     }
 
@@ -751,7 +752,13 @@ export abstract class BaseCommand extends Command {
   }
 
   private async createStandaloneGradleInstance(): Promise<LastGradleInstance> {
-    const instance = await this.client.gradleInstances.create({ wait: true, spec: {} });
+    const inactivityTimeout = this.autoCreateInactivityTimeout();
+    const instance = await this.client.gradleInstances.create({
+      wait: true,
+      spec: {
+        ...(inactivityTimeout && { inactivityTimeout }),
+      },
+    });
     this._instancesCreatedThisRun.add(instance.metadata.id);
     // The save path builds the record from the instance we just created, so
     // the returned union member is necessarily the gradle shape.

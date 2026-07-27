@@ -1,25 +1,25 @@
 {
   "name": "device-install-example-backend",
   "version": "1.0.0",
-  "description": "Provisions an Xcode build sandbox for the device-install example.",
+  "description": "Stores signing secrets, builds device IPAs, receives webhooks, and mints scoped tokens for the device-install example.",
   "type": "module",
   "main": "index.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch index.ts",
     "start": "tsc -b && node dist/index.js",
     "build": "tsc -b"
   },
-  "author": "",
   "license": "ISC",
   "dependencies": {
-    "@limrun/api": "0.28.3",
+    "@limrun/api": "^0.45.1",
     "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "localtunnel": "^2.0.2"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/localtunnel": "^2.0.4",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }

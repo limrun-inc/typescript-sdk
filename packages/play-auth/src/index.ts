@@ -10,3 +10,4 @@ export {
   type PlaystorePublishInput,
   type PlaystorePublishResult,
 } from './publish';
+export { generateAndroidUploadKeystore, type AndroidUploadKeystore } from './keystore';

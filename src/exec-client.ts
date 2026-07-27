@@ -37,7 +37,8 @@ export type XcodeBuildExecRequest = {
     certificatePassword?: string;
     provisioningProfileBase64?: string;
   };
-  testflight?: TestflightUploadConfig;
+  /** Wire name retained for compatibility with the limbuild exec API. */
+  testflight?: AppStoreUploadConfig;
   buildSettings?: Record<string, string>;
   gitInit?: boolean;
   signedUploadUrl?: string;
@@ -110,17 +111,60 @@ export type GradleSigningConfig = {
 
 export type GradleBuildExecRequest = {
   command: 'gradlebuild';
-  /** Gradle tasks to run. Omit for the server default (assembleDebug). */
+  /**
+   * Gradle tasks to run. Omit for the server default (assembleDebug, or
+   * bundleRelease when signing is set).
+   */
   tasks?: string[];
   /** Relative path to the Gradle root when auto-discovery is ambiguous. */
   projectPath?: string;
   reactNative?: GradleReactNativeConfig;
   signing?: GradleSigningConfig;
+  playstore?: GradlePlaystoreConfig;
   signedUploadUrl?: string;
   webhook?: WebhookConfig;
   additionalMetadata?: {
     signedDownloadUrl?: string;
   };
+};
+
+/**
+ * Publish the built AAB to a Google Play track after a successful build.
+ * Requires signing. Exactly one of accessToken or serviceAccountJsonBase64
+ * must be set; the credential is held in memory for the build duration
+ * only. Progress and failure causes stream as `playstore` SSE events.
+ */
+export type GradlePlaystoreConfig = {
+  /** OAuth bearer token carrying the androidpublisher scope. */
+  accessToken?: string;
+  /** Base64-encoded service-account JSON key invited in Play Console. */
+  serviceAccountJsonBase64?: string;
+  /**
+   * Play track ID, passed to Google verbatim: internal (default), alpha,
+   * beta, production, or a custom closed-testing track. Publishing
+   * replaces the track's existing releases, including an in-progress
+   * staged rollout on that track.
+   */
+  track?: string;
+  /**
+   * completed (default) makes the release live on the track; draft
+   * commits it without rollout. Publishing to the production track
+   * requires setting it explicitly.
+   */
+  releaseStatus?: 'draft' | 'completed';
+  /** Package name to publish under. Omit to read it from the built AAB. */
+  packageName?: string;
+  /**
+   * Set the versionCode to one more than the highest already known to
+   * Google Play (1 for an app with no artifacts), so repeat publishes
+   * never collide. Resolved with the publish credential before the build
+   * and stamped into the workspace copy: android.versionCode in the Expo
+   * config (requires a static app.json), or the single literal
+   * versionCode in a native project's conventional app/ module build
+   * script (computed or flavor-split versionCodes are rejected at
+   * request time).
+   */
+  autoIncrementVersionCode?: boolean;
 };
 
 export type RunExecRequest = {
@@ -143,10 +187,16 @@ export type ExecResult = {
   status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
   signedDownloadUrl?: string;
   /**
-   * Last TestFlight state streamed by the server. Absent when the build ran
-   * without a testflight request, or when the server predates the feature.
+   * Last App Store Connect upload state streamed by the server. Absent when
+   * the build ran without an App Store upload, or when the server predates
+   * the feature.
    */
-  testflight?: TestflightEvent;
+  appstore?: AppStoreEvent;
+  /**
+   * Last Play Store state streamed by the server. Absent when the build ran
+   * without a playstore request, or when the server predates the feature.
+   */
+  playstore?: PlaystoreEvent;
   /**
    * True when the client gave up waiting for the build's event stream. The
    * exit code is fabricated in that case; the remote build may still be
@@ -155,14 +205,24 @@ export type ExecResult = {
   timedOut?: boolean;
 };
 
-export type TestflightEvent = {
-  /** 'unknown' means a testflight event arrived but its payload was unreadable. */
+export type AppStoreEvent = {
+  /** 'unknown' means an App Store upload event arrived but its payload was unreadable. */
   state: 'uploading' | 'processing' | 'accepted' | 'failed' | 'unknown';
   uploadId?: string;
   buildId?: string;
 };
 
-export type TestflightUploadConfig = {
+export type PlaystoreEvent = {
+  /** 'unknown' means a playstore event arrived but its payload was unreadable. */
+  state: 'uploading' | 'accepted' | 'failed' | 'unknown';
+  versionCode?: number;
+  track?: string;
+  /** Machine-readable failure code; present only on failed. */
+  code?: string;
+  message?: string;
+};
+
+export type AppStoreUploadConfig = {
   /** App Store Connect API key ID, e.g. 2X9R4HXF34. */
   apiKeyId: string;
   /** Issuer ID for team API keys. Omit for individual API keys. */
@@ -255,7 +315,8 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private sseConnection: EventSourceClient | null = null;
   private killed = false;
   private detached = false;
-  private testflightEvent: TestflightEvent | null = null;
+  private appStoreEvent: AppStoreEvent | null = null;
+  private playstoreEvent: PlaystoreEvent | null = null;
   private readonly options: ExecOptions;
   private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
 
@@ -475,7 +536,8 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       execId: this.execId!,
       status,
       ...('additionalMetadata' in request ? request.additionalMetadata ?? {} : {}),
-      ...(this.testflightEvent ? { testflight: this.testflightEvent } : {}),
+      ...(this.appStoreEvent ? { appstore: this.appStoreEvent } : {}),
+      ...(this.playstoreEvent ? { playstore: this.playstoreEvent } : {}),
       ...(timedOut ? { timedOut } : {}),
     };
 
@@ -511,12 +573,22 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
               this.stderr.emit('data', data);
             } else if (eventType === 'testflight') {
               try {
-                this.testflightEvent = JSON.parse(data) as TestflightEvent;
+                this.appStoreEvent = JSON.parse(data) as AppStoreEvent;
               } catch {
-                // The event itself proves the server ran the TestFlight step,
+                // The wire event itself proves the server ran the App Store upload,
                 // so never let a payload glitch look like a missing feature.
-                this.testflightEvent = { state: 'unknown' };
+                this.appStoreEvent = { state: 'unknown' };
                 this.log('warn', `SSE testflight event has invalid data: ${data}`);
+              }
+            } else if (eventType === 'playstore') {
+              try {
+                this.playstoreEvent = JSON.parse(data) as PlaystoreEvent;
+              } catch {
+                // Same contract as the App Store upload event: its presence proves the server
+                // ran the Play Store step, so a payload glitch must not
+                // read as a missing feature.
+                this.playstoreEvent = { state: 'unknown' };
+                this.log('warn', `SSE playstore event has invalid data: ${data}`);
               }
             } else if (eventType === 'exitCode') {
               const exitCode = parseInt(data, 10);

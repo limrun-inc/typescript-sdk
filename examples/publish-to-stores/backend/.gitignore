@@ -1,0 +1,5 @@
+node_modules
+dist
+# The file-based secret store holds real signing material.
+.secrets
+*.log

@@ -28,6 +28,13 @@ export interface GradleBuildFlagValues extends WebhookFlagValues {
   'key-alias'?: string;
   'key-password'?: string;
   'save-key'?: boolean;
+  'upload-to-playstore'?: boolean;
+  'auto-version-code'?: boolean;
+  'playstore-service-account'?: string;
+  'playstore-access-token'?: string;
+  'playstore-track'?: string;
+  'playstore-release-status'?: string;
+  'playstore-package'?: string;
 }
 
 /** Whether any explicit task produces an app bundle (AAB) artifact. */
@@ -75,6 +82,56 @@ export function validateSigningFlags(flags: GradleBuildFlagValues): void {
   }
 }
 
+const PLAYSTORE_DEPENDENT_FLAGS = [
+  'playstore-service-account',
+  'playstore-track',
+  'playstore-release-status',
+  'playstore-package',
+] as const;
+
+/**
+ * Validates the Play Store flag combinations, mirroring
+ * validateSigningFlags: pure checks here, the service-account file read
+ * happens in the command afterwards.
+ */
+export function validatePlaystoreFlags(flags: GradleBuildFlagValues): void {
+  if (!flags['upload-to-playstore']) {
+    // Boolean flags check truthiness, not presence: an explicit false
+    // means off and must not poison a plain build.
+    if (flags['auto-version-code'] || PLAYSTORE_DEPENDENT_FLAGS.some((f) => flags[f] !== undefined)) {
+      throw new Error('The playstore flags require --upload-to-playstore.');
+    }
+    // The access token is env-backed. Like the signing password variables,
+    // an ambient credential alone must not poison an otherwise plain build.
+    return;
+  }
+  if (!flags.sign && !flags.keystore) {
+    throw new Error(
+      '--upload-to-playstore publishes the signed release AAB and requires --sign or the --keystore flags.',
+    );
+  }
+  if (flags['playstore-service-account'] && flags['playstore-access-token']) {
+    throw new Error(
+      'Use either --playstore-service-account or --playstore-access-token for --upload-to-playstore, not both.',
+    );
+  }
+  if (!flags['playstore-service-account'] && !flags['playstore-access-token']) {
+    throw new Error(
+      '--upload-to-playstore requires --playstore-service-account or --playstore-access-token.',
+    );
+  }
+  if (flags['playstore-track'] === 'production' && !flags['playstore-release-status']) {
+    // The server rejects this too, but only after the sync; a doomed
+    // combination must not leave a billed instance behind.
+    throw new Error('Publishing to the production track requires an explicit --playstore-release-status.');
+  }
+  if (flags.task?.length && !tasksIncludeBundle(flags.task)) {
+    throw new Error(
+      '--upload-to-playstore publishes an app bundle; include a bundle task (e.g. bundleRelease) in --task or omit --task.',
+    );
+  }
+}
+
 /**
  * Maps parsed `lim gradle build` flags to the exec options, throwing on
  * contradictory combinations. Pure and oclif-free so it is unit-testable and
@@ -88,6 +145,7 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
     throw new Error('Use either --upload or --signed-upload-url, not both.');
   }
   validateSigningFlags(flags);
+  validatePlaystoreFlags(flags);
   const options: GradleBuildOptions = {};
   if (flags.task?.length) {
     options.tasks = flags.task;

@@ -1,4 +1,4 @@
-# Install to a real iPhone over WebUSB
+# Install to a real iPhone over WebUSB or OTA
 
 Install a signed iOS app onto a physical iPhone that's plugged into the user's
 own computer — straight from the browser, no Mac and no Xcode on their machine.
@@ -242,6 +242,45 @@ Progress streams through your `log` callback. The relay surfaces the device's
 real reason on failure (for example
 `Install error: ApplicationVerificationFailed — The identity used to sign the executable is no longer valid.`),
 so render the log — it's the fastest way to diagnose a signing/profile mismatch.
+
+## Install over the air with a QR code
+
+OTA uses an ad-hoc distribution profile that covers the target iPhone UDID. The
+backend mints one scoped token containing both `device:*:install` and
+`asset:<assetId>:read`; the browser exchanges that token for a short-lived,
+signed install-page capability. WebUSB selection supplies the UDID; OTA itself
+does not require a WebUSB pair record:
+
+```tsx
+import { useOTAInstall } from '@limrun/device-install/react';
+
+const ota = useOTAInstall({ registryApiUrl, token: deviceAndAssetScopedToken });
+await ota.start({
+  assetId,
+  bundleIdentifier: webhook.bundleIdentifier,
+  shortVersion: webhook.shortVersion,
+  buildVersion: webhook.buildVersion,
+  title: appName,
+});
+
+// Render locally as a QR code; do not send this capability URL to a third-party
+// QR service.
+console.log(ota.session?.installPageUrl);
+console.log(ota.status?.progress, ota.status?.bytesTransferred);
+```
+
+`createOTAInstallSession` and `getOTAInstallStatus` provide the same flow
+without React. Session creation uses bearer authentication; the iPhone landing,
+manifest, IPA, and status URLs carry the signed capability in their `session`
+query parameter.
+
+All requests for one capability are consistently routed to one registry
+replica. That replica merges byte ranges served from the private IPA, so
+retries do not make progress exceed 100%. Progress means unique IPA bytes
+served by the registry—not that iOS verified or installed the app. Progress is
+in memory: a registry pod replacement preserves authorization and the install
+link, but observed progress resets until iOS makes more range requests. Links
+expire after one hour by default (maximum four hours).
 
 ## Run the demo
 

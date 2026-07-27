@@ -10,7 +10,7 @@ export const layout = {
     fontFamily: 'system-ui, -apple-system, sans-serif',
   } satisfies CSSProperties,
   sidebar: {
-    width: '360px',
+    width: '440px',
     padding: '24px',
     backgroundColor: '#f8f9fa',
     borderRight: '1px solid #e0e0e0',
@@ -27,6 +27,7 @@ export const layout = {
     flexDirection: 'column',
     padding: '24px',
     minWidth: 0,
+    gap: '16px',
   } satisfies CSSProperties,
   panels: { display: 'flex', gap: '20px', flex: 1, minHeight: 0 } satisfies CSSProperties,
 };
@@ -41,31 +42,6 @@ export const inputStyle: CSSProperties = {
   fontSize: '14px',
   boxSizing: 'border-box',
 };
-
-export const multiSelectStyle: CSSProperties = { ...inputStyle, height: '88px' };
-
-export const tabRow: CSSProperties = {
-  display: 'flex',
-  gap: '6px',
-  padding: '4px',
-  backgroundColor: '#eef0f2',
-  borderRadius: '8px',
-};
-
-export function tabButton(active: boolean): CSSProperties {
-  return {
-    flex: 1,
-    padding: '8px',
-    fontSize: '13px',
-    fontWeight: 600,
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    backgroundColor: active ? '#fff' : 'transparent',
-    color: active ? '#1565c0' : '#666',
-    boxShadow: active ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-  };
-}
 
 export const infoBox: CSSProperties = {
   padding: '10px',
@@ -97,18 +73,6 @@ export const hintText: CSSProperties = {
   lineHeight: 1.5,
 };
 
-export const codeBlock: CSSProperties = {
-  margin: '8px 0 4px',
-  padding: '8px 10px',
-  backgroundColor: '#0d1117',
-  color: '#c9d1d9',
-  borderRadius: '6px',
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: '12px',
-  whiteSpace: 'pre-wrap',
-  wordBreak: 'break-all',
-};
-
 function baseButton(disabled: boolean): CSSProperties {
   return {
     width: '100%',
@@ -131,6 +95,16 @@ export function secondaryButton(disabled: boolean): CSSProperties {
   return { ...baseButton(disabled), backgroundColor: disabled ? '#ccc' : '#444' };
 }
 
-export function dangerButton(disabled: boolean): CSSProperties {
-  return { ...baseButton(disabled), backgroundColor: disabled ? '#ccc' : '#dc3545' };
+export function methodCard(selected: boolean, disabled: boolean): CSSProperties {
+  return {
+    flex: 1,
+    minWidth: '160px',
+    padding: '14px',
+    borderRadius: '8px',
+    border: selected ? '2px solid #0066ff' : '1px solid #ddd',
+    backgroundColor: disabled ? '#f4f4f4' : 'white',
+    color: disabled ? '#999' : '#222',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    textAlign: 'left',
+  };
 }

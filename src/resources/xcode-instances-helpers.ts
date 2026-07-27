@@ -5,13 +5,13 @@ import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
 import {
   exec,
+  type AppStoreUploadConfig,
   type ExecChildProcess,
   type ExecRequest,
-  type TestflightUploadConfig,
   type WebhookConfig,
 } from '../exec-client';
 
-export type { TestflightUploadConfig, WebhookConfig } from '../exec-client';
+export type { AppStoreUploadConfig, WebhookConfig } from '../exec-client';
 import {
   syncFolder as syncFolderImpl,
   type AdditionalFileSyncEntry,
@@ -145,12 +145,12 @@ export type XcodeBuildOptions = {
   upload?: { assetName: string } | { signedUploadUrl: string };
   signing?: XcodeSigningConfig;
   /**
-   * Upload the signed device IPA to TestFlight after the build. Requires
-   * signing and sdk=iphoneos. Check ExecResult.testflight on completion: it is
-   * absent when the instance's limbuild predates the feature (old servers
-   * silently ignore this option).
+   * Upload the signed device IPA to App Store Connect after the build.
+   * Requires signing and sdk=iphoneos. Check ExecResult.appstore on
+   * completion; it is absent when the instance's limbuild predates the
+   * feature (old servers silently ignore this option).
    */
-  testflight?: TestflightUploadConfig;
+  appstore?: AppStoreUploadConfig;
   reactNative?: ReactNativeBuildConfig;
   /**
    * Explicit XcodeGen inputs for server-side project generation. By default
@@ -713,7 +713,9 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.xcodegen && { xcodegen: options.xcodegen }),
           ...(options?.reactNative && { reactNative: options.reactNative }),
           ...(options?.signing && { signing: options.signing }),
-          ...(options?.testflight && { testflight: options.testflight }),
+          // The SDK calls this App Store; limbuild's existing wire field remains
+          // testflight until the exec API is revised separately.
+          ...(options?.appstore && { testflight: options.appstore }),
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
           ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
           ...(options?.webhook && { webhook: options.webhook }),

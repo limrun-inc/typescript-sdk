@@ -14,6 +14,8 @@ export const APP_STORE_CONNECT_API_KEY_SECRET_TYPE = 'appStoreConnectApiKey';
 /** Android upload keystore; escrowed by the CLI's `lim gradle build --sign`. */
 export const ANDROID_SIGNING_KEY_SECRET_TYPE = 'androidSigningKey';
 
+// Mirrors the secret types Limrun's organization secrets API accepts; the
+// Android upload keystore rides the same store as the Apple material.
 export type SigningSecretType =
   | typeof APPLE_CERTIFICATE_SECRET_TYPE
   | typeof APPLE_PROVISIONING_PROFILE_SECRET_TYPE

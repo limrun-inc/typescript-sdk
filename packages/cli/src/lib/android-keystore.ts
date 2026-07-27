@@ -1,3 +1,7 @@
+// Keep in sync with the browser twin in
+// packages/ui/src/core/play-publish/keystore.ts: both generators feed the
+// same androidSigningKey secret shape, so recipe drift is a correctness
+// hazard, not a style one.
 import { generateKeyPairSync, randomInt } from 'node:crypto';
 
 import forge from 'node-forge';

@@ -6,6 +6,7 @@ import {
   exec,
   type ExecChildProcess,
   type GradleBuildExecRequest,
+  type GradlePlaystoreConfig,
   type GradleReactNativeConfig,
   type GradleSigningConfig,
   type WebhookConfig,
@@ -47,11 +48,14 @@ export type GradleSyncOptions = {
 };
 
 export type GradleBuildOptions = {
-  /** Gradle tasks to run. Omit for the server default (assembleDebug). */
+  /**
+   * Gradle tasks to run. Omit for the server default (assembleDebug, or
+   * bundleRelease when signing is set).
+   */
   tasks?: string[];
   /** Relative path to the Gradle root when auto-discovery is ambiguous. */
   projectPath?: string;
-  /** Upload the built APK as a named org asset, or to a presigned URL. */
+  /** Upload the built artifact as a named org asset, or to a presigned URL. */
   upload?: { assetName: string; signedUploadUrl?: never } | { signedUploadUrl: string; assetName?: never };
   /** React Native / Expo tuning. */
   reactNative?: GradleReactNativeConfig;
@@ -62,6 +66,8 @@ export type GradleBuildOptions = {
    * build result. Delivery is best-effort and never fails the build.
    */
   webhook?: WebhookConfig;
+  /** Publish the signed AAB to Google Play; see GradlePlaystoreConfig. */
+  playstore?: GradlePlaystoreConfig;
 };
 
 export type GradleClient = {
@@ -159,6 +165,7 @@ export class GradleInstances extends GeneratedGradleInstances {
           ...(options?.reactNative && { reactNative: options.reactNative }),
           ...(options?.signing && { signing: options.signing }),
           ...(options?.webhook && { webhook: options.webhook }),
+          ...(options?.playstore && { playstore: options.playstore }),
         };
 
         if (options?.upload && 'assetName' in options.upload) {

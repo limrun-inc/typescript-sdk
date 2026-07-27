@@ -54,3 +54,110 @@ test('tasks, project path, and upload map through', () => {
     upload: { assetName: 'app.apk' },
   });
 });
+
+// Play Store flag validation rides the same pre-instance contract as
+// signing: contradictions throw here, never after an instance was billed.
+// The service-account file read and playstore assembly live in the
+// command, so the mapper only validates.
+
+test('playstore flags without --upload-to-playstore throw', () => {
+  expect(() => gradleBuildOptionsFromFlags({ 'playstore-track': 'internal' })).toThrow(
+    'require --upload-to-playstore',
+  );
+});
+
+test('an ambient Play access token does not poison a plain build', () => {
+  expect(gradleBuildOptionsFromFlags({ 'playstore-access-token': 'token', task: ['assembleDebug'] })).toEqual(
+    {
+      tasks: ['assembleDebug'],
+    },
+  );
+});
+
+test('auto-version-code without --upload-to-playstore throws', () => {
+  expect(() => gradleBuildOptionsFromFlags({ 'auto-version-code': true })).toThrow(
+    'require --upload-to-playstore',
+  );
+});
+
+test('an explicit auto-version-code false does not poison plain builds', () => {
+  // Boolean flags carry truthiness semantics in the validator: off is
+  // off, however it was spelled by a programmatic caller.
+  expect(gradleBuildOptionsFromFlags({ 'auto-version-code': false, task: ['assembleDebug'] })).toEqual({
+    tasks: ['assembleDebug'],
+  });
+});
+
+test('upload-to-playstore without signing throws before any instance work', () => {
+  expect(() =>
+    gradleBuildOptionsFromFlags({
+      'upload-to-playstore': true,
+      'playstore-service-account': 'sa.json',
+    }),
+  ).toThrow('requires --sign or the --keystore flags');
+});
+
+test('upload-to-playstore without a Google credential throws', () => {
+  expect(() => gradleBuildOptionsFromFlags({ sign: true, 'upload-to-playstore': true })).toThrow(
+    'requires --playstore-service-account or --playstore-access-token',
+  );
+});
+
+test('upload-to-playstore rejects multiple Google credentials', () => {
+  expect(() =>
+    gradleBuildOptionsFromFlags({
+      sign: true,
+      'upload-to-playstore': true,
+      'playstore-service-account': 'sa.json',
+      'playstore-access-token': 'token',
+    }),
+  ).toThrow('not both');
+});
+
+test('a short-lived access token is a valid Play credential', () => {
+  expect(
+    gradleBuildOptionsFromFlags({
+      sign: true,
+      upload: 'app.aab',
+      'upload-to-playstore': true,
+      'playstore-access-token': 'token',
+      'playstore-track': 'internal',
+    }),
+  ).toEqual({ upload: { assetName: 'app.aab' } });
+});
+
+test('production track without an explicit release status throws', () => {
+  expect(() =>
+    gradleBuildOptionsFromFlags({
+      sign: true,
+      'upload-to-playstore': true,
+      'playstore-service-account': 'sa.json',
+      'playstore-track': 'production',
+    }),
+  ).toThrow('explicit --playstore-release-status');
+});
+
+test('upload-to-playstore with explicit non-bundle tasks throws', () => {
+  expect(() =>
+    gradleBuildOptionsFromFlags({
+      sign: true,
+      task: ['assembleRelease'],
+      'upload-to-playstore': true,
+      'playstore-service-account': 'sa.json',
+    }),
+  ).toThrow('include a bundle task');
+});
+
+test('a valid playstore combination passes validation without mapping playstore', () => {
+  // The mapper stays pure: the command attaches options.playstore after
+  // reading the service-account file.
+  expect(
+    gradleBuildOptionsFromFlags({
+      sign: true,
+      upload: 'app.aab',
+      'upload-to-playstore': true,
+      'playstore-service-account': 'sa.json',
+      'playstore-track': 'internal',
+    }),
+  ).toEqual({ upload: { assetName: 'app.aab' } });
+});

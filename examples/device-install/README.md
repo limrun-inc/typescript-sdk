@@ -1,107 +1,86 @@
-# Device Install (WebUSB) Integration
+# Device Install
 
-This example shows how to install an Apple-signed build onto a **physical iPhone**
-straight from the browser, using a Limrun Xcode build sandbox and the WebUSB relay
-in `@limrun/ui`.
+An end-to-end physical iPhone installation example with two methods:
 
-It has two components:
+- **WebUSB** registers and pairs the selected iPhone, creates development
+  signing, builds a private IPA, and starts installation automatically.
+- **QR / private OTA** registers the selected iPhone without requiring a pair
+  record, creates ad-hoc signing, builds a private IPA, and renders a QR code
+  for Limrun's short-lived private install page.
 
-- `backend/`: Provisions an Xcode build sandbox with your Limrun API key and hands
-  the per-instance `apiUrl` + `token` to the frontend.
-- `frontend/`: Pairs the iPhone over WebUSB, prepares signing assets (via Apple
-  ID sign-in **or** uploaded files), builds a signed IPA on the sandbox, and
-  installs it onto the device — with the `useDeviceInstallRelay`,
-  `useDeviceBuild`, and `useAppleIDLogin` hooks.
+## Architecture
 
-Building a signed artifact and installing it onto a device are separate tasks,
-so the example is organised into two phases that join at install:
+The frontend signs into Apple through `@limrun/apple-auth`, selects a team and
+bundle ID, and uses `@limrun/device-install` for device discovery, pairing,
+automatic installation, and OTA progress. The selected iPhone's UDID is
+registered with Apple before a device-specific profile is created:
 
-- **Phase 1 — Build a signed artifact:** prepare signing assets → build a signed
-  IPA on the sandbox. No device required yet.
-- **Phase 2 — Install to a device:** pair an iPhone over WebUSB → install the
-  Phase 1 artifact. Needs a succeeded build, and the paired device must be in the
-  signing profile used for that build.
+- WebUSB uses a development certificate/profile and requires browser pairing.
+- QR uses a distribution certificate/ad-hoc profile and does not require
+  pairing. USB selection is used only to identify the target UDID.
 
-The sandbox is shared infrastructure: it hosts both the build and the WebUSB
-install relay.
+Signing material is written through a `SigningSecretStore` backed by
+`backend/.secrets/`. The backend then runs:
+
+```text
+lim xcode build <project> --sdk iphoneos --configuration Release \
+  --certificate-p12 ... --provisioning-profile ... \
+  --upload device-install-<method>-<bundle>-<id>.ipa \
+  --webhook-url ... --webhook-header X-Install-Token=... --detach
+```
+
+Only the token-guarded webhook receiver on port 3001 is exposed through
+localtunnel (or `PUBLIC_URL`). The local API and signing-secret store stay on
+port 3000.
+
+The browser initially receives only `device:*:install`. After a successful
+build webhook, it exchanges that build's install ID for a fresh scoped token
+containing `asset:<exact-uploaded-asset-id>:read`. There is no wildcard asset
+grant and no asset-name-only installation path.
+
+For WebUSB, the asset-scoped token is fed back into
+`useDeviceInstallRelay`, which automatically streams the IPA to the paired
+iPhone. For QR, `useOTAInstall` creates a private OTA capability from the IPA
+metadata in the build webhook. The UI renders its QR code and reports how many
+IPA bytes the registry has served. iOS does not expose final verification or
+installation completion.
 
 ## Requirements
 
-- A **Chromium** browser (Chrome or Edge). WebUSB is not available in Safari or
-  Firefox. `http://localhost` counts as a secure context, so the Vite dev server
-  works out of the box.
-- A physical iPhone connected over USB. The user unlocks it and taps **Trust**
-  once during pairing.
-- An Apple signing identity, obtained one of two ways:
-  - **Sign in with your Apple ID** and let Limrun fetch/create the certificate
-    and provisioning profile for you (the default tab in the Signing step). Your
-    Apple password never leaves the browser — only SRP proof material is sent.
-  - **Upload files** — a development `.p12` (with its private key), its password,
-    and a `.mobileprovision` that covers the app's bundle ID **and** the target
-    device's UDID.
+- Node.js and Yarn 1
+- The `lim` CLI on `PATH`
+- `LIM_API_KEY`
+- An Apple Developer Program account
+- Desktop Chrome or Edge in a secure context (`http://localhost` works)
+- A physical, unlocked iPhone connected over USB for target selection
 
-## Quick Start
+Safari and Firefox do not expose WebUSB. Pairing is required only for the
+automatic WebUSB method; QR installation itself happens on the iPhone.
 
-Clone this repo and enter this example folder:
+## Run
 
 ```bash
-git clone https://github.com/limrun-inc/typescript-sdk.git
+export LIM_API_KEY="your api key"
+yarn --cwd examples/device-install/backend install
+yarn --cwd examples/device-install/frontend install
+yarn --cwd examples/device-install/backend dev
 ```
 
-1. Get an API Key from `Limrun Console` > `Settings` page [here](https://console.limrun.com/settings).
-1. Make it available as an environment variable.
-   ```bash
-   export LIM_API_KEY="your api key"
-   ```
-1. Start the backend.
-   ```bash
-   yarn --cwd examples/device-install/backend install
-   yarn --cwd examples/device-install/backend run dev
-   ```
-1. In another terminal session, start the frontend.
-   ```bash
-   yarn --cwd examples/device-install/frontend install
-   yarn --cwd examples/device-install/frontend run dev
-   ```
-1. Go to `localhost:5173`, click **Create Xcode sandbox**, then work through
-   Phase 1 (sign → build) and Phase 2 (pair → install).
-
-## Sync your project before building
-
-A build runs against whatever source is **synced** into the sandbox. After the
-backend provisions one, sync your Xcode/Expo project into it from the CLI. Pass
-`--id` with the sandbox id shown in the app (the **Build sandbox** step) so
-the CLI targets that exact instance instead of your most recent one:
+In another terminal:
 
 ```bash
-lim xcode sync . --id <sandbox-id>
-# or build directly: lim xcode build . --id <sandbox-id>
+yarn --cwd examples/device-install/frontend dev
 ```
 
-A build against an empty sandbox returns `no synced folder found; call /sync first`.
-See [Build with remote Xcode](https://docs.limrun.com/docs/ios/build-with-xcode).
+Open `http://localhost:5173`:
 
-## How it works
+1. Sign in with Apple, choose a team, and choose or create a bundle ID.
+2. Enter the project path on the backend host and select WebUSB or QR.
+3. Select the iPhone. For WebUSB, pair it and tap Trust.
+4. Register the device and prepare method-specific signing.
+5. Start the detached build. Wait for automatic WebUSB installation or scan
+   the QR code on the registered iPhone.
 
-- The backend calls `limrun.xcodeInstances.create({ wait: true, reuseIfExists: true })`
-  and returns `status.apiUrl` + `status.token`. The `token` is **instance-scoped**
-  — safe to hand to the browser for this one sandbox, and it can't touch the rest
-  of your account.
-- `useDeviceInstallRelay({ apiUrl, token })` drives WebUSB: `requestUSBAccess()`
-  opens Chrome's device picker, `pairBrowser()` runs the pairing handshake and
-  stores the pair record in IndexedDB (so the user only taps Trust once), and
-  `startInstallation()` streams the signed IPA onto the device.
-- Signing assets come from one of two tabs in the frontend:
-  - **Apple ID** — `useAppleIDLogin` runs the SRP + 2FA login, then the
-    `@limrun/ui/app-store-relay` helpers (`listAppleTeams`, `createAppleCertificate`,
-    `createAppleProfile`, …) fetch or mint a certificate and provisioning profile,
-    which `putAppleGeneratedSigningAssets` stores as `StoredSigningAssets`.
-  - **Upload files** — `importSigningAssetsFromFiles(...)` turns the uploaded
-    `.p12` + `.mobileprovision` into a `StoredSigningAssets` object and validates
-    the profile against the bundle ID and device UDID.
-- `useDeviceBuild({ apiUrl, token, signingAssets })` triggers the signed build and
-  streams logs back; once `status === 'succeeded'` you can install.
-
-For the complete API reference (including the Apple ID signing path and
-troubleshooting), see the
-[device-install feature README](../../packages/ui/src/device-install/README.md).
+Set `PUBLIC_URL` to a public HTTPS URL forwarded to port 3001 to replace the
+automatic localtunnel. `backend/.secrets/` contains private keys and is
+gitignored. Build state is kept in memory for this example.
