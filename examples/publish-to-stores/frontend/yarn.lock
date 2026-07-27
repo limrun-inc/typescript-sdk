@@ -436,6 +436,11 @@
     "@foxt/js-srp" "^0.0.3-patch2"
     node-forge "^1.4.0"
 
+"@limrun/play-auth@^0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@limrun/play-auth/-/play-auth-0.1.0.tgz#1861ac93e01827604952b8322dc527f2826d030d"
+  integrity sha512-6ZEUp3XWWOa2+loGRoS1+VNDqFKroK7dlbLAghSLE6ZQrQ7uh+VkLAoS7p+ZzPRMwigOyShVrxv6+8sceqrqpw==
+
 "@rolldown/pluginutils@1.0.0-rc.3":
   version "1.0.0-rc.3"
   resolved "https://registry.yarnpkg.com/@rolldown/pluginutils/-/pluginutils-1.0.0-rc.3.tgz#8a88cc92a0f741befc7bc109cb1a4c6b9408e1c5"
