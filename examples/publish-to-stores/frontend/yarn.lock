@@ -436,11 +436,6 @@
     "@foxt/js-srp" "^0.0.3-patch2"
     node-forge "^1.4.0"
 
-"@limrun/device-install@^0.1.0":
-  version "0.1.0"
-  resolved "https://registry.yarnpkg.com/@limrun/device-install/-/device-install-0.1.0.tgz#431557c1f9b62f55fc9470282e251590e1d1fd09"
-  integrity sha512-V4NKeSdfNMWX8Twx91F3DHUxg/5EUjUpkxwVXXmsuq6OPq+NrcnNOWRBw6lxDl3C7jDLYa06EQGapGkt9J+C+A==
-
 "@rolldown/pluginutils@1.0.0-rc.3":
   version "1.0.0-rc.3"
   resolved "https://registry.yarnpkg.com/@rolldown/pluginutils/-/pluginutils-1.0.0-rc.3.tgz#8a88cc92a0f741befc7bc109cb1a4c6b9408e1c5"

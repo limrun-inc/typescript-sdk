@@ -9,12 +9,6 @@ export const PUBLISHER_NAME = 'Acme Publisher';
 
 export const naming = {
   certificateCommonName: (teamId: string) => `${PUBLISHER_NAME} ${teamId}`,
-  developmentProfileName: (bundleId: string) => `${PUBLISHER_NAME} Development ${bundleId}`,
-  webUsbProfileName: (bundleId: string, deviceUDID: string) =>
-    `${PUBLISHER_NAME} WebUSB ${bundleId} ${deviceUDID.slice(-6)} ${Date.now()}`,
-  webUsbDeviceName: (productName: string, deviceUDID: string) =>
-    `${PUBLISHER_NAME} ${productName || 'iPhone'} ${deviceUDID.slice(-6)}`,
-  adHocProfileName: (bundleId: string) => `${PUBLISHER_NAME} Ad Hoc ${bundleId}`,
   appStoreProfileName: (bundleId: string) => `${PUBLISHER_NAME} App Store ${bundleId}`,
   apiKeyNickname: `${PUBLISHER_NAME} Publishing`,
 };

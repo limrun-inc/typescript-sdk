@@ -10,7 +10,7 @@ export const layout = {
     fontFamily: 'system-ui, -apple-system, sans-serif',
   } satisfies CSSProperties,
   sidebar: {
-    width: '360px',
+    width: '440px',
     padding: '24px',
     backgroundColor: '#f8f9fa',
     borderRight: '1px solid #e0e0e0',
@@ -27,6 +27,7 @@ export const layout = {
     flexDirection: 'column',
     padding: '24px',
     minWidth: 0,
+    gap: '16px',
   } satisfies CSSProperties,
   panels: { display: 'flex', gap: '20px', flex: 1, minHeight: 0 } satisfies CSSProperties,
 };
@@ -92,4 +93,18 @@ export function primaryButton(disabled: boolean): CSSProperties {
 
 export function secondaryButton(disabled: boolean): CSSProperties {
   return { ...baseButton(disabled), backgroundColor: disabled ? '#ccc' : '#444' };
+}
+
+export function methodCard(selected: boolean, disabled: boolean): CSSProperties {
+  return {
+    flex: 1,
+    minWidth: '160px',
+    padding: '14px',
+    borderRadius: '8px',
+    border: selected ? '2px solid #0066ff' : '1px solid #ddd',
+    backgroundColor: disabled ? '#f4f4f4' : 'white',
+    color: disabled ? '#999' : '#222',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    textAlign: 'left',
+  };
 }

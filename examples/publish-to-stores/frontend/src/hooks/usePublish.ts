@@ -25,6 +25,14 @@ export function usePublish() {
   const [status, setStatus] = useState<PublishStatus>();
   const [error, setError] = useState<string>();
 
+  const selectMethod = useCallback((selected: PublishMethod) => {
+    setMethod(selected);
+    setState('idle');
+    setPublishId(undefined);
+    setStatus(undefined);
+    setError(undefined);
+  }, []);
+
   const publish = useCallback(async (input: Omit<PublishInput, 'method'> & { method?: PublishMethod }) => {
     setState('running');
     setPublishId(undefined);
@@ -72,5 +80,5 @@ export function usePublish() {
     setError(undefined);
   }, []);
 
-  return { method, setMethod, state, status, error, publish, reset };
+  return { method, setMethod: selectMethod, state, status, error, publish, reset };
 }

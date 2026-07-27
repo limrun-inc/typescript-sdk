@@ -33,35 +33,6 @@ export async function fetchRegistrySession(): Promise<RegistrySession> {
   return (await response.json()) as RegistrySession;
 }
 
-export type DeviceSession = RegistrySession & {
-  /** Present only after a successful WebUSB publish. */
-  assetId?: string;
-  assetName?: string;
-};
-
-/**
- * Mints a device-only pairing session, or exchanges a successful WebUSB
- * publish ID for a session that additionally reads that publish's one IPA.
- */
-export async function fetchDeviceSession(publishId?: string): Promise<DeviceSession> {
-  const response = await fetch(`${BACKEND_URL}/device-session`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(publishId ? { publishId } : {}),
-  });
-  if (!response.ok) {
-    let message = `HTTP ${response.status}`;
-    try {
-      const body = (await response.json()) as { message?: string };
-      if (body.message) message = body.message;
-    } catch {
-      // Non-JSON response.
-    }
-    throw new Error(`Failed to start a device session: ${message}`);
-  }
-  return (await response.json()) as DeviceSession;
-}
-
 /**
  * A SigningSecretStore backed by the example backend's file store. This is
  * the "bring your own store" demonstration: the `@limrun/apple-auth` credential
@@ -114,7 +85,7 @@ export function createBackendSecretStore(): SigningSecretStore {
   };
 }
 
-export type PublishMethod = 'testflight' | 'appstore' | 'webusb';
+export type PublishMethod = 'testflight' | 'appstore';
 
 export type PublishInput = {
   projectPath: string;
@@ -122,7 +93,6 @@ export type PublishInput = {
   teamId: string;
   bundleId: string;
   scheme?: string;
-  deviceUDID?: string;
 };
 
 /**
@@ -144,6 +114,9 @@ export type BuildWebhookPayload = {
   consoleUrl?: string;
   /** Presigned, time-limited URL for the persisted build log. */
   logsUrl?: string;
+  bundleIdentifier?: string;
+  shortVersion?: string;
+  buildVersion?: string;
 };
 
 export type PublishStatus = {
@@ -151,8 +124,6 @@ export type PublishStatus = {
   state: 'running' | 'succeeded' | 'failed';
   startedAt: string;
   method: PublishMethod;
-  deviceUDID?: string;
-  assetName?: string;
   webhook?: BuildWebhookPayload;
   webhookReceivedAt?: string;
   error?: string;
