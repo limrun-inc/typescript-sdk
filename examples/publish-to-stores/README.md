@@ -21,10 +21,10 @@ Device installation is intentionally separate; see
   short-lived Google access token.
 - `backend/` keeps `LIM_API_KEY` server-side, mints a short-lived
   `applerelay:*:connect` scoped token, stores signing secrets as files under
-  `backend/.secrets/`, runs `lim xcode build --detach
-  --upload-to-testflight`, and tracks the callback. For Android it creates a
-  one-shot Gradle instance, syncs the project, signs `bundleRelease`, and
-  publishes through the Gradle Play stage.
+  `backend/.secrets/`, runs a detached `lim xcode build` with
+  `--upload-to-testflight`, and tracks the callback. For Android it creates a
+  one-shot Gradle instance, syncs the project, signs `bundleRelease`, and publishes
+  through the Gradle Play stage.
 - The webhook receiver listens separately on port 3001. Only its
   token-guarded route is exposed through localtunnel (or `PUBLIC_URL`); the
   secret store and token-minting routes remain local on port 3000.

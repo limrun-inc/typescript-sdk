@@ -106,12 +106,7 @@ app.delete('/secrets/:type/:name', async (req: Request<{ type: string; name: str
 // build-finish webhook, uploading the result to App Store Connect.
 app.post('/publish', async (req: Request<{}, {}, Partial<PublishRequest>>, res: Response) => {
   const { projectPath, method, teamId, bundleId, scheme } = req.body;
-  if (
-    !projectPath ||
-    !teamId ||
-    !bundleId ||
-    (method !== 'testflight' && method !== 'appstore')
-  ) {
+  if (!projectPath || !teamId || !bundleId || (method !== 'testflight' && method !== 'appstore')) {
     return res.status(400).json({
       status: 'error',
       message: 'projectPath, teamId, bundleId and method (testflight | appstore) are required',

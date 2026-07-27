@@ -71,7 +71,9 @@ export default function App() {
         <h2 style={{ margin: 0, fontSize: '16px' }}>
           {platform === 'android' ? 'Build log' : 'Build result'}
         </h2>
-        {platform === 'android' ? <LogPanel lines={play.lines} /> : <ResultPanel publish={publish} />}
+        {platform === 'android' ?
+          <LogPanel lines={play.lines} />
+        : <ResultPanel publish={publish} />}
       </div>
     </div>
   );
