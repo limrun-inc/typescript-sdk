@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.45.2 (2026-07-27)
+
+Full Changelog: [v0.45.1...v0.45.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.45.1...v0.45.2)
+
+### Styles
+
+* format merged publishing example ([5160217](https://github.com/limrun-inc/typescript-sdk/commit/5160217061f4c5b203baf5d80a732fabae2472e8))
+
 ## 0.45.1 (2026-07-25)
 
 Full Changelog: [v0.45.0...v0.45.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.45.0...v0.45.1)
