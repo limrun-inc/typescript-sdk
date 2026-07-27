@@ -38,7 +38,9 @@ async function resolveDeviceCredentials(request: InstallRequest): Promise<Device
   const profileLabel = request.method === 'webusb' ? 'development' : 'ad-hoc';
   const certificate = await getSecret('appleCertificate', `${request.teamId}/${certificateKind}`);
   if (!certificate || !isUnexpired(certificate.data.expirationDate)) {
-    throw new Error(`No valid ${profileLabel} signing certificate is stored. Prepare the selected iPhone first.`);
+    throw new Error(
+      `No valid ${profileLabel} signing certificate is stored. Prepare the selected iPhone first.`,
+    );
   }
 
   const normalizedUDID = normalizeUDID(request.deviceUDID);
@@ -98,7 +100,9 @@ async function ensureExpoBundleIdentifier(projectPath: string, bundleId: string)
   const configs = await findExpoAppConfigs(projectPath);
   if (configs.length === 0) return [];
   if (configs.length > 1) {
-    return [`Warning: found multiple Expo app.json files; set expo.ios.bundleIdentifier to ${bundleId} manually.`];
+    return [
+      `Warning: found multiple Expo app.json files; set expo.ios.bundleIdentifier to ${bundleId} manually.`,
+    ];
   }
   const appJsonPath = configs[0]!;
   const config = JSON.parse(await readFile(appJsonPath, 'utf8')) as {
@@ -189,7 +193,10 @@ export async function startInstall(request: InstallRequest, publicUrl: string): 
     },
     token,
   });
-  setTimeout(() => failInstall(id, 'No build-finish webhook arrived within two hours.'), INSTALL_TIMEOUT_MS).unref();
+  setTimeout(
+    () => failInstall(id, 'No build-finish webhook arrived within two hours.'),
+    INSTALL_TIMEOUT_MS,
+  ).unref();
 
   const args = [
     'xcode',

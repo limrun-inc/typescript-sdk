@@ -9,7 +9,7 @@ import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance }
 import { webhookConfigFromFlags } from '../../lib/webhook-options';
 import {
   parseBuildSettingEntries,
-  type TestflightUploadConfig,
+  type AppStoreUploadConfig,
   type XcodeBuildOptions,
   type XcodeClient,
 } from '@limrun/api';
@@ -21,8 +21,8 @@ type SigningFlags = {
   'certificate-password'?: string;
   'provisioning-profile'?: string;
 };
-type TestflightFlags = {
-  'upload-to-testflight': boolean;
+type AppStoreFlags = {
+  'upload-to-appstore': boolean;
   'asc-key-id'?: string;
   'asc-issuer-id'?: string;
   'asc-key'?: string;
@@ -48,7 +48,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --scheme WatchApp --sdk watchsimulator',
     '<%= config.bin %> xcode build ./MyProject --xcodegen-spec specs/app.yml --xcodegen-project ios',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
-    '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload-to-testflight --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8',
+    '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload-to-appstore --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
     '<%= config.bin %> xcode build --signed-upload-url <url>',
     `<%= config.bin %> xcode build ./MyProject --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"`,
@@ -139,29 +139,29 @@ export default class XcodeBuild extends BaseCommand {
       description:
         'Path to a .mobileprovision profile. Requires --certificate-p12 and --certificate-password.',
     }),
-    'upload-to-testflight': Flags.boolean({
+    'upload-to-appstore': Flags.boolean({
       description:
-        'Upload the signed IPA to TestFlight after the build. Requires the signing flags plus --asc-key-id and --asc-key.',
+        'Upload the signed IPA to App Store Connect after the build, making it available for TestFlight or App Store distribution. Requires the signing flags plus --asc-key-id and --asc-key.',
       default: false,
     }),
     'asc-key-id': Flags.string({
-      description: 'App Store Connect API key ID for --upload-to-testflight, e.g. 2X9R4HXF34.',
+      description: 'App Store Connect API key ID for --upload-to-appstore, e.g. 2X9R4HXF34.',
     }),
     'asc-issuer-id': Flags.string({
       description: 'App Store Connect issuer ID for team API keys. Omit when using an individual API key.',
     }),
     'asc-key': Flags.string({
-      description: 'Path to the App Store Connect API private key (.p8) for --upload-to-testflight.',
+      description: 'Path to the App Store Connect API private key (.p8) for --upload-to-appstore.',
     }),
     'asc-wait-timeout': Flags.integer({
       description:
-        "How many seconds to watch for App Store Connect's processing verdict after the TestFlight upload. A rejection within the window fails the build; expiry without a verdict succeeds with the build still processing. Defaults to 0 (return as soon as the upload commits; processing routinely takes many minutes), max 1800.",
+        "How many seconds to watch for App Store Connect's processing verdict after the upload. A rejection within the window fails the build; expiry without a verdict succeeds with the build still processing. Defaults to 0 (return as soon as the upload commits; processing routinely takes many minutes), max 1800.",
       min: 0,
       max: 1800,
     }),
     'auto-build-number': Flags.boolean({
       description:
-        'Set the build number to one more than the highest already in App Store Connect (1 for a new app), so repeat uploads never collide on CFBundleVersion. Resolved server-side with the ASC key. Requires --upload-to-testflight and a project using Xcode-standard versioning (CFBundleVersion = $(CURRENT_PROJECT_VERSION)).',
+        'Set the build number to one more than the highest already in App Store Connect (1 for a new app), so repeat uploads never collide on CFBundleVersion. Resolved server-side with the ASC key. Requires --upload-to-appstore and a project using Xcode-standard versioning (CFBundleVersion = $(CURRENT_PROJECT_VERSION)).',
       default: false,
     }),
     'webhook-url': Flags.string({
@@ -220,8 +220,8 @@ export default class XcodeBuild extends BaseCommand {
     if (flags.ios && hasSigningFlags(flags)) {
       this.error('--ios builds run on a simulator and cannot use signing flags.');
     }
-    if (flags.ios && (flags['upload-to-testflight'] || hasTestflightFlags(flags))) {
-      this.error('--ios builds run on a simulator and cannot upload to TestFlight.');
+    if (flags.ios && (flags['upload-to-appstore'] || hasAppStoreFlags(flags))) {
+      this.error('--ios builds run on a simulator and cannot upload to App Store Connect.');
     }
     if (flags.id && flags['inactivity-timeout']) {
       this.error('--inactivity-timeout controls a newly created instance and cannot be combined with --id.');
@@ -280,21 +280,21 @@ export default class XcodeBuild extends BaseCommand {
         }
         options.signing = signing;
       }
-      if (!flags['upload-to-testflight'] && hasTestflightFlags(flags)) {
+      if (!flags['upload-to-appstore'] && hasAppStoreFlags(flags)) {
         // Reserved: a bare ASC credential may gain other meanings later
         // (managed signing, entitlement preflight), so it never implies one.
-        this.error('The asc flags and --auto-build-number require --upload-to-testflight.');
+        this.error('The asc flags and --auto-build-number require --upload-to-appstore.');
       }
-      if (flags['upload-to-testflight']) {
+      if (flags['upload-to-appstore']) {
         if (!signing) {
           this.error(
-            '--upload-to-testflight delivers the signed IPA, so it requires --certificate-p12, --certificate-password, and --provisioning-profile.',
+            '--upload-to-appstore delivers the signed IPA, so it requires --certificate-p12, --certificate-password, and --provisioning-profile.',
           );
         }
         if (settings.sdk !== 'iphoneos') {
-          this.error('--upload-to-testflight requires --sdk iphoneos.');
+          this.error('--upload-to-appstore requires --sdk iphoneos.');
         }
-        options.testflight = await this.buildTestflightOptions(flags);
+        options.appstore = await this.buildAppStoreOptions(flags);
       }
       if (flags.upload && flags['signed-upload-url']) {
         this.error('Use either --upload or --signed-upload-url, not both.');
@@ -364,9 +364,9 @@ export default class XcodeBuild extends BaseCommand {
             { exit: result.exitCode },
           );
         }
-        if (result.testflight?.state === 'failed') {
+        if (result.appstore?.state === 'failed') {
           this.error(
-            "TestFlight upload failed; the build and signing succeeded. See App Store Connect's response in the log above.",
+            "App Store Connect upload failed; the build and signing succeeded. See Apple's response in the log above.",
             { exit: result.exitCode },
           );
         }
@@ -374,16 +374,16 @@ export default class XcodeBuild extends BaseCommand {
       }
 
       this.output(`\nBuild succeeded (exit code ${result.exitCode})`);
-      if (result.testflight?.state === 'accepted') {
-        this.output('TestFlight: accepted by App Store Connect.');
-      } else if (result.testflight?.state === 'processing') {
+      if (result.appstore?.state === 'accepted') {
+        this.output('App Store Connect: upload accepted.');
+      } else if (result.appstore?.state === 'processing') {
         this.output(
-          `TestFlight: uploaded, still processing on Apple's side (upload ${
-            result.testflight.uploadId ?? 'unknown'
+          `App Store Connect: uploaded, still processing on Apple's side (upload ${
+            result.appstore.uploadId ?? 'unknown'
           }).`,
         );
-      } else if (result.testflight?.state === 'unknown') {
-        this.output('TestFlight: upload status could not be read; check App Store Connect.');
+      } else if (result.appstore?.state === 'unknown') {
+        this.output('App Store Connect: upload status could not be read; check App Store Connect.');
       }
       if (flags.ios) {
         const signedStreamUrl = await this.resolveSimulatorStreamUrl(target, xcodeClient);
@@ -437,11 +437,11 @@ export default class XcodeBuild extends BaseCommand {
     }
   }
 
-  private async buildTestflightOptions(
-    flags: TestflightFlags,
-  ): Promise<TestflightUploadConfig & { autoIncrementBuildNumber?: boolean }> {
+  private async buildAppStoreOptions(
+    flags: AppStoreFlags,
+  ): Promise<AppStoreUploadConfig & { autoIncrementBuildNumber?: boolean }> {
     if (!flags['asc-key-id'] || !flags['asc-key']) {
-      this.error('--upload-to-testflight requires both --asc-key-id and --asc-key.');
+      this.error('--upload-to-appstore requires both --asc-key-id and --asc-key.');
     }
     return {
       apiKeyId: flags['asc-key-id'],
@@ -499,7 +499,7 @@ function hasSigningFlags(flags: SigningFlags): boolean {
   );
 }
 
-function hasTestflightFlags(flags: TestflightFlags): boolean {
+function hasAppStoreFlags(flags: AppStoreFlags): boolean {
   return (
     flags['asc-key-id'] !== undefined ||
     flags['asc-issuer-id'] !== undefined ||

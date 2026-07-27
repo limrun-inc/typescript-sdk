@@ -37,7 +37,8 @@ export type XcodeBuildExecRequest = {
     certificatePassword?: string;
     provisioningProfileBase64?: string;
   };
-  testflight?: TestflightUploadConfig;
+  /** Wire name retained for compatibility with the limbuild exec API. */
+  testflight?: AppStoreUploadConfig;
   buildSettings?: Record<string, string>;
   gitInit?: boolean;
   signedUploadUrl?: string;
@@ -186,10 +187,11 @@ export type ExecResult = {
   status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
   signedDownloadUrl?: string;
   /**
-   * Last TestFlight state streamed by the server. Absent when the build ran
-   * without a testflight request, or when the server predates the feature.
+   * Last App Store Connect upload state streamed by the server. Absent when
+   * the build ran without an App Store upload, or when the server predates
+   * the feature.
    */
-  testflight?: TestflightEvent;
+  appstore?: AppStoreEvent;
   /**
    * Last Play Store state streamed by the server. Absent when the build ran
    * without a playstore request, or when the server predates the feature.
@@ -203,8 +205,8 @@ export type ExecResult = {
   timedOut?: boolean;
 };
 
-export type TestflightEvent = {
-  /** 'unknown' means a testflight event arrived but its payload was unreadable. */
+export type AppStoreEvent = {
+  /** 'unknown' means an App Store upload event arrived but its payload was unreadable. */
   state: 'uploading' | 'processing' | 'accepted' | 'failed' | 'unknown';
   uploadId?: string;
   buildId?: string;
@@ -220,7 +222,7 @@ export type PlaystoreEvent = {
   message?: string;
 };
 
-export type TestflightUploadConfig = {
+export type AppStoreUploadConfig = {
   /** App Store Connect API key ID, e.g. 2X9R4HXF34. */
   apiKeyId: string;
   /** Issuer ID for team API keys. Omit for individual API keys. */
@@ -313,7 +315,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private sseConnection: EventSourceClient | null = null;
   private killed = false;
   private detached = false;
-  private testflightEvent: TestflightEvent | null = null;
+  private appStoreEvent: AppStoreEvent | null = null;
   private playstoreEvent: PlaystoreEvent | null = null;
   private readonly options: ExecOptions;
   private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
@@ -534,7 +536,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       execId: this.execId!,
       status,
       ...('additionalMetadata' in request ? request.additionalMetadata ?? {} : {}),
-      ...(this.testflightEvent ? { testflight: this.testflightEvent } : {}),
+      ...(this.appStoreEvent ? { appstore: this.appStoreEvent } : {}),
       ...(this.playstoreEvent ? { playstore: this.playstoreEvent } : {}),
       ...(timedOut ? { timedOut } : {}),
     };
@@ -571,18 +573,18 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
               this.stderr.emit('data', data);
             } else if (eventType === 'testflight') {
               try {
-                this.testflightEvent = JSON.parse(data) as TestflightEvent;
+                this.appStoreEvent = JSON.parse(data) as AppStoreEvent;
               } catch {
-                // The event itself proves the server ran the TestFlight step,
+                // The wire event itself proves the server ran the App Store upload,
                 // so never let a payload glitch look like a missing feature.
-                this.testflightEvent = { state: 'unknown' };
+                this.appStoreEvent = { state: 'unknown' };
                 this.log('warn', `SSE testflight event has invalid data: ${data}`);
               }
             } else if (eventType === 'playstore') {
               try {
                 this.playstoreEvent = JSON.parse(data) as PlaystoreEvent;
               } catch {
-                // Same contract as testflight: the event proves the server
+                // Same contract as the App Store upload event: its presence proves the server
                 // ran the Play Store step, so a payload glitch must not
                 // read as a missing feature.
                 this.playstoreEvent = { state: 'unknown' };

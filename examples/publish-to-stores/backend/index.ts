@@ -4,7 +4,7 @@ import Limrun from '@limrun/api';
 import localtunnel from 'localtunnel';
 import { deleteSecret, getSecret, listSecrets, putSecret } from './secret-store.js';
 import { getPublishStatus, receivePublishWebhook, startPublish, type PublishRequest } from './publish.js';
-import { detectAndroidPackage, streamAndroidPublish, type AndroidPublishRequest } from './publish-android.js';
+import { detectAndroidPackage, startAndroidPublish, type AndroidPublishRequest } from './publish-android.js';
 
 // Used to mint scoped registry tokens and by the lim CLI spawned for
 // publishes.
@@ -156,8 +156,8 @@ app.post(
   },
 );
 
-// Builds, signs, and publishes an Android App Bundle while streaming the
-// Gradle/Play output to the browser. The Google token rides this request only.
+// Starts the detached Android counterpart of /publish. Completion arrives
+// through the same authenticated build-finish webhook and polling route.
 app.post('/publish/android', async (req: Request<{}, {}, Partial<AndroidPublishRequest>>, res: Response) => {
   const { projectPath, packageName, googleAccessToken, track } = req.body;
   if (!projectPath || !packageName || !googleAccessToken) {
@@ -166,7 +166,19 @@ app.post('/publish/android', async (req: Request<{}, {}, Partial<AndroidPublishR
       message: 'projectPath, packageName and googleAccessToken are required',
     });
   }
-  await streamAndroidPublish({ projectPath, packageName, googleAccessToken, track }, apiKey, res);
+  if (!publicUrl) {
+    return res.status(503).json({
+      status: 'error',
+      message: 'The webhook tunnel is still starting; try again in a few seconds.',
+    });
+  }
+  try {
+    const id = await startAndroidPublish({ projectPath, packageName, googleAccessToken, track }, publicUrl);
+    return res.status(202).json({ publishId: id });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'An unknown error occurred';
+    return res.status(500).json({ status: 'error', message });
+  }
 });
 
 // The webhook receiver is its own Express app on its own port: the tunnel

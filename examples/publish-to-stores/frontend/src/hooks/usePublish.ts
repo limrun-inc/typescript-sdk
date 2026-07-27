@@ -13,7 +13,6 @@ import {
 } from '../lib/backend';
 
 export type PublishState = 'idle' | 'running' | 'succeeded' | 'failed';
-export type PublishLogLine = { stream: 'stdout' | 'stderr' | 'error'; text: string };
 
 const POLL_INTERVAL_MS = 3000;
 

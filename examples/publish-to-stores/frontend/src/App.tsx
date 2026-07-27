@@ -1,9 +1,7 @@
 // Publish-to-stores wizard: a Replit-style publishing pipeline for mobile
-// apps. iOS uses detached builds and a terminal webhook; Android streams a
-// signed AAB build and Google Play publish.
+// apps. Both platforms submit detached builds and wait for terminal webhooks.
 import { useMemo, useState, type CSSProperties } from 'react';
 import { ConnectPhase } from './components/ConnectPhase';
-import { LogPanel } from './components/LogPanel';
 import { PlayPhase } from './components/PlayPhase';
 import { PublishPhase } from './components/PublishPhase';
 import { ResultPanel } from './components/ResultPanel';
@@ -20,8 +18,7 @@ function platformPane(visible: boolean): CSSProperties {
 
 export default function App() {
   const [error, setError] = useState<string>();
-  // Both pipelines stay mounted so a running build keeps streaming while
-  // the user looks at the other tab; the log panel follows the selection.
+  // Both pipelines stay mounted so tab switches do not clear form or polling state.
   const [platform, setPlatform] = useState<'ios' | 'android'>('ios');
 
   // The store is the pluggable piece: this one talks to the example
@@ -68,11 +65,9 @@ export default function App() {
         </div>
       </div>
       <div style={layout.main}>
-        <h2 style={{ margin: 0, fontSize: '16px' }}>
-          {platform === 'android' ? 'Build log' : 'Build result'}
-        </h2>
+        <h2 style={{ margin: 0, fontSize: '16px' }}>Build result</h2>
         {platform === 'android' ?
-          <LogPanel lines={play.lines} />
+          <ResultPanel publish={play} />
         : <ResultPanel publish={publish} />}
       </div>
     </div>

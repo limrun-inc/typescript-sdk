@@ -224,8 +224,9 @@ export function InstallPhase({
                 <div style={{ marginTop: '10px' }}>
                   <progress max={1} value={device.ota.status.progress} style={{ width: '100%' }} />
                   <div>
-                    {Math.round(device.ota.status.progress * 100)}% — {bytes(device.ota.status.bytesTransferred)} of{' '}
-                    {bytes(device.ota.status.totalBytes)} served
+                    {Math.round(device.ota.status.progress * 100)}% —{' '}
+                    {bytes(device.ota.status.bytesTransferred)} of {bytes(device.ota.status.totalBytes)}{' '}
+                    served
                   </div>
                   {device.ota.status.state === 'downloaded' && (
                     <div>

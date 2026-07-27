@@ -12,15 +12,21 @@ import {
 } from '@limrun/play-auth';
 import { GOOGLE_OAUTH_CLIENT_ID } from '../config';
 import { errorMessage } from '../lib/apple';
-import { detectAndroidPackage, streamAndroidPublish } from '../lib/backend';
+import {
+  detectAndroidPackage,
+  fetchPublishStatus,
+  startAndroidPublish,
+  type PublishStatus,
+} from '../lib/backend';
 import { probePlayAccess } from '../lib/googlePlay';
-import type { PublishLogLine, PublishState } from './usePublish';
+import type { PublishState } from './usePublish';
 
 const PACKAGE_STORAGE_KEY = 'publish-to-stores.play.packageName';
 const PROJECT_STORAGE_KEY = 'publish-to-stores.play.projectPath';
 
 /** How often to re-probe while waiting for the user to create the app. */
 const PACKAGE_POLL_INTERVAL_MS = 5000;
+const PUBLISH_POLL_INTERVAL_MS = 3000;
 
 export type PackageState =
   | { status: 'unchecked' }
@@ -236,8 +242,9 @@ export function usePlay({
 
   // --- Publish --------------------------------------------------------------
   const [state, setState] = useState<PublishState>('idle');
-  const [lines, setLines] = useState<PublishLogLine[]>([]);
-  const [exitCode, setExitCode] = useState<number>();
+  const [publishId, setPublishId] = useState<string>();
+  const [status, setStatus] = useState<PublishStatus>();
+  const [publishError, setPublishError] = useState<string>();
 
   const publish = useCallback(async () => {
     const token = accessTokenRef.current;
@@ -246,36 +253,45 @@ export function usePlay({
       return;
     }
     setState('running');
-    setLines([]);
-    setExitCode(undefined);
+    setPublishId(undefined);
+    setStatus(undefined);
+    setPublishError(undefined);
     try {
-      let finalExit: number | undefined;
-      await streamAndroidPublish(
-        {
+      setPublishId(
+        await startAndroidPublish({
           projectPath: projectPath.trim(),
           packageName: packageName.trim(),
           googleAccessToken: token,
-        },
-        ({ event, data }) => {
-          if (event === 'exit') {
-            finalExit = Number(data);
-            return;
-          }
-          if (event === 'stdout' || event === 'stderr' || event === 'error') {
-            setLines((current) => [...current, { stream: event, text: data }]);
-          }
-        },
+        }),
       );
-      setExitCode(finalExit);
-      setState(finalExit === 0 ? 'succeeded' : 'failed');
     } catch (error) {
-      setLines((current) => [
-        ...current,
-        { stream: 'error', text: errorMessage(error, 'Play publish failed') },
-      ]);
+      setPublishError(errorMessage(error, 'Play publish failed'));
       setState('failed');
     }
   }, [onError, packageName, projectPath]);
+
+  useEffect(() => {
+    if (state !== 'running' || !publishId) return;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      void fetchPublishStatus(publishId)
+        .then((fetched) => {
+          if (cancelled) return;
+          setStatus(fetched);
+          if (fetched.state !== 'running') {
+            setState(fetched.state);
+            if (fetched.error) setPublishError(fetched.error);
+          }
+        })
+        .catch(() => {
+          // Backend momentarily unreachable; retry on the next tick.
+        });
+    }, PUBLISH_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [state, publishId]);
 
   const connected =
     isSignedIn &&
@@ -307,8 +323,8 @@ export function usePlay({
     // Publish
     connected,
     state,
-    lines,
-    exitCode,
+    status,
+    error: publishError,
     publish,
   };
 }

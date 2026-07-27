@@ -139,13 +139,7 @@ app.delete('/secrets/:type/:name', async (req: Request<{ type: string; name: str
 
 app.post('/install', async (req: Request<{}, {}, Partial<InstallRequest>>, res: Response) => {
   const { projectPath, method, teamId, bundleId, deviceUDID, scheme } = req.body;
-  if (
-    !projectPath ||
-    !teamId ||
-    !bundleId ||
-    !deviceUDID ||
-    (method !== 'webusb' && method !== 'qr')
-  ) {
+  if (!projectPath || !teamId || !bundleId || !deviceUDID || (method !== 'webusb' && method !== 'qr')) {
     return res.status(400).json({
       status: 'error',
       message: 'projectPath, teamId, bundleId, deviceUDID and method (webusb | qr) are required',

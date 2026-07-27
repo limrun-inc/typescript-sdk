@@ -245,10 +245,7 @@ export function PlayPhase({ play, onError }: { play: PlayController; onError: (m
               </div>
             )}
             {play.state === 'failed' && (
-              <div style={errorBox}>
-                Publish failed{play.exitCode !== undefined ? ` (exit code ${play.exitCode})` : ''}. See the
-                build log.
-              </div>
+              <div style={errorBox}>Publish failed. See the build result and persisted log.</div>
             )}
           </>
         </Section>

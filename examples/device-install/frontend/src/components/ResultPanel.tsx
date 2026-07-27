@@ -44,7 +44,8 @@ export function ResultPanel({
           'Nothing yet.'
         : device.activity
             .map((entry) => `${entry.at} ${entry.message}${entry.detail ? ` — ${entry.detail}` : ''}`)
-            .join('\n')}
+            .join('\n')
+        }
       </div>
     </>
   );

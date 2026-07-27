@@ -117,15 +117,7 @@ export function useDeviceInstall({
     return () => {
       cancelled = true;
     };
-  }, [
-    authorizationAttempt,
-    authorizedInstallId,
-    build.method,
-    build.state,
-    build.status?.id,
-    log,
-    onError,
-  ]);
+  }, [authorizationAttempt, authorizedInstallId, build.method, build.state, build.status?.id, log, onError]);
 
   useEffect(() => {
     if (build.method !== 'webusb' || installState !== 'waiting' || !session?.assetId || !install.canInstall)

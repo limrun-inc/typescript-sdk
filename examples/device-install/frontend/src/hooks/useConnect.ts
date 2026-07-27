@@ -133,7 +133,8 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     setBundleIdsLoading(true);
     void listAppleBundleIDs({ relay, teamId })
       .then((appIds) => {
-        if (!cancelled) setPortalAppIds(appIds.filter((appId) => !(appIdBundleId(appId) ?? '').includes('*')));
+        if (!cancelled)
+          setPortalAppIds(appIds.filter((appId) => !(appIdBundleId(appId) ?? '').includes('*')));
       })
       .catch((error: unknown) => {
         if (!cancelled) onError(errorMessage(error, 'Could not list bundle IDs'));
@@ -257,7 +258,9 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
               status: 'ready',
               deviceUDID: normalizedUDID,
               profileKind,
-              note: `Stored ${profileKind === 'adhoc' ? 'ad-hoc' : 'development'} signing covers this iPhone.`,
+              note: `Stored ${
+                profileKind === 'adhoc' ? 'ad-hoc' : 'development'
+              } signing covers this iPhone.`,
             });
             return true;
           }

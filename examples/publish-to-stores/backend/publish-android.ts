@@ -1,15 +1,11 @@
-// Runs one Play Store publish: resolves the escrowed upload keystore,
-// provisions a gradle instance, syncs the project, and runs a signed
-// bundleRelease whose playstore stage publishes the AAB to the requested
-// track, streaming output as Server-Sent Events. The Google access token
-// is browser-minted, rides this one request, and is never stored; the
-// Limrun API key never leaves this backend. The AAB is also uploaded as a
-// named asset so a failed publish leaves the artifact for a retry.
-import { readFile, writeFile } from 'node:fs/promises';
+// Runs one Play Store publish with the same headless lifecycle as iOS:
+// materialize the upload key, submit `lim gradle build --detach` with a
+// completion webhook, and let the frontend poll the callback state.
+import { spawn } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
-import type { Response } from 'express';
-import { Limrun, type GradlePlaystoreConfig } from '@limrun/api';
-import { findExpoAppConfigs } from './publish.js';
+import { beginPublish, failPublish, findExpoAppConfigs } from './publish.js';
 import { getSecret } from './secret-store.js';
 
 export type AndroidPublishRequest = {
@@ -103,130 +99,94 @@ export function androidSigningKeySecretName(packageName: string) {
   return `${packageName}/UPLOAD`;
 }
 
-/**
- * The gradle build outlives the default 5m inactivity window on large
- * projects (dependency install + prebuild + bundleRelease); the exec
- * stream counts as activity, so this is just headroom for the sync gap.
- */
-const INSTANCE_INACTIVITY_TIMEOUT = '15m';
-
-export async function streamAndroidPublish(
+export async function startAndroidPublish(
   request: AndroidPublishRequest,
-  apiKey: string,
-  res: Response,
-): Promise<void> {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  const send = (event: string, data: string) => {
-    res.write(`event: ${event}\n`);
-    for (const line of data.split('\n')) {
-      res.write(`data: ${line}\n`);
-    }
-    res.write('\n');
-  };
-
-  const limrun = new Limrun({ apiKey });
-  let instanceId: string | undefined;
-  // A closed browser tab must not leave work running unattended: before
-  // the build starts, the checkpoints below bail out; once it runs, the
-  // close handler cancels the remote exec.
-  let closed = false;
-  let killBuild: (() => void) | undefined;
-  res.on('close', () => {
-    closed = true;
-    killBuild?.();
-  });
-  try {
-    const signingSecret = await getSecret(
-      ANDROID_SIGNING_KEY_SECRET_TYPE,
-      androidSigningKeySecretName(request.packageName),
+  publicUrl: string,
+): Promise<string> {
+  const signingSecret = await getSecret(
+    ANDROID_SIGNING_KEY_SECRET_TYPE,
+    androidSigningKeySecretName(request.packageName),
+  );
+  if (!signingSecret) {
+    throw new Error(
+      `No upload keystore stored for ${request.packageName}. Prepare one in the Connect phase first.`,
     );
-    if (!signingSecret) {
-      throw new Error(
-        `No upload keystore stored for ${request.packageName}. Import one in the Connect phase first.`,
-      );
-    }
-    const { keystoreBase64, keystorePassword, keyAlias, keyPassword } = signingSecret.data;
-    if (!keystoreBase64 || !keystorePassword || !keyAlias || !keyPassword) {
-      throw new Error(
-        `The stored ${request.packageName} keystore secret is missing one of keystoreBase64, keystorePassword, keyAlias, keyPassword.`,
-      );
-    }
-
-    send('stdout', `Publishing ${request.packageName} to the Play ${request.track ?? 'internal'} track...`);
-    const expoConfigs = await findExpoAppConfigs(request.projectPath);
-    for (const line of await ensureExpoAndroidPackage(expoConfigs, request.packageName)) {
-      send('stdout', line);
-    }
-    if (closed) return;
-    send('stdout', 'Creating a gradle instance...');
-    const instance = await limrun.gradleInstances.create({
-      wait: true,
-      metadata: { displayName: `publish-to-stores ${request.packageName}` },
-      spec: { inactivityTimeout: INSTANCE_INACTIVITY_TIMEOUT },
-    });
-    instanceId = instance.metadata.id;
-    send('stdout', `Instance ${instanceId} ready (${instance.spec.region}).`);
-
-    const gradle = await limrun.gradleInstances.createClient({ instance });
-    send('stdout', `Syncing ${request.projectPath}...`);
-    const sync = await gradle.sync(request.projectPath);
-    send('stdout', `Sync complete${sync.bytesSent !== undefined ? ` (${sync.bytesSent} bytes sent)` : ''}.`);
-    if (closed) return;
-
-    // The platform owns the versionCode: the server resolves the next
-    // free one from Google Play and stamps it before the build, into the
-    // Expo config for Expo projects or the module build script's literal
-    // versionCode for native Gradle projects.
-    const playstore: GradlePlaystoreConfig = {
-      accessToken: request.googleAccessToken,
-      packageName: request.packageName,
-      autoIncrementVersionCode: true,
-      ...(request.track && { track: request.track }),
-    };
-    const proc = gradle.gradlebuild({
-      signing: { keystoreBase64, keystorePassword, keyAlias, keyPassword },
-      playstore,
-      upload: { assetName: `${request.packageName}-${Date.now()}.aab` },
-    });
-    proc.stdout.on('data', (line: string) => send('stdout', line));
-    proc.stderr.on('data', (line: string) => send('stderr', line));
-    killBuild = () => void proc.kill().catch(() => undefined);
-
-    const result = await proc;
-    killBuild = undefined;
-    if (result.playstore?.state === 'accepted') {
-      const versionCode =
-        result.playstore.versionCode !== undefined ? ` as versionCode ${result.playstore.versionCode}` : '';
-      send('stdout', `Published to the Play ${result.playstore.track ?? 'internal'} track${versionCode}.`);
-    } else if (result.playstore?.state === 'failed') {
-      const code = result.playstore.code ? ` [${result.playstore.code}]` : '';
-      send('stderr', `Play publish failed${code}: ${result.playstore.message ?? 'see the log above'}.`);
-    } else if (result.exitCode === 0) {
-      // The playstore SSE event doubles as the capability handshake: a
-      // successful build without one means the server ignored the request.
-      send(
-        'stderr',
-        'The server reported no Play Store publish state; the AAB was built but likely not published.',
-      );
-    }
-    // This stream reports the PUBLISH, not the build: a zero build exit
-    // without a confirmed publish must not light up the success state.
-    send(
-      'exit',
-      String(result.exitCode === 0 && result.playstore?.state !== 'accepted' ? 1 : result.exitCode),
-    );
-    res.end();
-  } catch (error) {
-    send('error', error instanceof Error ? error.message : 'Publish failed');
-    res.end();
-  } finally {
-    if (instanceId) {
-      // Builds are one-shot in this example; the instance has no further use.
-      void limrun.gradleInstances.delete(instanceId).catch(() => undefined);
-    }
   }
+  const { keystoreBase64, keystorePassword, keyAlias, keyPassword } = signingSecret.data;
+  if (!keystoreBase64 || !keystorePassword || !keyAlias || !keyPassword) {
+    throw new Error(
+      `The stored ${request.packageName} keystore secret is missing one of keystoreBase64, keystorePassword, keyAlias, keyPassword.`,
+    );
+  }
+
+  const expoConfigs = await findExpoAppConfigs(request.projectPath);
+  const projectUpdates = await ensureExpoAndroidPackage(expoConfigs, request.packageName);
+  const workDir = await mkdtemp(path.join(os.tmpdir(), 'publish-to-stores-android-'));
+  const keystorePath = path.join(workDir, 'upload.p12');
+  await writeFile(keystorePath, Buffer.from(keystoreBase64, 'base64'), { mode: 0o600 });
+
+  const { id, token } = beginPublish('playstore');
+  const args = [
+    'gradle',
+    'build',
+    request.projectPath,
+    '--keystore',
+    keystorePath,
+    '--key-alias',
+    keyAlias,
+    '--upload',
+    `${request.packageName}-${id}.aab`,
+    '--upload-to-playstore',
+    '--playstore-package',
+    request.packageName,
+    '--playstore-track',
+    request.track ?? 'internal',
+    '--auto-version-code',
+    '--webhook-url',
+    `${publicUrl}/webhook/${id}`,
+    '--webhook-header',
+    `X-Publish-Token=${token}`,
+    '--webhook-header',
+    'Bypass-Tunnel-Reminder=true',
+    '--inactivity-timeout',
+    '3s',
+    '--detach',
+  ];
+
+  const log = (line: string) => console.log(`[publish ${id}] ${line}`);
+  log(`Publishing ${request.packageName} to the Play ${request.track ?? 'internal'} track...`);
+  for (const line of projectUpdates) log(line);
+  log(`$ lim ${args.join(' ')}`);
+
+  const child = spawn('lim', args, {
+    env: {
+      ...process.env,
+      LIM_KEYSTORE_PASSWORD: keystorePassword,
+      LIM_KEY_PASSWORD: keyPassword,
+      LIM_PLAYSTORE_ACCESS_TOKEN: request.googleAccessToken,
+    },
+  });
+  const forwardLines = (stream: NodeJS.ReadableStream) => {
+    let buffered = '';
+    stream.on('data', (chunk: Buffer) => {
+      buffered += chunk.toString('utf8');
+      const lines = buffered.split('\n');
+      buffered = lines.pop() ?? '';
+      for (const line of lines) log(line);
+    });
+  };
+  forwardLines(child.stdout);
+  forwardLines(child.stderr);
+  child.on('error', (error) => {
+    failPublish(id, `Failed to run the lim CLI: ${error.message}. Is it installed and on PATH?`);
+    void rm(workDir, { recursive: true, force: true });
+  });
+  child.on('close', (code) => {
+    void rm(workDir, { recursive: true, force: true });
+    if (code !== 0) {
+      failPublish(id, `lim exited with code ${code ?? 1} before the build finished. See the backend logs.`);
+    }
+  });
+
+  return id;
 }

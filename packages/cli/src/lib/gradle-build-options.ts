@@ -31,6 +31,7 @@ export interface GradleBuildFlagValues extends WebhookFlagValues {
   'upload-to-playstore'?: boolean;
   'auto-version-code'?: boolean;
   'playstore-service-account'?: string;
+  'playstore-access-token'?: string;
   'playstore-track'?: string;
   'playstore-release-status'?: string;
   'playstore-package'?: string;
@@ -98,10 +99,10 @@ export function validatePlaystoreFlags(flags: GradleBuildFlagValues): void {
     // Boolean flags check truthiness, not presence: an explicit false
     // means off and must not poison a plain build.
     if (flags['auto-version-code'] || PLAYSTORE_DEPENDENT_FLAGS.some((f) => flags[f] !== undefined)) {
-      // Reserved: a bare Play credential may gain other meanings later,
-      // so it never implies the publish.
       throw new Error('The playstore flags require --upload-to-playstore.');
     }
+    // The access token is env-backed. Like the signing password variables,
+    // an ambient credential alone must not poison an otherwise plain build.
     return;
   }
   if (!flags.sign && !flags.keystore) {
@@ -109,8 +110,15 @@ export function validatePlaystoreFlags(flags: GradleBuildFlagValues): void {
       '--upload-to-playstore publishes the signed release AAB and requires --sign or the --keystore flags.',
     );
   }
-  if (!flags['playstore-service-account']) {
-    throw new Error('--upload-to-playstore requires --playstore-service-account.');
+  if (flags['playstore-service-account'] && flags['playstore-access-token']) {
+    throw new Error(
+      'Use either --playstore-service-account or --playstore-access-token for --upload-to-playstore, not both.',
+    );
+  }
+  if (!flags['playstore-service-account'] && !flags['playstore-access-token']) {
+    throw new Error(
+      '--upload-to-playstore requires --playstore-service-account or --playstore-access-token.',
+    );
   }
   if (flags['playstore-track'] === 'production' && !flags['playstore-release-status']) {
     // The server rejects this too, but only after the sync; a doomed

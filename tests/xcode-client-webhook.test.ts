@@ -80,6 +80,57 @@ describe('xcode client build-finish webhook', () => {
     });
   });
 
+  test('maps the App Store SDK surface to the existing testflight wire protocol', async () => {
+    const calls: Array<{ input: RequestInfo; init: RequestInit | undefined }> = [];
+    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+      calls.push({ input, init });
+      if (String(input) === 'https://xcode.example.test/exec') {
+        return jsonResponse({ execId: 'build-appstore' });
+      }
+      throw new Error(`unexpected request: ${input}`);
+    });
+    jest
+      .mocked(createEventSource)
+      .mockImplementationOnce(
+        (options: { onMessage: (message: { event: string; data: string }) => void }) => {
+          setTimeout(() => {
+            options.onMessage({
+              event: 'testflight',
+              data: JSON.stringify({ state: 'accepted', uploadId: 'upload-1' }),
+            });
+            options.onMessage({ event: 'exitCode', data: '0' });
+          }, 0);
+          return { close: jest.fn() } as never;
+        },
+      );
+
+    const client = new Limrun({ apiKey: 'key' });
+    const xcode = await client.xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'xcode-token',
+    });
+    const result = await xcode.xcodebuild(
+      { scheme: 'Scripty' },
+      {
+        appstore: {
+          apiKeyId: 'KEY123',
+          apiPrivateKeyBase64: 'cHJpdmF0ZSBrZXk=',
+        },
+      },
+    );
+
+    expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
+      command: 'xcodebuild',
+      xcodebuild: { scheme: 'Scripty' },
+      testflight: {
+        apiKeyId: 'KEY123',
+        apiPrivateKeyBase64: 'cHJpdmF0ZSBrZXk=',
+      },
+    });
+    expect(result.appstore).toEqual({ state: 'accepted', uploadId: 'upload-1' });
+    expect('testflight' in result).toBe(false);
+  });
+
   test('detach returns after exec starts without opening the event stream', async () => {
     const calls: Array<{ input: RequestInfo; init: RequestInit | undefined }> = [];
     nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {

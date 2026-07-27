@@ -22,9 +22,9 @@ export {
   type ExecOptions,
   type ExecResult,
   type ExecChildProcess,
+  type AppStoreEvent,
+  type AppStoreUploadConfig,
   type PlaystoreEvent,
-  type TestflightEvent,
-  type TestflightUploadConfig,
   type WebhookConfig,
 } from './exec-client';
 export {

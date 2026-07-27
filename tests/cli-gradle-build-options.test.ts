@@ -66,6 +66,14 @@ test('playstore flags without --upload-to-playstore throw', () => {
   );
 });
 
+test('an ambient Play access token does not poison a plain build', () => {
+  expect(gradleBuildOptionsFromFlags({ 'playstore-access-token': 'token', task: ['assembleDebug'] })).toEqual(
+    {
+      tasks: ['assembleDebug'],
+    },
+  );
+});
+
 test('auto-version-code without --upload-to-playstore throws', () => {
   expect(() => gradleBuildOptionsFromFlags({ 'auto-version-code': true })).toThrow(
     'require --upload-to-playstore',
@@ -89,10 +97,33 @@ test('upload-to-playstore without signing throws before any instance work', () =
   ).toThrow('requires --sign or the --keystore flags');
 });
 
-test('upload-to-playstore without a service account throws', () => {
+test('upload-to-playstore without a Google credential throws', () => {
   expect(() => gradleBuildOptionsFromFlags({ sign: true, 'upload-to-playstore': true })).toThrow(
-    'requires --playstore-service-account',
+    'requires --playstore-service-account or --playstore-access-token',
   );
+});
+
+test('upload-to-playstore rejects multiple Google credentials', () => {
+  expect(() =>
+    gradleBuildOptionsFromFlags({
+      sign: true,
+      'upload-to-playstore': true,
+      'playstore-service-account': 'sa.json',
+      'playstore-access-token': 'token',
+    }),
+  ).toThrow('not both');
+});
+
+test('a short-lived access token is a valid Play credential', () => {
+  expect(
+    gradleBuildOptionsFromFlags({
+      sign: true,
+      upload: 'app.aab',
+      'upload-to-playstore': true,
+      'playstore-access-token': 'token',
+      'playstore-track': 'internal',
+    }),
+  ).toEqual({ upload: { assetName: 'app.aab' } });
 });
 
 test('production track without an explicit release status throws', () => {

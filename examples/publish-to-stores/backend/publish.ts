@@ -16,6 +16,8 @@ export type PublishRequest = {
   scheme?: string;
 };
 
+export type PublishMethod = PublishRequest['method'] | 'playstore';
+
 type PublishCredentials = {
   certificate: StoredSecret;
   profile: StoredSecret;
@@ -135,7 +137,7 @@ export type PublishStatus = {
   id: string;
   state: 'running' | 'succeeded' | 'failed';
   startedAt: string;
-  method: PublishRequest['method'];
+  method: PublishMethod;
   /** The build-finish webhook payload, verbatim as limbuild POSTed it. */
   webhook?: unknown;
   webhookReceivedAt?: string;
@@ -164,11 +166,30 @@ const PUBLISH_TIMEOUT_MS = 2 * 60 * 60 * 1000;
  * every pre-webhook failure path: spawn errors, non-zero CLI exits, and the
  * post-exit grace timeout.
  */
-function failPublish(id: string, message: string) {
+export function failPublish(id: string, message: string) {
   const entry = publishes.get(id);
   if (!entry || entry.status.state !== 'running') return;
   entry.status.state = 'failed';
   entry.status.error = message;
+}
+
+/** Allocates the authenticated callback state shared by iOS and Android publishes. */
+export function beginPublish(method: PublishMethod): { id: string; token: string } {
+  const id = randomUUID();
+  const token = randomBytes(32).toString('hex');
+  publishes.set(id, {
+    status: {
+      id,
+      state: 'running',
+      startedAt: new Date().toISOString(),
+      method,
+    },
+    token,
+  });
+  setTimeout(() => {
+    failPublish(id, 'No build-finish webhook arrived within two hours.');
+  }, PUBLISH_TIMEOUT_MS).unref();
+  return { id, token };
 }
 
 /**
@@ -220,20 +241,7 @@ export async function startPublish(request: PublishRequest, publicUrl: string): 
     mode: 0o600,
   });
 
-  const id = randomUUID();
-  const token = randomBytes(32).toString('hex');
-  publishes.set(id, {
-    status: {
-      id,
-      state: 'running',
-      startedAt: new Date().toISOString(),
-      method: request.method,
-    },
-    token,
-  });
-  setTimeout(() => {
-    failPublish(id, 'No build-finish webhook arrived within two hours.');
-  }, PUBLISH_TIMEOUT_MS).unref();
+  const { id, token } = beginPublish(request.method);
 
   const args = [
     'xcode',
@@ -263,9 +271,11 @@ export async function startPublish(request: PublishRequest, publicUrl: string): 
     '--detach',
   ];
   const apiKeyPath = path.join(workDir, 'AuthKey.p8');
-  await writeFile(apiKeyPath, Buffer.from(credentials.apiKey.data.privateKeyP8Base64, 'base64'), { mode: 0o600 });
+  await writeFile(apiKeyPath, Buffer.from(credentials.apiKey.data.privateKeyP8Base64, 'base64'), {
+    mode: 0o600,
+  });
   args.push(
-    '--upload-to-testflight',
+    '--upload-to-appstore',
     '--auto-build-number',
     '--asc-key-id',
     credentials.apiKey.data.keyId,

@@ -1,10 +1,9 @@
 # Publish to Stores
 
-An end-to-end iOS and Android publishing example. The iOS flow signs into
-Apple, prepares App Store credentials, and runs a detached `lim xcode build`;
-the terminal result arrives through an authenticated build-finish webhook. The
-Android flow signs into Google, builds and signs an AAB remotely, and publishes
-it to Google Play while streaming the build log.
+An end-to-end iOS and Android publishing example. Both flows launch a detached
+CLI build, return a publish ID immediately, and show the terminal result from an
+authenticated build-finish webhook. Persisted logs remain available through the
+callback payload.
 
 Device installation is intentionally separate; see
 [`examples/device-install`](../device-install).
@@ -22,9 +21,10 @@ Device installation is intentionally separate; see
 - `backend/` keeps `LIM_API_KEY` server-side, mints a short-lived
   `applerelay:*:connect` scoped token, stores signing secrets as files under
   `backend/.secrets/`, runs a detached `lim xcode build` with
-  `--upload-to-testflight`, and tracks the callback. For Android it creates a
-  one-shot Gradle instance, syncs the project, signs `bundleRelease`, and publishes
-  through the Gradle Play stage.
+  `--upload-to-appstore`, and tracks the callback. Android follows the same
+  pattern with detached `lim gradle build`: it signs `bundleRelease`, resolves
+  the next Play `versionCode`, publishes the AAB, and reports completion by
+  webhook.
 - The webhook receiver listens separately on port 3001. Only its
   token-guarded route is exposed through localtunnel (or `PUBLIC_URL`); the
   secret store and token-minting routes remain local on port 3000.
@@ -48,6 +48,9 @@ account release access. The wizard then:
    Limrun asset, and publishes it to the internal track.
 
 The Google access token rides only the publish request and is never stored.
+The backend passes it to the CLI through `LIM_PLAYSTORE_ACCESS_TOKEN`, keeping
+it out of command arguments and shell history. Both build types request a fresh
+instance with a 3-second inactivity timeout; active builds count as activity.
 Replace `GOOGLE_OAUTH_CLIENT_ID` in `frontend/src/config.ts` when serving from
 an origin other than `http://localhost:5173`.
 

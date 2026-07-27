@@ -21,7 +21,7 @@ export default class GradleBuild extends BaseCommand {
   static summary = 'Build an Android project on a gradle instance';
   static description =
     'Sync a local Android project once, then run its Gradle wrapper remotely with streaming output. ' +
-    'Use `--upload` to store the built APK as a named asset that `lim android create --install-asset` can install.';
+    'Use `--upload` to store the artifact, or `--detach` with a webhook for a headless build that returns as soon as the build starts.';
 
   static examples = [
     '<%= config.bin %> gradle build',
@@ -32,6 +32,7 @@ export default class GradleBuild extends BaseCommand {
     '<%= config.bin %> gradle build --sign --upload myapp.aab',
     '<%= config.bin %> gradle build --keystore upload.jks --keystore-password *** --key-alias upload --key-password *** --save-key',
     '<%= config.bin %> gradle build ./my-app --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
+    '<%= config.bin %> gradle build ./my-app --detach --inactivity-timeout 3s --webhook-url https://ci.example.com/hooks/limrun',
     '<%= config.bin %> gradle build --sign --upload-to-playstore --playstore-service-account service-account.json',
   ];
 
@@ -46,6 +47,10 @@ export default class GradleBuild extends BaseCommand {
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description: 'Gradle instance ID to build on. Defaults to the last used or a newly created one.',
+    }),
+    'inactivity-timeout': Flags.string({
+      description:
+        'Inactivity timeout for the instance created by this build (for example 3s, 1m). Forces a fresh instance and cannot be combined with --id. Active builds count as activity.',
     }),
     task: Flags.string({
       description: 'Gradle task to run, such as assembleDebug. Repeat for multiple tasks.',
@@ -65,9 +70,9 @@ export default class GradleBuild extends BaseCommand {
       multiple: true,
       options: [...gradleAndroidABIs],
     }),
-    upload: Flags.string({ description: 'Upload the resulting APK as an asset with this name' }),
+    upload: Flags.string({ description: 'Upload the resulting APK or AAB as an asset with this name' }),
     'signed-upload-url': Flags.string({
-      description: 'Presigned URL to upload the resulting APK to.',
+      description: 'Presigned URL to upload the resulting APK or AAB to.',
     }),
     sign: Flags.boolean({
       description:
@@ -107,12 +112,17 @@ export default class GradleBuild extends BaseCommand {
     }),
     'upload-to-playstore': Flags.boolean({
       description:
-        'Publish the signed AAB to a Google Play track after a successful build. Requires --sign or the --keystore flags plus --playstore-service-account; the app listing must already exist in Play Console.',
+        'Publish the signed AAB to a Google Play track after a successful build. Requires signing plus either --playstore-service-account or --playstore-access-token; the app listing must already exist in Play Console.',
       default: false,
     }),
     'playstore-service-account': Flags.string({
       description:
         'Path to a service-account JSON key whose email is invited in Play Console, for --upload-to-playstore.',
+    }),
+    'playstore-access-token': Flags.string({
+      description:
+        'Short-lived Google OAuth token carrying androidpublisher scope. Prefer LIM_PLAYSTORE_ACCESS_TOKEN so the token is not exposed in shell history.',
+      env: 'LIM_PLAYSTORE_ACCESS_TOKEN',
     }),
     'playstore-track': Flags.string({
       description:
@@ -125,6 +135,11 @@ export default class GradleBuild extends BaseCommand {
     }),
     'playstore-package': Flags.string({
       description: 'Package name to publish under. Omit to read it from the built AAB.',
+    }),
+    detach: Flags.boolean({
+      description:
+        'Return after the remote build is accepted instead of streaming logs and waiting for completion. Requires --webhook-url; use its callback to observe the terminal result.',
+      default: false,
     }),
     'auto-version-code': Flags.boolean({
       description:
@@ -175,19 +190,36 @@ export default class GradleBuild extends BaseCommand {
     } catch (err) {
       return this.error(err instanceof Error ? err.message : String(err));
     }
-    if (flags['upload-to-playstore'] && flags['playstore-service-account']) {
-      let serviceAccountJsonBase64: string;
-      try {
-        serviceAccountJsonBase64 = (await readFile(flags['playstore-service-account'])).toString('base64');
-      } catch (err) {
-        return this.error(
-          `Failed to read --playstore-service-account file at ${flags['playstore-service-account']}: ${
-            err instanceof Error ? err.message : err
-          }`,
-        );
+    if (flags.id && flags['inactivity-timeout']) {
+      return this.error(
+        '--inactivity-timeout controls a newly created instance and cannot be combined with --id.',
+      );
+    }
+    if (flags.detach && !flags['webhook-url']) {
+      return this.error('--detach requires --webhook-url so the terminal build result is observable.');
+    }
+    if (flags['upload-to-playstore']) {
+      let credential: Pick<
+        NonNullable<GradleBuildOptions['playstore']>,
+        'accessToken' | 'serviceAccountJsonBase64'
+      >;
+      if (flags['playstore-service-account']) {
+        try {
+          credential = {
+            serviceAccountJsonBase64: (await readFile(flags['playstore-service-account'])).toString('base64'),
+          };
+        } catch (err) {
+          return this.error(
+            `Failed to read --playstore-service-account file at ${flags['playstore-service-account']}: ${
+              err instanceof Error ? err.message : err
+            }`,
+          );
+        }
+      } else {
+        credential = { accessToken: flags['playstore-access-token']! };
       }
       options.playstore = {
-        serviceAccountJsonBase64,
+        ...credential,
         ...(flags['auto-version-code'] && { autoIncrementVersionCode: true }),
         ...(flags['playstore-track'] && { track: flags['playstore-track'] }),
         ...(flags['playstore-release-status'] && {
@@ -236,6 +268,12 @@ export default class GradleBuild extends BaseCommand {
 
       this.info('Starting gradle build...');
       const proc = gradleClient.gradlebuild(options);
+
+      if (flags.detach) {
+        const execId = await proc.detach();
+        this.output(`Build started (exec ID ${execId}). Completion will be reported by webhook.`);
+        return;
+      }
 
       proc.stdout.on('data', (line: string) => {
         process.stdout.write(line + '\n');

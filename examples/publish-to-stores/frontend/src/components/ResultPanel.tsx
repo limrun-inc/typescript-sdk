@@ -3,7 +3,8 @@
 // payload JSON verbatim. There is no live log — the persisted build log is
 // linked from the payload's logsUrl instead.
 import type { CSSProperties } from 'react';
-import type { PublishController } from '../hooks/usePublish';
+import type { PublishState } from '../hooks/usePublish';
+import type { PublishStatus } from '../lib/backend';
 import { errorBox, hintText } from '../theme';
 
 const jsonPanel: CSSProperties = {
@@ -36,7 +37,13 @@ function formatDuration(ms: number): string {
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
-export function ResultPanel({ publish }: { publish: PublishController }) {
+type ResultController = {
+  state: PublishState;
+  status?: PublishStatus;
+  error?: string;
+};
+
+export function ResultPanel({ publish }: { publish: ResultController }) {
   const { state, status, error } = publish;
 
   if (state === 'idle') {
