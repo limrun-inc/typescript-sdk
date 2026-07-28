@@ -153,8 +153,19 @@ async function handleShimmedXcrun(
 
 // There are never physical devices behind the shim, so `devicectl list
 // devices` gets an empty device list in the shape Maestro's picker parses.
+// Flags can precede the subcommand (devicectl --json-output <path> list
+// devices), so match on positionals.
 function devicectlListDevices(args: string[]): IosShimSimctlResult {
-  if (args[1] !== 'list' || args[2] !== 'devices') {
+  const positionals: string[] = [];
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === '--json-output') {
+      i++;
+      continue;
+    }
+    if (args[i]!.startsWith('-')) continue;
+    positionals.push(args[i]!);
+  }
+  if (positionals[0] !== 'list' || positionals[1] !== 'devices') {
     return { code: 127, stdout: '', stderr: `unsupported devicectl command: ${args.join(' ')}` };
   }
   const payload = JSON.stringify({ result: { devices: [] } });
@@ -326,8 +337,22 @@ function fail(message) {
 
 // Physical-device enumeration (e.g. Maestro's device picker) is answered by
 // the shim server; real devicectl does not exist off macOS. Every other
-// devicectl subcommand delegates.
-const isDevicectlListDevices = args[0] === 'devicectl' && args[1] === 'list' && args[2] === 'devices';
+// devicectl subcommand delegates. Flags can precede the subcommand
+// (devicectl --json-output <path> list devices), so match on positionals.
+function devicectlPositionals(args) {
+  const positionals = [];
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === '--json-output') {
+      i++;
+      continue;
+    }
+    if (args[i].startsWith('-')) continue;
+    positionals.push(args[i]);
+  }
+  return positionals;
+}
+const devicectlSubcommand = args[0] === 'devicectl' ? devicectlPositionals(args) : [];
+const isDevicectlListDevices = devicectlSubcommand[0] === 'list' && devicectlSubcommand[1] === 'devices';
 
 if (args[0] !== 'simctl' && !isDevicectlListDevices) {
   delegate();
