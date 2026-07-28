@@ -87,10 +87,10 @@ function withoutHopByHop(headers: http.IncomingHttpHeaders): http.IncomingHttpHe
 }
 
 /**
- * Loopback-only HTTP forward proxy (absolute-form request targets, as sent by
- * clients configured with e.g. JVM -Dhttp.proxyHost) that rewrites loopback
- * requests on `matchPort` to `remoteBaseUrl`, passes other loopback targets
- * through untouched, and refuses everything else.
+ * Single-destination HTTP forward proxy (absolute-form request targets, as sent
+ * by clients configured with e.g. JVM -Dhttp.proxyHost). Loopback requests on
+ * `matchPort` are forwarded to `remoteBaseUrl`; every other target is refused,
+ * so the proxy can only ever reach the destination it was configured with.
  */
 export async function startForwardHttpProxy({
   matchPort,
@@ -117,19 +117,17 @@ export async function startForwardHttpProxy({
       return;
     }
 
-    // Only loopback targets are ever proxied: the driver port rewrite plus a
-    // client's own local plain-HTTP services. Anything else is refused so this
-    // proxy cannot be used to reach arbitrary hosts.
-    if (!isLoopbackHost(target.hostname)) {
+    // matchPort is always explicit (an ephemeral port or 7001), so a target
+    // without a port can never match. Anything else is refused rather than
+    // forwarded: the requested host never selects the destination, so this
+    // proxy cannot be pointed at another host.
+    if (!isLoopbackHost(target.hostname) || Number(target.port) !== matchPort) {
       res.writeHead(403, { 'content-type': 'text/plain' });
-      res.end('Limrun forward proxy only forwards loopback targets.');
+      res.end(`Limrun forward proxy only forwards 127.0.0.1:${matchPort}.`);
       return;
     }
 
-    // matchPort is always explicit (an ephemeral port or 7001), so a target
-    // without a port can never match.
-    const matched = Number(target.port) === matchPort;
-    const upstreamUrl = matched ? new URL(`${base}${target.pathname}${target.search}`) : target;
+    const upstreamUrl = new URL(`${base}${target.pathname}${target.search}`);
     const transport = upstreamUrl.protocol === 'https:' ? https : http;
     const upstream = transport.request(
       upstreamUrl,
@@ -139,7 +137,7 @@ export async function startForwardHttpProxy({
         headers: {
           ...withoutHopByHop(req.headers),
           host: upstreamUrl.host,
-          ...(matched ? headers : {}),
+          ...headers,
         },
       },
       (upstreamResponse) => {

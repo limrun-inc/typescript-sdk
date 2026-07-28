@@ -56,7 +56,9 @@ yarn start
 1. Launches the compatible Maestro XCTest runner if it is not already running.
 1. Starts a scoped `xcrun` shim and a local HTTP forward proxy from the iOS client. The
    JVM proxy settings route Maestro's driver traffic through the proxy to the remote
-   runner, so the local driver port never needs to exist.
+   runner, so the local driver port never needs to exist. The proxy forwards only the
+   driver port, so flows that call out from `runScript`/`evalScript` should use `https`
+   URLs (those bypass the proxy); plain `http` calls are refused.
 1. Runs `maestro test --platform ios` against the Limrun simulator.
 
 The same wiring is available as a single CLI command: `lim ios maestro test <flow>`.
