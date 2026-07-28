@@ -76,23 +76,16 @@ export function ResultPanel({
   }
 
   const webhook = status?.webhook;
-  const consoleUrl = webhook?.consoleUrl ?? status?.consoleUrl;
-  // Wall clock covers the whole publish (sync, build, upload, callback);
-  // buildDurationMs from the payload is the build step alone.
-  const wallClockMs =
-    status?.webhookReceivedAt && status.startedAt ?
-      Date.parse(status.webhookReceivedAt) - Date.parse(status.startedAt)
-    : undefined;
 
   return (
     <>
       {state === 'failed' && !webhook && (
         <div style={errorBox}>
           {error ?? 'Publish failed.'}
-          {consoleUrl && (
+          {status?.consoleUrl && (
             <>
               {' '}
-              <a href={consoleUrl} target="_blank" rel="noreferrer">
+              <a href={status.consoleUrl} target="_blank" rel="noreferrer">
                 Check the build instance in the console.
               </a>
             </>
@@ -106,11 +99,10 @@ export function ResultPanel({
             {webhook.buildDurationMs !== undefined && (
               <> — build took {formatDuration(webhook.buildDurationMs)}</>
             )}
-            {wallClockMs !== undefined && <> ({formatDuration(wallClockMs)} end to end)</>}
-            {consoleUrl && (
+            {webhook.consoleUrl && (
               <>
                 {' · '}
-                <a href={consoleUrl} target="_blank" rel="noreferrer">
+                <a href={webhook.consoleUrl} target="_blank" rel="noreferrer">
                   Console
                 </a>
               </>

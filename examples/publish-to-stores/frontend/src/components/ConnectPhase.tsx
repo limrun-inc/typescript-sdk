@@ -53,7 +53,7 @@ function AppleLoginForm({ connect }: { connect: ConnectController }) {
           onChange={(event) => connect.setApplePassword(event.target.value)}
         />
         <p style={hintText}>
-          Your password never leaves the browser; sign-in uses the{' '}
+          Your password never leaves the browser by using Apple's {' '}
           <a
             href="https://en.wikipedia.org/wiki/Secure_Remote_Password_protocol"
             target="_blank"

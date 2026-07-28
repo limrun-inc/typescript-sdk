@@ -65,19 +65,13 @@ export default function App() {
           onChange={(event) => updateSecretsDir(event.target.value)}
           placeholder="backend default"
         />
-        <label style={labelStyle}>Webhook URL (public, forwards to the backend&apos;s port 3001)</label>
+        <label style={labelStyle}>Webhook URL (Run `npx localtunnel --port 3001`)</label>
         <input
           style={inputStyle}
           value={webhookUrl}
           onChange={(event) => updateWebhookUrl(event.target.value)}
           placeholder="https://your-subdomain.ngrok-free.app"
         />
-        {!webhookUrl.trim() && (
-          <p style={hintText}>
-            Builds report completion by POSTing a webhook to this URL, exactly as entered. Expose the
-            backend&apos;s webhook receiver with e.g. <code>ngrok http 3001</code> and paste the URL here.
-          </p>
-        )}
         {displayError && <div style={errorBox}>{displayError}</div>}
         <ConnectPhase connect={connect} />
         <InstallPhase connect={connect} build={build} device={device} webhookUrl={webhookUrl} />
