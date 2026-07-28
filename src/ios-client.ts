@@ -10,7 +10,11 @@ import { createIgnoreFn } from './folder-sync-ignore';
 import { prepareAppBundlePath, watchAppArchive } from './app-archive';
 import { downloadFileToLocalPath } from './internal/download-file';
 import { nodeProxyTransport } from './internal/proxy-transport';
-import { startHttpProxy as startLocalHttpProxy } from './http-proxy';
+import {
+  startHttpProxy as startLocalHttpProxy,
+  startForwardHttpProxy as startLocalForwardHttpProxy,
+  type StartForwardHttpProxyOptions,
+} from './http-proxy';
 import { startXcrunShim as startClientXcrunShim } from './ios-shim';
 
 /**
@@ -209,6 +213,8 @@ export type HttpProxyOptions = {
   remoteBaseUrl: string;
   localPort: number;
 };
+
+export type ForwardHttpProxyOptions = Omit<StartForwardHttpProxyOptions, 'headers'>;
 
 /**
  * Targets a file operation at an installed app's container instead of the
@@ -748,6 +754,16 @@ export type InstanceClient = {
    * the client disconnects.
    */
   startHttpProxy: (options: HttpProxyOptions) => Promise<number>;
+
+  /**
+   * Start a local HTTP forward proxy (for clients driven by JVM/system proxy
+   * settings, like Maestro) that rewrites loopback requests on `matchPort` to a
+   * port exposed by the iOS instance and passes other targets through.
+   *
+   * Returns the local port the proxy is listening on. The proxy is closed when
+   * the client disconnects.
+   */
+  startForwardHttpProxy: (options: ForwardHttpProxyOptions) => Promise<number>;
 
   /**
    * Disconnect from the Limrun instance
@@ -1861,6 +1877,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             softReset,
             startReverseTunnel,
             startHttpProxy,
+            startForwardHttpProxy,
             disconnect,
             getConnectionState,
             onConnectionStateChange,
@@ -2498,6 +2515,20 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
       const proxy = await startLocalHttpProxy({
         localPort: proxyOptions.localPort,
+        remoteBaseUrl: proxyOptions.remoteBaseUrl,
+        headers: {
+          authorization: `Bearer ${options.token}`,
+        },
+      });
+      httpProxyCleanups.push(proxy.close);
+      return proxy.port;
+    };
+
+    const startForwardHttpProxy = async (proxyOptions: ForwardHttpProxyOptions): Promise<number> => {
+      assertPort(proxyOptions.matchPort, 'matchPort', 1, 65535);
+
+      const proxy = await startLocalForwardHttpProxy({
+        matchPort: proxyOptions.matchPort,
         remoteBaseUrl: proxyOptions.remoteBaseUrl,
         headers: {
           authorization: `Bearer ${options.token}`,

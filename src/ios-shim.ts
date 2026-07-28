@@ -100,6 +100,9 @@ async function handleShimmedXcrun(
   udid: string,
   args: string[],
 ): Promise<IosShimSimctlResult> {
+  if (args[0] === 'devicectl') {
+    return devicectlListDevices(args);
+  }
   if (args[0] !== 'simctl') {
     return { code: 127, stdout: '', stderr: `unsupported xcrun command: ${args.join(' ')}` };
   }
@@ -146,6 +149,32 @@ async function handleShimmedXcrun(
   }
 
   return await client.simctl(simctlArgs).wait();
+}
+
+// There are never physical devices behind the shim, so `devicectl list
+// devices` gets an empty device list in the shape Maestro's picker parses.
+function devicectlListDevices(args: string[]): IosShimSimctlResult {
+  if (args[1] !== 'list' || args[2] !== 'devices') {
+    return { code: 127, stdout: '', stderr: `unsupported devicectl command: ${args.join(' ')}` };
+  }
+  const payload = JSON.stringify({ result: { devices: [] } });
+  const jsonOutIndex = args.indexOf('--json-output');
+  const jsonOutPath = jsonOutIndex === -1 ? undefined : args[jsonOutIndex + 1];
+  if (jsonOutPath && jsonOutPath !== '-') {
+    try {
+      fs.writeFileSync(jsonOutPath, payload);
+    } catch (error) {
+      return {
+        code: 1,
+        stdout: '',
+        stderr: `could not write devicectl output to ${jsonOutPath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
+    return { code: 0, stdout: '', stderr: '' };
+  }
+  return { code: 0, stdout: `${payload}\n`, stderr: '' };
 }
 
 function simctlList(udid: string, simctlArgs: string[]): IosShimSimctlResult {
@@ -269,8 +298,9 @@ function toSimctlListApps(
 
 function xcrunShimSource(options?: { shimUrl: string; udid: string }): string {
   // Keep the executable tiny: it decides whether this is a Limrun-targeted
-  // simctl call, then asks the local shim server to perform the real work.
-  // Non-Limrun calls still delegate to the host xcrun.
+  // simctl call (or a devicectl device enumeration), then asks the local shim
+  // server to perform the real work. Non-Limrun calls still delegate to the
+  // host xcrun.
   const embeddedShimUrl = options ? JSON.stringify(options.shimUrl) : 'process.env.LIMRUN_XCRUN_SHIM_URL';
   const embeddedUdid = options ? JSON.stringify(options.udid) : 'process.env.LIMRUN_IOS_UDID';
   return `#!/usr/bin/env node
@@ -294,7 +324,12 @@ function fail(message) {
   process.exit(64);
 }
 
-if (args[0] !== 'simctl') {
+// Physical-device enumeration (e.g. Maestro's device picker) is answered by
+// the shim server; real devicectl does not exist off macOS. Every other
+// devicectl subcommand delegates.
+const isDevicectlListDevices = args[0] === 'devicectl' && args[1] === 'list' && args[2] === 'devices';
+
+if (args[0] !== 'simctl' && !isDevicectlListDevices) {
   delegate();
 }
 
@@ -304,21 +339,23 @@ if (!shimUrl || !udid) {
   fail('LIMRUN_XCRUN_SHIM_URL and LIMRUN_IOS_UDID are required.');
 }
 
-const simctlArgs = args.slice(1);
-const command = simctlArgs[0];
 function simctlTarget(command, simctlArgs) {
   if (command === 'launch') {
     return simctlArgs.slice(1).find((arg) => !arg.startsWith('-'));
   }
   return simctlArgs[1];
 }
-const target = simctlTarget(command, simctlArgs);
 function isLimrunTarget(value) {
   return value === udid || value === 'booted';
 }
 
-if (command !== 'list' && !isLimrunTarget(target)) {
-  delegate();
+if (args[0] === 'simctl') {
+  const simctlArgs = args.slice(1);
+  const command = simctlArgs[0];
+  const target = simctlTarget(command, simctlArgs);
+  if (command !== 'list' && !isLimrunTarget(target)) {
+    delegate();
+  }
 }
 
 const parsed = new URL(shimUrl);
