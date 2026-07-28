@@ -116,15 +116,15 @@ jobs:
 
       - name: Install CLI dependencies
         working-directory: packages/cli
-        run: npm ci
+        run: yarn install --frozen-lockfile
 
       - name: Build CLI
         working-directory: packages/cli
-        run: npm run build
+        run: yarn build
 
       - name: Test CLI
         working-directory: packages/cli
-        run: npm test
+        run: yarn test
 
       - name: Smoke test lim run help
         working-directory: packages/cli
