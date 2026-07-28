@@ -7,6 +7,7 @@ import {
   isMaestroRunnerRunning,
   maestroSpawnOptions,
   prepareMaestroRun,
+  waitForMaestroRunner,
 } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';
@@ -103,6 +104,9 @@ export default class IosMaestro extends BaseCommand {
             .wait();
           if (launch.code !== 0) {
             this.error(`Failed to launch the Maestro runner (exit code ${launch.code}): ${launch.stderr}`);
+          }
+          if (!(await waitForMaestroRunner(runnerUrl, token))) {
+            this.error('The Maestro runner did not become ready in time.');
           }
         }
 

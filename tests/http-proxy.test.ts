@@ -132,4 +132,9 @@ describe('startForwardHttpProxy', () => {
     const response = await requestViaProxy(proxy.port, '/not-absolute');
     expect(response.status).toBe(400);
   });
+
+  test('refuses non-loopback targets', async () => {
+    const response = await requestViaProxy(proxy.port, 'http://example.com/anything');
+    expect(response.status).toBe(403);
+  });
 });

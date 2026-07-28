@@ -18,6 +18,7 @@ export {
 export {
   prepareMaestroRun,
   isMaestroRunnerRunning,
+  waitForMaestroRunner,
   maestroSpawnOptions,
   MAESTRO_RUNNER_BUNDLE_ID,
   MAESTRO_RUNNER_PORT,

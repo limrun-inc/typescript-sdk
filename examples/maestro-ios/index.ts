@@ -8,6 +8,7 @@ import {
   isMaestroRunnerRunning,
   maestroSpawnOptions,
   prepareMaestroRun,
+  waitForMaestroRunner,
 } from '@limrun/api';
 
 const apiKey = process.env['LIM_API_KEY'];
@@ -73,6 +74,9 @@ try {
       .wait();
     if (launch.code !== 0) {
       throw new Error(`Failed to launch the Maestro runner (exit code ${launch.code}): ${launch.stderr}`);
+    }
+    if (!(await waitForMaestroRunner(runnerUrl, instance.status.token))) {
+      throw new Error('The Maestro runner did not become ready in time.');
     }
     console.log('Runner launched');
   }

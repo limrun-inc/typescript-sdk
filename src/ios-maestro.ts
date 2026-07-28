@@ -70,6 +70,22 @@ export async function prepareMaestroRun(
   };
 }
 
+/** Poll the remote Maestro XCTest runner until it responds, e.g. right after launching it. */
+export async function waitForMaestroRunner(
+  runnerUrl: string,
+  token: string,
+  timeoutMs = 15000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await isMaestroRunnerRunning(runnerUrl, token)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
 /** Probe the remote Maestro XCTest runner's /status endpoint. */
 export async function isMaestroRunnerRunning(runnerUrl: string, token: string): Promise<boolean> {
   try {
