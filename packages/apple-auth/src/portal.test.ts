@@ -67,7 +67,7 @@ describe('Developer Portal profile requests', () => {
   };
 
   test('builds development, Ad Hoc and App Store profile payloads', async () => {
-    const relay = relayReturning({ provisioningProfile: {} });
+    const relay = relayReturning({ provisioningProfile: { provisioningProfileId: 'PROFILE' } });
 
     await createAppleProfile({ relay, ...base, deviceIds: ['DEVICE'] });
     expect(relay.request.mock.calls[0][1]).toMatchObject({
@@ -125,6 +125,17 @@ describe('Developer Portal responses', () => {
       provider: { name: 'Team One', teamId: 'TEAM1' },
     });
     await expect(listAppleTeams({ relay })).resolves.toEqual([{ name: 'Team One', teamId: 'TEAM1' }]);
+  });
+
+  test('normalizes provider-only team records onto teamId', async () => {
+    const relay = relayReturning({
+      teams: [{ name: 'Portal Team', teamId: 'TEAM1', providerId: 12345 }],
+      availableProviders: [{ name: 'Provider Team', providerId: 67890 }, { name: 'No ID at all' }],
+    });
+    await expect(listAppleTeams({ relay })).resolves.toEqual([
+      { name: 'Portal Team', teamId: 'TEAM1', providerId: '12345' },
+      { name: 'Provider Team', teamId: '67890', providerId: '67890' },
+    ]);
   });
 
   test('surfaces Apple portal errors', async () => {

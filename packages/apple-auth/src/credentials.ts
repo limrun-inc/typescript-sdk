@@ -10,6 +10,7 @@ import {
   downloadAppStoreConnectApiKeyPrivateKey,
   fetchAppStoreConnectIssuerId,
   listAppStoreConnectApiKeys,
+  listAppStoreConnectVendorNumbers,
   switchAppStoreConnectProvider,
   type AppStoreConnectApiKeyRole,
 } from './app-store-connect';
@@ -286,17 +287,24 @@ export async function ensureAppStoreConnectApiKeySecret({
     const matched = current.find((item) => item.id === storedKeyId && !keyRevoked(item.attributes));
     if (matched) {
       // A team key without its issuer ID signs JWTs Apple rejects with
-      // 401 NOT_AUTHORIZED; backfill it from the session before reuse.
+      // 401 NOT_AUTHORIZED, and without the vendor number the sales and
+      // finance report endpoints are unusable; backfill both from the
+      // session before reuse.
+      const repairs: Partial<AppStoreConnectApiKeySecretData> = {};
       if (!stringField(stored.data, 'issuerId')) {
-        const issuerId = await fetchAppStoreConnectIssuerId(relay);
-        if (issuerId) {
-          const repaired = await putAppStoreConnectApiKeySecret(secretStore, secretName, {
-            ...(stored.data as AppStoreConnectApiKeySecretData),
-            issuerId,
-          });
-          log('Backfilled the App Store Connect API key issuer ID', issuerId);
-          return { secret: repaired, keyId: storedKeyId, created: false };
-        }
+        repairs.issuerId = await fetchAppStoreConnectIssuerId(relay);
+      }
+      if (!stringField(stored.data, 'vendorNumber')) {
+        repairs.vendorNumber = await fetchVendorNumberBestEffort(relay, providerId, log);
+      }
+      const repairedFields = Object.entries(repairs).filter(([, value]) => value);
+      if (repairedFields.length > 0) {
+        const repaired = await putAppStoreConnectApiKeySecret(secretStore, secretName, {
+          ...(stored.data as AppStoreConnectApiKeySecretData),
+          ...Object.fromEntries(repairedFields),
+        });
+        log('Backfilled App Store Connect API key fields', repairedFields.map(([key]) => key).join(', '));
+        return { secret: repaired, keyId: storedKeyId, created: false };
       }
       log('Reusing stored App Store Connect API key', storedKeyId);
       return { secret: stored, keyId: storedKeyId, created: false };
@@ -311,6 +319,8 @@ export async function ensureAppStoreConnectApiKeySecret({
     privateKeyP8Base64: base64FromText(downloaded.privateKeyPem),
     keyId,
     issuerId: downloaded.issuerId,
+    vendorNumber: await fetchVendorNumberBestEffort(relay, providerId, log),
+    roles: (roles ?? ['APP_MANAGER']).join(','),
     nickname,
     teamID: teamId,
   };
@@ -329,6 +339,30 @@ export async function ensureAppStoreConnectApiKeySecret({
   }
   log('App Store Connect API key stored', keyId);
   return { secret, keyId, created: true };
+}
+
+/**
+ * The vendor number only unlocks sales and finance reports, and the
+ * payments endpoint serving it needs Payments and Financial Reports
+ * visibility the session user may lack, so failures must never block the
+ * key itself. A team's current vendor number is listed first.
+ */
+async function fetchVendorNumberBestEffort(
+  relay: AppleRelayWebSocketClient,
+  providerId: string | number | undefined,
+  log: (message: string, detail?: string) => void,
+): Promise<string | undefined> {
+  try {
+    const vendorNumbers = await listAppStoreConnectVendorNumbers({ relay, providerId });
+    if (vendorNumbers.length === 0) {
+      log('The team has no vendor number yet', 'Paid agreements may not be set up.');
+      return undefined;
+    }
+    return vendorNumbers[0];
+  } catch (error) {
+    log('Could not fetch the vendor number', errorText(error));
+    return undefined;
+  }
 }
 
 function keyRevoked(attributes: Record<string, unknown> | undefined) {

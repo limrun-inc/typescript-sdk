@@ -57,10 +57,13 @@ export function InstallPhase({
   connect,
   build,
   device,
+  webhookUrl,
 }: {
   connect: ConnectController;
   build: InstallController;
   device: DeviceInstallController;
+  /** The sidebar's webhook URL; rides the build request. Empty blocks building. */
+  webhookUrl: string;
 }) {
   const [projectPath, setProjectPath] = useState('');
   if (!connect.connection) {
@@ -77,7 +80,8 @@ export function InstallPhase({
     !!device.install.device &&
     (build.method === 'qr' || device.install.hasPairRecord) &&
     device.enrollmentReady(profileKind);
-  const canBuild = !running && !!projectPath.trim() && deviceReady;
+  const webhookUrlSet = webhookUrl.trim() !== '';
+  const canBuild = !running && !!projectPath.trim() && deviceReady && webhookUrlSet;
 
   return (
     <Section title="2. Build and install">
@@ -170,6 +174,9 @@ export function InstallPhase({
         </div>
       )}
 
+      {!webhookUrlSet && (
+        <p style={hintText}>Enter the webhook URL at the top of the sidebar to enable building.</p>
+      )}
       <button
         style={primaryButton(!canBuild)}
         disabled={!canBuild}
@@ -180,6 +187,7 @@ export function InstallPhase({
             teamId: connect.connection!.teamId,
             bundleId: connect.connection!.bundleId,
             deviceUDID: device.selectedUDID!,
+            webhookUrl: webhookUrl.trim(),
           })
         }
       >

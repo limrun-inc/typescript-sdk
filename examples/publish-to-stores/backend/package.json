@@ -1,7 +1,7 @@
 {
   "name": "publish-to-stores-example-backend",
   "version": "1.0.0",
-  "description": "Stores signing secrets in files, runs `lim xcode build` publishes, and receives build-finish webhooks over a localtunnel for the publish-to-stores example.",
+  "description": "Stores signing secrets in files, runs `lim xcode build` publishes, and receives build-finish webhooks for the publish-to-stores example.",
   "type": "module",
   "main": "index.ts",
   "scripts": {
@@ -13,13 +13,11 @@
   "dependencies": {
     "@limrun/api": "^0.45.2",
     "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "localtunnel": "^2.0.2"
+    "express": "^5.1.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
-    "@types/localtunnel": "^2.0.4",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }

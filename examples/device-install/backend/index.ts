@@ -1,9 +1,8 @@
 import cors from 'cors';
 import express, { Request, Response } from 'express';
 import Limrun from '@limrun/api';
-import localtunnel from 'localtunnel';
 import { getInstallStatus, receiveInstallWebhook, startInstall, type InstallRequest } from './install.js';
-import { deleteSecret, getSecret, listSecrets, putSecret } from './secret-store.js';
+import { defaultSecretsDir, deleteSecret, getSecret, listSecrets, putSecret } from './secret-store.js';
 
 const apiKey = process.env['LIM_API_KEY'];
 if (!apiKey) {
@@ -18,14 +17,19 @@ const port = 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(cors());
 
-let publicUrl: string | undefined;
-
 // Apple credentials are created in the browser through the registry relay.
 // The long-lived API key remains here; this token can only open that relay.
 app.post('/session', async (_req: Request, res: Response) => {
   try {
     const session = await limrun.scopedTokens.create({ scopes: ['applerelay:*:connect'] });
-    return res.status(200).json({ token: session.token, expiresAt: session.expiresAt, registryUrl });
+    return res.status(200).json({
+      token: session.token,
+      expiresAt: session.expiresAt,
+      registryUrl,
+      // The store directory used when requests don't name one; the UI
+      // shows it as the default of its secrets-directory field.
+      secretsDir: defaultSecretsDir(),
+    });
   } catch (error: unknown) {
     return res.status(500).json({
       status: 'error',
@@ -79,9 +83,16 @@ app.post('/device-session', async (req: Request<{}, {}, { installId?: string }>,
   }
 });
 
-app.get('/secrets', async (_req: Request, res: Response) => {
+// The optional `dir` query parameter selects the store directory; absent
+// or empty means the backend default.
+function secretsDirOf(req: Request): string | undefined {
+  const dir = req.query['dir'];
+  return typeof dir === 'string' && dir.trim() ? dir : undefined;
+}
+
+app.get('/secrets', async (req: Request, res: Response) => {
   try {
-    const secrets = await listSecrets();
+    const secrets = await listSecrets(secretsDirOf(req));
     return res.status(200).json(secrets.map(({ type, name, createdAt }) => ({ type, name, createdAt })));
   } catch (error: unknown) {
     return res.status(500).json({
@@ -93,7 +104,7 @@ app.get('/secrets', async (_req: Request, res: Response) => {
 
 app.get('/secrets/:type/:name', async (req: Request<{ type: string; name: string }>, res: Response) => {
   try {
-    const secret = await getSecret(req.params.type, req.params.name);
+    const secret = await getSecret(req.params.type, req.params.name, secretsDirOf(req));
     return secret ?
         res.status(200).json(secret)
       : res.status(404).json({ status: 'error', message: 'Secret not found' });
@@ -115,7 +126,9 @@ app.put(
       if (!req.body.data || typeof req.body.data !== 'object') {
         return res.status(400).json({ status: 'error', message: 'Body must contain a data object' });
       }
-      return res.status(200).json(await putSecret(req.params.type, req.params.name, req.body.data));
+      return res
+        .status(200)
+        .json(await putSecret(req.params.type, req.params.name, req.body.data, secretsDirOf(req)));
     } catch (error: unknown) {
       return res.status(500).json({
         status: 'error',
@@ -127,7 +140,7 @@ app.put(
 
 app.delete('/secrets/:type/:name', async (req: Request<{ type: string; name: string }>, res: Response) => {
   try {
-    await deleteSecret(req.params.type, req.params.name);
+    await deleteSecret(req.params.type, req.params.name, secretsDirOf(req));
     return res.status(200).json({ status: 'success' });
   } catch (error: unknown) {
     return res.status(500).json({
@@ -137,25 +150,36 @@ app.delete('/secrets/:type/:name', async (req: Request<{ type: string; name: str
   }
 });
 
+// The webhook URL comes from the UI with each request: limbuild runs inside
+// Limrun's cloud and rejects private or IP-literal callback URLs, so it must
+// be a public URL that forwards to the webhook receiver's port 3001 (e.g.
+// from `ngrok http 3001`).
 app.post('/install', async (req: Request<{}, {}, Partial<InstallRequest>>, res: Response) => {
-  const { projectPath, method, teamId, bundleId, deviceUDID, scheme } = req.body;
-  if (!projectPath || !teamId || !bundleId || !deviceUDID || (method !== 'webusb' && method !== 'qr')) {
+  const { projectPath, method, teamId, bundleId, deviceUDID, scheme, secretsDir, webhookUrl } = req.body;
+  if (
+    !projectPath ||
+    !teamId ||
+    !bundleId ||
+    !deviceUDID ||
+    !webhookUrl ||
+    (method !== 'webusb' && method !== 'qr')
+  ) {
     return res.status(400).json({
       status: 'error',
-      message: 'projectPath, teamId, bundleId, deviceUDID and method (webusb | qr) are required',
-    });
-  }
-  if (!publicUrl) {
-    return res.status(503).json({
-      status: 'error',
-      message: 'The webhook tunnel is still starting; try again in a few seconds.',
+      message: 'projectPath, teamId, bundleId, deviceUDID, webhookUrl and method (webusb | qr) are required',
     });
   }
   try {
-    const installId = await startInstall(
-      { projectPath, method, teamId, bundleId, deviceUDID, scheme },
-      publicUrl,
-    );
+    const installId = await startInstall({
+      projectPath,
+      method,
+      teamId,
+      bundleId,
+      deviceUDID,
+      scheme,
+      secretsDir,
+      webhookUrl,
+    });
     return res.status(202).json({ installId });
   } catch (error: unknown) {
     return res.status(500).json({
@@ -172,32 +196,23 @@ app.get('/install/:id', (req: Request<{ id: string }>, res: Response) => {
     : res.status(404).json({ status: 'error', message: 'Install build not found' });
 });
 
-// Only this token-guarded webhook app is exposed by the tunnel. The secret
-// store and scoped-token minting routes remain local.
+// Only this token-guarded webhook app is exposed publicly, through the
+// URL entered in the UI. The secret store and scoped-token minting routes
+// remain local.
 const hooks = express();
 const webhookPort = 3001;
 hooks.use(express.json({ limit: '1mb' }));
-hooks.post('/webhook/:id', (req: Request<{ id: string }>, res: Response) => {
-  if (!receiveInstallWebhook(req.params.id, req.header('X-Install-Token'), req.body)) {
+// limbuild POSTs to the entered webhook URL exactly as provided — nothing is
+// appended — so accept the POST on any path and match it to an install by
+// the per-install token the CLI was given via --webhook-header.
+hooks.post('/{*splat}', (req: Request, res: Response) => {
+  const id = receiveInstallWebhook(req.header('X-Install-Token'), req.body);
+  if (!id) {
     return res.status(404).json({ status: 'error', message: 'Install build not found' });
   }
-  console.log(`[install ${req.params.id}] webhook received:`, JSON.stringify(req.body));
+  console.log(`[install ${id}] webhook received:`, JSON.stringify(req.body));
   return res.status(204).end();
 });
-
-async function resolvePublicUrl(): Promise<string> {
-  const configured = process.env['PUBLIC_URL'];
-  if (configured) return configured.replace(/\/$/, '');
-  console.log('Opening a localtunnel for the webhook receiver...');
-  const tunnel = await localtunnel({ port: webhookPort });
-  tunnel.on('error', (error: Error) => {
-    console.error(`localtunnel error: ${error.message}; build webhooks may not arrive.`);
-  });
-  tunnel.on('close', () => {
-    console.error('localtunnel closed; build webhooks can no longer arrive.');
-  });
-  return tunnel.url;
-}
 
 hooks.listen(webhookPort, () => {
   console.log(`Webhook receiver listening at http://localhost:${webhookPort}`);
@@ -205,6 +220,3 @@ hooks.listen(webhookPort, () => {
 app.listen(port, () => {
   console.log(`Device install backend listening at http://localhost:${port}`);
 });
-
-publicUrl = await resolvePublicUrl();
-console.log(`Build webhooks arrive via ${publicUrl}/webhook/:id`);

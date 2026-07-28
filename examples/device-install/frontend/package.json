@@ -10,8 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@limrun/apple-auth": "^0.1.0",
-    "@limrun/device-install": "^0.1.0",
+    "@limrun/apple-auth": "^0.4.0",
+    "@limrun/device-install": "^0.2.0",
     "qrcode": "^1.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"

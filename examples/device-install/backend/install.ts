@@ -16,6 +16,14 @@ export type InstallRequest = {
   bundleId: string;
   deviceUDID: string;
   scheme?: string;
+  /** Store directory the signing secrets live in; backend default when absent. */
+  secretsDir?: string;
+  /**
+   * Public URL limbuild POSTs the build-finish webhook to, verbatim. It
+   * comes from the UI with each request and must forward to this backend's
+   * webhook receiver for the result to be observed.
+   */
+  webhookUrl: string;
 };
 
 type DeviceCredentials = {
@@ -36,7 +44,11 @@ function isUnexpired(expirationDate?: string) {
 async function resolveDeviceCredentials(request: InstallRequest): Promise<DeviceCredentials> {
   const certificateKind = request.method === 'webusb' ? 'DEVELOPMENT' : 'DISTRIBUTION';
   const profileLabel = request.method === 'webusb' ? 'development' : 'ad-hoc';
-  const certificate = await getSecret('appleCertificate', `${request.teamId}/${certificateKind}`);
+  const certificate = await getSecret(
+    'appleCertificate',
+    `${request.teamId}/${certificateKind}`,
+    request.secretsDir,
+  );
   if (!certificate || !isUnexpired(certificate.data.expirationDate)) {
     throw new Error(
       `No valid ${profileLabel} signing certificate is stored. Prepare the selected iPhone first.`,
@@ -44,7 +56,7 @@ async function resolveDeviceCredentials(request: InstallRequest): Promise<Device
   }
 
   const normalizedUDID = normalizeUDID(request.deviceUDID);
-  const profiles = (await listSecrets())
+  const profiles = (await listSecrets(request.secretsDir))
     .filter(
       (secret) =>
         secret.type === 'appleProvisioningProfile' &&
@@ -146,28 +158,36 @@ function failInstall(id: string, message: string) {
   entry.status.error = message;
 }
 
-export function receiveInstallWebhook(id: string, token: string | undefined, payload: unknown): boolean {
-  const entry = installs.get(id);
-  if (!entry) return false;
-  const expected = Buffer.from(entry.token);
+/**
+ * Records the build-finish webhook for the install whose token matches.
+ * limbuild POSTs to the webhook URL exactly as provided — no install ID rides
+ * the URL — so the per-install X-Install-Token secret is both the
+ * authentication and the correlation. Returns the settled install's ID,
+ * or undefined when no install matches.
+ */
+export function receiveInstallWebhook(token: string | undefined, payload: unknown): string | undefined {
   const received = Buffer.from(token ?? '');
-  if (expected.length !== received.length || !timingSafeEqual(expected, received)) return false;
-  entry.status.webhook = payload;
-  entry.status.webhookReceivedAt = new Date().toISOString();
-  const status = (payload as { status?: string } | null)?.status;
-  entry.status.state = status === 'SUCCEEDED' ? 'succeeded' : 'failed';
-  if (entry.status.state === 'failed') {
-    entry.status.error =
-      (payload as { error?: string } | null)?.error ?? `Build finished with status ${status ?? 'unknown'}.`;
+  for (const [id, entry] of installs) {
+    const expected = Buffer.from(entry.token);
+    if (expected.length !== received.length || !timingSafeEqual(expected, received)) continue;
+    entry.status.webhook = payload;
+    entry.status.webhookReceivedAt = new Date().toISOString();
+    const status = (payload as { status?: string } | null)?.status;
+    entry.status.state = status === 'SUCCEEDED' ? 'succeeded' : 'failed';
+    if (entry.status.state === 'failed') {
+      entry.status.error =
+        (payload as { error?: string } | null)?.error ?? `Build finished with status ${status ?? 'unknown'}.`;
+    }
+    return id;
   }
-  return true;
+  return undefined;
 }
 
 export function getInstallStatus(id: string): InstallStatus | undefined {
   return installs.get(id)?.status;
 }
 
-export async function startInstall(request: InstallRequest, publicUrl: string): Promise<string> {
+export async function startInstall(request: InstallRequest): Promise<string> {
   const { certificate, profile } = await resolveDeviceCredentials(request);
   const workDir = await mkdtemp(path.join(os.tmpdir(), 'device-install-'));
   const certificatePath = path.join(workDir, 'certificate.p12');
@@ -215,11 +235,9 @@ export async function startInstall(request: InstallRequest, publicUrl: string): 
     '--upload',
     assetName,
     '--webhook-url',
-    `${publicUrl}/webhook/${id}`,
+    request.webhookUrl,
     '--webhook-header',
     `X-Install-Token=${token}`,
-    '--webhook-header',
-    'Bypass-Tunnel-Reminder=true',
     '--inactivity-timeout',
     '3s',
     '--detach',

@@ -5,7 +5,43 @@ export type RegistrySession = {
   token: string;
   registryUrl: string;
   expiresAt: string;
+  /** The backend's default secrets directory; the UI's field defaults to it. */
+  secretsDir?: string;
 };
+
+// The secrets directory on the backend host, chosen in the UI and persisted
+// here. Empty means the backend's own default. It is read at request time,
+// so every store operation and install build uses the latest choice.
+const SECRETS_DIR_STORAGE_KEY = 'device-install.secretsDir';
+
+export function getSecretsDir(): string {
+  return localStorage.getItem(SECRETS_DIR_STORAGE_KEY) ?? '';
+}
+
+export function setSecretsDir(dir: string) {
+  if (dir.trim()) localStorage.setItem(SECRETS_DIR_STORAGE_KEY, dir);
+  else localStorage.removeItem(SECRETS_DIR_STORAGE_KEY);
+}
+
+/** Appends the chosen secrets directory to a store URL, when one is set. */
+function withSecretsDir(url: string) {
+  const dir = getSecretsDir().trim();
+  return dir ? `${url}${url.includes('?') ? '&' : '?'}dir=${encodeURIComponent(dir)}` : url;
+}
+
+// The public URL limbuild POSTs build-finish webhooks to, entered in the UI
+// and persisted here. It rides every install build request; the backend
+// passes it to the lim CLI verbatim.
+const WEBHOOK_URL_STORAGE_KEY = 'device-install.webhookUrl';
+
+export function getWebhookUrl(): string {
+  return localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) ?? '';
+}
+
+export function setWebhookUrl(url: string) {
+  if (url.trim()) localStorage.setItem(WEBHOOK_URL_STORAGE_KEY, url);
+  else localStorage.removeItem(WEBHOOK_URL_STORAGE_KEY);
+}
 
 async function responseError(response: Response, action: string): Promise<never> {
   let message = `HTTP ${response.status}`;
@@ -41,7 +77,7 @@ export async function fetchDeviceSession(installId?: string): Promise<DeviceSess
 
 export function createBackendSecretStore(): SigningSecretStore {
   const secretUrl = (type: string, name: string) =>
-    `${BACKEND_URL}/secrets/${encodeURIComponent(type)}/${encodeURIComponent(name)}`;
+    withSecretsDir(`${BACKEND_URL}/secrets/${encodeURIComponent(type)}/${encodeURIComponent(name)}`);
   return {
     async put(type, name, data) {
       const response = await fetch(secretUrl(type, name), {
@@ -59,7 +95,7 @@ export function createBackendSecretStore(): SigningSecretStore {
       return (await response.json()) as SigningSecret;
     },
     async list() {
-      const response = await fetch(`${BACKEND_URL}/secrets`);
+      const response = await fetch(withSecretsDir(`${BACKEND_URL}/secrets`));
       if (!response.ok) await responseError(response, 'Failed to list signing secrets');
       return (await response.json()) as SigningSecretMetadata[];
     },
@@ -81,6 +117,8 @@ export type InstallInput = {
   bundleId: string;
   deviceUDID: string;
   scheme?: string;
+  /** Public URL limbuild POSTs the build-finish webhook to, verbatim. */
+  webhookUrl: string;
 };
 
 export type BuildWebhookPayload = {
@@ -110,7 +148,9 @@ export async function startInstall(input: InstallInput): Promise<string> {
   const response = await fetch(`${BACKEND_URL}/install`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    // The build reads the signing secrets server-side, so it must look in
+    // the same directory the store operations used.
+    body: JSON.stringify({ ...input, secretsDir: getSecretsDir().trim() || undefined }),
   });
   if (!response.ok) await responseError(response, 'Install build request failed');
   return ((await response.json()) as { installId: string }).installId;

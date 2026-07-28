@@ -6,14 +6,19 @@ authenticated build-finish webhook. Persisted logs remain available through the
 callback payload.
 
 Device installation is intentionally separate; see
-[`examples/device-install`](../device-install).
+[`examples/device-install`](../device-install). The Connect checklist can
+still prepare its signing material (see
+[Device install credentials](#device-install-credentials)).
 
 ## Architecture
 
 - `frontend/` uses `@limrun/apple-auth` to sign into Apple through Limrun's
-  registry relay, choose or create a bundle ID, and prepare exactly four
-  resources: an Apple distribution certificate, App Store provisioning
-  profile, App Store Connect app record, and App Store Connect API key.
+  registry relay, choose or create a bundle ID, and prepare four publishing
+  resources — an Apple distribution certificate, App Store provisioning
+  profile, App Store Connect app record, and App Store Connect API key —
+  plus, optionally, the device-install credentials: a development
+  certificate and ad-hoc/development provisioning profiles covering the
+  team's registered iPhones.
 - The Android tab uses `@limrun/play-auth` for Google Identity Services and
   browser-side upload-keystore generation. It detects the package from the
   project, verifies Play Console access, then calls the backend with a
@@ -26,12 +31,35 @@ Device installation is intentionally separate; see
   the next Play `versionCode`, publishes the AAB, and reports completion by
   webhook.
 - The webhook receiver listens separately on port 3001. Only its
-  token-guarded route is exposed through localtunnel (or `PUBLIC_URL`); the
-  secret store and token-minting routes remain local on port 3000.
+  token-guarded route is exposed publicly, through the webhook URL entered
+  in the UI; the secret store and token-minting routes remain local on
+  port 3000.
 
-Both UI choices upload to App Store Connect. TestFlight links to the uploaded
-builds; App Store links to the distribution page where the processed build can
-be attached to a version and submitted for review.
+The iOS publish uploads to App Store Connect. The uploaded build shows up in
+TestFlight automatically; the success link opens the app's distribution page
+where the processed build can be attached to a version and submitted for
+review.
+
+## Device install credentials
+
+The last three Connect actions create what the
+[`device-install`](../device-install) example needs: a development
+certificate (WebUSB installs) and ad-hoc/development provisioning profiles
+(QR code and WebUSB installs) bound to the iPhones already registered on the
+team. Device-bound profiles must list every device they cover, so Connect
+recreates them when the registered device set or the signing certificate
+changes, and skips them with a note when the team has no registered devices
+yet — the device-install example registers an iPhone and creates its profile
+on first use.
+
+Each example backend stores secrets under its own `backend/.secrets/` by
+default. The UI has a "Secrets directory" field, pre-filled with the
+backend's current default (`backend/.secrets/`, or `SECRETS_DIR` when the
+backend was started with it); every store operation and publish uses the
+entered directory. Enter the same directory in both examples to share the
+material. With a shared store, an iPhone covered by the profiles created
+here installs through the device-install example without another Apple
+sign-in.
 
 ## Google Play flow
 
@@ -59,9 +87,28 @@ an origin other than `http://localhost:5173`.
 - Node.js and Yarn 1
 - The `lim` CLI on `PATH`
 - `LIM_API_KEY`
+- A public HTTPS URL that forwards to the webhook receiver on port 3001,
+  entered in the UI (see [Webhook URL](#webhook-url))
 - An Apple Developer Program account with permission to create App Store
   Connect API keys
 - A Google Play Console app and a Google account with release permission
+
+## Webhook URL
+
+Builds run inside Limrun's cloud and report completion by POSTing a webhook,
+so the receiver on port 3001 must be reachable from the internet — limbuild
+rejects private and IP-literal callback URLs. Bring your own public URL and
+paste it into the UI's Webhook URL field (top of the sidebar); it rides each
+publish request and is used verbatim as the callback URL, nothing is
+appended:
+
+- [ngrok](https://ngrok.com): run `ngrok http 3001` and use the printed
+  `https://….ngrok-free.app` URL. The webhook reaches the backend and the
+  wizard shows the result.
+- [requestbin.net](https://requestbin.net) (or any request-inspection
+  service): use the bin URL to see the raw webhook payload. Note that the
+  payload never reaches this backend then, so the wizard keeps waiting; use
+  this only to inspect what limbuild sends.
 
 ## Run
 
@@ -78,14 +125,15 @@ In another terminal:
 yarn --cwd examples/publish-to-stores/frontend dev
 ```
 
-Open `http://localhost:5173`. Use the iOS tab for Apple setup and a TestFlight
-or App Store publish. Use the Android tab to select a project, verify its Play
-listing, prepare the upload key, and publish.
+Open `http://localhost:5173` and enter the webhook URL at the top of the
+sidebar (e.g. from `ngrok http 3001`). Use the iOS tab for Apple setup and
+an App Store publish. Use the Android tab to select a project, verify its
+Play listing, prepare the upload key, and publish. The build result panel
+shows the arrived webhook payload JSON verbatim.
 
-Set `PUBLIC_URL` to a public HTTPS URL forwarded to port 3001 to replace the
-automatic localtunnel. The backend passes both a random per-publish
-`X-Publish-Token` and `Bypass-Tunnel-Reminder=true` to limbuild; invalid tokens
-receive the same 404 as unknown publish IDs.
+The backend passes a random per-publish `X-Publish-Token` to limbuild and
+matches the incoming webhook to its publish by that header alone; requests
+without a matching token receive a 404.
 
 `backend/.secrets/` contains private keys and is gitignored. The in-memory
 publish registry is demo-only and is lost when the backend restarts.

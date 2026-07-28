@@ -10,6 +10,8 @@ export const PUBLISHER_NAME = 'Acme Publisher';
 export const naming = {
   certificateCommonName: (teamId: string) => `${PUBLISHER_NAME} ${teamId}`,
   appStoreProfileName: (bundleId: string) => `${PUBLISHER_NAME} App Store ${bundleId}`,
+  adHocProfileName: (bundleId: string) => `${PUBLISHER_NAME} Ad Hoc ${bundleId}`,
+  developmentProfileName: (bundleId: string) => `${PUBLISHER_NAME} Development ${bundleId}`,
   apiKeyNickname: `${PUBLISHER_NAME} Publishing`,
 };
 

@@ -1,44 +1,27 @@
-// The Publish phase stays focused on App Store Connect uploads. Both choices
-// use the same distribution signing and detached webhook-backed build.
+// The Publish phase: one App Store Connect upload with distribution signing
+// and a detached webhook-backed build. The uploaded build serves TestFlight
+// and App Store review alike; where it goes next is decided in App Store
+// Connect.
 import { useState } from 'react';
 import type { ConnectController } from '../hooks/useConnect';
 import type { PublishController } from '../hooks/usePublish';
-import type { PublishMethod } from '../lib/backend';
-import { errorBox, hintText, infoBox, inputStyle, labelStyle, methodCard, primaryButton } from '../theme';
+import { errorBox, hintText, infoBox, inputStyle, labelStyle, primaryButton } from '../theme';
 import { Section } from './Section';
 
-type MethodCardSpec = {
-  id: PublishMethod;
-  label: string;
-  description: string;
-};
-
-function appStoreConnectUrl(method: PublishMethod, ascAppId?: string) {
+function appStoreConnectUrl(ascAppId?: string) {
   if (!ascAppId) return 'https://appstoreconnect.apple.com/apps';
-  return method === 'testflight' ?
-      `https://appstoreconnect.apple.com/apps/${ascAppId}/testflight/ios`
-    : `https://appstoreconnect.apple.com/apps/${ascAppId}/distribution`;
+  return `https://appstoreconnect.apple.com/apps/${ascAppId}/distribution`;
 }
-
-const METHODS: MethodCardSpec[] = [
-  {
-    id: 'testflight',
-    label: 'TestFlight',
-    description: 'Upload the build and distribute it to testers.',
-  },
-  {
-    id: 'appstore',
-    label: 'App Store',
-    description: 'Upload the build, then submit it for review in App Store Connect.',
-  },
-];
 
 export function PublishPhase({
   connect,
   publish,
+  webhookUrl,
 }: {
   connect: ConnectController;
   publish: PublishController;
+  /** The sidebar's webhook URL; rides the publish request. Empty blocks publishing. */
+  webhookUrl: string;
 }) {
   const [projectPath, setProjectPath] = useState('');
 
@@ -52,7 +35,8 @@ export function PublishPhase({
 
   const { connection } = connect;
   const running = publish.state === 'running';
-  const canPublish = !running && projectPath.trim() !== '';
+  const webhookUrlSet = webhookUrl.trim() !== '';
+  const canPublish = !running && projectPath.trim() !== '' && webhookUrlSet;
 
   return (
     <Section title="2. Publish">
@@ -63,44 +47,32 @@ export function PublishPhase({
         onChange={(event) => setProjectPath(event.target.value)}
         placeholder="/path/to/MyApp"
       />
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        {METHODS.map((spec) => (
-          <button
-            key={spec.id}
-            style={methodCard(publish.method === spec.id, false)}
-            disabled={running}
-            onClick={() => publish.setMethod(spec.id)}
-          >
-            <strong>{spec.label}</strong>
-            <br />
-            <span style={hintText}>{spec.description}</span>
-          </button>
-        ))}
-      </div>
       {!projectPath.trim() && <p style={hintText}>Enter the project path to enable publishing.</p>}
+      {!webhookUrlSet && (
+        <p style={hintText}>Enter the webhook URL at the top of the sidebar to enable publishing.</p>
+      )}
       <button
         style={primaryButton(!canPublish)}
         disabled={!canPublish}
         onClick={() =>
           void publish.publish({
             projectPath: projectPath.trim(),
-            method: publish.method,
             teamId: connection.teamId,
             bundleId: connection.bundleId,
+            webhookUrl: webhookUrl.trim(),
           })
         }
       >
-        {running ? 'Waiting for build callback…' : `Publish ${connection.bundleId} via ${publish.method}`}
+        {running ? 'Waiting for build callback…' : 'Submit to App Store'}
       </button>
       {publish.state === 'succeeded' && (
         <div style={infoBox}>
           Publish succeeded.{' '}
-          <a href={appStoreConnectUrl(publish.method, connection.ascAppId)} target="_blank" rel="noreferrer">
-            Open the {publish.method === 'testflight' ? 'TestFlight' : 'App Store'} page in App Store Connect
-          </a>
-          {publish.method === 'appstore' ?
-            ' to attach the processed build to a version and submit it for review.'
-          : ' to see the build once Apple finishes processing it.'}
+          <a href={appStoreConnectUrl(connection.ascAppId)} target="_blank" rel="noreferrer">
+            Open the app in App Store Connect
+          </a>{' '}
+          to attach the processed build to a version and submit it for review; TestFlight picks the build up
+          automatically.
         </div>
       )}
       {publish.state === 'failed' && (

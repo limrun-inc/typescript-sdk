@@ -114,6 +114,14 @@ export type AppStoreConnectApiKeySecretData = {
   keyId: string;
   /** Issuer ID for team keys. Absent for individual keys. */
   issuerId?: string;
+  /**
+   * Vendor number of the team's legal entity, which the sales and finance
+   * report endpoints require as filter[vendorNumber]. Absent when the
+   * session user could not see Payments and Financial Reports.
+   */
+  vendorNumber?: string;
+  /** Comma-separated roles the key was minted with, e.g. ADMIN. */
+  roles?: string;
   nickname?: string;
   teamID?: string;
   expirationDate?: string;

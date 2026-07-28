@@ -1,11 +1,11 @@
-// The main panel: while a publish runs it waits for the build-finish
-// webhook, and once that lands it shows how long the build took plus the
-// payload JSON verbatim. There is no live log — the persisted build log is
-// linked from the payload's logsUrl instead.
+// The main panel: while a publish runs it shows where the build-finish
+// webhook will land and links to the build instance in the console, and once
+// the webhook lands it shows how long the build took plus the payload JSON
+// verbatim.
 import type { CSSProperties } from 'react';
 import type { PublishState } from '../hooks/usePublish';
 import type { PublishStatus } from '../lib/backend';
-import { errorBox, hintText } from '../theme';
+import { errorBox, hintText, spinner } from '../theme';
 
 const jsonPanel: CSSProperties = {
   overflowY: 'auto',
@@ -43,7 +43,14 @@ type ResultController = {
   error?: string;
 };
 
-export function ResultPanel({ publish }: { publish: ResultController }) {
+export function ResultPanel({
+  publish,
+  webhookUrl,
+}: {
+  publish: ResultController;
+  /** The callback URL entered in the sidebar, shown while the build runs. */
+  webhookUrl: string;
+}) {
   const { state, status, error } = publish;
 
   if (state === 'idle') {
@@ -52,27 +59,39 @@ export function ResultPanel({ publish }: { publish: ResultController }) {
 
   if (state === 'running') {
     return (
-      <div style={waitingBox}>
-        <strong>Waiting for build callback…</strong>
-        <br />
-        The build is running remotely. When it finishes, limbuild POSTs a webhook to this backend (through the
-        tunnel) and the payload shows up here. The CLI detached after submitting the build, so it does not
-        hold this backend request open.
+      <div style={{ ...waitingBox, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={spinner} />
+          <span>
+            Waiting for the build webhook at <code>{webhookUrl.trim()}</code>
+          </span>
+        </div>
+        {status?.consoleUrl ?
+          <a href={status.consoleUrl} target="_blank" rel="noreferrer">
+            Watch the build progress in the console
+          </a>
+        : <span>A console link to the build instance will appear once it is up.</span>}
       </div>
     );
   }
 
   const webhook = status?.webhook;
-  // Wall clock covers the whole publish (sync, build, upload, callback);
-  // buildDurationMs from the payload is the build step alone.
-  const wallClockMs =
-    status?.webhookReceivedAt && status.startedAt ?
-      Date.parse(status.webhookReceivedAt) - Date.parse(status.startedAt)
-    : undefined;
 
   return (
     <>
-      {state === 'failed' && !webhook && <div style={errorBox}>{error ?? 'Publish failed.'}</div>}
+      {state === 'failed' && !webhook && (
+        <div style={errorBox}>
+          {error ?? 'Publish failed.'}
+          {status?.consoleUrl && (
+            <>
+              {' '}
+              <a href={status.consoleUrl} target="_blank" rel="noreferrer">
+                Check the build instance in the console.
+              </a>
+            </>
+          )}
+        </div>
+      )}
       {webhook && (
         <>
           <p style={{ ...hintText, margin: 0 }}>
@@ -80,7 +99,6 @@ export function ResultPanel({ publish }: { publish: ResultController }) {
             {webhook.buildDurationMs !== undefined && (
               <> — build took {formatDuration(webhook.buildDurationMs)}</>
             )}
-            {wallClockMs !== undefined && <> ({formatDuration(wallClockMs)} end to end)</>}
             {webhook.consoleUrl && (
               <>
                 {' · '}

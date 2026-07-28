@@ -216,6 +216,90 @@ export async function fetchAppStoreConnectIssuerId(
 }
 
 /**
+ * Numeric provider ID (content provider ID) of the session's active team,
+ * read from the olympus session. The WebObjects payments endpoints key on
+ * this numeric ID, not the public (UUID) provider ID that JWTs use.
+ */
+export async function fetchAppStoreConnectProviderId(
+  relay: AppleRelayWebSocketClient,
+): Promise<string | undefined> {
+  const response = await fetchAppleAccountSession(relay);
+  const body = response.body as { provider?: { providerId?: unknown } } | undefined;
+  const value = body?.provider?.providerId;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+export type ListAppStoreConnectVendorNumbersOptions = AppleRelayClientOptions & {
+  /**
+   * Numeric provider ID of the team, from the team list's providerId.
+   * Defaults to the session's active provider.
+   */
+  providerId?: string | number;
+};
+
+/**
+ * Vendor numbers of the team's legal entities, from the same endpoint the
+ * App Store Connect website's Payments and Financial Reports page uses.
+ * The key-authenticated public API requires a vendor number as
+ * filter[vendorNumber] on its sales and finance report endpoints but never
+ * exposes it, so the session is the only programmatic source. A team
+ * usually has one; legal entity changes and Apple News/Arcade agreements
+ * add more, listed with the current one first.
+ */
+export async function listAppStoreConnectVendorNumbers({
+  relay,
+  providerId,
+}: ListAppStoreConnectVendorNumbersOptions): Promise<string[]> {
+  const resolved = providerId ?? (await fetchAppStoreConnectProviderId(relay));
+  if (resolved === undefined || resolved === '') {
+    throw new Error('The App Store Connect session has no active provider to list vendor numbers for.');
+  }
+  const response = await appStoreConnectRequest(
+    relay,
+    {
+      path: `/WebObjects/iTunesConnect.woa/ra/paymentConsolidation/providers/${encodeURIComponent(
+        String(resolved),
+      )}/sapVendorNumbers`,
+    },
+    'App Store Connect vendor number lookup',
+  );
+  return vendorNumbersFromPayload(response.body?.data);
+}
+
+/**
+ * The WebObjects endpoint is not a public contract; be tolerant about the
+ * payload shape and accept both bare numbers and objects carrying the
+ * vendor number under the field names Apple has used.
+ */
+function vendorNumbersFromPayload(data: unknown): string[] {
+  const items =
+    data === undefined || data === null ? []
+    : Array.isArray(data) ? data
+    : [data];
+  const numbers: string[] = [];
+  for (const item of items) {
+    const value = vendorNumberFromItem(item);
+    if (value && !numbers.includes(value)) numbers.push(value);
+  }
+  return numbers;
+}
+
+function vendorNumberFromItem(item: unknown): string | undefined {
+  if (typeof item === 'number' && Number.isFinite(item)) return String(item);
+  if (typeof item === 'string') return /^\d+$/.test(item) ? item : undefined;
+  if (item && typeof item === 'object') {
+    const record = item as Record<string, unknown>;
+    for (const key of ['sapVendorNumber', 'vendorNumber', 'vendorId']) {
+      const value = record[key];
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+      if (typeof value === 'string' && /^\d+$/.test(value)) return value;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Apple serves the `privateKey` attribute as base64 of the .p8 PEM text,
  * not the PEM itself. Normalize to PEM so downstream consumers (which
  * base64-encode once for storage) do not end up with double encoding —
@@ -244,16 +328,30 @@ export type FindAppStoreConnectAppOptions = AppleRelayClientOptions & {
   bundleId: string;
 };
 
+/** An App Store Connect app record, normalized from the JSON:API resource. */
+export type AppStoreConnectApp = {
+  /** Numeric App Store Connect app record id (the "Apple ID" of the app). */
+  id: string;
+  /** The app's name on the App Store, when Apple returned it. */
+  name?: string;
+  bundleId: string;
+};
+
 /** Looks up the App Store Connect app record for a bundle ID, if any. */
-export async function findAppStoreConnectApp({ relay, bundleId }: FindAppStoreConnectAppOptions) {
+export async function findAppStoreConnectApp({
+  relay,
+  bundleId,
+}: FindAppStoreConnectAppOptions): Promise<AppStoreConnectApp | undefined> {
   const response = await appStoreConnectRequest(
     relay,
     { path: '/iris/v1/apps', query: { 'filter[bundleId]': bundleId } },
     'App Store Connect app lookup',
   );
-  return resourceArray(response.body?.data).find(
-    (app) => stringAttribute(app.attributes, 'bundleId') === bundleId,
+  const app = resourceArray(response.body?.data).find(
+    (item) => stringAttribute(item.attributes, 'bundleId') === bundleId,
   );
+  if (!app?.id) return undefined;
+  return { id: app.id, name: stringAttribute(app.attributes, 'name'), bundleId };
 }
 
 export type CreateAppStoreConnectAppOptions = AppleRelayClientOptions & {
@@ -281,7 +379,7 @@ export async function createAppStoreConnectApp({
   sku,
   primaryLocale = 'en-US',
   versionString = '1.0',
-}: CreateAppStoreConnectAppOptions) {
+}: CreateAppStoreConnectAppOptions): Promise<AppStoreConnectApp> {
   if (!name) {
     throw new Error('An app name is required to create an App Store Connect app record.');
   }
@@ -349,7 +447,7 @@ export async function createAppStoreConnectApp({
   if (!app?.id) {
     throw new Error('App Store Connect app creation did not return an app ID.');
   }
-  return app;
+  return { id: app.id, name, bundleId };
 }
 
 export type EnsureAppStoreConnectAppOptions = CreateAppStoreConnectAppOptions;
