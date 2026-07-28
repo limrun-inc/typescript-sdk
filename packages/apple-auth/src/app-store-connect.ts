@@ -244,16 +244,30 @@ export type FindAppStoreConnectAppOptions = AppleRelayClientOptions & {
   bundleId: string;
 };
 
+/** An App Store Connect app record, normalized from the JSON:API resource. */
+export type AppStoreConnectApp = {
+  /** Numeric App Store Connect app record id (the "Apple ID" of the app). */
+  id: string;
+  /** The app's name on the App Store, when Apple returned it. */
+  name?: string;
+  bundleId: string;
+};
+
 /** Looks up the App Store Connect app record for a bundle ID, if any. */
-export async function findAppStoreConnectApp({ relay, bundleId }: FindAppStoreConnectAppOptions) {
+export async function findAppStoreConnectApp({
+  relay,
+  bundleId,
+}: FindAppStoreConnectAppOptions): Promise<AppStoreConnectApp | undefined> {
   const response = await appStoreConnectRequest(
     relay,
     { path: '/iris/v1/apps', query: { 'filter[bundleId]': bundleId } },
     'App Store Connect app lookup',
   );
-  return resourceArray(response.body?.data).find(
-    (app) => stringAttribute(app.attributes, 'bundleId') === bundleId,
+  const app = resourceArray(response.body?.data).find(
+    (item) => stringAttribute(item.attributes, 'bundleId') === bundleId,
   );
+  if (!app?.id) return undefined;
+  return { id: app.id, name: stringAttribute(app.attributes, 'name'), bundleId };
 }
 
 export type CreateAppStoreConnectAppOptions = AppleRelayClientOptions & {
@@ -281,7 +295,7 @@ export async function createAppStoreConnectApp({
   sku,
   primaryLocale = 'en-US',
   versionString = '1.0',
-}: CreateAppStoreConnectAppOptions) {
+}: CreateAppStoreConnectAppOptions): Promise<AppStoreConnectApp> {
   if (!name) {
     throw new Error('An app name is required to create an App Store Connect app record.');
   }
@@ -349,7 +363,7 @@ export async function createAppStoreConnectApp({
   if (!app?.id) {
     throw new Error('App Store Connect app creation did not return an app ID.');
   }
-  return app;
+  return { id: app.id, name, bundleId };
 }
 
 export type EnsureAppStoreConnectAppOptions = CreateAppStoreConnectAppOptions;

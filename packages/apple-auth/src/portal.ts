@@ -8,13 +8,21 @@
 import { normalizeUDID, sameUDID } from './internal/udid';
 import type { AppleRelayResponse, AppleRelayWebSocketClient } from './relay';
 
-export type AppleDeveloperPortalTeam = {
+/**
+ * A Developer Portal team, normalized. Apple's raw records identify a team
+ * under different fields depending on the account type; the package
+ * resolves them so consumers only ever see `teamId`.
+ */
+export type AppleTeam = {
+  /** The id every team-scoped portal call takes as `teamId`. */
+  teamId: string;
+  /**
+   * Numeric App Store Connect provider id, when the record carried one.
+   * Needed by switchAppStoreConnectProvider for multi-team accounts.
+   */
+  providerId?: string;
   name?: string;
-  teamId?: string;
-  providerId?: string | number;
-  publicProviderId?: string;
   type?: string;
-  subType?: string;
 };
 
 export type AppleDeveloperPortalDevice = {
@@ -26,7 +34,38 @@ export type AppleDeveloperPortalDevice = {
   status?: string;
 };
 
-export type AppleDeveloperPortalAppID = {
+/** A registered bundle ID (portal "App ID"), normalized. */
+export type AppleBundleID = {
+  /** Apple's opaque record id; profile creation takes it as `appIdId`. */
+  appIdId: string;
+  /** The bundle identifier itself, e.g. com.example.myapp. */
+  bundleId: string;
+  /** The registration name on the portal, when present. */
+  name?: string;
+};
+
+/** A provisioning profile row on the portal, normalized. */
+export type AppleProfile = {
+  profileId: string;
+  name?: string;
+  /** The bundle ID the profile binds, when the row exposes it. */
+  bundleId?: string;
+};
+
+// Raw wire shapes of the portal's JSON. The portal is a private API with no
+// published schema; the same object is served with different field names
+// depending on the endpoint and account type, which is why every field is
+// optional and the public API above is normalized instead.
+type PortalTeamRecord = {
+  name?: string;
+  teamId?: string;
+  providerId?: string | number;
+  publicProviderId?: string;
+  type?: string;
+  subType?: string;
+};
+
+type PortalAppIdRecord = {
   appId?: string;
   appIdId?: string;
   identifier?: string;
@@ -36,14 +75,14 @@ export type AppleDeveloperPortalAppID = {
   platform?: string;
 };
 
-export type AppleDeveloperPortalResponse = {
+type AppleDeveloperPortalResponse = {
   resultCode?: number;
   resultString?: string;
   userString?: string;
-  teams?: AppleDeveloperPortalTeam[];
-  provider?: AppleDeveloperPortalTeam;
-  availableProviders?: AppleDeveloperPortalTeam[];
-  appIds?: AppleDeveloperPortalAppID[];
+  teams?: PortalTeamRecord[];
+  provider?: PortalTeamRecord;
+  availableProviders?: PortalTeamRecord[];
+  appIds?: PortalAppIdRecord[];
   devices?: AppleDeveloperPortalDevice[];
   certRequests?: Array<Record<string, unknown>>;
   certRequest?: Record<string, unknown>;
@@ -52,6 +91,42 @@ export type AppleDeveloperPortalResponse = {
   provisioningProfile?: Record<string, unknown>;
   provisioningProfiles?: Array<Record<string, unknown>>;
 };
+
+/**
+ * Apple exposes a team's portal id under one of three fields depending on
+ * the account type. Records without any id are dropped: they cannot drive
+ * a team-scoped call.
+ */
+function normalizeAppleTeam(team: PortalTeamRecord): AppleTeam | undefined {
+  const id = [team.teamId, team.providerId, team.publicProviderId].find(
+    (value) => value !== undefined && value !== '',
+  );
+  if (id === undefined) return undefined;
+  return {
+    teamId: String(id),
+    providerId: team.providerId === undefined || team.providerId === '' ? undefined : String(team.providerId),
+    name: team.name,
+    type: team.type,
+  };
+}
+
+/**
+ * The record id and bundle identifier each arrive under one of two names
+ * depending on the endpoint. Records missing either are dropped: without
+ * both, the record cannot be selected or bound to a profile.
+ */
+function normalizeAppleBundleID(appId: PortalAppIdRecord): AppleBundleID | undefined {
+  const appIdId = appId.appIdId ?? appId.appId;
+  const bundleId = appId.identifier ?? appId.bundleId;
+  if (!appIdId || !bundleId) return undefined;
+  return { appIdId, bundleId, name: appId.name };
+}
+
+function normalizeAppleProfile(profile: Record<string, unknown>): AppleProfile | undefined {
+  const profileId = stringField(profile, 'provisioningProfileId') ?? stringField(profile, 'profileId');
+  if (!profileId) return undefined;
+  return { profileId, name: stringField(profile, 'name'), bundleId: profileBoundBundleId(profile) };
+}
 
 export type AppleRelayClientOptions = {
   relay: AppleRelayWebSocketClient;
@@ -119,17 +194,27 @@ function paged(path: string, teamId: string, payload: Record<string, unknown> = 
   };
 }
 
-export async function listAppleTeams({ relay }: AppleRelayClientOptions) {
+export async function listAppleTeams({ relay }: AppleRelayClientOptions): Promise<AppleTeam[]> {
   const body = await portalRequest(
     relay,
     { method: 'POST', path: '/account/listTeams.action', payload: {} },
     'Apple Developer team list',
   );
-  return uniqueAppleTeams([
+  // The same team can appear both as a portal team record and as an App
+  // Store Connect provider record; keep the first (most complete) one.
+  const seen = new Set<string>();
+  const teams: AppleTeam[] = [];
+  for (const record of [
     ...(body.teams ?? []),
     ...(body.availableProviders ?? []),
     ...(body.provider ? [body.provider] : []),
-  ]);
+  ]) {
+    const team = normalizeAppleTeam(record);
+    if (!team || seen.has(team.teamId)) continue;
+    seen.add(team.teamId);
+    teams.push(team);
+  }
+  return teams;
 }
 
 export type ListAppleCertificatesOptions = AppleTeamScopedOptions & {
@@ -221,19 +306,23 @@ export type ListAppleBundleIDsOptions = AppleTeamScopedOptions & {
 
 // Apple's listAppIds.action returns the full paginated list and does not
 // honor a server-side search filter, so the `search` filter applies here.
-export async function listAppleBundleIDs({ relay, teamId = '', search = '' }: ListAppleBundleIDsOptions) {
+export async function listAppleBundleIDs({
+  relay,
+  teamId = '',
+  search = '',
+}: ListAppleBundleIDsOptions): Promise<AppleBundleID[]> {
   const body = await portalRequest(
     relay,
     paged('/account/ios/identifiers/listAppIds.action', teamId),
     'Apple bundle ID list',
   );
-  const appIds = body.appIds ?? [];
+  const appIds = (body.appIds ?? [])
+    .map(normalizeAppleBundleID)
+    .filter((appId): appId is AppleBundleID => appId !== undefined);
   const query = search.trim().toLowerCase();
   if (!query) return appIds;
   return appIds.filter((appId) =>
-    [appId.identifier, appId.bundleId, appId.name].some(
-      (value) => typeof value === 'string' && value.toLowerCase().includes(query),
-    ),
+    [appId.bundleId, appId.name].some((value) => value?.toLowerCase().includes(query)),
   );
 }
 
@@ -247,7 +336,7 @@ export async function createAppleBundleID({
   teamId = '',
   bundleId,
   name,
-}: CreateAppleBundleIDOptions) {
+}: CreateAppleBundleIDOptions): Promise<AppleBundleID> {
   const body = await portalRequest(
     relay,
     {
@@ -257,7 +346,14 @@ export async function createAppleBundleID({
     },
     'Apple bundle ID creation',
   );
-  return body.appId;
+  const record = body.appId as PortalAppIdRecord | undefined;
+  // The bundle identifier is known from the request even when Apple's
+  // response omits it; only the opaque record id is irreplaceable.
+  const created = record && normalizeAppleBundleID({ identifier: bundleId, ...record });
+  if (!created) {
+    throw new Error('Apple bundle ID creation did not return the record id.');
+  }
+  return created;
 }
 
 export type DeleteAppleBundleIDOptions = AppleTeamScopedOptions & {
@@ -354,7 +450,7 @@ export async function listAppleProfiles({
   teamId = '',
   profileKind = 'development',
   bundleId = '',
-}: ListAppleProfilesOptions) {
+}: ListAppleProfilesOptions): Promise<AppleProfile[]> {
   const body = await portalRequest(
     relay,
     paged('/account/ios/profile/listProvisioningProfiles.action', teamId, {
@@ -366,13 +462,12 @@ export async function listAppleProfiles({
     }),
     'Apple provisioning profile list',
   );
-  const profiles = body.provisioningProfiles ?? [];
+  const profiles = (body.provisioningProfiles ?? [])
+    .map(normalizeAppleProfile)
+    .filter((profile): profile is AppleProfile => profile !== undefined);
   const wanted = bundleId.trim();
   if (!wanted) return profiles;
-  return profiles.filter((profile) => {
-    const bound = profileBoundBundleId(profile);
-    return bound === undefined || bound === wanted;
-  });
+  return profiles.filter((profile) => profile.bundleId === undefined || profile.bundleId === wanted);
 }
 
 /** The bundle ID a portal profile row binds, when the row exposes it. */
@@ -404,7 +499,7 @@ export async function createAppleProfile({
   certificateIds,
   deviceIds = [],
   name,
-}: CreateAppleProfileOptions) {
+}: CreateAppleProfileOptions): Promise<AppleProfile> {
   const [certificateId] = certificateIds;
   if (!certificateId) {
     throw new Error('At least one certificate ID is required to create an Apple provisioning profile.');
@@ -433,7 +528,11 @@ export async function createAppleProfile({
     },
     'Apple provisioning profile creation',
   );
-  return body.provisioningProfile;
+  const created = body.provisioningProfile && normalizeAppleProfile(body.provisioningProfile);
+  if (!created) {
+    throw new Error('Apple provisioning profile creation did not return a profile ID.');
+  }
+  return created;
 }
 
 export type DownloadAppleProfileOptions = AppleTeamScopedOptions & {
@@ -471,18 +570,4 @@ export function stringField(record: Record<string, unknown> | undefined, key: st
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return undefined;
-}
-
-function uniqueAppleTeams(teams: AppleDeveloperPortalTeam[]) {
-  const seen = new Set<string>();
-  const result: AppleDeveloperPortalTeam[] = [];
-  for (const team of teams) {
-    const key = String(
-      team.teamId ?? team.providerId ?? team.publicProviderId ?? team.name ?? JSON.stringify(team),
-    );
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(team);
-  }
-  return result;
 }
