@@ -109,6 +109,12 @@ export interface ReverseTcpTunnelOptions {
    */
   maxPendingBytesPerConnection?: number;
   /**
+   * Maximum bytes queued in the WebSocket before local reads pause. Bounds
+   * memory when the local service produces data faster than the tunnel drains.
+   * @default 4194304
+   */
+  maxBufferedBytes?: number;
+  /**
    * Local TCP connect timeout in milliseconds.
    * @default 10000
    */
@@ -167,6 +173,9 @@ export async function startReverseTcpTunnel(
   const logLevel = options.logLevel ?? 'info';
   const maxConnections = options.maxConnections ?? 64;
   const maxPendingBytesPerConnection = options.maxPendingBytesPerConnection ?? 16 * 1024 * 1024;
+  const maxBufferedBytes = options.maxBufferedBytes ?? 4 * 1024 * 1024;
+  // Hysteresis: resume well below the pause threshold to avoid flapping.
+  const resumeBelowBufferedBytes = maxBufferedBytes / 4;
   const connectTimeoutMs = options.connectTimeoutMs ?? 10_000;
 
   const logger = {
@@ -200,6 +209,8 @@ export async function startReverseTcpTunnel(
     let connectionState: TunnelConnectionState = 'connecting';
     let hasResolved = false;
     let remoteAddress: ReverseTunnel['remoteAddress'] | undefined;
+    // The WebSocket is shared by all connections, so backpressure is tunnel-wide.
+    let pausedForBackpressure = false;
 
     const updateConnectionState = (newState: TunnelConnectionState): void => {
       if (connectionState !== newState) {
@@ -218,6 +229,28 @@ export async function startReverseTcpTunnel(
     const sendCloseSignal = (connId: number): void => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(encodeConnectionHeader(connId));
+      }
+    };
+
+    const pauseForBackpressure = (): void => {
+      if (pausedForBackpressure) return;
+      pausedForBackpressure = true;
+      logger.debug('WebSocket send buffer full, pausing local reads');
+      for (const socket of connections.values()) {
+        if (!socket.destroyed) socket.pause();
+      }
+    };
+
+    // Called from ws.send completion callbacks. Sends and callbacks are 1:1
+    // and pausing happens after at least one send is queued, so the callback
+    // that observes a drained buffer is guaranteed to exist; no polling needed.
+    const resumeIfDrained = (): void => {
+      if (!pausedForBackpressure) return;
+      if (!ws || ws.bufferedAmount >= resumeBelowBufferedBytes) return;
+      pausedForBackpressure = false;
+      logger.debug('WebSocket send buffer drained, resuming local reads');
+      for (const socket of connections.values()) {
+        if (!socket.destroyed) socket.resume();
       }
     };
 
@@ -266,6 +299,7 @@ export async function startReverseTcpTunnel(
       for (const connId of Array.from(connections.keys())) {
         removeConnection(connId, false);
       }
+      pausedForBackpressure = false;
       connections.clear();
       connecting.clear();
       pendingPerConn.clear();
@@ -372,6 +406,9 @@ export async function startReverseTcpTunnel(
       connecting.add(connId);
 
       const socket = net.createConnection({ host: localHost, port: localPort });
+      if (pausedForBackpressure) {
+        socket.pause();
+      }
       connections.set(connId, socket);
       const connectTimer = setTimeout(() => {
         logger.error(`Local TCP connect timed out conn=${connId} after ${connectTimeoutMs}ms`);
@@ -387,13 +424,22 @@ export async function startReverseTcpTunnel(
         flushPending(connId, socket);
       });
 
+      const header = encodeConnectionHeader(connId);
+      const onSent = (err?: Error): void => {
+        if (err) {
+          logger.error(`Failed to send conn=${connId} data: ${err.message}`);
+        }
+        resumeIfDrained();
+      };
       socket.on('data', (chunk: Buffer) => {
         if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(Buffer.concat([encodeConnectionHeader(connId), chunk]), (err) => {
-            if (err) {
-              logger.error(`Failed to send conn=${connId} data: ${err.message}`);
-            }
-          });
+          const framed = Buffer.allocUnsafe(4 + chunk.length);
+          header.copy(framed, 0);
+          chunk.copy(framed, 4);
+          ws.send(framed, onSent);
+          if (!pausedForBackpressure && ws.bufferedAmount > maxBufferedBytes) {
+            pauseForBackpressure();
+          }
         }
       });
 
