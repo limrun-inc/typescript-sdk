@@ -4,9 +4,12 @@ import forge from 'node-forge';
 import { describe, expect, test } from 'vitest';
 import type { AppleRelayWebSocketClient } from './relay';
 import {
+  APP_STORE_CONNECT_API_KEY_SECRET_TYPE,
   APPLE_CERTIFICATE_SECRET_TYPE,
   appleCertificateSecretName,
+  appStoreConnectApiKeySecretName,
   ensureAppleCertificateSecret,
+  ensureAppStoreConnectApiKeySecret,
   type SigningSecret,
   type SigningSecretMetadata,
   type SigningSecretStore,
@@ -176,5 +179,100 @@ describe('ensureAppleCertificateSecret', () => {
     expect(result.created).toBe(false);
     expect(result.certificateId).toBe('CERT1');
     expect(state.mintedCertificateIds).toEqual(['CERT1']);
+  });
+});
+
+/**
+ * Fakes the relay's App Store Connect proxy for a team holding one active
+ * API key KEY1 and, unless vendorNumbersFail, one vendor number.
+ */
+function fakeAppStoreConnectRelay(options: { vendorNumbersFail?: boolean } = {}) {
+  return {
+    async request(type: string, payload: unknown) {
+      if (type === 'finalize') {
+        return {
+          status: 200,
+          statusText: 'OK',
+          body: { provider: { providerId: 121234567, publicProviderId: 'PUB-UUID' } },
+        };
+      }
+      const request = payload as { path: string };
+      if (request.path === '/iris/v1/apiKeys') {
+        return {
+          status: 200,
+          statusText: 'OK',
+          body: { data: [{ type: 'apiKeys', id: 'KEY1', attributes: { isActive: true } }] },
+        };
+      }
+      if (request.path.endsWith('/sapVendorNumbers')) {
+        if (options.vendorNumbersFail) {
+          return { status: 403, statusText: 'Forbidden', body: {} };
+        }
+        return { status: 200, statusText: 'OK', body: { data: [{ sapVendorNumber: 85912345 }] } };
+      }
+      throw new Error(`unexpected App Store Connect path: ${request.path}`);
+    },
+  } as unknown as AppleRelayWebSocketClient;
+}
+
+describe('ensureAppStoreConnectApiKeySecret', () => {
+  const teamId = 'TEAM1';
+  const secretName = appStoreConnectApiKeySecretName(teamId);
+  const storedKeyData = {
+    privateKeyP8Base64: 'cDg=',
+    keyId: 'KEY1',
+    issuerId: 'ISSUER',
+    teamID: teamId,
+  };
+
+  test('backfills the vendor number into a reused key secret', async () => {
+    const org = memorySecretStore();
+    await org.store.put(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, secretName, storedKeyData);
+
+    const result = await ensureAppStoreConnectApiKeySecret({
+      relay: fakeAppStoreConnectRelay(),
+      teamId,
+      secretStore: org.store,
+      nickname: 'Test Publishing',
+    });
+    expect(result.created).toBe(false);
+    expect(result.keyId).toBe('KEY1');
+    const stored = await org.store.get(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, secretName);
+    expect(stored?.data.vendorNumber).toBe('85912345');
+    expect(stored?.data.issuerId).toBe('ISSUER');
+  });
+
+  test('still reuses the key when the vendor number lookup fails', async () => {
+    const org = memorySecretStore();
+    await org.store.put(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, secretName, storedKeyData);
+
+    const result = await ensureAppStoreConnectApiKeySecret({
+      relay: fakeAppStoreConnectRelay({ vendorNumbersFail: true }),
+      teamId,
+      secretStore: org.store,
+      nickname: 'Test Publishing',
+    });
+    expect(result.created).toBe(false);
+    expect(result.keyId).toBe('KEY1');
+    const stored = await org.store.get(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, secretName);
+    expect(stored?.data.vendorNumber).toBeUndefined();
+  });
+
+  test('leaves a complete stored key secret untouched', async () => {
+    const org = memorySecretStore();
+    await org.store.put(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, secretName, {
+      ...storedKeyData,
+      vendorNumber: '87754321',
+    });
+
+    const result = await ensureAppStoreConnectApiKeySecret({
+      relay: fakeAppStoreConnectRelay(),
+      teamId,
+      secretStore: org.store,
+      nickname: 'Test Publishing',
+    });
+    expect(result.created).toBe(false);
+    const stored = await org.store.get(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, secretName);
+    expect(stored?.data.vendorNumber).toBe('87754321');
   });
 });
