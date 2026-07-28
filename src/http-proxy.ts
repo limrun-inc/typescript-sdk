@@ -87,9 +87,10 @@ function withoutHopByHop(headers: http.IncomingHttpHeaders): http.IncomingHttpHe
 }
 
 /**
- * Standard HTTP forward proxy (absolute-form request targets, as sent by clients
- * configured with e.g. JVM -Dhttp.proxyHost) that rewrites loopback requests on
- * `matchPort` to `remoteBaseUrl` and passes every other target through untouched.
+ * Loopback-only HTTP forward proxy (absolute-form request targets, as sent by
+ * clients configured with e.g. JVM -Dhttp.proxyHost) that rewrites loopback
+ * requests on `matchPort` to `remoteBaseUrl`, passes other loopback targets
+ * through untouched, and refuses everything else.
  */
 export async function startForwardHttpProxy({
   matchPort,
@@ -116,9 +117,18 @@ export async function startForwardHttpProxy({
       return;
     }
 
+    // Only loopback targets are ever proxied: the driver port rewrite plus a
+    // client's own local plain-HTTP services. Anything else is refused so this
+    // proxy cannot be used to reach arbitrary hosts.
+    if (!isLoopbackHost(target.hostname)) {
+      res.writeHead(403, { 'content-type': 'text/plain' });
+      res.end('Limrun forward proxy only forwards loopback targets.');
+      return;
+    }
+
     // matchPort is always explicit (an ephemeral port or 7001), so a target
     // without a port can never match.
-    const matched = isLoopbackHost(target.hostname) && Number(target.port) === matchPort;
+    const matched = Number(target.port) === matchPort;
     const upstreamUrl = matched ? new URL(`${base}${target.pathname}${target.search}`) : target;
     const transport = upstreamUrl.protocol === 'https:' ? https : http;
     const upstream = transport.request(
@@ -141,9 +151,13 @@ export async function startForwardHttpProxy({
     );
 
     upstream.on('error', (error) => {
-      if (!res.headersSent) {
-        res.writeHead(502, { 'content-type': 'text/plain' });
+      if (res.headersSent) {
+        // Mid-stream failure: abort instead of appending error text to a
+        // partial body.
+        res.destroy(error);
+        return;
       }
+      res.writeHead(502, { 'content-type': 'text/plain' });
       res.end(error.message);
     });
     // A client that aborts mid-call must not leak the upstream socket.
