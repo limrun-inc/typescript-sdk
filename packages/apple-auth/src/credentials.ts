@@ -15,11 +15,13 @@ import {
   type AppStoreConnectApiKeyRole,
 } from './app-store-connect';
 import { exportAppleCertificateP12, generateAppleSigningKeyAndCSR } from './crypto';
+import { sameUDID } from './internal/udid';
 import {
   createAppleCertificate,
   downloadAppleCertificate,
   downloadAppleProfile,
   listAppleCertificates,
+  listAppleDevices,
   stringField,
   type AppleCertificateKind,
 } from './portal';
@@ -34,6 +36,7 @@ import {
   type AppleCertificateSecretData,
   type AppleCertificateType,
   type AppStoreConnectApiKeySecretData,
+  type ProvisionedDevice,
   type SigningSecret,
   type SigningSecretStore,
 } from './secret-store';
@@ -191,6 +194,10 @@ export type SaveAppleProfileInput = {
  * bundle ID and certificate set; the reference fields (certificate
  * serials, bundle IDs, device IDs parsed out of the profile) are what
  * consumers filter on.
+ *
+ * The profile itself only embeds device UDIDs; the stored deviceIDs field
+ * joins them with the team's portal device list so each entry also carries
+ * the human-readable name the user gave the device in Apple's portal.
  */
 export async function saveAppleProfileSecret({
   relay,
@@ -205,12 +212,21 @@ export async function saveAppleProfileSecret({
     throw new Error('Apple provisioning profile download returned no bytes.');
   }
   const info = parseProvisioningProfileBase64(profileBase64);
+  const teamDevices = info.provisionedDevices.length > 0 ? await listAppleDevices({ relay, teamId }) : [];
+  const provisionedDevices: ProvisionedDevice[] = info.provisionedDevices.map((udid) => {
+    const record = teamDevices.find((device) => sameUDID(device.deviceNumber, udid));
+    return {
+      udid,
+      ...(record?.name ? { name: record.name } : {}),
+      ...(record?.model ? { model: record.model } : {}),
+    };
+  });
   const name = `${teamId}/${info.uuid ?? profileId}`;
   const secret = await putAppleProvisioningProfileSecret(secretStore, name, {
     provisioningProfileBase64: profileBase64,
     certificateSerialNumbers: info.certificateSerialNumbers.join(','),
     bundleIDs: info.bundleID,
-    deviceIDs: info.provisionedDevices.join(','),
+    deviceIDs: provisionedDevices.length > 0 ? JSON.stringify(provisionedDevices) : undefined,
     teamID: info.teamID ?? teamId,
     profileName: info.name,
     uuid: info.uuid,

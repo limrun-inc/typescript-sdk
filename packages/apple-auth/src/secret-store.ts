@@ -83,23 +83,55 @@ export type AppleCertificateSecretData = {
 };
 
 /**
+ * A device a provisioning profile is bound to: the UDID the profile
+ * embeds, enriched with the device's record on the Apple Developer portal
+ * so users can recognize their devices without looking UDIDs up.
+ */
+export type ProvisionedDevice = {
+  /** The device UDID, the identifier profiles bind. */
+  udid: string;
+  /** The device's name as registered on the Apple Developer portal. */
+  name?: string;
+  /** Apple's hardware model string, e.g. "iPhone 14 Pro". */
+  model?: string;
+};
+
+/**
  * Data payload of an appleProvisioningProfile secret. The
  * certificateSerialNumbers, bundleIDs and deviceIDs fields duplicate what
- * the signed profile binds (as comma-separated lists) so profiles can be
- * filtered by certificate, bundle ID or device without parsing every
- * entry. Certificates are referenced by serial number, the identifier
- * Apple embeds in the profile itself.
+ * the signed profile binds so profiles can be filtered by certificate,
+ * bundle ID or device without parsing every entry. Certificates and
+ * bundle IDs are comma-separated lists; deviceIDs is a JSON array of
+ * ProvisionedDevice. Certificates are referenced by serial number, the
+ * identifier Apple embeds in the profile itself.
  */
 export type AppleProvisioningProfileSecretData = {
   provisioningProfileBase64: string;
   certificateSerialNumbers?: string;
   bundleIDs?: string;
+  /** JSON array of ProvisionedDevice; absent for App Store profiles. */
   deviceIDs?: string;
   teamID?: string;
   profileName?: string;
   uuid?: string;
   expirationDate?: string;
 };
+
+/** Parses the deviceIDs field of an appleProvisioningProfile secret. */
+export function parseProvisionedDevices(value: string | undefined): ProvisionedDevice[] {
+  if (!value) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(
+    (item): item is ProvisionedDevice =>
+      !!item && typeof item === 'object' && typeof (item as { udid?: unknown }).udid === 'string',
+  );
+}
 
 /**
  * Data payload of an appStoreConnectApiKey secret: the private half of an
