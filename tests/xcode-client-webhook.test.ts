@@ -8,7 +8,7 @@ jest.mock('eventsource-client', () => ({
 import Limrun from '@limrun/api';
 import { nodeProxyTransport } from '@limrun/api/internal/proxy-transport';
 import type { RequestInfo } from '../src/internal/builtin-types';
-import { createEventSource } from 'eventsource-client';
+import { createEventSource, type EventSourceOptions } from 'eventsource-client';
 
 const originalFetch = nodeProxyTransport.fetch;
 
@@ -89,20 +89,17 @@ describe('xcode client build-finish webhook', () => {
       }
       throw new Error(`unexpected request: ${input}`);
     });
-    jest
-      .mocked(createEventSource)
-      .mockImplementationOnce(
-        (options: { onMessage: (message: { event: string; data: string }) => void }) => {
-          setTimeout(() => {
-            options.onMessage({
-              event: 'testflight',
-              data: JSON.stringify({ state: 'accepted', uploadId: 'upload-1' }),
-            });
-            options.onMessage({ event: 'exitCode', data: '0' });
-          }, 0);
-          return { close: jest.fn() } as never;
-        },
-      );
+    jest.mocked(createEventSource).mockImplementationOnce((optionsOrUrl) => {
+      const { onMessage } = optionsOrUrl as EventSourceOptions;
+      setTimeout(() => {
+        onMessage?.({
+          event: 'testflight',
+          data: JSON.stringify({ state: 'accepted', uploadId: 'upload-1' }),
+        });
+        onMessage?.({ event: 'exitCode', data: '0' });
+      }, 0);
+      return { close: jest.fn() } as never;
+    });
 
     const client = new Limrun({ apiKey: 'key' });
     const xcode = await client.xcodeInstances.createClient({
