@@ -26,11 +26,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: packages/cli
-        run: npm ci
+        run: yarn install --frozen-lockfile
 
       - name: Build
         working-directory: packages/cli
-        run: npm run build
+        run: yarn build
 
       - name: Publish lim
         working-directory: packages/cli
