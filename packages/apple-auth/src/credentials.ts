@@ -320,6 +320,7 @@ export async function ensureAppStoreConnectApiKeySecret({
     keyId,
     issuerId: downloaded.issuerId,
     vendorNumber: await fetchVendorNumberBestEffort(relay, providerId, log),
+    roles: (roles ?? ['APP_MANAGER']).join(','),
     nickname,
     teamID: teamId,
   };

@@ -182,11 +182,14 @@ describe('ensureAppleCertificateSecret', () => {
   });
 });
 
+const FAKE_P8_PEM = '-----BEGIN PRIVATE KEY-----\nMIGTAgEAMBMGByqGSM49\n-----END PRIVATE KEY-----\n';
+
 /**
  * Fakes the relay's App Store Connect proxy for a team holding one active
- * API key KEY1 and, unless vendorNumbersFail, one vendor number.
+ * API key KEY1 and, unless vendorNumbersFail, one vendor number. Creation
+ * mints KEY2 (recorded in mintedKeyIds) and serves its private key once.
  */
-function fakeAppStoreConnectRelay(options: { vendorNumbersFail?: boolean } = {}) {
+function fakeAppStoreConnectRelay(options: { vendorNumbersFail?: boolean; mintedKeyIds?: string[] } = {}) {
   return {
     async request(type: string, payload: unknown) {
       if (type === 'finalize') {
@@ -196,12 +199,30 @@ function fakeAppStoreConnectRelay(options: { vendorNumbersFail?: boolean } = {})
           body: { provider: { providerId: 121234567, publicProviderId: 'PUB-UUID' } },
         };
       }
-      const request = payload as { path: string };
+      const request = payload as { method?: string; path: string };
+      if (request.path === '/iris/v1/apiKeys' && request.method === 'POST') {
+        options.mintedKeyIds?.push('KEY2');
+        return {
+          status: 201,
+          statusText: 'Created',
+          body: { data: { type: 'apiKeys', id: 'KEY2', attributes: {} } },
+        };
+      }
       if (request.path === '/iris/v1/apiKeys') {
         return {
           status: 200,
           statusText: 'OK',
           body: { data: [{ type: 'apiKeys', id: 'KEY1', attributes: { isActive: true } }] },
+        };
+      }
+      if (request.path === '/iris/v1/apiKeys/KEY2') {
+        return {
+          status: 200,
+          statusText: 'OK',
+          body: {
+            data: { type: 'apiKeys', id: 'KEY2', attributes: { privateKey: btoa(FAKE_P8_PEM) } },
+            included: [{ type: 'providers', attributes: { publicProviderId: 'PUB-UUID' } }],
+          },
         };
       }
       if (request.path.endsWith('/sapVendorNumbers')) {
@@ -274,5 +295,26 @@ describe('ensureAppStoreConnectApiKeySecret', () => {
     expect(result.created).toBe(false);
     const stored = await org.store.get(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, secretName);
     expect(stored?.data.vendorNumber).toBe('87754321');
+  });
+
+  test('mints and stores a key with vendor number and roles when none is stored', async () => {
+    const org = memorySecretStore();
+    const mintedKeyIds: string[] = [];
+
+    const result = await ensureAppStoreConnectApiKeySecret({
+      relay: fakeAppStoreConnectRelay({ mintedKeyIds }),
+      teamId,
+      secretStore: org.store,
+      nickname: 'Test Publishing',
+      roles: ['ADMIN'],
+    });
+    expect(result.created).toBe(true);
+    expect(result.keyId).toBe('KEY2');
+    expect(mintedKeyIds).toEqual(['KEY2']);
+    const stored = await org.store.get(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, secretName);
+    expect(stored?.data.keyId).toBe('KEY2');
+    expect(stored?.data.roles).toBe('ADMIN');
+    expect(stored?.data.vendorNumber).toBe('85912345');
+    expect(stored?.data.issuerId).toBe('PUB-UUID');
   });
 });

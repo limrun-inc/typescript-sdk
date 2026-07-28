@@ -120,6 +120,8 @@ export type AppStoreConnectApiKeySecretData = {
    * session user could not see Payments and Financial Reports.
    */
   vendorNumber?: string;
+  /** Comma-separated roles the key was minted with, e.g. ADMIN. */
+  roles?: string;
   nickname?: string;
   teamID?: string;
   expirationDate?: string;
