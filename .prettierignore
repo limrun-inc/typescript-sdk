@@ -8,3 +8,6 @@ CHANGELOG.md
 
 # vendored upstream source, kept as copied
 /packages/xdelta3-wasm/native/xdelta
+
+# gitignored example secret stores; local signing material, not source
+/examples/*/backend/.secrets
