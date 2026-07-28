@@ -8,7 +8,21 @@ export { Limrun, type ClientOptions } from './client';
 export { PagePromise } from './core/pagination';
 export * from './instance-client';
 export * as Ios from './ios-client';
-export { startHttpProxy, type HttpProxy, type StartHttpProxyOptions } from './http-proxy';
+export {
+  startHttpProxy,
+  startForwardHttpProxy,
+  type HttpProxy,
+  type StartHttpProxyOptions,
+  type StartForwardHttpProxyOptions,
+} from './http-proxy';
+export {
+  prepareMaestroRun,
+  isMaestroRunnerRunning,
+  maestroSpawnOptions,
+  MAESTRO_RUNNER_BUNDLE_ID,
+  MAESTRO_RUNNER_PORT,
+  type MaestroRun,
+} from './ios-maestro';
 export { buildSettingKeyPattern, parseBuildSettingEntries, validateBuildSettings } from './build-settings';
 export {
   exec,

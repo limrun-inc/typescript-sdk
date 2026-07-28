@@ -11,4 +11,6 @@ packages/xdelta3-wasm/native/build/
 .idea/
 .eslintcache
 .env
-examples/detox-ios/artifacts/
+examples/*/artifacts/
+examples/maestro-ios/video.mp4
+examples/maestro-ios/*.png
