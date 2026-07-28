@@ -1,6 +1,5 @@
 import type { ConnectController } from '../hooks/useConnect';
 import { NEW_BUNDLE_ID } from '../hooks/useConnect';
-import { appIdBundleId, appleTeamSelectionId, stringField } from '../lib/apple';
 import { hintText, infoBox, inputStyle, labelStyle, primaryButton, secondaryButton, warnBox } from '../theme';
 import { Section } from './Section';
 
@@ -110,15 +109,11 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
             value={connect.selectedTeamId}
             onChange={(event) => connect.setSelectedTeamId(event.target.value)}
           >
-            {connect.teams.map((team) => {
-              const id = appleTeamSelectionId(team);
-              if (!id) return null;
-              return (
-                <option key={id} value={id}>
-                  {team.name ? `${team.name} (${id})` : id}
-                </option>
-              );
-            })}
+            {connect.teams.map((team) => (
+              <option key={team.teamId} value={team.teamId}>
+                {team.name ? `${team.name} (${team.teamId})` : team.teamId}
+              </option>
+            ))}
           </select>
           <label style={labelStyle}>Bundle ID</label>
           <select
@@ -127,16 +122,11 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
             onChange={(event) => connect.setBundleIdChoice(event.target.value)}
           >
             <option value={NEW_BUNDLE_ID}>Register a new bundle ID…</option>
-            {connect.portalAppIds.map((appId) => {
-              const value = appIdBundleId(appId);
-              if (!value) return null;
-              const name = stringField(appId, 'name');
-              return (
-                <option key={value} value={value}>
-                  {name ? `${value} (${name})` : value}
-                </option>
-              );
-            })}
+            {connect.portalAppIds.map((appId) => (
+              <option key={appId.bundleId} value={appId.bundleId}>
+                {appId.name ? `${appId.bundleId} (${appId.name})` : appId.bundleId}
+              </option>
+            ))}
           </select>
           {connect.bundleIdsLoading && <p style={hintText}>Loading existing bundle IDs…</p>}
           {connect.bundleIdChoice === NEW_BUNDLE_ID && (

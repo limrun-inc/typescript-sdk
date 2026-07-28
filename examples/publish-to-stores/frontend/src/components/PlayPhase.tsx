@@ -20,6 +20,11 @@ import { Section } from './Section';
 
 const playConsoleUrl = 'https://play.google.com/console';
 
+// ID-less deep path: Play Console resolves the signed-in user's developer
+// account itself (no API exposes the numeric developer ID to OAuth clients),
+// landing single-account users straight on the create-app form.
+const createAppUrl = `${playConsoleUrl}/developers/create-new-app`;
+
 async function fileToBase64(file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = '';
@@ -27,7 +32,16 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
-export function PlayPhase({ play, onError }: { play: PlayController; onError: (message?: string) => void }) {
+export function PlayPhase({
+  play,
+  onError,
+  webhookUrl,
+}: {
+  play: PlayController;
+  onError: (message?: string) => void;
+  /** The sidebar's webhook URL; rides the publish request. Empty blocks publishing. */
+  webhookUrl: string;
+}) {
   const [keystoreFile, setKeystoreFile] = useState<File>();
   const [keystorePassword, setKeystorePassword] = useState('');
   const [keyAlias, setKeyAlias] = useState('');
@@ -74,7 +88,8 @@ export function PlayPhase({ play, onError }: { play: PlayController; onError: (m
   const showPackageField = play.packageName !== '' || play.detectionMiss;
   const canDetect = !play.detecting && play.projectPath.trim() !== '';
   const canSave = !keystoreBusy && keystoreFile && keystorePassword && keyAlias;
-  const canPublish = play.connected && !running;
+  const webhookUrlSet = webhookUrl.trim() !== '';
+  const canPublish = play.connected && !running && webhookUrlSet;
 
   return (
     <>
@@ -133,7 +148,7 @@ export function PlayPhase({ play, onError }: { play: PlayController; onError: (m
               <div style={warnBox}>
                 Play Console has no app this account can release under{' '}
                 <strong>{play.packageName.trim()}</strong>:{' '}
-                <a href={`${playConsoleUrl}/`} target="_blank" rel="noreferrer">
+                <a href={createAppUrl} target="_blank" rel="noreferrer">
                   create the app in Play Console
                 </a>{' '}
                 with exactly this package name (Google does not allow creating it via API). Checking again
@@ -228,10 +243,13 @@ export function PlayPhase({ play, onError }: { play: PlayController; onError: (m
               Builds {play.projectPath.trim()} remotely, signs the AAB with the stored upload key, and
               publishes it to the internal track.
             </p>
+            {!webhookUrlSet && (
+              <p style={hintText}>Enter the webhook URL at the top of the sidebar to enable publishing.</p>
+            )}
             <button
               style={primaryButton(!canPublish)}
               disabled={!canPublish}
-              onClick={() => void play.publish()}
+              onClick={() => void play.publish(webhookUrl.trim())}
             >
               {running ? 'Publishing…' : `Publish ${play.packageName.trim()} to the internal track`}
             </button>

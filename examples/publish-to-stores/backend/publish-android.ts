@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { beginPublish, failPublish, findExpoAppConfigs } from './publish.js';
+import { beginPublish, failPublish, findExpoAppConfigs, recordPublishConsoleUrl } from './publish.js';
 import { getSecret } from './secret-store.js';
 
 export type AndroidPublishRequest = {
@@ -15,6 +15,14 @@ export type AndroidPublishRequest = {
   googleAccessToken: string;
   /** Play track ID; the server defaults to internal. */
   track?: string;
+  /** Store directory the upload keystore lives in; backend default when absent. */
+  secretsDir?: string;
+  /**
+   * Public URL limbuild POSTs the build-finish webhook to, verbatim. It
+   * comes from the UI with each publish and must forward to this backend's
+   * webhook receiver for the result to be observed.
+   */
+  webhookUrl: string;
 };
 
 /**
@@ -99,13 +107,11 @@ export function androidSigningKeySecretName(packageName: string) {
   return `${packageName}/UPLOAD`;
 }
 
-export async function startAndroidPublish(
-  request: AndroidPublishRequest,
-  publicUrl: string,
-): Promise<string> {
+export async function startAndroidPublish(request: AndroidPublishRequest): Promise<string> {
   const signingSecret = await getSecret(
     ANDROID_SIGNING_KEY_SECRET_TYPE,
     androidSigningKeySecretName(request.packageName),
+    request.secretsDir,
   );
   if (!signingSecret) {
     throw new Error(
@@ -125,7 +131,7 @@ export async function startAndroidPublish(
   const keystorePath = path.join(workDir, 'upload.p12');
   await writeFile(keystorePath, Buffer.from(keystoreBase64, 'base64'), { mode: 0o600 });
 
-  const { id, token } = beginPublish('playstore');
+  const { id, token } = beginPublish();
   const args = [
     'gradle',
     'build',
@@ -134,8 +140,6 @@ export async function startAndroidPublish(
     keystorePath,
     '--key-alias',
     keyAlias,
-    '--upload',
-    `${request.packageName}-${id}.aab`,
     '--upload-to-playstore',
     '--playstore-package',
     request.packageName,
@@ -143,14 +147,15 @@ export async function startAndroidPublish(
     request.track ?? 'internal',
     '--auto-version-code',
     '--webhook-url',
-    `${publicUrl}/webhook/${id}`,
+    request.webhookUrl,
     '--webhook-header',
     `X-Publish-Token=${token}`,
-    '--webhook-header',
-    'Bypass-Tunnel-Reminder=true',
     '--inactivity-timeout',
     '3s',
     '--detach',
+    // The detach summary (instance, console link, webhook) arrives as one
+    // JSON object on stdout instead of prose, so it is machine-readable here.
+    '--json',
   ];
 
   const log = (line: string) => console.log(`[publish ${id}] ${line}`);
@@ -165,6 +170,10 @@ export async function startAndroidPublish(
       LIM_KEY_PASSWORD: keyPassword,
       LIM_PLAYSTORE_ACCESS_TOKEN: request.googleAccessToken,
     },
+  });
+  let stdoutText = '';
+  child.stdout.on('data', (chunk: Buffer) => {
+    stdoutText += chunk.toString('utf8');
   });
   const forwardLines = (stream: NodeJS.ReadableStream) => {
     let buffered = '';
@@ -185,7 +194,9 @@ export async function startAndroidPublish(
     void rm(workDir, { recursive: true, force: true });
     if (code !== 0) {
       failPublish(id, `lim exited with code ${code ?? 1} before the build finished. See the backend logs.`);
+      return;
     }
+    recordPublishConsoleUrl(id, stdoutText, log);
   });
 
   return id;

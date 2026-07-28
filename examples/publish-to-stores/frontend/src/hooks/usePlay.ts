@@ -246,29 +246,33 @@ export function usePlay({
   const [status, setStatus] = useState<PublishStatus>();
   const [publishError, setPublishError] = useState<string>();
 
-  const publish = useCallback(async () => {
-    const token = accessTokenRef.current;
-    if (!token) {
-      onError('Sign in with Google first.');
-      return;
-    }
-    setState('running');
-    setPublishId(undefined);
-    setStatus(undefined);
-    setPublishError(undefined);
-    try {
-      setPublishId(
-        await startAndroidPublish({
-          projectPath: projectPath.trim(),
-          packageName: packageName.trim(),
-          googleAccessToken: token,
-        }),
-      );
-    } catch (error) {
-      setPublishError(errorMessage(error, 'Play publish failed'));
-      setState('failed');
-    }
-  }, [onError, packageName, projectPath]);
+  const publish = useCallback(
+    async (webhookUrl: string) => {
+      const token = accessTokenRef.current;
+      if (!token) {
+        onError('Sign in with Google first.');
+        return;
+      }
+      setState('running');
+      setPublishId(undefined);
+      setStatus(undefined);
+      setPublishError(undefined);
+      try {
+        setPublishId(
+          await startAndroidPublish({
+            projectPath: projectPath.trim(),
+            packageName: packageName.trim(),
+            googleAccessToken: token,
+            webhookUrl,
+          }),
+        );
+      } catch (error) {
+        setPublishError(errorMessage(error, 'Play publish failed'));
+        setState('failed');
+      }
+    },
+    [onError, packageName, projectPath],
+  );
 
   useEffect(() => {
     if (state !== 'running' || !publishId) return;

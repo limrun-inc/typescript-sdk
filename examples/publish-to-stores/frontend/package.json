@@ -10,8 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@limrun/apple-auth": "^0.1.0",
-    "@limrun/play-auth": "^0.1.0",
+    "@limrun/apple-auth": "^0.3.0",
+    "@limrun/play-auth": "^0.2.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

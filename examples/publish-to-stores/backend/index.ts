@@ -1,8 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import Limrun from '@limrun/api';
-import localtunnel from 'localtunnel';
-import { deleteSecret, getSecret, listSecrets, putSecret } from './secret-store.js';
+import { defaultSecretsDir, deleteSecret, getSecret, listSecrets, putSecret } from './secret-store.js';
 import { getPublishStatus, receivePublishWebhook, startPublish, type PublishRequest } from './publish.js';
 import { detectAndroidPackage, startAndroidPublish, type AndroidPublishRequest } from './publish-android.js';
 
@@ -23,10 +22,6 @@ const port = 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(cors());
 
-// The public HTTPS front for the webhook receiver, assigned once the tunnel
-// (or PUBLIC_URL) is resolved at the bottom of this file.
-let publicUrl: string | undefined;
-
 // The Connect phase's Apple relay session: mints a short-lived scoped token
 // so the browser can speak the Apple relay protocol against Limrun's
 // registry directly. The API key never leaves this backend; the token can
@@ -36,7 +31,14 @@ let publicUrl: string | undefined;
 app.post('/session', async (_req: Request, res: Response) => {
   try {
     const session = await limrun.scopedTokens.create({ scopes: ['applerelay:*:connect'] });
-    return res.status(200).json({ token: session.token, expiresAt: session.expiresAt, registryUrl });
+    return res.status(200).json({
+      token: session.token,
+      expiresAt: session.expiresAt,
+      registryUrl,
+      // The store directory used when requests don't name one; the UI
+      // shows it as the default of its secrets-directory field.
+      secretsDir: defaultSecretsDir(),
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
     return res.status(500).json({ status: 'error', message });
@@ -47,11 +49,19 @@ app.post('/session', async (_req: Request, res: Response) => {
 // Limrun's organization secrets API so the frontend's SigningSecretStore
 // implementation is a thin fetch wrapper. Secret names contain slashes
 // (e.g. TEAMID/DISTRIBUTION), so clients URI-encode the name segment.
+// The optional `dir` query parameter selects the store directory; absent
+// or empty means the backend default.
+
+/** The store directory a request asked for, when it named one. */
+function secretsDirOf(req: Request): string | undefined {
+  const dir = req.query['dir'];
+  return typeof dir === 'string' && dir.trim() ? dir : undefined;
+}
 
 // Metadata only — secret data never appears in listings.
-app.get('/secrets', async (_req: Request, res: Response) => {
+app.get('/secrets', async (req: Request, res: Response) => {
   try {
-    const secrets = await listSecrets();
+    const secrets = await listSecrets(secretsDirOf(req));
     return res.status(200).json(secrets.map(({ type, name, createdAt }) => ({ type, name, createdAt })));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
@@ -61,7 +71,7 @@ app.get('/secrets', async (_req: Request, res: Response) => {
 
 app.get('/secrets/:type/:name', async (req: Request<{ type: string; name: string }>, res: Response) => {
   try {
-    const secret = await getSecret(req.params.type, req.params.name);
+    const secret = await getSecret(req.params.type, req.params.name, secretsDirOf(req));
     if (!secret) {
       return res.status(404).json({ status: 'error', message: 'Secret not found' });
     }
@@ -83,7 +93,7 @@ app.put(
       if (!data || typeof data !== 'object') {
         return res.status(400).json({ status: 'error', message: 'Body must contain a data object' });
       }
-      const secret = await putSecret(req.params.type, req.params.name, data);
+      const secret = await putSecret(req.params.type, req.params.name, data, secretsDirOf(req));
       return res.status(200).json(secret);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'An unknown error occurred';
@@ -94,7 +104,7 @@ app.put(
 
 app.delete('/secrets/:type/:name', async (req: Request<{ type: string; name: string }>, res: Response) => {
   try {
-    await deleteSecret(req.params.type, req.params.name);
+    await deleteSecret(req.params.type, req.params.name, secretsDirOf(req));
     return res.status(200).json({ status: 'success' });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
@@ -103,23 +113,21 @@ app.delete('/secrets/:type/:name', async (req: Request<{ type: string; name: str
 });
 
 // Starts a detached `lim xcode build` with the stored signing material and a
-// build-finish webhook, uploading the result to App Store Connect.
+// build-finish webhook, uploading the result to App Store Connect. The
+// webhook URL comes from the UI with each request: limbuild runs inside
+// Limrun's cloud and rejects private or IP-literal callback URLs, so it
+// must be a public URL that forwards to the webhook receiver's port 3001
+// (e.g. from `ngrok http 3001`).
 app.post('/publish', async (req: Request<{}, {}, Partial<PublishRequest>>, res: Response) => {
-  const { projectPath, method, teamId, bundleId, scheme } = req.body;
-  if (!projectPath || !teamId || !bundleId || (method !== 'testflight' && method !== 'appstore')) {
+  const { projectPath, teamId, bundleId, scheme, secretsDir, webhookUrl } = req.body;
+  if (!projectPath || !teamId || !bundleId || !webhookUrl) {
     return res.status(400).json({
       status: 'error',
-      message: 'projectPath, teamId, bundleId and method (testflight | appstore) are required',
-    });
-  }
-  if (!publicUrl) {
-    return res.status(503).json({
-      status: 'error',
-      message: 'The webhook tunnel is still starting; try again in a few seconds.',
+      message: 'projectPath, teamId, bundleId and webhookUrl are required',
     });
   }
   try {
-    const id = await startPublish({ projectPath, method, teamId, bundleId, scheme }, publicUrl);
+    const id = await startPublish({ projectPath, teamId, bundleId, scheme, secretsDir, webhookUrl });
     return res.status(202).json({ publishId: id });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
@@ -159,21 +167,22 @@ app.post(
 // Starts the detached Android counterpart of /publish. Completion arrives
 // through the same authenticated build-finish webhook and polling route.
 app.post('/publish/android', async (req: Request<{}, {}, Partial<AndroidPublishRequest>>, res: Response) => {
-  const { projectPath, packageName, googleAccessToken, track } = req.body;
-  if (!projectPath || !packageName || !googleAccessToken) {
+  const { projectPath, packageName, googleAccessToken, track, secretsDir, webhookUrl } = req.body;
+  if (!projectPath || !packageName || !googleAccessToken || !webhookUrl) {
     return res.status(400).json({
       status: 'error',
-      message: 'projectPath, packageName and googleAccessToken are required',
-    });
-  }
-  if (!publicUrl) {
-    return res.status(503).json({
-      status: 'error',
-      message: 'The webhook tunnel is still starting; try again in a few seconds.',
+      message: 'projectPath, packageName, googleAccessToken and webhookUrl are required',
     });
   }
   try {
-    const id = await startAndroidPublish({ projectPath, packageName, googleAccessToken, track }, publicUrl);
+    const id = await startAndroidPublish({
+      projectPath,
+      packageName,
+      googleAccessToken,
+      track,
+      secretsDir,
+      webhookUrl,
+    });
     return res.status(202).json({ publishId: id });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
@@ -181,47 +190,26 @@ app.post('/publish/android', async (req: Request<{}, {}, Partial<AndroidPublishR
   }
 });
 
-// The webhook receiver is its own Express app on its own port: the tunnel
-// makes whatever it fronts reachable by anyone on the internet, and the main
-// app serves the secret store. Only this app — one token-guarded POST route —
-// goes public.
+// The webhook receiver is its own Express app on its own port: the public
+// URL the user enters in the UI makes whatever it fronts reachable by anyone
+// on the internet, and the main app serves the secret store. Only this app —
+// one token-guarded POST route — goes public.
 const hooks = express();
 const webhookPort = 3001;
 hooks.use(express.json({ limit: '1mb' }));
 
-// The build-finish webhook limbuild POSTs to (through the tunnel) once the
-// build reaches a terminal state. Authenticated with the per-publish token
-// the CLI was given via --webhook-header.
-hooks.post('/webhook/:id', (req: Request<{ id: string }>, res: Response) => {
-  const token = req.header('X-Publish-Token');
-  if (!receivePublishWebhook(req.params.id, token, req.body)) {
-    // 404 for both unknown IDs and bad tokens: no oracle for URL guessers.
+// The build-finish webhook limbuild POSTs once the build reaches a terminal
+// state. It goes to the entered webhook URL exactly as provided — nothing is
+// appended — so accept the POST on any path and match it to a publish by the
+// per-publish token the CLI was given via --webhook-header.
+hooks.post('/{*splat}', (req: Request, res: Response) => {
+  const id = receivePublishWebhook(req.header('X-Publish-Token'), req.body);
+  if (!id) {
     return res.status(404).json({ status: 'error', message: 'Publish not found' });
   }
-  console.log(`[publish ${req.params.id}] webhook received:`, JSON.stringify(req.body));
+  console.log(`[publish ${id}] webhook received:`, JSON.stringify(req.body));
   return res.status(204).end();
 });
-
-// The webhook receiver must be reachable from limbuild, which runs inside
-// Limrun's cloud (and rejects private or IP-literal callback URLs). By
-// default the backend opens a localtunnel — no account or token needed, and
-// loca.lt hostnames ride an existing wildcard DNS record, so the URL works
-// the moment it is issued (unlike trycloudflare hostnames, whose DNS can
-// take minutes to propagate). Or bring your own public URL with PUBLIC_URL,
-// forwarded to the webhook receiver's port.
-async function resolvePublicUrl(): Promise<string> {
-  const configured = process.env['PUBLIC_URL'];
-  if (configured) return configured.replace(/\/$/, '');
-  console.log('Opening a localtunnel for the webhook receiver...');
-  const tunnel = await localtunnel({ port: webhookPort });
-  tunnel.on('error', (error: Error) => {
-    console.error(`localtunnel error: ${error.message}; build webhooks may not arrive.`);
-  });
-  tunnel.on('close', () => {
-    console.error('localtunnel closed; build webhooks can no longer arrive.');
-  });
-  return tunnel.url;
-}
 
 hooks.listen(webhookPort, () => {
   console.log(`Webhook receiver listening at http://localhost:${webhookPort}`);
@@ -229,8 +217,3 @@ hooks.listen(webhookPort, () => {
 app.listen(port, () => {
   console.log(`Express server listening at http://localhost:${port}`);
 });
-
-// The tunnel comes up after the servers; POST /publish returns 503 until
-// this resolves.
-publicUrl = await resolvePublicUrl();
-console.log(`Build webhooks arrive via ${publicUrl}/webhook/:id`);

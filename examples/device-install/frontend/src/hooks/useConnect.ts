@@ -14,20 +14,14 @@ import {
   listAppleTeams,
   registerAppleDevice,
   saveAppleProfileSecret,
-  type AppleDeveloperPortalAppID,
-  type AppleDeveloperPortalTeam,
+  type AppleBundleID,
   type AppleRelayWebSocketClient,
+  type AppleTeam,
   type SigningSecretStore,
 } from '@limrun/apple-auth';
 import { useAppleIDLogin } from '@limrun/apple-auth/react';
 import { naming } from '../config';
-import {
-  appIdBundleId,
-  appIdIdentifier,
-  appleTeamSelectionId,
-  errorMessage,
-  stringField,
-} from '../lib/apple';
+import { errorMessage } from '../lib/apple';
 import { fetchRegistrySession, type RegistrySession } from '../lib/backend';
 
 export type Connection = {
@@ -77,11 +71,11 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
   const [appleAccount, setAppleAccount] = useState('');
   const [applePassword, setApplePassword] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
-  const [teams, setTeams] = useState<AppleDeveloperPortalTeam[]>([]);
+  const [teams, setTeams] = useState<AppleTeam[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [bundleId, setBundleId] = useState('');
   const [bundleIdChoice, setBundleIdChoice] = useState(NEW_BUNDLE_ID);
-  const [portalAppIds, setPortalAppIds] = useState<AppleDeveloperPortalAppID[]>([]);
+  const [portalAppIds, setPortalAppIds] = useState<AppleBundleID[]>([]);
   const [bundleIdsLoading, setBundleIdsLoading] = useState(false);
   const [appName, setAppName] = useState('');
   const [connection, setConnection] = useState<Connection>();
@@ -107,8 +101,8 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
   });
   const relay = appleLogin.session?.relay;
   const loggedIn = appleLogin.status === 'authenticated' && !!relay;
-  const selectedTeam = teams.find((team) => appleTeamSelectionId(team) === selectedTeamId);
-  const teamId = appleTeamSelectionId(selectedTeam);
+  const selectedTeam = teams.find((team) => team.teamId === selectedTeamId);
+  const teamId = selectedTeam?.teamId;
 
   useEffect(() => {
     const raw = localStorage.getItem(CONNECTION_STORAGE_KEY);
@@ -133,8 +127,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     setBundleIdsLoading(true);
     void listAppleBundleIDs({ relay, teamId })
       .then((appIds) => {
-        if (!cancelled)
-          setPortalAppIds(appIds.filter((appId) => !(appIdBundleId(appId) ?? '').includes('*')));
+        if (!cancelled) setPortalAppIds(appIds.filter((appId) => !appId.bundleId.includes('*')));
       })
       .catch((error: unknown) => {
         if (!cancelled) onError(errorMessage(error, 'Could not list bundle IDs'));
@@ -152,7 +145,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
       await appleLogin.finalize().catch(() => undefined);
       const loaded = await listAppleTeams({ relay: relayClient });
       setTeams(loaded);
-      setSelectedTeamId(loaded.map(appleTeamSelectionId).find(Boolean) ?? '');
+      setSelectedTeamId(loaded[0]?.teamId ?? '');
       log('Apple teams loaded', String(loaded.length));
     },
     [appleLogin, log],
@@ -201,7 +194,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     setBusy('confirm');
     try {
       const existing = await listAppleBundleIDs({ relay, teamId, search: chosenBundleId });
-      if (!existing.some((appId) => appIdBundleId(appId) === chosenBundleId)) {
+      if (!existing.some((appId) => appId.bundleId === chosenBundleId)) {
         await createAppleBundleID({
           relay,
           teamId,
@@ -297,9 +290,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
           teamId: connection.teamId,
           search: connection.bundleId,
         });
-        const appIdId = appIdIdentifier(
-          appIds.find((candidate) => appIdBundleId(candidate) === connection.bundleId),
-        );
+        const appIdId = appIds.find((candidate) => candidate.bundleId === connection.bundleId)?.appIdId;
         if (!appIdId) throw new Error(`Could not resolve ${connection.bundleId} on the Developer Portal.`);
 
         const signingCertificate = await ensureAppleCertificateSecret({
@@ -323,12 +314,10 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
               naming.qrProfileName(connection.bundleId, normalizedUDID)
             : naming.webUsbProfileName(connection.bundleId, normalizedUDID),
         });
-        const profileId = stringField(created, 'provisioningProfileId') ?? stringField(created, 'profileId');
-        if (!profileId) throw new Error('Apple profile creation returned no profile ID.');
         await saveAppleProfileSecret({
           relay,
           teamId: connection.teamId,
-          profileId,
+          profileId: created.profileId,
           secretStore,
           log,
         });
@@ -363,6 +352,9 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
 
   return {
     busy,
+    // Exposed so the app can read backend-advertised defaults (e.g. the
+    // secrets directory).
+    registrySession,
     relayReady: registrySession !== undefined,
     appleLogin,
     appleAccount,

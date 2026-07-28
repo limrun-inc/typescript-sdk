@@ -11,7 +11,43 @@ export type RegistrySession = {
   /** Limrun registry base URL the browser connects to directly. */
   registryUrl: string;
   expiresAt: string;
+  /** The backend's default secrets directory; the UI's field defaults to it. */
+  secretsDir?: string;
 };
+
+// The secrets directory on the backend host, chosen in the UI and persisted
+// here. Empty means the backend's own default. It is read at request time,
+// so every store operation and publish uses the latest choice.
+const SECRETS_DIR_STORAGE_KEY = 'publish-to-stores.secretsDir';
+
+export function getSecretsDir(): string {
+  return localStorage.getItem(SECRETS_DIR_STORAGE_KEY) ?? '';
+}
+
+export function setSecretsDir(dir: string) {
+  if (dir.trim()) localStorage.setItem(SECRETS_DIR_STORAGE_KEY, dir);
+  else localStorage.removeItem(SECRETS_DIR_STORAGE_KEY);
+}
+
+/** Appends the chosen secrets directory to a store URL, when one is set. */
+function withSecretsDir(url: string) {
+  const dir = getSecretsDir().trim();
+  return dir ? `${url}${url.includes('?') ? '&' : '?'}dir=${encodeURIComponent(dir)}` : url;
+}
+
+// The public URL limbuild POSTs build-finish webhooks to, entered in the UI
+// and persisted here. It rides every publish request; the backend passes it
+// to the lim CLI verbatim.
+const WEBHOOK_URL_STORAGE_KEY = 'publish-to-stores.webhookUrl';
+
+export function getWebhookUrl(): string {
+  return localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) ?? '';
+}
+
+export function setWebhookUrl(url: string) {
+  if (url.trim()) localStorage.setItem(WEBHOOK_URL_STORAGE_KEY, url);
+  else localStorage.removeItem(WEBHOOK_URL_STORAGE_KEY);
+}
 
 /**
  * Asks the backend for a scoped registry token. The Limrun API key stays on
@@ -20,16 +56,7 @@ export type RegistrySession = {
  */
 export async function fetchRegistrySession(): Promise<RegistrySession> {
   const response = await fetch(`${BACKEND_URL}/session`, { method: 'POST' });
-  if (!response.ok) {
-    let message = `HTTP ${response.status}`;
-    try {
-      const body = (await response.json()) as { message?: string };
-      if (body.message) message = body.message;
-    } catch {
-      // Non-JSON error body; the status code is the best we have.
-    }
-    throw new Error(`Failed to start a registry session: ${message}`);
-  }
+  if (!response.ok) await failedResponse(response, 'Failed to start a registry session');
   return (await response.json()) as RegistrySession;
 }
 
@@ -43,18 +70,7 @@ export function createBackendSecretStore(): SigningSecretStore {
   // Secret names contain slashes (e.g. TEAMID/DISTRIBUTION), so the name
   // travels as a single URI-encoded path segment.
   const secretUrl = (type: string, name: string) =>
-    `${BACKEND_URL}/secrets/${encodeURIComponent(type)}/${encodeURIComponent(name)}`;
-
-  async function fail(response: Response, action: string): Promise<never> {
-    let message = `HTTP ${response.status}`;
-    try {
-      const body = (await response.json()) as { message?: string };
-      if (body.message) message = body.message;
-    } catch {
-      // Non-JSON error body; the status code is the best we have.
-    }
-    throw new Error(`Failed to ${action} secret: ${message}`);
-  }
+    withSecretsDir(`${BACKEND_URL}/secrets/${encodeURIComponent(type)}/${encodeURIComponent(name)}`);
 
   return {
     async put(type, name, data) {
@@ -63,36 +79,35 @@ export function createBackendSecretStore(): SigningSecretStore {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data }),
       });
-      if (!response.ok) await fail(response, 'store');
+      if (!response.ok) await failedResponse(response, 'Failed to store secret');
       return (await response.json()) as SigningSecret;
     },
     async get(type, name) {
       const response = await fetch(secretUrl(type, name));
       if (response.status === 404) return undefined;
-      if (!response.ok) await fail(response, 'fetch');
+      if (!response.ok) await failedResponse(response, 'Failed to fetch secret');
       return (await response.json()) as SigningSecret;
     },
     async list() {
-      const response = await fetch(`${BACKEND_URL}/secrets`);
-      if (!response.ok) await fail(response, 'list');
+      const response = await fetch(withSecretsDir(`${BACKEND_URL}/secrets`));
+      if (!response.ok) await failedResponse(response, 'Failed to list secrets');
       return (await response.json()) as SigningSecretMetadata[];
     },
     async delete(type, name) {
       const response = await fetch(secretUrl(type, name), { method: 'DELETE' });
       if (response.status === 404) return;
-      if (!response.ok) await fail(response, 'delete');
+      if (!response.ok) await failedResponse(response, 'Failed to delete secret');
     },
   };
 }
 
-export type PublishMethod = 'testflight' | 'appstore';
-
 export type PublishInput = {
   projectPath: string;
-  method: PublishMethod;
   teamId: string;
   bundleId: string;
   scheme?: string;
+  /** Public URL limbuild POSTs the build-finish webhook to, verbatim. */
+  webhookUrl: string;
 };
 
 /**
@@ -123,7 +138,8 @@ export type PublishStatus = {
   id: string;
   state: 'running' | 'succeeded' | 'failed';
   startedAt: string;
-  method: PublishMethod | 'playstore';
+  /** Console page of the build instance, known while the build still runs. */
+  consoleUrl?: string;
   webhook?: BuildWebhookPayload;
   webhookReceivedAt?: string;
   error?: string;
@@ -146,6 +162,8 @@ export type AndroidPublishInput = {
   /** Browser-minted Google OAuth token; rides this one request only. */
   googleAccessToken: string;
   track?: string;
+  /** Public URL limbuild POSTs the build-finish webhook to, verbatim. */
+  webhookUrl: string;
 };
 
 /**
@@ -157,7 +175,9 @@ export async function startPublish(input: PublishInput): Promise<string> {
   const response = await fetch(`${BACKEND_URL}/publish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    // The build reads the signing secrets server-side, so it must look in
+    // the same directory the store operations used.
+    body: JSON.stringify({ ...input, secretsDir: getSecretsDir().trim() || undefined }),
   });
   if (!response.ok) await failedResponse(response, 'Publish request failed');
   const body = (await response.json()) as { publishId: string };
@@ -187,7 +207,7 @@ export async function startAndroidPublish(input: AndroidPublishInput): Promise<s
   const response = await fetch(`${BACKEND_URL}/publish/android`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, secretsDir: getSecretsDir().trim() || undefined }),
   });
   if (!response.ok) await failedResponse(response, 'Publish request failed');
   const body = (await response.json()) as { publishId: string };

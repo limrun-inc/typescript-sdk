@@ -10,13 +10,18 @@ import { getSecret, listSecrets, type StoredSecret } from './secret-store.js';
 
 export type PublishRequest = {
   projectPath: string;
-  method: 'testflight' | 'appstore';
   teamId: string;
   bundleId: string;
   scheme?: string;
+  /** Store directory the signing secrets live in; backend default when absent. */
+  secretsDir?: string;
+  /**
+   * Public URL limbuild POSTs the build-finish webhook to, verbatim. It
+   * comes from the UI with each publish and must forward to this backend's
+   * webhook receiver for the result to be observed.
+   */
+  webhookUrl: string;
 };
-
-export type PublishMethod = PublishRequest['method'] | 'playstore';
 
 type PublishCredentials = {
   certificate: StoredSecret;
@@ -33,16 +38,17 @@ type PublishCredentials = {
 export async function resolvePublishCredentials(
   teamId: string,
   bundleId: string,
+  secretsDir?: string,
 ): Promise<PublishCredentials> {
-  const certificate = await getSecret('appleCertificate', `${teamId}/DISTRIBUTION`);
+  const certificate = await getSecret('appleCertificate', `${teamId}/DISTRIBUTION`, secretsDir);
   if (!certificate) {
     throw new Error(`No distribution certificate stored for team ${teamId}. Run Connect first.`);
   }
-  const apiKey = await getSecret('appStoreConnectApiKey', `${teamId}/APP_STORE_CONNECT_API_KEY`);
+  const apiKey = await getSecret('appStoreConnectApiKey', `${teamId}/APP_STORE_CONNECT_API_KEY`, secretsDir);
   if (!apiKey) {
     throw new Error(`No App Store Connect API key stored for team ${teamId}. Run Connect first.`);
   }
-  const profiles = (await listSecrets())
+  const profiles = (await listSecrets(secretsDir))
     .filter(
       (secret) =>
         secret.type === 'appleProvisioningProfile' &&
@@ -137,7 +143,12 @@ export type PublishStatus = {
   id: string;
   state: 'running' | 'succeeded' | 'failed';
   startedAt: string;
-  method: PublishMethod;
+  /**
+   * Console page of the instance the build runs on, taken from the lim
+   * CLI's --json detach summary. Known as soon as the build is accepted,
+   * long before the webhook arrives, so the UI can link to live progress.
+   */
+  consoleUrl?: string;
   /** The build-finish webhook payload, verbatim as limbuild POSTed it. */
   webhook?: unknown;
   webhookReceivedAt?: string;
@@ -174,7 +185,7 @@ export function failPublish(id: string, message: string) {
 }
 
 /** Allocates the authenticated callback state shared by iOS and Android publishes. */
-export function beginPublish(method: PublishMethod): { id: string; token: string } {
+export function beginPublish(): { id: string; token: string } {
   const id = randomUUID();
   const token = randomBytes(32).toString('hex');
   publishes.set(id, {
@@ -182,7 +193,6 @@ export function beginPublish(method: PublishMethod): { id: string; token: string
       id,
       state: 'running',
       startedAt: new Date().toISOString(),
-      method,
     },
     token,
   });
@@ -193,27 +203,28 @@ export function beginPublish(method: PublishMethod): { id: string; token: string
 }
 
 /**
- * Records the build-finish webhook for a publish. The token guards the
- * endpoint: the callback URL travels through a public tunnel and is
- * guessable, so
- * limbuild proves itself with the per-publish secret it was given via
- * --webhook-header. Returns false when the token does not match.
+ * Records the build-finish webhook for the publish whose token matches.
+ * limbuild POSTs to the webhook URL exactly as provided — no publish ID rides
+ * the URL — so the per-publish X-Publish-Token secret is both the
+ * authentication and the correlation. Returns the settled publish's ID,
+ * or undefined when no publish matches.
  */
-export function receivePublishWebhook(id: string, token: string | undefined, payload: unknown): boolean {
-  const entry = publishes.get(id);
-  if (!entry) return false;
-  const expected = Buffer.from(entry.token);
-  const got = Buffer.from(token ?? '');
-  if (expected.length !== got.length || !timingSafeEqual(expected, got)) return false;
-  entry.status.webhook = payload;
-  entry.status.webhookReceivedAt = new Date().toISOString();
-  const status = (payload as { status?: string } | null)?.status;
-  entry.status.state = status === 'SUCCEEDED' ? 'succeeded' : 'failed';
-  if (entry.status.state === 'failed') {
-    const buildError = (payload as { error?: string } | null)?.error;
-    entry.status.error = buildError ?? `Build finished with status ${status ?? 'unknown'}.`;
+export function receivePublishWebhook(token: string | undefined, payload: unknown): string | undefined {
+  const received = Buffer.from(token ?? '');
+  for (const [id, entry] of publishes) {
+    const expected = Buffer.from(entry.token);
+    if (expected.length !== received.length || !timingSafeEqual(expected, received)) continue;
+    entry.status.webhook = payload;
+    entry.status.webhookReceivedAt = new Date().toISOString();
+    const status = (payload as { status?: string } | null)?.status;
+    entry.status.state = status === 'SUCCEEDED' ? 'succeeded' : 'failed';
+    if (entry.status.state === 'failed') {
+      const buildError = (payload as { error?: string } | null)?.error;
+      entry.status.error = buildError ?? `Build finished with status ${status ?? 'unknown'}.`;
+    }
+    return id;
   }
-  return true;
+  return undefined;
 }
 
 export function getPublishStatus(id: string): PublishStatus | undefined {
@@ -221,14 +232,30 @@ export function getPublishStatus(id: string): PublishStatus | undefined {
 }
 
 /**
- * Materializes the stored signing secrets into temp files and spawns
- * `lim xcode build` with a build-finish webhook pointing back at this
- * backend (through the public tunnel URL). Returns the publish ID the
- * frontend polls; the outcome arrives via the webhook, not the CLI's
- * output — that output only goes to this process's console for debugging.
+ * Reads the console link out of the lim CLI's detach summary. The build
+ * commands run with --json, which suppresses progress logs, so on a clean
+ * exit stdout is exactly the summary object.
  */
-export async function startPublish(request: PublishRequest, publicUrl: string): Promise<string> {
-  const credentials = await resolvePublishCredentials(request.teamId, request.bundleId);
+export function recordPublishConsoleUrl(id: string, cliStdout: string, log: (line: string) => void) {
+  const entry = publishes.get(id);
+  if (!entry) return;
+  try {
+    const summary = JSON.parse(cliStdout) as { consoleUrl?: string };
+    if (summary.consoleUrl) entry.status.consoleUrl = summary.consoleUrl;
+  } catch {
+    log('Could not parse the lim CLI detach summary; no console link for this publish.');
+  }
+}
+
+/**
+ * Materializes the stored signing secrets into temp files and spawns
+ * `lim xcode build` with a build-finish webhook pointing at the URL the
+ * request carries. Returns the publish ID the frontend polls; the outcome
+ * arrives via the webhook, not the CLI's output — that output only goes to
+ * this process's console for debugging.
+ */
+export async function startPublish(request: PublishRequest): Promise<string> {
+  const credentials = await resolvePublishCredentials(request.teamId, request.bundleId, request.secretsDir);
   const { certificate, profile } = credentials;
 
   const workDir = await mkdtemp(path.join(os.tmpdir(), 'publish-to-stores-'));
@@ -241,7 +268,7 @@ export async function startPublish(request: PublishRequest, publicUrl: string): 
     mode: 0o600,
   });
 
-  const { id, token } = beginPublish(request.method);
+  const { id, token } = beginPublish();
 
   const args = [
     'xcode',
@@ -258,17 +285,15 @@ export async function startPublish(request: PublishRequest, publicUrl: string): 
     '--provisioning-profile',
     profilePath,
     '--webhook-url',
-    `${publicUrl}/webhook/${id}`,
+    request.webhookUrl,
     '--webhook-header',
     `X-Publish-Token=${token}`,
-    // localtunnel interposes a reminder page for browser-looking requests;
-    // this header makes it pass any request straight through. Harmless when
-    // PUBLIC_URL points somewhere else.
-    '--webhook-header',
-    'Bypass-Tunnel-Reminder=true',
     '--inactivity-timeout',
     '3s',
     '--detach',
+    // The detach summary (instance, console link, webhook) arrives as one
+    // JSON object on stdout instead of prose, so it is machine-readable here.
+    '--json',
   ];
   const apiKeyPath = path.join(workDir, 'AuthKey.p8');
   await writeFile(apiKeyPath, Buffer.from(credentials.apiKey.data.privateKeyP8Base64, 'base64'), {
@@ -290,13 +315,17 @@ export async function startPublish(request: PublishRequest, publicUrl: string): 
   }
 
   const log = (line: string) => console.log(`[publish ${id}] ${line}`);
-  log(`Publishing ${request.bundleId} via ${request.method}...`);
+  log(`Publishing ${request.bundleId} to App Store Connect...`);
   for (const line of await ensureExpoBundleIdentifier(request.projectPath, request.bundleId)) {
     log(line);
   }
   log(`$ lim ${args.join(' ')}`);
 
   const child = spawn('lim', args, { env: process.env });
+  let stdoutText = '';
+  child.stdout.on('data', (chunk: Buffer) => {
+    stdoutText += chunk.toString('utf8');
+  });
   const forwardLines = (stream: NodeJS.ReadableStream) => {
     let buffered = '';
     stream.on('data', (chunk: Buffer) => {
@@ -318,7 +347,9 @@ export async function startPublish(request: PublishRequest, publicUrl: string): 
       // The build never reached limbuild (bad path, sync failure, ...) or
       // failed client-side; no webhook is coming, so settle the publish here.
       failPublish(id, `lim exited with code ${code ?? 1} before the build finished. See the backend logs.`);
+      return;
     }
+    recordPublishConsoleUrl(id, stdoutText, log);
   });
 
   return id;

@@ -86,6 +86,18 @@ function baseButton(disabled: boolean): CSSProperties {
   };
 }
 
+/** Small inline spinner; the `spin` keyframes live in index.html. */
+export const spinner: CSSProperties = {
+  display: 'inline-block',
+  flexShrink: 0,
+  width: '12px',
+  height: '12px',
+  border: '2px solid #ccd6e4',
+  borderTopColor: '#0066ff',
+  borderRadius: '50%',
+  animation: 'spin 0.8s linear infinite',
+};
+
 export function primaryButton(disabled: boolean): CSSProperties {
   return { ...baseButton(disabled), backgroundColor: disabled ? '#ccc' : '#0066ff' };
 }
@@ -114,19 +126,5 @@ export function tabButton(selected: boolean): CSSProperties {
     backgroundColor: selected ? 'white' : 'transparent',
     color: selected ? '#111' : '#666',
     boxShadow: selected ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-  };
-}
-
-export function methodCard(selected: boolean, disabled: boolean): CSSProperties {
-  return {
-    flex: 1,
-    minWidth: '160px',
-    padding: '14px',
-    borderRadius: '8px',
-    border: selected ? '2px solid #0066ff' : '1px solid #ddd',
-    backgroundColor: disabled ? '#f4f4f4' : 'white',
-    color: disabled ? '#999' : '#222',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    textAlign: 'left',
   };
 }

@@ -7,7 +7,6 @@ import {
   type ConnectController,
   type ActionStatus,
 } from '../hooks/useConnect';
-import { appIdBundleId, appleTeamSelectionId, stringField } from '../lib/apple';
 import { hintText, infoBox, inputStyle, labelStyle, primaryButton, secondaryButton, warnBox } from '../theme';
 import { Section } from './Section';
 
@@ -53,6 +52,17 @@ function AppleLoginForm({ connect }: { connect: ConnectController }) {
           value={connect.applePassword}
           onChange={(event) => connect.setApplePassword(event.target.value)}
         />
+        <p style={hintText}>
+          Your password never leaves the browser; sign-in uses the{' '}
+          <a
+            href="https://en.wikipedia.org/wiki/Secure_Remote_Password_protocol"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Secure Remote Password
+          </a>{' '}
+          protocol.
+        </p>
         <button
           type="submit"
           style={primaryButton(connect.busy === 'login' || !connect.relayReady)}
@@ -114,9 +124,8 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
       {!connect.loggedIn && (
         <>
           <p style={hintText}>
-            Connect signs into your Apple Developer account through Limrun's Apple relay and creates
-            everything publishing needs: certificates, provisioning profiles, the App Store Connect app record
-            and an API key. It runs once; all material lands in the backend's secret store.
+            Sign in to create or fetch your signing material to be able to interact with Apple Developer
+            Services.
           </p>
           <AppleLoginForm connect={connect} />
         </>
@@ -130,15 +139,11 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
             value={connect.selectedTeamId}
             onChange={(event) => connect.setSelectedTeamId(event.target.value)}
           >
-            {connect.teams.map((team) => {
-              const id = appleTeamSelectionId(team);
-              if (!id) return null;
-              return (
-                <option key={id} value={id}>
-                  {team.name ? `${team.name} (${id})` : id}
-                </option>
-              );
-            })}
+            {connect.teams.map((team) => (
+              <option key={team.teamId} value={team.teamId}>
+                {team.name ? `${team.name} (${team.teamId})` : team.teamId}
+              </option>
+            ))}
           </select>
           <label style={labelStyle}>Bundle ID</label>
           <select
@@ -147,16 +152,11 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
             onChange={(event) => connect.setBundleIdChoice(event.target.value)}
           >
             <option value={NEW_BUNDLE_ID}>Register a new bundle ID…</option>
-            {connect.portalAppIds.map((appId) => {
-              const value = appIdBundleId(appId);
-              if (!value) return null;
-              const name = stringField(appId, 'name');
-              return (
-                <option key={value} value={value}>
-                  {name ? `${value} (${name})` : value}
-                </option>
-              );
-            })}
+            {connect.portalAppIds.map((appId) => (
+              <option key={appId.bundleId} value={appId.bundleId}>
+                {appId.name ? `${appId.bundleId} (${appId.name})` : appId.bundleId}
+              </option>
+            ))}
           </select>
           {connect.bundleIdsLoading && <p style={hintText}>Loading the team's existing bundle IDs…</p>}
           {connect.bundleIdChoice === NEW_BUNDLE_ID && (
