@@ -309,6 +309,23 @@ lim ios sync ./MyApp.app --watch --launch-mode RelaunchIfRunning
 lim ios sync ./MyApp.app --basis-cache-dir ./.limsync-cache
 ```
 
+#### Maestro (iOS only)
+
+Run the locally installed [Maestro](https://docs.maestro.dev) CLI against a remote
+Limrun simulator. The command installs and launches the Maestro XCTest runner on
+the instance when needed, then wires `maestro test` to it transparently.
+
+```bash
+lim ios maestro test flow.yaml
+lim ios maestro test flows/
+
+# Extra maestro flags go after --
+lim ios maestro -- test flow.yaml --include-tags smoke --test-output-dir artifacts
+
+# Creating the instance with the runner preinstalled skips the install step
+lim ios create --install-asset appstore/maestro-ios-runner-2.5.1.tar.gz
+```
+
 ---
 
 ### Android
