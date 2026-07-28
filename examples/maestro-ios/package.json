@@ -10,7 +10,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@limrun/api": "^0.28.7"
+    "@limrun/api": "^0.45.3"
   },
   "devDependencies": {
     "tsx": "^4.20.5",
