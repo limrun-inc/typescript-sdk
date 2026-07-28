@@ -6,8 +6,8 @@ type ReceivedRequest = {
   headers: http.IncomingHttpHeaders;
 };
 
-// Simulates the remote runner endpoint (and pass-through targets): records the
-// request and answers with a marker body.
+// Stands in for the remote runner (and for a target the proxy must refuse):
+// records the request and answers with a marker body.
 function startRecordingServer(marker: string): Promise<{
   port: number;
   requests: ReceivedRequest[];
@@ -69,14 +69,14 @@ function requestViaProxy(
 
 describe('startForwardHttpProxy', () => {
   let remote: Awaited<ReturnType<typeof startRecordingServer>>;
-  let passthrough: Awaited<ReturnType<typeof startRecordingServer>>;
+  let other: Awaited<ReturnType<typeof startRecordingServer>>;
   let proxy: HttpProxy;
   const matchPort = 47001;
 
   beforeAll(async () => {
-    [remote, passthrough] = await Promise.all([
+    [remote, other] = await Promise.all([
       startRecordingServer('remote-runner'),
-      startRecordingServer('passthrough-target'),
+      startRecordingServer('other-target'),
     ]);
     proxy = await startForwardHttpProxy({
       matchPort,
@@ -87,13 +87,13 @@ describe('startForwardHttpProxy', () => {
 
   beforeEach(() => {
     remote.requests.length = 0;
-    passthrough.requests.length = 0;
+    other.requests.length = 0;
   });
 
   afterAll(async () => {
     await proxy.close();
     await remote.close();
-    await passthrough.close();
+    await other.close();
   });
 
   test('rewrites loopback requests on matchPort to the remote base URL with injected headers', async () => {
@@ -118,14 +118,11 @@ describe('startForwardHttpProxy', () => {
     expect(remote.requests[0]!.url).toBe('/base/deviceInfo');
   });
 
-  test('passes non-matching targets through untouched', async () => {
-    const response = await requestViaProxy(proxy.port, `http://127.0.0.1:${passthrough.port}/other`);
-    expect(response.status).toBe(200);
-    expect(response.body).toBe('passthrough-target');
-
-    const received = passthrough.requests[0]!;
-    expect(received.url).toBe('/other');
-    expect(received.headers['authorization']).toBeUndefined();
+  test('refuses loopback targets on other ports instead of forwarding them', async () => {
+    const response = await requestViaProxy(proxy.port, `http://127.0.0.1:${other.port}/other`);
+    expect(response.status).toBe(403);
+    // The proxy has exactly one destination, so nothing reaches the other server.
+    expect(other.requests).toHaveLength(0);
   });
 
   test('rejects origin-form request targets', async () => {
@@ -133,8 +130,8 @@ describe('startForwardHttpProxy', () => {
     expect(response.status).toBe(400);
   });
 
-  test('refuses non-loopback targets', async () => {
-    const response = await requestViaProxy(proxy.port, 'http://example.com/anything');
-    expect(response.status).toBe(403);
+  test('refuses non-loopback targets, including on the matched port', async () => {
+    expect((await requestViaProxy(proxy.port, 'http://example.com/anything')).status).toBe(403);
+    expect((await requestViaProxy(proxy.port, `http://example.com:${matchPort}/status`)).status).toBe(403);
   });
 });
