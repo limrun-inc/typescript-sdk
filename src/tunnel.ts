@@ -228,7 +228,9 @@ export async function startReverseTcpTunnel(
 
     const sendCloseSignal = (connId: number): void => {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(encodeConnectionHeader(connId));
+        // The drain check on completion keeps resume reachable even when the
+        // last frames in the queue are close signals rather than data.
+        ws.send(encodeConnectionHeader(connId), () => resumeIfDrained());
       }
     };
 
@@ -406,6 +408,8 @@ export async function startReverseTcpTunnel(
       connecting.add(connId);
 
       const socket = net.createConnection({ host: localHost, port: localPort });
+      // Self-heal a stale pause before applying it to the new socket.
+      resumeIfDrained();
       if (pausedForBackpressure) {
         socket.pause();
       }
