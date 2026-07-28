@@ -480,6 +480,10 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
           teamId,
           secretStore,
           nickname: naming.apiKeyNickname,
+          // ADMIN so the key covers everything the publisher may need
+          // beyond uploads: sales reports, analytics, metadata edits. The
+          // default APP_MANAGER role cannot read sales reports.
+          roles: ['ADMIN'],
           log,
         });
         return result.created ? 'Created' : 'Reused existing';
