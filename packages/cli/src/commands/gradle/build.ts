@@ -271,7 +271,16 @@ export default class GradleBuild extends BaseCommand {
 
       if (flags.detach) {
         const execId = await proc.detach();
-        this.output(`Build started (exec ID ${execId}). Completion will be reported by webhook.`);
+        // --detach requires --webhook-url, validated above.
+        const webhookUrl = flags['webhook-url']!;
+        const consoleUrl = this.consoleBuildUrl(id);
+        if (this.isJsonEnabled()) {
+          this.outputJson({ instanceId: id, execId, consoleUrl, webhookUrl });
+        } else {
+          this.output(`Build started (exec ID ${execId}) on instance ${id}.`);
+          this.output(`Console: ${consoleUrl}`);
+          this.output(`Completion will be reported by webhook to ${webhookUrl}.`);
+        }
         return;
       }
 
