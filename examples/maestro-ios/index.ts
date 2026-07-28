@@ -1,10 +1,14 @@
-import path from 'node:path';
 import { spawn } from 'node:child_process';
 
-import { Limrun, Ios } from '@limrun/api';
-
-const MAESTRO_DRIVER_PORT = 7001;
-const MAESTRO_RUNNER_PORT = 22087;
+import {
+  Limrun,
+  Ios,
+  MAESTRO_RUNNER_BUNDLE_ID,
+  MAESTRO_RUNNER_PORT,
+  isMaestroRunnerRunning,
+  maestroSpawnOptions,
+  prepareMaestroRun,
+} from '@limrun/api';
 
 const apiKey = process.env['LIM_API_KEY'];
 const expoUrl = process.env['EXPO_URL'];
@@ -45,98 +49,69 @@ console.timeEnd('create');
 if (instance.status.signedStreamUrl) {
   console.log('Limrun stream:', instance.status.signedStreamUrl);
 }
-if (!instance.status.apiUrl || !instance.status.targetHttpPortUrlPrefix) {
-  throw new Error('Necessary URLs are missing');
-}
-const lim = await Ios.createInstanceClient({
-  apiUrl: instance.status.apiUrl,
-  token: instance.status.token,
-});
-console.log('Device UDID:', lim.deviceInfo.udid);
-// targetHttpPortUrlPrefix allows us to append any port to the URL to connect to that port
-// on the simulator and the patched Maestro runner listens on MAESTRO_RUNNER_PORT.
-const runnerUrl = instance.status.targetHttpPortUrlPrefix + String(MAESTRO_RUNNER_PORT);
-
-// The runner may crash during the test and launchMode in initialAssets is effective only for
-// the first installation. So, we make sure the runner is running before the test starts.
-let wdaRunning = true;
+let lim: Ios.InstanceClient | undefined;
 try {
-  const controller = new AbortController();
-  setTimeout(() => controller.abort(), 3000);
-  await fetch(runnerUrl + '/status', {
-    headers: {
-      Authorization: `Bearer ${instance.status.token}`,
-    },
-    signal: controller.signal,
-  });
-} catch (_) {
-  wdaRunning = false;
-}
-if (!wdaRunning) {
-  console.log('Runner is not running, launching it...');
-  // The patched runner listens on MAESTRO_RUNNER_PORT by default, so launching it is enough.
-  const launch = await lim
-    .simctl([
-      'launch',
-      '--terminate-running-process',
-      'booted',
-      'dev.mobile.maestro-driver-iosUITests.xctrunner',
-    ])
-    .wait();
-  if (launch.code !== 0) {
-    throw new Error(`Failed to launch the Maestro runner (exit code ${launch.code}): ${launch.stderr}`);
+  if (!instance.status.apiUrl || !instance.status.targetHttpPortUrlPrefix) {
+    throw new Error('Necessary URLs are missing');
   }
-  console.log('Runner launched');
-}
-
-const shimDir = await lim.startXcrunShim();
-const proxyPort = await lim.startHttpProxy({
-  remoteBaseUrl: instance.status.targetHttpPortUrlPrefix + String(MAESTRO_RUNNER_PORT),
-  localPort: MAESTRO_DRIVER_PORT,
-});
-console.log(`Proxying local port ${proxyPort} to remote runner port ${MAESTRO_RUNNER_PORT}`);
-await lim.startRecording();
-console.log('Recording started');
-try {
-  const env = {
-    ...process.env,
-    MAESTRO_EXPO_URL: expoUrl,
-    PATH: `${shimDir}${path.delimiter}${process.env['PATH'] ?? ''}`,
-    USE_XCODE_TEST_RUNNER: '1',
-  };
-  const proc = spawn(
-    'maestro',
-    [
-      'test',
-      '--platform',
-      'ios',
-      '--device',
-      lim.deviceInfo.udid,
-      '--no-reinstall-driver',
-      '--test-output-dir',
-      'artifacts',
-      'flows/expo-sample.yaml',
-    ],
-    {
-      cwd: process.cwd(),
-      env,
-      stdio: 'inherit',
-    },
-  );
-  await new Promise<void>((resolve, reject) => {
-    proc.once('error', reject);
-    proc.once('close', (code, signal) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      reject(new Error(`maestro exited with ${signal ? `signal ${signal}` : `code ${code ?? 'unknown'}`}`));
-    });
+  lim = await Ios.createInstanceClient({
+    apiUrl: instance.status.apiUrl,
+    token: instance.status.token,
   });
+  console.log('Device UDID:', lim.deviceInfo.udid);
+  // targetHttpPortUrlPrefix allows us to append any port to the URL to connect to that port
+  // on the simulator and the patched Maestro runner listens on MAESTRO_RUNNER_PORT.
+  const runnerUrl = instance.status.targetHttpPortUrlPrefix + String(MAESTRO_RUNNER_PORT);
+
+  // The runner may crash during the test and launchMode in initialAssets is effective only for
+  // the first installation. So, we make sure the runner is running before the test starts.
+  if (!(await isMaestroRunnerRunning(runnerUrl, instance.status.token))) {
+    console.log('Runner is not running, launching it...');
+    // The patched runner listens on MAESTRO_RUNNER_PORT by default, so launching it is enough.
+    const launch = await lim
+      .simctl(['launch', '--terminate-running-process', 'booted', MAESTRO_RUNNER_BUNDLE_ID])
+      .wait();
+    if (launch.code !== 0) {
+      throw new Error(`Failed to launch the Maestro runner (exit code ${launch.code}): ${launch.stderr}`);
+    }
+    console.log('Runner launched');
+  }
+
+  // Wires the local stock maestro CLI to the remote runner: xcrun shim on PATH
+  // plus JVM proxy settings that route the driver's HTTP to the instance.
+  const run = await prepareMaestroRun(lim, { runnerUrl });
+  console.log(
+    `Maestro ${run.maestroVersion}: driver port ${run.driverPort} -> remote runner port ${MAESTRO_RUNNER_PORT}`,
+  );
+  await lim.startRecording();
+  console.log('Recording started');
+  try {
+    const proc = spawn(
+      'maestro',
+      ['test', ...run.args, '--test-output-dir', 'artifacts', 'flows/expo-sample.yaml'],
+      {
+        ...maestroSpawnOptions,
+        cwd: process.cwd(),
+        env: { ...process.env, ...run.env, MAESTRO_EXPO_URL: expoUrl },
+        stdio: 'inherit',
+      },
+    );
+    await new Promise<void>((resolve, reject) => {
+      proc.once('error', reject);
+      proc.once('close', (code, signal) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        reject(new Error(`maestro exited with ${signal ? `signal ${signal}` : `code ${code ?? 'unknown'}`}`));
+      });
+    });
+  } finally {
+    await lim.stopRecording({ localPath: 'video.mp4' });
+    console.log('Recording stopped');
+  }
 } finally {
-  await lim.stopRecording({ localPath: 'video.mp4' });
-  console.log('Recording stopped');
-  lim.disconnect();
+  lim?.disconnect();
   await limrun.iosInstances.delete(instance.metadata.id);
   console.log('Instance deleted');
 }
