@@ -88,17 +88,19 @@ export async function waitForMaestroRunner(
 
 /** Probe the remote Maestro XCTest runner's /status endpoint. */
 export async function isMaestroRunnerRunning(runnerUrl: string, token: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
     const response = await fetch(`${runnerUrl}/status`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: controller.signal,
     });
-    clearTimeout(timeout);
     return response.ok;
   } catch {
     return false;
+  } finally {
+    // Also on failure: a pending timer keeps the event loop alive.
+    clearTimeout(timeout);
   }
 }
 
