@@ -17,14 +17,9 @@ export type StoredSecret = {
 // The default directory: SECRETS_DIR env or `.secrets` next to the backend.
 // Every operation also accepts an explicit directory, which the UI sends so
 // multiple examples (e.g. device-install) can share one store.
-const DEFAULT_SECRETS_DIR = path.resolve(
+export const DEFAULT_SECRETS_DIR = path.resolve(
   process.env['SECRETS_DIR'] ?? path.join(import.meta.dirname, '.secrets'),
 );
-
-/** The directory used when a request does not name one; shown in the UI. */
-export function defaultSecretsDir(): string {
-  return DEFAULT_SECRETS_DIR;
-}
 
 function resolveDir(dir?: string) {
   const trimmed = dir?.trim();

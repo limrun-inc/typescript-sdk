@@ -1,18 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useDeviceInstallRelay, useOTAInstall } from '@limrun/device-install/react';
-import { errorMessage } from '../lib/apple';
-import { fetchDeviceSession, type DeviceSession } from '../lib/backend';
+import { errorMessage, fetchDeviceSession, sleep, type DeviceSession } from '../lib/backend';
 import type { ConnectController } from './useConnect';
 import type { InstallController } from './useInstall';
 
 export type ActivityEntry = { at: string; message: string; detail?: string };
 export type AutomaticInstallState = 'idle' | 'authorizing' | 'waiting' | 'installing' | 'started' | 'failed';
 export type DeviceInstallController = ReturnType<typeof useDeviceInstall>;
-
-const pause = (milliseconds: number) =>
-  new Promise<void>((resolve) => {
-    window.setTimeout(resolve, milliseconds);
-  });
 
 export function useDeviceInstall({
   connect,
@@ -30,6 +24,9 @@ export function useDeviceInstall({
   const [authorizationAttempt, setAuthorizationAttempt] = useState(0);
   const [otaStartedInstallId, setOtaStartedInstallId] = useState<string>();
 
+  // The one memoized callback in this hook: log's identity feeds the
+  // effects below and the library hooks, so a plain function would re-run
+  // them (and refetch the session) on every render.
   const log = useCallback((message: string, detail?: string) => {
     setActivity((current) => [...current, { at: new Date().toLocaleTimeString(), message, detail }]);
   }, []);
@@ -61,30 +58,27 @@ export function useDeviceInstall({
     token: session?.token,
   });
 
-  const prepareSelectedDevice = useCallback(
-    async (profileKind: 'development' | 'adhoc') => {
-      onError(undefined);
-      const device = install.device;
-      if (!device) {
-        onError('Select an iPhone first.');
-        return false;
-      }
-      if (profileKind === 'development' && !install.hasPairRecord) {
-        onError('Pair the selected iPhone before preparing WebUSB signing.');
-        return false;
-      }
-      if (!device.hello.serialNumber) {
-        onError('The selected iPhone did not report a UDID.');
-        return false;
-      }
-      return connect.prepareDevice(
-        device.hello.serialNumber,
-        device.hello.productName ?? 'iPhone',
-        profileKind,
-      );
-    },
-    [connect, install.device, install.hasPairRecord, onError],
-  );
+  async function prepareSelectedDevice(profileKind: 'development' | 'adhoc') {
+    onError(undefined);
+    const device = install.device;
+    if (!device) {
+      onError('Select an iPhone first.');
+      return false;
+    }
+    if (profileKind === 'development' && !install.hasPairRecord) {
+      onError('Pair the selected iPhone before preparing WebUSB signing.');
+      return false;
+    }
+    if (!device.hello.serialNumber) {
+      onError('The selected iPhone did not report a UDID.');
+      return false;
+    }
+    return connect.prepareDevice(
+      device.hello.serialNumber,
+      device.hello.productName ?? 'iPhone',
+      profileKind,
+    );
+  }
 
   // The successful webhook proves upload completion. Exchange only that
   // install ID for a token scoped to the exact uploaded asset.
@@ -106,7 +100,7 @@ export function useDeviceInstall({
           return;
         } catch (caught) {
           lastError = caught;
-          await pause(2000);
+          await sleep(2000);
         }
       }
       if (!cancelled) {
@@ -166,7 +160,7 @@ export function useDeviceInstall({
     session?.assetId,
   ]);
 
-  const retryInstallation = useCallback(() => {
+  function retryInstallation() {
     onError(undefined);
     install.clearError();
     if (session?.assetId) {
@@ -175,7 +169,7 @@ export function useDeviceInstall({
       setAuthorizedInstallId(undefined);
       setAuthorizationAttempt((current) => current + 1);
     }
-  }, [install, onError, session?.assetId]);
+  }
 
   const selectedUDID = install.device?.hello.serialNumber;
   const enrollmentReady = (profileKind: 'development' | 'adhoc') =>

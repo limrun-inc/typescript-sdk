@@ -1,8 +1,7 @@
-// The frontend's channel to the example backend: the registry session, the
-// file-based secret store, and the publish endpoints. (The Apple relay
-// WebSocket itself goes straight to Limrun's registry, authenticated with
-// the scoped token from the session.)
-import type { SigningSecret, SigningSecretMetadata, SigningSecretStore } from '@limrun/apple-auth';
+// The frontend's channel to the example backend: the registry session and
+// the publish endpoints. (The file-based secret store lives in
+// secret-store.ts, and the Apple relay WebSocket itself goes straight to
+// Limrun's registry, authenticated with the scoped token from the session.)
 import { BACKEND_URL } from '../config';
 
 export type RegistrySession = {
@@ -30,7 +29,7 @@ export function setSecretsDir(dir: string) {
 }
 
 /** Appends the chosen secrets directory to a store URL, when one is set. */
-function withSecretsDir(url: string) {
+export function withSecretsDir(url: string) {
   const dir = getSecretsDir().trim();
   return dir ? `${url}${url.includes('?') ? '&' : '?'}dir=${encodeURIComponent(dir)}` : url;
 }
@@ -58,47 +57,6 @@ export async function fetchRegistrySession(): Promise<RegistrySession> {
   const response = await fetch(`${BACKEND_URL}/session`, { method: 'POST' });
   if (!response.ok) await failedResponse(response, 'Failed to start a registry session');
   return (await response.json()) as RegistrySession;
-}
-
-/**
- * A SigningSecretStore backed by the example backend's file store. This is
- * the "bring your own store" demonstration: the `@limrun/apple-auth` credential
- * helpers only see the interface, so swapping this for Limrun's org store
- * (`createLimrunSecretStore`) or your own database is a drop-in change.
- */
-export function createBackendSecretStore(): SigningSecretStore {
-  // Secret names contain slashes (e.g. TEAMID/DISTRIBUTION), so the name
-  // travels as a single URI-encoded path segment.
-  const secretUrl = (type: string, name: string) =>
-    withSecretsDir(`${BACKEND_URL}/secrets/${encodeURIComponent(type)}/${encodeURIComponent(name)}`);
-
-  return {
-    async put(type, name, data) {
-      const response = await fetch(secretUrl(type, name), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data }),
-      });
-      if (!response.ok) await failedResponse(response, 'Failed to store secret');
-      return (await response.json()) as SigningSecret;
-    },
-    async get(type, name) {
-      const response = await fetch(secretUrl(type, name));
-      if (response.status === 404) return undefined;
-      if (!response.ok) await failedResponse(response, 'Failed to fetch secret');
-      return (await response.json()) as SigningSecret;
-    },
-    async list() {
-      const response = await fetch(withSecretsDir(`${BACKEND_URL}/secrets`));
-      if (!response.ok) await failedResponse(response, 'Failed to list secrets');
-      return (await response.json()) as SigningSecretMetadata[];
-    },
-    async delete(type, name) {
-      const response = await fetch(secretUrl(type, name), { method: 'DELETE' });
-      if (response.status === 404) return;
-      if (!response.ok) await failedResponse(response, 'Failed to delete secret');
-    },
-  };
 }
 
 export type PublishInput = {
@@ -145,7 +103,16 @@ export type PublishStatus = {
   error?: string;
 };
 
-async function failedResponse(response: Response, action: string): Promise<never> {
+/** Renders any thrown value as a user-facing message. */
+export function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+export function sleep(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
+export async function failedResponse(response: Response, action: string): Promise<never> {
   let message = `HTTP ${response.status}`;
   try {
     const body = (await response.json()) as { message?: string };

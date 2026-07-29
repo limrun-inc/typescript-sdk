@@ -1,7 +1,7 @@
 // Apple account setup plus device-specific signing. Connect only chooses the
 // team and bundle ID; the selected installation method later determines
 // whether development or ad-hoc credentials are created.
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   APPLE_CERTIFICATE_SECRET_TYPE,
   APPLE_PROVISIONING_PROFILE_SECRET_TYPE,
@@ -18,12 +18,12 @@ import {
   type AppleBundleID,
   type AppleRelayWebSocketClient,
   type AppleTeam,
+  type SigningSecret,
   type SigningSecretStore,
 } from '@limrun/apple-auth';
 import { useAppleIDLogin } from '@limrun/apple-auth/react';
 import { naming } from '../config';
-import { errorMessage } from '../lib/apple';
-import { fetchRegistrySession, type RegistrySession } from '../lib/backend';
+import { errorMessage, fetchRegistrySession, type RegistrySession } from '../lib/backend';
 
 export type Connection = {
   teamId: string;
@@ -47,6 +47,17 @@ type ConnectContext = {
 const CONNECTION_STORAGE_KEY = 'device-install.connection';
 export const NEW_BUNDLE_ID = '__new__';
 
+function restoreConnection(): Connection | undefined {
+  const raw = localStorage.getItem(CONNECTION_STORAGE_KEY);
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as Connection;
+  } catch {
+    localStorage.removeItem(CONNECTION_STORAGE_KEY);
+    return undefined;
+  }
+}
+
 function normalizeUDID(value?: string) {
   return (value ?? '').replace(/[^a-fA-F0-9]/g, '').toUpperCase();
 }
@@ -64,6 +75,31 @@ function isUnexpired(expirationDate?: string) {
   return Number.isNaN(expiresAt) || expiresAt > Date.now();
 }
 
+/**
+ * Whether a stored provisioning profile already lets the connected app be
+ * installed on the device: same team, binds the bundle ID, lists the
+ * device, references the certificate, and neither profile nor certificate
+ * has expired.
+ */
+function profileCoversDevice(
+  profile: SigningSecret | undefined,
+  certificate: SigningSecret | undefined,
+  connection: Connection,
+  normalizedUDID: string,
+): boolean {
+  return (
+    profile?.data.teamID === connection.teamId &&
+    commaSeparated(profile.data.bundleIDs).includes(connection.bundleId) &&
+    parseProvisionedDevices(profile.data.deviceIDs).some(
+      (device) => normalizeUDID(device.udid) === normalizedUDID,
+    ) &&
+    !!certificate?.data.serialNumber &&
+    commaSeparated(profile.data.certificateSerialNumbers).includes(certificate.data.serialNumber) &&
+    isUnexpired(certificate.data.expirationDate) &&
+    isUnexpired(profile.data.expirationDate)
+  );
+}
+
 export type ConnectController = ReturnType<typeof useConnect>;
 
 export function useConnect({ secretStore, log, onError }: ConnectContext) {
@@ -74,12 +110,14 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [teams, setTeams] = useState<AppleTeam[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState('');
-  const [bundleId, setBundleId] = useState('');
+  // A returning user's connection restores synchronously from
+  // localStorage; the bundle ID and app name fields seed from it.
+  const [connection, setConnection] = useState<Connection | undefined>(restoreConnection);
+  const [bundleId, setBundleId] = useState(connection?.bundleId ?? '');
   const [bundleIdChoice, setBundleIdChoice] = useState(NEW_BUNDLE_ID);
   const [portalAppIds, setPortalAppIds] = useState<AppleBundleID[]>([]);
   const [bundleIdsLoading, setBundleIdsLoading] = useState(false);
-  const [appName, setAppName] = useState('');
-  const [connection, setConnection] = useState<Connection>();
+  const [appName, setAppName] = useState(connection?.appName ?? '');
   const [deviceEnrollment, setDeviceEnrollment] = useState<DeviceEnrollmentState>({ status: 'idle' });
 
   useEffect(() => {
@@ -105,54 +143,42 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
   const selectedTeam = teams.find((team) => team.teamId === selectedTeamId);
   const teamId = selectedTeam?.teamId;
 
-  useEffect(() => {
-    const raw = localStorage.getItem(CONNECTION_STORAGE_KEY);
-    if (!raw) return;
-    try {
-      const stored = JSON.parse(raw) as Connection;
-      setConnection(stored);
-      setBundleId(stored.bundleId);
-      setAppName(stored.appName);
-    } catch {
-      localStorage.removeItem(CONNECTION_STORAGE_KEY);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!loggedIn || !relay || !teamId) {
-      setPortalAppIds([]);
-      setBundleIdChoice(NEW_BUNDLE_ID);
-      return;
-    }
-    let cancelled = false;
+  /**
+   * Existing bundle IDs on the portal for the team, so the user can pick
+   * one instead of registering a new one. Wildcard app IDs are excluded.
+   * Runs when the teams load and when the user switches teams, instead of
+   * as an effect watching the selection.
+   */
+  async function loadBundleIds(relayClient: AppleRelayWebSocketClient, team: AppleTeam) {
+    setPortalAppIds([]);
+    setBundleIdChoice(NEW_BUNDLE_ID);
     setBundleIdsLoading(true);
-    void listAppleBundleIDs({ relay, teamId })
-      .then((appIds) => {
-        if (!cancelled) setPortalAppIds(appIds.filter((appId) => !appId.bundleId.includes('*')));
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) onError(errorMessage(error, 'Could not list bundle IDs'));
-      })
-      .finally(() => {
-        if (!cancelled) setBundleIdsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [loggedIn, onError, relay, teamId]);
+    try {
+      const appIds = await listAppleBundleIDs({ relay: relayClient, teamId: team.teamId });
+      setPortalAppIds(appIds.filter((appId) => !appId.bundleId.includes('*')));
+    } catch (error) {
+      onError(errorMessage(error, 'Could not list bundle IDs'));
+    } finally {
+      setBundleIdsLoading(false);
+    }
+  }
 
-  const loadTeams = useCallback(
-    async (relayClient: AppleRelayWebSocketClient) => {
-      await appleLogin.finalize().catch(() => undefined);
-      const loaded = await listAppleTeams({ relay: relayClient });
-      setTeams(loaded);
-      setSelectedTeamId(loaded[0]?.teamId ?? '');
-      log('Apple teams loaded', String(loaded.length));
-    },
-    [appleLogin, log],
-  );
+  function selectTeam(nextTeamId: string) {
+    setSelectedTeamId(nextTeamId);
+    const team = teams.find((candidate) => candidate.teamId === nextTeamId);
+    if (relay && team) void loadBundleIds(relay, team);
+  }
 
-  const signIn = useCallback(async () => {
+  async function loadTeams(relayClient: AppleRelayWebSocketClient) {
+    await appleLogin.finalize().catch(() => undefined);
+    const loaded = await listAppleTeams({ relay: relayClient });
+    setTeams(loaded);
+    setSelectedTeamId(loaded[0]?.teamId ?? '');
+    log('Apple teams loaded', String(loaded.length));
+    if (loaded[0]) await loadBundleIds(relayClient, loaded[0]);
+  }
+
+  async function signIn() {
     if (!registrySession) return onError('The registry session is not ready; is the backend running?');
     onError(undefined);
     setBusy('login');
@@ -167,9 +193,9 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     } finally {
       setBusy(undefined);
     }
-  }, [appleAccount, appleLogin, applePassword, loadTeams, onError, registrySession]);
+  }
 
-  const submitTwoFactor = useCallback(async () => {
+  async function submitTwoFactor() {
     if (!appleLogin.session) return;
     onError(undefined);
     setBusy('2fa');
@@ -185,9 +211,9 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     } finally {
       setBusy(undefined);
     }
-  }, [appleLogin, loadTeams, onError, twoFactorCode]);
+  }
 
-  const confirm = useCallback(async () => {
+  async function confirm() {
     if (!relay || !teamId) return onError('Sign in with Apple and select a team first.');
     const chosenBundleId = (bundleIdChoice === NEW_BUNDLE_ID ? bundleId : bundleIdChoice).trim();
     if (!chosenBundleId) return onError('Enter a bundle ID or pick an existing one.');
@@ -214,144 +240,136 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     } finally {
       setBusy(undefined);
     }
-  }, [appName, bundleId, bundleIdChoice, log, onError, relay, teamId]);
+  }
 
-  const prepareDevice = useCallback(
-    async (deviceUDID: string, productName: string, profileKind: 'development' | 'adhoc') => {
-      if (!connection) return false;
-      const normalizedUDID = normalizeUDID(deviceUDID);
-      if (!normalizedUDID) {
-        onError('The selected iPhone did not report a UDID.');
-        return false;
-      }
-      onError(undefined);
-      setDeviceEnrollment({ status: 'checking', deviceUDID: normalizedUDID, profileKind });
-      try {
-        const certificateKind = profileKind === 'adhoc' ? 'DISTRIBUTION' : 'DEVELOPMENT';
-        const certificate = await secretStore.get(
-          APPLE_CERTIFICATE_SECRET_TYPE,
-          appleCertificateSecretName(connection.teamId, certificateKind),
-        );
-        const profileMetadata = (await secretStore.list()).filter(
-          (secret) =>
-            secret.type === APPLE_PROVISIONING_PROFILE_SECRET_TYPE &&
-            secret.name.startsWith(`${connection.teamId}/`),
-        );
-        for (const metadata of profileMetadata) {
-          const profile = await secretStore.get(APPLE_PROVISIONING_PROFILE_SECRET_TYPE, metadata.name);
-          if (
-            profile?.data.teamID === connection.teamId &&
-            commaSeparated(profile.data.bundleIDs).includes(connection.bundleId) &&
-            parseProvisionedDevices(profile.data.deviceIDs).some(
-              (device) => normalizeUDID(device.udid) === normalizedUDID,
-            ) &&
-            !!certificate?.data.serialNumber &&
-            commaSeparated(profile.data.certificateSerialNumbers).includes(certificate.data.serialNumber) &&
-            isUnexpired(certificate.data.expirationDate) &&
-            isUnexpired(profile.data.expirationDate)
-          ) {
-            setDeviceEnrollment({
-              status: 'ready',
-              deviceUDID: normalizedUDID,
-              profileKind,
-              note: `Stored ${
-                profileKind === 'adhoc' ? 'ad-hoc' : 'development'
-              } signing covers this iPhone.`,
-            });
-            return true;
-          }
-        }
-
-        if (!relay || !loggedIn) {
+  async function prepareDevice(
+    deviceUDID: string,
+    productName: string,
+    profileKind: 'development' | 'adhoc',
+  ) {
+    if (!connection) return false;
+    const normalizedUDID = normalizeUDID(deviceUDID);
+    if (!normalizedUDID) {
+      onError('The selected iPhone did not report a UDID.');
+      return false;
+    }
+    onError(undefined);
+    setDeviceEnrollment({ status: 'checking', deviceUDID: normalizedUDID, profileKind });
+    try {
+      const certificateKind = profileKind === 'adhoc' ? 'DISTRIBUTION' : 'DEVELOPMENT';
+      const certificate = await secretStore.get(
+        APPLE_CERTIFICATE_SECRET_TYPE,
+        appleCertificateSecretName(connection.teamId, certificateKind),
+      );
+      const profileMetadata = (await secretStore.list()).filter(
+        (secret) =>
+          secret.type === APPLE_PROVISIONING_PROFILE_SECRET_TYPE &&
+          secret.name.startsWith(`${connection.teamId}/`),
+      );
+      for (const metadata of profileMetadata) {
+        const profile = await secretStore.get(APPLE_PROVISIONING_PROFILE_SECRET_TYPE, metadata.name);
+        if (profileCoversDevice(profile, certificate, connection, normalizedUDID)) {
           setDeviceEnrollment({
-            status: 'needs-login',
+            status: 'ready',
             deviceUDID: normalizedUDID,
             profileKind,
-            note: 'Sign in with Apple again to register this iPhone and create its signing profile.',
+            note: `Stored ${profileKind === 'adhoc' ? 'ad-hoc' : 'development'} signing covers this iPhone.`,
           });
-          return false;
+          return true;
         }
+      }
 
-        setBusy('device-enrollment');
-        let devices = await listAppleDevices({ relay, teamId: connection.teamId });
-        let portalDevice = devices.find((device) => normalizeUDID(device.deviceNumber) === normalizedUDID);
-        if (!portalDevice) {
-          await registerAppleDevice({
-            relay,
-            teamId: connection.teamId,
-            deviceUDID: normalizedUDID,
-            name: naming.deviceName(productName, normalizedUDID),
-          });
-          devices = await listAppleDevices({ relay, teamId: connection.teamId });
-          portalDevice = devices.find((device) => normalizeUDID(device.deviceNumber) === normalizedUDID);
-          log('Registered iPhone with Apple', normalizedUDID);
-        }
-        if (!portalDevice?.deviceId) throw new Error('Apple did not return a device ID after registration.');
-
-        const appIds = await listAppleBundleIDs({
-          relay,
-          teamId: connection.teamId,
-          search: connection.bundleId,
-        });
-        const appIdId = appIds.find((candidate) => candidate.bundleId === connection.bundleId)?.appIdId;
-        if (!appIdId) throw new Error(`Could not resolve ${connection.bundleId} on the Developer Portal.`);
-
-        const signingCertificate = await ensureAppleCertificateSecret({
-          relay,
-          teamId: connection.teamId,
-          secretStore,
-          certificateKind: profileKind === 'adhoc' ? 'distribution' : 'development',
-          commonName: naming.certificateCommonName(connection.teamId),
-          log,
-        });
-        const created = await createAppleProfile({
-          relay,
-          teamId: connection.teamId,
-          profileKind,
-          bundleId: connection.bundleId,
-          appIdId,
-          certificateIds: [signingCertificate.certificateId],
-          deviceIds: [portalDevice.deviceId],
-          name:
-            profileKind === 'adhoc' ?
-              naming.qrProfileName(connection.bundleId, normalizedUDID)
-            : naming.webUsbProfileName(connection.bundleId, normalizedUDID),
-        });
-        await saveAppleProfileSecret({
-          relay,
-          teamId: connection.teamId,
-          profileId: created.profileId,
-          secretStore,
-          log,
-        });
+      if (!relay || !loggedIn) {
         setDeviceEnrollment({
-          status: 'ready',
+          status: 'needs-login',
           deviceUDID: normalizedUDID,
           profileKind,
-          note: `The iPhone is registered and covered by ${
-            profileKind === 'adhoc' ? 'ad-hoc' : 'development'
-          } signing.`,
+          note: 'Sign in with Apple again to register this iPhone and create its signing profile.',
         });
-        return true;
-      } catch (error) {
-        const message = errorMessage(error, 'Could not prepare the selected iPhone');
-        setDeviceEnrollment({ status: 'error', deviceUDID: normalizedUDID, profileKind, note: message });
-        onError(message);
         return false;
-      } finally {
-        setBusy((current) => (current === 'device-enrollment' ? undefined : current));
       }
-    },
-    [connection, log, loggedIn, onError, relay, secretStore],
-  );
 
-  const disconnect = useCallback(() => {
+      setBusy('device-enrollment');
+      let devices = await listAppleDevices({ relay, teamId: connection.teamId });
+      let portalDevice = devices.find((device) => normalizeUDID(device.deviceNumber) === normalizedUDID);
+      if (!portalDevice) {
+        await registerAppleDevice({
+          relay,
+          teamId: connection.teamId,
+          deviceUDID: normalizedUDID,
+          name: naming.deviceName(productName, normalizedUDID),
+        });
+        devices = await listAppleDevices({ relay, teamId: connection.teamId });
+        portalDevice = devices.find((device) => normalizeUDID(device.deviceNumber) === normalizedUDID);
+        log('Registered iPhone with Apple', normalizedUDID);
+      }
+      if (!portalDevice?.deviceId) throw new Error('Apple did not return a device ID after registration.');
+
+      const appIds = await listAppleBundleIDs({
+        relay,
+        teamId: connection.teamId,
+        search: connection.bundleId,
+      });
+      const appIdId = appIds.find((candidate) => candidate.bundleId === connection.bundleId)?.appIdId;
+      if (!appIdId) throw new Error(`Could not resolve ${connection.bundleId} on the Developer Portal.`);
+
+      const signingCertificate = await ensureAppleCertificateSecret({
+        relay,
+        teamId: connection.teamId,
+        secretStore,
+        certificateKind: profileKind === 'adhoc' ? 'distribution' : 'development',
+        commonName: naming.certificateCommonName(connection.teamId),
+        log,
+      });
+      const created = await createAppleProfile({
+        relay,
+        teamId: connection.teamId,
+        profileKind,
+        bundleId: connection.bundleId,
+        appIdId,
+        certificateIds: [signingCertificate.certificateId],
+        deviceIds: [portalDevice.deviceId],
+        name:
+          profileKind === 'adhoc' ?
+            naming.qrProfileName(connection.bundleId, normalizedUDID)
+          : naming.webUsbProfileName(connection.bundleId, normalizedUDID),
+      });
+      await saveAppleProfileSecret({
+        relay,
+        teamId: connection.teamId,
+        profileId: created.profileId,
+        secretStore,
+        log,
+      });
+      setDeviceEnrollment({
+        status: 'ready',
+        deviceUDID: normalizedUDID,
+        profileKind,
+        note: `The iPhone is registered and covered by ${
+          profileKind === 'adhoc' ? 'ad-hoc' : 'development'
+        } signing.`,
+      });
+      return true;
+    } catch (error) {
+      const message = errorMessage(error, 'Could not prepare the selected iPhone');
+      setDeviceEnrollment({ status: 'error', deviceUDID: normalizedUDID, profileKind, note: message });
+      onError(message);
+      return false;
+    } finally {
+      setBusy((current) => (current === 'device-enrollment' ? undefined : current));
+    }
+  }
+
+  function disconnect() {
     localStorage.removeItem(CONNECTION_STORAGE_KEY);
     setConnection(undefined);
     setDeviceEnrollment({ status: 'idle' });
     setTeams([]);
+    setSelectedTeamId('');
+    setPortalAppIds([]);
+    setBundleIdChoice(NEW_BUNDLE_ID);
     void appleLogin.close();
-  }, [appleLogin]);
+  }
 
   return {
     busy,
@@ -371,7 +389,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     loggedIn,
     teams,
     selectedTeamId,
-    setSelectedTeamId,
+    selectTeam,
     bundleId,
     setBundleId,
     bundleIdChoice,

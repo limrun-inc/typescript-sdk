@@ -1,11 +1,10 @@
 // Runs one Play Store publish with the same headless lifecycle as iOS:
 // materialize the upload key, submit `lim gradle build --detach` with a
 // completion webhook, and let the frontend poll the callback state.
-import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { beginPublish, failPublish, findExpoAppConfigs, recordPublishConsoleUrl } from './publish.js';
+import { beginPublish, findExpoAppConfigs, spawnDetachedLim } from './publish.js';
 import { getSecret } from './secret-store.js';
 
 export type AndroidPublishRequest = {
@@ -102,15 +101,12 @@ export async function ensureExpoAndroidPackage(configs: string[], packageName: s
 
 export const ANDROID_SIGNING_KEY_SECRET_TYPE = 'androidSigningKey';
 
-/** Secret name convention for a package's Play upload keystore. */
-export function androidSigningKeySecretName(packageName: string) {
-  return `${packageName}/UPLOAD`;
-}
-
 export async function startAndroidPublish(request: AndroidPublishRequest): Promise<string> {
+  // `<package>/UPLOAD` is the secret name convention for a package's Play
+  // upload keystore; the frontend stores it under the same name.
   const signingSecret = await getSecret(
     ANDROID_SIGNING_KEY_SECRET_TYPE,
-    androidSigningKeySecretName(request.packageName),
+    `${request.packageName}/UPLOAD`,
     request.secretsDir,
   );
   if (!signingSecret) {
@@ -162,42 +158,19 @@ export async function startAndroidPublish(request: AndroidPublishRequest): Promi
   log(`Publishing ${request.packageName} to the Play ${request.track ?? 'internal'} track...`);
   for (const line of projectUpdates) log(line);
   log(`$ lim ${args.join(' ')}`);
-
-  const child = spawn('lim', args, {
+  spawnDetachedLim({
+    id,
+    args,
+    workDir,
+    // The passwords and Play token travel as environment variables so they
+    // never appear in the process list.
     env: {
       ...process.env,
       LIM_KEYSTORE_PASSWORD: keystorePassword,
       LIM_KEY_PASSWORD: keyPassword,
       LIM_PLAYSTORE_ACCESS_TOKEN: request.googleAccessToken,
     },
+    log,
   });
-  let stdoutText = '';
-  child.stdout.on('data', (chunk: Buffer) => {
-    stdoutText += chunk.toString('utf8');
-  });
-  const forwardLines = (stream: NodeJS.ReadableStream) => {
-    let buffered = '';
-    stream.on('data', (chunk: Buffer) => {
-      buffered += chunk.toString('utf8');
-      const lines = buffered.split('\n');
-      buffered = lines.pop() ?? '';
-      for (const line of lines) log(line);
-    });
-  };
-  forwardLines(child.stdout);
-  forwardLines(child.stderr);
-  child.on('error', (error) => {
-    failPublish(id, `Failed to run the lim CLI: ${error.message}. Is it installed and on PATH?`);
-    void rm(workDir, { recursive: true, force: true });
-  });
-  child.on('close', (code) => {
-    void rm(workDir, { recursive: true, force: true });
-    if (code !== 0) {
-      failPublish(id, `lim exited with code ${code ?? 1} before the build finished. See the backend logs.`);
-      return;
-    }
-    recordPublishConsoleUrl(id, stdoutText, log);
-  });
-
   return id;
 }

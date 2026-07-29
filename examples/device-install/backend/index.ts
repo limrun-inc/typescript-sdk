@@ -2,7 +2,7 @@ import cors from 'cors';
 import express, { Request, Response } from 'express';
 import Limrun from '@limrun/api';
 import { getInstallStatus, receiveInstallWebhook, startInstall, type InstallRequest } from './install.js';
-import { defaultSecretsDir, deleteSecret, getSecret, listSecrets, putSecret } from './secret-store.js';
+import { DEFAULT_SECRETS_DIR, deleteSecret, getSecret, listSecrets, putSecret } from './secret-store.js';
 
 const apiKey = process.env['LIM_API_KEY'];
 if (!apiKey) {
@@ -28,7 +28,7 @@ app.post('/session', async (_req: Request, res: Response) => {
       registryUrl,
       // The store directory used when requests don't name one; the UI
       // shows it as the default of its secrets-directory field.
-      secretsDir: defaultSecretsDir(),
+      secretsDir: DEFAULT_SECRETS_DIR,
     });
   } catch (error: unknown) {
     return res.status(500).json({

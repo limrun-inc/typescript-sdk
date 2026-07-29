@@ -2,10 +2,11 @@
 // and the wizard detects the application ID, verifies it on Play Console
 // (creating the listing there is the one step Google reserves for humans,
 // so the wizard waits and detects), and collects the upload keystore only
-// when one is not already stored. Publish is then a single click.
+// when one is not already stored. Publish is then a single click. All
+// behaviour lives in usePlay; this component renders its state and owns
+// only its own form fields.
 import { useState } from 'react';
 import type { PlayController } from '../hooks/usePlay';
-import { errorMessage } from '../lib/apple';
 import {
   errorBox,
   hintText,
@@ -34,11 +35,9 @@ async function fileToBase64(file: File): Promise<string> {
 
 export function PlayPhase({
   play,
-  onError,
   webhookUrl,
 }: {
   play: PlayController;
-  onError: (message?: string) => void;
   /** The sidebar's webhook URL; rides the publish request. Empty blocks publishing. */
   webhookUrl: string;
 }) {
@@ -46,40 +45,19 @@ export function PlayPhase({
   const [keystorePassword, setKeystorePassword] = useState('');
   const [keyAlias, setKeyAlias] = useState('');
   const [keyPassword, setKeyPassword] = useState('');
-  // One busy slot for both keystore actions: they write the same secret,
-  // so running them concurrently must be impossible.
-  const [keystoreBusy, setKeystoreBusy] = useState<'generating' | 'saving'>();
   const [showImport, setShowImport] = useState(false);
-
-  const generateKeystore = async () => {
-    onError(undefined);
-    setKeystoreBusy('generating');
-    try {
-      await play.generateKeystore();
-    } catch (error) {
-      onError(errorMessage(error, 'Could not generate the upload keystore'));
-    } finally {
-      setKeystoreBusy(undefined);
-    }
-  };
 
   const saveKeystore = async () => {
     if (!keystoreFile) return;
-    onError(undefined);
-    setKeystoreBusy('saving');
-    try {
-      await play.storeKeystore({
-        keystoreBase64: await fileToBase64(keystoreFile),
-        keystorePassword,
-        keyAlias,
-        keyPassword: keyPassword || keystorePassword,
-      });
+    const stored = await play.storeKeystore({
+      keystoreBase64: await fileToBase64(keystoreFile),
+      keystorePassword,
+      keyAlias,
+      keyPassword: keyPassword || keystorePassword,
+    });
+    if (stored) {
       setKeystorePassword('');
       setKeyPassword('');
-    } catch (error) {
-      onError(errorMessage(error, 'Could not store the keystore'));
-    } finally {
-      setKeystoreBusy(undefined);
     }
   };
 
@@ -87,7 +65,7 @@ export function PlayPhase({
   const verified = play.packageState.status === 'verified';
   const showPackageField = play.packageName !== '' || play.detectionMiss;
   const canDetect = !play.detecting && play.projectPath.trim() !== '';
-  const canSave = !keystoreBusy && keystoreFile && keystorePassword && keyAlias;
+  const canSave = !play.keystoreBusy && keystoreFile && keystorePassword && keyAlias;
   const webhookUrlSet = webhookUrl.trim() !== '';
   const canPublish = play.connected && !running && webhookUrlSet;
 
@@ -156,79 +134,83 @@ export function PlayPhase({
                 <span style={hintText}>Google said: {play.packageState.message}</span>
               </div>
             )}
-            {verified && <div style={infoBox}>App found on Play Console; this account can release it.</div>}
-            {verified && play.keystoreState === 'present' && (
-              <div style={infoBox}>Upload keystore is in the secret store.</div>
-            )}
-            {verified && play.keystoreState === 'unknown' && (
-              <p style={hintText}>Checking the secret store for an upload keystore…</p>
-            )}
-            {verified && play.keystoreState === 'error' && (
+            {verified && (
               <>
-                <div style={warnBox}>
-                  Could not check the secret store for an upload keystore. Generating one blindly could
-                  overwrite a live upload key, so fix the backend and check again.
-                </div>
-                <button style={secondaryButton(false)} onClick={() => play.recheckKeystore()}>
-                  Check the secret store again
-                </button>
-              </>
-            )}
-            {verified && play.keystoreState === 'absent' && (
-              <>
-                <p style={hintText}>
-                  No upload keystore stored for this app yet. For a new app, generate one, it is created in
-                  your browser and stored only in the secret store; Google&apos;s Play App Signing re-signs
-                  for distribution. If the app has released with an existing upload key, import that keystore
-                  instead.
-                </p>
-                <button
-                  style={primaryButton(keystoreBusy !== undefined)}
-                  disabled={keystoreBusy !== undefined}
-                  onClick={() => void generateKeystore()}
-                >
-                  {keystoreBusy === 'generating' ? 'Generating…' : 'Generate a new upload key'}
-                </button>
-                {!showImport && (
-                  <button style={secondaryButton(false)} onClick={() => setShowImport(true)}>
-                    Import an existing keystore instead
-                  </button>
+                <div style={infoBox}>App found on Play Console; this account can release it.</div>
+                {play.keystoreState === 'present' && (
+                  <div style={infoBox}>Upload keystore is in the secret store.</div>
                 )}
-                {showImport && (
+                {play.keystoreState === 'unknown' && (
+                  <p style={hintText}>Checking the secret store for an upload keystore…</p>
+                )}
+                {play.keystoreState === 'error' && (
                   <>
-                    <label style={labelStyle}>Upload keystore (.jks / .p12)</label>
-                    <input
-                      style={inputStyle}
-                      type="file"
-                      onChange={(event) => setKeystoreFile(event.target.files?.[0])}
-                    />
-                    <label style={labelStyle}>Keystore password</label>
-                    <input
-                      style={inputStyle}
-                      type="password"
-                      value={keystorePassword}
-                      onChange={(event) => setKeystorePassword(event.target.value)}
-                    />
-                    <label style={labelStyle}>Key alias</label>
-                    <input
-                      style={inputStyle}
-                      value={keyAlias}
-                      onChange={(event) => setKeyAlias(event.target.value)}
-                    />
-                    <label style={labelStyle}>Key password (empty to reuse the keystore password)</label>
-                    <input
-                      style={inputStyle}
-                      type="password"
-                      value={keyPassword}
-                      onChange={(event) => setKeyPassword(event.target.value)}
-                    />
-                    <button
-                      style={secondaryButton(!canSave)}
-                      disabled={!canSave}
-                      onClick={() => void saveKeystore()}
-                    >
-                      {keystoreBusy === 'saving' ? 'Storing…' : 'Store keystore'}
+                    <div style={warnBox}>
+                      Could not check the secret store for an upload keystore. Generating one blindly could
+                      overwrite a live upload key, so fix the backend and check again.
+                    </div>
+                    <button style={secondaryButton(false)} onClick={() => void play.checkKeystore()}>
+                      Check the secret store again
                     </button>
+                  </>
+                )}
+                {play.keystoreState === 'absent' && (
+                  <>
+                    <p style={hintText}>
+                      No upload keystore stored for this app yet. For a new app, generate one, it is created
+                      in your browser and stored only in the secret store; Google&apos;s Play App Signing
+                      re-signs for distribution. If the app has released with an existing upload key, import
+                      that keystore instead.
+                    </p>
+                    <button
+                      style={primaryButton(play.keystoreBusy !== undefined)}
+                      disabled={play.keystoreBusy !== undefined}
+                      onClick={() => void play.generateKeystore()}
+                    >
+                      {play.keystoreBusy === 'generating' ? 'Generating…' : 'Generate a new upload key'}
+                    </button>
+                    {!showImport && (
+                      <button style={secondaryButton(false)} onClick={() => setShowImport(true)}>
+                        Import an existing keystore instead
+                      </button>
+                    )}
+                    {showImport && (
+                      <>
+                        <label style={labelStyle}>Upload keystore (.jks / .p12)</label>
+                        <input
+                          style={inputStyle}
+                          type="file"
+                          onChange={(event) => setKeystoreFile(event.target.files?.[0])}
+                        />
+                        <label style={labelStyle}>Keystore password</label>
+                        <input
+                          style={inputStyle}
+                          type="password"
+                          value={keystorePassword}
+                          onChange={(event) => setKeystorePassword(event.target.value)}
+                        />
+                        <label style={labelStyle}>Key alias</label>
+                        <input
+                          style={inputStyle}
+                          value={keyAlias}
+                          onChange={(event) => setKeyAlias(event.target.value)}
+                        />
+                        <label style={labelStyle}>Key password (empty to reuse the keystore password)</label>
+                        <input
+                          style={inputStyle}
+                          type="password"
+                          value={keyPassword}
+                          onChange={(event) => setKeyPassword(event.target.value)}
+                        />
+                        <button
+                          style={secondaryButton(!canSave)}
+                          disabled={!canSave}
+                          onClick={() => void saveKeystore()}
+                        >
+                          {play.keystoreBusy === 'saving' ? 'Storing…' : 'Store keystore'}
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
               </>

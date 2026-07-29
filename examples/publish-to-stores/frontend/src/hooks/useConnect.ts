@@ -5,7 +5,7 @@
 // Store Connect API key — into the backend's secret store. Read
 // top-to-bottom it doubles as a reference for the `@limrun/apple-auth`
 // APIs.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   APP_STORE_CONNECT_API_KEY_SECRET_TYPE,
   APPLE_CERTIFICATE_SECRET_TYPE,
@@ -32,12 +32,12 @@ import {
   type AppleRelayWebSocketClient,
   type AppleTeam,
   type EnsureAppleCertificateResult,
+  type SigningSecretMetadata,
   type SigningSecretStore,
 } from '@limrun/apple-auth';
 import { useAppleIDLogin } from '@limrun/apple-auth/react';
 import { naming } from '../config';
-import { errorMessage } from '../lib/apple';
-import { fetchRegistrySession, type RegistrySession } from '../lib/backend';
+import { errorMessage, fetchRegistrySession, type RegistrySession } from '../lib/backend';
 
 /**
  * The deselectable actions of the Connect checklist. The bundle ID itself is
@@ -112,6 +112,24 @@ function isUnexpired(expirationDate?: string) {
   return Number.isNaN(expiresAt) || expiresAt > Date.now();
 }
 
+/**
+ * Whether a returning user is still connected: the store must hold the
+ * team's distribution certificate, its App Store Connect API key, and at
+ * least one of the team's provisioning profiles from an earlier session.
+ */
+function storeHoldsConnectionSecrets(secrets: SigningSecretMetadata[], stored: Connection): boolean {
+  const has = (type: string, name: string) =>
+    secrets.some((secret) => secret.type === type && secret.name === name);
+  return (
+    has(APPLE_CERTIFICATE_SECRET_TYPE, appleCertificateSecretName(stored.teamId, 'DISTRIBUTION')) &&
+    has(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, appStoreConnectApiKeySecretName(stored.teamId)) &&
+    secrets.some(
+      (secret) =>
+        secret.type === APPLE_PROVISIONING_PROFILE_SECRET_TYPE && secret.name.startsWith(`${stored.teamId}/`),
+    )
+  );
+}
+
 type ConnectContext = {
   secretStore: SigningSecretStore;
   log: (message: string, detail?: string) => void;
@@ -168,9 +186,8 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
   const relay = appleLogin.session?.relay;
   const loggedIn = appleLogin.status === 'authenticated' && !!relay;
 
-  // A returning user is already connected when the store still holds the
-  // team's distribution certificate, an App Store profile, and the App
-  // Store Connect API key from an earlier session.
+  // Restore the previous session's connection, but only while its secrets
+  // are still in the store.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -184,19 +201,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
         return;
       }
       try {
-        const secrets = await secretStore.list();
-        const has = (type: string, name: string) =>
-          secrets.some((secret) => secret.type === type && secret.name === name);
-        const hasProfile = secrets.some(
-          (secret) =>
-            secret.type === APPLE_PROVISIONING_PROFILE_SECRET_TYPE &&
-            secret.name.startsWith(`${stored.teamId}/`),
-        );
-        const storeReady =
-          has(APPLE_CERTIFICATE_SECRET_TYPE, appleCertificateSecretName(stored.teamId, 'DISTRIBUTION')) &&
-          has(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, appStoreConnectApiKeySecretName(stored.teamId)) &&
-          hasProfile;
-        if (storeReady) {
+        if (storeHoldsConnectionSecrets(await secretStore.list(), stored)) {
           if (!cancelled) {
             setConnection(stored);
             setBundleId(stored.bundleId);
@@ -214,93 +219,95 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     };
   }, [secretStore]);
 
-  // Existing bundle IDs on the portal for the selected team, so the user can
-  // pick one instead of registering a new one. Wildcard app IDs (com.acme.*)
-  // are excluded — they cannot carry App Store profiles or app records.
-  useEffect(() => {
-    if (!loggedIn || !relay || !teamId) {
-      setPortalAppIds([]);
-      setBundleIdChoice(NEW_BUNDLE_ID);
-      return;
-    }
-    let cancelled = false;
+  /**
+   * Existing bundle IDs on the portal for the team, so the user can pick
+   * one instead of registering a new one. Wildcard app IDs (com.acme.*)
+   * are excluded — they cannot carry App Store profiles or app records.
+   * Runs when the teams load and when the user switches teams, instead of
+   * as an effect watching the selection.
+   */
+  async function loadBundleIds(relayClient: AppleRelayWebSocketClient, team: AppleTeam) {
+    setPortalAppIds([]);
+    setBundleIdChoice(NEW_BUNDLE_ID);
     setBundleIdsLoading(true);
-    void listAppleBundleIDs({ relay, teamId })
-      .then((appIds) => {
-        if (cancelled) return;
-        setPortalAppIds(appIds.filter((appId) => !appId.bundleId.includes('*')));
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) onError(errorMessage(error, 'Could not list the existing bundle IDs'));
-      })
-      .finally(() => {
-        if (!cancelled) setBundleIdsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [loggedIn, relay, teamId, onError]);
-
-  // When a bundle ID restored from a previous session already exists on the
-  // portal, preselect it instead of leaving the "register new" input filled.
-  useEffect(() => {
-    if (bundleIdChoice !== NEW_BUNDLE_ID) return;
-    const trimmed = bundleId.trim();
-    if (trimmed && portalAppIds.some((appId) => appId.bundleId === trimmed)) {
-      setBundleIdChoice(trimmed);
-    }
-  }, [portalAppIds, bundleId, bundleIdChoice]);
-
-  // Prefill the app name from the App Store Connect app record when an
-  // existing bundle ID is selected — that name is the one shown on the App
-  // Store. The Developer Portal registration name is deliberately not used:
-  // tools often register bundle IDs under generated names like
-  // "appexamplemyapp <hash>". Without an app record the field is left for
-  // the user to fill. Still editable afterwards.
-  useEffect(() => {
-    if (bundleIdChoice === NEW_BUNDLE_ID || !relay) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const providerId = selectedTeam?.providerId;
-        if (providerId) await switchAppStoreConnectProvider({ relay, providerId });
-        const app = await findAppStoreConnectApp({ relay, bundleId: bundleIdChoice });
-        if (!cancelled && app?.name) setAppName(app.name);
-      } catch {
-        // No App Store Connect access or no app record yet; the user
-        // types the name themselves.
+    try {
+      const appIds = await listAppleBundleIDs({ relay: relayClient, teamId: team.teamId });
+      const usable = appIds.filter((appId) => !appId.bundleId.includes('*'));
+      setPortalAppIds(usable);
+      // A bundle ID restored from a previous session that already exists
+      // on the portal is preselected instead of leaving the "register
+      // new" input filled.
+      const restored = bundleId.trim();
+      if (restored && usable.some((appId) => appId.bundleId === restored)) {
+        setBundleIdChoice(restored);
+        await prefillAppName(relayClient, team, restored);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [bundleIdChoice, relay, selectedTeam]);
+    } catch (error) {
+      onError(errorMessage(error, 'Could not list the existing bundle IDs'));
+    } finally {
+      setBundleIdsLoading(false);
+    }
+  }
 
-  const toggleAction = useCallback((id: ConnectActionId) => {
+  function selectTeam(nextTeamId: string) {
+    setSelectedTeamId(nextTeamId);
+    const team = teams.find((candidate) => candidate.teamId === nextTeamId);
+    if (relay && team) void loadBundleIds(relay, team);
+  }
+
+  /**
+   * Prefills the app name from the App Store Connect app record when an
+   * existing bundle ID is selected — that name is the one shown on the App
+   * Store. The Developer Portal registration name is deliberately not
+   * used: tools often register bundle IDs under generated names like
+   * "appexamplemyapp <hash>". Without an app record the field is left for
+   * the user to fill. Still editable afterwards.
+   */
+  async function prefillAppName(
+    relayClient: AppleRelayWebSocketClient,
+    team: AppleTeam | undefined,
+    chosenBundleId: string,
+  ) {
+    try {
+      if (team?.providerId) {
+        await switchAppStoreConnectProvider({ relay: relayClient, providerId: team.providerId });
+      }
+      const app = await findAppStoreConnectApp({ relay: relayClient, bundleId: chosenBundleId });
+      if (app?.name) setAppName(app.name);
+    } catch {
+      // No App Store Connect access or no app record yet; the user
+      // types the name themselves.
+    }
+  }
+
+  function selectBundleId(choice: string) {
+    setBundleIdChoice(choice);
+    if (choice !== NEW_BUNDLE_ID && relay) void prefillAppName(relay, selectedTeam, choice);
+  }
+
+  function toggleAction(id: ConnectActionId) {
     setSelectedActions((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }, []);
+  }
 
   // --- Step 1: Apple ID login -----------------------------------------------
 
-  const loadTeams = useCallback(
-    async (relayClient: AppleRelayWebSocketClient) => {
-      // finalize() fetches the account session Apple requires before the
-      // provisioning endpoints work.
-      await appleLogin.finalize().catch(() => undefined);
-      const loaded = await listAppleTeams({ relay: relayClient });
-      setTeams(loaded);
-      setSelectedTeamId(loaded[0]?.teamId ?? '');
-      log('Apple teams loaded', String(loaded.length));
-    },
-    [appleLogin, log],
-  );
+  async function loadTeams(relayClient: AppleRelayWebSocketClient) {
+    // finalize() fetches the account session Apple requires before the
+    // provisioning endpoints work.
+    await appleLogin.finalize().catch(() => undefined);
+    const loaded = await listAppleTeams({ relay: relayClient });
+    setTeams(loaded);
+    setSelectedTeamId(loaded[0]?.teamId ?? '');
+    log('Apple teams loaded', String(loaded.length));
+    if (loaded[0]) await loadBundleIds(relayClient, loaded[0]);
+  }
 
-  const signIn = useCallback(async () => {
+  async function signIn() {
     if (!registrySession) {
       onError('The registry session is not ready yet; is the example backend running?');
       return;
@@ -318,9 +325,9 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     } finally {
       setBusy(undefined);
     }
-  }, [appleAccount, applePassword, appleLogin, loadTeams, onError, registrySession]);
+  }
 
-  const submitTwoFactor = useCallback(async () => {
+  async function submitTwoFactor() {
     if (!appleLogin.session) return;
     onError(undefined);
     setBusy('2fa');
@@ -336,15 +343,15 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     } finally {
       setBusy(undefined);
     }
-  }, [appleLogin, loadTeams, onError, twoFactorCode]);
+  }
 
   // --- Step 2: run the checklist --------------------------------------------
 
-  const setActionState = useCallback((id: ConnectActionId, state: ActionState) => {
+  function setActionState(id: ConnectActionId, state: ActionState) {
     setActionStates((current) => ({ ...current, [id]: state }));
-  }, []);
+  }
 
-  const confirm = useCallback(async () => {
+  async function confirm() {
     if (!relay || !teamId) return onError('Sign in with Apple and select a team first.');
     const trimmedBundleId = (bundleIdChoice === NEW_BUNDLE_ID ? bundleId : bundleIdChoice).trim();
     const trimmedAppName = appName.trim();
@@ -405,6 +412,9 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
 
       // Certificates. The ensure helpers reuse the stored p12 whenever its
       // certificate is still on the team, so re-running Connect is cheap.
+      // Filled in by the action below; stays undefined when it is
+      // deselected, which the profile actions that need it turn into an
+      // error of their own.
       let distributionCertificate: EnsureAppleCertificateResult | undefined;
       await run('distributionCertificate', async () => {
         const result = await ensureAppleCertificateSecret({
@@ -419,25 +429,27 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
         return result.created ? 'Created' : 'Reused existing';
       });
 
-      const ensureProfile = async (
-        profileKind: 'appstore',
-        certificateId: string | undefined,
-        certificateLabel: string,
-        name: string,
-      ) => {
+      await run('appStoreProfile', async () => {
+        const certificateId = distributionCertificate?.certificateId;
         if (!certificateId) {
-          throw new Error(`Select the ${certificateLabel} action too; the profile must reference it.`);
+          throw new Error('Select the distribution certificate action too; the profile must reference it.');
         }
         // Reuse a portal profile with our name so repeated Connect runs don't
         // pile up duplicates (Apple rejects duplicate profile names anyway).
-        const profiles = await listAppleProfiles({ relay, teamId, profileKind, bundleId: trimmedBundleId });
+        const name = naming.appStoreProfileName(trimmedBundleId);
+        const profiles = await listAppleProfiles({
+          relay,
+          teamId,
+          profileKind: 'appstore',
+          bundleId: trimmedBundleId,
+        });
         const existing = profiles.find((profile) => profile.name === name);
         let profileId = existing?.profileId;
         if (!profileId) {
           const created = await createAppleProfile({
             relay,
             teamId,
-            profileKind,
+            profileKind: 'appstore',
             bundleId: trimmedBundleId,
             appIdId,
             certificateIds: [certificateId],
@@ -447,16 +459,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
         }
         await saveAppleProfileSecret({ relay, teamId, profileId, secretStore, log });
         return existing ? 'Reused existing' : 'Created';
-      };
-
-      await run('appStoreProfile', () =>
-        ensureProfile(
-          'appstore',
-          distributionCertificate?.certificateId,
-          'distribution certificate',
-          naming.appStoreProfileName(trimmedBundleId),
-        ),
-      );
+      });
 
       // App Store Connect rides the same session but carries its own active
       // provider; point it at the selected team once before the iris calls.
@@ -464,6 +467,8 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
       if (selectedActions.has('appRecord') || selectedActions.has('apiKey')) {
         if (providerId) await switchAppStoreConnectProvider({ relay, providerId });
       }
+      // Filled in by the app record action; lands in the stored Connection
+      // so the UI can link to the app's App Store Connect page.
       let ascAppId: string | undefined;
       await run('appRecord', async () => {
         const result = await ensureAppStoreConnectApp({
@@ -497,6 +502,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
       // against the currently registered set; the device-install example
       // reuses these secrets and only asks for an Apple sign-in when an
       // iPhone is not covered yet.
+      // Filled in by the action below, read by the development profile action.
       let developmentCertificate: EnsureAppleCertificateResult | undefined;
       await run('developmentCertificate', async () => {
         const result = await ensureAppleCertificateSecret({
@@ -602,29 +608,20 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     } finally {
       setBusy(undefined);
     }
-  }, [
-    appName,
-    bundleId,
-    bundleIdChoice,
-    log,
-    onError,
-    relay,
-    secretStore,
-    selectedActions,
-    selectedTeam,
-    setActionState,
-    teamId,
-  ]);
+  }
 
-  const disconnect = useCallback(() => {
+  function disconnect() {
     localStorage.removeItem(CONNECTION_STORAGE_KEY);
     setConnection(undefined);
     setActionStates({});
     setTeams([]);
+    setSelectedTeamId('');
+    setPortalAppIds([]);
+    setBundleIdChoice(NEW_BUNDLE_ID);
     void appleLogin.close();
-  }, [appleLogin]);
+  }
 
-  const publishReady = useMemo(() => connection !== undefined, [connection]);
+  const publishReady = connection !== undefined;
 
   return {
     busy,
@@ -647,12 +644,12 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     // Team + inputs
     teams,
     selectedTeamId,
-    setSelectedTeamId,
+    selectTeam,
     teamId,
     bundleId,
     setBundleId,
     bundleIdChoice,
-    setBundleIdChoice,
+    selectBundleId,
     portalAppIds,
     bundleIdsLoading,
     appName,

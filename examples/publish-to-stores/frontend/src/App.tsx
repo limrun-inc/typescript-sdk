@@ -9,13 +9,8 @@ import { PUBLISHER_NAME } from './config';
 import { useConnect } from './hooks/useConnect';
 import { usePlay } from './hooks/usePlay';
 import { usePublish } from './hooks/usePublish';
-import {
-  createBackendSecretStore,
-  getSecretsDir,
-  getWebhookUrl,
-  setSecretsDir,
-  setWebhookUrl,
-} from './lib/backend';
+import { getSecretsDir, getWebhookUrl, setSecretsDir, setWebhookUrl } from './lib/backend';
+import { createBackendSecretStore } from './lib/secret-store';
 import { errorBox, hintText, inputStyle, labelStyle, layout, tabBar, tabButton } from './theme';
 
 function platformPane(visible: boolean): CSSProperties {
@@ -103,7 +98,7 @@ export default function App() {
           <PublishPhase connect={connect} publish={publish} webhookUrl={webhookUrl} />
         </div>
         <div style={platformPane(platform === 'android')}>
-          <PlayPhase play={play} onError={setError} webhookUrl={webhookUrl} />
+          <PlayPhase play={play} webhookUrl={webhookUrl} />
         </div>
       </div>
       <div style={layout.main}>

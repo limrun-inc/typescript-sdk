@@ -428,10 +428,10 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@limrun/apple-auth@^0.4.2":
-  version "0.4.2"
-  resolved "https://registry.yarnpkg.com/@limrun/apple-auth/-/apple-auth-0.4.2.tgz#28097c9bffba31d26ea750b300457e29e3a5ed5c"
-  integrity sha512-xfmfI/DirbKDjKGLTTF8A8A9yTy/jfOaV57HtECTQvS6pMHFSU/DuPnm+AlQTpFemDZ8t51BTNuaUaH7zZB8Vw==
+"@limrun/apple-auth@^0.5.0":
+  version "0.5.0"
+  resolved "https://registry.yarnpkg.com/@limrun/apple-auth/-/apple-auth-0.5.0.tgz#9d463ebbd68e0ed817f0663c19b6922c67231ba7"
+  integrity sha512-CLPDJLMaIFCAOgwhr/FU3p77mtImTVaJvNa89N56ffe7WEd5tAWwgJIeej0e4i43PnAW3JdxSfh+RHbAlQ+GQw==
   dependencies:
     "@foxt/js-srp" "^0.0.3-patch2"
     node-forge "^1.4.0"

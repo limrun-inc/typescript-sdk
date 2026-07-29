@@ -1,6 +1,15 @@
 import type { SigningSecret, SigningSecretMetadata, SigningSecretStore } from '@limrun/apple-auth';
 import { BACKEND_URL } from '../config';
 
+/** Renders any thrown value as a user-facing message. */
+export function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+export function sleep(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
 export type RegistrySession = {
   token: string;
   registryUrl: string;

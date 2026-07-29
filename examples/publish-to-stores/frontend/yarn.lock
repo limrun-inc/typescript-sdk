@@ -428,18 +428,18 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@limrun/apple-auth@^0.4.2":
-  version "0.4.2"
-  resolved "https://registry.yarnpkg.com/@limrun/apple-auth/-/apple-auth-0.4.2.tgz#28097c9bffba31d26ea750b300457e29e3a5ed5c"
-  integrity sha512-xfmfI/DirbKDjKGLTTF8A8A9yTy/jfOaV57HtECTQvS6pMHFSU/DuPnm+AlQTpFemDZ8t51BTNuaUaH7zZB8Vw==
+"@limrun/apple-auth@^0.5.0":
+  version "0.5.0"
+  resolved "https://registry.yarnpkg.com/@limrun/apple-auth/-/apple-auth-0.5.0.tgz#9d463ebbd68e0ed817f0663c19b6922c67231ba7"
+  integrity sha512-CLPDJLMaIFCAOgwhr/FU3p77mtImTVaJvNa89N56ffe7WEd5tAWwgJIeej0e4i43PnAW3JdxSfh+RHbAlQ+GQw==
   dependencies:
     "@foxt/js-srp" "^0.0.3-patch2"
     node-forge "^1.4.0"
 
-"@limrun/play-auth@^0.2.0":
-  version "0.2.0"
-  resolved "https://registry.npmjs.org/@limrun/play-auth/-/play-auth-0.2.0.tgz"
-  integrity sha512-8RjkWVR5FcHRk+dPLx0YfF2g3Sz+F7FZU4pV2QknOGyATpdJvogb7ob4JK5A2A3bIEiuJ4EWbbwtY3B2/NbdBg==
+"@limrun/play-auth@^0.3.0":
+  version "0.3.0"
+  resolved "https://registry.yarnpkg.com/@limrun/play-auth/-/play-auth-0.3.0.tgz#5904a88ce6d41608a6fc16f81fd0d5e3bd4857d2"
+  integrity sha512-pdOfke7m8kQyptpELMXesNZWTSG45zNpGgYUEC2mD/RDyWabVZp7Hlh7g8+MCQL1HWXG5HXv5Nso0FXpp0Y1/g==
   dependencies:
     node-forge "^1.4.0"
 

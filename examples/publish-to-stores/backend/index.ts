@@ -1,7 +1,7 @@
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import Limrun from '@limrun/api';
-import { defaultSecretsDir, deleteSecret, getSecret, listSecrets, putSecret } from './secret-store.js';
+import { DEFAULT_SECRETS_DIR, deleteSecret, getSecret, listSecrets, putSecret } from './secret-store.js';
 import { getPublishStatus, receivePublishWebhook, startPublish, type PublishRequest } from './publish.js';
 import { detectAndroidPackage, startAndroidPublish, type AndroidPublishRequest } from './publish-android.js';
 
@@ -29,20 +29,15 @@ app.use(cors());
 // tied to any instance, so no Xcode instance exists until a publish
 // actually spawns `lim xcode build`.
 app.post('/session', async (_req: Request, res: Response) => {
-  try {
-    const session = await limrun.scopedTokens.create({ scopes: ['applerelay:*:connect'] });
-    return res.status(200).json({
-      token: session.token,
-      expiresAt: session.expiresAt,
-      registryUrl,
-      // The store directory used when requests don't name one; the UI
-      // shows it as the default of its secrets-directory field.
-      secretsDir: defaultSecretsDir(),
-    });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'An unknown error occurred';
-    return res.status(500).json({ status: 'error', message });
-  }
+  const session = await limrun.scopedTokens.create({ scopes: ['applerelay:*:connect'] });
+  res.status(200).json({
+    token: session.token,
+    expiresAt: session.expiresAt,
+    registryUrl,
+    // The store directory used when requests don't name one; the UI
+    // shows it as the default of its secrets-directory field.
+    secretsDir: DEFAULT_SECRETS_DIR,
+  });
 });
 
 // The file-based secret store, exposed with the same response shape as
@@ -60,26 +55,16 @@ function secretsDirOf(req: Request): string | undefined {
 
 // Metadata only — secret data never appears in listings.
 app.get('/secrets', async (req: Request, res: Response) => {
-  try {
-    const secrets = await listSecrets(secretsDirOf(req));
-    return res.status(200).json(secrets.map(({ type, name, createdAt }) => ({ type, name, createdAt })));
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'An unknown error occurred';
-    return res.status(500).json({ status: 'error', message });
-  }
+  const secrets = await listSecrets(secretsDirOf(req));
+  res.status(200).json(secrets.map(({ type, name, createdAt }) => ({ type, name, createdAt })));
 });
 
 app.get('/secrets/:type/:name', async (req: Request<{ type: string; name: string }>, res: Response) => {
-  try {
-    const secret = await getSecret(req.params.type, req.params.name, secretsDirOf(req));
-    if (!secret) {
-      return res.status(404).json({ status: 'error', message: 'Secret not found' });
-    }
-    return res.status(200).json(secret);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'An unknown error occurred';
-    return res.status(500).json({ status: 'error', message });
+  const secret = await getSecret(req.params.type, req.params.name, secretsDirOf(req));
+  if (!secret) {
+    return res.status(404).json({ status: 'error', message: 'Secret not found' });
   }
+  return res.status(200).json(secret);
 });
 
 app.put(
@@ -88,28 +73,18 @@ app.put(
     req: Request<{ type: string; name: string }, {}, { data?: Record<string, string> }>,
     res: Response,
   ) => {
-    try {
-      const { data } = req.body;
-      if (!data || typeof data !== 'object') {
-        return res.status(400).json({ status: 'error', message: 'Body must contain a data object' });
-      }
-      const secret = await putSecret(req.params.type, req.params.name, data, secretsDirOf(req));
-      return res.status(200).json(secret);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'An unknown error occurred';
-      return res.status(500).json({ status: 'error', message });
+    const { data } = req.body;
+    if (!data || typeof data !== 'object') {
+      return res.status(400).json({ status: 'error', message: 'Body must contain a data object' });
     }
+    const secret = await putSecret(req.params.type, req.params.name, data, secretsDirOf(req));
+    return res.status(200).json(secret);
   },
 );
 
 app.delete('/secrets/:type/:name', async (req: Request<{ type: string; name: string }>, res: Response) => {
-  try {
-    await deleteSecret(req.params.type, req.params.name, secretsDirOf(req));
-    return res.status(200).json({ status: 'success' });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'An unknown error occurred';
-    return res.status(500).json({ status: 'error', message });
-  }
+  await deleteSecret(req.params.type, req.params.name, secretsDirOf(req));
+  res.status(200).json({ status: 'success' });
 });
 
 // Starts a detached `lim xcode build` with the stored signing material and a
@@ -126,13 +101,8 @@ app.post('/publish', async (req: Request<{}, {}, Partial<PublishRequest>>, res: 
       message: 'projectPath, teamId, bundleId and webhookUrl are required',
     });
   }
-  try {
-    const id = await startPublish({ projectPath, teamId, bundleId, scheme, secretsDir, webhookUrl });
-    return res.status(202).json({ publishId: id });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'An unknown error occurred';
-    return res.status(500).json({ status: 'error', message });
-  }
+  const id = await startPublish({ projectPath, teamId, bundleId, scheme, secretsDir, webhookUrl });
+  return res.status(202).json({ publishId: id });
 });
 
 // Polled by the frontend while it shows "Waiting for build callback".
@@ -154,13 +124,8 @@ app.post(
     if (!projectPath) {
       return res.status(400).json({ status: 'error', message: 'projectPath is required' });
     }
-    try {
-      const packageName = await detectAndroidPackage(projectPath);
-      return res.status(200).json({ packageName: packageName ?? null });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'An unknown error occurred';
-      return res.status(500).json({ status: 'error', message });
-    }
+    const packageName = await detectAndroidPackage(projectPath);
+    return res.status(200).json({ packageName: packageName ?? null });
   },
 );
 
@@ -174,20 +139,22 @@ app.post('/publish/android', async (req: Request<{}, {}, Partial<AndroidPublishR
       message: 'projectPath, packageName, googleAccessToken and webhookUrl are required',
     });
   }
-  try {
-    const id = await startAndroidPublish({
-      projectPath,
-      packageName,
-      googleAccessToken,
-      track,
-      secretsDir,
-      webhookUrl,
-    });
-    return res.status(202).json({ publishId: id });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'An unknown error occurred';
-    return res.status(500).json({ status: 'error', message });
-  }
+  const id = await startAndroidPublish({
+    projectPath,
+    packageName,
+    googleAccessToken,
+    track,
+    secretsDir,
+    webhookUrl,
+  });
+  return res.status(202).json({ publishId: id });
+});
+
+// Express 5 forwards rejected promises from async handlers here, so the
+// routes above carry no try/catch — any failure becomes this 500.
+app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  const message = error instanceof Error ? error.message : 'An unknown error occurred';
+  res.status(500).json({ status: 'error', message });
 });
 
 // The webhook receiver is its own Express app on its own port: the public

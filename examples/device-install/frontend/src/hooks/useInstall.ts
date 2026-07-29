@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
-import { errorMessage } from '../lib/apple';
+import { useRef, useState } from 'react';
 import {
+  errorMessage,
   fetchInstallStatus,
+  sleep,
   startInstall,
   type InstallInput,
   type InstallMethod,
@@ -15,54 +16,49 @@ const POLL_INTERVAL_MS = 3000;
 export function useInstall() {
   const [method, setMethod] = useState<InstallMethod>('webusb');
   const [state, setState] = useState<InstallBuildState>('idle');
-  const [installId, setInstallId] = useState<string>();
   const [status, setStatus] = useState<InstallStatus>();
   const [error, setError] = useState<string>();
 
-  const selectMethod = useCallback((selected: InstallMethod) => {
+  // Polling runs inside build() rather than in an effect. Switching the
+  // install method bumps this sequence so an abandoned build's loop stops
+  // writing state; the build itself keeps running server-side.
+  const buildSeq = useRef(0);
+
+  function selectMethod(selected: InstallMethod) {
+    buildSeq.current++;
     setMethod(selected);
     setState('idle');
-    setInstallId(undefined);
     setStatus(undefined);
     setError(undefined);
-  }, []);
+  }
 
-  const build = useCallback(async (input: InstallInput) => {
+  async function build(input: InstallInput) {
+    const seq = ++buildSeq.current;
     setMethod(input.method);
     setState('running');
-    setInstallId(undefined);
     setStatus(undefined);
     setError(undefined);
     try {
-      setInstallId(await startInstall(input));
+      const installId = await startInstall(input);
+      while (true) {
+        await sleep(POLL_INTERVAL_MS);
+        // Transient status failures are retried on the next tick.
+        const fetched = await fetchInstallStatus(installId).catch(() => undefined);
+        if (seq !== buildSeq.current) return;
+        if (!fetched) continue;
+        setStatus(fetched);
+        if (fetched.state !== 'running') {
+          setState(fetched.state);
+          if (fetched.error) setError(fetched.error);
+          return;
+        }
+      }
     } catch (caught) {
+      if (seq !== buildSeq.current) return;
       setError(errorMessage(caught, 'Install build failed'));
       setState('failed');
     }
-  }, []);
-
-  useEffect(() => {
-    if (state !== 'running' || !installId) return;
-    let cancelled = false;
-    const timer = window.setInterval(() => {
-      void fetchInstallStatus(installId)
-        .then((fetched) => {
-          if (cancelled) return;
-          setStatus(fetched);
-          if (fetched.state !== 'running') {
-            setState(fetched.state);
-            if (fetched.error) setError(fetched.error);
-          }
-        })
-        .catch(() => {
-          // Retry transient status failures on the next poll.
-        });
-    }, POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [installId, state]);
+  }
 
   return { method, setMethod: selectMethod, state, status, error, build };
 }

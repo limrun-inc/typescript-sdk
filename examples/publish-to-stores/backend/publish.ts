@@ -177,7 +177,7 @@ const PUBLISH_TIMEOUT_MS = 2 * 60 * 60 * 1000;
  * every pre-webhook failure path: spawn errors, non-zero CLI exits, and the
  * post-exit grace timeout.
  */
-export function failPublish(id: string, message: string) {
+function failPublish(id: string, message: string) {
   const entry = publishes.get(id);
   if (!entry || entry.status.state !== 'running') return;
   entry.status.state = 'failed';
@@ -236,7 +236,7 @@ export function getPublishStatus(id: string): PublishStatus | undefined {
  * commands run with --json, which suppresses progress logs, so on a clean
  * exit stdout is exactly the summary object.
  */
-export function recordPublishConsoleUrl(id: string, cliStdout: string, log: (line: string) => void) {
+function recordPublishConsoleUrl(id: string, cliStdout: string, log: (line: string) => void) {
   const entry = publishes.get(id);
   if (!entry) return;
   try {
@@ -245,6 +245,53 @@ export function recordPublishConsoleUrl(id: string, cliStdout: string, log: (lin
   } catch {
     log('Could not parse the lim CLI detach summary; no console link for this publish.');
   }
+}
+
+/**
+ * Spawns a detached `lim` build and wires its lifecycle to a publish: all
+ * output is forwarded line by line to this process's console, a spawn error
+ * or non-zero exit settles the publish as failed (the build never reached
+ * limbuild, so no webhook is coming), and a clean exit records the console
+ * link from the --json detach summary. The temp workDir holding the
+ * materialized secrets is deleted as soon as the CLI exits.
+ */
+export function spawnDetachedLim(options: {
+  id: string;
+  args: string[];
+  workDir: string;
+  /** Environment for the CLI; defaults to this process's environment. */
+  env?: NodeJS.ProcessEnv;
+  log: (line: string) => void;
+}) {
+  const { id, args, workDir, log } = options;
+  const child = spawn('lim', args, { env: options.env ?? process.env });
+  let stdoutText = '';
+  child.stdout.on('data', (chunk: Buffer) => {
+    stdoutText += chunk.toString('utf8');
+  });
+  const forwardLines = (stream: NodeJS.ReadableStream) => {
+    let buffered = '';
+    stream.on('data', (chunk: Buffer) => {
+      buffered += chunk.toString('utf8');
+      const lines = buffered.split('\n');
+      buffered = lines.pop() ?? '';
+      for (const line of lines) log(line);
+    });
+  };
+  forwardLines(child.stdout);
+  forwardLines(child.stderr);
+  child.on('error', (error) => {
+    failPublish(id, `Failed to run the lim CLI: ${error.message}. Is it installed and on PATH?`);
+    void rm(workDir, { recursive: true, force: true });
+  });
+  child.on('close', (code) => {
+    void rm(workDir, { recursive: true, force: true });
+    if (code !== 0) {
+      failPublish(id, `lim exited with code ${code ?? 1} before the build finished. See the backend logs.`);
+      return;
+    }
+    recordPublishConsoleUrl(id, stdoutText, log);
+  });
 }
 
 /**
@@ -320,37 +367,6 @@ export async function startPublish(request: PublishRequest): Promise<string> {
     log(line);
   }
   log(`$ lim ${args.join(' ')}`);
-
-  const child = spawn('lim', args, { env: process.env });
-  let stdoutText = '';
-  child.stdout.on('data', (chunk: Buffer) => {
-    stdoutText += chunk.toString('utf8');
-  });
-  const forwardLines = (stream: NodeJS.ReadableStream) => {
-    let buffered = '';
-    stream.on('data', (chunk: Buffer) => {
-      buffered += chunk.toString('utf8');
-      const lines = buffered.split('\n');
-      buffered = lines.pop() ?? '';
-      for (const line of lines) log(line);
-    });
-  };
-  forwardLines(child.stdout);
-  forwardLines(child.stderr);
-  child.on('error', (error) => {
-    failPublish(id, `Failed to run the lim CLI: ${error.message}. Is it installed and on PATH?`);
-    void rm(workDir, { recursive: true, force: true });
-  });
-  child.on('close', (code) => {
-    void rm(workDir, { recursive: true, force: true });
-    if (code !== 0) {
-      // The build never reached limbuild (bad path, sync failure, ...) or
-      // failed client-side; no webhook is coming, so settle the publish here.
-      failPublish(id, `lim exited with code ${code ?? 1} before the build finished. See the backend logs.`);
-      return;
-    }
-    recordPublishConsoleUrl(id, stdoutText, log);
-  });
-
+  spawnDetachedLim({ id, args, workDir, log });
   return id;
 }

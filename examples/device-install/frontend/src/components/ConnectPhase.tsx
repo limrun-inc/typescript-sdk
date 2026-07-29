@@ -107,7 +107,7 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
           <select
             style={inputStyle}
             value={connect.selectedTeamId}
-            onChange={(event) => connect.setSelectedTeamId(event.target.value)}
+            onChange={(event) => connect.selectTeam(event.target.value)}
           >
             {connect.teams.map((team) => (
               <option key={team.teamId} value={team.teamId}>
