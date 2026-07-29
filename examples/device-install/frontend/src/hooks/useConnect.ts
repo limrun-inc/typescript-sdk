@@ -12,6 +12,7 @@ import {
   listAppleBundleIDs,
   listAppleDevices,
   listAppleTeams,
+  parseProvisionedDevices,
   registerAppleDevice,
   saveAppleProfileSecret,
   type AppleBundleID,
@@ -241,7 +242,9 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
           if (
             profile?.data.teamID === connection.teamId &&
             commaSeparated(profile.data.bundleIDs).includes(connection.bundleId) &&
-            commaSeparated(profile.data.deviceIDs).some((udid) => normalizeUDID(udid) === normalizedUDID) &&
+            parseProvisionedDevices(profile.data.deviceIDs).some(
+              (device) => normalizeUDID(device.udid) === normalizedUDID,
+            ) &&
             !!certificate?.data.serialNumber &&
             commaSeparated(profile.data.certificateSerialNumbers).includes(certificate.data.serialNumber) &&
             isUnexpired(certificate.data.expirationDate) &&

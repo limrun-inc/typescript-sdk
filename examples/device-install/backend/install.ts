@@ -35,6 +35,18 @@ function normalizeUDID(value?: string) {
   return (value ?? '').replace(/[^a-fA-F0-9]/g, '').toUpperCase();
 }
 
+// deviceIDs is a JSON array of { udid, name?, model? } written by apple-auth.
+function provisionedDeviceUDIDs(value?: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value ?? '[]');
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map((device) => (device as { udid?: string })?.udid ?? '').filter(Boolean);
+}
+
 function isUnexpired(expirationDate?: string) {
   if (!expirationDate) return true;
   const expiresAt = Date.parse(expirationDate);
@@ -65,7 +77,9 @@ async function resolveDeviceCredentials(request: InstallRequest): Promise<Device
           .split(',')
           .map((value) => value.trim())
           .includes(request.bundleId) &&
-        (secret.data.deviceIDs ?? '').split(',').some((value) => normalizeUDID(value) === normalizedUDID) &&
+        provisionedDeviceUDIDs(secret.data.deviceIDs).some(
+          (udid) => normalizeUDID(udid) === normalizedUDID,
+        ) &&
         !!certificate.data.serialNumber &&
         (secret.data.certificateSerialNumbers ?? '')
           .split(',')
