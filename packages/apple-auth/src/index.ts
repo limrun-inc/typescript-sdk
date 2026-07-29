@@ -1,6 +1,7 @@
 export * from './app-store-connect';
 export * from './credentials';
 export * from './crypto';
+export * from './limrun-secret-store';
 export * from './login';
 export * from './portal';
 export * from './profiles';

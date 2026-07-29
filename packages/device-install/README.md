@@ -139,8 +139,7 @@ A real-device install must be signed. The `@limrun/apple-auth` credential helper
 run the Apple ID login in the browser (the password never leaves it — only SRP
 proof material does) and persist the resulting material into a
 `SigningSecretStore` you provide: Limrun's org secret store
-(`createLimrunSecretStore`), the browser's IndexedDB
-(`createBrowserSecretStore`), or your own implementation of the interface —
+(`createLimrunSecretStore`) or your own implementation of the interface —
 your backend's database, a KMS, anything.
 
 ```tsx

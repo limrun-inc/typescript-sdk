@@ -18,6 +18,7 @@ import { useAppleIDLogin } from '@limrun/apple-auth/react';
 ```
 
 Signing secrets remain under the caller's control through
-`SigningSecretStore`. The included in-memory and IndexedDB stores are useful
-for local applications; server-backed applications should provide their own
-store.
+`SigningSecretStore`. Limrun's org secret store (`createLimrunSecretStore`)
+is the included implementation; applications that keep secrets themselves
+implement the interface over their own storage — a database, a KMS,
+anything — like the publish-to-stores example does with its backend.

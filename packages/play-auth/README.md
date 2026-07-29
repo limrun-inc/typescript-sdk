@@ -49,6 +49,32 @@ error long after sign-in usually means the token expired; offer "Sign in
 with Google" again rather than pointing users at Play Console
 permissions.
 
+## Upload keystore custody
+
+Persistent signing material such as the Play upload keystore stays under
+the caller's control through `SigningSecretStore`, the same pluggable
+interface `@limrun/apple-auth` uses for Apple material (the two are
+structurally identical, so one store instance can serve both). Generate a
+keystore in the browser and escrow it in whichever store you choose:
+
+```ts
+import {
+  createLimrunSecretStore,
+  generateAndroidUploadKeystore,
+  putAndroidSigningKeySecret,
+} from '@limrun/play-auth';
+
+const store = createLimrunSecretStore({ apiUrl, token, organizationId }); // or your own
+const keystore = await generateAndroidUploadKeystore('com.example.app');
+await putAndroidSigningKeySecret(store, 'com.example.app', keystore);
+```
+
+`createLimrunSecretStore` escrows in Limrun's organization secret store,
+which is where `lim gradle build --sign` looks the key up (named by the
+bare application ID). Applications that keep secrets themselves implement
+the interface over their own storage — a database, a KMS, anything; the
+publish-to-stores example backs it with its example backend's file store.
+
 ## Without React
 
 ```ts
