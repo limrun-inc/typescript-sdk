@@ -18,6 +18,7 @@ import {
   createSetClipboardMessage,
   createTwoFingerTouchControlMessage,
 } from '../core/webrtc-messages';
+import { getMediaRelaySupport } from '../core/media-relay';
 import { AxFetcher, AxStatus } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
@@ -155,19 +156,18 @@ interface RemoteControlProps {
   axMaxBackoffMs?: number;
 
   /**
-   * Fires whenever the iOS simulator's camera demand state changes —
-   * i.e. an app inside the sim called
-   * `[AVCaptureSession startRunning]` or `[stopRunning]`. The
+   * Fires whenever an app inside the remote device starts or stops
+   * demanding camera frames. The
    * component handles the `navigator.mediaDevices.getUserMedia` prompt
    * and SDP plumbing internally; this callback is purely so the host
-   * UI can render a status indicator ("simulator is using your
+   * UI can render a status indicator ("device is using your
    * camera", etc.).
    *
-   * `active` reflects whether the sim is currently asking for
+   * `active` reflects whether the remote device is currently asking for
    * frames. `granted` is set only on the call that follows a
    * `getUserMedia` attempt: `true` when the user accepted the
    * browser prompt, `false` when they denied or the call failed
-   * (in which case the limulator side switches to a black-frame
+   * (in which case the remote side switches to a black-frame
    * fallback so the app keeps ticking).
    *
    * `camera` (optional, only meaningful when `granted === true`)
@@ -175,9 +175,6 @@ interface RemoteControlProps {
    * active capture: resolution, framerate, device label, facing
    * mode. Use it to render a richer status indicator (e.g.
    * "Camera · 1920×1080 · 30 fps · FaceTime HD").
-   *
-   * Only iOS instances ever fire this callback; Android instances
-   * have no camera-injector path and stay silent.
    */
   onCameraDemandChange?: (active: boolean, granted?: boolean, camera?: CameraCaptureInfo) => void;
 
@@ -190,7 +187,7 @@ interface RemoteControlProps {
    * decide whether to show "Bandwidth limited" or "CPU limited"
    * banners).
    *
-   * Only fires while the simulator is actively pulling the
+   * Only fires while the remote device is actively pulling the
    * camera AND `getUserMedia` was granted. `null` is emitted
    * once when the stream goes back to idle so consumers can
    * clear their UI without having to maintain their own
@@ -205,7 +202,7 @@ interface RemoteControlProps {
    * - `'auto'` (default): no extra constraint. The browser captures
    *   at its webcam's native max; WebRTC's quality scaler may step
    *   down resolution on the encoder side under bandwidth pressure
-   *   while still feeding the simulator at the pool's native size.
+   *   while still feeding the remote camera surface at its native size.
    * - `'1080p'` / `'720p'` / `'480p'`: hard cap applied via
    *   `getUserMedia` constraints (for new captures) and
    *   `track.applyConstraints` (for the currently-active track),
@@ -253,7 +250,7 @@ export type CameraAspect = '16:9' | '4:3' | '1:1' | '9:16';
 /**
  * Snapshot of the browser's webcam capture, mirrored from
  * `MediaStreamTrack.getSettings()`. Forwarded to the host alongside
- * `cameraResult` and exposed to the host app via
+ * `mediaResult` and exposed to the host app via
  * `onCameraDemandChange` so it can render a status indicator without
  * having to call `getStats()` itself.
  */
@@ -542,10 +539,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // Mirrored to a ref so stale closures in event handlers see the latest value.
     const autoReconnectRef = useRef(autoReconnect);
     autoReconnectRef.current = autoReconnect;
-    // Demand-driven outbound camera state.
-    //
-    // The limulator side broadcasts a `cameraRequest` WS message whenever
-    // an app inside the simulator opens/closes an `AVCaptureSession`.
+    // Demand-driven outbound camera state. All capable servers use the
+    // versioned `mediaRequest` protocol.
     // We respond by calling `navigator.mediaDevices.getUserMedia(...)`
     // and `replaceTrack`ing the result onto a pre-allocated sendonly
     // video transceiver. Pre-allocating the transceiver lets us
@@ -560,7 +555,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // green light.
     const outboundCameraSenderRef = useRef<RTCRtpSender | null>(null);
     const outboundLocalStreamRef = useRef<MediaStream | null>(null);
-    // Bumped on every `cameraRequest` so a handler suspended on an
+    // Bumped on every camera demand update so a handler suspended on an
     // await (e.g. the getUserMedia prompt) can detect it was superseded
     // by a newer request and bail instead of re-attaching the camera.
     const cameraRequestGenerationRef = useRef(0);
@@ -1842,6 +1837,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // Drop any active outbound camera before the PC dies so the
       // browser doesn't leave the camera indicator lit between
       // reconnects.
+      cameraRequestGenerationRef.current += 1;
       stopCameraStatsPoller();
       stopOutboundLocalStream();
       outboundCameraSenderRef.current = null;
@@ -2107,7 +2103,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         };
 
         // Request RTCConfiguration
-        const rtcConfigPromise = new Promise<RTCConfiguration>((resolve, reject) => {
+        const rtcConfigPromise = new Promise<{
+          rtcConfiguration: RTCConfiguration;
+          relaySupport: ReturnType<typeof getMediaRelaySupport>;
+        }>((resolve, reject) => {
           const timeoutId = window.setTimeout(() => reject(new Error('RTCConfiguration timeout')), 30000);
 
           const messageHandler = (event: MessageEvent) => {
@@ -2116,7 +2115,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               if (message.type === 'rtcConfiguration') {
                 window.clearTimeout(timeoutId);
                 ws.removeEventListener('message', messageHandler);
-                resolve(message.rtcConfiguration);
+                resolve({
+                  rtcConfiguration: message.rtcConfiguration,
+                  relaySupport: getMediaRelaySupport(message),
+                });
               }
             } catch (e) {
               window.clearTimeout(timeoutId);
@@ -2135,10 +2137,15 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           );
         });
 
-        const rtcConfig = await rtcConfigPromise;
+        const { rtcConfiguration: rtcConfig, relaySupport } = await rtcConfigPromise;
         if (!isCurrentAttempt() || wsRef.current !== ws) {
           return;
         }
+        // eslint-disable-next-line no-console
+        console.info('[RemoteControl] media relay capabilities', {
+          platform,
+          camera: relaySupport.camera,
+        });
 
         const peerConnection = new RTCPeerConnection(rtcConfig);
         peerConnectionRef.current = peerConnection;
@@ -2152,10 +2159,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         // `AVCaptureSession` — the codec/SSRC negotiation happens
         // once, here, and turning the camera on/off later is just a
         // `replaceTrack`.
-        // iOS only: Android has no camera consumer, and the extra
-        // m=video line crashes Android 14's scrcpy/libwebrtc.
+        // Camera transport is platform-neutral: every server must explicitly
+        // advertise the versioned relay capability before we add the extra
+        // sendonly m=video section.
         const outboundCameraTransceiver =
-          platform === 'ios' ?
+          relaySupport.camera ?
             peerConnection.addTransceiver('video', {
               direction: 'sendonly',
             })
@@ -2440,6 +2448,39 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }
         };
 
+        let videoResult: {
+          granted: boolean;
+          width?: number;
+          height?: number;
+          camera?: CameraCaptureInfo;
+        } = { granted: false };
+
+        const sendMediaResult = (
+          granted: boolean,
+          camera?: CameraCaptureInfo,
+        ) => {
+          videoResult = {
+            granted,
+            ...(camera ?
+              {
+                width: camera.width,
+                height: camera.height,
+                camera,
+              }
+            : {}),
+          };
+          if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) {
+            return;
+          }
+          ws.send(
+            JSON.stringify({
+              type: 'mediaResult',
+              version: 1,
+              video: videoResult,
+            }),
+          );
+        };
+
         // Handle incoming messages
         ws.onmessage = async (event) => {
           if (!isCurrentAttempt() || wsRef.current !== ws) {
@@ -2543,16 +2584,27 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               pendingScreenshotResolversRef.current.delete(message.id);
               pendingScreenshotRejectersRef.current.delete(message.id);
               break;
-            case 'cameraRequest': {
-              // Only iOS sessions allocate the sendonly outbound-camera
-              // transceiver; without it there is nothing to feed the sim, so
-              // ignore camera requests entirely — no getUserMedia prompt and
-              // no onCameraDemandChange callbacks. Android intentionally stays
-              // silent, as the API docs promise.
-              if (platform !== 'ios' || !outboundCameraSenderRef.current) {
+            case 'mediaRequest': {
+              // eslint-disable-next-line no-console
+              console.info('[RemoteControl] mediaRequest received', {
+                video: message.video,
+                cameraRelay: relaySupport.camera,
+                hasCameraSender: outboundCameraSenderRef.current !== null,
+              });
+              if (
+                !relaySupport.camera ||
+                typeof message.video !== 'boolean' ||
+                !outboundCameraSenderRef.current
+              ) {
                 break;
               }
-              const active = message.active === true;
+              const active = message.video === true;
+              const sendVideoResult = (
+                granted: boolean,
+                camera?: CameraCaptureInfo,
+              ) => {
+                sendMediaResult(granted, camera);
+              };
               // Bump up front so any earlier in-flight handler bails.
               const cameraGeneration = ++cameraRequestGenerationRef.current;
               const isCurrentCameraRequest = () =>
@@ -2561,12 +2613,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 cameraGeneration === cameraRequestGenerationRef.current;
               // Log unconditionally — this is one of the few places we
               // hand control to the browser's permission UI, and a
-              // silent failure here looks identical to "limulator
+              // silent failure here looks identical to "the remote device
               // never asked" from the user's point of view.
               // eslint-disable-next-line no-console
-              console.info('[RemoteControl] cameraRequest received, active=', active);
+              console.info('[RemoteControl] camera media demand active=', active);
               if (!active) {
-                // Sim no longer wants frames. Drop our local track and
+                // The device no longer wants frames. Drop our local track and
                 // shut the browser's camera green light off.
                 const sender = outboundCameraSenderRef.current;
                 if (sender) {
@@ -2578,12 +2630,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 }
                 stopCameraStatsPoller();
                 stopOutboundLocalStream();
+                sendVideoResult(false);
                 safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, false);
                 break;
               }
               // Sim is asking for camera. Ask the browser; the user's
               // prompt response is reported back to the host via a
-              // `cameraResult` message so it can swap to a
+              // `mediaResult` message so it can swap to a
               // black-frame fallback on denial.
               safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true);
               if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
@@ -2595,9 +2648,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 console.warn(
                   '[RemoteControl] navigator.mediaDevices.getUserMedia unavailable. ' +
                     'getUserMedia requires a secure context (https or http://localhost). ' +
-                    'Replying cameraResult granted=false so limulator falls back to black frames.',
+                    'Replying mediaResult video.granted=false so the server falls back to black frames.',
                 );
-                ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
+                sendVideoResult(false);
                 safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
                 break;
               }
@@ -2627,12 +2680,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 return;
               }
               if (!stream) {
-                ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
+                sendVideoResult(false);
                 safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
                 break;
               }
-              // Replace any previous local stream (e.g. an earlier
-              // cameraRequest that resolved with a different device)
+              // Replace any previous local stream (e.g. an earlier media
+              // request that resolved with a different device)
               // before we install the new tracks.
               stopOutboundLocalStream();
               outboundLocalStreamRef.current = stream;
@@ -2641,7 +2694,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               if (!sender || !videoTrack) {
                 if (stream) stopMediaStream(stream);
                 outboundLocalStreamRef.current = null;
-                ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
+                sendVideoResult(false);
                 safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
                 break;
               }
@@ -2651,7 +2704,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 debugWarn('replaceTrack(videoTrack) failed:', err);
                 stopMediaStream(stream);
                 outboundLocalStreamRef.current = null;
-                ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
+                sendVideoResult(false);
                 safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
                 break;
               }
@@ -2741,7 +2794,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 stopCameraStatsPoller();
                 stopOutboundLocalStream();
                 if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
+                  sendVideoResult(false);
                 }
                 safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
               };
@@ -2759,16 +2812,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 }
                 return;
               }
-              ws.send(
-                JSON.stringify({
-                  type: 'cameraResult',
-                  granted: true,
-                  // Forward what the browser actually captured so the
-                  // host can size its IOSurface pool, log the device,
-                  // and (eventually) surface a status pill / picker.
-                  camera: cameraMetadata,
-                }),
-              );
+              // Forward what the browser actually captured so the remote
+              // side can size its surface and log the selected device.
+              sendVideoResult(true, cameraMetadata);
               safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, true, cameraMetadata);
               // Kick off the per-second outbound stats sampler. We do
               // this *after* `setParameters` so the first sample

@@ -118,6 +118,15 @@ export type InstanceClient = {
    */
   playOnMicrophone: (path: string, options?: PlayOnMicrophoneOptions) => Promise<PlayOnMicrophoneResult>;
   /**
+   * Use an absolute on-device MP4 path as synchronized camera and microphone
+   * input. Playback loops unless `once` is true.
+   */
+  setMediaInput: (path: string, options?: MediaInputOptions) => Promise<MediaInputResult>;
+  /**
+   * Clear combined MP4 input and resume any demanded live browser media.
+   */
+  clearMediaInput: () => Promise<void>;
+  /**
    * Set Android Wi-Fi bandwidth limits in Kbps. Omit a direction to leave it unchanged;
    * pass `0` to clear that direction's limit.
    */
@@ -348,6 +357,22 @@ export type PlayOnMicrophoneResult = {
   generation: number;
 };
 
+export type MediaInputOptions = {
+  once?: boolean;
+};
+
+export type MediaInputResult = {
+  path: string;
+  /** Common media duration in microseconds. */
+  duration: number;
+  once: boolean;
+  generation: number;
+  width: number;
+  height: number;
+  /** Whether the MP4 contains an audio track; absent audio produces silence. */
+  hasAudio: boolean;
+};
+
 export type WifiBandwidthOptions = {
   downKbps?: number;
   upKbps?: number;
@@ -449,6 +474,20 @@ type PlayOnMicrophoneResultMessage = {
   error?: CommandError;
 };
 
+type SetMediaInputResultMessage = {
+  type: 'setMediaInputResult';
+  id: string;
+  payload?: MediaInputResult;
+  error?: CommandError;
+};
+
+type ClearMediaInputResultMessage = {
+  type: 'clearMediaInputResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
 type SetWifiBandwidthResultMessage = {
   type: 'setWifiBandwidthResult';
   id: string;
@@ -481,6 +520,8 @@ type KnownCommandResultMessage =
   | ScrollElementResultMessage
   | OpenUrlResultMessage
   | PlayOnMicrophoneResultMessage
+  | SetMediaInputResultMessage
+  | ClearMediaInputResultMessage
   | SetWifiBandwidthResultMessage
   | StartVideoRecordingResultMessage
   | StopVideoRecordingResultMessage;
@@ -503,6 +544,8 @@ type CommandRequestMap = {
   scrollElement: AndroidElementTarget & { direction: ScrollDirection; amount?: number };
   openUrl: { url: string };
   playOnMicrophone: { path: string; once?: boolean };
+  setMediaInput: { path: string; once?: boolean };
+  clearMediaInput: {};
   setWifiBandwidth: WifiBandwidthOptions;
   startRecording: { quality?: RecordingQuality };
   stopRecording: { upload?: { presignedUrl: string } };
@@ -519,6 +562,8 @@ type CommandResultMap = {
   scrollElement: ScrollResult;
   openUrl: OpenUrlResult;
   playOnMicrophone: PlayOnMicrophoneResult;
+  setMediaInput: MediaInputResult;
+  clearMediaInput: EmptyCommandResult;
   setWifiBandwidth: EmptyCommandResult;
   startRecording: EmptyCommandResult;
   stopRecording: EmptyCommandResult;
@@ -686,6 +731,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         case 'scrollElementResult':
         case 'openUrlResult':
         case 'playOnMicrophoneResult':
+        case 'setMediaInputResult':
+        case 'clearMediaInputResult':
         case 'setWifiBandwidthResult':
         case 'startRecordingResult':
         case 'stopRecordingResult':
@@ -927,6 +974,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             scrollElement,
             openUrl,
             playOnMicrophone,
+            setMediaInput,
+            clearMediaInput,
             setWifiBandwidth,
             startRecording,
             stopRecording,
@@ -1032,6 +1081,26 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         path: inputPath,
         ...(microphoneOptions?.once === undefined ? {} : { once: microphoneOptions.once }),
       });
+    };
+
+    const setMediaInput = async (
+      inputPath: string,
+      mediaOptions?: MediaInputOptions,
+    ): Promise<MediaInputResult> => {
+      if (!inputPath) {
+        throw new Error('path must be a non-empty string');
+      }
+      if (!path.posix.isAbsolute(inputPath)) {
+        throw new Error('path must be an absolute on-device path');
+      }
+      return sendRequest('setMediaInput', {
+        path: inputPath,
+        ...(mediaOptions?.once === undefined ? {} : { once: mediaOptions.once }),
+      });
+    };
+
+    const clearMediaInput = async (): Promise<void> => {
+      await sendRequest('clearMediaInput', {});
     };
 
     const setWifiBandwidth = async (bandwidthOptions: WifiBandwidthOptions): Promise<void> => {
