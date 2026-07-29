@@ -1,0 +1,85 @@
+<!doctype html>
+<!-- Temporary local-verification harness for the 3D device view. Not shipped. -->
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Device3D harness</title>
+    <style>
+      body {
+        margin: 0;
+        background: #e5e7eb;
+      }
+      #stage {
+        position: relative;
+        width: 720px;
+        height: 900px;
+        margin: 0 auto;
+        background: linear-gradient(180deg, #f8fafc, #cbd5e1);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <script type="module">
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { Device3D } from '/src/components/device-3d/device-3d.tsx';
+
+      const params = new URLSearchParams(location.search);
+      const platform = params.get('platform') === 'android' ? 'android' : 'ios';
+
+      // Synthetic "app" stream with unambiguous orientation markers.
+      const makeStreamCanvas = (landscape) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = landscape ? 1950 : 900;
+        canvas.height = landscape ? 900 : 1950;
+        const ctx = canvas.getContext('2d');
+        let frame = 0;
+        const draw = () => {
+          const { width: w, height: h } = canvas;
+          const g = ctx.createLinearGradient(0, 0, 0, h);
+          g.addColorStop(0, '#38bdf8');
+          g.addColorStop(1, '#1e3a8a');
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, w, h);
+          // Corner markers: red TL, green TR, blue BL, yellow BR.
+          const s = 120;
+          ctx.fillStyle = '#ef4444';
+          ctx.fillRect(0, 0, s, s);
+          ctx.fillStyle = '#22c55e';
+          ctx.fillRect(w - s, 0, s, s);
+          ctx.fillStyle = '#3b82f6';
+          ctx.fillRect(0, h - s, s, s);
+          ctx.fillStyle = '#eab308';
+          ctx.fillRect(w - s, h - s, s, s);
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 140px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('TOP', w / 2, 200);
+          ctx.font = 'bold 90px sans-serif';
+          ctx.fillText('frame ' + frame, w / 2, h / 2);
+          ctx.fillText('BOTTOM', w / 2, h - 100);
+          frame++;
+          requestAnimationFrame(draw);
+        };
+        draw();
+        return canvas;
+      };
+
+      const video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      const setOrientation = async (landscape) => {
+        video.srcObject = makeStreamCanvas(landscape).captureStream(30);
+        await video.play();
+      };
+      await setOrientation(params.get('orientation') === 'landscape');
+      window.__setOrientation = setOrientation;
+
+      const videoRef = { current: video };
+      const root = createRoot(document.getElementById('stage'));
+      root.render(React.createElement(Device3D, { videoRef, platform }));
+      window.__harnessReady = true;
+    </script>
+  </body>
+</html>

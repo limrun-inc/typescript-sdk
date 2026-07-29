@@ -6,6 +6,15 @@ types and helpers for building inspect, search, and agent interfaces.
 
 See [examples](../../examples/) to see how it can be used.
 
+## 3D view
+
+`RemoteControl` can render the live stream on an interactive 3D device model
+instead of the flat frame — pass `view="3d"`. Move the cursor and the device
+subtly turns to face it; grab it to rotate, flick it to spin, and it gently
+settles back to face you. The 3D view is presentation-only: device input is
+disabled while it is active, and the underlying session stays connected so
+flipping back to `view="2d"` is instant.
+
 Related browser workflow packages are published separately:
 
 - `@limrun/apple-auth` handles Apple ID login, signing credentials, and App

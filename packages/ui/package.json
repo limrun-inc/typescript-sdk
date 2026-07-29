@@ -38,6 +38,7 @@
   "devDependencies": {
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
+    "@types/three": "^0.185.1",
     "@vitejs/plugin-react-swc": "^4.0.1",
     "eslint": "^9.39.1",
     "jsdom": "^26.0.0",
@@ -52,6 +53,7 @@
     "vitest": "^2.1.9"
   },
   "dependencies": {
-    "clsx": "^2.1.1"
+    "clsx": "^2.1.1",
+    "three": "^0.185.1"
   }
 }

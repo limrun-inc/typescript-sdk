@@ -58,6 +58,15 @@
   aspect-ratio: 9 / 19.5;
 }
 
+/* 3D presentation mode: the flat frame and video stay mounted (the video
+   must keep decoding frames — it is sampled as the 3D screen texture) but
+   are hidden underneath the WebGL canvas. Opacity (not display/visibility)
+   preserves layout so the container keeps its frame-driven size. */
+.rc-view-3d .rc-phone-frame,
+.rc-view-3d .rc-video {
+  opacity: 0;
+}
+
 .rc-touch-indicator {
   position: absolute;
   z-index: 40;

@@ -17,7 +17,9 @@ export default defineConfig({
       fileName: (format, entryName) => `${entryName}.${format === 'es' ? 'js' : 'cjs'}`,
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime'],
+      // `three` (and its examples/jsm addons) is a regular dependency but is
+      // left external so host bundlers resolve a single copy and tree-shake.
+      external: ['react', 'react-dom', 'react/jsx-runtime', /^three(\/|$)/],
       output: {
         globals: {
           react: 'React',
