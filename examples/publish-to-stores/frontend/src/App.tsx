@@ -76,13 +76,6 @@ export default function App() {
           onChange={(event) => updateSecretsDir(event.target.value)}
           placeholder="backend default"
         />
-        <label style={labelStyle}>Webhook URL for build completion (Run `ngrok http 3001`)</label>
-        <input
-          style={inputStyle}
-          value={webhookUrl}
-          onChange={(event) => updateWebhookUrl(event.target.value)}
-          placeholder="https://your-subdomain.ngrok-free.app"
-        />
         <div style={tabBar}>
           <button style={tabButton(platform === 'ios')} onClick={() => setPlatform('ios')}>
             iOS
@@ -95,9 +88,23 @@ export default function App() {
         {/* Hidden, not unmounted: tab switches must not clear form state. */}
         <div style={platformPane(platform === 'ios')}>
           <ConnectPhase connect={connect} />
+          <label style={labelStyle}>Webhook URL for build completion (Run `ngrok http 3001`)</label>
+          <input
+            style={inputStyle}
+            value={webhookUrl}
+            onChange={(event) => updateWebhookUrl(event.target.value)}
+            placeholder="https://your-subdomain.ngrok-free.app"
+          />
           <PublishPhase connect={connect} publish={publish} webhookUrl={webhookUrl} />
         </div>
         <div style={platformPane(platform === 'android')}>
+          <label style={labelStyle}>Webhook URL for build completion (Run `ngrok http 3001`)</label>
+          <input
+            style={inputStyle}
+            value={webhookUrl}
+            onChange={(event) => updateWebhookUrl(event.target.value)}
+            placeholder="https://your-subdomain.ngrok-free.app"
+          />
           <PlayPhase play={play} webhookUrl={webhookUrl} />
         </div>
       </div>
