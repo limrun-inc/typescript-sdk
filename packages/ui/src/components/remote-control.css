@@ -11,6 +11,91 @@
   height: 100%;
 }
 
+/* The 3D-transformed plane holding the device (back panel, frame, video,
+   glare). It fills the container so its center — the transform origin —
+   coincides with the device center, and so child coordinates match
+   container coordinates. */
+.rc-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.rc-3d .rc-stage {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* Depth layering inside the 3D stage. Sub-pixel translateZ offsets give the
+   3D depth sorter a deterministic order matching the 2D z-index stack while
+   staying visually imperceptible: back panel (0) < iOS frame (0.5px) <
+   video (0.75px) < Android frame (1px) < glare (1.25px). backface-visibility
+   hides the front layers while a spinning device shows its back. */
+.rc-3d .rc-phone-frame {
+  transform: translateZ(1px);
+  backface-visibility: hidden;
+}
+
+.rc-3d .rc-phone-frame-ios {
+  transform: translateZ(0.5px);
+}
+
+.rc-3d .rc-video {
+  transform: translate(-50%, -50%) translateZ(0.75px);
+  backface-visibility: hidden;
+}
+
+.rc-3d .rc-video-frameless {
+  transform: translateZ(0.75px);
+}
+
+/* Photorealistic-ish device back shown while the device spins past 90°.
+   Geometry (position, size, border radius) is synced to the frame by the
+   stage's animation loop. */
+.rc-stage-back {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  transform: rotateY(180deg);
+  backface-visibility: hidden;
+  background: radial-gradient(120% 90% at 30% 8%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(135deg, #3d4046 0%, #1a1b1e 55%, #26282c 100%);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.07),
+    inset 0 0 24px rgba(0, 0, 0, 0.55);
+}
+
+/* Camera cluster hint on the device back. */
+.rc-stage-back::after {
+  content: '';
+  position: absolute;
+  top: 3.5%;
+  left: 7%;
+  width: 32%;
+  aspect-ratio: 1;
+  border-radius: 24%;
+  background: radial-gradient(circle at 30% 30%, rgba(30, 32, 36, 1) 12%, rgba(0, 0, 0, 0) 13%),
+    radial-gradient(circle at 70% 30%, rgba(30, 32, 36, 1) 12%, rgba(0, 0, 0, 0) 13%),
+    radial-gradient(circle at 30% 70%, rgba(30, 32, 36, 1) 12%, rgba(0, 0, 0, 0) 13%),
+    linear-gradient(150deg, #131417 0%, #202227 100%);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.08);
+}
+
+/* Glass glare that sweeps across the device as it tilts, as if lit from a
+   fixed light source. Fully transparent at rest; driven by the stage's
+   animation loop. */
+.rc-stage-glare {
+  position: absolute;
+  z-index: 35;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateZ(1.25px);
+  backface-visibility: hidden;
+}
+
 .rc-phone-frame {
   position: relative;
   z-index: 30;
