@@ -15,10 +15,15 @@ settles back to face you. The 3D view is presentation-only: device input is
 disabled while it is active, and the underlying session stays connected so
 flipping back to `view="2d"` is instant.
 
-iPhone and Apple Watch streams render on photoreal CC BY 4.0 models (see
-[CREDITS.md](./CREDITS.md)); the model payloads (~1 MB each) load lazily the
-first time the 3D view shows that device, with an instant procedurally-built
-placeholder shown until then (and kept as fallback if the load fails).
+The 3D subsystem is fully lazy: the rendering engine (three.js and the
+`Device3D` component) is code-split behind a dynamic import that only
+resolves the first time a `RemoteControl` switches to `view="3d"`, and the
+photoreal device models (~1 MB each, CC BY 4.0 — see
+[CREDITS.md](./CREDITS.md)) are a further dynamic import fetched only when
+the 3D view shows that particular device. Apps that never use the 3D view
+download none of it. While a model downloads, an instant procedurally-built
+placeholder is shown (and kept as fallback if the load fails).
+
 Apple Watch simulators are detected automatically from their nearly square
 stream; use the `deviceModel` prop (`'auto' | 'phone' | 'watch'`) to force
 the model.

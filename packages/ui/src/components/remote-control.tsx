@@ -21,8 +21,17 @@ import {
 import { AxFetcher, AxStatus } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
-import { Device3D } from './device-3d/device-3d';
 import type { DeviceModelHint } from './device-3d/device-model';
+
+// The whole 3D subsystem — three.js, the GLTF loaders, spin dynamics, and
+// the Device3D component — is behind a dynamic import so it builds into a
+// separate chunk. Consumers download none of it (nor the photoreal model
+// payloads, which are a further dynamic import inside) until a
+// RemoteControl actually switches to `view="3d"` for the first time.
+// `deviceModel` is a type-only import above, so it adds no runtime edge.
+const Device3D = React.lazy(() =>
+  import('./device-3d/device-3d').then((module) => ({ default: module.Device3D })),
+);
 
 declare global {
   interface Window {
@@ -3429,7 +3438,15 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             }
           }}
         />
-        {is3d && <Device3D videoRef={videoRef} platform={platform} deviceModel={deviceModel} />}
+        {is3d && (
+          // While the 3D chunk downloads there's nothing to show yet (the 2D
+          // stack is already hidden); the procedural placeholder appears the
+          // moment the chunk arrives, so the gap is a single network round
+          // trip on first use and zero afterwards.
+          <React.Suspense fallback={null}>
+            <Device3D videoRef={videoRef} platform={platform} deviceModel={deviceModel} />
+          </React.Suspense>
+        )}
         {inspectActive && !is3d && (
           <InspectOverlay
             snapshot={axSnapshot}
