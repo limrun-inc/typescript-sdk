@@ -1,0 +1,110 @@
+<!doctype html>
+<!-- Temporary analysis page: dumps per-material bounding boxes of a GLB so we
+     can identify the screen surface. Not shipped. -->
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>GLB analyzer</title>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+      import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+      import iphoneUrl from '/src/assets/models/iphone-15-pro-max.glb.b64.ts';
+      import watchUrl from '/src/assets/models/apple-watch-s5.glb.b64.ts';
+
+      const which = new URLSearchParams(location.search).get('model') ?? 'watch';
+      const url = which === 'iphone' ? iphoneUrl : watchUrl;
+
+      const loader = new GLTFLoader();
+      loader.setMeshoptDecoder(MeshoptDecoder);
+      const gltf = await new Promise((res, rej) => loader.load(url, res, undefined, rej));
+      const root = gltf.scene;
+      root.updateWorldMatrix(true, true);
+
+      const whole = new THREE.Box3().setFromObject(root);
+      const size = whole.getSize(new THREE.Vector3());
+      console.log(
+        'WHOLE',
+        JSON.stringify({ size: size.toArray(), min: whole.min.toArray(), max: whole.max.toArray() }),
+      );
+
+      const perMat = new Map();
+      root.traverse((o) => {
+        if (!o.isMesh) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        const box = new THREE.Box3().setFromObject(o);
+        for (const m of mats) {
+          if (!m) continue;
+          const e = perMat.get(m.name) ?? {
+            box: new THREE.Box3(),
+            meshes: 0,
+            hasMap: !!m.map,
+            emissive: m.emissive ? '#' + m.emissive.getHexString() : null,
+            hasEmissiveMap: !!m.emissiveMap,
+            color: m.color ? '#' + m.color.getHexString() : null,
+          };
+          e.box.union(box);
+          e.meshes++;
+          perMat.set(m.name, e);
+        }
+      });
+      for (const [name, e] of perMat) {
+        const s = e.box.getSize(new THREE.Vector3());
+        const c = e.box.getCenter(new THREE.Vector3());
+        console.log(
+          'MAT',
+          JSON.stringify({
+            name,
+            size: s.toArray().map((v) => +v.toFixed(4)),
+            center: c.toArray().map((v) => +v.toFixed(4)),
+            meshes: e.meshes,
+            hasMap: e.hasMap,
+            emissive: e.emissive,
+            hasEmissiveMap: e.hasEmissiveMap,
+            color: e.color,
+          }),
+        );
+      }
+      console.log('ANALYZE_DONE');
+
+      // Optional visual check: render the model spinning, with ?highlight=MAT
+      // painted magenta, so screenshots reveal which surface is which.
+      const highlight = new URLSearchParams(location.search).get('highlight');
+      if (highlight) {
+        root.traverse((o) => {
+          if (!o.isMesh) return;
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          if (mats.some((m) => m && m.name === highlight)) {
+            o.material = new THREE.MeshBasicMaterial({ color: 0xff00ff });
+          }
+        });
+      }
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(700, 700);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      document.body.appendChild(renderer.domElement);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xe5e7eb);
+      const { RoomEnvironment } = await import('three/examples/jsm/environments/RoomEnvironment.js');
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 10);
+      const radius = size.length() / 2;
+      camera.position.set(0, 0, (radius / Math.tan((15 * Math.PI) / 180)) * 1.1);
+      const pivot = new THREE.Group();
+      const center = whole.getCenter(new THREE.Vector3());
+      root.position.sub(center);
+      pivot.add(root);
+      scene.add(pivot);
+      window.__setAngle = (deg) => {
+        pivot.rotation.y = (deg * Math.PI) / 180;
+        renderer.render(scene, camera);
+      };
+      window.__setAngle(0);
+      window.__analyzeDone = true;
+    </script>
+  </body>
+</html>

@@ -6,7 +6,7 @@ import { AxSnapshot } from './core/ax-tree';
 type InspectChoice = 'off' | 'hover-only' | 'select';
 
 // Pre-fill from query string so the developer testing the demo can deeplink
-// `?url=...&token=...&inspect=select&autoconnect=1`. Nothing is persisted.
+// `?url=...&token=...&inspect=select&view=3d&autoconnect=1`. Nothing is persisted.
 const initialParams = new URLSearchParams(window.location.search);
 const initialUrl = initialParams.get('url') || 'ws://localhost:8833/signaling';
 const initialToken = initialParams.get('token') || 'token';
@@ -24,6 +24,7 @@ function Demo() {
   const [key, setKey] = useState(0);
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [inspectChoice, setInspectChoice] = useState<InspectChoice>(initialInspect);
+  const [view3d, setView3d] = useState(initialParams.get('view') === '3d');
   const [latestSnapshot, setLatestSnapshot] = useState<AxSnapshot | null>(null);
   const [latestSelection, setLatestSelection] = useState<string | null>(null);
 
@@ -135,6 +136,18 @@ function Demo() {
           </div>
 
           <div className="control-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={view3d}
+                onChange={(e) => setView3d(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              3D view (grab to spin, flick to twirl — input disabled)
+            </label>
+          </div>
+
+          <div className="control-group">
             <label htmlFor="inspect-mode">Inspect Mode</label>
             <select
               id="inspect-mode"
@@ -198,6 +211,7 @@ function Demo() {
                     ref={remoteControlRef}
                     url={url}
                     token={token}
+                    view={view3d ? '3d' : '2d'}
                     inspectMode={inspectModeProp}
                     onAxSnapshotChange={setLatestSnapshot}
                     onInspectSelectionChange={(sel) =>

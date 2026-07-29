@@ -21,6 +21,17 @@ import {
 import { AxFetcher, AxStatus } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
+import type { DeviceModelHint } from './device-3d/device-model';
+
+// The whole 3D subsystem — three.js, the GLTF loaders, spin dynamics, and
+// the Device3D component — is behind a dynamic import so it builds into a
+// separate chunk. Consumers download none of it (nor the photoreal model
+// payloads, which are a further dynamic import inside) until a
+// RemoteControl actually switches to `view="3d"` for the first time.
+// `deviceModel` is a type-only import above, so it adds no runtime edge.
+const Device3D = React.lazy(() =>
+  import('./device-3d/device-3d').then((module) => ({ default: module.Device3D })),
+);
 
 declare global {
   interface Window {
@@ -54,6 +65,38 @@ interface RemoteControlProps {
   // showFrame controls whether to display the device frame
   // around the video. Defaults to true.
   showFrame?: boolean;
+
+  /**
+   * Presentation mode. Defaults to `'2d'` (the classic flat device frame).
+   *
+   * `'3d'` renders the live stream onto a photoreal-style 3D device model
+   * (three.js) that you can look at from different angles:
+   *
+   * - Move the cursor around and the device subtly turns to face it,
+   *   catching the light from a new angle.
+   * - Grab the device to rotate it in 3D. Give it a flick and it keeps
+   *   spinning, then gently settles back to face you.
+   *
+   * The 3D view is presentation-only: pointer and keyboard input is NOT
+   * forwarded to the device while it is active (rotating the model is the
+   * interaction). The WebRTC session stays connected and the stream keeps
+   * playing, so switching back to `'2d'` is instant and imperative handle
+   * methods (screenshot, openUrl, ...) keep working throughout.
+   */
+  view?: '2d' | '3d';
+
+  /**
+   * Which physical device the 3D view renders for iOS streams (Apple Watch
+   * simulators are iOS instances, so their URL looks like an iPhone's).
+   *
+   * - `'auto'` (default) — renders an Apple Watch (case, digital crown, and
+   *   band) when the stream is nearly square, an iPhone otherwise.
+   * - `'watch'` / `'phone'` — force the model.
+   *
+   * Only affects `view="3d"`; the 2D frame is unchanged. Ignored for
+   * Android streams.
+   */
+  deviceModel?: DeviceModelHint;
 
   // When true, drops after a working session auto-reconnect instead of
   // surfacing the manual "Retry" button. Defaults to false.
@@ -498,6 +541,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       sessionId: propSessionId,
       openUrl,
       showFrame = true,
+      view = '2d',
+      deviceModel = 'auto',
       autoReconnect = false,
       onTerminated,
       inspectMode,
@@ -699,6 +744,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     const inspectActive = inspectMode === true || inspectMode === 'hover-only';
     const inspectModeResolved: InspectMode = inspectMode === 'hover-only' ? 'hover-only' : 'select';
+
+    // 3D presentation mode. Mirrored to a ref so the input handlers (which
+    // close over stale props) always see the current value and can bail out
+    // instead of forwarding events to the device.
+    const is3d = view === '3d';
+    const is3dRef = useRef(is3d);
+    is3dRef.current = is3d;
 
     const sessionId = useMemo(
       () =>
@@ -1194,6 +1246,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     // Unified handler for both mouse and touch interactions
     const handleInteraction = (event: React.MouseEvent | React.TouchEvent) => {
+      // In 3D mode input is never forwarded to the device — pointer events
+      // rotate the model instead (handled inside <Device3D>, which sits
+      // above the video and manages its own listeners).
+      if (is3dRef.current) {
+        return;
+      }
+
       event.preventDefault();
       event.stopPropagation();
 
@@ -1517,6 +1576,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     }, []);
 
     const handleKeyboard = (event: React.KeyboardEvent) => {
+      // No keyboard forwarding in 3D mode (presentation-only).
+      if (is3dRef.current) {
+        return;
+      }
+
       event.preventDefault();
       event.stopPropagation();
       // Use the wrapper for conditional logging
@@ -3290,7 +3354,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     }));
 
     // Show indicators when Alt is held and we have a valid hover point (null when outside)
-    const showAltIndicators = isAltHeld && hoverPoint !== null;
+    const showAltIndicators = isAltHeld && hoverPoint !== null && !is3d;
     const frameImageSrc =
       platform === 'android' && useAndroidTabletFrame ?
         isLandscape ? pixelTabletFrameImageLandscape
@@ -3301,7 +3365,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     return (
       <div
         ref={containerRef}
-        className={clsx('rc-container', className)}
+        className={clsx('rc-container', is3d && 'rc-view-3d', className)}
         style={{ touchAction: 'none' }} // Keep touchAction none for the container
         // Attach unified handler to all interaction events on the container
         // This helps capture mouseleave correctly even if the video element itself isn't hovered
@@ -3374,7 +3438,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             }
           }}
         />
-        {inspectActive && (
+        {is3d && (
+          // While the 3D chunk downloads there's nothing to show yet (the 2D
+          // stack is already hidden); the procedural placeholder appears the
+          // moment the chunk arrives, so the gap is a single network round
+          // trip on first use and zero afterwards.
+          <React.Suspense fallback={null}>
+            <Device3D videoRef={videoRef} platform={platform} deviceModel={deviceModel} />
+          </React.Suspense>
+        )}
+        {inspectActive && !is3d && (
           <InspectOverlay
             snapshot={axSnapshot}
             geometry={overlayGeometry}
