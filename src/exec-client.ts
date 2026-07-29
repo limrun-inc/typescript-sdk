@@ -8,6 +8,7 @@
 import { createEventSource, type EventSourceClient, type EventSourceMessage } from 'eventsource-client';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import { sseFetch } from './internal/sse-fetch';
+import { directInstanceHttpError } from './internal/direct-instance-errors';
 import type { Fetch } from './internal/builtin-types';
 
 /**
@@ -384,6 +385,27 @@ export type AppStoreUploadConfig = {
 
 type DataListener = (chunk: string) => void;
 type CloseListener = () => void;
+export type ExecLogEvent = {
+  id?: string;
+  type: string;
+  data: string;
+};
+
+export type ExecLogOptions = {
+  /** Keep streaming after replaying buffered events. Defaults to false. */
+  follow?: boolean;
+  /** Called for each replayed or live event in wire order. */
+  onEvent?: (event: ExecLogEvent) => void;
+  signal?: AbortSignal;
+};
+
+export type ExecLogResult = {
+  /** Concrete exec ID returned by the daemon, including when an alias was requested. */
+  execId: string;
+  status: 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  exitCode?: number;
+};
+
 type ExitListener = (code: number) => void;
 
 /**
@@ -417,6 +439,190 @@ export class ReadableStream {
       for (const l of this.closeListeners) l();
     }
   }
+}
+
+type FollowExecEventStreamOptions<TResult> = {
+  eventsUrl: string;
+  token: string;
+  signal?: AbortSignal;
+  abortError: () => Error;
+  onEvent: (event: ExecLogEvent) => TResult | undefined;
+  onStreamDeadSince?: (since: number) => void;
+  failOnClientError?: boolean;
+  log?: ExecOptions['log'];
+};
+
+/** Follow execution events with bounded retries and replay deduplication. */
+function followExecEventStream<TResult>(options: FollowExecEventStreamOptions<TResult>): {
+  connection: EventSourceClient | null;
+  result: Promise<TResult>;
+} {
+  let connection: EventSourceClient | null = null;
+  const { eventsUrl, signal } = options;
+  const result = new Promise<TResult>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(options.abortError());
+      return;
+    }
+    // Settle-once pair. Both paths close the source: the EventSource
+    // reconnects on its own otherwise, even after the promise is done.
+    let settled = false;
+    let lastSeenEventId = -1;
+    let streamDeadSince = 0;
+    let eventSource: EventSourceClient | null = null;
+    let connectedAt = 0;
+    let lastCycleAt = 0;
+    let lastCycleMono = 0;
+    let proofOfLifeThisCycle = false;
+    let cleanResponseThisCycle = false;
+    let lastStreamError: Error | undefined;
+    const cleanup = () => {
+      eventSource?.close();
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const succeed = (value: TResult) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const onAbort = () => fail(options.abortError());
+
+    // Stream health is judged at the fetch surface, where the response
+    // status is visible; the library fires onConnect for error responses
+    // too, so an error page held open must not read as a healthy
+    // connection. An HTTP 204 makes the EventSource close for good
+    // without reporting anything, so it must fail here. A rejected fetch
+    // never reaches onDisconnect (the hazard sseFetch exists for):
+    // capture it for the give-up message and let the clock decide, so
+    // one transient refusal does not kill a live build.
+    const fetchWithStreamPolicy: Fetch = async (input, init) => {
+      const response = await nodeProxyTransport.fetch(input, init);
+      if (response.status === 204) {
+        fail(new ExecStreamClosedError(`event stream to ${eventsUrl} was closed by the server (HTTP 204)`));
+      } else if (
+        options.failOnClientError &&
+        response.status >= 400 &&
+        response.status < 500 &&
+        response.status !== 408 &&
+        response.status !== 429
+      ) {
+        fail(
+          directInstanceHttpError('GET exec logs', response.status, await response.text(), response.headers),
+        );
+      } else if (!response.ok) {
+        lastStreamError = new Error(`server answered HTTP ${response.status}`);
+      }
+      cleanResponseThisCycle = response.ok;
+      return response;
+    };
+
+    eventSource = createEventSource({
+      url: eventsUrl,
+      fetch: sseFetch(fetchWithStreamPolicy, (err) => {
+        lastStreamError = err instanceof Error ? err : new Error(String(err));
+      }),
+      headers: { Authorization: `Bearer ${options.token}` },
+      onConnect: () => {
+        connectedAt = Date.now();
+      },
+      // Comments count as proof of life, so a server-side keepalive
+      // works without a client change (onMessage never sees them).
+      onComment: () => {
+        proofOfLifeThisCycle = true;
+      },
+      // Fires once per broken cycle, before the retry timer is armed, on
+      // both failure paths (request rejected, stream ended). This is
+      // where the give-up clock runs.
+      onScheduleReconnect: () => {
+        if (settled || signal?.aborted) {
+          return;
+        }
+        const now = Date.now();
+        const mono = performance.now();
+        const livedMs = connectedAt > 0 ? now - connectedAt : 0;
+        connectedAt = 0;
+        // Date.now() is wall clock: a laptop waking from sleep (or a
+        // clock step) would arrive with the whole window already
+        // "elapsed" and fail on its first attempt. Sleep is the wall
+        // clock advancing while the monotonic clock stands still; a
+        // large drift between the two restarts the streak. Long server
+        // retry delays and hanging connects advance both clocks equally
+        // and keep counting.
+        if (streamDeadSince > 0 && lastCycleAt > 0) {
+          const wallGapMs = now - lastCycleAt;
+          const monoGapMs = mono - lastCycleMono;
+          if (wallGapMs - monoGapMs > 30_000) {
+            streamDeadSince = now;
+            options.onStreamDeadSince?.(streamDeadSince);
+          }
+        }
+        lastCycleAt = now;
+        lastCycleMono = mono;
+        const healthy =
+          proofOfLifeThisCycle || (cleanResponseThisCycle && livedMs >= sseStreamPolicy.healthyConnectionMs);
+        proofOfLifeThisCycle = false;
+        cleanResponseThisCycle = false;
+        if (healthy) {
+          streamDeadSince = 0;
+          options.onStreamDeadSince?.(0);
+          lastStreamError = undefined;
+          return;
+        }
+        if (streamDeadSince === 0) {
+          streamDeadSince = now;
+          options.onStreamDeadSince?.(streamDeadSince);
+          options.log?.('warn', 'SSE disconnected; reconnecting');
+          return;
+        }
+        if (now - streamDeadSince >= sseStreamPolicy.giveUpAfterMs) {
+          const seconds = Math.round((now - streamDeadSince) / 1000);
+          const cause = lastStreamError ? `; last error: ${lastStreamError.message}` : '';
+          fail(
+            new ExecStreamLostError(
+              `event stream to ${eventsUrl} kept failing for ${seconds}s without delivering events${cause}; ` +
+                'the execution may no longer exist (instance deleted or record expired)',
+            ),
+          );
+        }
+      },
+      onMessage: (message: EventSourceMessage) => {
+        if (settled) return;
+        streamDeadSince = 0;
+        options.onStreamDeadSince?.(0);
+        proofOfLifeThisCycle = true;
+        lastStreamError = undefined;
+        const eventId = message.id !== undefined ? Number.parseInt(message.id, 10) : NaN;
+        if (!Number.isNaN(eventId)) {
+          if (eventId <= lastSeenEventId) return;
+          lastSeenEventId = eventId;
+        }
+        try {
+          const value = options.onEvent({
+            ...(message.id !== undefined && { id: message.id }),
+            type: message.event || 'message',
+            data: typeof message.data === 'string' ? message.data : String(message.data ?? ''),
+          });
+          if (value !== undefined) succeed(value);
+        } catch (error) {
+          fail(error);
+        }
+      },
+    });
+    connection = eventSource;
+    if (settled) {
+      eventSource.close();
+    } else {
+      signal?.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+  return { connection, result };
 }
 
 /**
@@ -465,11 +671,6 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private playstoreEvent: PlaystoreEvent | null = null;
   private xctestCases: XctestCaseEvent[] = [];
   private xctestSummary: XctestSummaryEvent | null = null;
-  // Highest server-assigned event id already dispatched. The server numbers
-  // every frame and replays the stream from the start on reconnect; skipping
-  // ids at or below this mark drops the replayed prefix for every event type
-  // at once, and stays correct if the server ever honors Last-Event-ID.
-  private lastSeenEventId = -1;
   private readonly options: ExecOptions;
   private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
 
@@ -744,208 +945,219 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
    * closes the stream for good, or when the give-up clock runs out.
    */
   private connectSSE(eventsUrl: string): Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-      const signal = this.abortController.signal;
-      if (signal.aborted) {
-        reject(new Error('killed'));
-        return;
-      }
-
-      // Settle-once pair. Both paths close the source: the EventSource
-      // reconnects on its own otherwise, even after the promise is done.
-      let settled = false;
-      let connectedAt = 0;
-      let lastCycleAt = 0;
-      let lastCycleMono = 0;
-      let proofOfLifeThisCycle = false;
-      let cleanResponseThisCycle = false;
-      let lastStreamError: Error | undefined;
-      const cleanup = () => {
-        eventSource.close();
-        signal.removeEventListener('abort', onAbort);
-      };
-      const succeed = (exitCode: number) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve(exitCode);
-      };
-      const fail = (error: Error) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(error);
-      };
-      const onAbort = () => fail(new Error('killed'));
-
-      // Stream health is judged at the fetch surface, where the response
-      // status is visible; the library fires onConnect for error responses
-      // too, so an error page held open must not read as a healthy
-      // connection. An HTTP 204 makes the EventSource close for good
-      // without reporting anything, so it must fail here. A rejected fetch
-      // never reaches onDisconnect (the hazard sseFetch exists for):
-      // capture it for the give-up message and let the clock decide, so
-      // one transient refusal does not kill a live build.
-      const fetchWithStreamPolicy: Fetch = async (input, init) => {
-        const response = await nodeProxyTransport.fetch(input, init);
-        if (response.status === 204) {
-          fail(new ExecStreamClosedError(`event stream to ${eventsUrl} was closed by the server (HTTP 204)`));
-        } else if (!response.ok) {
-          lastStreamError = new Error(`server answered HTTP ${response.status}`);
+    const stream = followExecEventStream<number>({
+      eventsUrl,
+      token: this.options.token,
+      signal: this.abortController.signal,
+      abortError: () => new Error('killed'),
+      log: this.log,
+      onStreamDeadSince: (since) => {
+        this.streamDeadSince = since;
+      },
+      onEvent: ({ type: eventType, data }) => {
+        if (eventType === 'command') {
+          this.command.emit('data', data);
+        } else if (eventType === 'stdout') {
+          this.stdout.emit('data', data);
+        } else if (eventType === 'stderr') {
+          this.stderr.emit('data', data);
+        } else if (eventType === 'testflight') {
+          try {
+            this.appStoreEvent = JSON.parse(data) as AppStoreEvent;
+          } catch {
+            // The wire event itself proves the server ran the App Store upload,
+            // so never let a payload glitch look like a missing feature.
+            this.appStoreEvent = { state: 'unknown' };
+            this.log('warn', `SSE testflight event has invalid data: ${data}`);
+          }
+        } else if (eventType === 'playstore') {
+          try {
+            this.playstoreEvent = JSON.parse(data) as PlaystoreEvent;
+          } catch {
+            // Same contract as the App Store upload event: its presence proves the server
+            // ran the Play Store step, so a payload glitch must not
+            // read as a missing feature.
+            this.playstoreEvent = { state: 'unknown' };
+            this.log('warn', `SSE playstore event has invalid data: ${data}`);
+          }
+        } else if (eventType === 'xctest') {
+          let event: XctestEvent | undefined;
+          try {
+            const parsed = JSON.parse(data) as XctestEvent;
+            if (parsed?.type === 'case') {
+              this.xctestCases.push(parsed);
+              event = parsed;
+            } else if (parsed?.type === 'summary') {
+              this.xctestSummary = parsed;
+              event = parsed;
+            } else {
+              // The simulator owns the frame vocabulary and may grow it; the
+              // callback's contract is cases and summaries only.
+              this.log('debug', `SSE xctest event of unknown type ignored: ${data}`);
+            }
+          } catch {
+            this.log('warn', `SSE xctest event has invalid data: ${data}`);
+          }
+          if (event) {
+            try {
+              this.options.onXctestEvent?.(event);
+            } catch (err) {
+              // The consumer's callback, not the frame: the run must not be
+              // derailed and the log must not blame the payload.
+              this.log('warn', `onXctestEvent callback threw: ${String(err)}`);
+            }
+          }
+        } else if (eventType === 'exitCode') {
+          const exitCode = parseInt(data, 10);
+          if (Number.isNaN(exitCode)) {
+            this.log('warn', `SSE exitCode event has invalid data: ${data}`);
+            return;
+          }
+          this.log('debug', `Execution completed via SSE: exitCode=${exitCode}`);
+          return exitCode;
         }
-        cleanResponseThisCycle = response.ok;
-        return response;
-      };
-
-      const eventSource = createEventSource({
-        url: eventsUrl,
-        fetch: sseFetch(fetchWithStreamPolicy, (err) => {
-          lastStreamError = err instanceof Error ? err : new Error(String(err));
-        }),
-        headers: { Authorization: `Bearer ${this.options.token}` },
-        onConnect: () => {
-          connectedAt = Date.now();
-        },
-        // Comments count as proof of life, so a server-side keepalive
-        // works without a client change (onMessage never sees them).
-        onComment: () => {
-          proofOfLifeThisCycle = true;
-        },
-        // Fires once per broken cycle, before the retry timer is armed, on
-        // both failure paths (request rejected, stream ended). This is
-        // where the give-up clock runs.
-        onScheduleReconnect: () => {
-          if (settled || this.killed) {
-            return;
-          }
-          const now = Date.now();
-          const mono = performance.now();
-          const livedMs = connectedAt > 0 ? now - connectedAt : 0;
-          connectedAt = 0;
-          // Date.now() is wall clock: a laptop waking from sleep (or a
-          // clock step) would arrive with the whole window already
-          // "elapsed" and fail on its first attempt. Sleep is the wall
-          // clock advancing while the monotonic clock stands still; a
-          // large drift between the two restarts the streak. Long server
-          // retry delays and hanging connects advance both clocks equally
-          // and keep counting.
-          if (this.streamDeadSince > 0 && lastCycleAt > 0) {
-            const wallGapMs = now - lastCycleAt;
-            const monoGapMs = mono - lastCycleMono;
-            if (wallGapMs - monoGapMs > 30_000) {
-              this.streamDeadSince = now;
-            }
-          }
-          lastCycleAt = now;
-          lastCycleMono = mono;
-          const healthy =
-            proofOfLifeThisCycle ||
-            (cleanResponseThisCycle && livedMs >= sseStreamPolicy.healthyConnectionMs);
-          proofOfLifeThisCycle = false;
-          cleanResponseThisCycle = false;
-          if (healthy) {
-            this.streamDeadSince = 0;
-            lastStreamError = undefined;
-            return;
-          }
-          if (this.streamDeadSince === 0) {
-            this.streamDeadSince = now;
-            this.log('warn', 'SSE disconnected; reconnecting');
-            return;
-          }
-          if (now - this.streamDeadSince >= sseStreamPolicy.giveUpAfterMs) {
-            const seconds = Math.round((now - this.streamDeadSince) / 1000);
-            const cause = lastStreamError ? `; last error: ${lastStreamError.message}` : '';
-            fail(
-              new ExecStreamLostError(
-                `event stream to ${eventsUrl} kept failing for ${seconds}s without delivering events${cause}; ` +
-                  'the execution may no longer exist (instance deleted or record expired)',
-              ),
-            );
-          }
-        },
-        onMessage: (message: EventSourceMessage) => {
-          this.streamDeadSince = 0;
-          proofOfLifeThisCycle = true;
-          lastStreamError = undefined;
-          const eventId = message.id !== undefined ? parseInt(message.id, 10) : NaN;
-          if (!Number.isNaN(eventId)) {
-            if (eventId <= this.lastSeenEventId) {
-              // A reconnect replays the stream from the start; this frame was
-              // already dispatched on an earlier connection.
-              return;
-            }
-            this.lastSeenEventId = eventId;
-          }
-          const data = typeof message.data === 'string' ? message.data : String(message.data ?? '');
-          const eventType = message.event;
-          if (eventType === 'command') {
-            this.command.emit('data', data);
-          } else if (eventType === 'stdout') {
-            this.stdout.emit('data', data);
-          } else if (eventType === 'stderr') {
-            this.stderr.emit('data', data);
-          } else if (eventType === 'testflight') {
-            try {
-              this.appStoreEvent = JSON.parse(data) as AppStoreEvent;
-            } catch {
-              // The wire event itself proves the server ran the App Store upload,
-              // so never let a payload glitch look like a missing feature.
-              this.appStoreEvent = { state: 'unknown' };
-              this.log('warn', `SSE testflight event has invalid data: ${data}`);
-            }
-          } else if (eventType === 'playstore') {
-            try {
-              this.playstoreEvent = JSON.parse(data) as PlaystoreEvent;
-            } catch {
-              // Same contract as the App Store upload event: its presence proves the server
-              // ran the Play Store step, so a payload glitch must not
-              // read as a missing feature.
-              this.playstoreEvent = { state: 'unknown' };
-              this.log('warn', `SSE playstore event has invalid data: ${data}`);
-            }
-          } else if (eventType === 'xctest') {
-            let event: XctestEvent | undefined;
-            try {
-              const parsed = JSON.parse(data) as XctestEvent;
-              if (parsed?.type === 'case') {
-                this.xctestCases.push(parsed);
-                event = parsed;
-              } else if (parsed?.type === 'summary') {
-                this.xctestSummary = parsed;
-                event = parsed;
-              } else {
-                // The simulator owns the frame vocabulary and may grow it; the
-                // callback's contract is cases and summaries only.
-                this.log('debug', `SSE xctest event of unknown type ignored: ${data}`);
-              }
-            } catch {
-              this.log('warn', `SSE xctest event has invalid data: ${data}`);
-            }
-            if (event) {
-              try {
-                this.options.onXctestEvent?.(event);
-              } catch (err) {
-                // The consumer's callback, not the frame: the run must not be
-                // derailed and the log must not blame the payload.
-                this.log('warn', `onXctestEvent callback threw: ${String(err)}`);
-              }
-            }
-          } else if (eventType === 'exitCode') {
-            const exitCode = parseInt(data, 10);
-            if (Number.isNaN(exitCode)) {
-              this.log('warn', `SSE exitCode event has invalid data: ${data}`);
-              return;
-            }
-            this.log('debug', `Execution completed via SSE: exitCode=${exitCode}`);
-            succeed(exitCode);
-          }
-        },
-      });
-      this.sseConnection = eventSource;
-      signal.addEventListener('abort', onAbort, { once: true });
+        return undefined;
+      },
     });
+    this.sseConnection = stream.connection;
+    return stream.result;
   }
+}
+
+/**
+ * Replay logs for an existing execution, optionally following it to completion.
+ * Snapshot mode uses a finite SSE response; follow mode consumes the same
+ * replayable stream until its terminal exitCode event.
+ */
+export async function observeExecLogs(
+  execId: string,
+  options: ExecOptions & ExecLogOptions,
+): Promise<ExecLogResult> {
+  if (!execId.trim()) {
+    throw new Error('execId must not be empty');
+  }
+  const follow = options.follow ?? false;
+  // Resolve mutable aliases once so a reconnect cannot switch to another build.
+  if (follow && (execId === 'active' || execId === 'latest')) {
+    const snapshotEvents: ExecLogEvent[] = [];
+    const snapshot = await observeExecLogs(execId, {
+      ...options,
+      follow: false,
+      onEvent: (event) => snapshotEvents.push(event),
+    });
+    if (snapshot.status !== 'RUNNING') {
+      for (const event of snapshotEvents) options.onEvent?.(event);
+      return snapshot;
+    }
+    if (snapshot.execId === execId) {
+      throw new Error(`The server did not resolve the ${execId} build alias.`);
+    }
+    return observeExecLogs(snapshot.execId, options);
+  }
+  let apiUrlEnd = options.apiUrl.length;
+  while (options.apiUrl[apiUrlEnd - 1] === '/') apiUrlEnd--;
+  const eventsUrl = new URL(
+    `${options.apiUrl.slice(0, apiUrlEnd)}/exec/${encodeURIComponent(execId)}/events`,
+  );
+  eventsUrl.searchParams.set('follow', String(follow));
+
+  if (!follow) {
+    const response = await nodeProxyTransport.fetch(eventsUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${options.token}` },
+      ...(options.signal && { signal: options.signal }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw directInstanceHttpError('GET exec logs', response.status, text, response.headers);
+    }
+    const events = parseSSE(await response.text());
+    let exitCode: number | undefined;
+    let resolvedExecId = execId;
+    for (const event of events) {
+      resolvedExecId = execIdFromMeta(event, resolvedExecId);
+      options.onEvent?.(event);
+      if (event.type === 'exitCode') {
+        exitCode = parseExitCode(event.data);
+      }
+    }
+    return buildExecLogResult(resolvedExecId, exitCode);
+  }
+
+  let resolvedExecId = execId;
+  const stream = followExecEventStream<ExecLogResult>({
+    eventsUrl: eventsUrl.toString(),
+    token: options.token,
+    ...(options.signal && { signal: options.signal }),
+    failOnClientError: true,
+    log: options.log,
+    abortError: () => new Error(`exec log stream for ${execId} was aborted`),
+    onEvent: (event) => {
+      resolvedExecId = execIdFromMeta(event, resolvedExecId);
+      options.onEvent?.(event);
+      if (event.type === 'exitCode') {
+        return buildExecLogResult(resolvedExecId, parseExitCode(event.data));
+      }
+      return undefined;
+    },
+  });
+  return stream.result;
+}
+
+function parseSSE(body: string): ExecLogEvent[] {
+  const normalized = body.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const events: ExecLogEvent[] = [];
+  for (const block of normalized.split('\n\n')) {
+    if (!block.trim()) continue;
+    let id: string | undefined;
+    let type = 'message';
+    const data: string[] = [];
+    for (const line of block.split('\n')) {
+      if (line.startsWith('id:')) {
+        id = line.slice(3).trimStart();
+      } else if (line.startsWith('event:')) {
+        type = line.slice(6).trimStart();
+      } else if (line.startsWith('data:')) {
+        data.push(line.slice(5).replace(/^ /, ''));
+      }
+    }
+    if (data.length > 0 || type !== 'message' || id !== undefined) {
+      events.push({ ...(id !== undefined && { id }), type, data: data.join('\n') });
+    }
+  }
+  return events;
+}
+
+function parseExitCode(data: string): number {
+  const exitCode = Number.parseInt(data, 10);
+  if (Number.isNaN(exitCode)) {
+    throw new Error(`invalid exec exit code: ${data}`);
+  }
+  return exitCode;
+}
+
+function execIdFromMeta(event: ExecLogEvent, fallback: string): string {
+  if (event.type !== 'meta') return fallback;
+  try {
+    const meta = JSON.parse(event.data) as { id?: unknown };
+    return typeof meta.id === 'string' && meta.id ? meta.id : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function buildExecLogResult(execId: string, exitCode: number | undefined): ExecLogResult {
+  if (exitCode === undefined) {
+    return { execId, status: 'RUNNING' };
+  }
+  return {
+    execId,
+    exitCode,
+    status:
+      exitCode === 0 ? 'SUCCEEDED'
+      : exitCode === -1 ? 'CANCELLED'
+      : 'FAILED',
+  };
 }
 
 /**

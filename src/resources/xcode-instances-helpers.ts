@@ -16,14 +16,17 @@ import {
 } from '../xcode-cache';
 import {
   exec,
+  observeExecLogs,
   type AppStoreUploadConfig,
   type ExecChildProcess,
+  type ExecLogOptions,
+  type ExecLogResult,
   type ExecRequest,
   type WebhookConfig,
   type XctestEvent,
 } from '../exec-client';
 
-export type { AppStoreUploadConfig, WebhookConfig } from '../exec-client';
+export type { AppStoreUploadConfig, ExecLogOptions, ExecLogResult, WebhookConfig } from '../exec-client';
 import {
   syncFolder as syncFolderImpl,
   type AdditionalFileSyncEntry,
@@ -507,6 +510,9 @@ export type XcodeClient = {
    * const { exitCode } = await build;
    */
   xcodebuild: (settings?: XcodeProjectConfig, options?: XcodeBuildOptions) => ExecChildProcess;
+
+  /** Replay an existing build's logs, optionally following it to completion. */
+  observeBuildLogs: (execId: string, options?: ExecLogOptions) => Promise<ExecLogResult>;
 
   /**
    * Run a one-shot shell command in the synced workspace.
@@ -1041,6 +1047,9 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       },
 
       run: createBuildRun({ apiUrl, token, log }),
+      observeBuildLogs(execId: string, options?: ExecLogOptions): Promise<ExecLogResult> {
+        return observeExecLogs(execId, { apiUrl, token, log, ...options });
+      },
 
       async getSimulator(): Promise<SimulatorStatus> {
         const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator`, {
