@@ -41,6 +41,8 @@ export type XcodeBuildExecRequest = {
   testflight?: AppStoreUploadConfig;
   buildSettings?: Record<string, string>;
   gitInit?: boolean;
+  /** Stream raw xcodebuild output instead of piping it through xcbeautify. */
+  disableXcbeautify?: boolean;
   signedUploadUrl?: string;
   webhook?: WebhookConfig;
   additionalMetadata?: {
