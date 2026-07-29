@@ -33,7 +33,7 @@ type AppStoreFlags = {
 export default class XcodeBuild extends BaseCommand {
   static summary = 'Run xcodebuild on an Xcode sandbox';
   static description =
-    'Sync a local project path once (or the current working directory if omitted), then trigger a remote xcodebuild with streaming output. Use `--detach` with a webhook for headless builds that should return as soon as the build starts. Use `--ios` to build and run on an iOS simulator-backed Xcode target.';
+    'Sync a local project path once (or the current working directory if omitted), then trigger a remote xcodebuild with streaming output. Use `--detach` for headless builds that should return as soon as the build starts, optionally with a webhook for the terminal result. Use `--ios` to build and run on an iOS simulator-backed Xcode target.';
 
   static examples = [
     '<%= config.bin %> xcode build',
@@ -53,7 +53,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --signed-upload-url <url>',
     `<%= config.bin %> xcode build ./MyProject --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"`,
     '<%= config.bin %> xcode build ./MyProject --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
-    '<%= config.bin %> xcode build ./MyProject --detach --inactivity-timeout 3s --webhook-url https://ci.example.com/hooks/limrun',
+    '<%= config.bin %> xcode build ./MyProject --detach --inactivity-timeout 3s',
     '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache',
     '<%= config.bin %> xcode build ./MyProject --ignore "\\\\.xcuserdata/"',
     '<%= config.bin %> xcode build ./MyProject --additional-file ~/.netrc=~/.netrc',
@@ -175,7 +175,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     detach: Flags.boolean({
       description:
-        'Return after the remote build is accepted instead of streaming logs and waiting for completion. Requires --webhook-url; use its callback to observe the terminal result.',
+        'Return after the remote build is accepted instead of streaming logs and waiting for completion. Check it later with `lim xcode logs`; optionally use --webhook-url to receive the terminal result.',
       default: false,
     }),
     'basis-cache-dir': Flags.string({
@@ -226,10 +226,6 @@ export default class XcodeBuild extends BaseCommand {
     if (flags.id && flags['inactivity-timeout']) {
       this.error('--inactivity-timeout controls a newly created instance and cannot be combined with --id.');
     }
-    if (flags.detach && !flags['webhook-url']) {
-      this.error('--detach requires --webhook-url so the terminal build result is observable.');
-    }
-
     await this.withAuth(async () => {
       const target =
         flags.ios ?
@@ -343,15 +339,24 @@ export default class XcodeBuild extends BaseCommand {
 
       if (flags.detach) {
         const execId = await proc.detach();
-        // --detach requires --webhook-url, validated above.
-        const webhookUrl = flags['webhook-url']!;
+        const webhookUrl = flags['webhook-url'];
         const consoleUrl = this.consoleBuildUrl(id);
+        const logsCommand = `lim xcode logs ${execId} --id ${id}`;
         if (this.isJsonEnabled()) {
-          this.outputJson({ instanceId: id, execId, consoleUrl, webhookUrl });
+          this.outputJson({
+            instanceId: id,
+            execId,
+            consoleUrl,
+            logsCommand,
+            ...(webhookUrl && { webhookUrl }),
+          });
         } else {
           this.output(`Build started (exec ID ${execId}) on instance ${id}.`);
           this.output(`Console: ${consoleUrl}`);
-          this.output(`Completion will be reported by webhook to ${webhookUrl}.`);
+          this.output(`Logs: ${logsCommand}`);
+          if (webhookUrl) {
+            this.output(`Completion will be reported by webhook to ${webhookUrl}.`);
+          }
         }
         return;
       }

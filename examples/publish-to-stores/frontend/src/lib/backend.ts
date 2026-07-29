@@ -81,7 +81,6 @@ export type BuildWebhookPayload = {
   startedAt?: string;
   finishedAt?: string;
   buildDurationMs?: number;
-  error?: string;
   instanceId?: string;
   /** Instance debug page in the Limrun Console. */
   consoleUrl?: string;

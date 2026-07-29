@@ -21,7 +21,7 @@ export default class GradleBuild extends BaseCommand {
   static summary = 'Build an Android project on a gradle instance';
   static description =
     'Sync a local Android project once, then run its Gradle wrapper remotely with streaming output. ' +
-    'Use `--upload` to store the artifact, or `--detach` with a webhook for a headless build that returns as soon as the build starts.';
+    'Use `--upload` to store the artifact, or `--detach` for a headless build that returns as soon as the build starts, optionally with a webhook for the terminal result.';
 
   static examples = [
     '<%= config.bin %> gradle build',
@@ -32,7 +32,7 @@ export default class GradleBuild extends BaseCommand {
     '<%= config.bin %> gradle build --sign --upload myapp.aab',
     '<%= config.bin %> gradle build --keystore upload.jks --keystore-password *** --key-alias upload --key-password *** --save-key',
     '<%= config.bin %> gradle build ./my-app --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
-    '<%= config.bin %> gradle build ./my-app --detach --inactivity-timeout 3s --webhook-url https://ci.example.com/hooks/limrun',
+    '<%= config.bin %> gradle build ./my-app --detach --inactivity-timeout 3s',
     '<%= config.bin %> gradle build --sign --upload-to-playstore --playstore-service-account service-account.json',
   ];
 
@@ -138,7 +138,7 @@ export default class GradleBuild extends BaseCommand {
     }),
     detach: Flags.boolean({
       description:
-        'Return after the remote build is accepted instead of streaming logs and waiting for completion. Requires --webhook-url; use its callback to observe the terminal result.',
+        'Return after the remote build is accepted instead of streaming logs and waiting for completion. Check it later with `lim gradle logs`; optionally use --webhook-url to receive the terminal result.',
       default: false,
     }),
     'auto-version-code': Flags.boolean({
@@ -194,9 +194,6 @@ export default class GradleBuild extends BaseCommand {
       return this.error(
         '--inactivity-timeout controls a newly created instance and cannot be combined with --id.',
       );
-    }
-    if (flags.detach && !flags['webhook-url']) {
-      return this.error('--detach requires --webhook-url so the terminal build result is observable.');
     }
     if (flags['upload-to-playstore']) {
       let credential: Pick<
@@ -271,15 +268,24 @@ export default class GradleBuild extends BaseCommand {
 
       if (flags.detach) {
         const execId = await proc.detach();
-        // --detach requires --webhook-url, validated above.
-        const webhookUrl = flags['webhook-url']!;
+        const webhookUrl = flags['webhook-url'];
         const consoleUrl = this.consoleBuildUrl(id);
+        const logsCommand = `lim gradle logs ${execId} --id ${id}`;
         if (this.isJsonEnabled()) {
-          this.outputJson({ instanceId: id, execId, consoleUrl, webhookUrl });
+          this.outputJson({
+            instanceId: id,
+            execId,
+            consoleUrl,
+            logsCommand,
+            ...(webhookUrl && { webhookUrl }),
+          });
         } else {
           this.output(`Build started (exec ID ${execId}) on instance ${id}.`);
           this.output(`Console: ${consoleUrl}`);
-          this.output(`Completion will be reported by webhook to ${webhookUrl}.`);
+          this.output(`Logs: ${logsCommand}`);
+          if (webhookUrl) {
+            this.output(`Completion will be reported by webhook to ${webhookUrl}.`);
+          }
         }
         return;
       }

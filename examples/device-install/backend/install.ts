@@ -189,8 +189,7 @@ export function receiveInstallWebhook(token: string | undefined, payload: unknow
     const status = (payload as { status?: string } | null)?.status;
     entry.status.state = status === 'SUCCEEDED' ? 'succeeded' : 'failed';
     if (entry.status.state === 'failed') {
-      entry.status.error =
-        (payload as { error?: string } | null)?.error ?? `Build finished with status ${status ?? 'unknown'}.`;
+      entry.status.error = `Build finished with status ${status ?? 'unknown'}. See the persisted build log.`;
     }
     return id;
   }
