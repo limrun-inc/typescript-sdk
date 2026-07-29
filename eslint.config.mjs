@@ -4,7 +4,13 @@ import unusedImports from 'eslint-plugin-unused-imports';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/', '**/node_modules/', 'packages/xdelta3-wasm/native/xdelta/**'],
+    ignores: [
+      '**/dist/',
+      '**/node_modules/',
+      'packages/xdelta3-wasm/native/xdelta/**',
+      // Generated base64 3D model modules (multi-MB single-line strings).
+      'packages/ui/src/assets/models/*.b64.ts',
+    ],
   },
   {
     languageOptions: {

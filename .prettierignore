@@ -11,3 +11,6 @@ CHANGELOG.md
 
 # gitignored example secret stores; local signing material, not source
 /examples/*/backend/.secrets
+
+# generated base64 3D model modules (see packages/ui/scripts/encode-model-assets.mjs)
+/packages/ui/src/assets/models/*.b64.ts

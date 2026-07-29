@@ -23,6 +23,7 @@ import {
   DeviceModelKind,
   DevicePlatform3D,
 } from './device-model';
+import { hasRealisticModel, loadRealisticModel } from './realistic-model';
 import {
   applyDrag,
   beginDrag,
@@ -130,17 +131,43 @@ export const Device3D: React.FC<Device3DProps> = ({
       camera.lookAt(0, 0, 0);
     };
 
-    const rebuildModel = () => {
+    // Bumped on every rebuild/unmount so a photoreal model that finishes
+    // loading late (kind changed, component gone) is discarded, not shown.
+    let modelGeneration = 0;
+
+    const installModel = (next: DeviceModel) => {
       if (model) {
         scene.remove(model.group);
         model.dispose();
       }
-      model = buildDeviceModel(kind, portraitAspect);
+      model = next;
       model.setLandscape(landscape);
       model.setScreenTexture(texture);
       model.group.rotation.order = 'YXZ';
       scene.add(model.group);
       fitCamera();
+    };
+
+    const rebuildModel = () => {
+      const generation = ++modelGeneration;
+      // The procedural model shows instantly; the photoreal GLB (a lazily
+      // imported ~1MB chunk) swaps in when ready. On load failure the
+      // procedural model simply stays.
+      installModel(buildDeviceModel(kind, portraitAspect));
+      if (hasRealisticModel(kind)) {
+        loadRealisticModel(kind).then(
+          (realistic) => {
+            if (generation !== modelGeneration) {
+              realistic.dispose();
+              return;
+            }
+            installModel(realistic);
+          },
+          (error) => {
+            console.warn('RemoteControl: photoreal 3D model unavailable, keeping procedural model.', error);
+          },
+        );
+      }
     };
 
     // Adopt the stream's intrinsic dimensions: orientation flips rotate the
@@ -287,6 +314,7 @@ export const Device3D: React.FC<Device3DProps> = ({
     rafId = requestAnimationFrame(tick);
 
     return () => {
+      modelGeneration++;
       cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
       canvas.removeEventListener('pointerdown', handlePointerDown);
