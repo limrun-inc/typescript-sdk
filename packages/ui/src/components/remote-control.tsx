@@ -22,6 +22,7 @@ import { AxFetcher, AxStatus } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
 import { Device3D } from './device-3d/device-3d';
+import type { DeviceModelHint } from './device-3d/device-model';
 
 declare global {
   interface Window {
@@ -74,6 +75,19 @@ interface RemoteControlProps {
    * methods (screenshot, openUrl, ...) keep working throughout.
    */
   view?: '2d' | '3d';
+
+  /**
+   * Which physical device the 3D view renders for iOS streams (Apple Watch
+   * simulators are iOS instances, so their URL looks like an iPhone's).
+   *
+   * - `'auto'` (default) — renders an Apple Watch (case, digital crown, and
+   *   band) when the stream is nearly square, an iPhone otherwise.
+   * - `'watch'` / `'phone'` — force the model.
+   *
+   * Only affects `view="3d"`; the 2D frame is unchanged. Ignored for
+   * Android streams.
+   */
+  deviceModel?: DeviceModelHint;
 
   // When true, drops after a working session auto-reconnect instead of
   // surfacing the manual "Retry" button. Defaults to false.
@@ -519,6 +533,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       openUrl,
       showFrame = true,
       view = '2d',
+      deviceModel = 'auto',
       autoReconnect = false,
       onTerminated,
       inspectMode,
@@ -3414,7 +3429,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             }
           }}
         />
-        {is3d && <Device3D videoRef={videoRef} platform={platform} />}
+        {is3d && <Device3D videoRef={videoRef} platform={platform} deviceModel={deviceModel} />}
         {inspectActive && !is3d && (
           <InspectOverlay
             snapshot={axSnapshot}

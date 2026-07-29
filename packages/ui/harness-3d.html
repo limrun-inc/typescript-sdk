@@ -26,24 +26,30 @@
       import { Device3D } from '/src/components/device-3d/device-3d.tsx';
 
       const params = new URLSearchParams(location.search);
-      const platform = params.get('platform') === 'android' ? 'android' : 'ios';
+      // `platform=watch` exercises the Apple Watch model (near-square stream
+      // on an iOS platform, picked up by the auto-detection).
+      const kindParam = params.get('platform') ?? 'ios';
+      const platform = kindParam === 'android' ? 'android' : 'ios';
+      const isWatch = kindParam === 'watch';
 
       // Synthetic "app" stream with unambiguous orientation markers.
       const makeStreamCanvas = (landscape) => {
         const canvas = document.createElement('canvas');
-        canvas.width = landscape ? 1950 : 900;
-        canvas.height = landscape ? 900 : 1950;
+        const [w, h] = isWatch ? [416, 496] : [900, 1950];
+        canvas.width = landscape ? h : w;
+        canvas.height = landscape ? w : h;
         const ctx = canvas.getContext('2d');
         let frame = 0;
         const draw = () => {
           const { width: w, height: h } = canvas;
+          const u = Math.min(w, h) / 900; // scale factor so markers fit any stream size
           const g = ctx.createLinearGradient(0, 0, 0, h);
           g.addColorStop(0, '#38bdf8');
           g.addColorStop(1, '#1e3a8a');
           ctx.fillStyle = g;
           ctx.fillRect(0, 0, w, h);
           // Corner markers: red TL, green TR, blue BL, yellow BR.
-          const s = 120;
+          const s = 120 * u;
           ctx.fillStyle = '#ef4444';
           ctx.fillRect(0, 0, s, s);
           ctx.fillStyle = '#22c55e';
@@ -53,12 +59,12 @@
           ctx.fillStyle = '#eab308';
           ctx.fillRect(w - s, h - s, s, s);
           ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 140px sans-serif';
+          ctx.font = `bold ${140 * u}px sans-serif`;
           ctx.textAlign = 'center';
-          ctx.fillText('TOP', w / 2, 200);
-          ctx.font = 'bold 90px sans-serif';
+          ctx.fillText('TOP', w / 2, 200 * u);
+          ctx.font = `bold ${90 * u}px sans-serif`;
           ctx.fillText('frame ' + frame, w / 2, h / 2);
-          ctx.fillText('BOTTOM', w / 2, h - 100);
+          ctx.fillText('BOTTOM', w / 2, h - 100 * u);
           frame++;
           requestAnimationFrame(draw);
         };

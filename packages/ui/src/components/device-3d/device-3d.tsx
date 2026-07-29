@@ -15,7 +15,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { buildDeviceModel, DeviceModel, DevicePlatform3D } from './device-model';
+import {
+  buildDeviceModel,
+  resolveDeviceKind,
+  DeviceModel,
+  DeviceModelHint,
+  DeviceModelKind,
+  DevicePlatform3D,
+} from './device-model';
 import {
   applyDrag,
   beginDrag,
@@ -33,6 +40,12 @@ export interface Device3DProps {
    */
   videoRef: React.RefObject<HTMLVideoElement | null>;
   platform: DevicePlatform3D;
+  /**
+   * Which physical device to render for iOS streams. `'auto'` (default)
+   * renders an Apple Watch when the stream is nearly square and an iPhone
+   * otherwise; pass `'watch'` / `'phone'` to force it.
+   */
+  deviceModel?: DeviceModelHint;
   className?: string;
 }
 
@@ -43,14 +56,20 @@ const MAX_CURSOR_TILT = 0.16; // ~9°
 const DRAG_YAW_GAIN = Math.PI * 1.1;
 const DRAG_PITCH_GAIN = Math.PI * 0.75;
 
-// Default portrait screen aspect used until the stream reports its
-// intrinsic size (9:19.5, a modern phone).
+// Default portrait screen aspects used until the stream reports its
+// intrinsic size (9:19.5 for a modern phone, ~0.83 for an Apple Watch).
 const FALLBACK_PORTRAIT_ASPECT = 9 / 19.5;
+const FALLBACK_WATCH_ASPECT = 416 / 496;
 
 // Extra margin around the model's bounding sphere when fitting the camera.
 const FIT_MARGIN = 1.12;
 
-export const Device3D: React.FC<Device3DProps> = ({ videoRef, platform, className }) => {
+export const Device3D: React.FC<Device3DProps> = ({
+  videoRef,
+  platform,
+  deviceModel = 'auto',
+  className,
+}) => {
   const hostRef = useRef<HTMLDivElement>(null);
   const [webglFailed, setWebglFailed] = useState(false);
   const [grabbing, setGrabbing] = useState(false);
@@ -97,7 +116,8 @@ export const Device3D: React.FC<Device3DProps> = ({ videoRef, platform, classNam
     // --- Model lifecycle -------------------------------------------------
     let model: DeviceModel | null = null;
     let texture: THREE.VideoTexture | null = null;
-    let portraitAspect = FALLBACK_PORTRAIT_ASPECT;
+    let kind: DeviceModelKind = resolveDeviceKind(platform, deviceModel, null);
+    let portraitAspect = kind === 'watch' ? FALLBACK_WATCH_ASPECT : FALLBACK_PORTRAIT_ASPECT;
     let landscape = false;
 
     const fitCamera = () => {
@@ -115,7 +135,7 @@ export const Device3D: React.FC<Device3DProps> = ({ videoRef, platform, classNam
         scene.remove(model.group);
         model.dispose();
       }
-      model = buildDeviceModel(platform, portraitAspect);
+      model = buildDeviceModel(kind, portraitAspect);
       model.setLandscape(landscape);
       model.setScreenTexture(texture);
       model.group.rotation.order = 'YXZ';
@@ -124,16 +144,19 @@ export const Device3D: React.FC<Device3DProps> = ({ videoRef, platform, classNam
     };
 
     // Adopt the stream's intrinsic dimensions: orientation flips rotate the
-    // physical model; a genuinely different aspect rebuilds it.
+    // physical model; a genuinely different aspect (or a device-kind change,
+    // e.g. auto-detecting a watch stream) rebuilds it.
     const syncVideoDimensions = () => {
       if (!video || !video.videoWidth || !video.videoHeight) return;
       const w = video.videoWidth;
       const h = video.videoHeight;
       const nextLandscape = w > h;
       const nextPortraitAspect = Math.min(w, h) / Math.max(w, h);
-      const aspectChanged = Math.abs(nextPortraitAspect - portraitAspect) > 1e-3;
+      const nextKind = resolveDeviceKind(platform, deviceModel, nextPortraitAspect);
+      const needsRebuild = Math.abs(nextPortraitAspect - portraitAspect) > 1e-3 || nextKind !== kind;
       portraitAspect = nextPortraitAspect;
-      if (aspectChanged) {
+      kind = nextKind;
+      if (needsRebuild) {
         landscape = nextLandscape;
         rebuildModel();
         return;
@@ -286,7 +309,7 @@ export const Device3D: React.FC<Device3DProps> = ({ videoRef, platform, classNam
     };
     // The videoRef object identity is stable; the element is read at mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [platform]);
+  }, [platform, deviceModel]);
 
   return (
     <div
