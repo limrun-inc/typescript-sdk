@@ -9,7 +9,6 @@ import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance }
 import { webhookConfigFromFlags } from '../../lib/webhook-options';
 import {
   hasSigningFlags,
-  signingConfigFromMaterial,
   signingFlagsProblem,
   type XcodeSigningFlagValues,
 } from '../../lib/xcode-signing-options';
@@ -426,11 +425,15 @@ export default class XcodeBuild extends BaseCommand {
     if (!hasSigningFlags(flags)) {
       return undefined;
     }
-    const [certificate, ...profiles] = await Promise.all([
+    const [certificateP12Base64, ...provisioningProfilesBase64] = await Promise.all([
       this.readFileBase64(flags['certificate-p12']!, '--certificate-p12'),
       ...flags['provisioning-profile']!.map((path) => this.readFileBase64(path, '--provisioning-profile')),
     ]);
-    return signingConfigFromMaterial(certificate, flags['certificate-password']!, profiles);
+    return {
+      certificateP12Base64,
+      certificatePassword: flags['certificate-password']!,
+      provisioningProfilesBase64,
+    };
   }
 
   private async readFileBase64(path: string, flagName: string): Promise<string> {

@@ -219,7 +219,7 @@ const { exitCode } = await xcode.xcodebuild(
     signing: {
       certificateP12Base64: certificateSecret.data.certificateP12Base64,
       certificatePassword: certificateSecret.data.certificatePassword,
-      provisioningProfileBase64: profileSecret.data.provisioningProfileBase64,
+      provisioningProfilesBase64: [profileSecret.data.provisioningProfileBase64],
     },
     upload: { assetName: 'my-app.ipa' },
   },
