@@ -8,19 +8,21 @@ import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
 import { webhookConfigFromFlags } from '../../lib/webhook-options';
 import {
+  hasSigningFlags,
+  signingConfigFromMaterial,
+  signingFlagsProblem,
+  type XcodeSigningFlagValues,
+} from '../../lib/xcode-signing-options';
+import {
   parseBuildSettingEntries,
   type AppStoreUploadConfig,
   type XcodeBuildOptions,
   type XcodeClient,
+  type XcodeSigningConfig,
 } from '@limrun/api';
 
 const DEVICE_SDKS = new Set(['iphoneos', 'watchos']);
 const SIMULATOR_SDKS = new Set(['iphonesimulator', 'watchsimulator']);
-type SigningFlags = {
-  'certificate-p12'?: string;
-  'certificate-password'?: string;
-  'provisioning-profile'?: string;
-};
 type AppStoreFlags = {
   'upload-to-appstore': boolean;
   'asc-key-id'?: string;
@@ -49,6 +51,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./MyProject --xcodegen-spec specs/app.yml --xcodegen-project ios',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload-to-appstore --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8',
+    '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./app.mobileprovision --provisioning-profile ./widgets.mobileprovision --upload-to-appstore --asc-key-id 2X9R4HXF34 --asc-key ./AuthKey_2X9R4HXF34.p8',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
     '<%= config.bin %> xcode build --signed-upload-url <url>',
     `<%= config.bin %> xcode build ./MyProject --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"`,
@@ -137,7 +140,8 @@ export default class XcodeBuild extends BaseCommand {
     }),
     'provisioning-profile': Flags.string({
       description:
-        'Path to a .mobileprovision profile. Requires --certificate-p12 and --certificate-password.',
+        'Path to a .mobileprovision profile. Requires --certificate-p12 and --certificate-password. Repeat for an app with embedded extensions (widgets, watch apps): one profile per bundle, all for the same certificate; each is matched to its bundle by the application-identifier inside the profile.',
+      multiple: true,
     }),
     'upload-to-appstore': Flags.boolean({
       description:
@@ -219,6 +223,12 @@ export default class XcodeBuild extends BaseCommand {
     }
     if (flags.ios && hasSigningFlags(flags)) {
       this.error('--ios builds run on a simulator and cannot use signing flags.');
+    }
+    const signingProblem = signingFlagsProblem(flags);
+    if (signingProblem) {
+      // Rejected before instance resolution: a doomed flag combination must
+      // not leave a billed instance behind.
+      this.error(signingProblem);
     }
     if (flags.ios && (flags['upload-to-appstore'] || hasAppStoreFlags(flags))) {
       this.error('--ios builds run on a simulator and cannot upload to App Store Connect.');
@@ -408,34 +418,16 @@ export default class XcodeBuild extends BaseCommand {
     });
   }
 
-  private async buildSigningOptions(flags: SigningFlags): Promise<
-    | {
-        certificateP12Base64: string;
-        certificatePassword: string;
-        provisioningProfileBase64: string;
-      }
-    | undefined
-  > {
-    const hasCertificate = flags['certificate-p12'] !== undefined;
-    const hasPassword = flags['certificate-password'] !== undefined;
-    const hasProfile = flags['provisioning-profile'] !== undefined;
+  private async buildSigningOptions(flags: XcodeSigningFlagValues): Promise<XcodeSigningConfig | undefined> {
+    // Flag completeness was validated before instance resolution.
     if (!hasSigningFlags(flags)) {
       return undefined;
     }
-    if (!hasCertificate || !hasPassword || !hasProfile) {
-      this.error(
-        'Signed device builds require --certificate-p12, --certificate-password, and --provisioning-profile.',
-      );
-    }
-
-    return {
-      certificateP12Base64: await this.readFileBase64(flags['certificate-p12']!, '--certificate-p12'),
-      certificatePassword: flags['certificate-password']!,
-      provisioningProfileBase64: await this.readFileBase64(
-        flags['provisioning-profile']!,
-        '--provisioning-profile',
-      ),
-    };
+    const [certificate, ...profiles] = await Promise.all([
+      this.readFileBase64(flags['certificate-p12']!, '--certificate-p12'),
+      ...flags['provisioning-profile']!.map((path) => this.readFileBase64(path, '--provisioning-profile')),
+    ]);
+    return signingConfigFromMaterial(certificate, flags['certificate-password']!, profiles);
   }
 
   private async readFileBase64(path: string, flagName: string): Promise<string> {
@@ -498,14 +490,6 @@ export default class XcodeBuild extends BaseCommand {
       return undefined;
     }
   }
-}
-
-function hasSigningFlags(flags: SigningFlags): boolean {
-  return (
-    flags['certificate-p12'] !== undefined ||
-    flags['certificate-password'] !== undefined ||
-    flags['provisioning-profile'] !== undefined
-  );
 }
 
 function hasAppStoreFlags(flags: AppStoreFlags): boolean {
