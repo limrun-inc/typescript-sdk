@@ -86,5 +86,8 @@
     "dist",
     "bin",
     "README.md"
-  ]
+  ],
+  "resolutions": {
+    "undici": "7.28.0"
+  }
 }
