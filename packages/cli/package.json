@@ -87,6 +87,7 @@
     "bin",
     "README.md"
   ],
+  "//": "resolutions.undici overrides @limrun/api's exact pin; remove once the SDK ships undici >=7.28.0 and our @limrun/api dep is bumped",
   "resolutions": {
     "undici": "7.28.0"
   }
