@@ -25,7 +25,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@limrun/api": "0.45.3",
+    "@limrun/api": "0.45.4",
     "@oclif/core": "^4",
     "cli-progress": "^3.12.0",
     "cli-table3": "^0.6.5",
@@ -86,9 +86,5 @@
     "dist",
     "bin",
     "README.md"
-  ],
-  "//": "resolutions.undici overrides @limrun/api's exact pin; remove once the SDK ships undici >=7.28.0 and our @limrun/api dep is bumped",
-  "resolutions": {
-    "undici": "7.28.0"
-  }
+  ]
 }
