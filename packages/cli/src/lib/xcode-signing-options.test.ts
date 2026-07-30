@@ -1,8 +1,4 @@
-import {
-  hasSigningFlags,
-  signingConfigFromMaterial,
-  signingFlagsProblem,
-} from './xcode-signing-options';
+import { hasSigningFlags, signingConfigFromMaterial, signingFlagsProblem } from './xcode-signing-options';
 
 describe('signingFlagsProblem', () => {
   it('accepts an absent group and a complete group', () => {
