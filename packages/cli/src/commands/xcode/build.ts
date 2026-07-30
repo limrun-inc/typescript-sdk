@@ -142,6 +142,9 @@ export default class XcodeBuild extends BaseCommand {
       description:
         'Path to a .mobileprovision profile. Requires --certificate-p12 and --certificate-password. Repeat for an app with embedded extensions (widgets, watch apps): one profile per bundle, all for the same certificate; each is matched to its bundle by the application-identifier inside the profile.',
       multiple: true,
+      // One value per occurrence: greedy mode would swallow a positional
+      // project path placed after the flag as another profile.
+      multipleNonGreedy: true,
     }),
     'upload-to-appstore': Flags.boolean({
       description:
