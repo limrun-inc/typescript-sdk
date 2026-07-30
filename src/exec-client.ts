@@ -36,6 +36,8 @@ export type XcodeBuildExecRequest = {
     certificateP12Base64?: string;
     certificatePassword?: string;
     provisioningProfileBase64?: string;
+    /** One profile per embedded bundle; wins over provisioningProfileBase64. */
+    provisioningProfilesBase64?: string[];
   };
   /** Wire name retained for compatibility with the limbuild exec API. */
   testflight?: AppStoreUploadConfig;

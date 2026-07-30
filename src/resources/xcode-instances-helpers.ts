@@ -120,7 +120,22 @@ export type XcodeGenConfig = {
 export type XcodeSigningConfig = {
   certificateP12Base64?: string;
   certificatePassword?: string;
+  /**
+   * Base64-encoded .mobileprovision profile. Use this single-profile field
+   * for an app with no embedded extensions; it also works on older limbuild
+   * servers.
+   */
   provisioningProfileBase64?: string;
+  /**
+   * Base64-encoded .mobileprovision profiles, one per bundle the app embeds:
+   * the app itself plus each app extension (e.g. WidgetKit) and watch app.
+   * All profiles must share the signing certificate and carry explicit
+   * (non-wildcard) bundle ids; each is matched to its bundle by the
+   * application-identifier inside the profile. Takes precedence over
+   * provisioningProfileBase64. Older limbuild servers do not understand this
+   * field and fail the build instead of signing with a subset.
+   */
+  provisioningProfilesBase64?: string[];
 };
 
 export type ReactNativeBuildConfig = {
