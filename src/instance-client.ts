@@ -1,5 +1,5 @@
 import { WebSocket, Data } from 'ws';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -1125,8 +1125,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
       try {
         await new Promise<void>((resolve, reject) => {
-          exec(
-            `${options.adbPath ?? 'adb'} connect ${tunnel.address.address}:${tunnel.address.port}`,
+          execFile(
+            options.adbPath ?? 'adb',
+            ['connect', `${tunnel.address.address}:${tunnel.address.port}`],
             (err) => {
               if (err) return reject(err);
               resolve();
