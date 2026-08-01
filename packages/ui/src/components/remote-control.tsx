@@ -3,6 +3,7 @@ import { clsx } from 'clsx';
 import './remote-control.css';
 
 import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
+import { getAndroidTwoFingerTouchSteps } from '../core/android-touch';
 
 import iphoneFrameImage from '../assets/iphone16pro_black_bg.webp';
 import pixelFrameImage from '../assets/pixel9_black.webp';
@@ -848,9 +849,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       switch (eventType) {
         case 'down':
-          // For multi-touch: use ACTION_DOWN for first pointer, ACTION_POINTER_DOWN for additional pointers
-          const currentPointerCount = activePointers.current.size;
-          action = currentPointerCount === 0 ? AMOTION_EVENT.ACTION_DOWN : AMOTION_EVENT.ACTION_POINTER_DOWN;
+          // scrcpy accepts per-pointer DOWN and converts secondary pointers to POINTER_DOWN.
+          action = AMOTION_EVENT.ACTION_DOWN;
           positionToSend = { x: videoX, y: videoY };
           activePointers.current.set(pointerId, positionToSend);
           if (pointerId === -1) {
@@ -878,10 +878,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             if (eventType === 'cancel') {
               action = AMOTION_EVENT.ACTION_CANCEL;
             } else {
-              // For multi-touch: use ACTION_UP for last pointer, ACTION_POINTER_UP for non-last pointers
-              const remainingPointerCount = activePointers.current.size;
-              action =
-                remainingPointerCount === 0 ? AMOTION_EVENT.ACTION_UP : AMOTION_EVENT.ACTION_POINTER_UP;
+              // scrcpy accepts per-pointer UP and converts non-last pointers to POINTER_UP.
+              action = AMOTION_EVENT.ACTION_UP;
             }
           }
           break;
@@ -1144,20 +1142,23 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           : AMOTION_EVENT.ACTION_UP;
         sendTwoFingerMessage(action, videoWidth, videoHeight, x0, y0, x1, y1);
       } else {
-        // Android: send two separate single-touch messages with proper action codes
-        // Per scrcpy protocol, each finger is a separate INJECT_TOUCH_EVENT with unique pointerId
-        if (eventType === 'down') {
-          // First finger down (ACTION_DOWN), then second finger down (ACTION_POINTER_DOWN)
-          sendSingleTouch(AMOTION_EVENT.ACTION_DOWN, pointerId0, videoWidth, videoHeight, x0, y0);
-          sendSingleTouch(AMOTION_EVENT.ACTION_POINTER_DOWN, pointerId1, videoWidth, videoHeight, x1, y1);
-        } else if (eventType === 'move') {
-          // Both fingers move (ACTION_MOVE for each)
-          sendSingleTouch(AMOTION_EVENT.ACTION_MOVE, pointerId0, videoWidth, videoHeight, x0, y0);
-          sendSingleTouch(AMOTION_EVENT.ACTION_MOVE, pointerId1, videoWidth, videoHeight, x1, y1);
+        // Android: scrcpy receives one DOWN/MOVE/UP per pointer and adds POINTER_* itself.
+        const firstPointerAlreadyDown = activePointers.current.has(pointerId0);
+        const pointers = [
+          { id: pointerId0, x: x0, y: y0 },
+          { id: pointerId1, x: x1, y: y1 },
+        ];
+        for (const step of getAndroidTwoFingerTouchSteps(eventType, firstPointerAlreadyDown)) {
+          const pointer = pointers[step.pointerIndex];
+          sendSingleTouch(step.action, pointer.id, videoWidth, videoHeight, pointer.x, pointer.y);
+        }
+
+        if (eventType === 'up') {
+          activePointers.current.delete(pointerId0);
+          activePointers.current.delete(pointerId1);
         } else {
-          // Second finger up (ACTION_POINTER_UP), then first finger up (ACTION_UP)
-          sendSingleTouch(AMOTION_EVENT.ACTION_POINTER_UP, pointerId1, videoWidth, videoHeight, x1, y1);
-          sendSingleTouch(AMOTION_EVENT.ACTION_UP, pointerId0, videoWidth, videoHeight, x0, y0);
+          activePointers.current.set(pointerId0, { x: x0, y: y0 });
+          activePointers.current.set(pointerId1, { x: x1, y: y1 });
         }
       }
     };
@@ -1835,6 +1836,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       clearConnectionSuccessTimeout();
       clearIceDisconnectedGrace();
       stopRequestFrameLoop();
+      activePointers.current.clear();
+      twoFingerStateRef.current = null;
       if (axFetcherRef.current) {
         axFetcherRef.current.stop();
         axFetcherRef.current = null;
