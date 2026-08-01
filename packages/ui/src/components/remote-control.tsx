@@ -849,7 +849,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       switch (eventType) {
         case 'down':
-          // scrcpy accepts per-pointer DOWN and converts secondary pointers to POINTER_DOWN.
+          // The server converts secondary per-pointer DOWN events to POINTER_DOWN.
           action = AMOTION_EVENT.ACTION_DOWN;
           positionToSend = { x: videoX, y: videoY };
           activePointers.current.set(pointerId, positionToSend);
@@ -878,7 +878,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             if (eventType === 'cancel') {
               action = AMOTION_EVENT.ACTION_CANCEL;
             } else {
-              // scrcpy accepts per-pointer UP and converts non-last pointers to POINTER_UP.
+              // The server converts non-last per-pointer UP events to POINTER_UP.
               action = AMOTION_EVENT.ACTION_UP;
             }
           }
@@ -1142,7 +1142,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           : AMOTION_EVENT.ACTION_UP;
         sendTwoFingerMessage(action, videoWidth, videoHeight, x0, y0, x1, y1);
       } else {
-        // Android: scrcpy receives one DOWN/MOVE/UP per pointer and adds POINTER_* itself.
+        // Android receives one DOWN/MOVE/UP per pointer; the server adds POINTER_* itself.
         const firstPointerAlreadyDown = activePointers.current.has(pointerId0);
         const pointers = [
           { id: pointerId0, x: x0, y: y0 },
