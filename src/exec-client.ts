@@ -7,6 +7,8 @@
 
 import { createEventSource, type EventSourceClient, type EventSourceMessage } from 'eventsource-client';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import { directInstanceHttpError } from './internal/direct-instance-errors';
+import type { Fetch } from './internal/builtin-types';
 
 // =============================================================================
 // Types
@@ -206,6 +208,27 @@ export type ExecResult = {
   timedOut?: boolean;
 };
 
+export type ExecLogEvent = {
+  id?: string;
+  type: string;
+  data: string;
+};
+
+export type ExecLogOptions = {
+  /** Keep streaming after replaying buffered events. Defaults to false. */
+  follow?: boolean;
+  /** Called for each replayed or live event in wire order. */
+  onEvent?: (event: ExecLogEvent) => void;
+  signal?: AbortSignal;
+};
+
+export type ExecLogResult = {
+  /** The requested exec ID. May be "active" when the daemon resolved that alias. */
+  execId: string;
+  status: 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  exitCode?: number;
+};
+
 export type AppStoreEvent = {
   /** 'unknown' means an App Store upload event arrived but its payload was unreadable. */
   state: 'uploading' | 'processing' | 'accepted' | 'failed' | 'unknown';
@@ -276,6 +299,113 @@ export class ReadableStream {
       for (const l of this.closeListeners) l();
     }
   }
+}
+
+type FollowExecEventStreamOptions<TResult> = {
+  eventsUrl: string;
+  token: string;
+  signal?: AbortSignal;
+  operation: string;
+  abortError: () => Error;
+  onEvent: (event: ExecLogEvent) => TResult | undefined;
+  /** Return an error to stop; return undefined to let EventSource reconnect. */
+  onDisconnect: () => Error | undefined;
+};
+
+/**
+ * Shared transport for replaying and following exec SSE. It owns HTTP error
+ * handling, message normalization, abort cleanup, callback failures, and
+ * connection settlement; callers only route events and define completion.
+ */
+function followExecEventStream<TResult>(options: FollowExecEventStreamOptions<TResult>): {
+  connection: EventSourceClient | null;
+  result: Promise<TResult>;
+} {
+  let connection: EventSourceClient | null = null;
+  let settled = false;
+  let onAbort = () => {};
+
+  const result = new Promise<TResult>((resolve, reject) => {
+    const cleanup = () => {
+      options.signal?.removeEventListener('abort', onAbort);
+      connection?.close();
+      connection = null;
+    };
+    const settleResolve = (value: TResult) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const settleReject = (err: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+    onAbort = () => settleReject(options.abortError());
+
+    if (options.signal?.aborted) {
+      onAbort();
+      return;
+    }
+
+    const checkedFetch: Fetch = async (input, init) => {
+      let response: Response;
+      try {
+        response = await nodeProxyTransport.fetch(input, init);
+      } catch (err) {
+        settleReject(err);
+        throw err;
+      }
+      if (!response.ok) {
+        const text = await response.text();
+        const err = directInstanceHttpError(options.operation, response.status, text, response.headers);
+        settleReject(err);
+        throw err;
+      }
+      return response;
+    };
+
+    try {
+      connection = createEventSource({
+        url: options.eventsUrl,
+        fetch: checkedFetch,
+        headers: { Authorization: `Bearer ${options.token}` },
+        onMessage: (message: EventSourceMessage) => {
+          if (settled) return;
+          try {
+            const event: ExecLogEvent = {
+              ...(message.id && { id: message.id }),
+              type: message.event || 'message',
+              data: typeof message.data === 'string' ? message.data : String(message.data ?? ''),
+            };
+            const value = options.onEvent(event);
+            if (value !== undefined) {
+              settleResolve(value);
+            }
+          } catch (err) {
+            settleReject(err);
+          }
+        },
+        onDisconnect: () => {
+          if (settled) return;
+          const err = options.onDisconnect();
+          if (err) settleReject(err);
+        },
+      });
+      if (settled) {
+        connection.close();
+        connection = null;
+        return;
+      }
+      options.signal?.addEventListener('abort', onAbort, { once: true });
+    } catch (err) {
+      settleReject(err);
+    }
+  });
+
+  return { connection, result };
 }
 
 /**
@@ -552,74 +682,182 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
    * Rejects when the abort signal fires (kill or cleanup).
    */
   private connectSSE(eventsUrl: string): Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-      if (this.abortController.signal.aborted) {
-        reject(new Error('killed'));
-        return;
-      }
-
-      try {
-        const eventSource = createEventSource({
-          url: eventsUrl,
-          fetch: nodeProxyTransport.fetch,
-          headers: { Authorization: `Bearer ${this.options.token}` },
-          onMessage: (message: EventSourceMessage) => {
-            const data = typeof message.data === 'string' ? message.data : String(message.data ?? '');
-            const eventType = message.event;
-            if (eventType === 'command') {
-              this.command.emit('data', data);
-            } else if (eventType === 'stdout') {
-              this.stdout.emit('data', data);
-            } else if (eventType === 'stderr') {
-              this.stderr.emit('data', data);
-            } else if (eventType === 'testflight') {
-              try {
-                this.appStoreEvent = JSON.parse(data) as AppStoreEvent;
-              } catch {
-                // The wire event itself proves the server ran the App Store upload,
-                // so never let a payload glitch look like a missing feature.
-                this.appStoreEvent = { state: 'unknown' };
-                this.log('warn', `SSE testflight event has invalid data: ${data}`);
-              }
-            } else if (eventType === 'playstore') {
-              try {
-                this.playstoreEvent = JSON.parse(data) as PlaystoreEvent;
-              } catch {
-                // Same contract as the App Store upload event: its presence proves the server
-                // ran the Play Store step, so a payload glitch must not
-                // read as a missing feature.
-                this.playstoreEvent = { state: 'unknown' };
-                this.log('warn', `SSE playstore event has invalid data: ${data}`);
-              }
-            } else if (eventType === 'exitCode') {
-              const exitCode = parseInt(data, 10);
-              if (Number.isNaN(exitCode)) {
-                this.log('warn', `SSE exitCode event has invalid data: ${data}`);
-                return;
-              }
-              this.log('debug', `Execution completed via SSE: exitCode=${exitCode}`);
-              resolve(exitCode);
-            }
-          },
-          onDisconnect: () => {
-            if (!this.killed) {
-              this.log('warn', 'SSE disconnected');
-            }
-          },
-        });
-        this.sseConnection = eventSource;
-
-        this.abortController.signal.addEventListener('abort', () => reject(new Error('killed')), {
-          once: true,
-        });
-      } catch (err) {
-        if (!this.killed) {
-          this.log('warn', `SSE setup failed: ${err}`);
+    const stream = followExecEventStream<number>({
+      eventsUrl,
+      token: this.options.token,
+      signal: this.abortController.signal,
+      operation: 'GET exec events',
+      abortError: () => new Error('killed'),
+      onEvent: (event) => {
+        const { data } = event;
+        if (event.type === 'command') {
+          this.command.emit('data', data);
+        } else if (event.type === 'stdout') {
+          this.stdout.emit('data', data);
+        } else if (event.type === 'stderr') {
+          this.stderr.emit('data', data);
+        } else if (event.type === 'testflight') {
+          try {
+            this.appStoreEvent = JSON.parse(data) as AppStoreEvent;
+          } catch {
+            // The wire event itself proves the server ran the App Store upload,
+            // so never let a payload glitch look like a missing feature.
+            this.appStoreEvent = { state: 'unknown' };
+            this.log('warn', `SSE testflight event has invalid data: ${data}`);
+          }
+        } else if (event.type === 'playstore') {
+          try {
+            this.playstoreEvent = JSON.parse(data) as PlaystoreEvent;
+          } catch {
+            // Same contract as the App Store upload event: its presence proves the server
+            // ran the Play Store step, so a payload glitch must not
+            // read as a missing feature.
+            this.playstoreEvent = { state: 'unknown' };
+            this.log('warn', `SSE playstore event has invalid data: ${data}`);
+          }
+        } else if (event.type === 'exitCode') {
+          const exitCode = Number.parseInt(data, 10);
+          if (Number.isNaN(exitCode)) {
+            this.log('warn', `SSE exitCode event has invalid data: ${data}`);
+            return undefined;
+          }
+          this.log('debug', `Execution completed via SSE: exitCode=${exitCode}`);
+          return exitCode;
         }
-        reject(err);
+        return undefined;
+      },
+      onDisconnect: () => {
+        if (!this.killed) {
+          this.log('warn', 'SSE disconnected');
+        }
+        return undefined;
+      },
+    });
+    this.sseConnection = stream.connection;
+    return stream.result.catch((err) => {
+      if (!this.killed) {
+        this.log('warn', `SSE setup failed: ${err}`);
       }
+      throw err;
     });
   }
+}
+
+/**
+ * Replay logs for an existing execution, optionally following it to completion.
+ * Snapshot mode uses a finite SSE response; follow mode consumes the same
+ * replayable stream until its terminal exitCode event.
+ */
+export async function observeExecLogs(
+  execId: string,
+  options: ExecOptions & ExecLogOptions,
+): Promise<ExecLogResult> {
+  if (!execId.trim()) {
+    throw new Error('execId must not be empty');
+  }
+  const follow = options.follow ?? false;
+  const eventsUrl = new URL(
+    `${options.apiUrl.replace(/\/+$/, '')}/exec/${encodeURIComponent(execId)}/events`,
+  );
+  eventsUrl.searchParams.set('follow', String(follow));
+
+  if (!follow) {
+    const response = await nodeProxyTransport.fetch(eventsUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${options.token}` },
+      ...(options.signal && { signal: options.signal }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw directInstanceHttpError('GET exec logs', response.status, text, response.headers);
+    }
+    const events = parseSSE(await response.text());
+    let exitCode: number | undefined;
+    let resolvedExecId = execId;
+    for (const event of events) {
+      resolvedExecId = execIdFromMeta(event, resolvedExecId);
+      options.onEvent?.(event);
+      if (event.type === 'exitCode') {
+        exitCode = parseExitCode(event.data);
+      }
+    }
+    return buildExecLogResult(resolvedExecId, exitCode);
+  }
+
+  let resolvedExecId = execId;
+  const stream = followExecEventStream<ExecLogResult>({
+    eventsUrl: eventsUrl.toString(),
+    token: options.token,
+    ...(options.signal && { signal: options.signal }),
+    operation: 'GET exec logs',
+    abortError: () => new Error(`exec log stream for ${execId} was aborted`),
+    onEvent: (event) => {
+      resolvedExecId = execIdFromMeta(event, resolvedExecId);
+      options.onEvent?.(event);
+      if (event.type === 'exitCode') {
+        return buildExecLogResult(resolvedExecId, parseExitCode(event.data));
+      }
+      return undefined;
+    },
+    onDisconnect: () => new Error(`exec log stream for ${execId} ended without a terminal event`),
+  });
+  return stream.result;
+}
+
+function parseSSE(body: string): ExecLogEvent[] {
+  const normalized = body.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const events: ExecLogEvent[] = [];
+  for (const block of normalized.split('\n\n')) {
+    if (!block.trim()) continue;
+    let id: string | undefined;
+    let type = 'message';
+    const data: string[] = [];
+    for (const line of block.split('\n')) {
+      if (line.startsWith('id:')) {
+        id = line.slice(3).trimStart();
+      } else if (line.startsWith('event:')) {
+        type = line.slice(6).trimStart();
+      } else if (line.startsWith('data:')) {
+        data.push(line.slice(5).replace(/^ /, ''));
+      }
+    }
+    if (data.length > 0 || type !== 'message' || id !== undefined) {
+      events.push({ ...(id !== undefined && { id }), type, data: data.join('\n') });
+    }
+  }
+  return events;
+}
+
+function parseExitCode(data: string): number {
+  const exitCode = Number.parseInt(data, 10);
+  if (Number.isNaN(exitCode)) {
+    throw new Error(`invalid exec exit code: ${data}`);
+  }
+  return exitCode;
+}
+
+function execIdFromMeta(event: ExecLogEvent, fallback: string): string {
+  if (event.type !== 'meta') return fallback;
+  try {
+    const meta = JSON.parse(event.data) as { id?: unknown };
+    return typeof meta.id === 'string' && meta.id ? meta.id : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function buildExecLogResult(execId: string, exitCode: number | undefined): ExecLogResult {
+  if (exitCode === undefined) {
+    return { execId, status: 'RUNNING' };
+  }
+  return {
+    execId,
+    exitCode,
+    status:
+      exitCode === 0 ? 'SUCCEEDED'
+      : exitCode === -1 ? 'CANCELLED'
+      : 'FAILED',
+  };
 }
 
 /**

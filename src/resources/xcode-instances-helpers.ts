@@ -5,13 +5,16 @@ import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
 import {
   exec,
+  observeExecLogs,
   type AppStoreUploadConfig,
   type ExecChildProcess,
+  type ExecLogOptions,
+  type ExecLogResult,
   type ExecRequest,
   type WebhookConfig,
 } from '../exec-client';
 
-export type { AppStoreUploadConfig, WebhookConfig } from '../exec-client';
+export type { AppStoreUploadConfig, ExecLogOptions, ExecLogResult, WebhookConfig } from '../exec-client';
 import {
   syncFolder as syncFolderImpl,
   type AdditionalFileSyncEntry,
@@ -348,6 +351,9 @@ export type XcodeClient = {
    * const { exitCode } = await build;
    */
   xcodebuild: (settings?: XcodeProjectConfig, options?: XcodeBuildOptions) => ExecChildProcess;
+
+  /** Replay an existing build's logs, optionally following it to completion. */
+  observeBuildLogs: (execId: string, options?: ExecLogOptions) => Promise<ExecLogResult>;
 
   /**
    * Run a one-shot shell command in the synced workspace.
@@ -744,6 +750,10 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         }
 
         return exec(request, { apiUrl, token, log });
+      },
+
+      observeBuildLogs(execId: string, options?: ExecLogOptions): Promise<ExecLogResult> {
+        return observeExecLogs(execId, { apiUrl, token, log, ...options });
       },
 
       run(commandLine: string, options?: XcodeRunOptions): ExecChildProcess {
