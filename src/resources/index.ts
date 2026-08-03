@@ -68,6 +68,7 @@ export {
   type XcodeBuildLog,
   type BazelBuildLog,
   type WebhookConfig,
+  type XcodeInstanceCreateParamsWithCache,
 } from './xcode-instances-helpers';
 export {
   GradleInstances,

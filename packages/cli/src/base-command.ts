@@ -1,5 +1,5 @@
 import { Command, Flags } from '@oclif/core';
-import Limrun, { AuthenticationError, NotFoundError } from '@limrun/api';
+import Limrun, { APIError, AuthenticationError, NotFoundError, XcodeCacheGoneError } from '@limrun/api';
 import {
   clearLastInstanceId,
   loadAndroidInstanceCache,
@@ -24,6 +24,19 @@ import { renderTable } from './lib/formatting';
 import { stopDaemon } from './lib/daemon';
 import { detectInstanceType } from './lib/instance-client-factory';
 import { deleteCreatedInstance } from './lib/instance-cleanup';
+import { defaultSleep as sleep } from '@limrun/api';
+import {
+  parseCacheConfig,
+  restoreOutcome,
+  restoreProgressLine,
+  saveOutcome,
+  saveProgressLine,
+  skippedKeyLines,
+  wantsRestore,
+} from './lib/cache';
+import type { XcodeCacheConfig, XcodeCacheFollowResult } from '@limrun/api';
+import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
+import { xcodeSandboxIdFromUrl } from './lib/xcode-sandbox';
 
 const VERSION = require('../package.json').version;
 // Full instance-id shape only: prefix_region_suffix with a long TypeID suffix.
@@ -32,6 +45,17 @@ const VERSION = require('../package.json').version;
 const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox|gradle)_[a-z0-9]+_[a-z0-9]{20,}\b/;
 type XcodeTarget = LastIosInstance | LastXcodeInstance;
 type XcodeReplacementIntent = 'standalone' | 'simulator-backed';
+type CachePublicationFollow =
+  | { start: number; result: XcodeCacheFollowResult }
+  | { start: number; error: unknown };
+/**
+ * A publication being watched, and a signal for when the watching has actually begun. The
+ * deletion waits for the latter, because the transitions it wants to see are the ones it is
+ * about to cause.
+ */
+type CachePublicationWatch = { opened: Promise<void>; done: Promise<CachePublicationFollow> };
+/** How long a delete waits for its subscription before going ahead unwatched. */
+const CACHE_FOLLOW_OPEN_TIMEOUT_MS = 5_000;
 
 export abstract class BaseCommand extends Command {
   static baseFlags = {
@@ -583,6 +607,177 @@ export abstract class BaseCommand extends Command {
     return !!id && this._instancesCreatedThisRun.has(id);
   }
 
+  /** Build cache configuration from this command's flags, if it has any. */
+  protected cacheConfigFromFlags(): XcodeCacheConfig | undefined {
+    const flags = this.parsedFlags;
+    if (!flags) return undefined;
+    const asString = (name: string) =>
+      typeof flags[name] === 'string' ? (flags[name] as string) : undefined;
+    return parseCacheConfig({
+      'cache-key': asString('cache-key'),
+      'cache-restore-keys': asString('cache-restore-keys'),
+      'cache-paths': asString('cache-paths'),
+    });
+  }
+
+  /**
+   * Blocks while a freshly created instance restores its cache, printing each phase as it
+   * happens. A restore that fell back to a cold workspace just prints and returns, because the
+   * instance is perfectly usable. A restore that genuinely broke removes the instance, since
+   * the caller asked for a warm workspace and handing back a silently cold one is worse.
+   */
+  protected async awaitCacheRestore(
+    cacheInstanceId: string,
+    removeInstance: () => Promise<unknown>,
+  ): Promise<void> {
+    const start = Date.now();
+    this.info('Restoring build cache...');
+    let result;
+    try {
+      result = await this.client.xcodeInstances.followCache(cacheInstanceId, {
+        onUpdate: (cache) => {
+          const line = restoreProgressLine(cache);
+          if (line) this.info(line);
+        },
+      });
+    } catch (err) {
+      if (err instanceof XcodeCacheGoneError) {
+        // Not a wait that broke but an instance that ended, so there is nothing to keep or check.
+        throw new Error(`Instance ${cacheInstanceId} was collected before its cache restore started.`);
+      }
+      // The restore may well still be running, so the instance stays: deleting it over a
+      // client-side wait that broke would throw away a workspace that is probably fine.
+      throw new Error(
+        `Could not follow the cache restore of ${cacheInstanceId}: ${
+          err instanceof Error ? err.message : String(err)
+        }\n` + `The instance is still there. Check it with: lim xcode get ${cacheInstanceId}`,
+      );
+    }
+    if (result.gone) {
+      throw new Error(
+        `Instance ${cacheInstanceId} was gone before its cache restore finished (last phase: ${result.cache.restore.phase}).`,
+      );
+    }
+    const outcome = restoreOutcome(result.cache, Date.now() - start);
+    if (outcome.failed) {
+      await removeInstance();
+      throw new Error(`${outcome.line}\nRemoved instance ${cacheInstanceId}.`);
+    }
+    this.info(outcome.line);
+    if (result.cache.restore.phase !== 'restored') {
+      for (const line of skippedKeyLines(result.cache)) {
+        this.info(line);
+      }
+    }
+  }
+
+  /**
+   * Applies cache flags to a target a command is about to build on. An instance this
+   * invocation created already carries the whole configuration from its create, so all that is
+   * left for an existing one is the destination key: restore keys and paths are settled when
+   * the workspace directory is adopted and cannot be changed afterwards.
+   */
+  protected async applyBuildCacheToTarget(
+    target: XcodeTarget,
+    cache: XcodeCacheConfig | undefined,
+  ): Promise<void> {
+    if (!cache || this.wasCreatedThisRun(target.id)) {
+      return;
+    }
+    if (cache.restoreKeys || cache.paths) {
+      this.info(
+        `Cache: instance ${target.id} already exists, so its restore keys and paths stay as they were created.`,
+      );
+    }
+    if (cache.key) {
+      await this.bindCacheKey(this.cacheInstanceId(target), cache.key);
+    }
+  }
+
+  /**
+   * The id the cache endpoints take. For an iOS-backed target that is its Xcode sandbox, which
+   * is the instance that owns the workspace.
+   */
+  protected cacheInstanceId(target: XcodeTarget): string {
+    if (target.type === 'ios') {
+      return (
+        xcodeSandboxIdFromUrl(target.sandboxXcodeUrl ?? target.status?.sandbox?.xcode?.url ?? '') ?? target.id
+      );
+    }
+    return target.id;
+  }
+
+  /**
+   * Binds the key an existing instance publishes under. The build happens now and publication
+   * only at termination, possibly long after this process is gone, so the key has to live on
+   * the instance rather than in this invocation.
+   */
+  protected async bindCacheKey(cacheInstanceId: string, key: string): Promise<void> {
+    try {
+      await this.client.xcodeInstances.bindCacheKey(cacheInstanceId, key);
+      this.info(`Cache: publishing this workspace under ${key} when the instance terminates.`);
+    } catch (err) {
+      if (err instanceof APIError && err.message.includes('no cache workspace')) {
+        throw new Error(
+          `${err.message}\n` +
+            `Publishing needs the stable workspace directory an instance only gets at create: lim xcode create --cache-key ${key}`,
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Starts following an instance's cache publication before it is deleted, so a publication
+   * that finishes quickly is still seen. Never rejects; the caller renders the result.
+   */
+  protected startCachePublicationFollow(cacheInstanceId: string): CachePublicationWatch {
+    const start = Date.now();
+    let open = () => {};
+    const opened = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const done = this.client.xcodeInstances
+      .followCache(cacheInstanceId, {
+        side: 'save',
+        onOpen: open,
+        onUpdate: (cache) => {
+          const line = saveProgressLine(cache);
+          if (line) this.info(line);
+        },
+      })
+      .then(
+        (result): CachePublicationFollow => ({ start, result }),
+        (error: unknown): CachePublicationFollow => ({ start, error }),
+      );
+    // A follow that ends without ever opening, on a 404 or a broken connection, must not leave
+    // the deletion waiting on a subscription that is already over.
+    return { opened: Promise.race([opened, done.then(() => {}), sleep(CACHE_FOLLOW_OPEN_TIMEOUT_MS)]), done };
+  }
+
+  /** Prints how a publication ended. Returns false when it did not publish what it should have. */
+  protected async renderCachePublication(watch: CachePublicationWatch): Promise<boolean> {
+    const followed = await watch.done;
+    if ('error' in followed) {
+      if (followed.error instanceof XcodeCacheGoneError) {
+        // Nothing was published under this instance's key that this command could have waited
+        // for: the region had already let it go by the time the stream opened. Not a failure,
+        // since a publication that was underway holds the instance until it finishes.
+        this.info('The instance was already gone, so it had no cache publication to report.');
+        return true;
+      }
+      this.info(
+        `Could not follow the cache publication: ${
+          followed.error instanceof Error ? followed.error.message : String(followed.error)
+        }`,
+      );
+      return false;
+    }
+    const outcome = saveOutcome(followed.result.cache, Date.now() - followed.start);
+    this.info(outcome.line);
+    return !outcome.failed;
+  }
+
   /**
    * Best-effort delete of an instance THIS invocation auto-created, so a path
    * that creates an instance and then abandons it (e.g. it does not support RBE,
@@ -647,15 +842,36 @@ export abstract class BaseCommand extends Command {
 
   private async createIosXcodeInstance(): Promise<LastIosInstance> {
     const inactivityTimeout = this.autoCreateInactivityTimeout();
-    const instance = await this.client.iosInstances.create({
+    const cache = this.cacheConfigFromFlags();
+    const params: IosInstanceCreateParams = {
       wait: true,
       spec: {
         sandbox: { xcode: { enabled: true } },
         ...(inactivityTimeout && { inactivityTimeout }),
       },
-    });
+    };
+    if (cache) {
+      applySandboxCache(params, cache);
+    }
+    const instance = await this.client.iosInstances.create(params);
     this._instancesCreatedThisRun.add(instance.metadata.id);
     saveLastCreatedInstance(instance, ['xcode']);
+    if (wantsRestore(cache)) {
+      const sandboxId = xcodeSandboxIdFromUrl(instance.status.sandbox?.xcode?.url ?? '');
+      if (!sandboxId) {
+        throw new Error(
+          `Created iOS instance ${instance.metadata.id}, but it has no Xcode sandbox to restore a cache into.`,
+        );
+      }
+      await this.awaitCacheRestore(sandboxId, async () => {
+        try {
+          await this.client.iosInstances.delete(instance.metadata.id);
+          this._instancesCreatedThisRun.delete(instance.metadata.id);
+        } catch {
+          // Best effort: the restore failure is what the caller needs to hear about.
+        }
+      });
+    }
     const target = loadIosInstanceCache(instance.metadata.id);
     if (!target) {
       throw new Error(
@@ -667,14 +883,21 @@ export abstract class BaseCommand extends Command {
 
   private async createStandaloneXcodeInstance(): Promise<LastXcodeInstance> {
     const inactivityTimeout = this.autoCreateInactivityTimeout();
+    const cache = this.cacheConfigFromFlags();
     const instance = await this.client.xcodeInstances.create({
       wait: true,
       spec: {
         ...(inactivityTimeout && { inactivityTimeout }),
+        ...(cache ? { cache } : {}),
       },
     });
     this._instancesCreatedThisRun.add(instance.metadata.id);
     saveLastCreatedInstance(instance);
+    if (wantsRestore(cache)) {
+      await this.awaitCacheRestore(instance.metadata.id, () =>
+        this.deleteCreatedInstance(instance.metadata.id),
+      );
+    }
     const target = loadLastXcodeInstance();
     if (!target || target.type !== 'xcode') {
       throw new Error(
@@ -768,4 +991,16 @@ export abstract class BaseCommand extends Command {
 
 function saveLastCreatedInstance(instanceOrId: InstanceInput, relatedTypes: Array<'xcode'> = []) {
   return registerCreatedInstance(instanceOrId, relatedTypes);
+}
+
+/**
+ * Puts the cache on the nested Xcode sandbox of an iOS create. The generated params do not
+ * carry the field yet, while the request body passes it through untouched.
+ */
+export function applySandboxCache(params: IosInstanceCreateParams, cache: XcodeCacheConfig): void {
+  const xcode = params.spec?.sandbox?.xcode as { cache?: XcodeCacheConfig } | undefined;
+  if (!xcode) {
+    throw new Error('Cannot configure a build cache on an iOS instance without an Xcode sandbox');
+  }
+  xcode.cache = cache;
 }

@@ -4,6 +4,8 @@ import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
+import { parseCacheConfig } from '../../lib/cache';
+import { cacheFlags } from '../../lib/cache-flags';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
 import { webhookConfigFromFlags } from '../../lib/webhook-options';
@@ -43,6 +45,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build ./MyProject --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
+    '<%= config.bin %> xcode build --cache-key myapp-pr51 --cache-restore-keys "myapp-pr51,myapp-main"',
     '<%= config.bin %> xcode build --configuration Debug',
     '<%= config.bin %> xcode build ./ExpoApp --configuration Debug --dev-server-url https://abc123.exp.direct',
     '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url "myapp://expo-development-client/?url=http%3A%2F%2F10.244.7.112%3A57090"',
@@ -202,6 +205,7 @@ export default class XcodeBuild extends BaseCommand {
         'Additional file to sync before building as localPath=remotePath, for example ~/.netrc=~/.netrc. Repeat for multiple files.',
       multiple: true,
     }),
+    ...cacheFlags,
   };
 
   async run(): Promise<void> {
@@ -248,6 +252,7 @@ export default class XcodeBuild extends BaseCommand {
           await this.resolveSimulatorBackedXcodeTargetOrCreate(flags.id)
         : await this.resolveXcodeTargetOrCreate(flags.id);
       const id = target.id;
+      await this.applyBuildCacheToTarget(target, parseCacheConfig(flags));
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);
 
