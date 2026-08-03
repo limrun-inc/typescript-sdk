@@ -214,9 +214,9 @@ export function followXcodeCache(
 ): Promise<XcodeCacheFollowResult> {
   const side = options.side ?? 'restore';
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS[side];
-  const url = `${target.baseURL.replace(/\/+$/, '')}/v1/xcode_instances/${encodeURIComponent(
-    target.instanceId,
-  )}/cache`;
+  let base = target.baseURL;
+  while (base.endsWith('/')) base = base.slice(0, -1);
+  const url = `${base}/v1/xcode_instances/${encodeURIComponent(target.instanceId)}/cache`;
 
   return new Promise<XcodeCacheFollowResult>((resolve, reject) => {
     let last: XcodeInstanceCache | undefined;
