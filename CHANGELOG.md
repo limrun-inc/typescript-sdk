@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.46.0 (2026-08-04)
+
+Full Changelog: [v0.45.5...v0.46.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.45.5...v0.46.0)
+
+### Features
+
+* **api:** add jurisdiction ([564bd16](https://github.com/limrun-inc/typescript-sdk/commit/564bd16ac579b6416e8d788d2449923185a0c8bd))
+
 ## 0.45.5 (2026-07-30)
 
 Full Changelog: [v0.45.4...v0.45.5](https://github.com/limrun-inc/typescript-sdk/compare/v0.45.4...v0.45.5)
