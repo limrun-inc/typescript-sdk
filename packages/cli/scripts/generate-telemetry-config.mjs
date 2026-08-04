@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const target = path.join(packageRoot, 'src', 'lib', 'telemetry-config.ts');
 const projectKey = process.env.LIM_POSTHOG_PROJECT_KEY ?? '';
-const host = process.env.LIM_POSTHOG_HOST ?? 'https://us.i.posthog.com';
+const host = process.env.LIM_POSTHOG_HOST ?? 'https://l.limrun.com';
 const tsString = (value) => `'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
 
 fs.writeFileSync(
