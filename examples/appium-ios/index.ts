@@ -84,6 +84,7 @@ const driver = await remote({
     'appium:wdaLocalPort': 443,
     'appium:useNewWDA': false,
     'appium:usePreinstalledWDA': true,
+    'appium:skipLogCapture': true,
     // @ts-expect-error -- limInstance* are our custom capabilities not known to webdriverio
     'appium:limInstanceApiUrl': instance.status.apiUrl,
     'appium:limInstanceToken': instance.status.token,
