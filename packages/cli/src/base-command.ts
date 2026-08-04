@@ -37,6 +37,7 @@ import {
 import type { XcodeCacheConfig, XcodeCacheFollowResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 import { xcodeSandboxIdFromUrl } from './lib/xcode-sandbox';
+import { captureTelemetry, telemetryIntentForCommand } from './lib/telemetry';
 
 const VERSION = require('../package.json').version;
 // Full instance-id shape only: prefix_region_suffix with a long TypeID suffix.
@@ -109,6 +110,7 @@ export abstract class BaseCommand extends Command {
   private _xcodeReplacementIntent?: XcodeReplacementIntent;
   private _overrideInstanceId?: string;
   private _createRetryCount = 0;
+  private _intentCaptured = false;
   // Server-side instances THIS invocation created, so a path that abandons one
   // (e.g. it turns out not to support RBE) can delete it instead of leaking a
   // billed instance. Only instances we created are eligible — never a user
@@ -126,6 +128,15 @@ export abstract class BaseCommand extends Command {
     if (typeof workspace === 'string' && workspace.trim()) {
       setScopeOverride(workspace.trim());
     }
+    this.captureCommandIntent(flags);
+  }
+
+  private captureCommandIntent(flags: Record<string, unknown>): void {
+    if (this._intentCaptured) return;
+    const intent = telemetryIntentForCommand(this.id ?? '', flags);
+    if (!intent) return;
+    this._intentCaptured = true;
+    void captureTelemetry(intent.event, intent.properties).catch(() => {});
   }
 
   protected isJsonEnabled(): boolean {

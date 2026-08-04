@@ -2,6 +2,12 @@ import { execFileSync } from 'child_process';
 import os from 'os';
 import process from 'process';
 import { writeConfig, CONFIG_KEYS } from './config';
+import {
+  captureTelemetry,
+  getTelemetryInstallationId,
+  telemetryErrorCategory,
+  type TelemetryCapture,
+} from './telemetry';
 
 const LOGIN_CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -15,6 +21,8 @@ interface LoginOptions {
   fetcher?: typeof fetch;
   hostname?: string;
   timeoutMs?: number;
+  anonymousId?: string;
+  telemetry?: TelemetryCapture;
 }
 
 interface CreateSessionResponse {
@@ -28,7 +36,13 @@ interface CreateSessionResponse {
 
 interface CollectTokenResponse {
   apiKey?: string;
+  organizationId?: string;
   message?: string;
+}
+
+interface CollectedToken {
+  apiKey: string;
+  organizationId?: string;
 }
 
 type LoginRuntimeOptions = Omit<LoginOptions, 'apiEndpoint' | 'consoleEndpoint' | 'version'>;
@@ -63,41 +77,60 @@ export async function loginWithOptions(options: LoginOptions): Promise<void> {
     hostname = computerName(),
     log = console.log,
   } = options;
-
-  const deadline = Date.now() + (options.timeoutMs ?? LOGIN_CALLBACK_TIMEOUT_MS);
-  const session = await createSession(fetcher, apiEndpoint, consoleEndpoint, hostname, version, deadline);
-  log(`\nConfirm this phrase in your browser: ${session.phrase}`);
-  log(`Opening this URL to log in: ${session.verificationUrl}\n\n`);
+  const telemetry = options.telemetry ?? captureTelemetry;
+  const anonymousId = options.anonymousId ?? getTelemetryInstallationId();
 
   try {
-    await (options.opener ?? openLoginUrl)(session.verificationUrl);
-  } catch {
-    // The URL is already printed above, so a failed opener does not block login.
-  }
-  log('Waiting for you to confirm in browser...');
+    await emitTelemetry(telemetry, 'cli_auth_started', { auth_method: 'browser' });
+    const deadline = Date.now() + (options.timeoutMs ?? LOGIN_CALLBACK_TIMEOUT_MS);
+    const session = await createSession(
+      fetcher,
+      apiEndpoint,
+      consoleEndpoint,
+      hostname,
+      version,
+      deadline,
+      anonymousId,
+    );
+    log(`\nConfirm this phrase in your browser: ${session.phrase}`);
+    log(`Opening this URL to log in: ${session.verificationUrl}\n\n`);
 
-  const pollIntervalMs = Math.max(1, session.pollIntervalSeconds ?? 2) * 1000;
-  for (;;) {
-    if (Date.now() >= deadline) {
-      throw loginTimeoutError();
-    }
-
-    let token: string | null;
     try {
-      token = await pollForToken(fetcher, apiEndpoint, session, deadline);
-    } catch (err) {
-      if (!(err instanceof RetryableLoginError) || Date.now() >= deadline) {
-        throw err;
-      }
-      await sleep(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
-      continue;
+      await (options.opener ?? openLoginUrl)(session.verificationUrl);
+    } catch {
+      // The URL is already printed above, so a failed opener does not block login.
     }
-    if (token) {
-      configWriter({ [CONFIG_KEYS.apiKey]: token });
-      return;
-    }
+    log('Waiting for you to confirm in browser...');
 
-    await sleep(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
+    const pollIntervalMs = Math.max(1, session.pollIntervalSeconds ?? 2) * 1000;
+    for (;;) {
+      if (Date.now() >= deadline) {
+        throw loginTimeoutError();
+      }
+
+      let token: CollectedToken | null;
+      try {
+        token = await pollForToken(fetcher, apiEndpoint, session, deadline);
+      } catch (err) {
+        if (!(err instanceof RetryableLoginError) || Date.now() >= deadline) {
+          throw err;
+        }
+        await sleep(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
+        continue;
+      }
+      if (token) {
+        configWriter({ [CONFIG_KEYS.apiKey]: token.apiKey });
+        return;
+      }
+
+      await sleep(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
+    }
+  } catch (err) {
+    await emitTelemetry(telemetry, 'cli_auth_failed', {
+      auth_method: 'browser',
+      error_category: telemetryErrorCategory(err),
+    });
+    throw err;
   }
 }
 
@@ -128,13 +161,14 @@ async function createSession(
   hostname: string,
   version: string,
   deadline: number,
+  anonymousId?: string,
 ): Promise<CreateSessionResponse> {
   const response = await fetchWithDeadline(fetcher, new URL('/authn/cli/sessions', apiEndpoint), deadline, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ hostname, cliVersion: version }),
+    body: JSON.stringify({ hostname, cliVersion: version, ...(anonymousId ? { anonymousId } : {}) }),
   });
   if (!response.ok) {
     throw new Error(`Failed to start CLI login session: ${await responseMessage(response)}`);
@@ -156,7 +190,7 @@ async function pollForToken(
   apiEndpoint: string,
   session: CreateSessionResponse,
   deadline: number,
-): Promise<string | null> {
+): Promise<CollectedToken | null> {
   const url = new URL(`/authn/cli/sessions/${encodeURIComponent(session.sessionId)}/token`, apiEndpoint);
   url.searchParams.set('secret', session.secret);
   let response: Response;
@@ -187,7 +221,10 @@ async function pollForToken(
   if (!body.apiKey) {
     throw new Error('Backend approved the CLI login session without returning an API key.');
   }
-  return body.apiKey;
+  return {
+    apiKey: body.apiKey,
+    ...(body.organizationId ? { organizationId: body.organizationId } : {}),
+  };
 }
 
 async function fetchWithDeadline(
@@ -231,4 +268,16 @@ export async function responseMessage(response: Response): Promise<string> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function emitTelemetry(
+  telemetry: TelemetryCapture,
+  event: Parameters<TelemetryCapture>[0],
+  properties: Parameters<TelemetryCapture>[1],
+): Promise<void> {
+  try {
+    await telemetry(event, properties);
+  } catch {
+    // Analytics must never change authentication behavior.
+  }
 }
