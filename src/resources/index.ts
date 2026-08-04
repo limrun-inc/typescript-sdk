@@ -24,6 +24,13 @@ export {
   type AssetGetOrCreateParams,
 } from './assets';
 export {
+  GradleInstances,
+  type GradleInstance,
+  type GradleInstanceCreateParams,
+  type GradleInstanceListParams,
+  type GradleInstancesItems,
+} from './gradle-instances';
+export {
   IosInstances,
   type IosInstance,
   type IosInstanceCreateParams,

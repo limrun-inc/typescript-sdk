@@ -43,6 +43,13 @@ import {
   Assets,
 } from './resources/assets';
 import {
+  GradleInstance,
+  GradleInstanceCreateParams,
+  GradleInstanceListParams,
+  GradleInstances,
+  GradleInstancesItems,
+} from './resources/gradle-instances';
+import {
   IosInstance,
   IosInstanceCreateParams,
   IosInstanceListParams,
@@ -811,6 +818,7 @@ export class Limrun {
   assets: API.Assets = new API.Assets(this);
   iosInstances: API.IosInstances = new API.IosInstances(this);
   xcodeInstances: API.XcodeInstances = new API.XcodeInstances(this);
+  gradleInstances: API.GradleInstances = new API.GradleInstances(this);
   analytics: API.Analytics = new API.Analytics(this);
   scopedTokens: API.ScopedTokens = new API.ScopedTokens(this);
 }
@@ -819,6 +827,7 @@ Limrun.AndroidInstances = AndroidInstances;
 Limrun.Assets = Assets;
 Limrun.IosInstances = IosInstances;
 Limrun.XcodeInstances = XcodeInstances;
+Limrun.GradleInstances = GradleInstances;
 Limrun.Analytics = Analytics;
 Limrun.ScopedTokens = ScopedTokens;
 
@@ -860,6 +869,14 @@ export declare namespace Limrun {
     type XcodeInstancesItems as XcodeInstancesItems,
     type XcodeInstanceCreateParams as XcodeInstanceCreateParams,
     type XcodeInstanceListParams as XcodeInstanceListParams,
+  };
+
+  export {
+    GradleInstances as GradleInstances,
+    type GradleInstance as GradleInstance,
+    type GradleInstancesItems as GradleInstancesItems,
+    type GradleInstanceCreateParams as GradleInstanceCreateParams,
+    type GradleInstanceListParams as GradleInstanceListParams,
   };
 
   export {

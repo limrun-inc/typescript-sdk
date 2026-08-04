@@ -52,6 +52,19 @@ Methods:
 - <code title="delete /v1/xcode_instances/{id}">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">delete</a>(id) -> void</code>
 - <code title="get /v1/xcode_instances/{id}">client.xcodeInstances.<a href="./src/resources/xcode-instances.ts">get</a>(id) -> XcodeInstance</code>
 
+# GradleInstances
+
+Types:
+
+- <code><a href="./src/resources/gradle-instances.ts">GradleInstance</a></code>
+
+Methods:
+
+- <code title="post /v1/gradle_instances">client.gradleInstances.<a href="./src/resources/gradle-instances.ts">create</a>({ ...params }) -> GradleInstance</code>
+- <code title="get /v1/gradle_instances">client.gradleInstances.<a href="./src/resources/gradle-instances.ts">list</a>({ ...params }) -> GradleInstancesItems</code>
+- <code title="delete /v1/gradle_instances/{id}">client.gradleInstances.<a href="./src/resources/gradle-instances.ts">delete</a>(id) -> void</code>
+- <code title="get /v1/gradle_instances/{id}">client.gradleInstances.<a href="./src/resources/gradle-instances.ts">get</a>(id) -> GradleInstance</code>
+
 # Analytics
 
 Types:
