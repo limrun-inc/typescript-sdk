@@ -36,7 +36,7 @@ jobs:
         run: yarn build
         env:
           LIM_POSTHOG_PROJECT_KEY: ${{ secrets.LIMRUN_POSTHOG_PROJECT_KEY }}
-          LIM_POSTHOG_HOST: ${{ vars.LIMRUN_POSTHOG_HOST || 'https://us.i.posthog.com' }}
+          LIM_POSTHOG_HOST: ${{ vars.LIMRUN_POSTHOG_HOST || 'https://l.limrun.com' }}
 
       # Authenticates via the npm trusted publisher configured for this
       # workflow (OIDC); a configured token would take precedence and fail.
