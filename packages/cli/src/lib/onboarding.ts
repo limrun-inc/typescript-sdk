@@ -14,6 +14,13 @@ import {
   type PlanKind,
 } from './skills';
 import { loadRemoteSkills, type LoadedRemoteSkills } from './remote-skills';
+import {
+  captureTelemetry,
+  telemetryErrorCategory,
+  type TelemetryCapture,
+  type TelemetryEvent,
+  type TelemetryProperties,
+} from './telemetry';
 
 const execFileAsync = promisify(execFile);
 
@@ -73,6 +80,7 @@ interface InstallProjectSkillsOptions {
   projectRoot: string;
   skillNames: string[];
   source?: LoadedRemoteSkills;
+  telemetry?: TelemetryCapture;
 }
 
 type GitRunner = (args: string[], cwd?: string) => Promise<string>;
@@ -285,10 +293,18 @@ export async function installProjectSkills({
   projectRoot,
   skillNames,
   source,
+  telemetry = captureTelemetry,
 }: InstallProjectSkillsOptions): Promise<SkillInstallResult[]> {
-  const loaded = source ?? (await loadRemoteSkills());
-  const shouldCleanup = source === undefined;
+  await emitOnboardingTelemetry(telemetry, 'skills_install_started', {
+    entrypoint: 'onboarding',
+    skill_count: skillNames.length,
+    agent_count: ONBOARDING_AGENTS.length,
+  });
+  let loaded: LoadedRemoteSkills | undefined;
+  let shouldCleanup = false;
   try {
+    loaded = source ?? (await loadRemoteSkills());
+    shouldCleanup = source === undefined;
     const results: SkillInstallResult[] = [];
     for (const skillName of skillNames) {
       const skill = loaded.skills.find((candidate) => candidate.name === skillName);
@@ -310,11 +326,39 @@ export async function installProjectSkills({
         });
       }
     }
+    await emitOnboardingTelemetry(telemetry, 'skills_install_succeeded', {
+      entrypoint: 'onboarding',
+      skill_count: skillNames.length,
+      agent_count: ONBOARDING_AGENTS.length,
+      installed_count: results.filter((result) => result.status === 'installed').length,
+      updated_count: results.filter((result) => result.status === 'updated').length,
+      unchanged_count: results.filter((result) => result.status === 'unchanged').length,
+    });
     return results;
+  } catch (err) {
+    await emitOnboardingTelemetry(telemetry, 'skills_install_failed', {
+      entrypoint: 'onboarding',
+      skill_count: skillNames.length,
+      agent_count: ONBOARDING_AGENTS.length,
+      error_category: telemetryErrorCategory(err),
+    });
+    throw err;
   } finally {
-    if (shouldCleanup) {
+    if (shouldCleanup && loaded) {
       loaded.cleanup();
     }
+  }
+}
+
+async function emitOnboardingTelemetry(
+  telemetry: TelemetryCapture,
+  event: TelemetryEvent,
+  properties: TelemetryProperties,
+): Promise<void> {
+  try {
+    await telemetry(event, properties);
+  } catch {
+    // Analytics must never change onboarding behavior.
   }
 }
 
