@@ -63,6 +63,8 @@ export {
   type XcodeRunOptions,
   type XcodeGenConfig,
   type XcodeSigningConfig,
+  type XcodeCloudSigningConfig,
+  type XcodeCloudSigningMethod,
   type ReactNativeBuildConfig,
   type SimulatorAttachResult,
   type SimulatorStatus,
