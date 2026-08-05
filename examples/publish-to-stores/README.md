@@ -13,20 +13,20 @@ still prepare its signing material (see
 ## Architecture
 
 - `frontend/` uses `@limrun/apple-auth` to sign into Apple through Limrun's
-  registry relay, choose or create a bundle ID, and prepare four publishing
-  resources — an Apple distribution certificate, App Store provisioning
-  profile, App Store Connect app record, and App Store Connect API key —
-  plus, optionally, the device-install credentials: a development
-  certificate and ad-hoc/development provisioning profiles covering the
-  team's registered iPhones.
+  registry relay, choose or create a bundle ID, and choose Apple cloud signing
+  or manual signing. It prepares the App Store Connect app record and Admin API
+  key for either mode; manual mode also creates the distribution certificate
+  and App Store provisioning profile. It can separately prepare
+  device-install credentials covering the team's registered iPhones.
 - The Android tab uses `@limrun/play-auth` for Google Identity Services and
   browser-side upload-keystore generation. It detects the package from the
   project, verifies Play Console access, then calls the backend with a
   short-lived Google access token.
 - `backend/` keeps `LIM_API_KEY` server-side, mints a short-lived
   `applerelay:*:connect` scoped token, stores signing secrets as files under
-  `backend/.secrets/`, runs a detached `lim xcode build` with
-  `--upload-to-appstore`, and tracks the callback. Android follows the same
+  `backend/.secrets/`, runs a detached `lim xcode build` with the selected
+  signing mode and `--upload-to-appstore`, and tracks the callback. Android
+  follows the same
   pattern with detached `lim gradle build`: it signs `bundleRelease`, resolves
   the next Play `versionCode`, publishes the AAB, and reports completion by
   webhook.
@@ -40,9 +40,27 @@ TestFlight automatically; the success link opens the app's distribution page
 where the processed build can be attached to a version and submitted for
 review.
 
+## iOS signing modes
+
+The Connect phase makes the ownership of signing credentials explicit:
+
+- **Apple cloud signing** uses only the App Store Connect API key from the
+  configured secret store. `lim xcode build` exports with
+  `--signing-method app-store-connect`; Apple creates, stores, and reuses the
+  cloud-managed distribution certificate and provisioning profile.
+- **Manual signing** creates and maintains the distribution certificate (p12)
+  and App Store provisioning profile in the configured secret store. The
+  backend materializes them only for the build and passes
+  `--certificate-p12` and `--provisioning-profile`. The App Store Connect API
+  key is still used for the upload.
+
+Switching modes resets the Connect checklist to that mode's required resources.
+The device-install certificate and profile actions remain optional and are
+independent of the publishing mode.
+
 ## Device install credentials
 
-The last three Connect actions create what the
+The certificate and device-profile Connect actions create what the
 [`device-install`](../device-install) example needs: a development
 certificate (WebUSB installs) and ad-hoc/development provisioning profiles
 (QR code and WebUSB installs) bound to the iPhones already registered on the
@@ -91,6 +109,8 @@ an origin other than `http://localhost:5173`.
   entered in the UI (see [Webhook URL](#webhook-url))
 - An Apple Developer Program account with permission to create App Store
   Connect API keys
+- For Apple cloud signing, an Admin API key or one with **Access to
+  cloud-managed distribution certificates**
 - A Google Play Console app and a Google account with release permission
 
 ## Webhook URL

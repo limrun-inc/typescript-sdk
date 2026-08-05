@@ -1,6 +1,7 @@
-// Runs one store publish: materializes stored signing secrets into temp files,
-// starts a detached `lim xcode build` with a build-finish webhook, uploads to
-// App Store Connect, and tracks the build until the callback arrives.
+// Runs one store publish: materializes either the cloud-signing API key or
+// manual signing credentials, starts a detached `lim xcode build` with a
+// build-finish webhook, uploads to App Store Connect, and tracks the build
+// until the callback arrives.
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -8,10 +9,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { getSecret, listSecrets, type StoredSecret } from './secret-store.js';
 
+export type SigningMode = 'cloud' | 'manual';
+
 export type PublishRequest = {
   projectPath: string;
   teamId: string;
   bundleId: string;
+  signingMode: SigningMode;
   scheme?: string;
   /** Store directory the signing secrets live in; backend default when absent. */
   secretsDir?: string;
@@ -23,45 +27,88 @@ export type PublishRequest = {
   webhookUrl: string;
 };
 
-type PublishCredentials = {
+type CloudPublishCredentials = {
+  signingMode: 'cloud';
+  apiKey: StoredSecret;
+};
+
+type ManualPublishCredentials = {
+  signingMode: 'manual';
   certificate: StoredSecret;
   profile: StoredSecret;
   apiKey: StoredSecret;
 };
 
+type PublishCredentials = CloudPublishCredentials | ManualPublishCredentials;
+
+function isUnexpired(expirationDate?: string): boolean {
+  if (!expirationDate) return true;
+  const expiresAt = Date.parse(expirationDate);
+  return !Number.isNaN(expiresAt) && expiresAt > Date.now();
+}
+
+function commaSeparatedValues(value?: string): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 /**
- * Resolves the three secrets a store upload needs. The distribution
- * certificate and App Store Connect API key live under conventional names;
- * the App Store profile is found by its references: same team, binds the
- * bundle ID, and binds no devices (only App Store profiles are device-free).
+ * Resolves the credentials for the selected signing mode. Cloud signing only
+ * needs the team API key; manual signing additionally reads the distribution
+ * certificate and App Store profile maintained by the secret store.
  */
 export async function resolvePublishCredentials(
   teamId: string,
   bundleId: string,
+  signingMode: SigningMode,
   secretsDir?: string,
 ): Promise<PublishCredentials> {
+  const apiKey = await getSecret('appStoreConnectApiKey', `${teamId}/APP_STORE_CONNECT_API_KEY`, secretsDir);
+  if (!apiKey) {
+    throw new Error(`No App Store Connect API key stored for team ${teamId}. Run Connect first.`);
+  }
+  if (signingMode === 'cloud') {
+    if (!apiKey.data.issuerId) {
+      throw new Error(
+        `The App Store Connect API key for team ${teamId} has no issuer ID; cloud signing requires a team key.`,
+      );
+    }
+    return { signingMode, apiKey };
+  }
+
   const certificate = await getSecret('appleCertificate', `${teamId}/DISTRIBUTION`, secretsDir);
   if (!certificate) {
     throw new Error(`No distribution certificate stored for team ${teamId}. Run Connect first.`);
   }
-  const apiKey = await getSecret('appStoreConnectApiKey', `${teamId}/APP_STORE_CONNECT_API_KEY`, secretsDir);
-  if (!apiKey) {
-    throw new Error(`No App Store Connect API key stored for team ${teamId}. Run Connect first.`);
+  if (!isUnexpired(certificate.data.expirationDate)) {
+    throw new Error(`The stored distribution certificate for team ${teamId} has expired. Run Connect again.`);
+  }
+  const certificateSerial = certificate.data.serialNumber;
+  if (!certificateSerial) {
+    throw new Error(
+      `The stored distribution certificate for team ${teamId} has no serial number. Run Connect again.`,
+    );
   }
   const profiles = (await listSecrets(secretsDir))
     .filter(
       (secret) =>
         secret.type === 'appleProvisioningProfile' &&
         secret.data.teamID === teamId &&
-        (secret.data.bundleIDs ?? '').split(',').includes(bundleId) &&
-        !secret.data.deviceIDs,
+        commaSeparatedValues(secret.data.bundleIDs).includes(bundleId) &&
+        !secret.data.deviceIDs &&
+        isUnexpired(secret.data.expirationDate) &&
+        commaSeparatedValues(secret.data.certificateSerialNumbers).includes(certificateSerial),
     )
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const profile = profiles[0];
   if (!profile) {
-    throw new Error(`No App Store provisioning profile stored for ${bundleId}. Run Connect first.`);
+    throw new Error(
+      `No current App Store provisioning profile stored for ${bundleId} matches the distribution certificate. Run Connect with manual signing first.`,
+    );
   }
-  return { certificate, profile, apiKey };
+  return { signingMode, certificate, profile, apiKey };
 }
 
 // How deep findExpoAppConfigs descends. Monorepos nest their Expo app a few
@@ -294,43 +341,103 @@ export function spawnDetachedLim(options: {
   });
 }
 
+export function buildSigningArguments(options: {
+  signingMode: SigningMode;
+  teamId: string;
+  apiKeyId: string;
+  apiIssuerId?: string;
+  apiKeyPath: string;
+  certificatePath?: string;
+  certificatePassword?: string;
+  profilePath?: string;
+}): string[] {
+  const args: string[] = [];
+  if (options.signingMode === 'cloud') {
+    if (!options.apiIssuerId) throw new Error('Cloud signing requires an App Store Connect issuer ID.');
+    args.push('--signing-method', 'app-store-connect', '--team-id', options.teamId);
+  } else {
+    if (!options.certificatePath || !options.profilePath) {
+      throw new Error('Manual signing requires a certificate and provisioning profile.');
+    }
+    args.push(
+      '--certificate-p12',
+      options.certificatePath,
+      '--certificate-password',
+      options.certificatePassword ?? '',
+      '--provisioning-profile',
+      options.profilePath,
+    );
+  }
+  args.push(
+    '--upload-to-appstore',
+    '--auto-build-number',
+    '--asc-key-id',
+    options.apiKeyId,
+    '--asc-key',
+    options.apiKeyPath,
+  );
+  if (options.apiIssuerId) args.push('--asc-issuer-id', options.apiIssuerId);
+  return args;
+}
+
+function loggedCommand(args: string[]): string {
+  return args
+    .map((arg, index) => (args[index - 1] === '--certificate-password' ? '<redacted>' : arg))
+    .join(' ');
+}
+
 /**
- * Materializes the stored signing secrets into temp files and spawns
- * `lim xcode build` with a build-finish webhook pointing at the URL the
- * request carries. Returns the publish ID the frontend polls; the outcome
+ * Materializes the selected signing credentials into a temp directory and
+ * spawns `lim xcode build` with a build-finish webhook pointing at the URL
+ * the request carries. Returns the publish ID the frontend polls; the outcome
  * arrives via the webhook, not the CLI's output — that output only goes to
  * this process's console for debugging.
  */
 export async function startPublish(request: PublishRequest): Promise<string> {
-  const credentials = await resolvePublishCredentials(request.teamId, request.bundleId, request.secretsDir);
-  const { certificate, profile } = credentials;
+  const credentials = await resolvePublishCredentials(
+    request.teamId,
+    request.bundleId,
+    request.signingMode,
+    request.secretsDir,
+  );
 
   const workDir = await mkdtemp(path.join(os.tmpdir(), 'publish-to-stores-'));
-  const certificatePath = path.join(workDir, 'certificate.p12');
-  const profilePath = path.join(workDir, 'profile.mobileprovision');
-  await writeFile(certificatePath, Buffer.from(certificate.data.certificateP12Base64, 'base64'), {
-    mode: 0o600,
-  });
-  await writeFile(profilePath, Buffer.from(profile.data.provisioningProfileBase64, 'base64'), {
+  const apiKeyPath = path.join(workDir, 'AuthKey.p8');
+  await writeFile(apiKeyPath, Buffer.from(credentials.apiKey.data.privateKeyP8Base64, 'base64'), {
     mode: 0o600,
   });
 
   const { id, token } = beginPublish();
 
-  const args = [
-    'xcode',
-    'build',
-    request.projectPath,
-    '--sdk',
-    'iphoneos',
-    '--configuration',
-    'Release',
-    '--certificate-p12',
-    certificatePath,
-    '--certificate-password',
-    certificate.data.certificatePassword ?? '',
-    '--provisioning-profile',
-    profilePath,
+  const args = ['xcode', 'build', request.projectPath, '--sdk', 'iphoneos', '--configuration', 'Release'];
+  let certificatePath: string | undefined;
+  let profilePath: string | undefined;
+  if (credentials.signingMode === 'manual') {
+    certificatePath = path.join(workDir, 'certificate.p12');
+    profilePath = path.join(workDir, 'profile.mobileprovision');
+    await writeFile(
+      certificatePath,
+      Buffer.from(credentials.certificate.data.certificateP12Base64, 'base64'),
+      {
+        mode: 0o600,
+      },
+    );
+    await writeFile(profilePath, Buffer.from(credentials.profile.data.provisioningProfileBase64, 'base64'), {
+      mode: 0o600,
+    });
+  }
+  args.push(
+    ...buildSigningArguments({
+      signingMode: credentials.signingMode,
+      teamId: request.teamId,
+      apiKeyId: credentials.apiKey.data.keyId,
+      apiIssuerId: credentials.apiKey.data.issuerId,
+      apiKeyPath,
+      certificatePath,
+      certificatePassword:
+        credentials.signingMode === 'manual' ? credentials.certificate.data.certificatePassword : undefined,
+      profilePath,
+    }),
     '--webhook-url',
     request.webhookUrl,
     '--webhook-header',
@@ -341,22 +448,7 @@ export async function startPublish(request: PublishRequest): Promise<string> {
     // The detach summary (instance, console link, webhook) arrives as one
     // JSON object on stdout instead of prose, so it is machine-readable here.
     '--json',
-  ];
-  const apiKeyPath = path.join(workDir, 'AuthKey.p8');
-  await writeFile(apiKeyPath, Buffer.from(credentials.apiKey.data.privateKeyP8Base64, 'base64'), {
-    mode: 0o600,
-  });
-  args.push(
-    '--upload-to-appstore',
-    '--auto-build-number',
-    '--asc-key-id',
-    credentials.apiKey.data.keyId,
-    '--asc-key',
-    apiKeyPath,
   );
-  if (credentials.apiKey.data.issuerId) {
-    args.push('--asc-issuer-id', credentials.apiKey.data.issuerId);
-  }
   if (request.scheme) {
     args.push('--scheme', request.scheme);
   }
@@ -366,7 +458,7 @@ export async function startPublish(request: PublishRequest): Promise<string> {
   for (const line of await ensureExpoBundleIdentifier(request.projectPath, request.bundleId)) {
     log(line);
   }
-  log(`$ lim ${args.join(' ')}`);
+  log(`$ lim ${loggedCommand(args)}`);
   spawnDetachedLim({ id, args, workDir, log });
   return id;
 }

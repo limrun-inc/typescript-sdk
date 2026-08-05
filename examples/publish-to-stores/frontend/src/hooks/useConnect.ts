@@ -1,6 +1,6 @@
 // The Connect phase: a one-time flow that signs into Apple, resolves the
-// team and bundle ID, and materializes everything a publish — and,
-// optionally, the device-install example — later needs: certificates,
+// team and bundle ID, and materializes everything a publish, and
+// optionally the device-install example, later needs: certificates,
 // provisioning profiles, the App Store Connect app record and an App
 // Store Connect API key — into the backend's secret store. Read
 // top-to-bottom it doubles as a reference for the `@limrun/apple-auth`
@@ -37,24 +37,24 @@ import {
 } from '@limrun/apple-auth';
 import { useAppleIDLogin } from '@limrun/apple-auth/react';
 import { naming } from '../config';
-import { errorMessage, fetchRegistrySession, type RegistrySession } from '../lib/backend';
+import { errorMessage, fetchRegistrySession, type RegistrySession, type SigningMode } from '../lib/backend';
 
 /**
  * The deselectable actions of the Connect checklist. The bundle ID itself is
- * always ensured because every profile depends on it. The first four cover
- * publishing; the last three prepare the signing material the
- * device-install example uses for QR code and WebUSB installs.
+ * always ensured because every profile depends on it. The app record and API
+ * key cover publishing; the remaining actions prepare signing material for
+ * the device-install example's QR code and WebUSB installs.
  */
 export const CONNECT_ACTIONS = [
   {
     id: 'distributionCertificate',
     label: 'App distribution certificate',
-    description: 'Signs TestFlight, App Store and ad-hoc builds.',
+    description: 'Required for manual App Store signing; also signs ad-hoc device installs.',
   },
   {
     id: 'appStoreProfile',
     label: 'App Store provisioning profile',
-    description: 'For TestFlight and App Store uploads.',
+    description: 'Required for manual TestFlight and App Store signing.',
   },
   {
     id: 'appRecord',
@@ -64,7 +64,7 @@ export const CONNECT_ACTIONS = [
   {
     id: 'apiKey',
     label: 'App Store Connect API key',
-    description: 'Authenticates the TestFlight/App Store upload.',
+    description: 'Authenticates uploads and, in cloud mode, signing.',
   },
   {
     id: 'developmentCertificate',
@@ -85,6 +85,15 @@ export const CONNECT_ACTIONS = [
 
 export type ConnectActionId = (typeof CONNECT_ACTIONS)[number]['id'];
 
+const REQUIRED_ACTIONS: Record<SigningMode, readonly ConnectActionId[]> = {
+  cloud: ['appRecord', 'apiKey'],
+  manual: ['distributionCertificate', 'appStoreProfile', 'appRecord', 'apiKey'],
+};
+
+function requiredActions(signingMode: SigningMode): Set<ConnectActionId> {
+  return new Set(REQUIRED_ACTIONS[signingMode]);
+}
+
 export type ActionStatus = 'pending' | 'running' | 'done' | 'skipped' | 'error';
 
 export type ActionState = { status: ActionStatus; note?: string };
@@ -93,6 +102,7 @@ export type Connection = {
   teamId: string;
   bundleId: string;
   appName: string;
+  signingMode: SigningMode;
   /**
    * Numeric App Store Connect app record ID, captured when the app record
    * action runs. Used to link to the app's App Store Connect page after a
@@ -113,20 +123,41 @@ function isUnexpired(expirationDate?: string) {
 }
 
 /**
- * Whether a returning user is still connected: the store must hold the
- * team's distribution certificate, its App Store Connect API key, and at
- * least one of the team's provisioning profiles from an earlier session.
+ * Whether a returning user is still connected: both modes need an App Store
+ * Connect API key; manual signing additionally needs the certificate and
+ * provisioning profile maintained in the secret store.
  */
-function storeHoldsConnectionSecrets(secrets: SigningSecretMetadata[], stored: Connection): boolean {
+async function storeHoldsConnectionSecrets(
+  secretStore: SigningSecretStore,
+  secrets: SigningSecretMetadata[],
+  stored: Connection,
+): Promise<boolean> {
   const has = (type: string, name: string) =>
     secrets.some((secret) => secret.type === type && secret.name === name);
-  return (
-    has(APPLE_CERTIFICATE_SECRET_TYPE, appleCertificateSecretName(stored.teamId, 'DISTRIBUTION')) &&
-    has(APP_STORE_CONNECT_API_KEY_SECRET_TYPE, appStoreConnectApiKeySecretName(stored.teamId)) &&
-    secrets.some(
-      (secret) =>
-        secret.type === APPLE_PROVISIONING_PROFILE_SECRET_TYPE && secret.name.startsWith(`${stored.teamId}/`),
-    )
+  const hasApiKey = has(
+    APP_STORE_CONNECT_API_KEY_SECRET_TYPE,
+    appStoreConnectApiKeySecretName(stored.teamId),
+  );
+  if (stored.signingMode === 'cloud') return hasApiKey;
+  if (!hasApiKey) return false;
+  const certificate = await secretStore.get(
+    APPLE_CERTIFICATE_SECRET_TYPE,
+    appleCertificateSecretName(stored.teamId, 'DISTRIBUTION'),
+  );
+  if (!certificate?.data.certificateP12Base64 || !isUnexpired(certificate.data.expirationDate)) return false;
+  const profileMetadata = secrets.filter(
+    (secret) =>
+      secret.type === APPLE_PROVISIONING_PROFILE_SECRET_TYPE && secret.name.startsWith(`${stored.teamId}/`),
+  );
+  const profiles = await Promise.all(
+    profileMetadata.map((secret) => secretStore.get(APPLE_PROVISIONING_PROFILE_SECRET_TYPE, secret.name)),
+  );
+  return profiles.some(
+    (profile) =>
+      profile?.data.teamID === stored.teamId &&
+      profile.data.bundleIDs?.split(',').includes(stored.bundleId) &&
+      !profile.data.deviceIDs &&
+      isUnexpired(profile.data.expirationDate),
   );
 }
 
@@ -175,8 +206,9 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
   const [portalAppIds, setPortalAppIds] = useState<AppleBundleID[]>([]);
   const [bundleIdsLoading, setBundleIdsLoading] = useState(false);
   const [appName, setAppName] = useState('');
-  const [selectedActions, setSelectedActions] = useState<Set<ConnectActionId>>(
-    () => new Set(CONNECT_ACTIONS.map((action) => action.id)),
+  const [signingMode, setSigningMode] = useState<SigningMode>('cloud');
+  const [selectedActions, setSelectedActions] = useState<Set<ConnectActionId>>(() =>
+    requiredActions('cloud'),
   );
   const [actionStates, setActionStates] = useState<Partial<Record<ConnectActionId, ActionState>>>({});
   const [connection, setConnection] = useState<Connection>();
@@ -196,16 +228,19 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
       let stored: Connection;
       try {
         stored = JSON.parse(raw) as Connection;
+        // Connections saved before the selector existed used cloud signing.
+        stored.signingMode ??= 'cloud';
       } catch {
         localStorage.removeItem(CONNECTION_STORAGE_KEY);
         return;
       }
       try {
-        if (storeHoldsConnectionSecrets(await secretStore.list(), stored)) {
+        if (await storeHoldsConnectionSecrets(secretStore, await secretStore.list(), stored)) {
           if (!cancelled) {
             setConnection(stored);
             setBundleId(stored.bundleId);
             setAppName(stored.appName);
+            setSigningMode(stored.signingMode);
           }
         } else {
           localStorage.removeItem(CONNECTION_STORAGE_KEY);
@@ -286,12 +321,21 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
   }
 
   function toggleAction(id: ConnectActionId) {
+    if (requiredActions(signingMode).has(id)) return;
     setSelectedActions((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  }
+
+  function selectSigningMode(mode: SigningMode) {
+    setSigningMode(mode);
+    // Start each mode with exactly its publish requirements. Device-install
+    // credentials remain opt-in and can be selected afterwards.
+    setSelectedActions(requiredActions(mode));
+    setActionStates({});
   }
 
   // --- Step 1: Apple ID login -----------------------------------------------
@@ -432,10 +476,8 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
       await run('appStoreProfile', async () => {
         const certificateId = distributionCertificate?.certificateId;
         if (!certificateId) {
-          throw new Error('Select the distribution certificate action too; the profile must reference it.');
+          throw new Error('Manual signing requires the distribution certificate action.');
         }
-        // Reuse a portal profile with our name so repeated Connect runs don't
-        // pile up duplicates (Apple rejects duplicate profile names anyway).
         const name = naming.appStoreProfileName(trimmedBundleId);
         const profiles = await listAppleProfiles({
           relay,
@@ -443,22 +485,38 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
           profileKind: 'appstore',
           bundleId: trimmedBundleId,
         });
-        const existing = profiles.find((profile) => profile.name === name);
-        let profileId = existing?.profileId;
-        if (!profileId) {
-          const created = await createAppleProfile({
-            relay,
-            teamId,
-            profileKind: 'appstore',
-            bundleId: trimmedBundleId,
-            appIdId,
-            certificateIds: [certificateId],
-            name,
-          });
-          profileId = created.profileId;
+        const existingId = profiles.find((profile) => profile.name === name)?.profileId;
+        if (existingId) {
+          const downloaded = await downloadAppleProfile({ relay, teamId, profileId: existingId });
+          const info =
+            downloaded.rawBodyBase64 ? parseProvisioningProfileBase64(downloaded.rawBodyBase64) : undefined;
+          const serial = distributionCertificate?.secret.data.serialNumber;
+          const usable =
+            info !== undefined &&
+            !!serial &&
+            info.certificateSerialNumbers.includes(serial) &&
+            isUnexpired(info.expirationDate);
+          if (usable) {
+            await saveAppleProfileSecret({ relay, teamId, profileId: existingId, secretStore, log });
+            return 'Reused existing';
+          }
+          await deleteAppleProfile({ relay, teamId, profileId: existingId });
+          if (info?.uuid) {
+            await secretStore.delete(APPLE_PROVISIONING_PROFILE_SECRET_TYPE, `${teamId}/${info.uuid}`);
+          }
+          log('Replacing a stale App Store profile', name);
         }
-        await saveAppleProfileSecret({ relay, teamId, profileId, secretStore, log });
-        return existing ? 'Reused existing' : 'Created';
+        const created = await createAppleProfile({
+          relay,
+          teamId,
+          profileKind: 'appstore',
+          bundleId: trimmedBundleId,
+          appIdId,
+          certificateIds: [certificateId],
+          name,
+        });
+        await saveAppleProfileSecret({ relay, teamId, profileId: created.profileId, secretStore, log });
+        return existingId ? 'Recreated' : 'Created';
       });
 
       // App Store Connect rides the same session but carries its own active
@@ -598,6 +656,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
         teamId,
         bundleId: trimmedBundleId,
         appName: trimmedAppName,
+        signingMode,
         ascAppId,
       };
       setConnection(established);
@@ -618,6 +677,8 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     setSelectedTeamId('');
     setPortalAppIds([]);
     setBundleIdChoice(NEW_BUNDLE_ID);
+    setSigningMode('cloud');
+    setSelectedActions(requiredActions('cloud'));
     void appleLogin.close();
   }
 
@@ -654,7 +715,13 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
     bundleIdsLoading,
     appName,
     setAppName,
+    signingMode,
+    selectSigningMode,
     // Checklist
+    requiredActions: requiredActions(signingMode),
+    visibleActions: CONNECT_ACTIONS.filter(
+      (action) => signingMode === 'manual' || action.id !== 'appStoreProfile',
+    ),
     selectedActions,
     toggleAction,
     actionStates,
