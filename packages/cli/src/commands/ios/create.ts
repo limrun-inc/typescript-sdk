@@ -44,6 +44,11 @@ export default class IosCreate extends BaseCommand {
       description: 'Human-friendly display name shown in listings and the console',
     }),
     region: Flags.string({ description: 'Region where the instance should be created, such as us-west' }),
+    jurisdiction: Flags.string({
+      description:
+        'Jurisdiction the instance must be created in. Unlike --region, this is a hard constraint: creation fails when no region in the jurisdiction has capacity.',
+      options: ['us', 'eu', 'as'],
+    }),
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
     'inactivity-timeout': Flags.string({
       description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default is in organization settings.',
@@ -193,6 +198,7 @@ export default class IosCreate extends BaseCommand {
       }
 
       if (flags.region) params.spec!.region = flags.region;
+      if (flags.jurisdiction) params.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';
       if (flags.model) params.spec!.model = flags.model as 'iphone' | 'ipad' | 'watch';
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
