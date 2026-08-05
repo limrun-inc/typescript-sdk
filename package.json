@@ -36,7 +36,7 @@
     "https-proxy-agent": "7.0.6",
     "ignore": "^7.0.5",
     "proxy-from-env": "^2.1.0",
-    "undici": "7.28.0",
+    "undici": "7.29.0",
     "ws": "^8.18.3",
     "yauzl": "^3.4.0"
   },
