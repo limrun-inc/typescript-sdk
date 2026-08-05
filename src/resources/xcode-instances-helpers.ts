@@ -132,6 +132,11 @@ export type XcodeSigningConfig = {
 
 export type XcodeCloudSigningMethod = 'app-store-connect' | 'release-testing' | 'debugging';
 
+/**
+ * Apple-managed signing credentials used while exporting an unsigned device
+ * archive. Apple retains the signing certificate; callers provide only the
+ * App Store Connect team key.
+ */
 export type XcodeCloudSigningConfig = {
   method: XcodeCloudSigningMethod;
   teamId: string;
