@@ -38,6 +38,13 @@ export type XcodeBuildExecRequest = {
     /** One profile per embedded bundle. */
     provisioningProfilesBase64?: string[];
   };
+  cloudSigning?: {
+    method: 'app-store-connect' | 'release-testing' | 'debugging';
+    teamId: string;
+    apiKeyId: string;
+    apiIssuerId: string;
+    apiPrivateKeyBase64: string;
+  };
   /** Wire name retained for compatibility with the limbuild exec API. */
   testflight?: AppStoreUploadConfig;
   buildSettings?: Record<string, string>;
@@ -239,6 +246,11 @@ export type AppStoreUploadConfig = {
    * minutes).
    */
   waitTimeoutSeconds?: number;
+  /**
+   * Set CFBundleVersion to one more than the highest build already known to
+   * App Store Connect before upload.
+   */
+  autoIncrementBuildNumber?: boolean;
 };
 
 type DataListener = (chunk: string) => void;

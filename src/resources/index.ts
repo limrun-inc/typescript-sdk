@@ -25,6 +25,13 @@ export {
   type AssetGetOrCreateParams,
 } from './assets';
 export {
+  GradleInstances,
+  type GradleInstance,
+  type GradleInstanceCreateParams,
+  type GradleInstanceListParams,
+  type GradleInstancesItems,
+} from './gradle-instances';
+export {
   IosInstances,
   type IosInstance,
   type IosInstanceCreateParams,
@@ -38,13 +45,6 @@ export {
   type XcodeInstanceListParams,
   type XcodeInstancesItems,
 } from './xcode-instances';
-export {
-  type GradleInstance,
-  type GradleInstanceCreateParams,
-  type GradleInstanceListParams,
-  type GradleInstancesItems,
-} from './gradle-instances';
-
 export { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './assets-helpers';
 export {
   XcodeInstances,
@@ -57,6 +57,8 @@ export {
   type XcodeRunOptions,
   type XcodeGenConfig,
   type XcodeSigningConfig,
+  type XcodeCloudSigningConfig,
+  type XcodeCloudSigningMethod,
   type ReactNativeBuildConfig,
   type SimulatorAttachResult,
   type SimulatorStatus,
@@ -69,8 +71,11 @@ export {
   type BazelBuildLog,
   type WebhookConfig,
 } from './xcode-instances-helpers';
+// Side-effect import: grafts the createClient/listBuildLogs helpers onto the
+// generated GradleInstances class. The type-only re-export below is erased at
+// runtime, so it would not load the module on its own.
+import './gradle-instances-helpers';
 export {
-  GradleInstances,
   type GradleCreateClientParams,
   type GradleClient,
   type GradleSyncOptions,

@@ -42,6 +42,13 @@ import {
 } from './resources/assets';
 import { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './resources/assets-helpers';
 import {
+  GradleInstance,
+  GradleInstanceCreateParams,
+  GradleInstanceListParams,
+  GradleInstances,
+  GradleInstancesItems,
+} from './resources/gradle-instances';
+import {
   IosInstance,
   IosInstanceCreateParams,
   IosInstanceListParams,
@@ -55,20 +62,6 @@ import {
   XcodeInstanceListParams,
   XcodeInstancesItems,
 } from './resources/xcode-instances';
-import {
-  GradleInstance,
-  GradleInstanceCreateParams,
-  GradleInstanceListParams,
-  GradleInstancesItems,
-} from './resources/gradle-instances';
-import {
-  GradleInstances,
-  GradleCreateClientParams,
-  GradleClient,
-  GradleSyncOptions,
-  GradleBuildOptions,
-  GradleBuildLog,
-} from './resources/gradle-instances-helpers';
 import {
   XcodeInstances,
   XcodeCreateClientParams,
@@ -914,11 +907,6 @@ export declare namespace Limrun {
     type GradleInstancesItems as GradleInstancesItems,
     type GradleInstanceCreateParams as GradleInstanceCreateParams,
     type GradleInstanceListParams as GradleInstanceListParams,
-    type GradleCreateClientParams as GradleCreateClientParams,
-    type GradleClient as GradleClient,
-    type GradleSyncOptions as GradleSyncOptions,
-    type GradleBuildOptions as GradleBuildOptions,
-    type GradleBuildLog as GradleBuildLog,
   };
 
   export {
