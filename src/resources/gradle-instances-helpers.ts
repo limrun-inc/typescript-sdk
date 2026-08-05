@@ -1,4 +1,4 @@
-import { GradleInstances as GeneratedGradleInstances, type GradleInstance } from './gradle-instances';
+import { GradleInstances, type GradleInstance } from './gradle-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
@@ -95,15 +95,29 @@ function gradleDefaultIgnore(relativePath: string): boolean {
 // BuildLog.
 export type GradleBuildLog = BuildLog;
 
-export class GradleInstances extends GeneratedGradleInstances {
+declare module './gradle-instances' {
+  interface GradleInstances {
+    /**
+     * List the instance's persisted build logs.
+     */
+    listBuildLogs(id: string, options?: RequestOptions): APIPromise<GradleBuildLog[]>;
+    createClient(params: GradleCreateClientParams): Promise<GradleClient>;
+  }
+}
+
+// The method bodies live in a subclass so they can use the protected
+// `_client`. They are grafted onto the generated class below, instead of
+// exporting the subclass, so that generated files need no custom-code patch
+// to swap the class they export and instantiate.
+class GradleInstancesHelpers extends GradleInstances {
   /**
    * List the instance's persisted build logs.
    */
-  listBuildLogs(id: string, options?: RequestOptions): APIPromise<GradleBuildLog[]> {
+  override listBuildLogs(id: string, options?: RequestOptions): APIPromise<GradleBuildLog[]> {
     return this._client.get(path`/v1/gradle_instances/${id}/build_logs`, options);
   }
 
-  async createClient(params: GradleCreateClientParams): Promise<GradleClient> {
+  override async createClient(params: GradleCreateClientParams): Promise<GradleClient> {
     let apiUrl: string;
     let token: string;
     if ('instance' in params) {
@@ -188,3 +202,6 @@ export class GradleInstances extends GeneratedGradleInstances {
     };
   }
 }
+
+GradleInstances.prototype.listBuildLogs = GradleInstancesHelpers.prototype.listBuildLogs;
+GradleInstances.prototype.createClient = GradleInstancesHelpers.prototype.createClient;
