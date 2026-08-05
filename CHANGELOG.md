@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.46.1 (2026-08-05)
+
+Full Changelog: [v0.46.0...v0.46.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.46.0...v0.46.1)
+
+### Features
+
+* **api:** add gradle to stainless config as well ([def53f0](https://github.com/limrun-inc/typescript-sdk/commit/def53f031fa6316dea3424848b96fe0c45c5795f))
+* **api:** expose Xcode cloud signing options ([2b2dec8](https://github.com/limrun-inc/typescript-sdk/commit/2b2dec8065d43bd08725c9be652a071e9bdf70a4))
+
 ## 0.46.0 (2026-08-04)
 
 Full Changelog: [v0.45.5...v0.46.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.45.5...v0.46.0)
