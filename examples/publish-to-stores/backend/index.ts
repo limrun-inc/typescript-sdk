@@ -94,14 +94,25 @@ app.delete('/secrets/:type/:name', async (req: Request<{ type: string; name: str
 // must be a public URL that forwards to the webhook receiver's port 3001
 // (e.g. from `ngrok http 3001`).
 app.post('/publish', async (req: Request<{}, {}, Partial<PublishRequest>>, res: Response) => {
-  const { projectPath, teamId, bundleId, scheme, secretsDir, webhookUrl } = req.body;
-  if (!projectPath || !teamId || !bundleId || !webhookUrl) {
+  const { projectPath, teamId, bundleId, signingMode, scheme, secretsDir, webhookUrl } = req.body;
+  if (!projectPath || !teamId || !bundleId || !signingMode || !webhookUrl) {
     return res.status(400).json({
       status: 'error',
-      message: 'projectPath, teamId, bundleId and webhookUrl are required',
+      message: 'projectPath, teamId, bundleId, signingMode and webhookUrl are required',
     });
   }
-  const id = await startPublish({ projectPath, teamId, bundleId, scheme, secretsDir, webhookUrl });
+  if (signingMode !== 'cloud' && signingMode !== 'manual') {
+    return res.status(400).json({ status: 'error', message: 'signingMode must be cloud or manual' });
+  }
+  const id = await startPublish({
+    projectPath,
+    teamId,
+    bundleId,
+    signingMode,
+    scheme,
+    secretsDir,
+    webhookUrl,
+  });
   return res.status(202).json({ publishId: id });
 });
 

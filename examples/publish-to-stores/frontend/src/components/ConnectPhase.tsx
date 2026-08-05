@@ -1,12 +1,7 @@
 // The Connect wizard UI: Apple ID login (password + 2FA), team selection,
 // bundle ID / app name inputs, and the action checklist. All behaviour
 // lives in useConnect; this component only renders its state.
-import {
-  CONNECT_ACTIONS,
-  NEW_BUNDLE_ID,
-  type ConnectController,
-  type ActionStatus,
-} from '../hooks/useConnect';
+import { NEW_BUNDLE_ID, type ConnectController, type ActionStatus } from '../hooks/useConnect';
 import { hintText, infoBox, inputStyle, labelStyle, primaryButton, secondaryButton, warnBox } from '../theme';
 import { Section } from './Section';
 
@@ -109,8 +104,8 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
     return (
       <Section title="1. Connect">
         <div style={infoBox}>
-          Connected: team {connect.connection.teamId}, bundle ID {connect.connection.bundleId}. Signing
-          material is in the secret store, so this phase is skipped.
+          Connected: team {connect.connection.teamId}, bundle ID {connect.connection.bundleId}, using{' '}
+          {connect.connection.signingMode === 'cloud' ? 'Apple cloud signing' : 'manual signing'}.
         </div>
         <button style={secondaryButton(false)} onClick={connect.disconnect}>
           Disconnect and start over
@@ -179,9 +174,27 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
             name on the App Store.
           </p>
 
+          <label style={labelStyle}>Signing mode</label>
+          <select
+            style={inputStyle}
+            value={connect.signingMode}
+            disabled={connect.busy === 'confirm'}
+            onChange={(event) => connect.selectSigningMode(event.target.value as 'cloud' | 'manual')}
+          >
+            <option value="cloud">Apple cloud signing</option>
+            <option value="manual">Manual signing</option>
+          </select>
+          <p style={hintText}>
+            {connect.signingMode === 'cloud' ?
+              'This mode only needs the App Store Connect API key. Apple creates and keeps the signing certificate.'
+            : 'The distribution certificate and provisioning profile are created and maintained in this secret store.'
+            }
+          </p>
+
           <label style={labelStyle}>Actions</label>
-          {CONNECT_ACTIONS.map((action) => {
+          {connect.visibleActions.map((action) => {
             const state = connect.actionStates[action.id];
+            const required = connect.requiredActions.has(action.id);
             return (
               <label
                 key={action.id}
@@ -190,11 +203,14 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
                 <input
                   type="checkbox"
                   checked={connect.selectedActions.has(action.id)}
-                  disabled={connect.busy === 'confirm'}
+                  disabled={connect.busy === 'confirm' || required}
                   onChange={() => connect.toggleAction(action.id)}
                 />
                 <span style={{ flex: 1 }}>
-                  <strong>{action.label}</strong>
+                  <strong>
+                    {action.label}
+                    {required ? ' (required)' : ''}
+                  </strong>
                   <br />
                   <span style={hintText}>{action.description}</span>
                   {state && (
