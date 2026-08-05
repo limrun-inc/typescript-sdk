@@ -55,6 +55,60 @@ describe('xcode client signing', () => {
       },
     });
   });
+
+  test('serializes cloud signing with automatic App Store build numbering', async () => {
+    const calls: Array<{ input: RequestInfo; init: RequestInit | undefined }> = [];
+    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+      calls.push({ input, init });
+      if (String(input) === 'https://xcode.example.test/exec') {
+        return jsonResponse({ execId: 'build-2' });
+      }
+      throw new Error(`unexpected request: ${input}`);
+    });
+
+    const client = new Limrun({ apiKey: 'key' });
+    const xcode = await client.xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'xcode-token',
+    });
+    const result = await xcode.xcodebuild(
+      { sdk: 'iphoneos', configuration: 'Release' },
+      {
+        cloudSigning: {
+          method: 'app-store-connect',
+          teamId: 'TEAM123456',
+          apiKeyId: 'KEY123',
+          apiIssuerId: 'issuer-uuid',
+          apiPrivateKeyBase64: 'private-key',
+        },
+        appstore: {
+          apiKeyId: 'KEY123',
+          apiIssuerId: 'issuer-uuid',
+          apiPrivateKeyBase64: 'private-key',
+          autoIncrementBuildNumber: true,
+        },
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
+      command: 'xcodebuild',
+      xcodebuild: { sdk: 'iphoneos', configuration: 'Release' },
+      cloudSigning: {
+        method: 'app-store-connect',
+        teamId: 'TEAM123456',
+        apiKeyId: 'KEY123',
+        apiIssuerId: 'issuer-uuid',
+        apiPrivateKeyBase64: 'private-key',
+      },
+      testflight: {
+        apiKeyId: 'KEY123',
+        apiIssuerId: 'issuer-uuid',
+        apiPrivateKeyBase64: 'private-key',
+        autoIncrementBuildNumber: true,
+      },
+    });
+  });
 });
 
 function jsonResponse(body: unknown): Response {
