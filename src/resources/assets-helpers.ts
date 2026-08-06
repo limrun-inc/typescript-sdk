@@ -54,9 +54,10 @@ export interface AssetGetOrUploadResponse {
 
 /**
  * Body init for the signed-URL PUT. Without a progress callback the buffer is sent
- * directly. With one, the buffer is wrapped in a ReadableStream so the callback can
- * fire as chunks are pulled onto the socket; the explicit Content-Length header set
- * by the caller keeps the request non-chunked, which signed URLs require.
+ * directly and fetch derives Content-Length from it. With one, the buffer is wrapped
+ * in a ReadableStream so the callback can fire as chunks are pulled onto the socket;
+ * the explicit Content-Length header set by the caller keeps the request non-chunked,
+ * which signed URLs require.
  */
 function uploadBodyInit(
   data: Buffer,
@@ -109,9 +110,13 @@ export class Assets extends GeneratedAssets {
         ...(creationResponse.expiresAt && { expiresAt: creationResponse.expiresAt }),
       };
     }
+    // Content-Length is set manually only for the streamed body; for the buffered
+    // body fetch computes it itself, and setting it too makes Node 22's built-in
+    // fetch send a duplicate that the npm undici proxy dispatcher rejects with
+    // "invalid content-length header" whenever HTTP(S)_PROXY is set.
     const uploadResponse = await nodeProxyTransport.fetch(creationResponse.signedUploadUrl, {
       headers: {
-        'Content-Length': data.length.toString(),
+        ...(body.onUploadProgress && { 'Content-Length': data.length.toString() }),
         'Content-Type': 'application/octet-stream',
       },
       method: 'PUT',
