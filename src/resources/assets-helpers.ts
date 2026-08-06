@@ -53,15 +53,24 @@ export interface AssetGetOrUploadResponse {
 }
 
 /**
- * Body init for the signed-URL PUT. Without a progress callback the buffer is sent
- * directly. With one, the buffer is wrapped in a ReadableStream so the callback can
- * fire as chunks are pulled onto the socket; the explicit Content-Length header set
- * by the caller keeps the request non-chunked, which signed URLs require.
+ * Request init fragment for the signed-URL PUT. Without a progress callback the
+ * buffer is sent directly and fetch derives Content-Length from it; setting the
+ * header manually as well makes fetch append its own computed value next to it
+ * ("n, n"), which strict undici dispatchers — used whenever HTTP(S)_PROXY is set —
+ * reject with UND_ERR_INVALID_ARG "invalid content-length header". With a
+ * callback, the buffer is wrapped in a ReadableStream so the callback can fire as
+ * chunks are pulled onto the socket; fetch cannot know a stream's length, so only
+ * there an explicit Content-Length header keeps the request non-chunked, which
+ * signed URLs require.
  */
-function uploadBodyInit(
+function uploadRequestInit(
   data: Buffer,
   onProgress?: (uploadedBytes: number, totalBytes: number) => void,
-): { body: NonNullable<RequestInit['body']>; duplex?: 'half' } {
+): {
+  body: NonNullable<RequestInit['body']>;
+  duplex?: 'half';
+  headers?: { 'Content-Length': string };
+} {
   if (!onProgress) {
     return { body: data as unknown as NonNullable<RequestInit['body']> };
   }
@@ -79,7 +88,11 @@ function uploadBodyInit(
       onProgress(sent, data.length);
     },
   });
-  return { body: stream as unknown as NonNullable<RequestInit['body']>, duplex: 'half' };
+  return {
+    body: stream as unknown as NonNullable<RequestInit['body']>,
+    duplex: 'half',
+    headers: { 'Content-Length': data.length.toString() },
+  };
 }
 
 export class Assets extends GeneratedAssets {
@@ -109,13 +122,14 @@ export class Assets extends GeneratedAssets {
         ...(creationResponse.expiresAt && { expiresAt: creationResponse.expiresAt }),
       };
     }
+    const { headers: uploadHeaders, ...bodyInit } = uploadRequestInit(data, body.onUploadProgress);
     const uploadResponse = await nodeProxyTransport.fetch(creationResponse.signedUploadUrl, {
       headers: {
-        'Content-Length': data.length.toString(),
         'Content-Type': 'application/octet-stream',
+        ...uploadHeaders,
       },
       method: 'PUT',
-      ...uploadBodyInit(data, body.onUploadProgress),
+      ...bodyInit,
     });
     if (uploadResponse.status !== 200) {
       throw new Error(`Failed to upload asset: ${uploadResponse.status} ${await uploadResponse.text()}`);
