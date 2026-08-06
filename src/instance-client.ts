@@ -112,6 +112,47 @@ export type InstanceClient = {
    */
   openUrl: (url: string) => Promise<OpenUrlResult>;
   /**
+   * Launch an installed app by package name.
+   *
+   * Pass `onExit` to be notified when the app shuts down. The callback receives
+   * the app's recent logcat output and structured exit details, including the
+   * crash stack trace when the app crashed, so failures can be diagnosed
+   * without a follow-up round trip.
+   *
+   * @param packageName Package name of the app to launch
+   * @param modeOrOptions Optional launch mode:
+   *   - 'ForegroundIfRunning' (default): bring to foreground if already running, otherwise launch
+   *   - 'RelaunchIfRunning': kill and relaunch if already running
+   *   Or a launch options object with optional mode and onExit callback.
+   */
+  launchApp: {
+    (packageName: string, mode?: LaunchAppMode): Promise<LaunchAppResult>;
+    (packageName: string, options: LaunchAppOptions): Promise<LaunchAppResult>;
+  };
+  /**
+   * Terminate a running app by package name (force-stop). If the app was
+   * launched with an `onExit` callback, that callback fires with reason
+   * `'terminated'`.
+   *
+   * @param packageName Package name of the app to terminate
+   */
+  terminateApp: (packageName: string) => Promise<void>;
+  /**
+   * Watch an app's exit/crash without launching it through {@link launchApp},
+   * e.g. for apps that are already running or will be opened via a deeplink
+   * (see {@link openUrl}). The callback fires once, with the same payload as a
+   * launch-attached `onExit` (recent logs plus crash/ANR details), when the app
+   * crashes, ANRs, exits, or is terminated.
+   *
+   * The app must be installed, but does not need to be running yet: if it
+   * starts later, its processes are picked up automatically.
+   *
+   * @param packageName Package name of the app to watch
+   * @param onExit Called once when the watched app shuts down
+   * @returns A handle whose `stop()` cancels the watch
+   */
+  watchApp: (packageName: string, onExit: LaunchAppExitCallback) => Promise<AppWatch>;
+  /**
    * Play an on-device WAV/MP3 file as microphone input.
    *
    * The file must already exist on the Android instance, for example after pushing it with ADB.
@@ -337,6 +378,70 @@ export type OpenUrlResult = {
   url: string;
 };
 
+export type LaunchAppMode = 'ForegroundIfRunning' | 'RelaunchIfRunning';
+
+/**
+ * Why a launched app shut down.
+ * - `crash`: the app process crashed (Java or native); `crash` details are attached.
+ * - `anr`: the app stopped responding and was killed; `anr` details are attached.
+ * - `exit`: all of the app's processes exited without a crash.
+ * - `terminated`: the app was stopped via {@link InstanceClient.terminateApp}.
+ */
+export type AppExitReason = 'crash' | 'anr' | 'exit' | 'terminated';
+
+export type AppCrashInfo = {
+  processName: string;
+  pid: number;
+  shortMsg: string;
+  longMsg: string;
+  /** Full stack trace of the crash (Java throwable trace or native crash summary). */
+  stackTrace: string;
+  timeMillis: number;
+};
+
+export type AppAnrInfo = {
+  processName: string;
+  pid: number;
+  /** CPU/process state dump captured by the system when the ANR was detected. */
+  processStats: string;
+};
+
+export type AppExitInfo = {
+  packageName: string;
+  reason: AppExitReason;
+  crash?: AppCrashInfo;
+  anr?: AppAnrInfo;
+};
+
+/**
+ * Called when the launched app shuts down. The logs array contains one entry
+ * per logcat line recently produced by the app (filtered by its UID), and
+ * `info` carries the exit reason plus crash/ANR details when applicable.
+ */
+export type LaunchAppExitCallback = (logs: string[], info: AppExitInfo) => Promise<void> | void;
+
+export type LaunchAppOptions = {
+  /**
+   * Launch behavior when the app may already be running.
+   * Defaults to `ForegroundIfRunning` server-side.
+   */
+  mode?: LaunchAppMode;
+  /** Called when the launched app exits, crashes, ANRs, or is terminated. */
+  onExit?: LaunchAppExitCallback;
+};
+
+export type LaunchAppResult = {
+  packageName: string;
+};
+
+/** Handle for an app watch registered via {@link InstanceClient.watchApp}. */
+export type AppWatch = {
+  /** Identifier of this watch on the server. */
+  execId: string;
+  /** Cancels the watch; the onExit callback will not be invoked afterwards. */
+  stop: () => Promise<void>;
+};
+
 export type PlayOnMicrophoneOptions = {
   once?: boolean;
 };
@@ -442,6 +547,44 @@ type OpenUrlResultMessage = {
   error?: CommandError;
 };
 
+type LaunchAppResultMessage = {
+  type: 'launchAppResult';
+  id: string;
+  payload?: LaunchAppResult;
+  error?: CommandError;
+};
+
+type TerminateAppResultMessage = {
+  type: 'terminateAppResult';
+  id: string;
+  payload?: { packageName?: string };
+  error?: CommandError;
+};
+
+type WatchAppResultMessage = {
+  type: 'watchAppResult';
+  id: string;
+  payload?: { packageName?: string };
+  error?: CommandError;
+};
+
+type UnwatchAppResultMessage = {
+  type: 'unwatchAppResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
+type AppExitMessage = {
+  type: 'appExit';
+  execId: string;
+  packageName: string;
+  reason: AppExitReason;
+  crash?: AppCrashInfo;
+  anr?: AppAnrInfo;
+  logs?: string[];
+};
+
 type PlayOnMicrophoneResultMessage = {
   type: 'playOnMicrophoneResult';
   id: string;
@@ -480,6 +623,10 @@ type KnownCommandResultMessage =
   | ScrollScreenResultMessage
   | ScrollElementResultMessage
   | OpenUrlResultMessage
+  | LaunchAppResultMessage
+  | TerminateAppResultMessage
+  | WatchAppResultMessage
+  | UnwatchAppResultMessage
   | PlayOnMicrophoneResultMessage
   | SetWifiBandwidthResultMessage
   | StartVideoRecordingResultMessage
@@ -502,6 +649,10 @@ type CommandRequestMap = {
   scrollScreen: { direction: ScrollDirection; amount?: number };
   scrollElement: AndroidElementTarget & { direction: ScrollDirection; amount?: number };
   openUrl: { url: string };
+  launchApp: { packageName: string; mode?: LaunchAppMode; execId?: string };
+  terminateApp: { packageName: string };
+  watchApp: { packageName: string; execId: string };
+  unwatchApp: { execId: string };
   playOnMicrophone: { path: string; once?: boolean };
   setWifiBandwidth: WifiBandwidthOptions;
   startRecording: { quality?: RecordingQuality };
@@ -518,6 +669,10 @@ type CommandResultMap = {
   scrollScreen: ScrollResult;
   scrollElement: ScrollResult;
   openUrl: OpenUrlResult;
+  launchApp: LaunchAppResult;
+  terminateApp: { packageName?: string };
+  watchApp: { packageName?: string };
+  unwatchApp: EmptyCommandResult;
   playOnMicrophone: PlayOnMicrophoneResult;
   setWifiBandwidth: EmptyCommandResult;
   startRecording: EmptyCommandResult;
@@ -552,6 +707,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   let lastError: string | undefined;
   const pendingRequests: Map<string, PendingRequest<unknown>> = new Map();
   const pendingAssetRequestsByUrl: Map<string, Array<PendingRequest<void>>> = new Map();
+  // App exit callbacks are keyed by execId. They intentionally survive transient
+  // WebSocket reconnects and are one-shot once a matching appExit is processed.
+  const appExitCallbacks: Map<string, LaunchAppExitCallback> = new Map();
 
   const stateChangeCallbacks: Set<ConnectionStateCallback> = new Set();
 
@@ -685,6 +843,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         case 'scrollScreenResult':
         case 'scrollElementResult':
         case 'openUrlResult':
+        case 'launchAppResult':
+        case 'terminateAppResult':
+        case 'watchAppResult':
+        case 'unwatchAppResult':
         case 'playOnMicrophoneResult':
         case 'setWifiBandwidthResult':
         case 'startRecordingResult':
@@ -788,6 +950,33 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             resolvePendingRequest<ScreenshotData>(screenshotMessage.id, {
               dataUri: screenshotMessage.dataUri,
             });
+            break;
+          }
+          case 'appExit': {
+            const exitMessage = message as AppExitMessage;
+            const { execId, packageName, reason } = exitMessage;
+            if (typeof execId !== 'string' || typeof packageName !== 'string' || typeof reason !== 'string') {
+              logger.warn('Received malformed appExit message:', message);
+              break;
+            }
+            const callback = appExitCallbacks.get(execId);
+            if (!callback) {
+              logger.debug(`Received appExit for unknown or already handled execId: ${execId}`);
+              break;
+            }
+            appExitCallbacks.delete(execId);
+            const logs = Array.isArray(exitMessage.logs) ? exitMessage.logs.map(String) : [];
+            const info: AppExitInfo = {
+              packageName,
+              reason,
+              ...(exitMessage.crash ? { crash: exitMessage.crash } : {}),
+              ...(exitMessage.anr ? { anr: exitMessage.anr } : {}),
+            };
+            void Promise.resolve()
+              .then(() => callback(logs, info))
+              .catch((error) => {
+                logger.error(`Error in onExit callback for execId ${execId}:`, error);
+              });
             break;
           }
           case 'screenshotResult': {
@@ -926,6 +1115,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             scrollScreen,
             scrollElement,
             openUrl,
+            launchApp,
+            terminateApp,
+            watchApp,
             playOnMicrophone,
             setWifiBandwidth,
             startRecording,
@@ -1018,6 +1210,64 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       const result = await sendRequest('openUrl', { url });
       return {
         url: typeof result.url === 'string' ? result.url : url,
+      };
+    };
+
+    /**
+     * Registers a one-shot exit callback under a fresh execId, runs the request that
+     * carries it (launchApp or watchApp), and unregisters the callback if the request
+     * fails so it can never fire for a watch the server never accepted.
+     */
+    const withExitCallback = async <T>(
+      idPrefix: string,
+      onExit: LaunchAppExitCallback,
+      send: (execId: string) => Promise<T>,
+    ): Promise<{ execId: string; result: T }> => {
+      const execId = nextRequestId(idPrefix);
+      appExitCallbacks.set(execId, onExit);
+      try {
+        return { execId, result: await send(execId) };
+      } catch (error) {
+        appExitCallbacks.delete(execId);
+        throw error;
+      }
+    };
+
+    const launchApp = async (
+      packageName: string,
+      modeOrOptions?: LaunchAppMode | LaunchAppOptions,
+    ): Promise<LaunchAppResult> => {
+      const launchOptions: LaunchAppOptions =
+        typeof modeOrOptions === 'string' ? { mode: modeOrOptions } : modeOrOptions ?? {};
+      const sendLaunch = (execId?: string) => {
+        const request: CommandRequestMap['launchApp'] = { packageName };
+        if (launchOptions.mode) request.mode = launchOptions.mode;
+        if (execId) request.execId = execId;
+        return sendRequest('launchApp', request, 60_000);
+      };
+      const result =
+        launchOptions.onExit ?
+          (await withExitCallback('exec', launchOptions.onExit, sendLaunch)).result
+        : await sendLaunch();
+      return {
+        packageName: typeof result.packageName === 'string' ? result.packageName : packageName,
+      };
+    };
+
+    const terminateApp = async (packageName: string): Promise<void> => {
+      await sendRequest('terminateApp', { packageName });
+    };
+
+    const watchApp = async (packageName: string, onExit: LaunchAppExitCallback): Promise<AppWatch> => {
+      const { execId } = await withExitCallback('watch', onExit, (execId) =>
+        sendRequest('watchApp', { packageName, execId }),
+      );
+      return {
+        execId,
+        stop: async () => {
+          appExitCallbacks.delete(execId);
+          await sendRequest('unwatchApp', { execId });
+        },
       };
     };
 
