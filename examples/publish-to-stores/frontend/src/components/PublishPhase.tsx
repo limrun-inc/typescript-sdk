@@ -59,6 +59,7 @@ export function PublishPhase({
             projectPath: projectPath.trim(),
             teamId: connection.teamId,
             bundleId: connection.bundleId,
+            signingMode: connection.signingMode,
             webhookUrl: webhookUrl.trim(),
           })
         }

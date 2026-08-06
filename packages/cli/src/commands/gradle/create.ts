@@ -20,6 +20,11 @@ export default class GradleCreate extends BaseCommand {
       description: 'Human-friendly display name shown in listings and the console',
     }),
     region: Flags.string({ description: 'Region where the sandbox should be created, such as us-west' }),
+    jurisdiction: Flags.string({
+      description:
+        'Jurisdiction the sandbox must be created in. Unlike --region, this is a hard constraint: creation fails when no region in the jurisdiction has capacity.',
+      options: ['us', 'eu', 'as'],
+    }),
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
     'inactivity-timeout': Flags.string({
       description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default is 5m.',
@@ -49,6 +54,7 @@ export default class GradleCreate extends BaseCommand {
         reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
           ...(flags.region && { region: flags.region }),
+          ...(flags.jurisdiction && { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' }),
           ...(flags['hard-timeout'] && { hardTimeout: flags['hard-timeout'] }),
           ...(flags['inactivity-timeout'] && { inactivityTimeout: flags['inactivity-timeout'] }),
         },

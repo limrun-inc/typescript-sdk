@@ -141,6 +141,21 @@ export type XcodeSigningConfig = {
   provisioningProfilesBase64?: string[];
 };
 
+export type XcodeCloudSigningMethod = 'app-store-connect' | 'release-testing' | 'debugging';
+
+/**
+ * Apple-managed signing credentials used while exporting an unsigned device
+ * archive. Apple retains the signing certificate; callers provide only the
+ * App Store Connect team key.
+ */
+export type XcodeCloudSigningConfig = {
+  method: XcodeCloudSigningMethod;
+  teamId: string;
+  apiKeyId: string;
+  apiIssuerId: string;
+  apiPrivateKeyBase64: string;
+};
+
 export type ReactNativeBuildConfig = {
   /**
    * Relative path from the synced workspace root to the Expo app directory.
@@ -162,9 +177,10 @@ export type ReactNativeBuildConfig = {
 export type XcodeBuildOptions = {
   upload?: { assetName: string } | { signedUploadUrl: string };
   signing?: XcodeSigningConfig;
+  cloudSigning?: XcodeCloudSigningConfig;
   /**
    * Upload the signed device IPA to App Store Connect after the build.
-   * Requires signing and sdk=iphoneos. Check ExecResult.appstore on
+   * Requires manual or cloud signing and sdk=iphoneos. Check ExecResult.appstore on
    * completion; it is absent when the instance's limbuild predates the
    * feature (old servers silently ignore this option).
    */
@@ -780,6 +796,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.xcodegen && { xcodegen: options.xcodegen }),
           ...(options?.reactNative && { reactNative: options.reactNative }),
           ...(options?.signing && { signing: options.signing }),
+          ...(options?.cloudSigning && { cloudSigning: options.cloudSigning }),
           // The SDK calls this App Store; limbuild's existing wire field remains
           // testflight until the exec API is revised separately.
           ...(options?.appstore && { testflight: options.appstore }),

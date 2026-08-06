@@ -59,10 +59,13 @@ export async function fetchRegistrySession(): Promise<RegistrySession> {
   return (await response.json()) as RegistrySession;
 }
 
+export type SigningMode = 'cloud' | 'manual';
+
 export type PublishInput = {
   projectPath: string;
   teamId: string;
   bundleId: string;
+  signingMode: SigningMode;
   scheme?: string;
   /** Public URL limbuild POSTs the build-finish webhook to, verbatim. */
   webhookUrl: string;

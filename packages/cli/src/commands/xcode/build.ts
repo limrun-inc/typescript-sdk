@@ -10,8 +10,11 @@ import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
 import { webhookConfigFromFlags } from '../../lib/webhook-options';
 import {
+  cloudSigningFlagsProblem,
+  hasCloudSigningFlags,
   hasSigningFlags,
   signingFlagsProblem,
+  type XcodeCloudSigningFlagValues,
   type XcodeSigningFlagValues,
 } from '../../lib/xcode-signing-options';
 import {
@@ -19,6 +22,8 @@ import {
   type AppStoreUploadConfig,
   type XcodeBuildOptions,
   type XcodeClient,
+  type XcodeCloudSigningConfig,
+  type XcodeCloudSigningMethod,
   type XcodeSigningConfig,
 } from '@limrun/api';
 
@@ -52,6 +57,8 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --scheme WatchApp --sdk watchsimulator',
     '<%= config.bin %> xcode build ./MyProject --xcodegen-spec specs/app.yml --xcodegen-project ios',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
+    '<%= config.bin %> xcode build ./MyProject --sdk iphoneos --configuration Release --signing-method release-testing --team-id VMBY3VYW4U --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8 --upload signed-device-build.ipa',
+    '<%= config.bin %> xcode build ./MyProject --sdk iphoneos --configuration Release --signing-method app-store-connect --team-id VMBY3VYW4U --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8 --upload-to-appstore',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload-to-appstore --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./app.mobileprovision --provisioning-profile ./widgets.mobileprovision --upload-to-appstore --asc-key-id 2X9R4HXF34 --asc-key ./AuthKey_2X9R4HXF34.p8',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
@@ -148,19 +155,27 @@ export default class XcodeBuild extends BaseCommand {
       // project path placed after the flag as another profile.
       multipleNonGreedy: true,
     }),
+    'signing-method': Flags.string({
+      description:
+        'Use Apple cloud signing during archive export. Distribution methods require the ASC key to have access to cloud-managed distribution certificates.',
+      options: ['app-store-connect', 'release-testing', 'debugging'],
+    }),
+    'team-id': Flags.string({
+      description: 'Apple Developer team ID for --signing-method, e.g. VMBY3VYW4U.',
+    }),
     'upload-to-appstore': Flags.boolean({
       description:
-        'Upload the signed IPA to App Store Connect after the build, making it available for TestFlight or App Store distribution. Requires the signing flags plus --asc-key-id and --asc-key.',
+        'Upload the signed IPA to App Store Connect after the build, making it available for TestFlight or App Store distribution. Requires manual or cloud signing plus --asc-key-id and --asc-key.',
       default: false,
     }),
     'asc-key-id': Flags.string({
-      description: 'App Store Connect API key ID for --upload-to-appstore, e.g. 2X9R4HXF34.',
+      description: 'App Store Connect API key ID for cloud signing or --upload-to-appstore, e.g. 2X9R4HXF34.',
     }),
     'asc-issuer-id': Flags.string({
       description: 'App Store Connect issuer ID for team API keys. Omit when using an individual API key.',
     }),
     'asc-key': Flags.string({
-      description: 'Path to the App Store Connect API private key (.p8) for --upload-to-appstore.',
+      description: 'Path to the App Store Connect API private key (.p8) for cloud signing or upload.',
     }),
     'asc-wait-timeout': Flags.integer({
       description:
@@ -170,7 +185,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     'auto-build-number': Flags.boolean({
       description:
-        'Set the build number to one more than the highest already in App Store Connect (1 for a new app), so repeat uploads never collide on CFBundleVersion. Resolved server-side with the ASC key. Requires --upload-to-appstore and a project using Xcode-standard versioning (CFBundleVersion = $(CURRENT_PROJECT_VERSION)).',
+        'Set the build number to one more than the highest already in App Store Connect (1 for a new app), so repeat uploads never collide on CFBundleVersion. Resolved server-side with the ASC key. Requires --upload-to-appstore; manual signing also requires Xcode-standard versioning (CFBundleVersion = $(CURRENT_PROJECT_VERSION)).',
       default: false,
     }),
     'webhook-url': Flags.string({
@@ -227,7 +242,7 @@ export default class XcodeBuild extends BaseCommand {
         '--xcodegen-spec/--xcodegen-project apply to native XcodeGen projects and cannot be combined with Expo / React Native flags.',
       );
     }
-    if (flags.ios && hasSigningFlags(flags)) {
+    if (flags.ios && (hasSigningFlags(flags) || hasCloudSigningFlags(flags))) {
       this.error('--ios builds run on a simulator and cannot use signing flags.');
     }
     const signingProblem = signingFlagsProblem(flags);
@@ -235,6 +250,10 @@ export default class XcodeBuild extends BaseCommand {
       // Rejected before instance resolution: a doomed flag combination must
       // not leave a billed instance behind.
       this.error(signingProblem);
+    }
+    const cloudSigningProblem = cloudSigningFlagsProblem(flags);
+    if (cloudSigningProblem) {
+      this.error(cloudSigningProblem);
     }
     if (flags.ios && (flags['upload-to-appstore'] || hasAppStoreFlags(flags))) {
       this.error('--ios builds run on a simulator and cannot upload to App Store Connect.');
@@ -297,15 +316,27 @@ export default class XcodeBuild extends BaseCommand {
         }
         options.signing = signing;
       }
-      if (!flags['upload-to-appstore'] && hasAppStoreFlags(flags)) {
-        // Reserved: a bare ASC credential may gain other meanings later
-        // (managed signing, entitlement preflight), so it never implies one.
-        this.error('The asc flags and --auto-build-number require --upload-to-appstore.');
+      const cloudSigning = await this.buildCloudSigningOptions(flags);
+      if (cloudSigning) {
+        if (flags.sdk && flags.sdk !== 'iphoneos') {
+          this.error('Cloud signing requires --sdk iphoneos.');
+        }
+        settings.sdk = 'iphoneos';
+        options.cloudSigning = cloudSigning;
+      }
+      if (
+        !flags['upload-to-appstore'] &&
+        (flags['asc-wait-timeout'] !== undefined || flags['auto-build-number'])
+      ) {
+        this.error('--asc-wait-timeout and --auto-build-number require --upload-to-appstore.');
+      }
+      if (!flags['upload-to-appstore'] && !cloudSigning && hasASCCredentialFlags(flags)) {
+        this.error('The asc credential flags require --signing-method or --upload-to-appstore.');
       }
       if (flags['upload-to-appstore']) {
-        if (!signing) {
+        if (!signing && !cloudSigning) {
           this.error(
-            '--upload-to-appstore delivers the signed IPA, so it requires --certificate-p12, --certificate-password, and --provisioning-profile.',
+            '--upload-to-appstore delivers a signed IPA, so it requires manual signing flags or --signing-method.',
           );
         }
         if (settings.sdk !== 'iphoneos') {
@@ -441,6 +472,21 @@ export default class XcodeBuild extends BaseCommand {
     };
   }
 
+  private async buildCloudSigningOptions(
+    flags: XcodeCloudSigningFlagValues,
+  ): Promise<XcodeCloudSigningConfig | undefined> {
+    if (!flags['signing-method']) {
+      return undefined;
+    }
+    return {
+      method: flags['signing-method'] as XcodeCloudSigningMethod,
+      teamId: flags['team-id']!,
+      apiKeyId: flags['asc-key-id']!,
+      apiIssuerId: flags['asc-issuer-id']!,
+      apiPrivateKeyBase64: await this.readFileBase64(flags['asc-key']!, '--asc-key'),
+    };
+  }
+
   private async readFileBase64(path: string, flagName: string): Promise<string> {
     try {
       return (await readFile(path)).toString('base64');
@@ -449,9 +495,7 @@ export default class XcodeBuild extends BaseCommand {
     }
   }
 
-  private async buildAppStoreOptions(
-    flags: AppStoreFlags,
-  ): Promise<AppStoreUploadConfig & { autoIncrementBuildNumber?: boolean }> {
+  private async buildAppStoreOptions(flags: AppStoreFlags): Promise<AppStoreUploadConfig> {
     if (!flags['asc-key-id'] || !flags['asc-key']) {
       this.error('--upload-to-appstore requires both --asc-key-id and --asc-key.');
     }
@@ -510,5 +554,13 @@ function hasAppStoreFlags(flags: AppStoreFlags): boolean {
     flags['asc-key'] !== undefined ||
     flags['asc-wait-timeout'] !== undefined ||
     flags['auto-build-number']
+  );
+}
+
+function hasASCCredentialFlags(flags: AppStoreFlags): boolean {
+  return (
+    flags['asc-key-id'] !== undefined ||
+    flags['asc-issuer-id'] !== undefined ||
+    flags['asc-key'] !== undefined
   );
 }

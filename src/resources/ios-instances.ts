@@ -193,6 +193,16 @@ export namespace IosInstanceCreateParams {
     initialAssets?: Array<Spec.InitialAsset>;
 
     /**
+     * Restricts scheduling to regions in the given jurisdiction. Unlike region, this
+     * is a hard constraint: the request never overflows to a region outside the
+     * jurisdiction and fails when no region in the jurisdiction has capacity. A region
+     * belongs to a jurisdiction when its name starts with the jurisdiction prefix,
+     * e.g. "eu-north1" is in "eu". A region preference pointing outside the
+     * jurisdiction is ignored.
+     */
+    jurisdiction?: 'us' | 'eu' | 'as';
+
+    /**
      * The model for the Apple Simulator. Default is iphone.
      */
     model?: 'iphone' | 'ipad' | 'watch';
