@@ -2385,11 +2385,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const setStoreKitConfig = async (bundleId: string, storekit: Buffer | Uint8Array): Promise<void> => {
       const body = Buffer.isBuffer(storekit) ? storekit : Buffer.from(storekit);
       const url = `${options.apiUrl}/payments/storeKitConfigs/${encodeURIComponent(bundleId)}`;
+      // No manual Content-Length: fetch computes it from the Buffer, and setting
+      // it too makes Node 22's built-in fetch send a duplicate that the npm undici
+      // proxy dispatcher rejects whenever HTTP(S)_PROXY is set.
       const response = await nodeProxyTransport.fetch(url, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/octet-stream',
-          'Content-Length': body.length.toString(),
           Authorization: `Bearer ${options.token}`,
         },
         body: body as any,
