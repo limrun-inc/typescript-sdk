@@ -1,8 +1,19 @@
-import { XcodeInstances as GeneratedXcodeInstances, type XcodeInstance } from './xcode-instances';
+import {
+  XcodeInstances as GeneratedXcodeInstances,
+  type XcodeInstance,
+  type XcodeInstanceCreateParams,
+} from './xcode-instances';
 import { type IosInstance } from './ios-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
+import {
+  followXcodeCache,
+  type XcodeCacheConfig,
+  type XcodeCacheFollowOptions,
+  type XcodeCacheFollowResult,
+  type XcodeInstanceCache,
+} from '../xcode-cache';
 import {
   exec,
   type AppStoreUploadConfig,
@@ -458,6 +469,11 @@ export type XcodeCreateClientParams =
   | { instance: XcodeInstance; logLevel?: LogLevel }
   | { apiUrl: string; token: string; logLevel?: LogLevel };
 
+/** Generated create params plus the build cache the generator does not know about yet. */
+export type XcodeInstanceCreateParamsWithCache = Omit<XcodeInstanceCreateParams, 'spec'> & {
+  spec?: XcodeInstanceCreateParams['spec'] & { cache?: XcodeCacheConfig };
+};
+
 function normalizeWorkspaceRelativePath(remotePath: string): string {
   if (
     remotePath === '' ||
@@ -598,6 +614,50 @@ export class XcodeInstances extends GeneratedXcodeInstances {
    */
   listBazelBuildLogs(id: string, options?: RequestOptions): APIPromise<BazelBuildLog[]> {
     return this._client.get(path`/v1/xcode_instances/${id}/bazel_build_logs`, options);
+  }
+
+  /**
+   * Create an Xcode instance, optionally with a build cache.
+   *
+   * Widens the generated signature with `spec.cache`; drop this override once the generator
+   * knows about the field. The request body passes through untouched either way.
+   */
+  override create(
+    params: XcodeInstanceCreateParamsWithCache,
+    options?: RequestOptions,
+  ): APIPromise<XcodeInstance> {
+    return super.create(params as XcodeInstanceCreateParams, options);
+  }
+
+  /** Current cache configuration and status of an instance. */
+  getCache(id: string, options?: RequestOptions): APIPromise<XcodeInstanceCache> {
+    return this._client.get<XcodeInstanceCache>(path`/v1/xcode_instances/${id}/cache`, options);
+  }
+
+  /**
+   * Bind the destination key this instance publishes under at termination. Set once: binding
+   * the same key again is accepted, a different one is rejected.
+   *
+   * The instance needs a stable directory to publish from, which only a create that asked for
+   * caching allocates, so bind on an instance created with cache paths or a cache key.
+   */
+  bindCacheKey(id: string, key: string, options?: RequestOptions): APIPromise<XcodeInstanceCache> {
+    return this._client.put<XcodeInstanceCache>(path`/v1/xcode_instances/${id}/cache`, {
+      body: { key },
+      ...options,
+    });
+  }
+
+  /**
+   * Follow an instance's cache status until the chosen side reaches a terminal phase. Reports
+   * every phase change through `onUpdate`, so a caller can show a restore as it happens.
+   */
+  followCache(id: string, options?: XcodeCacheFollowOptions): Promise<XcodeCacheFollowResult> {
+    const apiKey = this._client.apiKey;
+    if (!apiKey) {
+      throw new Error('Following cache status needs an API key on the client');
+    }
+    return followXcodeCache({ baseURL: this._client.baseURL, apiKey, instanceId: id }, options);
   }
 
   async createClient(params: XcodeCreateClientParams): Promise<XcodeClient> {

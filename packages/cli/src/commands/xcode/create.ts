@@ -1,12 +1,13 @@
 import { Flags } from '@oclif/core';
-import { BaseCommand } from '../../base-command';
+import { applySandboxCache, BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { xcodeSandboxIdFromUrl } from '../../lib/xcode-sandbox';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
-import { type SimulatorAttachResult } from '@limrun/api';
+import { parseCacheConfig, wantsRestore } from '../../lib/cache';
+import { cacheFlags } from '../../lib/cache-flags';
+import { type SimulatorAttachResult, type XcodeInstanceCreateParamsWithCache } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
-import { type XcodeInstanceCreateParams } from '@limrun/api/resources/xcode-instances';
 
 export default class XcodeCreate extends BaseCommand {
   static summary = 'Create a new Xcode instance';
@@ -19,6 +20,8 @@ export default class XcodeCreate extends BaseCommand {
     '<%= config.bin %> xcode create --attach --simulator-id <ios-instance-ID>',
     '<%= config.bin %> xcode create --rm --region us-west',
     '<%= config.bin %> xcode create --label env=dev --display-name ci-builder',
+    '<%= config.bin %> xcode create --cache-restore-keys "myapp-features,myapp-main"',
+    '<%= config.bin %> xcode create --cache-key myapp-pr51 --cache-paths "Pods,.build"',
   ];
 
   static flags = {
@@ -60,6 +63,7 @@ export default class XcodeCreate extends BaseCommand {
     'simulator-id': Flags.string({
       description: 'Existing iOS simulator instance ID to attach when --attach is used',
     }),
+    ...cacheFlags,
   };
 
   async run(): Promise<void> {
@@ -75,6 +79,11 @@ export default class XcodeCreate extends BaseCommand {
       this.error('--simulator-id requires --attach.');
     }
 
+    const cache = parseCacheConfig(flags);
+    if (cache && flags['reuse-if-exists']) {
+      this.info('A reused instance keeps the cache configuration it was created with.');
+    }
+
     await this.withAuth(async () => {
       const labels = parseLabels(flags.label);
       if (flags.ios) {
@@ -85,6 +94,7 @@ export default class XcodeCreate extends BaseCommand {
             sandbox: { xcode: { enabled: true } },
           },
         };
+        if (cache) applySandboxCache(params, cache);
 
         if (flags.region) params.spec!.region = flags.region;
         if (flags.jurisdiction) params.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';
@@ -123,6 +133,22 @@ export default class XcodeCreate extends BaseCommand {
           this.info(`  URL: ${xcodeSandboxUrl}`);
         }
 
+        if (wantsRestore(cache)) {
+          if (!xcodeSandboxId) {
+            this.error(
+              `Created iOS instance ${instance.metadata.id}, but it has no Xcode sandbox to restore a cache into.`,
+            );
+          }
+          await this.awaitCacheRestore(xcodeSandboxId, async () => {
+            try {
+              await this.client.iosInstances.delete(instance.metadata.id);
+              this.info(`${instance.metadata.id} is deleted`);
+            } catch (e) {
+              this.info(`Failed to delete instance: ${e}`);
+            }
+          });
+        }
+
         if (flags.json) {
           this.outputJson(instance);
         } else if (this.isQuietEnabled()) {
@@ -156,10 +182,10 @@ export default class XcodeCreate extends BaseCommand {
 
       const simulator = flags.attach ? await this.client.iosInstances.get(flags['simulator-id']!) : undefined;
 
-      const params: XcodeInstanceCreateParams = {
+      const params: XcodeInstanceCreateParamsWithCache = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: {},
+        spec: { ...(cache ? { cache } : {}) },
       };
 
       if (flags.region) params.spec!.region = flags.region;
@@ -213,6 +239,10 @@ export default class XcodeCreate extends BaseCommand {
       if (attachResult && simulator) {
         registerCreatedInstance(simulator);
         this.info(formatSimulatorAttachResult(simulator.metadata.id, instance.metadata.id, attachResult));
+      }
+
+      if (wantsRestore(cache)) {
+        await this.awaitCacheRestore(instance.metadata.id, cleanup);
       }
 
       if (flags.json) {

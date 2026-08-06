@@ -70,6 +70,7 @@ export {
   type XcodeBuildLog,
   type BazelBuildLog,
   type WebhookConfig,
+  type XcodeInstanceCreateParamsWithCache,
 } from './xcode-instances-helpers';
 // Side-effect import: grafts the createClient/listBuildLogs helpers onto the
 // generated GradleInstances class. The type-only re-export below is erased at

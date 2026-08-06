@@ -74,6 +74,7 @@ export {
   type SimulatorInstallState,
   type XcodeBuildLog,
   type BazelBuildLog,
+  type XcodeInstanceCreateParamsWithCache,
 } from './resources/xcode-instances-helpers';
 export {
   type GradleCreateClientParams,
@@ -103,6 +104,26 @@ export {
   type Sleep,
   type RunningRbeStatus,
 } from './rbe-session';
+export {
+  followXcodeCache,
+  isRestoreTerminal,
+  isRestoreFailure,
+  isSaveTerminal,
+  isCacheTerminal,
+  XcodeCacheTimeoutError,
+  XcodeCacheGoneError,
+  type XcodeCacheConfig,
+  type XcodeInstanceCache,
+  type XcodeCacheRestoreStatus,
+  type XcodeCacheSaveStatus,
+  type XcodeCacheRestorePhase,
+  type XcodeCacheSavePhase,
+  type XcodeCacheSkippedKey,
+  type XcodeCacheSide,
+  type XcodeCacheFollowOptions,
+  type XcodeCacheFollowResult,
+  type XcodeCacheFollowTarget,
+} from './xcode-cache';
 export {
   LimrunError,
   APIError,
