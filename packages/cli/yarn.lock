@@ -578,10 +578,10 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@limrun/api@0.46.3":
-  version "0.46.3"
-  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.46.3.tgz#c9940c5823378280e68745269ff2efcdfd88e66d"
-  integrity sha512-Bk1AlTGumqYT8MQ+ZOOMp1sIwS/P+eefX/aXu3y70l816CJFkrr0GQBk0z2UDVn2k9zIo07zBziiCKNZKBkSrA==
+"@limrun/api@0.46.5":
+  version "0.46.5"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.46.5.tgz#169fb6e9362fba3de62c7cb351d13a0efe3af2b0"
+  integrity sha512-KbP1wUUv/XT0BdOun9w3yPJqNZaoYE6N31JU9Wzz0tPThNjNhZh7TtikEBWGgTlXC61gnED+w9FjWmSbii9TXQ==
   dependencies:
     "@limrun/xdelta3-wasm" "0.2.0"
     eventsource-client "^1.2.0"
