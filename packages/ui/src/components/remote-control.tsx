@@ -651,9 +651,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     onMicrophoneStateChangeRef.current = onMicrophoneStateChange;
     const outboundMicSenderRef = useRef<RTCRtpSender | null>(null);
     const outboundMicStreamRef = useRef<MediaStream | null>(null);
-    // Bumped on every attach/detach so a handler suspended on an await
+    // Bumped by detach and teardown so an attach suspended on an await
     // (the getUserMedia prompt) detects it was superseded and bails.
     const micGenerationRef = useRef(0);
+    // Serializes attach/detach work so their awaits (replaceTrack on the
+    // shared sender) can never interleave and undo each other's effects.
+    const micOpQueueRef = useRef<Promise<void>>(Promise.resolve());
     // Correlates the in-flight `microphoneStart` with its result so a
     // host-side rejection (e.g. no loopback device on the node) can
     // tear the capture back down and surface the error.
@@ -1758,14 +1761,34 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       stopMediaStream(stream);
     };
 
+    // Runs one attach/detach operation after all previously queued ones,
+    // so two operations' awaits never interleave on the shared sender (a
+    // stale detach could otherwise clear a fresh attach's track, or send
+    // `microphoneStop` after its `microphoneStart`).
+    const runMicOp = (op: () => Promise<void>): Promise<void> => {
+      const next = micOpQueueRef.current.then(op).catch((err) => {
+        debugWarn('microphone operation failed:', err);
+      });
+      micOpQueueRef.current = next;
+      return next;
+    };
+
     // Capture the user's microphone and stream it to the simulator's
     // mock microphone. Safe to call redundantly: bails when already
     // attached, when the connection isn't up yet (the ICE-connected
     // handler re-invokes it), or when the prop flipped off mid-prompt.
-    const attachMicrophone = async () => {
-      if (platform !== 'ios') return;
-      const generation = ++micGenerationRef.current;
+    // Does NOT bump the generation: a redundant call (e.g. the ICE
+    // handler firing on both `connected` and `completed`) must not
+    // cancel an attach already in flight; only detach/teardown cancel.
+    const attachMicrophone = (): Promise<void> => {
+      if (platform !== 'ios') return Promise.resolve();
+      return runMicOp(() => attachMicrophoneOp());
+    };
+
+    const attachMicrophoneOp = async () => {
+      const generation = micGenerationRef.current;
       const isCurrent = () => generation === micGenerationRef.current && microphoneEnabledRef.current;
+      if (!isCurrent()) return;
       const ws = wsRef.current;
       const sender = outboundMicSenderRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN || !sender) {
@@ -1860,31 +1883,36 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // the capture (turning the browser's mic indicator off) and tell
     // the host to switch its audio source back to silence. Safe to
     // call when nothing is attached.
-    const detachMicrophone = async (error?: string) => {
+    const detachMicrophone = (error?: string): Promise<void> => {
+      // Bump synchronously (not on the queue) so an attach that is
+      // suspended on an await bails at its next checkpoint even while
+      // it still owns the queue.
       ++micGenerationRef.current;
       micStartPendingIdRef.current = null;
-      const sender = outboundMicSenderRef.current;
-      const stream = outboundMicStreamRef.current;
-      outboundMicStreamRef.current = null;
-      if (sender && stream) {
-        try {
-          await sender.replaceTrack(null);
-        } catch (err) {
-          debugWarn('replaceTrack(null) on mic detach failed:', err);
+      return runMicOp(async () => {
+        const sender = outboundMicSenderRef.current;
+        const stream = outboundMicStreamRef.current;
+        outboundMicStreamRef.current = null;
+        if (sender && stream) {
+          try {
+            await sender.replaceTrack(null);
+          } catch (err) {
+            debugWarn('replaceTrack(null) on mic detach failed:', err);
+          }
         }
-      }
-      if (stream) stopMediaStream(stream);
-      const ws = wsRef.current;
-      if (stream && ws && ws.readyState === WebSocket.OPEN) {
-        const id = `ui-mic-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-        ws.send(JSON.stringify({ type: 'microphoneStop', id }));
-      }
-      if (stream || error) {
-        safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
-          active: false,
-          ...(error !== undefined && { error }),
-        });
-      }
+        if (stream) stopMediaStream(stream);
+        const ws = wsRef.current;
+        if (stream && ws && ws.readyState === WebSocket.OPEN) {
+          const id = `ui-mic-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+          ws.send(JSON.stringify({ type: 'microphoneStop', id }));
+        }
+        if (stream || error) {
+          safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
+            active: false,
+            ...(error !== undefined && { error }),
+          });
+        }
+      });
     };
 
     // Translate the user-facing resolution cap into a
@@ -2046,6 +2074,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (outboundMicStreamRef.current) {
         stopMediaStream(outboundMicStreamRef.current);
         outboundMicStreamRef.current = null;
+        // The capture is gone; report it so consumers don't keep a stale
+        // `active: true` across drops (a re-attach after reconnect
+        // reports again).
+        safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
+          active: false,
+        });
       }
       outboundMicSenderRef.current = null;
       // A scheduled cursor flush would otherwise call setState on a
