@@ -2,10 +2,10 @@
  * End-to-end test for Android launchApp/terminateApp + appExit callbacks
  * against a locally running limdroid container (started via limdroid15/run.sh).
  *
- * Usage: npx ts-node e2e-launch-app.ts
+ * Usage: npx ts-node hack/e2e-launch-app.ts
  */
 import { execSync } from 'node:child_process';
-import { createInstanceClient, type AppExitInfo } from './src/instance-client';
+import { createInstanceClient, type AppExitInfo } from '../src/instance-client';
 
 const PKG = 'com.android.settings';
 const API_URL = 'http://127.0.0.1:8834';
