@@ -99,7 +99,7 @@ describe('Android launchApp / terminateApp', () => {
   it('launches by package name with a mode and resolves the package name', async () => {
     const client = await createClient();
 
-    const result = await client.launchApp('com.example.app', 'RelaunchIfRunning');
+    const result = await client.launchApp('com.example.app', { mode: 'RelaunchIfRunning' });
 
     const request = sentMessages.find((message) => message['type'] === 'launchApp');
     expect(request).toMatchObject({

@@ -120,15 +120,12 @@ export type InstanceClient = {
    * without a follow-up round trip.
    *
    * @param packageName Package name of the app to launch
-   * @param modeOrOptions Optional launch mode:
-   *   - 'ForegroundIfRunning' (default): bring to foreground if already running, otherwise launch
-   *   - 'RelaunchIfRunning': kill and relaunch if already running
-   *   Or a launch options object with optional mode and onExit callback.
+   * @param options Optional launch options:
+   *   - mode: 'ForegroundIfRunning' (default) brings the app to foreground if
+   *     already running; 'RelaunchIfRunning' kills and relaunches it
+   *   - onExit: callback invoked once when the app shuts down
    */
-  launchApp: {
-    (packageName: string, mode?: LaunchAppMode): Promise<LaunchAppResult>;
-    (packageName: string, options: LaunchAppOptions): Promise<LaunchAppResult>;
-  };
+  launchApp: (packageName: string, options?: LaunchAppOptions) => Promise<LaunchAppResult>;
   /**
    * Terminate a running app by package name (force-stop). If the app was
    * launched with an `onExit` callback, that callback fires with reason
@@ -1235,10 +1232,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const launchApp = async (
       packageName: string,
-      modeOrOptions?: LaunchAppMode | LaunchAppOptions,
+      launchOptions: LaunchAppOptions = {},
     ): Promise<LaunchAppResult> => {
-      const launchOptions: LaunchAppOptions =
-        typeof modeOrOptions === 'string' ? { mode: modeOrOptions } : modeOrOptions ?? {};
       const sendLaunch = (execId?: string) => {
         const request: CommandRequestMap['launchApp'] = { packageName };
         if (launchOptions.mode) request.mode = launchOptions.mode;
