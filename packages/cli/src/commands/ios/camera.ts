@@ -4,22 +4,22 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';
 
-export default class IosCameraVideo extends BaseCommand {
-  static summary = 'Play a video file as the simulated camera';
+export default class IosCamera extends BaseCommand {
+  static summary = 'Control the simulated camera of a running iOS instance';
   static description =
     'Upload a local video file and play it as the camera feed of a running iOS instance, replacing the live browser camera. ' +
     'Apps see the video through their regular AVCaptureSession pipeline. ' +
     'By default the video loops; with --no-loop it plays once and the feed freezes on the last frame. ' +
     'Use the `clear` action to restore the default camera source.';
   static examples = [
-    '<%= config.bin %> ios camera-video play ./fixtures/qr-scan.mp4',
-    '<%= config.bin %> ios camera-video play ./clip.mp4 --no-loop --id <instance-ID>',
-    '<%= config.bin %> ios camera-video clear',
+    '<%= config.bin %> ios camera play ./fixtures/qr-scan.mp4',
+    '<%= config.bin %> ios camera play ./clip.mp4 --no-loop --id <instance-ID>',
+    '<%= config.bin %> ios camera clear',
   ];
 
   static args = {
     action: Args.string({
-      description: 'Camera video action: `play` starts playback and `clear` restores the default camera',
+      description: 'Camera action: `play` plays a video file as the camera and `clear` restores the default camera',
       required: true,
       options: ['play', 'clear'],
     }),
@@ -42,7 +42,7 @@ export default class IosCameraVideo extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(IosCameraVideo);
+    const { args, flags } = await this.parse(IosCamera);
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
