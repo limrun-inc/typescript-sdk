@@ -231,6 +231,18 @@ export type ContainerTargetOptions = {
 };
 
 /**
+ * Options for playing a video file as the simulated camera feed.
+ */
+export type CameraVideoOptions = {
+  /**
+   * Whether to restart the video when it ends. When false the video
+   * plays once and the camera feed freezes on its last frame.
+   * @default true
+   */
+  loop?: boolean;
+};
+
+/**
  * Result of auto-discovering a StoreKit configuration from the
  * simulator's cached sandbox response.
  */
@@ -863,6 +875,29 @@ export type InstanceClient = {
    * @param opts Optional app container targeting (see `pushFile`).
    */
   deleteFile: (name: string, opts?: ContainerTargetOptions) => Promise<void>;
+
+  /**
+   * Play a local video file as the simulated camera feed.
+   *
+   * Uploads the file to the simulator and switches the camera source to
+   * it, replacing the live WebRTC camera until {@link clearCameraVideo}
+   * is called. Apps see the video through their regular
+   * `AVCaptureSession` pipeline.
+   *
+   * By default the video loops; with `loop: false` it plays once and the
+   * feed freezes on the last frame.
+   *
+   * @param path The path of the local video file to play as the camera.
+   * @param opts Playback options (currently just `loop`).
+   * @throws If the file has no decodable video track.
+   */
+  setCameraVideo: (path: string, opts?: CameraVideoOptions) => Promise<void>;
+
+  /**
+   * Stop video-file camera playback and restore the default WebRTC
+   * camera source. Safe to call when no video is playing.
+   */
+  clearCameraVideo: () => Promise<void>;
 
   /**
    * Run `xcrun` command with the given arguments.
@@ -1682,6 +1717,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }),
       startVideoRecordingResult: () => undefined,
       stopVideoRecordingResult: () => undefined,
+      cameraControlResult: () => undefined,
       setOrientationResult: () => undefined,
       scrollResult: () => undefined,
       performActionsResult: (msg): PerformActionsResult => ({
@@ -1888,6 +1924,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             pushFile,
             pullFile,
             deleteFile,
+            setCameraVideo,
+            clearCameraVideo,
             lsof,
             deviceInfo: cachedDeviceInfo,
           });
@@ -2380,6 +2418,23 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         const errorBody = await response.text();
         throw new Error(`Deletion of '${name}' failed: ${response.status} ${errorBody}`);
       }
+    };
+
+    const setCameraVideo = async (filePath: string, cameraOptions?: CameraVideoOptions): Promise<void> => {
+      // Fixed prefix so repeat calls with the same file overwrite the
+      // previous upload instead of accumulating staging files.
+      const destination = `limrun-camera-${path.basename(filePath)}`;
+      const remotePath = await pushFile(filePath, destination);
+      await sendRequest<void>('cameraControl', {
+        action: 'setSource',
+        source: 'video',
+        arg: remotePath,
+        loop: cameraOptions?.loop ?? true,
+      });
+    };
+
+    const clearCameraVideo = (): Promise<void> => {
+      return sendRequest<void>('cameraControl', { action: 'reset' });
     };
 
     const setStoreKitConfig = async (bundleId: string, storekit: Buffer | Uint8Array): Promise<void> => {
