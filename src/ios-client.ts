@@ -2226,9 +2226,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       if (!audioPath) {
         throw new Error('path must be a non-empty string');
       }
+      // JSON.stringify drops undefined values, so an unset `once` is
+      // simply omitted from the wire message (host defaults to looping).
       return sendRequest<IosPlayOnMicrophoneResult>('playOnMicrophone', {
         path: audioPath,
-        ...(microphoneOptions?.once === undefined ? {} : { once: microphoneOptions.once }),
+        once: microphoneOptions?.once,
       });
     };
 

@@ -266,13 +266,9 @@ export interface MicrophoneState {
   /** True while the browser mic is captured and streaming to the sim. */
   active: boolean;
   /**
-   * Browser permission outcome of the last enable attempt: `true`
-   * after the user accepted the prompt, `false` after a denial or
-   * device error, `undefined` when not applicable (e.g. plain
-   * disable).
+   * Human-readable failure from the last attempt, if any (permission
+   * denied, no device, host rejection, ...).
    */
-  granted?: boolean;
-  /** Human-readable failure from the last attempt, if any. */
   error?: string;
   /** Device label of the captured microphone, when available. */
   label?: string;
@@ -1788,6 +1784,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const attachMicrophoneOp = async () => {
       const generation = micGenerationRef.current;
       const isCurrent = () => generation === micGenerationRef.current && microphoneEnabledRef.current;
+      const reportMicError = (error: string) => {
+        safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
+          active: false,
+          error,
+        });
+      };
       if (!isCurrent()) return;
       const ws = wsRef.current;
       const sender = outboundMicSenderRef.current;
@@ -1803,11 +1805,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           '[RemoteControl] navigator.mediaDevices.getUserMedia unavailable. ' +
             'getUserMedia requires a secure context (https or http://localhost).',
         );
-        safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
-          active: false,
-          granted: false,
-          error: 'Microphone capture requires a secure context (https)',
-        });
+        reportMicError('Microphone capture requires a secure context (https)');
         return;
       }
       let stream: MediaStream | null = null;
@@ -1822,21 +1820,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         return;
       }
       if (!stream) {
-        safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
-          active: false,
-          granted: false,
-          error: 'Microphone permission denied or no device available',
-        });
+        reportMicError('Microphone permission denied or no device available');
         return;
       }
       const audioTrack = stream.getAudioTracks()[0] ?? null;
       if (!audioTrack) {
         stopMediaStream(stream);
-        safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
-          active: false,
-          granted: false,
-          error: 'Captured stream has no audio track',
-        });
+        reportMicError('Captured stream has no audio track');
         return;
       }
       try {
@@ -1844,11 +1834,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       } catch (err) {
         debugWarn('replaceTrack(audioTrack) failed:', err);
         stopMediaStream(stream);
-        safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
-          active: false,
-          granted: true,
-          error: 'Failed to attach the microphone track to the connection',
-        });
+        reportMicError('Failed to attach the microphone track to the connection');
         return;
       }
       if (!isCurrent()) {
@@ -1874,7 +1860,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       ws.send(JSON.stringify({ type: 'microphoneStart', id }));
       safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
         active: true,
-        granted: true,
         label: audioTrack.label || undefined,
       });
     };
