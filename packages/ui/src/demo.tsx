@@ -23,6 +23,7 @@ function Demo() {
   const [isConnected, setIsConnected] = useState(initialAutoconnect);
   const [key, setKey] = useState(0);
   const [showDebugInfo, setShowDebugInfo] = useState(false);
+  const [interactive3d, setInteractive3d] = useState(initialParams.get('3d') !== '0');
   const [inspectChoice, setInspectChoice] = useState<InspectChoice>(initialInspect);
   const [latestSnapshot, setLatestSnapshot] = useState<AxSnapshot | null>(null);
   const [latestSelection, setLatestSelection] = useState<string | null>(null);
@@ -135,6 +136,18 @@ function Demo() {
           </div>
 
           <div className="control-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={interactive3d}
+                onChange={(e) => setInteractive3d(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              3D device (tilt to face cursor, grab corners/space around it to spin)
+            </label>
+          </div>
+
+          <div className="control-group">
             <label htmlFor="inspect-mode">Inspect Mode</label>
             <select
               id="inspect-mode"
@@ -198,6 +211,7 @@ function Demo() {
                     ref={remoteControlRef}
                     url={url}
                     token={token}
+                    interactive3d={interactive3d}
                     inspectMode={inspectModeProp}
                     onAxSnapshotChange={setLatestSnapshot}
                     onInspectSelectionChange={(sel) =>

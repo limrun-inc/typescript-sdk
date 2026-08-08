@@ -21,6 +21,7 @@ import {
 import { AxFetcher, AxStatus } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
+import { useStage3D } from './use-stage-3d';
 
 declare global {
   interface Window {
@@ -54,6 +55,25 @@ interface RemoteControlProps {
   // showFrame controls whether to display the device frame
   // around the video. Defaults to true.
   showFrame?: boolean;
+
+  /**
+   * Render the device as an interactive 3D object. Defaults to true.
+   *
+   * - Moving the cursor around makes the device subtly turn to face it,
+   *   catching the light from a new angle.
+   * - Grabbing the device — its corner bezels or the space around it — and
+   *   dragging rotates it in 3D. A flick sends it spinning before it
+   *   settles back to face you.
+   *
+   * Screen input stays pixel-accurate while tilted: pointer positions are
+   * unprojected back onto the device surface before touch injection. The
+   * bezel bands directly above/below/beside the screen keep their existing
+   * edge-clamped touch behavior (e.g. the iOS home-indicator swipe-up from
+   * below the screen), and precision modes (Alt-pinch, inspect overlay)
+   * flatten the device while active. Automatically disabled when the user
+   * prefers reduced motion.
+   */
+  interactive3d?: boolean;
 
   // When true, drops after a working session auto-reconnect instead of
   // surfacing the manual "Retry" button. Defaults to false.
@@ -537,6 +557,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       sessionId: propSessionId,
       openUrl,
       showFrame = true,
+      interactive3d = true,
       autoReconnect = false,
       onTerminated,
       inspectMode,
@@ -557,6 +578,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const containerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
+    // Interactive 3D stage: tilt-to-face-cursor, grab/flick rotation, and
+    // the exact pointer unprojection that keeps touch input accurate while
+    // the device is tilted.
+    const stage3d = useStage3D({ enabled: interactive3d, containerRef, videoRef, frameRef, showFrame });
     const [videoLoaded, setVideoLoaded] = useState(false);
     const [retryExhausted, setRetryExhausted] = useState(false);
     // Set once we've concluded the instance is permanently gone (its
@@ -990,6 +1015,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
     };
 
+    // Precision modes flatten the 3D stage: the Alt-pinch indicators and the
+    // inspect overlay are drawn outside the tilted plane, so the device must
+    // face the viewer for them to line up exactly with the video.
+    const syncStage3dFlatten = () => {
+      const inspecting = inspectModeRef.current === true || inspectModeRef.current === 'hover-only';
+      stage3d.setFlattened(isAltHeldRef.current || inspecting);
+    };
+
     // Update Alt modifier state. Only iOS Simulator uses Indigo modifier injection.
     const updateAltHeld = (nextHeld: boolean) => {
       if (isAltHeldRef.current === nextHeld) {
@@ -997,6 +1030,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
       isAltHeldRef.current = nextHeld;
       setIsAltHeld(nextHeld);
+      syncStage3dFlatten();
 
       // Clear hover point when Alt is released to hide indicators immediately.
       if (!nextHeld) {
@@ -1052,7 +1086,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const videoHeight = video.videoHeight;
       if (!videoWidth || !videoHeight) return null;
 
-      const videoRect = video.getBoundingClientRect();
+      // While the 3D stage is active the video's bounding rect is its
+      // projected (transformed) box, which is useless for input math. Use
+      // the untransformed layout rect instead; pointer positions are mapped
+      // into the same space by stage3d.unprojectClient before use.
+      const videoRect = stage3d.getVideoLayoutRect() ?? video.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
 
       const displayWidth = videoRect.width;
@@ -1090,8 +1128,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       clientX: number,
       clientY: number,
     ): PointerGeometry | null => {
-      const relativeX = clientX - ctx.videoRect.left - ctx.offsetX;
-      const relativeY = clientY - ctx.videoRect.top - ctx.offsetY;
+      // Undo the 3D tilt (identity when the stage is flat or 3D is off).
+      const point = stage3d.unprojectClient(clientX, clientY);
+      const relativeX = point.x - ctx.videoRect.left - ctx.offsetX;
+      const relativeY = point.y - ctx.videoRect.top - ctx.offsetY;
 
       const clampedRelativeX = Math.max(0, Math.min(ctx.actualWidth, relativeX));
       const clampedRelativeY = Math.max(0, Math.min(ctx.actualHeight, relativeY));
@@ -1119,8 +1159,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       clientX: number,
       clientY: number,
     ): HoverPoint | null => {
-      const relativeX = clientX - ctx.videoRect.left - ctx.offsetX;
-      const relativeY = clientY - ctx.videoRect.top - ctx.offsetY;
+      // Undo the 3D tilt (identity when the stage is flat or 3D is off).
+      const point = stage3d.unprojectClient(clientX, clientY);
+      const relativeX = point.x - ctx.videoRect.left - ctx.offsetX;
+      const relativeY = point.y - ctx.videoRect.top - ctx.offsetY;
 
       const clampedRelativeX = Math.max(0, Math.min(ctx.actualWidth, relativeX));
       const clampedRelativeY = Math.max(0, Math.min(ctx.actualHeight, relativeY));
@@ -1247,8 +1289,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     ): AxElement | null => {
       const snapshot = axSnapshotRef.current;
       if (!snapshot || snapshot.screen.width <= 0 || snapshot.screen.height <= 0) return null;
-      const relX = clientX - ctx.videoRect.left - ctx.offsetX;
-      const relY = clientY - ctx.videoRect.top - ctx.offsetY;
+      // Undo the 3D tilt (identity when the stage is flat or 3D is off).
+      const point = stage3d.unprojectClient(clientX, clientY);
+      const relX = point.x - ctx.videoRect.left - ctx.offsetX;
+      const relY = point.y - ctx.videoRect.top - ctx.offsetY;
       if (relX < 0 || relY < 0 || relX > ctx.actualWidth || relY > ctx.actualHeight) return null;
       const axX = (relX / ctx.actualWidth) * snapshot.screen.width;
       const axY = (relY / ctx.actualHeight) * snapshot.screen.height;
@@ -1259,6 +1303,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const handleInteraction = (event: React.MouseEvent | React.TouchEvent) => {
       event.preventDefault();
       event.stopPropagation();
+
+      // 3D stage interactions first: cursor-follow tilt (never consumes) and
+      // grab/flick rotation. A consumed event is a rotation gesture and must
+      // not reach the device as touch input.
+      if (stage3d.handleInteraction(event)) {
+        return;
+      }
 
       // Compute mapping context once per event (reused for all pointers)
       const ctx = computeVideoMappingContext();
@@ -3320,6 +3371,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // toggles. Connection state is independent: the fetcher gets created on
     // dataChannel.onopen and destroyed on teardown.
     useEffect(() => {
+      syncStage3dFlatten();
       const fetcher = axFetcherRef.current;
       if (inspectActive) {
         fetcher?.start();
@@ -3568,7 +3620,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     return (
       <div
         ref={containerRef}
-        className={clsx('rc-container', className)}
+        className={clsx('rc-container', stage3d.active && 'rc-3d', className)}
         style={{ touchAction: 'none' }} // Keep touchAction none for the container
         // Attach unified handler to all interaction events on the container
         // This helps capture mouseleave correctly even if the video element itself isn't hovered
@@ -3599,48 +3651,60 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             />
           </>
         )}
-        {showFrame && (
-          <img
-            ref={frameRef}
-            src={frameImageSrc}
-            alt=""
-            className={platform === 'ios' ? clsx('rc-phone-frame', 'rc-phone-frame-ios') : 'rc-phone-frame'}
-            draggable={false}
-          />
-        )}
-        <video
-          ref={videoRef}
-          className={clsx('rc-video', !showFrame && 'rc-video-frameless', !videoLoaded && 'rc-video-loading')}
-          style={{
-            ...videoStyle,
-            ...(config.loadingLogo ?
-              {
-                backgroundImage: `url("${config.loadingLogo}")`,
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'center',
-                backgroundSize: config.loadingLogoSize,
+        {/* The stage is the 3D-transformed plane holding the device: back
+            panel, frame, video, and glass glare. Everything that must stay
+            screen-aligned (indicators, inspect overlay, retry/terminated)
+            lives outside it. */}
+        <div ref={stage3d.stageRef} className="rc-stage">
+          {stage3d.active && showFrame && <div ref={stage3d.backRef} className="rc-stage-back" />}
+          {showFrame && (
+            <img
+              ref={frameRef}
+              src={frameImageSrc}
+              alt=""
+              className={platform === 'ios' ? clsx('rc-phone-frame', 'rc-phone-frame-ios') : 'rc-phone-frame'}
+              draggable={false}
+            />
+          )}
+          <video
+            ref={videoRef}
+            className={clsx(
+              'rc-video',
+              !showFrame && 'rc-video-frameless',
+              !videoLoaded && 'rc-video-loading',
+            )}
+            style={{
+              ...videoStyle,
+              ...(config.loadingLogo ?
+                {
+                  backgroundImage: `url("${config.loadingLogo}")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'center',
+                  backgroundSize: config.loadingLogoSize,
+                }
+              : {}),
+            }}
+            autoPlay
+            playsInline
+            muted
+            tabIndex={0}
+            onKeyDown={handleKeyboard}
+            onKeyUp={handleKeyboard}
+            onClick={handleVideoClick}
+            onLoadedData={markFirstFrameShown}
+            onFocus={() => {
+              if (videoRef.current) {
+                videoRef.current.style.outline = 'none';
               }
-            : {}),
-          }}
-          autoPlay
-          playsInline
-          muted
-          tabIndex={0}
-          onKeyDown={handleKeyboard}
-          onKeyUp={handleKeyboard}
-          onClick={handleVideoClick}
-          onLoadedData={markFirstFrameShown}
-          onFocus={() => {
-            if (videoRef.current) {
-              videoRef.current.style.outline = 'none';
-            }
-          }}
-          onBlur={() => {
-            if (videoRef.current) {
-              videoRef.current.style.outline = 'none';
-            }
-          }}
-        />
+            }}
+            onBlur={() => {
+              if (videoRef.current) {
+                videoRef.current.style.outline = 'none';
+              }
+            }}
+          />
+          {stage3d.active && <div ref={stage3d.glareRef} className="rc-stage-glare" />}
+        </div>
         {inspectActive && (
           <InspectOverlay
             snapshot={axSnapshot}
