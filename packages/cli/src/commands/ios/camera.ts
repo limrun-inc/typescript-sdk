@@ -19,7 +19,8 @@ export default class IosCamera extends BaseCommand {
 
   static args = {
     action: Args.string({
-      description: 'Camera action: `play` plays a video file as the camera and `clear` restores the default camera',
+      description:
+        'Camera action: `play` plays a video file as the camera and `clear` restores the default camera',
       required: true,
       options: ['play', 'clear'],
     }),

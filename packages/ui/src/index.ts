@@ -1,5 +1,5 @@
 export { RemoteControl } from './components/remote-control';
-export type { RemoteControlHandle } from './components/remote-control';
+export type { RemoteControlHandle, MicrophoneState } from './components/remote-control';
 
 // Accessibility / inspect-mode types and helpers. Exported so customers can
 // build their own side panels, search UIs, or agent-driven inspectors on top

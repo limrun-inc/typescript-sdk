@@ -448,6 +448,22 @@ export type PerformActionsResult = {
   results: PerformActionResult[];
 };
 
+/** Result of a successful {@link InstanceClient.playOnMicrophone} call. */
+export type IosPlayOnMicrophoneResult = {
+  /** Duration of the decoded audio in microseconds. */
+  duration: number;
+  /** Whether playback stops after one pass (true) or loops until stopped (false). */
+  once: boolean;
+};
+
+/** Mock-microphone state returned by {@link InstanceClient.microphoneStatus}. */
+export type IosMicrophoneStatus = {
+  /** Active audio source. */
+  source: 'silence' | 'file' | 'webrtcMic';
+  /** Path of the currently playing file, when source is `file`. */
+  filePath?: string;
+};
+
 /**
  * A client for interacting with a Limrun iOS instance
  */
@@ -674,6 +690,22 @@ export type InstanceClient = {
    * Note that the download URL is only valid while the instance is running.
    */
   stopRecording: (saveTo: { presignedUrl?: string; localPath?: string }) => Promise<string>;
+
+  /**
+   * Play an audio file as the simulator's microphone input. Stage the file on
+   * the instance first with `pushFile` (no bundle ID); `path` is the same
+   * name used there. Loops until stopped by default; pass `once: true` to
+   * play a single pass. Playing a new file replaces the current one.
+   * Apps launched via `launchApp` get the microphone permission pre-granted.
+   */
+  playOnMicrophone: (path: string, options?: { once?: boolean }) => Promise<IosPlayOnMicrophoneResult>;
+
+  /** Stop mock-microphone file playback, if any. */
+  stopMicrophonePlayback: () => Promise<void>;
+
+  /** Get the current mock-microphone state. */
+  microphoneStatus: () => Promise<IosMicrophoneStatus>;
+
   /** Send an application-level keepAlive message on the control websocket. */
   keepAlive: () => void;
 
@@ -1079,6 +1111,10 @@ type ServerResponse = {
   results?: PerformActionResult[];
   // Keychain transfer result fields
   durationMs?: number;
+  // Mock-microphone result fields
+  duration?: number;
+  once?: boolean;
+  status?: IosMicrophoneStatus;
 };
 
 /**
@@ -1718,6 +1754,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       startVideoRecordingResult: () => undefined,
       stopVideoRecordingResult: () => undefined,
       cameraControlResult: () => undefined,
+      playOnMicrophoneResult: (msg): IosPlayOnMicrophoneResult => ({
+        duration: msg.duration ?? 0,
+        once: msg.once ?? false,
+      }),
+      stopMicrophonePlaybackResult: () => undefined,
+      microphoneStatusResult: (msg): IosMicrophoneStatus => msg.status ?? { source: 'silence' },
       setOrientationResult: () => undefined,
       scrollResult: () => undefined,
       performActionsResult: (msg): PerformActionsResult => ({
@@ -1905,6 +1947,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             performActions,
             startRecording,
             stopRecording,
+            playOnMicrophone,
+            stopMicrophonePlayback,
+            microphoneStatus,
             keepAlive,
             syncApp,
             setStoreKitConfig,
@@ -2171,6 +2216,29 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
       }
       return downloadUrl;
+    };
+
+    const playOnMicrophone = async (
+      audioPath: string,
+      microphoneOptions?: { once?: boolean },
+    ): Promise<IosPlayOnMicrophoneResult> => {
+      if (!audioPath) {
+        throw new Error('path must be a non-empty string');
+      }
+      // JSON.stringify drops undefined values, so an unset `once` is
+      // simply omitted from the wire message (host defaults to looping).
+      return sendRequest<IosPlayOnMicrophoneResult>('playOnMicrophone', {
+        path: audioPath,
+        once: microphoneOptions?.once,
+      });
+    };
+
+    const stopMicrophonePlayback = async (): Promise<void> => {
+      await sendRequest<void>('stopMicrophonePlayback');
+    };
+
+    const microphoneStatus = async (): Promise<IosMicrophoneStatus> => {
+      return sendRequest<IosMicrophoneStatus>('microphoneStatus');
     };
 
     const keepAlive = (): void => {
