@@ -1759,8 +1759,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         once: msg.once ?? false,
       }),
       stopMicrophonePlaybackResult: () => undefined,
-      microphoneStatusResult: (msg): IosMicrophoneStatus =>
-        msg.status ?? { source: 'silence' },
+      microphoneStatusResult: (msg): IosMicrophoneStatus => msg.status ?? { source: 'silence' },
       setOrientationResult: () => undefined,
       scrollResult: () => undefined,
       performActionsResult: (msg): PerformActionsResult => ({
