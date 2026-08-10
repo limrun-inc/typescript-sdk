@@ -688,6 +688,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       pointerId1: number;
     };
     const twoFingerStateRef = useRef<TwoFingerState | null>(null);
+    // Wheel-scroll drag state; lives for a single synthesized gesture.
+    const wheelStateRef = useRef<{ pos: PointerGeometry; endTimer: number } | null>(null);
+    // Latest wheel handlers, so the once-attached native listener and the
+    // pointer machinery always call the current render's closures.
+    const wheelCallbacksRef = useRef<{ handle: (event: WheelEvent) => void; end: () => void }>({
+      handle: () => {},
+      end: () => {},
+    });
 
     // Hover point for rendering two-finger indicators when Alt is held.
     // Only computed/set when Alt is held to avoid unnecessary re-renders.
@@ -854,6 +862,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // Fixed pointer IDs for Alt-simulated two-finger gestures
     const ALT_POINTER_ID_PRIMARY = -1;
     const ALT_POINTER_ID_MIRROR = -2;
+    const WHEEL_POINTER_ID = -3;
 
     // Helper to send a single-touch control message (used by both single-finger and Android two-finger paths)
     const sendSingleTouch = (
@@ -911,6 +920,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       switch (eventType) {
         case 'down':
+          // A real pointer going down takes over from any synthesized
+          // wheel-scroll finger, so the tap isn't sent as a second finger.
+          if (pointerId !== WHEEL_POINTER_ID) {
+            wheelCallbacksRef.current.end();
+          }
           // For multi-touch: use ACTION_DOWN for first pointer, ACTION_POINTER_DOWN for additional pointers
           const currentPointerCount = activePointers.current.size;
           action = currentPointerCount === 0 ? AMOTION_EVENT.ACTION_DOWN : AMOTION_EVENT.ACTION_POINTER_DOWN;
@@ -1198,6 +1212,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         p0: { x: x0, y: y0, id: pointerId0 },
         p1: { x: x1, y: y1, id: pointerId1 },
       });
+
+      if (eventType === 'down') {
+        // A real two-finger gesture takes over from any synthesized
+        // wheel-scroll finger.
+        wheelCallbacksRef.current.end();
+      }
 
       if (platform === 'ios') {
         // iOS: use special two-finger message (type=18)
@@ -1553,6 +1573,116 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         return;
       }
     };
+
+    // Wheel scrolling synthesizes a touch drag: finger down near the cursor
+    // on the first tick, moves opposite the wheel delta, and lifts after a
+    // quiet period. The press point is pulled into the middle band of the
+    // screen along the dominant scroll axis so the drag has travel room; when
+    // the finger runs out of room mid-scroll it lifts and re-presses there.
+    const WHEEL_END_QUIET_MS = 150;
+    const endWheelGesture = () => {
+      const state = wheelStateRef.current;
+      if (!state) return;
+      window.clearTimeout(state.endTimer);
+      applyPointerEvent(WHEEL_POINTER_ID, 'up', state.pos);
+      wheelStateRef.current = null;
+    };
+    const handleWheel = (event: WheelEvent) => {
+      // Trackpad pinches arrive as ctrl+wheel; don't turn them into scrolls.
+      if (event.ctrlKey) return;
+      // Real pointers win: never interleave a synthesized finger with an
+      // active mouse/touch gesture or Alt two-finger mode (on iOS the held
+      // Alt key would turn the drag into a pinch).
+      if (isAltHeldRef.current || twoFingerStateRef.current) return;
+      const othersActive = Array.from(activePointers.current.keys()).some((id) => id !== WHEEL_POINTER_ID);
+      if (othersActive) return;
+
+      const ctx = computeVideoMappingContext();
+      if (!ctx) return;
+      // Outside the rendered video (frame, letterbox) let the page scroll.
+      const relativeX = event.clientX - ctx.videoRect.left - ctx.offsetX;
+      const relativeY = event.clientY - ctx.videoRect.top - ctx.offsetY;
+      if (relativeX < 0 || relativeX > ctx.actualWidth || relativeY < 0 || relativeY > ctx.actualHeight) {
+        return;
+      }
+      const anchor = mapClientPointToVideo(ctx, event.clientX, event.clientY);
+      if (!anchor) return;
+      event.preventDefault();
+
+      // deltaMode: 0=pixels, 1=lines, 2=pages. Deltas are CSS pixels; convert
+      // to stream pixels so a tick scrolls the same visual distance at any
+      // window size.
+      const scaleX =
+        (event.deltaMode === 1 ? 16
+        : event.deltaMode === 2 ? ctx.actualWidth
+        : 1) *
+        (ctx.videoWidth / ctx.actualWidth);
+      const scaleY =
+        (event.deltaMode === 1 ? 16
+        : event.deltaMode === 2 ? ctx.actualHeight
+        : 1) *
+        (ctx.videoHeight / ctx.actualHeight);
+      const dx = -event.deltaX * scaleX;
+      const dy = -event.deltaY * scaleY;
+
+      // Press point: the cursor, pulled into the 20-80% band along the
+      // dominant scroll axis so the drag has room to travel.
+      const pressPoint = (): PointerGeometry => ({
+        videoWidth: anchor.videoWidth,
+        videoHeight: anchor.videoHeight,
+        videoX:
+          Math.abs(dx) > Math.abs(dy) ?
+            Math.min(Math.max(anchor.videoX, anchor.videoWidth * 0.2), anchor.videoWidth * 0.8)
+          : anchor.videoX,
+        videoY:
+          Math.abs(dy) >= Math.abs(dx) ?
+            Math.min(Math.max(anchor.videoY, anchor.videoHeight * 0.2), anchor.videoHeight * 0.8)
+          : anchor.videoY,
+      });
+
+      let state = wheelStateRef.current;
+      if (!state) {
+        const start = pressPoint();
+        applyPointerEvent(WHEEL_POINTER_ID, 'down', start);
+        state = { pos: start, endTimer: 0 };
+        wheelStateRef.current = state;
+      } else {
+        window.clearTimeout(state.endTimer);
+      }
+
+      const nextX = Math.min(Math.max(state.pos.videoX + dx, 0), anchor.videoWidth);
+      const nextY = Math.min(Math.max(state.pos.videoY + dy, 0), anchor.videoHeight);
+      if (nextX === state.pos.videoX && nextY === state.pos.videoY) {
+        // Out of travel room: end this drag (it has moved, so it reads as a
+        // completed drag, not a tap) and continue from a fresh press point.
+        applyPointerEvent(WHEEL_POINTER_ID, 'up', state.pos);
+        const start = pressPoint();
+        applyPointerEvent(WHEEL_POINTER_ID, 'down', start);
+        state.pos = start;
+      } else {
+        const pos = { ...state.pos, videoX: nextX, videoY: nextY };
+        applyPointerEvent(WHEEL_POINTER_ID, 'move', pos);
+        state.pos = pos;
+      }
+      state.endTimer = window.setTimeout(endWheelGesture, WHEEL_END_QUIET_MS);
+    };
+    useEffect(() => {
+      wheelCallbacksRef.current = { handle: handleWheel, end: endWheelGesture };
+    });
+
+    // React attaches onWheel passively, so preventDefault (needed to keep the
+    // page from scrolling) requires a native non-passive listener. Cleanup
+    // lifts an in-flight synthesized finger before the channel goes away.
+    useEffect(() => {
+      const container = containerRef.current;
+      if (!container) return;
+      const listener = (event: WheelEvent) => wheelCallbacksRef.current.handle(event);
+      container.addEventListener('wheel', listener, { passive: false });
+      return () => {
+        wheelCallbacksRef.current.end();
+        container.removeEventListener('wheel', listener);
+      };
+    }, []);
 
     useEffect(() => {
       const handleKeyDown = (event: KeyboardEvent) => {
