@@ -327,7 +327,7 @@ export function startDaemonServer(): void {
 
         case 'tap-element':
           if (type === 'ios') {
-            result = await (client as any).tapElement(args[0]);
+            result = await (client as any).tapElement(args[0], args[1]);
           } else {
             result = await (client as any).tap({ selector: args[0] });
           }
@@ -335,13 +335,13 @@ export function startDaemonServer(): void {
 
         case 'type':
           if (type === 'ios') {
-            await (client as any).typeText(args[0], args[1]);
+            result = { typed: true, ...(await (client as any).typeText(args[0], args[1], args[2])) };
           } else {
             const target = typeof args[0] === 'string' || args[0] === undefined ? undefined : args[0];
             const text = typeof args[0] === 'string' ? args[0] : args[1];
             await (client as any).setText(target, text);
+            result = { typed: true };
           }
-          result = { typed: true };
           break;
 
         case 'press-key':
