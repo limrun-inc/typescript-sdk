@@ -29,6 +29,15 @@ export default class IosType extends BaseCommand {
       description: 'Press Enter after typing.',
       default: false,
     }),
+    hid: Flags.boolean({
+      description:
+        'Type real key events instead of setting the accessibility value, so the app receives genuine keystrokes and text delegates fire. Slower; fails when no field is focused.',
+      default: false,
+    }),
+    'require-focus': Flags.boolean({
+      description: 'Fail instead of typing blind when no input field is focused.',
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {
@@ -42,15 +51,25 @@ export default class IosType extends BaseCommand {
         this.error('ios type only supports iOS instances');
       }
 
+      const options = {
+        strategy: flags.hid ? ('hid' as const) : undefined,
+        requireFocus: flags['require-focus'] || undefined,
+      };
+      let outcome: { warning?: string } | undefined;
       if (hasActiveSession(id)) {
-        await sendSessionCommand(id, 'type', [args.text, flags.enter]);
+        outcome = (await sendSessionCommand(id, 'type', [args.text, flags.enter, options])) as {
+          warning?: string;
+        };
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          await client.typeText(args.text, flags.enter);
+          outcome = await client.typeText(args.text, flags.enter, options);
         } finally {
           disconnect();
         }
+      }
+      if (outcome?.warning) {
+        this.warn(outcome.warning);
       }
       this.log('Text typed');
     });

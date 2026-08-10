@@ -170,6 +170,40 @@ export type ScreenshotData = {
 export type TapElementResult = {
   elementLabel?: string;
   elementType?: string;
+  /** How the element was activated: 'touch' (real HID tap) or 'ax' (AXPress). */
+  method?: TapElementActivation;
+};
+
+/**
+ * How tapElement activates the matched element. 'touch' (the server default)
+ * scrolls the element into view when needed and synthesizes a real HID tap;
+ * 'ax' performs an accessibility press without real touch events.
+ */
+export type TapElementActivation = 'touch' | 'ax';
+
+export type TapElementOptions = {
+  activate?: TapElementActivation;
+};
+
+/**
+ * How typeText injects text. 'auto' (the server default) sets the
+ * accessibility value and falls back to HID key events; 'hid' always types
+ * real key events so UIKit text delegates fire; 'ax' only sets the
+ * accessibility value.
+ */
+export type TypeTextStrategy = 'auto' | 'ax' | 'hid';
+
+export type TypeTextOptions = {
+  strategy?: TypeTextStrategy;
+  /** Fail instead of blind-firing HID key events when nothing is focused (auto strategy only). */
+  requireFocus?: boolean;
+};
+
+export type TypeTextResult = {
+  /** Set when the text was typed but likely didn't land (e.g. no focused field). */
+  warning?: string;
+  /** The strategy that actually ran. */
+  usedStrategy?: 'ax' | 'hid';
 };
 
 export type ElementResult = {
@@ -399,6 +433,9 @@ export type AppInstallationOptions = {
  */
 export type PerformAction =
   | { type: 'tap'; x: number; y: number; screenWidth?: number; screenHeight?: number }
+  // tapElement/typeText deliberately carry no activate/strategy options in
+  // batches: the server's batch decoder does not read them (use the
+  // single-shot methods for strategy control).
   | { type: 'tapElement'; selector: AccessibilitySelector }
   | { type: 'incrementElement'; selector: AccessibilitySelector }
   | { type: 'decrementElement'; selector: AccessibilitySelector }
@@ -508,9 +545,12 @@ export type InstanceClient = {
   /**
    * Tap an accessibility element by selector
    * @param selector The selector criteria to find the element
-   * @returns Information about the tapped element
+   * @param options Optional activation control; the server default is a real
+   *   HID tap that scrolls the element into view first, `{ activate: 'ax' }`
+   *   forces an accessibility press
+   * @returns Information about the tapped element, including which method ran
    */
-  tapElement: (selector: AccessibilitySelector) => Promise<TapElementResult>;
+  tapElement: (selector: AccessibilitySelector, options?: TapElementOptions) => Promise<TapElementResult>;
 
   /**
    * Increment an accessibility element (useful for sliders, steppers, etc.)
@@ -539,8 +579,13 @@ export type InstanceClient = {
    * Type text into the currently focused input field
    * @param text The text to type
    * @param pressEnter If true, press Enter after typing
+   * @param options Optional typing strategy. `{ strategy: 'hid' }` types real
+   *   key events so UIKit text delegates fire; `{ requireFocus: true }` fails
+   *   instead of typing blind when nothing is focused
+   * @returns Warning and the strategy that ran; check `warning` to detect
+   *   text that likely didn't land
    */
-  typeText: (text: string, pressEnter?: boolean) => Promise<void>;
+  typeText: (text: string, pressEnter?: boolean, options?: TypeTextOptions) => Promise<TypeTextResult>;
 
   /**
    * Press a key on the keyboard, optionally with modifiers
@@ -1115,6 +1160,11 @@ type ServerResponse = {
   duration?: number;
   once?: boolean;
   status?: IosMicrophoneStatus;
+  // typeText result fields
+  warning?: string;
+  usedStrategy?: 'ax' | 'hid';
+  // tapElement result fields
+  method?: TapElementActivation;
 };
 
 /**
@@ -1724,11 +1774,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       tapElementResult: (msg) => ({
         elementLabel: msg.elementLabel,
         elementType: msg.elementType,
+        method: msg.method,
       }),
       incrementElementResult: (msg) => ({ elementLabel: msg.elementLabel }),
       decrementElementResult: (msg) => ({ elementLabel: msg.elementLabel }),
       setElementValueResult: (msg) => ({ elementLabel: msg.elementLabel }),
-      typeTextResult: () => undefined,
+      typeTextResult: (msg) => ({ warning: msg.warning, usedStrategy: msg.usedStrategy }),
       pressKeyResult: () => undefined,
       toggleKeyboardResult: () => undefined,
       launchAppResult: () => undefined,
@@ -2020,8 +2071,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<void>('tap', { x, y, screenWidth, screenHeight });
     };
 
-    const tapElement = (selector: AccessibilitySelector): Promise<TapElementResult> => {
-      return sendRequest<TapElementResult>('tapElement', { selector });
+    const tapElement = (
+      selector: AccessibilitySelector,
+      options?: TapElementOptions,
+    ): Promise<TapElementResult> => {
+      return sendRequest<TapElementResult>('tapElement', { selector, activate: options?.activate });
     };
 
     const incrementElement = (selector: AccessibilitySelector): Promise<ElementResult> => {
@@ -2036,8 +2090,17 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<ElementResult>('setElementValue', { text, selector });
     };
 
-    const typeText = (text: string, pressEnter?: boolean): Promise<void> => {
-      return sendRequest<void>('typeText', { text, pressEnter });
+    const typeText = (
+      text: string,
+      pressEnter?: boolean,
+      options?: TypeTextOptions,
+    ): Promise<TypeTextResult> => {
+      return sendRequest<TypeTextResult>('typeText', {
+        text,
+        pressEnter,
+        strategy: options?.strategy,
+        requireFocus: options?.requireFocus,
+      });
     };
 
     const pressKey = (key: string, modifiers?: string[]): Promise<void> => {

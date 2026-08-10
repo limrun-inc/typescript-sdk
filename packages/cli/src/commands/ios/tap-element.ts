@@ -44,6 +44,11 @@ export default class IosTapElement extends BaseCommand {
     'ax-value': Flags.string({
       description: 'Match by `AXValue` using an exact match.',
     }),
+    activate: Flags.string({
+      description:
+        'How to activate the element: `touch` (default) scrolls it into view and taps with a real touch; `ax` performs an accessibility press without touch events.',
+      options: ['touch', 'ax'],
+    }),
   };
 
   async run(): Promise<void> {
@@ -72,8 +77,9 @@ export default class IosTapElement extends BaseCommand {
         );
       }
 
+      const options = flags.activate ? { activate: flags.activate as 'touch' | 'ax' } : undefined;
       if (hasActiveSession(id)) {
-        const result = await sendSessionCommand(id, 'tap-element', [selector]);
+        const result = await sendSessionCommand(id, 'tap-element', [selector, options]);
         if (flags.json) this.outputJson(result);
         else this.log('Element tapped');
         return;
@@ -81,7 +87,7 @@ export default class IosTapElement extends BaseCommand {
 
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        const result = await client.tapElement(selector);
+        const result = await client.tapElement(selector, options);
         if (flags.json) this.outputJson(result);
         else this.log('Element tapped');
       } finally {

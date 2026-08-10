@@ -5,6 +5,7 @@ import {
   hasActiveSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
+import { parsePointFlag } from '../../lib/parse-point';
 
 export default class IosScroll extends BaseCommand {
   static summary = 'Scroll on a running iOS instance';
@@ -37,6 +38,10 @@ export default class IosScroll extends BaseCommand {
       description:
         'Scroll momentum from 0.0 to 1.0. 0 disables inertia; 1 uses the fastest scroll with maximum inertia.',
     }),
+    coordinate: Flags.string({
+      description:
+        'Starting point of the scroll gesture as "x,y" in screen points. Defaults to the screen center; pass this when the scrollable view is not under the center (modals, split views).',
+    }),
   };
 
   async run(): Promise<void> {
@@ -51,16 +56,12 @@ export default class IosScroll extends BaseCommand {
       }
 
       const momentum = parseMomentum(flags.momentum);
-      const scrollOptions = momentum === undefined ? undefined : { momentum };
+      const coordinate = parseCoordinate(flags.coordinate);
+      const scrollOptions =
+        momentum === undefined && coordinate === undefined ? undefined : { momentum, coordinate };
 
       if (hasActiveSession(id)) {
-        if (scrollOptions) {
-          await sendSessionCommand(id, 'perform-actions', [
-            [{ type: 'scroll', direction: args.direction, pixels: flags.amount, momentum }],
-          ]);
-        } else {
-          await sendSessionCommand(id, 'scroll', [args.direction, flags.amount]);
-        }
+        await sendSessionCommand(id, 'scroll', [args.direction, flags.amount, scrollOptions]);
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
@@ -73,6 +74,13 @@ export default class IosScroll extends BaseCommand {
       this.log(`Scrolled ${args.direction}`);
     });
   }
+}
+
+function parseCoordinate(value: string | undefined): [number, number] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return parsePointFlag(value, '--coordinate');
 }
 
 function parseMomentum(value: string | undefined): number | undefined {
