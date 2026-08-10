@@ -132,17 +132,17 @@
   resolved "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.9.tgz#585624dc829cfb6e7c0aa6c3ca7d7e6daa87e34f"
   integrity sha512-PPOl1mi6lpLNQxnGoyAfschAodRFYXJ+9fs6WHXz7CSWKbOqiMZsubC+BQsVKuul+3vKLuwTHsS2c2y9EoKwxQ==
 
-"@limrun/api@0.39.4":
-  version "0.39.4"
-  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.39.4.tgz#882aa575943cb025c4bb5b62db6f78112832e093"
-  integrity sha512-KarcBiyNYp+w8is/t7L5x7XuQZQSjOXrsv9cFR9au98ZPhjHEAKkuaJ9BGIl5R+4AONL9Wt+jX4sXL9tJyN/Pw==
+"@limrun/api@0.46.4":
+  version "0.46.4"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.46.4.tgz#01b2f8f1f45522df24b1ddd1e21d310c23067cf1"
+  integrity sha512-Le4b2aBpol1CMyvrQ93wrnmX/VTy9Z7WFxzGC5JFp3liARzw0uZPV+0c+v0Sm82+9ySBhJfJn/isL2r62h65Yg==
   dependencies:
     "@limrun/xdelta3-wasm" "0.2.0"
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"
     ignore "^7.0.5"
     proxy-from-env "^2.1.0"
-    undici "7.24.7"
+    undici "7.28.0"
     ws "^8.18.3"
     yauzl "^3.4.0"
 
@@ -843,10 +843,10 @@ undici-types@~7.10.0:
   resolved "https://registry.npmjs.org/undici-types/-/undici-types-7.10.0.tgz"
   integrity sha512-t5Fy/nfn+14LuOc2KNYg75vZqClpAiqscVvMygNnlsHBFpSXdJaYtXMcdNLpl/Qvc3P2cB3s6lOV51nqsFq4ag==
 
-undici@7.24.7:
-  version "7.24.7"
-  resolved "https://registry.npmjs.org/undici/-/undici-7.24.7.tgz#af9535341bbe80625ca403a02418477a5c6a8760"
-  integrity sha512-H/nlJ/h0ggGC+uRL3ovD+G0i4bqhvsDOpbDv7At5eFLlj2b41L8QliGbnl2H7SnDiYhENphh1tQFJZf+MyfLsQ==
+undici@7.28.0:
+  version "7.28.0"
+  resolved "https://registry.yarnpkg.com/undici/-/undici-7.28.0.tgz#97d64564198b285bc281f0e8e29597e3d11fe7ec"
+  integrity sha512-cRZYrTDwWznlnRiPjggAGxZXanty6M8RV1ff8Wm4LWXBp7/IG8v5DnOm74DtUBp9OONpK75YlPnIjQqX0dBDtA==
 
 unpipe@1.0.0:
   version "1.0.0"
