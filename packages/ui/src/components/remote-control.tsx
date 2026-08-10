@@ -1624,6 +1624,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         (ctx.videoHeight / ctx.actualHeight);
       const dx = -event.deltaX * scaleX;
       const dy = -event.deltaY * scaleY;
+      if (dx === 0 && dy === 0) {
+        // Zero-delta ticks (momentum tails) must not trip the stuck-at-edge
+        // branch; just keep the gesture alive.
+        const active = wheelStateRef.current;
+        if (active) {
+          window.clearTimeout(active.endTimer);
+          active.endTimer = window.setTimeout(endWheelGesture, WHEEL_END_QUIET_MS);
+        }
+        return;
+      }
 
       // Press point: the cursor, pulled into the 20-80% band along the
       // dominant scroll axis so the drag has room to travel.
@@ -1650,20 +1660,22 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         window.clearTimeout(state.endTimer);
       }
 
-      const nextX = Math.min(Math.max(state.pos.videoX + dx, 0), anchor.videoWidth);
-      const nextY = Math.min(Math.max(state.pos.videoY + dy, 0), anchor.videoHeight);
-      if (nextX === state.pos.videoX && nextY === state.pos.videoY) {
-        // Out of travel room: end this drag (it has moved, so it reads as a
-        // completed drag, not a tap) and continue from a fresh press point.
-        applyPointerEvent(WHEEL_POINTER_ID, 'up', state.pos);
-        const start = pressPoint();
-        applyPointerEvent(WHEEL_POINTER_ID, 'down', start);
-        state.pos = start;
-      } else {
-        const pos = { ...state.pos, videoX: nextX, videoY: nextY };
-        applyPointerEvent(WHEEL_POINTER_ID, 'move', pos);
-        state.pos = pos;
+      let pos = state.pos;
+      let nextX = Math.min(Math.max(pos.videoX + dx, 0), anchor.videoWidth);
+      let nextY = Math.min(Math.max(pos.videoY + dy, 0), anchor.videoHeight);
+      if (nextX === pos.videoX && nextY === pos.videoY) {
+        // Out of travel room: end this drag and continue from a fresh press
+        // point, applying this tick's delta from there so the new press moves
+        // immediately (a press that never moves would read as a tap).
+        applyPointerEvent(WHEEL_POINTER_ID, 'up', pos);
+        pos = pressPoint();
+        applyPointerEvent(WHEEL_POINTER_ID, 'down', pos);
+        nextX = Math.min(Math.max(pos.videoX + dx, 0), anchor.videoWidth);
+        nextY = Math.min(Math.max(pos.videoY + dy, 0), anchor.videoHeight);
       }
+      pos = { ...pos, videoX: nextX, videoY: nextY };
+      applyPointerEvent(WHEEL_POINTER_ID, 'move', pos);
+      state.pos = pos;
       state.endTimer = window.setTimeout(endWheelGesture, WHEEL_END_QUIET_MS);
     };
     useEffect(() => {

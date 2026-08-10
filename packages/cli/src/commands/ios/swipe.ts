@@ -50,8 +50,11 @@ export default class IosSwipe extends BaseCommand {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
 
+      // The batch runs for ~duration; size the IPC timeout accordingly so
+      // long swipes don't hit the daemon's 30s default.
+      const ipcTimeoutMs = flags.duration + 15_000;
       if (hasActiveSession(id)) {
-        await sendSessionCommand(id, 'perform-actions', [actions]);
+        await sendSessionCommand(id, 'perform-actions', [actions], ipcTimeoutMs);
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
