@@ -12,6 +12,8 @@ jobs:
   publish:
     name: publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -24,6 +26,16 @@ jobs:
       - name: Install dependencies
         run: |
           yarn install
+
+      - name: Generate and publish SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: spdx-json
+          artifact-name: typescript-sdk-source.spdx.json
+          output-file: typescript-sdk-source.spdx.json
+          upload-artifact: true
+          upload-release-assets: ${{ github.event_name == 'release' }}
 
       - name: Publish to NPM
         run: |
