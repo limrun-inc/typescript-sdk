@@ -52,9 +52,9 @@ export default class IosSwipe extends BaseCommand {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
 
-      // One timeout governs the batch on both transports; the IPC socket gets
-      // a buffer on top so the daemon-held request fails first with the real
-      // error instead of a generic socket timeout.
+      // One timeout governs the batch on both transports. The IPC socket
+      // gets a buffer on top, so the real error surfaces before the socket
+      // times out.
       const timeoutMs = flags.duration + IPC_TIMEOUT_BUFFER_MS;
       if (hasActiveSession(id)) {
         try {
@@ -85,9 +85,9 @@ export default class IosSwipe extends BaseCommand {
 }
 
 /**
- * Best-effort touch-up after a failed batch: performActions stops at the
- * first error, so the trailing touchUp may never run and the simulator would
- * keep the finger pressed, corrupting every subsequent gesture.
+ * Lifts the finger after a failed batch, best-effort. A failed batch stops
+ * before its trailing touchUp, and a finger left pressed corrupts every
+ * later gesture.
  */
 async function liftFinger(
   send: (batch: Ios.PerformAction[]) => Promise<unknown>,
@@ -101,9 +101,9 @@ async function liftFinger(
 }
 
 /**
- * Builds a touchDown -> interpolated touchMoves -> touchUp batch. Step count
- * follows the requested duration at ~8ms per step (the touch sample rate),
- * capped by distance so short swipes stay coarse enough to register.
+ * Builds the swipe as touchDown, interpolated touchMoves, touchUp. Steps
+ * are ~8ms apart (the touch sample rate); short swipes get fewer steps so
+ * each one still moves.
  */
 function swipeActions(from: [number, number], to: [number, number], durationMs: number): Ios.PerformAction[] {
   const [x0, y0] = from;

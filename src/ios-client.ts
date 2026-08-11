@@ -186,9 +186,9 @@ export type TapElementActivation = 'touch' | 'ax';
 export type TapElementOptions = {
   activate?: TapElementActivation;
   /**
-   * Request timeout in milliseconds. Defaults to 90 seconds: off-screen
-   * elements are found by scrolling and re-scanning server-side, which can
-   * take well over the usual 30s on busy screens.
+   * Request timeout in milliseconds, default 90 seconds. The server scrolls
+   * to find off-screen elements, and that can take well over 30s on busy
+   * screens.
    */
   timeoutMs?: number;
 };
@@ -554,21 +554,21 @@ export type InstanceClient = {
   decrementElement: (selector: AccessibilitySelector) => Promise<ElementResult>;
 
   /**
-   * Set the value of an accessibility element (useful for text fields, etc.)
-   * This is much faster than typing character by character, but does not
-   * fire key-event-driven text delegates; use typeText for real typing.
+   * Set an element's value directly, without key events. Much faster than
+   * typing, but the app's key-event text delegates do not fire; use typeText
+   * for real typing.
    * @param text The text value to set
-   * @param selector The selector criteria to find the element; omit it to
-   *   target the currently focused element (the server resolves focus)
+   * @param selector The selector to find the element. Omit it to target the
+   *   focused element; the server resolves focus.
    * @returns Information about the modified element
    */
   setElementValue: (text: string, selector?: AccessibilitySelector) => Promise<ElementResult>;
 
   /**
-   * Type text into the currently focused input field as real HID key events,
-   * so text delegates fire like they would for a human. Fails when no field
-   * is focused. Slower than setElementValue (~20ms per character); prefer
-   * setElementValue for long strings that don't need key events.
+   * Type text into the focused field as real key events, so the app's text
+   * delegates fire. Fails when no field is focused. Typing costs ~20ms per
+   * character; use setElementValue for long strings that do not need key
+   * events.
    * @param text The text to type
    * @param pressEnter If true, press Enter after typing
    */
@@ -2076,9 +2076,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const setElementValue = (text: string, selector?: AccessibilitySelector): Promise<ElementResult> => {
-      // Selector omitted: the server resolves the currently focused element.
-      // Normalize null to undefined so IPC-deserialized calls (JSON turns
-      // undefined into null) omit the key instead of sending selector: null.
+      // No selector targets the focused element; the server resolves it.
+      // JSON IPC turns undefined into null, so normalize back: the payload
+      // must omit the selector key, not send null.
       const target = selector ?? undefined;
       return sendRequest<ElementResult>('setElementValue', {
         text,
