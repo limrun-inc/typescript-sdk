@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ConnectPhase } from './components/ConnectPhase';
-import { InstallPhase } from './components/InstallPhase';
+import { DevicesPhase } from './components/DevicesPhase';
+import { BuildPhase, InstallPhase } from './components/InstallPhase';
 import { ResultPanel } from './components/ResultPanel';
 import { INSTALLER_NAME } from './config';
 import { useConnect } from './hooks/useConnect';
@@ -25,7 +26,7 @@ export default function App() {
   });
   const build = useInstall();
   const device = useDeviceInstall({ connect, build, onError: setError });
-  const displayError = error ?? connect.appleLogin.error ?? device.install.error ?? device.ota.error;
+  const displayError = error ?? connect.appleLogin.error ?? device.ota.error;
 
   // The secrets directory on the backend host. The chosen value persists in
   // localStorage and rides every store operation and install build; the
@@ -55,8 +56,8 @@ export default function App() {
       <aside style={layout.sidebar}>
         <h1 style={layout.title}>{INSTALLER_NAME}</h1>
         <p style={hintText}>
-          Build and install an iOS app through automatic WebUSB or a private QR/OTA page. The backend needs
-          LIM_API_KEY and the lim CLI.
+          Build an ad-hoc-signed iOS app and install it on a registered iPhone through a private QR/OTA page.
+          The backend needs LIM_API_KEY and the lim CLI.
         </p>
         <label style={labelStyle}>Secrets directory (on the backend host)</label>
         <input
@@ -74,7 +75,9 @@ export default function App() {
         />
         {displayError && <div style={errorBox}>{displayError}</div>}
         <ConnectPhase connect={connect} />
-        <InstallPhase connect={connect} build={build} device={device} webhookUrl={webhookUrl} />
+        <DevicesPhase connect={connect} />
+        <BuildPhase connect={connect} build={build} webhookUrl={webhookUrl} />
+        <InstallPhase build={build} device={device} />
       </aside>
       <main style={layout.main}>
         <h2 style={{ margin: 0, fontSize: '16px' }}>Build result</h2>

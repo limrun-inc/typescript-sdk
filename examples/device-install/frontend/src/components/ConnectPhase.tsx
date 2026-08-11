@@ -70,20 +70,33 @@ function AppleLoginForm({ connect }: { connect: ConnectController }) {
   );
 }
 
+/**
+ * Stage 1: ad-hoc signing. With a stored connection the phase starts from
+ * the secret store: when the distribution certificate and an ad-hoc profile
+ * are already there, it only shows a ready summary. Apple sign-in appears
+ * when material is missing or a later stage flagged that it needs a portal
+ * session (e.g. registering a new device).
+ */
 export function ConnectPhase({ connect }: { connect: ConnectController }) {
   if (connect.connection) {
+    const needsLogin =
+      !connect.loggedIn &&
+      (connect.signing.status === 'missing' || connect.deviceEnrollment.status === 'needs-login');
     return (
-      <Section title="1. Apple setup">
+      <Section title="1. Ad-hoc signing">
         <div style={infoBox}>
           Team {connect.connection.teamId}, bundle ID {connect.connection.bundleId}.
         </div>
+        {connect.signing.status === 'checking' && <p style={hintText}>Checking stored signing secrets…</p>}
+        {connect.signing.note && (
+          <div style={connect.signing.status === 'ready' ? infoBox : warnBox}>{connect.signing.note}</div>
+        )}
         {connect.deviceEnrollment.status === 'needs-login' && (
-          <>
-            <div style={warnBox}>{connect.deviceEnrollment.note}</div>
-            {!connect.loggedIn ?
-              <AppleLoginForm connect={connect} />
-            : <div style={infoBox}>Apple reauthentication is ready. Prepare the device again below.</div>}
-          </>
+          <div style={warnBox}>{connect.deviceEnrollment.note}</div>
+        )}
+        {needsLogin && <AppleLoginForm connect={connect} />}
+        {connect.loggedIn && connect.signing.status !== 'ready' && (
+          <div style={infoBox}>Apple session is ready. Register a device below to create the profile.</div>
         )}
         <button style={secondaryButton(false)} onClick={connect.disconnect}>
           Disconnect and start over
@@ -93,12 +106,13 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
   }
 
   return (
-    <Section title="1. Apple setup">
+    <Section title="1. Ad-hoc signing">
       {!connect.loggedIn ?
         <>
           <p style={hintText}>
-            Sign in through Limrun&apos;s Apple relay, choose a team, and ensure the app&apos;s bundle ID.
-            Credentials are created only after a target iPhone and installation method are selected.
+            Sign in through Limrun&apos;s Apple relay, choose a team, and ensure the app&apos;s bundle ID. A
+            distribution certificate is created right away; the ad-hoc provisioning profile follows when a
+            device is registered.
           </p>
           <AppleLoginForm connect={connect} />
         </>
@@ -144,7 +158,7 @@ export function ConnectPhase({ connect }: { connect: ConnectController }) {
             onChange={(event) => connect.setAppName(event.target.value)}
             placeholder="My App"
           />
-          <p style={hintText}>Used to label a new bundle ID, the OTA page, and the registered iPhone.</p>
+          <p style={hintText}>Used to label a new bundle ID, the OTA install page, and registered iPhones.</p>
           <button
             style={primaryButton(connect.busy === 'confirm')}
             disabled={connect.busy === 'confirm'}

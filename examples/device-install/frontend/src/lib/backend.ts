@@ -117,11 +117,8 @@ export function createBackendSecretStore(): SigningSecretStore {
   };
 }
 
-export type InstallMethod = 'webusb' | 'qr';
-
 export type InstallInput = {
   projectPath: string;
-  method: InstallMethod;
   teamId: string;
   bundleId: string;
   deviceUDID: string;
@@ -145,7 +142,6 @@ export type InstallStatus = {
   id: string;
   state: 'running' | 'succeeded' | 'failed';
   startedAt: string;
-  method: InstallMethod;
   deviceUDID: string;
   assetName: string;
   webhook?: BuildWebhookPayload;

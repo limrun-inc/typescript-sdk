@@ -155,24 +155,16 @@ app.delete('/secrets/:type/:name', async (req: Request<{ type: string; name: str
 // be a public URL that forwards to the webhook receiver's port 3001 (e.g.
 // from `ngrok http 3001`).
 app.post('/install', async (req: Request<{}, {}, Partial<InstallRequest>>, res: Response) => {
-  const { projectPath, method, teamId, bundleId, deviceUDID, scheme, secretsDir, webhookUrl } = req.body;
-  if (
-    !projectPath ||
-    !teamId ||
-    !bundleId ||
-    !deviceUDID ||
-    !webhookUrl ||
-    (method !== 'webusb' && method !== 'qr')
-  ) {
+  const { projectPath, teamId, bundleId, deviceUDID, scheme, secretsDir, webhookUrl } = req.body;
+  if (!projectPath || !teamId || !bundleId || !deviceUDID || !webhookUrl) {
     return res.status(400).json({
       status: 'error',
-      message: 'projectPath, teamId, bundleId, deviceUDID, webhookUrl and method (webusb | qr) are required',
+      message: 'projectPath, teamId, bundleId, deviceUDID and webhookUrl are required',
     });
   }
   try {
     const installId = await startInstall({
       projectPath,
-      method,
       teamId,
       bundleId,
       deviceUDID,

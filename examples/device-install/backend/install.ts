@@ -7,11 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { getSecret, listSecrets, type StoredSecret } from './secret-store.js';
 
-export type InstallMethod = 'webusb' | 'qr';
-
 export type InstallRequest = {
   projectPath: string;
-  method: InstallMethod;
   teamId: string;
   bundleId: string;
   deviceUDID: string;
@@ -53,17 +50,17 @@ function isUnexpired(expirationDate?: string) {
   return Number.isNaN(expiresAt) || expiresAt > Date.now();
 }
 
+// Builds are always ad-hoc signed for QR/OTA installation: distribution
+// certificate plus an ad-hoc profile covering the target device.
 async function resolveDeviceCredentials(request: InstallRequest): Promise<DeviceCredentials> {
-  const certificateKind = request.method === 'webusb' ? 'DEVELOPMENT' : 'DISTRIBUTION';
-  const profileLabel = request.method === 'webusb' ? 'development' : 'ad-hoc';
   const certificate = await getSecret(
     'appleCertificate',
-    `${request.teamId}/${certificateKind}`,
+    `${request.teamId}/DISTRIBUTION`,
     request.secretsDir,
   );
   if (!certificate || !isUnexpired(certificate.data.expirationDate)) {
     throw new Error(
-      `No valid ${profileLabel} signing certificate is stored. Prepare the selected iPhone first.`,
+      'No valid distribution signing certificate is stored. Prepare the selected iPhone first.',
     );
   }
 
@@ -90,7 +87,7 @@ async function resolveDeviceCredentials(request: InstallRequest): Promise<Device
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const profile = profiles[0];
   if (!profile) {
-    throw new Error(`No valid ${profileLabel} profile for ${request.bundleId} covers ${request.deviceUDID}.`);
+    throw new Error(`No valid ad-hoc profile for ${request.bundleId} covers ${request.deviceUDID}.`);
   }
   return { certificate, profile };
 }
@@ -149,7 +146,6 @@ export type InstallStatus = {
   id: string;
   state: 'running' | 'succeeded' | 'failed';
   startedAt: string;
-  method: InstallMethod;
   deviceUDID: string;
   assetName: string;
   webhook?: unknown;
@@ -215,13 +211,12 @@ export async function startInstall(request: InstallRequest): Promise<string> {
 
   const id = randomUUID();
   const token = randomBytes(32).toString('hex');
-  const assetName = `device-install-${request.method}-${request.bundleId}-${id}.ipa`;
+  const assetName = `device-install-${request.bundleId}-${id}.ipa`;
   installs.set(id, {
     status: {
       id,
       state: 'running',
       startedAt: new Date().toISOString(),
-      method: request.method,
       deviceUDID: request.deviceUDID,
       assetName,
     },
@@ -259,7 +254,7 @@ export async function startInstall(request: InstallRequest): Promise<string> {
   if (request.scheme) args.push('--scheme', request.scheme);
 
   const log = (line: string) => console.log(`[install ${id}] ${line}`);
-  log(`Building ${request.bundleId} for ${request.method} installation...`);
+  log(`Building ${request.bundleId} for QR/OTA installation...`);
   for (const line of await ensureExpoBundleIdentifier(request.projectPath, request.bundleId)) log(line);
   log(`$ lim ${args.join(' ')}`);
 

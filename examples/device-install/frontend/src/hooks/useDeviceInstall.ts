@@ -1,11 +1,15 @@
+// QR/OTA installation of the built IPA. After the build webhook proves the
+// upload finished, the install ID is exchanged for a token scoped to exactly
+// that asset; the user then explicitly creates the private OTA session whose
+// install page URL becomes the QR code.
 import { useCallback, useEffect, useState } from 'react';
-import { useDeviceInstallRelay, useOTAInstall } from '@limrun/device-install/react';
+import { useOTAInstall } from '@limrun/device-install/react';
 import { errorMessage, fetchDeviceSession, sleep, type DeviceSession } from '../lib/backend';
 import type { ConnectController } from './useConnect';
 import type { InstallController } from './useInstall';
 
 export type ActivityEntry = { at: string; message: string; detail?: string };
-export type AutomaticInstallState = 'idle' | 'authorizing' | 'waiting' | 'installing' | 'started' | 'failed';
+export type AuthorizationState = 'idle' | 'authorizing' | 'ready' | 'failed';
 export type DeviceInstallController = ReturnType<typeof useDeviceInstall>;
 
 export function useDeviceInstall({
@@ -19,14 +23,13 @@ export function useDeviceInstall({
 }) {
   const [session, setSession] = useState<DeviceSession>();
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
-  const [installState, setInstallState] = useState<AutomaticInstallState>('idle');
+  const [authorization, setAuthorization] = useState<AuthorizationState>('idle');
   const [authorizedInstallId, setAuthorizedInstallId] = useState<string>();
   const [authorizationAttempt, setAuthorizationAttempt] = useState(0);
-  const [otaStartedInstallId, setOtaStartedInstallId] = useState<string>();
 
   // The one memoized callback in this hook: log's identity feeds the
-  // effects below and the library hooks, so a plain function would re-run
-  // them (and refetch the session) on every render.
+  // effects below, so a plain function would re-run them (and refetch the
+  // session) on every render.
   const log = useCallback((message: string, detail?: string) => {
     setActivity((current) => [...current, { at: new Date().toLocaleTimeString(), message, detail }]);
   }, []);
@@ -37,48 +40,21 @@ export function useDeviceInstall({
       .then((fresh) => {
         if (!cancelled) {
           setSession(fresh);
-          log('Device session ready', `expires at ${fresh.expiresAt}`);
+          log('Install session ready', `expires at ${fresh.expiresAt}`);
         }
       })
       .catch((caught: unknown) => {
-        if (!cancelled) onError(errorMessage(caught, 'Could not start the device session'));
+        if (!cancelled) onError(errorMessage(caught, 'Could not start the install session'));
       });
     return () => {
       cancelled = true;
     };
   }, [log, onError]);
 
-  const install = useDeviceInstallRelay({
-    registryApiUrl: session?.registryUrl,
-    token: session?.token,
-    log,
-  });
   const ota = useOTAInstall({
     registryApiUrl: session?.registryUrl,
     token: session?.token,
   });
-
-  async function prepareSelectedDevice(profileKind: 'development' | 'adhoc') {
-    onError(undefined);
-    const device = install.device;
-    if (!device) {
-      onError('Select an iPhone first.');
-      return false;
-    }
-    if (profileKind === 'development' && !install.hasPairRecord) {
-      onError('Pair the selected iPhone before preparing WebUSB signing.');
-      return false;
-    }
-    if (!device.hello.serialNumber) {
-      onError('The selected iPhone did not report a UDID.');
-      return false;
-    }
-    return connect.prepareDevice(
-      device.hello.serialNumber,
-      device.hello.productName ?? 'iPhone',
-      profileKind,
-    );
-  }
 
   // The successful webhook proves upload completion. Exchange only that
   // install ID for a token scoped to the exact uploaded asset.
@@ -86,7 +62,7 @@ export function useDeviceInstall({
     const installId = build.status?.id;
     if (build.state !== 'succeeded' || !installId || authorizedInstallId === installId) return;
     let cancelled = false;
-    setInstallState('authorizing');
+    setAuthorization('authorizing');
     void (async () => {
       let lastError: unknown;
       for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -95,7 +71,7 @@ export function useDeviceInstall({
           if (cancelled) return;
           setSession(fresh);
           setAuthorizedInstallId(installId);
-          setInstallState(build.method === 'webusb' ? 'waiting' : 'started');
+          setAuthorization('ready');
           log('Exact-asset install session ready', fresh.assetName);
           return;
         } catch (caught) {
@@ -104,88 +80,52 @@ export function useDeviceInstall({
         }
       }
       if (!cancelled) {
-        setInstallState('failed');
+        setAuthorization('failed');
         onError(errorMessage(lastError, 'Could not authorize the built IPA'));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [authorizationAttempt, authorizedInstallId, build.method, build.state, build.status?.id, log, onError]);
+  }, [authorizationAttempt, authorizedInstallId, build.state, build.status?.id, log, onError]);
 
-  useEffect(() => {
-    if (build.method !== 'webusb' || installState !== 'waiting' || !session?.assetId || !install.canInstall)
-      return;
-    setInstallState('installing');
-    void install.startInstallation({ assetId: session.assetId }).then((relay) => {
-      setInstallState(relay ? 'started' : 'failed');
-    });
-  }, [build.method, install, installState, session?.assetId]);
-
-  useEffect(() => {
-    const installId = build.status?.id;
-    if (
-      build.method !== 'qr' ||
-      build.state !== 'succeeded' ||
-      !installId ||
-      authorizedInstallId !== installId ||
-      otaStartedInstallId === installId ||
-      !session?.assetId
-    ) {
+  /** Creates the private OTA session for the authorized build's asset. */
+  function startQRInstall() {
+    onError(undefined);
+    const webhook = build.status?.webhook;
+    if (authorization !== 'ready' || !session?.assetId) {
+      onError('The built IPA is not authorized yet.');
       return;
     }
-    const webhook = build.status?.webhook;
     if (!webhook?.bundleIdentifier || !webhook.shortVersion || !webhook.buildVersion) {
-      setOtaStartedInstallId(installId);
       onError('The build webhook did not include signed IPA metadata for an OTA manifest.');
       return;
     }
-    setOtaStartedInstallId(installId);
-    void ota.start({
-      assetId: session.assetId,
-      bundleIdentifier: webhook.bundleIdentifier,
-      shortVersion: webhook.shortVersion,
-      buildVersion: webhook.buildVersion,
-      title: connect.connection?.appName || webhook.bundleIdentifier,
-    });
-  }, [
-    authorizedInstallId,
-    build.method,
-    build.state,
-    build.status,
-    connect.connection?.appName,
-    onError,
-    ota,
-    otaStartedInstallId,
-    session?.assetId,
-  ]);
-
-  function retryInstallation() {
-    onError(undefined);
-    install.clearError();
-    if (session?.assetId) {
-      setInstallState('waiting');
-    } else {
-      setAuthorizedInstallId(undefined);
-      setAuthorizationAttempt((current) => current + 1);
-    }
+    log('Creating the private OTA install session');
+    void ota
+      .start({
+        assetId: session.assetId,
+        bundleIdentifier: webhook.bundleIdentifier,
+        shortVersion: webhook.shortVersion,
+        buildVersion: webhook.buildVersion,
+        title: connect.connection?.appName || webhook.bundleIdentifier,
+      })
+      .then((created) => {
+        if (created) log('OTA install page ready', created.installPageUrl);
+      });
   }
 
-  const selectedUDID = install.device?.hello.serialNumber;
-  const enrollmentReady = (profileKind: 'development' | 'adhoc') =>
-    connect.deviceEnrollment.status === 'ready' &&
-    connect.deviceEnrollment.profileKind === profileKind &&
-    connect.deviceEnrollment.deviceUDID === selectedUDID?.replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+  function retryAuthorization() {
+    onError(undefined);
+    setAuthorizedInstallId(undefined);
+    setAuthorizationAttempt((current) => current + 1);
+  }
 
   return {
-    install,
     ota,
     activity,
-    installState,
-    selectedUDID,
-    enrollmentReady,
-    prepareSelectedDevice,
-    retryInstallation,
-    retryOTA: () => setOtaStartedInstallId(undefined),
+    authorization,
+    startQRInstall,
+    retryAuthorization,
   };
 }
