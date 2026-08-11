@@ -225,7 +225,9 @@ export function useOTAInstall({
   registryApiUrl,
   token,
   organizationId,
-  pollIntervalMs = 750,
+  // Matches the registry's install page, which also polls its status once
+  // per second.
+  pollIntervalMs = 1000,
 }: UseOTAInstallOptions): UseOTAInstallResult {
   const [session, setSession] = useState<OTAInstallSession | undefined>();
   const [status, setStatus] = useState<OTAInstallStatus | undefined>();
