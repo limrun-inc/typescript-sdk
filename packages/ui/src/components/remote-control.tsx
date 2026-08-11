@@ -1575,11 +1575,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
     };
 
-    // Wheel scrolling synthesizes a touch drag: finger down near the cursor
-    // on the first tick, moves opposite the wheel delta, and lifts after a
-    // quiet period. The press point is pulled into the middle band of the
-    // screen along the dominant scroll axis so the drag has travel room; when
-    // the finger runs out of room mid-scroll it lifts and re-presses there.
+    // Mouse wheel / trackpad scrolling over the stream scrolls inside the
+    // simulator. iOS has no scroll wheel, so we fake a finger: press down
+    // where the cursor is, drag it as wheel events come in, lift when they
+    // stop. If the fake finger reaches the screen edge before the user stops
+    // scrolling, lift and press again to keep going.
     const WHEEL_END_QUIET_MS = 150;
     const endWheelGesture = () => {
       const state = wheelStateRef.current;
@@ -1591,9 +1591,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const handleWheel = (event: WheelEvent) => {
       // Trackpad pinches arrive as ctrl+wheel; don't turn them into scrolls.
       if (event.ctrlKey) return;
-      // Real pointers win: never interleave a synthesized finger with an
-      // active mouse/touch gesture or Alt two-finger mode (on iOS the held
-      // Alt key would turn the drag into a pinch).
+      // If the user is already touching/dragging (or holding Alt for the
+      // two-finger gesture), let that win - don't add a second fake finger.
       if (isAltHeldRef.current || twoFingerStateRef.current) return;
       const pointerCount = activePointers.current.size;
       if (pointerCount > 1 || (pointerCount === 1 && !activePointers.current.has(WHEEL_POINTER_ID))) return;
@@ -1630,14 +1629,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         s.endTimer = window.setTimeout(endWheelGesture, WHEEL_END_QUIET_MS);
       };
       if (dx === 0 && dy === 0) {
-        // Zero-delta ticks (momentum tails) must not trip the stuck-at-edge
-        // branch; just keep the gesture alive.
+        // Some wheel events carry no movement (momentum tails); just keep
+        // the gesture alive.
         if (wheelStateRef.current) armEnd(wheelStateRef.current);
         return;
       }
 
-      // Press point: the cursor, pulled into the 20-80% band along the
-      // dominant scroll axis so the drag has room to travel.
+      // Where to press the fake finger down: at the cursor, but nudged away
+      // from the screen edges so the drag has room to travel.
       const pressPoint = (): PointerGeometry => ({
         videoWidth: anchor.videoWidth,
         videoHeight: anchor.videoHeight,
@@ -1670,9 +1669,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       let pos = state.pos;
       let next = advance(pos);
       if (next.videoX === pos.videoX && next.videoY === pos.videoY) {
-        // Out of travel room: end this drag and continue from a fresh press
-        // point, applying this tick's delta from there so the new press moves
-        // immediately (a press that never moves would read as a tap).
+        // Finger reached the screen edge: lift it, press again with room to
+        // travel, and move right away (a press that never moves would count
+        // as a tap).
         applyPointerEvent(WHEEL_POINTER_ID, 'up', pos);
         pos = pressPoint();
         applyPointerEvent(WHEEL_POINTER_ID, 'down', pos);
