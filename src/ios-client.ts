@@ -2075,7 +2075,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       selector: AccessibilitySelector,
       options?: TapElementOptions,
     ): Promise<TapElementResult> => {
-      return sendRequest<TapElementResult>('tapElement', { selector, activate: options?.activate });
+      // Off-screen elements are found by scrolling and re-scanning server-side,
+      // which can take well over the default 30s on busy screens.
+      return sendRequest<TapElementResult>(
+        'tapElement',
+        { selector, activate: options?.activate },
+        undefined,
+        90_000,
+      );
     };
 
     const incrementElement = (selector: AccessibilitySelector): Promise<ElementResult> => {
