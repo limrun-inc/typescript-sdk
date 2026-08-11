@@ -30,7 +30,7 @@ export default class AssetPush extends BaseCommand {
     'upload-options': Flags.string({
       multiple: true,
       description:
-        'App metadata to record on the asset as key=value, repeatable. Keys: displayName, bundleIdentifier, shortVersion, buildVersion, deeplink. Over-the-air installation of hand-uploaded IPAs requires at least bundleIdentifier and buildVersion.',
+        'App metadata to record on the asset as key=value, repeatable. Keys: displayName, bundleIdentifier, shortVersion, buildVersion, deeplink. All optional; consumers like over-the-air installation use whichever are present.',
     }),
   };
 

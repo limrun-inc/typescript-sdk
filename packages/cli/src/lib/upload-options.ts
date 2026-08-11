@@ -10,9 +10,8 @@ const uploadOptionKeys = [
 
 /**
  * Parses repeated --upload-options key=value flags into the app metadata
- * recorded on the uploaded asset. The registry's OTA install flow reads the
- * manifest identity from these fields, so hand-uploaded IPAs need at least
- * bundleIdentifier and buildVersion to be installable over the air.
+ * recorded on the uploaded asset. All fields are optional; consumers like
+ * the registry's OTA install flow use whichever are present.
  */
 export function parseUploadOptions(values?: string[]): AssetUploadOptions | undefined {
   if (!values || values.length === 0) {

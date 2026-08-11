@@ -197,8 +197,8 @@ export interface AssetGetOrCreateParams {
   displayName?: string;
 
   /**
-   * CFBundleIdentifier of the uploaded app bundle. Required for over-the-air
-   * installation of hand-uploaded IPAs.
+   * CFBundleIdentifier of the uploaded app bundle. Used by over-the-air
+   * installation when present.
    */
   bundleIdentifier?: string;
 
@@ -208,8 +208,8 @@ export interface AssetGetOrCreateParams {
   shortVersion?: string;
 
   /**
-   * CFBundleVersion of the uploaded app bundle, e.g. 42. Required for
-   * over-the-air installation of hand-uploaded IPAs.
+   * CFBundleVersion of the uploaded app bundle, e.g. 42. Used by
+   * over-the-air installation when present.
    */
   buildVersion?: string;
 
