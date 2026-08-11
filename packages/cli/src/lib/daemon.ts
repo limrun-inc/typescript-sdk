@@ -335,12 +335,22 @@ export function startDaemonServer(): void {
 
         case 'type':
           if (type === 'ios') {
-            result = { ...(await (client as any).typeText(args[0], args[1], args[2])), typed: true };
+            await (client as any).typeText(args[0], args[1]);
+            result = { typed: true };
           } else {
             const target = typeof args[0] === 'string' || args[0] === undefined ? undefined : args[0];
             const text = typeof args[0] === 'string' ? args[0] : args[1];
             await (client as any).setText(target, text);
             result = { typed: true };
+          }
+          break;
+
+        case 'set-text':
+          if (type === 'ios') {
+            result = await (client as any).setElementValue(args[0], args[1]);
+          } else {
+            const target = typeof args[1] === 'object' && args[1] !== null ? args[1] : undefined;
+            result = await (client as any).setText(target, args[0]);
           }
           break;
 
