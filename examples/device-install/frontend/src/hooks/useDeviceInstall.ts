@@ -89,7 +89,13 @@ export function useDeviceInstall({
     };
   }, [authorizationAttempt, authorizedInstallId, build.state, build.status?.id, log, onError]);
 
-  /** Creates the private OTA session for the authorized build's asset. */
+  /**
+   * Creates the private OTA session for the authorized build's asset. The
+   * registry defaults the manifest identity (bundle identifier, versions,
+   * title, deep link, icon) to the app metadata limbuild recorded on the
+   * asset at build time; the webhook fields are forwarded as explicit
+   * fallbacks for builds whose asset carries no metadata yet.
+   */
   function startQRInstall() {
     onError(undefined);
     const webhook = build.status?.webhook;
@@ -97,18 +103,14 @@ export function useDeviceInstall({
       onError('The built IPA is not authorized yet.');
       return;
     }
-    if (!webhook?.bundleIdentifier || !webhook.shortVersion || !webhook.buildVersion) {
-      onError('The build webhook did not include signed IPA metadata for an OTA manifest.');
-      return;
-    }
     log('Creating the private OTA install session');
     void ota
       .start({
         assetId: session.assetId,
-        bundleIdentifier: webhook.bundleIdentifier,
-        shortVersion: webhook.shortVersion,
-        buildVersion: webhook.buildVersion,
-        title: connect.connection?.appName || webhook.bundleIdentifier,
+        bundleIdentifier: webhook?.bundleIdentifier,
+        shortVersion: webhook?.shortVersion,
+        buildVersion: webhook?.buildVersion,
+        title: webhook?.displayName || connect.connection?.appName || webhook?.bundleIdentifier,
       })
       .then((created) => {
         if (created) log('OTA install page ready', created.installPageUrl);

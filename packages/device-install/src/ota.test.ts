@@ -42,6 +42,30 @@ describe('OTA installation API', () => {
     });
   });
 
+  it('creates a session with just the asset id, deferring identity to asset metadata', async () => {
+    const payload = {
+      id: 'session_2',
+      installPageUrl: 'https://registry.example/ios/ota/sessions/session_2?k=signed',
+      statusUrl: 'https://registry.example/ios/ota/sessions/session_2/status?k=signed',
+      expiresAt: '2026-07-25T12:00:00Z',
+    };
+    const fetch = vi.fn(async () => Response.json(payload, { status: 201 }));
+    await createOTAInstallSession({
+      registryApiUrl: 'https://registry.example',
+      token: 'scoped-token',
+      assetId: 'asset_1',
+      deepLink: 'myapp://home',
+      fetch,
+    });
+    const [, init] = fetch.mock.calls[0]!;
+    // Omitted fields must stay out of the body so the registry falls back to
+    // the metadata limbuild recorded on the asset.
+    expect(JSON.parse(String(init.body))).toEqual({
+      assetId: 'asset_1',
+      deepLink: 'myapp://home',
+    });
+  });
+
   it('fetches status from the sticky capability URL without bearer credentials', async () => {
     const payload = {
       id: 'session_1',
