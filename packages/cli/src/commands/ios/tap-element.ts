@@ -81,8 +81,8 @@ export default class IosTapElement extends BaseCommand {
       const options: Ios.TapElementOptions | undefined =
         flags.activate ? { activate: flags.activate as Ios.TapElementActivation } : undefined;
       if (hasActiveSession(id)) {
-        // The daemon-held request uses the SDK's 90s tapElement budget
-        // (off-screen scroll scans); the IPC socket must not give up first.
+        // tapElement can scroll-scan for up to 90s; the IPC socket must not
+        // give up first.
         const result = await sendSessionCommand(
           id,
           'tap-element',
