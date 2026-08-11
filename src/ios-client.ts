@@ -30,6 +30,8 @@ export type ConnectionStateCallback = (state: ConnectionState) => void;
 const ACTIVE_RECORDING_FILENAME = 'recording.mp4';
 export const REVERSE_TUNNEL_REMOTE_PORT_MIN = 57090;
 export const REVERSE_TUNNEL_REMOTE_PORT_MAX = 57099;
+/** Default tapElement timeout; see TapElementOptions.timeoutMs. */
+export const TAP_ELEMENT_TIMEOUT_MS = 90_000;
 
 function buildDownloadUrl(apiUrl: string): string {
   return `${apiUrl}/files?name=${encodeURIComponent(ACTIVE_RECORDING_FILENAME)}`;
@@ -170,7 +172,7 @@ export type ScreenshotData = {
 export type TapElementResult = {
   elementLabel?: string;
   elementType?: string;
-  /** How the element was activated: 'touch' (real HID tap) or 'ax' (AXPress). */
+  /** The activation that ran. */
   method?: TapElementActivation;
 };
 
@@ -183,6 +185,12 @@ export type TapElementActivation = 'touch' | 'ax';
 
 export type TapElementOptions = {
   activate?: TapElementActivation;
+  /**
+   * Request timeout in milliseconds. Defaults to 90 seconds: off-screen
+   * elements are found by scrolling and re-scanning server-side, which can
+   * take well over the usual 30s on busy screens.
+   */
+  timeoutMs?: number;
 };
 
 /**
@@ -203,7 +211,7 @@ export type TypeTextResult = {
   /** Set when the text was typed but likely didn't land (e.g. no focused field). */
   warning?: string;
   /** The strategy that actually ran. */
-  usedStrategy?: 'ax' | 'hid';
+  usedStrategy?: Exclude<TypeTextStrategy, 'auto'>;
 };
 
 export type ElementResult = {
@@ -1162,7 +1170,7 @@ type ServerResponse = {
   status?: IosMicrophoneStatus;
   // typeText result fields
   warning?: string;
-  usedStrategy?: 'ax' | 'hid';
+  usedStrategy?: Exclude<TypeTextStrategy, 'auto'>;
   // tapElement result fields
   method?: TapElementActivation;
 };
@@ -2075,13 +2083,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       selector: AccessibilitySelector,
       options?: TapElementOptions,
     ): Promise<TapElementResult> => {
-      // Off-screen elements are found by scrolling and re-scanning server-side,
-      // which can take well over the default 30s on busy screens.
       return sendRequest<TapElementResult>(
         'tapElement',
         { selector, activate: options?.activate },
         undefined,
-        90_000,
+        options?.timeoutMs ?? TAP_ELEMENT_TIMEOUT_MS,
       );
     };
 

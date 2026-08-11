@@ -1,4 +1,5 @@
 import { Args, Flags } from '@oclif/core';
+import type { Ios } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
@@ -51,15 +52,17 @@ export default class IosType extends BaseCommand {
         this.error('ios type only supports iOS instances');
       }
 
-      const options = {
-        strategy: flags.hid ? ('hid' as const) : undefined,
+      const options: Ios.TypeTextOptions = {
+        strategy: flags.hid ? 'hid' : undefined,
         requireFocus: flags['require-focus'] || undefined,
       };
-      let outcome: { warning?: string } | undefined;
+      let outcome: Ios.TypeTextResult | undefined;
       if (hasActiveSession(id)) {
-        outcome = (await sendSessionCommand(id, 'type', [args.text, flags.enter, options])) as {
-          warning?: string;
-        };
+        outcome = (await sendSessionCommand(id, 'type', [
+          args.text,
+          flags.enter,
+          options,
+        ])) as Ios.TypeTextResult;
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {

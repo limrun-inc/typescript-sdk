@@ -335,7 +335,7 @@ export function startDaemonServer(): void {
 
         case 'type':
           if (type === 'ios') {
-            result = { typed: true, ...(await (client as any).typeText(args[0], args[1], args[2])) };
+            result = { ...(await (client as any).typeText(args[0], args[1], args[2])), typed: true };
           } else {
             const target = typeof args[0] === 'string' || args[0] === undefined ? undefined : args[0];
             const text = typeof args[0] === 'string' ? args[0] : args[1];

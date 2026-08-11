@@ -56,7 +56,7 @@ export default class IosScroll extends BaseCommand {
       }
 
       const momentum = parseMomentum(flags.momentum);
-      const coordinate = parseCoordinate(flags.coordinate);
+      const coordinate = flags.coordinate ? parsePointFlag(flags.coordinate, '--coordinate') : undefined;
       const scrollOptions =
         momentum === undefined && coordinate === undefined ? undefined : { momentum, coordinate };
 
@@ -74,13 +74,6 @@ export default class IosScroll extends BaseCommand {
       this.log(`Scrolled ${args.direction}`);
     });
   }
-}
-
-function parseCoordinate(value: string | undefined): [number, number] | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  return parsePointFlag(value, '--coordinate');
 }
 
 function parseMomentum(value: string | undefined): number | undefined {
