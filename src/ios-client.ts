@@ -2077,10 +2077,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const setElementValue = (text: string, selector?: AccessibilitySelector): Promise<ElementResult> => {
       // Selector omitted: the server resolves the currently focused element.
+      // Normalize null to undefined so IPC-deserialized calls (JSON turns
+      // undefined into null) omit the key instead of sending selector: null.
+      const target = selector ?? undefined;
       return sendRequest<ElementResult>('setElementValue', {
         text,
-        selector,
-        focused: selector ? undefined : true,
+        selector: target,
+        focused: target ? undefined : true,
       });
     };
 
