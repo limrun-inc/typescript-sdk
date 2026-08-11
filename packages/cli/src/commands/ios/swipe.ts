@@ -13,8 +13,9 @@ const IPC_TIMEOUT_BUFFER_MS = 15_000;
 export default class IosSwipe extends BaseCommand {
   static summary = 'Swipe between two points on a running iOS instance';
   static description =
-    'Perform a touch swipe gesture from one screen point to another, expressed in screen points. ' +
-    'Useful for gestures scroll cannot express, like pull-to-refresh (swipe down from the upper third of the screen).';
+    'Perform a touch drag gesture from one screen point to another, expressed in screen points. ' +
+    'Use `ios scroll` for plain content scrolling; swipe gives explicit start/end points and duration ' +
+    'for gestures that need them: pull-to-refresh from a specific area, carousel paging, sliders, and diagonal drags.';
   static examples = [
     '<%= config.bin %> ios swipe --from 200,300 --to 200,600',
     '<%= config.bin %> ios swipe --from 200,300 --to 200,600 --duration 800',
