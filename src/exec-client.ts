@@ -50,6 +50,13 @@ export type XcodeBuildExecRequest = {
   buildSettings?: Record<string, string>;
   gitInit?: boolean;
   signedUploadUrl?: string;
+  /**
+   * ID of the Limrun asset signedUploadUrl targets, when it was minted from
+   * one. Lets limbuild record the built app's metadata (title, bundle
+   * identifier, versions, deep link scheme, icon) on the asset, which the
+   * registry's OTA install flow reads. Older limbuild servers ignore it.
+   */
+  assetId?: string;
   webhook?: WebhookConfig;
   additionalMetadata?: {
     signedDownloadUrl?: string;

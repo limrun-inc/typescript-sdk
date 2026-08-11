@@ -33,6 +33,7 @@ import {
   createDaemonLogger,
   deriveBasisCache,
   mintAssetUploadUrls,
+  type AssetUploadOptions,
   type BuildLog,
   type LogLevel,
   type SyncResult,
@@ -175,7 +176,18 @@ export type ReactNativeBuildConfig = {
 };
 
 export type XcodeBuildOptions = {
-  upload?: { assetName: string } | { signedUploadUrl: string };
+  upload?:
+    | {
+        assetName: string;
+        /**
+         * App metadata to record on the asset up front. limbuild extracts
+         * the same metadata from the built bundle after the build and
+         * overwrites whatever it found; values set here survive only for
+         * fields the bundle doesn't declare (e.g. a deep link scheme).
+         */
+        uploadOptions?: AssetUploadOptions;
+      }
+    | { signedUploadUrl: string };
   signing?: XcodeSigningConfig;
   cloudSigning?: XcodeCloudSigningConfig;
   /**
@@ -806,13 +818,18 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         };
 
         if (options?.upload && 'assetName' in options.upload) {
-          const requestPromise = mintAssetUploadUrls(client.assets, options.upload.assetName).then(
-            (asset) => {
-              request.signedUploadUrl = asset.signedUploadUrl;
-              request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
-              return request;
-            },
-          );
+          const requestPromise = mintAssetUploadUrls(
+            client.assets,
+            options.upload.assetName,
+            undefined,
+            options.upload.uploadOptions,
+          ).then((asset) => {
+            request.signedUploadUrl = asset.signedUploadUrl;
+            // Lets limbuild record the built app's metadata on the asset.
+            request.assetId = asset.id;
+            request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
+            return request;
+          });
           return exec(requestPromise, { apiUrl, token, log });
         }
 

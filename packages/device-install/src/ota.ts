@@ -21,32 +21,19 @@ export type CreateOTAInstallSessionOptions = {
   registryApiUrl: string;
   token: string;
   organizationId?: string;
+  /**
+   * The signed IPA asset to install. Its recorded app metadata (bundle
+   * identifier, versions, title, deep link scheme, icon) drives the whole
+   * install flow; limbuild records it at build time, or set it when
+   * uploading the asset.
+   */
   assetId: string;
-  /**
-   * CFBundleIdentifier of the signed IPA. Defaults to the metadata limbuild
-   * recorded on the asset at build time; required only when the asset
-   * carries none (e.g. a hand-uploaded IPA).
-   */
-  bundleIdentifier?: string;
-  /** CFBundleShortVersionString. Defaults to the asset's recorded metadata. */
-  shortVersion?: string;
-  /**
-   * CFBundleVersion. Defaults to the asset's recorded metadata; required
-   * only when the asset carries none.
-   */
-  buildVersion?: string;
-  /**
-   * App title shown on the install page and in the iOS install prompt.
-   * Defaults to the display name recorded on the asset, then to the bundle
-   * identifier.
-   */
-  title?: string;
   /**
    * URL the install page's Open button launches once the app is installed,
    * e.g. an Expo dev client URL. Defaults to the asset's recorded primary
    * URL scheme.
    */
-  deepLink?: string;
+  deepLinkOnCompletion?: string;
   ttlSeconds?: number;
   signal?: AbortSignal;
   fetch?: typeof globalThis.fetch;
@@ -63,11 +50,7 @@ export async function createOTAInstallSession({
   token,
   organizationId,
   assetId,
-  bundleIdentifier,
-  shortVersion,
-  buildVersion,
-  title,
-  deepLink,
+  deepLinkOnCompletion,
   ttlSeconds,
   signal,
   fetch: fetchImplementation = globalThis.fetch,
@@ -87,11 +70,7 @@ export async function createOTAInstallSession({
     headers,
     body: JSON.stringify({
       assetId,
-      ...(bundleIdentifier === undefined ? {} : { bundleIdentifier }),
-      ...(shortVersion === undefined ? {} : { shortVersion }),
-      ...(buildVersion === undefined ? {} : { buildVersion }),
-      ...(title === undefined ? {} : { title }),
-      ...(deepLink === undefined ? {} : { deepLink }),
+      ...(deepLinkOnCompletion === undefined ? {} : { deepLinkOnCompletion }),
       ...(ttlSeconds === undefined ? {} : { ttlSeconds }),
     }),
     signal,

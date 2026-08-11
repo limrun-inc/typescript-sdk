@@ -5,7 +5,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useOTAInstall } from '@limrun/device-install/react';
 import { errorMessage, fetchDeviceSession, sleep, type DeviceSession } from '../lib/backend';
-import type { ConnectController } from './useConnect';
 import type { InstallController } from './useInstall';
 
 export type ActivityEntry = { at: string; message: string; detail?: string };
@@ -13,11 +12,9 @@ export type AuthorizationState = 'idle' | 'authorizing' | 'ready' | 'failed';
 export type DeviceInstallController = ReturnType<typeof useDeviceInstall>;
 
 export function useDeviceInstall({
-  connect,
   build,
   onError,
 }: {
-  connect: ConnectController;
   build: InstallController;
   onError: (message?: string) => void;
 }) {
@@ -91,30 +88,20 @@ export function useDeviceInstall({
 
   /**
    * Creates the private OTA session for the authorized build's asset. The
-   * registry defaults the manifest identity (bundle identifier, versions,
-   * title, deep link, icon) to the app metadata limbuild recorded on the
-   * asset at build time; the webhook fields are forwarded as explicit
-   * fallbacks for builds whose asset carries no metadata yet.
+   * manifest identity (bundle identifier, versions, title, deep link, icon)
+   * all comes from the app metadata limbuild recorded on the asset at build
+   * time; only the asset ID is sent.
    */
   function startQRInstall() {
     onError(undefined);
-    const webhook = build.status?.webhook;
     if (authorization !== 'ready' || !session?.assetId) {
       onError('The built IPA is not authorized yet.');
       return;
     }
     log('Creating the private OTA install session');
-    void ota
-      .start({
-        assetId: session.assetId,
-        bundleIdentifier: webhook?.bundleIdentifier,
-        shortVersion: webhook?.shortVersion,
-        buildVersion: webhook?.buildVersion,
-        title: webhook?.displayName || connect.connection?.appName || webhook?.bundleIdentifier,
-      })
-      .then((created) => {
-        if (created) log('OTA install page ready', created.installPageUrl);
-      });
+    void ota.start({ assetId: session.assetId }).then((created) => {
+      if (created) log('OTA install page ready', created.installPageUrl);
+    });
   }
 
   function retryAuthorization() {

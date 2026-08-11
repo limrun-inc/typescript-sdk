@@ -25,7 +25,7 @@ export default function App() {
     onError: setError,
   });
   const build = useInstall();
-  const device = useDeviceInstall({ connect, build, onError: setError });
+  const device = useDeviceInstall({ build, onError: setError });
   const displayError = error ?? connect.appleLogin.error ?? device.ota.error;
 
   // The secrets directory on the backend host. The chosen value persists in

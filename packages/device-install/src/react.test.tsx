@@ -60,13 +60,7 @@ describe('useOTAInstall', () => {
       renderer = create(<Harness />);
     });
     await act(async () => {
-      await hook!.start({
-        assetId: 'asset_1',
-        bundleIdentifier: 'com.example.app',
-        shortVersion: '1.2.3',
-        buildVersion: '42',
-        title: 'Example',
-      });
+      await hook!.start({ assetId: 'asset_1' });
       await Promise.resolve();
     });
     expect(hook!.status?.state).toBe('downloading');
@@ -119,13 +113,7 @@ describe('useOTAInstall', () => {
     await act(async () => {
       renderer = create(<Harness />);
     });
-    const input = {
-      assetId: 'asset_1',
-      bundleIdentifier: 'com.example.app',
-      shortVersion: '1.2.3',
-      buildVersion: '42',
-      title: 'Example',
-    };
+    const input = { assetId: 'asset_1' };
     await act(async () => {
       await hook!.start(input);
     });

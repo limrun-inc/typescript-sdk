@@ -3,6 +3,7 @@ import fs from 'fs';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { ByteProgressBar } from '../../lib/byte-progress';
+import { parseUploadOptions } from '../../lib/upload-options';
 
 export default class AssetPush extends BaseCommand {
   static summary = 'Upload an asset file';
@@ -13,6 +14,7 @@ export default class AssetPush extends BaseCommand {
     '<%= config.bin %> asset push ./app.apk',
     '<%= config.bin %> asset push ./app.ipa -n my-app',
     '<%= config.bin %> asset push ./app.ipa --ttl 24h',
+    '<%= config.bin %> asset push ./app.ipa --upload-options bundleIdentifier=com.example.app --upload-options buildVersion=42 --upload-options "displayName=My App"',
   ];
 
   static args = {
@@ -24,6 +26,11 @@ export default class AssetPush extends BaseCommand {
     name: Flags.string({ char: 'n', description: 'Asset name to store. Defaults to the source filename.' }),
     ttl: Flags.string({
       description: 'Time-to-live as a Go duration (e.g. "24h", min 1m). Defaults to no expiry.',
+    }),
+    'upload-options': Flags.string({
+      multiple: true,
+      description:
+        'App metadata to record on the asset as key=value, repeatable. Keys: displayName, bundleIdentifier, shortVersion, buildVersion, deeplink. Over-the-air installation of hand-uploaded IPAs requires at least bundleIdentifier and buildVersion.',
     }),
   };
 
@@ -37,6 +44,12 @@ export default class AssetPush extends BaseCommand {
     }
 
     const assetName = flags.name || path.basename(filePath);
+    let uploadOptions;
+    try {
+      uploadOptions = parseUploadOptions(flags['upload-options']);
+    } catch (err) {
+      this.error(err instanceof Error ? err.message : String(err));
+    }
     await this.withAuth(async () => {
       // Only opt into the streaming upload path when progress would actually be
       // reported (bar on a TTY, milestone lines otherwise); --json/--quiet keeps
@@ -49,6 +62,7 @@ export default class AssetPush extends BaseCommand {
           path: filePath,
           name: assetName,
           ttl: flags.ttl,
+          ...(uploadOptions && { uploadOptions }),
           ...(showProgress && {
             onUploadProgress: (uploadedBytes: number, totalBytes: number) =>
               bar.update(uploadedBytes, totalBytes),
