@@ -156,6 +156,30 @@ export type InstanceClient = {
    */
   playOnMicrophone: (path: string, options?: PlayOnMicrophoneOptions) => Promise<PlayOnMicrophoneResult>;
   /**
+   * Stop mock-microphone file playback, if any. The microphone returns to the
+   * live WebRTC source when one is attached, otherwise silence.
+   */
+  stopMicrophonePlayback: () => Promise<void>;
+  /**
+   * Get the current mock-microphone state.
+   */
+  microphoneStatus: () => Promise<MicrophoneStatus>;
+  /**
+   * Play an on-device video file as the camera feed, replacing the live
+   * WebRTC camera until {@link clearCameraVideo} is called. If the video has
+   * an audio track, it is forwarded to the mock microphone in sync.
+   *
+   * The file must already exist on the Android instance, for example after
+   * pushing it with ADB. By default the video loops; with `loop: false` it
+   * plays once and the feed freezes on the last frame.
+   */
+  setCameraVideo: (path: string, options?: CameraVideoOptions) => Promise<void>;
+  /**
+   * Stop video-file camera playback and restore the default WebRTC camera
+   * source. Safe to call when no video is playing.
+   */
+  clearCameraVideo: () => Promise<void>;
+  /**
    * Set Android Wi-Fi bandwidth limits in Kbps. Omit a direction to leave it unchanged;
    * pass `0` to clear that direction's limit.
    */
@@ -447,7 +471,20 @@ export type PlayOnMicrophoneResult = {
   /** Duration of the decoded audio in microseconds. */
   duration: number;
   once: boolean;
-  generation: number;
+};
+
+/** Mock-microphone state returned by {@link InstanceClient.microphoneStatus}. */
+export type MicrophoneStatus = {
+  /** Active audio source. */
+  source: 'silence' | 'file' | 'webrtcMic';
+  /** Path of the currently playing file, when source is `file`. */
+  filePath?: string;
+};
+
+/** Options for {@link InstanceClient.setCameraVideo}. */
+export type CameraVideoOptions = {
+  /** Restart the video when it ends. Defaults to true. */
+  loop?: boolean;
 };
 
 export type WifiBandwidthOptions = {
@@ -589,6 +626,28 @@ type PlayOnMicrophoneResultMessage = {
   error?: CommandError;
 };
 
+type StopMicrophonePlaybackResultMessage = {
+  type: 'stopMicrophonePlaybackResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
+type MicrophoneStatusResultMessage = {
+  type: 'microphoneStatusResult';
+  id: string;
+  status?: MicrophoneStatus;
+  payload?: { status?: MicrophoneStatus };
+  error?: CommandError;
+};
+
+type CameraControlResultMessage = {
+  type: 'cameraControlResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
 type SetWifiBandwidthResultMessage = {
   type: 'setWifiBandwidthResult';
   id: string;
@@ -625,6 +684,9 @@ type KnownCommandResultMessage =
   | WatchAppResultMessage
   | UnwatchAppResultMessage
   | PlayOnMicrophoneResultMessage
+  | StopMicrophonePlaybackResultMessage
+  | MicrophoneStatusResultMessage
+  | CameraControlResultMessage
   | SetWifiBandwidthResultMessage
   | StartVideoRecordingResultMessage
   | StopVideoRecordingResultMessage;
@@ -651,6 +713,12 @@ type CommandRequestMap = {
   watchApp: { packageName: string; execId: string };
   unwatchApp: { execId: string };
   playOnMicrophone: { path: string; once?: boolean };
+  stopMicrophonePlayback: {};
+  microphoneStatus: {};
+  cameraControl:
+    | { action: 'setSource'; source: 'video'; arg: string; loop?: boolean }
+    | { action: 'setSource'; source: 'webRTC' }
+    | { action: 'reset' };
   setWifiBandwidth: WifiBandwidthOptions;
   startRecording: { quality?: RecordingQuality };
   stopRecording: { upload?: { presignedUrl: string } };
@@ -671,6 +739,9 @@ type CommandResultMap = {
   watchApp: { packageName?: string };
   unwatchApp: EmptyCommandResult;
   playOnMicrophone: PlayOnMicrophoneResult;
+  stopMicrophonePlayback: EmptyCommandResult;
+  microphoneStatus: { status?: MicrophoneStatus };
+  cameraControl: EmptyCommandResult;
   setWifiBandwidth: EmptyCommandResult;
   startRecording: EmptyCommandResult;
   stopRecording: EmptyCommandResult;
@@ -845,6 +916,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         case 'watchAppResult':
         case 'unwatchAppResult':
         case 'playOnMicrophoneResult':
+        case 'stopMicrophonePlaybackResult':
+        case 'microphoneStatusResult':
+        case 'cameraControlResult':
         case 'setWifiBandwidthResult':
         case 'startRecordingResult':
         case 'stopRecordingResult':
@@ -1116,6 +1190,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             terminateApp,
             watchApp,
             playOnMicrophone,
+            stopMicrophonePlayback,
+            microphoneStatus,
+            setCameraVideo,
+            clearCameraVideo,
             setWifiBandwidth,
             startRecording,
             stopRecording,
@@ -1277,6 +1355,31 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         path: inputPath,
         ...(microphoneOptions?.once === undefined ? {} : { once: microphoneOptions.once }),
       });
+    };
+
+    const stopMicrophonePlayback = async (): Promise<void> => {
+      await sendRequest('stopMicrophonePlayback', {});
+    };
+
+    const microphoneStatus = async (): Promise<MicrophoneStatus> => {
+      const result = await sendRequest('microphoneStatus', {});
+      return result.status ?? { source: 'silence' };
+    };
+
+    const setCameraVideo = async (inputPath: string, cameraOptions?: CameraVideoOptions): Promise<void> => {
+      if (!inputPath) {
+        throw new Error('path must be a non-empty string');
+      }
+      await sendRequest('cameraControl', {
+        action: 'setSource',
+        source: 'video',
+        arg: inputPath,
+        loop: cameraOptions?.loop ?? true,
+      });
+    };
+
+    const clearCameraVideo = async (): Promise<void> => {
+      await sendRequest('cameraControl', { action: 'reset' });
     };
 
     const setWifiBandwidth = async (bandwidthOptions: WifiBandwidthOptions): Promise<void> => {

@@ -71,9 +71,7 @@ export default class AndroidPlayOnMicrophone extends BaseCommand {
         if (flags.json) {
           this.outputJson(result);
         } else {
-          this.log(
-            `Playing ${remotePath} on microphone (duration=${result.duration}us, once=${result.once}, generation=${result.generation})`,
-          );
+          this.log(`Playing ${remotePath} on microphone (duration=${result.duration}us, once=${result.once})`);
         }
       } finally {
         tunnel?.close();
