@@ -133,7 +133,7 @@ export default class XcodeBuild extends BaseCommand {
         'Relative path from the synced workspace root to the Expo app directory. Use for monorepos or ambiguous React Native workspaces.',
     }),
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
-    'upload-options': Flags.string({
+    'upload-option': Flags.string({
       multiple: true,
       dependsOn: ['upload'],
       description:
@@ -357,7 +357,7 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.upload) {
         let uploadOptions;
         try {
-          uploadOptions = parseUploadOptions(flags['upload-options']);
+          uploadOptions = parseUploadOptions(flags['upload-option']);
         } catch (err) {
           this.error(err instanceof Error ? err.message : String(err));
         }

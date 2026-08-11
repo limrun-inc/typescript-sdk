@@ -14,7 +14,7 @@ export default class AssetPush extends BaseCommand {
     '<%= config.bin %> asset push ./app.apk',
     '<%= config.bin %> asset push ./app.ipa -n my-app',
     '<%= config.bin %> asset push ./app.ipa --ttl 24h',
-    '<%= config.bin %> asset push ./app.ipa --upload-options bundleIdentifier=com.example.app --upload-options buildVersion=42 --upload-options "displayName=My App"',
+    '<%= config.bin %> asset push ./app.ipa --upload-option bundleIdentifier=com.example.app --upload-option buildVersion=42 --upload-option "displayName=My App"',
   ];
 
   static args = {
@@ -27,7 +27,7 @@ export default class AssetPush extends BaseCommand {
     ttl: Flags.string({
       description: 'Time-to-live as a Go duration (e.g. "24h", min 1m). Defaults to no expiry.',
     }),
-    'upload-options': Flags.string({
+    'upload-option': Flags.string({
       multiple: true,
       description:
         'App metadata to record on the asset as key=value, repeatable. Keys: displayName, bundleIdentifier, shortVersion, buildVersion, deeplink. All optional; consumers like over-the-air installation use whichever are present.',
@@ -46,7 +46,7 @@ export default class AssetPush extends BaseCommand {
     const assetName = flags.name || path.basename(filePath);
     let uploadOptions;
     try {
-      uploadOptions = parseUploadOptions(flags['upload-options']);
+      uploadOptions = parseUploadOptions(flags['upload-option']);
     } catch (err) {
       this.error(err instanceof Error ? err.message : String(err));
     }
