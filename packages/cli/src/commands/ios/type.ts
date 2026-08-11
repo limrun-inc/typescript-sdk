@@ -1,5 +1,4 @@
 import { Args, Flags } from '@oclif/core';
-import type { Ios } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
@@ -10,7 +9,9 @@ import {
 export default class IosType extends BaseCommand {
   static summary = 'Type text into the focused iOS input field';
   static description =
-    'Type text into the currently focused input field on a running iOS instance. Use `--enter` to submit the field after typing.';
+    'Type text into the currently focused input field as real key events, so the app sees genuine keystrokes ' +
+    'and text delegates fire. Fails when no field is focused. For fast text entry without key events, use ' +
+    '`ios set-text`. Use `--enter` to submit the field after typing.';
   static examples = [
     '<%= config.bin %> ios type "Hello World"',
     '<%= config.bin %> ios type "Hello World" --id <instance-ID>',
@@ -30,15 +31,6 @@ export default class IosType extends BaseCommand {
       description: 'Press Enter after typing.',
       default: false,
     }),
-    hid: Flags.boolean({
-      description:
-        'Type real key events instead of setting the accessibility value, so the app receives genuine keystrokes and text delegates fire. Slower; fails when no field is focused.',
-      default: false,
-    }),
-    'require-focus': Flags.boolean({
-      description: 'Fail instead of typing blind when no input field is focused.',
-      default: false,
-    }),
   };
 
   async run(): Promise<void> {
@@ -52,27 +44,15 @@ export default class IosType extends BaseCommand {
         this.error('ios type only supports iOS instances');
       }
 
-      const options: Ios.TypeTextOptions = {
-        strategy: flags.hid ? 'hid' : undefined,
-        requireFocus: flags['require-focus'] || undefined,
-      };
-      let outcome: Ios.TypeTextResult | undefined;
       if (hasActiveSession(id)) {
-        outcome = (await sendSessionCommand(id, 'type', [
-          args.text,
-          flags.enter,
-          options,
-        ])) as Ios.TypeTextResult;
+        await sendSessionCommand(id, 'type', [args.text, flags.enter]);
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          outcome = await client.typeText(args.text, flags.enter, options);
+          await client.typeText(args.text, flags.enter);
         } finally {
           disconnect();
         }
-      }
-      if (outcome?.warning) {
-        this.warn(outcome.warning);
       }
       this.log('Text typed');
     });

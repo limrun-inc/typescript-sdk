@@ -210,9 +210,10 @@ lim ios tap-element --ax-label "Submit"
 lim ios tap-element --ax-unique-id btn_ok
 
 # Text input
-lim ios type "Hello World"
-lim ios type "Hello World" --hid          # real key events, text delegates fire
+lim ios type "Hello World"                # real key events, text delegates fire
 lim ios type "search query" --enter
+lim ios set-text "long text" --focused    # instant, no key events
+lim ios set-text "user@example.com" --ax-unique-id email_field
 lim ios press-key enter
 lim ios press-key "@"
 lim ios toggle-keyboard

@@ -18,7 +18,20 @@ jest.mock('ws', () => {
       const message = JSON.parse(data);
       sentMessages.push(message);
 
-      if (message.type === 'deviceInfo') {
+      if (message.type === 'setElementValue') {
+        process.nextTick(() => {
+          this['emit'](
+            'message',
+            Buffer.from(
+              JSON.stringify({
+                type: 'setElementValueResult',
+                id: message.id,
+                elementLabel: 'Field',
+              }),
+            ),
+          );
+        });
+      } else if (message.type === 'deviceInfo') {
         process.nextTick(() => {
           this['emit'](
             'message',
@@ -36,19 +49,7 @@ jest.mock('ws', () => {
         });
       } else if (message.type === 'typeText') {
         process.nextTick(() => {
-          this['emit'](
-            'message',
-            Buffer.from(
-              JSON.stringify({
-                type: 'typeTextResult',
-                id: message.id,
-                // Echo warning fields only for the hid-warning fixture text
-                ...(message.text === 'unfocused' ?
-                  { warning: 'no focused accessibility element', usedStrategy: 'hid' }
-                : { usedStrategy: 'ax' }),
-              }),
-            ),
-          );
+          this['emit']('message', Buffer.from(JSON.stringify({ type: 'typeTextResult', id: message.id })));
         });
       } else if (message.type === 'tapElement') {
         process.nextTick(() => {
@@ -99,7 +100,7 @@ describe('iOS input serialization', () => {
     sentMessages.length = 0;
   });
 
-  it('omits strategy and requireFocus from legacy typeText calls so old servers see the old payload', async () => {
+  it('serializes typeText with its original payload shape', async () => {
     const client = await connect();
     await client.typeText('hello', true);
 
@@ -111,15 +112,19 @@ describe('iOS input serialization', () => {
     client.disconnect();
   });
 
-  it('serializes typing strategy options and surfaces the warning result', async () => {
+  it('targets the focused element when setElementValue is called without a selector', async () => {
     const client = await connect();
-    const result = await client.typeText('unfocused', false, { strategy: 'hid', requireFocus: true });
 
-    expect(sentMessages.find((message) => message['type'] === 'typeText')).toMatchObject({
-      strategy: 'hid',
-      requireFocus: true,
-    });
-    expect(result).toEqual({ warning: 'no focused accessibility element', usedStrategy: 'hid' });
+    await client.setElementValue('fast text');
+    const focusedSent = sentMessages.find((message) => message['type'] === 'setElementValue');
+    expect(focusedSent).toMatchObject({ focused: true });
+    expect(focusedSent).not.toHaveProperty('selector');
+
+    sentMessages.length = 0;
+    await client.setElementValue('fast text', { AXUniqueId: 'field' });
+    const selectorSent = sentMessages.find((message) => message['type'] === 'setElementValue');
+    expect(selectorSent).toMatchObject({ selector: { AXUniqueId: 'field' } });
+    expect(selectorSent).not.toHaveProperty('focused');
 
     client.disconnect();
   });

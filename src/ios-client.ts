@@ -193,27 +193,6 @@ export type TapElementOptions = {
   timeoutMs?: number;
 };
 
-/**
- * How typeText injects text. 'auto' (the server default) sets the
- * accessibility value and falls back to HID key events; 'hid' always types
- * real key events so UIKit text delegates fire; 'ax' only sets the
- * accessibility value.
- */
-export type TypeTextStrategy = 'auto' | 'ax' | 'hid';
-
-export type TypeTextOptions = {
-  strategy?: TypeTextStrategy;
-  /** Fail instead of blind-firing HID key events when nothing is focused (auto strategy only). */
-  requireFocus?: boolean;
-};
-
-export type TypeTextResult = {
-  /** Set when the text was typed but likely didn't land (e.g. no focused field). */
-  warning?: string;
-  /** The strategy that actually ran. */
-  usedStrategy?: Exclude<TypeTextStrategy, 'auto'>;
-};
-
 export type ElementResult = {
   elementLabel?: string;
 };
@@ -576,24 +555,24 @@ export type InstanceClient = {
 
   /**
    * Set the value of an accessibility element (useful for text fields, etc.)
-   * This is much faster than typing character by character.
+   * This is much faster than typing character by character, but does not
+   * fire key-event-driven text delegates; use typeText for real typing.
    * @param text The text value to set
-   * @param selector The selector criteria to find the element
+   * @param selector The selector criteria to find the element; omit it to
+   *   target the currently focused element (the server resolves focus)
    * @returns Information about the modified element
    */
-  setElementValue: (text: string, selector: AccessibilitySelector) => Promise<ElementResult>;
+  setElementValue: (text: string, selector?: AccessibilitySelector) => Promise<ElementResult>;
 
   /**
-   * Type text into the currently focused input field
+   * Type text into the currently focused input field as real HID key events,
+   * so text delegates fire like they would for a human. Fails when no field
+   * is focused. Slower than setElementValue (~20ms per character); prefer
+   * setElementValue for long strings that don't need key events.
    * @param text The text to type
    * @param pressEnter If true, press Enter after typing
-   * @param options Optional typing strategy. `{ strategy: 'hid' }` types real
-   *   key events so UIKit text delegates fire; `{ requireFocus: true }` fails
-   *   instead of typing blind when nothing is focused
-   * @returns Warning and the strategy that ran; check `warning` to detect
-   *   text that likely didn't land
    */
-  typeText: (text: string, pressEnter?: boolean, options?: TypeTextOptions) => Promise<TypeTextResult>;
+  typeText: (text: string, pressEnter?: boolean) => Promise<void>;
 
   /**
    * Press a key on the keyboard, optionally with modifiers
@@ -1168,9 +1147,6 @@ type ServerResponse = {
   duration?: number;
   once?: boolean;
   status?: IosMicrophoneStatus;
-  // typeText result fields
-  warning?: string;
-  usedStrategy?: Exclude<TypeTextStrategy, 'auto'>;
   // tapElement result fields
   method?: TapElementActivation;
 };
@@ -1787,7 +1763,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       incrementElementResult: (msg) => ({ elementLabel: msg.elementLabel }),
       decrementElementResult: (msg) => ({ elementLabel: msg.elementLabel }),
       setElementValueResult: (msg) => ({ elementLabel: msg.elementLabel }),
-      typeTextResult: (msg) => ({ warning: msg.warning, usedStrategy: msg.usedStrategy }),
+      typeTextResult: () => undefined,
       pressKeyResult: () => undefined,
       toggleKeyboardResult: () => undefined,
       launchAppResult: () => undefined,
@@ -2099,21 +2075,17 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<ElementResult>('decrementElement', { selector });
     };
 
-    const setElementValue = (text: string, selector: AccessibilitySelector): Promise<ElementResult> => {
-      return sendRequest<ElementResult>('setElementValue', { text, selector });
+    const setElementValue = (text: string, selector?: AccessibilitySelector): Promise<ElementResult> => {
+      // Selector omitted: the server resolves the currently focused element.
+      return sendRequest<ElementResult>('setElementValue', {
+        text,
+        selector,
+        focused: selector ? undefined : true,
+      });
     };
 
-    const typeText = (
-      text: string,
-      pressEnter?: boolean,
-      options?: TypeTextOptions,
-    ): Promise<TypeTextResult> => {
-      return sendRequest<TypeTextResult>('typeText', {
-        text,
-        pressEnter,
-        strategy: options?.strategy,
-        requireFocus: options?.requireFocus,
-      });
+    const typeText = (text: string, pressEnter?: boolean): Promise<void> => {
+      return sendRequest<void>('typeText', { text, pressEnter });
     };
 
     const pressKey = (key: string, modifiers?: string[]): Promise<void> => {
