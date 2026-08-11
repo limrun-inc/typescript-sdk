@@ -1,4 +1,5 @@
 import { Flags } from '@oclif/core';
+import { Ios } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
@@ -77,9 +78,17 @@ export default class IosTapElement extends BaseCommand {
         );
       }
 
-      const options = flags.activate ? { activate: flags.activate as 'touch' | 'ax' } : undefined;
+      const options: Ios.TapElementOptions | undefined =
+        flags.activate ? { activate: flags.activate as Ios.TapElementActivation } : undefined;
       if (hasActiveSession(id)) {
-        const result = await sendSessionCommand(id, 'tap-element', [selector, options]);
+        // The daemon-held request uses the SDK's 90s tapElement budget
+        // (off-screen scroll scans); the IPC socket must not give up first.
+        const result = await sendSessionCommand(
+          id,
+          'tap-element',
+          [selector, options],
+          Ios.TAP_ELEMENT_TIMEOUT_MS + 15_000,
+        );
         if (flags.json) this.outputJson(result);
         else this.log('Element tapped');
         return;

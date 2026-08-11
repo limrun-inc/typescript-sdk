@@ -211,14 +211,17 @@ lim ios tap-element --ax-unique-id btn_ok
 
 # Text input
 lim ios type "Hello World"
+lim ios type "Hello World" --hid          # real key events, text delegates fire
 lim ios type "search query" --enter
 lim ios press-key enter
-lim ios press-key a --modifier shift
+lim ios press-key "@"
 lim ios toggle-keyboard
 
-# Scrolling
+# Scrolling and swiping
 lim ios scroll down --amount 500
 lim ios scroll down --amount 500 --momentum 0.4
+lim ios scroll down --amount 500 --coordinate 200,400
+lim ios swipe --from 200,300 --to 200,600
 
 # Batch multiple actions in one call
 lim ios perform --action type=tap,x=100,y=200 --action 'type=typeText,text=Hello World'

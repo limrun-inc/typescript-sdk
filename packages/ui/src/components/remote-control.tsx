@@ -797,8 +797,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
 
     // Pointer ID used by inspect-driven taps. Distinct from human pointers
-    // (-1 mouse, -2 alt-mirror) and our touch identifiers so they never
-    // interfere with an in-progress drag.
+    // (-1 mouse, -2 alt-mirror), the synthesized wheel finger (-3), and our
+    // touch identifiers so they never interfere with an in-progress drag.
     const AX_TAP_POINTER_ID = -10;
 
     // Send a down+up tap at a viewport-space (clientX/Y) position. The point
@@ -862,6 +862,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // Fixed pointer IDs for Alt-simulated two-finger gestures
     const ALT_POINTER_ID_PRIMARY = -1;
     const ALT_POINTER_ID_MIRROR = -2;
+    // Synthesized finger for wheel-scroll drags.
     const WHEEL_POINTER_ID = -3;
 
     // Helper to send a single-touch control message (used by both single-finger and Android two-finger paths)
@@ -1594,8 +1595,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // active mouse/touch gesture or Alt two-finger mode (on iOS the held
       // Alt key would turn the drag into a pinch).
       if (isAltHeldRef.current || twoFingerStateRef.current) return;
-      const othersActive = Array.from(activePointers.current.keys()).some((id) => id !== WHEEL_POINTER_ID);
-      if (othersActive) return;
+      const pointerCount = activePointers.current.size;
+      if (pointerCount > 1 || (pointerCount === 1 && !activePointers.current.has(WHEEL_POINTER_ID))) return;
 
       const ctx = computeVideoMappingContext();
       if (!ctx) return;
@@ -1624,14 +1625,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         (ctx.videoHeight / ctx.actualHeight);
       const dx = -event.deltaX * scaleX;
       const dy = -event.deltaY * scaleY;
+      const armEnd = (s: { endTimer: number }) => {
+        window.clearTimeout(s.endTimer);
+        s.endTimer = window.setTimeout(endWheelGesture, WHEEL_END_QUIET_MS);
+      };
       if (dx === 0 && dy === 0) {
         // Zero-delta ticks (momentum tails) must not trip the stuck-at-edge
         // branch; just keep the gesture alive.
-        const active = wheelStateRef.current;
-        if (active) {
-          window.clearTimeout(active.endTimer);
-          active.endTimer = window.setTimeout(endWheelGesture, WHEEL_END_QUIET_MS);
-        }
+        if (wheelStateRef.current) armEnd(wheelStateRef.current);
         return;
       }
 
@@ -1650,6 +1651,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           : anchor.videoY,
       });
 
+      const advance = (p: PointerGeometry): PointerGeometry => ({
+        ...p,
+        videoX: Math.min(Math.max(p.videoX + dx, 0), p.videoWidth),
+        videoY: Math.min(Math.max(p.videoY + dy, 0), p.videoHeight),
+      });
+
       let state = wheelStateRef.current;
       if (!state) {
         const start = pressPoint();
@@ -1661,22 +1668,19 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
 
       let pos = state.pos;
-      let nextX = Math.min(Math.max(pos.videoX + dx, 0), anchor.videoWidth);
-      let nextY = Math.min(Math.max(pos.videoY + dy, 0), anchor.videoHeight);
-      if (nextX === pos.videoX && nextY === pos.videoY) {
+      let next = advance(pos);
+      if (next.videoX === pos.videoX && next.videoY === pos.videoY) {
         // Out of travel room: end this drag and continue from a fresh press
         // point, applying this tick's delta from there so the new press moves
         // immediately (a press that never moves would read as a tap).
         applyPointerEvent(WHEEL_POINTER_ID, 'up', pos);
         pos = pressPoint();
         applyPointerEvent(WHEEL_POINTER_ID, 'down', pos);
-        nextX = Math.min(Math.max(pos.videoX + dx, 0), anchor.videoWidth);
-        nextY = Math.min(Math.max(pos.videoY + dy, 0), anchor.videoHeight);
+        next = advance(pos);
       }
-      pos = { ...pos, videoX: nextX, videoY: nextY };
-      applyPointerEvent(WHEEL_POINTER_ID, 'move', pos);
-      state.pos = pos;
-      state.endTimer = window.setTimeout(endWheelGesture, WHEEL_END_QUIET_MS);
+      applyPointerEvent(WHEEL_POINTER_ID, 'move', next);
+      state.pos = next;
+      armEnd(state);
     };
     useEffect(() => {
       wheelCallbacksRef.current = { handle: handleWheel, end: endWheelGesture };

@@ -132,8 +132,9 @@ describe('iOS input serialization', () => {
     expect(legacySent).not.toHaveProperty('activate');
     expect(legacy.method).toBe('touch');
 
+    sentMessages.length = 0;
     const ax = await client.tapElement({ AXLabel: 'Submit' }, { activate: 'ax' });
-    expect(sentMessages.filter((message) => message['type'] === 'tapElement')[1]).toMatchObject({
+    expect(sentMessages.find((message) => message['type'] === 'tapElement')).toMatchObject({
       activate: 'ax',
     });
     expect(ax.method).toBe('ax');

@@ -8,6 +8,8 @@ import {
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
+const IPC_TIMEOUT_BUFFER_MS = 15_000;
+
 export default class IosSwipe extends BaseCommand {
   static summary = 'Swipe between two points on a running iOS instance';
   static description =
@@ -42,23 +44,36 @@ export default class IosSwipe extends BaseCommand {
     const { flags } = await this.parse(IosSwipe);
     this.setParsedFlags(flags);
 
-    const from = parsePointFlag(flags.from, '--from');
-    const to = parsePointFlag(flags.to, '--to');
-    const actions = swipeActions(from, to, flags.duration);
-
     await this.withAuth(async () => {
+      const from = parsePointFlag(flags.from, '--from');
+      const to = parsePointFlag(flags.to, '--to');
+      const actions = swipeActions(from, to, flags.duration);
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
 
-      // The batch runs for ~duration; size the IPC timeout accordingly so
-      // long swipes don't hit the daemon's 30s default.
-      const ipcTimeoutMs = flags.duration + 15_000;
+      // One timeout governs the batch on both transports; the IPC socket gets
+      // a buffer on top so the daemon-held request fails first with the real
+      // error instead of a generic socket timeout.
+      const timeoutMs = flags.duration + IPC_TIMEOUT_BUFFER_MS;
       if (hasActiveSession(id)) {
-        await sendSessionCommand(id, 'perform-actions', [actions], ipcTimeoutMs);
+        try {
+          await sendSessionCommand(
+            id,
+            'perform-actions',
+            [actions, timeoutMs],
+            timeoutMs + IPC_TIMEOUT_BUFFER_MS,
+          );
+        } catch (error) {
+          await liftFinger((batch) => sendSessionCommand(id, 'perform-actions', [batch]), to);
+          throw error;
+        }
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          await client.performActions(actions);
+          await client.performActions(actions, { timeoutMs });
+        } catch (error) {
+          await liftFinger((batch) => client.performActions(batch), to);
+          throw error;
         } finally {
           disconnect();
         }
@@ -69,26 +84,44 @@ export default class IosSwipe extends BaseCommand {
 }
 
 /**
- * Builds a touchDown -> interpolated touchMoves -> touchUp batch. Steps are
- * spaced ~10ms apart so the server-side gesture matches the requested
- * duration; ~3pt movement per step keeps the drag smooth.
+ * Best-effort touch-up after a failed batch: performActions stops at the
+ * first error, so the trailing touchUp may never run and the simulator would
+ * keep the finger pressed, corrupting every subsequent gesture.
+ */
+async function liftFinger(
+  send: (batch: Ios.PerformAction[]) => Promise<unknown>,
+  to: [number, number],
+): Promise<void> {
+  try {
+    await send([{ type: 'touchUp', x: to[0], y: to[1] }]);
+  } catch {
+    // The original error is the one worth surfacing.
+  }
+}
+
+/**
+ * Builds a touchDown -> interpolated touchMoves -> touchUp batch. Step count
+ * follows the requested duration at ~8ms per step (the touch sample rate),
+ * capped by distance so short swipes stay coarse enough to register.
  */
 function swipeActions(from: [number, number], to: [number, number], durationMs: number): Ios.PerformAction[] {
-  const distance = Math.hypot(to[0] - from[0], to[1] - from[1]);
-  const steps = Math.max(2, Math.min(100, Math.round(distance / 3)));
+  const [x0, y0] = from;
+  const [x1, y1] = to;
+  const distance = Math.hypot(x1 - x0, y1 - y0);
+  const steps = Math.max(2, Math.min(60, Math.round(durationMs / 8), Math.round(distance / 3)));
   const stepDelayMs = Math.max(1, Math.round(durationMs / steps));
 
-  const actions: Ios.PerformAction[] = [{ type: 'touchDown', x: from[0], y: from[1] }];
+  const actions: Ios.PerformAction[] = [{ type: 'touchDown', x: x0, y: y0 }];
   for (let i = 1; i <= steps; i++) {
     actions.push(
       { type: 'wait', durationMs: stepDelayMs },
       {
         type: 'touchMove',
-        x: from[0] + ((to[0] - from[0]) * i) / steps,
-        y: from[1] + ((to[1] - from[1]) * i) / steps,
+        x: Math.round(x0 + ((x1 - x0) * i) / steps),
+        y: Math.round(y0 + ((y1 - y0) * i) / steps),
       },
     );
   }
-  actions.push({ type: 'touchUp', x: to[0], y: to[1] });
+  actions.push({ type: 'touchUp', x: x1, y: y1 });
   return actions;
 }
