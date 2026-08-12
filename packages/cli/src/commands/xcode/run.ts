@@ -114,8 +114,12 @@ export default class XcodeRun extends BaseCommand {
       const result = await proc;
       if (result.exitCode !== 0) {
         if (result.timedOut) {
+          // 'timeout' means the stream was alive and the work outlived the
+          // budget; a lost or closed stream means the execution may be gone.
           this.error(
-            'Timed out waiting for the command to finish; the remote command may still be running.',
+            result.incomplete && result.incomplete.reason !== 'timeout' ?
+              `${result.incomplete.message}.`
+            : 'Timed out waiting for the command to finish; the remote command may still be running.',
             { exit: result.exitCode },
           );
         }

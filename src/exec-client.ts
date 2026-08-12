@@ -7,14 +7,34 @@
 
 import { createEventSource, type EventSourceClient, type EventSourceMessage } from 'eventsource-client';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import { sseFetch } from './internal/sse-fetch';
+import type { Fetch } from './internal/builtin-types';
 
-// Reconnect budget for the exec event stream. The EventSource reconnects
-// forever on its own, so a dead exec (deleted instance, expired record)
-// would retry every ~2s until the one-hour completion timeout. A connection
-// that delivers a message or stays open this long proves the server is
-// alive and refills the budget; each shorter cycle spends one attempt.
-const SSE_HEALTHY_CONNECTION_MS = 15_000;
-const SSE_MAX_FAILED_CYCLES = 20;
+/**
+ * Give-up policy for the exec event stream. The EventSource reconnects
+ * forever on its own, so a dead exec (deleted instance, expired record)
+ * would otherwise retry until the one-hour completion timeout. Proof of
+ * life resets the clock: a delivered event, or a clean connection that
+ * stays open healthyConnectionMs (long compiles stream nothing for
+ * minutes while intermediaries kill idle connections). The window is
+ * wide enough to ride out real transient outages (an ingress redeploy, a
+ * VPN reconnect); tightening it trades outage tolerance for faster
+ * dead-exec detection. It is measured in time, not attempts: the server
+ * steers the retry delay through SSE `retry:` frames, so an attempt
+ * count would put the give-up horizon under remote control.
+ *
+ * @internal Mutable for tests only.
+ */
+export const sseStreamPolicy = {
+  healthyConnectionMs: 15_000,
+  giveUpAfterMs: 300_000,
+};
+
+/** The event stream kept failing past the give-up window; remote state unknown. */
+export class ExecStreamLostError extends Error {}
+
+/** The server closed the event stream for good (HTTP 204). */
+export class ExecStreamClosedError extends Error {}
 
 // =============================================================================
 // Types
@@ -219,6 +239,14 @@ export type ExecResult = {
    * running and may yet succeed.
    */
   timedOut?: boolean;
+  /**
+   * Why the client gave up, present exactly when timedOut is true.
+   * 'timeout' is the completion budget expiring on a live stream;
+   * 'stream-lost' means the event stream kept failing (the execution may
+   * no longer exist); 'stream-closed' means the server ended the stream
+   * for good.
+   */
+  incomplete?: { reason: 'timeout' | 'stream-lost' | 'stream-closed'; message: string };
 };
 
 export type AppStoreEvent = {
@@ -509,12 +537,13 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     }
     let exitCode: number;
     let timedOut = false;
+    let incomplete: ExecResult['incomplete'];
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       exitCode = await Promise.race([
         this.connectSSE(eventsUrl),
         new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error('SSE timeout')), timeoutMs);
+          timeoutId = setTimeout(() => reject(new Error('SSE completion timeout')), timeoutMs);
         }),
       ]);
     } catch (err) {
@@ -522,12 +551,17 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
         log('debug', 'Execution killed');
         exitCode = -1;
       } else {
-        // The client stopped waiting; the remote build may still be running.
-        // The fabricated exit code must not read as a build failure. Name
-        // the real reason: budget exhaustion and server-closed streams are
-        // actionable, a bare "timeout" is not.
-        const reason = err instanceof Error && err.message !== 'SSE timeout' ? err.message : 'SSE completion timeout';
-        log('warn', reason);
+        // The client stopped waiting; the fabricated exit code must not
+        // read as a build failure. The structured reason lets callers give
+        // the right advice: a dead stream means the execution may be gone,
+        // while a genuine timeout means it may still be running.
+        const message = err instanceof Error ? err.message : String(err);
+        const reason =
+          err instanceof ExecStreamClosedError ? 'stream-closed'
+          : err instanceof ExecStreamLostError ? 'stream-lost'
+          : 'timeout';
+        incomplete = { reason, message };
+        log('warn', message);
         exitCode = 1;
         timedOut = true;
       }
@@ -563,6 +597,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       ...(this.appStoreEvent ? { appstore: this.appStoreEvent } : {}),
       ...(this.playstoreEvent ? { playstore: this.playstoreEvent } : {}),
       ...(timedOut ? { timedOut } : {}),
+      ...(incomplete ? { incomplete } : {}),
     };
 
     this.log('debug', `Execution finished: ${result.status} (exit ${result.exitCode})`);
@@ -572,123 +607,165 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   /**
    * Opens an SSE connection and routes streamed events to the exposed command/stdout/stderr streams.
    * Resolves with the exit code when an 'exitCode' event arrives.
-   * Rejects when the abort signal fires (kill or cleanup).
+   * Rejects when the abort signal fires (kill or cleanup), when the server
+   * closes the stream for good, or when the give-up clock runs out.
    */
   private connectSSE(eventsUrl: string): Promise<number> {
     return new Promise<number>((resolve, reject) => {
-      if (this.abortController.signal.aborted) {
+      const signal = this.abortController.signal;
+      if (signal.aborted) {
         reject(new Error('killed'));
         return;
       }
 
-      try {
-        let settled = false;
-        let connectedAt = 0;
-        let failedCycles = 0;
-        const fail = (error: Error) => {
-          settled = true;
-          eventSource.close();
-          reject(error);
-        };
-        const eventSource = createEventSource({
-          url: eventsUrl,
-          fetch: nodeProxyTransport.fetch,
-          headers: { Authorization: `Bearer ${this.options.token}` },
-          onConnect: () => {
-            connectedAt = Date.now();
-          },
-          // Fires once per broken cycle, before the retry timer is armed,
-          // on both failure paths (request rejected, stream ended). This is
-          // where the budget is spent and enforced.
-          onScheduleReconnect: () => {
-            if (settled || this.killed) {
-              return;
-            }
-            const lifetimeMs = connectedAt > 0 ? Date.now() - connectedAt : 0;
-            connectedAt = 0;
-            if (lifetimeMs >= SSE_HEALTHY_CONNECTION_MS) {
-              failedCycles = 0;
-              return;
-            }
-            failedCycles++;
-            if (failedCycles >= SSE_MAX_FAILED_CYCLES) {
-              this.log('warn', `SSE gave up after ${failedCycles} failed connections in a row`);
-              fail(
-                new Error(
-                  `event stream to ${eventsUrl} failed ${failedCycles} times in a row without receiving events; ` +
-                    'the execution may no longer exist (instance deleted or record expired)',
-                ),
-              );
-            }
-          },
-          onMessage: (message: EventSourceMessage) => {
-            failedCycles = 0;
-            const data = typeof message.data === 'string' ? message.data : String(message.data ?? '');
-            const eventType = message.event;
-            if (eventType === 'command') {
-              this.command.emit('data', data);
-            } else if (eventType === 'stdout') {
-              this.stdout.emit('data', data);
-            } else if (eventType === 'stderr') {
-              this.stderr.emit('data', data);
-            } else if (eventType === 'testflight') {
-              try {
-                this.appStoreEvent = JSON.parse(data) as AppStoreEvent;
-              } catch {
-                // The wire event itself proves the server ran the App Store upload,
-                // so never let a payload glitch look like a missing feature.
-                this.appStoreEvent = { state: 'unknown' };
-                this.log('warn', `SSE testflight event has invalid data: ${data}`);
-              }
-            } else if (eventType === 'playstore') {
-              try {
-                this.playstoreEvent = JSON.parse(data) as PlaystoreEvent;
-              } catch {
-                // Same contract as the App Store upload event: its presence proves the server
-                // ran the Play Store step, so a payload glitch must not
-                // read as a missing feature.
-                this.playstoreEvent = { state: 'unknown' };
-                this.log('warn', `SSE playstore event has invalid data: ${data}`);
-              }
-            } else if (eventType === 'exitCode') {
-              const exitCode = parseInt(data, 10);
-              if (Number.isNaN(exitCode)) {
-                this.log('warn', `SSE exitCode event has invalid data: ${data}`);
-                return;
-              }
-              this.log('debug', `Execution completed via SSE: exitCode=${exitCode}`);
-              settled = true;
-              resolve(exitCode);
-            }
-          },
-          onDisconnect: () => {
-            if (settled || this.killed) {
-              return;
-            }
-            // Warn once per failure streak; the budget above bounds the
-            // streak, so this cannot spam for the rest of the run.
-            this.log(failedCycles <= 1 ? 'warn' : 'debug', 'SSE disconnected');
-            // On HTTP 204 the client closes for good instead of scheduling
-            // a reconnect. Check after the close has run; without this the
-            // promise would silently hang until the completion timeout.
-            queueMicrotask(() => {
-              if (!settled && !this.killed && eventSource.readyState === 'closed') {
-                fail(new Error(`event stream to ${eventsUrl} was closed by the server (HTTP 204)`));
-              }
-            });
-          },
-        });
-        this.sseConnection = eventSource;
+      // Settle-once pair. Both paths close the source: the EventSource
+      // reconnects on its own otherwise, even after the promise is done.
+      let settled = false;
+      let connectedAt = 0;
+      let deadSince = 0;
+      let lastCycleAt = 0;
+      let proofOfLifeThisCycle = false;
+      let cleanResponseThisCycle = false;
+      let lastStreamError: Error | undefined;
+      const cleanup = () => {
+        eventSource.close();
+        signal.removeEventListener('abort', onAbort);
+      };
+      const succeed = (exitCode: number) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(exitCode);
+      };
+      const fail = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+      const onAbort = () => fail(new Error('killed'));
 
-        this.abortController.signal.addEventListener('abort', () => reject(new Error('killed')), {
-          once: true,
-        });
-      } catch (err) {
-        if (!this.killed) {
-          this.log('warn', `SSE setup failed: ${err}`);
+      // Stream health is judged at the fetch surface, where the response
+      // status is visible; the library fires onConnect for error responses
+      // too, so an error page held open must not read as a healthy
+      // connection. An HTTP 204 makes the EventSource close for good
+      // without reporting anything, so it must fail here. A rejected fetch
+      // never reaches onDisconnect (the hazard sseFetch exists for):
+      // capture it for the give-up message and let the clock decide, so
+      // one transient refusal does not kill a live build.
+      const fetchWithStreamPolicy: Fetch = async (input, init) => {
+        const response = await nodeProxyTransport.fetch(input, init);
+        if (response.status === 204) {
+          fail(new ExecStreamClosedError(`event stream to ${eventsUrl} was closed by the server (HTTP 204)`));
+        } else if (!response.ok) {
+          lastStreamError = new Error(`server answered HTTP ${response.status}`);
         }
-        reject(err);
-      }
+        cleanResponseThisCycle = response.ok;
+        return response;
+      };
+
+      const eventSource = createEventSource({
+        url: eventsUrl,
+        fetch: sseFetch(fetchWithStreamPolicy, (err) => {
+          lastStreamError = err instanceof Error ? err : new Error(String(err));
+        }),
+        headers: { Authorization: `Bearer ${this.options.token}` },
+        onConnect: () => {
+          connectedAt = Date.now();
+        },
+        // Comments count as proof of life, so a server-side keepalive
+        // works without a client change (onMessage never sees them).
+        onComment: () => {
+          proofOfLifeThisCycle = true;
+        },
+        // Fires once per broken cycle, before the retry timer is armed, on
+        // both failure paths (request rejected, stream ended). This is
+        // where the give-up clock runs.
+        onScheduleReconnect: () => {
+          if (settled || this.killed) {
+            return;
+          }
+          const now = Date.now();
+          const livedMs = connectedAt > 0 ? now - connectedAt : 0;
+          connectedAt = 0;
+          // Date.now() is wall clock: a laptop waking from sleep (or a
+          // clock step) would arrive with the whole window already
+          // "elapsed" and fail on its first attempt. An implausibly long
+          // gap between cycles restarts the streak instead.
+          if (deadSince > 0 && lastCycleAt > 0 && now - lastCycleAt > sseStreamPolicy.giveUpAfterMs) {
+            deadSince = now;
+          }
+          lastCycleAt = now;
+          const healthy =
+            proofOfLifeThisCycle ||
+            (cleanResponseThisCycle && livedMs >= sseStreamPolicy.healthyConnectionMs);
+          proofOfLifeThisCycle = false;
+          cleanResponseThisCycle = false;
+          if (healthy) {
+            deadSince = 0;
+            lastStreamError = undefined;
+            return;
+          }
+          if (deadSince === 0) {
+            deadSince = now;
+            this.log('warn', 'SSE disconnected; reconnecting');
+            return;
+          }
+          if (now - deadSince >= sseStreamPolicy.giveUpAfterMs) {
+            const seconds = Math.round((now - deadSince) / 1000);
+            const cause = lastStreamError ? `; last error: ${lastStreamError.message}` : '';
+            fail(
+              new ExecStreamLostError(
+                `event stream to ${eventsUrl} kept failing for ${seconds}s without delivering events${cause}; ` +
+                  'the execution may no longer exist (instance deleted or record expired)',
+              ),
+            );
+          }
+        },
+        onMessage: (message: EventSourceMessage) => {
+          deadSince = 0;
+          proofOfLifeThisCycle = true;
+          lastStreamError = undefined;
+          const data = typeof message.data === 'string' ? message.data : String(message.data ?? '');
+          const eventType = message.event;
+          if (eventType === 'command') {
+            this.command.emit('data', data);
+          } else if (eventType === 'stdout') {
+            this.stdout.emit('data', data);
+          } else if (eventType === 'stderr') {
+            this.stderr.emit('data', data);
+          } else if (eventType === 'testflight') {
+            try {
+              this.appStoreEvent = JSON.parse(data) as AppStoreEvent;
+            } catch {
+              // The wire event itself proves the server ran the App Store upload,
+              // so never let a payload glitch look like a missing feature.
+              this.appStoreEvent = { state: 'unknown' };
+              this.log('warn', `SSE testflight event has invalid data: ${data}`);
+            }
+          } else if (eventType === 'playstore') {
+            try {
+              this.playstoreEvent = JSON.parse(data) as PlaystoreEvent;
+            } catch {
+              // Same contract as the App Store upload event: its presence proves the server
+              // ran the Play Store step, so a payload glitch must not
+              // read as a missing feature.
+              this.playstoreEvent = { state: 'unknown' };
+              this.log('warn', `SSE playstore event has invalid data: ${data}`);
+            }
+          } else if (eventType === 'exitCode') {
+            const exitCode = parseInt(data, 10);
+            if (Number.isNaN(exitCode)) {
+              this.log('warn', `SSE exitCode event has invalid data: ${data}`);
+              return;
+            }
+            this.log('debug', `Execution completed via SSE: exitCode=${exitCode}`);
+            succeed(exitCode);
+          }
+        },
+      });
+      this.sseConnection = eventSource;
+      signal.addEventListener('abort', onAbort, { once: true });
     });
   }
 }
