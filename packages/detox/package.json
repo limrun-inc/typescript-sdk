@@ -41,5 +41,8 @@
   "files": [
     "dist",
     "README.md"
-  ]
+  ],
+  "resolutions": {
+    "undici": "7.29.0"
+  }
 }

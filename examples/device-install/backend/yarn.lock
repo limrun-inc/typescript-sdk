@@ -132,10 +132,10 @@
   resolved "https://registry.yarnpkg.com/@esbuild/win32-x64/-/win32-x64-0.28.2.tgz#b21affb804cc167c133d95f45b3a1dc1323b9a87"
   integrity sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g==
 
-"@limrun/api@^0.45.2":
-  version "0.45.5"
-  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.45.5.tgz#e009b49b533a20de92e02fc334eacd5a624dedf8"
-  integrity sha512-CDXSsWh5BZWNfF6XWyEn9P2QtUpLg702UqcjBihGdLZBzUfMU7JrjTQx7aT4woE9o1KSgvtX6RInaEi0hFcxng==
+"@limrun/api@^0.46.10":
+  version "0.46.10"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.46.10.tgz#487425a7f8e1c4ccb9b88ce4441df60a8d54343f"
+  integrity sha512-vu4XnB6Poh4y7R9/xrYBE4VYLn+VEH36jDAvu1Kh130Z6uQrrs9PxXDmMlQHN4K5rG7BaHP5IqEfchnFX5OSQg==
   dependencies:
     "@limrun/xdelta3-wasm" "0.2.0"
     eventsource-client "^1.2.0"
@@ -804,10 +804,10 @@ undici-types@~8.3.0:
   resolved "https://registry.yarnpkg.com/undici-types/-/undici-types-8.3.0.tgz#44e9fc9f3244648cdea35e4f9bb2d681e9410809"
   integrity sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==
 
-undici@7.28.0:
-  version "7.28.0"
-  resolved "https://registry.yarnpkg.com/undici/-/undici-7.28.0.tgz#97d64564198b285bc281f0e8e29597e3d11fe7ec"
-  integrity sha512-cRZYrTDwWznlnRiPjggAGxZXanty6M8RV1ff8Wm4LWXBp7/IG8v5DnOm74DtUBp9OONpK75YlPnIjQqX0dBDtA==
+undici@7.28.0, undici@7.29.0:
+  version "7.29.0"
+  resolved "https://registry.yarnpkg.com/undici/-/undici-7.29.0.tgz#ae0f6f62e06e057a9cbb7b2b5fde2bb74f791b8f"
+  integrity sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==
 
 unpipe@~1.0.0:
   version "1.0.0"
