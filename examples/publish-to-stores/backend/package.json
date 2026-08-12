@@ -21,5 +21,8 @@
     "@types/express": "^5.0.3",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
+  },
+  "resolutions": {
+    "undici": "7.29.0"
   }
 }
