@@ -25,8 +25,19 @@ test('deletes every active instance returned across label-filtered pages', async
 test('does not issue delete requests when no active instances match', async () => {
   const deleteInstance = jest.fn(async () => {});
 
-  await expect(
-    deleteInstancesByLabels('env=missing', () => instances([]), deleteInstance),
-  ).resolves.toEqual([]);
+  await expect(deleteInstancesByLabels('env=missing', () => instances([]), deleteInstance)).resolves.toEqual(
+    [],
+  );
+  expect(deleteInstance).not.toHaveBeenCalled();
+});
+
+test('rejects an empty selector instead of deleting every active instance', async () => {
+  const list = jest.fn(() => instances(['ios_one']));
+  const deleteInstance = jest.fn(async () => {});
+
+  await expect(deleteInstancesByLabels('  ', list, deleteInstance)).rejects.toThrow(
+    'Label selector must not be empty.',
+  );
+  expect(list).not.toHaveBeenCalled();
   expect(deleteInstance).not.toHaveBeenCalled();
 });

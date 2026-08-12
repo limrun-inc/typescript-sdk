@@ -16,6 +16,10 @@ export async function deleteInstancesByLabels<T extends LabelledInstance>(
   list: (params: DeleteByLabelParams) => AsyncIterable<T>,
   deleteInstance: (id: string) => Promise<void>,
 ): Promise<string[]> {
+  if (labelSelector.trim() === '') {
+    throw new Error('Label selector must not be empty.');
+  }
+
   const deletedIds: string[] = [];
   for await (const instance of list({
     labelSelector,

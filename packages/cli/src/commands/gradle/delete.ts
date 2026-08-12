@@ -24,19 +24,20 @@ export default class GradleDelete extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     'label-selector': Flags.string({
-      description: 'Delete all active instances matching comma-separated labels, for example env=ci,team=mobile',
+      description:
+        'Delete all active instances matching comma-separated labels, for example env=ci,team=mobile',
     }),
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(GradleDelete);
     this.setParsedFlags(flags);
-    if (args.id && flags['label-selector']) {
+    if (args.id && flags['label-selector'] !== undefined) {
       this.error('Provide either a gradle instance ID or --label-selector, not both.');
     }
 
     await this.withAuth(async () => {
-      if (flags['label-selector']) {
+      if (flags['label-selector'] !== undefined) {
         const deletedIds = await deleteInstancesByLabels(
           flags['label-selector'],
           (params) => this.client.gradleInstances.list(params),
