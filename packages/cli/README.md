@@ -803,6 +803,17 @@ The CLI reads configuration from multiple sources (in order of precedence):
 | `api-endpoint`     | `https://api.limrun.com`     | API base URL            |
 | `console-endpoint` | `https://console.limrun.com` | Console URL (for login) |
 
+## Telemetry
+
+The CLI sends privacy-safe product events for authentication, skill installation,
+the `lim run` lifecycle, instance creation intent, and build intent. It never
+sends command arguments, file or repository paths, hostnames, email addresses,
+API keys, tokens, or raw error messages.
+
+Before login, events use a random installation ID stored in
+`~/.lim/telemetry.json`. Login links that ID to the authenticated account so the
+journey remains continuous. Set `LIM_DISABLE_TELEMETRY=1` to disable collection.
+
 ---
 
 ## JSON Output

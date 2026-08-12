@@ -15,6 +15,7 @@ import {
 } from '../../lib/skills';
 import { scanSkillHints } from '../../lib/project-detection';
 import { loadRemoteSkills, type LoadedRemoteSkills, type RemoteSkill } from '../../lib/remote-skills';
+import { captureTelemetry, telemetryErrorCategory } from '../../lib/telemetry';
 
 type SkillName = string;
 const SKIPPED_REASON_KEPT = 'existing skill directory differs; kept because --keep-existing was passed';
@@ -129,6 +130,12 @@ export default class SkillsInstall extends Command {
     let skills: SkillName[] = [];
     let source: LoadedRemoteSkills | undefined;
 
+    await captureTelemetry('skills_install_started', {
+      entrypoint: 'skills_command',
+      scope,
+      explicit_skill_selection: Boolean(flags.skills?.length),
+      explicit_agent_selection: Boolean(flags.agents?.length),
+    });
     try {
       if (verbose) {
         process.stderr.write('Fetching latest Limrun skills...\n');
@@ -243,6 +250,24 @@ export default class SkillsInstall extends Command {
       }
 
       this.emitOutput(results, flags, skills, source);
+      await captureTelemetry('skills_install_succeeded', {
+        entrypoint: 'skills_command',
+        scope,
+        skill_count: skills.length,
+        agent_count: new Set(results.map((result) => result.agent)).size,
+        installed_count: results.filter((result) => result.status === 'installed').length,
+        updated_count: results.filter((result) => result.status === 'updated').length,
+        unchanged_count: results.filter((result) => result.status === 'unchanged').length,
+        skipped_count: results.filter((result) => result.status === 'skipped').length,
+      });
+    } catch (err) {
+      await captureTelemetry('skills_install_failed', {
+        entrypoint: 'skills_command',
+        scope,
+        skill_count: skills.length,
+        error_category: telemetryErrorCategory(err),
+      });
+      throw err;
     } finally {
       source?.cleanup();
     }

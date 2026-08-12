@@ -64,6 +64,7 @@ describe('lim login rendezvous session', () => {
       consoleEndpoint: CONSOLE_ENDPOINT,
       version: 'test',
       hostname: 'test-host',
+      anonymousId: '018f47a2-8b9c-7def-8123-456789abcdef',
       fetcher,
       configWriter: (partial) => {
         configWrites.push(partial);
@@ -79,7 +80,11 @@ describe('lim login rendezvous session', () => {
     expect(openedUrls).toEqual([`${CONSOLE_ENDPOINT}/authn/cli?session=clisess_test`]);
     expect(requests).toEqual([
       {
-        body: JSON.stringify({ hostname: 'test-host', cliVersion: 'test' }),
+        body: JSON.stringify({
+          hostname: 'test-host',
+          cliVersion: 'test',
+          anonymousId: '018f47a2-8b9c-7def-8123-456789abcdef',
+        }),
         method: 'POST',
         url: `${API_ENDPOINT}/authn/cli/sessions`,
       },
