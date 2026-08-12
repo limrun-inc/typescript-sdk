@@ -175,7 +175,14 @@ export type ReactNativeBuildConfig = {
 };
 
 export type XcodeBuildOptions = {
-  upload?: { assetName: string } | { signedUploadUrl: string };
+  upload?:
+    | { assetName: string; ttl?: string; signedUploadUrl?: never }
+    | { signedUploadUrl: string; assetName?: never; ttl?: never };
+  /**
+   * Built product name when it differs from the scheme. The `.app` suffix is
+   * optional. The server uses this to locate the artifact after xcodebuild.
+   */
+  artifactName?: string;
   signing?: XcodeSigningConfig;
   cloudSigning?: XcodeCloudSigningConfig;
   /**
@@ -802,17 +809,20 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.appstore && { testflight: options.appstore }),
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
           ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
+          ...(options?.artifactName && { artifactName: options.artifactName }),
           ...(options?.webhook && { webhook: options.webhook }),
         };
 
         if (options?.upload && 'assetName' in options.upload) {
-          const requestPromise = mintAssetUploadUrls(client.assets, options.upload.assetName).then(
-            (asset) => {
-              request.signedUploadUrl = asset.signedUploadUrl;
-              request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
-              return request;
-            },
-          );
+          const requestPromise = mintAssetUploadUrls(
+            client.assets,
+            options.upload.assetName,
+            options.upload.ttl,
+          ).then((asset) => {
+            request.signedUploadUrl = asset.signedUploadUrl;
+            request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
+            return request;
+          });
           return exec(requestPromise, { apiUrl, token, log });
         }
 

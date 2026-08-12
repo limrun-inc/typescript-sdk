@@ -6,7 +6,7 @@ import { startXcrunShimServer, type IosXcrunShimClient, type IosXcrunShimServer 
 const client = {
   deviceInfo: { udid: 'TEST-UDID' },
   listApps: async () => [],
-  simctl: () => ({ wait: async () => ({ code: 0, stdout: '', stderr: '' }) }),
+  simctl: jest.fn(() => ({ wait: async () => ({ code: 0, stdout: '', stderr: '' }) })),
   syncApp: async () => ({}),
 } as unknown as IosXcrunShimClient;
 
@@ -50,5 +50,12 @@ describe('xcrun shim server devicectl handling', () => {
   test('rejects other devicectl subcommands', async () => {
     const result = await callShim(server.url, ['devicectl', 'device', 'install', 'app', 'App.ipa']);
     expect(result.code).toBe(127);
+  });
+
+  test('forwards simctl privacy to the remote simulator', async () => {
+    const args = ['privacy', 'booted', 'grant', 'camera', 'com.example.app'];
+    const result = await callShim(server.url, ['simctl', ...args]);
+    expect(result.code).toBe(0);
+    expect(client.simctl).toHaveBeenCalledWith(args);
   });
 });

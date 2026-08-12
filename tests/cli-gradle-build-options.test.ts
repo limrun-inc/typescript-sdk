@@ -41,17 +41,30 @@ test('upload and signed-upload-url are mutually exclusive', () => {
   );
 });
 
-test('tasks, project path, and upload map through', () => {
+test('upload-ttl requires a named upload', () => {
+  expect(() => gradleBuildOptionsFromFlags({ 'upload-ttl': '24h' })).toThrow('requires --upload');
+});
+
+test('artifact-name requires an upload destination', () => {
+  expect(() => gradleBuildOptionsFromFlags({ 'artifact-name': 'app-debug.apk' })).toThrow(
+    'requires --upload',
+  );
+});
+
+test('tasks, project path, artifact name, and upload TTL map through', () => {
   expect(
     gradleBuildOptionsFromFlags({
       task: ['assembleDebug'],
       'project-path': 'android',
+      'artifact-name': 'app-dev-debug.apk',
       upload: 'app.apk',
+      'upload-ttl': '24h',
     }),
   ).toEqual({
     tasks: ['assembleDebug'],
     projectPath: 'android',
-    upload: { assetName: 'app.apk' },
+    artifactName: 'app-dev-debug.apk',
+    upload: { assetName: 'app.apk', ttl: '24h' },
   });
 });
 

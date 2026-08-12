@@ -56,7 +56,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url "myapp://expo-development-client/?url=http%3A%2F%2F10.244.7.112%3A57090"',
     '<%= config.bin %> xcode build --scheme WatchApp --sdk watchsimulator',
     '<%= config.bin %> xcode build ./MyProject --xcodegen-spec specs/app.yml --xcodegen-project ios',
-    '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
+    '<%= config.bin %> xcode build ./MyProject --scheme "Hubble Dev" --artifact-name Hubble-dev --upload signed-device-build.ipa --upload-ttl 24h',
     '<%= config.bin %> xcode build ./MyProject --sdk iphoneos --configuration Release --signing-method release-testing --team-id VMBY3VYW4U --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8 --upload signed-device-build.ipa',
     '<%= config.bin %> xcode build ./MyProject --sdk iphoneos --configuration Release --signing-method app-store-connect --team-id VMBY3VYW4U --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8 --upload-to-appstore',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload-to-appstore --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8',
@@ -131,7 +131,15 @@ export default class XcodeBuild extends BaseCommand {
       description:
         'Relative path from the synced workspace root to the Expo app directory. Use for monorepos or ambiguous React Native workspaces.',
     }),
-    upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
+    upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name.' }),
+    'upload-ttl': Flags.string({
+      description:
+        'Delete the named --upload asset after this Go duration (for example 24h or 30m). Omit for no expiry.',
+    }),
+    'artifact-name': Flags.string({
+      description:
+        'Built product name to upload when it differs from the Xcode scheme, for example Hubble-dev. The .app suffix is optional.',
+    }),
     'signed-upload-url': Flags.string({
       description: 'Presigned URL to upload the resulting build artifact to.',
     }),
@@ -264,6 +272,9 @@ export default class XcodeBuild extends BaseCommand {
     if (flags.detach && !flags['webhook-url']) {
       this.error('--detach requires --webhook-url so the terminal build result is observable.');
     }
+    if (flags['upload-ttl'] && !flags.upload) {
+      this.error('--upload-ttl requires --upload.');
+    }
 
     await this.withAuth(async () => {
       const target =
@@ -284,6 +295,9 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.configuration) settings.configuration = flags.configuration;
 
       const options: XcodeBuildOptions = {};
+      if (flags['artifact-name']) {
+        options.artifactName = flags['artifact-name'];
+      }
       if (flags['git-init']) {
         options.gitInit = true;
       }
@@ -348,7 +362,10 @@ export default class XcodeBuild extends BaseCommand {
         this.error('Use either --upload or --signed-upload-url, not both.');
       }
       if (flags.upload) {
-        options.upload = { assetName: flags.upload };
+        options.upload = {
+          assetName: flags.upload,
+          ...(flags['upload-ttl'] && { ttl: flags['upload-ttl'] }),
+        };
       } else if (flags['signed-upload-url']) {
         options.upload = {
           signedUploadUrl: flags['signed-upload-url'],
