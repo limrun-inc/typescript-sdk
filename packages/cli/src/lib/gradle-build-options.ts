@@ -149,12 +149,7 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
   if (flags['upload-ttl'] && !flags.upload) {
     throw new Error('--upload-ttl requires --upload.');
   }
-  if (
-    flags['upload-name'] &&
-    !flags.upload &&
-    !flags['signed-upload-url'] &&
-    !flags['upload-to-playstore']
-  ) {
+  if (flags['upload-name'] && !flags.upload && !flags['signed-upload-url'] && !flags['upload-to-playstore']) {
     throw new Error('--upload-name requires --upload, --signed-upload-url, or --upload-to-playstore.');
   }
   validateSigningFlags(flags);
