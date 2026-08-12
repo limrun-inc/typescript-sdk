@@ -7,13 +7,7 @@ import { INSTALLER_NAME } from './config';
 import { useConnect } from './hooks/useConnect';
 import { useDeviceInstall } from './hooks/useDeviceInstall';
 import { useInstall } from './hooks/useInstall';
-import {
-  createBackendSecretStore,
-  getSecretsDir,
-  getWebhookUrl,
-  setSecretsDir,
-  setWebhookUrl,
-} from './lib/backend';
+import { createBackendSecretStore, getSecretsDir, setSecretsDir } from './lib/backend';
 import { errorBox, hintText, inputStyle, labelStyle, layout } from './theme';
 
 export default function App() {
@@ -42,15 +36,6 @@ export default function App() {
     setSecretsDir(dir);
   };
 
-  // The public URL limbuild POSTs build-finish webhooks to. It persists in
-  // localStorage and rides every install build request, where the backend
-  // hands it to the lim CLI verbatim.
-  const [webhookUrl, setWebhookUrlState] = useState(getWebhookUrl);
-  const updateWebhookUrl = (url: string) => {
-    setWebhookUrlState(url);
-    setWebhookUrl(url);
-  };
-
   return (
     <div style={layout.page}>
       <aside style={layout.sidebar}>
@@ -66,17 +51,10 @@ export default function App() {
           onChange={(event) => updateSecretsDir(event.target.value)}
           placeholder="backend default"
         />
-        <label style={labelStyle}>Webhook URL (Run `npx localtunnel --port 3001`)</label>
-        <input
-          style={inputStyle}
-          value={webhookUrl}
-          onChange={(event) => updateWebhookUrl(event.target.value)}
-          placeholder="https://your-subdomain.ngrok-free.app"
-        />
         {displayError && <div style={errorBox}>{displayError}</div>}
         <ConnectPhase connect={connect} />
         <DevicesPhase connect={connect} />
-        <BuildPhase connect={connect} build={build} webhookUrl={webhookUrl} />
+        <BuildPhase connect={connect} build={build} />
         <InstallPhase build={build} device={device} />
       </aside>
       <main style={layout.main}>

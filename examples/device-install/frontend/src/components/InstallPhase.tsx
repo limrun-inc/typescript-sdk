@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import type { ConnectController } from '../hooks/useConnect';
 import type { DeviceInstallController } from '../hooks/useDeviceInstall';
 import type { InstallController } from '../hooks/useInstall';
+import { getWebhookUrl, setWebhookUrl } from '../lib/backend';
 import {
   errorBox,
   hintText,
@@ -41,17 +42,16 @@ function bytes(value?: number) {
  * Stage 3: the single ad-hoc-signed build (distribution certificate +
  * ad-hoc profile, chosen server-side by the target device's UDID).
  */
-export function BuildPhase({
-  connect,
-  build,
-  webhookUrl,
-}: {
-  connect: ConnectController;
-  build: InstallController;
-  /** The sidebar's webhook URL; rides the build request. Empty blocks building. */
-  webhookUrl: string;
-}) {
+export function BuildPhase({ connect, build }: { connect: ConnectController; build: InstallController }) {
   const [projectPath, setProjectPath] = useState('');
+  // The public URL limbuild POSTs build-finish webhooks to. It persists in
+  // localStorage and rides the build request, where the backend hands it to
+  // the lim CLI verbatim.
+  const [webhookUrl, setWebhookUrlState] = useState(getWebhookUrl);
+  const updateWebhookUrl = (url: string) => {
+    setWebhookUrlState(url);
+    setWebhookUrl(url);
+  };
   if (!connect.connection || !connect.selectedDevice?.covered) {
     return (
       <Section title="3. Build">
@@ -73,9 +73,14 @@ export function BuildPhase({
         onChange={(event) => setProjectPath(event.target.value)}
         placeholder="/path/to/MyApp"
       />
-      {!webhookUrlSet && (
-        <p style={hintText}>Enter the webhook URL at the top of the sidebar to enable building.</p>
-      )}
+      <label style={labelStyle}>Webhook URL (Run `npx localtunnel --port 3001`)</label>
+      <input
+        style={inputStyle}
+        value={webhookUrl}
+        onChange={(event) => updateWebhookUrl(event.target.value)}
+        placeholder="https://your-subdomain.ngrok-free.app"
+      />
+      {!webhookUrlSet && <p style={hintText}>Enter the webhook URL to enable building.</p>}
       <button
         style={primaryButton(!canBuild)}
         disabled={!canBuild}
