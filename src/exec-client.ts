@@ -363,6 +363,10 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private abortController = new AbortController();
   private sseConnection: EventSourceClient | null = null;
   private killed = false;
+  // Start of the stream's current unbroken failure streak, 0 while
+  // healthy. run() reads it to classify a completion timeout that
+  // expired while the stream was already dead.
+  private streamDeadSince = 0;
   private detached = false;
   private appStoreEvent: AppStoreEvent | null = null;
   private playstoreEvent: PlaystoreEvent | null = null;
@@ -554,12 +558,21 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
         // The client stopped waiting; the fabricated exit code must not
         // read as a build failure. The structured reason lets callers give
         // the right advice: a dead stream means the execution may be gone,
-        // while a genuine timeout means it may still be running.
-        const message = err instanceof Error ? err.message : String(err);
-        const reason =
+        // while a genuine timeout means it may still be running. A budget
+        // that expires mid-failure-streak (short run timeouts undercut the
+        // stream's own give-up window) counts as a stream problem too.
+        let message = err instanceof Error ? err.message : String(err);
+        const streakMs = this.streamDeadSince > 0 ? Date.now() - this.streamDeadSince : 0;
+        let reason: NonNullable<ExecResult['incomplete']>['reason'] =
           err instanceof ExecStreamClosedError ? 'stream-closed'
           : err instanceof ExecStreamLostError ? 'stream-lost'
           : 'timeout';
+        if (reason === 'timeout' && streakMs > 0) {
+          reason = 'stream-lost';
+          message += `; the event stream had been failing for ${Math.round(
+            streakMs / 1000,
+          )}s when the budget expired`;
+        }
         incomplete = { reason, message };
         log('warn', message);
         exitCode = 1;
@@ -622,8 +635,8 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       // reconnects on its own otherwise, even after the promise is done.
       let settled = false;
       let connectedAt = 0;
-      let deadSince = 0;
       let lastCycleAt = 0;
+      let lastCycleMono = 0;
       let proofOfLifeThisCycle = false;
       let cleanResponseThisCycle = false;
       let lastStreamError: Error | undefined;
@@ -686,33 +699,42 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
             return;
           }
           const now = Date.now();
+          const mono = performance.now();
           const livedMs = connectedAt > 0 ? now - connectedAt : 0;
           connectedAt = 0;
           // Date.now() is wall clock: a laptop waking from sleep (or a
           // clock step) would arrive with the whole window already
-          // "elapsed" and fail on its first attempt. An implausibly long
-          // gap between cycles restarts the streak instead.
-          if (deadSince > 0 && lastCycleAt > 0 && now - lastCycleAt > sseStreamPolicy.giveUpAfterMs) {
-            deadSince = now;
+          // "elapsed" and fail on its first attempt. Sleep is the wall
+          // clock advancing while the monotonic clock stands still; a
+          // large drift between the two restarts the streak. Long server
+          // retry delays and hanging connects advance both clocks equally
+          // and keep counting.
+          if (this.streamDeadSince > 0 && lastCycleAt > 0) {
+            const wallGapMs = now - lastCycleAt;
+            const monoGapMs = mono - lastCycleMono;
+            if (wallGapMs - monoGapMs > 30_000) {
+              this.streamDeadSince = now;
+            }
           }
           lastCycleAt = now;
+          lastCycleMono = mono;
           const healthy =
             proofOfLifeThisCycle ||
             (cleanResponseThisCycle && livedMs >= sseStreamPolicy.healthyConnectionMs);
           proofOfLifeThisCycle = false;
           cleanResponseThisCycle = false;
           if (healthy) {
-            deadSince = 0;
+            this.streamDeadSince = 0;
             lastStreamError = undefined;
             return;
           }
-          if (deadSince === 0) {
-            deadSince = now;
+          if (this.streamDeadSince === 0) {
+            this.streamDeadSince = now;
             this.log('warn', 'SSE disconnected; reconnecting');
             return;
           }
-          if (now - deadSince >= sseStreamPolicy.giveUpAfterMs) {
-            const seconds = Math.round((now - deadSince) / 1000);
+          if (now - this.streamDeadSince >= sseStreamPolicy.giveUpAfterMs) {
+            const seconds = Math.round((now - this.streamDeadSince) / 1000);
             const cause = lastStreamError ? `; last error: ${lastStreamError.message}` : '';
             fail(
               new ExecStreamLostError(
@@ -723,7 +745,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
           }
         },
         onMessage: (message: EventSourceMessage) => {
-          deadSince = 0;
+          this.streamDeadSince = 0;
           proofOfLifeThisCycle = true;
           lastStreamError = undefined;
           const data = typeof message.data === 'string' ? message.data : String(message.data ?? '');
