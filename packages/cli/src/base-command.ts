@@ -85,6 +85,13 @@ export abstract class BaseCommand extends Command {
     }),
   };
 
+  static readOnlyFlags = {
+    'api-key': BaseCommand.baseFlags['api-key'],
+    json: BaseCommand.baseFlags.json,
+    quiet: BaseCommand.baseFlags.quiet,
+    workspace: BaseCommand.baseFlags.workspace,
+  };
+
   private _client?: Limrun;
 
   protected get client(): Limrun {
@@ -548,7 +555,7 @@ export abstract class BaseCommand extends Command {
     // Read-only or lifecycle verbs must never conjure an instance: `lim
     // gradle get <typo>` should fail with not-found, not create-and-show a
     // brand new sandbox.
-    if (['create', 'delete', 'list', 'get'].includes(verb)) {
+    if (['create', 'delete', 'list', 'get', 'logs'].includes(verb)) {
       return false;
     }
     return true;

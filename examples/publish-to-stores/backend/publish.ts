@@ -266,8 +266,7 @@ export function receivePublishWebhook(token: string | undefined, payload: unknow
     const status = (payload as { status?: string } | null)?.status;
     entry.status.state = status === 'SUCCEEDED' ? 'succeeded' : 'failed';
     if (entry.status.state === 'failed') {
-      const buildError = (payload as { error?: string } | null)?.error;
-      entry.status.error = buildError ?? `Build finished with status ${status ?? 'unknown'}.`;
+      entry.status.error = `Build finished with status ${status ?? 'unknown'}. See the persisted build log.`;
     }
     return id;
   }

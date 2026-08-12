@@ -132,7 +132,6 @@ export type InstallInput = {
 
 export type BuildWebhookPayload = {
   status?: string;
-  error?: string;
   buildDurationMs?: number;
   consoleUrl?: string;
   logsUrl?: string;
