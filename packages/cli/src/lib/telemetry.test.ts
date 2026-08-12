@@ -156,6 +156,28 @@ describe('CLI telemetry', () => {
     expect(JSON.stringify(body.properties)).not.toContain('/Users/alice');
   });
 
+  it('keeps only coarse lim run lifecycle properties', () => {
+    expect(
+      sanitizeTelemetryProperties({
+        project_kind: 'expo',
+        flow: 'existing_project',
+        quiet: false,
+        duration_ms: 1234,
+        failure_stage: 'build',
+        error_category: 'validation',
+        project_path: '/Users/alice/private-project',
+        error_message: '/Users/alice/private-project failed with a secret',
+      }),
+    ).toEqual({
+      project_kind: 'expo',
+      flow: 'existing_project',
+      quiet: false,
+      duration_ms: 1234,
+      failure_stage: 'build',
+      error_category: 'validation',
+    });
+  });
+
   it('reduces create and build command hooks to high-level intent', () => {
     expect(
       telemetryIntentForCommand('ios:create', {

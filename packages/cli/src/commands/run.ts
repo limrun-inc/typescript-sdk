@@ -16,6 +16,7 @@ import {
   type SampleKind,
   type SkillInstallResult,
 } from '../lib/onboarding';
+import { captureTelemetry, telemetryErrorCategory, type TelemetryProperties } from '../lib/telemetry';
 
 const VERSION = require('../../package.json').version;
 
@@ -23,6 +24,22 @@ const XCODE_SKILL = 'limrun-xcode';
 const IOS_SIMULATOR_SKILL = 'limrun-ios-simulator';
 const EXPO_SKILL = 'limrun-expo-development';
 type DetectedProject = Extract<ProjectDetection, { kind: 'native-ios' | 'expo' }>;
+type RunFlow = 'existing_project' | 'sample' | 'unknown';
+type RunFailureStage =
+  | 'initialization'
+  | 'project_detection'
+  | 'project_selection'
+  | 'authentication'
+  | 'access_check'
+  | 'skills_install'
+  | 'env_setup'
+  | 'sample_selection'
+  | 'sample_setup'
+  | 'instance_create'
+  | 'sync'
+  | 'build'
+  | 'stream_url'
+  | 'unknown';
 type BuildAndLaunchOptions = {
   projectRoot: string;
   displayName: string;
@@ -43,40 +60,87 @@ export default class Run extends BaseCommand {
   static description = 'Prepare your app for Limrun, or launch a working sample in a cloud simulator.';
   static examples = ['<%= config.bin %> run'];
   private reporter = new ProgressReporter(() => this.shouldSuppressInfo());
+  private runFailureStage: RunFailureStage = 'initialization';
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(Run);
-    this.setParsedFlags(flags);
+    const startedAt = Date.now();
+    let projectKind: ProjectDetection['kind'] | 'unknown' = 'unknown';
+    let flow: RunFlow = 'unknown';
+    let quiet = false;
+    try {
+      const { flags } = await this.parse(Run);
+      this.setParsedFlags(flags);
+      quiet = Boolean(flags.quiet);
 
-    const detection = detectProject(process.cwd());
-    const useDetectedProject =
-      detection.kind !== 'sample' ? await this.shouldUseDetectedProject(detection) : false;
-    const envRoot = detection.kind !== 'sample' && useDetectedProject ? detection.projectDir : process.cwd();
-    const projectEnvApiKey = flags['api-key'] ? undefined : applyProjectEnvApiKey(envRoot).apiKey;
+      this.runFailureStage = 'project_detection';
+      const detection = detectProject(process.cwd());
+      projectKind = detection.kind;
+      await captureTelemetry('cli_run_started', {
+        project_kind: projectKind,
+        quiet,
+      });
 
-    await ensureLoggedIn({
-      version: VERSION,
-      apiKey: flags['api-key'],
-      log: (message) => this.info(message),
-    });
+      this.runFailureStage = 'project_selection';
+      const useDetectedProject =
+        detection.kind !== 'sample' ? await this.shouldUseDetectedProject(detection) : false;
+      flow = detection.kind !== 'sample' && useDetectedProject ? 'existing_project' : 'sample';
+      const envRoot =
+        detection.kind !== 'sample' && useDetectedProject ? detection.projectDir : process.cwd();
+      const projectEnvApiKey = flags['api-key'] ? undefined : applyProjectEnvApiKey(envRoot).apiKey;
 
-    const apiKey = flags['api-key'] || readConfig().apiKey;
-    const allowAuthRetry = !flags['api-key'] && !projectEnvApiKey && !process.env['LIM_API_KEY'];
-    if (detection.kind === 'native-ios' && useDetectedProject) {
-      await this.setupExistingProject(detection, [XCODE_SKILL, IOS_SIMULATOR_SKILL], apiKey, allowAuthRetry);
-      return;
-    }
-    if (detection.kind === 'expo' && useDetectedProject) {
-      await this.setupExistingProject(
-        detection,
-        [XCODE_SKILL, IOS_SIMULATOR_SKILL, EXPO_SKILL],
-        apiKey,
-        allowAuthRetry,
+      this.runFailureStage = 'authentication';
+      await ensureLoggedIn({
+        version: VERSION,
+        apiKey: flags['api-key'],
+        log: (message) => this.info(message),
+      });
+
+      const apiKey = flags['api-key'] || readConfig().apiKey;
+      const allowAuthRetry = !flags['api-key'] && !projectEnvApiKey && !process.env['LIM_API_KEY'];
+      if (detection.kind === 'native-ios' && useDetectedProject) {
+        await this.setupExistingProject(
+          detection,
+          [XCODE_SKILL, IOS_SIMULATOR_SKILL],
+          apiKey,
+          allowAuthRetry,
+        );
+      } else if (detection.kind === 'expo' && useDetectedProject) {
+        await this.setupExistingProject(
+          detection,
+          [XCODE_SKILL, IOS_SIMULATOR_SKILL, EXPO_SKILL],
+          apiKey,
+          allowAuthRetry,
+        );
+      } else {
+        await this.runSampleFlow(apiKey, allowAuthRetry);
+      }
+
+      await captureTelemetry(
+        'cli_run_completed',
+        this.runTelemetryProperties(startedAt, projectKind, flow, quiet),
       );
-      return;
+    } catch (err) {
+      await captureTelemetry('cli_run_failed', {
+        ...this.runTelemetryProperties(startedAt, projectKind, flow, quiet),
+        failure_stage: this.runFailureStage,
+        error_category: telemetryErrorCategory(err),
+      });
+      throw err;
     }
+  }
 
-    await this.runSampleFlow(apiKey, allowAuthRetry);
+  private runTelemetryProperties(
+    startedAt: number,
+    projectKind: ProjectDetection['kind'] | 'unknown',
+    flow: RunFlow,
+    quiet: boolean,
+  ): TelemetryProperties {
+    return {
+      project_kind: projectKind,
+      flow,
+      quiet,
+      duration_ms: Math.max(0, Date.now() - startedAt),
+    };
   }
 
   private async setupExistingProject(
@@ -87,12 +151,15 @@ export default class Run extends BaseCommand {
   ): Promise<void> {
     const projectRoot = detection.projectDir;
     const projectPath = humanPath(projectRoot);
+    this.runFailureStage = 'access_check';
     await this.reporter.withProgress('Checking Limrun access', () => this.validateAuth(allowAuthRetry));
     this.reporter.success(`Detected an iOS/Expo project at ${projectPath}`);
+    this.runFailureStage = 'skills_install';
     const results = await this.reporter.withProgress('Installing Limrun agent skills', () =>
       installProjectSkills({ projectRoot, skillNames }),
     );
     this.printSkillSummary(results);
+    this.runFailureStage = 'env_setup';
     this.printEnvWarnings(ensureProjectEnvApiKey(projectRoot, apiKey).warnings);
     this.reporter.success('Configured .env for Limrun');
 
@@ -203,14 +270,18 @@ export default class Run extends BaseCommand {
 
   private async runSampleFlow(apiKey: string, allowAuthRetry: boolean): Promise<void> {
     const cwd = process.cwd();
+    this.runFailureStage = 'sample_selection';
     const sampleApp = SAMPLE_APPS[await this.promptSampleKind()];
+    this.runFailureStage = 'access_check';
     await this.reporter.withProgress('Checking Limrun access', () => this.validateAuth(allowAuthRetry));
+    this.runFailureStage = 'sample_setup';
     const sample = await this.reporter.withProgress('Setting up sample app', () =>
       ensureSampleRepo({ cwd, sample: sampleApp }),
     );
     const samplePathFromStart = humanPath(sample.path, cwd);
     this.reporter.success(`${sample.reused ? 'Using existing' : 'Cloned'} ${samplePathFromStart}`);
     process.chdir(sample.path);
+    this.runFailureStage = 'env_setup';
     this.printEnvWarnings(ensureProjectEnvApiKey(sample.path, apiKey).warnings);
     this.reporter.success('Configured .env for Limrun');
 
@@ -245,6 +316,7 @@ export default class Run extends BaseCommand {
     let recoveryPrinted = false;
     try {
       return await this.withAuth(async () => {
+        this.runFailureStage = 'instance_create';
         const instance = await this.reporter.withProgress('Preparing a Limrun iOS simulator with Xcode', () =>
           this.client.iosInstances.create({
             wait: true,
@@ -274,8 +346,10 @@ export default class Run extends BaseCommand {
           token: instance.status.token,
         });
 
+        this.runFailureStage = 'sync';
         await xcode.sync(projectRoot, { watch: false });
 
+        this.runFailureStage = 'build';
         const build = xcode.xcodebuild();
         this.reporter.start(progressLabel);
         build.stdout.on('data', (line: string) => this.reporter.appendLog(line));
@@ -296,6 +370,7 @@ export default class Run extends BaseCommand {
         }
         this.reporter.stop('success', `Built and launched in ${formatDurationMs(Date.now() - buildStart)}`);
 
+        this.runFailureStage = 'stream_url';
         const streamUrl = this.signedStreamUrl(instance.status);
         if (!streamUrl) {
           this.error('The iOS instance is ready, but its signed stream URL is missing.');

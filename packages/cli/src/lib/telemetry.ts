@@ -15,6 +15,9 @@ export type TelemetryEvent =
   | 'skills_install_failed'
   | 'cli_auth_started'
   | 'cli_auth_failed'
+  | 'cli_run_started'
+  | 'cli_run_completed'
+  | 'cli_run_failed'
   | 'instance_create_requested'
   | 'build_requested';
 
