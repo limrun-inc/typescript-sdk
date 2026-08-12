@@ -8,6 +8,14 @@
 import { createEventSource, type EventSourceClient, type EventSourceMessage } from 'eventsource-client';
 import { nodeProxyTransport } from './internal/proxy-transport';
 
+// Reconnect budget for the exec event stream. The EventSource reconnects
+// forever on its own, so a dead exec (deleted instance, expired record)
+// would retry every ~2s until the one-hour completion timeout. A connection
+// that delivers a message or stays open this long proves the server is
+// alive and refills the budget; each shorter cycle spends one attempt.
+const SSE_HEALTHY_CONNECTION_MS = 15_000;
+const SSE_MAX_FAILED_CYCLES = 20;
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -509,14 +517,17 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
           timeoutId = setTimeout(() => reject(new Error('SSE timeout')), timeoutMs);
         }),
       ]);
-    } catch {
+    } catch (err) {
       if (this.killed) {
         log('debug', 'Execution killed');
         exitCode = -1;
       } else {
         // The client stopped waiting; the remote build may still be running.
-        // The fabricated exit code must not read as a build failure.
-        log('warn', 'SSE completion timeout');
+        // The fabricated exit code must not read as a build failure. Name
+        // the real reason: budget exhaustion and server-closed streams are
+        // actionable, a bare "timeout" is not.
+        const reason = err instanceof Error && err.message !== 'SSE timeout' ? err.message : 'SSE completion timeout';
+        log('warn', reason);
         exitCode = 1;
         timedOut = true;
       }
@@ -571,11 +582,47 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       }
 
       try {
+        let settled = false;
+        let connectedAt = 0;
+        let failedCycles = 0;
+        const fail = (error: Error) => {
+          settled = true;
+          eventSource.close();
+          reject(error);
+        };
         const eventSource = createEventSource({
           url: eventsUrl,
           fetch: nodeProxyTransport.fetch,
           headers: { Authorization: `Bearer ${this.options.token}` },
+          onConnect: () => {
+            connectedAt = Date.now();
+          },
+          // Fires once per broken cycle, before the retry timer is armed,
+          // on both failure paths (request rejected, stream ended). This is
+          // where the budget is spent and enforced.
+          onScheduleReconnect: () => {
+            if (settled || this.killed) {
+              return;
+            }
+            const lifetimeMs = connectedAt > 0 ? Date.now() - connectedAt : 0;
+            connectedAt = 0;
+            if (lifetimeMs >= SSE_HEALTHY_CONNECTION_MS) {
+              failedCycles = 0;
+              return;
+            }
+            failedCycles++;
+            if (failedCycles >= SSE_MAX_FAILED_CYCLES) {
+              this.log('warn', `SSE gave up after ${failedCycles} failed connections in a row`);
+              fail(
+                new Error(
+                  `event stream to ${eventsUrl} failed ${failedCycles} times in a row without receiving events; ` +
+                    'the execution may no longer exist (instance deleted or record expired)',
+                ),
+              );
+            }
+          },
           onMessage: (message: EventSourceMessage) => {
+            failedCycles = 0;
             const data = typeof message.data === 'string' ? message.data : String(message.data ?? '');
             const eventType = message.event;
             if (eventType === 'command') {
@@ -610,13 +657,25 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
                 return;
               }
               this.log('debug', `Execution completed via SSE: exitCode=${exitCode}`);
+              settled = true;
               resolve(exitCode);
             }
           },
           onDisconnect: () => {
-            if (!this.killed) {
-              this.log('warn', 'SSE disconnected');
+            if (settled || this.killed) {
+              return;
             }
+            // Warn once per failure streak; the budget above bounds the
+            // streak, so this cannot spam for the rest of the run.
+            this.log(failedCycles <= 1 ? 'warn' : 'debug', 'SSE disconnected');
+            // On HTTP 204 the client closes for good instead of scheduling
+            // a reconnect. Check after the close has run; without this the
+            // promise would silently hang until the completion timeout.
+            queueMicrotask(() => {
+              if (!settled && !this.killed && eventSource.readyState === 'closed') {
+                fail(new Error(`event stream to ${eventsUrl} was closed by the server (HTTP 204)`));
+              }
+            });
           },
         });
         this.sseConnection = eventSource;
