@@ -21,7 +21,7 @@ export interface GradleBuildFlagValues extends WebhookFlagValues {
   abi?: string[];
   upload?: string;
   'upload-ttl'?: string;
-  'artifact-name'?: string;
+  'upload-name'?: string;
   'signed-upload-url'?: string;
   sign?: boolean;
   'application-id'?: string;
@@ -150,12 +150,12 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
     throw new Error('--upload-ttl requires --upload.');
   }
   if (
-    flags['artifact-name'] &&
+    flags['upload-name'] &&
     !flags.upload &&
     !flags['signed-upload-url'] &&
     !flags['upload-to-playstore']
   ) {
-    throw new Error('--artifact-name requires --upload, --signed-upload-url, or --upload-to-playstore.');
+    throw new Error('--upload-name requires --upload, --signed-upload-url, or --upload-to-playstore.');
   }
   validateSigningFlags(flags);
   validatePlaystoreFlags(flags);
@@ -187,8 +187,8 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
   } else if (flags['signed-upload-url']) {
     options.upload = { signedUploadUrl: flags['signed-upload-url'] };
   }
-  if (flags['artifact-name']) {
-    options.artifactName = flags['artifact-name'];
+  if (flags['upload-name']) {
+    options.artifactName = flags['upload-name'];
   }
   const webhook = webhookConfigFromFlags(flags);
   if (webhook) {

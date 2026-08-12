@@ -45,8 +45,8 @@ test('upload-ttl requires a named upload', () => {
   expect(() => gradleBuildOptionsFromFlags({ 'upload-ttl': '24h' })).toThrow('requires --upload');
 });
 
-test('artifact-name requires an upload destination', () => {
-  expect(() => gradleBuildOptionsFromFlags({ 'artifact-name': 'app-debug.apk' })).toThrow(
+test('upload-name requires an upload destination', () => {
+  expect(() => gradleBuildOptionsFromFlags({ 'upload-name': 'app-debug.apk' })).toThrow(
     'requires --upload',
   );
 });
@@ -56,7 +56,7 @@ test('tasks, project path, artifact name, and upload TTL map through', () => {
     gradleBuildOptionsFromFlags({
       task: ['assembleDebug'],
       'project-path': 'android',
-      'artifact-name': 'app-dev-debug.apk',
+      'upload-name': 'app-dev-debug.apk',
       upload: 'app.apk',
       'upload-ttl': '24h',
     }),

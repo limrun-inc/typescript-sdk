@@ -25,7 +25,7 @@ export default class GradleBuild extends BaseCommand {
 
   static examples = [
     '<%= config.bin %> gradle build',
-    '<%= config.bin %> gradle build ./my-app --artifact-name app-dev-debug.apk --upload myapp.apk --upload-ttl 24h',
+    '<%= config.bin %> gradle build ./my-app --upload-name app-dev-debug.apk --upload myapp.apk --upload-ttl 24h',
     '<%= config.bin %> gradle build --task bundleRelease',
     '<%= config.bin %> gradle build --id <gradle-instance-ID> --project-path android',
     '<%= config.bin %> gradle build ./my-monorepo --expo-app-dir apps/mobile',
@@ -75,7 +75,7 @@ export default class GradleBuild extends BaseCommand {
       description:
         'Delete the named --upload asset after this Go duration (for example 24h or 30m). Omit for no expiry.',
     }),
-    'artifact-name': Flags.string({
+    'upload-name': Flags.string({
       description:
         'Exact APK or AAB filename to upload when the build produces multiple artifacts, for example app-prod-release.aab.',
     }),
