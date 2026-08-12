@@ -569,9 +569,10 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
           : 'timeout';
         if (reason === 'timeout' && streakMs > 0) {
           reason = 'stream-lost';
-          message += `; the event stream had been failing for ${Math.round(
-            streakMs / 1000,
-          )}s when the budget expired`;
+          message =
+            `the completion budget expired while the event stream had already been failing ` +
+            `for ${Math.round(streakMs / 1000)}s; the execution may no longer exist ` +
+            `(instance deleted or record expired)`;
         }
         incomplete = { reason, message };
         log('warn', message);
