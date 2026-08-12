@@ -209,6 +209,9 @@ hooks.post('/{*splat}', (req: Request, res: Response) => {
 hooks.listen(webhookPort, () => {
   console.log(`Webhook receiver listening at http://localhost:${webhookPort}`);
 });
-app.listen(port, () => {
+// Loopback only: these routes act on local paths the UI provides (project
+// directory, secrets directory), which is fine for the person running the
+// example on their own machine but must not be reachable from the network.
+app.listen(port, '127.0.0.1', () => {
   console.log(`Device install backend listening at http://localhost:${port}`);
 });
