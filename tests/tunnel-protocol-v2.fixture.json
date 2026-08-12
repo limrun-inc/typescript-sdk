@@ -1,0 +1,362 @@
+{
+  "contract": {
+    "version": 2,
+    "maxRoutes": 10,
+    "connID": {
+      "jsonType": "integer",
+      "minimum": 0,
+      "maximum": 4294967295,
+      "binaryHeaderBytes": 4,
+      "binaryByteOrder": "big_endian",
+      "invalidJSONValues": [-1, 1.5, 4294967296]
+    },
+    "transports": ["tcp"],
+    "openFailureReasons": [
+      "dns_not_found",
+      "dns_temporary_failure",
+      "connection_refused",
+      "connection_reset",
+      "connection_timed_out",
+      "unreachable",
+      "permission_denied",
+      "resource_exhausted",
+      "route_not_allowed",
+      "cancelled",
+      "internal"
+    ],
+    "resetReasons": ["cancelled", "connection_error", "protocol_error", "resource_exhausted", "internal"],
+    "sessionErrorCodes": [
+      "unsupported_version",
+      "invalid_message",
+      "invalid_route",
+      "route_capacity",
+      "already_active",
+      "listener_unavailable",
+      "internal"
+    ]
+  },
+  "routeCases": [
+    {
+      "input": {
+        "host": "API.Example.COM.",
+        "port": 443
+      },
+      "canonical": {
+        "host": "api.example.com",
+        "port": 443
+      }
+    },
+    {
+      "input": {
+        "host": "localhost",
+        "port": 8000
+      },
+      "canonical": {
+        "host": "localhost",
+        "port": 8000
+      }
+    },
+    {
+      "input": {
+        "host": "127.0.0.1",
+        "port": 8081
+      },
+      "canonical": {
+        "host": "127.0.0.1",
+        "port": 8081
+      }
+    },
+    {
+      "input": {
+        "host": "2001:0DB8:0:0:0:0:0:1",
+        "port": 8443
+      },
+      "canonical": {
+        "host": "2001:db8::1",
+        "port": 8443
+      }
+    },
+    {
+      "input": {
+        "host": "::FFFF:192.0.2.1",
+        "port": 9443
+      },
+      "canonical": {
+        "host": "::ffff:192.0.2.1",
+        "port": 9443
+      }
+    },
+    {
+      "input": {
+        "host": "::192.0.2.1",
+        "port": 10443
+      },
+      "canonical": {
+        "host": "::192.0.2.1",
+        "port": 10443
+      }
+    }
+  ],
+  "invalidRouteSets": [
+    {
+      "name": "empty",
+      "routes": [],
+      "error": "empty"
+    },
+    {
+      "name": "wildcard",
+      "routes": [
+        {
+          "host": "*.example.com",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
+      "name": "embedded NUL",
+      "routes": [
+        {
+          "host": "127.0.0.1\u0000.evil",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
+      "name": "Unicode case folding",
+      "routes": [
+        {
+          "host": "\u212A.example",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
+      "name": "short IPv4",
+      "routes": [
+        {
+          "host": "127.1",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
+      "name": "integer IPv4",
+      "routes": [
+        {
+          "host": "2130706433",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
+      "name": "hex IPv4",
+      "routes": [
+        {
+          "host": "0x7f000001",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
+      "name": "cidr",
+      "routes": [
+        {
+          "host": "10.0.0.0/8",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
+      "name": "bracketed IPv6",
+      "routes": [
+        {
+          "host": "[::1]",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
+      "name": "invalid IPv4",
+      "routes": [
+        {
+          "host": "999.0.0.1",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
+      "name": "non-ASCII",
+      "routes": [
+        {
+          "host": "münchen.example",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
+      "name": "zero port",
+      "routes": [
+        {
+          "host": "localhost",
+          "port": 0
+        }
+      ],
+      "error": "invalid_port"
+    },
+    {
+      "name": "high port",
+      "routes": [
+        {
+          "host": "localhost",
+          "port": 65536
+        }
+      ],
+      "error": "invalid_port"
+    },
+    {
+      "name": "canonical duplicate",
+      "routes": [
+        {
+          "host": "API.example.com",
+          "port": 443
+        },
+        {
+          "host": "api.example.com.",
+          "port": 443
+        }
+      ],
+      "error": "duplicate"
+    },
+    {
+      "name": "canonical IPv6 duplicate",
+      "routes": [
+        {
+          "host": "2001:db8::1",
+          "port": 443
+        },
+        {
+          "host": "2001:0db8:0:0:0:0:0:1",
+          "port": 443
+        }
+      ],
+      "error": "duplicate"
+    }
+  ],
+  "client": [
+    {
+      "name": "start",
+      "message": {
+        "type": "start",
+        "version": 2,
+        "routes": [
+          {
+            "host": "localhost",
+            "port": 8000
+          },
+          {
+            "host": "127.0.0.1",
+            "port": 8081
+          }
+        ]
+      }
+    },
+    {
+      "name": "openOk",
+      "message": {
+        "type": "openOk",
+        "connId": 4294967295
+      }
+    },
+    {
+      "name": "openFail",
+      "message": {
+        "type": "openFail",
+        "connId": 8,
+        "reason": "connection_refused",
+        "osCode": "ECONNREFUSED"
+      }
+    },
+    {
+      "name": "fin",
+      "message": {
+        "type": "fin",
+        "connId": 9
+      }
+    },
+    {
+      "name": "reset",
+      "message": {
+        "type": "reset",
+        "connId": 10,
+        "reason": "cancelled"
+      }
+    }
+  ],
+  "server": [
+    {
+      "name": "ready",
+      "message": {
+        "type": "ready",
+        "version": 2,
+        "tunnelId": "tunnel-1",
+        "bindings": [
+          {
+            "routeId": "route-1",
+            "route": {
+              "host": "localhost",
+              "port": 8000
+            },
+            "endpoint": {
+              "host": "10.244.0.8",
+              "port": 57090
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "open",
+      "message": {
+        "type": "open",
+        "connId": 7,
+        "routeId": "route-1",
+        "host": "localhost",
+        "port": 8000,
+        "proto": "tcp"
+      }
+    },
+    {
+      "name": "fin",
+      "message": {
+        "type": "fin",
+        "connId": 7
+      }
+    },
+    {
+      "name": "reset",
+      "message": {
+        "type": "reset",
+        "connId": 8,
+        "reason": "connection_error",
+        "osCode": "ECONNRESET"
+      }
+    },
+    {
+      "name": "error",
+      "message": {
+        "type": "error",
+        "code": "route_capacity"
+      }
+    }
+  ]
+}
