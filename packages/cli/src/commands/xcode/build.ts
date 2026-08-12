@@ -416,8 +416,12 @@ export default class XcodeBuild extends BaseCommand {
 
       if (result.exitCode !== 0) {
         if (result.timedOut) {
+          // 'timeout' means the stream was alive and the work outlived the
+          // budget; a lost or closed stream means the execution may be gone.
           this.error(
-            'Timed out waiting for the build to finish; the remote build may still be running. Check the instance before retrying.',
+            result.incomplete && result.incomplete.reason !== 'timeout' ?
+              `${result.incomplete.message}.`
+            : 'Timed out waiting for the build to finish; the remote build may still be running. Check the instance before retrying.',
             { exit: result.exitCode },
           );
         }
