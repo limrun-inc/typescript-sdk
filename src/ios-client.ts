@@ -5,12 +5,15 @@ import fs from 'fs';
 import { WebSocket, Data } from 'ws';
 import { EventEmitter } from 'events';
 import { assertPort, isNonRetryableError, startReverseTcpTunnel, type ReverseTunnel } from './tunnel';
+import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './tunnel-v2-dialer';
+import type { TunnelV2Route } from './tunnel-v2';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
 import { createIgnoreFn } from './folder-sync-ignore';
 import { prepareAppBundlePath, watchAppArchive } from './app-archive';
 import { downloadFileToLocalPath } from './internal/download-file';
 import { sleep } from './internal/utils/sleep';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import { deriveTunnelV2URL } from './internal/tunnel-v2-url';
 import {
   startHttpProxy as startLocalHttpProxy,
   startForwardHttpProxy as startLocalForwardHttpProxy,
@@ -55,6 +58,13 @@ export function deriveReverseTunnelUrl(apiUrl: string, remotePort: number): stri
 }
 
 export type { ReverseTunnel } from './tunnel';
+export type Tunnel = DestinationTcpTunnel;
+export type TunnelOptions = {
+  /** TCP destinations that the server may ask this client to dial. */
+  routes: TunnelV2Route[];
+  /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
+  logLevel?: LogLevel;
+};
 
 /**
  * Events emitted by a simctl execution
@@ -842,6 +852,15 @@ export type InstanceClient = {
    * to a user-local client-first TCP service, such as HTTP or WebSocket.
    */
   startReverseTunnel: (options: ReverseTunnelOptions) => Promise<ReverseTunnel>;
+
+  /**
+   * Start a destination-routed tunnel from simulator-facing listener endpoints
+   * to the declared TCP services on this machine.
+   *
+   * The caller owns the returned tunnel and must close it. Disconnecting this
+   * instance client does not close the tunnel.
+   */
+  startTunnel: (options: TunnelOptions) => Promise<Tunnel>;
 
   /**
    * Start a local HTTP proxy to a port exposed by the iOS instance.
@@ -2012,6 +2031,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             discoverStoreKitConfig,
             softReset,
             startReverseTunnel,
+            startTunnel,
             startHttpProxy,
             startForwardHttpProxy,
             disconnect,
@@ -2768,6 +2788,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return startReverseTcpTunnel(remoteURL, options.token, {
         localHost: tunnelOptions.localHost ?? '127.0.0.1',
         localPort,
+        logLevel: tunnelOptions.logLevel ?? logLevel,
+      });
+    };
+
+    const startTunnel = async (tunnelOptions: TunnelOptions): Promise<Tunnel> => {
+      return startDestinationTcpTunnel(deriveTunnelV2URL(options.apiUrl), options.token, {
+        routes: tunnelOptions.routes,
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });
     };
