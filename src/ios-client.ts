@@ -13,6 +13,7 @@ import { prepareAppBundlePath, watchAppArchive } from './app-archive';
 import { downloadFileToLocalPath } from './internal/download-file';
 import { sleep } from './internal/utils/sleep';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import { getTunnelV2Status, stopTunnelV2, type TunnelV2Status } from './internal/tunnel-v2-management';
 import { deriveTunnelV2URL } from './internal/tunnel-v2-url';
 import {
   startHttpProxy as startLocalHttpProxy,
@@ -65,6 +66,7 @@ export type TunnelOptions = {
   /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
   logLevel?: LogLevel;
 };
+export type TunnelStatus = TunnelV2Status;
 
 /**
  * Events emitted by a simctl execution
@@ -861,6 +863,12 @@ export type InstanceClient = {
    * instance client does not close the tunnel.
    */
   startTunnel: (options: TunnelOptions) => Promise<Tunnel>;
+
+  /** Get the active destination tunnel and most recent terminal failure. */
+  getTunnelStatus: () => Promise<TunnelStatus>;
+
+  /** Stop the active tunnel only when its ID matches `tunnelId`. */
+  stopTunnel: (tunnelId: string) => Promise<void>;
 
   /**
    * Start a local HTTP proxy to a port exposed by the iOS instance.
@@ -2032,6 +2040,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             softReset,
             startReverseTunnel,
             startTunnel,
+            getTunnelStatus,
+            stopTunnel,
             startHttpProxy,
             startForwardHttpProxy,
             disconnect,
@@ -2797,6 +2807,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         routes: tunnelOptions.routes,
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });
+    };
+
+    const getTunnelStatus = async (): Promise<TunnelStatus> => {
+      return getTunnelV2Status(options.apiUrl, options.token);
+    };
+
+    const stopTunnel = async (tunnelId: string): Promise<void> => {
+      await stopTunnelV2(options.apiUrl, options.token, tunnelId);
     };
 
     const startHttpProxy = async (proxyOptions: HttpProxyOptions): Promise<number> => {
