@@ -4,19 +4,24 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
-  claimTunnelProcess,
+  buildTunnelServeArgs,
   capTunnelLog,
+  claimTunnelProcess,
   clearTunnelProcess,
+  formatTunnelRoute,
   isTunnelOwnerProcessAlive,
   listTunnelProcesses,
   loadTunnelProcess,
+  newTunnelOwner,
   parseTunnelRoute,
   prepareTunnelLog,
   pruneTunnelLogs,
   readTunnelLogTail,
-  tunnelProcessStartingLeaseExpired,
+  tunnelChildEnvironment,
   tunnelProcessPaths,
+  tunnelProcessStartingLeaseExpired,
   updateTunnelProcess,
+  waitForTunnelProcessReady,
   type IosTunnelProcessState,
 } from './ios-tunnel-process';
 
@@ -49,6 +54,89 @@ describe('iOS tunnel process state', () => {
       expect(() => parseTunnelRoute(input)).toThrow();
     },
   );
+
+  test('builds a child command with an exact owner and IPv6 route', () => {
+    const owner = newTunnelOwner();
+    expect(owner).toMatch(/^[0-9a-f]{32}$/);
+    expect(
+      buildTunnelServeArgs({
+        scriptPath: '/lim/run.js',
+        instanceId: INSTANCE_ID,
+        owner,
+        routes: [
+          { host: 'localhost', port: 8000 },
+          { host: '2001:db8::1', port: 8443 },
+        ],
+      }),
+    ).toEqual([
+      '/lim/run.js',
+      'ios',
+      'tunnel',
+      '--serve',
+      '--no-create',
+      '--id',
+      INSTANCE_ID,
+      `--tunnel-owner=${owner}`,
+      '--route',
+      'localhost:8000',
+      '--route',
+      '[2001:db8::1]:8443',
+    ]);
+    expect(formatTunnelRoute({ host: '2001:db8::1', port: 443 })).toBe('[2001:db8::1]:443');
+  });
+
+  test('forwards an explicit API key only through the child environment', () => {
+    expect(tunnelChildEnvironment('secret', { PATH: '/bin', LIM_API_KEY: 'old' })).toEqual({
+      PATH: '/bin',
+      LIM_API_KEY: 'secret',
+    });
+    expect(tunnelChildEnvironment(undefined, { PATH: '/bin' })).toEqual({
+      PATH: '/bin',
+    });
+  });
+
+  test('accepts READY written exactly at the parent deadline', async () => {
+    let now = 0;
+    let reads = 0;
+    const ready = makeReadyState();
+    await expect(
+      waitForTunnelProcessReady({
+        load: () => {
+          reads += 1;
+          if (reads === 1) return makeState({ pid: 123 });
+          return ready;
+        },
+        isAlive: () => true,
+        sleep: async (milliseconds) => {
+          now += milliseconds;
+        },
+        now: () => now,
+        timeoutMs: 100,
+        pollMs: 100,
+      }),
+    ).resolves.toEqual({ outcome: 'ready', state: ready });
+  });
+
+  test('reports a child exit before READY', async () => {
+    await expect(
+      waitForTunnelProcessReady({
+        load: () => undefined,
+        isAlive: () => false,
+        sleep: async () => {},
+      }),
+    ).resolves.toEqual({ outcome: 'exited' });
+  });
+
+  test('does not accept stale READY from an exited child', async () => {
+    const ready = makeReadyState();
+    await expect(
+      waitForTunnelProcessReady({
+        load: () => ready,
+        isAlive: () => false,
+        sleep: async () => {},
+      }),
+    ).resolves.toEqual({ outcome: 'exited' });
+  });
 
   test('keeps each owner state isolated through update and clear', () => {
     const state = makeState({ owner: OWNER_1, pid: process.pid, status: 'starting' });
@@ -116,12 +204,17 @@ describe('iOS tunnel process state', () => {
     const pid = child.pid;
     if (!pid) throw new Error('child process did not start');
     const state = makeState({ owner, pid, status: 'starting' });
-    expect(claimTunnelProcess(state, root)).toBe(true);
-    await waitFor(() => isTunnelOwnerProcessAlive(state));
-    expect(isTunnelOwnerProcessAlive({ ...state, owner: OWNER_1 })).toBe(false);
-    expect(clearTunnelProcess(state.instanceId, owner, root)).toBe(false);
-    child.kill('SIGKILL');
-    await new Promise<void>((resolve) => child.once('exit', () => resolve()));
+    try {
+      expect(claimTunnelProcess(state, root)).toBe(true);
+      await waitFor(() => isTunnelOwnerProcessAlive(state));
+      expect(isTunnelOwnerProcessAlive({ ...state, owner: OWNER_1 })).toBe(false);
+      expect(clearTunnelProcess(state.instanceId, owner, root)).toBe(false);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGKILL');
+        await new Promise<void>((resolve) => child.once('exit', () => resolve()));
+      }
+    }
     expect(clearTunnelProcess(state.instanceId, owner, root)).toBe(true);
   });
 
@@ -186,6 +279,21 @@ describe('iOS tunnel process state', () => {
     const directory = tunnelProcessPaths(INSTANCE_ID, OWNER_1, root).directory;
     expect(fs.readdirSync(directory).filter((entry) => entry.endsWith('.log'))).toHaveLength(2);
   });
+
+  function makeReadyState(): IosTunnelProcessState {
+    return makeState({
+      pid: 123,
+      status: 'ready',
+      tunnelId: 'tunnel-1',
+      bindings: [
+        {
+          routeId: 'route-1',
+          route: { host: 'localhost', port: 8000 },
+          endpoint: { host: '10.0.0.8', port: 57090 },
+        },
+      ],
+    });
+  }
 
   function makeState(overrides: Partial<IosTunnelProcessState>): IosTunnelProcessState {
     const owner = overrides.owner ?? OWNER_1;
