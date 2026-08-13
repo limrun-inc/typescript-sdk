@@ -27,10 +27,13 @@ export type ReadyIosTunnelProcessState = IosTunnelProcessState & {
   bindings: NonNullable<Ios.TunnelStatus['active']>['bindings'];
 };
 
+export type TunnelOwnerProcessIdentity = 'match' | 'mismatch' | 'missing' | 'unknown';
+
 export interface IosTunnelProcessPaths {
   directory: string;
   state: string;
   log: string;
+  cancelled: string;
 }
 
 export function parseTunnelRoute(value: string): Ios.TunnelOptions['routes'][number] {
@@ -145,16 +148,22 @@ export function tunnelProcessPaths(
     directory,
     state: path.join(directory, `${owner}.json`),
     log: path.join(directory, `${owner}.log`),
+    cancelled: path.join(directory, `${owner}.cancelled`),
   };
 }
 
 export function claimTunnelProcess(state: IosTunnelProcessState, root = IOS_TUNNELS_ROOT): boolean {
   const paths = tunnelProcessPaths(state.instanceId, state.owner, root);
   validateTunnelProcessState(state, state.instanceId, paths);
+  if (fs.existsSync(paths.cancelled)) return false;
   fs.mkdirSync(paths.directory, { recursive: true, mode: 0o700 });
   const temporary = writeTemporaryState(state, paths);
   try {
     fs.linkSync(temporary, paths.state);
+    if (fs.existsSync(paths.cancelled)) {
+      fs.rmSync(paths.state, { force: true });
+      return false;
+    }
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
@@ -175,12 +184,19 @@ export function updateTunnelProcess(
   const paths = tunnelProcessPaths(state.instanceId, expectedOwner, root);
   validateTunnelProcessState(state, state.instanceId, paths);
   const existing = loadTunnelProcess(state.instanceId, expectedOwner, root);
-  if (!existing) {
+  if (!existing || fs.existsSync(paths.cancelled)) {
     throw new Error('Tunnel process ownership changed during startup');
   }
   const temporary = writeTemporaryState(state, paths);
   try {
+    if (fs.existsSync(paths.cancelled)) {
+      throw new Error('Tunnel process ownership changed during startup');
+    }
     fs.renameSync(temporary, paths.state);
+    if (fs.existsSync(paths.cancelled)) {
+      fs.rmSync(paths.state, { force: true });
+      throw new Error('Tunnel process ownership changed during startup');
+    }
   } finally {
     fs.rmSync(temporary, { force: true });
   }
@@ -219,18 +235,36 @@ export function listTunnelProcesses(instanceId: string, root = IOS_TUNNELS_ROOT)
   return states;
 }
 
+export function selectTunnelOwnersForStop(
+  owners: IosTunnelProcessState[],
+  tunnelId: string | undefined,
+): IosTunnelProcessState[] {
+  if (!tunnelId) return owners;
+  return owners.filter((state) => state.status === 'starting' || state.tunnelId === tunnelId);
+}
+
+export function stopTunnelErrorIsNotFound(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith('stopTunnel failed: 404 ');
+}
+
 export function clearTunnelProcess(instanceId: string, owner: string, root = IOS_TUNNELS_ROOT): boolean {
   const paths = tunnelProcessPaths(instanceId, owner, root);
   const state = loadTunnelProcess(instanceId, owner, root);
-  if (state && state.pid !== process.pid && isTunnelOwnerProcessAlive(state)) {
-    return false;
+  if (state && state.pid !== process.pid) {
+    const identity = tunnelOwnerProcessIdentity(state);
+    if (identity === 'match' || identity === 'unknown') return false;
+  }
+  try {
+    fs.writeFileSync(paths.cancelled, '', { flag: 'wx', mode: 0o600 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
   }
   try {
     fs.unlinkSync(paths.state);
     pruneTunnelLogs(instanceId, root);
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true;
     throw error;
   }
 }
@@ -284,7 +318,11 @@ export function tunnelProcessStartingLeaseExpired(state: IosTunnelProcessState, 
 }
 
 export function isTunnelOwnerProcessAlive(state: IosTunnelProcessState): boolean {
-  if (!isProcessAlive(state.pid)) return false;
+  return tunnelOwnerProcessIdentity(state) === 'match';
+}
+
+export function tunnelOwnerProcessIdentity(state: IosTunnelProcessState): TunnelOwnerProcessIdentity {
+  if (!isProcessAlive(state.pid)) return 'missing';
   try {
     let command: string;
     if (process.platform === 'win32') {
@@ -311,9 +349,24 @@ export function isTunnelOwnerProcessAlive(state: IosTunnelProcessState): boolean
     }
 
     const ownerArgument = new RegExp(`(?:^|\\s)--tunnel-owner=${state.owner}(?:\\s|$)`);
-    return ownerArgument.test(command);
+    return ownerArgument.test(command) ? 'match' : 'mismatch';
   } catch {
-    return false;
+    return isProcessAlive(state.pid) ? 'unknown' : 'missing';
+  }
+}
+
+export function signalTunnelOwner(
+  state: IosTunnelProcessState,
+  signal: NodeJS.Signals,
+): 'signaled' | TunnelOwnerProcessIdentity {
+  const identity = tunnelOwnerProcessIdentity(state);
+  if (identity !== 'match') return identity;
+  try {
+    process.kill(state.pid, signal);
+    return 'signaled';
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return 'missing';
+    throw error;
   }
 }
 
