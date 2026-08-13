@@ -11,7 +11,6 @@ import {
   clearTunnelProcess,
   formatTunnelRoute,
   isProcessAlive,
-  isTunnelOwnerProcessAlive,
   listTunnelProcesses,
   loadTunnelProcess,
   newTunnelOwner,
@@ -19,6 +18,7 @@ import {
   prepareTunnelLog,
   readTunnelLogTail,
   tunnelChildEnvironment,
+  tunnelOwnerProcessIdentity,
   tunnelProcessPaths,
   tunnelProcessStartingLeaseExpired,
   updateTunnelProcess,
@@ -157,11 +157,13 @@ export default class IosTunnel extends BaseCommand {
   ): Promise<void> {
     await this.assertNoActiveTunnel(instanceId);
     this.clearDeadOwners(instanceId);
-    const liveOwner = listTunnelProcesses(instanceId).find(
-      (state) =>
-        (state.status === 'starting' && !tunnelProcessStartingLeaseExpired(state)) ||
-        isTunnelOwnerProcessAlive(state),
-    );
+    const liveOwner = listTunnelProcesses(instanceId).find((state) => {
+      if (state.status === 'starting' && !tunnelProcessStartingLeaseExpired(state)) {
+        return true;
+      }
+      const identity = tunnelOwnerProcessIdentity(state);
+      return identity === 'match' || identity === 'unknown';
+    });
     if (liveOwner) {
       this.error(
         `A local tunnel process is already ${liveOwner.status} for ${instanceId} (PID ${liveOwner.pid}). ` +
@@ -280,11 +282,18 @@ export default class IosTunnel extends BaseCommand {
 
   private clearDeadOwners(instanceId: string): void {
     for (const state of listTunnelProcesses(instanceId)) {
-      if (
-        !isTunnelOwnerProcessAlive(state) &&
-        (state.status === 'ready' || tunnelProcessStartingLeaseExpired(state))
-      ) {
-        clearTunnelProcess(instanceId, state.owner);
+      const identity = tunnelOwnerProcessIdentity(state);
+      if (identity === 'unknown') {
+        this.error(
+          `Cannot verify local tunnel owner PID ${state.pid}; ownership state was retained at ${state.logPath}.`,
+        );
+      }
+      if (identity === 'match') continue;
+      if (state.status === 'starting' && !tunnelProcessStartingLeaseExpired(state)) continue;
+      if (!clearTunnelProcess(instanceId, state.owner)) {
+        this.error(
+          `Cannot clean local tunnel owner PID ${state.pid}; stop it before starting another tunnel.`,
+        );
       }
     }
   }
