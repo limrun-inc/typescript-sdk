@@ -1,6 +1,6 @@
 {
   "name": "@limrun/device-install",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Browser WebUSB pairing and installation primitives for iOS devices.",
   "type": "module",
   "main": "./dist/index.cjs",
