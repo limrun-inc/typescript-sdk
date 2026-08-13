@@ -2,6 +2,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
 import {
+  formatTunnelDialFailure,
   formatTunnelRoute,
   listTunnelProcesses,
   tunnelOwnerProcessIdentity,
@@ -68,6 +69,9 @@ export default class IosTunnelStatus extends BaseCommand {
         }
         if (status.lastFailure) {
           this.output(`Last failure: ${status.lastFailure.tunnelId} (${status.lastFailure.code})`);
+        }
+        if (status.lastDialFailure) {
+          this.output(formatTunnelDialFailure(status.lastDialFailure));
         }
         for (const owner of owners) {
           this.output(

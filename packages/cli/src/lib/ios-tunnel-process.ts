@@ -71,6 +71,12 @@ export function formatTunnelRoute(route: Ios.TunnelOptions['routes'][number]): s
   return `${host}:${route.port}`;
 }
 
+export function formatTunnelDialFailure(failure: NonNullable<Ios.TunnelStatus['lastDialFailure']>): string {
+  const correlationIds = `tunnel ${failure.tunnelId}, connection ${failure.connectionId}, ${failure.routeId}`;
+  const failureDetails = failure.osCode ? `${failure.reason}, ${failure.osCode}` : failure.reason;
+  return `Last dial failure: ${correlationIds} (${failureDetails})`;
+}
+
 export function buildTunnelServeArgs(options: {
   scriptPath: string;
   instanceId: string;
