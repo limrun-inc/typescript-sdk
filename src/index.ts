@@ -83,6 +83,7 @@ export {
   type GradleBuildOptions,
   type GradleBuildLog,
 } from './resources/gradle-instances-helpers';
+export { type AssetUploadOptions } from './resources/daemon-client-shared';
 export {
   LIMRUN_DIR,
   TRY_IMPORT_LINE,

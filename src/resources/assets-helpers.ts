@@ -5,6 +5,7 @@ import { promises as fs } from 'fs';
 import { RequestOptions } from '../internal/request-options';
 import { nodeProxyTransport } from '../internal/proxy-transport';
 import { Assets as GeneratedAssets, type AssetKind, type AssetPlatform } from './assets';
+import type { AssetUploadOptions } from './daemon-client-shared';
 
 export interface AssetGetOrUploadParams {
   /**
@@ -40,6 +41,13 @@ export interface AssetGetOrUploadParams {
    * and the upload is skipped.
    */
   onUploadProgress?: (uploadedBytes: number, totalBytes: number) => void;
+
+  /**
+   * App metadata to record on the asset (title, bundle identifier, versions,
+   * deep link scheme), for bundles that don't go through limbuild. The
+   * registry's OTA install flow reads the manifest identity from it.
+   */
+  uploadOptions?: AssetUploadOptions;
 }
 
 export interface AssetGetOrUploadResponse {
@@ -94,6 +102,7 @@ export class Assets extends GeneratedAssets {
         kind: body.kind ?? 'App',
         ...(body.platform && { platform: body.platform }),
         ...(body.ttl && { ttl: body.ttl }),
+        ...body.uploadOptions,
       },
       options,
     );

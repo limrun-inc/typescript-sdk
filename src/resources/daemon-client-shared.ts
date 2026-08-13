@@ -68,18 +68,39 @@ export type SyncResult = {
   stopWatching?: () => Promise<void>;
 };
 
-export type AssetUploadUrls = { signedUploadUrl: string; signedDownloadUrl: string };
+export type AssetUploadUrls = { id: string; signedUploadUrl: string; signedDownloadUrl: string };
+
+/**
+ * App metadata recorded on the asset at upload time, for bundles that don't
+ * go through limbuild (which extracts and records it automatically). The
+ * registry's OTA install flow reads the manifest identity from these fields.
+ */
+export type AssetUploadOptions = {
+  /** Human-readable app title users see on iOS. */
+  displayName?: string;
+  /** CFBundleIdentifier of the uploaded app bundle. */
+  bundleIdentifier?: string;
+  /** CFBundleShortVersionString, e.g. 1.2.3. */
+  shortVersion?: string;
+  /** CFBundleVersion, e.g. 42. */
+  buildVersion?: string;
+  /** The app's primary URL scheme, e.g. "myapp" for myapp:// deep links. */
+  deeplink?: string;
+};
 
 /**
  * Mints presigned upload/download URLs for a named asset via assets.getOrCreate,
  * wrapping failures with the asset name (and the original error as cause).
  */
 export function mintAssetUploadUrls(
-  assets: { getOrCreate: (body: { name: string; ttl?: string }) => Promise<AssetUploadUrls> },
+  assets: {
+    getOrCreate: (body: { name: string; ttl?: string } & AssetUploadOptions) => Promise<AssetUploadUrls>;
+  },
   name: string,
   ttl?: string,
+  uploadOptions?: AssetUploadOptions,
 ): Promise<AssetUploadUrls> {
-  return assets.getOrCreate({ name, ...(ttl && { ttl }) }).catch((err) => {
+  return assets.getOrCreate({ name, ...(ttl && { ttl }), ...uploadOptions }).catch((err) => {
     const message = `Failed to create upload URL for asset '${name}': ${
       err instanceof Error ? err.message : err
     }`;

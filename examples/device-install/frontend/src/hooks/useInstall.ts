@@ -5,7 +5,6 @@ import {
   sleep,
   startInstall,
   type InstallInput,
-  type InstallMethod,
   type InstallStatus,
 } from '../lib/backend';
 
@@ -14,27 +13,17 @@ export type InstallController = ReturnType<typeof useInstall>;
 const POLL_INTERVAL_MS = 3000;
 
 export function useInstall() {
-  const [method, setMethod] = useState<InstallMethod>('webusb');
   const [state, setState] = useState<InstallBuildState>('idle');
   const [status, setStatus] = useState<InstallStatus>();
   const [error, setError] = useState<string>();
 
-  // Polling runs inside build() rather than in an effect. Switching the
-  // install method bumps this sequence so an abandoned build's loop stops
-  // writing state; the build itself keeps running server-side.
+  // Polling runs inside build() rather than in an effect. Starting a new
+  // build bumps this sequence so an abandoned build's loop stops writing
+  // state; the build itself keeps running server-side.
   const buildSeq = useRef(0);
-
-  function selectMethod(selected: InstallMethod) {
-    buildSeq.current++;
-    setMethod(selected);
-    setState('idle');
-    setStatus(undefined);
-    setError(undefined);
-  }
 
   async function build(input: InstallInput) {
     const seq = ++buildSeq.current;
-    setMethod(input.method);
     setState('running');
     setStatus(undefined);
     setError(undefined);
@@ -60,5 +49,5 @@ export function useInstall() {
     }
   }
 
-  return { method, setMethod: selectMethod, state, status, error, build };
+  return { state, status, error, build };
 }

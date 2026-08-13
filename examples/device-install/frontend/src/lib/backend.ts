@@ -117,11 +117,8 @@ export function createBackendSecretStore(): SigningSecretStore {
   };
 }
 
-export type InstallMethod = 'webusb' | 'qr';
-
 export type InstallInput = {
   projectPath: string;
-  method: InstallMethod;
   teamId: string;
   bundleId: string;
   deviceUDID: string;
@@ -136,16 +133,23 @@ export type BuildWebhookPayload = {
   buildDurationMs?: number;
   consoleUrl?: string;
   logsUrl?: string;
+  /** Limrun asset the artifact was uploaded to, when the build named one. */
+  assetId?: string;
   bundleIdentifier?: string;
   shortVersion?: string;
   buildVersion?: string;
+  /** App title users see on iOS: CFBundleDisplayName or CFBundleName. */
+  displayName?: string;
+  /** The app's primary URL scheme, e.g. "myapp" for myapp:// links. */
+  deeplink?: string;
+  /** Presigned URL for the app icon PNG stored next to the bundle asset. */
+  iconUrl?: string;
 };
 
 export type InstallStatus = {
   id: string;
   state: 'running' | 'succeeded' | 'failed';
   startedAt: string;
-  method: InstallMethod;
   deviceUDID: string;
   assetName: string;
   webhook?: BuildWebhookPayload;

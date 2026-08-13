@@ -155,24 +155,16 @@ app.delete('/secrets/:type/:name', async (req: Request<{ type: string; name: str
 // be a public URL that forwards to the webhook receiver's port 3001 (e.g.
 // from `ngrok http 3001`).
 app.post('/install', async (req: Request<{}, {}, Partial<InstallRequest>>, res: Response) => {
-  const { projectPath, method, teamId, bundleId, deviceUDID, scheme, secretsDir, webhookUrl } = req.body;
-  if (
-    !projectPath ||
-    !teamId ||
-    !bundleId ||
-    !deviceUDID ||
-    !webhookUrl ||
-    (method !== 'webusb' && method !== 'qr')
-  ) {
+  const { projectPath, teamId, bundleId, deviceUDID, scheme, secretsDir, webhookUrl } = req.body;
+  if (!projectPath || !teamId || !bundleId || !deviceUDID || !webhookUrl) {
     return res.status(400).json({
       status: 'error',
-      message: 'projectPath, teamId, bundleId, deviceUDID, webhookUrl and method (webusb | qr) are required',
+      message: 'projectPath, teamId, bundleId, deviceUDID and webhookUrl are required',
     });
   }
   try {
     const installId = await startInstall({
       projectPath,
-      method,
       teamId,
       bundleId,
       deviceUDID,
@@ -217,6 +209,9 @@ hooks.post('/{*splat}', (req: Request, res: Response) => {
 hooks.listen(webhookPort, () => {
   console.log(`Webhook receiver listening at http://localhost:${webhookPort}`);
 });
-app.listen(port, () => {
+// Loopback only: these routes act on local paths the UI provides (project
+// directory, secrets directory), which is fine for the person running the
+// example on their own machine but must not be reachable from the network.
+app.listen(port, '127.0.0.1', () => {
   console.log(`Device install backend listening at http://localhost:${port}`);
 });

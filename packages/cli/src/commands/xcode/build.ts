@@ -9,6 +9,7 @@ import { cacheFlags } from '../../lib/cache-flags';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
 import { webhookConfigFromFlags } from '../../lib/webhook-options';
+import { parseUploadOptions } from '../../lib/upload-options';
 import {
   cloudSigningFlagsProblem,
   hasCloudSigningFlags,
@@ -132,6 +133,12 @@ export default class XcodeBuild extends BaseCommand {
         'Relative path from the synced workspace root to the Expo app directory. Use for monorepos or ambiguous React Native workspaces.',
     }),
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
+    'upload-option': Flags.string({
+      multiple: true,
+      dependsOn: ['upload'],
+      description:
+        'App metadata to record on the uploaded asset as key=value, repeatable. Keys: displayName, bundleIdentifier, shortVersion, buildVersion, deeplink. limbuild extracts the same metadata from the built bundle and overwrites it; values set here survive only for fields the bundle does not declare (e.g. deeplink).',
+    }),
     'signed-upload-url': Flags.string({
       description: 'Presigned URL to upload the resulting build artifact to.',
     }),
@@ -348,7 +355,13 @@ export default class XcodeBuild extends BaseCommand {
         this.error('Use either --upload or --signed-upload-url, not both.');
       }
       if (flags.upload) {
-        options.upload = { assetName: flags.upload };
+        let uploadOptions;
+        try {
+          uploadOptions = parseUploadOptions(flags['upload-option']);
+        } catch (err) {
+          this.error(err instanceof Error ? err.message : String(err));
+        }
+        options.upload = { assetName: flags.upload, ...(uploadOptions && { uploadOptions }) };
       } else if (flags['signed-upload-url']) {
         options.upload = {
           signedUploadUrl: flags['signed-upload-url'],

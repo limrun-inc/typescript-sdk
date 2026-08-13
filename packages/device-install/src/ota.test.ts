@@ -16,10 +16,7 @@ describe('OTA installation API', () => {
       token: 'scoped-token',
       organizationId: 'org_1',
       assetId: 'asset_1',
-      bundleIdentifier: 'com.example.app',
-      shortVersion: '1.2.3',
-      buildVersion: '42',
-      title: 'Example',
+      deepLinkOnCompletion: 'myapp://home',
       ttlSeconds: 900,
       fetch,
     });
@@ -32,12 +29,11 @@ describe('OTA installation API', () => {
       Authorization: 'Bearer scoped-token',
       'X-Limrun-Organization': 'org_1',
     });
+    // The app identity (bundle identifier, versions, title, icon) is never
+    // sent; the registry reads it from the metadata recorded on the asset.
     expect(JSON.parse(String(init.body))).toEqual({
       assetId: 'asset_1',
-      bundleIdentifier: 'com.example.app',
-      shortVersion: '1.2.3',
-      buildVersion: '42',
-      title: 'Example',
+      deepLinkOnCompletion: 'myapp://home',
       ttlSeconds: 900,
     });
   });
@@ -73,10 +69,6 @@ describe('OTA installation API', () => {
         registryApiUrl: 'https://registry.example',
         token: 'token',
         assetId: 'asset_2',
-        bundleIdentifier: 'com.example.app',
-        shortVersion: '1.0',
-        buildVersion: '1',
-        title: 'Example',
         fetch,
       }),
     ).rejects.toThrow('asset scope does not cover the requested asset');

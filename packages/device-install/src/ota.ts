@@ -21,11 +21,19 @@ export type CreateOTAInstallSessionOptions = {
   registryApiUrl: string;
   token: string;
   organizationId?: string;
+  /**
+   * The signed IPA asset to install. Its recorded app metadata (bundle
+   * identifier, versions, title, deep link scheme, icon) drives the whole
+   * install flow; limbuild records it at build time, or set it when
+   * uploading the asset.
+   */
   assetId: string;
-  bundleIdentifier: string;
-  shortVersion: string;
-  buildVersion: string;
-  title: string;
+  /**
+   * URL the install page's Open button launches once the app is installed,
+   * e.g. an Expo dev client URL. Defaults to the asset's recorded primary
+   * URL scheme.
+   */
+  deepLinkOnCompletion?: string;
   ttlSeconds?: number;
   signal?: AbortSignal;
   fetch?: typeof globalThis.fetch;
@@ -42,10 +50,7 @@ export async function createOTAInstallSession({
   token,
   organizationId,
   assetId,
-  bundleIdentifier,
-  shortVersion,
-  buildVersion,
-  title,
+  deepLinkOnCompletion,
   ttlSeconds,
   signal,
   fetch: fetchImplementation = globalThis.fetch,
@@ -65,10 +70,7 @@ export async function createOTAInstallSession({
     headers,
     body: JSON.stringify({
       assetId,
-      bundleIdentifier,
-      shortVersion,
-      buildVersion,
-      title,
+      ...(deepLinkOnCompletion === undefined ? {} : { deepLinkOnCompletion }),
       ...(ttlSeconds === undefined ? {} : { ttlSeconds }),
     }),
     signal,

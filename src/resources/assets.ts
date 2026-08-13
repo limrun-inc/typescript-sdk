@@ -188,6 +188,37 @@ export interface AssetGetOrCreateParams {
    * current expiry unchanged.
    */
   ttl?: string;
+
+  /**
+   * Human-readable app title for the uploaded bundle, as users see it on iOS.
+   * Builds through limbuild record it automatically from the bundle's
+   * Info.plist; set it here for hand-uploaded bundles.
+   */
+  displayName?: string;
+
+  /**
+   * CFBundleIdentifier of the uploaded app bundle. Used by over-the-air
+   * installation when present.
+   */
+  bundleIdentifier?: string;
+
+  /**
+   * CFBundleShortVersionString of the uploaded app bundle, e.g. 1.2.3.
+   */
+  shortVersion?: string;
+
+  /**
+   * CFBundleVersion of the uploaded app bundle, e.g. 42. Used by
+   * over-the-air installation when present.
+   */
+  buildVersion?: string;
+
+  /**
+   * The app's primary URL scheme, e.g. "myapp" for myapp:// deep links.
+   * Consumers such as the registry's OTA install page use it to offer an Open
+   * button after installation.
+   */
+  deeplink?: string;
 }
 
 export type AssetKind = 'App' | 'Keychain';

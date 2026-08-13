@@ -1,18 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ConnectPhase } from './components/ConnectPhase';
-import { InstallPhase } from './components/InstallPhase';
+import { DevicesPhase } from './components/DevicesPhase';
+import { BuildPhase, InstallPhase } from './components/InstallPhase';
 import { ResultPanel } from './components/ResultPanel';
 import { INSTALLER_NAME } from './config';
 import { useConnect } from './hooks/useConnect';
 import { useDeviceInstall } from './hooks/useDeviceInstall';
 import { useInstall } from './hooks/useInstall';
-import {
-  createBackendSecretStore,
-  getSecretsDir,
-  getWebhookUrl,
-  setSecretsDir,
-  setWebhookUrl,
-} from './lib/backend';
+import { createBackendSecretStore, getSecretsDir, setSecretsDir } from './lib/backend';
 import { errorBox, hintText, inputStyle, labelStyle, layout } from './theme';
 
 export default function App() {
@@ -24,8 +19,8 @@ export default function App() {
     onError: setError,
   });
   const build = useInstall();
-  const device = useDeviceInstall({ connect, build, onError: setError });
-  const displayError = error ?? connect.appleLogin.error ?? device.install.error ?? device.ota.error;
+  const device = useDeviceInstall({ build, onError: setError });
+  const displayError = error ?? connect.appleLogin.error ?? device.ota.error;
 
   // The secrets directory on the backend host. The chosen value persists in
   // localStorage and rides every store operation and install build; the
@@ -41,22 +36,13 @@ export default function App() {
     setSecretsDir(dir);
   };
 
-  // The public URL limbuild POSTs build-finish webhooks to. It persists in
-  // localStorage and rides every install build request, where the backend
-  // hands it to the lim CLI verbatim.
-  const [webhookUrl, setWebhookUrlState] = useState(getWebhookUrl);
-  const updateWebhookUrl = (url: string) => {
-    setWebhookUrlState(url);
-    setWebhookUrl(url);
-  };
-
   return (
     <div style={layout.page}>
       <aside style={layout.sidebar}>
         <h1 style={layout.title}>{INSTALLER_NAME}</h1>
         <p style={hintText}>
-          Build and install an iOS app through automatic WebUSB or a private QR/OTA page. The backend needs
-          LIM_API_KEY and the lim CLI.
+          Build an ad-hoc-signed iOS app and install it on a registered iPhone through a private QR/OTA page.
+          The backend needs LIM_API_KEY and the lim CLI.
         </p>
         <label style={labelStyle}>Secrets directory (on the backend host)</label>
         <input
@@ -65,16 +51,11 @@ export default function App() {
           onChange={(event) => updateSecretsDir(event.target.value)}
           placeholder="backend default"
         />
-        <label style={labelStyle}>Webhook URL (Run `npx localtunnel --port 3001`)</label>
-        <input
-          style={inputStyle}
-          value={webhookUrl}
-          onChange={(event) => updateWebhookUrl(event.target.value)}
-          placeholder="https://your-subdomain.ngrok-free.app"
-        />
         {displayError && <div style={errorBox}>{displayError}</div>}
         <ConnectPhase connect={connect} />
-        <InstallPhase connect={connect} build={build} device={device} webhookUrl={webhookUrl} />
+        <DevicesPhase connect={connect} />
+        <BuildPhase connect={connect} build={build} />
+        <InstallPhase build={build} device={device} />
       </aside>
       <main style={layout.main}>
         <h2 style={{ margin: 0, fontSize: '16px' }}>Build result</h2>
