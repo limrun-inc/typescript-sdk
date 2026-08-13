@@ -77,6 +77,7 @@ export type XcodeBuildExecRequest = {
   testflight?: AppStoreUploadConfig;
   buildSettings?: Record<string, string>;
   gitInit?: boolean;
+  artifactName?: string;
   signedUploadUrl?: string;
   webhook?: WebhookConfig;
   additionalMetadata?: {
@@ -157,6 +158,7 @@ export type GradleBuildExecRequest = {
   reactNative?: GradleReactNativeConfig;
   signing?: GradleSigningConfig;
   playstore?: GradlePlaystoreConfig;
+  artifactName?: string;
   signedUploadUrl?: string;
   webhook?: WebhookConfig;
   additionalMetadata?: {

@@ -449,8 +449,11 @@ lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 # Run a project command (syncs the current directory first)
 lim xcode run -- make api
 
-# Build and upload artifact
-lim xcode build ./MyProject --scheme MyApp --upload my-app-build
+# Build and upload artifact with a 24-hour TTL
+lim xcode build ./MyProject --scheme MyApp --upload my-app-build --upload-ttl 24h
+
+# Select the built product when its name differs from the scheme
+lim xcode build ./MyProject --scheme "Hubble Dev" --upload-name Hubble-dev --upload hubble-dev-build
 
 # Build with app config values available as Xcode build settings
 lim xcode build ./MyProject --scheme MyApp --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"
@@ -688,7 +691,7 @@ lim xcode attach-simulator ios_abc123 --id sandbox_def456
 lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 
 # 4. Upload build artifact
-lim xcode build ./MyProject --scheme MyApp --upload my-app-build
+lim xcode build ./MyProject --scheme MyApp --upload my-app-build --upload-ttl 24h
 
 # Signed device builds default to --sdk iphoneos when signing assets are provided
 lim xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa
@@ -700,6 +703,8 @@ lim asset pull my-app-build -o ./build-output
 #### Build Behavior
 
 `lim xcode build [PATH]` automatically performs a one-shot code sync for the given project path before invoking `xcodebuild`. The sync step automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
+
+`--upload` names the destination asset. If the built `.app` name differs from the scheme, pass its product name with `--upload-name` (the `.app` suffix is optional). `--upload-ttl` sets an expiry for named assets using a Go duration such as `24h` or `30m`.
 
 For headless CI-style builds, pass `--detach --webhook-url <url>`. The command still creates or resolves the instance and syncs the project, but returns as soon as limbuild accepts the build rather than holding an SSE log stream open until completion. `--detach` requires a webhook so the terminal result remains observable. Pass `--inactivity-timeout <duration>` (for example `3s`) to skip any cached Xcode target and create a fresh one-shot instance with that timeout; it cannot be combined with `--id`. Active builds continually report activity, so a short timeout only starts expiring once build work stops. The inactivity controller checks approximately every 15 seconds, so actual teardown can lag the configured timeout by that interval.
 

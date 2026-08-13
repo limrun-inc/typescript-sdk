@@ -56,7 +56,11 @@ export type GradleBuildOptions = {
   /** Relative path to the Gradle root when auto-discovery is ambiguous. */
   projectPath?: string;
   /** Upload the built artifact as a named org asset, or to a presigned URL. */
-  upload?: { assetName: string; signedUploadUrl?: never } | { signedUploadUrl: string; assetName?: never };
+  upload?:
+    | { assetName: string; ttl?: string; signedUploadUrl?: never }
+    | { signedUploadUrl: string; assetName?: never; ttl?: never };
+  /** Exact APK or AAB filename to upload when the build produces multiple artifacts. */
+  artifactName?: string;
   /** React Native / Expo tuning. */
   reactNative?: GradleReactNativeConfig;
   /** Release signing config; presence makes bundleRelease the default task. */
@@ -178,18 +182,21 @@ class GradleInstancesHelpers extends GradleInstances {
           ...(options?.projectPath && { projectPath: options.projectPath }),
           ...(options?.reactNative && { reactNative: options.reactNative }),
           ...(options?.signing && { signing: options.signing }),
+          ...(options?.artifactName && { artifactName: options.artifactName }),
           ...(options?.webhook && { webhook: options.webhook }),
           ...(options?.playstore && { playstore: options.playstore }),
         };
 
         if (options?.upload && 'assetName' in options.upload) {
-          const requestPromise = mintAssetUploadUrls(client.assets, options.upload.assetName).then(
-            (asset) => {
-              request.signedUploadUrl = asset.signedUploadUrl;
-              request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
-              return request;
-            },
-          );
+          const requestPromise = mintAssetUploadUrls(
+            client.assets,
+            options.upload.assetName,
+            options.upload.ttl,
+          ).then((asset) => {
+            request.signedUploadUrl = asset.signedUploadUrl;
+            request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
+            return request;
+          });
           return exec(requestPromise, { apiUrl, token, log });
         }
 

@@ -109,6 +109,45 @@ describe('xcode client signing', () => {
       },
     });
   });
+
+  test('serializes artifact name and uses upload TTL when minting the asset URL', async () => {
+    const calls: Array<{ input: RequestInfo; init: RequestInit | undefined }> = [];
+    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+      calls.push({ input, init });
+      if (String(input) === 'https://xcode.example.test/exec') {
+        return jsonResponse({ execId: 'build-3' });
+      }
+      throw new Error(`unexpected request: ${input}`);
+    });
+
+    const client = new Limrun({ apiKey: 'key' });
+    const getOrCreate = jest.spyOn(client.assets, 'getOrCreate').mockResolvedValue({
+      signedUploadUrl: 'https://storage.example.com/up',
+      signedDownloadUrl: 'https://storage.example.com/down',
+    } as never);
+    const xcode = await client.xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'xcode-token',
+    });
+
+    const result = await xcode.xcodebuild(
+      { scheme: 'Hubble Dev' },
+      {
+        artifactName: 'Hubble-dev',
+        upload: { assetName: 'hubble-dev-build', ttl: '24h' },
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.signedDownloadUrl).toBe('https://storage.example.com/down');
+    expect(getOrCreate).toHaveBeenCalledWith({ name: 'hubble-dev-build', ttl: '24h' });
+    expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
+      command: 'xcodebuild',
+      xcodebuild: { scheme: 'Hubble Dev' },
+      artifactName: 'Hubble-dev',
+      signedUploadUrl: 'https://storage.example.com/up',
+    });
+  });
 });
 
 function jsonResponse(body: unknown): Response {

@@ -20,6 +20,8 @@ export interface GradleBuildFlagValues extends WebhookFlagValues {
   'expo-app-dir'?: string;
   abi?: string[];
   upload?: string;
+  'upload-ttl'?: string;
+  'upload-name'?: string;
   'signed-upload-url'?: string;
   sign?: boolean;
   'application-id'?: string;
@@ -144,6 +146,12 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
   if (flags.upload && flags['signed-upload-url']) {
     throw new Error('Use either --upload or --signed-upload-url, not both.');
   }
+  if (flags['upload-ttl'] && !flags.upload) {
+    throw new Error('--upload-ttl requires --upload.');
+  }
+  if (flags['upload-name'] && !flags.upload && !flags['signed-upload-url'] && !flags['upload-to-playstore']) {
+    throw new Error('--upload-name requires --upload, --signed-upload-url, or --upload-to-playstore.');
+  }
   validateSigningFlags(flags);
   validatePlaystoreFlags(flags);
   const options: GradleBuildOptions = {};
@@ -167,9 +175,15 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
     };
   }
   if (flags.upload) {
-    options.upload = { assetName: flags.upload };
+    options.upload = {
+      assetName: flags.upload,
+      ...(flags['upload-ttl'] && { ttl: flags['upload-ttl'] }),
+    };
   } else if (flags['signed-upload-url']) {
     options.upload = { signedUploadUrl: flags['signed-upload-url'] };
+  }
+  if (flags['upload-name']) {
+    options.artifactName = flags['upload-name'];
   }
   const webhook = webhookConfigFromFlags(flags);
   if (webhook) {
