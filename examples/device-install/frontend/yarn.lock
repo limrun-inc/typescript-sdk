@@ -436,10 +436,10 @@
     "@foxt/js-srp" "^0.0.3-patch2"
     node-forge "^1.4.0"
 
-"@limrun/device-install@^0.2.0":
-  version "0.2.0"
-  resolved "https://registry.npmjs.org/@limrun/device-install/-/device-install-0.2.0.tgz"
-  integrity sha512-HppL4RlSvBU8aHtULAxzDkPHcfAR0unrwPHh8ImWvHrkPAvNbQv9cbFSDkpNJyWkFdT+ZqmA/tkH5NvdONq+5w==
+"@limrun/device-install@^0.3.0":
+  version "0.3.0"
+  resolved "https://registry.yarnpkg.com/@limrun/device-install/-/device-install-0.3.0.tgz#a6694d4f4a46cb9a2ad9ff69ba3178ea1324b939"
+  integrity sha512-5ROtg2kUyk22gQQbFTHJDwfpC6pT5N4yebf6DmDhIyjDUp+9cEAv6RPbhMrzSFNK6Q98LxzmvgysV84yby6Bog==
 
 "@rolldown/pluginutils@1.0.0-rc.3":
   version "1.0.0-rc.3"
