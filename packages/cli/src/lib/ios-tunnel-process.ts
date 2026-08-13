@@ -1,10 +1,10 @@
 import { execFileSync } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
+import net from 'net';
 import os from 'os';
 import path from 'path';
 import type { Ios } from '@limrun/api';
-import { validateTunnelV2Routes } from '@limrun/api/tunnel-v2';
 
 export const IOS_TUNNELS_ROOT = path.join(os.homedir(), '.lim', 'tunnels');
 const OWNER_PATTERN = /^[0-9a-f]{32}$/;
@@ -20,6 +20,12 @@ export interface IosTunnelProcessState {
   tunnelId?: string;
   bindings?: NonNullable<Ios.TunnelStatus['active']>['bindings'];
 }
+
+export type ReadyIosTunnelProcessState = IosTunnelProcessState & {
+  status: 'ready';
+  tunnelId: string;
+  bindings: NonNullable<Ios.TunnelStatus['active']>['bindings'];
+};
 
 export interface IosTunnelProcessPaths {
   directory: string;
@@ -51,6 +57,76 @@ export function parseTunnelRoute(value: string): Ios.TunnelOptions['routes'][num
     throw new Error(`Invalid route port in "${value}"; expected 1-65535`);
   }
   return { host, port };
+}
+
+export function newTunnelOwner(): string {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+export function formatTunnelRoute(route: Ios.TunnelOptions['routes'][number]): string {
+  const host = route.host.includes(':') ? `[${route.host}]` : route.host;
+  return `${host}:${route.port}`;
+}
+
+export function buildTunnelServeArgs(options: {
+  scriptPath: string;
+  instanceId: string;
+  owner: string;
+  routes: Ios.TunnelOptions['routes'];
+}): string[] {
+  assertOwner(options.owner);
+  return [
+    options.scriptPath,
+    'ios',
+    'tunnel',
+    '--serve',
+    '--no-create',
+    '--id',
+    options.instanceId,
+    `--tunnel-owner=${options.owner}`,
+    ...options.routes.flatMap((route) => ['--route', formatTunnelRoute(route)]),
+  ];
+}
+
+export function tunnelChildEnvironment(
+  apiKey: string | undefined,
+  environment: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return {
+    ...environment,
+    ...(apiKey ? { LIM_API_KEY: apiKey } : {}),
+  };
+}
+
+export async function waitForTunnelProcessReady(options: {
+  load: () => IosTunnelProcessState | undefined;
+  isAlive: () => boolean;
+  sleep: (milliseconds: number) => Promise<void>;
+  now?: () => number;
+  timeoutMs?: number;
+  pollMs?: number;
+}): Promise<
+  { outcome: 'ready'; state: ReadyIosTunnelProcessState } | { outcome: 'exited' } | { outcome: 'timeout' }
+> {
+  const now = options.now ?? Date.now;
+  const deadline = now() + (options.timeoutMs ?? 30_000);
+  function loadReadyState(): ReadyIosTunnelProcessState | undefined {
+    const state = options.load();
+    if (state?.status !== 'ready' || !state.tunnelId || !state.bindings) {
+      return undefined;
+    }
+    return state as ReadyIosTunnelProcessState;
+  }
+
+  while (now() < deadline) {
+    if (!options.isAlive()) return { outcome: 'exited' };
+    const state = loadReadyState();
+    if (state) return { outcome: 'ready', state };
+    await options.sleep(options.pollMs ?? 100);
+  }
+  if (!options.isAlive()) return { outcome: 'exited' };
+  const state = loadReadyState();
+  return state ? { outcome: 'ready', state } : { outcome: 'timeout' };
 }
 
 function tunnelProcessDirectory(instanceId: string, root: string): string {
@@ -269,6 +345,41 @@ export function capTunnelLog(logPath: string, maxBytes = 5 * 1024 * 1024): boole
   }
 }
 
+function validateStoredRoutes(routes: Ios.TunnelOptions['routes']): Ios.TunnelOptions['routes'] {
+  if (!Array.isArray(routes) || routes.length < 1 || routes.length > 10) {
+    throw new Error('Invalid tunnel routes');
+  }
+  for (const route of routes) {
+    if (
+      typeof route?.host !== 'string' ||
+      route.host.length < 1 ||
+      route.host.length > 254 ||
+      Buffer.byteLength(route.host, 'utf8') !== route.host.length ||
+      route.host.includes('\0') ||
+      !storedRouteHostIsValid(route.host) ||
+      !Number.isInteger(route.port) ||
+      route.port < 1 ||
+      route.port > 65_535
+    ) {
+      throw new Error('Invalid tunnel routes');
+    }
+  }
+  return routes;
+}
+
+function storedRouteHostIsValid(input: string): boolean {
+  let host = input.toLowerCase();
+  if (host.endsWith('.')) host = host.slice(0, -1);
+  if (!host || host.length > 253) return false;
+  if (net.isIP(host) !== 0) return true;
+  const labels = host.split('.');
+  const labelsAreValid = labels.every(
+    (label) => label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label),
+  );
+  const looksLikeAnIpAddress = labels.every((label) => /^\d+$/.test(label) || /^0x[0-9a-f]+$/.test(label));
+  return labelsAreValid && !looksLikeAnIpAddress;
+}
+
 function validateTunnelProcessState(
   state: IosTunnelProcessState,
   instanceId: string,
@@ -279,7 +390,7 @@ function validateTunnelProcessState(
   const age = Date.now() - startedAt;
   let canonicalRoutes: Ios.TunnelOptions['routes'];
   try {
-    canonicalRoutes = validateTunnelV2Routes(state.routes);
+    canonicalRoutes = validateStoredRoutes(state.routes);
   } catch {
     throw new Error('Invalid tunnel process state');
   }
