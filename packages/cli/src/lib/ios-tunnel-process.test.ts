@@ -8,6 +8,7 @@ import {
   capTunnelLog,
   claimTunnelProcess,
   clearTunnelProcess,
+  formatTunnelDialFailure,
   formatTunnelRoute,
   isTunnelOwnerProcessAlive,
   listTunnelProcesses,
@@ -87,6 +88,18 @@ describe('iOS tunnel process state', () => {
       '[2001:db8::1]:8443',
     ]);
     expect(formatTunnelRoute({ host: '2001:db8::1', port: 443 })).toBe('[2001:db8::1]:443');
+  });
+
+  test('formats dial failures with every correlation ID', () => {
+    expect(
+      formatTunnelDialFailure({
+        tunnelId: 'tunnel-1',
+        connectionId: 7,
+        routeId: 'route-3',
+        reason: 'dns_not_found',
+        osCode: 'ENOTFOUND',
+      }),
+    ).toBe('Last dial failure: tunnel tunnel-1, connection 7, route-3 (dns_not_found, ENOTFOUND)');
   });
 
   test('forwards an explicit API key only through the child environment', () => {

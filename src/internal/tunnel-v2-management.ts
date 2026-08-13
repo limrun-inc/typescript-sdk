@@ -12,6 +12,13 @@ export interface TunnelV2Status {
     tunnelId: string;
     code: string;
   };
+  lastDialFailure?: {
+    tunnelId: string;
+    connectionId: number;
+    routeId: string;
+    reason: string;
+    osCode?: string;
+  };
 }
 
 export async function getTunnelV2Status(apiUrl: string, token: string): Promise<TunnelV2Status> {
@@ -48,6 +55,9 @@ export function decodeTunnelV2Status(value: unknown): TunnelV2Status {
   if (status['lastFailure'] !== undefined) {
     decodedStatus.lastFailure = readTunnelFailure(status['lastFailure']);
   }
+  if (status['lastDialFailure'] !== undefined) {
+    decodedStatus.lastDialFailure = readTunnelDialFailure(status['lastDialFailure']);
+  }
   return decodedStatus;
 }
 
@@ -82,6 +92,30 @@ function readTunnelFailure(value: unknown): NonNullable<TunnelV2Status['lastFail
   return {
     tunnelId: readNonEmptyString(failure, 'tunnelId'),
     code: readNonEmptyString(failure, 'code'),
+  };
+}
+
+function readTunnelDialFailure(value: unknown): NonNullable<TunnelV2Status['lastDialFailure']> {
+  const failure = readRecord(value, 'tunnel dial failure');
+  const connectionId = failure['connectionId'];
+  if (
+    typeof connectionId !== 'number' ||
+    !Number.isInteger(connectionId) ||
+    connectionId < 0 ||
+    connectionId > 0xffff_ffff
+  ) {
+    throw new Error('tunnel dial failure connectionId must be an unsigned 32-bit integer');
+  }
+  const osCode = failure['osCode'];
+  if (osCode !== undefined && typeof osCode !== 'string') {
+    throw new Error('tunnel dial failure osCode must be a string');
+  }
+  return {
+    tunnelId: readNonEmptyString(failure, 'tunnelId'),
+    connectionId,
+    routeId: readNonEmptyString(failure, 'routeId'),
+    reason: readNonEmptyString(failure, 'reason'),
+    ...(osCode === undefined ? {} : { osCode }),
   };
 }
 

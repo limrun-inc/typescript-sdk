@@ -19,6 +19,13 @@ describe('tunnel v2 management', () => {
   });
 
   test('gets and validates status with bearer authentication', async () => {
+    const lastDialFailure = {
+      tunnelId: 'tunnel-1',
+      connectionId: 7,
+      routeId: 'route-3',
+      reason: 'connection_refused',
+      osCode: 'ECONNREFUSED',
+    };
     let requestMethod: string | undefined;
     let requestURL: string | undefined;
     let authorization: string | undefined;
@@ -40,6 +47,7 @@ describe('tunnel v2 management', () => {
               },
             ],
           },
+          lastDialFailure,
         }),
       );
     };
@@ -56,6 +64,7 @@ describe('tunnel v2 management', () => {
           },
         ],
       },
+      lastDialFailure,
     });
     expect(requestMethod).toBe('GET');
     expect(requestURL).toBe('/v1/ios_123/api/tunnel');
@@ -113,6 +122,14 @@ describe('tunnel v2 management', () => {
       },
     },
     { lastFailure: { tunnelId: '', code: 'internal' } },
+    {
+      lastDialFailure: {
+        tunnelId: 'one',
+        connectionId: -1,
+        routeId: 'route-1',
+        reason: 'internal',
+      },
+    },
   ])('rejects malformed status %#', (status) => {
     expect(() => decodeTunnelV2Status(status)).toThrow();
   });
@@ -126,6 +143,20 @@ describe('tunnel v2 management', () => {
 
     await expect(stopTunnelV2(apiURL(), 'secret', '   ')).rejects.toThrow('tunnelId must not be empty');
     expect(requests).toBe(0);
+  });
+
+  test('accepts the maximum uint32 connection ID', () => {
+    const connectionId = 0xffff_ffff;
+    expect(
+      decodeTunnelV2Status({
+        lastDialFailure: {
+          tunnelId: 'tunnel-1',
+          connectionId,
+          routeId: 'route-1',
+          reason: 'internal',
+        },
+      }).lastDialFailure?.connectionId,
+    ).toBe(connectionId);
   });
 
   function apiURL(): string {
