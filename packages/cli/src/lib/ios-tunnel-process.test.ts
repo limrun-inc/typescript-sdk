@@ -17,6 +17,9 @@ import {
   prepareTunnelLog,
   pruneTunnelLogs,
   readTunnelLogTail,
+  selectTunnelOwnersForStop,
+  signalTunnelOwner,
+  stopTunnelErrorIsNotFound,
   tunnelChildEnvironment,
   tunnelProcessPaths,
   tunnelProcessStartingLeaseExpired,
@@ -28,6 +31,7 @@ import {
 const INSTANCE_ID = 'ios_test_123';
 const OWNER_1 = '1'.repeat(32);
 const OWNER_2 = '2'.repeat(32);
+const OWNER_3 = '3'.repeat(32);
 
 describe('iOS tunnel process state', () => {
   let root: string;
@@ -138,6 +142,32 @@ describe('iOS tunnel process state', () => {
     ).resolves.toEqual({ outcome: 'exited' });
   });
 
+  test('selects only owners correlated with the fetched server tunnel ID', () => {
+    const oldOwner = makeReadyState({
+      owner: OWNER_1,
+      tunnelId: 'old-tunnel',
+    });
+    const replacement = makeReadyState({
+      owner: OWNER_2,
+      tunnelId: 'replacement',
+    });
+    const starting = makeState({ owner: OWNER_3, pid: 456 });
+    expect(selectTunnelOwnersForStop([oldOwner, replacement, starting], 'old-tunnel')).toEqual([
+      oldOwner,
+      starting,
+    ]);
+    expect(selectTunnelOwnersForStop([oldOwner, replacement, starting], undefined)).toEqual([
+      oldOwner,
+      replacement,
+      starting,
+    ]);
+  });
+
+  test('classifies only the stable stop 404 error as already gone', () => {
+    expect(stopTunnelErrorIsNotFound(new Error('stopTunnel failed: 404 missing'))).toBe(true);
+    expect(stopTunnelErrorIsNotFound(new Error('stopTunnel failed: 500 broken'))).toBe(false);
+  });
+
   test('keeps each owner state isolated through update and clear', () => {
     const state = makeState({ owner: OWNER_1, pid: process.pid, status: 'starting' });
     expect(claimTunnelProcess(state, root)).toBe(true);
@@ -194,6 +224,18 @@ describe('iOS tunnel process state', () => {
     expect(claimTunnelProcess(makeState({ owner: OWNER_1, pid: 0 }), root)).toBe(false);
   });
 
+  test('cannot update or reclaim an owner after cleanup starts', () => {
+    const starting = makeState({ owner: OWNER_1, pid: 0 });
+    expect(claimTunnelProcess(starting, root)).toBe(true);
+    expect(clearTunnelProcess(INSTANCE_ID, OWNER_1, root)).toBe(true);
+    expect(clearTunnelProcess(INSTANCE_ID, OWNER_1, root)).toBe(true);
+    expect(() => updateTunnelProcess(makeReadyState({ owner: OWNER_1, pid: 123 }), OWNER_1, root)).toThrow(
+      'Tunnel process ownership changed during startup',
+    );
+    expect(claimTunnelProcess(starting, root)).toBe(false);
+    expect(loadTunnelProcess(INSTANCE_ID, OWNER_1, root)).toBeUndefined();
+  });
+
   test('verifies process identity before treating a PID as the owner', async () => {
     const owner = crypto.randomBytes(16).toString('hex');
     const child = spawn(
@@ -209,10 +251,14 @@ describe('iOS tunnel process state', () => {
       await waitFor(() => isTunnelOwnerProcessAlive(state));
       expect(isTunnelOwnerProcessAlive({ ...state, owner: OWNER_1 })).toBe(false);
       expect(clearTunnelProcess(state.instanceId, owner, root)).toBe(false);
+      const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+      expect(signalTunnelOwner(state, 'SIGKILL')).toBe('signaled');
+      await exited;
     } finally {
       if (child.exitCode === null && child.signalCode === null) {
+        const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
         child.kill('SIGKILL');
-        await new Promise<void>((resolve) => child.once('exit', () => resolve()));
+        await exited;
       }
     }
     expect(clearTunnelProcess(state.instanceId, owner, root)).toBe(true);
@@ -280,7 +326,7 @@ describe('iOS tunnel process state', () => {
     expect(fs.readdirSync(directory).filter((entry) => entry.endsWith('.log'))).toHaveLength(2);
   });
 
-  function makeReadyState(): IosTunnelProcessState {
+  function makeReadyState(overrides: Partial<IosTunnelProcessState> = {}): IosTunnelProcessState {
     return makeState({
       pid: 123,
       status: 'ready',
@@ -292,6 +338,7 @@ describe('iOS tunnel process state', () => {
           endpoint: { host: '10.0.0.8', port: 57090 },
         },
       ],
+      ...overrides,
     });
   }
 
