@@ -14,7 +14,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@limrun/api": "file:../../dist"
+    "@limrun/api": "^0.46.11"
   },
   "devDependencies": {
     "tsx": "^4.20.5",

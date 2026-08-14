@@ -14,15 +14,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@limrun/api": "0.32.0",
+    "@limrun/api": "^0.46.11",
     "playwright": "1.60.0"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
-  },
-  "resolutions": {
-    "undici": "7.29.0"
   }
 }

@@ -34,15 +34,12 @@
     "detox": ">=20.48.1 <21"
   },
   "devDependencies": {
-    "@limrun/api": "^0.28.5",
+    "@limrun/api": "^0.46.11",
     "@types/node": "^22",
     "typescript": "^5.8.3"
   },
   "files": [
     "dist",
     "README.md"
-  ],
-  "resolutions": {
-    "undici": "7.29.0"
-  }
+  ]
 }
