@@ -19,7 +19,7 @@ export default class IosCreate extends BaseCommand {
   static examples = [
     '<%= config.bin %> ios create',
     '<%= config.bin %> ios create --rm --model ipad',
-    '<%= config.bin %> ios create --region us-west --install-asset my-app.ipa',
+    '<%= config.bin %> ios create --label limrun.com/zone-override=us-east1 --install-asset my-app.ipa',
     '<%= config.bin %> ios create --keychain keychain/login.tar.gz --encryption-key-stdin < keychain.key',
     '<%= config.bin %> ios create --keychain-url https://example.t3.storage.dev/... --encryption-key <key>',
     '<%= config.bin %> ios create --install ./MyApp.ipa',
@@ -43,7 +43,10 @@ export default class IosCreate extends BaseCommand {
     'display-name': Flags.string({
       description: 'Human-friendly display name shown in listings and the console',
     }),
-    region: Flags.string({ description: 'Region where the instance should be created, such as us-west' }),
+    region: Flags.string({
+      description:
+        'Deprecated: use --label limrun.com/zone-override=<region> to pin a region. A region given here is only a preference and may fall back to other regions.',
+    }),
     jurisdiction: Flags.string({
       description:
         'Jurisdiction the instance must be created in. Unlike --region, this is a hard constraint: creation fails when no region in the jurisdiction has capacity.',
@@ -115,6 +118,11 @@ export default class IosCreate extends BaseCommand {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(IosCreate);
+    if (flags.region) {
+      this.warn(
+        '--region is deprecated and only a preference; use --label limrun.com/zone-override=<region> to pin a region.',
+      );
+    }
     this.setParsedFlags(flags);
     if (flags.attach && flags.xcode) {
       this.error('Use either --attach or --xcode, not both.');

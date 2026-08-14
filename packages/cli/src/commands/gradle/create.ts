@@ -10,7 +10,7 @@ export default class GradleCreate extends BaseCommand {
 
   static examples = [
     '<%= config.bin %> gradle create',
-    '<%= config.bin %> gradle create --region eu',
+    '<%= config.bin %> gradle create --jurisdiction eu',
     '<%= config.bin %> gradle create --label env=dev --display-name ci-builder',
   ];
 
@@ -19,7 +19,10 @@ export default class GradleCreate extends BaseCommand {
     'display-name': Flags.string({
       description: 'Human-friendly display name shown in listings and the console',
     }),
-    region: Flags.string({ description: 'Region where the sandbox should be created, such as us-west' }),
+    region: Flags.string({
+      description:
+        'Deprecated: use --label limrun.com/zone-override=<region> to pin a region. A region given here is only a preference and may fall back to other regions.',
+    }),
     jurisdiction: Flags.string({
       description:
         'Jurisdiction the sandbox must be created in. Unlike --region, this is a hard constraint: creation fails when no region in the jurisdiction has capacity.',
@@ -41,6 +44,11 @@ export default class GradleCreate extends BaseCommand {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(GradleCreate);
+    if (flags.region) {
+      this.warn(
+        '--region is deprecated and only a preference; use --label limrun.com/zone-override=<region> to pin a region.',
+      );
+    }
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {

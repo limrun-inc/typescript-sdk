@@ -18,7 +18,7 @@ export default class XcodeCreate extends BaseCommand {
     '<%= config.bin %> xcode create',
     '<%= config.bin %> xcode create --ios',
     '<%= config.bin %> xcode create --attach --simulator-id <ios-instance-ID>',
-    '<%= config.bin %> xcode create --rm --region us-west',
+    '<%= config.bin %> xcode create --rm --label limrun.com/zone-override=us-east1',
     '<%= config.bin %> xcode create --label env=dev --display-name ci-builder',
     '<%= config.bin %> xcode create --cache-restore-keys "myapp-features,myapp-main"',
     '<%= config.bin %> xcode create --cache-key myapp-pr51 --cache-paths "Pods,.build"',
@@ -33,7 +33,10 @@ export default class XcodeCreate extends BaseCommand {
     'display-name': Flags.string({
       description: 'Human-friendly display name shown in listings and the console',
     }),
-    region: Flags.string({ description: 'Region where the sandbox should be created, such as us-west' }),
+    region: Flags.string({
+      description:
+        'Deprecated: use --label limrun.com/zone-override=<region> to pin a region. A region given here is only a preference and may fall back to other regions.',
+    }),
     jurisdiction: Flags.string({
       description:
         'Jurisdiction the sandbox must be created in. Unlike --region, this is a hard constraint: creation fails when no region in the jurisdiction has capacity.',
@@ -68,6 +71,11 @@ export default class XcodeCreate extends BaseCommand {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(XcodeCreate);
+    if (flags.region) {
+      this.warn(
+        '--region is deprecated and only a preference; use --label limrun.com/zone-override=<region> to pin a region.',
+      );
+    }
     this.setParsedFlags(flags);
     if (flags.attach && flags.ios) {
       this.error('Use either --attach or --ios, not both.');
