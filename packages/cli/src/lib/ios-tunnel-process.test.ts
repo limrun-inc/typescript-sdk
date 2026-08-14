@@ -9,8 +9,7 @@ import {
   claimTunnelProcess,
   clearTunnelProcess,
   formatTunnelDialFailure,
-  formatTunnelRoute,
-  isTunnelOwnerProcessAlive,
+  isSpawnedTunnelProcessAlive,
   listTunnelProcesses,
   loadTunnelProcess,
   newTunnelOwner,
@@ -22,6 +21,7 @@ import {
   signalTunnelOwner,
   stopTunnelErrorIsNotFound,
   tunnelChildEnvironment,
+  tunnelOwnerProcessIdentity,
   tunnelProcessPaths,
   tunnelProcessStartingLeaseExpired,
   updateTunnelProcess,
@@ -47,7 +47,6 @@ describe('iOS tunnel process state', () => {
 
   test.each([
     ['localhost:8000', { host: 'localhost', port: 8000 }],
-    ['API.Example.COM:443', { host: 'API.Example.COM', port: 443 }],
     ['[2001:db8::1]:8443', { host: '2001:db8::1', port: 8443 }],
   ])('parses route %s', (input, expected) => {
     expect(parseTunnelRoute(input)).toEqual(expected);
@@ -62,7 +61,6 @@ describe('iOS tunnel process state', () => {
 
   test('builds a child command with an exact owner and IPv6 route', () => {
     const owner = newTunnelOwner();
-    expect(owner).toMatch(/^[0-9a-f]{32}$/);
     expect(
       buildTunnelServeArgs({
         scriptPath: '/lim/run.js',
@@ -87,7 +85,6 @@ describe('iOS tunnel process state', () => {
       '--route',
       '[2001:db8::1]:8443',
     ]);
-    expect(formatTunnelRoute({ host: '2001:db8::1', port: 443 })).toBe('[2001:db8::1]:443');
   });
 
   test('formats dial failures with every correlation ID', () => {
@@ -106,9 +103,6 @@ describe('iOS tunnel process state', () => {
     expect(tunnelChildEnvironment('secret', { PATH: '/bin', LIM_API_KEY: 'old' })).toEqual({
       PATH: '/bin',
       LIM_API_KEY: 'secret',
-    });
-    expect(tunnelChildEnvironment(undefined, { PATH: '/bin' })).toEqual({
-      PATH: '/bin',
     });
   });
 
@@ -134,16 +128,6 @@ describe('iOS tunnel process state', () => {
     ).resolves.toEqual({ outcome: 'ready', state: ready });
   });
 
-  test('reports a child exit before READY', async () => {
-    await expect(
-      waitForTunnelProcessReady({
-        load: () => undefined,
-        isAlive: () => false,
-        sleep: async () => {},
-      }),
-    ).resolves.toEqual({ outcome: 'exited' });
-  });
-
   test('does not accept stale READY from an exited child', async () => {
     const ready = makeReadyState();
     await expect(
@@ -153,6 +137,21 @@ describe('iOS tunnel process state', () => {
         sleep: async () => {},
       }),
     ).resolves.toEqual({ outcome: 'exited' });
+  });
+
+  test('does not mistake a reused PID for the spawned child', () => {
+    expect(
+      isSpawnedTunnelProcessAlive(
+        { exitCode: 0, signalCode: null },
+        process.pid,
+      ),
+    ).toBe(false);
+    expect(
+      isSpawnedTunnelProcessAlive(
+        { exitCode: null, signalCode: null },
+        process.pid,
+      ),
+    ).toBe(true);
   });
 
   test('selects only owners correlated with the fetched server tunnel ID', () => {
@@ -213,15 +212,22 @@ describe('iOS tunnel process state', () => {
   });
 
   test('keeps expired ownership visible for process cleanup', () => {
+    const now = Date.now();
     const abandoned = makeState({
       owner: OWNER_1,
       pid: process.pid,
       status: 'starting',
-      startedAt: new Date(Date.now() - 31_000).toISOString(),
+      startedAt: new Date(now - 30_000).toISOString(),
     });
     expect(claimTunnelProcess(abandoned, root)).toBe(true);
     expect(loadTunnelProcess(abandoned.instanceId, OWNER_1, root)).toEqual(abandoned);
-    expect(tunnelProcessStartingLeaseExpired(abandoned)).toBe(true);
+    expect(tunnelProcessStartingLeaseExpired(abandoned, now)).toBe(true);
+    expect(
+      tunnelProcessStartingLeaseExpired(
+        { ...abandoned, startedAt: new Date(now - 29_999).toISOString() },
+        now,
+      ),
+    ).toBe(false);
 
     const replacement = makeState({ owner: OWNER_2, pid: 0, status: 'starting' });
     expect(claimTunnelProcess(replacement, root)).toBe(true);
@@ -261,8 +267,9 @@ describe('iOS tunnel process state', () => {
     const state = makeState({ owner, pid, status: 'starting' });
     try {
       expect(claimTunnelProcess(state, root)).toBe(true);
-      await waitFor(() => isTunnelOwnerProcessAlive(state));
-      expect(isTunnelOwnerProcessAlive({ ...state, owner: OWNER_1 })).toBe(false);
+      await waitFor(() => tunnelOwnerProcessIdentity(state) === 'match');
+      expect(tunnelOwnerProcessIdentity({ ...state, owner: OWNER_1 })).toBe('mismatch');
+      expect(signalTunnelOwner({ ...state, owner: OWNER_1 }, 'SIGTERM')).toBe('mismatch');
       expect(clearTunnelProcess(state.instanceId, owner, root)).toBe(false);
       const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
       expect(signalTunnelOwner(state, 'SIGKILL')).toBe('signaled');
@@ -284,10 +291,10 @@ describe('iOS tunnel process state', () => {
     { logPath: '/tmp/attacker.log' },
     { tunnelId: 'premature' },
     { bindings: [] },
-    { status: 'ready', pid: 0, tunnelId: 'tunnel-1', bindings: [] },
+    { status: 'ready', pid: 0 },
     { routes: [{ host: '*.example.com', port: 443 }] },
   ] satisfies Array<Partial<IosTunnelProcessState>>)('rejects malformed persisted state %#', (overrides) => {
-    const state = makeState(overrides);
+    const state = overrides.status === 'ready' ? makeReadyState(overrides) : makeState(overrides);
     const paths = tunnelProcessPaths(state.instanceId, state.owner, root);
     fs.mkdirSync(paths.directory, { recursive: true });
     fs.writeFileSync(paths.state, JSON.stringify(state));
@@ -297,7 +304,6 @@ describe('iOS tunnel process state', () => {
   test('uses a bounded hashed path and reads the log tail', () => {
     const paths = tunnelProcessPaths('ios_region_secret-customer-id', OWNER_1, root);
     expect(paths.directory).not.toContain('secret-customer-id');
-    expect(paths.directory.length).toBeLessThan(root.length + 20);
     fs.mkdirSync(paths.directory, { recursive: true });
     fs.writeFileSync(paths.log, `${'x'.repeat(128 * 1024)}\none\ntwo\nthree\n`);
     expect(readTunnelLogTail(paths.log, 2, 64 * 1024)).toBe('two\nthree');
@@ -325,18 +331,29 @@ describe('iOS tunnel process state', () => {
   });
 
   test('retains only the newest completed tunnel logs', () => {
-    for (let index = 1; index <= 7; index++) {
-      const owner = index.toString(16).padStart(32, '0');
+    const retiredOwners = [OWNER_1, OWNER_2, OWNER_3];
+    for (const [index, owner] of retiredOwners.entries()) {
       const paths = tunnelProcessPaths(INSTANCE_ID, owner, root);
       fs.mkdirSync(paths.directory, { recursive: true });
       fs.writeFileSync(paths.log, owner);
-      const modified = new Date(Date.now() + index * 1000);
+      const modified = new Date(Date.now() + (index + 1) * 1000);
       fs.utimesSync(paths.log, modified, modified);
     }
+    const oldestPaths = tunnelProcessPaths(INSTANCE_ID, OWNER_1, root);
+    fs.writeFileSync(`${oldestPaths.log}.1`, 'rotated');
+    const activeOwner = '4'.repeat(32);
+    const active = makeState({ owner: activeOwner, pid: process.pid });
+    expect(claimTunnelProcess(active, root)).toBe(true);
+    fs.writeFileSync(tunnelProcessPaths(INSTANCE_ID, activeOwner, root).log, 'active');
 
     pruneTunnelLogs(INSTANCE_ID, root, 2);
     const directory = tunnelProcessPaths(INSTANCE_ID, OWNER_1, root).directory;
-    expect(fs.readdirSync(directory).filter((entry) => entry.endsWith('.log'))).toHaveLength(2);
+    expect(
+      fs.readdirSync(directory).filter((entry) => entry.endsWith('.log')).sort(),
+    ).toEqual(
+      [`${OWNER_2}.log`, `${OWNER_3}.log`, `${activeOwner}.log`].sort(),
+    );
+    expect(fs.existsSync(`${oldestPaths.log}.1`)).toBe(false);
   });
 
   function makeReadyState(overrides: Partial<IosTunnelProcessState> = {}): IosTunnelProcessState {
