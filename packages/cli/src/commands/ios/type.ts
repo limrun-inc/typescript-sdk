@@ -11,11 +11,13 @@ export default class IosType extends BaseCommand {
   static description =
     'Type text into the currently focused input field as real key events, so the app sees genuine keystrokes ' +
     'and text delegates fire. Fails when no field is focused. For fast text entry without key events, use ' +
-    '`ios set-text`. Use `--enter` to submit the field after typing.';
+    '`ios set-text`. Use `--enter` to submit the field after typing. Use `--no-require-focus` to type blind ' +
+    'when the field was focused by other means (e.g. a coordinate tap) and the accessibility focus scan is unreliable.';
   static examples = [
     '<%= config.bin %> ios type "Hello World"',
     '<%= config.bin %> ios type "Hello World" --id <instance-ID>',
     '<%= config.bin %> ios type "search query" --enter',
+    '<%= config.bin %> ios type "Hello" --no-require-focus',
   ];
 
   static args = {
@@ -31,6 +33,12 @@ export default class IosType extends BaseCommand {
       description: 'Press Enter after typing.',
       default: false,
     }),
+    'require-focus': Flags.boolean({
+      description:
+        'Require a focused input field before typing (`--no-require-focus` types blind for fields focused by other means).',
+      default: true,
+      allowNo: true,
+    }),
   };
 
   async run(): Promise<void> {
@@ -40,16 +48,16 @@ export default class IosType extends BaseCommand {
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
-      if (false) {
-        this.error('ios type only supports iOS instances');
-      }
 
+      // The SDK sends requireFocus on the wire only when false, so the
+      // default flag value keeps legacy payloads byte-identical.
+      const options = { requireFocus: flags['require-focus'] };
       if (hasActiveSession(id)) {
-        await sendSessionCommand(id, 'type', [args.text, flags.enter]);
+        await sendSessionCommand(id, 'type', [args.text, flags.enter, options]);
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          await client.typeText(args.text, flags.enter);
+          await client.typeText(args.text, flags.enter, options);
         } finally {
           disconnect();
         }

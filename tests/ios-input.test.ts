@@ -1,4 +1,7 @@
 const sentMessages: Record<string, unknown>[] = [];
+// When > 0, tapElement replies with the server's fail-fast "matched nothing"
+// error and decrements; the client-side scroll search retries against this.
+let tapElementMissesRemaining = 0;
 
 jest.mock('ws', () => {
   const { EventEmitter } = require('events');
@@ -52,17 +55,28 @@ jest.mock('ws', () => {
           this['emit']('message', Buffer.from(JSON.stringify({ type: 'typeTextResult', id: message.id })));
         });
       } else if (message.type === 'tapElement') {
+        const miss = tapElementMissesRemaining > 0;
+        if (miss) tapElementMissesRemaining -= 1;
         process.nextTick(() => {
           this['emit'](
             'message',
             Buffer.from(
-              JSON.stringify({
-                type: 'tapElementResult',
-                id: message.id,
-                elementLabel: 'Submit',
-                elementType: 'Button',
-                method: message.activate ?? 'touch',
-              }),
+              JSON.stringify(
+                miss ?
+                  {
+                    type: 'tapElementResult',
+                    id: message.id,
+                    error:
+                      'Element for selector matched nothing in the accessibility tree. Fix the selector...',
+                  }
+                : {
+                    type: 'tapElementResult',
+                    id: message.id,
+                    elementLabel: 'Submit',
+                    elementType: 'Button',
+                    method: message.activate ?? 'touch',
+                  },
+              ),
             ),
           );
         });
@@ -98,6 +112,7 @@ async function connect() {
 describe('iOS input serialization', () => {
   beforeEach(() => {
     sentMessages.length = 0;
+    tapElementMissesRemaining = 0;
   });
 
   it('serializes typeText with its original payload shape', async () => {
@@ -108,6 +123,21 @@ describe('iOS input serialization', () => {
     expect(sent).toMatchObject({ type: 'typeText', text: 'hello', pressEnter: true });
     expect(sent).not.toHaveProperty('strategy');
     expect(sent).not.toHaveProperty('requireFocus');
+
+    client.disconnect();
+  });
+
+  it('sends requireFocus only when explicitly false', async () => {
+    const client = await connect();
+
+    await client.typeText('hello', false, { requireFocus: false });
+    expect(sentMessages.find((message) => message['type'] === 'typeText')).toMatchObject({
+      requireFocus: false,
+    });
+
+    sentMessages.length = 0;
+    await client.typeText('hello', false, { requireFocus: true });
+    expect(sentMessages.find((message) => message['type'] === 'typeText')).not.toHaveProperty('requireFocus');
 
     client.disconnect();
   });
@@ -143,6 +173,62 @@ describe('iOS input serialization', () => {
       activate: 'ax',
     });
     expect(ax.method).toBe('ax');
+
+    client.disconnect();
+  });
+
+  it('rejects an absent selector immediately without scrollSearch', async () => {
+    const client = await connect();
+    tapElementMissesRemaining = 99;
+
+    await expect(client.tapElement({ AXLabel: 'Ghost' })).rejects.toThrow(/matched nothing/);
+    expect(sentMessages.filter((message) => message['type'] === 'scroll')).toHaveLength(0);
+
+    client.disconnect();
+  });
+
+  it('scroll-searches an absent selector client-side until it materializes', async () => {
+    const client = await connect();
+    // First attempt + two paged attempts miss; the third page hits.
+    tapElementMissesRemaining = 3;
+
+    const result = await client.tapElement({ AXLabel: 'Row 900' }, { scrollSearch: true });
+    expect(result.elementLabel).toBe('Submit');
+
+    const scrolls = sentMessages.filter((message) => message['type'] === 'scroll');
+    const attempts = sentMessages.filter((message) => message['type'] === 'tapElement');
+    expect(scrolls).toHaveLength(3);
+    expect(attempts).toHaveLength(4);
+    // Page size derives from the device info the client caches on connect.
+    expect(scrolls[0]).toMatchObject({ direction: 'down', pixels: Math.round(844 * 0.6) });
+
+    client.disconnect();
+  });
+
+  it('gives up scroll search after the page budget and says so', async () => {
+    const client = await connect();
+    tapElementMissesRemaining = 99;
+
+    await expect(client.tapElement({ AXLabel: 'Ghost' }, { scrollSearch: true })).rejects.toThrow(
+      /after client-side scroll search/,
+    );
+    // 3 pages down, 6 back up; one attempt before paging plus one per page.
+    expect(sentMessages.filter((message) => message['type'] === 'scroll')).toHaveLength(9);
+    expect(sentMessages.filter((message) => message['type'] === 'tapElement')).toHaveLength(10);
+
+    client.disconnect();
+  }, 15_000);
+
+  it('stops scroll search when the total timeoutMs budget runs out', async () => {
+    const client = await connect();
+    tapElementMissesRemaining = 99;
+
+    // The budget covers the first attempt plus roughly one 300ms page; the
+    // remaining pages must be skipped instead of running the full sweep.
+    await expect(
+      client.tapElement({ AXLabel: 'Ghost' }, { scrollSearch: true, timeoutMs: 400 }),
+    ).rejects.toThrow(/after client-side scroll search/);
+    expect(sentMessages.filter((message) => message['type'] === 'scroll').length).toBeLessThan(5);
 
     client.disconnect();
   });

@@ -50,6 +50,13 @@ export default class IosTapElement extends BaseCommand {
         'How to activate the element: `touch` (default) scrolls it into view and taps with a real touch; `ax` performs an accessibility press without touch events.',
       options: ['touch', 'ax'],
     }),
+    'scroll-search': Flags.boolean({
+      description:
+        'Page the screen client-side to find elements absent from the accessibility tree (virtualized lists ' +
+        'materialize rows only on scroll). Without this, a selector matching nothing fails fast; elements ' +
+        'already in the tree are scrolled into view automatically.',
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {
@@ -59,9 +66,6 @@ export default class IosTapElement extends BaseCommand {
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
-      if (false) {
-        this.error('ios tap-element only supports iOS instances');
-      }
 
       const selector: Record<string, string> = {};
       if (flags['ax-unique-id']) selector.AXUniqueId = flags['ax-unique-id'];
@@ -78,17 +82,15 @@ export default class IosTapElement extends BaseCommand {
         );
       }
 
-      const options: Ios.TapElementOptions | undefined =
-        flags.activate ? { activate: flags.activate as Ios.TapElementActivation } : undefined;
+      const options: Ios.TapElementOptions = {
+        activate: flags.activate as Ios.TapElementActivation | undefined,
+        scrollSearch: flags['scroll-search'],
+      };
       if (hasActiveSession(id)) {
-        // tapElement can scroll-scan for up to 90s; the IPC socket must not
-        // give up first.
-        const result = await sendSessionCommand(
-          id,
-          'tap-element',
-          [selector, options],
-          Ios.TAP_ELEMENT_TIMEOUT_MS + 15_000,
-        );
+        // timeoutMs is the SDK's total budget for the call (scroll search
+        // included); the IPC socket must not give up first.
+        const ipcTimeoutMs = Ios.TAP_ELEMENT_TIMEOUT_MS + 15_000;
+        const result = await sendSessionCommand(id, 'tap-element', [selector, options], ipcTimeoutMs);
         if (flags.json) this.outputJson(result);
         else this.log('Element tapped');
         return;
