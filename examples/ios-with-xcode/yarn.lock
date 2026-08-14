@@ -137,8 +137,10 @@
   resolved "https://registry.yarnpkg.com/@hono/node-server/-/node-server-2.1.0.tgz#c1823e1b9add6bdd14807fbbfec39b8b80614b25"
   integrity sha512-XovyyCCnBzW+zKu+z/zq8hwNs4KOR5rEMAOxo2f40Q5xoOI37IMm6MIg2COOUtUApo0i6850MTBKH2u4QLGIqg==
 
-"@limrun/api@file:../../dist":
-  version "0.46.8"
+"@limrun/api@^0.46.11":
+  version "0.46.11"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.46.11.tgz#b421f9a2084e1f455a5e6d855ea91f860b4d9f2b"
+  integrity sha512-vSXSOnTTNsQQtbWB3T04KE2x7B6H1OlBjkO2rF8K/cSMUqYPT3x8UgcI1Kl4X9uBJgfVWT7BJBA0EWedpAxIUQ==
   dependencies:
     "@limrun/xdelta3-wasm" "0.2.0"
     eventsource-client "^1.2.0"
@@ -146,7 +148,7 @@
     ignore "^7.0.5"
     proxy-from-env "^2.1.0"
     undici "7.29.0"
-    ws "^8.18.3"
+    ws "^8.21.1"
     yauzl "^3.4.0"
 
 "@limrun/xdelta3-wasm@0.2.0":
@@ -894,7 +896,7 @@ wrappy@1:
   resolved "https://registry.yarnpkg.com/wrappy/-/wrappy-1.0.2.tgz#b5243d8f3ec1aa35f1364605bc0d1036e30ab69f"
   integrity sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==
 
-ws@^8.18.3:
+ws@^8.21.1:
   version "8.21.3"
   resolved "https://registry.yarnpkg.com/ws/-/ws-8.21.3.tgz#660b4faddb6a3e575c86e078126919961f4de4fc"
   integrity sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==

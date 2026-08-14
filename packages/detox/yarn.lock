@@ -2,18 +2,24 @@
 # yarn lockfile v1
 
 
-"@limrun/api@^0.28.5":
-  version "0.28.5"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.28.5.tgz#c143f30c944f7688aa1673212572c49e1b0cd987"
-  integrity sha512-F4ZCePIkUTGiI7OAfJnK3nvSFp8O7kLr7eGjnyCF78OPhz/RcEnoiV489ez0WlET1AaIxPe8qcEH/tWXaRo5+Q==
+"@limrun/api@^0.46.11":
+  version "0.46.11"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.46.11.tgz#b421f9a2084e1f455a5e6d855ea91f860b4d9f2b"
+  integrity sha512-vSXSOnTTNsQQtbWB3T04KE2x7B6H1OlBjkO2rF8K/cSMUqYPT3x8UgcI1Kl4X9uBJgfVWT7BJBA0EWedpAxIUQ==
   dependencies:
+    "@limrun/xdelta3-wasm" "0.2.0"
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"
     ignore "^7.0.5"
     proxy-from-env "^2.1.0"
-    undici "7.24.7"
-    ws "^8.18.3"
-    xdelta3-wasm "^1.0.0"
+    undici "7.29.0"
+    ws "^8.21.1"
+    yauzl "^3.4.0"
+
+"@limrun/xdelta3-wasm@0.2.0":
+  version "0.2.0"
+  resolved "https://registry.yarnpkg.com/@limrun/xdelta3-wasm/-/xdelta3-wasm-0.2.0.tgz#f74444ba7eb2be90e86e0c24edf55e9505127354"
+  integrity sha512-mEohO7CYj4Gdc0v1Gr/AjlBhfbXQnIz6+2wmMhRfwz8hXZrsIC/yqYQhfoDhu1ysqQwBnU5lDDLPUGdUu+8hPQ==
 
 "@types/node@^22":
   version "22.19.19"
@@ -64,6 +70,11 @@ ms@^2.1.3:
   resolved "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz#574c8138ce1d2b5861f0b44579dbadd60c6615b2"
   integrity sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==
 
+pend@~1.2.0:
+  version "1.2.0"
+  resolved "https://registry.yarnpkg.com/pend/-/pend-1.2.0.tgz#7a57eb550a6783f9115331fcf4663d5c8e007a50"
+  integrity sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg==
+
 proxy-from-env@^2.1.0:
   version "2.1.0"
   resolved "https://registry.npmjs.org/proxy-from-env/-/proxy-from-env-2.1.0.tgz#a7487568adad577cfaaa7e88c49cab3ab3081aba"
@@ -79,17 +90,19 @@ undici-types@~6.21.0:
   resolved "https://registry.npmjs.org/undici-types/-/undici-types-6.21.0.tgz#691d00af3909be93a7faa13be61b3a5b50ef12cb"
   integrity sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==
 
-undici@7.24.7, undici@7.29.0:
+undici@7.29.0:
   version "7.29.0"
   resolved "https://registry.yarnpkg.com/undici/-/undici-7.29.0.tgz#ae0f6f62e06e057a9cbb7b2b5fde2bb74f791b8f"
   integrity sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==
 
-ws@^8.18.3:
-  version "8.20.1"
-  resolved "https://registry.npmjs.org/ws/-/ws-8.20.1.tgz#91a9ae2b312ccf98e0a85ec499b48cef45ab0ddb"
-  integrity sha512-It4dO0K5v//JtTXuPkfEOaI3uUN87iYPnqo/ZzqCoG3g8uhA66QUMs/SrM0YK7/NAu+r4LMh/9dq2A7k+rHs+w==
+ws@^8.21.1:
+  version "8.21.3"
+  resolved "https://registry.yarnpkg.com/ws/-/ws-8.21.3.tgz#660b4faddb6a3e575c86e078126919961f4de4fc"
+  integrity sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==
 
-xdelta3-wasm@^1.0.0:
-  version "1.0.0"
-  resolved "https://registry.npmjs.org/xdelta3-wasm/-/xdelta3-wasm-1.0.0.tgz#43b6ef9e9649830e25713914e40324217f8565fd"
-  integrity sha512-vhS28BhVaE3S/PGG1KQIwjBVqJecuS5Sdh82UAZysbnYaU93KS6l8ZPtsqonNZMeuyFgrGW9D44hh2lwQCsidA==
+yauzl@^3.4.0:
+  version "3.4.0"
+  resolved "https://registry.yarnpkg.com/yauzl/-/yauzl-3.4.0.tgz#88b2a21455f37ca7dccf2eeb33bacb4392322719"
+  integrity sha512-jIH9yLR9wqr0wOS0TpBvo/g/2UgZH5qePVbjgRliiF0BYvOZyaBknKsF+x9Iht0O6sqgnB93rCICdOZFecJuDw==
+  dependencies:
+    pend "~1.2.0"

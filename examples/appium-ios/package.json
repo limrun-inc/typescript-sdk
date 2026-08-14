@@ -14,7 +14,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@limrun/api": "^0.21.0",
+    "@limrun/api": "^0.46.11",
     "webdriverio": "^9.21.0"
   },
   "devDependencies": {
