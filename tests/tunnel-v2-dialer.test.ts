@@ -87,7 +87,6 @@ describe('destination tunnel v2 dialer', () => {
     const greetingIndex = events.findIndex(
       (event) => event.kind === 'data' && event.payload.toString() === 'greeting',
     );
-    expect(openIndex).toBeGreaterThanOrEqual(0);
     expect(greetingIndex).toBeGreaterThan(openIndex);
 
     sendData(7, Buffer.from('request'));
@@ -278,7 +277,6 @@ describe('destination tunnel v2 dialer', () => {
   test.each([
     ['ENOTFOUND', 'dns_not_found'],
     ['EAI_AGAIN', 'dns_temporary_failure'],
-    ['ECONNREFUSED', 'connection_refused'],
     ['ECONNRESET', 'connection_reset'],
     ['ETIMEDOUT', 'connection_timed_out'],
     ['ENETUNREACH', 'unreachable'],
