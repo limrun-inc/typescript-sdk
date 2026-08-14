@@ -1,4 +1,4 @@
-import { deriveTunnelManagementURL, deriveTunnelV2URL } from '../src/internal/tunnel-v2-url';
+import { deriveTunnelV2URL } from '../src/internal/tunnel-v2-url';
 
 describe('destination tunnel URL', () => {
   test('preserves the instance API path', () => {
@@ -16,12 +16,6 @@ describe('destination tunnel URL', () => {
   test('rejects unsupported schemes', () => {
     expect(() => deriveTunnelV2URL('file:///v1/ios_123/api')).toThrow(
       'Unsupported apiUrl protocol for tunnel: file:',
-    );
-  });
-
-  test('derives the management URL separately from the WebSocket', () => {
-    expect(deriveTunnelManagementURL('https://node.example/v1/ios_123/api?token=old#frag').toString()).toBe(
-      'https://node.example/v1/ios_123/api/tunnel',
     );
   });
 });

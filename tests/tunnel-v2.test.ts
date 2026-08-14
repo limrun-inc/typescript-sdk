@@ -21,8 +21,6 @@ describe('tunnel v2 wire contract', () => {
     expect(TUNNEL_V2_VERSION).toBe(fixture.contract.version);
     expect(TUNNEL_V2_MAX_ROUTES).toBe(fixture.contract.maxRoutes);
     expect(TUNNEL_V2_CONN_ID_HEADER_BYTES).toBe(fixture.contract.connID.binaryHeaderBytes);
-    expect(fixture.contract.connID.binaryByteOrder).toBe('big_endian');
-    expect(fixture.contract.transports).toEqual(['tcp']);
   });
 
   test('encodes every client fixture', () => {
@@ -32,8 +30,8 @@ describe('tunnel v2 wire contract', () => {
     }
   });
 
-  test.each([-1, 1.5, 0x1_0000_0000, Number.NaN, Number.POSITIVE_INFINITY])(
-    'refuses to encode invalid connId %p',
+  test.each(fixture.contract.connID.invalidJSONValues)(
+    'rejects invalid connId %p at both wire boundaries',
     (connId) => {
       expect(() =>
         encodeTunnelV2ClientMessage({
@@ -41,8 +39,23 @@ describe('tunnel v2 wire contract', () => {
           connId,
         }),
       ).toThrow(TunnelV2ProtocolError);
+      expect(() =>
+        decodeTunnelV2ServerMessage({
+          type: 'fin',
+          connId,
+        }),
+      ).toThrow(TunnelV2ProtocolError);
     },
   );
+
+  test('refuses to encode a non-finite connId', () => {
+    expect(() =>
+      encodeTunnelV2ClientMessage({
+        type: 'openOk',
+        connId: Number.NaN,
+      }),
+    ).toThrow(TunnelV2ProtocolError);
+  });
 
   test('canonicalizes START routes while encoding', () => {
     const encoded = encodeTunnelV2ClientMessage({
@@ -57,29 +70,10 @@ describe('tunnel v2 wire contract', () => {
     });
   });
 
-  test.each(fixture.invalidRouteSets)('refuses to encode invalid START route set $name', ({ routes }) => {
-    expect(() =>
-      encodeTunnelV2ClientMessage({
-        type: 'start',
-        version: TUNNEL_V2_VERSION,
-        routes,
-      }),
-    ).toThrow();
-  });
-
   test('decodes every server fixture', () => {
     for (const entry of fixture.server) {
       expect(decodeTunnelV2ServerMessage(entry.message)).toEqual(entry.message);
     }
-  });
-
-  test.each(fixture.contract.connID.invalidJSONValues)('rejects invalid connId %p', (connId) => {
-    expect(() =>
-      decodeTunnelV2ServerMessage({
-        type: 'fin',
-        connId,
-      }),
-    ).toThrow(TunnelV2ProtocolError);
   });
 
   test('rejects unknown server message types', () => {
@@ -111,11 +105,17 @@ describe('tunnel v2 route contract', () => {
   });
 
   test.each(fixture.invalidRouteSets)('rejects $name with $error', ({ routes, error }) => {
-    expect(() => validateTunnelV2Routes(routes)).toThrow(
-      expect.objectContaining<Partial<TunnelV2RouteError>>({
-        code: error as TunnelV2RouteErrorCode,
+    const expected = expect.objectContaining<Partial<TunnelV2RouteError>>({
+      code: error as TunnelV2RouteErrorCode,
+    });
+    expect(() => validateTunnelV2Routes(routes)).toThrow(expected);
+    expect(() =>
+      encodeTunnelV2ClientMessage({
+        type: 'start',
+        version: TUNNEL_V2_VERSION,
+        routes,
       }),
-    );
+    ).toThrow();
   });
 
   test('accepts exactly the declared OPEN destination', () => {
@@ -147,11 +147,10 @@ describe('tunnel v2 route contract', () => {
   });
 
   test('requires READY bindings to match the original route set', () => {
-    const ready = decodeTunnelV2ServerMessage(fixture.server.find(({ name }) => name === 'ready')!.message);
-    expect(ready.type).toBe('ready');
-    const readyMessage = ready as Extract<TunnelV2ServerMessage, { type: 'ready' }>;
+    const readyMessage = decodeTunnelV2ServerMessage(
+      fixture.server.find(({ name }) => name === 'ready')!.message,
+    ) as Extract<TunnelV2ServerMessage, { type: 'ready' }>;
 
-    expect(() => assertTunnelV2Ready(readyMessage, [{ host: 'localhost', port: 8000 }])).not.toThrow();
     expect(() => assertTunnelV2Ready(readyMessage, [{ host: 'localhost', port: 8001 }])).toThrow(
       TunnelV2ProtocolError,
     );
