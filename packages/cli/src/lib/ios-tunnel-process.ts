@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync, type ChildProcess } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
 import net from 'net';
@@ -319,12 +319,15 @@ export function isProcessAlive(pid: number): boolean {
   }
 }
 
-export function tunnelProcessStartingLeaseExpired(state: IosTunnelProcessState, now = Date.now()): boolean {
-  return state.status === 'starting' && now - Date.parse(state.startedAt) >= 30_000;
+export function isSpawnedTunnelProcessAlive(
+  child: Pick<ChildProcess, 'exitCode' | 'signalCode'>,
+  pid: number,
+): boolean {
+  return child.exitCode === null && child.signalCode === null && isProcessAlive(pid);
 }
 
-export function isTunnelOwnerProcessAlive(state: IosTunnelProcessState): boolean {
-  return tunnelOwnerProcessIdentity(state) === 'match';
+export function tunnelProcessStartingLeaseExpired(state: IosTunnelProcessState, now = Date.now()): boolean {
+  return state.status === 'starting' && now - Date.parse(state.startedAt) >= 30_000;
 }
 
 export function tunnelOwnerProcessIdentity(state: IosTunnelProcessState): TunnelOwnerProcessIdentity {
