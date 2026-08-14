@@ -11,6 +11,7 @@ import {
   clearTunnelProcess,
   formatTunnelRoute,
   isProcessAlive,
+  isSpawnedTunnelProcessAlive,
   listTunnelProcesses,
   loadTunnelProcess,
   newTunnelOwner,
@@ -226,7 +227,7 @@ export default class IosTunnel extends BaseCommand {
 
     const readiness = await waitForTunnelProcessReady({
       load: () => loadTunnelProcess(instanceId, owner),
-      isAlive: () => isProcessAlive(pid),
+      isAlive: () => isSpawnedTunnelProcessAlive(child, pid),
       sleep: defaultSleep,
     });
     if (readiness.outcome === 'ready') {

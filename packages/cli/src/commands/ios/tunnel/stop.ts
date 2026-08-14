@@ -16,6 +16,10 @@ import {
   type TunnelOwnerProcessIdentity,
 } from '../../../lib/ios-tunnel-process';
 
+type RemoteStopOutcome =
+  | { outcome: 'none' }
+  | { outcome: 'stopped' | 'gone'; tunnelId: string };
+
 export default class IosTunnelStop extends BaseCommand {
   static summary = 'Stop the active destination tunnel';
   static description =
@@ -50,12 +54,7 @@ export default class IosTunnelStop extends BaseCommand {
       const remote = await this.stopRemoteTunnel(resolvedInstance);
       const expectedTunnelId = remote.outcome === 'none' ? undefined : remote.tunnelId;
       const owners = selectTunnelOwnersForStop(ownerSnapshot, expectedTunnelId);
-      const local = await this.stopLocalOwners(
-        resolvedInstance.id,
-        owners,
-        expectedTunnelId,
-        remote.outcome === 'stopped',
-      );
+      const local = await this.stopLocalOwners(resolvedInstance.id, owners, remote);
 
       if (this.isJsonEnabled()) {
         this.outputJson({
@@ -79,7 +78,7 @@ export default class IosTunnelStop extends BaseCommand {
 
   private async stopRemoteTunnel(
     resolvedInstance: LastIosInstance,
-  ): Promise<{ outcome: 'none' } | { outcome: 'stopped' | 'gone'; tunnelId: string }> {
+  ): Promise<RemoteStopOutcome> {
     const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
     try {
       const status = await client.getTunnelStatus();
@@ -102,9 +101,9 @@ export default class IosTunnelStop extends BaseCommand {
   private async stopLocalOwners(
     instanceId: string,
     owners: IosTunnelProcessState[],
-    expectedTunnelId: string | undefined,
-    waitForRemoteExit: boolean,
+    remote: RemoteStopOutcome,
   ): Promise<{ processesStopped: number; recordsCleaned: number }> {
+    const expectedTunnelId = remote.outcome === 'none' ? undefined : remote.tunnelId;
     let processesStopped = 0;
     let recordsCleaned = 0;
     const retainedOwners: IosTunnelProcessState[] = [];
@@ -112,7 +111,7 @@ export default class IosTunnelStop extends BaseCommand {
       let state = loadTunnelProcess(instanceId, snapshot.owner) ?? snapshot;
       let identity = tunnelOwnerProcessIdentity(state);
       const wasRunning = identity === 'match';
-      if (identity === 'match' && waitForRemoteExit) {
+      if (identity === 'match' && remote.outcome === 'stopped') {
         await this.waitForPIDExit(state.pid, 50);
       }
       state = loadTunnelProcess(instanceId, state.owner) ?? state;
