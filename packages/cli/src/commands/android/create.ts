@@ -15,7 +15,7 @@ export default class AndroidCreate extends BaseCommand {
   static examples = [
     '<%= config.bin %> android create',
     '<%= config.bin %> android create --rm --install ./app.apk',
-    '<%= config.bin %> android create --region us-west --label env=dev',
+    '<%= config.bin %> android create --jurisdiction us --label env=dev',
     '<%= config.bin %> android create --no-connect',
     '<%= config.bin %> android create --daemon=false',
   ];
@@ -43,7 +43,10 @@ export default class AndroidCreate extends BaseCommand {
     'display-name': Flags.string({
       description: 'Human-friendly display name shown in listings and the console',
     }),
-    region: Flags.string({ description: 'Region where the instance should be created, such as us-west' }),
+    region: Flags.string({
+      description:
+        'Deprecated: a region is only a preference and may fall back to other regions when full. Use --jurisdiction to constrain where the instance runs.',
+    }),
     jurisdiction: Flags.string({
       description:
         'Jurisdiction the instance must be created in. Unlike --region, this is a hard constraint: creation fails when no region in the jurisdiction has capacity.',
@@ -84,6 +87,11 @@ export default class AndroidCreate extends BaseCommand {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(AndroidCreate);
+    if (flags.region) {
+      this.warn(
+        '--region is deprecated and only a preference; use --jurisdiction to constrain where it runs.',
+      );
+    }
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
