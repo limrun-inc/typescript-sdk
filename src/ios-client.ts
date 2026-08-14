@@ -9,6 +9,7 @@ import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './fol
 import { createIgnoreFn } from './folder-sync-ignore';
 import { prepareAppBundlePath, watchAppArchive } from './app-archive';
 import { downloadFileToLocalPath } from './internal/download-file';
+import { sleep } from './internal/utils/sleep';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import {
   startHttpProxy as startLocalHttpProxy,
@@ -186,11 +187,29 @@ export type TapElementActivation = 'touch' | 'ax';
 export type TapElementOptions = {
   activate?: TapElementActivation;
   /**
-   * Request timeout in milliseconds, default 90 seconds. The server scrolls
-   * to find off-screen elements, and that can take well over 30s on busy
-   * screens.
+   * Search for elements absent from the accessibility tree by paging the
+   * screen and retrying, client-side. The server fails absent selectors
+   * fast: virtualized lists materialize rows only on scroll, so whether a
+   * miss is worth paging for is the caller's call. Elements already in the
+   * tree are scrolled into view by the server without this option.
+   */
+  scrollSearch?: boolean;
+  /**
+   * Timeout in milliseconds, default 90 seconds. The server scrolls
+   * elements it can see into view, and that can take well over 30s on busy
+   * screens. With scrollSearch this is the total budget for the whole
+   * search, not per attempt.
    */
   timeoutMs?: number;
+};
+
+export type TypeTextOptions = {
+  /**
+   * When false, skip the server's focused-field check and type blind. For
+   * callers that focus fields by other means (e.g. vision-driven taps)
+   * where the accessibility focus scan is unreliable. Default true.
+   */
+  requireFocus?: boolean;
 };
 
 export type ElementResult = {
@@ -566,13 +585,14 @@ export type InstanceClient = {
 
   /**
    * Type text into the focused field as real key events, so the app's text
-   * delegates fire. Fails when no field is focused. Typing costs ~20ms per
-   * character; use setElementValue for long strings that do not need key
-   * events.
+   * delegates fire. Fails when no field is focused unless
+   * `options.requireFocus` is false. Typing costs ~20ms per character; use
+   * setElementValue for long strings that do not need key events.
    * @param text The text to type
    * @param pressEnter If true, press Enter after typing
+   * @param options Typing options (requireFocus)
    */
-  typeText: (text: string, pressEnter?: boolean) => Promise<void>;
+  typeText: (text: string, pressEnter?: boolean, options?: TypeTextOptions) => Promise<void>;
 
   /**
    * Press a key on the keyboard, optionally with modifiers
@@ -2055,7 +2075,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<void>('tap', { x, y, screenWidth, screenHeight });
     };
 
-    const tapElement = (
+    const tapElementOnce = (
       selector: AccessibilitySelector,
       options?: TapElementOptions,
     ): Promise<TapElementResult> => {
@@ -2065,6 +2085,70 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         undefined,
         options?.timeoutMs ?? TAP_ELEMENT_TIMEOUT_MS,
       );
+    };
+
+    // The server fails absent selectors fast with a typed error whose phrase
+    // the e2e suite pins. The other two phrases are pre-fail-fast servers:
+    // their touch path reports a miss after its own sweep ("was not found on
+    // screen"), and their ax path reports "not found for selector".
+    const isAbsentSelectorError = (error: unknown): boolean => {
+      const message = error instanceof Error ? error.message : String(error);
+      return /matched nothing in the accessibility tree|was not found on screen after scrolling|Accessibility element not found for selector/.test(
+        message,
+      );
+    };
+
+    const tapElement = async (
+      selector: AccessibilitySelector,
+      options?: TapElementOptions,
+    ): Promise<TapElementResult> => {
+      if (!options?.scrollSearch) {
+        return tapElementOnce(selector, options);
+      }
+      // Client-side scroll search: page down, then back up past the start,
+      // retrying per page. Each attempt costs one server tree read; the
+      // budget and cancellation live here, not on the server. timeoutMs is
+      // the TOTAL budget for the search; each attempt gets what remains.
+      // Mirrors the server's in-tree scroll-into-view paging scheme
+      // (limsimulator+interaction.swift scrollScanForMatch: 3 down/6 up,
+      // 0.6 page, 0.85/0.15 drag start); tune both together.
+      if (!cachedDeviceInfo) {
+        throw new Error('Device info not available yet; wait for client connection to be established.');
+      }
+      const deadline = Date.now() + (options.timeoutMs ?? TAP_ELEMENT_TIMEOUT_MS);
+      const attempt = () =>
+        tapElementOnce(selector, { ...options, timeoutMs: Math.max(1, deadline - Date.now()) });
+      let lastError: unknown;
+      try {
+        return await attempt();
+      } catch (error) {
+        if (!isAbsentSelectorError(error)) throw error;
+        lastError = error;
+      }
+      // No coordinate: deviceInfo reports portrait dimensions only, so an
+      // anchored drag lands in the wrong place in landscape. The server
+      // starts center-screen in rotated space, which halves the effective
+      // page but stays correct in every orientation.
+      const pagePixels = Math.round(cachedDeviceInfo.screenHeight * 0.6);
+      for (const [direction, count] of [
+        ['down', 3],
+        ['up', 6],
+      ] as const) {
+        for (let page = 0; page < count; page += 1) {
+          if (Date.now() >= deadline) break;
+          await scroll(direction, pagePixels);
+          // Let lazily-materializing cells appear before re-reading.
+          await sleep(300);
+          try {
+            return await attempt();
+          } catch (error) {
+            if (!isAbsentSelectorError(error)) throw error;
+            lastError = error;
+          }
+        }
+      }
+      const message = lastError instanceof Error ? lastError.message : String(lastError);
+      throw new Error(`${message} (after client-side scroll search)`);
     };
 
     const incrementElement = (selector: AccessibilitySelector): Promise<ElementResult> => {
@@ -2087,8 +2171,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
     };
 
-    const typeText = (text: string, pressEnter?: boolean): Promise<void> => {
-      return sendRequest<void>('typeText', { text, pressEnter });
+    const typeText = (text: string, pressEnter?: boolean, options?: TypeTextOptions): Promise<void> => {
+      // Sent only when false so legacy payloads stay byte-identical.
+      const requireFocus = options?.requireFocus === false ? false : undefined;
+      return sendRequest<void>('typeText', { text, pressEnter, requireFocus });
     };
 
     const pressKey = (key: string, modifiers?: string[]): Promise<void> => {
