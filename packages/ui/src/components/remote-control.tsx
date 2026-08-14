@@ -21,6 +21,7 @@ import {
 import { AxFetcher, AxStatus } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
+import { withAuthenticationToken } from './remote-control-url';
 
 declare global {
   interface Window {
@@ -2276,8 +2277,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           parsed.protocol === 'wss:' ? 'https:'
           : parsed.protocol === 'ws:' ? 'http:'
           : parsed.protocol;
-        parsed.searchParams.set('token', token);
-        probeUrl = parsed.toString();
+        probeUrl = withAuthenticationToken(parsed.toString(), token);
       } catch {
         return false;
       }
@@ -2401,7 +2401,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }, CONNECTION_SUCCESS_TIMEOUT_MS);
 
       try {
-        const ws = new WebSocket(`${url}?token=${token}`);
+        const ws = new WebSocket(withAuthenticationToken(url, token));
         wsRef.current = ws;
 
         // Wait for WebSocket to connect
