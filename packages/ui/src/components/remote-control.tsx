@@ -20,8 +20,8 @@ import {
 } from '../core/webrtc-messages';
 import { AxFetcher, AxStatus } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
+import { withAuthenticationToken } from '../core/remote-control-url';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
-import { withAuthenticationToken } from './remote-control-url';
 
 declare global {
   interface Window {
