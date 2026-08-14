@@ -140,18 +140,8 @@ describe('iOS tunnel process state', () => {
   });
 
   test('does not mistake a reused PID for the spawned child', () => {
-    expect(
-      isSpawnedTunnelProcessAlive(
-        { exitCode: 0, signalCode: null },
-        process.pid,
-      ),
-    ).toBe(false);
-    expect(
-      isSpawnedTunnelProcessAlive(
-        { exitCode: null, signalCode: null },
-        process.pid,
-      ),
-    ).toBe(true);
+    expect(isSpawnedTunnelProcessAlive({ exitCode: 0, signalCode: null }, process.pid)).toBe(false);
+    expect(isSpawnedTunnelProcessAlive({ exitCode: null, signalCode: null }, process.pid)).toBe(true);
   });
 
   test('selects only owners correlated with the fetched server tunnel ID', () => {
@@ -349,10 +339,11 @@ describe('iOS tunnel process state', () => {
     pruneTunnelLogs(INSTANCE_ID, root, 2);
     const directory = tunnelProcessPaths(INSTANCE_ID, OWNER_1, root).directory;
     expect(
-      fs.readdirSync(directory).filter((entry) => entry.endsWith('.log')).sort(),
-    ).toEqual(
-      [`${OWNER_2}.log`, `${OWNER_3}.log`, `${activeOwner}.log`].sort(),
-    );
+      fs
+        .readdirSync(directory)
+        .filter((entry) => entry.endsWith('.log'))
+        .sort(),
+    ).toEqual([`${OWNER_2}.log`, `${OWNER_3}.log`, `${activeOwner}.log`].sort());
     expect(fs.existsSync(`${oldestPaths.log}.1`)).toBe(false);
   });
 
