@@ -20,7 +20,6 @@ import {
 } from '../core/webrtc-messages';
 import { AxFetcher, AxStatus } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
-import { withAuthenticationToken } from '../core/remote-control-url';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
 
 declare global {
@@ -436,6 +435,13 @@ const detectPlatform = (url: string): DevicePlatform => {
   }
   // Default to iOS if no Android pattern is found
   return 'ios';
+};
+
+// The endpoint may already carry query parameters, and the token may contain URL syntax.
+export const withAuthenticationToken = (url: string, token: string): string => {
+  const endpoint = new URL(url);
+  endpoint.searchParams.set('token', token);
+  return endpoint.toString();
 };
 
 type DeviceConfig = {

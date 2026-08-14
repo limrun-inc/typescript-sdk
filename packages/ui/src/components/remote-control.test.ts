@@ -1,10 +1,11 @@
-// @vitest-environment node
+// Covers `withAuthenticationToken` only — the rest of <RemoteControl> is
+// integration-tested (see vitest.config.ts).
 //
 // Assertions parse the result and read decoded parameter values, so they
 // don't depend on whether a space serializes as `+` or `%20`.
 
 import { describe, expect, test } from 'vitest';
-import { withAuthenticationToken } from './remote-control-url';
+import { withAuthenticationToken } from './remote-control';
 
 describe('withAuthenticationToken', () => {
   test('adds the token alongside query parameters already on the endpoint', () => {
