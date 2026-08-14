@@ -16,9 +16,7 @@ import {
   type TunnelOwnerProcessIdentity,
 } from '../../../lib/ios-tunnel-process';
 
-type RemoteStopOutcome =
-  | { outcome: 'none' }
-  | { outcome: 'stopped' | 'gone'; tunnelId: string };
+type RemoteStopOutcome = { outcome: 'none' } | { outcome: 'stopped' | 'gone'; tunnelId: string };
 
 export default class IosTunnelStop extends BaseCommand {
   static summary = 'Stop the active destination tunnel';
@@ -76,9 +74,7 @@ export default class IosTunnelStop extends BaseCommand {
     });
   }
 
-  private async stopRemoteTunnel(
-    resolvedInstance: LastIosInstance,
-  ): Promise<RemoteStopOutcome> {
+  private async stopRemoteTunnel(resolvedInstance: LastIosInstance): Promise<RemoteStopOutcome> {
     const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
     try {
       const status = await client.getTunnelStatus();
