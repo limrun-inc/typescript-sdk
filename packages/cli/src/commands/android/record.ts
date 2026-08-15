@@ -3,7 +3,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getAndroidInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -60,7 +60,7 @@ export default class AndroidRecord extends BaseCommand {
       }
 
       if (args.action === 'start') {
-        if (hasActiveSession(id)) {
+        if (await ensureDaemonSession(resolvedInstance)) {
           await sendSessionCommand(id, 'start-recording', [flags.quality]);
         } else {
           const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
@@ -80,7 +80,7 @@ export default class AndroidRecord extends BaseCommand {
         presignedUrl: flags['presigned-url'],
       };
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'stop-recording', [saveTo]);
         this.log(`Recording saved to ${outputPath}`);
         if (flags['presigned-url']) {

@@ -2,7 +2,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -33,7 +33,7 @@ export default class IosToggleKeyboard extends BaseCommand {
         this.error('ios toggle-keyboard only supports iOS instances');
       }
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'toggle-keyboard');
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

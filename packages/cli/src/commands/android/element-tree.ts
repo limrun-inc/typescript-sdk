@@ -2,7 +2,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getAndroidInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -36,7 +36,7 @@ export default class AndroidElementTree extends BaseCommand {
         this.error('android element-tree only supports Android instances');
       }
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         const tree = await sendSessionCommand(id, 'element-tree');
         if (flags.json) {
           this.outputJson(tree);

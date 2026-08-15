@@ -6,7 +6,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -105,7 +105,7 @@ export default class IosInstallApp extends BaseCommand {
         };
       }
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         const result = await sendSessionCommand(id, 'install-app', [downloadUrl, installOptions]);
         if (flags.json) {
           this.outputJson(result);

@@ -2,7 +2,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getAndroidInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -54,7 +54,7 @@ export default class AndroidSetWifiBandwidth extends BaseCommand {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       const id = resolvedInstance.id;
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'set-wifi-bandwidth', [bandwidth]);
       } else {
         const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);

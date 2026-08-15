@@ -3,7 +3,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -61,7 +61,7 @@ export default class IosRecord extends BaseCommand {
       }
 
       if (args.action === 'start') {
-        if (hasActiveSession(id)) {
+        if (await ensureDaemonSession(resolvedInstance)) {
           await sendSessionCommand(id, 'start-recording', [flags.quality]);
         } else {
           const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
@@ -81,7 +81,7 @@ export default class IosRecord extends BaseCommand {
         presignedUrl: flags['presigned-url'],
       };
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'stop-recording', [saveTo]);
         this.log(`Recording saved to ${outputPath}`);
         if (flags['presigned-url']) {

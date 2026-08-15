@@ -2,6 +2,7 @@ import net from 'net';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { spawn } from 'child_process';
 import { createInstanceClient, Ios, type InstanceClient } from '@limrun/api';
 import { type InstanceType } from './instance-client-factory';
 
@@ -11,7 +12,9 @@ import { type InstanceType } from './instance-client-factory';
 import crypto from 'crypto';
 
 const SESSIONS_ROOT = path.join(os.homedir(), '.lim', 'sessions');
-const KEEPALIVE_INTERVAL_MS = 60 * 1000;
+/** How often the daemon checks whether it has been idle long enough to exit. */
+const IDLE_CHECK_INTERVAL_MS = 60 * 1000;
+/** The daemon exits after this long without a command, so idle daemons don't accumulate. */
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
 export { SESSIONS_ROOT };
@@ -126,6 +129,49 @@ export function stopDaemon(instanceId: string): void {
 }
 
 /**
+ * Spawn a detached daemon process for the instance and wait until its socket
+ * is accepting connections. Saves the session state first so the daemon can
+ * read the credentials. Rejects if the daemon does not come up within waitMs.
+ */
+export async function spawnSessionDaemon(
+  state: SessionState,
+  opts: { waitMs?: number } = {},
+): Promise<void> {
+  const id = state.instanceId;
+  saveState(id, state);
+
+  const daemonScript = path.join(__dirname, 'daemon.js');
+  const child = spawn(process.execPath, [daemonScript], {
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, LIM_DAEMON_INSTANCE_ID: id },
+  });
+  child.unref();
+
+  const sock = socketPath(id);
+  const startTime = Date.now();
+  const timeout = opts.waitMs ?? 15000;
+
+  await new Promise<void>((resolve, reject) => {
+    child.on('error', reject);
+
+    const check = () => {
+      if (fs.existsSync(sock)) {
+        resolve();
+        return;
+      }
+      if (Date.now() - startTime > timeout) {
+        reject(new Error(`Daemon failed to start within ${Math.round(timeout / 1000)} seconds`));
+        return;
+      }
+      setTimeout(check, 100);
+    };
+
+    setTimeout(check, 100);
+  });
+}
+
+/**
  * List all instance IDs that have an active daemon running.
  */
 export function listActiveSessions(): { instanceId: string; pid: number }[] {
@@ -206,7 +252,7 @@ export function startDaemonServer(): void {
   let instanceClient: (InstanceClient | Ios.InstanceClient) | null = null;
   let instanceType: InstanceType | null = null;
   let lastCommandAt = Date.now();
-  let keepAliveInterval: NodeJS.Timeout | undefined;
+  let idleCheckInterval: NodeJS.Timeout | undefined;
 
   async function getClient(): Promise<{ type: InstanceType; client: InstanceClient | Ios.InstanceClient }> {
     if (instanceClient && instanceType) {
@@ -244,26 +290,18 @@ export function startDaemonServer(): void {
     }
   }
 
-  function sendClientKeepAlive(client: InstanceClient | Ios.InstanceClient): void {
-    const maybeClient = client as { keepAlive?: () => void };
-    maybeClient.keepAlive?.();
-  }
-
-  function startKeepAliveLoop(): void {
-    if (keepAliveInterval) {
-      clearInterval(keepAliveInterval);
+  // The daemon deliberately sends no instance keep-alives: it must not extend
+  // the instance's inactivityTimeout beyond what actual commands do. It only
+  // exits itself once it has been idle long enough.
+  function startIdleExitLoop(): void {
+    if (idleCheckInterval) {
+      clearInterval(idleCheckInterval);
     }
-    keepAliveInterval = setInterval(() => {
-      if (!instanceClient) {
-        return;
-      }
+    idleCheckInterval = setInterval(() => {
       if (Date.now() - lastCommandAt > INACTIVITY_TIMEOUT_MS) {
-        return;
+        shutdown();
       }
-      try {
-        sendClientKeepAlive(instanceClient);
-      } catch {}
-    }, KEEPALIVE_INTERVAL_MS);
+    }, IDLE_CHECK_INTERVAL_MS);
   }
 
   function send(socket: net.Socket, resp: DaemonResponse): void {
@@ -505,9 +543,9 @@ export function startDaemonServer(): void {
   });
 
   function cleanup(): void {
-    if (keepAliveInterval) {
-      clearInterval(keepAliveInterval);
-      keepAliveInterval = undefined;
+    if (idleCheckInterval) {
+      clearInterval(idleCheckInterval);
+      idleCheckInterval = undefined;
     }
     try {
       fs.unlinkSync(sock);
@@ -532,7 +570,7 @@ export function startDaemonServer(): void {
   });
 
   server.listen(sock, () => {
-    startKeepAliveLoop();
+    startIdleExitLoop();
     fs.writeFileSync(pid, String(process.pid), { mode: 0o600 });
     try {
       fs.chmodSync(sock, 0o600);

@@ -2,7 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -44,7 +44,7 @@ export default class IosTap extends BaseCommand {
         this.error('ios tap only supports iOS instances');
       }
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'tap', [args.x, args.y]);
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

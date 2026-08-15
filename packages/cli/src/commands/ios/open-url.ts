@@ -2,7 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -40,7 +40,7 @@ export default class IosOpenUrl extends BaseCommand {
         this.error('ios open-url only supports iOS instances');
       }
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'open-url', [args.url]);
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

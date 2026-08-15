@@ -2,7 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getAndroidInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -44,7 +44,7 @@ export default class AndroidTap extends BaseCommand {
         this.error('android tap only supports Android instances');
       }
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'tap', [args.x, args.y]);
       } else {
         const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);

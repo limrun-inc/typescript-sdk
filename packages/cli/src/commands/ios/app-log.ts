@@ -2,7 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -49,7 +49,7 @@ export default class IosAppLog extends BaseCommand {
       const id = resolvedInstance.id;
 
       if (!flags.follow) {
-        if (hasActiveSession(id)) {
+        if (await ensureDaemonSession(resolvedInstance)) {
           const output = await sendSessionCommand(id, 'app-log-tail', [args.bundleId, flags.tail]);
           this.log(String(output));
         } else {
