@@ -20,6 +20,7 @@ import {
 } from './lib/config';
 import { login } from './lib/auth';
 import { getScopeKey, isGlobalScopeKey, setScopeOverride } from './lib/scope';
+import { envInstanceTarget } from './lib/set-instance';
 import { renderTable } from './lib/formatting';
 import { stopDaemon } from './lib/daemon';
 import { detectInstanceType } from './lib/instance-client-factory';
@@ -95,11 +96,12 @@ export abstract class BaseCommand extends Command {
       const apiKey = flags?.['api-key'] || config.apiKey;
       const baseURL = config.apiEndpoint;
 
-      if (!apiKey) {
-        this.error('Not authenticated. Run `lim login` first, or provide --api-key.');
-      }
-
-      this._client = new Limrun({ apiKey: apiKey as string, baseURL });
+      // Without a key, still hand out a client: instance-credential paths
+      // (createClient with an instance apiUrl + token) never send the
+      // management key, so set-instance and env-pinned targets work keyless.
+      // An actual management call gets a 401 and flows into the existing
+      // AuthenticationError handling, same as an expired key.
+      this._client = new Limrun({ apiKey: (apiKey as string) || 'unauthenticated', baseURL });
     }
     return this._client;
   }
@@ -152,7 +154,7 @@ export abstract class BaseCommand extends Command {
   }
 
   /** ` in this workspace (<key>)`, or empty when resolved to the shared global slot. */
-  private scopeSuffix(): string {
+  protected scopeSuffix(): string {
     const key = getScopeKey();
     return isGlobalScopeKey(key) ? '' : ` in this workspace (${key})`;
   }
@@ -349,6 +351,12 @@ export abstract class BaseCommand extends Command {
       return instance;
     }
 
+    const envTarget = envInstanceTarget('android');
+    if (envTarget) {
+      this._lastResolvedInstanceId = envTarget.id;
+      return envTarget;
+    }
+
     const instance = loadLastAndroidInstance();
     if (instance) {
       this._lastResolvedInstanceId = instance.id;
@@ -368,6 +376,12 @@ export abstract class BaseCommand extends Command {
       const instance = this.iosInstanceFromId(id);
       this._lastResolvedInstanceId = instance.id;
       return instance;
+    }
+
+    const envTarget = envInstanceTarget('ios');
+    if (envTarget) {
+      this._lastResolvedInstanceId = envTarget.id;
+      return envTarget;
     }
 
     const instance = loadLastIosInstance();
@@ -394,6 +408,20 @@ export abstract class BaseCommand extends Command {
       throw new Error(
         'Sessions are for device interaction. Xcode and gradle instances use sync/build instead.',
       );
+    }
+
+    const envIos = envInstanceTarget('ios');
+    if (envIos) {
+      this._lastResolvedExpectedType = 'ios';
+      this._lastResolvedInstanceId = envIos.id;
+      return envIos;
+    }
+
+    const envAndroid = envInstanceTarget('android');
+    if (envAndroid) {
+      this._lastResolvedExpectedType = 'android';
+      this._lastResolvedInstanceId = envAndroid.id;
+      return envAndroid;
     }
 
     const ios = loadLastIosInstance();
@@ -429,6 +457,12 @@ export abstract class BaseCommand extends Command {
       return target;
     }
 
+    const envTarget = envInstanceTarget('xcode');
+    if (envTarget) {
+      this._lastResolvedInstanceId = envTarget.id;
+      return envTarget;
+    }
+
     const target = loadLastXcodeInstance();
     if (target) {
       this._lastResolvedInstanceId = target.id;
@@ -450,6 +484,14 @@ export abstract class BaseCommand extends Command {
       const target = this.xcodeTargetFromId(id);
       this._lastResolvedInstanceId = target.id;
       return target;
+    }
+
+    // An env-pinned target is as explicit as --id: it wins over the cached
+    // last-instance and is never bypassed for a fresh auto-created one.
+    const envTarget = envInstanceTarget('xcode');
+    if (envTarget) {
+      this._lastResolvedInstanceId = envTarget.id;
+      return envTarget;
     }
 
     const target = loadLastXcodeInstance();
@@ -489,6 +531,19 @@ export abstract class BaseCommand extends Command {
       }
       this._lastResolvedInstanceId = target.id;
       return target;
+    }
+
+    // An env-pinned target is as explicit as --id, so it gets the same
+    // attached-simulator requirement instead of a silent fallback.
+    const envTarget = envInstanceTarget('xcode');
+    if (envTarget) {
+      if (!(await this.xcodeTargetHasAttachedSimulator(envTarget, false))) {
+        throw new Error(
+          `--ios requires an Xcode instance with an attached simulator, but the one pinned by LIM_XCODE_INSTANCE_URL (${envTarget.id}) has none. Attach one with: lim xcode attach-simulator`,
+        );
+      }
+      this._lastResolvedInstanceId = envTarget.id;
+      return envTarget;
     }
 
     const target = loadLastXcodeInstance();
@@ -936,6 +991,11 @@ export abstract class BaseCommand extends Command {
       const target = this.gradleTargetFromId(id);
       this._lastResolvedInstanceId = target.id;
       return target;
+    }
+    const envTarget = envInstanceTarget('gradle');
+    if (envTarget) {
+      this._lastResolvedInstanceId = envTarget.id;
+      return envTarget;
     }
     const target = loadLastGradleInstance();
     if (target) {

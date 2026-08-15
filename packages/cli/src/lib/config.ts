@@ -575,6 +575,29 @@ function saveLastInstance(
   return record;
 }
 
+/**
+ * Persist a caller-built record as the last-used instance of its type in the
+ * current workspace scope. Used by set-instance, where the record comes from
+ * user-supplied credentials instead of an API instance object.
+ */
+export function setLastInstance(
+  record: LastAndroidInstance | LastIosInstance | LastXcodeInstance | LastGradleInstance,
+): void {
+  mutate((file, scopeKey) => {
+    const scope = ensureScope(file, scopeKey);
+    if (record.type === 'android') {
+      scope.android = record;
+    } else if (record.type === 'ios') {
+      scope.ios = record;
+    } else if (record.type === 'gradle') {
+      scope.gradle = record;
+    } else {
+      scope.xcode = record;
+    }
+    scope.lastUsedAt = new Date().toISOString();
+  });
+}
+
 /** Returns the record it persisted, so callers don't rebuild the same shape. */
 export function registerCreatedInstance(
   instanceOrId: InstanceInput,
