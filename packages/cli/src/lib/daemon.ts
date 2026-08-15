@@ -176,10 +176,7 @@ function acquireSpawnLock(lock: string): boolean {
  * Concurrent callers are single-flighted through a lock file: only one spawns,
  * the rest wait for the same daemon. Rejects if it is not ready within waitMs.
  */
-export async function spawnSessionDaemon(
-  state: SessionState,
-  opts: { waitMs?: number } = {},
-): Promise<void> {
+export async function spawnSessionDaemon(state: SessionState, opts: { waitMs?: number } = {}): Promise<void> {
   const id = state.instanceId;
   saveState(id, state);
 
