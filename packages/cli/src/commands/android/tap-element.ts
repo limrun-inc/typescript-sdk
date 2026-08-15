@@ -3,7 +3,7 @@ import { BaseCommand } from '../../base-command';
 import { androidSelectorFlags, buildAndroidSelector } from '../../lib/android-selector';
 import {
   getAndroidInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -46,7 +46,7 @@ export default class AndroidTapElement extends BaseCommand {
         );
       }
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         const result = await sendSessionCommand(id, 'tap-element', [selector]);
         if (flags.json) this.outputJson(result);
         else this.log('Element tapped');

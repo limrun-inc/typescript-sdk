@@ -3,7 +3,7 @@ import { Ios } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -86,7 +86,7 @@ export default class IosTapElement extends BaseCommand {
         activate: flags.activate as Ios.TapElementActivation | undefined,
         scrollSearch: flags['scroll-search'],
       };
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         // timeoutMs is the SDK's total budget for the call (scroll search
         // included); the IPC socket must not give up first.
         const ipcTimeoutMs = Ios.TAP_ELEMENT_TIMEOUT_MS + 15_000;

@@ -2,7 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -42,7 +42,7 @@ export default class IosPressKey extends BaseCommand {
         this.error('ios press-key only supports iOS instances');
       }
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'press-key', [args.key, flags.modifier]);
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

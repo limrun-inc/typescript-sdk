@@ -2,7 +2,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -36,7 +36,7 @@ export default class IosElementTree extends BaseCommand {
         this.error('ios element-tree only supports iOS instances');
       }
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         const tree = await sendSessionCommand(id, 'element-tree');
         if (flags.json) {
           this.outputJson(tree);

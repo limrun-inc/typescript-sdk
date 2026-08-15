@@ -3,7 +3,7 @@ import { BaseCommand } from '../../base-command';
 import { androidSelectorFlags, buildAndroidSelector } from '../../lib/android-selector';
 import {
   getAndroidInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -63,7 +63,7 @@ export default class AndroidFindElement extends BaseCommand {
       }
 
       let result: FindElementResult;
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         result = (await sendSessionCommand(id, 'find-element', [selector, flags.limit])) as FindElementResult;
       } else {
         const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);

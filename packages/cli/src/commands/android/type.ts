@@ -3,7 +3,7 @@ import { BaseCommand } from '../../base-command';
 import { androidTargetFlags, buildAndroidTarget } from '../../lib/android-selector';
 import {
   getAndroidInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -43,7 +43,7 @@ export default class AndroidType extends BaseCommand {
 
       const target = buildAndroidTarget(flags);
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'type', [target, args.text]);
       } else {
         const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);

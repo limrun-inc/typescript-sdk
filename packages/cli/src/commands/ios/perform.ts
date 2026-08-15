@@ -4,7 +4,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -249,7 +249,7 @@ YAML example:
       const ipcTimeoutMs = timeoutMs + IPC_TIMEOUT_BUFFER_MS;
 
       let result: PerformActionsResult;
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         result = (await sendSessionCommand(
           id,
           'perform-actions',

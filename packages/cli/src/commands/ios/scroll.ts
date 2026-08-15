@@ -2,7 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 import { parsePointFlag } from '../../lib/parse-point';
@@ -60,7 +60,7 @@ export default class IosScroll extends BaseCommand {
       const scrollOptions =
         momentum === undefined && coordinate === undefined ? undefined : { momentum, coordinate };
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'scroll', [args.direction, flags.amount, scrollOptions]);
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

@@ -2,7 +2,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -34,7 +34,7 @@ export default class IosListApps extends BaseCommand {
       const id = resolvedInstance.id;
       let apps: any[];
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         apps = (await sendSessionCommand(id, 'list-apps')) as any[];
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

@@ -2,7 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -52,7 +52,7 @@ export default class IosType extends BaseCommand {
       // The SDK sends requireFocus on the wire only when false, so the
       // default flag value keeps legacy payloads byte-identical.
       const options = { requireFocus: flags['require-focus'] };
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'type', [args.text, flags.enter, options]);
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

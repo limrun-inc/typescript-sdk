@@ -2,6 +2,7 @@ import net from 'net';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { spawn } from 'child_process';
 import { createInstanceClient, Ios, type InstanceClient } from '@limrun/api';
 import { type InstanceType } from './instance-client-factory';
 
@@ -11,7 +12,9 @@ import { type InstanceType } from './instance-client-factory';
 import crypto from 'crypto';
 
 const SESSIONS_ROOT = path.join(os.homedir(), '.lim', 'sessions');
-const KEEPALIVE_INTERVAL_MS = 60 * 1000;
+/** How often the daemon checks whether it has been idle long enough to exit. */
+const IDLE_CHECK_INTERVAL_MS = 60 * 1000;
+/** The daemon exits after this long without a command, so idle daemons don't accumulate. */
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
 export { SESSIONS_ROOT };
@@ -125,6 +128,116 @@ export function stopDaemon(instanceId: string): void {
   clearSession(instanceId);
 }
 
+/** A spawn lock older than this is from a crashed process and can be taken over. */
+const SPAWN_LOCK_STALE_MS = 20 * 1000;
+
+/** A lock is stale when its holder process is dead, or by age if unreadable. */
+function isSpawnLockStale(lock: string): boolean {
+  const holder = parseInt(fs.readFileSync(lock, 'utf-8').trim(), 10);
+  if (!isNaN(holder)) {
+    try {
+      process.kill(holder, 0);
+      return false;
+    } catch {
+      return true;
+    }
+  }
+  return Date.now() - fs.statSync(lock).mtimeMs > SPAWN_LOCK_STALE_MS;
+}
+
+/**
+ * Take the per-instance spawn lock so only one CLI process starts a daemon.
+ * Returns false when another live process holds it; that process's daemon
+ * serves us too, we just wait for it to become ready.
+ */
+function acquireSpawnLock(lock: string): boolean {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      fs.writeFileSync(lock, String(process.pid), { flag: 'wx', mode: 0o600 });
+      return true;
+    } catch {
+      try {
+        if (!isSpawnLockStale(lock)) return false;
+        fs.unlinkSync(lock);
+      } catch {
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Spawn a detached daemon process for the instance and wait until it is ready.
+ * Ready means the socket exists and the daemon has written its live pid; the
+ * socket alone is not enough because a stale file or the window before the
+ * pid write would make sendCommand fail its liveness check.
+ * Saves the session state first so the daemon can read the credentials.
+ * Concurrent callers are single-flighted through a lock file: only one spawns,
+ * the rest wait for the same daemon. Rejects if it is not ready within waitMs.
+ */
+export async function spawnSessionDaemon(state: SessionState, opts: { waitMs?: number } = {}): Promise<void> {
+  const id = state.instanceId;
+  saveState(id, state);
+
+  const lock = path.join(sessionDir(id), 'spawn.lock');
+  const ownsLock = acquireSpawnLock(lock);
+
+  let child: ReturnType<typeof spawn> | undefined;
+  if (ownsLock) {
+    const daemonScript = path.join(__dirname, 'daemon.js');
+    child = spawn(process.execPath, [daemonScript], {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, LIM_DAEMON_INSTANCE_ID: id },
+    });
+    child.unref();
+  }
+
+  const sock = socketPath(id);
+  const startTime = Date.now();
+  const timeout = opts.waitMs ?? 15000;
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      child?.on('error', reject);
+
+      const check = () => {
+        if (fs.existsSync(sock) && isDaemonRunning(id)) {
+          resolve();
+          return;
+        }
+        // The lock holder released without a daemon coming up; fail now
+        // instead of waiting out the full timeout.
+        if (!ownsLock && !fs.existsSync(lock)) {
+          reject(new Error('Daemon spawned by a concurrent command failed to start'));
+          return;
+        }
+        if (Date.now() - startTime > timeout) {
+          reject(new Error(`Daemon failed to start within ${Math.round(timeout / 1000)} seconds`));
+          return;
+        }
+        setTimeout(check, 100);
+      };
+
+      setTimeout(check, 100);
+    });
+  } catch (err) {
+    // Don't leave a half-started daemon behind: after the lock is released
+    // it could race a follow-up spawn on the socket and pid files.
+    try {
+      child?.kill();
+    } catch {}
+    throw err;
+  } finally {
+    if (ownsLock) {
+      try {
+        fs.unlinkSync(lock);
+      } catch {}
+    }
+  }
+}
+
 /**
  * List all instance IDs that have an active daemon running.
  */
@@ -196,6 +309,12 @@ export function startDaemonServer(): void {
   const sock = socketPath(instanceId);
   const pid = pidFile(instanceId);
 
+  // Another live daemon already serves this instance. Exit instead of
+  // unlinking its socket and overwriting its pid file.
+  if (isDaemonRunning(instanceId)) {
+    process.exit(0);
+  }
+
   ensureDir(dir);
 
   // Clean up stale socket
@@ -206,7 +325,7 @@ export function startDaemonServer(): void {
   let instanceClient: (InstanceClient | Ios.InstanceClient) | null = null;
   let instanceType: InstanceType | null = null;
   let lastCommandAt = Date.now();
-  let keepAliveInterval: NodeJS.Timeout | undefined;
+  let idleCheckInterval: NodeJS.Timeout | undefined;
 
   async function getClient(): Promise<{ type: InstanceType; client: InstanceClient | Ios.InstanceClient }> {
     if (instanceClient && instanceType) {
@@ -244,26 +363,18 @@ export function startDaemonServer(): void {
     }
   }
 
-  function sendClientKeepAlive(client: InstanceClient | Ios.InstanceClient): void {
-    const maybeClient = client as { keepAlive?: () => void };
-    maybeClient.keepAlive?.();
-  }
-
-  function startKeepAliveLoop(): void {
-    if (keepAliveInterval) {
-      clearInterval(keepAliveInterval);
+  // The daemon deliberately sends no instance keep-alives: it must not extend
+  // the instance's inactivityTimeout beyond what actual commands do. It only
+  // exits itself once it has been idle long enough.
+  function startIdleExitLoop(): void {
+    if (idleCheckInterval) {
+      clearInterval(idleCheckInterval);
     }
-    keepAliveInterval = setInterval(() => {
-      if (!instanceClient) {
-        return;
-      }
+    idleCheckInterval = setInterval(() => {
       if (Date.now() - lastCommandAt > INACTIVITY_TIMEOUT_MS) {
-        return;
+        shutdown();
       }
-      try {
-        sendClientKeepAlive(instanceClient);
-      } catch {}
-    }, KEEPALIVE_INTERVAL_MS);
+    }, IDLE_CHECK_INTERVAL_MS);
   }
 
   function send(socket: net.Socket, resp: DaemonResponse): void {
@@ -505,10 +616,17 @@ export function startDaemonServer(): void {
   });
 
   function cleanup(): void {
-    if (keepAliveInterval) {
-      clearInterval(keepAliveInterval);
-      keepAliveInterval = undefined;
+    if (idleCheckInterval) {
+      clearInterval(idleCheckInterval);
+      idleCheckInterval = undefined;
     }
+    // Only remove files this process owns. If the pid file names another
+    // process, a newer daemon took over and these are its files now.
+    let owner: string | undefined;
+    try {
+      owner = fs.readFileSync(pid, 'utf-8').trim();
+    } catch {}
+    if (owner !== String(process.pid)) return;
     try {
       fs.unlinkSync(sock);
     } catch {}
@@ -532,7 +650,7 @@ export function startDaemonServer(): void {
   });
 
   server.listen(sock, () => {
-    startKeepAliveLoop();
+    startIdleExitLoop();
     fs.writeFileSync(pid, String(process.pid), { mode: 0o600 });
     try {
       fs.chmodSync(sock, 0o600);

@@ -3,7 +3,7 @@ import type { Ios } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 import {
@@ -84,7 +84,7 @@ export default class IosLaunchApp extends BaseCommand {
       });
 
       if (flags.detach) {
-        if (hasActiveSession(id)) {
+        if (await ensureDaemonSession(resolvedInstance)) {
           await sendSessionCommand(id, 'launch-app', [args.bundleId, launchArgument]);
         } else {
           const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

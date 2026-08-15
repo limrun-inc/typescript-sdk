@@ -2,7 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -88,7 +88,7 @@ export default class IosSetText extends BaseCommand {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         const result = await sendSessionCommand(id, 'set-text', [args.text, target]);
         if (flags.json) this.outputJson(result);
         else this.log('Text set');
