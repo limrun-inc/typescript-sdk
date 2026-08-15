@@ -4,7 +4,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getAndroidInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -62,7 +62,7 @@ export default class AndroidInstallApp extends BaseCommand {
         downloadUrl = asset.signedDownloadUrl;
       }
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'install-app', [downloadUrl]);
         this.log('App sent to instance');
         return;

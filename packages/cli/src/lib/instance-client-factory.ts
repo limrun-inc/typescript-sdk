@@ -1,5 +1,6 @@
 import Limrun, { createInstanceClient, Ios, type InstanceClient } from '@limrun/api';
 import { isSessionActive, sendCommand } from './daemon-client';
+import { spawnSessionDaemon } from './daemon';
 import { saveInstanceCache, type LastAndroidInstance, type LastIosInstance } from './config';
 
 export type InstanceType = 'android' | 'ios' | 'xcode' | 'gradle';
@@ -31,11 +32,51 @@ export function detectInstanceType(id: string): InstanceType {
   );
 }
 
+let sessionAutoStart = { enabled: true, silent: false };
+
+/** Configure daemon auto-start for this invocation; wired from the --daemon and --json flags. */
+export function setSessionAutoStart(config: { enabled: boolean; silent?: boolean }): void {
+  sessionAutoStart = { enabled: config.enabled, silent: config.silent ?? false };
+}
+
+/** Injectable for tests. */
+type SpawnFn = typeof spawnSessionDaemon;
+
 /**
- * Check if a daemon session is active for the given instance ID.
+ * Ensure a daemon session exists for the target so the command can use the
+ * ~50ms Unix-socket path, starting one if needed. Returns false when the
+ * command should fall back to a direct WebSocket instead: auto-start disabled,
+ * credentials not known yet (the direct path fetches and caches them, so the
+ * next command auto-starts), or the daemon failed to start.
  */
-export function hasActiveSession(id: string): boolean {
-  return isSessionActive(id);
+export async function ensureDaemonSession(
+  target: LastAndroidInstance | LastIosInstance,
+  spawnFn: SpawnFn = spawnSessionDaemon,
+): Promise<boolean> {
+  if (isSessionActive(target.id)) return true;
+  if (!sessionAutoStart.enabled) return false;
+  if (!target.apiUrl || !target.token) return false;
+
+  try {
+    await spawnFn({
+      instanceId: target.id,
+      instanceType: target.type,
+      apiUrl: target.apiUrl,
+      adbUrl: target.type === 'android' ? target.adbWebSocketUrl : undefined,
+      token: target.token,
+    });
+  } catch (err) {
+    if (!sessionAutoStart.silent) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Could not start WebSocket daemon for ${target.id} (${message}); connecting directly.`);
+    }
+    return false;
+  }
+
+  if (!sessionAutoStart.silent) {
+    console.error(`WebSocket daemon started for ${target.id}.`);
+  }
+  return true;
 }
 
 /**

@@ -23,7 +23,7 @@ import { getScopeKey, isGlobalScopeKey, setScopeOverride } from './lib/scope';
 import { envInstanceTarget } from './lib/set-instance';
 import { renderTable } from './lib/formatting';
 import { stopDaemon } from './lib/daemon';
-import { detectInstanceType } from './lib/instance-client-factory';
+import { detectInstanceType, setSessionAutoStart } from './lib/instance-client-factory';
 import { deleteCreatedInstance } from './lib/instance-cleanup';
 import { defaultSleep as sleep } from '@limrun/api';
 import {
@@ -85,6 +85,13 @@ export abstract class BaseCommand extends Command {
         'Workspace used to resolve the most recent instance when no ID is given. Defaults to the current git repo/worktree (or a `lim set-workspace-dir` assignment), so parallel agents in separate worktrees stay isolated automatically. Can also be set via LIM_WORKSPACE.',
       env: 'LIM_WORKSPACE',
     }),
+    daemon: Flags.boolean({
+      description:
+        'Route device commands through a background WebSocket daemon, starting it on first use, so repeated commands reuse the connection (~50ms instead of a fresh handshake). Disable with --no-daemon or LIM_DAEMON=false.',
+      default: true,
+      allowNo: true,
+      env: 'LIM_DAEMON',
+    }),
   };
 
   private _client?: Limrun;
@@ -130,6 +137,10 @@ export abstract class BaseCommand extends Command {
     if (typeof workspace === 'string' && workspace.trim()) {
       setScopeOverride(workspace.trim());
     }
+    setSessionAutoStart({
+      enabled: flags['daemon'] !== false,
+      silent: Boolean(flags['json']) || Boolean(flags['quiet']),
+    });
     this.captureCommandIntent(flags);
   }
 

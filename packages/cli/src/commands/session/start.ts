@@ -1,9 +1,6 @@
-import { spawn } from 'child_process';
-import fs from 'fs';
-import path from 'path';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { isDaemonRunning, saveState, socketPath, type SessionState } from '../../lib/daemon';
+import { isDaemonRunning, spawnSessionDaemon, type SessionState } from '../../lib/daemon';
 import { saveInstanceCache } from '../../lib/config';
 
 export default class SessionStart extends BaseCommand {
@@ -99,39 +96,7 @@ export default class SessionStart extends BaseCommand {
         adbUrl,
         token,
       };
-      saveState(id, state);
-
-      // Spawn daemon with the instance ID as env var
-      const daemonScript = path.join(__dirname, '..', '..', 'lib', 'daemon.js');
-      const child = spawn(process.execPath, [daemonScript], {
-        detached: true,
-        stdio: 'ignore',
-        env: { ...process.env, LIM_DAEMON_INSTANCE_ID: id },
-      });
-      child.unref();
-
-      // Wait for daemon to be ready
-      const sock = socketPath(id);
-      const startTime = Date.now();
-      const timeout = 15000;
-
-      await new Promise<void>((resolve, reject) => {
-        child.on('error', reject);
-
-        const check = () => {
-          if (fs.existsSync(sock)) {
-            resolve();
-            return;
-          }
-          if (Date.now() - startTime > timeout) {
-            reject(new Error('Daemon failed to start within 15 seconds'));
-            return;
-          }
-          setTimeout(check, 100);
-        };
-
-        setTimeout(check, 100);
-      });
+      await spawnSessionDaemon(state);
 
       this.log(`Session started for ${id} (${type})`);
     });

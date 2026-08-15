@@ -2,7 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -47,7 +47,7 @@ export default class IosInfo extends BaseCommand {
       const id = resolvedInstance.id;
 
       let info: DeviceInfo;
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         info = (await sendSessionCommand(id, 'device-info')) as DeviceInfo;
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

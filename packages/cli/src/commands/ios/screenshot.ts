@@ -4,7 +4,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -43,7 +43,7 @@ export default class IosScreenshot extends BaseCommand {
       }
 
       let screenshot: any;
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         screenshot = await sendSessionCommand(id, 'screenshot');
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

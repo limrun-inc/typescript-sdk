@@ -3,7 +3,7 @@ import { BaseCommand } from '../../base-command';
 import { androidTargetFlags, buildAndroidTarget } from '../../lib/android-selector';
 import {
   getAndroidInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -51,7 +51,7 @@ export default class AndroidScroll extends BaseCommand {
 
       const target = buildAndroidTarget(flags);
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         if (target) {
           await sendSessionCommand(id, 'scroll', [target, args.direction, flags.amount]);
         } else {

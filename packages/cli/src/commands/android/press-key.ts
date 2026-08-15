@@ -2,7 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getAndroidInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -42,7 +42,7 @@ export default class AndroidPressKey extends BaseCommand {
         this.error('android press-key only supports Android instances');
       }
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'press-key', [args.key, flags.modifier]);
       } else {
         const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);

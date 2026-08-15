@@ -2,7 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import {
   getAndroidInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -40,7 +40,7 @@ export default class AndroidOpenUrl extends BaseCommand {
         this.error('android open-url only supports Android instances');
       }
 
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'open-url', [args.url]);
       } else {
         const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);

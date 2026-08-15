@@ -4,7 +4,7 @@ import { BaseCommand } from '../../base-command';
 import { parsePointFlag } from '../../lib/parse-point';
 import {
   getIosInstanceClient,
-  hasActiveSession,
+  ensureDaemonSession,
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
@@ -56,7 +56,7 @@ export default class IosSwipe extends BaseCommand {
       // gets a buffer on top, so the real error surfaces before the socket
       // times out.
       const timeoutMs = flags.duration + IPC_TIMEOUT_BUFFER_MS;
-      if (hasActiveSession(id)) {
+      if (await ensureDaemonSession(resolvedInstance)) {
         try {
           await sendSessionCommand(
             id,
