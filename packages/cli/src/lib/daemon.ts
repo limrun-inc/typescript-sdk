@@ -131,6 +131,20 @@ export function stopDaemon(instanceId: string): void {
 /** A spawn lock older than this is from a crashed process and can be taken over. */
 const SPAWN_LOCK_STALE_MS = 20 * 1000;
 
+/** A lock is stale when its holder process is dead, or by age if unreadable. */
+function isSpawnLockStale(lock: string): boolean {
+  const holder = parseInt(fs.readFileSync(lock, 'utf-8').trim(), 10);
+  if (!isNaN(holder)) {
+    try {
+      process.kill(holder, 0);
+      return false;
+    } catch {
+      return true;
+    }
+  }
+  return Date.now() - fs.statSync(lock).mtimeMs > SPAWN_LOCK_STALE_MS;
+}
+
 /**
  * Take the per-instance spawn lock so only one CLI process starts a daemon.
  * Returns false when another live process holds it; that process's daemon
@@ -143,7 +157,7 @@ function acquireSpawnLock(lock: string): boolean {
       return true;
     } catch {
       try {
-        if (Date.now() - fs.statSync(lock).mtimeMs <= SPAWN_LOCK_STALE_MS) return false;
+        if (!isSpawnLockStale(lock)) return false;
         fs.unlinkSync(lock);
       } catch {
         return false;
@@ -196,6 +210,12 @@ export async function spawnSessionDaemon(
           resolve();
           return;
         }
+        // The lock holder released without a daemon coming up; fail now
+        // instead of waiting out the full timeout.
+        if (!ownsLock && !fs.existsSync(lock)) {
+          reject(new Error('Daemon spawned by a concurrent command failed to start'));
+          return;
+        }
         if (Date.now() - startTime > timeout) {
           reject(new Error(`Daemon failed to start within ${Math.round(timeout / 1000)} seconds`));
           return;
@@ -205,6 +225,13 @@ export async function spawnSessionDaemon(
 
       setTimeout(check, 100);
     });
+  } catch (err) {
+    // Don't leave a half-started daemon behind: after the lock is released
+    // it could race a follow-up spawn on the socket and pid files.
+    try {
+      child?.kill();
+    } catch {}
+    throw err;
   } finally {
     if (ownsLock) {
       try {
