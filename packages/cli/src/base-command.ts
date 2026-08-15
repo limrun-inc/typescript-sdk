@@ -487,9 +487,15 @@ export abstract class BaseCommand extends Command {
     }
 
     // An env-pinned target is as explicit as --id: it wins over the cached
-    // last-instance and is never bypassed for a fresh auto-created one.
+    // last-instance, is never bypassed for a fresh auto-created one, and
+    // rejects creation-time settings the same way --id does.
     const envTarget = envInstanceTarget('xcode');
     if (envTarget) {
+      if (this.autoCreateInactivityTimeout()) {
+        throw new Error(
+          '--inactivity-timeout controls a newly created instance and cannot be combined with an instance pinned by LIM_XCODE_INSTANCE_URL.',
+        );
+      }
       this._lastResolvedInstanceId = envTarget.id;
       return envTarget;
     }
@@ -534,9 +540,15 @@ export abstract class BaseCommand extends Command {
     }
 
     // An env-pinned target is as explicit as --id, so it gets the same
-    // attached-simulator requirement instead of a silent fallback.
+    // attached-simulator requirement instead of a silent fallback, and
+    // rejects creation-time settings the same way --id does.
     const envTarget = envInstanceTarget('xcode');
     if (envTarget) {
+      if (this.autoCreateInactivityTimeout()) {
+        throw new Error(
+          '--inactivity-timeout controls a newly created instance and cannot be combined with an instance pinned by LIM_XCODE_INSTANCE_URL.',
+        );
+      }
       if (!(await this.xcodeTargetHasAttachedSimulator(envTarget, false))) {
         throw new Error(
           `--ios requires an Xcode instance with an attached simulator, but the one pinned by LIM_XCODE_INSTANCE_URL (${envTarget.id}) has none. Attach one with: lim xcode attach-simulator`,
@@ -992,8 +1004,16 @@ export abstract class BaseCommand extends Command {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
+    // An env-pinned target is as explicit as --id: creation-time settings
+    // cannot apply to it, so they error instead of silently auto-creating a
+    // fresh billed instance while the pin is ignored.
     const envTarget = envInstanceTarget('gradle');
     if (envTarget) {
+      if (this.autoCreateInactivityTimeout()) {
+        throw new Error(
+          '--inactivity-timeout controls a newly created instance and cannot be combined with an instance pinned by LIM_GRADLE_INSTANCE_URL.',
+        );
+      }
       this._lastResolvedInstanceId = envTarget.id;
       return envTarget;
     }
