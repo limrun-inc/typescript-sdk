@@ -128,10 +128,39 @@ export function stopDaemon(instanceId: string): void {
   clearSession(instanceId);
 }
 
+/** A spawn lock older than this is from a crashed process and can be taken over. */
+const SPAWN_LOCK_STALE_MS = 20 * 1000;
+
 /**
- * Spawn a detached daemon process for the instance and wait until its socket
- * is accepting connections. Saves the session state first so the daemon can
- * read the credentials. Rejects if the daemon does not come up within waitMs.
+ * Take the per-instance spawn lock so only one CLI process starts a daemon.
+ * Returns false when another live process holds it; that process's daemon
+ * serves us too, we just wait for it to become ready.
+ */
+function acquireSpawnLock(lock: string): boolean {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      fs.writeFileSync(lock, String(process.pid), { flag: 'wx', mode: 0o600 });
+      return true;
+    } catch {
+      try {
+        if (Date.now() - fs.statSync(lock).mtimeMs <= SPAWN_LOCK_STALE_MS) return false;
+        fs.unlinkSync(lock);
+      } catch {
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Spawn a detached daemon process for the instance and wait until it is ready.
+ * Ready means the socket exists and the daemon has written its live pid; the
+ * socket alone is not enough because a stale file or the window before the
+ * pid write would make sendCommand fail its liveness check.
+ * Saves the session state first so the daemon can read the credentials.
+ * Concurrent callers are single-flighted through a lock file: only one spawns,
+ * the rest wait for the same daemon. Rejects if it is not ready within waitMs.
  */
 export async function spawnSessionDaemon(
   state: SessionState,
@@ -140,35 +169,49 @@ export async function spawnSessionDaemon(
   const id = state.instanceId;
   saveState(id, state);
 
-  const daemonScript = path.join(__dirname, 'daemon.js');
-  const child = spawn(process.execPath, [daemonScript], {
-    detached: true,
-    stdio: 'ignore',
-    env: { ...process.env, LIM_DAEMON_INSTANCE_ID: id },
-  });
-  child.unref();
+  const lock = path.join(sessionDir(id), 'spawn.lock');
+  const ownsLock = acquireSpawnLock(lock);
+
+  let child: ReturnType<typeof spawn> | undefined;
+  if (ownsLock) {
+    const daemonScript = path.join(__dirname, 'daemon.js');
+    child = spawn(process.execPath, [daemonScript], {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, LIM_DAEMON_INSTANCE_ID: id },
+    });
+    child.unref();
+  }
 
   const sock = socketPath(id);
   const startTime = Date.now();
   const timeout = opts.waitMs ?? 15000;
 
-  await new Promise<void>((resolve, reject) => {
-    child.on('error', reject);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      child?.on('error', reject);
 
-    const check = () => {
-      if (fs.existsSync(sock)) {
-        resolve();
-        return;
-      }
-      if (Date.now() - startTime > timeout) {
-        reject(new Error(`Daemon failed to start within ${Math.round(timeout / 1000)} seconds`));
-        return;
-      }
+      const check = () => {
+        if (fs.existsSync(sock) && isDaemonRunning(id)) {
+          resolve();
+          return;
+        }
+        if (Date.now() - startTime > timeout) {
+          reject(new Error(`Daemon failed to start within ${Math.round(timeout / 1000)} seconds`));
+          return;
+        }
+        setTimeout(check, 100);
+      };
+
       setTimeout(check, 100);
-    };
-
-    setTimeout(check, 100);
-  });
+    });
+  } finally {
+    if (ownsLock) {
+      try {
+        fs.unlinkSync(lock);
+      } catch {}
+    }
+  }
 }
 
 /**
@@ -241,6 +284,12 @@ export function startDaemonServer(): void {
   const dir = sessionDir(instanceId);
   const sock = socketPath(instanceId);
   const pid = pidFile(instanceId);
+
+  // Another live daemon already serves this instance. Exit instead of
+  // unlinking its socket and overwriting its pid file.
+  if (isDaemonRunning(instanceId)) {
+    process.exit(0);
+  }
 
   ensureDir(dir);
 
@@ -547,6 +596,13 @@ export function startDaemonServer(): void {
       clearInterval(idleCheckInterval);
       idleCheckInterval = undefined;
     }
+    // Only remove files this process owns. If the pid file names another
+    // process, a newer daemon took over and these are its files now.
+    let owner: string | undefined;
+    try {
+      owner = fs.readFileSync(pid, 'utf-8').trim();
+    } catch {}
+    if (owner !== String(process.pid)) return;
     try {
       fs.unlinkSync(sock);
     } catch {}
