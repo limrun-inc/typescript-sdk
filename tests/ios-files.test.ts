@@ -124,4 +124,24 @@ describe('iOS file listing', () => {
 
     client.disconnect();
   });
+
+  it('includes the path and server response when listing fails', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => '{"message":"Directory not found: Documents"}',
+    });
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test/v1/ios_123/api',
+      token: 'token',
+      logLevel: 'none',
+    });
+
+    await expect(client.listFiles('Documents')).rejects.toThrow(
+      `Listing of 'Documents' failed: 404 {"message":"Directory not found: Documents"}`,
+    );
+
+    client.disconnect();
+  });
 });
