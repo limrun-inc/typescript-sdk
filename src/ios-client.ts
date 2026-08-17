@@ -270,6 +270,18 @@ export type ContainerTargetOptions = {
   containerType?: string;
 };
 
+/** A file or directory inside the simulator staging folder or an app container. */
+export type IosFileEntry = {
+  /** Entry name within the listed directory. */
+  name: string;
+  /** Entry path relative to the selected storage root; usable with pullFile/pushFile/deleteFile. */
+  path: string;
+  /** Whether the entry is a directory. */
+  isDirectory: boolean;
+  /** File size in bytes. Omitted for directories. */
+  size?: number;
+};
+
 /**
  * Options for playing a video file as the simulated camera feed.
  */
@@ -948,6 +960,17 @@ export type InstanceClient = {
    * @returns A promise that resolves to the file content.
    */
   pullFile: (name: string, opts?: ContainerTargetOptions) => Promise<Buffer>;
+
+  /**
+   * List a directory in the simulator staging folder or an app container.
+   *
+   * Returned paths are relative to the selected storage root and can be passed
+   * directly to `pullFile`, `pushFile`, or `deleteFile` with the same options.
+   *
+   * @param path Relative directory to list. Empty or `.` lists the storage root.
+   * @param opts Optional app container targeting (see `pushFile`).
+   */
+  listFiles: (path?: string, opts?: ContainerTargetOptions) => Promise<IosFileEntry[]>;
 
   /**
    * Delete a file or folder (recursively) on the simulator.
@@ -2023,6 +2046,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             xcodebuild,
             pushFile,
             pullFile,
+            listFiles,
             deleteFile,
             setCameraVideo,
             clearCameraVideo,
@@ -2610,6 +2634,33 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         throw new Error(`Download of '${name}' failed: ${response.status} ${errorBody}`);
       }
       return Buffer.from(await response.arrayBuffer());
+    };
+
+    const listFiles = async (path = '.', opts?: ContainerTargetOptions): Promise<IosFileEntry[]> => {
+      const params = new URLSearchParams();
+      if (path && path !== '.') {
+        params.set('path', path);
+      }
+      if (opts?.bundleId) {
+        params.set('bundleId', opts.bundleId);
+        if (opts.containerType) {
+          params.set('containerType', opts.containerType);
+        }
+      }
+      const query = params.toString();
+      const url = `${options.apiUrl}/files/list${query ? `?${query}` : ''}`;
+      const response = await nodeProxyTransport.fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${options.token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Listing of '${path}' failed: ${response.status} ${errorBody}`);
+      }
+      const result = (await response.json()) as { entries: IosFileEntry[] };
+      return result.entries;
     };
 
     const deleteFile = async (name: string, opts?: ContainerTargetOptions): Promise<void> => {

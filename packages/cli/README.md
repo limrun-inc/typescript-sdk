@@ -249,8 +249,9 @@ lim ios simctl -- listapps booted
 lim ios xcrun -- --sdk iphonesimulator --show-sdk-version
 lim ios xcodebuild -- -version
 lim ios push-file ./fixtures/payload.json payload.json
-lim ios pull-file documents/photo.jpeg ./photo.jpeg --bundle-id com.example.app --container-type data
-lim ios delete-file documents/photo.jpeg --bundle-id com.example.app --container-type data
+lim ios ls Documents --bundle-id com.example.app --container-type data
+lim ios pull-file Documents/photo.jpeg ./photo.jpeg --bundle-id com.example.app --container-type data
+lim ios delete-file Documents/photo.jpeg --bundle-id com.example.app --container-type data
 lim ios lsof
 ```
 
