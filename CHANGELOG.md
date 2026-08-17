@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.46.14 (2026-08-17)
+
+Full Changelog: [v0.46.13...v0.46.14](https://github.com/limrun-inc/typescript-sdk/compare/v0.46.13...v0.46.14)
+
+### Features
+
+* **cli:** let xcode attach-simulator run without an API key ([179a687](https://github.com/limrun-inc/typescript-sdk/commit/179a687ac3deb226234649666d4118796ef8d802))
+* **ios:** list files in simulator containers ([46fe85c](https://github.com/limrun-inc/typescript-sdk/commit/46fe85c62fc0db94af110341391d904340ba1595))
+
+
+### Bug Fixes
+
+* **cli:** kill timed-out daemon child and detect dead spawn-lock holders ([6b1b4b6](https://github.com/limrun-inc/typescript-sdk/commit/6b1b4b672b7dfc4e65769ecf8d9ca0b2049ffc4f))
+* **cli:** make daemon spawn race-free and readiness pid-aware ([8169937](https://github.com/limrun-inc/typescript-sdk/commit/8169937e70a28d707f10205bed3cba3562c3a818))
+
+
+### Styles
+
+* **cli:** format daemon.ts with prettier ([4d1d7e7](https://github.com/limrun-inc/typescript-sdk/commit/4d1d7e7d2a48372f97c2145048238b0728c2933f))
+
 ## 0.46.13 (2026-08-14)
 
 Full Changelog: [v0.46.12...v0.46.13](https://github.com/limrun-inc/typescript-sdk/compare/v0.46.12...v0.46.13)
