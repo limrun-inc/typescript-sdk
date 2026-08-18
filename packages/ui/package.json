@@ -1,6 +1,6 @@
 {
   "name": "@limrun/ui",
-  "version": "0.14.2",
+  "version": "0.14.3",
   "publishConfig": {
     "access": "public",
     "tag": "next"
