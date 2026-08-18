@@ -21,7 +21,6 @@ import {
 import { AxFetcher, AxStatus } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
-import { isMicrophoneCaptureWanted } from './microphone-demand';
 
 declare global {
   interface Window {
@@ -1917,7 +1916,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
 
     const isMicrophoneWanted = () =>
-      isMicrophoneCaptureWanted(microphoneEnabledRef.current, microphoneDemandActiveRef.current);
+      microphoneEnabledRef.current || microphoneDemandActiveRef.current;
 
     const sendMicrophoneStart = (ws: WebSocket) => {
       const id = `ui-mic-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
