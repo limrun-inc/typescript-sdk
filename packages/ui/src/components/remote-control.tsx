@@ -21,6 +21,7 @@ import {
 import { AxFetcher, AxStatus } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
+import { isMicrophoneCaptureWanted } from './microphone-demand';
 
 declare global {
   interface Window {
@@ -237,23 +238,20 @@ interface RemoteControlProps {
   /**
    * iOS only: when true, capture the user's microphone via
    * `getUserMedia({ audio: true })` and stream it live into the
-   * simulator's mock microphone. Unlike the camera (which is
-   * demand-driven by apps inside the sim), the microphone is
-   * user-driven: flip this prop from a button in your UI. The
-   * component handles the browser permission prompt, the WebRTC
-   * track attach (no SDP renegotiation — the audio slot is
-   * pre-allocated) and the `microphoneStart`/`microphoneStop`
-   * signaling to the host. Progress and failures are reported via
-   * `onMicrophoneStateChange`. Ignored on Android instances.
+   * simulator's mock microphone. This is a manual override: iOS apps
+   * that actively consume microphone input also trigger capture
+   * automatically, like camera demand. The component handles the
+   * browser permission prompt, WebRTC track attachment, and
+   * `microphoneStart`/`microphoneStop` signaling. Progress and failures
+   * are reported via `onMicrophoneStateChange`. Ignored on Android.
    */
   microphoneEnabled?: boolean;
 
   /**
    * Fires whenever the live-microphone pipeline changes state:
-   * after an enable attempt resolves (granted or denied), when the
-   * host acknowledges or rejects the stream, when the browser
-   * revokes the track mid-stream, and on disable. Use it to render
-   * the mic button's on/off/error state.
+   * after a manual or guest-demanded attempt resolves, when the host
+   * acknowledges or rejects the stream, when the browser revokes the
+   * track mid-stream, and when capture stops.
    */
   onMicrophoneStateChange?: (state: MicrophoneState) => void;
 }
@@ -642,14 +640,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       packetsSent?: number;
       packetsLost?: number;
     } | null>(null);
-    // User-driven outbound microphone state (iOS only). Unlike the
-    // camera, the mic is toggled by the `microphoneEnabled` prop; the
-    // track rides a pre-allocated sendonly audio transceiver so
-    // enabling/disabling is just a `replaceTrack`, plus a
-    // `microphoneStart`/`microphoneStop` WS signal so the host's
-    // audio state machine switches its source.
+    // Outbound microphone state (iOS only). The manual prop and guest-driven
+    // microphoneRequest signals share one pre-allocated audio transceiver.
     const microphoneEnabledRef = useRef(microphoneEnabled);
     microphoneEnabledRef.current = microphoneEnabled;
+    const microphoneDemandActiveRef = useRef(false);
     const onMicrophoneStateChangeRef = useRef(onMicrophoneStateChange);
     onMicrophoneStateChangeRef.current = onMicrophoneStateChange;
     const outboundMicSenderRef = useRef<RTCRtpSender | null>(null);
@@ -1921,6 +1916,21 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       return next;
     };
 
+    const isMicrophoneWanted = () =>
+      isMicrophoneCaptureWanted(microphoneEnabledRef.current, microphoneDemandActiveRef.current);
+
+    const sendMicrophoneStart = (ws: WebSocket) => {
+      const id = `ui-mic-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      micStartPendingIdRef.current = id;
+      ws.send(JSON.stringify({ type: 'microphoneStart', id }));
+    };
+
+    const sendMicrophoneResult = (ws: WebSocket, granted: boolean) => {
+      if (microphoneDemandActiveRef.current && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'microphoneResult', granted }));
+      }
+    };
+
     // Capture the user's microphone and stream it to the simulator's
     // mock microphone. Safe to call redundantly: bails when already
     // attached, when the connection isn't up yet (the ICE-connected
@@ -1935,8 +1945,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     const attachMicrophoneOp = async () => {
       const generation = micGenerationRef.current;
-      const isCurrent = () => generation === micGenerationRef.current && microphoneEnabledRef.current;
+      const isCurrent = () => generation === micGenerationRef.current && isMicrophoneWanted();
       const reportMicError = (error: string) => {
+        const ws = wsRef.current;
+        if (ws) sendMicrophoneResult(ws, false);
         safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
           active: false,
           error,
@@ -2007,9 +2019,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         if (outboundMicStreamRef.current !== stream) return;
         void detachMicrophone('microphone capture ended by the browser');
       };
-      const id = `ui-mic-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-      micStartPendingIdRef.current = id;
-      ws.send(JSON.stringify({ type: 'microphoneStart', id }));
+      sendMicrophoneStart(ws);
+      sendMicrophoneResult(ws, true);
       safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
         active: true,
         label: audioTrack.label || undefined,
@@ -2203,10 +2214,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       stopCameraStatsPoller();
       stopOutboundLocalStream();
       outboundCameraSenderRef.current = null;
-      // Same for the live microphone. No `microphoneStop` signal here —
-      // the WS is going away with the connection; if `microphoneEnabled`
-      // is still on, the post-reconnect hook re-attaches.
+      // Same for the live microphone. Manual enablement survives reconnect;
+      // guest demand is replayed by the host after it assigns the new session.
       ++micGenerationRef.current;
+      microphoneDemandActiveRef.current = false;
       micStartPendingIdRef.current = null;
       if (outboundMicStreamRef.current) {
         stopMediaStream(outboundMicStreamRef.current);
@@ -2770,7 +2781,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             clearIceDisconnectedGrace();
             // Re-attach the live microphone across reconnects (or apply a
             // prop that was flipped on before the connection was up).
-            if (microphoneEnabledRef.current && !outboundMicStreamRef.current) {
+            if (isMicrophoneWanted() && !outboundMicStreamRef.current) {
               void attachMicrophone();
             }
             return;
@@ -3170,6 +3181,30 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               startCameraStatsPoller();
               break;
             }
+            case 'microphoneRequest': {
+              if (platform !== 'ios' || !outboundMicSenderRef.current) {
+                break;
+              }
+              const active = message.active === true;
+              microphoneDemandActiveRef.current = active;
+              // eslint-disable-next-line no-console
+              console.info('[RemoteControl] microphoneRequest received, active=', active);
+              if (!active) {
+                if (!microphoneEnabledRef.current) {
+                  await detachMicrophone();
+                }
+                break;
+              }
+              if (outboundMicStreamRef.current) {
+                // A manual stream may already be attached. Re-select it on the
+                // host because file playback can have replaced its source.
+                sendMicrophoneStart(ws);
+                sendMicrophoneResult(ws, true);
+                break;
+              }
+              await attachMicrophone();
+              break;
+            }
             case 'microphoneStartResult': {
               if (micStartPendingIdRef.current === null || message.id !== micStartPendingIdRef.current) {
                 break;
@@ -3312,11 +3347,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
     }, [cameraAspect]);
 
-    // Drive the live microphone from the `microphoneEnabled` prop.
-    // When flipped on before the connection is up, attachMicrophone
-    // bails and the ICE-connected handler picks it up instead.
+    // Drive the manual override without interrupting guest-driven demand.
     useEffect(() => {
-      if (microphoneEnabled) {
+      if (isMicrophoneWanted()) {
         void attachMicrophone();
       } else {
         void detachMicrophone();
