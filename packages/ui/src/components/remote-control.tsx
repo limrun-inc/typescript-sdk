@@ -659,7 +659,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // host-side rejection (e.g. no loopback device on the node) can
     // tear the capture back down and surface the error.
     const micStartPendingIdRef = useRef<string | null>(null);
-    const micStartPendingDemandRef = useRef(false);
     const firstFrameShownRef = useRef(false);
     const pendingScreenshotResolversRef = useRef<
       Map<string, (value: ScreenshotData | PromiseLike<ScreenshotData>) => void>
@@ -1923,14 +1922,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const sendMicrophoneStart = (ws: WebSocket) => {
       const id = `ui-mic-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       micStartPendingIdRef.current = id;
-      micStartPendingDemandRef.current = microphoneDemandActiveRef.current;
       ws.send(JSON.stringify({ type: 'microphoneStart', id }));
-    };
-
-    const sendMicrophoneResult = (ws: WebSocket, granted: boolean) => {
-      if (microphoneDemandActiveRef.current && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'microphoneResult', granted }));
-      }
     };
 
     // Capture the user's microphone and stream it to the simulator's
@@ -1949,8 +1941,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const generation = micGenerationRef.current;
       const isCurrent = () => generation === micGenerationRef.current && isMicrophoneWanted();
       const reportMicError = (error: string) => {
-        const ws = wsRef.current;
-        if (ws) sendMicrophoneResult(ws, false);
         safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
           active: false,
           error,
@@ -2038,7 +2028,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // it still owns the queue.
       ++micGenerationRef.current;
       micStartPendingIdRef.current = null;
-      micStartPendingDemandRef.current = false;
       return runMicOp(async () => {
         const sender = outboundMicSenderRef.current;
         const stream = outboundMicStreamRef.current;
@@ -2221,7 +2210,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       ++micGenerationRef.current;
       microphoneDemandActiveRef.current = false;
       micStartPendingIdRef.current = null;
-      micStartPendingDemandRef.current = false;
       if (outboundMicStreamRef.current) {
         stopMediaStream(outboundMicStreamRef.current);
         outboundMicStreamRef.current = null;
@@ -3211,9 +3199,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               if (micStartPendingIdRef.current === null || message.id !== micStartPendingIdRef.current) {
                 break;
               }
-              const wasDemandStart = micStartPendingDemandRef.current;
               micStartPendingIdRef.current = null;
-              micStartPendingDemandRef.current = false;
               if (typeof message.error === 'string') {
                 // Host rejected the stream (e.g. no loopback device
                 // assigned on the node). Tear the capture back down so
@@ -3221,10 +3207,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 // stream nobody hears.
                 // eslint-disable-next-line no-console
                 console.warn('[RemoteControl] microphoneStart rejected by host:', message.error);
-                if (wasDemandStart) sendMicrophoneResult(ws, false);
                 void detachMicrophone(message.error);
-              } else if (wasDemandStart) {
-                sendMicrophoneResult(ws, true);
               }
               break;
             }
