@@ -49,12 +49,15 @@ export default class IosList extends BaseCommand {
         i.metadata.displayName || '',
         i.spec.region,
         i.status.state,
+        Object.entries(i.metadata.labels ?? {})
+          .map(([k, v]) => `${k}=${v}`)
+          .join(','),
       ]);
 
       if (flags.json) {
         this.outputJson(items);
       } else {
-        this.outputTable(['ID', 'Name', 'Region', 'State'], rows);
+        this.outputTable(['ID', 'Name', 'Region', 'State', 'Labels'], rows);
       }
     });
   }
