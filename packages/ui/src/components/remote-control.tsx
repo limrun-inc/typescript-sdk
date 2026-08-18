@@ -1915,8 +1915,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       return next;
     };
 
-    const isMicrophoneWanted = () =>
-      microphoneEnabledRef.current || microphoneDemandActiveRef.current;
+    const isMicrophoneWanted = () => microphoneEnabledRef.current || microphoneDemandActiveRef.current;
 
     const sendMicrophoneStart = (ws: WebSocket) => {
       const id = `ui-mic-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
