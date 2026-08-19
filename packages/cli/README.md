@@ -137,6 +137,7 @@ lim ios create          # Create a new iOS instance
 lim ios list            # List all ready iOS instances
 lim ios get <ID>        # Get details of a specific instance
 lim ios delete <ID>     # Delete an instance
+lim ios attach-xcode    # Attach an Xcode target to the simulator
 lim ios info            # Get device info from a running instance
 ```
 
@@ -254,6 +255,20 @@ lim ios pull-file Documents/photo.jpeg ./photo.jpeg --bundle-id com.example.app 
 lim ios delete-file Documents/photo.jpeg --bundle-id com.example.app --container-type data
 lim ios lsof
 ```
+
+#### Xcode Attachment
+
+Attach an existing Xcode target so future simulator builds are installed automatically:
+
+```bash
+# Attach the last used Xcode target to the last used iOS simulator
+lim ios attach-xcode
+
+# Select the Xcode target and simulator explicitly
+lim ios attach-xcode sandbox_def456 --id ios_abc123
+```
+
+This is the iOS-oriented equivalent of `lim xcode attach-simulator ios_abc123 --id sandbox_def456`.
 
 #### App Management (iOS only)
 
