@@ -66,7 +66,7 @@
         "description": "Build Android projects on cloud gradle sandboxes"
       },
       "ios": {
-        "description": "Execute any task on remote iOS Simulators: create, list, get, delete, attach-xcode, info, list-apps, launch-app, terminate-app, app-log, syslog, sync, screenshot, tap, tap-element, element-tree, type, press-key, toggle-keyboard, scroll, open-url, install-app, keychain, record, perform, ls, push-file, pull-file, delete-file, simctl, cp, xcrun, xcodebuild, lsof, reverse"
+        "description": "Execute any task on remote iOS Simulators: create, list, get, delete, attach-xcode, info, list-apps, launch-app, terminate-app, app-log, syslog, sync, screenshot, tap, tap-element, element-tree, type, press-key, toggle-keyboard, scroll, open-url, install-app, keychain, record, camera, microphone, perform, ls, push-file, pull-file, delete-file, simctl, cp, xcrun, xcodebuild, lsof, reverse"
       },
       "session": {
         "description": "Manage persistent background sessions for device interaction: start, status, stop. Sessions are used to execute commands on remote devices without the need to reconnect to the device after each command."
