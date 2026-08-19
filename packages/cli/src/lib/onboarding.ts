@@ -24,7 +24,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-export type SampleKind = 'swift' | 'expo56' | 'bazel';
+export type SampleKind = 'swift';
 
 export interface SampleApp {
   kind: SampleKind;
@@ -39,18 +39,6 @@ export const SAMPLE_APPS: Record<SampleKind, SampleApp> = {
     displayName: 'Swift (native iOS)',
     repo: 'https://github.com/limrun-inc/sample-native-app',
     dir: 'sample-native-app',
-  },
-  expo56: {
-    kind: 'expo56',
-    displayName: 'Expo 56 (React Native)',
-    repo: 'https://github.com/limrun-inc/sample-expo56-app',
-    dir: 'sample-expo56-app',
-  },
-  bazel: {
-    kind: 'bazel',
-    displayName: 'Bazel (native iOS)',
-    repo: 'https://github.com/limrun-inc/sample-native-bazel-app',
-    dir: 'sample-native-bazel-app',
   },
 };
 

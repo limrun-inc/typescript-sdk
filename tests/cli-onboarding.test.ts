@@ -10,6 +10,7 @@ import {
   ensureProjectEnvApiKey,
   installProjectSkills,
   SAMPLE_APPS,
+  type SampleApp,
 } from '../packages/cli/src/lib/onboarding';
 import type { LoadedRemoteSkills } from '../packages/cli/src/lib/remote-skills';
 
@@ -347,31 +348,6 @@ describe('lim run sample repo handling', () => {
     }
   });
 
-  test.each(['expo56', 'bazel'] as const)('clones the %s sample into its own directory', async (kind) => {
-    const root = makeTempDir();
-    const calls: Array<{ args: string[]; cwd?: string }> = [];
-    try {
-      const sample = await ensureSampleRepo({
-        cwd: root,
-        sample: SAMPLE_APPS[kind],
-        git: async (args, cwd) => {
-          calls.push(cwd === undefined ? { args } : { args, cwd });
-          return '';
-        },
-      });
-
-      expect(sample).toEqual({ path: path.join(root, SAMPLE_APPS[kind].dir), reused: false });
-      expect(calls).toEqual([
-        {
-          args: ['clone', '--depth', '1', SAMPLE_APPS[kind].repo, SAMPLE_APPS[kind].dir],
-          cwd: root,
-        },
-      ]);
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
-  });
-
   test('reuses existing sample dir only when origin matches', async () => {
     const root = makeTempDir();
     try {
@@ -404,21 +380,27 @@ describe('lim run sample repo handling', () => {
 
   test('verifies the reused checkout against the selected sample repository', async () => {
     const root = makeTempDir();
+    const otherSample: SampleApp = {
+      kind: 'swift',
+      displayName: 'Other sample',
+      repo: 'https://github.com/limrun-inc/other-sample-app',
+      dir: 'other-sample-app',
+    };
     try {
-      fs.mkdirSync(path.join(root, SAMPLE_APPS.expo56.dir), { recursive: true });
+      fs.mkdirSync(path.join(root, otherSample.dir), { recursive: true });
 
       await expect(
         ensureSampleRepo({
           cwd: root,
-          sample: SAMPLE_APPS.expo56,
-          git: async () => `${SAMPLE_APPS.expo56.repo}.git`,
+          sample: otherSample,
+          git: async () => `${otherSample.repo}.git`,
         }),
-      ).resolves.toEqual({ path: path.join(root, SAMPLE_APPS.expo56.dir), reused: true });
+      ).resolves.toEqual({ path: path.join(root, otherSample.dir), reused: true });
 
       await expect(
         ensureSampleRepo({
           cwd: root,
-          sample: SAMPLE_APPS.expo56,
+          sample: otherSample,
           git: async () => SAMPLE_APPS.swift.repo,
         }),
       ).rejects.toThrow('already exists with origin');

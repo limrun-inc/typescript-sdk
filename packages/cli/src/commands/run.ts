@@ -13,7 +13,6 @@ import {
   ensureSampleRepo,
   installProjectSkills,
   SAMPLE_APPS,
-  type SampleKind,
   type SkillInstallResult,
 } from '../lib/onboarding';
 import { captureTelemetry, telemetryErrorCategory, type TelemetryProperties } from '../lib/telemetry';
@@ -33,7 +32,6 @@ type RunFailureStage =
   | 'access_check'
   | 'skills_install'
   | 'env_setup'
-  | 'sample_selection'
   | 'sample_setup'
   | 'instance_create'
   | 'sync'
@@ -244,34 +242,9 @@ export default class Run extends BaseCommand {
     await check();
   }
 
-  private async promptSampleKind(): Promise<SampleKind> {
-    if (this.shouldSuppressInfo() || !process.stdin.isTTY || !process.stderr.isTTY) {
-      return DEFAULT_SAMPLE_KIND;
-    }
-    const response = await prompts(
-      {
-        type: 'select',
-        name: 'kind',
-        message: 'Which sample project do you want to run?',
-        choices: Object.values(SAMPLE_APPS).map((sample) => ({
-          title: sample.displayName,
-          value: sample.kind,
-        })),
-        initial: 0,
-      },
-      {
-        onCancel: () => {
-          this.error('Cancelled.');
-        },
-      },
-    );
-    return response.kind as SampleKind;
-  }
-
   private async runSampleFlow(apiKey: string, allowAuthRetry: boolean): Promise<void> {
     const cwd = process.cwd();
-    this.runFailureStage = 'sample_selection';
-    const sampleApp = SAMPLE_APPS[await this.promptSampleKind()];
+    const sampleApp = SAMPLE_APPS[DEFAULT_SAMPLE_KIND];
     this.runFailureStage = 'access_check';
     await this.reporter.withProgress('Checking Limrun access', () => this.validateAuth(allowAuthRetry));
     this.runFailureStage = 'sample_setup';
@@ -292,7 +265,7 @@ export default class Run extends BaseCommand {
         name: 'lim-go-sample',
         repo: sampleApp.dir,
       },
-      progressLabel: buildProgressLabel(sampleApp.kind === 'expo56' ? 'expo' : 'native-ios'),
+      progressLabel: buildProgressLabel('native-ios'),
       failureLabel: 'Sample build failed',
       recoveryPath: sample.path,
       recoveryFromDir: cwd,
