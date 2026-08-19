@@ -39,13 +39,6 @@ describe('tunnel v2 management', () => {
           active: {
             tunnelId: 'tunnel-1',
             state: 'ready',
-            bindings: [
-              {
-                routeId: 'route-1',
-                route: { host: 'localhost', port: 8000 },
-                endpoint: { host: '10.0.0.8', port: 57090 },
-              },
-            ],
           },
           lastDialFailure,
         }),
@@ -56,13 +49,6 @@ describe('tunnel v2 management', () => {
       active: {
         tunnelId: 'tunnel-1',
         state: 'ready',
-        bindings: [
-          {
-            routeId: 'route-1',
-            route: { host: 'localhost', port: 8000 },
-            endpoint: { host: '10.0.0.8', port: 57090 },
-          },
-        ],
       },
       lastDialFailure,
     });
@@ -107,20 +93,8 @@ describe('tunnel v2 management', () => {
   test.each([
     null,
     { active: null },
-    { active: { tunnelId: 'one', state: 'future', bindings: [] } },
-    {
-      active: {
-        tunnelId: 'one',
-        state: 'ready',
-        bindings: [
-          {
-            routeId: 'route-1',
-            route: { host: 'localhost', port: 0 },
-            endpoint: { host: '10.0.0.8', port: 57090 },
-          },
-        ],
-      },
-    },
+    { active: { tunnelId: 'one', state: 'future' } },
+    { active: { tunnelId: '', state: 'ready' } },
     { lastFailure: { tunnelId: '', code: 'internal' } },
     {
       lastDialFailure: {

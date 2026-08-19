@@ -3,7 +3,6 @@ import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
 import {
   formatTunnelDialFailure,
-  formatTunnelRoute,
   listTunnelProcesses,
   tunnelOwnerProcessIdentity,
 } from '../../../lib/ios-tunnel-process';
@@ -11,7 +10,7 @@ import {
 export default class IosTunnelStatus extends BaseCommand {
   static summary = 'Show the active destination tunnel';
   static description =
-    'Query the instance-authoritative tunnel state, listener mappings, most recent failure, and any local detached owner.';
+    'Query the instance-authoritative tunnel state, most recent failure, and any local detached owner.';
   static examples = [
     '<%= config.bin %> ios tunnel status --id <instance-ID>',
     '<%= config.bin %> ios tunnel status --id <instance-ID> --json',
@@ -61,9 +60,6 @@ export default class IosTunnelStatus extends BaseCommand {
 
         if (status.active) {
           this.output(`Tunnel ${status.active.tunnelId}: ${status.active.state}`);
-          for (const binding of status.active.bindings) {
-            this.output(`${formatTunnelRoute(binding.endpoint)} -> ${formatTunnelRoute(binding.route)}`);
-          }
         } else {
           this.output('No active destination tunnel.');
         }

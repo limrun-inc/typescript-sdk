@@ -61,12 +61,12 @@ describe('tunnel v2 wire contract', () => {
     const encoded = encodeTunnelV2ClientMessage({
       type: 'start',
       version: TUNNEL_V2_VERSION,
-      routes: [{ host: 'API.Example.COM.', port: 443 }],
+      routes: [{ host: '2001:0DB8:0:0:0:0:0:1', port: 443 }],
     });
     expect(JSON.parse(encoded)).toEqual({
       type: 'start',
       version: TUNNEL_V2_VERSION,
-      routes: [{ host: 'api.example.com', port: 443 }],
+      routes: [{ host: '2001:db8::1', port: 443 }],
     });
   });
 
@@ -119,7 +119,7 @@ describe('tunnel v2 route contract', () => {
   });
 
   test('accepts exactly the declared OPEN destination', () => {
-    const routes = validateTunnelV2Routes([{ host: 'LOCALHOST.', port: 8000 }]);
+    const routes = validateTunnelV2Routes([{ host: '10.20.30.40', port: 8000 }]);
     const open = decodeTunnelV2ServerMessage(fixture.server.find(({ name }) => name === 'open')!.message);
     expect(open.type).toBe('open');
     expect(() =>
@@ -128,11 +128,11 @@ describe('tunnel v2 route contract', () => {
   });
 
   test.each([
-    { routeId: 'route-2', host: 'localhost', port: 8000 },
-    { routeId: 'route-1', host: '127.0.0.1', port: 8000 },
-    { routeId: 'route-1', host: 'localhost', port: 8001 },
+    { routeId: 'route-2', host: '10.20.30.40', port: 8000 },
+    { routeId: 'route-1', host: '10.20.30.41', port: 8000 },
+    { routeId: 'route-1', host: '10.20.30.40', port: 8001 },
   ])('rejects undeclared OPEN $routeId $host:$port', (requested) => {
-    const routes: TunnelV2Route[] = [{ host: 'localhost', port: 8000 }];
+    const routes: TunnelV2Route[] = [{ host: '10.20.30.40', port: 8000 }];
     expect(() =>
       assertTunnelV2OpenAllowed(
         {
@@ -146,12 +146,12 @@ describe('tunnel v2 route contract', () => {
     ).toThrow(TunnelV2ProtocolError);
   });
 
-  test('requires READY bindings to match the original route set', () => {
+  test('requires READY to use the negotiated version', () => {
     const readyMessage = decodeTunnelV2ServerMessage(
       fixture.server.find(({ name }) => name === 'ready')!.message,
     ) as Extract<TunnelV2ServerMessage, { type: 'ready' }>;
 
-    expect(() => assertTunnelV2Ready(readyMessage, [{ host: 'localhost', port: 8001 }])).toThrow(
+    expect(() => assertTunnelV2Ready({ ...readyMessage, version: TUNNEL_V2_VERSION + 1 })).toThrow(
       TunnelV2ProtocolError,
     );
   });

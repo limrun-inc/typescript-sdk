@@ -18,13 +18,11 @@ export interface IosTunnelProcessState {
   startedAt: string;
   logPath: string;
   tunnelId?: string;
-  bindings?: NonNullable<Ios.TunnelStatus['active']>['bindings'];
 }
 
 export type ReadyIosTunnelProcessState = IosTunnelProcessState & {
   status: 'ready';
   tunnelId: string;
-  bindings: NonNullable<Ios.TunnelStatus['active']>['bindings'];
 };
 
 export type TunnelOwnerProcessIdentity = 'match' | 'mismatch' | 'missing' | 'unknown';
@@ -58,6 +56,9 @@ export function parseTunnelRoute(value: string): Ios.TunnelOptions['routes'][num
   const port = Number(portText);
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error(`Invalid route port in "${value}"; expected 1-65535`);
+  }
+  if (net.isIP(host) === 0) {
+    throw new Error(`Invalid route host in "${value}"; expected a literal IP address`);
   }
   return { host, port };
 }
@@ -121,7 +122,7 @@ export async function waitForTunnelProcessReady(options: {
   const deadline = now() + (options.timeoutMs ?? 30_000);
   function loadReadyState(): ReadyIosTunnelProcessState | undefined {
     const state = options.load();
-    if (state?.status !== 'ready' || !state.tunnelId || !state.bindings) {
+    if (state?.status !== 'ready' || !state.tunnelId) {
       return undefined;
     }
     return state as ReadyIosTunnelProcessState;
@@ -414,11 +415,7 @@ function validateStoredRoutes(routes: Ios.TunnelOptions['routes']): Ios.TunnelOp
   for (const route of routes) {
     if (
       typeof route?.host !== 'string' ||
-      route.host.length < 1 ||
-      route.host.length > 254 ||
-      Buffer.byteLength(route.host, 'utf8') !== route.host.length ||
-      route.host.includes('\0') ||
-      !storedRouteHostIsValid(route.host) ||
+      net.isIP(route.host) === 0 ||
       !Number.isInteger(route.port) ||
       route.port < 1 ||
       route.port > 65_535
@@ -429,19 +426,6 @@ function validateStoredRoutes(routes: Ios.TunnelOptions['routes']): Ios.TunnelOp
   return routes;
 }
 
-function storedRouteHostIsValid(input: string): boolean {
-  let host = input.toLowerCase();
-  if (host.endsWith('.')) host = host.slice(0, -1);
-  if (!host || host.length > 253) return false;
-  if (net.isIP(host) !== 0) return true;
-  const labels = host.split('.');
-  const labelsAreValid = labels.every(
-    (label) => label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label),
-  );
-  const looksLikeAnIpAddress = labels.every((label) => /^\d+$/.test(label) || /^0x[0-9a-f]+$/.test(label));
-  return labelsAreValid && !looksLikeAnIpAddress;
-}
-
 function validateTunnelProcessState(
   state: IosTunnelProcessState,
   instanceId: string,
@@ -450,40 +434,15 @@ function validateTunnelProcessState(
   const startedAt = typeof state.startedAt === 'string' ? Date.parse(state.startedAt) : Number.NaN;
   const startedAtValid = Number.isFinite(startedAt) && new Date(startedAt).toISOString() === state.startedAt;
   const age = Date.now() - startedAt;
-  let canonicalRoutes: Ios.TunnelOptions['routes'];
   try {
-    canonicalRoutes = validateStoredRoutes(state.routes);
+    validateStoredRoutes(state.routes);
   } catch {
     throw new Error('Invalid tunnel process state');
   }
-  const bindingsValid =
-    state.bindings === undefined ||
-    (Array.isArray(state.bindings) &&
-      state.bindings.every(
-        (binding) =>
-          typeof binding?.routeId === 'string' &&
-          binding.routeId.length > 0 &&
-          validHostPort(binding.route) &&
-          validHostPort(binding.endpoint),
-      ));
   const readyFieldsValid =
     state.status !== 'ready' ||
-    (state.pid > 0 &&
-      typeof state.tunnelId === 'string' &&
-      state.tunnelId.length > 0 &&
-      Array.isArray(state.bindings) &&
-      state.bindings.length === canonicalRoutes.length &&
-      state.bindings.every((binding, index) => {
-        const route = canonicalRoutes[index];
-        return (
-          route !== undefined &&
-          binding?.routeId === `route-${index + 1}` &&
-          binding?.route?.host === route.host &&
-          binding?.route?.port === route.port
-        );
-      }));
-  const startingFieldsValid =
-    state.status !== 'starting' || (state.tunnelId === undefined && state.bindings === undefined);
+    (state.pid > 0 && typeof state.tunnelId === 'string' && state.tunnelId.length > 0);
+  const startingFieldsValid = state.status !== 'starting' || state.tunnelId === undefined;
   if (
     typeof state.owner !== 'string' ||
     !OWNER_PATTERN.test(state.owner) ||
@@ -494,25 +453,11 @@ function validateTunnelProcessState(
     !startedAtValid ||
     age < 0 ||
     state.logPath !== paths.log ||
-    !bindingsValid ||
     !readyFieldsValid ||
     !startingFieldsValid
   ) {
     throw new Error('Invalid tunnel process state');
   }
-}
-
-function validHostPort(value: unknown): value is { host: string; port: number } {
-  if (typeof value !== 'object' || value === null) return false;
-  const candidate = value as { host?: unknown; port?: unknown };
-  return (
-    typeof candidate.host === 'string' &&
-    candidate.host.length > 0 &&
-    typeof candidate.port === 'number' &&
-    Number.isInteger(candidate.port) &&
-    candidate.port >= 1 &&
-    candidate.port <= 65_535
-  );
 }
 
 function writeTemporaryState(state: IosTunnelProcessState, paths: IosTunnelProcessPaths): string {

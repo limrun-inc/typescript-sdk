@@ -122,7 +122,7 @@ describe('destination tunnel v2 dialer', () => {
       type: 'open',
       connId: 8,
       routeId: 'route-1',
-      host: 'localhost',
+      host: '127.0.0.2',
       port: localPort,
       proto: 'tcp',
     });
@@ -222,7 +222,7 @@ describe('destination tunnel v2 dialer', () => {
 
   test('rejects binary data before READY', async () => {
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes: [{ host: 'localhost', port: 8000 }],
+      routes: [{ host: '127.0.0.1', port: 8000 }],
       logLevel: 'none',
     });
     await waitFor(() => hasControl('start'));
@@ -233,7 +233,7 @@ describe('destination tunnel v2 dialer', () => {
 
   test('fails startup when READY never arrives', async () => {
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes: [{ host: 'localhost', port: 8000 }],
+      routes: [{ host: '127.0.0.1', port: 8000 }],
       logLevel: 'none',
       handshakeTimeoutMs: 100,
     });
@@ -250,7 +250,7 @@ describe('destination tunnel v2 dialer', () => {
     const port = (rawServer.address() as net.AddressInfo).port;
 
     const startup = startDestinationTcpTunnel(`ws://127.0.0.1:${port}/stalled`, 'test-token', {
-      routes: [{ host: 'localhost', port: 8000 }],
+      routes: [{ host: '127.0.0.1', port: 8000 }],
       logLevel: 'none',
       handshakeTimeoutMs: 100,
     });
@@ -258,7 +258,7 @@ describe('destination tunnel v2 dialer', () => {
   });
 
   test('keeps a healthy idle tunnel alive with pong frames', async () => {
-    tunnel = await establish([{ host: 'localhost', port: 8000 }], {
+    tunnel = await establish([{ host: '127.0.0.1', port: 8000 }], {
       livenessTimeoutMs: 100,
     });
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -268,7 +268,7 @@ describe('destination tunnel v2 dialer', () => {
   test('disconnects a peer that stops sending all frames', async () => {
     await closeRemoteServer();
     await startRemoteServer(false);
-    tunnel = await establish([{ host: 'localhost', port: 8000 }], {
+    tunnel = await establish([{ host: '127.0.0.1', port: 8000 }], {
       livenessTimeoutMs: 100,
     });
     await waitFor(() => tunnel?.getConnectionState() === 'disconnected');
@@ -311,11 +311,6 @@ describe('destination tunnel v2 dialer', () => {
       type: 'ready',
       version: TUNNEL_V2_VERSION,
       tunnelId: 'tunnel-1',
-      bindings: routes.map((route, index) => ({
-        routeId: `route-${index + 1}`,
-        route,
-        endpoint: { host: '10.0.0.8', port: 57090 + index },
-      })),
     });
     return startup;
   }
