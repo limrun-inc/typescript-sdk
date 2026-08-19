@@ -10,7 +10,6 @@ import {
   decodeTunnelV2ServerMessage,
   encodeTunnelV2ClientMessage,
   validateTunnelV2Routes,
-  type TunnelV2Binding,
   type TunnelV2ClientMessage,
   type TunnelV2OpenFailureReason,
   type TunnelV2Route,
@@ -21,7 +20,6 @@ import type { LogLevel, TunnelConnectionState, TunnelConnectionStateCallback } f
 
 export interface DestinationTcpTunnel {
   tunnelId: string;
-  bindings: TunnelV2Binding[];
   close: () => void;
   getConnectionState: () => TunnelConnectionState;
   onConnectionStateChange: (callback: TunnelConnectionStateCallback) => () => void;
@@ -421,7 +419,7 @@ export async function startDestinationTcpTunnel(
       switch (message.type) {
         case 'ready':
           if (tunnelReady) throw new TunnelV2ProtocolError('received duplicate READY');
-          assertTunnelV2Ready(message, routes);
+          assertTunnelV2Ready(message);
           tunnelReady = true;
           if (handshakeTimer) {
             clearTimeout(handshakeTimer);
@@ -429,10 +427,9 @@ export async function startDestinationTcpTunnel(
           }
           armLivenessDeadline();
           updateConnectionState('connected');
-          logger.info(`Destination tunnel ready with ${message.bindings.length} route(s)`);
+          logger.info(`Destination tunnel ready with ${routes.length} route(s)`);
           resolve({
             tunnelId: message.tunnelId,
-            bindings: message.bindings,
             close,
             getConnectionState,
             onConnectionStateChange,

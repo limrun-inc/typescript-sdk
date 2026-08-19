@@ -1,4 +1,3 @@
-import type { TunnelV2Binding } from '../tunnel-v2';
 import { nodeProxyTransport } from './proxy-transport';
 import { deriveTunnelManagementURL } from './tunnel-v2-url';
 
@@ -6,7 +5,6 @@ export interface TunnelV2Status {
   active?: {
     tunnelId: string;
     state: 'starting' | 'ready' | 'stopping';
-    bindings: TunnelV2Binding[];
   };
   lastFailure?: {
     tunnelId: string;
@@ -67,23 +65,9 @@ function readActiveTunnel(value: unknown): NonNullable<TunnelV2Status['active']>
   if (state !== 'starting' && state !== 'ready' && state !== 'stopping') {
     throw new Error(`invalid tunnel state ${state}`);
   }
-  const bindings = active['bindings'];
-  if (!Array.isArray(bindings)) {
-    throw new Error('tunnel bindings must be an array');
-  }
   return {
     tunnelId: readNonEmptyString(active, 'tunnelId'),
     state,
-    bindings: bindings.map(readBinding),
-  };
-}
-
-function readBinding(value: unknown): TunnelV2Binding {
-  const binding = readRecord(value, 'tunnel binding');
-  return {
-    routeId: readNonEmptyString(binding, 'routeId'),
-    route: readHostPort(binding['route'], 'tunnel route'),
-    endpoint: readHostPort(binding['endpoint'], 'tunnel endpoint'),
   };
 }
 
@@ -116,18 +100,6 @@ function readTunnelDialFailure(value: unknown): NonNullable<TunnelV2Status['last
     routeId: readNonEmptyString(failure, 'routeId'),
     reason: readNonEmptyString(failure, 'reason'),
     ...(osCode === undefined ? {} : { osCode }),
-  };
-}
-
-function readHostPort(value: unknown, name: string): { host: string; port: number } {
-  const hostPort = readRecord(value, name);
-  const port = hostPort['port'];
-  if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new Error(`${name} port must be an integer between 1 and 65535`);
-  }
-  return {
-    host: readNonEmptyString(hostPort, 'host'),
-    port,
   };
 }
 

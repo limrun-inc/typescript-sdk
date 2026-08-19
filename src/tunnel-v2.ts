@@ -9,17 +9,6 @@ export interface TunnelV2Route {
   port: number;
 }
 
-export interface TunnelV2Endpoint {
-  host: string;
-  port: number;
-}
-
-export interface TunnelV2Binding {
-  routeId: string;
-  route: TunnelV2Route;
-  endpoint: TunnelV2Endpoint;
-}
-
 export type TunnelV2OpenFailureReason =
   | 'dns_not_found'
   | 'dns_temporary_failure'
@@ -48,7 +37,7 @@ export type TunnelV2SessionErrorCode =
   | 'invalid_route'
   | 'route_capacity'
   | 'already_active'
-  | 'listener_unavailable'
+  | 'unavailable'
   | 'internal'
   | (string & {});
 
@@ -65,7 +54,7 @@ export type TunnelV2ClientMessage =
   | { type: 'reset'; connId: number; reason: TunnelV2ResetReason; osCode?: string };
 
 export type TunnelV2ServerMessage =
-  | { type: 'ready'; version: number; tunnelId: string; bindings: TunnelV2Binding[] }
+  | { type: 'ready'; version: number; tunnelId: string }
   | {
       type: 'open';
       connId: number;
@@ -132,26 +121,9 @@ export function assertTunnelV2OpenAllowed(
   }
 }
 
-export function assertTunnelV2Ready(
-  message: Extract<TunnelV2ServerMessage, { type: 'ready' }>,
-  routes: readonly TunnelV2Route[],
-): void {
+export function assertTunnelV2Ready(message: Extract<TunnelV2ServerMessage, { type: 'ready' }>): void {
   if (message.version !== TUNNEL_V2_VERSION) {
     throw new TunnelV2ProtocolError(`unsupported tunnel version ${message.version}`);
-  }
-  if (message.bindings.length !== routes.length) {
-    throw new TunnelV2ProtocolError('server returned bindings for a different route set');
-  }
-  for (const [index, binding] of message.bindings.entries()) {
-    const route = routes[index];
-    if (
-      !route ||
-      binding.routeId !== `route-${index + 1}` ||
-      binding.route.host !== route.host ||
-      binding.route.port !== route.port
-    ) {
-      throw new TunnelV2ProtocolError('server returned a binding for an undeclared route');
-    }
   }
 }
 
@@ -194,7 +166,6 @@ export function decodeTunnelV2ServerMessage(value: unknown): TunnelV2ServerMessa
         type,
         version: readInteger(message, 'version'),
         tunnelId: readString(message, 'tunnelId'),
-        bindings: readArray(message, 'bindings').map(readBinding),
       };
     case 'open':
       return {
@@ -225,38 +196,17 @@ function canonicalizeTunnelV2Route(route: TunnelV2Route): TunnelV2Route {
   if (!Number.isInteger(route.port) || route.port < 1 || route.port > 65_535) {
     throw new TunnelV2RouteError('invalid_port', `invalid tunnel route port ${route.port}`);
   }
-  const isASCII = Buffer.byteLength(route.host, 'utf8') === route.host.length;
-  if (route.host.length === 0 || !isASCII || route.host.length > 254 || route.host.includes('\0')) {
-    throw new TunnelV2RouteError('invalid_host', `invalid tunnel route host ${route.host}`);
-  }
 
-  let host = route.host.toLowerCase();
-  if (host.endsWith('.')) {
-    host = host.slice(0, -1);
-  }
-  if (host.length === 0 || host.length > 253) {
-    throw new TunnelV2RouteError('invalid_host', `invalid tunnel route host ${route.host}`);
-  }
-
-  const ipVersion = net.isIP(host);
+  const ipVersion = net.isIP(route.host);
   if (ipVersion === 4) {
-    return { host, port: route.port };
+    return { host: route.host, port: route.port };
   }
   if (ipVersion === 6) {
-    const hostname = new URL(`http://[${host}]/`).hostname;
+    const hostname = new URL(`http://[${route.host}]/`).hostname;
     return { host: canonicalizeIPv6(hostname.slice(1, -1)), port: route.port };
   }
 
-  const labels = host.split('.');
-  if (
-    labels.some(
-      (label) => label.length === 0 || label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label),
-    ) ||
-    labels.every((label) => /^\d+$/.test(label) || /^0x[0-9a-f]+$/.test(label))
-  ) {
-    throw new TunnelV2RouteError('invalid_host', `invalid tunnel route host ${route.host}`);
-  }
-  return { host, port: route.port };
+  throw new TunnelV2RouteError('invalid_host', `invalid tunnel route host ${route.host}`);
 }
 
 function canonicalizeIPv6(host: string): string {
@@ -277,30 +227,12 @@ function parseRouteId(routeId: string): number {
   return Number(match[1]) - 1;
 }
 
-function readBinding(value: unknown): TunnelV2Binding {
-  const binding = readRecord(value, 'tunnel binding');
-  return {
-    routeId: readString(binding, 'routeId'),
-    route: readRoute(binding['route']),
-    endpoint: readEndpoint(binding['endpoint']),
-  };
-}
-
 function readRoute(value: unknown): TunnelV2Route {
   const route = readRecord(value, 'tunnel route');
   return {
     host: readString(route, 'host'),
     port: readPort(route, 'port'),
   };
-}
-
-function readEndpoint(value: unknown): TunnelV2Endpoint {
-  const endpoint = readRecord(value, 'tunnel endpoint');
-  const host = readString(endpoint, 'host');
-  if (host.length === 0) {
-    throw new TunnelV2ProtocolError('tunnel endpoint host must not be empty');
-  }
-  return { host, port: readPort(endpoint, 'port') };
 }
 
 function readRecord(value: unknown, name: string): Record<string, unknown> {

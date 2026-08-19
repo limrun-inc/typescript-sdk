@@ -46,13 +46,13 @@ describe('iOS tunnel process state', () => {
   });
 
   test.each([
-    ['localhost:8000', { host: 'localhost', port: 8000 }],
+    ['10.20.30.40:8000', { host: '10.20.30.40', port: 8000 }],
     ['[2001:db8::1]:8443', { host: '2001:db8::1', port: 8443 }],
   ])('parses route %s', (input, expected) => {
     expect(parseTunnelRoute(input)).toEqual(expected);
   });
 
-  test.each(['localhost', ':8000', 'localhost:0', 'localhost:65536', '2001:db8::1:443'])(
+  test.each(['localhost:8000', ':8000', '10.20.30.40:0', '10.20.30.40:65536', '2001:db8::1:443'])(
     'rejects malformed route %s',
     (input) => {
       expect(() => parseTunnelRoute(input)).toThrow();
@@ -67,7 +67,7 @@ describe('iOS tunnel process state', () => {
         instanceId: INSTANCE_ID,
         owner,
         routes: [
-          { host: 'localhost', port: 8000 },
+          { host: '10.20.30.40', port: 8000 },
           { host: '2001:db8::1', port: 8443 },
         ],
       }),
@@ -81,7 +81,7 @@ describe('iOS tunnel process state', () => {
       INSTANCE_ID,
       `--tunnel-owner=${owner}`,
       '--route',
-      'localhost:8000',
+      '10.20.30.40:8000',
       '--route',
       '[2001:db8::1]:8443',
     ]);
@@ -181,13 +181,6 @@ describe('iOS tunnel process state', () => {
       pid: process.pid,
       status: 'ready',
       tunnelId: 'tunnel-1',
-      bindings: [
-        {
-          routeId: 'route-1',
-          route: { host: 'localhost', port: 8000 },
-          endpoint: { host: '10.0.0.8', port: 57090 },
-        },
-      ],
     });
     updateTunnelProcess(ready, OWNER_1, root);
     expect(loadTunnelProcess(INSTANCE_ID, OWNER_1, root)).toEqual(ready);
@@ -280,7 +273,6 @@ describe('iOS tunnel process state', () => {
     { startedAt: new Date().toUTCString() },
     { logPath: '/tmp/attacker.log' },
     { tunnelId: 'premature' },
-    { bindings: [] },
     { status: 'ready', pid: 0 },
     { routes: [{ host: '*.example.com', port: 443 }] },
   ] satisfies Array<Partial<IosTunnelProcessState>>)('rejects malformed persisted state %#', (overrides) => {
@@ -352,13 +344,6 @@ describe('iOS tunnel process state', () => {
       pid: 123,
       status: 'ready',
       tunnelId: 'tunnel-1',
-      bindings: [
-        {
-          routeId: 'route-1',
-          route: { host: 'localhost', port: 8000 },
-          endpoint: { host: '10.0.0.8', port: 57090 },
-        },
-      ],
       ...overrides,
     });
   }
@@ -370,7 +355,7 @@ describe('iOS tunnel process state', () => {
       pid: 0,
       instanceId: INSTANCE_ID,
       status: 'starting',
-      routes: [{ host: 'localhost', port: 8000 }],
+      routes: [{ host: '10.20.30.40', port: 8000 }],
       startedAt: new Date().toISOString(),
       logPath: tunnelProcessPaths(INSTANCE_ID, owner, root).log,
       ...overrides,

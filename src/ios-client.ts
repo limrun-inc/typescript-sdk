@@ -868,8 +868,7 @@ export type InstanceClient = {
   startReverseTunnel: (options: ReverseTunnelOptions) => Promise<ReverseTunnel>;
 
   /**
-   * Start a destination-routed tunnel from simulator-facing listener endpoints
-   * to the declared TCP services on this machine.
+   * Transparently route declared simulator TCP destinations through this machine.
    *
    * The caller owns the returned tunnel and must close it. Disconnecting this
    * instance client does not close the tunnel.
