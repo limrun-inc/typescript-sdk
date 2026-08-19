@@ -9,7 +9,6 @@ import {
   capTunnelLog,
   claimTunnelProcess,
   clearTunnelProcess,
-  formatTunnelRoute,
   isProcessAlive,
   isSpawnedTunnelProcessAlive,
   listTunnelProcesses,
@@ -30,10 +29,10 @@ import {
 export default class IosTunnel extends BaseCommand {
   static summary = 'Expose declared local TCP destinations to the simulator';
   static description =
-    'Start one destination-routed tunnel with exact host:port routes. The returned simulator endpoints map to those services on this machine. Use --detach to keep it running after this command returns.';
+    'Start one transparent destination tunnel with exact literal IP:port routes. Use --detach to keep it running after this command returns.';
   static examples = [
-    '<%= config.bin %> ios tunnel --route localhost:8000 --id <instance-ID>',
-    '<%= config.bin %> ios tunnel --route api.internal:443 --route localhost:8081 --detach',
+    '<%= config.bin %> ios tunnel --route 10.20.30.40:8000 --id <instance-ID>',
+    '<%= config.bin %> ios tunnel --route 10.20.30.40:443 --route 10.20.30.41:8081 --detach',
     '<%= config.bin %> ios tunnel status --id <instance-ID>',
     '<%= config.bin %> ios tunnel stop --id <instance-ID>',
   ];
@@ -45,7 +44,7 @@ export default class IosTunnel extends BaseCommand {
         'iOS instance ID to target. Defaults to the last created iOS instance, but --id is recommended for scripts and agents.',
     }),
     route: Flags.string({
-      description: 'Exact client-side TCP destination as host:port or [IPv6]:port. Repeat for more routes.',
+      description: 'Exact client-side TCP destination as IPv4:port or [IPv6]:port. Repeat for more routes.',
       multiple: true,
       required: true,
     }),
@@ -102,7 +101,7 @@ export default class IosTunnel extends BaseCommand {
         routes,
         logLevel: this.shouldSuppressInfo() ? 'none' : 'info',
       });
-      this.printReady(instanceId, tunnel, false);
+      this.printReady(instanceId, tunnel.tunnelId, false);
       await this.awaitTunnel(tunnel, false);
     } finally {
       tunnel?.close();
@@ -135,9 +134,7 @@ export default class IosTunnel extends BaseCommand {
         {
           ...starting,
           status: 'ready',
-          routes: tunnel.bindings.map((binding) => binding.route),
           tunnelId: tunnel.tunnelId,
-          bindings: tunnel.bindings,
         },
         owner,
       );
@@ -232,15 +229,7 @@ export default class IosTunnel extends BaseCommand {
     });
     if (readiness.outcome === 'ready') {
       const state = readiness.state;
-      this.printReady(
-        instanceId,
-        {
-          tunnelId: state.tunnelId,
-          bindings: state.bindings,
-        },
-        true,
-        { pid, logPath: paths.log },
-      );
+      this.printReady(instanceId, state.tunnelId, true, { pid, logPath: paths.log });
       return;
     }
     if (readiness.outcome === 'exited') {
@@ -344,15 +333,14 @@ export default class IosTunnel extends BaseCommand {
 
   private printReady(
     instanceId: string,
-    tunnel: Pick<Ios.Tunnel, 'tunnelId' | 'bindings'>,
+    tunnelId: string,
     detached: boolean,
     processInfo?: { pid: number; logPath: string },
   ): void {
     const ready = {
       instanceId,
-      tunnelId: tunnel.tunnelId,
+      tunnelId,
       state: 'ready' as const,
-      bindings: tunnel.bindings,
       detached,
       ...processInfo,
     };
@@ -361,9 +349,6 @@ export default class IosTunnel extends BaseCommand {
       return;
     }
     this.output(`Tunnel ID: ${ready.tunnelId}`);
-    for (const binding of ready.bindings) {
-      this.output(`${formatTunnelRoute(binding.endpoint)} -> ${formatTunnelRoute(binding.route)}`);
-    }
     if (detached) {
       this.output(`Logs: ${processInfo?.logPath}`);
       this.output(`Stop: lim ios tunnel stop --id ${instanceId}`);

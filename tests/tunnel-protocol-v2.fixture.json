@@ -31,31 +31,11 @@
       "invalid_route",
       "route_capacity",
       "already_active",
-      "listener_unavailable",
+      "unavailable",
       "internal"
     ]
   },
   "routeCases": [
-    {
-      "input": {
-        "host": "API.Example.COM.",
-        "port": 443
-      },
-      "canonical": {
-        "host": "api.example.com",
-        "port": 443
-      }
-    },
-    {
-      "input": {
-        "host": "localhost",
-        "port": 8000
-      },
-      "canonical": {
-        "host": "localhost",
-        "port": 8000
-      }
-    },
     {
       "input": {
         "host": "127.0.0.1",
@@ -207,7 +187,7 @@
       "name": "zero port",
       "routes": [
         {
-          "host": "localhost",
+          "host": "10.20.30.40",
           "port": 0
         }
       ],
@@ -217,25 +197,11 @@
       "name": "high port",
       "routes": [
         {
-          "host": "localhost",
+          "host": "10.20.30.40",
           "port": 65536
         }
       ],
       "error": "invalid_port"
-    },
-    {
-      "name": "canonical duplicate",
-      "routes": [
-        {
-          "host": "API.example.com",
-          "port": 443
-        },
-        {
-          "host": "api.example.com.",
-          "port": 443
-        }
-      ],
-      "error": "duplicate"
     },
     {
       "name": "canonical IPv6 duplicate",
@@ -260,7 +226,7 @@
         "version": 2,
         "routes": [
           {
-            "host": "localhost",
+            "host": "10.20.30.40",
             "port": 8000
           },
           {
@@ -308,20 +274,7 @@
       "message": {
         "type": "ready",
         "version": 2,
-        "tunnelId": "tunnel-1",
-        "bindings": [
-          {
-            "routeId": "route-1",
-            "route": {
-              "host": "localhost",
-              "port": 8000
-            },
-            "endpoint": {
-              "host": "10.244.0.8",
-              "port": 57090
-            }
-          }
-        ]
+        "tunnelId": "tunnel-1"
       }
     },
     {
@@ -330,7 +283,7 @@
         "type": "open",
         "connId": 7,
         "routeId": "route-1",
-        "host": "localhost",
+        "host": "10.20.30.40",
         "port": 8000,
         "proto": "tcp"
       }
