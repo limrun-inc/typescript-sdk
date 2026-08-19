@@ -52,7 +52,7 @@ The CLI stores configuration in `~/.lim/config.yaml`. This file is compatible wi
 lim run
 ```
 
-`lim run` is the fastest way to get started with Limrun. Run it inside a clear iOS or Expo project root to install the Limrun agent skills for that project and get the next prompt for your coding agent. Run it anywhere else to clone the Swift sample app (`limrun-inc/sample-native-app`), build it on Limrun, and print a cloud simulator URL.
+`lim run` is the fastest way to get started with Limrun. Run it inside a clear iOS or Expo project root to install the Limrun agent skills for that project and get the next prompt for your coding agent. Run it anywhere else to clone the Swift sample app (`limrun-inc/sample-native-app`), build it on Limrun, and open a cloud simulator in your browser.
 
 ## Global Flags
 
@@ -125,6 +125,8 @@ lim run
 - In a clear native iOS project, it installs the Limrun iOS/Xcode skill into `.agents/skills/` and `.claude/skills/`.
 - In a clear Expo project, it installs the Limrun iOS/Xcode and Expo skills into `.agents/skills/` and `.claude/skills/`.
 - In any other directory, it clones the Swift sample app (`limrun-inc/sample-native-app`), builds it with a Limrun iOS simulator + Xcode sandbox, and prints a simulator URL.
+
+Once the app is running, the simulator stream URL is opened in your browser automatically (like `lim ios create`); pass `--no-open` to only print the URL.
 
 After setup, open your coding agent in the project and ask it to build and run the app with Limrun. For manual agent setup, use `lim skills install`.
 

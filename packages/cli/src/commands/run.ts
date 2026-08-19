@@ -1,7 +1,9 @@
 import os from 'os';
 import path from 'path';
 import prompts from 'prompts';
+import { Flags } from '@oclif/core';
 import { BaseCommand } from '../base-command';
+import { openInBrowser } from '../lib/browser';
 import { ProgressReporter } from '../lib/progress';
 import { readConfig, registerCreatedInstance } from '../lib/config';
 import { detectProject, type ProjectDetection } from '../lib/project-detection';
@@ -53,12 +55,21 @@ export default class Run extends BaseCommand {
     'api-key': BaseCommand.baseFlags['api-key'],
     quiet: BaseCommand.baseFlags.quiet,
   } as unknown as typeof BaseCommand.baseFlags;
+  static flags = {
+    open: Flags.boolean({
+      description:
+        'Open the simulator stream URL in your browser once the app is running. Use --no-open to skip.',
+      default: true,
+      allowNo: true,
+    }),
+  };
   static hiddenAliases = ['go'];
   static summary = 'Get started with Limrun';
   static description = 'Prepare your app for Limrun, or launch a working sample in a cloud simulator.';
   static examples = ['<%= config.bin %> run'];
   private reporter = new ProgressReporter(() => this.shouldSuppressInfo());
   private runFailureStage: RunFailureStage = 'initialization';
+  private openStream = true;
 
   async run(): Promise<void> {
     const startedAt = Date.now();
@@ -69,6 +80,7 @@ export default class Run extends BaseCommand {
       const { flags } = await this.parse(Run);
       this.setParsedFlags(flags);
       quiet = Boolean(flags.quiet);
+      this.openStream = flags.open !== false;
 
       this.runFailureStage = 'project_detection';
       const detection = detectProject(process.cwd());
@@ -174,9 +186,7 @@ export default class Run extends BaseCommand {
       recoveryFromDir: process.cwd(),
     });
 
-    this.output('');
-    this.output('✨ Click here to see your app:');
-    this.output(streamUrl);
+    await this.outputStreamUrl(streamUrl);
     this.outputNextSteps(projectRoot, 'Make a change and rebuild with Limrun skills.');
   }
 
@@ -271,9 +281,7 @@ export default class Run extends BaseCommand {
       recoveryFromDir: cwd,
     });
 
-    this.output('');
-    this.output('✨ Click here to see your app:');
-    this.output(streamUrl);
+    await this.outputStreamUrl(streamUrl);
     this.outputNextSteps(sample.path, samplePrompt());
   }
 
@@ -355,6 +363,17 @@ export default class Run extends BaseCommand {
         this.outputProjectRecovery(recoveryPath, recoveryFromDir);
       }
       throw err;
+    }
+  }
+
+  private async outputStreamUrl(streamUrl: string): Promise<void> {
+    this.output('');
+    this.output('✨ Click here to see your app:');
+    this.output(streamUrl);
+    if (this.openStream && !this.shouldSuppressInfo()) {
+      if (await openInBrowser(streamUrl)) {
+        this.info('Opened the stream in your browser.');
+      }
     }
   }
 
