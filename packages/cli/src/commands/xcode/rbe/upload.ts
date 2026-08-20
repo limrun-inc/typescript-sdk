@@ -34,7 +34,8 @@ export default class XcodeRbeUpload extends BaseCommand {
       hidden: true,
     }),
     ttl: Flags.string({
-      description: 'Asset TTL as a Go duration (e.g. 24h, 30m).',
+      description:
+        "Asset TTL as a Go duration (e.g. 24h, 30m). Defaults to 336h (14 days); each upload pushes the asset's expiry that far out from the upload.",
     }),
   };
 

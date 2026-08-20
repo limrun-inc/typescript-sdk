@@ -89,8 +89,18 @@ export type AssetUploadOptions = {
 };
 
 /**
+ * Default TTL for build-product uploads. Every build upload without an
+ * explicit ttl pushes the asset's expiry to 14 days from that upload, so
+ * abandoned build artifacts don't accumulate in Asset Storage forever.
+ * Assets uploaded through the general asset API keep no expiry by default.
+ */
+export const DEFAULT_BUILD_ASSET_TTL = '336h';
+
+/**
  * Mints presigned upload/download URLs for a named asset via assets.getOrCreate,
  * wrapping failures with the asset name (and the original error as cause).
+ * All build-product upload paths (xcodebuild, gradlebuild, RBE) go through
+ * here, which is what scopes DEFAULT_BUILD_ASSET_TTL to build uploads.
  */
 export function mintAssetUploadUrls(
   assets: {
@@ -100,7 +110,7 @@ export function mintAssetUploadUrls(
   ttl?: string,
   uploadOptions?: AssetUploadOptions,
 ): Promise<AssetUploadUrls> {
-  return assets.getOrCreate({ name, ...(ttl && { ttl }), ...uploadOptions }).catch((err) => {
+  return assets.getOrCreate({ name, ttl: ttl || DEFAULT_BUILD_ASSET_TTL, ...uploadOptions }).catch((err) => {
     const message = `Failed to create upload URL for asset '${name}': ${
       err instanceof Error ? err.message : err
     }`;

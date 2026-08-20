@@ -20,9 +20,8 @@ export interface AssetGetOrUploadParams {
 
   /**
    * Optional time-to-live as a Go duration string (e.g. "24h"). When set, the asset is deleted
-   * this long after now; minimum is 1m. When omitted, a newly created asset expires 14 days
-   * after now. On re-upload of an existing asset, a value updates the expiry while omitting
-   * it leaves the current expiry unchanged.
+   * this long after now; minimum is 1m. Omit for no expiry. On re-upload of an existing asset,
+   * a value updates the expiry while omitting it leaves the current expiry unchanged.
    */
   ttl?: string;
 
