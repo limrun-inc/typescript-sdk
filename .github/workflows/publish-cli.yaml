@@ -9,6 +9,11 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Job-level so the key survives the rebuild that `npm publish` triggers
+    # through prepublishOnly; a step-level env on Build alone gets clobbered.
+    env:
+      LIM_POSTHOG_PROJECT_KEY: ${{ secrets.LIMRUN_POSTHOG_PROJECT_KEY }}
+      LIM_POSTHOG_HOST: ${{ vars.LIMRUN_POSTHOG_HOST || 'https://l.limrun.com' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,9 +39,6 @@ jobs:
       - name: Build
         working-directory: packages/cli
         run: yarn build
-        env:
-          LIM_POSTHOG_PROJECT_KEY: ${{ secrets.LIMRUN_POSTHOG_PROJECT_KEY }}
-          LIM_POSTHOG_HOST: ${{ vars.LIMRUN_POSTHOG_HOST || 'https://l.limrun.com' }}
 
       # Authenticates via the npm trusted publisher configured for this
       # workflow (OIDC); a configured token would take precedence and fail.
