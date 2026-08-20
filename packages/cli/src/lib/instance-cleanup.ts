@@ -15,16 +15,30 @@
  * whether it deleted.
  */
 /**
- * Whether a create call with `reuseIfExists` actually created the instance,
- * judged by its server-side creation time against a client timestamp taken
- * just before the call. A reused instance predates the call; the 15s skew
- * allowance keeps a slightly-behind server clock from hiding a fresh one.
- * Cleanup paths use this so a failed attach deletes only what the call
- * created, never a pre-existing instance that reuse matched.
+ * The ids `reuseIfExists` could return instead of creating: the instances that
+ * already exist with exactly these labels. Callers snapshot this before a
+ * create-with-reuse; a returned id outside the set was created by that call,
+ * so a failed attach may delete it without ever touching a reused instance.
+ * Returns an empty set when reuse cannot match (no reuse or no labels), and
+ * null when the list failed and reuse cannot be ruled out (callers skip the
+ * delete then; leaking beats destroying a user's instance).
  */
-export function wasFreshlyCreated(createdAt: string, createCallStartMs: number): boolean {
-  const created = Date.parse(createdAt);
-  return !Number.isNaN(created) && created >= createCallStartMs - 15_000;
+export async function preexistingInstanceIds(
+  list: (labelSelector: string) => AsyncIterable<{ metadata: { id: string } }>,
+  labels: Record<string, string> | undefined,
+  reuseRequested: boolean,
+): Promise<Set<string> | null> {
+  const ids = new Set<string>();
+  if (!reuseRequested || !labels || Object.keys(labels).length === 0) return ids;
+  const selector = Object.entries(labels)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(',');
+  try {
+    for await (const instance of list(selector)) ids.add(instance.metadata.id);
+  } catch {
+    return null;
+  }
+  return ids;
 }
 
 export async function deleteCreatedInstance(

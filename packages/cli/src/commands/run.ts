@@ -5,7 +5,7 @@ import prompts from 'prompts';
 import { BaseCommand } from '../base-command';
 import { ProgressReporter } from '../lib/progress';
 import { readConfig, registerCreatedInstance } from '../lib/config';
-import { wasFreshlyCreated } from '../lib/instance-cleanup';
+import { preexistingInstanceIds } from '../lib/instance-cleanup';
 import { detectProject, type ProjectDetection } from '../lib/project-detection';
 import {
   applyProjectEnvApiKey,
@@ -378,7 +378,11 @@ export default class Run extends BaseCommand {
         this.reporter.start('Launching app in a Limrun iOS simulator');
         const launchStart = Date.now();
         let simulator: Awaited<ReturnType<typeof this.client.iosInstances.create>> | undefined;
-        const simCreateStart = Date.now();
+        const preexisting = await preexistingInstanceIds(
+          (labelSelector) => this.client.iosInstances.list({ labelSelector }),
+          labels,
+          true,
+        );
         try {
           if (this.iosInstanceId) {
             simulator = await this.client.iosInstances.get(this.iosInstanceId);
@@ -407,7 +411,7 @@ export default class Run extends BaseCommand {
           this.reporter.stop('failure');
           // A freshly created simulator is useless without the attach, so it
           // must not leak; one that reuseIfExists matched belongs to the user.
-          if (simulator && wasFreshlyCreated(simulator.metadata.createdAt, simCreateStart)) {
+          if (simulator && preexisting && !preexisting.has(simulator.metadata.id)) {
             await this.client.iosInstances.delete(simulator.metadata.id).catch(() => {});
           }
           throw err;

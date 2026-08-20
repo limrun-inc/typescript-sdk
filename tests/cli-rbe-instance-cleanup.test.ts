@@ -1,4 +1,4 @@
-import { deleteCreatedInstance, wasFreshlyCreated } from '../packages/cli/src/lib/instance-cleanup';
+import { deleteCreatedInstance, preexistingInstanceIds } from '../packages/cli/src/lib/instance-cleanup';
 
 /**
  * Pins the instance-leak guard: a command must delete a server-side instance it
@@ -49,16 +49,38 @@ describe('instance-leak cleanup policy', () => {
   });
 });
 
-describe('wasFreshlyCreated (reuseIfExists cleanup gate)', () => {
-  test('an instance created during the call is fresh, even with server clock up to 15s behind', () => {
-    const callStart = Date.now();
-    expect(wasFreshlyCreated(new Date(callStart + 2_000).toISOString(), callStart)).toBe(true);
-    expect(wasFreshlyCreated(new Date(callStart - 14_000).toISOString(), callStart)).toBe(true);
+describe('preexistingInstanceIds (reuseIfExists cleanup gate)', () => {
+  async function* listOf(...ids: string[]) {
+    for (const id of ids) yield { metadata: { id } };
+  }
+
+  test('snapshots ids reuse could return, with the exact label selector', async () => {
+    let seenSelector: string | undefined;
+    const ids = await preexistingInstanceIds(
+      (selector) => {
+        seenSelector = selector;
+        return listOf('ios_euna_01old');
+      },
+      { repo: 'demo', agent: 'claude' },
+      true,
+    );
+    expect(seenSelector).toBe('repo=demo,agent=claude');
+    expect(ids).toEqual(new Set(['ios_euna_01old']));
   });
 
-  test('a reused pre-existing instance is not fresh, and bad timestamps never allow a delete', () => {
-    const callStart = Date.now();
-    expect(wasFreshlyCreated(new Date(callStart - 60_000).toISOString(), callStart)).toBe(false);
-    expect(wasFreshlyCreated('not-a-date', callStart)).toBe(false);
+  test('reuse cannot match without reuse or labels, so everything the call returns is fresh', async () => {
+    const list = jest.fn();
+    await expect(preexistingInstanceIds(list, { repo: 'demo' }, false)).resolves.toEqual(new Set());
+    await expect(preexistingInstanceIds(list, undefined, true)).resolves.toEqual(new Set());
+    await expect(preexistingInstanceIds(list, {}, true)).resolves.toEqual(new Set());
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  test('a failed list returns null so callers skip the delete instead of guessing', async () => {
+    async function* failing(): AsyncIterable<{ metadata: { id: string } }> {
+      throw new Error('server unavailable');
+      yield { metadata: { id: 'unreachable' } };
+    }
+    await expect(preexistingInstanceIds(() => failing(), { repo: 'demo' }, true)).resolves.toBeNull();
   });
 });

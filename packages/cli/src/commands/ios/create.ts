@@ -6,7 +6,7 @@ import { registerCreatedInstance } from '../../lib/config';
 import { openInBrowser } from '../../lib/browser';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 import { formatDurationMs } from '../../lib/duration';
-import { wasFreshlyCreated } from '../../lib/instance-cleanup';
+import { preexistingInstanceIds } from '../../lib/instance-cleanup';
 import { resolveKeychainEncryptionKey } from '../../lib/keychain-encryption-key';
 import { type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
@@ -259,7 +259,11 @@ export default class IosCreate extends BaseCommand {
           throw err;
         }
       } else if (flags.xcode) {
-        const xcodeCreateStart = Date.now();
+        const preexisting = await preexistingInstanceIds(
+          (labelSelector) => this.client.xcodeInstances.list({ labelSelector }),
+          labels,
+          Boolean(flags['reuse-if-exists']),
+        );
         try {
           createdXcode = await this.client.xcodeInstances.create({
             wait: true,
@@ -284,7 +288,7 @@ export default class IosCreate extends BaseCommand {
           );
           // A freshly created sandbox is useless without the attach, so it must
           // not leak; one that reuseIfExists matched belongs to the user.
-          if (createdXcode && wasFreshlyCreated(createdXcode.metadata.createdAt, xcodeCreateStart)) {
+          if (createdXcode && preexisting && !preexisting.has(createdXcode.metadata.id)) {
             await this.client.xcodeInstances.delete(createdXcode.metadata.id).catch(() => {});
             createdXcode = undefined;
           }
