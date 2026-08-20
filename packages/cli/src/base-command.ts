@@ -541,7 +541,7 @@ export abstract class BaseCommand extends Command {
     const id = this._overrideInstanceId ?? providedId;
     if (id) {
       const target = this.xcodeTargetFromId(id);
-      if (target.type === 'xcode' && !(await this.xcodeTargetHasAttachedSimulator(target, false))) {
+      if (target.type === 'xcode' && !(await this.xcodeTargetHasAttachedSimulator(target))) {
         throw new Error(
           `--ios requires an iOS-backed Xcode target or an Xcode instance with an attached simulator, got ${id}`,
         );
@@ -560,7 +560,7 @@ export abstract class BaseCommand extends Command {
           '--inactivity-timeout controls a newly created instance and cannot be combined with an instance pinned by LIM_XCODE_INSTANCE_URL.',
         );
       }
-      if (!(await this.xcodeTargetHasAttachedSimulator(envTarget, false))) {
+      if (!(await this.xcodeTargetHasAttachedSimulator(envTarget))) {
         throw new Error(
           `--ios requires an Xcode instance with an attached simulator, but the one pinned by LIM_XCODE_INSTANCE_URL (${envTarget.id}) has none. Attach one with: lim xcode attach-simulator`,
         );
@@ -575,13 +575,29 @@ export abstract class BaseCommand extends Command {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
-    if (
-      target?.type === 'xcode' &&
-      !forceFresh &&
-      (await this.xcodeTargetHasAttachedSimulator(target, true))
-    ) {
-      this._lastResolvedInstanceId = target.id;
-      return target;
+    // The recorded Xcode target wins even when it has no simulator yet:
+    // attach one instead of abandoning it for a fresh sandbox, so a prior
+    // `lim xcode sync` or `lim xcode create` keeps all commands pointed at
+    // the same instance. Only a dead target falls through to creation.
+    if (target?.type === 'xcode' && !forceFresh) {
+      try {
+        const xcodeClient = await this.resolveXcodeClient(target);
+        const status = await xcodeClient.getSimulator();
+        if (!status.attached) {
+          // attachNewSimulator deletes the simulator itself when the attach fails.
+          const { simulator } = await xcodeClient.attachNewSimulator();
+          this._instancesCreatedThisRun.add(simulator.metadata.id);
+          saveLastCreatedInstance(simulator);
+          this.info(`Attached new simulator ${simulator.metadata.id} to Xcode target ${target.id}.`);
+        }
+        this._lastResolvedInstanceId = target.id;
+        return target;
+      } catch (err) {
+        if (!(err instanceof NotFoundError) && !this.isCachedXcodeClientNotFound(err)) {
+          throw err;
+        }
+        clearLastInstanceId(target.id);
+      }
     }
 
     if (!this.shouldAutoCreateOnNotFound()) {
@@ -597,21 +613,10 @@ export abstract class BaseCommand extends Command {
     return replacement;
   }
 
-  private async xcodeTargetHasAttachedSimulator(
-    target: LastXcodeInstance,
-    clearIfMissing: boolean,
-  ): Promise<boolean> {
-    try {
-      const xcodeClient = await this.resolveXcodeClient(target);
-      const status = await xcodeClient.getSimulator();
-      return status.attached;
-    } catch (err) {
-      if (clearIfMissing && (err instanceof NotFoundError || this.isCachedXcodeClientNotFound(err))) {
-        clearLastInstanceId(target.id);
-        return false;
-      }
-      throw err;
-    }
+  private async xcodeTargetHasAttachedSimulator(target: LastXcodeInstance): Promise<boolean> {
+    const xcodeClient = await this.resolveXcodeClient(target);
+    const status = await xcodeClient.getSimulator();
+    return status.attached;
   }
 
   private isCachedXcodeClientNotFound(err: unknown): err is Error {
