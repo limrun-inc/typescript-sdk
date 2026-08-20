@@ -50,6 +50,7 @@ export type XcodeBuildExecRequest = {
     scheme?: string;
     sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos';
     configuration?: 'Debug' | 'Release';
+    productName?: string;
   };
   xcodegen?: {
     spec?: string;
