@@ -103,7 +103,5 @@ httpServer.listen(port, () => {
   console.log('Trigger a real device build and get the IPA file:');
   console.log(`$ curl http://localhost:${port}/xcodebuild?sdk=iphoneos&assetName=device-build.ipa`);
   console.log('--------------------------------');
-  console.log(
-    'Tip: Use attachSimulator() for hot-reloading builds on a simulator for fast iteration. Alternatively, create the simulator with sandbox.xcode.enabled=true',
-  );
+  console.log('Tip: Use attachSimulator() for hot-reloading builds on a simulator for fast iteration.');
 });

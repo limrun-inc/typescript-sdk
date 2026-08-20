@@ -19,8 +19,20 @@ if (!codeFolder) {
   process.exit(1);
 }
 
-// Create an iOS instance with an embedded Xcode sandbox
-console.log('Creating iOS instance with Xcode...');
+// Create an Xcode sandbox and an iOS simulator separately, then attach the
+// simulator so successful builds auto-install on it.
+console.log('Creating Xcode sandbox...');
+const xcodeInstance = await lim.xcodeInstances.create({
+  wait: true,
+  reuseIfExists: true,
+  metadata: {
+    labels: {
+      name: 'ios-with-xcode-example',
+    },
+  },
+});
+
+console.log('Creating iOS simulator...');
 const instance = await lim.iosInstances.create({
   wait: true,
   reuseIfExists: true,
@@ -29,26 +41,12 @@ const instance = await lim.iosInstances.create({
       name: 'ios-with-xcode-example',
     },
   },
-  spec: {
-    sandbox: {
-      xcode: {
-        enabled: true,
-      },
-    },
-  },
 });
 
-const xcodeUrl = instance.status.sandbox?.xcode?.url;
-if (!xcodeUrl) {
-  console.error('Error: Xcode URL not available on the iOS instance');
-  process.exit(1);
-}
+const xcode = await lim.xcodeInstances.createClient({ instance: xcodeInstance });
 
-// Create a client for the embedded xcode instance
-const xcode = await lim.xcodeInstances.createClient({
-  apiUrl: xcodeUrl,
-  token: instance.status.token,
-});
+console.log('Attaching the simulator to the Xcode sandbox...');
+await xcode.attachSimulator(instance);
 
 // Sync the code
 console.log(`Syncing code from ${codeFolder}...`);

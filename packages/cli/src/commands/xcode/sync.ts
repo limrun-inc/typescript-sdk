@@ -8,7 +8,7 @@ import { parseAdditionalFileFlags } from '../../lib/additional-files';
 export default class XcodeSync extends BaseCommand {
   static summary = 'Continuously sync local source code to an Xcode sandbox';
   static description =
-    'Push local source code and project files (or the current working directory if omitted) to a remote Xcode sandbox with optional watch mode. This command is mostly useful for continuous sync workflows with `--watch`; for most one-shot builds, use `xcode build`, which already syncs the project path first. This works with standalone Xcode instances and can also target an iOS instance with `--xcode` enabled or created via `xcode create --ios` when you pass `--id`.';
+    'Push local source code and project files (or the current working directory if omitted) to a remote Xcode sandbox with optional watch mode. This command is mostly useful for continuous sync workflows with `--watch`; for most one-shot builds, use `xcode build`, which already syncs the project path first. This works with standalone Xcode instances and can also target a legacy iOS instance with an embedded Xcode sandbox when you pass `--id`.';
 
   static examples = [
     '<%= config.bin %> xcode sync --watch',
@@ -30,7 +30,7 @@ export default class XcodeSync extends BaseCommand {
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description:
-        'Xcode instance ID to sync to, or an explicit iOS instance ID with `--xcode` enabled. Defaults to the most recent standalone Xcode target, creating one if needed.',
+        'Xcode instance ID to sync to, or a legacy iOS instance ID with an embedded Xcode sandbox. Defaults to the most recent standalone Xcode target, creating one if needed.',
     }),
     watch: Flags.boolean({
       description: 'Keep watching the local source tree and push changes automatically',

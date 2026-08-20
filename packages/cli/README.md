@@ -153,7 +153,7 @@ lim ios create --model ipad --rm
 # With pre-installed app from asset storage
 lim ios create --install-asset my-app.ipa
 
-# With Xcode sandbox enabled
+# With an Xcode build sandbox created and attached
 lim ios create --xcode
 
 # Lock the simulator to an app after it first enters the foreground
@@ -169,7 +169,7 @@ lim ios create --region us-west --display-name "CI Test" --label env=ci --rm
 | --------------------------------- | --------------------------------------------------------------------------------- |
 | `--rm`                            | Auto-delete the instance on exit (Ctrl+C)                                         |
 | `--model <iphone\|ipad\|watch>`   | Simulator device model                                                            |
-| `--xcode`                         | Attach a Xcode build sandbox to the iOS instance                                  |
+| `--xcode`                         | Create an Xcode build sandbox and attach the simulator to it                      |
 | `--region <value>`                | Region for the instance (e.g. `us-west`)                                          |
 | `--jurisdiction <us\|eu\|as>`     | Jurisdiction the instance must be created in (hard constraint, unlike `--region`) |
 | `--display-name <value>`          | Human-readable name                                                               |
@@ -448,7 +448,7 @@ Standalone Xcode build sandboxes for remote compilation.
 
 ```bash
 lim xcode create          # Create a new Xcode sandbox
-lim xcode create --ios    # Create an iOS instance with an attached Xcode sandbox
+lim xcode create --ios    # Create an Xcode sandbox plus a fresh simulator and attach them
 lim xcode list            # List all ready Xcode instances
 lim xcode get <ID>        # Get details of a specific instance
 lim xcode delete <ID>     # Delete an instance
@@ -657,22 +657,18 @@ done
 
 ### Xcode Build Pipeline
 
-Build and test iOS apps remotely using cloud Xcode sandboxes. The `sync` and `build` commands work with both standalone Xcode instances and iOS instances that have Xcode sandbox enabled.
+Build and test iOS apps remotely using cloud Xcode sandboxes. Instances are created separately and attached: the Xcode sandbox builds, and any simulator attached to it receives the builds automatically.
 
-#### Option A: iOS Instance with Xcode Sandbox (Recommended)
+#### Option A: Build First, Attach a Simulator (Recommended)
 
-This gives you a simulator **and** a build environment in one instance — the built app is automatically installed on the simulator.
+Build on a standalone Xcode instance, then attach a simulator when you need to see the app. The attach installs the latest successful build immediately, and every later successful build reinstalls automatically. Building before creating the simulator also means the simulator doesn't sit idle (burning its inactivity timeout) during a long build.
 
 ```bash
-# 1. Create iOS instance with Xcode sandbox
-lim ios create --xcode
-# Output:
-#   Instance ID: ios_abc123
-#   Xcode Sandbox: https://...limrun.net/v1/sandbox_.../xcode
-#   (sandbox URL is cached locally for sync/build to use)
+# 1. Build — creates or reuses an Xcode instance and syncs your project code first
+lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
 
-# 2. Build — automatically syncs your project code first, then auto-installs on the simulator
-lim xcode build ./MyProject --id ios_abc123 --scheme MyApp --workspace MyApp.xcworkspace
+# 2. Attach a simulator; it installs the latest successful build immediately
+lim ios create --attach
 
 # 3. Start a session for fast device interaction
 lim session start
@@ -684,21 +680,22 @@ lim ios screenshot built-app.png
 
 # 5. Clean up
 lim session stop
-lim ios delete ios_abc123
+lim ios delete <ios-instance-ID>
+lim xcode delete <xcode-instance-ID>
 ```
 
-> **Note:** `lim xcode build` already syncs the project path you pass before invoking `xcodebuild`, so you do not need to call `lim xcode sync` first. The Xcode sandbox URL is only returned when the instance is created — not on subsequent `list` calls. The CLI caches it locally at `~/.lim/instances/` so that build workflows can find it. This means `build` must run on the same machine where `ios create --xcode` was executed.
+> **Note:** `lim xcode build` already syncs the project path you pass before invoking `xcodebuild`, so you do not need to call `lim xcode sync` first. To create everything up front instead, `lim ios create --xcode` creates a simulator plus an Xcode instance and attaches them, and `lim xcode create --ios` does the same starting from the Xcode side.
 
 #### Option B: Standalone Xcode Instance
 
-Use this when you only need to build (no simulator needed), or when you want to attach a simulator separately.
+Use this when you only need to build (no simulator needed).
 
 ```bash
 # 1. Create a standalone Xcode instance
 lim xcode create --rm
 
 # 2. Optionally attach an existing simulator by ID
-lim xcode attach-simulator ios_abc123 --id sandbox_def456
+lim xcode attach-simulator ios_abc123 --id xcode_def456
 
 # 3. Build (automatically syncs the project path first)
 lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace
@@ -899,11 +896,11 @@ lim ios delete $ID
 ### Remote Build + Test on iOS Simulator
 
 ```bash
-# Single instance: Xcode sandbox + iOS simulator
-ID=$(lim ios create --xcode --json | jq -r '.metadata.id')
+# Build first (creates or reuses an Xcode instance, syncs the project path automatically)
+lim xcode build ./MyiOSProject --scheme MyApp --workspace MyApp.xcworkspace
 
-# Build and test (build automatically syncs the project path first)
-lim xcode build ./MyiOSProject --id $ID --scheme MyApp --workspace MyApp.xcworkspace
+# Attach a simulator; it installs the latest successful build immediately
+ID=$(lim ios create --attach --json | jq -r '.metadata.id')
 
 # Verify the built app on the simulator
 lim session start

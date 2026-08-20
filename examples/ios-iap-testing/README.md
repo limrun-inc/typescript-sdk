@@ -5,9 +5,10 @@ local test environment — no real Apple Account, no sandbox, no real
 money movement. Products appear, `Buy` sheets label themselves
 `[Environment: Xcode]`, and purchases complete locally.
 
-The example creates an iOS instance with an embedded Xcode sandbox, syncs
-your source folder, and runs `xcodebuild` server-side (ad-hoc signed so
-StoreKit's local test environment accepts the bundle).
+The example creates an Xcode sandbox and an iOS simulator, attaches the
+simulator to the sandbox, syncs your source folder, and runs `xcodebuild`
+server-side (ad-hoc signed so StoreKit's local test environment accepts
+the bundle).
 
 Two flows are supported:
 
