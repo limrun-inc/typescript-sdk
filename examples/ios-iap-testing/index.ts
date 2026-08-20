@@ -27,27 +27,29 @@ if (!process.env['LIM_API_KEY']) {
 
 const lim = new Limrun({ apiKey: process.env['LIM_API_KEY'] });
 
-console.log('Creating iOS instance with Xcode...');
+console.log('Creating Xcode sandbox...');
+const xcodeInstance = await lim.xcodeInstances.create({
+  wait: true,
+  reuseIfExists: true,
+  metadata: { labels: { name: 'ios-iap-testing-example' } },
+});
+
+console.log('Creating iOS simulator...');
 const instance = await lim.iosInstances.create({
   wait: true,
   reuseIfExists: true,
   metadata: { labels: { name: 'ios-iap-testing-example' } },
-  spec: { sandbox: { xcode: { enabled: true } } },
 });
 if (!instance.status.apiUrl) {
   throw new Error('API URL is missing from instance status');
 }
-const xcodeUrl = instance.status.sandbox?.xcode?.url;
-if (!xcodeUrl) {
-  throw new Error('Xcode URL is missing from instance status');
-}
 const streamUrl = `https://console.limrun.com/stream/${instance.metadata.id}`;
 console.log(`Instance ready: ${streamUrl}`);
 
-const xcode = await lim.xcodeInstances.createClient({
-  apiUrl: xcodeUrl,
-  token: instance.status.token,
-});
+const xcode = await lim.xcodeInstances.createClient({ instance: xcodeInstance });
+
+console.log('Attaching the simulator to the Xcode sandbox...');
+await xcode.attachSimulator(instance);
 const ios = await Ios.createInstanceClient({
   apiUrl: instance.status.apiUrl,
   token: instance.status.token,

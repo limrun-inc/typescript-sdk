@@ -39,6 +39,7 @@ type RunFailureStage =
   | 'instance_create'
   | 'sync'
   | 'build'
+  | 'simulator_attach'
   | 'stream_url'
   | 'unknown';
 type BuildAndLaunchOptions = {
@@ -59,7 +60,7 @@ export default class Run extends BaseCommand {
   static flags = {
     'ios-id': Flags.string({
       description:
-        'Build onto an existing iOS simulator instance instead of creating one. The instance must have its Xcode sandbox enabled.',
+        'Launch the built app on this existing iOS simulator instance instead of creating a new one.',
     }),
   };
   static hiddenAliases = ['go'];
@@ -326,51 +327,28 @@ export default class Run extends BaseCommand {
     let recoveryPrinted = false;
     try {
       return await this.withAuth(async () => {
+        // The simulator is created only after the build succeeds: a simulator
+        // that sits idle during a long build can hit its inactivity timeout
+        // and take the build sandbox down with it.
         this.runFailureStage = 'instance_create';
-        let instance;
-        if (this.iosInstanceId) {
-          instance = await this.reporter.withProgress('Fetching your Limrun iOS simulator', () =>
-            this.client.iosInstances.get(this.iosInstanceId!),
-          );
-        } else {
-          instance = await this.reporter.withProgress('Preparing a Limrun iOS simulator with Xcode', () =>
-            this.client.iosInstances.create({
-              wait: true,
-              reuseIfExists: true,
-              metadata: {
-                displayName,
-                labels,
-              },
-              spec: {
-                sandbox: {
-                  xcode: {
-                    enabled: true,
-                  },
-                },
-              },
-            }),
-          );
-          registerCreatedInstance(instance, ['xcode']);
-        }
+        const sandbox = await this.reporter.withProgress('Preparing a Limrun Xcode build sandbox', () =>
+          this.client.xcodeInstances.create({
+            wait: true,
+            reuseIfExists: true,
+            metadata: {
+              displayName,
+              labels,
+            },
+          }),
+        );
+        registerCreatedInstance(sandbox);
 
-        const xcodeUrl = instance.status.sandbox?.xcode?.url;
-        if (!xcodeUrl) {
-          if (this.iosInstanceId) {
-            this.error(
-              `iOS instance ${this.iosInstanceId} has no Xcode sandbox, so there is nothing to build on. ` +
-                'Create it with the Xcode sandbox enabled, or run without --ios-id to get a fresh one.',
-            );
-          }
-          this.error('The iOS instance is ready, but its Xcode sandbox URL is missing.');
-        }
-
-        const xcode = await this.client.xcodeInstances.createClient({
-          apiUrl: xcodeUrl,
-          token: instance.status.token,
-        });
+        const xcode = await this.client.xcodeInstances.createClient({ instance: sandbox });
 
         this.runFailureStage = 'sync';
-        await xcode.sync(projectRoot, { watch: false });
+        await this.reporter.withProgress('Syncing project to the sandbox', () =>
+          xcode.sync(projectRoot, { watch: false }),
+        );
 
         this.runFailureStage = 'build';
         const build = xcode.xcodebuild();
@@ -391,10 +369,52 @@ export default class Run extends BaseCommand {
           recoveryPrinted = true;
           this.error(`${failureLabel} with exit code ${result.exitCode}`, { exit: result.exitCode });
         }
-        this.reporter.stop('success', `Built and launched in ${formatDurationMs(Date.now() - buildStart)}`);
+        this.reporter.stop('success', `Built in ${formatDurationMs(Date.now() - buildStart)}`);
+
+        // Attaching the simulator makes the sandbox install and launch the
+        // build it just produced.
+        this.runFailureStage = 'simulator_attach';
+        this.reporter.start('Launching app in a Limrun iOS simulator');
+        const launchStart = Date.now();
+        let simulator: Awaited<ReturnType<typeof this.client.iosInstances.create>> | undefined;
+        try {
+          if (this.iosInstanceId) {
+            simulator = await this.client.iosInstances.get(this.iosInstanceId);
+          } else {
+            simulator = await this.client.iosInstances.create({
+              wait: true,
+              reuseIfExists: true,
+              metadata: {
+                displayName,
+                labels,
+              },
+            });
+            registerCreatedInstance(simulator);
+          }
+          const attach = await xcode.attachSimulator(simulator);
+          if (attach.installError) {
+            throw new Error(`Failed to install the built app on the simulator: ${attach.installError}`);
+          }
+          if (
+            !attach.installedLastBuild &&
+            attach.latestBuild?.installState !== 'installedOnAttachedSimulator'
+          ) {
+            throw new Error('The simulator is attached, but the built app was not installed on it.');
+          }
+        } catch (err) {
+          this.reporter.stop('failure');
+          // The simulator is useless without the attach; never leak a billed
+          // one. Reuse only matches lim run's own labels, so a reused
+          // instance is part of this same workflow and fine to delete too.
+          if (simulator) {
+            await this.client.iosInstances.delete(simulator.metadata.id).catch(() => {});
+          }
+          throw err;
+        }
+        this.reporter.stop('success', `Launched app in ${formatDurationMs(Date.now() - launchStart)}`);
 
         this.runFailureStage = 'stream_url';
-        const streamUrl = this.signedStreamUrl(instance.status);
+        const streamUrl = this.signedStreamUrl(simulator!.status);
         if (!streamUrl) {
           this.error('The iOS instance is ready, but its signed stream URL is missing.');
         }
@@ -453,9 +473,9 @@ function interactivePathLabel(value: string): string {
 
 function buildProgressLabel(kind: DetectedProject['kind']): string {
   if (kind === 'expo') {
-    return 'Building and launching app (est. 5-10m)';
+    return 'Building app (est. 5-10m)';
   }
-  return 'Building and launching app (est. 30s-5m)';
+  return 'Building app (est. 30s-5m)';
 }
 
 function samplePrompt(): string {

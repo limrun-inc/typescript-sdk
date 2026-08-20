@@ -1,8 +1,7 @@
 import { Flags } from '@oclif/core';
-import { applySandboxCache, BaseCommand } from '../../base-command';
+import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
-import { xcodeSandboxIdFromUrl } from '../../lib/xcode-sandbox';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 import { parseCacheConfig, wantsRestore } from '../../lib/cache';
 import { cacheFlags } from '../../lib/cache-flags';
@@ -12,7 +11,7 @@ import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instance
 export default class XcodeCreate extends BaseCommand {
   static summary = 'Create a new Xcode instance';
   static description =
-    'Create a new cloud Xcode sandbox for remote sync and build workflows. Use `--ios` to create an iOS instance with an attached Xcode sandbox instead of a standalone Xcode sandbox.';
+    'Create a new cloud Xcode sandbox for remote sync and build workflows. Use `--ios` to also create a fresh iOS simulator and attach it, or `--attach` to attach an existing one.';
 
   static examples = [
     '<%= config.bin %> xcode create',
@@ -55,8 +54,7 @@ export default class XcodeCreate extends BaseCommand {
       default: false,
     }),
     ios: Flags.boolean({
-      description:
-        'Create an iOS instance with an attached Xcode sandbox instead of a standalone Xcode sandbox',
+      description: 'Also create a fresh iOS simulator and attach it to the created Xcode instance',
       default: false,
     }),
     attach: Flags.boolean({
@@ -94,100 +92,6 @@ export default class XcodeCreate extends BaseCommand {
 
     await this.withAuth(async () => {
       const labels = parseLabels(flags.label);
-      if (flags.ios) {
-        const params: IosInstanceCreateParams = {
-          wait: true,
-          reuseIfExists: flags['reuse-if-exists'] || undefined,
-          spec: {
-            sandbox: { xcode: { enabled: true } },
-          },
-        };
-        if (cache) applySandboxCache(params, cache);
-
-        if (flags.region) params.spec!.region = flags.region;
-        if (flags.jurisdiction) params.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';
-        if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
-        if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
-
-        if (flags['display-name'] || labels) {
-          params.metadata = {};
-          if (flags['display-name']) params.metadata.displayName = flags['display-name'];
-          if (labels) params.metadata.labels = labels;
-        }
-
-        const start = Date.now();
-        const instance = await this.client.iosInstances.create(params);
-        const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
-        const signedStreamUrl = this.signedStreamUrl(instance.status);
-        const xcodeSandboxUrl = instance.status.sandbox?.xcode?.url;
-        const xcodeSandboxId = xcodeSandboxUrl ? xcodeSandboxIdFromUrl(xcodeSandboxUrl) : undefined;
-        registerCreatedInstance(instance, ['xcode']);
-        this.info(
-          `Created a new iOS instance with Xcode sandbox in ${((Date.now() - start) / 1000).toFixed(1)}s`,
-        );
-        this.info('iOS Instance:');
-        this.info(`  ID: ${instance.metadata.id}`);
-        this.info(`  Console URL: ${consoleUrl}`);
-        if (signedStreamUrl) {
-          this.info(`  Signed Stream URL: ${signedStreamUrl}`);
-        }
-        this.info(`  Region: ${instance.spec.region}`);
-        this.info(`  State: ${instance.status.state}`);
-        if (xcodeSandboxUrl) {
-          this.info('Xcode Sandbox:');
-          if (xcodeSandboxId) {
-            this.info(`  ID: ${xcodeSandboxId}`);
-          }
-          this.info(`  URL: ${xcodeSandboxUrl}`);
-        }
-
-        if (wantsRestore(cache)) {
-          if (!xcodeSandboxId) {
-            this.error(
-              `Created iOS instance ${instance.metadata.id}, but it has no Xcode sandbox to restore a cache into.`,
-            );
-          }
-          await this.awaitCacheRestore(xcodeSandboxId, async () => {
-            try {
-              await this.client.iosInstances.delete(instance.metadata.id);
-              this.info(`${instance.metadata.id} is deleted`);
-            } catch (e) {
-              this.info(`Failed to delete instance: ${e}`);
-            }
-          });
-        }
-
-        if (flags.json) {
-          this.outputJson(instance);
-        } else if (this.isQuietEnabled()) {
-          this.output(instance.metadata.id);
-        }
-
-        if (flags.rm) {
-          const cleanup = async () => {
-            try {
-              await this.client.iosInstances.delete(instance.metadata.id);
-              this.info(`${instance.metadata.id} is deleted`);
-            } catch (e) {
-              this.info(`Failed to delete instance: ${e}`);
-            }
-          };
-
-          this.info('Instance running. Press Ctrl+C to stop and delete.');
-          await new Promise<void>((resolve) => {
-            const keepAlive = setInterval(() => {}, 1 << 30);
-            const shutdown = () => {
-              clearInterval(keepAlive);
-              resolve();
-            };
-            process.on('SIGINT', shutdown);
-            process.on('SIGTERM', shutdown);
-          });
-          await cleanup();
-        }
-        return;
-      }
-
       const simulator = flags.attach ? await this.client.iosInstances.get(flags['simulator-id']!) : undefined;
 
       const params: XcodeInstanceCreateParamsWithCache = {
@@ -221,9 +125,58 @@ export default class XcodeCreate extends BaseCommand {
         } catch (e) {
           this.info(`Failed to delete instance: ${e}`);
         }
+        if (createdSimulator && attachedSimulator) {
+          try {
+            await this.client.iosInstances.delete(attachedSimulator.metadata.id);
+            this.info(`${attachedSimulator.metadata.id} is deleted`);
+          } catch (e) {
+            this.info(`Failed to delete instance: ${e}`);
+          }
+        }
       };
       let attachResult: SimulatorAttachResult | undefined;
-      if (flags.attach && simulator) {
+      let attachedSimulator = simulator;
+      let createdSimulator = false;
+      if (flags.ios) {
+        try {
+          const xcodeClient = await this.client.xcodeInstances.createClient({ instance });
+          const simParams: IosInstanceCreateParams = {
+            wait: true,
+            reuseIfExists: flags['reuse-if-exists'] || undefined,
+            spec: {},
+          };
+          if (flags.region) simParams.spec!.region = flags.region;
+          if (flags.jurisdiction) simParams.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';
+          if (flags['hard-timeout']) simParams.spec!.hardTimeout = flags['hard-timeout'];
+          if (flags['inactivity-timeout']) simParams.spec!.inactivityTimeout = flags['inactivity-timeout'];
+          if (flags['display-name'] || labels) {
+            simParams.metadata = {};
+            if (flags['display-name']) simParams.metadata.displayName = flags['display-name'];
+            if (labels) simParams.metadata.labels = labels;
+          }
+          attachedSimulator = await this.client.iosInstances.create(simParams);
+          createdSimulator = true;
+          try {
+            attachResult = await xcodeClient.attachSimulator(attachedSimulator);
+          } catch (err) {
+            // The simulator is useless without the attach; never leak a billed
+            // one. Reuse only matches this command's own labels, so a reused
+            // instance is part of the same workflow and fine to delete too.
+            await this.client.iosInstances.delete(attachedSimulator.metadata.id).catch(() => {});
+            attachedSimulator = undefined;
+            createdSimulator = false;
+            throw err;
+          }
+        } catch (err) {
+          this.info(
+            `Created Xcode instance ${instance.metadata.id}, but creating or attaching a simulator failed.`,
+          );
+          if (flags.rm) {
+            await cleanup();
+          }
+          throw err;
+        }
+      } else if (flags.attach && simulator) {
         try {
           const xcodeClient = await this.client.xcodeInstances.createClient({ instance });
           attachResult = await xcodeClient.attachSimulator(simulator);
@@ -244,9 +197,21 @@ export default class XcodeCreate extends BaseCommand {
       }
       this.info(`  Region: ${instance.spec.region}`);
       this.info(`  State: ${instance.status.state}`);
-      if (attachResult && simulator) {
-        registerCreatedInstance(simulator);
-        this.info(formatSimulatorAttachResult(simulator.metadata.id, instance.metadata.id, attachResult));
+      if (attachedSimulator) {
+        registerCreatedInstance(attachedSimulator);
+        if (createdSimulator) {
+          const simStreamUrl = this.signedStreamUrl(attachedSimulator.status);
+          this.info('iOS Simulator:');
+          this.info(`  ID: ${attachedSimulator.metadata.id}`);
+          if (simStreamUrl) {
+            this.info(`  Signed Stream URL: ${simStreamUrl}`);
+          }
+        }
+        if (attachResult) {
+          this.info(
+            formatSimulatorAttachResult(attachedSimulator.metadata.id, instance.metadata.id, attachResult),
+          );
+        }
       }
 
       if (wantsRestore(cache)) {
@@ -254,10 +219,11 @@ export default class XcodeCreate extends BaseCommand {
       }
 
       if (flags.json) {
-        if (attachResult && simulator) {
+        if (attachResult && attachedSimulator) {
           this.outputJson({
             ...instance,
-            attach: simulatorAttachJson(simulator.metadata.id, instance.metadata.id, attachResult),
+            ...(createdSimulator ? { simulator: attachedSimulator } : {}),
+            attach: simulatorAttachJson(attachedSimulator.metadata.id, instance.metadata.id, attachResult),
           });
         } else {
           this.outputJson(instance);

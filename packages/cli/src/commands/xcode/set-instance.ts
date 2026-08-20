@@ -7,7 +7,7 @@ export default class XcodeSetInstance extends BaseCommand {
   static summary = 'Set the Xcode instance targeted by subsequent commands';
   static description =
     'Pin an existing Xcode instance as the target of subsequent `lim xcode` commands using only its API URL and token — no LIM_API_KEY needed. ' +
-    'Works with a standalone Xcode instance (status.apiUrl and status.token from `lim xcode create --json`) or with the Xcode sandbox of an iOS instance (status.sandbox.xcode.url and status.token from `lim ios create --xcode --json`). ' +
+    'Works with a standalone Xcode instance (status.apiUrl and status.token from `lim xcode create --json`) or with the embedded Xcode sandbox of a legacy paired iOS instance (status.sandbox.xcode.url and status.token). ' +
     'To target the instance without persisting anything, export LIM_XCODE_INSTANCE_URL and LIM_XCODE_INSTANCE_TOKEN instead; commands pick them up directly.';
   static examples = [
     '<%= config.bin %> xcode set-instance --api-url https://eu-north1.limrun.com/v1/xcode_.../api --token lim_st_...',

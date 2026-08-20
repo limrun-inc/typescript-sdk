@@ -1,9 +1,10 @@
 # iOS Instance with Xcode
 
-Build and run iOS apps using an iOS instance with an embedded Xcode sandbox.
+Build and run iOS apps using an Xcode sandbox attached to an iOS simulator.
 
-This example creates a Limrun iOS instance with Xcode enabled, syncs your
-local code, builds it remotely, and installs the app on the simulator.
+This example creates a Limrun Xcode sandbox and an iOS simulator, attaches
+the simulator to the sandbox, syncs your local code, builds it remotely, and
+installs the app on the simulator.
 
 Clone this repo and get started!
 

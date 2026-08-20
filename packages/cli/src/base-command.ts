@@ -36,7 +36,7 @@ import {
   wantsRestore,
 } from './lib/cache';
 import type { XcodeCacheConfig, XcodeCacheFollowResult } from '@limrun/api';
-import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
+import { type IosInstance } from '@limrun/api/resources/ios-instances';
 import { xcodeSandboxIdFromUrl } from './lib/xcode-sandbox';
 import { captureTelemetry, telemetryIntentForCommand } from './lib/telemetry';
 
@@ -325,7 +325,7 @@ export abstract class BaseCommand extends Command {
 
       if (!sandboxUrl) {
         this.error(
-          `iOS instance ${id} does not have a Xcode sandbox. Create it with: lim ios create --xcode or lim xcode create --ios`,
+          `iOS instance ${id} does not have an Xcode sandbox. Create one and attach the simulator with: lim xcode create --attach --simulator-id ${id}`,
         );
       }
       return this.client.xcodeInstances.createClient({
@@ -614,7 +614,7 @@ export abstract class BaseCommand extends Command {
       );
     }
 
-    const replacement = await this.createIosXcodeInstance();
+    const replacement = await this.createSimulatorBackedXcodeInstance();
     this.info(`No recent simulator-backed Xcode target found. Created instance ${replacement.id}.`);
     this._lastResolvedInstanceId = replacement.id;
     return replacement;
@@ -683,7 +683,7 @@ export abstract class BaseCommand extends Command {
         return this.createStandaloneGradleInstance();
       case 'xcode':
         if (this._xcodeReplacementIntent === 'simulator-backed') {
-          return this.createIosXcodeInstance();
+          return this.createSimulatorBackedXcodeInstance();
         }
         return this.createStandaloneXcodeInstance();
       case 'ios': {
@@ -941,44 +941,26 @@ export abstract class BaseCommand extends Command {
     return loadIosInstanceCache(id) ?? { id, type: 'ios' };
   }
 
-  private async createIosXcodeInstance(): Promise<LastIosInstance> {
-    const inactivityTimeout = this.autoCreateInactivityTimeout();
-    const cache = this.cacheConfigFromFlags();
-    const params: IosInstanceCreateParams = {
-      wait: true,
-      spec: {
-        sandbox: { xcode: { enabled: true } },
-        ...(inactivityTimeout && { inactivityTimeout }),
-      },
-    };
-    if (cache) {
-      applySandboxCache(params, cache);
+  // Creates a standalone Xcode instance plus a fresh simulator and attaches
+  // them, replacing the legacy server-side paired creation
+  // (spec.sandbox.xcode.enabled). Separate creation keeps the two lifecycles
+  // independent and is the supported way to get a simulator-backed target.
+  // The simulator keeps the org-default inactivity timeout on purpose: a
+  // build-scoped --inactivity-timeout (e.g. 3s) belongs to the build sandbox,
+  // and a simulator carrying it would idle out before the build finishes.
+  private async createSimulatorBackedXcodeInstance(): Promise<LastXcodeInstance> {
+    const target = await this.createStandaloneXcodeInstance();
+    let simulator: IosInstance;
+    try {
+      const xcodeClient = await this.resolveXcodeClient(target);
+      // attachNewSimulator deletes the simulator itself when the attach fails.
+      ({ simulator } = await xcodeClient.attachNewSimulator());
+    } catch (err) {
+      await this.deleteCreatedInstance(target.id);
+      throw err;
     }
-    const instance = await this.client.iosInstances.create(params);
-    this._instancesCreatedThisRun.add(instance.metadata.id);
-    saveLastCreatedInstance(instance, ['xcode']);
-    if (wantsRestore(cache)) {
-      const sandboxId = xcodeSandboxIdFromUrl(instance.status.sandbox?.xcode?.url ?? '');
-      if (!sandboxId) {
-        throw new Error(
-          `Created iOS instance ${instance.metadata.id}, but it has no Xcode sandbox to restore a cache into.`,
-        );
-      }
-      await this.awaitCacheRestore(sandboxId, async () => {
-        try {
-          await this.client.iosInstances.delete(instance.metadata.id);
-          this._instancesCreatedThisRun.delete(instance.metadata.id);
-        } catch {
-          // Best effort: the restore failure is what the caller needs to hear about.
-        }
-      });
-    }
-    const target = loadIosInstanceCache(instance.metadata.id);
-    if (!target) {
-      throw new Error(
-        `Created iOS instance ${instance.metadata.id}, but failed to load it from local cache.`,
-      );
-    }
+    this._instancesCreatedThisRun.add(simulator.metadata.id);
+    saveLastCreatedInstance(simulator);
     return target;
   }
 
@@ -1105,16 +1087,4 @@ export abstract class BaseCommand extends Command {
 
 function saveLastCreatedInstance(instanceOrId: InstanceInput, relatedTypes: Array<'xcode'> = []) {
   return registerCreatedInstance(instanceOrId, relatedTypes);
-}
-
-/**
- * Puts the cache on the nested Xcode sandbox of an iOS create. The generated params do not
- * carry the field yet, while the request body passes it through untouched.
- */
-export function applySandboxCache(params: IosInstanceCreateParams, cache: XcodeCacheConfig): void {
-  const xcode = params.spec?.sandbox?.xcode as { cache?: XcodeCacheConfig } | undefined;
-  if (!xcode) {
-    throw new Error('Cannot configure a build cache on an iOS instance without an Xcode sandbox');
-  }
-  xcode.cache = cache;
 }

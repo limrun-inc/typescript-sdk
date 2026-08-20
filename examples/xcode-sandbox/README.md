@@ -53,6 +53,6 @@ curl "http://localhost:3000/xcodebuild?sdk=iphoneos&assetName=device-build.ipa"
 ```
 
 > Tip: Use `attachSimulator()` for hot-reloading builds on a simulator for fast
-> iteration. Alternatively, create the simulator with `sandbox.xcode.enabled=true`.
+> iteration.
 
 Enjoy!

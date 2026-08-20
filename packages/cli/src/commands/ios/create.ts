@@ -4,7 +4,6 @@ import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { openInBrowser } from '../../lib/browser';
-import { xcodeSandboxIdFromUrl } from '../../lib/xcode-sandbox';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 import { formatDurationMs } from '../../lib/duration';
 import { resolveKeychainEncryptionKey } from '../../lib/keychain-encryption-key';
@@ -14,7 +13,7 @@ import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instance
 export default class IosCreate extends BaseCommand {
   static summary = 'Create a new iOS instance';
   static description =
-    'Create a new cloud iOS simulator instance and wait for it to become ready. You can attach labels, install apps, choose a device model, and optionally enable an Xcode sandbox.';
+    'Create a new cloud iOS simulator instance and wait for it to become ready. You can attach labels, install apps, choose a device model, and optionally create and attach an Xcode sandbox.';
 
   static examples = [
     '<%= config.bin %> ios create',
@@ -101,7 +100,7 @@ export default class IosCreate extends BaseCommand {
         'Asset time-to-live for files uploaded via --install, as a Go duration (e.g. "24h", min 1m). Does not affect --install-asset. Defaults to no expiry.',
     }),
     xcode: Flags.boolean({
-      description: 'Enable an attached Xcode sandbox for build and sync workflows',
+      description: 'Also create an Xcode sandbox and attach the simulator to it for build and sync workflows',
       default: false,
     }),
     attach: Flags.boolean({
@@ -211,9 +210,6 @@ export default class IosCreate extends BaseCommand {
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
       if (flags['force-bundle-id']) params.spec!.forceBundleId = flags['force-bundle-id'];
-      if (flags.xcode) {
-        params.spec!.sandbox = { xcode: { enabled: true } };
-      }
 
       const labels = parseLabels(flags.label);
       if (flags['display-name'] || labels) {
@@ -227,9 +223,8 @@ export default class IosCreate extends BaseCommand {
       const createDurationMs = Date.now() - createStart;
       const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
       const signedStreamUrl = this.signedStreamUrl(instance.status);
-      const xcodeSandboxUrl = instance.status.sandbox?.xcode?.url;
-      const xcodeSandboxId = xcodeSandboxUrl ? xcodeSandboxIdFromUrl(xcodeSandboxUrl) : undefined;
-      registerCreatedInstance(instance, flags.xcode ? ['xcode'] : []);
+      registerCreatedInstance(instance);
+      let createdXcode: Awaited<ReturnType<typeof this.client.xcodeInstances.create>> | undefined;
       const cleanup = async () => {
         try {
           await this.client.iosInstances.delete(instance.metadata.id);
@@ -237,16 +232,61 @@ export default class IosCreate extends BaseCommand {
         } catch (e) {
           this.info(`Failed to delete instance: ${e}`);
         }
+        if (createdXcode) {
+          try {
+            await this.client.xcodeInstances.delete(createdXcode.metadata.id);
+            this.info(`${createdXcode.metadata.id} is deleted`);
+          } catch (e) {
+            this.info(`Failed to delete instance: ${e}`);
+          }
+        }
       };
       let attachResult: SimulatorAttachResult | undefined;
       let attachDurationMs: number | undefined;
-      if (attachClient) {
+      let attachedXcodeId: string | undefined;
+      if (attachClient && attachTarget) {
         try {
           const attachStart = Date.now();
           attachResult = await attachClient.attachSimulator(instance);
           attachDurationMs = Date.now() - attachStart;
+          attachedXcodeId = attachTarget.id;
         } catch (err) {
           this.info(`Created iOS instance ${instance.metadata.id}, but attach failed.`);
+          if (flags.rm) {
+            await cleanup();
+          }
+          throw err;
+        }
+      } else if (flags.xcode) {
+        try {
+          createdXcode = await this.client.xcodeInstances.create({
+            wait: true,
+            reuseIfExists: flags['reuse-if-exists'] || undefined,
+            ...(params.metadata ? { metadata: params.metadata } : {}),
+            spec: {
+              ...(flags.region ? { region: flags.region } : {}),
+              ...(flags.jurisdiction ? { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' } : {}),
+              ...(flags['hard-timeout'] ? { hardTimeout: flags['hard-timeout'] } : {}),
+              ...(flags['inactivity-timeout'] ? { inactivityTimeout: flags['inactivity-timeout'] } : {}),
+            },
+          });
+          registerCreatedInstance(createdXcode);
+          const xcodeClient = await this.client.xcodeInstances.createClient({ instance: createdXcode });
+          const attachStart = Date.now();
+          attachResult = await xcodeClient.attachSimulator(instance);
+          attachDurationMs = Date.now() - attachStart;
+          attachedXcodeId = createdXcode.metadata.id;
+        } catch (err) {
+          this.info(
+            `Created iOS instance ${instance.metadata.id}, but creating or attaching an Xcode sandbox failed.`,
+          );
+          // The sandbox is useless without the attach; never leak a billed
+          // one. Reuse only matches this command's own labels, so a reused
+          // instance is part of the same workflow and fine to delete too.
+          if (createdXcode) {
+            await this.client.xcodeInstances.delete(createdXcode.metadata.id).catch(() => {});
+            createdXcode = undefined;
+          }
           if (flags.rm) {
             await cleanup();
           }
@@ -255,7 +295,9 @@ export default class IosCreate extends BaseCommand {
       }
       const createdMessage =
         flags.xcode ?
-          `Created a new iOS instance with Xcode sandbox in ${formatDurationMs(createDurationMs)}.`
+          `Created a new iOS instance with an attached Xcode sandbox in ${formatDurationMs(
+            createDurationMs,
+          )}.`
         : `Created a new iOS instance in ${formatDurationMs(createDurationMs)}.`;
       this.info(createdMessage);
       this.info('iOS Instance:');
@@ -266,18 +308,18 @@ export default class IosCreate extends BaseCommand {
       }
       this.info(`  Region: ${instance.spec.region}`);
       this.info(`  State: ${instance.status.state}`);
-      if (xcodeSandboxUrl) {
-        this.info('Xcode Sandbox:');
-        if (xcodeSandboxId) {
-          this.info(`  ID: ${xcodeSandboxId}`);
+      if (createdXcode) {
+        this.info('Xcode Instance:');
+        this.info(`  ID: ${createdXcode.metadata.id}`);
+        if (createdXcode.status.apiUrl) {
+          this.info(`  URL: ${createdXcode.status.apiUrl}`);
         }
-        this.info(`  URL: ${xcodeSandboxUrl}`);
       }
-      if (attachResult && attachTarget) {
+      if (attachResult && attachedXcodeId) {
         if (attachDurationMs !== undefined) {
           this.info(`Attach/install completed in ${formatDurationMs(attachDurationMs)}.`);
         }
-        this.info(formatSimulatorAttachResult(instance.metadata.id, attachTarget.id, attachResult));
+        this.info(formatSimulatorAttachResult(instance.metadata.id, attachedXcodeId, attachResult));
       }
 
       if (flags.open && signedStreamUrl && !this.shouldSuppressInfo()) {
@@ -287,10 +329,11 @@ export default class IosCreate extends BaseCommand {
       }
 
       if (flags.json) {
-        if (attachResult && attachTarget) {
+        if (attachResult && attachedXcodeId) {
           this.outputJson({
             ...instance,
-            attach: simulatorAttachJson(instance.metadata.id, attachTarget.id, attachResult),
+            ...(createdXcode ? { xcode: createdXcode } : {}),
+            attach: simulatorAttachJson(instance.metadata.id, attachedXcodeId, attachResult),
           });
         } else {
           this.outputJson(instance);

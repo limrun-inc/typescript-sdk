@@ -84,7 +84,7 @@ export default class XcodeBuild extends BaseCommand {
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description:
-        'Xcode instance ID to build on, or an explicit iOS instance ID with `--xcode` enabled. Defaults to the most recent standalone Xcode target.',
+        'Xcode instance ID to build on, or a legacy iOS instance ID with an embedded Xcode sandbox. Defaults to the most recent standalone Xcode target.',
     }),
     'inactivity-timeout': Flags.string({
       description:
@@ -92,7 +92,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     ios: Flags.boolean({
       description:
-        'Build on an iOS simulator-backed Xcode target. Reuses a recent iOS-backed target or creates one unless --no-create is passed.',
+        'Build on an Xcode target with an attached iOS simulator. Reuses a recent simulator-backed target or creates an Xcode instance plus a simulator and attaches them unless --no-create is passed.',
       default: false,
     }),
     scheme: Flags.string({ description: 'Xcode scheme to build, such as MyApp' }),
