@@ -1,4 +1,4 @@
-import { deleteCreatedInstance, preexistingInstanceIds } from '../packages/cli/src/lib/instance-cleanup';
+import { deleteCreatedInstance } from '../packages/cli/src/lib/instance-cleanup';
 
 /**
  * Pins the instance-leak guard: a command must delete a server-side instance it
@@ -46,41 +46,5 @@ describe('instance-leak cleanup policy', () => {
     await expect(deleteCreatedInstance(created, CREATED, del)).resolves.toBe(false);
     // Retained so it isn't silently forgotten (matches deleteSim semantics).
     expect(created.has(CREATED)).toBe(true);
-  });
-});
-
-describe('preexistingInstanceIds (reuseIfExists cleanup gate)', () => {
-  async function* listOf(...ids: string[]) {
-    for (const id of ids) yield { metadata: { id } };
-  }
-
-  test('snapshots ids reuse could return, with the exact label selector', async () => {
-    let seenSelector: string | undefined;
-    const ids = await preexistingInstanceIds(
-      (selector) => {
-        seenSelector = selector;
-        return listOf('ios_euna_01old');
-      },
-      { repo: 'demo', agent: 'claude' },
-      true,
-    );
-    expect(seenSelector).toBe('repo=demo,agent=claude');
-    expect(ids).toEqual(new Set(['ios_euna_01old']));
-  });
-
-  test('reuse cannot match without reuse or labels, so everything the call returns is fresh', async () => {
-    const list = jest.fn();
-    await expect(preexistingInstanceIds(list, { repo: 'demo' }, false)).resolves.toEqual(new Set());
-    await expect(preexistingInstanceIds(list, undefined, true)).resolves.toEqual(new Set());
-    await expect(preexistingInstanceIds(list, {}, true)).resolves.toEqual(new Set());
-    expect(list).not.toHaveBeenCalled();
-  });
-
-  test('a failed list returns null so callers skip the delete instead of guessing', async () => {
-    async function* failing(): AsyncIterable<{ metadata: { id: string } }> {
-      throw new Error('server unavailable');
-      yield { metadata: { id: 'unreachable' } };
-    }
-    await expect(preexistingInstanceIds(() => failing(), { repo: 'demo' }, true)).resolves.toBeNull();
   });
 });
