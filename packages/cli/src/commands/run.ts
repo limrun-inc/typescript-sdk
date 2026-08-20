@@ -1,5 +1,6 @@
 import os from 'os';
 import path from 'path';
+import { Flags } from '@oclif/core';
 import prompts from 'prompts';
 import { BaseCommand } from '../base-command';
 import { ProgressReporter } from '../lib/progress';
@@ -55,12 +56,19 @@ export default class Run extends BaseCommand {
     'api-key': BaseCommand.baseFlags['api-key'],
     quiet: BaseCommand.baseFlags.quiet,
   } as unknown as typeof BaseCommand.baseFlags;
+  static flags = {
+    'ios-id': Flags.string({
+      description:
+        'Build onto an existing iOS simulator instance instead of creating one. The instance must have its Xcode sandbox enabled.',
+    }),
+  };
   static hiddenAliases = ['go'];
   static summary = 'Get started with Limrun';
   static description = 'Prepare your app for Limrun, or launch a working sample in a cloud simulator.';
-  static examples = ['<%= config.bin %> run'];
+  static examples = ['<%= config.bin %> run', '<%= config.bin %> run --ios-id ios_abc123'];
   private reporter = new ProgressReporter(() => this.shouldSuppressInfo());
   private runFailureStage: RunFailureStage = 'initialization';
+  private iosInstanceId: string | undefined;
 
   async run(): Promise<void> {
     const startedAt = Date.now();
@@ -71,6 +79,7 @@ export default class Run extends BaseCommand {
       const { flags } = await this.parse(Run);
       this.setParsedFlags(flags);
       quiet = Boolean(flags.quiet);
+      this.iosInstanceId = flags['ios-id'];
 
       this.runFailureStage = 'project_detection';
       const detection = detectProject(process.cwd());
@@ -78,6 +87,7 @@ export default class Run extends BaseCommand {
       await captureTelemetry('cli_run_started', {
         project_kind: projectKind,
         quiet,
+        explicit_simulator: Boolean(this.iosInstanceId),
       });
 
       this.runFailureStage = 'project_selection';
@@ -317,27 +327,40 @@ export default class Run extends BaseCommand {
     try {
       return await this.withAuth(async () => {
         this.runFailureStage = 'instance_create';
-        const instance = await this.reporter.withProgress('Preparing a Limrun iOS simulator with Xcode', () =>
-          this.client.iosInstances.create({
-            wait: true,
-            reuseIfExists: true,
-            metadata: {
-              displayName,
-              labels,
-            },
-            spec: {
-              sandbox: {
-                xcode: {
-                  enabled: true,
+        let instance;
+        if (this.iosInstanceId) {
+          instance = await this.reporter.withProgress('Fetching your Limrun iOS simulator', () =>
+            this.client.iosInstances.get(this.iosInstanceId!),
+          );
+        } else {
+          instance = await this.reporter.withProgress('Preparing a Limrun iOS simulator with Xcode', () =>
+            this.client.iosInstances.create({
+              wait: true,
+              reuseIfExists: true,
+              metadata: {
+                displayName,
+                labels,
+              },
+              spec: {
+                sandbox: {
+                  xcode: {
+                    enabled: true,
+                  },
                 },
               },
-            },
-          }),
-        );
-        registerCreatedInstance(instance, ['xcode']);
+            }),
+          );
+          registerCreatedInstance(instance, ['xcode']);
+        }
 
         const xcodeUrl = instance.status.sandbox?.xcode?.url;
         if (!xcodeUrl) {
+          if (this.iosInstanceId) {
+            this.error(
+              `iOS instance ${this.iosInstanceId} has no Xcode sandbox, so there is nothing to build on. ` +
+                'Create it with the Xcode sandbox enabled, or run without --ios-id to get a fresh one.',
+            );
+          }
           this.error('The iOS instance is ready, but its Xcode sandbox URL is missing.');
         }
 
