@@ -1,4 +1,4 @@
-import { deleteCreatedInstance } from '../packages/cli/src/lib/instance-cleanup';
+import { deleteCreatedInstance, wasFreshlyCreated } from '../packages/cli/src/lib/instance-cleanup';
 
 /**
  * Pins the instance-leak guard: a command must delete a server-side instance it
@@ -46,5 +46,19 @@ describe('instance-leak cleanup policy', () => {
     await expect(deleteCreatedInstance(created, CREATED, del)).resolves.toBe(false);
     // Retained so it isn't silently forgotten (matches deleteSim semantics).
     expect(created.has(CREATED)).toBe(true);
+  });
+});
+
+describe('wasFreshlyCreated (reuseIfExists cleanup gate)', () => {
+  test('an instance created during the call is fresh, even with server clock up to 15s behind', () => {
+    const callStart = Date.now();
+    expect(wasFreshlyCreated(new Date(callStart + 2_000).toISOString(), callStart)).toBe(true);
+    expect(wasFreshlyCreated(new Date(callStart - 14_000).toISOString(), callStart)).toBe(true);
+  });
+
+  test('a reused pre-existing instance is not fresh, and bad timestamps never allow a delete', () => {
+    const callStart = Date.now();
+    expect(wasFreshlyCreated(new Date(callStart - 60_000).toISOString(), callStart)).toBe(false);
+    expect(wasFreshlyCreated('not-a-date', callStart)).toBe(false);
   });
 });

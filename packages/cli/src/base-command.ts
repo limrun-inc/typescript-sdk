@@ -938,22 +938,17 @@ export abstract class BaseCommand extends Command {
   // them, replacing the legacy server-side paired creation
   // (spec.sandbox.xcode.enabled). Separate creation keeps the two lifecycles
   // independent and is the supported way to get a simulator-backed target.
-  // Deletes whatever it created when a later step fails, so nothing leaks.
+  // The simulator keeps the org-default inactivity timeout on purpose: a
+  // build-scoped --inactivity-timeout (e.g. 3s) belongs to the build sandbox,
+  // and a simulator carrying it would idle out before the build finishes.
   private async createSimulatorBackedXcodeInstance(): Promise<LastXcodeInstance> {
     const target = await this.createStandaloneXcodeInstance();
-    const inactivityTimeout = this.autoCreateInactivityTimeout();
-    let simulator: IosInstance | undefined;
+    let simulator: IosInstance;
     try {
       const xcodeClient = await this.resolveXcodeClient(target);
-      simulator = await this.client.iosInstances.create({
-        wait: true,
-        spec: { ...(inactivityTimeout && { inactivityTimeout }) },
-      });
-      await xcodeClient.attachSimulator(simulator);
+      // attachNewSimulator deletes the simulator itself when the attach fails.
+      ({ simulator } = await xcodeClient.attachNewSimulator());
     } catch (err) {
-      if (simulator) {
-        await this.client.iosInstances.delete(simulator.metadata.id).catch(() => {});
-      }
       await this.deleteCreatedInstance(target.id);
       throw err;
     }

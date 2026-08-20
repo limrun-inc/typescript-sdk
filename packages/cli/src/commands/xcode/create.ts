@@ -4,6 +4,7 @@ import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 import { parseCacheConfig, wantsRestore } from '../../lib/cache';
+import { wasFreshlyCreated } from '../../lib/instance-cleanup';
 import { cacheFlags } from '../../lib/cache-flags';
 import { type SimulatorAttachResult, type XcodeInstanceCreateParamsWithCache } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
@@ -154,13 +155,17 @@ export default class XcodeCreate extends BaseCommand {
             if (flags['display-name']) simParams.metadata.displayName = flags['display-name'];
             if (labels) simParams.metadata.labels = labels;
           }
+          const simCreateStart = Date.now();
           attachedSimulator = await this.client.iosInstances.create(simParams);
           createdSimulator = true;
           try {
             attachResult = await xcodeClient.attachSimulator(attachedSimulator);
           } catch (err) {
-            // Never leak the just-created simulator when the attach fails.
-            await this.client.iosInstances.delete(attachedSimulator.metadata.id).catch(() => {});
+            // A freshly created simulator is useless without the attach, so it
+            // must not leak; one that reuseIfExists matched belongs to the user.
+            if (wasFreshlyCreated(attachedSimulator.metadata.createdAt, simCreateStart)) {
+              await this.client.iosInstances.delete(attachedSimulator.metadata.id).catch(() => {});
+            }
             attachedSimulator = undefined;
             createdSimulator = false;
             throw err;

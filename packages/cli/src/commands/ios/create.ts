@@ -6,6 +6,7 @@ import { registerCreatedInstance } from '../../lib/config';
 import { openInBrowser } from '../../lib/browser';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 import { formatDurationMs } from '../../lib/duration';
+import { wasFreshlyCreated } from '../../lib/instance-cleanup';
 import { resolveKeychainEncryptionKey } from '../../lib/keychain-encryption-key';
 import { type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
@@ -258,6 +259,7 @@ export default class IosCreate extends BaseCommand {
           throw err;
         }
       } else if (flags.xcode) {
+        const xcodeCreateStart = Date.now();
         try {
           createdXcode = await this.client.xcodeInstances.create({
             wait: true,
@@ -280,8 +282,9 @@ export default class IosCreate extends BaseCommand {
           this.info(
             `Created iOS instance ${instance.metadata.id}, but creating or attaching an Xcode sandbox failed.`,
           );
-          // The sandbox was created only for this attach; never leak a billed one.
-          if (createdXcode) {
+          // A freshly created sandbox is useless without the attach, so it must
+          // not leak; one that reuseIfExists matched belongs to the user.
+          if (createdXcode && wasFreshlyCreated(createdXcode.metadata.createdAt, xcodeCreateStart)) {
             await this.client.xcodeInstances.delete(createdXcode.metadata.id).catch(() => {});
             createdXcode = undefined;
           }

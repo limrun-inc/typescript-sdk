@@ -14,6 +14,19 @@
  * never throws (a failed delete just returns false and keeps the id). Returns
  * whether it deleted.
  */
+/**
+ * Whether a create call with `reuseIfExists` actually created the instance,
+ * judged by its server-side creation time against a client timestamp taken
+ * just before the call. A reused instance predates the call; the 15s skew
+ * allowance keeps a slightly-behind server clock from hiding a fresh one.
+ * Cleanup paths use this so a failed attach deletes only what the call
+ * created, never a pre-existing instance that reuse matched.
+ */
+export function wasFreshlyCreated(createdAt: string, createCallStartMs: number): boolean {
+  const created = Date.parse(createdAt);
+  return !Number.isNaN(created) && created >= createCallStartMs - 15_000;
+}
+
 export async function deleteCreatedInstance(
   created: Set<string>,
   id: string | undefined,
