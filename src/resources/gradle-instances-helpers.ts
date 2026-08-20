@@ -56,7 +56,19 @@ export type GradleBuildOptions = {
   /** Relative path to the Gradle root when auto-discovery is ambiguous. */
   projectPath?: string;
   /** Upload the built artifact as a named org asset, or to a presigned URL. */
-  upload?: { assetName: string; signedUploadUrl?: never } | { signedUploadUrl: string; assetName?: never };
+  upload?:
+    | {
+        assetName: string;
+        /**
+         * Asset TTL as a Go duration (e.g. "24h", "30m"; "1d" is invalid),
+         * forwarded to assets.getOrCreate. When omitted, a newly created
+         * asset expires 14 days after upload; re-uploads keep the asset's
+         * current expiry.
+         */
+        ttl?: string;
+        signedUploadUrl?: never;
+      }
+    | { signedUploadUrl: string; assetName?: never; ttl?: never };
   /** React Native / Expo tuning. */
   reactNative?: GradleReactNativeConfig;
   /** Release signing config; presence makes bundleRelease the default task. */
@@ -183,13 +195,15 @@ class GradleInstancesHelpers extends GradleInstances {
         };
 
         if (options?.upload && 'assetName' in options.upload) {
-          const requestPromise = mintAssetUploadUrls(client.assets, options.upload.assetName).then(
-            (asset) => {
-              request.signedUploadUrl = asset.signedUploadUrl;
-              request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
-              return request;
-            },
-          );
+          const requestPromise = mintAssetUploadUrls(
+            client.assets,
+            options.upload.assetName,
+            options.upload.ttl,
+          ).then((asset) => {
+            request.signedUploadUrl = asset.signedUploadUrl;
+            request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
+            return request;
+          });
           return exec(requestPromise, { apiUrl, token, log });
         }
 

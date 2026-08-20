@@ -20,6 +20,7 @@ export interface GradleBuildFlagValues extends WebhookFlagValues {
   'expo-app-dir'?: string;
   abi?: string[];
   upload?: string;
+  'upload-ttl'?: string;
   'signed-upload-url'?: string;
   sign?: boolean;
   'application-id'?: string;
@@ -167,7 +168,10 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
     };
   }
   if (flags.upload) {
-    options.upload = { assetName: flags.upload };
+    options.upload = {
+      assetName: flags.upload,
+      ...(flags['upload-ttl'] && { ttl: flags['upload-ttl'] }),
+    };
   } else if (flags['signed-upload-url']) {
     options.upload = { signedUploadUrl: flags['signed-upload-url'] };
   }

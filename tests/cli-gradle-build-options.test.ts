@@ -55,6 +55,12 @@ test('tasks, project path, and upload map through', () => {
   });
 });
 
+test('upload-ttl maps onto the upload asset', () => {
+  expect(gradleBuildOptionsFromFlags({ upload: 'app.apk', 'upload-ttl': '24h' })).toEqual({
+    upload: { assetName: 'app.apk', ttl: '24h' },
+  });
+});
+
 // Play Store flag validation rides the same pre-instance contract as
 // signing: contradictions throw here, never after an instance was billed.
 // The service-account file read and playstore assembly live in the

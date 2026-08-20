@@ -134,6 +134,11 @@ export default class XcodeBuild extends BaseCommand {
         'Relative path from the synced workspace root to the Expo app directory. Use for monorepos or ambiguous React Native workspaces.',
     }),
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
+    'upload-ttl': Flags.string({
+      dependsOn: ['upload'],
+      description:
+        'TTL of the uploaded asset as a Go duration (e.g. 24h, 30m). When omitted, a newly created asset expires 14 days after upload; re-uploads keep the current expiry.',
+    }),
     'artifact-name': Flags.string({
       description:
         'Full filename of the built app bundle including the .app extension, e.g. MyApp-dev.app. The server takes the artifact from this name in the built products directory verbatim, skipping artifact discovery. Use when the scheme name differs from the product name and the artifact is not found after a successful build.',
@@ -376,7 +381,11 @@ export default class XcodeBuild extends BaseCommand {
         } catch (err) {
           this.error(err instanceof Error ? err.message : String(err));
         }
-        options.upload = { assetName: flags.upload, ...(uploadOptions && { uploadOptions }) };
+        options.upload = {
+          assetName: flags.upload,
+          ...(flags['upload-ttl'] && { ttl: flags['upload-ttl'] }),
+          ...(uploadOptions && { uploadOptions }),
+        };
       } else if (flags['signed-upload-url']) {
         options.upload = {
           signedUploadUrl: flags['signed-upload-url'],
