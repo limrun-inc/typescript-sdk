@@ -75,7 +75,7 @@ export default class AndroidCreate extends BaseCommand {
     }),
     'asset-ttl': Flags.string({
       description:
-        'Asset time-to-live for files uploaded via --install, as a Go duration (e.g. "24h", min 1m). Does not affect --install-asset. When omitted, a newly created asset expires 14 days after upload; re-uploads keep the current expiry.',
+        'Asset time-to-live for files uploaded via --install, as a Go duration (e.g. "24h", min 1m). Does not affect --install-asset. Defaults to no expiry.',
     }),
     open: Flags.boolean({
       description:

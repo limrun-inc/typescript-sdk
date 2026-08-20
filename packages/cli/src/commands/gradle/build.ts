@@ -74,7 +74,7 @@ export default class GradleBuild extends BaseCommand {
     'upload-ttl': Flags.string({
       dependsOn: ['upload'],
       description:
-        'TTL of the uploaded asset as a Go duration (e.g. 24h, 30m). When omitted, a newly created asset expires 14 days after upload; re-uploads keep the current expiry.',
+        "TTL of the uploaded asset as a Go duration (e.g. 24h, 30m). Defaults to 336h (14 days); each build upload pushes the asset's expiry that far out from the upload.",
     }),
     'signed-upload-url': Flags.string({
       description: 'Presigned URL to upload the resulting APK or AAB to.',

@@ -206,6 +206,10 @@ test('gradlebuild --upload mints asset URLs before posting exec', async () => {
   expect(result.signedDownloadUrl).toBe('https://storage.example.com/down');
   expect(getOrCreate).toHaveBeenCalledWith({ name: 'myapp.apk', ttl: '24h' });
 
+  // An omitted ttl falls back to the build-upload default of 14 days.
+  await gradle.gradlebuild({ upload: { assetName: 'myapp.apk' } });
+  expect(getOrCreate).toHaveBeenLastCalledWith({ name: 'myapp.apk', ttl: '336h' });
+
   const execReq = requests.find((r) => r.url.endsWith('/exec'));
   // Exact match: the client-only additionalMetadata (signedDownloadUrl) must
   // stay OFF the wire; toMatchObject would pass even if it leaked.

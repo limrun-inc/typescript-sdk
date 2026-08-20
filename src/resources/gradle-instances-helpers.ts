@@ -61,9 +61,9 @@ export type GradleBuildOptions = {
         assetName: string;
         /**
          * Asset TTL as a Go duration (e.g. "24h", "30m"; "1d" is invalid),
-         * forwarded to assets.getOrCreate. When omitted, a newly created
-         * asset expires 14 days after upload; re-uploads keep the asset's
-         * current expiry.
+         * forwarded to assets.getOrCreate. Defaults to 336h (14 days): each
+         * build upload without an explicit ttl pushes the asset's expiry to
+         * 14 days from that upload.
          */
         ttl?: string;
         signedUploadUrl?: never;

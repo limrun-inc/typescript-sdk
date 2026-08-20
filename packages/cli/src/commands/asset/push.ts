@@ -25,8 +25,7 @@ export default class AssetPush extends BaseCommand {
     ...BaseCommand.baseFlags,
     name: Flags.string({ char: 'n', description: 'Asset name to store. Defaults to the source filename.' }),
     ttl: Flags.string({
-      description:
-        'Time-to-live as a Go duration (e.g. "24h", min 1m). When omitted, a newly created asset expires 14 days after upload; re-uploads keep the current expiry.',
+      description: 'Time-to-live as a Go duration (e.g. "24h", min 1m). Defaults to no expiry.',
     }),
     'upload-option': Flags.string({
       multiple: true,

@@ -45,7 +45,7 @@ export default class IosInstallApp extends BaseCommand {
     }),
     'asset-ttl': Flags.string({
       description:
-        'When uploading a local file, set its asset time-to-live as a Go duration (e.g. "24h", min 1m). When omitted, a newly created asset expires 14 days after upload; re-uploads keep the current expiry.',
+        'When uploading a local file, set its asset time-to-live as a Go duration (e.g. "24h", min 1m). Defaults to no expiry.',
     }),
   };
 

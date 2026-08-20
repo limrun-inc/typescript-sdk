@@ -43,8 +43,7 @@ export default class IosKeychainSave extends BaseCommand {
       description: `Asset name to store the saved keychain under. Defaults to ${DEFAULT_KEYCHAIN_ASSET_NAME}. Prefer the positional <asset-name> argument.`,
     }),
     ttl: Flags.string({
-      description:
-        'Time-to-live as a Go duration (e.g. "24h", min 1m). When omitted, a newly created asset expires 14 days after upload; re-uploads keep the current expiry.',
+      description: 'Time-to-live as a Go duration (e.g. "24h", min 1m). Defaults to no expiry.',
     }),
     'encryption-key': Flags.string({
       description:
