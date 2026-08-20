@@ -147,6 +147,8 @@ export default class XcodeCreate extends BaseCommand {
           };
           if (flags.region) simParams.spec!.region = flags.region;
           if (flags.jurisdiction) simParams.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';
+          if (flags['hard-timeout']) simParams.spec!.hardTimeout = flags['hard-timeout'];
+          if (flags['inactivity-timeout']) simParams.spec!.inactivityTimeout = flags['inactivity-timeout'];
           if (flags['display-name'] || labels) {
             simParams.metadata = {};
             if (flags['display-name']) simParams.metadata.displayName = flags['display-name'];

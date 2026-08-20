@@ -264,7 +264,10 @@ export default class IosCreate extends BaseCommand {
             reuseIfExists: flags['reuse-if-exists'] || undefined,
             ...(params.metadata ? { metadata: params.metadata } : {}),
             spec: {
+              ...(flags.region ? { region: flags.region } : {}),
               ...(flags.jurisdiction ? { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' } : {}),
+              ...(flags['hard-timeout'] ? { hardTimeout: flags['hard-timeout'] } : {}),
+              ...(flags['inactivity-timeout'] ? { inactivityTimeout: flags['inactivity-timeout'] } : {}),
             },
           });
           registerCreatedInstance(createdXcode);
@@ -277,6 +280,11 @@ export default class IosCreate extends BaseCommand {
           this.info(
             `Created iOS instance ${instance.metadata.id}, but creating or attaching an Xcode sandbox failed.`,
           );
+          // The sandbox was created only for this attach; never leak a billed one.
+          if (createdXcode) {
+            await this.client.xcodeInstances.delete(createdXcode.metadata.id).catch(() => {});
+            createdXcode = undefined;
+          }
           if (flags.rm) {
             await cleanup();
           }

@@ -376,7 +376,7 @@ export default class Run extends BaseCommand {
         this.runFailureStage = 'simulator_attach';
         this.reporter.start('Launching app in a Limrun iOS simulator');
         const launchStart = Date.now();
-        let simulator: Awaited<ReturnType<typeof this.client.iosInstances.create>>;
+        let simulator: Awaited<ReturnType<typeof this.client.iosInstances.create>> | undefined;
         try {
           if (this.iosInstanceId) {
             simulator = await this.client.iosInstances.get(this.iosInstanceId);
@@ -403,12 +403,16 @@ export default class Run extends BaseCommand {
           }
         } catch (err) {
           this.reporter.stop('failure');
+          // The simulator is useless without the attach; never leak a billed one.
+          if (simulator) {
+            await this.client.iosInstances.delete(simulator.metadata.id).catch(() => {});
+          }
           throw err;
         }
         this.reporter.stop('success', `Launched app in ${formatDurationMs(Date.now() - launchStart)}`);
 
         this.runFailureStage = 'stream_url';
-        const streamUrl = this.signedStreamUrl(simulator.status);
+        const streamUrl = this.signedStreamUrl(simulator!.status);
         if (!streamUrl) {
           this.error('The iOS instance is ready, but its signed stream URL is missing.');
         }
