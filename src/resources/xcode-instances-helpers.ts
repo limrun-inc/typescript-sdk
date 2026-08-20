@@ -106,14 +106,13 @@ export type XcodeProjectConfig = {
    */
   configuration?: 'Debug' | 'Release';
   /**
-   * Product name of the built app without the .app extension (e.g.
-   * "MyApp-dev" when the artifact is MyApp-dev.app). When set, limbuild
-   * takes the artifact from `<productName>.app` in the built products
-   * directory verbatim, skipping product-name discovery. Use when the
-   * scheme name differs from PRODUCT_NAME and discovery picks the wrong
-   * bundle.
+   * Full filename of the built app bundle, including the .app extension
+   * (e.g. "MyApp-dev.app"). When set, limbuild takes the artifact from
+   * this name in the built products directory verbatim, skipping artifact
+   * discovery. Use when the scheme name differs from the product name and
+   * discovery picks the wrong bundle.
    */
-  productName?: string;
+  artifactName?: string;
 };
 
 export type XcodeGenConfig = {
