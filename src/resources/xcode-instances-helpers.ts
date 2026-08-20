@@ -105,6 +105,14 @@ export type XcodeProjectConfig = {
    * Debug for native Xcode builds and Release for React Native / Expo builds.
    */
   configuration?: 'Debug' | 'Release';
+  /**
+   * Full filename of the built app bundle, including the .app extension
+   * (e.g. "MyApp-dev.app"). When set, limbuild takes the artifact from
+   * this name in the built products directory verbatim, skipping artifact
+   * discovery. Use when the scheme name differs from the product name and
+   * discovery picks the wrong bundle.
+   */
+  artifactName?: string;
 };
 
 export type XcodeGenConfig = {

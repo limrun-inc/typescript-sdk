@@ -64,6 +64,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./app.mobileprovision --provisioning-profile ./widgets.mobileprovision --upload-to-appstore --asc-key-id 2X9R4HXF34 --asc-key ./AuthKey_2X9R4HXF34.p8',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
     '<%= config.bin %> xcode build --signed-upload-url <url>',
+    '<%= config.bin %> xcode build ./MyProject --scheme "MyApp Dev" --upload myapp-dev-build --artifact-name MyApp-dev.app',
     `<%= config.bin %> xcode build ./MyProject --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"`,
     '<%= config.bin %> xcode build ./MyProject --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
     '<%= config.bin %> xcode build ./MyProject --detach --inactivity-timeout 3s --webhook-url https://ci.example.com/hooks/limrun',
@@ -133,6 +134,10 @@ export default class XcodeBuild extends BaseCommand {
         'Relative path from the synced workspace root to the Expo app directory. Use for monorepos or ambiguous React Native workspaces.',
     }),
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
+    'artifact-name': Flags.string({
+      description:
+        'Full filename of the built app bundle including the .app extension, e.g. MyApp-dev.app. The server takes the artifact from this name in the built products directory verbatim, skipping artifact discovery. Use when the scheme name differs from the product name and the artifact is not found after a successful build.',
+    }),
     'upload-option': Flags.string({
       multiple: true,
       dependsOn: ['upload'],
@@ -289,6 +294,16 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.sdk) settings.sdk = flags.sdk;
       if (flags.ios && !flags.sdk) settings.sdk = 'iphonesimulator';
       if (flags.configuration) settings.configuration = flags.configuration;
+      if (flags['artifact-name']) {
+        const artifactName = flags['artifact-name'];
+        if (!artifactName.endsWith('.app') || artifactName === '.app') {
+          this.error('--artifact-name takes the full bundle filename ending in .app, e.g. MyApp-dev.app.');
+        }
+        if (artifactName.includes('/')) {
+          this.error('--artifact-name must be a plain filename without path separators.');
+        }
+        settings.artifactName = artifactName;
+      }
 
       const options: XcodeBuildOptions = {};
       if (flags['git-init']) {
