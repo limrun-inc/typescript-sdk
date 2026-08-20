@@ -584,6 +584,13 @@ export abstract class BaseCommand extends Command {
         const xcodeClient = await this.resolveXcodeClient(target);
         const status = await xcodeClient.getSimulator();
         if (!status.attached) {
+          // Attaching creates a new iOS instance, so --no-create must stop here.
+          if (!this.shouldAutoCreateOnNotFound()) {
+            throw new Error(
+              `The recorded Xcode target ${target.id} has no attached simulator.\n` +
+                'Attach one with: lim xcode attach-simulator, or rerun without --no-create.',
+            );
+          }
           // attachNewSimulator deletes the simulator itself when the attach fails.
           const { simulator } = await xcodeClient.attachNewSimulator();
           this._instancesCreatedThisRun.add(simulator.metadata.id);
