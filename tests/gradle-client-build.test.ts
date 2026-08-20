@@ -195,15 +195,16 @@ test('gradlebuild --upload mints asset URLs before posting exec', async () => {
   });
 
   const client = new Limrun({ apiKey: 'key' });
-  jest.spyOn(client.assets, 'getOrCreate').mockResolvedValue({
+  const getOrCreate = jest.spyOn(client.assets, 'getOrCreate').mockResolvedValue({
     signedUploadUrl: 'https://storage.example.com/up',
     signedDownloadUrl: 'https://storage.example.com/down',
   } as never);
   const gradle = await client.gradleInstances.createClient({ apiUrl: API_URL, token: TOKEN });
 
-  const result = await gradle.gradlebuild({ upload: { assetName: 'myapp.apk' } });
+  const result = await gradle.gradlebuild({ upload: { assetName: 'myapp.apk', ttl: '24h' } });
   expect(result.exitCode).toBe(0);
   expect(result.signedDownloadUrl).toBe('https://storage.example.com/down');
+  expect(getOrCreate).toHaveBeenCalledWith({ name: 'myapp.apk', ttl: '24h' });
 
   const execReq = requests.find((r) => r.url.endsWith('/exec'));
   // Exact match: the client-only additionalMetadata (signedDownloadUrl) must

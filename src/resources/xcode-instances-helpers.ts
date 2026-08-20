@@ -188,6 +188,13 @@ export type XcodeBuildOptions = {
     | {
         assetName: string;
         /**
+         * Asset TTL as a Go duration (e.g. "24h", "30m"; "1d" is invalid),
+         * forwarded to assets.getOrCreate. When omitted, a newly created
+         * asset expires 14 days after upload; re-uploads keep the asset's
+         * current expiry.
+         */
+        ttl?: string;
+        /**
          * App metadata to record on the asset up front. limbuild extracts
          * the same metadata from the built bundle after the build and
          * overwrites whatever it found; values set here survive only for
@@ -829,7 +836,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           const requestPromise = mintAssetUploadUrls(
             client.assets,
             options.upload.assetName,
-            undefined,
+            options.upload.ttl,
             options.upload.uploadOptions,
           ).then((asset) => {
             request.signedUploadUrl = asset.signedUploadUrl;

@@ -71,6 +71,11 @@ export default class GradleBuild extends BaseCommand {
       options: [...gradleAndroidABIs],
     }),
     upload: Flags.string({ description: 'Upload the resulting APK or AAB as an asset with this name' }),
+    'upload-ttl': Flags.string({
+      dependsOn: ['upload'],
+      description:
+        'TTL of the uploaded asset as a Go duration (e.g. 24h, 30m). When omitted, a newly created asset expires 14 days after upload; re-uploads keep the current expiry.',
+    }),
     'signed-upload-url': Flags.string({
       description: 'Presigned URL to upload the resulting APK or AAB to.',
     }),
