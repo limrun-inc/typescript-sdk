@@ -180,6 +180,7 @@ lim ios create --region us-west --display-name "CI Test" --label env=ci --rm
 | `--reuse-if-exists`               | Reuse an existing instance with matching labels/region                            |
 | `--install <file>`                | Local file to install (auto-uploads, repeatable)                                  |
 | `--install-asset <name>`          | Asset name to install (repeatable)                                                |
+| `--install-url <url>`             | Signed download URL of an app to install (repeatable)                             |
 
 #### List and Filter
 

@@ -22,6 +22,7 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create --keychain keychain/login.tar.gz --encryption-key-stdin < keychain.key',
     '<%= config.bin %> ios create --keychain-url https://example.t3.storage.dev/... --encryption-key <key>',
     '<%= config.bin %> ios create --install ./MyApp.ipa',
+    '<%= config.bin %> ios create --install-url https://example.t3.storage.dev/MyApp.ipa?...',
     '<%= config.bin %> ios create --attach <xcode-instance-ID>',
     '<%= config.bin %> ios create --force-bundle-id com.example.myapp',
   ];
@@ -72,6 +73,11 @@ export default class IosCreate extends BaseCommand {
     }),
     'install-asset': Flags.string({
       description: 'Existing asset name to install onto the instance after creation',
+      multiple: true,
+    }),
+    'install-url': Flags.string({
+      description:
+        'Signed download URL of an app to install onto the instance after creation. Repeat for multiple URLs.',
       multiple: true,
     }),
     keychain: Flags.string({
@@ -185,7 +191,7 @@ export default class IosCreate extends BaseCommand {
           source: 'AssetName' as const,
           assetName: name,
         })),
-        ...uploadedAssetUrls.map((url) => ({
+        ...[...(flags['install-url'] || []), ...uploadedAssetUrls].map((url) => ({
           kind: 'App' as const,
           source: 'URL' as const,
           url,

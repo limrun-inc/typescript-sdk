@@ -15,6 +15,7 @@ export default class AndroidCreate extends BaseCommand {
   static examples = [
     '<%= config.bin %> android create',
     '<%= config.bin %> android create --rm --install ./app.apk',
+    '<%= config.bin %> android create --install-url https://example.t3.storage.dev/app.apk?...',
     '<%= config.bin %> android create --jurisdiction us --label env=dev',
     '<%= config.bin %> android create --no-connect',
     '<%= config.bin %> android create --daemon=false',
@@ -66,6 +67,10 @@ export default class AndroidCreate extends BaseCommand {
     }),
     'install-asset': Flags.string({
       description: 'Existing asset name to install after creation. Repeat for multiple assets.',
+      multiple: true,
+    }),
+    'install-url': Flags.string({
+      description: 'Signed download URL of an app to install after creation. Repeat for multiple URLs.',
       multiple: true,
     }),
     install: Flags.string({
@@ -128,7 +133,7 @@ export default class AndroidCreate extends BaseCommand {
           assetName: name,
           launchMode: 'RelaunchIfRunning',
         })),
-        ...uploadedAssetUrls.map((url) => ({
+        ...[...(flags['install-url'] || []), ...uploadedAssetUrls].map((url) => ({
           kind: 'App' as const,
           source: 'URL' as const,
           url,
