@@ -212,6 +212,11 @@ function canonicalizeDestinationTunnelRoute(route: DestinationTunnelRoute): Dest
     throw new DestinationTunnelRouteError('invalid_port', `invalid tunnel route port ${route.port}`);
   }
 
+  const asciiHost = Buffer.byteLength(route.host, 'utf8') === route.host.length;
+  if (asciiHost && route.host.toLowerCase() === 'localhost') {
+    return { host: 'localhost', port: route.port };
+  }
+
   const ipVersion = net.isIP(route.host);
   if (ipVersion === 4) {
     return { host: route.host, port: route.port };
