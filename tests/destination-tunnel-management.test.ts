@@ -1,8 +1,12 @@
 import http from 'http';
 import type { AddressInfo } from 'net';
-import { decodeTunnelV2Status, getTunnelV2Status, stopTunnelV2 } from '../src/internal/tunnel-v2-management';
+import {
+  decodeDestinationTunnelStatus,
+  getDestinationTunnelStatus,
+  stopDestinationTunnel,
+} from '../src/internal/destination-tunnel-management';
 
-describe('tunnel v2 management', () => {
+describe('destination tunnel management', () => {
   let server: http.Server;
   let responder: (request: http.IncomingMessage, response: http.ServerResponse) => void;
 
@@ -45,7 +49,7 @@ describe('tunnel v2 management', () => {
       );
     };
 
-    await expect(getTunnelV2Status(apiURL(), 'secret')).resolves.toEqual({
+    await expect(getDestinationTunnelStatus(apiURL(), 'secret')).resolves.toEqual({
       active: {
         tunnelId: 'tunnel-1',
         state: 'ready',
@@ -53,7 +57,7 @@ describe('tunnel v2 management', () => {
       lastDialFailure,
     });
     expect(requestMethod).toBe('GET');
-    expect(requestURL).toBe('/v1/ios_123/api/tunnel');
+    expect(requestURL).toBe('/v1/ios_123/api/tunnel/status');
     expect(authorization).toBe('Bearer secret');
   });
 
@@ -69,11 +73,11 @@ describe('tunnel v2 management', () => {
       response.writeHead(204).end();
     };
 
-    await stopTunnelV2(apiURL(), 'secret', tunnelId);
+    await stopDestinationTunnel(apiURL(), 'secret', tunnelId);
 
     expect(requestMethod).toBe('DELETE');
-    expect(requestURL?.pathname).toBe('/v1/ios_123/api/tunnel');
-    expect(requestURL?.searchParams.get('tunnelId')).toBe(tunnelId);
+    expect(requestURL?.pathname).toBe('/v1/ios_123/api/tunnel/tunnel%20%2F%3F%26');
+    expect(requestURL?.search).toBe('');
     expect(authorization).toBe('Bearer secret');
   });
 
@@ -82,10 +86,10 @@ describe('tunnel v2 management', () => {
       response.writeHead(404).end('missing');
     };
 
-    await expect(getTunnelV2Status(apiURL(), 'secret')).rejects.toThrow(
+    await expect(getDestinationTunnelStatus(apiURL(), 'secret')).rejects.toThrow(
       'getTunnelStatus failed: 404 missing',
     );
-    await expect(stopTunnelV2(apiURL(), 'secret', 'tunnel-1')).rejects.toThrow(
+    await expect(stopDestinationTunnel(apiURL(), 'secret', 'tunnel-1')).rejects.toThrow(
       'stopTunnel failed: 404 missing',
     );
   });
@@ -105,7 +109,7 @@ describe('tunnel v2 management', () => {
       },
     },
   ])('rejects malformed status %#', (status) => {
-    expect(() => decodeTunnelV2Status(status)).toThrow();
+    expect(() => decodeDestinationTunnelStatus(status)).toThrow();
   });
 
   test('rejects an empty stop ID before sending a request', async () => {
@@ -115,7 +119,9 @@ describe('tunnel v2 management', () => {
       response.writeHead(204).end();
     };
 
-    await expect(stopTunnelV2(apiURL(), 'secret', '   ')).rejects.toThrow('tunnelId must not be empty');
+    await expect(stopDestinationTunnel(apiURL(), 'secret', '   ')).rejects.toThrow(
+      'tunnelId must not be empty',
+    );
     expect(requests).toBe(0);
   });
 

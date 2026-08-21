@@ -4,17 +4,17 @@ import {
   classifyOpenFailure,
   startDestinationTcpTunnel,
   type DestinationTcpTunnel,
-} from '../src/tunnel-v2-dialer';
+} from '../src/destination-tunnel-dialer';
 import {
-  TUNNEL_V2_CONN_ID_HEADER_BYTES,
-  TUNNEL_V2_VERSION,
-  type TunnelV2ClientMessage,
-  type TunnelV2Route,
-  type TunnelV2ServerMessage,
-} from '../src/tunnel-v2';
+  DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
+  DESTINATION_TUNNEL_VERSION,
+  type DestinationTunnelClientMessage,
+  type DestinationTunnelRoute,
+  type DestinationTunnelServerMessage,
+} from '../src/destination-tunnel';
 
 type ClientEvent =
-  | { kind: 'control'; message: TunnelV2ClientMessage }
+  | { kind: 'control'; message: DestinationTunnelClientMessage }
   | { kind: 'data'; connId: number; payload: Buffer };
 
 async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
@@ -25,7 +25,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void
   }
 }
 
-describe('destination tunnel v2 dialer', () => {
+describe('destination tunnel dialer', () => {
   let remoteServer: WebSocketServer;
   let remoteSocket: WebSocket | undefined;
   let events: ClientEvent[];
@@ -289,7 +289,7 @@ describe('destination tunnel v2 dialer', () => {
   });
 
   async function establish(
-    routes: TunnelV2Route[],
+    routes: DestinationTunnelRoute[],
     options: {
       maxPendingBytesPerConnection?: number;
       maxTotalPendingBytes?: number;
@@ -304,12 +304,12 @@ describe('destination tunnel v2 dialer', () => {
     await waitFor(() => hasControl('start'));
     expect(controlFor('start')).toEqual({
       type: 'start',
-      version: TUNNEL_V2_VERSION,
+      version: DESTINATION_TUNNEL_VERSION,
       routes,
     });
     sendControl({
       type: 'ready',
-      version: TUNNEL_V2_VERSION,
+      version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
     });
     return startup;
@@ -347,12 +347,12 @@ describe('destination tunnel v2 dialer', () => {
           events.push({
             kind: 'data',
             connId: data.readUInt32BE(0),
-            payload: data.subarray(TUNNEL_V2_CONN_ID_HEADER_BYTES),
+            payload: data.subarray(DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES),
           });
         } else {
           events.push({
             kind: 'control',
-            message: JSON.parse(data.toString('utf8')) as TunnelV2ClientMessage,
+            message: JSON.parse(data.toString('utf8')) as DestinationTunnelClientMessage,
           });
         }
       });
@@ -378,10 +378,10 @@ describe('destination tunnel v2 dialer', () => {
 
   function remoteURL(): string {
     const address = remoteServer.address() as net.AddressInfo;
-    return `ws://127.0.0.1:${address.port}/tunnel-v2`;
+    return `ws://127.0.0.1:${address.port}/tunnel`;
   }
 
-  function sendControl(message: TunnelV2ServerMessage): void {
+  function sendControl(message: DestinationTunnelServerMessage): void {
     remoteSocket!.send(JSON.stringify(message));
   }
 
@@ -390,19 +390,19 @@ describe('destination tunnel v2 dialer', () => {
   }
 
   function frame(connId: number, payload: Buffer): Buffer {
-    const header = Buffer.alloc(TUNNEL_V2_CONN_ID_HEADER_BYTES);
+    const header = Buffer.alloc(DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES);
     header.writeUInt32BE(connId, 0);
     return Buffer.concat([header, payload]);
   }
 
-  function hasControl(type: TunnelV2ClientMessage['type'], connId?: number): boolean {
+  function hasControl(type: DestinationTunnelClientMessage['type'], connId?: number): boolean {
     return controlFor(type, connId) !== undefined;
   }
 
   function controlFor(
-    type: TunnelV2ClientMessage['type'],
+    type: DestinationTunnelClientMessage['type'],
     connId?: number,
-  ): TunnelV2ClientMessage | undefined {
+  ): DestinationTunnelClientMessage | undefined {
     for (const event of events) {
       if (event.kind !== 'control') continue;
       const message = event.message;

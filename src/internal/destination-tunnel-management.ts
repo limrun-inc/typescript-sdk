@@ -1,7 +1,7 @@
 import { nodeProxyTransport } from './proxy-transport';
-import { deriveTunnelManagementURL } from './tunnel-v2-url';
+import { deriveDestinationTunnelStatusURL, deriveDestinationTunnelStopURL } from './destination-tunnel-url';
 
-export interface TunnelV2Status {
+export interface DestinationTunnelStatus {
   active?: {
     tunnelId: string;
     state: 'starting' | 'ready' | 'stopping';
@@ -19,34 +19,38 @@ export interface TunnelV2Status {
   };
 }
 
-export async function getTunnelV2Status(apiUrl: string, token: string): Promise<TunnelV2Status> {
-  const response = await nodeProxyTransport.fetch(deriveTunnelManagementURL(apiUrl).toString(), {
+export async function getDestinationTunnelStatus(
+  apiUrl: string,
+  token: string,
+): Promise<DestinationTunnelStatus> {
+  const response = await nodeProxyTransport.fetch(deriveDestinationTunnelStatusURL(apiUrl).toString(), {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {
     throw new Error(`getTunnelStatus failed: ${response.status} ${await response.text()}`);
   }
-  return decodeTunnelV2Status(await response.json());
+  return decodeDestinationTunnelStatus(await response.json());
 }
 
-export async function stopTunnelV2(apiUrl: string, token: string, tunnelId: string): Promise<void> {
+export async function stopDestinationTunnel(apiUrl: string, token: string, tunnelId: string): Promise<void> {
   if (!tunnelId.trim()) {
     throw new Error('tunnelId must not be empty');
   }
-  const url = deriveTunnelManagementURL(apiUrl);
-  url.searchParams.set('tunnelId', tunnelId);
-  const response = await nodeProxyTransport.fetch(url.toString(), {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await nodeProxyTransport.fetch(
+    deriveDestinationTunnelStopURL(apiUrl, tunnelId).toString(),
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
   if (!response.ok) {
     throw new Error(`stopTunnel failed: ${response.status} ${await response.text()}`);
   }
 }
 
-export function decodeTunnelV2Status(value: unknown): TunnelV2Status {
+export function decodeDestinationTunnelStatus(value: unknown): DestinationTunnelStatus {
   const status = readRecord(value, 'tunnel status');
-  const decodedStatus: TunnelV2Status = {};
+  const decodedStatus: DestinationTunnelStatus = {};
   if (status['active'] !== undefined) {
     decodedStatus.active = readActiveTunnel(status['active']);
   }
@@ -59,7 +63,7 @@ export function decodeTunnelV2Status(value: unknown): TunnelV2Status {
   return decodedStatus;
 }
 
-function readActiveTunnel(value: unknown): NonNullable<TunnelV2Status['active']> {
+function readActiveTunnel(value: unknown): NonNullable<DestinationTunnelStatus['active']> {
   const active = readRecord(value, 'active tunnel');
   const state = readString(active, 'state');
   if (state !== 'starting' && state !== 'ready' && state !== 'stopping') {
@@ -71,7 +75,7 @@ function readActiveTunnel(value: unknown): NonNullable<TunnelV2Status['active']>
   };
 }
 
-function readTunnelFailure(value: unknown): NonNullable<TunnelV2Status['lastFailure']> {
+function readTunnelFailure(value: unknown): NonNullable<DestinationTunnelStatus['lastFailure']> {
   const failure = readRecord(value, 'tunnel failure');
   return {
     tunnelId: readNonEmptyString(failure, 'tunnelId'),
@@ -79,7 +83,7 @@ function readTunnelFailure(value: unknown): NonNullable<TunnelV2Status['lastFail
   };
 }
 
-function readTunnelDialFailure(value: unknown): NonNullable<TunnelV2Status['lastDialFailure']> {
+function readTunnelDialFailure(value: unknown): NonNullable<DestinationTunnelStatus['lastDialFailure']> {
   const failure = readRecord(value, 'tunnel dial failure');
   const connectionId = failure['connectionId'];
   if (

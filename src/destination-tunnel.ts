@@ -1,15 +1,15 @@
 import net from 'net';
 
-export const TUNNEL_V2_VERSION = 2;
-export const TUNNEL_V2_MAX_ROUTES = 10;
-export const TUNNEL_V2_CONN_ID_HEADER_BYTES = 4;
+export const DESTINATION_TUNNEL_VERSION = 1;
+export const DESTINATION_TUNNEL_MAX_ROUTES = 10;
+export const DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES = 4;
 
-export interface TunnelV2Route {
+export interface DestinationTunnelRoute {
   host: string;
   port: number;
 }
 
-export type TunnelV2OpenFailureReason =
+export type DestinationTunnelOpenFailureReason =
   | 'dns_not_found'
   | 'dns_temporary_failure'
   | 'connection_refused'
@@ -23,7 +23,7 @@ export type TunnelV2OpenFailureReason =
   | 'internal'
   | (string & {});
 
-export type TunnelV2ResetReason =
+export type DestinationTunnelResetReason =
   | 'cancelled'
   | 'connection_error'
   | 'protocol_error'
@@ -31,7 +31,7 @@ export type TunnelV2ResetReason =
   | 'internal'
   | (string & {});
 
-export type TunnelV2SessionErrorCode =
+export type DestinationTunnelSessionErrorCode =
   | 'unsupported_version'
   | 'invalid_message'
   | 'invalid_route'
@@ -41,19 +41,19 @@ export type TunnelV2SessionErrorCode =
   | 'internal'
   | (string & {});
 
-export type TunnelV2ClientMessage =
-  | { type: 'start'; version: number; routes: TunnelV2Route[] }
+export type DestinationTunnelClientMessage =
+  | { type: 'start'; version: number; routes: DestinationTunnelRoute[] }
   | { type: 'openOk'; connId: number }
   | {
       type: 'openFail';
       connId: number;
-      reason: TunnelV2OpenFailureReason;
+      reason: DestinationTunnelOpenFailureReason;
       osCode?: string;
     }
   | { type: 'fin'; connId: number }
-  | { type: 'reset'; connId: number; reason: TunnelV2ResetReason; osCode?: string };
+  | { type: 'reset'; connId: number; reason: DestinationTunnelResetReason; osCode?: string };
 
-export type TunnelV2ServerMessage =
+export type DestinationTunnelServerMessage =
   | { type: 'ready'; version: number; tunnelId: string }
   | {
       type: 'open';
@@ -64,43 +64,56 @@ export type TunnelV2ServerMessage =
       proto: 'tcp';
     }
   | { type: 'fin'; connId: number }
-  | { type: 'reset'; connId: number; reason: TunnelV2ResetReason; osCode?: string }
-  | { type: 'error'; code: TunnelV2SessionErrorCode };
+  | { type: 'reset'; connId: number; reason: DestinationTunnelResetReason; osCode?: string }
+  | { type: 'error'; code: DestinationTunnelSessionErrorCode };
 
-export type TunnelV2RouteErrorCode = 'empty' | 'too_many' | 'invalid_host' | 'invalid_port' | 'duplicate';
+export type DestinationTunnelRouteErrorCode =
+  | 'empty'
+  | 'too_many'
+  | 'invalid_host'
+  | 'invalid_port'
+  | 'duplicate';
 
-export class TunnelV2RouteError extends Error {
+export class DestinationTunnelRouteError extends Error {
   constructor(
-    readonly code: TunnelV2RouteErrorCode,
+    readonly code: DestinationTunnelRouteErrorCode,
     message: string,
   ) {
     super(message);
-    this.name = 'TunnelV2RouteError';
+    this.name = 'DestinationTunnelRouteError';
   }
 }
 
-export class TunnelV2ProtocolError extends Error {
+export class DestinationTunnelProtocolError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'TunnelV2ProtocolError';
+    this.name = 'DestinationTunnelProtocolError';
   }
 }
 
-export function validateTunnelV2Routes(routes: readonly TunnelV2Route[]): TunnelV2Route[] {
+export function validateDestinationTunnelRoutes(
+  routes: readonly DestinationTunnelRoute[],
+): DestinationTunnelRoute[] {
   if (routes.length === 0) {
-    throw new TunnelV2RouteError('empty', 'at least one tunnel route is required');
+    throw new DestinationTunnelRouteError('empty', 'at least one tunnel route is required');
   }
-  if (routes.length > TUNNEL_V2_MAX_ROUTES) {
-    throw new TunnelV2RouteError('too_many', `at most ${TUNNEL_V2_MAX_ROUTES} tunnel routes are allowed`);
+  if (routes.length > DESTINATION_TUNNEL_MAX_ROUTES) {
+    throw new DestinationTunnelRouteError(
+      'too_many',
+      `at most ${DESTINATION_TUNNEL_MAX_ROUTES} tunnel routes are allowed`,
+    );
   }
 
-  const canonicalRoutes: TunnelV2Route[] = [];
+  const canonicalRoutes: DestinationTunnelRoute[] = [];
   const seen = new Set<string>();
   for (const route of routes) {
-    const canonical = canonicalizeTunnelV2Route(route);
+    const canonical = canonicalizeDestinationTunnelRoute(route);
     const key = `${canonical.host}\0${canonical.port}`;
     if (seen.has(key)) {
-      throw new TunnelV2RouteError('duplicate', `duplicate tunnel route ${canonical.host}:${canonical.port}`);
+      throw new DestinationTunnelRouteError(
+        'duplicate',
+        `duplicate tunnel route ${canonical.host}:${canonical.port}`,
+      );
     }
     seen.add(key);
     canonicalRoutes.push(canonical);
@@ -108,36 +121,38 @@ export function validateTunnelV2Routes(routes: readonly TunnelV2Route[]): Tunnel
   return canonicalRoutes;
 }
 
-export function assertTunnelV2OpenAllowed(
-  message: Extract<TunnelV2ServerMessage, { type: 'open' }>,
-  routes: readonly TunnelV2Route[],
+export function assertDestinationTunnelOpenAllowed(
+  message: Extract<DestinationTunnelServerMessage, { type: 'open' }>,
+  routes: readonly DestinationTunnelRoute[],
 ): void {
   const index = parseRouteId(message.routeId);
   const route = routes[index];
   if (!route || message.host !== route.host || message.port !== route.port || message.proto !== 'tcp') {
-    throw new TunnelV2ProtocolError(
+    throw new DestinationTunnelProtocolError(
       `server requested undeclared route ${message.routeId} ${message.host}:${message.port}/${message.proto}`,
     );
   }
 }
 
-export function assertTunnelV2Ready(message: Extract<TunnelV2ServerMessage, { type: 'ready' }>): void {
-  if (message.version !== TUNNEL_V2_VERSION) {
-    throw new TunnelV2ProtocolError(`unsupported tunnel version ${message.version}`);
+export function assertDestinationTunnelReady(
+  message: Extract<DestinationTunnelServerMessage, { type: 'ready' }>,
+): void {
+  if (message.version !== DESTINATION_TUNNEL_VERSION) {
+    throw new DestinationTunnelProtocolError(`unsupported tunnel version ${message.version}`);
   }
 }
 
-export function encodeTunnelV2ClientMessage(message: TunnelV2ClientMessage): string {
+export function encodeDestinationTunnelClientMessage(message: DestinationTunnelClientMessage): string {
   const record = readRecord(message, 'tunnel control message');
   const type = readString(record, 'type');
 
   switch (type) {
     case 'start': {
       const version = readInteger(record, 'version');
-      if (version !== TUNNEL_V2_VERSION) {
-        throw new TunnelV2ProtocolError(`unsupported tunnel version ${version}`);
+      if (version !== DESTINATION_TUNNEL_VERSION) {
+        throw new DestinationTunnelProtocolError(`unsupported tunnel version ${version}`);
       }
-      const routes = validateTunnelV2Routes(readArray(record, 'routes').map(readRoute));
+      const routes = validateDestinationTunnelRoutes(readArray(record, 'routes').map(readRoute));
       return JSON.stringify({ type, version, routes });
     }
     case 'openOk':
@@ -152,11 +167,11 @@ export function encodeTunnelV2ClientMessage(message: TunnelV2ClientMessage): str
         ...readOptionalString(record, 'osCode'),
       });
     default:
-      throw new TunnelV2ProtocolError(`unknown tunnel control message type ${type}`);
+      throw new DestinationTunnelProtocolError(`unknown tunnel control message type ${type}`);
   }
 }
 
-export function decodeTunnelV2ServerMessage(value: unknown): TunnelV2ServerMessage {
+export function decodeDestinationTunnelServerMessage(value: unknown): DestinationTunnelServerMessage {
   const message = readRecord(value, 'tunnel control message');
   const type = readString(message, 'type');
 
@@ -188,13 +203,13 @@ export function decodeTunnelV2ServerMessage(value: unknown): TunnelV2ServerMessa
     case 'error':
       return { type, code: readString(message, 'code') };
     default:
-      throw new TunnelV2ProtocolError(`unknown tunnel control message type ${type}`);
+      throw new DestinationTunnelProtocolError(`unknown tunnel control message type ${type}`);
   }
 }
 
-function canonicalizeTunnelV2Route(route: TunnelV2Route): TunnelV2Route {
+function canonicalizeDestinationTunnelRoute(route: DestinationTunnelRoute): DestinationTunnelRoute {
   if (!Number.isInteger(route.port) || route.port < 1 || route.port > 65_535) {
-    throw new TunnelV2RouteError('invalid_port', `invalid tunnel route port ${route.port}`);
+    throw new DestinationTunnelRouteError('invalid_port', `invalid tunnel route port ${route.port}`);
   }
 
   const ipVersion = net.isIP(route.host);
@@ -206,7 +221,7 @@ function canonicalizeTunnelV2Route(route: TunnelV2Route): TunnelV2Route {
     return { host: canonicalizeIPv6(hostname.slice(1, -1)), port: route.port };
   }
 
-  throw new TunnelV2RouteError('invalid_host', `invalid tunnel route host ${route.host}`);
+  throw new DestinationTunnelRouteError('invalid_host', `invalid tunnel route host ${route.host}`);
 }
 
 function canonicalizeIPv6(host: string): string {
@@ -227,7 +242,7 @@ function parseRouteId(routeId: string): number {
   return Number(match[1]) - 1;
 }
 
-function readRoute(value: unknown): TunnelV2Route {
+function readRoute(value: unknown): DestinationTunnelRoute {
   const route = readRecord(value, 'tunnel route');
   return {
     host: readString(route, 'host'),
@@ -237,7 +252,7 @@ function readRoute(value: unknown): TunnelV2Route {
 
 function readRecord(value: unknown, name: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new TunnelV2ProtocolError(`${name} must be an object`);
+    throw new DestinationTunnelProtocolError(`${name} must be an object`);
   }
   return value as Record<string, unknown>;
 }
@@ -245,7 +260,7 @@ function readRecord(value: unknown, name: string): Record<string, unknown> {
 function readArray(record: Record<string, unknown>, key: string): unknown[] {
   const value = record[key];
   if (!Array.isArray(value)) {
-    throw new TunnelV2ProtocolError(`${key} must be an array`);
+    throw new DestinationTunnelProtocolError(`${key} must be an array`);
   }
   return value;
 }
@@ -253,7 +268,7 @@ function readArray(record: Record<string, unknown>, key: string): unknown[] {
 function readString(record: Record<string, unknown>, key: string): string {
   const value = record[key];
   if (typeof value !== 'string') {
-    throw new TunnelV2ProtocolError(`${key} must be a string`);
+    throw new DestinationTunnelProtocolError(`${key} must be a string`);
   }
   return value;
 }
@@ -264,7 +279,7 @@ function readOptionalString(record: Record<string, unknown>, key: string): { [K 
     return {};
   }
   if (typeof value !== 'string') {
-    throw new TunnelV2ProtocolError(`${key} must be a string`);
+    throw new DestinationTunnelProtocolError(`${key} must be a string`);
   }
   return { [key]: value };
 }
@@ -272,7 +287,7 @@ function readOptionalString(record: Record<string, unknown>, key: string): { [K 
 function readInteger(record: Record<string, unknown>, key: string): number {
   const value = record[key];
   if (!Number.isInteger(value)) {
-    throw new TunnelV2ProtocolError(`${key} must be an integer`);
+    throw new DestinationTunnelProtocolError(`${key} must be an integer`);
   }
   return value as number;
 }
@@ -280,7 +295,7 @@ function readInteger(record: Record<string, unknown>, key: string): number {
 function readPort(record: Record<string, unknown>, key: string): number {
   const value = readInteger(record, key);
   if (value < 1 || value > 65_535) {
-    throw new TunnelV2ProtocolError(`${key} must be between 1 and 65535`);
+    throw new DestinationTunnelProtocolError(`${key} must be between 1 and 65535`);
   }
   return value;
 }
@@ -288,7 +303,7 @@ function readPort(record: Record<string, unknown>, key: string): number {
 function readConnectionId(record: Record<string, unknown>): number {
   const value = readInteger(record, 'connId');
   if (value < 0 || value > 0xffff_ffff) {
-    throw new TunnelV2ProtocolError('connId must be an unsigned 32-bit integer');
+    throw new DestinationTunnelProtocolError('connId must be an unsigned 32-bit integer');
   }
   return value;
 }
@@ -296,7 +311,7 @@ function readConnectionId(record: Record<string, unknown>): number {
 function readTCP(record: Record<string, unknown>): 'tcp' {
   const value = readString(record, 'proto');
   if (value !== 'tcp') {
-    throw new TunnelV2ProtocolError(`unsupported tunnel transport ${value}`);
+    throw new DestinationTunnelProtocolError(`unsupported tunnel transport ${value}`);
   }
   return value;
 }
