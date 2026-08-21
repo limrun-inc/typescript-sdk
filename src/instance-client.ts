@@ -157,17 +157,14 @@ export type InstanceClient = {
    */
   playOnMicrophone: (path: string, options?: PlayOnMicrophoneOptions) => Promise<PlayOnMicrophoneResult>;
   /**
-   * Upload a local file to the instance's staging folder
-   * (`/data/local/tmp/limrun-files`), without needing an ADB connection.
+   * Upload a local file to the instance, without needing an ADB connection.
+   * The instance stores it under an internal name.
    *
    * @param path The path of the local file to upload.
-   * @param name Optional file name on the instance; defaults to the local
-   *   file's base name. Repeat uploads with the same name overwrite the
-   *   previous file.
    * @returns A promise that resolves to the absolute path of the file on the
    *   instance, usable with {@link playOnMicrophone}.
    */
-  pushFile: (path: string, name?: string) => Promise<string>;
+  pushFile: (path: string) => Promise<string>;
   /**
    * Play a local video file as the camera feed.
    *
@@ -1350,9 +1347,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
     };
 
-    const pushFile = async (filePath: string, name?: string): Promise<string> => {
-      const uploadName = name ?? path.basename(filePath);
-      const uploadUrl = `${options.apiUrl}/files?name=${encodeURIComponent(uploadName)}`;
+    const pushFile = async (filePath: string): Promise<string> => {
+      const uploadUrl = `${options.apiUrl}/files`;
       const fileStream = fs.createReadStream(filePath);
       // Node's fetch (undici) supports streaming request bodies but TS DOM types may not include
       // `duplex` and may not accept Node ReadStreams as BodyInit in some configs.
@@ -1376,9 +1372,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const setCameraVideo = async (filePath: string, cameraOptions?: CameraVideoOptions): Promise<void> => {
-      // Fixed prefix so repeat calls with the same file overwrite the
-      // previous upload instead of accumulating staging files.
-      const remotePath = await pushFile(filePath, `limrun-camera-${path.basename(filePath)}`);
+      const remotePath = await pushFile(filePath);
       await sendRequest('cameraControl', {
         action: 'setSource',
         source: 'video',
