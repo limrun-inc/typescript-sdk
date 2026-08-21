@@ -57,8 +57,11 @@ export function parseTunnelRoute(value: string): Ios.TunnelOptions['routes'][num
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error(`Invalid route port in "${value}"; expected 1-65535`);
   }
-  if (net.isIP(host) === 0) {
-    throw new Error(`Invalid route host in "${value}"; expected a literal IP address`);
+  const asciiHost = Buffer.byteLength(host, 'utf8') === host.length;
+  if (asciiHost && host.toLowerCase() === 'localhost') {
+    host = 'localhost';
+  } else if (net.isIP(host) === 0) {
+    throw new Error(`Invalid route host in "${value}"; expected localhost or a literal IP address`);
   }
   return { host, port };
 }
@@ -415,7 +418,7 @@ function validateStoredRoutes(routes: Ios.TunnelOptions['routes']): Ios.TunnelOp
   for (const route of routes) {
     if (
       typeof route?.host !== 'string' ||
-      net.isIP(route.host) === 0 ||
+      (route.host !== 'localhost' && net.isIP(route.host) === 0) ||
       !Number.isInteger(route.port) ||
       route.port < 1 ||
       route.port > 65_535

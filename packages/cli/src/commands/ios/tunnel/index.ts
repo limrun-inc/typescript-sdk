@@ -29,9 +29,9 @@ import {
 export default class IosTunnel extends BaseCommand {
   static summary = 'Expose declared local TCP destinations to the simulator';
   static description =
-    'Start one transparent destination tunnel with exact literal IP:port routes. Use --detach to keep it running after this command returns.';
+    'Start one transparent destination tunnel with exact localhost:port or literal IP:port routes. Use --detach to keep it running after this command returns.';
   static examples = [
-    '<%= config.bin %> ios tunnel --route 10.20.30.40:8000 --id <instance-ID>',
+    '<%= config.bin %> ios tunnel --route localhost:3000 --id <instance-ID>',
     '<%= config.bin %> ios tunnel --route 10.20.30.40:443 --route 10.20.30.41:8081 --detach',
     '<%= config.bin %> ios tunnel status --id <instance-ID>',
     '<%= config.bin %> ios tunnel stop --id <instance-ID>',
@@ -44,7 +44,8 @@ export default class IosTunnel extends BaseCommand {
         'iOS instance ID to target. Defaults to the last created iOS instance, but --id is recommended for scripts and agents.',
     }),
     route: Flags.string({
-      description: 'Exact client-side TCP destination as IPv4:port or [IPv6]:port. Repeat for more routes.',
+      description:
+        'Exact client-side TCP destination as localhost:port, IPv4:port, or [IPv6]:port. Repeat for more routes.',
       multiple: true,
       required: true,
     }),
