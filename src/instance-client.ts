@@ -152,9 +152,45 @@ export type InstanceClient = {
   /**
    * Play an on-device WAV/MP3 file as microphone input.
    *
-   * The file must already exist on the Android instance, for example after pushing it with ADB.
+   * The file must already exist on the Android instance, for example after
+   * uploading it with {@link pushFile} or pushing it with ADB.
    */
   playOnMicrophone: (path: string, options?: PlayOnMicrophoneOptions) => Promise<PlayOnMicrophoneResult>;
+  /**
+   * Upload a local file to the instance's staging folder
+   * (`/data/local/tmp/limrun-files`), without needing an ADB connection.
+   *
+   * @param path The path of the local file to upload.
+   * @param name Optional file name on the instance; defaults to the local
+   *   file's base name. Repeat uploads with the same name overwrite the
+   *   previous file.
+   * @returns A promise that resolves to the absolute path of the file on the
+   *   instance, usable with {@link playOnMicrophone}.
+   */
+  pushFile: (path: string, name?: string) => Promise<string>;
+  /**
+   * Play a local video file as the camera feed.
+   *
+   * Uploads the file to the instance and switches the virtual camera source
+   * to it, replacing the live WebRTC camera until {@link clearCameraVideo} is
+   * called. Apps see the video through their regular Camera2/CameraX
+   * pipeline, and the file's audio track (if any) plays through the
+   * microphone in sync.
+   *
+   * By default the video loops; with `loop: false` it plays once and the
+   * feed freezes on the last frame.
+   *
+   * @param path The path of the local video file to play as the camera.
+   * @param opts Playback options (currently just `loop`).
+   * @throws If the file has no decodable video track or the instance does not
+   *   support camera injection (Android 14 and older).
+   */
+  setCameraVideo: (path: string, opts?: CameraVideoOptions) => Promise<void>;
+  /**
+   * Stop video-file camera playback and restore the default WebRTC camera
+   * source. Safe to call when no video is playing.
+   */
+  clearCameraVideo: () => Promise<void>;
   /**
    * Set Android Wi-Fi bandwidth limits in Kbps. Omit a direction to leave it unchanged;
    * pass `0` to clear that direction's limit.
@@ -443,6 +479,18 @@ export type PlayOnMicrophoneOptions = {
   once?: boolean;
 };
 
+/**
+ * Options for playing a video file as the virtual camera feed.
+ */
+export type CameraVideoOptions = {
+  /**
+   * Whether to restart the video when it ends. When false the video
+   * plays once and the camera feed freezes on its last frame.
+   * @default true
+   */
+  loop?: boolean;
+};
+
 export type PlayOnMicrophoneResult = {
   /** Duration of the decoded audio in microseconds. */
   duration: number;
@@ -589,6 +637,15 @@ type PlayOnMicrophoneResultMessage = {
   error?: CommandError;
 };
 
+// The server sends camera control results "flat": fields at the top level and
+// `error` as a plain string, with no payload envelope.
+type CameraControlResultMessage = {
+  type: 'cameraControlResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: string;
+};
+
 type SetWifiBandwidthResultMessage = {
   type: 'setWifiBandwidthResult';
   id: string;
@@ -625,6 +682,7 @@ type KnownCommandResultMessage =
   | WatchAppResultMessage
   | UnwatchAppResultMessage
   | PlayOnMicrophoneResultMessage
+  | CameraControlResultMessage
   | SetWifiBandwidthResultMessage
   | StartVideoRecordingResultMessage
   | StopVideoRecordingResultMessage;
@@ -651,6 +709,9 @@ type CommandRequestMap = {
   watchApp: { packageName: string; execId: string };
   unwatchApp: { execId: string };
   playOnMicrophone: { path: string; once?: boolean };
+  cameraControl:
+    | { action: 'setSource'; source: 'video'; arg: string; loop?: boolean }
+    | { action: 'reset' };
   setWifiBandwidth: WifiBandwidthOptions;
   startRecording: { quality?: RecordingQuality };
   stopRecording: { upload?: { presignedUrl: string } };
@@ -671,6 +732,7 @@ type CommandResultMap = {
   watchApp: { packageName?: string };
   unwatchApp: EmptyCommandResult;
   playOnMicrophone: PlayOnMicrophoneResult;
+  cameraControl: EmptyCommandResult;
   setWifiBandwidth: EmptyCommandResult;
   startRecording: EmptyCommandResult;
   stopRecording: EmptyCommandResult;
@@ -812,6 +874,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       if ('message' in message && typeof message.message === 'string') {
         return message.message;
       }
+      // "Flat" results (e.g. cameraControlResult, playOnMicrophoneResult)
+      // carry the error as a plain string instead of a CommandError object.
+      if ('error' in message && typeof message.error === 'string' && message.error) {
+        return message.error;
+      }
       if ('error' in message && message.error && typeof message.error === 'object') {
         const obj = message.error as CommandError;
         if (typeof obj.message === 'string' && obj.message) {
@@ -845,6 +912,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         case 'watchAppResult':
         case 'unwatchAppResult':
         case 'playOnMicrophoneResult':
+        case 'cameraControlResult':
         case 'setWifiBandwidthResult':
         case 'startRecordingResult':
         case 'stopRecordingResult':
@@ -1116,6 +1184,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             terminateApp,
             watchApp,
             playOnMicrophone,
+            pushFile,
+            setCameraVideo,
+            clearCameraVideo,
             setWifiBandwidth,
             startRecording,
             stopRecording,
@@ -1277,6 +1348,47 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         path: inputPath,
         ...(microphoneOptions?.once === undefined ? {} : { once: microphoneOptions.once }),
       });
+    };
+
+    const pushFile = async (filePath: string, name?: string): Promise<string> => {
+      const uploadName = name ?? path.basename(filePath);
+      const uploadUrl = `${options.apiUrl}/files?name=${encodeURIComponent(uploadName)}`;
+      const fileStream = fs.createReadStream(filePath);
+      // Node's fetch (undici) supports streaming request bodies but TS DOM types may not include
+      // `duplex` and may not accept Node ReadStreams as BodyInit in some configs.
+      const response = await nodeProxyTransport.fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': fs.statSync(filePath).size.toString(),
+          Authorization: `Bearer ${options.token}`,
+        },
+        body: fileStream as any,
+        duplex: 'half' as any,
+      } as any);
+      if (!response.ok) {
+        const errorBody = await response.text();
+        logger.debug(`Upload failed: ${response.status} ${errorBody}`);
+        throw new Error(`Upload failed: ${response.status} ${errorBody}`);
+      }
+      const result = (await response.json()) as { path: string };
+      return result.path;
+    };
+
+    const setCameraVideo = async (filePath: string, cameraOptions?: CameraVideoOptions): Promise<void> => {
+      // Fixed prefix so repeat calls with the same file overwrite the
+      // previous upload instead of accumulating staging files.
+      const remotePath = await pushFile(filePath, `limrun-camera-${path.basename(filePath)}`);
+      await sendRequest('cameraControl', {
+        action: 'setSource',
+        source: 'video',
+        arg: remotePath,
+        loop: cameraOptions?.loop ?? true,
+      });
+    };
+
+    const clearCameraVideo = async (): Promise<void> => {
+      await sendRequest('cameraControl', { action: 'reset' });
     };
 
     const setWifiBandwidth = async (bandwidthOptions: WifiBandwidthOptions): Promise<void> => {
