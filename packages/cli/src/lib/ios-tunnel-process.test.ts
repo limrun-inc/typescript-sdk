@@ -46,13 +46,14 @@ describe('iOS tunnel process state', () => {
   });
 
   test.each([
+    ['LOCALHOST:3000', { host: 'localhost', port: 3000 }],
     ['10.20.30.40:8000', { host: '10.20.30.40', port: 8000 }],
     ['[2001:db8::1]:8443', { host: '2001:db8::1', port: 8443 }],
   ])('parses route %s', (input, expected) => {
     expect(parseTunnelRoute(input)).toEqual(expected);
   });
 
-  test.each(['localhost:8000', ':8000', '10.20.30.40:0', '10.20.30.40:65536', '2001:db8::1:443'])(
+  test.each(['localhost.:8000', ':8000', '10.20.30.40:0', '10.20.30.40:65536', '2001:db8::1:443'])(
     'rejects malformed route %s',
     (input) => {
       expect(() => parseTunnelRoute(input)).toThrow();
@@ -275,6 +276,7 @@ describe('iOS tunnel process state', () => {
     { tunnelId: 'premature' },
     { status: 'ready', pid: 0 },
     { routes: [{ host: '*.example.com', port: 443 }] },
+    { routes: [{ host: 'LOCALHOST', port: 3000 }] },
   ] satisfies Array<Partial<IosTunnelProcessState>>)('rejects malformed persisted state %#', (overrides) => {
     const state = overrides.status === 'ready' ? makeReadyState(overrides) : makeState(overrides);
     const paths = tunnelProcessPaths(state.instanceId, state.owner, root);
