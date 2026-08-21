@@ -158,13 +158,19 @@ export type InstanceClient = {
   playOnMicrophone: (path: string, options?: PlayOnMicrophoneOptions) => Promise<PlayOnMicrophoneResult>;
   /**
    * Upload a local file to the instance, without needing an ADB connection.
-   * The instance stores it under an internal name.
+   *
+   * With no destination, the instance stores the file under an internal name
+   * and returns its path. With a destination, behaves like `adb push`: the
+   * write is performed with the same permissions the ADB shell user has, so
+   * writable locations (e.g. `/data/local/tmp`, `/sdcard`) succeed and
+   * protected ones are rejected, exactly as they would be for `adb push`.
    *
    * @param path The path of the local file to upload.
+   * @param destination Optional absolute path on the instance to write to.
    * @returns A promise that resolves to the absolute path of the file on the
    *   instance, usable with {@link playOnMicrophone}.
    */
-  pushFile: (path: string) => Promise<string>;
+  pushFile: (path: string, destination?: string) => Promise<string>;
   /**
    * Play a local video file as the camera feed.
    *
@@ -1347,8 +1353,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
     };
 
-    const pushFile = async (filePath: string): Promise<string> => {
-      const uploadUrl = `${options.apiUrl}/files`;
+    const pushFile = async (filePath: string, destination?: string): Promise<string> => {
+      const uploadUrl =
+        destination === undefined
+          ? `${options.apiUrl}/files`
+          : `${options.apiUrl}/files?path=${encodeURIComponent(destination)}`;
       const fileStream = fs.createReadStream(filePath);
       // Node's fetch (undici) supports streaming request bodies but TS DOM types may not include
       // `duplex` and may not accept Node ReadStreams as BodyInit in some configs.
