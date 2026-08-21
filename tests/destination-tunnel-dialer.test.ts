@@ -136,6 +136,58 @@ describe('destination tunnel dialer', () => {
     expect(acceptedConnections).toBe(0);
   });
 
+  test('canonicalizes localhost before authorizing and dialing OPEN', async () => {
+    const socket = new net.Socket({ allowHalfOpen: true });
+    const createConnection = jest.spyOn(net, 'createConnection').mockReturnValue(socket);
+    const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
+      routes: [{ host: 'LOCALHOST', port: 3000 }],
+      logLevel: 'none',
+    });
+    await waitFor(() => hasControl('start'));
+    expect(controlFor('start')).toEqual({
+      type: 'start',
+      version: DESTINATION_TUNNEL_VERSION,
+      routes: [{ host: 'localhost', port: 3000 }],
+    });
+    sendControl({
+      type: 'ready',
+      version: DESTINATION_TUNNEL_VERSION,
+      tunnelId: 'tunnel-localhost',
+    });
+    tunnel = await startup;
+
+    sendControl({
+      type: 'open',
+      connId: 81,
+      routeId: 'route-1',
+      host: 'localhost',
+      port: 3000,
+      proto: 'tcp',
+    });
+    await waitFor(() => createConnection.mock.calls.length === 1);
+    expect(createConnection).toHaveBeenCalledWith({
+      host: 'localhost',
+      port: 3000,
+      allowHalfOpen: true,
+    });
+
+    sendControl({
+      type: 'open',
+      connId: 82,
+      routeId: 'route-1',
+      host: 'LOCALHOST',
+      port: 3000,
+      proto: 'tcp',
+    });
+    await waitFor(() => hasControl('openFail', 82));
+    expect(controlFor('openFail', 82)).toEqual({
+      type: 'openFail',
+      connId: 82,
+      reason: 'route_not_allowed',
+    });
+    expect(createConnection).toHaveBeenCalledTimes(1);
+  });
+
   test('reports a refused local dial with its stable reason and OS code', async () => {
     const unavailablePort = await reserveThenReleasePort();
     const route = { host: '127.0.0.1', port: unavailablePort };

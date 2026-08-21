@@ -236,6 +236,20 @@
         }
       ],
       "error": "duplicate"
+    },
+    {
+      "name": "canonical localhost duplicate",
+      "routes": [
+        {
+          "host": "LOCALHOST",
+          "port": 3000
+        },
+        {
+          "host": "localhost",
+          "port": 3000
+        }
+      ],
+      "error": "duplicate"
     }
   ],
   "client": [
