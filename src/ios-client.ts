@@ -5,16 +5,20 @@ import fs from 'fs';
 import { WebSocket, Data } from 'ws';
 import { EventEmitter } from 'events';
 import { assertPort, isNonRetryableError, startReverseTcpTunnel, type ReverseTunnel } from './tunnel';
-import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './tunnel-v2-dialer';
-import type { TunnelV2Route } from './tunnel-v2';
+import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './destination-tunnel-dialer';
+import type { DestinationTunnelRoute } from './destination-tunnel';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
 import { createIgnoreFn } from './folder-sync-ignore';
 import { prepareAppBundlePath, watchAppArchive } from './app-archive';
 import { downloadFileToLocalPath } from './internal/download-file';
 import { sleep } from './internal/utils/sleep';
 import { nodeProxyTransport } from './internal/proxy-transport';
-import { getTunnelV2Status, stopTunnelV2, type TunnelV2Status } from './internal/tunnel-v2-management';
-import { deriveTunnelV2URL } from './internal/tunnel-v2-url';
+import {
+  getDestinationTunnelStatus,
+  stopDestinationTunnel,
+  type DestinationTunnelStatus,
+} from './internal/destination-tunnel-management';
+import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
 import {
   startHttpProxy as startLocalHttpProxy,
   startForwardHttpProxy as startLocalForwardHttpProxy,
@@ -62,11 +66,11 @@ export type { ReverseTunnel } from './tunnel';
 export type Tunnel = DestinationTcpTunnel;
 export type TunnelOptions = {
   /** TCP destinations that the server may ask this client to dial. */
-  routes: TunnelV2Route[];
+  routes: DestinationTunnelRoute[];
   /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
   logLevel?: LogLevel;
 };
-export type TunnelStatus = TunnelV2Status;
+export type TunnelStatus = DestinationTunnelStatus;
 
 /**
  * Events emitted by a simctl execution
@@ -2853,18 +2857,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const startTunnel = async (tunnelOptions: TunnelOptions): Promise<Tunnel> => {
-      return startDestinationTcpTunnel(deriveTunnelV2URL(options.apiUrl), options.token, {
+      return startDestinationTcpTunnel(deriveDestinationTunnelURL(options.apiUrl), options.token, {
         routes: tunnelOptions.routes,
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });
     };
 
     const getTunnelStatus = async (): Promise<TunnelStatus> => {
-      return getTunnelV2Status(options.apiUrl, options.token);
+      return getDestinationTunnelStatus(options.apiUrl, options.token);
     };
 
     const stopTunnel = async (tunnelId: string): Promise<void> => {
-      await stopTunnelV2(options.apiUrl, options.token, tunnelId);
+      await stopDestinationTunnel(options.apiUrl, options.token, tunnelId);
     };
 
     const startHttpProxy = async (proxyOptions: HttpProxyOptions): Promise<number> => {

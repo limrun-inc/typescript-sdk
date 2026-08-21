@@ -2,20 +2,20 @@ import net from 'net';
 import { WebSocket, type RawData } from 'ws';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import {
-  TUNNEL_V2_CONN_ID_HEADER_BYTES,
-  TUNNEL_V2_VERSION,
-  TunnelV2ProtocolError,
-  assertTunnelV2OpenAllowed,
-  assertTunnelV2Ready,
-  decodeTunnelV2ServerMessage,
-  encodeTunnelV2ClientMessage,
-  validateTunnelV2Routes,
-  type TunnelV2ClientMessage,
-  type TunnelV2OpenFailureReason,
-  type TunnelV2Route,
-  type TunnelV2ResetReason,
-  type TunnelV2ServerMessage,
-} from './tunnel-v2';
+  DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
+  DESTINATION_TUNNEL_VERSION,
+  DestinationTunnelProtocolError,
+  assertDestinationTunnelOpenAllowed,
+  assertDestinationTunnelReady,
+  decodeDestinationTunnelServerMessage,
+  encodeDestinationTunnelClientMessage,
+  validateDestinationTunnelRoutes,
+  type DestinationTunnelClientMessage,
+  type DestinationTunnelOpenFailureReason,
+  type DestinationTunnelRoute,
+  type DestinationTunnelResetReason,
+  type DestinationTunnelServerMessage,
+} from './destination-tunnel';
 import type { LogLevel, TunnelConnectionState, TunnelConnectionStateCallback } from './tunnel';
 
 export interface DestinationTcpTunnel {
@@ -26,7 +26,7 @@ export interface DestinationTcpTunnel {
 }
 
 export interface DestinationTcpTunnelOptions {
-  routes: TunnelV2Route[];
+  routes: DestinationTunnelRoute[];
   logLevel?: LogLevel;
   maxConnections?: number;
   maxPendingBytesPerConnection?: number;
@@ -51,7 +51,7 @@ export async function startDestinationTcpTunnel(
   token: string,
   options: DestinationTcpTunnelOptions,
 ): Promise<DestinationTcpTunnel> {
-  const routes = validateTunnelV2Routes(options.routes);
+  const routes = validateDestinationTunnelRoutes(options.routes);
   const logLevel = options.logLevel ?? 'info';
   const maxConnections = positiveInteger(options.maxConnections ?? 64, 'maxConnections');
   const maxPendingBytesPerConnection = positiveInteger(
@@ -224,12 +224,12 @@ export async function startDestinationTcpTunnel(
       }
     };
 
-    const sendControl = (message: TunnelV2ClientMessage): void => {
+    const sendControl = (message: DestinationTunnelClientMessage): void => {
       if (closed || ws.readyState !== WebSocket.OPEN) {
         failTransport(new Error('destination tunnel WebSocket is not open'));
         return;
       }
-      ws.send(encodeTunnelV2ClientMessage(message), frameSent);
+      ws.send(encodeDestinationTunnelClientMessage(message), frameSent);
       frameQueued();
     };
 
@@ -238,14 +238,18 @@ export async function startDestinationTcpTunnel(
         failTransport(new Error('destination tunnel WebSocket closed while sending data'));
         return;
       }
-      const frame = Buffer.allocUnsafe(TUNNEL_V2_CONN_ID_HEADER_BYTES + payload.length);
+      const frame = Buffer.allocUnsafe(DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES + payload.length);
       frame.writeUInt32BE(connId, 0);
-      payload.copy(frame, TUNNEL_V2_CONN_ID_HEADER_BYTES);
+      payload.copy(frame, DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES);
       ws.send(frame, { binary: true }, frameSent);
       frameQueued();
     };
 
-    const sendOpenFailure = (connId: number, reason: TunnelV2OpenFailureReason, osCode?: string): void => {
+    const sendOpenFailure = (
+      connId: number,
+      reason: DestinationTunnelOpenFailureReason,
+      osCode?: string,
+    ): void => {
       sendControl({
         type: 'openFail',
         connId,
@@ -255,7 +259,7 @@ export async function startDestinationTcpTunnel(
       markRecentlyClosed(connId);
     };
 
-    const sendReset = (connId: number, reason: TunnelV2ResetReason, osCode?: string): void => {
+    const sendReset = (connId: number, reason: DestinationTunnelResetReason, osCode?: string): void => {
       sendControl({
         type: 'reset',
         connId,
@@ -264,15 +268,15 @@ export async function startDestinationTcpTunnel(
       });
     };
 
-    const handleOpen = (message: Extract<TunnelV2ServerMessage, { type: 'open' }>): void => {
+    const handleOpen = (message: Extract<DestinationTunnelServerMessage, { type: 'open' }>): void => {
       try {
-        assertTunnelV2OpenAllowed(message, routes);
+        assertDestinationTunnelOpenAllowed(message, routes);
       } catch {
         sendOpenFailure(message.connId, 'route_not_allowed');
         return;
       }
       if (connections.has(message.connId) || recentlyClosed.has(message.connId)) {
-        throw new TunnelV2ProtocolError(`server reused connection ID ${message.connId}`);
+        throw new DestinationTunnelProtocolError(`server reused connection ID ${message.connId}`);
       }
       if (connections.size >= maxConnections) {
         sendOpenFailure(message.connId, 'resource_exhausted');
@@ -376,10 +380,10 @@ export async function startDestinationTcpTunnel(
 
     const handleBinary = (frame: Buffer): void => {
       if (!tunnelReady) {
-        throw new TunnelV2ProtocolError('received tunnel data before READY');
+        throw new DestinationTunnelProtocolError('received tunnel data before READY');
       }
-      if (frame.length <= TUNNEL_V2_CONN_ID_HEADER_BYTES) {
-        throw new TunnelV2ProtocolError('tunnel data frame must include a payload');
+      if (frame.length <= DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES) {
+        throw new DestinationTunnelProtocolError('tunnel data frame must include a payload');
       }
       const connId = frame.readUInt32BE(0);
       const connection = findOpenConnection(connId);
@@ -390,7 +394,7 @@ export async function startDestinationTcpTunnel(
         return;
       }
 
-      const payload = frame.subarray(TUNNEL_V2_CONN_ID_HEADER_BYTES);
+      const payload = frame.subarray(DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES);
       const nextConnectionPendingBytes = connection.pendingWriteBytes + payload.length;
       const nextTotalPendingBytes = totalPendingWriteBytes + payload.length;
       if (
@@ -415,11 +419,11 @@ export async function startDestinationTcpTunnel(
       });
     };
 
-    const handleControl = (message: TunnelV2ServerMessage): void => {
+    const handleControl = (message: DestinationTunnelServerMessage): void => {
       switch (message.type) {
         case 'ready':
-          if (tunnelReady) throw new TunnelV2ProtocolError('received duplicate READY');
-          assertTunnelV2Ready(message);
+          if (tunnelReady) throw new DestinationTunnelProtocolError('received duplicate READY');
+          assertDestinationTunnelReady(message);
           tunnelReady = true;
           if (handshakeTimer) {
             clearTimeout(handshakeTimer);
@@ -438,15 +442,15 @@ export async function startDestinationTcpTunnel(
         case 'error':
           throw new Error(`destination tunnel failed: ${message.code}`);
         case 'open':
-          if (!tunnelReady) throw new TunnelV2ProtocolError('received OPEN before READY');
+          if (!tunnelReady) throw new DestinationTunnelProtocolError('received OPEN before READY');
           handleOpen(message);
           return;
         case 'fin':
-          if (!tunnelReady) throw new TunnelV2ProtocolError('received FIN before READY');
+          if (!tunnelReady) throw new DestinationTunnelProtocolError('received FIN before READY');
           handleRemoteFIN(message.connId);
           return;
         case 'reset':
-          if (!tunnelReady) throw new TunnelV2ProtocolError('received RESET before READY');
+          if (!tunnelReady) throw new DestinationTunnelProtocolError('received RESET before READY');
           handleRemoteReset(message.connId);
       }
     };
@@ -466,7 +470,7 @@ export async function startDestinationTcpTunnel(
     handshakeTimer.unref();
 
     ws.on('open', () => {
-      sendControl({ type: 'start', version: TUNNEL_V2_VERSION, routes });
+      sendControl({ type: 'start', version: DESTINATION_TUNNEL_VERSION, routes });
       pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.ping(undefined, true, frameSent);
@@ -482,7 +486,7 @@ export async function startDestinationTcpTunnel(
         if (isBinary) {
           handleBinary(toBuffer(data));
         } else {
-          handleControl(decodeTunnelV2ServerMessage(JSON.parse(toBuffer(data).toString('utf8'))));
+          handleControl(decodeDestinationTunnelServerMessage(JSON.parse(toBuffer(data).toString('utf8'))));
         }
       } catch (error) {
         failTransport(error instanceof Error ? error : new Error(String(error)));
@@ -511,7 +515,7 @@ export async function startDestinationTcpTunnel(
   });
 }
 
-export function classifyOpenFailure(error: NodeJS.ErrnoException): TunnelV2OpenFailureReason {
+export function classifyOpenFailure(error: NodeJS.ErrnoException): DestinationTunnelOpenFailureReason {
   switch (error.code) {
     case 'ENOTFOUND':
       return 'dns_not_found';
@@ -552,5 +556,5 @@ function toBuffer(data: RawData): Buffer {
   if (Buffer.isBuffer(data)) return data;
   if (Array.isArray(data)) return Buffer.concat(data);
   if (data instanceof ArrayBuffer) return Buffer.from(data);
-  throw new TunnelV2ProtocolError('unsupported WebSocket payload type');
+  throw new DestinationTunnelProtocolError('unsupported WebSocket payload type');
 }
