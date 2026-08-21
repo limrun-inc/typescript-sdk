@@ -1,10 +1,12 @@
 import { nodeProxyTransport } from './proxy-transport';
 import { deriveDestinationTunnelStatusURL, deriveDestinationTunnelStopURL } from './destination-tunnel-url';
+import { validateDestinationTunnelRoutes, type DestinationTunnelRoute } from '../destination-tunnel';
 
 export interface DestinationTunnelStatus {
   active?: {
     tunnelId: string;
     state: 'starting' | 'ready' | 'stopping';
+    routes: DestinationTunnelRoute[];
   };
   lastFailure?: {
     tunnelId: string;
@@ -72,6 +74,19 @@ function readActiveTunnel(value: unknown): NonNullable<DestinationTunnelStatus['
   return {
     tunnelId: readNonEmptyString(active, 'tunnelId'),
     state,
+    routes: validateDestinationTunnelRoutes(readArray(active, 'routes').map(readTunnelRoute)),
+  };
+}
+
+function readTunnelRoute(value: unknown): DestinationTunnelRoute {
+  const route = readRecord(value, 'tunnel route');
+  const port = route['port'];
+  if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error('tunnel route port must be an integer from 1 to 65535');
+  }
+  return {
+    host: readNonEmptyString(route, 'host'),
+    port,
   };
 }
 
@@ -112,6 +127,14 @@ function readRecord(value: unknown, name: string): Record<string, unknown> {
     throw new Error(`${name} must be an object`);
   }
   return value as Record<string, unknown>;
+}
+
+function readArray(record: Record<string, unknown>, key: string): unknown[] {
+  const value = record[key];
+  if (!Array.isArray(value)) {
+    throw new Error(`${key} must be an array`);
+  }
+  return value;
 }
 
 function readString(record: Record<string, unknown>, key: string): string {

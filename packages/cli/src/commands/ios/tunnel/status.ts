@@ -2,6 +2,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
 import {
+  formatTunnelRoute,
   formatTunnelDialFailure,
   listTunnelProcesses,
   tunnelOwnerProcessIdentity,
@@ -60,6 +61,9 @@ export default class IosTunnelStatus extends BaseCommand {
 
         if (status.active) {
           this.output(`Tunnel ${status.active.tunnelId}: ${status.active.state}`);
+          for (const route of status.active.routes) {
+            this.output(`Route: ${formatTunnelRoute(route)}`);
+          }
         } else {
           this.output('No active destination tunnel.');
         }

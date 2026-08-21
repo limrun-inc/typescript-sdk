@@ -43,6 +43,10 @@ describe('destination tunnel management', () => {
           active: {
             tunnelId: 'tunnel-1',
             state: 'ready',
+            routes: [
+              { host: 'localhost', port: 3000 },
+              { host: '10.20.30.40', port: 443 },
+            ],
           },
           lastDialFailure,
         }),
@@ -53,6 +57,10 @@ describe('destination tunnel management', () => {
       active: {
         tunnelId: 'tunnel-1',
         state: 'ready',
+        routes: [
+          { host: 'localhost', port: 3000 },
+          { host: '10.20.30.40', port: 443 },
+        ],
       },
       lastDialFailure,
     });
@@ -99,6 +107,7 @@ describe('destination tunnel management', () => {
     { active: null },
     { active: { tunnelId: 'one', state: 'future' } },
     { active: { tunnelId: '', state: 'ready' } },
+    { active: { tunnelId: 'one', state: 'ready', routes: [{ host: 'localhost', port: 0 }] } },
     { lastFailure: { tunnelId: '', code: 'internal' } },
     {
       lastDialFailure: {
