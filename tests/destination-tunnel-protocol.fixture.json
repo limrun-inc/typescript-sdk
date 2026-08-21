@@ -1,6 +1,6 @@
 {
   "contract": {
-    "version": 2,
+    "version": 1,
     "maxRoutes": 10,
     "connID": {
       "jsonType": "integer",
@@ -223,7 +223,7 @@
       "name": "start",
       "message": {
         "type": "start",
-        "version": 2,
+        "version": 1,
         "routes": [
           {
             "host": "10.20.30.40",
@@ -273,7 +273,7 @@
       "name": "ready",
       "message": {
         "type": "ready",
-        "version": 2,
+        "version": 1,
         "tunnelId": "tunnel-1"
       }
     },
