@@ -85,6 +85,8 @@ export type XcodeBuildExecRequest = {
    */
   env?: string[];
   gitInit?: boolean;
+  /** Stream raw xcodebuild output instead of piping it through xcbeautify. */
+  disableXcbeautify?: boolean;
   signedUploadUrl?: string;
   /**
    * ID of the Limrun asset signedUploadUrl targets, when it was minted from

@@ -251,6 +251,12 @@ export type XcodeBuildOptions = {
    */
   gitInit?: boolean;
   /**
+   * Stream raw xcodebuild output instead of piping it through xcbeautify.
+   * Useful when the full, unformatted log is needed for debugging or CI log
+   * parsers. Older limbuild servers silently ignore this option.
+   */
+  disableXcbeautify?: boolean;
+  /**
    * HTTP callback fired once the build reaches a terminal state (SUCCEEDED,
    * FAILED, or CANCELLED). The payload carries the result (execId, status,
    * exitCode, timing), the instance's identity with a Limrun Console debug
@@ -858,6 +864,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
           ...(options?.env?.length && { env: options.env }),
           ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
+          ...(options?.disableXcbeautify !== undefined && { disableXcbeautify: options.disableXcbeautify }),
           ...(options?.webhook && { webhook: options.webhook }),
         };
 

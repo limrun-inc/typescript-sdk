@@ -36,6 +36,7 @@ describe('xcode client build settings', () => {
       { scheme: 'Scripty' },
       {
         gitInit: true,
+        disableXcbeautify: true,
         buildSettings: {
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) LIMRUN',
           APP_CONFIG_DEV_LOGIN_SECRET: 'abc=def',
@@ -49,6 +50,7 @@ describe('xcode client build settings', () => {
       command: 'xcodebuild',
       xcodebuild: { scheme: 'Scripty' },
       gitInit: true,
+      disableXcbeautify: true,
       buildSettings: {
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) LIMRUN',
         APP_CONFIG_DEV_LOGIN_SECRET: 'abc=def',

@@ -54,6 +54,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
     '<%= config.bin %> xcode build --cache-key myapp-pr51 --cache-restore-keys "myapp-pr51,myapp-main"',
     '<%= config.bin %> xcode build --configuration Debug',
+    '<%= config.bin %> xcode build ./MyProject --disable-xcbeautify',
     '<%= config.bin %> xcode build ./ExpoApp --configuration Debug --dev-server-url https://abc123.exp.direct',
     '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url "myapp://expo-development-client/?url=http%3A%2F%2F10.244.7.112%3A57090"',
     '<%= config.bin %> xcode build ./ExpoApp --expo-force-prebuild',
@@ -125,6 +126,11 @@ export default class XcodeBuild extends BaseCommand {
     'git-init': Flags.boolean({
       description:
         'Run git init in the synced workspace before project generation, dependency resolution, and xcodebuild.',
+      default: false,
+    }),
+    'disable-xcbeautify': Flags.boolean({
+      description:
+        'Stream raw xcodebuild output instead of piping it through xcbeautify. Useful when the full, unformatted log is needed for debugging or CI log parsers.',
       default: false,
     }),
     'dev-server-url': Flags.string({
@@ -326,6 +332,9 @@ export default class XcodeBuild extends BaseCommand {
       const options: XcodeBuildOptions = {};
       if (flags['git-init']) {
         options.gitInit = true;
+      }
+      if (flags['disable-xcbeautify']) {
+        options.disableXcbeautify = true;
       }
       if (flags['xcodegen-spec'] || flags['xcodegen-project'] || flags['xcodegen-project-root']) {
         options.xcodegen = {
