@@ -176,8 +176,9 @@ interface RemoteControlProps {
    * mode. Use it to render a richer status indicator (e.g.
    * "Camera · 1920×1080 · 30 fps · FaceTime HD").
    *
-   * Only iOS instances ever fire this callback; Android instances
-   * have no camera-injector path and stay silent.
+   * iOS instances always fire this callback. Android instances fire it
+   * when the server supports camera injection (Android 15+); older
+   * Android instances have no camera-injector path and stay silent.
    */
   onCameraDemandChange?: (active: boolean, granted?: boolean, camera?: CameraCaptureInfo) => void;
 
@@ -235,14 +236,15 @@ interface RemoteControlProps {
   cameraAspect?: CameraAspect;
 
   /**
-   * iOS only: when true, capture the user's microphone via
+   * When true, capture the user's microphone via
    * `getUserMedia({ audio: true })` and stream it live into the
-   * simulator's mock microphone. This is a manual override: iOS apps
+   * device's mock microphone. This is a manual override: apps
    * that actively consume microphone input also trigger capture
    * automatically, like camera demand. The component handles the
    * browser permission prompt, WebRTC track attachment, and
    * `microphoneStart`/`microphoneStop` signaling. Progress and failures
-   * are reported via `onMicrophoneStateChange`. Ignored on Android.
+   * are reported via `onMicrophoneStateChange`. Ignored on Android
+   * servers without camera/mic injection support (Android 14 and older).
    */
   microphoneEnabled?: boolean;
 
@@ -1931,7 +1933,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // handler firing on both `connected` and `completed`) must not
     // cancel an attach already in flight; only detach/teardown cancel.
     const attachMicrophone = (): Promise<void> => {
-      if (platform !== 'ios') return Promise.resolve();
+      // No platform gate: attachMicrophoneOp bails when the session never
+      // allocated a sendonly mic transceiver (non-capable servers).
       return runMicOp(() => attachMicrophoneOp());
     };
 
@@ -2479,8 +2482,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           updateStatus('WebSocket closed');
         };
 
-        // Request RTCConfiguration
-        const rtcConfigPromise = new Promise<RTCConfiguration>((resolve, reject) => {
+        // Request RTCConfiguration. The reply doubles as the capability
+        // handshake: camera-capable Android servers advertise
+        // `cameraSupported: true` alongside the configuration.
+        const rtcConfigPromise = new Promise<{
+          rtcConfiguration: RTCConfiguration;
+          cameraSupported: boolean;
+        }>((resolve, reject) => {
           const timeoutId = window.setTimeout(() => reject(new Error('RTCConfiguration timeout')), 30000);
 
           const messageHandler = (event: MessageEvent) => {
@@ -2489,7 +2497,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               if (message.type === 'rtcConfiguration') {
                 window.clearTimeout(timeoutId);
                 ws.removeEventListener('message', messageHandler);
-                resolve(message.rtcConfiguration);
+                resolve({
+                  rtcConfiguration: message.rtcConfiguration,
+                  cameraSupported: message.cameraSupported === true,
+                });
               }
             } catch (e) {
               window.clearTimeout(timeoutId);
@@ -2508,7 +2519,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           );
         });
 
-        const rtcConfig = await rtcConfigPromise;
+        const { rtcConfiguration: rtcConfig, cameraSupported: serverCameraSupported } =
+          await rtcConfigPromise;
         if (!isCurrentAttempt() || wsRef.current !== ws) {
           return;
         }
@@ -2518,17 +2530,20 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         peerConnection.addTransceiver('audio', { direction: 'recvonly' });
         const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
 
+        // iOS always supports camera/mic injection; Android servers
+        // advertise it through `cameraSupported` (Android 15 and newer).
+        // Never offer the extra sendonly m-lines to non-capable Android
+        // servers — older servers cannot negotiate them safely.
+        const canSendMedia = platform === 'ios' || serverCameraSupported;
+
         // Pre-allocate a sendonly slot for the user's camera so the
-        // sim can pull frames later without renegotiating SDP.
+        // device can pull frames later without renegotiating SDP.
         // Allocating up-front means we don't have to renegotiate the
-        // SDP when the simulator app actually opens its
-        // `AVCaptureSession` — the codec/SSRC negotiation happens
-        // once, here, and turning the camera on/off later is just a
-        // `replaceTrack`.
-        // iOS only: Android has no camera consumer, and the extra
-        // m=video line crashes Android 14's scrcpy/libwebrtc.
+        // SDP when the device app actually opens its camera session —
+        // the codec/SSRC negotiation happens once, here, and turning
+        // the camera on/off later is just a `replaceTrack`.
         const outboundCameraTransceiver =
-          platform === 'ios' ?
+          canSendMedia ?
             peerConnection.addTransceiver('video', {
               direction: 'sendonly',
             })
@@ -2537,10 +2552,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
         // Same pre-allocation for the live microphone: a sendonly audio
         // slot negotiated once at connection setup, so toggling the mic
-        // later is just `replaceTrack` — no SDP renegotiation. iOS only,
-        // like the camera.
+        // later is just `replaceTrack` — no SDP renegotiation.
         const outboundMicTransceiver =
-          platform === 'ios' ?
+          canSendMedia ?
             peerConnection.addTransceiver('audio', {
               direction: 'sendonly',
             })
@@ -2934,12 +2948,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               pendingScreenshotRejectersRef.current.delete(message.id);
               break;
             case 'cameraRequest': {
-              // Only iOS sessions allocate the sendonly outbound-camera
-              // transceiver; without it there is nothing to feed the sim, so
-              // ignore camera requests entirely — no getUserMedia prompt and
-              // no onCameraDemandChange callbacks. Android intentionally stays
-              // silent, as the API docs promise.
-              if (platform !== 'ios' || !outboundCameraSenderRef.current) {
+              // Only camera-capable sessions allocate the sendonly
+              // outbound-camera transceiver; without it there is nothing to
+              // feed the device, so ignore camera requests entirely — no
+              // getUserMedia prompt and no onCameraDemandChange callbacks.
+              if (!outboundCameraSenderRef.current) {
                 break;
               }
               const active = message.active === true;
@@ -3171,7 +3184,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               break;
             }
             case 'microphoneRequest': {
-              if (platform !== 'ios' || !outboundMicSenderRef.current) {
+              if (!outboundMicSenderRef.current) {
                 break;
               }
               const active = message.active === true;
