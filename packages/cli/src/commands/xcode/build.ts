@@ -349,7 +349,6 @@ export default class XcodeBuild extends BaseCommand {
       const nodeEnv = process.env.NODE_ENV?.trim();
       if (nodeEnv && !env.some((entry) => entry.startsWith('NODE_ENV='))) {
         env.push(`NODE_ENV=${nodeEnv}`);
-        this.info(`Propagating NODE_ENV=${nodeEnv} to the remote build.`);
       }
       if (env.length > 0) {
         options.env = env;
@@ -556,10 +555,16 @@ export default class XcodeBuild extends BaseCommand {
             // The hint is still useful with a placeholder ID.
           }
           const id = iosInstanceId ?? '<ios-instance-id>';
-          this.output('\nDebug Expo builds load JavaScript from a Metro dev server. To connect the app:');
-          this.output(`  lim ios reverse 57090:8081 --id ${id}`);
+          const scheme = (await devClientScheme(appDir)) ?? '<app-scheme>';
+          // Matched tunnel/Metro ports are deliberate: with a mismatch
+          // like 57090:8081, Expo can advertise packager URLs on the
+          // local port the simulator cannot reach.
           this.output(
-            `  lim ios open-url '<app-scheme>://expo-development-client/?url=http%3A%2F%2F<host>%3A57090' --id ${id}`,
+            '\nDebug Expo builds load JavaScript from a Metro dev server. Start Metro on the tunnel port, then connect the app:',
+          );
+          this.output('  npx expo start --dev-client --port 57090');
+          this.output(
+            `  lim ios reverse 57090:57090 --id ${id} --open '${scheme}://expo-development-client/?url=http%3A%2F%2F{host}%3A57090'`,
           );
         }
       }
@@ -689,6 +694,27 @@ async function isExpoApp(appDir: string): Promise<boolean> {
     }
   }
   return false;
+}
+
+// devClientScheme derives the deep link scheme the Expo dev client
+// registers, from the static app.json: an explicit scheme wins, else
+// the exp+<slug> default. Dynamic app.config.js/ts configs can't be
+// evaluated here; the caller falls back to a placeholder.
+async function devClientScheme(appDir: string): Promise<string | undefined> {
+  let config: { expo?: { scheme?: string | string[]; slug?: string } };
+  try {
+    config = JSON.parse(await readFile(`${appDir}/app.json`, 'utf8'));
+  } catch {
+    return undefined;
+  }
+  const scheme = config.expo?.scheme;
+  if (typeof scheme === 'string' && scheme) {
+    return scheme;
+  }
+  if (Array.isArray(scheme) && typeof scheme[0] === 'string' && scheme[0]) {
+    return scheme[0];
+  }
+  return config.expo?.slug ? `exp+${config.expo.slug}` : undefined;
 }
 
 function hasASCCredentialFlags(flags: AppStoreFlags): boolean {

@@ -12,6 +12,7 @@ export default class IosReverse extends BaseCommand {
     '<%= config.bin %> ios reverse 57090:8081 --id <instance-ID>',
     '<%= config.bin %> ios reverse 57091:3000 --id <instance-ID>',
     '<%= config.bin %> ios reverse 57090:8081 --local-host 127.0.0.1',
+    "<%= config.bin %> ios reverse 57090:8081 --open 'myapp://expo-development-client/?url=http%3A%2F%2F{host}%3A57090'",
   ];
 
   static args = {
@@ -32,6 +33,10 @@ export default class IosReverse extends BaseCommand {
       description:
         'Host for the local service on your machine. Defaults to 127.0.0.1; non-loopback hosts are intended for debugging.',
       default: '127.0.0.1',
+    }),
+    open: Flags.string({
+      description:
+        'URL or deep link to open on the simulator once the tunnel is ready. A literal {host} is replaced with the tunnel host the simulator must use, so the URL can be composed before the tunnel exists.',
     }),
   };
 
@@ -71,6 +76,16 @@ export default class IosReverse extends BaseCommand {
             `Use ${ready.remoteHost}:${ready.remotePort} from the simulator (for example exp://${ready.remoteHost}:${ready.remotePort}).`,
           );
           this.info('Reverse tunnel started. Press Ctrl+C to stop.');
+        }
+
+        if (flags.open) {
+          const url = flags.open
+            .split('{host}')
+            .join(ready.remoteHost)
+            .split(encodeURIComponent('{host}'))
+            .join(ready.remoteHost);
+          await client.openUrl(url);
+          this.info(`Opened URL: ${url}`);
         }
 
         const activeTunnel: Ios.ReverseTunnel = tunnel;
