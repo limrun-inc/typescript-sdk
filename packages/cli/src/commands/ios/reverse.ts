@@ -1,20 +1,8 @@
 import { Args, Flags } from '@oclif/core';
 import type { Ios } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
-import {
-  getIosInstanceClient,
-  ensureDaemonSession,
-  sendSessionCommand,
-} from '../../lib/instance-client-factory';
+import { getIosInstanceClient } from '../../lib/instance-client-factory';
 import { parseReversePortMapping } from '../../lib/reverse-port-mapping';
-
-// devUrl returns the URL the simulator should open for this tunnel: the
-// Expo dev-client deep link when a scheme is given, the plain tunnel URL
-// otherwise.
-function devUrl(host: string, port: number, scheme: string | undefined): string {
-  const url = `http://${host}:${port}`;
-  return scheme ? `${scheme}://expo-development-client/?url=${encodeURIComponent(url)}` : url;
-}
 
 export default class IosReverse extends BaseCommand {
   static summary = 'Expose a local client-first service to the simulator';
@@ -24,7 +12,6 @@ export default class IosReverse extends BaseCommand {
     '<%= config.bin %> ios reverse 57090:8081 --id <instance-ID>',
     '<%= config.bin %> ios reverse 57091:3000 --id <instance-ID>',
     '<%= config.bin %> ios reverse 57090:8081 --local-host 127.0.0.1',
-    '<%= config.bin %> ios open-url "$(<%= config.bin %> ios reverse 57090:57090 --detach --scheme myapp)"',
   ];
 
   static args = {
@@ -46,15 +33,6 @@ export default class IosReverse extends BaseCommand {
         'Host for the local service on your machine. Defaults to 127.0.0.1; non-loopback hosts are intended for debugging.',
       default: '127.0.0.1',
     }),
-    detach: Flags.boolean({
-      description:
-        'Start the tunnel in the background session daemon and print only the tunnel URL (http://<host>:<remotePort>) to stdout, so it composes with other commands: `lim ios open-url "$(lim ios reverse 57090:57090 --detach --scheme myapp)"`. The tunnel lives until the daemon is shut down with `lim session stop` or the instance ends.',
-      default: false,
-    }),
-    scheme: Flags.string({
-      description:
-        'URL scheme of the Expo dev client installed on the simulator. When set, the printed URL is the dev-client deep link (myapp://expo-development-client/?url=<encoded tunnel URL>) instead of the plain tunnel URL. The scheme is in the app config: app.json "scheme" field, or exp+<lowercased slug> if it has none.',
-    }),
   };
 
   async run(): Promise<void> {
@@ -65,37 +43,6 @@ export default class IosReverse extends BaseCommand {
       const { remotePort, localPort } = parseReversePortMapping(args.mapping);
       const localHost = flags['local-host'];
       const resolvedInstance = this.resolveIosInstance(flags.id);
-
-      if (flags.detach) {
-        if (!(await ensureDaemonSession(resolvedInstance))) {
-          this.error(
-            'Could not start the background session daemon that --detach needs. ' +
-              'Run without --detach to keep the tunnel in the foreground.',
-          );
-        }
-        const result = (await sendSessionCommand(resolvedInstance.id, 'reverse', [
-          remotePort,
-          localPort,
-          localHost,
-        ])) as { remoteHost: string; remotePort: number };
-        const url = devUrl(result.remoteHost, result.remotePort, flags.scheme);
-        if (flags.json) {
-          this.outputJson({
-            instanceId: resolvedInstance.id,
-            remoteHost: result.remoteHost,
-            remotePort: result.remotePort,
-            localHost,
-            localPort,
-            url,
-          });
-        } else {
-          // Only the URL goes to stdout so `$(lim ios reverse ... --detach)`
-          // captures a clean value.
-          this.output(url);
-        }
-        return;
-      }
-
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       let tunnel: Ios.ReverseTunnel | undefined;
 
@@ -116,22 +63,13 @@ export default class IosReverse extends BaseCommand {
         };
 
         if (flags.json) {
-          this.outputJson({ ...ready, url: devUrl(ready.remoteHost, ready.remotePort, flags.scheme) });
+          this.outputJson(ready);
         } else {
           this.output(`Remote endpoint: ${ready.remoteHost}:${ready.remotePort}`);
           this.output(`${ready.remoteHost}:${ready.remotePort} -> ${ready.localHost}:${ready.localPort}`);
           this.output(
             `Use ${ready.remoteHost}:${ready.remotePort} from the simulator (for example exp://${ready.remoteHost}:${ready.remotePort}).`,
           );
-          if (flags.scheme) {
-            this.output(
-              `Open the dev client with: lim ios open-url "${devUrl(
-                ready.remoteHost,
-                ready.remotePort,
-                flags.scheme,
-              )}"`,
-            );
-          }
           this.info('Reverse tunnel started. Press Ctrl+C to stop.');
         }
 

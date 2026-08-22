@@ -1,4 +1,4 @@
-import { access, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
@@ -520,50 +520,23 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.upload && result.signedDownloadUrl) {
         this.output(`Artifact download URL: ${result.signedDownloadUrl}`);
       }
-      // Post-build guidance. An attached simulator receives this build and
-      // every next one automatically, so both hints steer toward attaching.
-      if (!this.isJsonEnabled()) {
-        const simulatorBuild =
-          target.type === 'xcode' && (!settings.sdk || settings.sdk === 'iphonesimulator');
-        const appDir =
-          flags['expo-app-dir'] ? `${syncPath}/${flags['expo-app-dir']}`.replace(/\/+$/, '') : syncPath;
-        const wantsMetro =
-          flags.configuration === 'Debug' && !flags['dev-server-url'] && (await isExpoApp(appDir));
-
+      // Nudge toward the attach flow after simulator builds on a bare Xcode
+      // instance: an attached simulator receives this build and every next
+      // one automatically.
+      if (
+        !this.isJsonEnabled() &&
+        target.type === 'xcode' &&
+        (!settings.sdk || settings.sdk === 'iphonesimulator')
+      ) {
         // Assume attached when the status can't be read (old servers have
         // no /simulator endpoint); a wrong hint is worse than none.
         let attached = true;
-        let iosInstanceId: string | undefined;
-        if (simulatorBuild || wantsMetro) {
-          try {
-            const status = await xcodeClient.getSimulator();
-            attached = status.attached;
-            iosInstanceId = status.simulator?.iosInstanceId;
-          } catch {
-            // Keep the assumption.
-          }
+        try {
+          attached = (await xcodeClient.getSimulator()).attached;
+        } catch {
+          // Skip the hint.
         }
-
-        if (wantsMetro) {
-          const scheme = (await devClientScheme(appDir)) ?? '<app-scheme>';
-          // When no simulator exists yet, `lim ios create --attach` becomes
-          // the last created iOS instance, so the follow-up commands can
-          // rely on that default instead of --id.
-          const idFlag = attached && iosInstanceId ? ` --id ${iosInstanceId}` : '';
-          // Metro must listen on the tunnel port (57090, not the 8081
-          // default): bundle URLs in the manifest embed Metro's own
-          // port, and the simulator can only reach 57090-57099 on the
-          // tunnel host.
-          this.output(
-            '\nDebug Expo builds load JavaScript from a Metro dev server. With Metro listening on port 57090 (not the 8081 default), connect the app:',
-          );
-          if (simulatorBuild && !attached) {
-            this.output(`  lim ios create --attach ${target.id}`);
-          }
-          this.output(
-            `  lim ios open-url${idFlag} "$(lim ios reverse 57090:57090 --detach --scheme ${scheme}${idFlag})"`,
-          );
-        } else if (simulatorBuild && !attached) {
+        if (!attached) {
           this.output(
             '\nNo iOS simulator is attached to this Xcode instance. Attach one to install this build ' +
               'and have every next build installed and reloaded automatically:',
@@ -673,51 +646,6 @@ function hasAppStoreFlags(flags: AppStoreFlags): boolean {
     flags['asc-wait-timeout'] !== undefined ||
     flags['auto-build-number']
   );
-}
-
-// isExpoApp mirrors limbuild's app-dir detection: package.json declaring the
-// expo dependency plus an Expo config file. Used only to decide whether the
-// post-build Metro hint applies, so failures read as "not an Expo app".
-async function isExpoApp(appDir: string): Promise<boolean> {
-  let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-  try {
-    pkg = JSON.parse(await readFile(`${appDir}/package.json`, 'utf8'));
-  } catch {
-    return false;
-  }
-  if (!pkg.dependencies?.['expo'] && !pkg.devDependencies?.['expo']) {
-    return false;
-  }
-  for (const name of ['app.json', 'app.config.js', 'app.config.ts']) {
-    try {
-      await access(`${appDir}/${name}`);
-      return true;
-    } catch {
-      // Try the next config filename.
-    }
-  }
-  return false;
-}
-
-// devClientScheme derives the deep link scheme the Expo dev client
-// registers, from the static app.json: an explicit scheme wins, else
-// the exp+<slug> default. Dynamic app.config.js/ts configs can't be
-// evaluated here; the caller falls back to a placeholder.
-async function devClientScheme(appDir: string): Promise<string | undefined> {
-  let config: { expo?: { scheme?: string | string[]; slug?: string } };
-  try {
-    config = JSON.parse(await readFile(`${appDir}/app.json`, 'utf8'));
-  } catch {
-    return undefined;
-  }
-  const scheme = config.expo?.scheme;
-  if (typeof scheme === 'string' && scheme) {
-    return scheme;
-  }
-  if (Array.isArray(scheme) && typeof scheme[0] === 'string' && scheme[0]) {
-    return scheme[0];
-  }
-  return config.expo?.slug ? `exp+${config.expo.slug}` : undefined;
 }
 
 function hasASCCredentialFlags(flags: AppStoreFlags): boolean {

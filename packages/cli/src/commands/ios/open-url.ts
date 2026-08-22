@@ -13,7 +13,6 @@ export default class IosOpenUrl extends BaseCommand {
   static examples = [
     '<%= config.bin %> ios open-url https://example.com',
     '<%= config.bin %> ios open-url myapp://settings --id <instance-ID>',
-    '<%= config.bin %> ios open-url "$(<%= config.bin %> ios reverse 57090:57090 --detach --scheme myapp)"',
   ];
 
   static args = {
@@ -37,6 +36,9 @@ export default class IosOpenUrl extends BaseCommand {
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
+      if (false) {
+        this.error('ios open-url only supports iOS instances');
+      }
 
       if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'open-url', [args.url]);
