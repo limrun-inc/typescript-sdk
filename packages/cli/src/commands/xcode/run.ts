@@ -4,6 +4,7 @@ import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
+import { parseEnvEntries } from '../../lib/env-entries';
 
 export default class XcodeRun extends BaseCommand {
   static summary = 'Run a command on an Xcode sandbox';
@@ -78,13 +79,24 @@ export default class XcodeRun extends BaseCommand {
     const { args, flags } = await this.parse(XcodeRun, this.argv.slice(0, delimiter));
     this.setParsedFlags(flags);
 
-    const env = parseEnvironmentEntries(flags.env ?? [], (message) => this.error(message));
+    const env = parseEnvEntries(flags.env ?? [], (message) => this.error(message));
     const commandLine =
       commandArgs.length === 1 ? commandArgs[0] : commandArgs.map(quoteShellArgument).join(' ');
 
     await this.withAuth(async () => {
       const target = await this.resolveXcodeTargetOrCreate(flags.id);
       const xcodeClient = await this.resolveXcodeClient(target);
+
+      // The build sandbox hosts no simulators, so simctl install/boot/launch
+      // is denied there. Steer to the attach flow before the command runs.
+      if (/\bsimctl\b/.test(commandLine)) {
+        this.info(
+          'Note: the Xcode sandbox does not host simulators, so simctl cannot install or launch apps here. ' +
+            'Create a cloud iOS simulator attached to this instance instead; it gets the latest build installed ' +
+            'right away and every next build installed and reloaded automatically:\n' +
+            `  lim ios create --attach ${target.id}`,
+        );
+      }
 
       if (!flags['no-sync']) {
         const syncPath = process.cwd();
@@ -131,24 +143,4 @@ export default class XcodeRun extends BaseCommand {
 
 function quoteShellArgument(value: string): string {
   return `'${value.split("'").join("'\"'\"'")}'`;
-}
-
-function parseEnvironmentEntries(
-  entries: string[],
-  fail: (message: string) => never,
-): Record<string, string> | undefined {
-  if (entries.length === 0) return undefined;
-  const env: Record<string, string> = {};
-  for (const entry of entries) {
-    const separator = entry.indexOf('=');
-    if (separator <= 0) {
-      fail(`Invalid --env value ${JSON.stringify(entry)}; expected KEY=VALUE.`);
-    }
-    const key = entry.slice(0, separator);
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      fail(`Invalid environment variable name ${JSON.stringify(key)}.`);
-    }
-    env[key] = entry.slice(separator + 1);
-  }
-  return env;
 }

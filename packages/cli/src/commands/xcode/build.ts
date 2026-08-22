@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
@@ -7,6 +7,7 @@ import { formatBytes } from '../../lib/bytes';
 import { parseCacheConfig } from '../../lib/cache';
 import { cacheFlags } from '../../lib/cache-flags';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
+import { parseEnvEntries } from '../../lib/env-entries';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
 import { webhookConfigFromFlags } from '../../lib/webhook-options';
 import { parseUploadOptions } from '../../lib/upload-options';
@@ -55,6 +56,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --configuration Debug',
     '<%= config.bin %> xcode build ./ExpoApp --configuration Debug --dev-server-url https://abc123.exp.direct',
     '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url "myapp://expo-development-client/?url=http%3A%2F%2F10.244.7.112%3A57090"',
+    '<%= config.bin %> xcode build ./ExpoApp --expo-force-prebuild',
     '<%= config.bin %> xcode build --scheme WatchApp --sdk watchsimulator',
     '<%= config.bin %> xcode build ./MyProject --xcodegen-spec specs/app.yml --xcodegen-project ios',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
@@ -133,6 +135,11 @@ export default class XcodeBuild extends BaseCommand {
       description:
         'Relative path from the synced workspace root to the Expo app directory. Use for monorepos or ambiguous React Native workspaces.',
     }),
+    'expo-force-prebuild': Flags.boolean({
+      description:
+        'Run expo prebuild on the server even when the synced workspace already contains the native ios/ directory. Use when committed files under ios/ (for example Podfile customizations) make the server treat the tree as user-owned while the .xcodeproj itself is generated and gitignored.',
+      default: false,
+    }),
     upload: Flags.string({ description: 'Upload the resulting build artifact as an asset with this name' }),
     'upload-ttl': Flags.string({
       dependsOn: ['upload'],
@@ -156,6 +163,12 @@ export default class XcodeBuild extends BaseCommand {
       description:
         'Xcode build setting to pass as KEY=VALUE. Allowed keys are a server-maintained allowlist of safe settings (e.g. SWIFT_ACTIVE_COMPILATION_CONDITIONS) plus any APP_CONFIG_* key. Repeat for multiple.',
       multiple: true,
+    }),
+    env: Flags.string({
+      description:
+        'Environment variable in KEY=VALUE form, applied to every remote build command (installs, expo prebuild, pod install, xcodebuild). Server-managed variables like PATH cannot be overridden. Repeat for multiple.',
+      multiple: true,
+      multipleNonGreedy: true,
     }),
     'certificate-p12': Flags.string({
       description:
@@ -253,7 +266,7 @@ export default class XcodeBuild extends BaseCommand {
     }
     if (
       (flags['xcodegen-spec'] || flags['xcodegen-project'] || flags['xcodegen-project-root']) &&
-      (flags['dev-server-url'] || flags['expo-app-dir'])
+      (flags['dev-server-url'] || flags['expo-app-dir'] || flags['expo-force-prebuild'])
     ) {
       this.error(
         '--xcodegen-spec/--xcodegen-project apply to native XcodeGen projects and cannot be combined with Expo / React Native flags.',
@@ -321,11 +334,25 @@ export default class XcodeBuild extends BaseCommand {
           ...(flags['xcodegen-project-root'] && { projectRoot: flags['xcodegen-project-root'] }),
         };
       }
-      if (flags['dev-server-url'] || flags['expo-app-dir']) {
+      if (flags['dev-server-url'] || flags['expo-app-dir'] || flags['expo-force-prebuild']) {
         options.reactNative = {
           ...(flags['expo-app-dir'] && { expoAppDir: flags['expo-app-dir'] }),
           ...(flags['dev-server-url'] && { devServerURL: flags['dev-server-url'] }),
+          ...(flags['expo-force-prebuild'] && { expoForcePrebuild: true }),
         };
+      }
+      const env = parseEnvEntries(flags.env ?? [], (message) => this.error(message)) ?? [];
+      // Propagate the caller's NODE_ENV so the server's Expo config
+      // evaluation loads the same dotenv files a local build would
+      // (.env.production needs NODE_ENV=production). An explicit
+      // --env NODE_ENV=... wins; harmless for non-Node projects.
+      const nodeEnv = process.env.NODE_ENV?.trim();
+      if (nodeEnv && !env.some((entry) => entry.startsWith('NODE_ENV='))) {
+        env.push(`NODE_ENV=${nodeEnv}`);
+        this.output(`Propagating NODE_ENV=${nodeEnv} to the remote build.`);
+      }
+      if (env.length > 0) {
+        options.env = env;
       }
       const buildSettings = parseBuildSettingEntries(flags['build-setting'] ?? []);
       if (buildSettings) {
@@ -494,6 +521,24 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.upload && result.signedDownloadUrl) {
         this.output(`Artifact download URL: ${result.signedDownloadUrl}`);
       }
+      if (flags.configuration === 'Debug' && !flags['dev-server-url'] && !this.isJsonEnabled()) {
+        const appDir =
+          flags['expo-app-dir'] ? `${syncPath}/${flags['expo-app-dir']}`.replace(/\/+$/, '') : syncPath;
+        if (await isExpoApp(appDir)) {
+          let iosInstanceId: string | undefined;
+          try {
+            iosInstanceId = (await xcodeClient.getSimulator()).simulator?.iosInstanceId;
+          } catch {
+            // The hint is still useful with a placeholder ID.
+          }
+          const id = iosInstanceId ?? '<ios-instance-id>';
+          this.output('\nDebug Expo builds load JavaScript from a Metro dev server. To connect the app:');
+          this.output(`  lim ios reverse 57090:57090`);
+          this.output(
+            `  lim ios open-url '<app-scheme>://expo-development-client/?url=http%3A%2F%2F<host>%3A57090'`,
+          );
+        }
+      }
     });
   }
 
@@ -596,6 +641,30 @@ function hasAppStoreFlags(flags: AppStoreFlags): boolean {
     flags['asc-wait-timeout'] !== undefined ||
     flags['auto-build-number']
   );
+}
+
+// isExpoApp mirrors limbuild's app-dir detection: package.json declaring the
+// expo dependency plus an Expo config file. Used only to decide whether the
+// post-build Metro hint applies, so failures read as "not an Expo app".
+async function isExpoApp(appDir: string): Promise<boolean> {
+  let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+  try {
+    pkg = JSON.parse(await readFile(`${appDir}/package.json`, 'utf8'));
+  } catch {
+    return false;
+  }
+  if (!pkg.dependencies?.['expo'] && !pkg.devDependencies?.['expo']) {
+    return false;
+  }
+  for (const name of ['app.json', 'app.config.js', 'app.config.ts']) {
+    try {
+      await access(`${appDir}/${name}`);
+      return true;
+    } catch {
+      // Try the next config filename.
+    }
+  }
+  return false;
 }
 
 function hasASCCredentialFlags(flags: AppStoreFlags): boolean {
