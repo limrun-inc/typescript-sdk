@@ -101,6 +101,15 @@ lim android tap --id android_abc123 100 200
 
 This avoids relying on locally cached "last created" state and keeps the target platform explicit.
 
+Delete commands also accept a label selector. They delete every active instance with all matching labels:
+
+```bash
+lim ios delete --label-selector env=ci,team=mobile
+lim android delete --label-selector env=ci,team=mobile
+lim xcode delete --label-selector env=ci,team=mobile
+lim gradle delete --label-selector env=ci,team=mobile
+```
+
 ## Commands
 
 - [Run](#run) — Get started with Limrun on your project or the sample app
