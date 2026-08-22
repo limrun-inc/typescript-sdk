@@ -326,6 +326,10 @@ export function startDaemonServer(): void {
   let instanceType: InstanceType | null = null;
   let lastCommandAt = Date.now();
   let idleCheckInterval: NodeJS.Timeout | undefined;
+  // Reverse tunnels started via the 'reverse' command, keyed by remote
+  // port. They live as long as the daemon so `lim ios reverse --detach`
+  // can return while the tunnel keeps serving.
+  const reverseTunnels = new Map<number, Ios.ReverseTunnel>();
 
   async function getClient(): Promise<{ type: InstanceType; client: InstanceClient | Ios.InstanceClient }> {
     if (instanceClient && instanceType) {
@@ -354,6 +358,12 @@ export function startDaemonServer(): void {
   }
 
   function disconnectClient(): void {
+    for (const tunnel of reverseTunnels.values()) {
+      try {
+        tunnel.close();
+      } catch {}
+    }
+    reverseTunnels.clear();
     if (instanceClient) {
       try {
         instanceClient.disconnect();
@@ -371,7 +381,10 @@ export function startDaemonServer(): void {
       clearInterval(idleCheckInterval);
     }
     idleCheckInterval = setInterval(() => {
-      if (Date.now() - lastCommandAt > INACTIVITY_TIMEOUT_MS) {
+      // An active reverse tunnel pins the daemon: exiting would tear
+      // down the developer's Metro connection mid-session. Dead tunnels
+      // remove themselves from the map, so idle exit resumes.
+      if (reverseTunnels.size === 0 && Date.now() - lastCommandAt > INACTIVITY_TIMEOUT_MS) {
         shutdown();
       }
     }, IDLE_CHECK_INTERVAL_MS);
@@ -531,6 +544,37 @@ export function startDaemonServer(): void {
           await (client as any).openUrl(args[0]);
           result = { opened: true, url: args[0] };
           break;
+
+        case 'reverse': {
+          if (type !== 'ios') throw new Error('reverse is only supported on iOS instances');
+          const remotePort = Number(args[0]);
+          const localPort = Number(args[1] ?? args[0]);
+          const localHost = String(args[2] ?? '127.0.0.1');
+          const existing = reverseTunnels.get(remotePort);
+          if (existing && existing.getConnectionState() !== 'disconnected') {
+            result = {
+              remoteHost: existing.remoteAddress.address,
+              remotePort: existing.remoteAddress.port,
+              reused: true,
+            };
+            break;
+          }
+          const tunnel = await (client as Ios.InstanceClient).startReverseTunnel({
+            remotePort,
+            localPort,
+            localHost,
+          });
+          reverseTunnels.set(remotePort, tunnel);
+          tunnel.onConnectionStateChange((state) => {
+            if (state === 'disconnected') reverseTunnels.delete(remotePort);
+          });
+          result = {
+            remoteHost: tunnel.remoteAddress.address,
+            remotePort: tunnel.remoteAddress.port,
+            reused: false,
+          };
+          break;
+        }
 
         case 'set-wifi-bandwidth':
           if (type !== 'android')

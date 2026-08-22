@@ -520,52 +520,55 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.upload && result.signedDownloadUrl) {
         this.output(`Artifact download URL: ${result.signedDownloadUrl}`);
       }
-      // Nudge toward the attach flow after simulator builds on a bare Xcode
-      // instance: an attached simulator receives this build and every next
-      // one automatically.
-      if (
-        !this.isJsonEnabled() &&
-        target.type === 'xcode' &&
-        (!settings.sdk || settings.sdk === 'iphonesimulator')
-      ) {
+      // Post-build guidance. An attached simulator receives this build and
+      // every next one automatically, so both hints steer toward attaching.
+      if (!this.isJsonEnabled()) {
+        const simulatorBuild =
+          target.type === 'xcode' && (!settings.sdk || settings.sdk === 'iphonesimulator');
+        const appDir =
+          flags['expo-app-dir'] ? `${syncPath}/${flags['expo-app-dir']}`.replace(/\/+$/, '') : syncPath;
+        const wantsMetro =
+          flags.configuration === 'Debug' && !flags['dev-server-url'] && (await isExpoApp(appDir));
+
         // Assume attached when the status can't be read (old servers have
         // no /simulator endpoint); a wrong hint is worse than none.
         let attached = true;
-        try {
-          attached = (await xcodeClient.getSimulator()).attached;
-        } catch {
-          // Skip the hint.
+        let iosInstanceId: string | undefined;
+        if (simulatorBuild || wantsMetro) {
+          try {
+            const status = await xcodeClient.getSimulator();
+            attached = status.attached;
+            iosInstanceId = status.simulator?.iosInstanceId;
+          } catch {
+            // Keep the assumption.
+          }
         }
-        if (!attached) {
+
+        if (wantsMetro) {
+          const scheme = (await devClientScheme(appDir)) ?? '<app-scheme>';
+          // When no simulator exists yet, `lim ios create --attach` becomes
+          // the last created iOS instance, so the follow-up commands can
+          // rely on that default instead of --id.
+          const idFlag = attached && iosInstanceId ? ` --id ${iosInstanceId}` : '';
+          this.output(
+            '\nDebug Expo builds load JavaScript from a Metro dev server. To run the app with hot reload:',
+          );
+          if (simulatorBuild && !attached) {
+            this.output(`  lim ios create --attach ${target.id}`);
+          }
+          // Matched tunnel/Metro ports are deliberate: with a mismatch
+          // like 57090:8081, Expo can advertise packager URLs on the
+          // local port the simulator cannot reach.
+          this.output('  npx expo start --dev-client --port 57090');
+          this.output(
+            `  lim ios open-url${idFlag} "$(lim ios reverse 57090:57090 --detach --scheme ${scheme}${idFlag})"`,
+          );
+        } else if (simulatorBuild && !attached) {
           this.output(
             '\nNo iOS simulator is attached to this Xcode instance. Attach one to install this build ' +
               'and have every next build installed and reloaded automatically:',
           );
           this.output(`  lim ios create --attach ${target.id}`);
-        }
-      }
-      if (flags.configuration === 'Debug' && !flags['dev-server-url'] && !this.isJsonEnabled()) {
-        const appDir =
-          flags['expo-app-dir'] ? `${syncPath}/${flags['expo-app-dir']}`.replace(/\/+$/, '') : syncPath;
-        if (await isExpoApp(appDir)) {
-          let iosInstanceId: string | undefined;
-          try {
-            iosInstanceId = (await xcodeClient.getSimulator()).simulator?.iosInstanceId;
-          } catch {
-            // The hint is still useful with a placeholder ID.
-          }
-          const id = iosInstanceId ?? '<ios-instance-id>';
-          const scheme = (await devClientScheme(appDir)) ?? '<app-scheme>';
-          // Matched tunnel/Metro ports are deliberate: with a mismatch
-          // like 57090:8081, Expo can advertise packager URLs on the
-          // local port the simulator cannot reach.
-          this.output(
-            '\nDebug Expo builds load JavaScript from a Metro dev server. Start Metro on the tunnel port, then connect the app:',
-          );
-          this.output('  npx expo start --dev-client --port 57090');
-          this.output(
-            `  lim ios reverse 57090:57090 --id ${id} --open '${scheme}://expo-development-client/?url=http%3A%2F%2F{host}%3A57090'`,
-          );
         }
       }
     });
