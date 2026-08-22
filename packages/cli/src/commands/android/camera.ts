@@ -8,7 +8,7 @@ export default class AndroidCamera extends BaseCommand {
   static summary = 'Control the virtual camera of a running Android instance';
   static description =
     'Upload a local video file and play it as the camera feed of a running Android instance, replacing the live browser camera. ' +
-    'Apps see the video through their regular Camera2/CameraX pipeline, and the file\'s audio track (if any) plays through the microphone in sync. ' +
+    "Apps see the video through their regular Camera2/CameraX pipeline, and the file's audio track (if any) plays through the microphone in sync. " +
     'By default the video loops; with --no-loop it plays once and the feed freezes on the last frame. ' +
     'Use the `clear` action to restore the default camera source.';
   static examples = [

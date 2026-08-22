@@ -712,9 +712,7 @@ type CommandRequestMap = {
   watchApp: { packageName: string; execId: string };
   unwatchApp: { execId: string };
   playOnMicrophone: { path: string; once?: boolean };
-  cameraControl:
-    | { action: 'setSource'; source: 'video'; arg: string; loop?: boolean }
-    | { action: 'reset' };
+  cameraControl: { action: 'setSource'; source: 'video'; arg: string; loop?: boolean } | { action: 'reset' };
   setWifiBandwidth: WifiBandwidthOptions;
   startRecording: { quality?: RecordingQuality };
   stopRecording: { upload?: { presignedUrl: string } };
@@ -1355,9 +1353,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const pushFile = async (filePath: string, destination?: string): Promise<string> => {
       const uploadUrl =
-        destination === undefined
-          ? `${options.apiUrl}/files`
-          : `${options.apiUrl}/files?path=${encodeURIComponent(destination)}`;
+        destination === undefined ?
+          `${options.apiUrl}/files`
+        : `${options.apiUrl}/files?path=${encodeURIComponent(destination)}`;
       const fileStream = fs.createReadStream(filePath);
       // Node's fetch (undici) supports streaming request bodies but TS DOM types may not include
       // `duplex` and may not accept Node ReadStreams as BodyInit in some configs.
