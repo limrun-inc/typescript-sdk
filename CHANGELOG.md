@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.47.0 (2026-08-22)
+
+Full Changelog: [v0.46.14...v0.47.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.46.14...v0.47.0)
+
+### Features
+
+* add TTL to build-product uploads in xcode and gradle builds ([1a30be3](https://github.com/limrun-inc/typescript-sdk/commit/1a30be388e1ebe7788757f610373ef10f562b6f7))
+* **cli:** add --upload-product-name to pin the built .app name ([21cf8db](https://github.com/limrun-inc/typescript-sdk/commit/21cf8db82dd5a6819ebd1eb06384c5b169a68219))
+* **cli:** add ios attach-xcode command ([99f45c1](https://github.com/limrun-inc/typescript-sdk/commit/99f45c128e3d07ffa5c227ee745c09196d2b2221))
+* **cli:** rename --upload-product-name to --artifact-name with full .app filename ([687ae22](https://github.com/limrun-inc/typescript-sdk/commit/687ae226462325639aee7ec4859ac343e47ef022))
+* **cli:** replace paired iOS+Xcode creation with separate create and attach ([f59d07c](https://github.com/limrun-inc/typescript-sdk/commit/f59d07c3db24e504c8f9a43bfb086f5f5821509b))
+
+
+### Bug Fixes
+
+* **cli:** attach a simulator to the recorded Xcode target instead of recreating ([9735972](https://github.com/limrun-inc/typescript-sdk/commit/9735972bffb8dc22f1e60b86b22b2d9568f00154))
+* **cli:** carry create flags to sibling instances and reap them on attach failure ([4e3e69e](https://github.com/limrun-inc/typescript-sdk/commit/4e3e69e8981be558c20a10420e34cbd737f6c35e))
+* **cli:** delete the attach-orphaned instance unconditionally ([ebdc2a3](https://github.com/limrun-inc/typescript-sdk/commit/ebdc2a3f4b265960bd796155900563599a3c218e))
+* **cli:** gate attach-failure cleanup on exact pre-existing ids, not timestamps ([37732e8](https://github.com/limrun-inc/typescript-sdk/commit/37732e89ac9494c7cdb337da666967c9f0429c02))
+* **cli:** honor --no-create when attaching a simulator to the last target ([e1aa725](https://github.com/limrun-inc/typescript-sdk/commit/e1aa725836a680a57f26034ee6926c09afd46dda))
+* **cli:** honor --no-create when attaching a simulator to the last target ([a8a83a9](https://github.com/limrun-inc/typescript-sdk/commit/a8a83a9526183f26fd4b8b554f696cd4cad57afb))
+* **cli:** never delete reused instances on attach failure, keep sim timeout off builds ([6bd15b8](https://github.com/limrun-inc/typescript-sdk/commit/6bd15b8386a155d6483ecd13df8404bfe44a990f))
+
 ## 0.46.14 (2026-08-17)
 
 Full Changelog: [v0.46.13...v0.46.14](https://github.com/limrun-inc/typescript-sdk/compare/v0.46.13...v0.46.14)
