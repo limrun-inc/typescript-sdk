@@ -195,6 +195,34 @@ export type InstanceClient = {
    */
   clearCameraVideo: () => Promise<void>;
   /**
+   * Run a shell command on the instance, without needing `adb` installed
+   * locally. The command runs with the same permissions the ADB shell user
+   * has (exactly like `adb shell`), and its stdout, stderr, and exit code are
+   * returned separately.
+   *
+   * The command and each argument are safely quoted before being sent, so
+   * argument values cannot be interpreted as extra shell syntax (no injection
+   * from untrusted args), mirroring `child_process.execFile`:
+   *
+   * ```ts
+   * await client.adbShell('pm', ['list', 'packages', '-3']);
+   * await client.adbShell('getprop', ['ro.build.version.sdk']);
+   * ```
+   *
+   * To use shell features such as pipes or redirection, invoke a shell
+   * explicitly and pass the script as an argument:
+   *
+   * ```ts
+   * await client.adbShell('sh', ['-c', 'dumpsys battery | grep level']);
+   * ```
+   *
+   * @param command The executable or shell builtin to run.
+   * @param args Arguments passed to the command; each is individually quoted.
+   * @throws If the command times out or the ADB transport is unavailable. A
+   *   non-zero `exitCode` is returned in the result, not thrown.
+   */
+  adbShell: (command: string, args?: string[], options?: AdbShellOptions) => Promise<AdbShellResult>;
+  /**
    * Set Android Wi-Fi bandwidth limits in Kbps. Omit a direction to leave it unchanged;
    * pass `0` to clear that direction's limit.
    */
@@ -506,6 +534,46 @@ export type WifiBandwidthOptions = {
   upKbps?: number;
 };
 
+/**
+ * Quotes each token so the remote `sh -c` receives them as literal,
+ * separate arguments — values cannot inject extra shell syntax. Uses
+ * POSIX single-quoting: wrap in single quotes and escape embedded single
+ * quotes as `'\''`.
+ */
+function quoteShellArgs(tokens: string[]): string {
+  return tokens.map((token) => `'${token.replace(/'/g, `'\\''`)}'`).join(' ');
+}
+
+/**
+ * Options for {@link InstanceClient.adbShell}.
+ */
+export type AdbShellOptions = {
+  /**
+   * Maximum time to wait for the command to finish, in milliseconds.
+   * @default 30000
+   */
+  timeoutMs?: number;
+  /**
+   * Encoding used to decode stdout/stderr into strings.
+   * @default 'utf8'
+   */
+  encoding?: BufferEncoding;
+};
+
+/**
+ * Result of a shell command run via {@link InstanceClient.adbShell}.
+ */
+export type AdbShellResult = {
+  /** Standard output, decoded with the requested encoding. */
+  stdout: string;
+  /** Standard error, decoded with the requested encoding. */
+  stderr: string;
+  /** Process exit code (`-1` if the device reported no exit status). */
+  exitCode: number;
+  /** True if output exceeded the capture limit and was truncated. */
+  truncated: boolean;
+};
+
 type EmptyCommandResult = Record<string, never>;
 
 type ScreenshotErrorResponse = {
@@ -656,6 +724,19 @@ type SetWifiBandwidthResultMessage = {
   error?: CommandError;
 };
 
+// The server sends adb shell results "flat": stdout/stderr (base64) and
+// exitCode at the top level, with `error` as a plain string.
+type AdbShellResultMessage = {
+  type: 'adbShellResult';
+  id: string;
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number;
+  truncated?: boolean;
+  payload?: EmptyCommandResult;
+  error?: string;
+};
+
 type StartVideoRecordingResultMessage = {
   type: 'startRecordingResult';
   id: string;
@@ -686,6 +767,7 @@ type KnownCommandResultMessage =
   | UnwatchAppResultMessage
   | PlayOnMicrophoneResultMessage
   | CameraControlResultMessage
+  | AdbShellResultMessage
   | SetWifiBandwidthResultMessage
   | StartVideoRecordingResultMessage
   | StopVideoRecordingResultMessage;
@@ -715,6 +797,7 @@ type CommandRequestMap = {
   cameraControl:
     | { action: 'setSource'; source: 'video'; arg: string; loop?: boolean }
     | { action: 'reset' };
+  adbShell: { command: string; timeoutMs?: number };
   setWifiBandwidth: WifiBandwidthOptions;
   startRecording: { quality?: RecordingQuality };
   stopRecording: { upload?: { presignedUrl: string } };
@@ -736,6 +819,7 @@ type CommandResultMap = {
   unwatchApp: EmptyCommandResult;
   playOnMicrophone: PlayOnMicrophoneResult;
   cameraControl: EmptyCommandResult;
+  adbShell: AdbShellResultMessage;
   setWifiBandwidth: EmptyCommandResult;
   startRecording: EmptyCommandResult;
   stopRecording: EmptyCommandResult;
@@ -916,6 +1000,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         case 'unwatchAppResult':
         case 'playOnMicrophoneResult':
         case 'cameraControlResult':
+        case 'adbShellResult':
         case 'setWifiBandwidthResult':
         case 'startRecordingResult':
         case 'stopRecordingResult':
@@ -1190,6 +1275,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             pushFile,
             setCameraVideo,
             clearCameraVideo,
+            adbShell,
             setWifiBandwidth,
             startRecording,
             stopRecording,
@@ -1392,6 +1478,33 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const clearCameraVideo = async (): Promise<void> => {
       await sendRequest('cameraControl', { action: 'reset' });
+    };
+
+    const adbShell = async (
+      command: string,
+      args: string[] = [],
+      adbOptions?: AdbShellOptions,
+    ): Promise<AdbShellResult> => {
+      if (!command) {
+        throw new Error('command must be a non-empty string');
+      }
+      const commandLine = quoteShellArgs([command, ...args]);
+      const timeoutMs = adbOptions?.timeoutMs;
+      // Wait a little longer than the device-side timeout so the server's own
+      // error surfaces instead of a generic client timeout.
+      const requestTimeoutMs = (timeoutMs ?? 30000) + 15000;
+      const result = await sendRequest(
+        'adbShell',
+        { command: commandLine, ...(timeoutMs === undefined ? {} : { timeoutMs }) },
+        requestTimeoutMs,
+      );
+      const encoding = adbOptions?.encoding ?? 'utf8';
+      return {
+        stdout: Buffer.from(result.stdout ?? '', 'base64').toString(encoding),
+        stderr: Buffer.from(result.stderr ?? '', 'base64').toString(encoding),
+        exitCode: typeof result.exitCode === 'number' ? result.exitCode : -1,
+        truncated: result.truncated === true,
+      };
     };
 
     const setWifiBandwidth = async (bandwidthOptions: WifiBandwidthOptions): Promise<void> => {
