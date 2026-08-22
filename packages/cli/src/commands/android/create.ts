@@ -15,6 +15,7 @@ export default class AndroidCreate extends BaseCommand {
   static examples = [
     '<%= config.bin %> android create',
     '<%= config.bin %> android create --rm --install ./app.apk',
+    '<%= config.bin %> android create --install-url https://example.t3.storage.dev/app.apk?...',
     '<%= config.bin %> android create --jurisdiction us --label env=dev',
     '<%= config.bin %> android create --no-connect',
     '<%= config.bin %> android create --daemon=false',
@@ -68,6 +69,10 @@ export default class AndroidCreate extends BaseCommand {
       description: 'Existing asset name to install after creation. Repeat for multiple assets.',
       multiple: true,
     }),
+    'install-url': Flags.string({
+      description: 'Signed download URL of an app to install after creation. Repeat for multiple URLs.',
+      multiple: true,
+    }),
     install: Flags.string({
       description:
         'Local app file to upload and install automatically after creation. Repeat for multiple files.',
@@ -95,8 +100,10 @@ export default class AndroidCreate extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      // Upload local files first
-      const assetNames: string[] = [...(flags['install-asset'] || [])];
+      // Upload local files first. Uploaded files are installed via their
+      // signed download URL so the instance can fetch them directly without
+      // a server-side name lookup.
+      const uploadedAssetUrls: string[] = [];
       if (flags.install) {
         for (const filePath of flags.install) {
           const resolved = path.resolve(filePath);
@@ -107,7 +114,7 @@ export default class AndroidCreate extends BaseCommand {
             name,
             ttl: flags['asset-ttl'],
           });
-          assetNames.push(asset.name);
+          uploadedAssetUrls.push(asset.signedDownloadUrl);
         }
         this.info(`Successfully uploaded ${flags.install.length} file(s)`);
       }
@@ -119,13 +126,22 @@ export default class AndroidCreate extends BaseCommand {
         spec: {},
       };
 
-      if (assetNames.length > 0) {
-        params.spec!.initialAssets = assetNames.map((name) => ({
+      const initialAssets = [
+        ...(flags['install-asset'] || []).map((name) => ({
           kind: 'App' as const,
           source: 'AssetName' as const,
           assetName: name,
           launchMode: 'RelaunchIfRunning',
-        }));
+        })),
+        ...[...(flags['install-url'] || []), ...uploadedAssetUrls].map((url) => ({
+          kind: 'App' as const,
+          source: 'URL' as const,
+          url,
+          launchMode: 'RelaunchIfRunning',
+        })),
+      ];
+      if (initialAssets.length > 0) {
+        params.spec!.initialAssets = initialAssets;
       }
 
       if (flags.region) params.spec!.region = flags.region;

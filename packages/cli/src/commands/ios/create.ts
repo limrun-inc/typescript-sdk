@@ -22,6 +22,7 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create --keychain keychain/login.tar.gz --encryption-key-stdin < keychain.key',
     '<%= config.bin %> ios create --keychain-url https://example.t3.storage.dev/... --encryption-key <key>',
     '<%= config.bin %> ios create --install ./MyApp.ipa',
+    '<%= config.bin %> ios create --install-url https://example.t3.storage.dev/MyApp.ipa?...',
     '<%= config.bin %> ios create --attach <xcode-instance-ID>',
     '<%= config.bin %> ios create --force-bundle-id com.example.myapp',
   ];
@@ -72,6 +73,11 @@ export default class IosCreate extends BaseCommand {
     }),
     'install-asset': Flags.string({
       description: 'Existing asset name to install onto the instance after creation',
+      multiple: true,
+    }),
+    'install-url': Flags.string({
+      description:
+        'Signed download URL of an app to install onto the instance after creation. Repeat for multiple URLs.',
       multiple: true,
     }),
     keychain: Flags.string({
@@ -155,7 +161,9 @@ export default class IosCreate extends BaseCommand {
       }
       const attachClient = attachTarget ? await this.resolveXcodeClient(attachTarget) : undefined;
 
-      const assetNames: string[] = [...(flags['install-asset'] || [])];
+      // Uploaded files are installed via their signed download URL so the
+      // instance can fetch them directly without a server-side name lookup.
+      const uploadedAssetUrls: string[] = [];
       if (flags.install) {
         for (const filePath of flags.install) {
           const resolved = path.resolve(filePath);
@@ -166,7 +174,7 @@ export default class IosCreate extends BaseCommand {
             name,
             ttl: flags['asset-ttl'],
           });
-          assetNames.push(asset.name);
+          uploadedAssetUrls.push(asset.signedDownloadUrl);
         }
         this.info(`Successfully uploaded ${flags.install.length} file(s)`);
       }
@@ -177,12 +185,20 @@ export default class IosCreate extends BaseCommand {
         spec: {},
       };
 
-      if (assetNames.length > 0) {
-        params.spec!.initialAssets = assetNames.map((name) => ({
+      const appAssets = [
+        ...(flags['install-asset'] || []).map((name) => ({
           kind: 'App' as const,
           source: 'AssetName' as const,
           assetName: name,
-        }));
+        })),
+        ...[...(flags['install-url'] || []), ...uploadedAssetUrls].map((url) => ({
+          kind: 'App' as const,
+          source: 'URL' as const,
+          url,
+        })),
+      ];
+      if (appAssets.length > 0) {
+        params.spec!.initialAssets = appAssets;
       }
       if (hasKeychainInitialAssets) {
         const encryptionKey = keychainEncryptionKey!;
