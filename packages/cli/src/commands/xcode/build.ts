@@ -521,6 +521,30 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.upload && result.signedDownloadUrl) {
         this.output(`Artifact download URL: ${result.signedDownloadUrl}`);
       }
+      // Nudge toward the attach flow after simulator builds on a bare Xcode
+      // instance: an attached simulator receives this build and every next
+      // one automatically.
+      if (
+        !this.isJsonEnabled() &&
+        target.type === 'xcode' &&
+        (!settings.sdk || settings.sdk === 'iphonesimulator')
+      ) {
+        // Assume attached when the status can't be read (old servers have
+        // no /simulator endpoint); a wrong hint is worse than none.
+        let attached = true;
+        try {
+          attached = (await xcodeClient.getSimulator()).attached;
+        } catch {
+          // Skip the hint.
+        }
+        if (!attached) {
+          this.output(
+            '\nNo iOS simulator is attached to this Xcode instance. Attach one to install this build ' +
+              'and have every next build installed and reloaded automatically:',
+          );
+          this.output(`  lim ios create --attach ${target.id}`);
+        }
+      }
       if (flags.configuration === 'Debug' && !flags['dev-server-url'] && !this.isJsonEnabled()) {
         const appDir =
           flags['expo-app-dir'] ? `${syncPath}/${flags['expo-app-dir']}`.replace(/\/+$/, '') : syncPath;
