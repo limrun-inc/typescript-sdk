@@ -550,16 +550,16 @@ export default class XcodeBuild extends BaseCommand {
           // the last created iOS instance, so the follow-up commands can
           // rely on that default instead of --id.
           const idFlag = attached && iosInstanceId ? ` --id ${iosInstanceId}` : '';
+          // Metro must listen on the tunnel port (57090, not the 8081
+          // default): bundle URLs in the manifest embed Metro's own
+          // port, and the simulator can only reach 57090-57099 on the
+          // tunnel host.
           this.output(
-            '\nDebug Expo builds load JavaScript from a Metro dev server. To run the app with hot reload:',
+            '\nDebug Expo builds load JavaScript from a Metro dev server. With Metro listening on port 57090 (not the 8081 default), connect the app:',
           );
           if (simulatorBuild && !attached) {
             this.output(`  lim ios create --attach ${target.id}`);
           }
-          // Matched tunnel/Metro ports are deliberate: with a mismatch
-          // like 57090:8081, Expo can advertise packager URLs on the
-          // local port the simulator cannot reach.
-          this.output('  npx expo start --dev-client --port 57090');
           this.output(
             `  lim ios open-url${idFlag} "$(lim ios reverse 57090:57090 --detach --scheme ${scheme}${idFlag})"`,
           );
