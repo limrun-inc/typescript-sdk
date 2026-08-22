@@ -349,7 +349,7 @@ export default class XcodeBuild extends BaseCommand {
       const nodeEnv = process.env.NODE_ENV?.trim();
       if (nodeEnv && !env.some((entry) => entry.startsWith('NODE_ENV='))) {
         env.push(`NODE_ENV=${nodeEnv}`);
-        this.output(`Propagating NODE_ENV=${nodeEnv} to the remote build.`);
+        this.info(`Propagating NODE_ENV=${nodeEnv} to the remote build.`);
       }
       if (env.length > 0) {
         options.env = env;
@@ -557,9 +557,9 @@ export default class XcodeBuild extends BaseCommand {
           }
           const id = iosInstanceId ?? '<ios-instance-id>';
           this.output('\nDebug Expo builds load JavaScript from a Metro dev server. To connect the app:');
-          this.output(`  lim ios reverse 57090:57090`);
+          this.output(`  lim ios reverse 57090:8081 --id ${id}`);
           this.output(
-            `  lim ios open-url '<app-scheme>://expo-development-client/?url=http%3A%2F%2F<host>%3A57090'`,
+            `  lim ios open-url '<app-scheme>://expo-development-client/?url=http%3A%2F%2F<host>%3A57090' --id ${id}`,
           );
         }
       }
