@@ -60,6 +60,7 @@ export type XcodeBuildExecRequest = {
   reactNative?: {
     expoAppDir?: string;
     devServerURL?: string;
+    expoForcePrebuild?: boolean;
   };
   signing?: {
     certificateP12Base64?: string;
@@ -77,6 +78,12 @@ export type XcodeBuildExecRequest = {
   /** Wire name retained for compatibility with the limbuild exec API. */
   testflight?: AppStoreUploadConfig;
   buildSettings?: Record<string, string>;
+  /**
+   * Ordered KEY=VALUE entries added to the environment of every build
+   * pipeline command (installs, prebuild, pod install, xcodebuild).
+   * Server-managed variables (PATH, HOME, ...) cannot be overridden.
+   */
+  env?: string[];
   gitInit?: boolean;
   signedUploadUrl?: string;
   /**
@@ -215,7 +222,11 @@ export type RunExecRequest = {
   command: 'run';
   commandLine: string;
   cwd?: string;
-  env?: Record<string, string>;
+  /**
+   * Ordered KEY=VALUE entries added to the command's environment.
+   * Server-managed variables (PATH, HOME, ...) cannot be overridden.
+   */
+  env?: string[];
   timeoutSeconds?: number;
 };
 

@@ -7,7 +7,7 @@ import { createIgnoreFn, type IgnoreFn } from '@limrun/api/folder-sync-ignore';
 // (limrun test/integration/limbuild/folder_sync_ignore_test.go). Layers,
 // first decisive answer wins:
 //   1. basis cache  2. user include  3. .git/.DS_Store
-//   4. xcode default junk  5. built-in force-include (.xcconfig only)
+//   4. xcode default junk  5. built-in force-include (.xcconfig, .env)
 //   6. .gitignore chain (root + nested)  7. user ignore
 describe('createIgnoreFn', () => {
   let dir: string;
@@ -24,6 +24,7 @@ describe('createIgnoreFn', () => {
         '*.log',
         '!keep.log',
         '*.xcconfig', // proves the .xcconfig override beats .gitignore
+        '.env*', // proves the .env override beats .gitignore
         '*.xcodeproj', // generated projects, gitignored like Whop-style monorepos
         '*.xcworkspace',
       ].join('\n'),
@@ -63,6 +64,12 @@ describe('createIgnoreFn', () => {
     ['sub/.DS_Store', true, 'nested .DS_Store is always excluded'],
     // Always-include override.
     ['Config.xcconfig', false, '.xcconfig overrides the *.xcconfig gitignore rule'],
+    ['.env', false, '.env overrides the .env* gitignore rule'],
+    ['.env.production', false, '.env.* variants are force-included'],
+    ['.env.production.local', false, 'dotenv-flow .local variants are force-included'],
+    ['.env.staging', false, 'custom NODE_ENV variants are force-included'],
+    ['apps/foo/.env.local', false, 'nested .env files are force-included'],
+    ['secrets/.env', false, 'built-in .env force-include beats user --ignore'],
     // Root .gitignore (incl. dir-only rule and negation).
     ['node_modules/', true, 'dir-only gitignore rule prunes the directory'],
     ['node_modules/foo/index.js', true, 'files under a gitignored dir'],
@@ -127,7 +134,7 @@ describe('createIgnoreFn without xcodeDefaults (app-install legacy mode)', () =>
 
   beforeAll(async () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'folder-sync-ignore-legacy-'));
-    fs.writeFileSync(path.join(dir, '.gitignore'), ['*.log'].join('\n'));
+    fs.writeFileSync(path.join(dir, '.gitignore'), ['*.log', '.env*'].join('\n'));
     fs.mkdirSync(path.join(dir, 'nested'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'nested', '.gitignore'), ['keep.txt'].join('\n'));
     ignore = await createIgnoreFn(dir, {
@@ -144,6 +151,7 @@ describe('createIgnoreFn without xcodeDefaults (app-install legacy mode)', () =>
     ['nested/keep.txt', false, 'nested .gitignore is NOT honored in legacy mode'],
     ['App.xcodeproj/project.pbxproj', false, 'gitignored-or-not, no rule excludes it here'],
     ['Config.xcconfig', false, '.xcconfig force-include is unconditional'],
+    ['.env', false, '.env force-include is unconditional'],
     ['Pods/Manifest.lock', false, 'default junk excludes are off without xcodeDefaults'],
   ])('ignore(%s) = %s  // %s', (rel, want) => {
     expect(ignore(rel)).toBe(want);

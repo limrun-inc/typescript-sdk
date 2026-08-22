@@ -33,7 +33,7 @@ describe('xcode client run', () => {
     });
     const result = await xcode.run('make api', {
       cwd: 'apps/api',
-      env: { API_ENV: 'development' },
+      env: ['API_ENV=development'],
       timeoutSeconds: 120,
     });
 
@@ -42,7 +42,7 @@ describe('xcode client run', () => {
       command: 'run',
       commandLine: 'make api',
       cwd: 'apps/api',
-      env: { API_ENV: 'development' },
+      env: ['API_ENV=development'],
       timeoutSeconds: 120,
     });
   });

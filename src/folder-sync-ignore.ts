@@ -108,9 +108,10 @@ const XCODE_DEFAULT_EXCLUDE_PREFIXES = [
  *  2. User include (--include): explicit intent beats every other exclusion.
  *  3. `.git` and `.DS_Store`.
  *  4. Default Xcode/dependency excludes (when xcodeDefaults is set).
- *  5. Built-in force-include: `*.xcconfig` (gitignored xcconfigs are still
- *     required to reproduce the build remotely). Gitignored projects are NOT
- *     force-included: limbuild regenerates them from project.yml, and
+ *  5. Built-in force-include: `*.xcconfig` and `.env` files (gitignored
+ *     xcconfigs and env files are still required to reproduce the build
+ *     remotely; Expo app configs routinely read `.env`). Gitignored projects
+ *     are NOT force-included: limbuild regenerates them from project.yml, and
  *     exact-version holdouts force-sync theirs with `--include`.
  *  6. `.gitignore` chain: the root file, plus nested ones with git semantics
  *     when xcodeDefaults is set (rules bind relative to their containing
@@ -227,11 +228,15 @@ export async function createIgnoreFn(rootDir: string, options: IgnoreFnOptions):
       }
       if (normalized.includes('/xcuserdata/') || normalized.includes('.dSYM/')) return true;
     }
-    // 5. Built-in force-include: gitignored xcconfigs are still required to
-    // reproduce the build remotely. Gitignored .xcodeproj bundles are NOT
-    // force-included: limbuild regenerates them from project.yml, and
-    // exact-version holdouts force-sync theirs with --include.
+    // 5. Built-in force-include: gitignored xcconfigs and .env files are
+    // still required to reproduce the build remotely (Expo app configs read
+    // .env / .env.local / .env.production at prebuild time). Gitignored
+    // .xcodeproj bundles are NOT force-included: limbuild regenerates them
+    // from project.yml, and exact-version holdouts force-sync theirs with
+    // --include.
     if (withoutTrailingSlash.endsWith('.xcconfig')) return false;
+    const basename = withoutTrailingSlash.slice(withoutTrailingSlash.lastIndexOf('/') + 1);
+    if (basename.endsWith('.env') || basename.startsWith('.env.')) return false;
     // 6. The .gitignore chain. Only a decisive *exclude* short-circuits; a
     // negation re-include (decision.ignored === false) still falls through to
     // the user --ignore layer, matching the pre-restructure precedence where

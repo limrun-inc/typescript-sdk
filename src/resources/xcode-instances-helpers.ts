@@ -90,8 +90,12 @@ export type SyncOptions = {
 export type XcodeRunOptions = {
   /** Working directory relative to the synced workspace root. Defaults to ".". */
   cwd?: string;
-  /** Environment variables to add to limbuild's curated sandbox environment. */
-  env?: Record<string, string>;
+  /**
+   * Ordered KEY=VALUE entries added to limbuild's curated sandbox
+   * environment. Server-managed variables (PATH, HOME, ...) cannot be
+   * overridden; when a key repeats, the last entry wins.
+   */
+  env?: string[];
   /** Server-side timeout in seconds. Defaults to 3600; maximum 21600. */
   timeoutSeconds?: number;
 };
@@ -181,6 +185,15 @@ export type ReactNativeBuildConfig = {
    * server URL you want opened.
    */
   devServerURL?: string;
+  /**
+   * Run `expo prebuild` even when the synced workspace already contains the
+   * native ios/ tree, regenerating it in place. Use when the tree holds
+   * client-synced files the server treats as user-owned (for example
+   * committed Podfile customizations) while the Xcode project itself is
+   * generated and gitignored. Requires a detectable Expo project. Older
+   * limbuild servers silently ignore this option.
+   */
+  expoForcePrebuild?: boolean;
 };
 
 export type XcodeBuildOptions = {
@@ -222,6 +235,16 @@ export type XcodeBuildOptions = {
    */
   xcodegen?: XcodeGenConfig;
   buildSettings?: Record<string, string>;
+  /**
+   * Ordered KEY=VALUE entries added to the environment of every build
+   * pipeline command (dependency installs, expo prebuild, pod install,
+   * xcodebuild and its script phases). Server-managed variables (PATH,
+   * HOME, ...) cannot be overridden; when a key repeats, the last entry
+   * wins. Dependency installs always include devDependencies, so
+   * NODE_ENV=production cannot break them. Older limbuild servers
+   * silently ignore this option.
+   */
+  env?: string[];
   /**
    * Run `git init` in the synced workspace before project generation,
    * dependency resolution, and xcodebuild.
@@ -833,6 +856,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           // testflight until the exec API is revised separately.
           ...(options?.appstore && { testflight: options.appstore }),
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
+          ...(options?.env?.length && { env: options.env }),
           ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
           ...(options?.webhook && { webhook: options.webhook }),
         };
