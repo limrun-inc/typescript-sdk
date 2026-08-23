@@ -1,40 +1,47 @@
 import { execFileSync, type ChildProcess } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
-import net from 'net';
 import os from 'os';
 import path from 'path';
-import type { Ios } from '@limrun/api';
+import {
+  validateDestinationTunnelSelectors,
+  type DestinationTunnelRoute,
+  type DestinationTunnelSelectors,
+  type DestinationTunnelStatus,
+} from '@limrun/api';
 
-export const IOS_TUNNELS_ROOT = path.join(os.homedir(), '.lim', 'tunnels');
+export const TUNNELS_ROOT = path.join(os.homedir(), '.lim', 'tunnels');
 const OWNER_PATTERN = /^[0-9a-f]{32}$/;
 
-export interface IosTunnelProcessState {
+export type TunnelProduct = 'ios' | 'android';
+
+export interface TunnelProcessState {
   owner: string;
   pid: number;
   instanceId: string;
+  product: TunnelProduct;
   status: 'starting' | 'ready';
-  routes: Ios.TunnelOptions['routes'];
+  selectors: DestinationTunnelSelectors;
   startedAt: string;
   logPath: string;
   tunnelId?: string;
 }
 
-export type ReadyIosTunnelProcessState = IosTunnelProcessState & {
+export type ReadyTunnelProcessState = TunnelProcessState & {
   status: 'ready';
   tunnelId: string;
 };
 
 export type TunnelOwnerProcessIdentity = 'match' | 'mismatch' | 'missing' | 'unknown';
 
-export interface IosTunnelProcessPaths {
+export interface TunnelProcessPaths {
   directory: string;
   state: string;
   log: string;
   cancelled: string;
 }
 
-export function parseTunnelRoute(value: string): Ios.TunnelOptions['routes'][number] {
+export function parseTunnelRoute(value: string, options: { minPort?: number } = {}): DestinationTunnelRoute {
   let host: string;
   let portText: string;
   if (value.startsWith('[')) {
@@ -54,23 +61,68 @@ export function parseTunnelRoute(value: string): Ios.TunnelOptions['routes'][num
   }
 
   const port = Number(portText);
-  const route = canonicalizeTunnelRoute(host, port);
-  if (route) {
-    return route;
+  const minPort = options.minPort ?? 1;
+  if (!Number.isInteger(port) || port < minPort || port > 65_535) {
+    throw new Error(`Invalid route port in "${value}"; expected ${minPort}-65535`);
   }
-  throw new Error(`Invalid route "${value}"; expected localhost or a literal IP with an allowed TCP port`);
+  // Delegate canonicalization to the shared contract validation (DNS-port
+  // rejection, localhost lowering, IPv6 canonicalization and IPv4-mapped
+  // unmapping, IPv4-compatible rejection).
+  try {
+    return validateDestinationTunnelSelectors(
+      { routes: [{ host, port }] },
+      options.minPort === undefined ? {} : { minRoutePort: options.minPort },
+    ).routes![0]!;
+  } catch (error) {
+    throw new Error(
+      `Invalid route "${value}"; expected localhost or a literal IP with an allowed TCP port` +
+        (error instanceof Error ? ` (${error.message})` : ''),
+    );
+  }
+}
+
+export function parseTunnelDomain(value: string): string {
+  try {
+    return validateDestinationTunnelSelectors({ domains: [value] }).domains![0]!;
+  } catch (error) {
+    throw new Error(
+      `Invalid domain "${value}"; use an exact name like api.corp.example or a wildcard like *.corp.example` +
+        (error instanceof Error ? ` (${error.message})` : ''),
+    );
+  }
+}
+
+export function parseTunnelCidr(value: string): string {
+  try {
+    return validateDestinationTunnelSelectors({ cidrs: [value] }).cidrs![0]!;
+  } catch (error) {
+    throw new Error(
+      `Invalid CIDR "${value}"; use IPv4 network/prefix like 10.0.0.0/8` +
+        (error instanceof Error ? ` (${error.message})` : ''),
+    );
+  }
 }
 
 export function newTunnelOwner(): string {
   return crypto.randomBytes(16).toString('hex');
 }
 
-export function formatTunnelRoute(route: Ios.TunnelOptions['routes'][number]): string {
+export function formatTunnelRoute(route: DestinationTunnelRoute): string {
   const host = route.host.includes(':') ? `[${route.host}]` : route.host;
   return `${host}:${route.port}`;
 }
 
-export function formatTunnelDialFailure(failure: NonNullable<Ios.TunnelStatus['lastDialFailure']>): string {
+export function formatTunnelSelectors(selectors: DestinationTunnelSelectors): string[] {
+  return [
+    ...(selectors.routes ?? []).map((route) => `route ${formatTunnelRoute(route)}`),
+    ...(selectors.domains ?? []).map((domain) => `domain ${domain}`),
+    ...(selectors.cidrs ?? []).map((cidr) => `cidr ${cidr}`),
+  ];
+}
+
+export function formatTunnelDialFailure(
+  failure: NonNullable<DestinationTunnelStatus['lastDialFailure']>,
+): string {
   const correlationIds = `tunnel ${failure.tunnelId}, connection ${failure.connectionId}, ${failure.routeId}`;
   const failureDetails = failure.osCode ? `${failure.reason}, ${failure.osCode}` : failure.reason;
   return `Last dial failure: ${correlationIds} (${failureDetails})`;
@@ -78,21 +130,24 @@ export function formatTunnelDialFailure(failure: NonNullable<Ios.TunnelStatus['l
 
 export function buildTunnelServeArgs(options: {
   scriptPath: string;
+  product: TunnelProduct;
   instanceId: string;
   owner: string;
-  routes: Ios.TunnelOptions['routes'];
+  selectors: DestinationTunnelSelectors;
 }): string[] {
   assertOwner(options.owner);
   return [
     options.scriptPath,
-    'ios',
+    options.product,
     'tunnel',
     '--serve',
     '--no-create',
     '--id',
     options.instanceId,
     `--tunnel-owner=${options.owner}`,
-    ...options.routes.flatMap((route) => ['--route', formatTunnelRoute(route)]),
+    ...(options.selectors.routes ?? []).flatMap((route) => ['--route', formatTunnelRoute(route)]),
+    ...(options.selectors.domains ?? []).flatMap((domain) => ['--domain', domain]),
+    ...(options.selectors.cidrs ?? []).flatMap((cidr) => ['--cidr', cidr]),
   ];
 }
 
@@ -107,23 +162,23 @@ export function tunnelChildEnvironment(
 }
 
 export async function waitForTunnelProcessReady(options: {
-  load: () => IosTunnelProcessState | undefined;
+  load: () => TunnelProcessState | undefined;
   isAlive: () => boolean;
   sleep: (milliseconds: number) => Promise<void>;
   now?: () => number;
   timeoutMs?: number;
   pollMs?: number;
 }): Promise<
-  { outcome: 'ready'; state: ReadyIosTunnelProcessState } | { outcome: 'exited' } | { outcome: 'timeout' }
+  { outcome: 'ready'; state: ReadyTunnelProcessState } | { outcome: 'exited' } | { outcome: 'timeout' }
 > {
   const now = options.now ?? Date.now;
   const deadline = now() + (options.timeoutMs ?? 30_000);
-  function loadReadyState(): ReadyIosTunnelProcessState | undefined {
+  function loadReadyState(): ReadyTunnelProcessState | undefined {
     const state = options.load();
     if (state?.status !== 'ready' || !state.tunnelId) {
       return undefined;
     }
-    return state as ReadyIosTunnelProcessState;
+    return state as ReadyTunnelProcessState;
   }
 
   while (now() < deadline) {
@@ -142,11 +197,7 @@ function tunnelProcessDirectory(instanceId: string, root: string): string {
   return path.join(root, key);
 }
 
-export function tunnelProcessPaths(
-  instanceId: string,
-  owner: string,
-  root = IOS_TUNNELS_ROOT,
-): IosTunnelProcessPaths {
+export function tunnelProcessPaths(instanceId: string, owner: string, root = TUNNELS_ROOT): TunnelProcessPaths {
   assertOwner(owner);
   const directory = tunnelProcessDirectory(instanceId, root);
   return {
@@ -157,7 +208,7 @@ export function tunnelProcessPaths(
   };
 }
 
-export function claimTunnelProcess(state: IosTunnelProcessState, root = IOS_TUNNELS_ROOT): boolean {
+export function claimTunnelProcess(state: TunnelProcessState, root = TUNNELS_ROOT): boolean {
   const paths = tunnelProcessPaths(state.instanceId, state.owner, root);
   validateTunnelProcessState(state, state.instanceId, paths);
   if (fs.existsSync(paths.cancelled)) return false;
@@ -179,9 +230,9 @@ export function claimTunnelProcess(state: IosTunnelProcessState, root = IOS_TUNN
 }
 
 export function updateTunnelProcess(
-  state: IosTunnelProcessState,
+  state: TunnelProcessState,
   expectedOwner: string,
-  root = IOS_TUNNELS_ROOT,
+  root = TUNNELS_ROOT,
 ): void {
   if (state.owner !== expectedOwner) {
     throw new Error('Tunnel process ownership changed during startup');
@@ -210,11 +261,11 @@ export function updateTunnelProcess(
 export function loadTunnelProcess(
   instanceId: string,
   owner: string,
-  root = IOS_TUNNELS_ROOT,
-): IosTunnelProcessState | undefined {
+  root = TUNNELS_ROOT,
+): TunnelProcessState | undefined {
   const paths = tunnelProcessPaths(instanceId, owner, root);
   try {
-    const state = JSON.parse(fs.readFileSync(paths.state, 'utf8')) as IosTunnelProcessState;
+    const state = JSON.parse(fs.readFileSync(paths.state, 'utf8')) as TunnelProcessState;
     validateTunnelProcessState(state, instanceId, paths);
     return state;
   } catch {
@@ -222,7 +273,7 @@ export function loadTunnelProcess(
   }
 }
 
-export function listTunnelProcesses(instanceId: string, root = IOS_TUNNELS_ROOT): IosTunnelProcessState[] {
+export function listTunnelProcesses(instanceId: string, root = TUNNELS_ROOT): TunnelProcessState[] {
   const directory = tunnelProcessDirectory(instanceId, root);
   let entries: string[];
   try {
@@ -230,7 +281,7 @@ export function listTunnelProcesses(instanceId: string, root = IOS_TUNNELS_ROOT)
   } catch {
     return [];
   }
-  const states: IosTunnelProcessState[] = [];
+  const states: TunnelProcessState[] = [];
   for (const entry of entries) {
     const match = /^([0-9a-f]{32})\.json$/.exec(entry);
     if (!match?.[1]) continue;
@@ -241,28 +292,24 @@ export function listTunnelProcesses(instanceId: string, root = IOS_TUNNELS_ROOT)
 }
 
 export function selectTunnelOwnersForStop(
-  owners: IosTunnelProcessState[],
+  owners: TunnelProcessState[],
   tunnelId: string | undefined,
-): IosTunnelProcessState[] {
+): TunnelProcessState[] {
   if (!tunnelId) return owners;
   return owners.filter((state) => state.status === 'starting' || state.tunnelId === tunnelId);
 }
 
-export function tunnelOwnerRemainsSelectedForStop(
-  snapshot: IosTunnelProcessState,
-  current: IosTunnelProcessState,
-  tunnelId: string | undefined,
-): boolean {
-  return !tunnelId || snapshot.status === 'starting' || current.tunnelId === tunnelId;
+export interface TunnelLike {
+  getConnectionState: () => 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
+  onConnectionStateChange: (
+    callback: (state: 'connecting' | 'connected' | 'disconnected' | 'reconnecting') => void,
+  ) => () => void;
 }
 
-export function subscribeTunnelDisconnect(
-  tunnel: Pick<Ios.Tunnel, 'getConnectionState' | 'onConnectionStateChange'>,
-  onDisconnect: () => void,
-): () => void {
+export function subscribeTunnelDisconnect(tunnel: TunnelLike, onDisconnect: () => void): () => void {
   let disconnected = false;
   let unsubscribe = (): void => {};
-  function observe(state: ReturnType<Ios.Tunnel['getConnectionState']>): void {
+  function observe(state: ReturnType<TunnelLike['getConnectionState']>): void {
     if (state !== 'disconnected' || disconnected) return;
     disconnected = true;
     unsubscribe();
@@ -284,18 +331,34 @@ export function stopTunnelErrorIsNotFound(error: unknown): boolean {
   return error instanceof Error && error.message.startsWith('stopTunnel failed: 404 ');
 }
 
-export function clearTunnelProcess(instanceId: string, owner: string, root = IOS_TUNNELS_ROOT): boolean {
+/**
+ * Mark an owner as cancelled without removing its state. Cancellation is
+ * observed by the serving child before every reconnect attempt and by every
+ * state update, so a cancelled starting owner can never recreate the tunnel
+ * between our stop signal and its exit.
+ */
+export function markTunnelProcessCancelled(instanceId: string, owner: string, root = TUNNELS_ROOT): void {
+  const paths = tunnelProcessPaths(instanceId, owner, root);
+  fs.mkdirSync(paths.directory, { recursive: true, mode: 0o700 });
+  try {
+    fs.writeFileSync(paths.cancelled, '', { flag: 'wx', mode: 0o600 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+}
+
+export function isTunnelProcessCancelled(instanceId: string, owner: string, root = TUNNELS_ROOT): boolean {
+  return fs.existsSync(tunnelProcessPaths(instanceId, owner, root).cancelled);
+}
+
+export function clearTunnelProcess(instanceId: string, owner: string, root = TUNNELS_ROOT): boolean {
   const paths = tunnelProcessPaths(instanceId, owner, root);
   const state = loadTunnelProcess(instanceId, owner, root);
   if (state && state.pid !== process.pid) {
     const identity = tunnelOwnerProcessIdentity(state);
     if (identity === 'match' || identity === 'unknown') return false;
   }
-  try {
-    fs.writeFileSync(paths.cancelled, '', { flag: 'wx', mode: 0o600 });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-  }
+  markTunnelProcessCancelled(instanceId, owner, root);
   try {
     fs.unlinkSync(paths.state);
     pruneTunnelLogs(instanceId, root);
@@ -306,7 +369,7 @@ export function clearTunnelProcess(instanceId: string, owner: string, root = IOS
   }
 }
 
-export function pruneTunnelLogs(instanceId: string, root = IOS_TUNNELS_ROOT, retain = 5): void {
+export function pruneTunnelLogs(instanceId: string, root = TUNNELS_ROOT, retain = 5): void {
   const directory = tunnelProcessDirectory(instanceId, root);
   let entries: string[];
   try {
@@ -357,11 +420,11 @@ export function isSpawnedTunnelProcessAlive(
   return child.exitCode === null && child.signalCode === null && isProcessAlive(pid);
 }
 
-export function tunnelProcessStartingLeaseExpired(state: IosTunnelProcessState, now = Date.now()): boolean {
+export function tunnelProcessStartingLeaseExpired(state: TunnelProcessState, now = Date.now()): boolean {
   return state.status === 'starting' && now - Date.parse(state.startedAt) >= 30_000;
 }
 
-export function tunnelOwnerProcessIdentity(state: IosTunnelProcessState): TunnelOwnerProcessIdentity {
+export function tunnelOwnerProcessIdentity(state: TunnelProcessState): TunnelOwnerProcessIdentity {
   if (!isProcessAlive(state.pid)) return 'missing';
   try {
     let command: string;
@@ -396,7 +459,7 @@ export function tunnelOwnerProcessIdentity(state: IosTunnelProcessState): Tunnel
 }
 
 export function signalTunnelOwner(
-  state: IosTunnelProcessState,
+  state: TunnelProcessState,
   signal: NodeJS.Signals,
 ): 'signaled' | TunnelOwnerProcessIdentity {
   const identity = tunnelOwnerProcessIdentity(state);
@@ -438,66 +501,26 @@ export function capTunnelLog(logPath: string, maxBytes = 5 * 1024 * 1024): boole
   }
 }
 
-function validateStoredRoutes(routes: Ios.TunnelOptions['routes']): Ios.TunnelOptions['routes'] {
-  if (!Array.isArray(routes) || routes.length < 1 || routes.length > 10) {
-    throw new Error('Invalid tunnel routes');
+function validateStoredSelectors(selectors: DestinationTunnelSelectors): DestinationTunnelSelectors {
+  const canonical = validateDestinationTunnelSelectors(selectors);
+  // Persisted state must already be canonical; anything else was not
+  // written by us and is rejected rather than silently normalized.
+  if (JSON.stringify(selectors) !== JSON.stringify(canonical)) {
+    throw new Error('Invalid tunnel process state');
   }
-  const seen = new Set<string>();
-  for (const route of routes) {
-    const canonical =
-      typeof route?.host === 'string' ? canonicalizeTunnelRoute(route.host, route.port) : undefined;
-    const key = canonical ? `${canonical.host}\0${canonical.port}` : '';
-    if (canonical?.host !== route.host || canonical.port !== route.port || seen.has(key)) {
-      throw new Error('Invalid tunnel routes');
-    }
-    seen.add(key);
-  }
-  return routes;
-}
-
-function canonicalizeTunnelRoute(
-  host: string,
-  port: number,
-): Ios.TunnelOptions['routes'][number] | undefined {
-  if (!Number.isInteger(port) || port < 1 || port > 65_535 || port === 53) {
-    return undefined;
-  }
-  if (Buffer.byteLength(host, 'utf8') === host.length && host.toLowerCase() === 'localhost') {
-    return { host: 'localhost', port };
-  }
-  const ipVersion = net.isIP(host);
-  if (ipVersion === 4) {
-    return { host, port };
-  }
-  if (ipVersion !== 6) {
-    return undefined;
-  }
-  const canonical = new URL(`http://[${host}]/`).hostname.slice(1, -1);
-  if (canonical !== '::1' && /^::(?:[0-9a-f]{1,4}:)?[0-9a-f]{1,4}$/.test(canonical)) {
-    return undefined;
-  }
-  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(canonical);
-  if (!mapped?.[1] || !mapped[2]) {
-    return { host: canonical, port };
-  }
-  const high = Number.parseInt(mapped[1], 16);
-  const low = Number.parseInt(mapped[2], 16);
-  return {
-    host: `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`,
-    port,
-  };
+  return canonical;
 }
 
 function validateTunnelProcessState(
-  state: IosTunnelProcessState,
+  state: TunnelProcessState,
   instanceId: string,
-  paths: IosTunnelProcessPaths,
+  paths: TunnelProcessPaths,
 ): void {
   const startedAt = typeof state.startedAt === 'string' ? Date.parse(state.startedAt) : Number.NaN;
   const startedAtValid = Number.isFinite(startedAt) && new Date(startedAt).toISOString() === state.startedAt;
   const age = Date.now() - startedAt;
   try {
-    validateStoredRoutes(state.routes);
+    validateStoredSelectors(state.selectors);
   } catch {
     throw new Error('Invalid tunnel process state');
   }
@@ -511,6 +534,7 @@ function validateTunnelProcessState(
     !Number.isInteger(state.pid) ||
     state.pid < 0 ||
     state.instanceId !== instanceId ||
+    (state.product !== 'ios' && state.product !== 'android') ||
     (state.status !== 'starting' && state.status !== 'ready') ||
     !startedAtValid ||
     age < 0 ||
@@ -522,7 +546,7 @@ function validateTunnelProcessState(
   }
 }
 
-function writeTemporaryState(state: IosTunnelProcessState, paths: IosTunnelProcessPaths): string {
+function writeTemporaryState(state: TunnelProcessState, paths: TunnelProcessPaths): string {
   fs.mkdirSync(paths.directory, { recursive: true, mode: 0o700 });
   const temporary = `${paths.state}.${process.pid}.${crypto.randomUUID()}.tmp`;
   const descriptor = fs.openSync(temporary, 'wx', 0o600);

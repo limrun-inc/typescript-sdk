@@ -1,20 +1,20 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
-import { getIosInstanceClient } from '../../../lib/instance-client-factory';
+import { getAndroidInstanceClient } from '../../../lib/instance-client-factory';
 import {
-  formatTunnelRoute,
   formatTunnelDialFailure,
+  formatTunnelSelectors,
   listTunnelProcesses,
   tunnelOwnerProcessIdentity,
 } from '../../../lib/tunnel-process';
 
-export default class IosTunnelStatus extends BaseCommand {
+export default class AndroidTunnelStatus extends BaseCommand {
   static summary = 'Show the active destination tunnel';
   static description =
-    'Query the instance-authoritative tunnel state, most recent failure, and any local detached owner.';
+    'Query the instance-authoritative tunnel state, per-selector bind results, most recent failure, and any local detached owner.';
   static examples = [
-    '<%= config.bin %> ios tunnel status --id <instance-ID>',
-    '<%= config.bin %> ios tunnel status --id <instance-ID> --json',
+    '<%= config.bin %> android tunnel status --id <instance-ID>',
+    '<%= config.bin %> android tunnel status --id <instance-ID> --json',
   ];
 
   static flags = {
@@ -27,19 +27,19 @@ export default class IosTunnelStatus extends BaseCommand {
       hidden: true,
     }),
     id: Flags.string({
-      description: 'iOS instance ID to query. Defaults to the last created iOS instance.',
+      description: 'Android instance ID to query. Defaults to the last created Android instance.',
     }),
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(IosTunnelStatus);
+    const { flags } = await this.parse(AndroidTunnelStatus);
     this.setParsedFlags(flags);
     if (flags.create) {
       this.error('Tunnel status cannot create a replacement instance.');
     }
     await this.withAuth(async () => {
-      const resolvedInstance = this.resolveIosInstance(flags.id);
-      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
+      const resolvedInstance = this.resolveAndroidInstance(flags.id);
+      const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
       try {
         const status = await client.getTunnelStatus();
         const owners = listTunnelProcesses(resolvedInstance.id).map((state) => ({
@@ -61,8 +61,19 @@ export default class IosTunnelStatus extends BaseCommand {
 
         if (status.active) {
           this.output(`Tunnel ${status.active.tunnelId}: ${status.active.state}`);
-          for (const route of status.active.routes) {
-            this.output(`Route: ${formatTunnelRoute(route)}`);
+          const selectorLines = formatTunnelSelectors({
+            ...(status.active.routes.length > 0 ? { routes: status.active.routes } : {}),
+            ...(status.active.domains ? { domains: status.active.domains } : {}),
+            ...(status.active.cidrs ? { cidrs: status.active.cidrs } : {}),
+          });
+          for (const line of selectorLines) {
+            this.output(`Selector: ${line}`);
+          }
+          for (const [selectorId, binds] of Object.entries(status.active.binds ?? {})) {
+            for (const bind of binds) {
+              const detail = bind.osCode ? `${bind.status}, ${bind.osCode}` : bind.status;
+              this.output(`Bind ${selectorId} ${bind.address}: ${detail}`);
+            }
           }
         } else {
           this.output('No active destination tunnel.');

@@ -6,7 +6,12 @@ import fixture from './destination-tunnel-protocol.fixture.json';
 import upstream from './destination-tunnel-protocol.upstream.json';
 import {
   DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
+  DESTINATION_TUNNEL_FAKE_RANGE,
+  DESTINATION_TUNNEL_MAX_CIDRS,
+  DESTINATION_TUNNEL_MAX_DOMAINS,
   DESTINATION_TUNNEL_MAX_ROUTES,
+  DESTINATION_TUNNEL_MAX_WINDOW,
+  DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT,
   DESTINATION_TUNNEL_VERSION,
   DestinationTunnelProtocolError,
   DestinationTunnelRouteError,
@@ -14,12 +19,20 @@ import {
   assertDestinationTunnelReady,
   decodeDestinationTunnelDataFrame,
   decodeDestinationTunnelServerMessage,
+  destinationTunnelCidrContains,
+  destinationTunnelConfigHash,
+  destinationTunnelDomainMatches,
+  destinationTunnelSelectorIds,
   encodeDestinationTunnelDataFrame,
   encodeDestinationTunnelClientMessage,
+  validateDestinationTunnelCidrs,
+  validateDestinationTunnelDomains,
   validateDestinationTunnelRoutes,
+  validateDestinationTunnelSelectors,
   type DestinationTunnelClientMessage,
   type DestinationTunnelRoute,
   type DestinationTunnelRouteErrorCode,
+  type DestinationTunnelSelectors,
   type DestinationTunnelServerMessage,
 } from '../src/destination-tunnel';
 
@@ -27,6 +40,11 @@ describe('destination tunnel wire contract', () => {
   test('pins protocol constants', () => {
     expect(DESTINATION_TUNNEL_VERSION).toBe(fixture.contract.version);
     expect(DESTINATION_TUNNEL_MAX_ROUTES).toBe(fixture.contract.maxRoutes);
+    expect(DESTINATION_TUNNEL_MAX_DOMAINS).toBe(fixture.contract.maxDomains);
+    expect(DESTINATION_TUNNEL_MAX_CIDRS).toBe(fixture.contract.maxCidrs);
+    expect(DESTINATION_TUNNEL_FAKE_RANGE).toBe(fixture.contract.fakeRange);
+    expect(DESTINATION_TUNNEL_MAX_WINDOW).toBe(fixture.contract.maxWindow);
+    expect(DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT).toBe(fixture.contract.maxWindowIncrement);
     expect(DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES).toBe(fixture.contract.connID.binaryHeaderBytes);
   });
 
@@ -48,7 +66,7 @@ describe('destination tunnel wire contract', () => {
       repository: 'limrun-inc/limrun',
       commit: 'b3cbe546d6af8111a7cd6d8d60609a8f2086591e',
       path: 'design/destination-tunnel/v1',
-      messagesSha256: '702d3a05f8920aeb5adfb7f7f89d133d67a602354433b6fb5fe4cbfd86309a4c',
+      messagesSha256: 'c11c9e4e0c220c36a7b91a1040351a8302e4fad772379b2c24c2bd8d83f7b15a',
       binarySha256: 'e6da913a0ff85a3402f09de6cbbb18d4f9b2e76007ca48b85f4d35b66810da7d',
     });
     expect(sha256('destination-tunnel-protocol.fixture.json')).toBe(upstream.messagesSha256);
@@ -210,6 +228,168 @@ describe('destination tunnel route contract', () => {
 
     expect(() =>
       assertDestinationTunnelReady({ ...readyMessage, version: DESTINATION_TUNNEL_VERSION + 1 }),
+    ).toThrow(DestinationTunnelProtocolError);
+  });
+});
+
+describe('destination tunnel selector contract', () => {
+  test.each(fixture.domainCases)('canonicalizes domain $input', ({ input, canonical }) => {
+    expect(validateDestinationTunnelDomains([input])).toEqual([canonical]);
+  });
+
+  test.each(fixture.invalidDomainSets)('rejects domain set $name with $error', ({ domains, error }) => {
+    expect(() => validateDestinationTunnelDomains(domains)).toThrow(
+      expect.objectContaining<Partial<DestinationTunnelRouteError>>({
+        code: error as DestinationTunnelRouteErrorCode,
+      }),
+    );
+  });
+
+  test.each(fixture.domainMatchCases)(
+    'matches $pattern against $host: $matches',
+    ({ pattern, host, matches }) => {
+      expect(destinationTunnelDomainMatches(pattern, host)).toBe(matches);
+    },
+  );
+
+  test.each(fixture.cidrCases)('canonicalizes cidr $input', ({ input, canonical }) => {
+    expect(validateDestinationTunnelCidrs([input])).toEqual([canonical]);
+  });
+
+  test.each(fixture.invalidCidrSets)('rejects cidr set $name with $error', ({ cidrs, error }) => {
+    expect(() => validateDestinationTunnelCidrs(cidrs)).toThrow(
+      expect.objectContaining<Partial<DestinationTunnelRouteError>>({
+        code: error as DestinationTunnelRouteErrorCode,
+      }),
+    );
+  });
+
+  test('cidr membership is prefix-based', () => {
+    expect(destinationTunnelCidrContains('10.0.0.0/8', '10.255.255.255')).toBe(true);
+    expect(destinationTunnelCidrContains('10.0.0.0/8', '11.0.0.0')).toBe(false);
+    expect(destinationTunnelCidrContains('100.64.1.1/32', '100.64.1.1')).toBe(true);
+    expect(destinationTunnelCidrContains('100.64.1.1/32', '100.64.1.2')).toBe(false);
+  });
+
+  test('requires at least one selector of any kind', () => {
+    expect(() => validateDestinationTunnelSelectors({})).toThrow(
+      expect.objectContaining<Partial<DestinationTunnelRouteError>>({ code: 'empty' }),
+    );
+  });
+
+  test('applies the Android minimum route port policy when requested', () => {
+    expect(() =>
+      validateDestinationTunnelSelectors(
+        { routes: [{ host: 'localhost', port: 80 }] },
+        { minRoutePort: 1024 },
+      ),
+    ).toThrow(expect.objectContaining<Partial<DestinationTunnelRouteError>>({ code: 'invalid_port' }));
+    expect(
+      validateDestinationTunnelSelectors(
+        { routes: [{ host: 'localhost', port: 8080 }] },
+        { minRoutePort: 1024 },
+      ),
+    ).toEqual({ routes: [{ host: 'localhost', port: 8080 }] });
+  });
+
+  test('assigns kind-scoped 1-based selector IDs', () => {
+    expect(
+      destinationTunnelSelectorIds({
+        routes: [{ host: 'localhost', port: 8080 }],
+        domains: ['*.corp.example', 'db.internal'],
+        cidrs: ['10.0.0.0/8'],
+      }),
+    ).toEqual(['route-1', 'domain-1', 'domain-2', 'cidr-1']);
+  });
+
+  test.each(fixture.configHashCases)('pins config hash for $name', ({ selectors, sha256 }) => {
+    expect(destinationTunnelConfigHash(selectors as DestinationTunnelSelectors)).toBe(sha256);
+  });
+
+  test.each(fixture.openAllowedCases)('authorizes OPEN case $name: $allowed', ({ selectors, open, allowed }) => {
+    const message = {
+      type: 'open' as const,
+      connId: 1,
+      proto: 'tcp' as const,
+      ...open,
+    };
+    const selectorSet = validateDestinationTunnelSelectors(selectors as DestinationTunnelSelectors);
+    if (allowed) {
+      expect(() => assertDestinationTunnelOpenAllowed(message, selectorSet)).not.toThrow();
+    } else {
+      expect(() => assertDestinationTunnelOpenAllowed(message, selectorSet)).toThrow(
+        DestinationTunnelProtocolError,
+      );
+    }
+  });
+
+  test('round-trips windowUpdate messages in both directions', () => {
+    const encoded = encodeDestinationTunnelClientMessage({
+      type: 'windowUpdate',
+      connId: 5,
+      increment: 65536,
+    });
+    expect(JSON.parse(encoded)).toEqual({ type: 'windowUpdate', connId: 5, increment: 65536 });
+    expect(
+      decodeDestinationTunnelServerMessage({ type: 'windowUpdate', connId: 5, increment: 65536 }),
+    ).toEqual({ type: 'windowUpdate', connId: 5, increment: 65536 });
+  });
+
+  test.each([0, -1, 1.5, DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT + 1])(
+    'rejects invalid windowUpdate increment %p',
+    (increment) => {
+      expect(() =>
+        encodeDestinationTunnelClientMessage({ type: 'windowUpdate', connId: 5, increment }),
+      ).toThrow(DestinationTunnelProtocolError);
+      expect(() =>
+        decodeDestinationTunnelServerMessage({ type: 'windowUpdate', connId: 5, increment }),
+      ).toThrow(DestinationTunnelProtocolError);
+    },
+  );
+
+  test.each([0, -5, 1.5, DESTINATION_TUNNEL_MAX_WINDOW + 1])('rejects invalid window %p', (window) => {
+    expect(() => encodeDestinationTunnelClientMessage({ type: 'openOk', connId: 5, window })).toThrow(
+      DestinationTunnelProtocolError,
+    );
+    expect(() =>
+      decodeDestinationTunnelServerMessage({
+        type: 'open',
+        connId: 5,
+        routeId: 'route-1',
+        host: 'localhost',
+        port: 8080,
+        proto: 'tcp',
+        window,
+      }),
+    ).toThrow(DestinationTunnelProtocolError);
+  });
+
+  test('rejects malformed selector reports in ready', () => {
+    expect(() =>
+      decodeDestinationTunnelServerMessage({
+        type: 'ready',
+        version: 1,
+        tunnelId: 'tunnel-1',
+        selectors: [{ id: 'route-1', kind: 'domain', value: 'x' }],
+      }),
+    ).toThrow(DestinationTunnelProtocolError);
+    expect(() =>
+      decodeDestinationTunnelServerMessage({
+        type: 'ready',
+        version: 1,
+        tunnelId: 'tunnel-1',
+        selectors: [{ id: 'route-0', kind: 'route', value: 'localhost:1' }],
+      }),
+    ).toThrow(DestinationTunnelProtocolError);
+    expect(() =>
+      decodeDestinationTunnelServerMessage({
+        type: 'ready',
+        version: 1,
+        tunnelId: 'tunnel-1',
+        selectors: [
+          { id: 'route-1', kind: 'route', value: 'localhost:1', binds: [{ address: 'x', status: 'nope' }] },
+        ],
+      }),
     ).toThrow(DestinationTunnelProtocolError);
   });
 });
