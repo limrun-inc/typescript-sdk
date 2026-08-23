@@ -91,6 +91,30 @@ export class DestinationTunnelProtocolError extends Error {
   }
 }
 
+export function encodeDestinationTunnelDataFrame(connId: number, payload: Buffer): Buffer {
+  validateConnectionId(connId);
+  if (payload.length === 0) {
+    throw new DestinationTunnelProtocolError('tunnel data frame must include a payload');
+  }
+  const frame = Buffer.allocUnsafe(DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES + payload.length);
+  frame.writeUInt32BE(connId, 0);
+  payload.copy(frame, DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES);
+  return frame;
+}
+
+export function decodeDestinationTunnelDataFrame(frame: Buffer): {
+  connId: number;
+  payload: Buffer;
+} {
+  if (frame.length <= DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES) {
+    throw new DestinationTunnelProtocolError('tunnel data frame must include a payload');
+  }
+  return {
+    connId: frame.readUInt32BE(0),
+    payload: frame.subarray(DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES),
+  };
+}
+
 export function validateDestinationTunnelRoutes(
   routes: readonly DestinationTunnelRoute[],
 ): DestinationTunnelRoute[] {
@@ -307,10 +331,14 @@ function readPort(record: Record<string, unknown>, key: string): number {
 
 function readConnectionId(record: Record<string, unknown>): number {
   const value = readInteger(record, 'connId');
-  if (value < 0 || value > 0xffff_ffff) {
+  validateConnectionId(value);
+  return value;
+}
+
+function validateConnectionId(value: number): void {
+  if (!Number.isInteger(value) || value < 0 || value > 0xffff_ffff) {
     throw new DestinationTunnelProtocolError('connId must be an unsigned 32-bit integer');
   }
-  return value;
 }
 
 function readTCP(record: Record<string, unknown>): 'tcp' {

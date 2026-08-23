@@ -1,0 +1,26 @@
+{
+  "dataFrames": [
+    {
+      "name": "single zero byte on first connection",
+      "connId": 1,
+      "payload": [0],
+      "frame": [0, 0, 0, 1, 0]
+    },
+    {
+      "name": "multi-byte payload on maximum connection ID",
+      "connId": 4294967295,
+      "payload": [222, 173, 190, 239],
+      "frame": [255, 255, 255, 255, 222, 173, 190, 239]
+    }
+  ],
+  "invalidFrames": [
+    {
+      "name": "empty",
+      "frame": []
+    },
+    {
+      "name": "connection ID only",
+      "frame": [0, 0, 0, 1]
+    }
+  ]
+}

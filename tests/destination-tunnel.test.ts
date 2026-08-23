@@ -1,4 +1,9 @@
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import binaryFixture from './destination-tunnel-binary.fixture.json';
 import fixture from './destination-tunnel-protocol.fixture.json';
+import upstream from './destination-tunnel-protocol.upstream.json';
 import {
   DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
   DESTINATION_TUNNEL_MAX_ROUTES,
@@ -7,7 +12,9 @@ import {
   DestinationTunnelRouteError,
   assertDestinationTunnelOpenAllowed,
   assertDestinationTunnelReady,
+  decodeDestinationTunnelDataFrame,
   decodeDestinationTunnelServerMessage,
+  encodeDestinationTunnelDataFrame,
   encodeDestinationTunnelClientMessage,
   validateDestinationTunnelRoutes,
   type DestinationTunnelClientMessage,
@@ -21,6 +28,31 @@ describe('destination tunnel wire contract', () => {
     expect(DESTINATION_TUNNEL_VERSION).toBe(fixture.contract.version);
     expect(DESTINATION_TUNNEL_MAX_ROUTES).toBe(fixture.contract.maxRoutes);
     expect(DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES).toBe(fixture.contract.connID.binaryHeaderBytes);
+  });
+
+  test.each(binaryFixture.dataFrames)('matches binary vector $name', ({ connId, payload, frame }) => {
+    expect(Array.from(encodeDestinationTunnelDataFrame(connId, Buffer.from(payload)))).toEqual(frame);
+    const decoded = decodeDestinationTunnelDataFrame(Buffer.from(frame));
+    expect(decoded.connId).toBe(connId);
+    expect(Array.from(decoded.payload)).toEqual(payload);
+  });
+
+  test.each(binaryFixture.invalidFrames)('rejects invalid binary vector $name', ({ frame }) => {
+    expect(() => decodeDestinationTunnelDataFrame(Buffer.from(frame))).toThrow(
+      DestinationTunnelProtocolError,
+    );
+  });
+
+  test('pins vendored vectors to the canonical limrun commit', () => {
+    expect(upstream).toEqual({
+      repository: 'limrun-inc/limrun',
+      commit: '79863f0fe5bcb24c241e077d3e7c8ea88b9a2ef2',
+      path: 'spec/destination-tunnel/v1',
+      messagesSha256: 'd9f36eaaa0fe290870bc90d7d7c3914be4285174967980d6598ae957497171e4',
+      binarySha256: 'e6da913a0ff85a3402f09de6cbbb18d4f9b2e76007ca48b85f4d35b66810da7d',
+    });
+    expect(sha256('destination-tunnel-protocol.fixture.json')).toBe(upstream.messagesSha256);
+    expect(sha256('destination-tunnel-binary.fixture.json')).toBe(upstream.binarySha256);
   });
 
   test('encodes every client fixture', () => {
@@ -45,6 +77,9 @@ describe('destination tunnel wire contract', () => {
           connId,
         }),
       ).toThrow(DestinationTunnelProtocolError);
+      expect(() => encodeDestinationTunnelDataFrame(connId, Buffer.from([1]))).toThrow(
+        DestinationTunnelProtocolError,
+      );
     },
   );
 
@@ -98,6 +133,13 @@ describe('destination tunnel wire contract', () => {
     });
   });
 });
+
+function sha256(name: string): string {
+  return crypto
+    .createHash('sha256')
+    .update(fs.readFileSync(path.join(__dirname, name)))
+    .digest('hex');
+}
 
 describe('destination tunnel route contract', () => {
   test.each(fixture.routeCases)('canonicalizes $input.host', ({ input, canonical }) => {

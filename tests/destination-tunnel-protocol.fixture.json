@@ -8,9 +8,15 @@
       "maximum": 4294967295,
       "binaryHeaderBytes": 4,
       "binaryByteOrder": "big_endian",
-      "invalidJSONValues": [-1, 1.5, 4294967296]
+      "invalidJSONValues": [
+        -1,
+        1.5,
+        4294967296
+      ]
     },
-    "transports": ["tcp"],
+    "transports": [
+      "tcp"
+    ],
     "openFailureReasons": [
       "dns_not_found",
       "dns_temporary_failure",
@@ -24,7 +30,13 @@
       "cancelled",
       "internal"
     ],
-    "resetReasons": ["cancelled", "connection_error", "protocol_error", "resource_exhausted", "internal"],
+    "resetReasons": [
+      "cancelled",
+      "connection_error",
+      "protocol_error",
+      "resource_exhausted",
+      "internal"
+    ],
     "sessionErrorCodes": [
       "unsupported_version",
       "invalid_message",
@@ -224,6 +236,20 @@
       "error": "invalid_port"
     },
     {
+      "name": "canonical localhost duplicate",
+      "routes": [
+        {
+          "host": "localhost",
+          "port": 3000
+        },
+        {
+          "host": "LOCALHOST",
+          "port": 3000
+        }
+      ],
+      "error": "duplicate"
+    },
+    {
       "name": "canonical IPv6 duplicate",
       "routes": [
         {
@@ -233,20 +259,6 @@
         {
           "host": "2001:0db8:0:0:0:0:0:1",
           "port": 443
-        }
-      ],
-      "error": "duplicate"
-    },
-    {
-      "name": "canonical localhost duplicate",
-      "routes": [
-        {
-          "host": "LOCALHOST",
-          "port": 3000
-        },
-        {
-          "host": "localhost",
-          "port": 3000
         }
       ],
       "error": "duplicate"
@@ -264,8 +276,8 @@
             "port": 8000
           },
           {
-            "host": "127.0.0.1",
-            "port": 8081
+            "host": "localhost",
+            "port": 3000
           }
         ]
       }

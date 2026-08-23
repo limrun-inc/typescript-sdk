@@ -2,12 +2,13 @@ import net from 'net';
 import { WebSocket, type RawData } from 'ws';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import {
-  DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
   DESTINATION_TUNNEL_VERSION,
   DestinationTunnelProtocolError,
   assertDestinationTunnelOpenAllowed,
   assertDestinationTunnelReady,
+  decodeDestinationTunnelDataFrame,
   decodeDestinationTunnelServerMessage,
+  encodeDestinationTunnelDataFrame,
   encodeDestinationTunnelClientMessage,
   validateDestinationTunnelRoutes,
   type DestinationTunnelClientMessage,
@@ -238,10 +239,7 @@ export async function startDestinationTcpTunnel(
         failTransport(new Error('destination tunnel WebSocket closed while sending data'));
         return;
       }
-      const frame = Buffer.allocUnsafe(DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES + payload.length);
-      frame.writeUInt32BE(connId, 0);
-      payload.copy(frame, DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES);
-      ws.send(frame, { binary: true }, frameSent);
+      ws.send(encodeDestinationTunnelDataFrame(connId, payload), { binary: true }, frameSent);
       frameQueued();
     };
 
@@ -382,10 +380,7 @@ export async function startDestinationTcpTunnel(
       if (!tunnelReady) {
         throw new DestinationTunnelProtocolError('received tunnel data before READY');
       }
-      if (frame.length <= DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES) {
-        throw new DestinationTunnelProtocolError('tunnel data frame must include a payload');
-      }
-      const connId = frame.readUInt32BE(0);
+      const { connId, payload } = decodeDestinationTunnelDataFrame(frame);
       const connection = findOpenConnection(connId);
       if (!connection) return;
       if (connection.remoteInputEnded) {
@@ -394,7 +389,6 @@ export async function startDestinationTcpTunnel(
         return;
       }
 
-      const payload = frame.subarray(DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES);
       const nextConnectionPendingBytes = connection.pendingWriteBytes + payload.length;
       const nextTotalPendingBytes = totalPendingWriteBytes + payload.length;
       if (
