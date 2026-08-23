@@ -136,7 +136,7 @@ export {
   type GradleBuildLog,
 } from './resources/gradle-instances-helpers';
 export { type AssetUploadOptions } from './resources/daemon-client-shared';
-export { type SessionArtifact } from './resources/session-artifacts';
+export { type SessionArtifact, type SessionArtifactKind } from './resources/session-artifacts';
 export {
   LIMRUN_DIR,
   TRY_IMPORT_LINE,

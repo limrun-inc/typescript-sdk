@@ -46,7 +46,7 @@ export {
 export { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './assets-helpers';
 export { IosInstances } from './ios-instances-helpers';
 export { AndroidInstances } from './android-instances-helpers';
-export { type SessionArtifact } from './session-artifacts';
+export { type SessionArtifact, type SessionArtifactKind } from './session-artifacts';
 export {
   XcodeInstances,
   RbeUnsupportedError,

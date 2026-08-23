@@ -1,15 +1,19 @@
-// Hand-written: the session-artifact list endpoints are not in the generated
+// Hand-written: the session-artifact list endpoint is not in the generated
 // OpenAPI surface yet. Shared by the iOS and Android instance helpers.
+
+/** The kind of a persisted session capture. */
+export type SessionArtifactKind = 'recording' | 'appLog' | 'eventLog';
 
 /**
  * One persisted session capture of an instance: a video recording, an app log
  * capture, or a coalesced event log. Returned by the director's
- * GET /v1/{ios,android}_instances/{id}/{recordings,app_logs,events} endpoints.
+ * GET /v1/{ios,android}_instances/{id}/session_artifacts endpoint, optionally
+ * narrowed with its kind query parameter.
  */
 export interface SessionArtifact {
   id: string;
 
-  kind: 'recording' | 'appLog' | 'eventLog';
+  kind: SessionArtifactKind;
 
   /** Bundle id (iOS) or package name (Android) for app log captures. */
   bundleId?: string;
