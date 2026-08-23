@@ -24,7 +24,8 @@ export default class AndroidPullFile extends BaseCommand {
     }),
     destination: Args.string({
       description:
-        'Local path to save the file to. Defaults to the remote filename in the current directory.',
+        'Local path to save the file to. An existing directory saves the remote filename inside it, ' +
+        'like adb pull. Defaults to the remote filename in the current directory.',
       required: false,
     }),
   };
@@ -41,7 +42,12 @@ export default class AndroidPullFile extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const localPath = path.resolve(args.destination ?? path.posix.basename(args.path));
+      let localPath = path.resolve(args.destination ?? path.posix.basename(args.path));
+      // adb pull semantics: an existing directory destination (e.g. `.`)
+      // receives the file under its remote basename.
+      if (fs.existsSync(localPath) && fs.statSync(localPath).isDirectory()) {
+        localPath = path.join(localPath, path.posix.basename(args.path));
+      }
 
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
