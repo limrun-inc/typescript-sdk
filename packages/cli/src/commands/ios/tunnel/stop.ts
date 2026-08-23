@@ -12,6 +12,7 @@ import {
   signalTunnelOwner,
   stopTunnelErrorIsNotFound,
   tunnelOwnerProcessIdentity,
+  tunnelOwnerRemainsSelectedForStop,
   type IosTunnelProcessState,
   type TunnelOwnerProcessIdentity,
 } from '../../../lib/ios-tunnel-process';
@@ -112,7 +113,7 @@ export default class IosTunnelStop extends BaseCommand {
       }
       state = loadTunnelProcess(instanceId, state.owner) ?? state;
       identity = tunnelOwnerProcessIdentity(state);
-      if (expectedTunnelId && state.tunnelId !== expectedTunnelId) {
+      if (!tunnelOwnerRemainsSelectedForStop(snapshot, state, expectedTunnelId)) {
         if (identity === 'missing' || identity === 'mismatch') {
           if (clearTunnelProcess(instanceId, state.owner)) {
             recordsCleaned++;

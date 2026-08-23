@@ -20,8 +20,10 @@ import {
   selectTunnelOwnersForStop,
   signalTunnelOwner,
   stopTunnelErrorIsNotFound,
+  subscribeTunnelDisconnect,
   tunnelChildEnvironment,
   tunnelOwnerProcessIdentity,
+  tunnelOwnerRemainsSelectedForStop,
   tunnelProcessPaths,
   tunnelProcessStartingLeaseExpired,
   updateTunnelProcess,
@@ -164,6 +166,39 @@ describe('iOS tunnel process state', () => {
       replacement,
       starting,
     ]);
+  });
+
+  test('keeps a selected starting owner targeted if it becomes ready during stop', () => {
+    const starting = makeState({ owner: OWNER_1, pid: 456 });
+    const replacement = makeReadyState({
+      owner: OWNER_1,
+      pid: 456,
+      tunnelId: 'replacement',
+    });
+    expect(tunnelOwnerRemainsSelectedForStop(starting, replacement, 'old-tunnel')).toBe(true);
+    expect(
+      tunnelOwnerRemainsSelectedForStop(
+        makeReadyState({ owner: OWNER_1, tunnelId: 'old-tunnel' }),
+        replacement,
+        'old-tunnel',
+      ),
+    ).toBe(false);
+  });
+
+  test('observes a disconnect that happened before subscription', () => {
+    const unsubscribe = jest.fn();
+    const onDisconnect = jest.fn();
+    const dispose = subscribeTunnelDisconnect(
+      {
+        getConnectionState: () => 'disconnected',
+        onConnectionStateChange: () => unsubscribe,
+      },
+      onDisconnect,
+    );
+
+    expect(onDisconnect).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    dispose();
   });
 
   test('classifies only the stable stop 404 error as already gone', () => {

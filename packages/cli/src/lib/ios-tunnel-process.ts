@@ -253,6 +253,38 @@ export function selectTunnelOwnersForStop(
   return owners.filter((state) => state.status === 'starting' || state.tunnelId === tunnelId);
 }
 
+export function tunnelOwnerRemainsSelectedForStop(
+  snapshot: IosTunnelProcessState,
+  current: IosTunnelProcessState,
+  tunnelId: string | undefined,
+): boolean {
+  return !tunnelId || snapshot.status === 'starting' || current.tunnelId === tunnelId;
+}
+
+export function subscribeTunnelDisconnect(
+  tunnel: Pick<Ios.Tunnel, 'getConnectionState' | 'onConnectionStateChange'>,
+  onDisconnect: () => void,
+): () => void {
+  let disconnected = false;
+  let unsubscribe = (): void => {};
+  function observe(state: ReturnType<Ios.Tunnel['getConnectionState']>): void {
+    if (state !== 'disconnected' || disconnected) return;
+    disconnected = true;
+    unsubscribe();
+    onDisconnect();
+  }
+  unsubscribe = tunnel.onConnectionStateChange(observe);
+  if (disconnected) {
+    unsubscribe();
+  } else {
+    observe(tunnel.getConnectionState());
+  }
+  return () => {
+    disconnected = true;
+    unsubscribe();
+  };
+}
+
 export function stopTunnelErrorIsNotFound(error: unknown): boolean {
   return error instanceof Error && error.message.startsWith('stopTunnel failed: 404 ');
 }

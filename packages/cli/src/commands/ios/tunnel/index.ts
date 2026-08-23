@@ -17,6 +17,7 @@ import {
   parseTunnelRoute,
   prepareTunnelLog,
   readTunnelLogTail,
+  subscribeTunnelDisconnect,
   tunnelChildEnvironment,
   tunnelOwnerProcessIdentity,
   tunnelProcessPaths,
@@ -293,6 +294,7 @@ export default class IosTunnel extends BaseCommand {
     await new Promise<void>((resolve, reject) => {
       const keepAlive = setInterval(() => {}, 1 << 30);
       let stopping = false;
+      let unsubscribe = (): void => {};
       const cleanup = () => {
         clearInterval(keepAlive);
         unsubscribe();
@@ -304,8 +306,10 @@ export default class IosTunnel extends BaseCommand {
         cleanup();
         resolve();
       };
-      const unsubscribe = tunnel.onConnectionStateChange((state) => {
-        if (state !== 'disconnected' || stopping) return;
+      process.once('SIGINT', shutdown);
+      process.once('SIGTERM', shutdown);
+      unsubscribe = subscribeTunnelDisconnect(tunnel, () => {
+        if (stopping) return;
         cleanup();
         if (remoteStopIsClean) {
           resolve();
@@ -313,8 +317,6 @@ export default class IosTunnel extends BaseCommand {
           reject(new Error('Destination tunnel disconnected unexpectedly'));
         }
       });
-      process.once('SIGINT', shutdown);
-      process.once('SIGTERM', shutdown);
     });
   }
 
