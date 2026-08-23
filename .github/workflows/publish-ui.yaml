@@ -26,4 +26,10 @@ jobs:
         working-directory: packages/ui
         run: |
           npm run build
-          npm publish --provenance
+          version="$(node -p "require('./package.json').version")"
+          if [[ "$version" == *-* ]]; then
+            tag="next"
+          else
+            tag="latest"
+          fi
+          npm publish --provenance --tag "$tag"
