@@ -84,18 +84,8 @@
         "port": 9443
       },
       "canonical": {
-        "host": "::ffff:192.0.2.1",
+        "host": "192.0.2.1",
         "port": 9443
-      }
-    },
-    {
-      "input": {
-        "host": "::192.0.2.1",
-        "port": 10443
-      },
-      "canonical": {
-        "host": "::192.0.2.1",
-        "port": 10443
       }
     }
   ],
@@ -196,6 +186,26 @@
       "error": "invalid_host"
     },
     {
+      "name": "IPv4-compatible IPv6",
+      "routes": [
+        {
+          "host": "::192.0.2.1",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
+      "name": "canonical IPv4-compatible IPv6",
+      "routes": [
+        {
+          "host": "::2",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
       "name": "invalid IPv4",
       "routes": [
         {
@@ -221,6 +231,16 @@
         {
           "host": "10.20.30.40",
           "port": 0
+        }
+      ],
+      "error": "invalid_port"
+    },
+    {
+      "name": "DNS port",
+      "routes": [
+        {
+          "host": "10.20.30.40",
+          "port": 53
         }
       ],
       "error": "invalid_port"

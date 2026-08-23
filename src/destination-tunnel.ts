@@ -232,7 +232,7 @@ export function decodeDestinationTunnelServerMessage(value: unknown): Destinatio
 }
 
 function canonicalizeDestinationTunnelRoute(route: DestinationTunnelRoute): DestinationTunnelRoute {
-  if (!Number.isInteger(route.port) || route.port < 1 || route.port > 65_535) {
+  if (!Number.isInteger(route.port) || route.port < 1 || route.port > 65_535 || route.port === 53) {
     throw new DestinationTunnelRouteError('invalid_port', `invalid tunnel route port ${route.port}`);
   }
 
@@ -247,20 +247,24 @@ function canonicalizeDestinationTunnelRoute(route: DestinationTunnelRoute): Dest
   }
   if (ipVersion === 6) {
     const hostname = new URL(`http://[${route.host}]/`).hostname;
-    return { host: canonicalizeIPv6(hostname.slice(1, -1)), port: route.port };
+    const canonical = hostname.slice(1, -1);
+    if (canonical !== '::1' && /^::(?:[0-9a-f]{1,4}:)?[0-9a-f]{1,4}$/.test(canonical)) {
+      throw new DestinationTunnelRouteError('invalid_host', `invalid tunnel route host ${route.host}`);
+    }
+    return { host: canonicalizeIPv6(canonical), port: route.port };
   }
 
   throw new DestinationTunnelRouteError('invalid_host', `invalid tunnel route host ${route.host}`);
 }
 
 function canonicalizeIPv6(host: string): string {
-  const embeddedIPv4 = /^(::(?:ffff:)?)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
-  if (!embeddedIPv4?.[1] || !embeddedIPv4[2] || !embeddedIPv4[3]) {
+  const mappedIPv4 = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+  if (!mappedIPv4?.[1] || !mappedIPv4[2]) {
     return host;
   }
-  const high = Number.parseInt(embeddedIPv4[2], 16);
-  const low = Number.parseInt(embeddedIPv4[3], 16);
-  return `${embeddedIPv4[1]}${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+  const high = Number.parseInt(mappedIPv4[1], 16);
+  const low = Number.parseInt(mappedIPv4[2], 16);
+  return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
 }
 
 function parseRouteId(routeId: string): number {

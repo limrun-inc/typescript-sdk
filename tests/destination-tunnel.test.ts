@@ -46,9 +46,9 @@ describe('destination tunnel wire contract', () => {
   test('pins vendored vectors to the canonical limrun commit', () => {
     expect(upstream).toEqual({
       repository: 'limrun-inc/limrun',
-      commit: '3ccfb218a0b46af536f75052b3293292af912ee6',
-      path: 'spec/destination-tunnel/v1',
-      messagesSha256: 'd9f36eaaa0fe290870bc90d7d7c3914be4285174967980d6598ae957497171e4',
+      commit: '68101157b3e15032f6e6e2b10f343f467d75be78',
+      path: 'design/destination-tunnel/v1',
+      messagesSha256: 'e6f344fde646f5e2996558b7a880e17873b6e661c2918ddb5642d10f5dae7bfd',
       binarySha256: 'e6da913a0ff85a3402f09de6cbbb18d4f9b2e76007ca48b85f4d35b66810da7d',
     });
     expect(sha256('destination-tunnel-protocol.fixture.json')).toBe(upstream.messagesSha256);
