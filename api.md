@@ -4,6 +4,8 @@ Types:
 
 - <code><a href="./src/resources/android-instances.ts">AndroidInstance</a></code>
 - <code><a href="./src/resources/session-artifacts.ts">SessionArtifact</a></code>
+- <code><a href="./src/resources/session-artifacts.ts">SessionLogLine</a></code>
+- <code><a href="./src/resources/session-artifacts.ts">SessionEvent</a></code>
 
 Methods:
 
@@ -37,6 +39,8 @@ Types:
 
 - <code><a href="./src/resources/ios-instances.ts">IosInstance</a></code>
 - <code><a href="./src/resources/session-artifacts.ts">SessionArtifact</a></code>
+- <code><a href="./src/resources/session-artifacts.ts">SessionLogLine</a></code>
+- <code><a href="./src/resources/session-artifacts.ts">SessionEvent</a></code>
 
 Methods:
 

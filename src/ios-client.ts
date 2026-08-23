@@ -26,6 +26,8 @@ import {
 } from './http-proxy';
 import { startXcrunShim as startClientXcrunShim } from './ios-shim';
 import { persistFields, type PersistOption } from './internal/persist-option';
+import { streamSessionEntries } from './internal/session-stream';
+import type { SessionLogLine, SessionEvent } from './resources/session-artifacts';
 
 export { type PersistOption } from './internal/persist-option';
 
@@ -800,6 +802,30 @@ export type InstanceClient = {
 
   /** Stop the active event capture. */
   stopEventCapture: () => Promise<void>;
+
+  /**
+   * Tail the live app log stream fed by {@link startAppLogCapture}. On
+   * connect the instance replays its recent buffer (up to 1000 lines), then
+   * delivers lines as they are captured; a dropped connection reconnects
+   * and resumes exactly where it left off, so every line is delivered once.
+   * The stream is independent of this client's websocket and survives
+   * {@link disconnect}; `onError` fires at most once, after the stream has
+   * kept failing for several minutes (e.g. the instance was deleted), and
+   * the stream is closed. Returns a function that closes the stream.
+   */
+  streamAppLogCapture: (handlers: {
+    onLine: (line: SessionLogLine) => void;
+    onError?: (error: Error) => void;
+  }) => () => void;
+
+  /**
+   * Tail the live coalesced event log fed by {@link startEventCapture}.
+   * Same delivery and lifecycle semantics as {@link streamAppLogCapture}.
+   */
+  streamEventCapture: (handlers: {
+    onEvent: (event: SessionEvent) => void;
+    onError?: (error: Error) => void;
+  }) => () => void;
 
   /**
    * Play an audio file as the simulator's microphone input. Stage the file on
@@ -2093,6 +2119,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             stopAppLogCapture,
             startEventCapture,
             stopEventCapture,
+            streamAppLogCapture,
+            streamEventCapture,
             playOnMicrophone,
             stopMicrophonePlayback,
             microphoneStatus,
@@ -2465,6 +2493,28 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const stopEventCapture = async (): Promise<void> => {
       await sendRequest<void>('stopEventCapture');
     };
+
+    const streamAppLogCapture = (handlers: {
+      onLine: (line: SessionLogLine) => void;
+      onError?: (error: Error) => void;
+    }): (() => void) =>
+      streamSessionEntries<SessionLogLine>({
+        url: `${options.apiUrl}/session/applogs/events`,
+        token: options.token,
+        onEntry: handlers.onLine,
+        onError: handlers.onError,
+      });
+
+    const streamEventCapture = (handlers: {
+      onEvent: (event: SessionEvent) => void;
+      onError?: (error: Error) => void;
+    }): (() => void) =>
+      streamSessionEntries<SessionEvent>({
+        url: `${options.apiUrl}/session/events/events`,
+        token: options.token,
+        onEntry: handlers.onEvent,
+        onError: handlers.onError,
+      });
 
     const stopRecording = async (saveTo: { presignedUrl?: string; localPath?: string }): Promise<string> => {
       await sendRequest<void>('stopVideoRecording', {
