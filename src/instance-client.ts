@@ -11,9 +11,34 @@ import { nodeProxyTransport } from './internal/proxy-transport';
 import { startTcpTunnel, isNonRetryableError } from './tunnel';
 import type { Tunnel } from './tunnel';
 import { syncFolder, type FolderSyncOptions, type SyncFolderResult } from './folder-sync';
+import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './destination-tunnel-dialer';
+import type { DestinationTunnelRoute } from './destination-tunnel';
+import {
+  getDestinationTunnelStatus,
+  stopDestinationTunnel,
+  type DestinationTunnelStatus,
+} from './internal/destination-tunnel-management';
+import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
 
 const ANDROID_RECORDING_PATH = '/data/local/tmp/recordings/video_recording.mp4';
 const ANDROID_SIGNALING_PATH = '/ws';
+const ANDROID_TUNNEL_DEFAULT_WINDOW = 1024 * 1024;
+
+/** Transparent destination tunnel from the Android instance to this machine. */
+export type DestinationTunnel = DestinationTcpTunnel;
+export type DestinationTunnelOptions = {
+  /** Exact localhost or literal-IP TCP destinations, served on-device via bind listeners. */
+  routes?: DestinationTunnelRoute[];
+  /** Exact or `*.` wildcard domains intercepted on-device via fake-IP DNS. */
+  domains?: string[];
+  /** IPv4 CIDR destinations intercepted on-device via TPROXY. */
+  cidrs?: string[];
+  /** Per-flow receive window in bytes. Defaults to 1 MiB. */
+  window?: number;
+  /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
+  logLevel?: LogLevel;
+};
+export type { DestinationTunnelStatus } from './internal/destination-tunnel-management';
 
 /**
  * Connection state of the instance client
@@ -267,6 +292,22 @@ export type InstanceClient = {
    * Returns the local TCP port and a cleanup function.
    */
   startAdbTunnel: () => Promise<Tunnel>;
+
+  /**
+   * Transparently route declared Android TCP destinations through this
+   * machine. Exact `localhost` routes are also reachable on-device as
+   * `10.0.2.2:<port>`, following the emulator convention.
+   *
+   * The caller owns the returned tunnel and must close it. Disconnecting this
+   * instance client does not close the tunnel.
+   */
+  startTunnel: (options: DestinationTunnelOptions) => Promise<DestinationTunnel>;
+
+  /** Get the active destination tunnel and most recent terminal failure. */
+  getTunnelStatus: () => Promise<DestinationTunnelStatus>;
+
+  /** Stop the active destination tunnel only when its ID matches `tunnelId`. */
+  stopTunnel: (tunnelId: string) => Promise<void>;
   /**
    * Send an asset URL to the instance. The instance will download the asset
    * and process it (currently APK install is supported). Resolves on success,
@@ -1300,6 +1341,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             keepAlive,
             disconnect,
             startAdbTunnel,
+            startTunnel,
+            getTunnelStatus,
+            stopTunnel,
             sendAsset,
             syncApp,
             getConnectionState,
@@ -1641,6 +1685,31 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         throw err;
       }
       return tunnel;
+    };
+
+    const requireAdbUrl = (): string => {
+      if (!options.adbUrl) {
+        throw new Error('adbUrl is required to manage a destination tunnel.');
+      }
+      return options.adbUrl;
+    };
+
+    const startTunnel = async (tunnelOptions: DestinationTunnelOptions): Promise<DestinationTunnel> => {
+      return startDestinationTcpTunnel(deriveDestinationTunnelURL(requireAdbUrl()), options.token, {
+        ...(tunnelOptions.routes ? { routes: tunnelOptions.routes } : {}),
+        ...(tunnelOptions.domains ? { domains: tunnelOptions.domains } : {}),
+        ...(tunnelOptions.cidrs ? { cidrs: tunnelOptions.cidrs } : {}),
+        window: tunnelOptions.window ?? ANDROID_TUNNEL_DEFAULT_WINDOW,
+        logLevel: tunnelOptions.logLevel ?? logLevel,
+      });
+    };
+
+    const getTunnelStatus = async (): Promise<DestinationTunnelStatus> => {
+      return getDestinationTunnelStatus(requireAdbUrl(), options.token);
+    };
+
+    const stopTunnel = async (tunnelId: string): Promise<void> => {
+      await stopDestinationTunnel(requireAdbUrl(), options.token, tunnelId);
     };
 
     const sendAsset = async (url: string, timeoutMs?: number): Promise<void> => {

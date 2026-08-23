@@ -1,12 +1,20 @@
 import { nodeProxyTransport } from './proxy-transport';
 import { deriveDestinationTunnelStatusURL, deriveDestinationTunnelStopURL } from './destination-tunnel-url';
-import { validateDestinationTunnelRoutes, type DestinationTunnelRoute } from '../destination-tunnel';
+import {
+  validateDestinationTunnelSelectors,
+  type DestinationTunnelRoute,
+  type DestinationTunnelBindReport,
+} from '../destination-tunnel';
 
 export interface DestinationTunnelStatus {
   active?: {
     tunnelId: string;
     state: 'starting' | 'ready' | 'stopping';
     routes: DestinationTunnelRoute[];
+    domains?: string[];
+    cidrs?: string[];
+    /** Per exact route, the device-side bind outcomes (Android bind listeners). */
+    binds?: Record<string, DestinationTunnelBindReport[]>;
   };
   lastFailure?: {
     tunnelId: string;
@@ -71,11 +79,56 @@ function readActiveTunnel(value: unknown): NonNullable<DestinationTunnelStatus['
   if (state !== 'starting' && state !== 'ready' && state !== 'stopping') {
     throw new Error(`invalid tunnel state ${state}`);
   }
+  const routes = active['routes'] === undefined ? [] : readArray(active, 'routes').map(readTunnelRoute);
+  const domains = active['domains'] === undefined ? [] : readArray(active, 'domains').map(readSelectorText);
+  const cidrs = active['cidrs'] === undefined ? [] : readArray(active, 'cidrs').map(readSelectorText);
+  const selectors = validateDestinationTunnelSelectors({
+    ...(routes.length > 0 ? { routes } : {}),
+    ...(domains.length > 0 ? { domains } : {}),
+    ...(cidrs.length > 0 ? { cidrs } : {}),
+  });
   return {
     tunnelId: readNonEmptyString(active, 'tunnelId'),
     state,
-    routes: validateDestinationTunnelRoutes(readArray(active, 'routes').map(readTunnelRoute)),
+    routes: selectors.routes ?? [],
+    ...(selectors.domains ? { domains: selectors.domains } : {}),
+    ...(selectors.cidrs ? { cidrs: selectors.cidrs } : {}),
+    ...(active['binds'] === undefined ? {} : { binds: readBinds(active['binds']) }),
   };
+}
+
+function readSelectorText(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new Error('tunnel selector must be a string');
+  }
+  return value;
+}
+
+function readBinds(value: unknown): Record<string, DestinationTunnelBindReport[]> {
+  const record = readRecord(value, 'tunnel binds');
+  const binds: Record<string, DestinationTunnelBindReport[]> = {};
+  for (const [selectorId, reports] of Object.entries(record)) {
+    if (!Array.isArray(reports)) {
+      throw new Error('tunnel bind reports must be an array');
+    }
+    binds[selectorId] = reports.map((report) => {
+      const bind = readRecord(report, 'tunnel bind report');
+      const status = readString(bind, 'status');
+      if (status !== 'ok' && status !== 'conflict' && status !== 'error') {
+        throw new Error(`invalid tunnel bind status ${status}`);
+      }
+      const osCode = bind['osCode'];
+      if (osCode !== undefined && typeof osCode !== 'string') {
+        throw new Error('tunnel bind osCode must be a string');
+      }
+      return {
+        address: readNonEmptyString(bind, 'address'),
+        status,
+        ...(osCode === undefined ? {} : { osCode }),
+      };
+    });
+  }
+  return binds;
 }
 
 function readTunnelRoute(value: unknown): DestinationTunnelRoute {

@@ -1,3 +1,4 @@
+import dns from 'dns';
 import net from 'net';
 import { WebSocket, type RawData } from 'ws';
 import { nodeProxyTransport } from './internal/proxy-transport';
@@ -8,26 +9,41 @@ import {
   assertDestinationTunnelReady,
   decodeDestinationTunnelDataFrame,
   decodeDestinationTunnelServerMessage,
+  destinationTunnelConfigHash,
   encodeDestinationTunnelDataFrame,
   encodeDestinationTunnelClientMessage,
-  validateDestinationTunnelRoutes,
+  validateDestinationTunnelSelectors,
   type DestinationTunnelClientMessage,
   type DestinationTunnelOpenFailureReason,
   type DestinationTunnelRoute,
   type DestinationTunnelResetReason,
+  type DestinationTunnelSelectorReport,
+  type DestinationTunnelSelectors,
   type DestinationTunnelServerMessage,
 } from './destination-tunnel';
 import type { LogLevel, TunnelConnectionState, TunnelConnectionStateCallback } from './tunnel';
 
 export interface DestinationTcpTunnel {
   tunnelId: string;
+  /** Normalized selectors echoed by the server, including bind reports. */
+  selectors?: DestinationTunnelSelectorReport[];
+  configHash?: string;
   close: () => void;
   getConnectionState: () => TunnelConnectionState;
   onConnectionStateChange: (callback: TunnelConnectionStateCallback) => () => void;
 }
 
 export interface DestinationTcpTunnelOptions {
-  routes: DestinationTunnelRoute[];
+  routes?: DestinationTunnelRoute[];
+  domains?: string[];
+  cidrs?: string[];
+  /**
+   * Per-flow receive window in bytes. Setting it enables explicit credit
+   * flow control: the client advertises the window in `start`/`openOk` and
+   * obeys the server's `open.window` grants. Leave unset for servers that
+   * predate credit (iOS v1 exact-route tunnels).
+   */
+  window?: number;
   logLevel?: LogLevel;
   maxConnections?: number;
   maxPendingBytesPerConnection?: number;
@@ -45,6 +61,25 @@ interface DialConnection {
   localInputEnded: boolean;
   remoteInputEnded: boolean;
   pendingWriteBytes: number;
+  /** Bytes we may still send toward the server. Infinity when credit is off. */
+  sendCredit: number;
+  /** Chunks read from the local socket awaiting send credit, FIFO. */
+  creditQueue: Buffer[];
+  creditQueueBytes: number;
+  /** Bytes accepted by the local socket since the last windowUpdate we sent. */
+  deliveredSinceUpdate: number;
+}
+
+/** Thrown (message prefix) when the server terminates the session with `error`. */
+export const DESTINATION_TUNNEL_SERVER_ERROR_PREFIX = 'destination tunnel failed: ';
+
+/**
+ * True when the failure is a terminal protocol/policy rejection from the
+ * server rather than a transient transport problem. Reconnect supervisors
+ * must not retry terminal failures.
+ */
+export function isTerminalDestinationTunnelError(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith(DESTINATION_TUNNEL_SERVER_ERROR_PREFIX);
 }
 
 export async function startDestinationTcpTunnel(
@@ -52,8 +87,14 @@ export async function startDestinationTcpTunnel(
   token: string,
   options: DestinationTcpTunnelOptions,
 ): Promise<DestinationTcpTunnel> {
-  const routes = validateDestinationTunnelRoutes(options.routes);
+  const selectors = validateDestinationTunnelSelectors({
+    ...(options.routes ? { routes: options.routes } : {}),
+    ...(options.domains ? { domains: options.domains } : {}),
+    ...(options.cidrs ? { cidrs: options.cidrs } : {}),
+  });
+  const routes = selectors.routes ?? [];
   const logLevel = options.logLevel ?? 'info';
+  const creditWindow = options.window === undefined ? undefined : positiveInteger(options.window, 'window');
   const maxConnections = positiveInteger(options.maxConnections ?? 64, 'maxConnections');
   const maxPendingBytesPerConnection = positiveInteger(
     options.maxPendingBytesPerConnection ?? 16 * 1024 * 1024,
@@ -193,6 +234,9 @@ export async function startDestinationTcpTunnel(
       }
     };
 
+    const mayReadFromSocket = (connection: DialConnection): boolean =>
+      !pausedForBackpressure && connection.creditQueueBytes === 0;
+
     const pauseForBackpressure = (): void => {
       if (pausedForBackpressure) return;
       pausedForBackpressure = true;
@@ -205,7 +249,10 @@ export async function startDestinationTcpTunnel(
       if (!pausedForBackpressure || ws.bufferedAmount >= resumeBelowBufferedBytes) return;
       pausedForBackpressure = false;
       for (const connection of connections.values()) {
-        if (!connection.socket.destroyed) connection.socket.resume();
+        // Flows still waiting on per-flow credit stay paused; they resume
+        // when the server grants more window, keeping one stalled flow from
+        // holding every other flow back.
+        if (!connection.socket.destroyed && mayReadFromSocket(connection)) connection.socket.resume();
       }
     };
 
@@ -266,9 +313,63 @@ export async function startDestinationTcpTunnel(
       });
     };
 
+    /**
+     * Push local socket bytes toward the server through the per-flow credit
+     * gate. Chunks beyond the current credit wait in a FIFO queue with the
+     * local socket paused, so a server-throttled flow stops reading instead
+     * of buffering unboundedly.
+     */
+    const pushThroughCreditGate = (connId: number, connection: DialConnection, payload?: Buffer): void => {
+      if (payload && payload.length > 0) {
+        connection.creditQueue.push(payload);
+        connection.creditQueueBytes += payload.length;
+      }
+      while (connection.creditQueue.length > 0 && connection.sendCredit > 0) {
+        const chunk = connection.creditQueue[0]!;
+        if (chunk.length <= connection.sendCredit) {
+          connection.creditQueue.shift();
+          connection.creditQueueBytes -= chunk.length;
+          connection.sendCredit -= chunk.length;
+          sendData(connId, chunk);
+        } else {
+          const portion = chunk.subarray(0, connection.sendCredit);
+          connection.creditQueue[0] = chunk.subarray(connection.sendCredit);
+          connection.creditQueueBytes -= portion.length;
+          connection.sendCredit = 0;
+          sendData(connId, portion);
+        }
+        if (closed) return;
+      }
+      if (connection.socket.destroyed) return;
+      if (connection.creditQueueBytes > 0) {
+        connection.socket.pause();
+      } else if (!pausedForBackpressure) {
+        connection.socket.resume();
+      }
+    };
+
+    const dialTarget = async (
+      message: Extract<DestinationTunnelServerMessage, { type: 'open' }>,
+    ): Promise<{ host: string }> => {
+      // Domain selectors resolve through the user's OS resolver and may only
+      // reach ordinary unicast targets. Loopback and similar special targets
+      // require an explicit exact route grant.
+      const results = await dns.promises.lookup(message.host, { all: true, verbatim: true });
+      for (const result of results) {
+        if (isDialableResolvedAddress(result.address, message.port, routes)) {
+          return { host: result.address };
+        }
+      }
+      const blockedError: NodeJS.ErrnoException = new Error(
+        `all resolved addresses for ${message.host} are blocked`,
+      );
+      blockedError.code = 'EBLOCKED';
+      throw blockedError;
+    };
+
     const handleOpen = (message: Extract<DestinationTunnelServerMessage, { type: 'open' }>): void => {
       try {
-        assertDestinationTunnelOpenAllowed(message, routes);
+        assertDestinationTunnelOpenAllowed(message, selectors);
       } catch {
         sendOpenFailure(message.connId, 'route_not_allowed');
         return;
@@ -281,11 +382,18 @@ export async function startDestinationTcpTunnel(
         return;
       }
 
-      const socket = net.createConnection({
-        host: message.host,
-        port: message.port,
-        allowHalfOpen: true,
-      });
+      const kind = message.routeId.split('-')[0];
+      // Exact routes and CIDR members dial the declared target directly.
+      // Domain targets resolve through the OS resolver first, so their
+      // socket starts detached and connects once an allowed address is found.
+      const socket =
+        kind === 'domain' ?
+          new net.Socket({ allowHalfOpen: true })
+        : net.createConnection({
+            host: message.host,
+            port: message.port,
+            allowHalfOpen: true,
+          });
       const connectTimer = setTimeout(() => {
         if (connections.get(message.connId)?.phase !== 'connecting') return;
         sendOpenFailure(message.connId, 'connection_timed_out', 'ETIMEDOUT');
@@ -299,6 +407,10 @@ export async function startDestinationTcpTunnel(
         localInputEnded: false,
         remoteInputEnded: false,
         pendingWriteBytes: 0,
+        sendCredit: message.window ?? Number.POSITIVE_INFINITY,
+        creditQueue: [],
+        creditQueueBytes: 0,
+        deliveredSinceUpdate: 0,
       };
       connections.set(message.connId, connection);
       if (pausedForBackpressure) {
@@ -309,13 +421,17 @@ export async function startDestinationTcpTunnel(
         if (connections.get(message.connId) !== connection) return;
         clearTimeout(connectTimer);
         connection.phase = 'open';
-        sendControl({ type: 'openOk', connId: message.connId });
+        sendControl({
+          type: 'openOk',
+          connId: message.connId,
+          ...(creditWindow === undefined ? {} : { window: creditWindow }),
+        });
         logger.debug(`Connected ${message.connId} to ${message.host}:${message.port}`);
       });
 
       socket.on('data', (payload: Buffer) => {
         if (connections.get(message.connId) !== connection || connection.phase !== 'open') return;
-        sendData(message.connId, payload);
+        pushThroughCreditGate(message.connId, connection, payload);
       });
 
       socket.once('end', () => {
@@ -343,6 +459,20 @@ export async function startDestinationTcpTunnel(
         }
         removeConnection(message.connId, false);
       });
+
+      if (kind === 'domain') {
+        dialTarget(message)
+          .then(({ host }) => {
+            if (connections.get(message.connId) !== connection || closed) return;
+            socket.connect({ host, port: message.port });
+          })
+          .catch((error: NodeJS.ErrnoException) => {
+            if (connections.get(message.connId) !== connection) return;
+            const reason = error.code === 'EBLOCKED' ? 'route_not_allowed' : classifyOpenFailure(error);
+            sendOpenFailure(message.connId, reason, error.code === 'EBLOCKED' ? undefined : error.code);
+            removeConnection(message.connId, true);
+          });
+      }
     };
 
     const findOpenConnection = (connId: number): DialConnection | undefined => {
@@ -374,6 +504,15 @@ export async function startDestinationTcpTunnel(
       if (connections.has(connId)) {
         removeConnection(connId, true);
       }
+    };
+
+    const handleRemoteWindowUpdate = (connId: number, increment: number): void => {
+      const connection = connections.get(connId);
+      // Updates racing a local close are expected; ignore unknown flows.
+      if (!connection || connection.phase !== 'open') return;
+      if (connection.sendCredit === Number.POSITIVE_INFINITY) return;
+      connection.sendCredit += increment;
+      pushThroughCreditGate(connId, connection);
     };
 
     const handleBinary = (frame: Buffer): void => {
@@ -409,15 +548,35 @@ export async function startDestinationTcpTunnel(
           const osCode = (error as NodeJS.ErrnoException).code;
           sendReset(connId, 'connection_error', osCode);
           removeConnection(connId, true);
+          return;
+        }
+        // Replenish the server's send window once the local socket accepted
+        // the bytes, batching updates to roughly half the window.
+        if (creditWindow === undefined || connections.get(connId) !== connection) return;
+        connection.deliveredSinceUpdate += payload.length;
+        if (connection.deliveredSinceUpdate >= Math.ceil(creditWindow / 2)) {
+          const increment = connection.deliveredSinceUpdate;
+          connection.deliveredSinceUpdate = 0;
+          if (!closed && ws.readyState === WebSocket.OPEN) {
+            sendControl({ type: 'windowUpdate', connId, increment });
+          }
         }
       });
     };
 
     const handleControl = (message: DestinationTunnelServerMessage): void => {
       switch (message.type) {
-        case 'ready':
+        case 'ready': {
           if (tunnelReady) throw new DestinationTunnelProtocolError('received duplicate READY');
           assertDestinationTunnelReady(message);
+          if (message.configHash !== undefined) {
+            const expected = destinationTunnelConfigHash(selectors);
+            if (message.configHash !== expected) {
+              throw new DestinationTunnelProtocolError(
+                `server acknowledged config ${message.configHash} but ${expected} was negotiated`,
+              );
+            }
+          }
           tunnelReady = true;
           if (handshakeTimer) {
             clearTimeout(handshakeTimer);
@@ -425,16 +584,19 @@ export async function startDestinationTcpTunnel(
           }
           armLivenessDeadline();
           updateConnectionState('connected');
-          logger.info(`Destination tunnel ready with ${routes.length} route(s)`);
+          logger.info(`Destination tunnel ready with ${countSelectors(selectors)} selector(s)`);
           resolve({
             tunnelId: message.tunnelId,
+            ...(message.selectors === undefined ? {} : { selectors: message.selectors }),
+            ...(message.configHash === undefined ? {} : { configHash: message.configHash }),
             close,
             getConnectionState,
             onConnectionStateChange,
           });
           return;
+        }
         case 'error':
-          throw new Error(`destination tunnel failed: ${message.code}`);
+          throw new Error(`${DESTINATION_TUNNEL_SERVER_ERROR_PREFIX}${message.code}`);
         case 'open':
           if (!tunnelReady) throw new DestinationTunnelProtocolError('received OPEN before READY');
           handleOpen(message);
@@ -442,6 +604,10 @@ export async function startDestinationTcpTunnel(
         case 'fin':
           if (!tunnelReady) throw new DestinationTunnelProtocolError('received FIN before READY');
           handleRemoteFIN(message.connId);
+          return;
+        case 'windowUpdate':
+          if (!tunnelReady) throw new DestinationTunnelProtocolError('received windowUpdate before READY');
+          handleRemoteWindowUpdate(message.connId, message.increment);
           return;
         case 'reset':
           if (!tunnelReady) throw new DestinationTunnelProtocolError('received RESET before READY');
@@ -464,7 +630,14 @@ export async function startDestinationTcpTunnel(
     handshakeTimer.unref();
 
     ws.on('open', () => {
-      sendControl({ type: 'start', version: DESTINATION_TUNNEL_VERSION, routes });
+      sendControl({
+        type: 'start',
+        version: DESTINATION_TUNNEL_VERSION,
+        ...(selectors.routes ? { routes: selectors.routes } : {}),
+        ...(selectors.domains ? { domains: selectors.domains } : {}),
+        ...(selectors.cidrs ? { cidrs: selectors.cidrs } : {}),
+        ...(creditWindow === undefined ? {} : { window: creditWindow }),
+      });
       pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.ping(undefined, true, frameSent);
@@ -509,6 +682,44 @@ export async function startDestinationTcpTunnel(
   });
 }
 
+/**
+ * Whether a resolved domain address may be dialed. Ordinary unicast targets
+ * (including private ranges the user's machine can reach) are allowed;
+ * loopback, link-local, multicast, unspecified, broadcast, and similar
+ * special targets are blocked unless an exact route grants them.
+ */
+export function isDialableResolvedAddress(
+  address: string,
+  port: number,
+  routes: readonly DestinationTunnelRoute[],
+): boolean {
+  for (const route of routes) {
+    if (route.port !== port) continue;
+    if (route.host === address) return true;
+    if (route.host === 'localhost' && (address === '127.0.0.1' || address === '::1')) return true;
+  }
+  const version = net.isIP(address);
+  if (version === 4) {
+    const octets = address.split('.').map(Number);
+    const first = octets[0]!;
+    if (first === 127 || first === 0) return false;
+    if (first === 169 && octets[1] === 254) return false;
+    if (first >= 224) return false;
+    return true;
+  }
+  if (version === 6) {
+    const lowered = address.toLowerCase();
+    if (lowered === '::1' || lowered === '::') return false;
+    if (/^fe[89ab]/.test(lowered)) return false;
+    if (lowered.startsWith('ff')) return false;
+    if (lowered.startsWith('::ffff:')) {
+      return isDialableResolvedAddress(lowered.slice('::ffff:'.length), port, routes);
+    }
+    return true;
+  }
+  return false;
+}
+
 export function classifyOpenFailure(error: NodeJS.ErrnoException): DestinationTunnelOpenFailureReason {
   switch (error.code) {
     case 'ENOTFOUND':
@@ -537,6 +748,12 @@ export function classifyOpenFailure(error: NodeJS.ErrnoException): DestinationTu
     default:
       return 'internal';
   }
+}
+
+function countSelectors(selectors: DestinationTunnelSelectors): number {
+  return (
+    (selectors.routes?.length ?? 0) + (selectors.domains?.length ?? 0) + (selectors.cidrs?.length ?? 0)
+  );
 }
 
 function positiveInteger(value: number, name: string): number {

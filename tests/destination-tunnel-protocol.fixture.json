@@ -2,6 +2,11 @@
   "contract": {
     "version": 1,
     "maxRoutes": 10,
+    "maxDomains": 64,
+    "maxCidrs": 16,
+    "fakeRange": "198.18.0.0/15",
+    "maxWindow": 67108864,
+    "maxWindowIncrement": 2147483647,
     "connID": {
       "jsonType": "integer",
       "minimum": 0,
@@ -41,10 +46,16 @@
       "unsupported_version",
       "invalid_message",
       "invalid_route",
+      "invalid_selector",
       "route_capacity",
       "already_active",
       "unavailable",
       "internal"
+    ],
+    "bindStatuses": [
+      "ok",
+      "conflict",
+      "error"
     ]
   },
   "routeCases": [
@@ -321,6 +332,324 @@
       "error": "duplicate"
     }
   ],
+  "domainCases": [
+    {
+      "input": "API.Corp.Example",
+      "canonical": "api.corp.example"
+    },
+    {
+      "input": "*.Corp.Example",
+      "canonical": "*.corp.example"
+    },
+    {
+      "input": "xn--mnchen-3ya.example",
+      "canonical": "xn--mnchen-3ya.example"
+    },
+    {
+      "input": "*.internal",
+      "canonical": "*.internal"
+    }
+  ],
+  "invalidDomainSets": [
+    {
+      "name": "trailing dot",
+      "domains": ["corp.example."],
+      "error": "invalid_domain"
+    },
+    {
+      "name": "non-ASCII",
+      "domains": ["münchen.example"],
+      "error": "invalid_domain"
+    },
+    {
+      "name": "Unicode case folding",
+      "domains": ["\u212A.example"],
+      "error": "invalid_domain"
+    },
+    {
+      "name": "embedded wildcard",
+      "domains": ["api.*.example"],
+      "error": "invalid_domain"
+    },
+    {
+      "name": "bare wildcard",
+      "domains": ["*."],
+      "error": "invalid_domain"
+    },
+    {
+      "name": "localhost",
+      "domains": ["localhost"],
+      "error": "invalid_domain"
+    },
+    {
+      "name": "IP literal",
+      "domains": ["192.0.2.1"],
+      "error": "invalid_domain"
+    },
+    {
+      "name": "numeric final label",
+      "domains": ["service.1234"],
+      "error": "invalid_domain"
+    },
+    {
+      "name": "empty label",
+      "domains": ["api..example"],
+      "error": "invalid_domain"
+    },
+    {
+      "name": "hyphen edge label",
+      "domains": ["-api.example"],
+      "error": "invalid_domain"
+    },
+    {
+      "name": "wildcard duplicate",
+      "domains": ["*.corp.example", "*.CORP.example"],
+      "error": "duplicate"
+    }
+  ],
+  "domainMatchCases": [
+    {
+      "pattern": "api.corp.example",
+      "host": "api.corp.example",
+      "matches": true
+    },
+    {
+      "pattern": "api.corp.example",
+      "host": "API.corp.example",
+      "matches": true
+    },
+    {
+      "pattern": "api.corp.example",
+      "host": "sub.api.corp.example",
+      "matches": false
+    },
+    {
+      "pattern": "*.corp.example",
+      "host": "api.corp.example",
+      "matches": true
+    },
+    {
+      "pattern": "*.corp.example",
+      "host": "a.b.corp.example",
+      "matches": true
+    },
+    {
+      "pattern": "*.corp.example",
+      "host": "corp.example",
+      "matches": false
+    },
+    {
+      "pattern": "*.corp.example",
+      "host": "evilcorp.example",
+      "matches": false
+    }
+  ],
+  "cidrCases": [
+    {
+      "input": "10.0.0.0/8",
+      "canonical": "10.0.0.0/8"
+    },
+    {
+      "input": "192.168.100.0/24",
+      "canonical": "192.168.100.0/24"
+    },
+    {
+      "input": "100.64.1.1/32",
+      "canonical": "100.64.1.1/32"
+    }
+  ],
+  "invalidCidrSets": [
+    {
+      "name": "missing prefix",
+      "cidrs": ["10.0.0.0"],
+      "error": "invalid_cidr"
+    },
+    {
+      "name": "host bits set",
+      "cidrs": ["10.0.0.1/8"],
+      "error": "invalid_cidr"
+    },
+    {
+      "name": "too broad",
+      "cidrs": ["10.0.0.0/4"],
+      "error": "invalid_cidr"
+    },
+    {
+      "name": "loopback",
+      "cidrs": ["127.0.0.0/8"],
+      "error": "invalid_cidr"
+    },
+    {
+      "name": "link-local",
+      "cidrs": ["169.254.0.0/16"],
+      "error": "invalid_cidr"
+    },
+    {
+      "name": "multicast",
+      "cidrs": ["224.0.0.0/8"],
+      "error": "invalid_cidr"
+    },
+    {
+      "name": "reserved",
+      "cidrs": ["255.255.255.255/32"],
+      "error": "invalid_cidr"
+    },
+    {
+      "name": "fake range exact",
+      "cidrs": ["198.18.0.0/15"],
+      "error": "overlap"
+    },
+    {
+      "name": "fake range subset",
+      "cidrs": ["198.19.1.0/24"],
+      "error": "overlap"
+    },
+    {
+      "name": "fake range superset",
+      "cidrs": ["198.16.0.0/13"],
+      "error": "overlap"
+    },
+    {
+      "name": "duplicate",
+      "cidrs": ["10.0.0.0/8", "10.0.0.0/8"],
+      "error": "duplicate"
+    }
+  ],
+  "configHashCases": [
+    {
+      "name": "routes only",
+      "selectors": {
+        "routes": [
+          {
+            "host": "localhost",
+            "port": 3000
+          }
+        ]
+      },
+      "canonicalJson": "{\"version\":1,\"routes\":[{\"host\":\"localhost\",\"port\":3000}]}",
+      "sha256": "8e40fb91edccd652ec2cb95a82a9a3d496c528ef999e9f996aff1fdcef8b3be1"
+    },
+    {
+      "name": "mixed selectors",
+      "selectors": {
+        "routes": [
+          {
+            "host": "10.20.30.40",
+            "port": 8000
+          }
+        ],
+        "domains": ["*.corp.example", "api.internal"],
+        "cidrs": ["10.0.0.0/8"]
+      },
+      "canonicalJson": "{\"version\":1,\"routes\":[{\"host\":\"10.20.30.40\",\"port\":8000}],\"domains\":[\"*.corp.example\",\"api.internal\"],\"cidrs\":[\"10.0.0.0/8\"]}",
+      "sha256": "6532bb8c94abe9c0ff33c599c5c95e7a241109ddd943d8ee572dda4442e595e0"
+    },
+    {
+      "name": "domains only",
+      "selectors": {
+        "domains": ["db.internal"]
+      },
+      "canonicalJson": "{\"version\":1,\"domains\":[\"db.internal\"]}",
+      "sha256": "d40229279b2f4ebcf04a29842d4a800b269135760ae506335e3144fd24738167"
+    }
+  ],
+  "openAllowedCases": [
+    {
+      "name": "exact route",
+      "selectors": {
+        "routes": [
+          {
+            "host": "localhost",
+            "port": 8080
+          }
+        ]
+      },
+      "open": {
+        "routeId": "route-1",
+        "host": "localhost",
+        "port": 8080
+      },
+      "allowed": true
+    },
+    {
+      "name": "wildcard domain any port",
+      "selectors": {
+        "domains": ["*.corp.example"]
+      },
+      "open": {
+        "routeId": "domain-1",
+        "host": "api.corp.example",
+        "port": 5432
+      },
+      "allowed": true
+    },
+    {
+      "name": "domain base not covered by wildcard",
+      "selectors": {
+        "domains": ["*.corp.example"]
+      },
+      "open": {
+        "routeId": "domain-1",
+        "host": "corp.example",
+        "port": 443
+      },
+      "allowed": false
+    },
+    {
+      "name": "cidr member",
+      "selectors": {
+        "cidrs": ["10.0.0.0/8"]
+      },
+      "open": {
+        "routeId": "cidr-1",
+        "host": "10.1.2.3",
+        "port": 6379
+      },
+      "allowed": true
+    },
+    {
+      "name": "cidr non-member",
+      "selectors": {
+        "cidrs": ["10.0.0.0/8"]
+      },
+      "open": {
+        "routeId": "cidr-1",
+        "host": "11.1.2.3",
+        "port": 6379
+      },
+      "allowed": false
+    },
+    {
+      "name": "wrong selector kind",
+      "selectors": {
+        "routes": [
+          {
+            "host": "localhost",
+            "port": 8080
+          }
+        ],
+        "domains": ["api.corp.example"]
+      },
+      "open": {
+        "routeId": "domain-1",
+        "host": "localhost",
+        "port": 8080
+      },
+      "allowed": false
+    },
+    {
+      "name": "DNS port never allowed",
+      "selectors": {
+        "domains": ["api.corp.example"]
+      },
+      "open": {
+        "routeId": "domain-1",
+        "host": "api.corp.example",
+        "port": 53
+      },
+      "allowed": false
+    }
+  ],
   "client": [
     {
       "name": "start",
@@ -340,10 +669,34 @@
       }
     },
     {
+      "name": "start with selectors and window",
+      "message": {
+        "type": "start",
+        "version": 1,
+        "routes": [
+          {
+            "host": "localhost",
+            "port": 8080
+          }
+        ],
+        "domains": ["*.corp.example", "db.internal"],
+        "cidrs": ["10.0.0.0/8"],
+        "window": 1048576
+      }
+    },
+    {
       "name": "openOk",
       "message": {
         "type": "openOk",
         "connId": 4294967295
+      }
+    },
+    {
+      "name": "openOk with window",
+      "message": {
+        "type": "openOk",
+        "connId": 11,
+        "window": 1048576
       }
     },
     {
@@ -369,6 +722,14 @@
         "connId": 10,
         "reason": "cancelled"
       }
+    },
+    {
+      "name": "windowUpdate",
+      "message": {
+        "type": "windowUpdate",
+        "connId": 12,
+        "increment": 65536
+      }
     }
   ],
   "server": [
@@ -381,6 +742,47 @@
       }
     },
     {
+      "name": "ready with selectors",
+      "message": {
+        "type": "ready",
+        "version": 1,
+        "tunnelId": "tunnel-2",
+        "selectors": [
+          {
+            "id": "route-1",
+            "kind": "route",
+            "value": "localhost:8080",
+            "binds": [
+              {
+                "address": "127.0.0.1:8080",
+                "status": "ok"
+              },
+              {
+                "address": "[::1]:8080",
+                "status": "ok"
+              },
+              {
+                "address": "10.0.2.2:8080",
+                "status": "conflict",
+                "osCode": "EADDRINUSE"
+              }
+            ]
+          },
+          {
+            "id": "domain-1",
+            "kind": "domain",
+            "value": "*.corp.example"
+          },
+          {
+            "id": "cidr-1",
+            "kind": "cidr",
+            "value": "10.0.0.0/8"
+          }
+        ],
+        "configHash": "6532bb8c94abe9c0ff33c599c5c95e7a241109ddd943d8ee572dda4442e595e0"
+      }
+    },
+    {
       "name": "open",
       "message": {
         "type": "open",
@@ -389,6 +791,18 @@
         "host": "10.20.30.40",
         "port": 8000,
         "proto": "tcp"
+      }
+    },
+    {
+      "name": "open with window",
+      "message": {
+        "type": "open",
+        "connId": 13,
+        "routeId": "domain-1",
+        "host": "api.corp.example",
+        "port": 5432,
+        "proto": "tcp",
+        "window": 1048576
       }
     },
     {
@@ -413,6 +827,14 @@
         "type": "reset",
         "connId": 9,
         "reason": "cancelled"
+      }
+    },
+    {
+      "name": "windowUpdate",
+      "message": {
+        "type": "windowUpdate",
+        "connId": 13,
+        "increment": 131072
       }
     },
     {
