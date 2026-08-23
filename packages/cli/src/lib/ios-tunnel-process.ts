@@ -54,16 +54,11 @@ export function parseTunnelRoute(value: string): Ios.TunnelOptions['routes'][num
   }
 
   const port = Number(portText);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new Error(`Invalid route port in "${value}"; expected 1-65535`);
+  const route = canonicalizeTunnelRoute(host, port);
+  if (route) {
+    return route;
   }
-  const asciiHost = Buffer.byteLength(host, 'utf8') === host.length;
-  if (asciiHost && host.toLowerCase() === 'localhost') {
-    host = 'localhost';
-  } else if (net.isIP(host) === 0) {
-    throw new Error(`Invalid route host in "${value}"; expected localhost or a literal IP address`);
-  }
-  return { host, port };
+  throw new Error(`Invalid route "${value}"; expected localhost or a literal IP with an allowed TCP port`);
 }
 
 export function newTunnelOwner(): string {
@@ -447,18 +442,50 @@ function validateStoredRoutes(routes: Ios.TunnelOptions['routes']): Ios.TunnelOp
   if (!Array.isArray(routes) || routes.length < 1 || routes.length > 10) {
     throw new Error('Invalid tunnel routes');
   }
+  const seen = new Set<string>();
   for (const route of routes) {
-    if (
-      typeof route?.host !== 'string' ||
-      (route.host !== 'localhost' && net.isIP(route.host) === 0) ||
-      !Number.isInteger(route.port) ||
-      route.port < 1 ||
-      route.port > 65_535
-    ) {
+    const canonical =
+      typeof route?.host === 'string' ? canonicalizeTunnelRoute(route.host, route.port) : undefined;
+    const key = canonical ? `${canonical.host}\0${canonical.port}` : '';
+    if (canonical?.host !== route.host || canonical.port !== route.port || seen.has(key)) {
       throw new Error('Invalid tunnel routes');
     }
+    seen.add(key);
   }
   return routes;
+}
+
+function canonicalizeTunnelRoute(
+  host: string,
+  port: number,
+): Ios.TunnelOptions['routes'][number] | undefined {
+  if (!Number.isInteger(port) || port < 1 || port > 65_535 || port === 53) {
+    return undefined;
+  }
+  if (Buffer.byteLength(host, 'utf8') === host.length && host.toLowerCase() === 'localhost') {
+    return { host: 'localhost', port };
+  }
+  const ipVersion = net.isIP(host);
+  if (ipVersion === 4) {
+    return { host, port };
+  }
+  if (ipVersion !== 6) {
+    return undefined;
+  }
+  const canonical = new URL(`http://[${host}]/`).hostname.slice(1, -1);
+  if (canonical !== '::1' && /^::(?:[0-9a-f]{1,4}:)?[0-9a-f]{1,4}$/.test(canonical)) {
+    return undefined;
+  }
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(canonical);
+  if (!mapped?.[1] || !mapped[2]) {
+    return { host: canonical, port };
+  }
+  const high = Number.parseInt(mapped[1], 16);
+  const low = Number.parseInt(mapped[2], 16);
+  return {
+    host: `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`,
+    port,
+  };
 }
 
 function validateTunnelProcessState(

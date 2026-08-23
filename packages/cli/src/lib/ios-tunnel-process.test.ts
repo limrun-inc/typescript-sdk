@@ -51,16 +51,23 @@ describe('iOS tunnel process state', () => {
     ['LOCALHOST:3000', { host: 'localhost', port: 3000 }],
     ['10.20.30.40:8000', { host: '10.20.30.40', port: 8000 }],
     ['[2001:db8::1]:8443', { host: '2001:db8::1', port: 8443 }],
+    ['[::ffff:192.0.2.1]:9443', { host: '192.0.2.1', port: 9443 }],
   ])('parses route %s', (input, expected) => {
     expect(parseTunnelRoute(input)).toEqual(expected);
   });
 
-  test.each(['localhost.:8000', ':8000', '10.20.30.40:0', '10.20.30.40:65536', '2001:db8::1:443'])(
-    'rejects malformed route %s',
-    (input) => {
-      expect(() => parseTunnelRoute(input)).toThrow();
-    },
-  );
+  test.each([
+    'localhost.:8000',
+    ':8000',
+    '10.20.30.40:0',
+    '10.20.30.40:53',
+    '10.20.30.40:65536',
+    '2001:db8::1:443',
+    '[::192.0.2.1]:443',
+    '[::2]:443',
+  ])('rejects malformed route %s', (input) => {
+    expect(() => parseTunnelRoute(input)).toThrow();
+  });
 
   test('builds a child command with an exact owner and IPv6 route', () => {
     const owner = newTunnelOwner();
@@ -312,6 +319,14 @@ describe('iOS tunnel process state', () => {
     { status: 'ready', pid: 0 },
     { routes: [{ host: '*.example.com', port: 443 }] },
     { routes: [{ host: 'LOCALHOST', port: 3000 }] },
+    { routes: [{ host: '10.20.30.40', port: 53 }] },
+    { routes: [{ host: '::2', port: 443 }] },
+    {
+      routes: [
+        { host: 'localhost', port: 3000 },
+        { host: 'localhost', port: 3000 },
+      ],
+    },
   ] satisfies Array<Partial<IosTunnelProcessState>>)('rejects malformed persisted state %#', (overrides) => {
     const state = overrides.status === 'ready' ? makeReadyState(overrides) : makeState(overrides);
     const paths = tunnelProcessPaths(state.instanceId, state.owner, root);
