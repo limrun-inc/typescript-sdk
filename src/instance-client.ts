@@ -172,6 +172,21 @@ export type InstanceClient = {
    */
   pushFile: (path: string, destination?: string) => Promise<string>;
   /**
+   * Download a file from the instance, without needing an ADB connection.
+   *
+   * Behaves like `adb pull`: the read is performed with the same permissions
+   * the ADB shell user has, so readable locations (e.g. `/data/local/tmp`,
+   * `/sdcard`) succeed and protected ones are rejected, exactly as they would
+   * be for `adb pull`.
+   *
+   * The content is streamed to `localPath` without being buffered in memory,
+   * so arbitrarily large files can be pulled.
+   *
+   * @param path Absolute path of the file on the instance.
+   * @param localPath Local path to stream the file to.
+   */
+  pullFile: (path: string, localPath: string) => Promise<void>;
+  /**
    * Play a local video file as the camera feed.
    *
    * Uploads the file to the instance and switches the virtual camera source
@@ -1271,6 +1286,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             watchApp,
             playOnMicrophone,
             pushFile,
+            pullFile,
             setCameraVideo,
             clearCameraVideo,
             adbShell,
@@ -1462,6 +1478,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }
       const result = (await response.json()) as { path: string };
       return result.path;
+    };
+
+    const pullFile = async (remotePath: string, localPath: string): Promise<void> => {
+      const downloadUrl = `${options.apiUrl}/files?path=${encodeURIComponent(remotePath)}`;
+      // Streams to disk without buffering the whole file in memory.
+      await downloadFileToLocalPath(downloadUrl, options.token, localPath);
     };
 
     const setCameraVideo = async (filePath: string, cameraOptions?: CameraVideoOptions): Promise<void> => {
