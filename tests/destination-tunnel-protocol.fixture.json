@@ -87,6 +87,16 @@
         "host": "192.0.2.1",
         "port": 9443
       }
+    },
+    {
+      "input": {
+        "host": "::0.0.0.1",
+        "port": 10443
+      },
+      "canonical": {
+        "host": "::1",
+        "port": 10443
+      }
     }
   ],
   "invalidRouteSets": [
@@ -206,6 +216,16 @@
       "error": "invalid_host"
     },
     {
+      "name": "expanded IPv4-compatible IPv6",
+      "routes": [
+        {
+          "host": "::c000:201",
+          "port": 443
+        }
+      ],
+      "error": "invalid_host"
+    },
+    {
       "name": "invalid IPv4",
       "routes": [
         {
@@ -254,6 +274,23 @@
         }
       ],
       "error": "invalid_port"
+    },
+    {
+      "name": "too many routes",
+      "routes": [
+        { "host": "10.0.0.1", "port": 443 },
+        { "host": "10.0.0.2", "port": 443 },
+        { "host": "10.0.0.3", "port": 443 },
+        { "host": "10.0.0.4", "port": 443 },
+        { "host": "10.0.0.5", "port": 443 },
+        { "host": "10.0.0.6", "port": 443 },
+        { "host": "10.0.0.7", "port": 443 },
+        { "host": "10.0.0.8", "port": 443 },
+        { "host": "10.0.0.9", "port": 443 },
+        { "host": "10.0.0.10", "port": 443 },
+        { "host": "10.0.0.11", "port": 443 }
+      ],
+      "error": "too_many"
     },
     {
       "name": "canonical localhost duplicate",
@@ -340,7 +377,7 @@
       "message": {
         "type": "ready",
         "version": 1,
-        "tunnelId": "tunnel-1"
+        "tunnelId": "123e4567-e89b-12d3-a456-426614174000"
       }
     },
     {
@@ -371,10 +408,60 @@
       }
     },
     {
+      "name": "resetWithoutOSCode",
+      "message": {
+        "type": "reset",
+        "connId": 9,
+        "reason": "cancelled"
+      }
+    },
+    {
       "name": "error",
       "message": {
         "type": "error",
         "code": "route_capacity"
+      }
+    }
+  ],
+  "unknownFieldCases": [
+    {
+      "name": "client start ignores unknown field",
+      "direction": "client",
+      "input": {
+        "type": "start",
+        "version": 1,
+        "routes": [
+          {
+            "host": "localhost",
+            "port": 3000
+          }
+        ],
+        "futureDiagnostic": "ignored"
+      },
+      "decoded": {
+        "type": "start",
+        "version": 1,
+        "routes": [
+          {
+            "host": "localhost",
+            "port": 3000
+          }
+        ]
+      }
+    },
+    {
+      "name": "server ready ignores unknown field",
+      "direction": "server",
+      "input": {
+        "type": "ready",
+        "version": 1,
+        "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
+        "futureDiagnostic": "ignored"
+      },
+      "decoded": {
+        "type": "ready",
+        "version": 1,
+        "tunnelId": "123e4567-e89b-12d3-a456-426614174000"
       }
     }
   ]

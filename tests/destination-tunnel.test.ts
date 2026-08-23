@@ -46,9 +46,9 @@ describe('destination tunnel wire contract', () => {
   test('pins vendored vectors to the canonical limrun commit', () => {
     expect(upstream).toEqual({
       repository: 'limrun-inc/limrun',
-      commit: '68101157b3e15032f6e6e2b10f343f467d75be78',
+      commit: 'b3cbe546d6af8111a7cd6d8d60609a8f2086591e',
       path: 'design/destination-tunnel/v1',
-      messagesSha256: 'e6f344fde646f5e2996558b7a880e17873b6e661c2918ddb5642d10f5dae7bfd',
+      messagesSha256: '702d3a05f8920aeb5adfb7f7f89d133d67a602354433b6fb5fe4cbfd86309a4c',
       binarySha256: 'e6da913a0ff85a3402f09de6cbbb18d4f9b2e76007ca48b85f4d35b66810da7d',
     });
     expect(sha256('destination-tunnel-protocol.fixture.json')).toBe(upstream.messagesSha256);
@@ -109,6 +109,16 @@ describe('destination tunnel wire contract', () => {
     for (const entry of fixture.server) {
       expect(decodeDestinationTunnelServerMessage(entry.message)).toEqual(entry.message);
     }
+  });
+
+  test.each(fixture.unknownFieldCases)('$name', ({ direction, input, decoded }) => {
+    if (direction === 'client') {
+      expect(
+        JSON.parse(encodeDestinationTunnelClientMessage(input as DestinationTunnelClientMessage)),
+      ).toEqual(decoded);
+      return;
+    }
+    expect(decodeDestinationTunnelServerMessage(input)).toEqual(decoded);
   });
 
   test('rejects unknown server message types', () => {
