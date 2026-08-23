@@ -28,11 +28,11 @@ import {
 } from './resources/analytics';
 import {
   AndroidInstance,
-  AndroidInstances,
   AndroidInstanceCreateParams,
   AndroidInstanceListParams,
   AndroidInstancesItems,
 } from './resources/android-instances';
+import { AndroidInstances } from './resources/android-instances-helpers';
 import {
   Asset,
   AssetGetOrCreateParams,
@@ -52,9 +52,10 @@ import {
   IosInstance,
   IosInstanceCreateParams,
   IosInstanceListParams,
-  IosInstances,
   IosInstancesItems,
 } from './resources/ios-instances';
+import { IosInstances } from './resources/ios-instances-helpers';
+import { SessionArtifact } from './resources/session-artifacts';
 import { ScopedToken, ScopedTokenCreateParams, ScopedTokens } from './resources/scoped-tokens';
 import {
   XcodeInstance,
@@ -877,6 +878,7 @@ export declare namespace Limrun {
     type IosInstancesItems as IosInstancesItems,
     type IosInstanceCreateParams as IosInstanceCreateParams,
     type IosInstanceListParams as IosInstanceListParams,
+    type SessionArtifact as SessionArtifact,
   };
 
   export {

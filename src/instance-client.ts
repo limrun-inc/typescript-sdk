@@ -23,6 +23,9 @@ import {
   type DestinationTunnelStatus,
 } from './internal/destination-tunnel-management';
 import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
+import { persistFields, type PersistOption } from './internal/persist-option';
+
+export { type PersistOption } from './internal/persist-option';
 
 const ANDROID_RECORDING_PATH = '/data/local/tmp/recordings/video_recording.mp4';
 const ANDROID_SIGNALING_PATH = '/ws';
@@ -276,8 +279,11 @@ export type InstanceClient = {
    * Start recording device video. Use stopRecording() to finish the recording.
    * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
    * The server default is `5`.
+   * With `persist`, the completed recording is uploaded to Limrun's bucket
+   * when the recording stops or the instance terminates; list it with
+   * `androidInstances.listRecordings`.
    */
-  startRecording: (options?: { quality?: RecordingQuality }) => Promise<void>;
+  startRecording: (options?: { quality?: RecordingQuality; persist?: PersistOption }) => Promise<void>;
   /**
    * Stop the active server-side recording.
    * If `saveTo.presignedUrl` is provided, the server uploads the completed file there before resolving.
@@ -285,6 +291,26 @@ export type InstanceClient = {
    * Returns a download URL for the completed recording.
    */
   stopRecording: (saveTo: { presignedUrl?: string; localPath?: string }) => Promise<string>;
+  /**
+   * Start capturing an app's logcat output (one JSONL object per line) for
+   * the given package name. One app log capture runs at a time; the server
+   * rejects a second start. With `persist`, the capture is uploaded to
+   * Limrun's bucket when it stops or the instance terminates; list it with
+   * `androidInstances.listAppLogs`.
+   */
+  startAppLogCapture: (options: { bundleId: string; persist?: PersistOption }) => Promise<void>;
+  /** Stop the active app log capture. */
+  stopAppLogCapture: () => Promise<void>;
+  /**
+   * Start capturing the coalesced event log of user and agent actions (one
+   * JSONL object per line). One event capture runs at a time; the server
+   * rejects a second start. With `persist`, the capture is uploaded to
+   * Limrun's bucket when it stops or the instance terminates; list it with
+   * `androidInstances.listEvents`.
+   */
+  startEventCapture: (options?: { persist?: PersistOption }) => Promise<void>;
+  /** Stop the active event capture. */
+  stopEventCapture: () => Promise<void>;
   /** Send an application-level keepAlive message on the control websocket. */
   keepAlive: () => void;
   /**
@@ -816,6 +842,34 @@ type StopVideoRecordingResultMessage = {
   error?: CommandError;
 };
 
+type StartAppLogCaptureResultMessage = {
+  type: 'startAppLogCaptureResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
+type StopAppLogCaptureResultMessage = {
+  type: 'stopAppLogCaptureResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
+type StartEventCaptureResultMessage = {
+  type: 'startEventCaptureResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
+type StopEventCaptureResultMessage = {
+  type: 'stopEventCaptureResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
 type KnownCommandResultMessage =
   | ScreenshotResultMessage
   | GetElementTreeResultMessage
@@ -835,7 +889,11 @@ type KnownCommandResultMessage =
   | AdbShellResultMessage
   | SetWifiBandwidthResultMessage
   | StartVideoRecordingResultMessage
-  | StopVideoRecordingResultMessage;
+  | StopVideoRecordingResultMessage
+  | StartAppLogCaptureResultMessage
+  | StopAppLogCaptureResultMessage
+  | StartEventCaptureResultMessage
+  | StopEventCaptureResultMessage;
 
 type ServerMessage =
   | ScreenshotResponse
@@ -862,8 +920,12 @@ type CommandRequestMap = {
   cameraControl: { action: 'setSource'; source: 'video'; arg: string; loop?: boolean } | { action: 'reset' };
   adbShell: { command: string; timeoutMs?: number };
   setWifiBandwidth: WifiBandwidthOptions;
-  startRecording: { quality?: RecordingQuality };
+  startRecording: { quality?: RecordingQuality; persist?: boolean; ttlSeconds?: number };
   stopRecording: { upload?: { presignedUrl: string } };
+  startAppLogCapture: { bundleId: string; persist?: boolean; ttlSeconds?: number };
+  stopAppLogCapture: {};
+  startEventCapture: { persist?: boolean; ttlSeconds?: number };
+  stopEventCapture: {};
 };
 
 type CommandResultMap = {
@@ -886,6 +948,10 @@ type CommandResultMap = {
   setWifiBandwidth: EmptyCommandResult;
   startRecording: EmptyCommandResult;
   stopRecording: EmptyCommandResult;
+  startAppLogCapture: EmptyCommandResult;
+  stopAppLogCapture: EmptyCommandResult;
+  startEventCapture: EmptyCommandResult;
+  stopEventCapture: EmptyCommandResult;
 };
 
 type PendingRequest<T> = {
@@ -1067,6 +1133,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         case 'setWifiBandwidthResult':
         case 'startRecordingResult':
         case 'stopRecordingResult':
+        case 'startAppLogCaptureResult':
+        case 'stopAppLogCaptureResult':
+        case 'startEventCaptureResult':
+        case 'stopEventCaptureResult':
           return 'id' in message && typeof message.id === 'string';
         default:
           return false;
@@ -1343,6 +1413,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             setWifiBandwidth,
             startRecording,
             stopRecording,
+            startAppLogCapture,
+            stopAppLogCapture,
+            startEventCapture,
+            stopEventCapture,
             keepAlive,
             disconnect,
             startAdbTunnel,
@@ -1600,8 +1674,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       await sendRequest('setWifiBandwidth', request);
     };
 
-    const startRecording = async (recordingOptions?: { quality?: RecordingQuality }): Promise<void> => {
-      const request: CommandRequestMap['startRecording'] = {};
+    const startRecording = async (recordingOptions?: {
+      quality?: RecordingQuality;
+      persist?: PersistOption;
+    }): Promise<void> => {
+      const request: CommandRequestMap['startRecording'] = {
+        ...persistFields(recordingOptions?.persist),
+      };
       if (recordingOptions?.quality !== undefined) {
         if (
           !Number.isInteger(recordingOptions.quality) ||
@@ -1626,6 +1705,31 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
       }
       return downloadUrl;
+    };
+
+    const startAppLogCapture = async (captureOptions: {
+      bundleId: string;
+      persist?: PersistOption;
+    }): Promise<void> => {
+      if (!captureOptions.bundleId) {
+        throw new Error('bundleId must be a non-empty string');
+      }
+      await sendRequest('startAppLogCapture', {
+        bundleId: captureOptions.bundleId,
+        ...persistFields(captureOptions.persist),
+      });
+    };
+
+    const stopAppLogCapture = async (): Promise<void> => {
+      await sendRequest('stopAppLogCapture', {});
+    };
+
+    const startEventCapture = async (captureOptions?: { persist?: PersistOption }): Promise<void> => {
+      await sendRequest('startEventCapture', { ...persistFields(captureOptions?.persist) });
+    };
+
+    const stopEventCapture = async (): Promise<void> => {
+      await sendRequest('stopEventCapture', {});
     };
 
     const keepAlive = (): void => {

@@ -1,6 +1,7 @@
 import path from 'path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { parseDurationSeconds } from '../../lib/duration';
 import {
   getIosInstanceClient,
   ensureDaemonSession,
@@ -17,6 +18,7 @@ export default class IosRecord extends BaseCommand {
     '<%= config.bin %> ios record stop -o recording.mp4 --id <instance-ID>',
     '<%= config.bin %> ios record stop --presigned-url https://example.com/upload --id <instance-ID>',
     '<%= config.bin %> ios record start --quality 8',
+    '<%= config.bin %> ios record start --persist --persist-ttl 24h',
   ];
 
   static args = {
@@ -47,6 +49,15 @@ export default class IosRecord extends BaseCommand {
       description:
         'Presigned upload URL to receive the recording when using the `stop` action. Use this if you will upload the recording to a bucket.',
     }),
+    persist: Flags.boolean({
+      description:
+        'Persist the recording to Limrun storage when it stops or the instance terminates, when using the `start` action. List results with `lim ios recordings`.',
+      default: false,
+    }),
+    'persist-ttl': Flags.string({
+      description:
+        'How long the persisted recording is kept, as a duration like 72h or 90m. Requires --persist. Defaults to 72h.',
+    }),
   };
 
   async run(): Promise<void> {
@@ -60,18 +71,37 @@ export default class IosRecord extends BaseCommand {
         this.error('ios record only supports iOS instances');
       }
 
+      if (flags['persist-ttl'] && !flags.persist) {
+        this.error('--persist-ttl requires --persist.');
+      }
+      if (flags.persist && args.action !== 'start') {
+        this.error('--persist only applies to the `start` action.');
+      }
+
       if (args.action === 'start') {
-        if (await ensureDaemonSession(resolvedInstance)) {
+        const persist =
+          flags.persist ?
+            flags['persist-ttl'] ?
+              { ttlSeconds: parseDurationSeconds(flags['persist-ttl']) }
+            : true
+          : undefined;
+        // A running daemon may predate persist support and would silently
+        // drop it, so persisted starts always go over a direct connection.
+        if (!persist && (await ensureDaemonSession(resolvedInstance))) {
           await sendSessionCommand(id, 'start-recording', [flags.quality]);
         } else {
           const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
           try {
-            await client.startRecording({ quality: flags.quality });
+            await client.startRecording({ quality: flags.quality, persist });
           } finally {
             disconnect();
           }
         }
-        this.log('Recording started');
+        this.log(
+          persist ?
+            `Recording started; it will be persisted for ${flags['persist-ttl'] ?? '72h'} when it stops.`
+          : 'Recording started',
+        );
         return;
       }
 

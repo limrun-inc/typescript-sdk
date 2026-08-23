@@ -8,7 +8,6 @@ export {
   type AnalyticsGetInstancesParams,
 } from './analytics';
 export {
-  AndroidInstances,
   type AndroidInstance,
   type AndroidInstanceCreateParams,
   type AndroidInstanceListParams,
@@ -32,7 +31,6 @@ export {
   type GradleInstancesItems,
 } from './gradle-instances';
 export {
-  IosInstances,
   type IosInstance,
   type IosInstanceCreateParams,
   type IosInstanceListParams,
@@ -46,6 +44,9 @@ export {
   type XcodeInstancesItems,
 } from './xcode-instances';
 export { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './assets-helpers';
+export { IosInstances } from './ios-instances-helpers';
+export { AndroidInstances } from './android-instances-helpers';
+export { type SessionArtifact } from './session-artifacts';
 export {
   XcodeInstances,
   RbeUnsupportedError,

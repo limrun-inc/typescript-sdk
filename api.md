@@ -3,6 +3,7 @@
 Types:
 
 - <code><a href="./src/resources/android-instances.ts">AndroidInstance</a></code>
+- <code><a href="./src/resources/session-artifacts.ts">SessionArtifact</a></code>
 
 Methods:
 
@@ -10,6 +11,9 @@ Methods:
 - <code title="get /v1/android_instances">client.androidInstances.<a href="./src/resources/android-instances.ts">list</a>({ ...params }) -> AndroidInstancesItems</code>
 - <code title="delete /v1/android_instances/{id}">client.androidInstances.<a href="./src/resources/android-instances.ts">delete</a>(id) -> void</code>
 - <code title="get /v1/android_instances/{id}">client.androidInstances.<a href="./src/resources/android-instances.ts">get</a>(id) -> AndroidInstance</code>
+- <code title="get /v1/android_instances/{id}/recordings">client.androidInstances.<a href="./src/resources/android-instances-helpers.ts">listRecordings</a>(id) -> SessionArtifact[]</code>
+- <code title="get /v1/android_instances/{id}/app_logs">client.androidInstances.<a href="./src/resources/android-instances-helpers.ts">listAppLogs</a>(id) -> SessionArtifact[]</code>
+- <code title="get /v1/android_instances/{id}/events">client.androidInstances.<a href="./src/resources/android-instances-helpers.ts">listEvents</a>(id) -> SessionArtifact[]</code>
 
 # Assets
 
@@ -31,6 +35,7 @@ Methods:
 Types:
 
 - <code><a href="./src/resources/ios-instances.ts">IosInstance</a></code>
+- <code><a href="./src/resources/session-artifacts.ts">SessionArtifact</a></code>
 
 Methods:
 
@@ -38,6 +43,9 @@ Methods:
 - <code title="get /v1/ios_instances">client.iosInstances.<a href="./src/resources/ios-instances.ts">list</a>({ ...params }) -> IosInstancesItems</code>
 - <code title="delete /v1/ios_instances/{id}">client.iosInstances.<a href="./src/resources/ios-instances.ts">delete</a>(id) -> void</code>
 - <code title="get /v1/ios_instances/{id}">client.iosInstances.<a href="./src/resources/ios-instances.ts">get</a>(id) -> IosInstance</code>
+- <code title="get /v1/ios_instances/{id}/recordings">client.iosInstances.<a href="./src/resources/ios-instances-helpers.ts">listRecordings</a>(id) -> SessionArtifact[]</code>
+- <code title="get /v1/ios_instances/{id}/app_logs">client.iosInstances.<a href="./src/resources/ios-instances-helpers.ts">listAppLogs</a>(id) -> SessionArtifact[]</code>
+- <code title="get /v1/ios_instances/{id}/events">client.iosInstances.<a href="./src/resources/ios-instances-helpers.ts">listEvents</a>(id) -> SessionArtifact[]</code>
 
 # XcodeInstances
 
