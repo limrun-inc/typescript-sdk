@@ -34,7 +34,7 @@ export default class IosLaunchApp extends BaseCommand {
     '<%= config.bin %> ios launch-app com.example.app',
     '<%= config.bin %> ios launch-app com.example.app --detach',
     '<%= config.bin %> ios launch-app com.example.app --mode RelaunchIfRunning --id <instance-ID>',
-    '<%= config.bin %> ios launch-app host.exp.Exponent --runtime detox --detox-server-url ws://10.244.0.10:57091 --detox-session-id limrun-detox --detox-version 20.51.1 --id <instance-ID>',
+    '<%= config.bin %> ios launch-app host.exp.Exponent --runtime detox --detox-server-url ws://localhost:8099 --detox-session-id limrun-detox --detox-version 20.51.1 --id <instance-ID>',
   ];
 
   static args = {
@@ -61,7 +61,8 @@ export default class IosLaunchApp extends BaseCommand {
       options: ['detox'],
     }),
     'detox-server-url': Flags.string({
-      description: 'Detox mediator URL reachable from the simulator, usually from `lim ios reverse`',
+      description:
+        'Detox mediator URL reachable from the simulator, usually exposed with `lim ios tunnel --route localhost:<port>`',
     }),
     'detox-session-id': Flags.string({
       description: 'Detox session ID shared by the app and tester',
