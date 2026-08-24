@@ -6,6 +6,7 @@ import {
   capTunnelLog,
   claimTunnelProcess,
   clearTunnelProcess,
+  formatTunnelDialFailure,
   isProcessAlive,
   isSpawnedTunnelProcessAlive,
   isTunnelProcessCancelled,
@@ -37,12 +38,16 @@ export interface TunnelGeneration extends TunnelLike {
   close: () => void;
 }
 
-/** Product-neutral view over the iOS/Android instance clients. */
-export interface TunnelClientFacade {
-  startTunnel: (selectors: DestinationTunnelSelectors) => Promise<TunnelGeneration>;
+/** The subset of the client needed for status and stop flows. */
+export interface TunnelManagementFacade {
   getTunnelStatus: () => Promise<DestinationTunnelStatus>;
   stopTunnel: (tunnelId: string) => Promise<void>;
   disconnect: () => void;
+}
+
+/** Product-neutral view over the iOS/Android instance clients. */
+export interface TunnelClientFacade extends TunnelManagementFacade {
+  startTunnel: (selectors: DestinationTunnelSelectors) => Promise<TunnelGeneration>;
 }
 
 export interface TunnelCommandIO {
@@ -61,6 +66,14 @@ export interface TunnelCommandContext {
   /** Reconnect with backoff after unexpected disconnects (Android behavior). */
   reconnect: boolean;
   connect: () => Promise<TunnelClientFacade>;
+  io: TunnelCommandIO;
+  sleep?: (milliseconds: number) => Promise<void>;
+}
+
+/** Context for status/stop flows, which never start a tunnel. */
+export interface TunnelManagementContext {
+  instanceId: string;
+  connect: () => Promise<TunnelManagementFacade>;
   io: TunnelCommandIO;
   sleep?: (milliseconds: number) => Promise<void>;
 }
@@ -269,9 +282,61 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
   );
 }
 
-export async function runTunnelStop(
-  context: Pick<TunnelCommandContext, 'instanceId' | 'connect' | 'io' | 'sleep'>,
+/**
+ * Shared status flow: owner listing, JSON assembly, and failure lines are
+ * identical across products; only how the active tunnel's targets are
+ * rendered differs (iOS shows routes, Android shows selectors and binds).
+ */
+export async function runTunnelStatus(
+  context: TunnelManagementContext & {
+    renderActive: (active: NonNullable<DestinationTunnelStatus['active']>, io: TunnelCommandIO) => void;
+  },
 ): Promise<void> {
+  const client = await context.connect();
+  try {
+    const status = await client.getTunnelStatus();
+    const owners = listTunnelProcesses(context.instanceId).map((state) => ({
+      owner: state.owner,
+      pid: state.pid,
+      status: state.status,
+      tunnelId: state.tunnelId,
+      logPath: state.logPath,
+      process: tunnelOwnerProcessIdentity(state),
+    }));
+    if (context.io.isJsonEnabled()) {
+      context.io.outputJson({
+        instanceId: context.instanceId,
+        ...status,
+        localOwners: owners,
+      });
+      return;
+    }
+
+    if (status.active) {
+      context.io.output(`Tunnel ${status.active.tunnelId}: ${status.active.state}`);
+      context.renderActive(status.active, context.io);
+    } else {
+      context.io.output('No active destination tunnel.');
+    }
+    if (status.lastFailure) {
+      context.io.output(`Last failure: ${status.lastFailure.tunnelId} (${status.lastFailure.code})`);
+    }
+    if (status.lastDialFailure) {
+      context.io.output(formatTunnelDialFailure(status.lastDialFailure));
+    }
+    for (const owner of owners) {
+      context.io.output(
+        `Local owner: PID ${owner.pid} (${owner.process}, ${owner.status})${
+          owner.logPath ? `, logs: ${owner.logPath}` : ''
+        }`,
+      );
+    }
+  } finally {
+    client.disconnect();
+  }
+}
+
+export async function runTunnelStop(context: TunnelManagementContext): Promise<void> {
   const ownerSnapshot = listTunnelProcesses(context.instanceId);
   const remote = await stopRemoteTunnel(context);
   const expectedTunnelId = remote.outcome === 'none' ? undefined : remote.tunnelId;
@@ -298,7 +363,7 @@ export async function runTunnelStop(
 }
 
 async function stopRemoteTunnel(
-  context: Pick<TunnelCommandContext, 'connect'>,
+  context: Pick<TunnelManagementContext, 'connect'>,
 ): Promise<RemoteStopOutcome> {
   const client = await context.connect();
   try {
@@ -320,7 +385,7 @@ async function stopRemoteTunnel(
 }
 
 async function stopLocalOwners(
-  context: Pick<TunnelCommandContext, 'instanceId' | 'io' | 'sleep'>,
+  context: Pick<TunnelManagementContext, 'instanceId' | 'io' | 'sleep'>,
   owners: TunnelProcessState[],
   remote: RemoteStopOutcome,
 ): Promise<{ processesStopped: number; recordsCleaned: number }> {

@@ -1,12 +1,8 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
-import {
-  formatTunnelRoute,
-  formatTunnelDialFailure,
-  listTunnelProcesses,
-  tunnelOwnerProcessIdentity,
-} from '../../../lib/tunnel-process';
+import { runTunnelStatus } from '../../../lib/tunnel-command';
+import { formatTunnelRoute } from '../../../lib/tunnel-process';
 
 export default class IosTunnelStatus extends BaseCommand {
   static summary = 'Show the active destination tunnel';
@@ -39,50 +35,23 @@ export default class IosTunnelStatus extends BaseCommand {
     }
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
-      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
-      try {
-        const status = await client.getTunnelStatus();
-        const owners = listTunnelProcesses(resolvedInstance.id).map((state) => ({
-          owner: state.owner,
-          pid: state.pid,
-          status: state.status,
-          tunnelId: state.tunnelId,
-          logPath: state.logPath,
-          process: tunnelOwnerProcessIdentity(state),
-        }));
-        if (this.isJsonEnabled()) {
-          this.outputJson({
-            instanceId: resolvedInstance.id,
-            ...status,
-            localOwners: owners,
-          });
-          return;
-        }
-
-        if (status.active) {
-          this.output(`Tunnel ${status.active.tunnelId}: ${status.active.state}`);
-          for (const route of status.active.routes) {
-            this.output(`Route: ${formatTunnelRoute(route)}`);
+      await runTunnelStatus({
+        instanceId: resolvedInstance.id,
+        connect: async () => {
+          const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
+          return {
+            getTunnelStatus: () => client.getTunnelStatus(),
+            stopTunnel: (tunnelId: string) => client.stopTunnel(tunnelId),
+            disconnect,
+          };
+        },
+        io: this.tunnelCommandIO(),
+        renderActive: (active, io) => {
+          for (const route of active.routes) {
+            io.output(`Route: ${formatTunnelRoute(route)}`);
           }
-        } else {
-          this.output('No active destination tunnel.');
-        }
-        if (status.lastFailure) {
-          this.output(`Last failure: ${status.lastFailure.tunnelId} (${status.lastFailure.code})`);
-        }
-        if (status.lastDialFailure) {
-          this.output(formatTunnelDialFailure(status.lastDialFailure));
-        }
-        for (const owner of owners) {
-          this.output(
-            `Local owner: PID ${owner.pid} (${owner.process}, ${owner.status})${
-              owner.logPath ? `, logs: ${owner.logPath}` : ''
-            }`,
-          );
-        }
-      } finally {
-        disconnect();
-      }
+        },
+      });
     });
   }
 }

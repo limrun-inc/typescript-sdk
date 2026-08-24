@@ -38,19 +38,12 @@ export default class AndroidTunnelStop extends BaseCommand {
         connect: async () => {
           const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
           return {
-            startTunnel: () => Promise.reject(new Error('stop does not start tunnels')),
             getTunnelStatus: () => client.getTunnelStatus(),
             stopTunnel: (tunnelId: string) => client.stopTunnel(tunnelId),
             disconnect,
           };
         },
-        io: {
-          error: (message) => this.error(message),
-          output: (message) => this.output(message),
-          info: (message) => this.info(message),
-          outputJson: (value) => this.outputJson(value),
-          isJsonEnabled: () => this.isJsonEnabled(),
-        },
+        io: this.tunnelCommandIO(),
       });
     });
   }
