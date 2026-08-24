@@ -41,6 +41,9 @@ export {
   type AppStoreUploadConfig,
   type PlaystoreEvent,
   type WebhookConfig,
+  type XctestCaseEvent,
+  type XctestEvent,
+  type XctestSummaryEvent,
 } from './exec-client';
 export {
   type XcodeCreateClientParams,
