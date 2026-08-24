@@ -5,12 +5,20 @@ import fs from 'fs';
 import { WebSocket, Data } from 'ws';
 import { EventEmitter } from 'events';
 import { assertPort, isNonRetryableError, startReverseTcpTunnel, type ReverseTunnel } from './tunnel';
+import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './destination-tunnel-dialer';
+import type { DestinationTunnelRoute } from './destination-tunnel';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
 import { createIgnoreFn } from './folder-sync-ignore';
 import { prepareAppBundlePath, watchAppArchive } from './app-archive';
 import { downloadFileToLocalPath } from './internal/download-file';
 import { sleep } from './internal/utils/sleep';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import {
+  getDestinationTunnelStatus,
+  stopDestinationTunnel,
+  type DestinationTunnelStatus,
+} from './internal/destination-tunnel-management';
+import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
 import {
   startHttpProxy as startLocalHttpProxy,
   startForwardHttpProxy as startLocalForwardHttpProxy,
@@ -55,6 +63,14 @@ export function deriveReverseTunnelUrl(apiUrl: string, remotePort: number): stri
 }
 
 export type { ReverseTunnel } from './tunnel';
+export type Tunnel = DestinationTcpTunnel;
+export type TunnelOptions = {
+  /** Exact localhost or literal-IP TCP destinations that the server may ask this client to dial. */
+  routes: DestinationTunnelRoute[];
+  /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
+  logLevel?: LogLevel;
+};
+export type TunnelStatus = DestinationTunnelStatus;
 
 /**
  * Events emitted by a simctl execution
@@ -854,6 +870,20 @@ export type InstanceClient = {
    * to a user-local client-first TCP service, such as HTTP or WebSocket.
    */
   startReverseTunnel: (options: ReverseTunnelOptions) => Promise<ReverseTunnel>;
+
+  /**
+   * Transparently route declared simulator TCP destinations through this machine.
+   *
+   * The caller owns the returned tunnel and must close it. Disconnecting this
+   * instance client does not close the tunnel.
+   */
+  startTunnel: (options: TunnelOptions) => Promise<Tunnel>;
+
+  /** Get the active destination tunnel and most recent terminal failure. */
+  getTunnelStatus: () => Promise<TunnelStatus>;
+
+  /** Stop the active tunnel only when its ID matches `tunnelId`. */
+  stopTunnel: (tunnelId: string) => Promise<void>;
 
   /**
    * Start a local HTTP proxy to a port exposed by the iOS instance.
@@ -2035,6 +2065,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             discoverStoreKitConfig,
             softReset,
             startReverseTunnel,
+            startTunnel,
+            getTunnelStatus,
+            stopTunnel,
             startHttpProxy,
             startForwardHttpProxy,
             disconnect,
@@ -2821,6 +2854,21 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         localPort,
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });
+    };
+
+    const startTunnel = async (tunnelOptions: TunnelOptions): Promise<Tunnel> => {
+      return startDestinationTcpTunnel(deriveDestinationTunnelURL(options.apiUrl), options.token, {
+        routes: tunnelOptions.routes,
+        logLevel: tunnelOptions.logLevel ?? logLevel,
+      });
+    };
+
+    const getTunnelStatus = async (): Promise<TunnelStatus> => {
+      return getDestinationTunnelStatus(options.apiUrl, options.token);
+    };
+
+    const stopTunnel = async (tunnelId: string): Promise<void> => {
+      await stopDestinationTunnel(options.apiUrl, options.token, tunnelId);
     };
 
     const startHttpProxy = async (proxyOptions: HttpProxyOptions): Promise<number> => {
