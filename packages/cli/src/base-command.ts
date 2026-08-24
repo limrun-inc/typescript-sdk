@@ -38,6 +38,7 @@ import {
 import type { XcodeCacheConfig, XcodeCacheFollowResult } from '@limrun/api';
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
 import { xcodeSandboxIdFromUrl } from './lib/xcode-sandbox';
+import type { TunnelCommandIO } from './lib/tunnel-command';
 import { captureTelemetry, telemetryIntentForCommand } from './lib/telemetry';
 
 const VERSION = require('../package.json').version;
@@ -187,6 +188,17 @@ export abstract class BaseCommand extends Command {
 
   protected output(message = ''): void {
     super.log(message);
+  }
+
+  /** Adapter passed to the shared tunnel command flows in lib/tunnel-command. */
+  protected tunnelCommandIO(): TunnelCommandIO {
+    return {
+      error: (message) => this.error(message),
+      output: (message) => this.output(message),
+      info: (message) => this.info(message),
+      outputJson: (value) => this.outputJson(value),
+      isJsonEnabled: () => this.isJsonEnabled(),
+    };
   }
 
   protected async withAuth<T>(fn: () => Promise<T>): Promise<T> {

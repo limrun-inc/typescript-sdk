@@ -1,12 +1,8 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { getAndroidInstanceClient } from '../../../lib/instance-client-factory';
-import {
-  formatTunnelDialFailure,
-  formatTunnelSelectors,
-  listTunnelProcesses,
-  tunnelOwnerProcessIdentity,
-} from '../../../lib/tunnel-process';
+import { runTunnelStatus } from '../../../lib/tunnel-command';
+import { formatTunnelSelectors } from '../../../lib/tunnel-process';
 
 export default class AndroidTunnelStatus extends BaseCommand {
   static summary = 'Show the active destination tunnel';
@@ -39,61 +35,34 @@ export default class AndroidTunnelStatus extends BaseCommand {
     }
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
-      const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
-      try {
-        const status = await client.getTunnelStatus();
-        const owners = listTunnelProcesses(resolvedInstance.id).map((state) => ({
-          owner: state.owner,
-          pid: state.pid,
-          status: state.status,
-          tunnelId: state.tunnelId,
-          logPath: state.logPath,
-          process: tunnelOwnerProcessIdentity(state),
-        }));
-        if (this.isJsonEnabled()) {
-          this.outputJson({
-            instanceId: resolvedInstance.id,
-            ...status,
-            localOwners: owners,
-          });
-          return;
-        }
-
-        if (status.active) {
-          this.output(`Tunnel ${status.active.tunnelId}: ${status.active.state}`);
+      await runTunnelStatus({
+        instanceId: resolvedInstance.id,
+        connect: async () => {
+          const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
+          return {
+            getTunnelStatus: () => client.getTunnelStatus(),
+            stopTunnel: (tunnelId: string) => client.stopTunnel(tunnelId),
+            disconnect,
+          };
+        },
+        io: this.tunnelCommandIO(),
+        renderActive: (active, io) => {
           const selectorLines = formatTunnelSelectors({
-            ...(status.active.routes.length > 0 ? { routes: status.active.routes } : {}),
-            ...(status.active.domains ? { domains: status.active.domains } : {}),
-            ...(status.active.cidrs ? { cidrs: status.active.cidrs } : {}),
+            ...(active.routes.length > 0 ? { routes: active.routes } : {}),
+            ...(active.domains ? { domains: active.domains } : {}),
+            ...(active.cidrs ? { cidrs: active.cidrs } : {}),
           });
           for (const line of selectorLines) {
-            this.output(`Selector: ${line}`);
+            io.output(`Selector: ${line}`);
           }
-          for (const [selectorId, binds] of Object.entries(status.active.binds ?? {})) {
+          for (const [selectorId, binds] of Object.entries(active.binds ?? {})) {
             for (const bind of binds) {
               const detail = bind.osCode ? `${bind.status}, ${bind.osCode}` : bind.status;
-              this.output(`Bind ${selectorId} ${bind.address}: ${detail}`);
+              io.output(`Bind ${selectorId} ${bind.address}: ${detail}`);
             }
           }
-        } else {
-          this.output('No active destination tunnel.');
-        }
-        if (status.lastFailure) {
-          this.output(`Last failure: ${status.lastFailure.tunnelId} (${status.lastFailure.code})`);
-        }
-        if (status.lastDialFailure) {
-          this.output(formatTunnelDialFailure(status.lastDialFailure));
-        }
-        for (const owner of owners) {
-          this.output(
-            `Local owner: PID ${owner.pid} (${owner.process}, ${owner.status})${
-              owner.logPath ? `, logs: ${owner.logPath}` : ''
-            }`,
-          );
-        }
-      } finally {
-        disconnect();
-      }
+        },
+      });
     });
   }
 }

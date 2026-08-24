@@ -134,13 +134,7 @@ export default class AndroidTunnel extends BaseCommand {
           disconnect,
         };
       },
-      io: {
-        error: (message) => this.error(message),
-        output: (message) => this.output(message),
-        info: (message) => this.info(message),
-        outputJson: (value) => this.outputJson(value),
-        isJsonEnabled: () => this.isJsonEnabled(),
-      },
+      io: this.tunnelCommandIO(),
     };
   }
 }
