@@ -228,7 +228,7 @@ export namespace AndroidInstanceCreateParams {
       clientIp?: string;
 
       /**
-       * The major version of Android, e.g. "13", "14" or "15".
+       * The major version of Android, e.g. "14" or "15".
        */
       osVersion?: string;
     }

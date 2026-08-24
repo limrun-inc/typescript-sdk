@@ -368,6 +368,9 @@ lim android create
 # With apps pre-installed
 lim android create --install ./my-app.apk --install ./another.apk
 
+# With a specific Android OS version
+lim android create --os-version 15
+
 # Create without opening an ADB tunnel
 lim android create --no-connect
 
@@ -377,10 +380,11 @@ lim android create --region us-west --display-name "CI Test" --label env=ci --rm
 
 **Android-specific flags:**
 
-| Flag                | Description                                     |
-| ------------------- | ----------------------------------------------- |
-| `--[no-]connect`    | Start an ADB tunnel immediately (default: true) |
-| `--adb-path <path>` | Path to `adb` binary (default: `adb`)           |
+| Flag                     | Description                                     |
+| ------------------------ | ----------------------------------------------- |
+| `--os-version <version>` | Android OS major version (14 or 15)             |
+| `--[no-]connect`         | Start an ADB tunnel immediately (default: true) |
+| `--adb-path <path>`      | Path to `adb` binary (default: `adb`)           |
 
 `lim android create` always prints a Console URL such as `https://console.limrun.com/stream/android_...` that you can open in the browser for live viewing. For automation, `--no-connect` is usually the safest default.
 

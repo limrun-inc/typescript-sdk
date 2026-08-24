@@ -16,6 +16,7 @@ export default class AndroidCreate extends BaseCommand {
     '<%= config.bin %> android create',
     '<%= config.bin %> android create --rm --install ./app.apk',
     '<%= config.bin %> android create --install-url https://example.t3.storage.dev/app.apk?...',
+    '<%= config.bin %> android create --os-version 15',
     '<%= config.bin %> android create --jurisdiction us --label env=dev',
     '<%= config.bin %> android create --no-connect',
     '<%= config.bin %> android create --daemon=false',
@@ -52,6 +53,9 @@ export default class AndroidCreate extends BaseCommand {
       description:
         'Jurisdiction the instance must be created in. Unlike --region, this is a hard constraint: creation fails when no region in the jurisdiction has capacity.',
       options: ['us', 'eu', 'as'],
+    }),
+    'os-version': Flags.string({
+      description: 'Android OS major version to create (14 or 15)',
     }),
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
     'inactivity-timeout': Flags.string({
@@ -146,6 +150,9 @@ export default class AndroidCreate extends BaseCommand {
 
       if (flags.region) params.spec!.region = flags.region;
       if (flags.jurisdiction) params.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';
+      if (flags['os-version']) {
+        params.spec!.clues = [{ kind: 'OSVersion', osVersion: flags['os-version'] }];
+      }
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
 
