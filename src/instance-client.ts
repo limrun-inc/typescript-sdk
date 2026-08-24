@@ -31,8 +31,6 @@ export type DestinationTunnelOptions = {
   routes?: DestinationTunnelRoute[];
   /** Exact or `*.` wildcard domains intercepted on-device via fake-IP DNS. */
   domains?: string[];
-  /** IPv4 CIDR destinations intercepted on-device via TPROXY. */
-  cidrs?: string[];
   /** Per-flow receive window in bytes. Defaults to 1 MiB. */
   window?: number;
   /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
@@ -1698,7 +1696,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return startDestinationTcpTunnel(deriveDestinationTunnelURL(requireAdbUrl()), options.token, {
         ...(tunnelOptions.routes ? { routes: tunnelOptions.routes } : {}),
         ...(tunnelOptions.domains ? { domains: tunnelOptions.domains } : {}),
-        ...(tunnelOptions.cidrs ? { cidrs: tunnelOptions.cidrs } : {}),
         window: tunnelOptions.window ?? ANDROID_TUNNEL_DEFAULT_WINDOW,
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });

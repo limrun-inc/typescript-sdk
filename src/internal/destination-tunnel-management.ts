@@ -12,7 +12,6 @@ export interface DestinationTunnelStatus {
     state: 'starting' | 'ready' | 'stopping';
     routes: DestinationTunnelRoute[];
     domains?: string[];
-    cidrs?: string[];
     /** Per exact route, the device-side bind outcomes (Android bind listeners). */
     binds?: Record<string, DestinationTunnelBindReport[]>;
   };
@@ -81,18 +80,15 @@ function readActiveTunnel(value: unknown): NonNullable<DestinationTunnelStatus['
   }
   const routes = active['routes'] === undefined ? [] : readArray(active, 'routes').map(readTunnelRoute);
   const domains = active['domains'] === undefined ? [] : readArray(active, 'domains').map(readSelectorText);
-  const cidrs = active['cidrs'] === undefined ? [] : readArray(active, 'cidrs').map(readSelectorText);
   const selectors = validateDestinationTunnelSelectors({
     ...(routes.length > 0 ? { routes } : {}),
     ...(domains.length > 0 ? { domains } : {}),
-    ...(cidrs.length > 0 ? { cidrs } : {}),
   });
   return {
     tunnelId: readNonEmptyString(active, 'tunnelId'),
     state,
     routes: selectors.routes ?? [],
     ...(selectors.domains ? { domains: selectors.domains } : {}),
-    ...(selectors.cidrs ? { cidrs: selectors.cidrs } : {}),
     ...(active['binds'] === undefined ? {} : { binds: readBinds(active['binds']) }),
   };
 }

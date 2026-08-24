@@ -92,17 +92,6 @@ export function parseTunnelDomain(value: string): string {
   }
 }
 
-export function parseTunnelCidr(value: string): string {
-  try {
-    return validateDestinationTunnelSelectors({ cidrs: [value] }).cidrs![0]!;
-  } catch (error) {
-    throw new Error(
-      `Invalid CIDR "${value}"; use IPv4 network/prefix like 10.0.0.0/8` +
-        (error instanceof Error ? ` (${error.message})` : ''),
-    );
-  }
-}
-
 export function newTunnelOwner(): string {
   return crypto.randomBytes(16).toString('hex');
 }
@@ -116,7 +105,6 @@ export function formatTunnelSelectors(selectors: DestinationTunnelSelectors): st
   return [
     ...(selectors.routes ?? []).map((route) => `route ${formatTunnelRoute(route)}`),
     ...(selectors.domains ?? []).map((domain) => `domain ${domain}`),
-    ...(selectors.cidrs ?? []).map((cidr) => `cidr ${cidr}`),
   ];
 }
 
@@ -147,7 +135,6 @@ export function buildTunnelServeArgs(options: {
     `--tunnel-owner=${options.owner}`,
     ...(options.selectors.routes ?? []).flatMap((route) => ['--route', formatTunnelRoute(route)]),
     ...(options.selectors.domains ?? []).flatMap((domain) => ['--domain', domain]),
-    ...(options.selectors.cidrs ?? []).flatMap((cidr) => ['--cidr', cidr]),
   ];
 }
 

@@ -36,7 +36,6 @@ export interface DestinationTcpTunnel {
 export interface DestinationTcpTunnelOptions {
   routes?: DestinationTunnelRoute[];
   domains?: string[];
-  cidrs?: string[];
   /**
    * Per-flow receive window in bytes. Setting it enables explicit credit
    * flow control: the client advertises the window in `start`/`openOk` and
@@ -92,7 +91,6 @@ export async function startDestinationTcpTunnel(
   const selectors = validateDestinationTunnelSelectors({
     ...(options.routes ? { routes: options.routes } : {}),
     ...(options.domains ? { domains: options.domains } : {}),
-    ...(options.cidrs ? { cidrs: options.cidrs } : {}),
   });
   const routes = selectors.routes ?? [];
   const logLevel = options.logLevel ?? 'info';
@@ -392,9 +390,9 @@ export async function startDestinationTcpTunnel(
       }
 
       const kind = message.routeId.split('-')[0];
-      // Exact routes and CIDR members dial the declared target directly.
-      // Domain targets resolve through the OS resolver first, so their
-      // socket starts detached and connects once an allowed address is found.
+      // Exact routes dial the declared target directly. Domain targets
+      // resolve through the OS resolver first, so their socket starts
+      // detached and connects once an allowed address is found.
       const socket =
         kind === 'domain' ?
           new net.Socket({ allowHalfOpen: true })
@@ -651,7 +649,6 @@ export async function startDestinationTcpTunnel(
         version: DESTINATION_TUNNEL_VERSION,
         ...(selectors.routes ? { routes: selectors.routes } : {}),
         ...(selectors.domains ? { domains: selectors.domains } : {}),
-        ...(selectors.cidrs ? { cidrs: selectors.cidrs } : {}),
         ...(creditWindow === undefined ? {} : { window: creditWindow }),
       });
       pingInterval = setInterval(() => {
@@ -767,9 +764,7 @@ export function classifyOpenFailure(error: NodeJS.ErrnoException): DestinationTu
 }
 
 function countSelectors(selectors: DestinationTunnelSelectors): number {
-  return (
-    (selectors.routes?.length ?? 0) + (selectors.domains?.length ?? 0) + (selectors.cidrs?.length ?? 0)
-  );
+  return (selectors.routes?.length ?? 0) + (selectors.domains?.length ?? 0);
 }
 
 function positiveInteger(value: number, name: string): number {

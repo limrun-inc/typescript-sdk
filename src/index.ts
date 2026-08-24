@@ -9,11 +9,6 @@ export { PagePromise } from './core/pagination';
 export * from './instance-client';
 export * as Ios from './ios-client';
 export {
-  superviseDestinationTcpTunnel,
-  type DestinationTunnelSupervisorOptions,
-  type SupervisedDestinationTunnel,
-} from './destination-tunnel-supervisor';
-export {
   isTerminalDestinationTunnelError,
   type DestinationTcpTunnel,
   type DestinationTcpTunnelOptions,

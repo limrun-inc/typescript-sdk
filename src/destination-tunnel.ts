@@ -5,11 +5,10 @@ import { domainToASCII } from 'url';
 export const DESTINATION_TUNNEL_VERSION = 1;
 export const DESTINATION_TUNNEL_MAX_ROUTES = 10;
 export const DESTINATION_TUNNEL_MAX_DOMAINS = 64;
-export const DESTINATION_TUNNEL_MAX_CIDRS = 16;
 export const DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES = 4;
 /**
  * IPv4 range used by the device side for synthetic (fake) DNS answers of
- * matched domain selectors. CIDR selectors must not overlap it.
+ * matched domain selectors.
  */
 export const DESTINATION_TUNNEL_FAKE_RANGE = '198.18.0.0/15';
 /** Upper bound for per-flow receive windows advertised in open/openOk. */
@@ -24,17 +23,16 @@ export interface DestinationTunnelRoute {
 
 /**
  * Typed TCP selectors negotiated in `start` and echoed back in `ready`.
- * Routes are exact localhost/literal-IP destinations (iOS v1 behavior),
- * domains are exact or `*.` label-bound wildcard names, and cidrs are
- * IPv4 networks. At least one selector of any kind is required.
+ * Routes are exact localhost/literal-IP destinations (iOS v1 behavior) and
+ * domains are exact or `*.` label-bound wildcard names. At least one
+ * selector of any kind is required.
  */
 export interface DestinationTunnelSelectors {
   routes?: DestinationTunnelRoute[];
   domains?: string[];
-  cidrs?: string[];
 }
 
-export type DestinationTunnelSelectorKind = 'route' | 'domain' | 'cidr';
+export type DestinationTunnelSelectorKind = 'route' | 'domain';
 
 export type DestinationTunnelBindStatus = 'ok' | 'conflict' | 'error';
 
@@ -92,7 +90,6 @@ export type DestinationTunnelClientMessage =
       version: number;
       routes?: DestinationTunnelRoute[];
       domains?: string[];
-      cidrs?: string[];
       /** Default per-flow receive window this client grants. Absent disables credit. */
       window?: number;
     }
@@ -118,7 +115,7 @@ export type DestinationTunnelServerMessage =
   | {
       type: 'open';
       connId: number;
-      /** Selector ID (route-N, domain-N, or cidr-N). Wire name kept from v1. */
+      /** Selector ID (route-N or domain-N). Wire name kept from v1. */
       routeId: string;
       host: string;
       port: number;
@@ -137,8 +134,6 @@ export type DestinationTunnelSelectorErrorCode =
   | 'invalid_host'
   | 'invalid_port'
   | 'invalid_domain'
-  | 'invalid_cidr'
-  | 'overlap'
   | 'duplicate';
 
 export type DestinationTunnelRouteErrorCode = DestinationTunnelSelectorErrorCode;
@@ -229,8 +224,7 @@ export function validateDestinationTunnelSelectors(
 ): DestinationTunnelSelectors {
   const routes = selectors.routes ?? [];
   const domains = selectors.domains ?? [];
-  const cidrs = selectors.cidrs ?? [];
-  if (routes.length === 0 && domains.length === 0 && cidrs.length === 0) {
+  if (routes.length === 0 && domains.length === 0) {
     throw new DestinationTunnelRouteError('empty', 'at least one tunnel selector is required');
   }
   const canonical: DestinationTunnelSelectors = {};
@@ -242,9 +236,6 @@ export function validateDestinationTunnelSelectors(
   }
   if (domains.length > 0) {
     canonical.domains = validateDestinationTunnelDomains(domains);
-  }
-  if (cidrs.length > 0) {
-    canonical.cidrs = validateDestinationTunnelCidrs(cidrs);
   }
   return canonical;
 }
@@ -269,26 +260,6 @@ export function validateDestinationTunnelDomains(domains: readonly string[]): st
   return canonical;
 }
 
-export function validateDestinationTunnelCidrs(cidrs: readonly string[]): string[] {
-  if (cidrs.length > DESTINATION_TUNNEL_MAX_CIDRS) {
-    throw new DestinationTunnelRouteError(
-      'too_many',
-      `at most ${DESTINATION_TUNNEL_MAX_CIDRS} tunnel CIDRs are allowed`,
-    );
-  }
-  const canonical: string[] = [];
-  const seen = new Set<string>();
-  for (const cidr of cidrs) {
-    const normalized = canonicalizeDestinationTunnelCidr(cidr);
-    if (seen.has(normalized)) {
-      throw new DestinationTunnelRouteError('duplicate', `duplicate tunnel CIDR ${normalized}`);
-    }
-    seen.add(normalized);
-    canonical.push(normalized);
-  }
-  return canonical;
-}
-
 /**
  * Deterministic hash of the canonical selector configuration. Servers echo it
  * in `ready` so clients can detect config mismatches across reconnects. The
@@ -304,18 +275,14 @@ export function destinationTunnelConfigHash(selectors: DestinationTunnelSelector
   if (canonical.domains && canonical.domains.length > 0) {
     parts.push(`"domains":[${canonical.domains.map((domain) => JSON.stringify(domain)).join(',')}]`);
   }
-  if (canonical.cidrs && canonical.cidrs.length > 0) {
-    parts.push(`"cidrs":[${canonical.cidrs.map((cidr) => JSON.stringify(cidr)).join(',')}]`);
-  }
   return crypto.createHash('sha256').update(`{${parts.join(',')}}`, 'utf8').digest('hex');
 }
 
-/** Selector IDs are 1-based per kind: route-1, domain-1, cidr-1, ... */
+/** Selector IDs are 1-based per kind: route-1, domain-1, ... */
 export function destinationTunnelSelectorIds(selectors: DestinationTunnelSelectors): string[] {
   const ids: string[] = [];
   (selectors.routes ?? []).forEach((_, index) => ids.push(`route-${index + 1}`));
   (selectors.domains ?? []).forEach((_, index) => ids.push(`domain-${index + 1}`));
-  (selectors.cidrs ?? []).forEach((_, index) => ids.push(`cidr-${index + 1}`));
   return ids;
 }
 
@@ -326,18 +293,6 @@ export function destinationTunnelDomainMatches(pattern: string, host: string): b
     return candidate.length > base.length + 1 && candidate.endsWith(`.${base}`);
   }
   return candidate === pattern;
-}
-
-export function destinationTunnelCidrContains(cidr: string, host: string): boolean {
-  const [network, lengthText] = cidr.split('/');
-  if (!network || lengthText === undefined) return false;
-  const prefix = Number(lengthText);
-  const hostValue = ipv4ToUint32(host);
-  const networkValue = ipv4ToUint32(network);
-  if (hostValue === undefined || networkValue === undefined) return false;
-  if (prefix === 0) return true;
-  const mask = (0xffff_ffff << (32 - prefix)) >>> 0;
-  return (hostValue & mask) === (networkValue & mask);
 }
 
 /**
@@ -353,7 +308,7 @@ export function assertDestinationTunnelOpenAllowed(
   if (message.proto !== 'tcp') {
     throw new DestinationTunnelProtocolError(`server requested unsupported transport ${message.proto}`);
   }
-  const match = /^(route|domain|cidr)-([1-9]\d*)$/.exec(message.routeId);
+  const match = /^(route|domain)-([1-9]\d*)$/.exec(message.routeId);
   const kind = match?.[1];
   const index = match?.[2] ? Number(match[2]) - 1 : -1;
   const fail = (): never => {
@@ -372,13 +327,6 @@ export function assertDestinationTunnelOpenAllowed(
     case 'domain': {
       const domain = normalized.domains?.[index];
       if (!domain || !destinationTunnelDomainMatches(domain, message.host)) fail();
-      return;
-    }
-    case 'cidr': {
-      const cidr = normalized.cidrs?.[index];
-      if (!cidr || net.isIP(message.host) !== 4 || !destinationTunnelCidrContains(cidr, message.host)) {
-        fail();
-      }
       return;
     }
   }
@@ -405,14 +353,12 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
       const selectors = validateDestinationTunnelSelectors({
         ...(record['routes'] === undefined ? {} : { routes: readArray(record, 'routes').map(readRoute) }),
         ...(record['domains'] === undefined ? {} : { domains: readArray(record, 'domains').map(readDomain) }),
-        ...(record['cidrs'] === undefined ? {} : { cidrs: readArray(record, 'cidrs').map(readCidr) }),
       });
       return JSON.stringify({
         type,
         version,
         ...(selectors.routes ? { routes: selectors.routes } : {}),
         ...(selectors.domains ? { domains: selectors.domains } : {}),
-        ...(selectors.cidrs ? { cidrs: selectors.cidrs } : {}),
         ...readOptionalWindow(record),
       });
     }
@@ -552,52 +498,6 @@ function canonicalizeDestinationTunnelDomain(domain: string): string {
   return wildcard ? `*.${base}` : base;
 }
 
-function canonicalizeDestinationTunnelCidr(cidr: string): string {
-  const invalid = (code: 'invalid_cidr' | 'overlap' = 'invalid_cidr'): never => {
-    throw new DestinationTunnelRouteError(
-      code,
-      code === 'overlap' ?
-        `tunnel CIDR ${cidr} overlaps the reserved fake range ${DESTINATION_TUNNEL_FAKE_RANGE}`
-      : `invalid tunnel CIDR ${cidr}`,
-    );
-  };
-  if (typeof cidr !== 'string') invalid();
-  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(cidr);
-  if (!match) invalid();
-  const prefix = Number(match![5]);
-  if (prefix < 8 || prefix > 32) invalid();
-  const address = `${Number(match![1])}.${Number(match![2])}.${Number(match![3])}.${Number(match![4])}`;
-  if (address !== `${match![1]}.${match![2]}.${match![3]}.${match![4]}`) invalid();
-  const value = ipv4ToUint32(address);
-  if (value === undefined) invalid();
-  const mask = prefix === 0 ? 0 : (0xffff_ffff << (32 - prefix)) >>> 0;
-  if (((value! & mask) >>> 0) !== value!) invalid();
-
-  const blocked: Array<[string, number]> = [
-    [DESTINATION_TUNNEL_FAKE_RANGE.split('/')[0]!, 15],
-    ['127.0.0.0', 8],
-    ['169.254.0.0', 16],
-    ['224.0.0.0', 4],
-    ['240.0.0.0', 4],
-    ['0.0.0.0', 8],
-  ];
-  for (const [network, blockedPrefix] of blocked) {
-    const blockedValue = ipv4ToUint32(network)!;
-    const sharedPrefix = Math.min(prefix, blockedPrefix);
-    const sharedMask = sharedPrefix === 0 ? 0 : (0xffff_ffff << (32 - sharedPrefix)) >>> 0;
-    if ((value! & sharedMask) === (blockedValue & sharedMask)) {
-      invalid(network === DESTINATION_TUNNEL_FAKE_RANGE.split('/')[0] ? 'overlap' : 'invalid_cidr');
-    }
-  }
-  return `${address}/${prefix}`;
-}
-
-function ipv4ToUint32(address: string): number | undefined {
-  if (net.isIP(address) !== 4) return undefined;
-  const octets = address.split('.').map(Number);
-  return (((octets[0]! << 24) >>> 0) + (octets[1]! << 16) + (octets[2]! << 8) + octets[3]!) >>> 0;
-}
-
 function canonicalizeIPv6(host: string): string {
   const mappedIPv4 = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
   if (!mappedIPv4?.[1] || !mappedIPv4[2]) {
@@ -623,21 +523,14 @@ function readDomain(value: unknown): string {
   return value;
 }
 
-function readCidr(value: unknown): string {
-  if (typeof value !== 'string') {
-    throw new DestinationTunnelProtocolError('tunnel CIDR must be a string');
-  }
-  return value;
-}
-
 function readSelectorReport(value: unknown): DestinationTunnelSelectorReport {
   const report = readRecord(value, 'tunnel selector');
   const id = readString(report, 'id');
-  if (!/^(route|domain|cidr)-([1-9]\d*)$/.test(id)) {
+  if (!/^(route|domain)-([1-9]\d*)$/.test(id)) {
     throw new DestinationTunnelProtocolError(`invalid tunnel selector id ${id}`);
   }
   const kind = readString(report, 'kind');
-  if (kind !== 'route' && kind !== 'domain' && kind !== 'cidr') {
+  if (kind !== 'route' && kind !== 'domain') {
     throw new DestinationTunnelProtocolError(`invalid tunnel selector kind ${kind}`);
   }
   if (!id.startsWith(`${kind}-`)) {
