@@ -220,7 +220,8 @@ export type XcodeBuildOptions = {
   cloudSigning?: XcodeCloudSigningConfig;
   /**
    * Upload the signed device IPA to App Store Connect after the build.
-   * Requires manual or cloud signing and sdk=iphoneos. Check ExecResult.appstore on
+   * Requires manual or cloud signing; the upload itself supports only
+   * sdk=iphoneos builds. Check ExecResult.appstore on
    * completion; it is absent when the instance's limbuild predates the
    * feature (old servers silently ignore this option).
    */
