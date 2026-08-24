@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.48.0 (2026-08-24)
+
+Full Changelog: [v0.47.2...v0.48.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.47.2...v0.48.0)
+
+### Features
+
+* **cli:** add Android OS version flag ([a9a4bcd](https://github.com/limrun-inc/typescript-sdk/commit/a9a4bcd2ec7f37442be14ed4f60892c238071ba5))
+
+
+### Documentation
+
+* **android:** list supported OS versions ([1351d69](https://github.com/limrun-inc/typescript-sdk/commit/1351d695067b5086b92eda80f5b4475248a8e394))
+
 ## 0.47.2 (2026-08-23)
 
 Full Changelog: [v0.47.1...v0.47.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.47.1...v0.47.2)
