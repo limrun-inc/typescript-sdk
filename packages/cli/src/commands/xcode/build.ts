@@ -372,7 +372,9 @@ export default class XcodeBuild extends BaseCommand {
       const cloudSigning = await this.buildCloudSigningOptions(flags);
       if (cloudSigning) {
         if (flags.sdk && !DEVICE_SDKS.has(flags.sdk)) {
-          this.error('Cloud signing is only supported for device SDK builds. Use --sdk iphoneos or --sdk watchos.');
+          this.error(
+            'Cloud signing is only supported for device SDK builds. Use --sdk iphoneos or --sdk watchos.',
+          );
         }
         if (!flags.sdk) {
           settings.sdk = 'iphoneos';
