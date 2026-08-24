@@ -66,6 +66,8 @@ interface DialConnection {
   /** Chunks read from the local socket awaiting send credit, FIFO. */
   creditQueue: Buffer[];
   creditQueueBytes: number;
+  /** Local socket ended while chunks were still queued; send fin after they drain. */
+  finPending: boolean;
   /** Bytes accepted by the local socket since the last windowUpdate we sent. */
   deliveredSinceUpdate: number;
 }
@@ -340,6 +342,13 @@ export async function startDestinationTcpTunnel(
         }
         if (closed) return;
       }
+      if (connection.creditQueue.length === 0 && connection.finPending) {
+        // The local socket ended while data was still waiting on credit; the
+        // queue has drained, so half-close can now be signaled in order.
+        connection.finPending = false;
+        connection.localInputEnded = true;
+        sendControl({ type: 'fin', connId });
+      }
       if (connection.socket.destroyed) return;
       if (connection.creditQueueBytes > 0) {
         connection.socket.pause();
@@ -410,6 +419,7 @@ export async function startDestinationTcpTunnel(
         sendCredit: message.window ?? Number.POSITIVE_INFINITY,
         creditQueue: [],
         creditQueueBytes: 0,
+        finPending: false,
         deliveredSinceUpdate: 0,
       };
       connections.set(message.connId, connection);
@@ -436,6 +446,12 @@ export async function startDestinationTcpTunnel(
 
       socket.once('end', () => {
         if (connections.get(message.connId) !== connection || connection.phase !== 'open') return;
+        if (connection.creditQueueBytes > 0) {
+          // Queued bytes are still waiting on send credit; fin must follow
+          // them, so defer it until the credit gate drains the queue.
+          connection.finPending = true;
+          return;
+        }
         connection.localInputEnded = true;
         sendControl({ type: 'fin', connId: message.connId });
       });
