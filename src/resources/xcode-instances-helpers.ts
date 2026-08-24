@@ -20,6 +20,7 @@ import {
   type ExecChildProcess,
   type ExecRequest,
   type WebhookConfig,
+  type XctestEvent,
 } from '../exec-client';
 
 export type { AppStoreUploadConfig, WebhookConfig } from '../exec-client';
@@ -117,6 +118,27 @@ export type XcodeProjectConfig = {
    * discovery picks the wrong bundle.
    */
   artifactName?: string;
+  /**
+   * xcodebuild action. 'build' (default) produces one .app; with a simulator
+   * attached it is installed there. 'build-for-testing' compiles the scheme's
+   * test targets and, with a simulator attached, runs them there: per-case
+   * results stream through XcodeBuildOptions.onXctestEvent and accumulate on
+   * ExecResult.xctest, and the exec exits non-zero when tests fail. Requires
+   * the iphonesimulator sdk. Older limbuild servers reject the field.
+   */
+  action?: 'build' | 'build-for-testing';
+  /**
+   * Run only these tests, in xcodebuild's -only-testing format:
+   * Target[/Class[/method]]. A bare target runs that target unfiltered;
+   * targets named by no entry are skipped. Mutually exclusive with
+   * skipTesting; only valid with action 'build-for-testing'.
+   */
+  onlyTesting?: string[];
+  /**
+   * Skip these tests, in xcodebuild's -skip-testing format. A bare target
+   * skips that whole target.
+   */
+  skipTesting?: string[];
 };
 
 export type XcodeGenConfig = {
@@ -259,6 +281,12 @@ export type XcodeBuildOptions = {
    * build. Older limbuild servers silently ignore this option.
    */
   webhook?: WebhookConfig;
+  /**
+   * Called for each XCTest event streamed by a build-for-testing run: one per
+   * finished test case, then the terminal summary. The same data accumulates
+   * on ExecResult.xctest.
+   */
+  onXctestEvent?: (event: XctestEvent) => void;
 };
 
 export type SimulatorInstallState =
@@ -842,6 +870,22 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         if (options?.reactNative?.devServerURL && settings?.configuration === 'Release') {
           throw new Error('reactNative.devServerURL is only supported for Debug builds');
         }
+        if (settings?.onlyTesting?.length && settings?.skipTesting?.length) {
+          throw new Error('onlyTesting and skipTesting are mutually exclusive; pass one');
+        }
+        if (
+          (settings?.onlyTesting?.length || settings?.skipTesting?.length) &&
+          settings?.action !== 'build-for-testing'
+        ) {
+          throw new Error("onlyTesting/skipTesting require action: 'build-for-testing'");
+        }
+        if (
+          settings?.action === 'build-for-testing' &&
+          settings.sdk !== undefined &&
+          settings.sdk !== 'iphonesimulator'
+        ) {
+          throw new Error("action: 'build-for-testing' requires the iphonesimulator sdk");
+        }
         if (options?.buildSettings) {
           validateBuildSettings(options.buildSettings);
         }
@@ -874,14 +918,24 @@ export class XcodeInstances extends GeneratedXcodeInstances {
             request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
             return request;
           });
-          return exec(requestPromise, { apiUrl, token, log });
+          return exec(requestPromise, {
+            apiUrl,
+            token,
+            log,
+            ...(options?.onXctestEvent && { onXctestEvent: options.onXctestEvent }),
+          });
         }
 
         if (options?.upload && 'signedUploadUrl' in options.upload) {
           request.signedUploadUrl = options.upload.signedUploadUrl;
         }
 
-        return exec(request, { apiUrl, token, log });
+        return exec(request, {
+          apiUrl,
+          token,
+          log,
+          ...(options?.onXctestEvent && { onXctestEvent: options.onXctestEvent }),
+        });
       },
 
       run(commandLine: string, options?: XcodeRunOptions): ExecChildProcess {

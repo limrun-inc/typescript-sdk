@@ -51,6 +51,22 @@ export type XcodeBuildExecRequest = {
     sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos';
     configuration?: 'Debug' | 'Release';
     artifactName?: string;
+    /**
+     * xcodebuild action. 'build' (default) produces one .app; with a
+     * simulator attached it is installed there. 'build-for-testing' compiles
+     * the scheme's test targets and, with a simulator attached, runs them
+     * there, streaming per-case results as 'xctest' events; the exec exits
+     * non-zero when tests fail. Requires the iphonesimulator sdk.
+     */
+    action?: 'build' | 'build-for-testing';
+    /**
+     * Run only these tests, in xcodebuild's -only-testing format:
+     * Target[/Class[/method]]. Mutually exclusive with skipTesting; only
+     * valid with action 'build-for-testing'.
+     */
+    onlyTesting?: string[];
+    /** Skip these tests, in xcodebuild's -skip-testing format. */
+    skipTesting?: string[];
   };
   xcodegen?: {
     spec?: string;
@@ -234,6 +250,12 @@ export type ExecOptions = {
   apiUrl: string;
   token: string;
   log?: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
+  /**
+   * Called for each XCTest event as it streams from a build-for-testing run:
+   * one per finished test case, then the terminal summary. The same data
+   * lands accumulated on ExecResult.xctest.
+   */
+  onXctestEvent?: (event: XctestEvent) => void;
 };
 
 export type ExecResult = {
@@ -253,6 +275,13 @@ export type ExecResult = {
    */
   playstore?: PlaystoreEvent;
   /**
+   * XCTest results streamed by a build-for-testing run: every finished case
+   * plus the terminal summary. Absent for plain builds and servers that
+   * predate the feature. A missing summary means the run died partway; the
+   * cases already streamed still stand.
+   */
+  xctest?: { cases: XctestCaseEvent[]; summary?: XctestSummaryEvent };
+  /**
    * True when the client gave up waiting for the build's event stream. The
    * exit code is fabricated in that case; the remote build may still be
    * running and may yet succeed.
@@ -267,6 +296,32 @@ export type ExecResult = {
    */
   incomplete?: { reason: 'timeout' | 'stream-lost' | 'stream-closed'; message: string };
 };
+
+export type XctestCaseEvent = {
+  type: 'case';
+  /**
+   * The test class as XCTest reports it: module-qualified for Swift
+   * ('AppTests.LoginTests'), bare for Objective-C.
+   */
+  testClass: string;
+  method: string;
+  passed: boolean;
+  durationMs: number;
+  /** First failure message of a failed case. */
+  failureMessage?: string;
+};
+
+export type XctestSummaryEvent = {
+  type: 'summary';
+  passed: number;
+  failed: number;
+  /** True only once every test in scope ran to completion. */
+  planFinished: boolean;
+  /** Crash or per-target failure detail when the run degraded. */
+  error?: string;
+};
+
+export type XctestEvent = XctestCaseEvent | XctestSummaryEvent;
 
 export type AppStoreEvent = {
   /** 'unknown' means an App Store upload event arrived but its payload was unreadable. */
@@ -389,6 +444,14 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private detached = false;
   private appStoreEvent: AppStoreEvent | null = null;
   private playstoreEvent: PlaystoreEvent | null = null;
+  private xctestCases: XctestCaseEvent[] = [];
+  private xctestSummary: XctestSummaryEvent | null = null;
+  // The server replays the whole event stream on every reconnect, and unlike
+  // the other events (idempotent overwrites), cases accumulate. Frames are
+  // replayed in order, so counting them per connection makes the prefix
+  // already accepted skippable exactly.
+  private xctestFramesAccepted = 0;
+  private xctestFramesThisConnection = 0;
   private readonly options: ExecOptions;
   private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
 
@@ -555,6 +618,11 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     let timeoutMs = 3600 * 1000;
     if (request.command === 'xcodebuild' && request.testflight) {
       timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 0) + 900) * 1000;
+    } else if (request.command === 'xcodebuild' && request.xcodebuild?.action === 'build-for-testing') {
+      // The test run happens after the build: products sync plus the suite,
+      // which the server caps at an hour per target. Two hours cover the
+      // common unit-plus-UI shape; the client cannot know the target count.
+      timeoutMs += 2 * 3600 * 1000;
     } else if (request.command === 'run') {
       timeoutMs = (Math.max(1, request.timeoutSeconds ?? 3600) + 60) * 1000;
     }
@@ -629,6 +697,14 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       ...('additionalMetadata' in request ? request.additionalMetadata ?? {} : {}),
       ...(this.appStoreEvent ? { appstore: this.appStoreEvent } : {}),
       ...(this.playstoreEvent ? { playstore: this.playstoreEvent } : {}),
+      ...(this.xctestCases.length > 0 || this.xctestSummary ?
+        {
+          xctest: {
+            cases: this.xctestCases,
+            ...(this.xctestSummary ? { summary: this.xctestSummary } : {}),
+          },
+        }
+      : {}),
       ...(timedOut ? { timedOut } : {}),
       ...(incomplete ? { incomplete } : {}),
     };
@@ -705,6 +781,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
         headers: { Authorization: `Bearer ${this.options.token}` },
         onConnect: () => {
           connectedAt = Date.now();
+          this.xctestFramesThisConnection = 0;
         },
         // Comments count as proof of life, so a server-side keepalive
         // works without a client change (onMessage never sees them).
@@ -794,6 +871,40 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
               // read as a missing feature.
               this.playstoreEvent = { state: 'unknown' };
               this.log('warn', `SSE playstore event has invalid data: ${data}`);
+            }
+          } else if (eventType === 'xctest') {
+            this.xctestFramesThisConnection++;
+            if (this.xctestFramesThisConnection <= this.xctestFramesAccepted) {
+              // A reconnect replays the stream from the start; this frame was
+              // already accepted on an earlier connection.
+              return;
+            }
+            this.xctestFramesAccepted = this.xctestFramesThisConnection;
+            let event: XctestEvent | undefined;
+            try {
+              const parsed = JSON.parse(data) as XctestEvent;
+              if (parsed?.type === 'case') {
+                this.xctestCases.push(parsed);
+                event = parsed;
+              } else if (parsed?.type === 'summary') {
+                this.xctestSummary = parsed;
+                event = parsed;
+              } else {
+                // The simulator owns the frame vocabulary and may grow it; the
+                // callback's contract is cases and summaries only.
+                this.log('debug', `SSE xctest event of unknown type ignored: ${data}`);
+              }
+            } catch {
+              this.log('warn', `SSE xctest event has invalid data: ${data}`);
+            }
+            if (event) {
+              try {
+                this.options.onXctestEvent?.(event);
+              } catch (err) {
+                // The consumer's callback, not the frame: the run must not be
+                // derailed and the log must not blame the payload.
+                this.log('warn', `onXctestEvent callback threw: ${String(err)}`);
+              }
             }
           } else if (eventType === 'exitCode') {
             const exitCode = parseInt(data, 10);
