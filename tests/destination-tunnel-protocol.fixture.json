@@ -3,7 +3,6 @@
     "version": 1,
     "maxRoutes": 10,
     "maxDomains": 64,
-    "maxCidrs": 16,
     "fakeRange": "198.18.0.0/15",
     "maxWindow": 67108864,
     "maxWindowIncrement": 2147483647,
@@ -444,77 +443,6 @@
       "matches": false
     }
   ],
-  "cidrCases": [
-    {
-      "input": "10.0.0.0/8",
-      "canonical": "10.0.0.0/8"
-    },
-    {
-      "input": "192.168.100.0/24",
-      "canonical": "192.168.100.0/24"
-    },
-    {
-      "input": "100.64.1.1/32",
-      "canonical": "100.64.1.1/32"
-    }
-  ],
-  "invalidCidrSets": [
-    {
-      "name": "missing prefix",
-      "cidrs": ["10.0.0.0"],
-      "error": "invalid_cidr"
-    },
-    {
-      "name": "host bits set",
-      "cidrs": ["10.0.0.1/8"],
-      "error": "invalid_cidr"
-    },
-    {
-      "name": "too broad",
-      "cidrs": ["10.0.0.0/4"],
-      "error": "invalid_cidr"
-    },
-    {
-      "name": "loopback",
-      "cidrs": ["127.0.0.0/8"],
-      "error": "invalid_cidr"
-    },
-    {
-      "name": "link-local",
-      "cidrs": ["169.254.0.0/16"],
-      "error": "invalid_cidr"
-    },
-    {
-      "name": "multicast",
-      "cidrs": ["224.0.0.0/8"],
-      "error": "invalid_cidr"
-    },
-    {
-      "name": "reserved",
-      "cidrs": ["255.255.255.255/32"],
-      "error": "invalid_cidr"
-    },
-    {
-      "name": "fake range exact",
-      "cidrs": ["198.18.0.0/15"],
-      "error": "overlap"
-    },
-    {
-      "name": "fake range subset",
-      "cidrs": ["198.19.1.0/24"],
-      "error": "overlap"
-    },
-    {
-      "name": "fake range superset",
-      "cidrs": ["198.16.0.0/13"],
-      "error": "overlap"
-    },
-    {
-      "name": "duplicate",
-      "cidrs": ["10.0.0.0/8", "10.0.0.0/8"],
-      "error": "duplicate"
-    }
-  ],
   "configHashCases": [
     {
       "name": "routes only",
@@ -538,11 +466,10 @@
             "port": 8000
           }
         ],
-        "domains": ["*.corp.example", "api.internal"],
-        "cidrs": ["10.0.0.0/8"]
+        "domains": ["*.corp.example", "api.internal"]
       },
-      "canonicalJson": "{\"version\":1,\"routes\":[{\"host\":\"10.20.30.40\",\"port\":8000}],\"domains\":[\"*.corp.example\",\"api.internal\"],\"cidrs\":[\"10.0.0.0/8\"]}",
-      "sha256": "6532bb8c94abe9c0ff33c599c5c95e7a241109ddd943d8ee572dda4442e595e0"
+      "canonicalJson": "{\"version\":1,\"routes\":[{\"host\":\"10.20.30.40\",\"port\":8000}],\"domains\":[\"*.corp.example\",\"api.internal\"]}",
+      "sha256": "baa12659575454c148b8f668f5d89038f38033160d58db3a7f5f9b53bf5fd423"
     },
     {
       "name": "domains only",
@@ -592,30 +519,6 @@
         "routeId": "domain-1",
         "host": "corp.example",
         "port": 443
-      },
-      "allowed": false
-    },
-    {
-      "name": "cidr member",
-      "selectors": {
-        "cidrs": ["10.0.0.0/8"]
-      },
-      "open": {
-        "routeId": "cidr-1",
-        "host": "10.1.2.3",
-        "port": 6379
-      },
-      "allowed": true
-    },
-    {
-      "name": "cidr non-member",
-      "selectors": {
-        "cidrs": ["10.0.0.0/8"]
-      },
-      "open": {
-        "routeId": "cidr-1",
-        "host": "11.1.2.3",
-        "port": 6379
       },
       "allowed": false
     },
@@ -680,7 +583,6 @@
           }
         ],
         "domains": ["*.corp.example", "db.internal"],
-        "cidrs": ["10.0.0.0/8"],
         "window": 1048576
       }
     },
@@ -772,14 +674,9 @@
             "id": "domain-1",
             "kind": "domain",
             "value": "*.corp.example"
-          },
-          {
-            "id": "cidr-1",
-            "kind": "cidr",
-            "value": "10.0.0.0/8"
           }
         ],
-        "configHash": "6532bb8c94abe9c0ff33c599c5c95e7a241109ddd943d8ee572dda4442e595e0"
+        "configHash": "baa12659575454c148b8f668f5d89038f38033160d58db3a7f5f9b53bf5fd423"
       }
     },
     {

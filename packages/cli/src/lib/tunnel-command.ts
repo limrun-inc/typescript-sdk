@@ -50,6 +50,30 @@ export interface TunnelClientFacade extends TunnelManagementFacade {
   startTunnel: (selectors: DestinationTunnelSelectors) => Promise<TunnelGeneration>;
 }
 
+/**
+ * Adapts an SDK instance client to the product-neutral facade. Both clients
+ * accept the selectors shape directly, so the adapter only threads the CLI's
+ * log level through.
+ */
+export function tunnelClientFacade(
+  client: {
+    startTunnel: (
+      options: DestinationTunnelSelectors & { logLevel?: 'info' | 'none' },
+    ) => Promise<TunnelGeneration>;
+    getTunnelStatus: () => Promise<DestinationTunnelStatus>;
+    stopTunnel: (tunnelId: string) => Promise<void>;
+  },
+  disconnect: () => void,
+  logLevel: 'info' | 'none',
+): TunnelClientFacade {
+  return {
+    startTunnel: (selectors) => client.startTunnel({ ...selectors, logLevel }),
+    getTunnelStatus: () => client.getTunnelStatus(),
+    stopTunnel: (tunnelId) => client.stopTunnel(tunnelId),
+    disconnect,
+  };
+}
+
 export interface TunnelCommandIO {
   error: (message: string) => never;
   output: (message: string) => void;
@@ -83,34 +107,60 @@ export type RemoteStopOutcome = { outcome: 'none' } | { outcome: 'stopped' | 'go
 const RECONNECT_INITIAL_BACKOFF_MS = 500;
 const RECONNECT_MAX_BACKOFF_MS = 30_000;
 
-export async function runTunnelForeground(context: TunnelCommandContext): Promise<void> {
-  const client = await context.connect();
+/**
+ * The shared start -> await-end -> backoff cycle behind both the foreground
+ * and detached serve flows. `beforeStart` may veto a (re)start (e.g. the
+ * detached owner was cancelled); a throw from `onReady` tears the fresh
+ * tunnel down before propagating so no unowned server-side session is left.
+ */
+async function runTunnelLoop(
+  context: TunnelCommandContext,
+  client: TunnelClientFacade,
+  hooks: {
+    beforeStart?: () => boolean;
+    onReady: (tunnel: TunnelGeneration, reconnected: boolean) => void;
+  },
+): Promise<'shutdown' | 'cancelled' | 'disconnected'> {
   const sleep = context.sleep ?? defaultSleep;
-  let printedReady = false;
   let tunnel: TunnelGeneration | undefined;
+  let reconnected = false;
   try {
     let backoffMs = RECONNECT_INITIAL_BACKOFF_MS;
     for (;;) {
+      if (hooks.beforeStart && !hooks.beforeStart()) return 'cancelled';
       tunnel = await client.startTunnel(context.selectors);
       backoffMs = RECONNECT_INITIAL_BACKOFF_MS;
-      if (!printedReady) {
-        printTunnelReady(context, tunnel.tunnelId, false);
-        printedReady = true;
-      } else {
-        context.io.info(`Tunnel reconnected with new ID ${tunnel.tunnelId}.`);
-      }
+      hooks.onReady(tunnel, reconnected);
+      reconnected = true;
       const outcome = await awaitTunnelEnd(tunnel);
       tunnel = undefined;
-      if (outcome === 'shutdown') return;
-      if (!context.reconnect) {
-        throw new Error('Destination tunnel disconnected unexpectedly');
-      }
+      if (outcome === 'shutdown') return 'shutdown';
+      if (!context.reconnect) return 'disconnected';
       context.io.info(`Tunnel disconnected; reconnecting in ${backoffMs}ms...`);
       await sleep(jittered(backoffMs));
       backoffMs = Math.min(backoffMs * 2, RECONNECT_MAX_BACKOFF_MS);
     }
   } finally {
     tunnel?.close();
+  }
+}
+
+export async function runTunnelForeground(context: TunnelCommandContext): Promise<void> {
+  const client = await context.connect();
+  try {
+    const end = await runTunnelLoop(context, client, {
+      onReady: (tunnel, reconnected) => {
+        if (reconnected) {
+          context.io.info(`Tunnel reconnected with new ID ${tunnel.tunnelId}.`);
+        } else {
+          printTunnelReady(context, tunnel.tunnelId, false);
+        }
+      },
+    });
+    if (end === 'disconnected') {
+      throw new Error('Destination tunnel disconnected unexpectedly');
+    }
+  } finally {
     client.disconnect();
   }
 }
@@ -129,47 +179,22 @@ export async function serveTunnelDetached(context: TunnelCommandContext, owner: 
 
   const client = await context.connect();
   const capLogs = setInterval(() => capTunnelLog(starting.logPath), 30_000);
-  let tunnel: TunnelGeneration | undefined;
   try {
-    let backoffMs = RECONNECT_INITIAL_BACKOFF_MS;
-    for (;;) {
+    await runTunnelLoop(context, client, {
       // A stop may have cancelled this owner while it was starting or in
       // backoff; never (re)create the tunnel for a cancelled owner.
-      if (
-        isTunnelProcessCancelled(context.instanceId, owner) ||
-        loadTunnelProcess(context.instanceId, owner) === undefined
-      ) {
-        return;
-      }
-      tunnel = await client.startTunnel(context.selectors);
-      backoffMs = RECONNECT_INITIAL_BACKOFF_MS;
-      try {
-        updateTunnelProcess(
-          {
-            ...starting,
-            status: 'ready',
-            tunnelId: tunnel.tunnelId,
-          },
-          owner,
-        );
-      } catch (error) {
-        // Ownership was cancelled between connect and ready: tear the fresh
-        // tunnel down instead of leaving an unowned server-side session.
-        tunnel.close();
-        throw error;
-      }
-      const outcome = await awaitTunnelEnd(tunnel);
-      tunnel = undefined;
-      if (outcome === 'shutdown') return;
-      if (!context.reconnect) return;
-      context.io.info(`Tunnel disconnected; reconnecting in ${backoffMs}ms...`);
-      await sleep(jittered(backoffMs));
-      backoffMs = Math.min(backoffMs * 2, RECONNECT_MAX_BACKOFF_MS);
-    }
+      beforeStart: () =>
+        !isTunnelProcessCancelled(context.instanceId, owner) &&
+        loadTunnelProcess(context.instanceId, owner) !== undefined,
+      // A throw here (ownership cancelled between connect and ready) makes
+      // the loop close the fresh tunnel before propagating.
+      onReady: (tunnel) => {
+        updateTunnelProcess({ ...starting, status: 'ready', tunnelId: tunnel.tunnelId }, owner);
+      },
+    });
   } finally {
     clearInterval(capLogs);
     capTunnelLog(starting.logPath);
-    tunnel?.close();
     client.disconnect();
     clearTunnelProcess(context.instanceId, owner);
   }

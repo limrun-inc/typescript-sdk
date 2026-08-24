@@ -66,7 +66,7 @@ export type { ReverseTunnel } from './tunnel';
 export type Tunnel = DestinationTcpTunnel;
 export type TunnelOptions = {
   /** Exact localhost or literal-IP TCP destinations that the server may ask this client to dial. */
-  routes: DestinationTunnelRoute[];
+  routes?: DestinationTunnelRoute[];
   /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
   logLevel?: LogLevel;
 };
@@ -2858,7 +2858,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const startTunnel = async (tunnelOptions: TunnelOptions): Promise<Tunnel> => {
       return startDestinationTcpTunnel(deriveDestinationTunnelURL(options.apiUrl), options.token, {
-        routes: tunnelOptions.routes,
+        ...(tunnelOptions.routes ? { routes: tunnelOptions.routes } : {}),
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });
     };

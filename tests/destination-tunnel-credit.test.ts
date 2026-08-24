@@ -80,7 +80,6 @@ describe('destination tunnel credit and selector dialing', () => {
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
       routes: [{ host: '127.0.0.1', port: localPort }],
       domains: ['*.corp.example'],
-      cidrs: ['10.0.0.0/8'],
       window: 4096,
       logLevel: 'none',
     });
@@ -90,7 +89,6 @@ describe('destination tunnel credit and selector dialing', () => {
       version: DESTINATION_TUNNEL_VERSION,
       routes: [{ host: '127.0.0.1', port: localPort }],
       domains: ['*.corp.example'],
-      cidrs: ['10.0.0.0/8'],
       window: 4096,
     });
     sendControl({ type: 'ready', version: DESTINATION_TUNNEL_VERSION, tunnelId: 'tunnel-1' });

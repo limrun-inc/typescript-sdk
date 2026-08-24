@@ -7,7 +7,6 @@ import upstream from './destination-tunnel-protocol.upstream.json';
 import {
   DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
   DESTINATION_TUNNEL_FAKE_RANGE,
-  DESTINATION_TUNNEL_MAX_CIDRS,
   DESTINATION_TUNNEL_MAX_DOMAINS,
   DESTINATION_TUNNEL_MAX_ROUTES,
   DESTINATION_TUNNEL_MAX_WINDOW,
@@ -19,13 +18,11 @@ import {
   assertDestinationTunnelReady,
   decodeDestinationTunnelDataFrame,
   decodeDestinationTunnelServerMessage,
-  destinationTunnelCidrContains,
   destinationTunnelConfigHash,
   destinationTunnelDomainMatches,
   destinationTunnelSelectorIds,
   encodeDestinationTunnelDataFrame,
   encodeDestinationTunnelClientMessage,
-  validateDestinationTunnelCidrs,
   validateDestinationTunnelDomains,
   validateDestinationTunnelRoutes,
   validateDestinationTunnelSelectors,
@@ -41,7 +38,6 @@ describe('destination tunnel wire contract', () => {
     expect(DESTINATION_TUNNEL_VERSION).toBe(fixture.contract.version);
     expect(DESTINATION_TUNNEL_MAX_ROUTES).toBe(fixture.contract.maxRoutes);
     expect(DESTINATION_TUNNEL_MAX_DOMAINS).toBe(fixture.contract.maxDomains);
-    expect(DESTINATION_TUNNEL_MAX_CIDRS).toBe(fixture.contract.maxCidrs);
     expect(DESTINATION_TUNNEL_FAKE_RANGE).toBe(fixture.contract.fakeRange);
     expect(DESTINATION_TUNNEL_MAX_WINDOW).toBe(fixture.contract.maxWindow);
     expect(DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT).toBe(fixture.contract.maxWindowIncrement);
@@ -66,7 +62,7 @@ describe('destination tunnel wire contract', () => {
       repository: 'limrun-inc/limrun',
       commit: 'b3cbe546d6af8111a7cd6d8d60609a8f2086591e',
       path: 'design/destination-tunnel/v1',
-      messagesSha256: 'c11c9e4e0c220c36a7b91a1040351a8302e4fad772379b2c24c2bd8d83f7b15a',
+      messagesSha256: 'b054d33f5164b9d836b923153f0ea2bfc44342c368c62c0e220389881dd3bcf7',
       binarySha256: 'e6da913a0ff85a3402f09de6cbbb18d4f9b2e76007ca48b85f4d35b66810da7d',
     });
     expect(sha256('destination-tunnel-protocol.fixture.json')).toBe(upstream.messagesSha256);
@@ -252,25 +248,6 @@ describe('destination tunnel selector contract', () => {
     },
   );
 
-  test.each(fixture.cidrCases)('canonicalizes cidr $input', ({ input, canonical }) => {
-    expect(validateDestinationTunnelCidrs([input])).toEqual([canonical]);
-  });
-
-  test.each(fixture.invalidCidrSets)('rejects cidr set $name with $error', ({ cidrs, error }) => {
-    expect(() => validateDestinationTunnelCidrs(cidrs)).toThrow(
-      expect.objectContaining<Partial<DestinationTunnelRouteError>>({
-        code: error as DestinationTunnelRouteErrorCode,
-      }),
-    );
-  });
-
-  test('cidr membership is prefix-based', () => {
-    expect(destinationTunnelCidrContains('10.0.0.0/8', '10.255.255.255')).toBe(true);
-    expect(destinationTunnelCidrContains('10.0.0.0/8', '11.0.0.0')).toBe(false);
-    expect(destinationTunnelCidrContains('100.64.1.1/32', '100.64.1.1')).toBe(true);
-    expect(destinationTunnelCidrContains('100.64.1.1/32', '100.64.1.2')).toBe(false);
-  });
-
   test('requires at least one selector of any kind', () => {
     expect(() => validateDestinationTunnelSelectors({})).toThrow(
       expect.objectContaining<Partial<DestinationTunnelRouteError>>({ code: 'empty' }),
@@ -297,9 +274,8 @@ describe('destination tunnel selector contract', () => {
       destinationTunnelSelectorIds({
         routes: [{ host: 'localhost', port: 8080 }],
         domains: ['*.corp.example', 'db.internal'],
-        cidrs: ['10.0.0.0/8'],
       }),
-    ).toEqual(['route-1', 'domain-1', 'domain-2', 'cidr-1']);
+    ).toEqual(['route-1', 'domain-1', 'domain-2']);
   });
 
   test.each(fixture.configHashCases)('pins config hash for $name', ({ selectors, sha256 }) => {

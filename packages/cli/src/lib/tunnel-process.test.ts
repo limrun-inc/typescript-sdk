@@ -16,7 +16,6 @@ import {
   loadTunnelProcess,
   markTunnelProcessCancelled,
   newTunnelOwner,
-  parseTunnelCidr,
   parseTunnelDomain,
   parseTunnelRoute,
   prepareTunnelLog,
@@ -92,12 +91,6 @@ describe('tunnel process state', () => {
     },
   );
 
-  test('parses and rejects CIDRs', () => {
-    expect(parseTunnelCidr('10.0.0.0/8')).toBe('10.0.0.0/8');
-    expect(() => parseTunnelCidr('10.0.0.1/8')).toThrow('Invalid CIDR');
-    expect(() => parseTunnelCidr('198.19.0.0/24')).toThrow('Invalid CIDR');
-  });
-
   test('builds a child command replaying every selector kind', () => {
     const owner = newTunnelOwner();
     expect(
@@ -112,7 +105,6 @@ describe('tunnel process state', () => {
             { host: '2001:db8::1', port: 8443 },
           ],
           domains: ['*.corp.example'],
-          cidrs: ['10.0.0.0/8'],
         },
       }),
     ).toEqual([
@@ -130,8 +122,6 @@ describe('tunnel process state', () => {
       '[2001:db8::1]:8443',
       '--domain',
       '*.corp.example',
-      '--cidr',
-      '10.0.0.0/8',
     ]);
   });
 
@@ -176,9 +166,8 @@ describe('tunnel process state', () => {
       formatTunnelSelectors({
         routes: [{ host: 'localhost', port: 8080 }],
         domains: ['*.corp.example'],
-        cidrs: ['10.0.0.0/8'],
       }),
-    ).toEqual(['route localhost:8080', 'domain *.corp.example', 'cidr 10.0.0.0/8']);
+    ).toEqual(['route localhost:8080', 'domain *.corp.example']);
   });
 
   test('forwards an explicit API key only through the child environment', () => {
@@ -406,7 +395,6 @@ describe('tunnel process state', () => {
       },
     },
     { selectors: { domains: ['api.*.example'] } },
-    { selectors: { cidrs: ['198.18.5.0/24'] } },
     { selectors: {} },
   ] satisfies Array<Partial<TunnelProcessState>>)('rejects malformed persisted state %#', (overrides) => {
     const state = overrides.status === 'ready' ? makeReadyState(overrides) : makeState(overrides);

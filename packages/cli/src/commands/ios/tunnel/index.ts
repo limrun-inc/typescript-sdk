@@ -6,6 +6,7 @@ import {
   runTunnelForeground,
   serveTunnelDetached,
   startTunnelDetached,
+  tunnelClientFacade,
   type TunnelClientFacade,
   type TunnelCommandContext,
 } from '../../../lib/tunnel-command';
@@ -103,16 +104,7 @@ export default class IosTunnel extends BaseCommand {
       connect: async (): Promise<TunnelClientFacade> => {
         const resolvedInstance = this.resolveIosInstance(instanceId);
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
-        return {
-          startTunnel: (tunnelSelectors) =>
-            client.startTunnel({
-              routes: tunnelSelectors.routes ?? [],
-              logLevel,
-            }),
-          getTunnelStatus: () => client.getTunnelStatus(),
-          stopTunnel: (tunnelId) => client.stopTunnel(tunnelId),
-          disconnect,
-        };
+        return tunnelClientFacade(client, disconnect, logLevel);
       },
       io: this.tunnelCommandIO(),
     };

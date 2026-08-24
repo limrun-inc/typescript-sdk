@@ -6,10 +6,11 @@ import {
   runTunnelForeground,
   serveTunnelDetached,
   startTunnelDetached,
+  tunnelClientFacade,
   type TunnelClientFacade,
   type TunnelCommandContext,
 } from '../../../lib/tunnel-command';
-import { parseTunnelCidr, parseTunnelDomain, parseTunnelRoute } from '../../../lib/tunnel-process';
+import { parseTunnelDomain, parseTunnelRoute } from '../../../lib/tunnel-process';
 
 /** Bind listeners on the instance run unprivileged; system ports are refused. */
 const ANDROID_MIN_ROUTE_PORT = 1024;
@@ -19,12 +20,12 @@ export default class AndroidTunnel extends BaseCommand {
   static description =
     'Start one transparent destination tunnel. Exact --route destinations (localhost:port or IP:port) ' +
     'become listeners on the instance, also reachable as 10.0.2.2:<port> following the emulator ' +
-    'convention. --domain and --cidr destinations are intercepted transparently on the instance and ' +
+    'convention. --domain destinations are intercepted transparently on the instance and ' +
     'dialed from this machine. Use --detach to keep the tunnel running after this command returns. ' +
     'Note: apps that resolve DNS themselves over HTTPS (DoH) bypass --domain interception.';
   static examples = [
     '<%= config.bin %> android tunnel --route localhost:8080 --id <instance-ID>',
-    '<%= config.bin %> android tunnel --domain "*.corp.example" --cidr 10.0.0.0/8 --detach',
+    '<%= config.bin %> android tunnel --domain "*.corp.example" --detach',
     '<%= config.bin %> android tunnel status --id <instance-ID>',
     '<%= config.bin %> android tunnel stop --id <instance-ID>',
   ];
@@ -43,10 +44,6 @@ export default class AndroidTunnel extends BaseCommand {
     domain: Flags.string({
       description:
         'Domain destination, exact (api.corp.example) or wildcard (*.corp.example). Intercepted via instance DNS. Repeat for more domains.',
-      multiple: true,
-    }),
-    cidr: Flags.string({
-      description: 'IPv4 CIDR destination such as 10.0.0.0/8. Repeat for more CIDRs.',
       multiple: true,
     }),
     detach: Flags.boolean({
@@ -71,15 +68,14 @@ export default class AndroidTunnel extends BaseCommand {
     if (flags.detach && flags.serve) {
       this.error('--detach cannot be combined with internal --serve mode.');
     }
-    if (!flags.route?.length && !flags.domain?.length && !flags.cidr?.length) {
-      this.error('Provide at least one --route, --domain, or --cidr destination.');
+    if (!flags.route?.length && !flags.domain?.length) {
+      this.error('Provide at least one --route or --domain destination.');
     }
     const selectors = validateDestinationTunnelSelectors({
       ...(flags.route?.length ?
         { routes: flags.route.map((route) => parseTunnelRoute(route, { minPort: ANDROID_MIN_ROUTE_PORT })) }
       : {}),
       ...(flags.domain?.length ? { domains: flags.domain.map(parseTunnelDomain) } : {}),
-      ...(flags.cidr?.length ? { cidrs: flags.cidr.map(parseTunnelCidr) } : {}),
     });
 
     if (flags.serve) {
@@ -121,18 +117,7 @@ export default class AndroidTunnel extends BaseCommand {
       connect: async (): Promise<TunnelClientFacade> => {
         const resolvedInstance = this.resolveAndroidInstance(instanceId);
         const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
-        return {
-          startTunnel: (tunnelSelectors) =>
-            client.startTunnel({
-              ...(tunnelSelectors.routes ? { routes: tunnelSelectors.routes } : {}),
-              ...(tunnelSelectors.domains ? { domains: tunnelSelectors.domains } : {}),
-              ...(tunnelSelectors.cidrs ? { cidrs: tunnelSelectors.cidrs } : {}),
-              logLevel,
-            }),
-          getTunnelStatus: () => client.getTunnelStatus(),
-          stopTunnel: (tunnelId) => client.stopTunnel(tunnelId),
-          disconnect,
-        };
+        return tunnelClientFacade(client, disconnect, logLevel);
       },
       io: this.tunnelCommandIO(),
     };

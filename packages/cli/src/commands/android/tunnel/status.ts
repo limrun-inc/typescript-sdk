@@ -50,7 +50,6 @@ export default class AndroidTunnelStatus extends BaseCommand {
           const selectorLines = formatTunnelSelectors({
             ...(active.routes.length > 0 ? { routes: active.routes } : {}),
             ...(active.domains ? { domains: active.domains } : {}),
-            ...(active.cidrs ? { cidrs: active.cidrs } : {}),
           });
           for (const line of selectorLines) {
             io.output(`Selector: ${line}`);
