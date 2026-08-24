@@ -149,6 +149,48 @@ describe('destination tunnel credit and selector dialing', () => {
     expect(dataFor(5).toString()).toBe('0123456789');
   });
 
+  test('fin never overtakes bytes queued behind send credit', async () => {
+    let localSocket: net.Socket | undefined;
+    const localPort = await listenLocal((socket) => {
+      localSocket = socket;
+    });
+    const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
+      routes: [{ host: '127.0.0.1', port: localPort }],
+      window: 4096,
+      logLevel: 'none',
+    });
+    await waitFor(() => hasControl('start'));
+    sendControl({ type: 'ready', version: DESTINATION_TUNNEL_VERSION, tunnelId: 'tunnel-1' });
+    tunnel = await startup;
+
+    sendControl({
+      type: 'open',
+      connId: 11,
+      routeId: 'route-1',
+      host: '127.0.0.1',
+      port: localPort,
+      proto: 'tcp',
+      window: 4,
+    });
+    await waitFor(() => hasControl('openOk', 11));
+
+    // Write and half-close in one go: 6 of the 10 bytes must wait on credit,
+    // and fin must not be sent ahead of them.
+    localSocket!.end('0123456789');
+    await waitFor(() => dataFor(11).length === 4);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(hasControl('fin', 11)).toBe(false);
+
+    sendControl({ type: 'windowUpdate', connId: 11, increment: 1000 });
+    await waitFor(() => hasControl('fin', 11));
+    expect(dataFor(11).toString()).toBe('0123456789');
+    const finIndex = events.findIndex(
+      (event) => event.kind === 'control' && event.message.type === 'fin',
+    );
+    const lastDataIndex = events.map((event) => event.kind).lastIndexOf('data');
+    expect(finIndex).toBeGreaterThan(lastDataIndex);
+  });
+
   test('replenishes the server send window after local delivery', async () => {
     let received = Buffer.alloc(0);
     const localPort = await listenLocal((socket) => {
