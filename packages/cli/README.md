@@ -382,7 +382,7 @@ lim android create --region us-west --display-name "CI Test" --label env=ci --rm
 
 | Flag                     | Description                                     |
 | ------------------------ | ----------------------------------------------- |
-| `--os-version <version>` | Android OS major version (e.g. 13, 14, or 15)   |
+| `--os-version <version>` | Android OS major version (14 or 15)             |
 | `--[no-]connect`         | Start an ADB tunnel immediately (default: true) |
 | `--adb-path <path>`      | Path to `adb` binary (default: `adb`)           |
 

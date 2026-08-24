@@ -55,7 +55,7 @@ export default class AndroidCreate extends BaseCommand {
       options: ['us', 'eu', 'as'],
     }),
     'os-version': Flags.string({
-      description: 'Android OS major version to create (e.g. 13, 14, or 15)',
+      description: 'Android OS major version to create (14 or 15)',
     }),
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
     'inactivity-timeout': Flags.string({
