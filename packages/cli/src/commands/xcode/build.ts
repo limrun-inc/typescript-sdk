@@ -187,7 +187,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     'signing-method': Flags.string({
       description:
-        'Use Apple cloud signing during archive export. Distribution methods require the ASC key to have access to cloud-managed distribution certificates.',
+        'Use Apple cloud signing during archive export. Supports device SDK builds (--sdk iphoneos or --sdk watchos). Distribution methods require the ASC key to have access to cloud-managed distribution certificates.',
       options: ['app-store-connect', 'release-testing', 'debugging'],
     }),
     'team-id': Flags.string({
@@ -371,10 +371,14 @@ export default class XcodeBuild extends BaseCommand {
       }
       const cloudSigning = await this.buildCloudSigningOptions(flags);
       if (cloudSigning) {
-        if (flags.sdk && flags.sdk !== 'iphoneos') {
-          this.error('Cloud signing requires --sdk iphoneos.');
+        if (flags.sdk && !DEVICE_SDKS.has(flags.sdk)) {
+          this.error(
+            'Cloud signing is only supported for device SDK builds. Use --sdk iphoneos or --sdk watchos.',
+          );
         }
-        settings.sdk = 'iphoneos';
+        if (!flags.sdk) {
+          settings.sdk = 'iphoneos';
+        }
         options.cloudSigning = cloudSigning;
       }
       if (
