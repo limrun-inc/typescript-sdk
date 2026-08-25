@@ -624,15 +624,14 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     if (request.command === 'xcodebuild' && request.testflight) {
       timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 0) + 900) * 1000;
     }
-    if (
-      request.command === 'xcodebuild' &&
-      request.xcodebuild?.action === 'build-for-testing' &&
-      request.xcodebuild.runTests !== false
-    ) {
+    if (request.command === 'xcodebuild' && request.xcodebuild?.action === 'build-for-testing') {
       // The test run happens after the build: products sync plus the suite,
       // which the server caps at an hour per target. Two hours cover the
       // common unit-plus-UI shape; the client cannot know the target count, so
       // schemes with more targets may need a liveness-based deadline instead.
+      // Kept even with runTests: false: servers without run suppression still
+      // execute the suite, and the cap is an upper bound so a pure build
+      // finishes early regardless.
       timeoutMs += 2 * 3600 * 1000;
     }
     if (request.command === 'run') {
