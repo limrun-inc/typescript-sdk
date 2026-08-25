@@ -6,8 +6,11 @@ import { formatBytes } from '../../lib/bytes';
 import { parseCacheConfig } from '../../lib/cache';
 import { cacheFlags } from '../../lib/cache-flags';
 import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
-import { xcodegenConfigFromFlags } from '../../lib/xcodegen-options';
-import { xcodeProjectFlags } from '../../lib/xcode-project-flags';
+import {
+  projectConfigFromFlags,
+  xcodegenConfigFromFlags,
+  xcodeProjectFlags,
+} from '../../lib/xcode-project-flags';
 import { parseEnvEntries } from '../../lib/env-entries';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
 import { webhookConfigFromFlags } from '../../lib/webhook-options';
@@ -219,8 +222,7 @@ export default class XcodeBuild extends BaseCommand {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeBuild);
-    // --workspace names the .xcworkspace here, not the instance scope.
-    this.setParsedFlags(flags, { workspaceIsScope: false });
+    this.setParsedFlags(flags);
     if (flags['dev-server-url'] && flags.configuration === 'Release') {
       this.error('--dev-server-url is only supported for Debug builds.');
     }
@@ -270,13 +272,11 @@ export default class XcodeBuild extends BaseCommand {
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);
 
-      const settings: Record<string, string> = {};
-      if (flags.scheme) settings.scheme = flags.scheme;
-      if (flags.workspace) settings.workspace = flags.workspace;
-      if (flags.project) settings.project = flags.project;
+      const settings: Record<string, string> = {
+        ...(projectConfigFromFlags(flags) as Record<string, string>),
+      };
       if (flags.sdk) settings.sdk = flags.sdk;
       if (flags.ios && !flags.sdk) settings.sdk = 'iphonesimulator';
-      if (flags.configuration) settings.configuration = flags.configuration;
       if (flags['artifact-name']) {
         const artifactName = flags['artifact-name'];
         if (!artifactName.endsWith('.app') || artifactName === '.app') {

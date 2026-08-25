@@ -6,8 +6,11 @@ import { formatBytes } from '../../lib/bytes';
 import { parseCacheConfig } from '../../lib/cache';
 import { cacheFlags } from '../../lib/cache-flags';
 import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
-import { xcodeProjectFlags } from '../../lib/xcode-project-flags';
-import { xcodegenConfigFromFlags } from '../../lib/xcodegen-options';
+import {
+  projectConfigFromFlags,
+  xcodegenConfigFromFlags,
+  xcodeProjectFlags,
+} from '../../lib/xcode-project-flags';
 import { formatCaseLine, formatSummaryLine } from '../../lib/xctest-render';
 
 export default class XcodeTest extends BaseCommand {
@@ -48,6 +51,7 @@ export default class XcodeTest extends BaseCommand {
         "Run only these tests, in xcodebuild's -only-testing format: Target[/Class[/method]]. Repeat for multiple. Mutually exclusive with --skip-testing.",
       multiple: true,
       multipleNonGreedy: true,
+      exclusive: ['skip-testing'],
     }),
     'skip-testing': Flags.string({
       description:
@@ -62,12 +66,8 @@ export default class XcodeTest extends BaseCommand {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeTest);
-    // --workspace names the .xcworkspace here, not the instance scope.
-    this.setParsedFlags(flags, { workspaceIsScope: false });
+    this.setParsedFlags(flags);
 
-    if (flags['only-testing']?.length && flags['skip-testing']?.length) {
-      this.error('--only-testing and --skip-testing are mutually exclusive; pass one.');
-    }
     if (flags.id && flags['inactivity-timeout']) {
       this.error('--inactivity-timeout controls newly created instances and cannot be combined with --id.');
     }
@@ -85,10 +85,7 @@ export default class XcodeTest extends BaseCommand {
       const settings: XcodeProjectConfig = {
         action: 'build-for-testing',
         sdk: 'iphonesimulator',
-        ...(flags.scheme && { scheme: flags.scheme }),
-        ...(flags.workspace && { workspace: flags.workspace }),
-        ...(flags.project && { project: flags.project }),
-        ...(flags.configuration && { configuration: flags.configuration as 'Debug' | 'Release' }),
+        ...projectConfigFromFlags(flags),
         ...(flags['only-testing']?.length && { onlyTesting: flags['only-testing'] }),
         ...(flags['skip-testing']?.length && { skipTesting: flags['skip-testing'] }),
       };
