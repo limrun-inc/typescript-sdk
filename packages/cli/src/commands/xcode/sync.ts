@@ -1,5 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { syncFlags } from '../../lib/sync-flags';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
@@ -28,6 +29,7 @@ export default class XcodeSync extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    ...syncFlags,
     id: Flags.string({
       description:
         'Xcode instance ID to sync to, or a legacy iOS instance ID with an embedded Xcode sandbox. Defaults to the most recent standalone Xcode target, creating one if needed.',
@@ -41,24 +43,6 @@ export default class XcodeSync extends BaseCommand {
       description: 'Run install behavior after each sync when the sandbox supports it',
       default: true,
       allowNo: true,
-    }),
-    'basis-cache-dir': Flags.string({
-      description: 'Directory to use for the client-side delta sync cache.',
-    }),
-    ignore: Flags.string({
-      description:
-        'Regular expression to ignore matching relative paths during sync. Repeat for multiple patterns.',
-      multiple: true,
-    }),
-    include: Flags.string({
-      description:
-        'Regular expression to force-sync matching relative paths even when excluded by a built-in rule or .gitignore (for example --include "^\\\\.git/" or --include "^ios/GeneratedKit/"). The client-side basis cache is never included. If a parent directory is itself excluded, the pattern must also match that directory (e.g. use "^ios/" not "GeneratedKit/") or the subtree stays pruned. Repeat for multiple patterns.',
-      multiple: true,
-    }),
-    'additional-file': Flags.string({
-      description:
-        'Additional file to sync as localPath=remotePath, for example ~/.netrc=~/.netrc. Repeat for multiple files.',
-      multiple: true,
     }),
   };
 

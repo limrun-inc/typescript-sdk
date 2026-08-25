@@ -446,12 +446,11 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private playstoreEvent: PlaystoreEvent | null = null;
   private xctestCases: XctestCaseEvent[] = [];
   private xctestSummary: XctestSummaryEvent | null = null;
-  // The server replays the whole event stream on every reconnect, and unlike
-  // the other events (idempotent overwrites), cases accumulate. Frames are
-  // replayed in order, so counting them per connection makes the prefix
-  // already accepted skippable exactly.
-  private xctestFramesAccepted = 0;
-  private xctestFramesThisConnection = 0;
+  // Highest server-assigned event id already dispatched. The server numbers
+  // every frame and replays the stream from the start on reconnect; skipping
+  // ids at or below this mark drops the replayed prefix for every event type
+  // at once, and stays correct if the server ever honors Last-Event-ID.
+  private lastSeenEventId = -1;
   private readonly options: ExecOptions;
   private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
 
@@ -618,12 +617,15 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     let timeoutMs = 3600 * 1000;
     if (request.command === 'xcodebuild' && request.testflight) {
       timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 0) + 900) * 1000;
-    } else if (request.command === 'xcodebuild' && request.xcodebuild?.action === 'build-for-testing') {
+    }
+    if (request.command === 'xcodebuild' && request.xcodebuild?.action === 'build-for-testing') {
       // The test run happens after the build: products sync plus the suite,
       // which the server caps at an hour per target. Two hours cover the
-      // common unit-plus-UI shape; the client cannot know the target count.
+      // common unit-plus-UI shape; the client cannot know the target count, so
+      // schemes with more targets may need a liveness-based deadline instead.
       timeoutMs += 2 * 3600 * 1000;
-    } else if (request.command === 'run') {
+    }
+    if (request.command === 'run') {
       timeoutMs = (Math.max(1, request.timeoutSeconds ?? 3600) + 60) * 1000;
     }
     let exitCode: number;
@@ -781,7 +783,6 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
         headers: { Authorization: `Bearer ${this.options.token}` },
         onConnect: () => {
           connectedAt = Date.now();
-          this.xctestFramesThisConnection = 0;
         },
         // Comments count as proof of life, so a server-side keepalive
         // works without a client change (onMessage never sees them).
@@ -845,6 +846,15 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
           this.streamDeadSince = 0;
           proofOfLifeThisCycle = true;
           lastStreamError = undefined;
+          const eventId = message.id !== undefined ? parseInt(message.id, 10) : NaN;
+          if (!Number.isNaN(eventId)) {
+            if (eventId <= this.lastSeenEventId) {
+              // A reconnect replays the stream from the start; this frame was
+              // already dispatched on an earlier connection.
+              return;
+            }
+            this.lastSeenEventId = eventId;
+          }
           const data = typeof message.data === 'string' ? message.data : String(message.data ?? '');
           const eventType = message.event;
           if (eventType === 'command') {
@@ -873,13 +883,6 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
               this.log('warn', `SSE playstore event has invalid data: ${data}`);
             }
           } else if (eventType === 'xctest') {
-            this.xctestFramesThisConnection++;
-            if (this.xctestFramesThisConnection <= this.xctestFramesAccepted) {
-              // A reconnect replays the stream from the start; this frame was
-              // already accepted on an earlier connection.
-              return;
-            }
-            this.xctestFramesAccepted = this.xctestFramesThisConnection;
             let event: XctestEvent | undefined;
             try {
               const parsed = JSON.parse(data) as XctestEvent;

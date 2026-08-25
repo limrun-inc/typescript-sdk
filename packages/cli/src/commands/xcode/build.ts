@@ -1,14 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 import { parseCacheConfig } from '../../lib/cache';
 import { cacheFlags } from '../../lib/cache-flags';
-import { syncFlags } from '../../lib/sync-flags';
+import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
+import { xcodegenConfigFromFlags } from '../../lib/xcodegen-options';
 import { xcodeProjectFlags } from '../../lib/xcode-project-flags';
-import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { parseEnvEntries } from '../../lib/env-entries';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
 import { webhookConfigFromFlags } from '../../lib/webhook-options';
@@ -220,7 +219,8 @@ export default class XcodeBuild extends BaseCommand {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeBuild);
-    this.setParsedFlags(flags);
+    // --workspace names the .xcworkspace here, not the instance scope.
+    this.setParsedFlags(flags, { workspaceIsScope: false });
     if (flags['dev-server-url'] && flags.configuration === 'Release') {
       this.error('--dev-server-url is only supported for Debug builds.');
     }
@@ -292,12 +292,9 @@ export default class XcodeBuild extends BaseCommand {
       if (flags['git-init']) {
         options.gitInit = true;
       }
-      if (flags['xcodegen-spec'] || flags['xcodegen-project'] || flags['xcodegen-project-root']) {
-        options.xcodegen = {
-          ...(flags['xcodegen-spec'] && { spec: flags['xcodegen-spec'] }),
-          ...(flags['xcodegen-project'] && { project: flags['xcodegen-project'] }),
-          ...(flags['xcodegen-project-root'] && { projectRoot: flags['xcodegen-project-root'] }),
-        };
+      const xcodegen = xcodegenConfigFromFlags(flags);
+      if (xcodegen) {
+        options.xcodegen = xcodegen;
       }
       if (flags['dev-server-url'] || flags['expo-app-dir'] || flags['expo-force-prebuild']) {
         options.reactNative = {
@@ -397,18 +394,7 @@ export default class XcodeBuild extends BaseCommand {
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
       const syncStart = Date.now();
-      const syncOptions = {
-        watch: false,
-        install: false,
-        basisCacheDir: flags['basis-cache-dir'],
-        ignore: compileIgnorePatterns(flags.ignore),
-        include: compileIgnorePatterns(flags.include),
-        additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
-      };
-      const syncResult = await xcodeClient.sync(
-        syncPath,
-        syncOptions as Parameters<typeof xcodeClient.sync>[1],
-      );
+      const syncResult = await xcodeClient.sync(syncPath, syncOptionsFromFlags(flags));
       const syncDuration = formatDurationMs(Date.now() - syncStart);
       const syncedSize =
         syncResult.bytesSent !== undefined ? ` (${formatBytes(syncResult.bytesSent)} sent)` : '';
