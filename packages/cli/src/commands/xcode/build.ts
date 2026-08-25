@@ -6,6 +6,8 @@ import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 import { parseCacheConfig } from '../../lib/cache';
 import { cacheFlags } from '../../lib/cache-flags';
+import { syncFlags } from '../../lib/sync-flags';
+import { xcodeProjectFlags } from '../../lib/xcode-project-flags';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { parseEnvEntries } from '../../lib/env-entries';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
@@ -84,6 +86,8 @@ export default class XcodeBuild extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    ...xcodeProjectFlags,
+    ...syncFlags,
     id: Flags.string({
       description:
         'Xcode instance ID to build on, or a legacy iOS instance ID with an embedded Xcode sandbox. Defaults to the most recent standalone Xcode target.',
@@ -97,30 +101,9 @@ export default class XcodeBuild extends BaseCommand {
         'Build on an Xcode target with an attached iOS simulator. Reuses a recent simulator-backed target or creates an Xcode instance plus a simulator and attaches them unless --no-create is passed.',
       default: false,
     }),
-    scheme: Flags.string({ description: 'Xcode scheme to build, such as MyApp' }),
-    workspace: Flags.string({
-      description: 'Workspace file to pass to xcodebuild, such as MyApp.xcworkspace',
-    }),
-    project: Flags.string({ description: 'Project file to pass to xcodebuild, such as MyApp.xcodeproj' }),
-    'xcodegen-spec': Flags.string({
-      description:
-        'XcodeGen project spec path relative to the synced folder root, like `xcodegen generate --spec`. Forces server-side generation with the bundled XcodeGen. Omit to use project.yml at the root.',
-    }),
-    'xcodegen-project': Flags.string({
-      description:
-        "Directory (relative to the synced folder root) the Xcode project is generated into, like `xcodegen generate --project`. Forces server-side generation. Defaults to the spec file's directory.",
-    }),
-    'xcodegen-project-root': Flags.string({
-      description:
-        "Project root directory (relative to the synced folder root) that relative paths in the spec resolve against, like `xcodegen generate --project-root`. Forces server-side generation. Defaults to the spec file's directory.",
-    }),
     sdk: Flags.string({
       description: 'SDK family to build for.',
       options: ['iphonesimulator', 'iphoneos', 'watchsimulator', 'watchos'],
-    }),
-    configuration: Flags.string({
-      description: 'Xcode build configuration.',
-      options: ['Debug', 'Release'],
     }),
     'git-init': Flags.boolean({
       description:
@@ -231,24 +214,6 @@ export default class XcodeBuild extends BaseCommand {
       description:
         'Return after the remote build is accepted instead of streaming logs and waiting for completion. Requires --webhook-url; use its callback to observe the terminal result.',
       default: false,
-    }),
-    'basis-cache-dir': Flags.string({
-      description: 'Directory to use for the client-side delta sync cache during the pre-build sync step.',
-    }),
-    ignore: Flags.string({
-      description:
-        'Regular expression to ignore matching relative paths during the pre-build sync. Repeat for multiple patterns.',
-      multiple: true,
-    }),
-    include: Flags.string({
-      description:
-        'Regular expression to force-sync matching relative paths even when excluded by a built-in rule or .gitignore (for example --include "^\\\\.git/" or --include "^ios/GeneratedKit/"). The client-side basis cache is never included. If a parent directory is itself excluded, the pattern must also match that directory (e.g. use "^ios/" not "GeneratedKit/") or the subtree stays pruned. Repeat for multiple patterns.',
-      multiple: true,
-    }),
-    'additional-file': Flags.string({
-      description:
-        'Additional file to sync before building as localPath=remotePath, for example ~/.netrc=~/.netrc. Repeat for multiple files.',
-      multiple: true,
     }),
     ...cacheFlags,
   };
