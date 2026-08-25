@@ -1,5 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { syncFlags } from '../../lib/sync-flags';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
@@ -28,6 +29,7 @@ export default class XcodeRun extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    ...syncFlags,
     id: Flags.string({
       description: 'Xcode instance ID to run on. Defaults to the most recent standalone Xcode target.',
     }),
@@ -44,26 +46,6 @@ export default class XcodeRun extends BaseCommand {
     'no-sync': Flags.boolean({
       description: 'Skip syncing the current directory before running the command.',
       default: false,
-    }),
-    'basis-cache-dir': Flags.string({
-      description: 'Directory to use for the client-side delta sync cache.',
-    }),
-    ignore: Flags.string({
-      description: 'Regular expression to ignore matching relative paths during sync. Repeat for multiple.',
-      multiple: true,
-      multipleNonGreedy: true,
-    }),
-    include: Flags.string({
-      description:
-        'Regular expression to force-sync matching relative paths even when gitignored. Repeat for multiple.',
-      multiple: true,
-      multipleNonGreedy: true,
-    }),
-    'additional-file': Flags.string({
-      description:
-        'Additional file to sync as localPath=remotePath, for example ~/.netrc=~/.netrc. Repeat for multiple.',
-      multiple: true,
-      multipleNonGreedy: true,
     }),
   };
 

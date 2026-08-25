@@ -5,6 +5,9 @@ module.exports = {
   // checking inside jest would repeat it on every run.
   transform: { '^.+\\.tsx?$': ['ts-jest', { isolatedModules: true }] },
   roots: ['<rootDir>/src'],
+  // The xcode command file src/commands/xcode/test.ts would match jest's
+  // default pattern; real tests all use the .test.ts suffix.
+  testMatch: ['**/*.test.ts'],
   moduleNameMapper: {
     '^@limrun/api$': '<rootDir>/../../dist/index.js',
     '^@limrun/api/(.*)$': '<rootDir>/../../dist/$1.js',
