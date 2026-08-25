@@ -139,6 +139,12 @@ export type XcodeProjectConfig = {
    * skips that whole target.
    */
   skipTesting?: string[];
+  /**
+   * When false, 'build-for-testing' compiles the test targets but does not
+   * run them even when a simulator is attached. Servers without support
+   * ignore the field and still run the tests.
+   */
+  runTests?: boolean;
 };
 
 export type XcodeGenConfig = {
@@ -879,6 +885,9 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           settings?.action !== 'build-for-testing'
         ) {
           throw new Error("onlyTesting/skipTesting require action: 'build-for-testing'");
+        }
+        if (settings?.runTests === false && settings?.action !== 'build-for-testing') {
+          throw new Error("runTests: false requires action: 'build-for-testing'");
         }
         if (
           settings?.action === 'build-for-testing' &&

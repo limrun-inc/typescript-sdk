@@ -43,7 +43,7 @@ export default class XcodeTest extends BaseCommand {
     }),
     'build-only': Flags.boolean({
       description:
-        'Compile the test targets without running them: uses a plain sandbox and skips simulator acquisition. Products stay on the sandbox for a later run.',
+        'Compile the test targets without running them: uses a plain sandbox and skips simulator acquisition. Products stay on the sandbox for a later run. On servers without run suppression, a previously attached simulator still runs the tests.',
       default: false,
     }),
     'only-testing': Flags.string({
@@ -85,6 +85,7 @@ export default class XcodeTest extends BaseCommand {
       const settings: XcodeProjectConfig = {
         action: 'build-for-testing',
         sdk: 'iphonesimulator',
+        ...(flags['build-only'] && { runTests: false }),
         ...projectConfigFromFlags(flags),
         ...(flags['only-testing']?.length && { onlyTesting: flags['only-testing'] }),
         ...(flags['skip-testing']?.length && { skipTesting: flags['skip-testing'] }),

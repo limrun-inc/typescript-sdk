@@ -197,12 +197,17 @@ test('action and test selection reach the wire verbatim', async () => {
         scheme: 'App',
         action: 'build-for-testing',
         onlyTesting: ['AppTests/LoginTests/testValid'],
+        runTests: false,
       },
     },
     { apiUrl: API_URL, token: 'test-token' },
   );
 
   expect(body).toMatchObject({
-    xcodebuild: { action: 'build-for-testing', onlyTesting: ['AppTests/LoginTests/testValid'] },
+    xcodebuild: {
+      action: 'build-for-testing',
+      onlyTesting: ['AppTests/LoginTests/testValid'],
+      runTests: false,
+    },
   });
 });

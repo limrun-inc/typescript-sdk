@@ -67,6 +67,12 @@ export type XcodeBuildExecRequest = {
     onlyTesting?: string[];
     /** Skip these tests, in xcodebuild's -skip-testing format. */
     skipTesting?: string[];
+    /**
+     * When false, 'build-for-testing' compiles the test targets but does not
+     * run them even when a simulator is attached. Servers without support
+     * ignore the field and still run the tests.
+     */
+    runTests?: boolean;
   };
   xcodegen?: {
     spec?: string;
@@ -618,7 +624,11 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     if (request.command === 'xcodebuild' && request.testflight) {
       timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 0) + 900) * 1000;
     }
-    if (request.command === 'xcodebuild' && request.xcodebuild?.action === 'build-for-testing') {
+    if (
+      request.command === 'xcodebuild' &&
+      request.xcodebuild?.action === 'build-for-testing' &&
+      request.xcodebuild.runTests !== false
+    ) {
       // The test run happens after the build: products sync plus the suite,
       // which the server caps at an hour per target. Two hours cover the
       // common unit-plus-UI shape; the client cannot know the target count, so
