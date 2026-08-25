@@ -905,6 +905,16 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.webhook && { webhook: options.webhook }),
         };
 
+        // One options object for both exec call sites, so a future per-exec
+        // option cannot be added to one branch and silently dropped from the
+        // other.
+        const execOptions = {
+          apiUrl,
+          token,
+          log,
+          ...(options?.onXctestEvent && { onXctestEvent: options.onXctestEvent }),
+        };
+
         if (options?.upload && 'assetName' in options.upload) {
           const requestPromise = mintAssetUploadUrls(
             client.assets,
@@ -918,24 +928,14 @@ export class XcodeInstances extends GeneratedXcodeInstances {
             request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
             return request;
           });
-          return exec(requestPromise, {
-            apiUrl,
-            token,
-            log,
-            ...(options?.onXctestEvent && { onXctestEvent: options.onXctestEvent }),
-          });
+          return exec(requestPromise, execOptions);
         }
 
         if (options?.upload && 'signedUploadUrl' in options.upload) {
           request.signedUploadUrl = options.upload.signedUploadUrl;
         }
 
-        return exec(request, {
-          apiUrl,
-          token,
-          log,
-          ...(options?.onXctestEvent && { onXctestEvent: options.onXctestEvent }),
-        });
+        return exec(request, execOptions);
       },
 
       run(commandLine: string, options?: XcodeRunOptions): ExecChildProcess {

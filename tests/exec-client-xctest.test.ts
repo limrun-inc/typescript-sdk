@@ -11,7 +11,14 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-const frame = (event: string, data: string) => `event: ${event}\ndata: ${data}\n\n`;
+// The server assigns every frame an incrementing id; the client's replay
+// dedup keys on it.
+let frameId = 0;
+const frame = (event: string, data: string) => `id: ${++frameId}\nevent: ${event}\ndata: ${data}\n\n`;
+
+beforeEach(() => {
+  frameId = 0;
+});
 
 const passCase =
   '{"type":"case","testClass":"AppTests.LoginTests","method":"testValid","passed":true,"durationMs":312}';
@@ -110,10 +117,13 @@ test('a reconnect replaying the stream does not double-count cases or re-fire th
       });
     }
     attempts++;
+    // The server replays the whole stream with its ORIGINAL ids on reconnect.
+    frameId = 0;
     const frames =
       attempts === 1 ?
-        [frame('xctest', passCase), frame('xctest', failCase)]
+        [frame('stdout', 'Build log line'), frame('xctest', passCase), frame('xctest', failCase)]
       : [
+          frame('stdout', 'Build log line'),
           frame('xctest', passCase),
           frame('xctest', failCase),
           frame('xctest', summary),
@@ -125,15 +135,20 @@ test('a reconnect replaying the stream does not double-count cases or re-fire th
     });
   });
   const seen: XctestEvent[] = [];
+  const stdoutLines: string[] = [];
 
-  const result = await exec(
+  const proc = exec(
     { command: 'xcodebuild', xcodebuild: { scheme: 'App', action: 'build-for-testing' } },
     { apiUrl: API_URL, token: 'test-token', onXctestEvent: (event) => seen.push(event) },
   );
+  proc.stdout.on('data', (line) => stdoutLines.push(line));
+  const result = await proc;
 
   expect(attempts).toBeGreaterThan(1);
   expect(result.xctest?.cases).toHaveLength(2);
   expect(seen).toHaveLength(3);
+  // The replayed prefix is dropped for every event type, not just xctest.
+  expect(stdoutLines).toEqual(['Build log line']);
   expect(result.xctest?.summary).toMatchObject({ passed: 1, failed: 1 });
 });
 

@@ -131,10 +131,13 @@ export abstract class BaseCommand extends Command {
     return this._parsedFlags;
   }
 
-  protected setParsedFlags(flags: Record<string, unknown>): void {
+  protected setParsedFlags(flags: Record<string, unknown>, opts: { workspaceIsScope?: boolean } = {}): void {
     this._parsedFlags = flags;
     const workspace = flags['workspace'];
-    if (typeof workspace === 'string' && workspace.trim()) {
+    // The xcodebuild-backed commands redefine --workspace as the .xcworkspace
+    // file; feeding that into the scope override would silently switch the
+    // last-instance scope and create fresh billed instances.
+    if ((opts.workspaceIsScope ?? true) && typeof workspace === 'string' && workspace.trim()) {
       setScopeOverride(workspace.trim());
     }
     setSessionAutoStart({

@@ -1,14 +1,13 @@
 import { Args, Flags } from '@oclif/core';
-import type { XcodeBuildOptions, XctestEvent, XctestSummaryEvent } from '@limrun/api';
+import type { XcodeBuildOptions, XcodeProjectConfig, XctestEvent } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
-import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 import { parseCacheConfig } from '../../lib/cache';
 import { cacheFlags } from '../../lib/cache-flags';
-import { parseAdditionalFileFlags } from '../../lib/additional-files';
-import { syncFlags } from '../../lib/sync-flags';
+import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
 import { xcodeProjectFlags } from '../../lib/xcode-project-flags';
+import { xcodegenConfigFromFlags } from '../../lib/xcodegen-options';
 import { formatCaseLine, formatSummaryLine } from '../../lib/xctest-render';
 
 export default class XcodeTest extends BaseCommand {
@@ -63,7 +62,8 @@ export default class XcodeTest extends BaseCommand {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeTest);
-    this.setParsedFlags(flags);
+    // --workspace names the .xcworkspace here, not the instance scope.
+    this.setParsedFlags(flags, { workspaceIsScope: false });
 
     if (flags['only-testing']?.length && flags['skip-testing']?.length) {
       this.error('--only-testing and --skip-testing are mutually exclusive; pass one.');
@@ -82,36 +82,26 @@ export default class XcodeTest extends BaseCommand {
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);
 
-      const settings: Record<string, string | string[]> = {
+      const settings: XcodeProjectConfig = {
         action: 'build-for-testing',
         sdk: 'iphonesimulator',
+        ...(flags.scheme && { scheme: flags.scheme }),
+        ...(flags.workspace && { workspace: flags.workspace }),
+        ...(flags.project && { project: flags.project }),
+        ...(flags.configuration && { configuration: flags.configuration as 'Debug' | 'Release' }),
+        ...(flags['only-testing']?.length && { onlyTesting: flags['only-testing'] }),
+        ...(flags['skip-testing']?.length && { skipTesting: flags['skip-testing'] }),
       };
-      if (flags.scheme) settings.scheme = flags.scheme;
-      if (flags.workspace) settings.workspace = flags.workspace;
-      if (flags.project) settings.project = flags.project;
-      if (flags.configuration) settings.configuration = flags.configuration;
-      if (flags['only-testing']?.length) settings.onlyTesting = flags['only-testing'];
-      if (flags['skip-testing']?.length) settings.skipTesting = flags['skip-testing'];
 
       const options: XcodeBuildOptions = {};
-      if (flags['xcodegen-spec'] || flags['xcodegen-project'] || flags['xcodegen-project-root']) {
-        options.xcodegen = {
-          ...(flags['xcodegen-spec'] && { spec: flags['xcodegen-spec'] }),
-          ...(flags['xcodegen-project'] && { project: flags['xcodegen-project'] }),
-          ...(flags['xcodegen-project-root'] && { projectRoot: flags['xcodegen-project-root'] }),
-        };
+      const xcodegen = xcodegenConfigFromFlags(flags);
+      if (xcodegen) {
+        options.xcodegen = xcodegen;
       }
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
       const syncStart = Date.now();
-      const syncResult = await xcodeClient.sync(syncPath, {
-        watch: false,
-        install: false,
-        basisCacheDir: flags['basis-cache-dir'],
-        ignore: compileIgnorePatterns(flags.ignore),
-        include: compileIgnorePatterns(flags.include),
-        additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
-      } as Parameters<typeof xcodeClient.sync>[1]);
+      const syncResult = await xcodeClient.sync(syncPath, syncOptionsFromFlags(flags));
       const syncedSize =
         syncResult.bytesSent !== undefined ? ` (${formatBytes(syncResult.bytesSent)} sent)` : '';
       this.info(`Sync completed in ${formatDurationMs(Date.now() - syncStart)}${syncedSize}.`);
@@ -121,7 +111,6 @@ export default class XcodeTest extends BaseCommand {
         ),
       );
 
-      let summary: XctestSummaryEvent | undefined;
       let sawCases = false;
       const json = this.isJsonEnabled();
       options.onXctestEvent = (event: XctestEvent) => {
@@ -135,12 +124,10 @@ export default class XcodeTest extends BaseCommand {
             this.output('');
           }
           this.output(formatCaseLine(event));
-        } else {
-          summary = event;
         }
       };
 
-      const proc = xcodeClient.xcodebuild(settings as Parameters<typeof xcodeClient.xcodebuild>[0], options);
+      const proc = xcodeClient.xcodebuild(settings, options);
 
       if (!json) {
         proc.stdout.on('data', (line: string) => process.stdout.write(line + '\n'));
@@ -150,10 +137,18 @@ export default class XcodeTest extends BaseCommand {
       const result = await proc;
 
       if (json) {
-        process.stdout.write(JSON.stringify({ exitCode: result.exitCode }) + '\n');
-      } else if (sawCases || result.xctest) {
+        // timedOut marks a fabricated exit code (lost stream); without it a
+        // machine consumer would record a definitive failure for an unknown
+        // outcome.
+        process.stdout.write(
+          JSON.stringify({
+            exitCode: result.exitCode,
+            ...(result.timedOut ? { timedOut: true, incomplete: result.incomplete } : {}),
+          }) + '\n',
+        );
+      } else if (result.xctest) {
         this.output('');
-        this.output(formatSummaryLine(result.xctest?.summary ?? summary));
+        this.output(formatSummaryLine(result.xctest.summary));
       }
       if (result.timedOut) {
         this.error(`Test run did not complete: ${result.incomplete?.message ?? 'timed out'}`);
