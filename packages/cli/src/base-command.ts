@@ -131,13 +131,19 @@ export abstract class BaseCommand extends Command {
     return this._parsedFlags;
   }
 
-  protected setParsedFlags(flags: Record<string, unknown>, opts: { workspaceIsScope?: boolean } = {}): void {
+  protected setParsedFlags(flags: Record<string, unknown>): void {
     this._parsedFlags = flags;
     const workspace = flags['workspace'];
-    // The xcodebuild-backed commands redefine --workspace as the .xcworkspace
+    // The xcodebuild-backed commands shadow --workspace with the .xcworkspace
     // file; feeding that into the scope override would silently switch the
-    // last-instance scope and create fresh billed instances.
-    if ((opts.workspaceIsScope ?? true) && typeof workspace === 'string' && workspace.trim()) {
+    // last-instance scope and create fresh billed instances. Shadowing is
+    // detectable: a command that redefines the flag no longer carries the
+    // base definition by reference.
+    const commandFlags = (this.constructor as typeof BaseCommand).flags as
+      | Record<string, unknown>
+      | undefined;
+    const workspaceIsScope = commandFlags?.['workspace'] === BaseCommand.baseFlags.workspace;
+    if (workspaceIsScope && typeof workspace === 'string' && workspace.trim()) {
       setScopeOverride(workspace.trim());
     }
     setSessionAutoStart({

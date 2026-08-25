@@ -1,10 +1,8 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { syncFlags } from '../../lib/sync-flags';
-import { compileIgnorePatterns } from '../../lib/ignore-patterns';
+import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
-import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import { parseEnvEntries } from '../../lib/env-entries';
 
 export default class XcodeRun extends BaseCommand {
@@ -84,14 +82,7 @@ export default class XcodeRun extends BaseCommand {
         const syncPath = process.cwd();
         this.info(`Syncing ${syncPath} to instance ${target.id}...`);
         const syncStart = Date.now();
-        const result = await xcodeClient.sync(syncPath, {
-          watch: false,
-          install: false,
-          basisCacheDir: flags['basis-cache-dir'],
-          ignore: compileIgnorePatterns(flags.ignore),
-          include: compileIgnorePatterns(flags.include),
-          additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
-        });
+        const result = await xcodeClient.sync(syncPath, syncOptionsFromFlags(flags));
         const syncDuration = formatDurationMs(Date.now() - syncStart);
         const syncedSize = result.bytesSent !== undefined ? ` (${formatBytes(result.bytesSent)} sent)` : '';
         this.info(`Sync completed in ${syncDuration}${syncedSize}.`);

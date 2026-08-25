@@ -1,4 +1,5 @@
 import { Flags } from '@oclif/core';
+import type { XcodeGenConfig, XcodeProjectConfig } from '@limrun/api';
 
 /** Project-selection flags shared by the xcodebuild-backed commands. */
 export const xcodeProjectFlags = {
@@ -24,3 +25,34 @@ export const xcodeProjectFlags = {
       "Project root directory (relative to the synced folder root) that relative paths in the spec resolve against, like `xcodegen generate --project-root`. Forces server-side generation. Defaults to the spec file's directory.",
   }),
 };
+
+/** Maps the shared project-selection flags onto the request's xcodebuild object. */
+export function projectConfigFromFlags(flags: {
+  scheme?: string;
+  workspace?: string;
+  project?: string;
+  configuration?: string;
+}): Partial<XcodeProjectConfig> {
+  return {
+    ...(flags.scheme && { scheme: flags.scheme }),
+    ...(flags.workspace && { workspace: flags.workspace }),
+    ...(flags.project && { project: flags.project }),
+    ...(flags.configuration && { configuration: flags.configuration as 'Debug' | 'Release' }),
+  };
+}
+
+/** Maps the shared xcodegen flags onto the request's xcodegen object. */
+export function xcodegenConfigFromFlags(flags: {
+  'xcodegen-spec'?: string;
+  'xcodegen-project'?: string;
+  'xcodegen-project-root'?: string;
+}): XcodeGenConfig | undefined {
+  if (!flags['xcodegen-spec'] && !flags['xcodegen-project'] && !flags['xcodegen-project-root']) {
+    return undefined;
+  }
+  return {
+    ...(flags['xcodegen-spec'] && { spec: flags['xcodegen-spec'] }),
+    ...(flags['xcodegen-project'] && { project: flags['xcodegen-project'] }),
+    ...(flags['xcodegen-project-root'] && { projectRoot: flags['xcodegen-project-root'] }),
+  };
+}
