@@ -107,6 +107,7 @@ export type XcodeBuildExecRequest = {
    */
   env?: string[];
   gitInit?: boolean;
+  logProcessor?: 'xcbeautify' | 'none';
   signedUploadUrl?: string;
   /**
    * ID of the Limrun asset signedUploadUrl targets, when it was minted from

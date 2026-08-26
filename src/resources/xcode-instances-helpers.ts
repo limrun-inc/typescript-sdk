@@ -279,6 +279,7 @@ export type XcodeBuildOptions = {
    * dependency resolution, and xcodebuild.
    */
   gitInit?: boolean;
+  logProcessor?: 'xcbeautify' | 'none';
   /**
    * HTTP callback fired once the build reaches a terminal state (SUCCEEDED,
    * FAILED, or CANCELLED). The payload carries the result (execId, status,
@@ -912,6 +913,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
           ...(options?.env?.length && { env: options.env }),
           ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
+          ...(options?.logProcessor && { logProcessor: options.logProcessor }),
           ...(options?.webhook && { webhook: options.webhook }),
         };
 
