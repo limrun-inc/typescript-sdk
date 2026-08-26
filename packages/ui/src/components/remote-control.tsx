@@ -154,11 +154,6 @@ export interface RemoteControlProps {
    */
   axMaxBackoffMs?: number;
 
-  /**
-   * Android-only options for accessibility element-tree requests.
-   * Omit `waitForIdleTimeoutMs` or use 0 to capture immediately; a positive
-   * value waits up to that many milliseconds for UI automation to become idle.
-   */
   androidElementTreeOptions?: AndroidElementTreeOptions;
 
   /**
@@ -442,12 +437,6 @@ const detectPlatform = (url: string): DevicePlatform => {
   // Default to iOS if no Android pattern is found
   return 'ios';
 };
-
-export const remoteControlAndroidElementTreeOptions = (
-  platform: DevicePlatform,
-  options: AndroidElementTreeOptions | undefined,
-): { androidElementTreeOptions?: AndroidElementTreeOptions } =>
-  platform === 'android' && options !== undefined ? { androidElementTreeOptions: options } : {};
 
 // The endpoint may already carry query parameters, and the token may contain URL syntax.
 export const withAuthenticationToken = (url: string, token: string): string => {
@@ -2677,7 +2666,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               platform,
               baseIntervalMs: axPollIntervalMs,
               maxBackoffMs: axMaxBackoffMs,
-              ...remoteControlAndroidElementTreeOptions(platform, androidElementTreeOptions),
+              androidElementTreeOptions,
               send: (payload) => {
                 if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return false;
                 try {

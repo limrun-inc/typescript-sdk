@@ -24,9 +24,6 @@ const DEFAULT_BASE_INTERVAL_MS = 500;
 const DEFAULT_MAX_BACKOFF_MS = 2000;
 const UNAVAILABLE_RETRY_INTERVAL_MS = 5000;
 const REQUEST_TIMEOUT_MS = 8000;
-const MAX_ANDROID_ELEMENT_TREE_IDLE_TIMEOUT_MS = 120_000;
-const ANDROID_ELEMENT_TREE_EXECUTION_MARGIN_MS = 8_000;
-const REQUEST_TRANSPORT_MARGIN_MS = 2_000;
 // After a user-driven event (tap/scroll/openUrl/etc.) we enter a brief
 // "boost" window during which scheduled fetches happen on a shorter
 // interval. This catches mid- and post-animation UI states without
@@ -117,21 +114,7 @@ export class AxFetcher {
     this.onStatusChange = opts.onStatusChange;
     this.baseIntervalMs = opts.baseIntervalMs ?? DEFAULT_BASE_INTERVAL_MS;
     this.maxBackoffMs = opts.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
-    if (this.platform === 'android') {
-      const idleTimeoutMs = opts.androidElementTreeOptions?.waitForIdleTimeoutMs;
-      if (
-        idleTimeoutMs !== undefined &&
-        (!Number.isFinite(idleTimeoutMs) ||
-          !Number.isInteger(idleTimeoutMs) ||
-          idleTimeoutMs < 0 ||
-          idleTimeoutMs > MAX_ANDROID_ELEMENT_TREE_IDLE_TIMEOUT_MS)
-      ) {
-        throw new Error(
-          `waitForIdleTimeoutMs must be a finite non-negative integer no greater than ${MAX_ANDROID_ELEMENT_TREE_IDLE_TIMEOUT_MS}`,
-        );
-      }
-      this.androidElementTreeOptions = opts.androidElementTreeOptions;
-    }
+    this.androidElementTreeOptions = opts.androidElementTreeOptions;
     this.currentInterval = this.baseIntervalMs;
   }
 
@@ -281,35 +264,19 @@ export class AxFetcher {
     if (this.platform === 'ios') {
       return { type: 'elementTree', id };
     }
-    const waitForIdleTimeoutMs = this.androidElementTreeOptions?.waitForIdleTimeoutMs;
-    if (waitForIdleTimeoutMs === undefined) {
-      return { type: 'getElementTree', id };
-    }
-    const payload: AndroidElementTreeOptions = { waitForIdleTimeoutMs };
-    return { type: 'getElementTree', id, ...payload, payload };
-  }
-
-  private requestTimeoutMs(): number {
-    if (this.platform !== 'android') {
-      return REQUEST_TIMEOUT_MS;
-    }
-    const idleTimeoutMs = this.androidElementTreeOptions?.waitForIdleTimeoutMs ?? 0;
-    if (idleTimeoutMs === 0) {
-      return REQUEST_TIMEOUT_MS;
-    }
-    return Math.max(
-      REQUEST_TIMEOUT_MS,
-      idleTimeoutMs + ANDROID_ELEMENT_TREE_EXECUTION_MARGIN_MS + REQUEST_TRANSPORT_MARGIN_MS,
-    );
+    return { type: 'getElementTree', id, ...this.androidElementTreeOptions };
   }
 
   private async requestOnce(): Promise<AxSnapshot> {
     const id = generateRequestId();
     return new Promise<AxSnapshot>((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error('elementTree request timed out'));
-      }, this.requestTimeoutMs());
+      const timer = window.setTimeout(
+        () => {
+          this.pending.delete(id);
+          reject(new Error('elementTree request timed out'));
+        },
+        REQUEST_TIMEOUT_MS + (this.androidElementTreeOptions?.waitForIdleTimeoutMs ?? 0),
+      );
       this.pending.set(id, { resolve, reject, timer });
       const ok = this.send(this.buildRequest(id));
       if (!ok) {
