@@ -107,6 +107,7 @@ export type XcodeBuildExecRequest = {
    */
   env?: string[];
   gitInit?: boolean;
+  /** How xcodebuild stdout is processed before streaming. Defaults to 'xcbeautify'. */
   logProcessor?: 'xcbeautify' | 'none';
   signedUploadUrl?: string;
   /**

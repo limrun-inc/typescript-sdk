@@ -113,7 +113,7 @@ export default class XcodeBuild extends BaseCommand {
       default: false,
     }),
     'log-processor': Flags.string({
-      description: 'Process xcodebuild output with xcbeautify or stream it unchanged.',
+      description: 'Process xcodebuild output with xcbeautify (default) or stream it unchanged.',
       options: ['xcbeautify', 'none'],
     }),
     'dev-server-url': Flags.string({

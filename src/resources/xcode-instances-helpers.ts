@@ -279,6 +279,7 @@ export type XcodeBuildOptions = {
    * dependency resolution, and xcodebuild.
    */
   gitInit?: boolean;
+  /** How xcodebuild stdout is processed before streaming. Defaults to 'xcbeautify'. */
   logProcessor?: 'xcbeautify' | 'none';
   /**
    * HTTP callback fired once the build reaches a terminal state (SUCCEEDED,
