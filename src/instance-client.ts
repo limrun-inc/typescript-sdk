@@ -14,6 +14,10 @@ import { syncFolder, type FolderSyncOptions, type SyncFolderResult } from './fol
 
 const ANDROID_RECORDING_PATH = '/data/local/tmp/recordings/video_recording.mp4';
 const ANDROID_SIGNALING_PATH = '/ws';
+const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
+const MAX_ANDROID_ELEMENT_TREE_IDLE_TIMEOUT_MS = 120_000;
+const ANDROID_ELEMENT_TREE_EXECUTION_MARGIN_MS = 8_000;
+const COMMAND_TRANSPORT_MARGIN_MS = 2_000;
 
 /**
  * Connection state of the instance client
@@ -42,6 +46,32 @@ function assertBandwidthKbps(field: keyof WifiBandwidthOptions, value: number): 
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`${field} must be a non-negative integer Kbps value`);
   }
+}
+
+function assertAndroidElementTreeOptions(options?: AndroidElementTreeOptions): void {
+  const timeoutMs = options?.waitForIdleTimeoutMs;
+  if (
+    timeoutMs !== undefined &&
+    (!Number.isFinite(timeoutMs) ||
+      !Number.isInteger(timeoutMs) ||
+      timeoutMs < 0 ||
+      timeoutMs > MAX_ANDROID_ELEMENT_TREE_IDLE_TIMEOUT_MS)
+  ) {
+    throw new Error(
+      `waitForIdleTimeoutMs must be a finite non-negative integer no greater than ${MAX_ANDROID_ELEMENT_TREE_IDLE_TIMEOUT_MS}`,
+    );
+  }
+}
+
+function androidElementTreeRequestTimeoutMs(options?: AndroidElementTreeOptions): number {
+  const idleTimeoutMs = options?.waitForIdleTimeoutMs ?? 0;
+  if (idleTimeoutMs === 0) {
+    return DEFAULT_COMMAND_TIMEOUT_MS;
+  }
+  return Math.max(
+    DEFAULT_COMMAND_TIMEOUT_MS,
+    idleTimeoutMs + ANDROID_ELEMENT_TREE_EXECUTION_MARGIN_MS + COMMAND_TRANSPORT_MARGIN_MS,
+  );
 }
 
 async function assertApkFile(filePath: string): Promise<void> {
@@ -73,7 +103,7 @@ export type InstanceClient = {
   /**
    * Fetch Android UI hierarchy from UIAutomator.
    */
-  getElementTree: () => Promise<ElementTreeData>;
+  getElementTree: (options?: AndroidElementTreeOptions) => Promise<ElementTreeData>;
   /**
    * Find matching elements by Android-native selector.
    */
@@ -366,6 +396,10 @@ export type AndroidElementNode = {
     centerX: number;
     centerY: number;
   };
+};
+
+export type AndroidElementTreeOptions = {
+  waitForIdleTimeoutMs?: number;
 };
 
 /**
@@ -796,7 +830,7 @@ type ServerMessage =
 
 type CommandRequestMap = {
   screenshot: {};
-  getElementTree: {};
+  getElementTree: AndroidElementTreeOptions;
   findElement: { selector: AndroidSelector; limit?: number };
   tap: AndroidElementTarget;
   setText: { text: string } & AndroidElementTarget;
@@ -1026,7 +1060,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const sendRequest = async <K extends keyof CommandRequestMap>(
       type: K,
       params: CommandRequestMap[K],
-      timeoutMs: number = 30000,
+      timeoutMs: number = DEFAULT_COMMAND_TIMEOUT_MS,
     ): Promise<CommandResultMap[K]> => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         return Promise.reject(new Error('WebSocket is not connected or connection is not open.'));
@@ -1309,8 +1343,17 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest('screenshot', {});
     };
 
-    const getElementTree = async (): Promise<ElementTreeData> => {
-      const result = await sendRequest('getElementTree', {});
+    const getElementTree = async (treeOptions?: AndroidElementTreeOptions): Promise<ElementTreeData> => {
+      assertAndroidElementTreeOptions(treeOptions);
+      const request: AndroidElementTreeOptions =
+        treeOptions?.waitForIdleTimeoutMs === undefined ?
+          {}
+        : { waitForIdleTimeoutMs: treeOptions.waitForIdleTimeoutMs };
+      const result = await sendRequest(
+        'getElementTree',
+        request,
+        androidElementTreeRequestTimeoutMs(treeOptions),
+      );
       return {
         xml: typeof result.xml === 'string' ? result.xml : '',
         nodes: Array.isArray(result.nodes) ? result.nodes : [],

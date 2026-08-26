@@ -24,6 +24,9 @@ const DEFAULT_BASE_INTERVAL_MS = 500;
 const DEFAULT_MAX_BACKOFF_MS = 2000;
 const UNAVAILABLE_RETRY_INTERVAL_MS = 5000;
 const REQUEST_TIMEOUT_MS = 8000;
+const MAX_ANDROID_ELEMENT_TREE_IDLE_TIMEOUT_MS = 120_000;
+const ANDROID_ELEMENT_TREE_EXECUTION_MARGIN_MS = 8_000;
+const REQUEST_TRANSPORT_MARGIN_MS = 2_000;
 // After a user-driven event (tap/scroll/openUrl/etc.) we enter a brief
 // "boost" window during which scheduled fetches happen on a shorter
 // interval. This catches mid- and post-animation UI states without
@@ -51,10 +54,15 @@ export type AxStatus = 'idle' | 'starting' | 'ready' | 'unavailable' | 'error';
 
 export type AxFetcherSendFn = (payload: Record<string, unknown>) => boolean;
 
+export interface AndroidElementTreeOptions {
+  waitForIdleTimeoutMs?: number;
+}
+
 export interface AxFetcherOptions {
   platform: AxPlatform;
   send: AxFetcherSendFn;
   onSnapshot: (snapshot: AxSnapshot | null) => void;
+  androidElementTreeOptions?: AndroidElementTreeOptions;
   // Optional: notified on every status transition (deduplicated — no
   // self-loops are emitted). `error` provides the error message when the
   // status is `error` or `unavailable`.
@@ -81,6 +89,7 @@ export class AxFetcher {
   private readonly onStatusChange?: (status: AxStatus, error?: string) => void;
   private readonly baseIntervalMs: number;
   private readonly maxBackoffMs: number;
+  private readonly androidElementTreeOptions?: AndroidElementTreeOptions;
   private readonly pending: Map<string, PendingResolver> = new Map();
 
   private running = false;
@@ -108,6 +117,21 @@ export class AxFetcher {
     this.onStatusChange = opts.onStatusChange;
     this.baseIntervalMs = opts.baseIntervalMs ?? DEFAULT_BASE_INTERVAL_MS;
     this.maxBackoffMs = opts.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
+    if (this.platform === 'android') {
+      const idleTimeoutMs = opts.androidElementTreeOptions?.waitForIdleTimeoutMs;
+      if (
+        idleTimeoutMs !== undefined &&
+        (!Number.isFinite(idleTimeoutMs) ||
+          !Number.isInteger(idleTimeoutMs) ||
+          idleTimeoutMs < 0 ||
+          idleTimeoutMs > MAX_ANDROID_ELEMENT_TREE_IDLE_TIMEOUT_MS)
+      ) {
+        throw new Error(
+          `waitForIdleTimeoutMs must be a finite non-negative integer no greater than ${MAX_ANDROID_ELEMENT_TREE_IDLE_TIMEOUT_MS}`,
+        );
+      }
+      this.androidElementTreeOptions = opts.androidElementTreeOptions;
+    }
     this.currentInterval = this.baseIntervalMs;
   }
 
@@ -257,7 +281,26 @@ export class AxFetcher {
     if (this.platform === 'ios') {
       return { type: 'elementTree', id };
     }
-    return { type: 'getElementTree', id };
+    const waitForIdleTimeoutMs = this.androidElementTreeOptions?.waitForIdleTimeoutMs;
+    if (waitForIdleTimeoutMs === undefined) {
+      return { type: 'getElementTree', id };
+    }
+    const payload: AndroidElementTreeOptions = { waitForIdleTimeoutMs };
+    return { type: 'getElementTree', id, ...payload, payload };
+  }
+
+  private requestTimeoutMs(): number {
+    if (this.platform !== 'android') {
+      return REQUEST_TIMEOUT_MS;
+    }
+    const idleTimeoutMs = this.androidElementTreeOptions?.waitForIdleTimeoutMs ?? 0;
+    if (idleTimeoutMs === 0) {
+      return REQUEST_TIMEOUT_MS;
+    }
+    return Math.max(
+      REQUEST_TIMEOUT_MS,
+      idleTimeoutMs + ANDROID_ELEMENT_TREE_EXECUTION_MARGIN_MS + REQUEST_TRANSPORT_MARGIN_MS,
+    );
   }
 
   private async requestOnce(): Promise<AxSnapshot> {
@@ -266,7 +309,7 @@ export class AxFetcher {
       const timer = window.setTimeout(() => {
         this.pending.delete(id);
         reject(new Error('elementTree request timed out'));
-      }, REQUEST_TIMEOUT_MS);
+      }, this.requestTimeoutMs());
       this.pending.set(id, { resolve, reject, timer });
       const ok = this.send(this.buildRequest(id));
       if (!ok) {

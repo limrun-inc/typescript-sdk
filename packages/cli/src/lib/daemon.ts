@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { spawn } from 'child_process';
-import { createInstanceClient, Ios, type InstanceClient } from '@limrun/api';
+import { createInstanceClient, Ios, type AndroidElementTreeOptions, type InstanceClient } from '@limrun/api';
 import { type InstanceType } from './instance-client-factory';
 
 // Unix sockets have a 104-108 byte path limit depending on OS.
@@ -293,6 +293,17 @@ export interface DaemonResponse {
   exitCode?: number;
 }
 
+export async function runElementTreeDaemonCommand(
+  type: InstanceType,
+  client: InstanceClient | Ios.InstanceClient,
+  args: unknown[],
+): Promise<unknown> {
+  if (type === 'ios') {
+    return (client as Ios.InstanceClient).elementTree();
+  }
+  return (client as InstanceClient).getElementTree(args[0] as AndroidElementTreeOptions | undefined);
+}
+
 // ---------- Daemon server ----------
 
 /**
@@ -515,11 +526,7 @@ export function startDaemonServer(): void {
         }
 
         case 'element-tree':
-          if (type === 'ios') {
-            result = await (client as any).elementTree();
-          } else {
-            result = await (client as any).getElementTree();
-          }
+          result = await runElementTreeDaemonCommand(type, client, args);
           break;
 
         case 'device-info':

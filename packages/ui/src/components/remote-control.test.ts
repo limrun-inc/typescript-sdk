@@ -5,7 +5,7 @@
 // don't depend on whether a space serializes as `+` or `%20`.
 
 import { describe, expect, test } from 'vitest';
-import { withAuthenticationToken } from './remote-control';
+import { remoteControlAndroidElementTreeOptions, withAuthenticationToken } from './remote-control';
 
 describe('withAuthenticationToken', () => {
   test('adds the token alongside query parameters already on the endpoint', () => {
@@ -30,5 +30,23 @@ describe('withAuthenticationToken', () => {
     const result = new URL(withAuthenticationToken('wss://example.com/socket?token=stale', 'fresh-token'));
 
     expect(result.searchParams.getAll('token')).toEqual(['fresh-token']);
+  });
+});
+
+describe('RemoteControl Android element-tree options', () => {
+  test('omits AxFetcher options by default', () => {
+    expect(remoteControlAndroidElementTreeOptions('android', undefined)).toEqual({});
+  });
+
+  test('forwards explicit Android options to AxFetcher configuration', () => {
+    const options = { waitForIdleTimeoutMs: 5000 };
+
+    expect(remoteControlAndroidElementTreeOptions('android', options)).toEqual({
+      androidElementTreeOptions: options,
+    });
+  });
+
+  test('does not apply Android options to iOS', () => {
+    expect(remoteControlAndroidElementTreeOptions('ios', { waitForIdleTimeoutMs: 5000 })).toEqual({});
   });
 });

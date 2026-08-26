@@ -18,7 +18,7 @@ import {
   createSetClipboardMessage,
   createTwoFingerTouchControlMessage,
 } from '../core/webrtc-messages';
-import { AxFetcher, AxStatus } from '../core/ax-fetcher';
+import { AxFetcher, AxStatus, type AndroidElementTreeOptions } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
 
@@ -28,7 +28,7 @@ declare global {
   }
 }
 
-interface RemoteControlProps {
+export interface RemoteControlProps {
   // url is the URL of the instance to connect to.
   url: string;
 
@@ -153,6 +153,13 @@ interface RemoteControlProps {
    * @default 2000
    */
   axMaxBackoffMs?: number;
+
+  /**
+   * Android-only options for accessibility element-tree requests.
+   * Omit `waitForIdleTimeoutMs` or use 0 to capture immediately; a positive
+   * value waits up to that many milliseconds for UI automation to become idle.
+   */
+  androidElementTreeOptions?: AndroidElementTreeOptions;
 
   /**
    * Fires whenever the iOS simulator's camera demand state changes —
@@ -436,6 +443,12 @@ const detectPlatform = (url: string): DevicePlatform => {
   return 'ios';
 };
 
+export const remoteControlAndroidElementTreeOptions = (
+  platform: DevicePlatform,
+  options: AndroidElementTreeOptions | undefined,
+): { androidElementTreeOptions?: AndroidElementTreeOptions } =>
+  platform === 'android' && options !== undefined ? { androidElementTreeOptions: options } : {};
+
 // The endpoint may already carry query parameters, and the token may contain URL syntax.
 export const withAuthenticationToken = (url: string, token: string): string => {
   const endpoint = new URL(url);
@@ -551,6 +564,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       onAxStatusChange,
       axPollIntervalMs,
       axMaxBackoffMs,
+      androidElementTreeOptions,
       onCameraDemandChange,
       onCameraStats,
       cameraResolutionCap = 'auto',
@@ -2663,6 +2677,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               platform,
               baseIntervalMs: axPollIntervalMs,
               maxBackoffMs: axMaxBackoffMs,
+              ...remoteControlAndroidElementTreeOptions(platform, androidElementTreeOptions),
               send: (payload) => {
                 if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return false;
                 try {

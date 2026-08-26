@@ -7,7 +7,7 @@
 // AxFetcher relies on `window.setTimeout` / `requestAnimationFrame`.
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { AxFetcher, AxStatus } from './ax-fetcher';
+import { AndroidElementTreeOptions, AxFetcher, AxStatus } from './ax-fetcher';
 import { AxSnapshot, AX_UNAVAILABLE_ERROR } from './ax-tree';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ const makeIosHarness = (opts: { baseIntervalMs?: number; maxBackoffMs?: number }
   return { fetcher, send, onSnapshot, onStatusChange, lastRequestId, respondIos, respondAndroid };
 };
 
-const makeAndroidHarness = (): Harness => {
+const makeAndroidHarness = (androidElementTreeOptions?: AndroidElementTreeOptions): Harness => {
   const send = vi.fn(() => true);
   const onSnapshot = vi.fn();
   const onStatusChange = vi.fn();
@@ -99,6 +99,7 @@ const makeAndroidHarness = (): Harness => {
     send,
     onSnapshot,
     onStatusChange,
+    androidElementTreeOptions,
   });
   const lastRequestId = (): string | null => {
     if (send.mock.calls.length === 0) return null;
@@ -359,6 +360,79 @@ describe('AxFetcher: handleMessage routing', () => {
     const h = makeIosHarness();
     h.fetcher.start();
     expect(h.fetcher.handleMessage({ type: 'elementTreeResult', id: 'nope' })).toBe(false);
+  });
+});
+
+describe('AxFetcher: Android element-tree idle options', () => {
+  test('keeps the default request shape and 8 second timeout when omitted', async () => {
+    const h = makeAndroidHarness();
+    h.fetcher.start();
+
+    expect(h.send.mock.calls[0]![0]).toMatchObject({ type: 'getElementTree' });
+    expect(h.send.mock.calls[0]![0]).not.toHaveProperty('waitForIdleTimeoutMs');
+    expect(h.send.mock.calls[0]![0]).not.toHaveProperty('payload');
+
+    await vi.advanceTimersByTimeAsync(7999);
+    expect(h.fetcher.getStatus()).toBe('starting');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.fetcher.getStatus()).toBe('error');
+  });
+
+  test('sends explicit options at the top level and in payload and extends timeout', async () => {
+    const h = makeAndroidHarness({ waitForIdleTimeoutMs: 15_000 });
+    h.fetcher.start();
+
+    expect(h.send.mock.calls[0]![0]).toMatchObject({
+      type: 'getElementTree',
+      waitForIdleTimeoutMs: 15_000,
+      payload: { waitForIdleTimeoutMs: 15_000 },
+    });
+
+    await vi.advanceTimersByTimeAsync(24_999);
+    expect(h.fetcher.getStatus()).toBe('starting');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.fetcher.getStatus()).toBe('error');
+  });
+
+  test('sends explicit zero while retaining the default timeout', async () => {
+    const h = makeAndroidHarness({ waitForIdleTimeoutMs: 0 });
+    h.fetcher.start();
+
+    expect(h.send.mock.calls[0]![0]).toMatchObject({
+      waitForIdleTimeoutMs: 0,
+      payload: { waitForIdleTimeoutMs: 0 },
+    });
+
+    await vi.advanceTimersByTimeAsync(7999);
+    expect(h.fetcher.getStatus()).toBe('starting');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.fetcher.getStatus()).toBe('error');
+  });
+
+  test.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 120_001])(
+    'rejects invalid waitForIdleTimeoutMs %s',
+    (waitForIdleTimeoutMs) => {
+      expect(() => makeAndroidHarness({ waitForIdleTimeoutMs })).toThrow(
+        'waitForIdleTimeoutMs must be a finite non-negative integer no greater than 120000',
+      );
+    },
+  );
+
+  test('does not change iOS request shape when Android options are present', () => {
+    const send = vi.fn(() => true);
+    const fetcher = new AxFetcher({
+      platform: 'ios',
+      send,
+      onSnapshot: vi.fn(),
+      androidElementTreeOptions: { waitForIdleTimeoutMs: 120_000 },
+    });
+
+    fetcher.start();
+
+    expect(send.mock.calls[0]![0]).toMatchObject({ type: 'elementTree' });
+    expect(send.mock.calls[0]![0]).not.toHaveProperty('waitForIdleTimeoutMs');
+    expect(send.mock.calls[0]![0]).not.toHaveProperty('payload');
+    fetcher.stop();
   });
 });
 
