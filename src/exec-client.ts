@@ -107,6 +107,8 @@ export type XcodeBuildExecRequest = {
    */
   env?: string[];
   gitInit?: boolean;
+  /** How xcodebuild stdout is processed before streaming. Defaults to 'xcbeautify'. */
+  logProcessor?: 'xcbeautify' | 'none';
   signedUploadUrl?: string;
   /**
    * ID of the Limrun asset signedUploadUrl targets, when it was minted from

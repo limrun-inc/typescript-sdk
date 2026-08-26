@@ -112,6 +112,10 @@ export default class XcodeBuild extends BaseCommand {
         'Run git init in the synced workspace before project generation, dependency resolution, and xcodebuild.',
       default: false,
     }),
+    'log-processor': Flags.string({
+      description: 'Process xcodebuild output with xcbeautify (default) or stream it unchanged.',
+      options: ['xcbeautify', 'none'],
+    }),
     'dev-server-url': Flags.string({
       description:
         'Launch URL for Debug React Native / Expo builds. If the build is installed on an attached iOS simulator, the app opens this URL unchanged after build; otherwise this option has no launch effect. For Expo dev-client builds, pass the exact dev-client URL or development server URL you want opened.',
@@ -291,6 +295,9 @@ export default class XcodeBuild extends BaseCommand {
       const options: XcodeBuildOptions = {};
       if (flags['git-init']) {
         options.gitInit = true;
+      }
+      if (flags['log-processor']) {
+        options.logProcessor = flags['log-processor'] as XcodeBuildOptions['logProcessor'];
       }
       const xcodegen = xcodegenConfigFromFlags(flags);
       if (xcodegen) {
