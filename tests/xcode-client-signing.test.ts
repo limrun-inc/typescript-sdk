@@ -33,7 +33,7 @@ describe('xcode client signing', () => {
     });
 
     const result = await xcode.xcodebuild(
-      { sdk: 'iphoneos' },
+      { sdk: 'appletvos' },
       {
         signing: {
           certificateP12Base64: 'cert',
@@ -47,7 +47,7 @@ describe('xcode client signing', () => {
     expect(calls[0]?.init?.method).toBe('POST');
     expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
       command: 'xcodebuild',
-      xcodebuild: { sdk: 'iphoneos' },
+      xcodebuild: { sdk: 'appletvos' },
       signing: {
         certificateP12Base64: 'cert',
         certificatePassword: 'pw',
@@ -72,7 +72,7 @@ describe('xcode client signing', () => {
       token: 'xcode-token',
     });
     const result = await xcode.xcodebuild(
-      { sdk: 'iphoneos', configuration: 'Release' },
+      { sdk: 'xros', configuration: 'Release' },
       {
         cloudSigning: {
           method: 'app-store-connect',
@@ -93,7 +93,7 @@ describe('xcode client signing', () => {
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
       command: 'xcodebuild',
-      xcodebuild: { sdk: 'iphoneos', configuration: 'Release' },
+      xcodebuild: { sdk: 'xros', configuration: 'Release' },
       cloudSigning: {
         method: 'app-store-connect',
         teamId: 'TEAM123456',

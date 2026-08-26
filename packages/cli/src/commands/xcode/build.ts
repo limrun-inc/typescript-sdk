@@ -33,7 +33,8 @@ import {
   type XcodeSigningConfig,
 } from '@limrun/api';
 
-const DEVICE_SDKS = new Set(['iphoneos', 'watchos']);
+const DEVICE_SDKS = new Set(['iphoneos', 'watchos', 'appletvos', 'xros']);
+const APP_STORE_SDKS = new Set(['iphoneos', 'appletvos', 'xros']);
 const SIMULATOR_SDKS = new Set(['iphonesimulator', 'watchsimulator']);
 type AppStoreFlags = {
   'upload-to-appstore': boolean;
@@ -66,6 +67,8 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload signed-device-build.ipa',
     '<%= config.bin %> xcode build ./MyProject --sdk iphoneos --configuration Release --signing-method release-testing --team-id VMBY3VYW4U --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8 --upload signed-device-build.ipa',
     '<%= config.bin %> xcode build ./MyProject --sdk iphoneos --configuration Release --signing-method app-store-connect --team-id VMBY3VYW4U --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8 --upload-to-appstore',
+    '<%= config.bin %> xcode build ./MyProject --scheme TVApp --sdk appletvos --configuration Release --signing-method app-store-connect --team-id VMBY3VYW4U --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8 --upload-to-appstore',
+    '<%= config.bin %> xcode build ./MyProject --scheme VisionApp --sdk xros --configuration Release --signing-method app-store-connect --team-id VMBY3VYW4U --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8 --upload-to-appstore',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./profile.mobileprovision --upload-to-appstore --asc-key-id 2X9R4HXF34 --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey_2X9R4HXF34.p8',
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./app.mobileprovision --provisioning-profile ./widgets.mobileprovision --upload-to-appstore --asc-key-id 2X9R4HXF34 --asc-key ./AuthKey_2X9R4HXF34.p8',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
@@ -105,7 +108,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     sdk: Flags.string({
       description: 'SDK family to build for.',
-      options: ['iphonesimulator', 'iphoneos', 'watchsimulator', 'watchos'],
+      options: ['iphonesimulator', 'iphoneos', 'watchsimulator', 'watchos', 'appletvos', 'xros'],
     }),
     'git-init': Flags.boolean({
       description:
@@ -176,7 +179,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     'signing-method': Flags.string({
       description:
-        'Use Apple cloud signing during archive export. Supports device SDK builds (--sdk iphoneos or --sdk watchos). Distribution methods require the ASC key to have access to cloud-managed distribution certificates.',
+        'Use Apple cloud signing during archive export. Supports device SDK builds (--sdk iphoneos, --sdk watchos, --sdk appletvos, or --sdk xros). Distribution methods require the ASC key to have access to cloud-managed distribution certificates.',
       options: ['app-store-connect', 'release-testing', 'debugging'],
     }),
     'team-id': Flags.string({
@@ -329,12 +332,16 @@ export default class XcodeBuild extends BaseCommand {
       const signing = await this.buildSigningOptions(flags);
       if (signing) {
         if (flags.sdk && SIMULATOR_SDKS.has(flags.sdk)) {
-          this.error('Signing is only supported for device SDK builds. Use --sdk iphoneos or --sdk watchos.');
+          this.error(
+            'Signing is only supported for device SDK builds. Use --sdk iphoneos, --sdk watchos, --sdk appletvos, or --sdk xros.',
+          );
         }
         if (!flags.sdk) {
           settings.sdk = 'iphoneos';
         } else if (!DEVICE_SDKS.has(flags.sdk)) {
-          this.error('Signing is only supported for device SDK builds. Use --sdk iphoneos or --sdk watchos.');
+          this.error(
+            'Signing is only supported for device SDK builds. Use --sdk iphoneos, --sdk watchos, --sdk appletvos, or --sdk xros.',
+          );
         }
         options.signing = signing;
       }
@@ -342,7 +349,7 @@ export default class XcodeBuild extends BaseCommand {
       if (cloudSigning) {
         if (flags.sdk && !DEVICE_SDKS.has(flags.sdk)) {
           this.error(
-            'Cloud signing is only supported for device SDK builds. Use --sdk iphoneos or --sdk watchos.',
+            'Cloud signing is only supported for device SDK builds. Use --sdk iphoneos, --sdk watchos, --sdk appletvos, or --sdk xros.',
           );
         }
         if (!flags.sdk) {
@@ -365,8 +372,8 @@ export default class XcodeBuild extends BaseCommand {
             '--upload-to-appstore delivers a signed IPA, so it requires manual signing flags or --signing-method.',
           );
         }
-        if (settings.sdk !== 'iphoneos') {
-          this.error('--upload-to-appstore requires --sdk iphoneos.');
+        if (!APP_STORE_SDKS.has(settings.sdk ?? '')) {
+          this.error('--upload-to-appstore requires --sdk iphoneos, --sdk appletvos, or --sdk xros.');
         }
         options.appstore = await this.buildAppStoreOptions(flags);
       }

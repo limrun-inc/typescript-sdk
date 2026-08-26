@@ -48,7 +48,7 @@ export type XcodeBuildExecRequest = {
     workspace?: string;
     project?: string;
     scheme?: string;
-    sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos';
+    sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos' | 'appletvos' | 'xros';
     configuration?: 'Debug' | 'Release';
     artifactName?: string;
     /**
