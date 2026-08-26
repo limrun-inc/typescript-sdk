@@ -742,7 +742,14 @@ lim xcode build ./MyProject --xcodegen-spec specs/app.yml --xcodegen-project ios
 
 Pass `--build-setting KEY=VALUE` to set Xcode build settings on the build. Allowed keys are a server-maintained allowlist of safe settings (currently `SWIFT_ACTIVE_COMPILATION_CONDITIONS`) plus any `APP_CONFIG_*` key for app configuration. Keys are passed to xcodebuild verbatim; use `$(inherited)` to append rather than replace, e.g. `--build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN'` (single-quote it so your shell does not evaluate `$(inherited)`) enables `#if LIMRUN`. An `APP_CONFIG_DEV_LOGIN_SECRET` value is referenced in `Info.plist` as `<string>$(APP_CONFIG_DEV_LOGIN_SECRET)</string>` and read at runtime with `Bundle.main`; its value is redacted in build logs.
 
-Provide `--certificate-p12`, `--certificate-password`, and `--provisioning-profile` together to sign a real-device build. When signing assets are provided without `--sdk`, the CLI builds with `iphoneos`; pass `--sdk watchos` for signed watchOS device builds.
+Provide `--certificate-p12`, `--certificate-password`, and `--provisioning-profile` together to sign a real-device build. When signing assets are provided without `--sdk`, the CLI builds with `iphoneos`; pass `--sdk watchos`, `--sdk appletvos`, or `--sdk xros` for signed watchOS, tvOS, or visionOS device builds. tvOS and visionOS require an explicit SDK and scheme; their simulator SDKs are not supported yet.
+
+Cloud signing supports the same device SDKs. `--upload-to-appstore` supports `iphoneos`, `appletvos`, and `xros`:
+
+```bash
+lim xcode build ./MyProject --scheme TVApp --sdk appletvos --configuration Release --signing-method app-store-connect --team-id "$TEAM_ID" --asc-key-id "$ASC_KEY_ID" --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey.p8 --upload-to-appstore
+lim xcode build ./MyProject --scheme VisionApp --sdk xros --configuration Release --signing-method app-store-connect --team-id "$TEAM_ID" --asc-key-id "$ASC_KEY_ID" --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey.p8 --upload-to-appstore
+```
 
 ---
 

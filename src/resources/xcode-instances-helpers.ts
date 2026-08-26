@@ -104,7 +104,7 @@ export type XcodeProjectConfig = {
   workspace?: string;
   project?: string;
   scheme?: string;
-  sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos';
+  sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos' | 'appletvos' | 'xros';
   /**
    * xcodebuild configuration. Omit to use limbuild's project-type default:
    * Debug for native Xcode builds and Release for React Native / Expo builds.
