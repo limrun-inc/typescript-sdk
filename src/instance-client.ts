@@ -73,7 +73,7 @@ export type InstanceClient = {
   /**
    * Fetch Android UI hierarchy from UIAutomator.
    */
-  getElementTree: () => Promise<ElementTreeData>;
+  getElementTree: (options?: AndroidElementTreeOptions) => Promise<ElementTreeData>;
   /**
    * Find matching elements by Android-native selector.
    */
@@ -366,6 +366,10 @@ export type AndroidElementNode = {
     centerX: number;
     centerY: number;
   };
+};
+
+export type AndroidElementTreeOptions = {
+  waitForIdleTimeoutMs?: number;
 };
 
 /**
@@ -796,7 +800,7 @@ type ServerMessage =
 
 type CommandRequestMap = {
   screenshot: {};
-  getElementTree: {};
+  getElementTree: AndroidElementTreeOptions;
   findElement: { selector: AndroidSelector; limit?: number };
   tap: AndroidElementTarget;
   setText: { text: string } & AndroidElementTarget;
@@ -1309,8 +1313,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest('screenshot', {});
     };
 
-    const getElementTree = async (): Promise<ElementTreeData> => {
-      const result = await sendRequest('getElementTree', {});
+    const getElementTree = async (options?: AndroidElementTreeOptions): Promise<ElementTreeData> => {
+      const result = await sendRequest(
+        'getElementTree',
+        options ?? {},
+        30_000 + (options?.waitForIdleTimeoutMs ?? 0),
+      );
       return {
         xml: typeof result.xml === 'string' ? result.xml : '',
         nodes: Array.isArray(result.nodes) ? result.nodes : [],

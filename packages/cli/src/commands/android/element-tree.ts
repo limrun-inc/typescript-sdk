@@ -23,11 +23,17 @@ export default class AndroidElementTree extends BaseCommand {
     id: Flags.string({
       description: 'Android instance ID to inspect. Defaults to the last created Android instance.',
     }),
+    'wait-for-idle-timeout-ms': Flags.integer({
+      description: 'Wait up to this many milliseconds for UI automation to become idle',
+      min: 0,
+    }),
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(AndroidElementTree);
     this.setParsedFlags(flags);
+    const waitForIdleTimeoutMs = flags['wait-for-idle-timeout-ms'];
+    const options = waitForIdleTimeoutMs === undefined ? undefined : { waitForIdleTimeoutMs };
 
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
@@ -37,7 +43,12 @@ export default class AndroidElementTree extends BaseCommand {
       }
 
       if (await ensureDaemonSession(resolvedInstance)) {
-        const tree = await sendSessionCommand(id, 'element-tree');
+        const tree = await sendSessionCommand(
+          id,
+          'element-tree',
+          options ? [options] : [],
+          30_000 + (waitForIdleTimeoutMs ?? 0),
+        );
         if (flags.json) {
           this.outputJson(tree);
         } else if (typeof tree === 'object' && tree && 'xml' in (tree as Record<string, unknown>)) {
@@ -52,7 +63,7 @@ export default class AndroidElementTree extends BaseCommand {
 
       const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
       try {
-        const tree = await client.getElementTree();
+        const tree = await client.getElementTree(options);
         if (flags.json) {
           this.outputJson(tree);
         } else {

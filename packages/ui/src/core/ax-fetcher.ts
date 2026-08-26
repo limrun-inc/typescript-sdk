@@ -51,10 +51,15 @@ export type AxStatus = 'idle' | 'starting' | 'ready' | 'unavailable' | 'error';
 
 export type AxFetcherSendFn = (payload: Record<string, unknown>) => boolean;
 
+export interface AndroidElementTreeOptions {
+  waitForIdleTimeoutMs?: number;
+}
+
 export interface AxFetcherOptions {
   platform: AxPlatform;
   send: AxFetcherSendFn;
   onSnapshot: (snapshot: AxSnapshot | null) => void;
+  androidElementTreeOptions?: AndroidElementTreeOptions;
   // Optional: notified on every status transition (deduplicated — no
   // self-loops are emitted). `error` provides the error message when the
   // status is `error` or `unavailable`.
@@ -81,6 +86,7 @@ export class AxFetcher {
   private readonly onStatusChange?: (status: AxStatus, error?: string) => void;
   private readonly baseIntervalMs: number;
   private readonly maxBackoffMs: number;
+  private readonly androidElementTreeOptions?: AndroidElementTreeOptions;
   private readonly pending: Map<string, PendingResolver> = new Map();
 
   private running = false;
@@ -108,6 +114,7 @@ export class AxFetcher {
     this.onStatusChange = opts.onStatusChange;
     this.baseIntervalMs = opts.baseIntervalMs ?? DEFAULT_BASE_INTERVAL_MS;
     this.maxBackoffMs = opts.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
+    this.androidElementTreeOptions = opts.androidElementTreeOptions;
     this.currentInterval = this.baseIntervalMs;
   }
 
@@ -257,16 +264,19 @@ export class AxFetcher {
     if (this.platform === 'ios') {
       return { type: 'elementTree', id };
     }
-    return { type: 'getElementTree', id };
+    return { type: 'getElementTree', id, ...this.androidElementTreeOptions };
   }
 
   private async requestOnce(): Promise<AxSnapshot> {
     const id = generateRequestId();
     return new Promise<AxSnapshot>((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error('elementTree request timed out'));
-      }, REQUEST_TIMEOUT_MS);
+      const timer = window.setTimeout(
+        () => {
+          this.pending.delete(id);
+          reject(new Error('elementTree request timed out'));
+        },
+        REQUEST_TIMEOUT_MS + (this.androidElementTreeOptions?.waitForIdleTimeoutMs ?? 0),
+      );
       this.pending.set(id, { resolve, reject, timer });
       const ok = this.send(this.buildRequest(id));
       if (!ok) {

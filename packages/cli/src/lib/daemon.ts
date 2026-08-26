@@ -518,7 +518,7 @@ export function startDaemonServer(): void {
           if (type === 'ios') {
             result = await (client as any).elementTree();
           } else {
-            result = await (client as any).getElementTree();
+            result = await (client as any).getElementTree(args[0]);
           }
           break;
 

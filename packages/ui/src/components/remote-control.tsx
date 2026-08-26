@@ -18,7 +18,7 @@ import {
   createSetClipboardMessage,
   createTwoFingerTouchControlMessage,
 } from '../core/webrtc-messages';
-import { AxFetcher, AxStatus } from '../core/ax-fetcher';
+import { AxFetcher, AxStatus, type AndroidElementTreeOptions } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
 
@@ -28,7 +28,7 @@ declare global {
   }
 }
 
-interface RemoteControlProps {
+export interface RemoteControlProps {
   // url is the URL of the instance to connect to.
   url: string;
 
@@ -153,6 +153,8 @@ interface RemoteControlProps {
    * @default 2000
    */
   axMaxBackoffMs?: number;
+
+  androidElementTreeOptions?: AndroidElementTreeOptions;
 
   /**
    * Fires whenever the iOS simulator's camera demand state changes —
@@ -551,6 +553,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       onAxStatusChange,
       axPollIntervalMs,
       axMaxBackoffMs,
+      androidElementTreeOptions,
       onCameraDemandChange,
       onCameraStats,
       cameraResolutionCap = 'auto',
@@ -2663,6 +2666,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               platform,
               baseIntervalMs: axPollIntervalMs,
               maxBackoffMs: axMaxBackoffMs,
+              androidElementTreeOptions,
               send: (payload) => {
                 if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return false;
                 try {
