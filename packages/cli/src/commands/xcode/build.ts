@@ -15,6 +15,7 @@ import { parseEnvEntries } from '../../lib/env-entries';
 import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
 import { webhookConfigFromFlags } from '../../lib/webhook-options';
 import { parseUploadOptions } from '../../lib/upload-options';
+import { repeatableFlagFromEnv } from '../../lib/repeatable-flag-env';
 import {
   cloudSigningFlagsProblem,
   hasCloudSigningFlags,
@@ -77,6 +78,7 @@ export default class XcodeBuild extends BaseCommand {
     `<%= config.bin %> xcode build ./MyProject --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"`,
     '<%= config.bin %> xcode build ./MyProject --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
     '<%= config.bin %> xcode build ./MyProject --detach --inactivity-timeout 3s --webhook-url https://ci.example.com/hooks/limrun',
+    'LIM_WEBHOOK_URL=https://ci.example.com/hooks/limrun LIM_WEBHOOK_HEADERS="Authorization=Bearer $HOOK_SECRET" <%= config.bin %> xcode build ./MyProject --detach',
     '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache',
     '<%= config.bin %> xcode build ./MyProject --ignore "\\\\.xcuserdata/"',
     '<%= config.bin %> xcode build ./MyProject --additional-file ~/.netrc=~/.netrc',
@@ -149,7 +151,13 @@ export default class XcodeBuild extends BaseCommand {
         'App metadata to record on the uploaded asset as key=value, repeatable. Keys: displayName, bundleIdentifier, shortVersion, buildVersion, deeplink. limbuild extracts the same metadata from the built bundle and overwrites it; values set here survive only for fields the bundle does not declare (e.g. deeplink).',
     }),
     'signed-upload-url': Flags.string({
-      description: 'Presigned URL to upload the resulting build artifact to.',
+      description:
+        'Presigned URL to upload the resulting build artifact to. Defaults to LIM_SIGNED_UPLOAD_URL, unless --upload already names a destination.',
+      // A `default` rather than `env` so the variable never lands alongside
+      // --upload: it is ambient wrapper configuration, and the two flags
+      // name different destinations, so an env value must not read as the
+      // contradiction that two explicit flags do.
+      default: async ({ flags }) => (flags['upload'] ? undefined : process.env['LIM_SIGNED_UPLOAD_URL']),
     }),
     'build-setting': Flags.string({
       description:
@@ -213,11 +221,16 @@ export default class XcodeBuild extends BaseCommand {
     'webhook-url': Flags.string({
       description:
         'HTTPS URL that limbuild POSTs a JSON payload to once the build reaches a terminal state, carrying the result, a console debug link, and a presigned build-log URL. Must be a public DNS host; IP-literal and private targets are rejected. Delivery is best-effort and never fails the build.',
+      env: 'LIM_WEBHOOK_URL',
     }),
     'webhook-header': Flags.string({
       description:
-        'Header to set verbatim on the webhook request as NAME=VALUE, for example Authorization="Bearer $SECRET". Requires --webhook-url. Repeat for multiple headers (at most 16).',
+        'Header to set verbatim on the webhook request as NAME=VALUE, for example Authorization="Bearer $SECRET". Requires --webhook-url. Repeat for multiple headers (at most 16). Defaults to LIM_WEBHOOK_HEADERS, which holds several headers separated by commas; write a literal comma inside a value as \\,.',
       multiple: true,
+      // A `default` rather than `env`: oclif hands a `multiple` flag its env
+      // value unsplit and unwrapped, which would put a bare string behind a
+      // string[] type. See repeatableFlagFromEnv.
+      default: async () => repeatableFlagFromEnv('LIM_WEBHOOK_HEADERS'),
     }),
     detach: Flags.boolean({
       description:

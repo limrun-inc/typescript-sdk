@@ -26,10 +26,13 @@ export function webhookConfigFromFlags(flags: WebhookFlagValues): WebhookConfig 
   }
   const headers: Record<string, string> = {};
   const seen = new Set<string>();
-  for (const entry of headerEntries) {
+  for (const [index, entry] of headerEntries.entries()) {
     const separator = entry.indexOf('=');
     if (separator <= 0) {
-      throw new Error(`Invalid --webhook-header ${JSON.stringify(entry)}: expected NAME=VALUE.`);
+      // Reported by position, never echoed: the entry is usually an
+      // Authorization value, and one that came from the environment is
+      // otherwise absent from the terminal.
+      throw new Error(`Invalid --webhook-header entry ${index + 1}: expected NAME=VALUE.`);
     }
     const name = entry.slice(0, separator);
     const key = name.toLowerCase();

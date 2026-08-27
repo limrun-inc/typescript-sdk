@@ -16,6 +16,7 @@ import {
 } from '../../lib/gradle-signing';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
+import { repeatableFlagFromEnv } from '../../lib/repeatable-flag-env';
 
 export default class GradleBuild extends BaseCommand {
   static summary = 'Build an Android project on a gradle instance';
@@ -33,6 +34,7 @@ export default class GradleBuild extends BaseCommand {
     '<%= config.bin %> gradle build --keystore upload.jks --keystore-password *** --key-alias upload --key-password *** --save-key',
     '<%= config.bin %> gradle build ./my-app --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
     '<%= config.bin %> gradle build ./my-app --detach --inactivity-timeout 3s --webhook-url https://ci.example.com/hooks/limrun',
+    'LIM_WEBHOOK_URL=https://ci.example.com/hooks/limrun LIM_WEBHOOK_HEADERS="Authorization=Bearer $HOOK_SECRET" <%= config.bin %> gradle build ./my-app --detach',
     '<%= config.bin %> gradle build --sign --upload-to-playstore --playstore-service-account service-account.json',
   ];
 
@@ -77,7 +79,13 @@ export default class GradleBuild extends BaseCommand {
         "TTL of the uploaded asset as a Go duration (e.g. 24h, 30m). Defaults to 336h (14 days); each build upload pushes the asset's expiry that far out from the upload.",
     }),
     'signed-upload-url': Flags.string({
-      description: 'Presigned URL to upload the resulting APK or AAB to.',
+      description:
+        'Presigned URL to upload the resulting APK or AAB to. Defaults to LIM_SIGNED_UPLOAD_URL, unless --upload already names a destination.',
+      // A `default` rather than `env` so the variable never lands alongside
+      // --upload: it is ambient wrapper configuration, and the two flags
+      // name different destinations, so an env value must not read as the
+      // contradiction that two explicit flags do.
+      default: async ({ flags }) => (flags['upload'] ? undefined : process.env['LIM_SIGNED_UPLOAD_URL']),
     }),
     sign: Flags.boolean({
       description:
@@ -109,11 +117,16 @@ export default class GradleBuild extends BaseCommand {
     'webhook-url': Flags.string({
       description:
         'HTTPS URL that the build daemon POSTs a JSON payload to once the build reaches a terminal state, carrying the result and a console debug link. Must be a public DNS host; IP-literal and private targets are rejected. Delivery is best-effort and never fails the build.',
+      env: 'LIM_WEBHOOK_URL',
     }),
     'webhook-header': Flags.string({
       description:
-        'Header to set verbatim on the webhook request as NAME=VALUE, for example Authorization="Bearer $SECRET". Requires --webhook-url. Repeat for multiple headers (at most 16).',
+        'Header to set verbatim on the webhook request as NAME=VALUE, for example Authorization="Bearer $SECRET". Requires --webhook-url. Repeat for multiple headers (at most 16). Defaults to LIM_WEBHOOK_HEADERS, which holds several headers separated by commas; write a literal comma inside a value as \\,.',
       multiple: true,
+      // A `default` rather than `env`: oclif hands a `multiple` flag its env
+      // value unsplit and unwrapped, which would put a bare string behind a
+      // string[] type. See repeatableFlagFromEnv.
+      default: async () => repeatableFlagFromEnv('LIM_WEBHOOK_HEADERS'),
     }),
     'upload-to-playstore': Flags.boolean({
       description:
