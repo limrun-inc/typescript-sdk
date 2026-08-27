@@ -46,6 +46,13 @@ describe('gradleBuildOptionsFromFlags signing validation', () => {
     },
     { name: 'sign with an explicit bundle task', flags: { sign: true, task: [':app:bundleRelease'] } },
     { name: 'BYO keystore with a debug task stays allowed', flags: { ...byo, task: ['assembleDebug'] } },
+    {
+      // The commands rely on this: LIM_SIGNED_UPLOAD_URL is withheld when
+      // --upload is present, so reaching here means both were passed.
+      name: 'upload with an explicit signed upload URL',
+      flags: { upload: 'app.aab', 'signed-upload-url': 'https://storage.example.com/put' },
+      error: /not both/,
+    },
   ];
 
   it.each(cases)('$name', ({ flags, error }) => {

@@ -46,6 +46,16 @@ describe('webhookConfigFromFlags', () => {
     }
   });
 
+  test('names a malformed entry by position instead of echoing the credential', () => {
+    const call = () =>
+      webhookConfigFromFlags({
+        'webhook-url': 'https://ci.example.com/h',
+        'webhook-header': ['X-Trace=abc', 'Bearer sk-live-supersecret'],
+      });
+    expect(call).toThrow('Invalid --webhook-header entry 2: expected NAME=VALUE.');
+    expect(call).not.toThrow(/sk-live-supersecret/);
+  });
+
   test('rejects duplicate header names', () => {
     expect(() =>
       webhookConfigFromFlags({
