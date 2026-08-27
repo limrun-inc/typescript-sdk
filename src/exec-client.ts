@@ -96,6 +96,7 @@ export type XcodeBuildExecRequest = {
     apiKeyId: string;
     apiIssuerId: string;
     apiPrivateKeyBase64: string;
+    entitlements?: Record<string, string>;
   };
   /** Wire name retained for compatibility with the limbuild exec API. */
   testflight?: AppStoreUploadConfig;

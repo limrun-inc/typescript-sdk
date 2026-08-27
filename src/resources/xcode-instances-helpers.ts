@@ -195,6 +195,15 @@ export type XcodeCloudSigningConfig = {
   apiKeyId: string;
   apiIssuerId: string;
   apiPrivateKeyBase64: string;
+  /**
+   * Base64-encoded entitlements plists keyed by bundle id, embedded into
+   * the archive so cloud signing preserves capability entitlements
+   * (HealthKit, CloudKit, app groups, ...). The empty key targets the
+   * top-level app. Values must be fully expanded (no $(...) build
+   * settings) and every capability must be enabled on the App ID. Older
+   * limbuild servers silently ignore this field.
+   */
+  entitlements?: Record<string, string>;
 };
 
 export type ReactNativeBuildConfig = {

@@ -2,6 +2,7 @@ import {
   cloudSigningFlagsProblem,
   hasCloudSigningFlags,
   hasSigningFlags,
+  parseEntitlementsEntries,
   signingFlagsProblem,
 } from './xcode-signing-options';
 
@@ -76,5 +77,53 @@ describe('hasCloudSigningFlags', () => {
     expect(hasCloudSigningFlags({})).toBe(false);
     expect(hasCloudSigningFlags({ 'signing-method': 'debugging' })).toBe(true);
     expect(hasCloudSigningFlags({ 'team-id': 'TEAM123456' })).toBe(true);
+  });
+});
+
+describe('parseEntitlementsEntries', () => {
+  it('treats a bare path as the app entry', () => {
+    expect(parseEntitlementsEntries(['./app.entitlements'])).toEqual({
+      entries: [{ bundleId: '', path: './app.entitlements' }],
+    });
+  });
+
+  it('splits bundleId=path entries', () => {
+    expect(parseEntitlementsEntries(['com.example.app.widgets=./w.entitlements'])).toEqual({
+      entries: [{ bundleId: 'com.example.app.widgets', path: './w.entitlements' }],
+    });
+  });
+
+  it('combines a bare path with bundle entries', () => {
+    expect(
+      parseEntitlementsEntries(['app.entitlements', 'com.example.app.widgets=w.entitlements']).entries,
+    ).toHaveLength(2);
+  });
+
+  it('keeps paths containing = when the prefix is not a bundle id', () => {
+    expect(parseEntitlementsEntries(['./builds/name=prod/app.entitlements'])).toEqual({
+      entries: [{ bundleId: '', path: './builds/name=prod/app.entitlements' }],
+    });
+  });
+
+  it('rejects a second bare path', () => {
+    expect(parseEntitlementsEntries(['a.entitlements', 'b.entitlements']).problem).toMatch(
+      /at most one bare path/,
+    );
+  });
+
+  it('rejects a duplicate bundle id', () => {
+    expect(parseEntitlementsEntries(['com.example.a=x.plist', 'com.example.a=y.plist']).problem).toMatch(
+      /provided twice/,
+    );
+  });
+
+  it('rejects an empty path after the bundle id', () => {
+    expect(parseEntitlementsEntries(['com.example.a=']).problem).toMatch(/missing the plist path/);
+  });
+
+  it('requires --signing-method through cloudSigningFlagsProblem', () => {
+    expect(cloudSigningFlagsProblem({ entitlements: ['app.entitlements'] })).toBe(
+      '--entitlements requires --signing-method.',
+    );
   });
 });
