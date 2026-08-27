@@ -18,6 +18,7 @@ import { parseUploadOptions } from '../../lib/upload-options';
 import { repeatableFlagFromEnv } from '../../lib/repeatable-flag-env';
 import {
   cloudSigningFlagsProblem,
+  parseEntitlementsEntries,
   hasCloudSigningFlags,
   hasSigningFlags,
   signingFlagsProblem,
@@ -192,6 +193,12 @@ export default class XcodeBuild extends BaseCommand {
     }),
     'team-id': Flags.string({
       description: 'Apple Developer team ID for --signing-method, e.g. VMBY3VYW4U.',
+    }),
+    entitlements: Flags.string({
+      description:
+        'Path to a code-signing entitlements plist embedded during cloud signing (--signing-method), so capabilities like HealthKit or App Groups survive export. A bare path applies to the app; use <bundleId>=<path> for embedded bundles (widgets, watch apps). Values must be fully expanded (no $(...) build settings) and every capability must be enabled on the App ID. Repeatable.',
+      multiple: true,
+      multipleNonGreedy: true,
     }),
     'upload-to-appstore': Flags.boolean({
       description:
@@ -551,12 +558,27 @@ export default class XcodeBuild extends BaseCommand {
     if (!flags['signing-method']) {
       return undefined;
     }
+    // Entry problems are rejected by cloudSigningFlagsProblem before
+    // instance resolution; failing loudly here keeps that invariant honest.
+    const { entries, problem } = parseEntitlementsEntries(flags.entitlements ?? []);
+    if (problem) {
+      this.error(problem);
+    }
+    const entitlements = Object.fromEntries(
+      await Promise.all(
+        (entries ?? []).map(async (entry) => [
+          entry.bundleId,
+          await this.readFileBase64(entry.path, '--entitlements'),
+        ]),
+      ),
+    );
     return {
       method: flags['signing-method'] as XcodeCloudSigningMethod,
       teamId: flags['team-id']!,
       apiKeyId: flags['asc-key-id']!,
       apiIssuerId: flags['asc-issuer-id']!,
       apiPrivateKeyBase64: await this.readFileBase64(flags['asc-key']!, '--asc-key'),
+      ...(entries?.length && { entitlements }),
     };
   }
 

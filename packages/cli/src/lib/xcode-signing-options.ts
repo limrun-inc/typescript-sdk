@@ -10,6 +10,53 @@ export interface XcodeCloudSigningFlagValues extends XcodeSigningFlagValues {
   'asc-key-id'?: string;
   'asc-issuer-id'?: string;
   'asc-key'?: string;
+  entitlements?: string[];
+}
+
+export interface EntitlementsEntry {
+  /** Empty string targets the top-level app; the server resolves its bundle id. */
+  bundleId: string;
+  path: string;
+}
+
+// A value is <bundleId>=<path> when the left side of its first '=' looks
+// like a reverse-DNS bundle id: bundle-id charset and at least one dot.
+// Anything else, including paths containing '=', is a bare path; ./-prefix a
+// path to force that reading.
+const bundleIDPrefixPattern = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
+
+export function parseEntitlementsEntries(values: string[]): {
+  entries?: EntitlementsEntry[];
+  problem?: string;
+} {
+  const entries: EntitlementsEntry[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    let bundleId = '';
+    let path = value;
+    const eq = value.indexOf('=');
+    if (eq > 0) {
+      const prefix = value.slice(0, eq);
+      if (bundleIDPrefixPattern.test(prefix) && prefix.includes('.')) {
+        bundleId = prefix;
+        path = value.slice(eq + 1);
+      }
+    }
+    if (path === '') {
+      return { problem: `--entitlements ${value} is missing the plist path.` };
+    }
+    if (seen.has(bundleId)) {
+      return {
+        problem:
+          bundleId === '' ?
+            '--entitlements takes at most one bare path (the app); use <bundleId>=<path> for embedded bundles.'
+          : `--entitlements provided twice for bundle id ${bundleId}.`,
+      };
+    }
+    seen.add(bundleId);
+    entries.push({ bundleId, path });
+  }
+  return { entries };
 }
 
 export function hasSigningFlags(flags: XcodeSigningFlagValues): boolean {
@@ -45,11 +92,18 @@ export function hasCloudSigningFlags(flags: XcodeCloudSigningFlagValues): boolea
 }
 
 export function cloudSigningFlagsProblem(flags: XcodeCloudSigningFlagValues): string | undefined {
+  if (flags.entitlements !== undefined && flags['signing-method'] === undefined) {
+    return '--entitlements requires --signing-method.';
+  }
   if (!hasCloudSigningFlags(flags)) {
     return undefined;
   }
   if (flags['signing-method'] === undefined) {
     return '--team-id requires --signing-method.';
+  }
+  const parsed = parseEntitlementsEntries(flags.entitlements ?? []);
+  if (parsed.problem) {
+    return parsed.problem;
   }
   if (hasSigningFlags(flags)) {
     return 'Cloud signing flags cannot be combined with --certificate-p12, --certificate-password, or --provisioning-profile.';
