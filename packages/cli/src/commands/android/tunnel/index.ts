@@ -22,6 +22,8 @@ export default class AndroidTunnel extends BaseCommand {
     'become listeners on the instance, also reachable as 10.0.2.2:<port> following the emulator ' +
     'convention. --domain destinations are intercepted transparently on the instance and ' +
     'dialed from this machine. Use --detach to keep the tunnel running after this command returns. ' +
+    'Start the tunnel before launching your app: connections opened earlier keep their original ' +
+    'route until they close. ' +
     'Note: apps that resolve DNS themselves over HTTPS (DoH) bypass --domain interception.';
   static examples = [
     '<%= config.bin %> android tunnel --route localhost:8080 --id <instance-ID>',
