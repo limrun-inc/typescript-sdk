@@ -30,6 +30,10 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
+      # npm OIDC trusted publishing needs npm >= 11.5; the bundled npm can lag.
+      - name: Update npm
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: |
           yarn install
