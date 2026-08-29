@@ -30,6 +30,24 @@ const client = await Ios.createInstanceClient({
   logLevel: 'debug',
 });
 console.log('Connected to instance');
+
+// Screens render asynchronously (app cold launches, keyboard focus), so
+// retry a tap until its element appears instead of sleeping a fixed time.
+async function tapWhenPresent(
+  selector: Parameters<typeof client.tapElement>[0],
+  deadlineMs = 20_000,
+): Promise<Awaited<ReturnType<typeof client.tapElement>>> {
+  const deadline = Date.now() + deadlineMs;
+  for (;;) {
+    try {
+      return await client.tapElement(selector);
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+      await sleep(1000);
+    }
+  }
+}
+
 try {
   // ========================================================================
   // Screenshot
@@ -55,18 +73,43 @@ try {
 
   // Element tree at specific point
   console.log('\n--- Testing tapElement ---');
-  const safari = await client.tapElement({ AXUniqueId: 'Safari' });
+  // The instance may be reused from a previous run with an app in the
+  // foreground; go home first so the Safari icon is in the frontmost tree.
+  await client.performActions([
+    { type: 'buttonDown', button: 'home' },
+    { type: 'buttonUp', button: 'home' },
+  ]);
+  await sleep(1000);
+  const safari = await tapWhenPresent({ AXUniqueId: 'Safari' });
   console.log(`Tapped element: ${safari.elementType} - "${safari.elementLabel}"`);
-  await sleep(3 * 1000);
-  const urlBar = await client.tapElement({ type: 'TextField' });
+  // Safari's first launch on a fresh instance can take the better part of a
+  // minute to surface the address bar in the accessibility tree.
+  const urlBar = await tapWhenPresent({ type: 'TextField' }, 90_000);
   console.log(`Tapped element: ${urlBar.elementType} - "${urlBar.elementLabel}"`);
-  await sleep(1 * 1000);
+  // Give the tapped field time to take keyboard focus before typing.
+  await sleep(3 * 1000);
 
   // ========================================================================
   // Type Text
   // ========================================================================
   console.log('\n--- Testing typeText ---');
-  await client.typeText('Hello from TypeScript SDK!');
+  // On a cold Safari launch the field can take a while to gain focus, and a
+  // tap landing mid-animation can miss; re-tap between attempts.
+  const typeDeadline = Date.now() + 60_000;
+  for (;;) {
+    try {
+      await client.typeText('Hello from TypeScript SDK!');
+      break;
+    } catch (error) {
+      if (Date.now() > typeDeadline) throw error;
+      await sleep(2000);
+      try {
+        await client.tapElement({ type: 'TextField' });
+      } catch {
+        // The bar may be mid-transition; the next attempt re-checks focus.
+      }
+    }
+  }
   console.log('Typed text: "Hello from TypeScript SDK!"');
 
   // ========================================================================
@@ -87,7 +130,13 @@ try {
 
   await sleep(3 * 1000);
 
-  await client.tapElement({ type: 'Button', AXLabel: 'Close' });
+  // A Close overlay only sometimes appears after navigation; dismiss it when
+  // present and move on otherwise.
+  try {
+    await tapWhenPresent({ type: 'Button', AXLabel: 'Close' }, 10_000);
+  } catch {
+    console.log('No Close button to dismiss');
+  }
   await sleep(5 * 1000);
 
   // ========================================================================
@@ -235,7 +284,7 @@ function findNodesWithTrait(nodes: Ios.ElementTree, trait: string): Ios.ElementT
   const matches: Ios.ElementTreeNode[] = [];
 
   const visit = (node: Ios.ElementTreeNode): void => {
-    if (node.traits.includes(trait)) {
+    if (node.traits?.includes(trait)) {
       matches.push(node);
     }
 
