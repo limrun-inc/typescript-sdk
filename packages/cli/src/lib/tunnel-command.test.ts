@@ -24,14 +24,14 @@ describe('tunnel client facade inspection wiring', () => {
     const onInspectionEvent = (_event: DestinationTunnelInspectionEvent): void => {};
     const onInspectionError = (): void => {};
     await facade.startTunnel({
-      selectors: { domains: ['api.example.test'] },
+      selectors: ['api.example.test'],
       inspection: { enabled: true, captureBodies: true, maxBodyBytes: 1024 },
       onInspectionEvent,
       onInspectionError,
     });
 
     expect(startTunnel).toHaveBeenCalledWith({
-      domains: ['api.example.test'],
+      selectors: ['api.example.test'],
       logLevel: 'info',
       inspection: { enabled: true, captureBodies: true, maxBodyBytes: 1024 },
       onInspectionEvent,
@@ -58,7 +58,7 @@ describe('tunnel client facade inspection wiring', () => {
         runTunnelForeground({
           product: 'android',
           instanceId: 'instance-1',
-          selectors: { domains: ['api.example.test'] },
+          selectors: ['api.example.test'],
           reconnect: true,
           inspect: true,
           harPath: path.join(occupiedPath, 'capture.har'),

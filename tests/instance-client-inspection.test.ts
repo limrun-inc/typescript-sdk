@@ -46,7 +46,7 @@ describe('Android instance tunnel inspection', () => {
     const onInspectionError = jest.fn();
     try {
       await client.startTunnel({
-        domains: ['api.example.test'],
+        selectors: ['api.example.test'],
         onInspectionEvent,
         onInspectionError,
       });
@@ -54,7 +54,7 @@ describe('Android instance tunnel inspection', () => {
         'wss://example.test/android/adb/tunnel',
         'instance-token',
         expect.objectContaining({
-          domains: ['api.example.test'],
+          selectors: ['api.example.test'],
           inspection: { enabled: true, captureBodies: false },
           onInspectionEvent,
           onInspectionError,
@@ -62,7 +62,7 @@ describe('Android instance tunnel inspection', () => {
       );
 
       await client.startTunnel({
-        domains: ['api.example.test'],
+        selectors: ['api.example.test'],
         inspection: { captureBodies: true, maxBodyBytes: 4096 },
       });
       expect(jest.mocked(startDestinationTcpTunnel)).toHaveBeenLastCalledWith(

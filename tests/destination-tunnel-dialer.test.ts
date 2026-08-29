@@ -139,7 +139,7 @@ describe('destination tunnel dialer', () => {
     expect(controlFor('openFail', 8)).toEqual({
       type: 'openFail',
       connId: 8,
-      reason: 'route_not_allowed',
+      reason: 'selector_not_allowed',
     });
     expect(acceptedConnections).toBe(0);
   });
@@ -148,14 +148,14 @@ describe('destination tunnel dialer', () => {
     const socket = new net.Socket({ allowHalfOpen: true });
     const createConnection = jest.spyOn(net, 'createConnection').mockReturnValue(socket);
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes: [{ host: 'LOCALHOST', port: 3000 }],
+      selectors: ['LOCALHOST:3000'],
       logLevel: 'none',
     });
     await waitFor(() => hasControl('start'));
     expect(controlFor('start')).toEqual({
       type: 'start',
       version: DESTINATION_TUNNEL_VERSION,
-      routes: [{ host: 'localhost', port: 3000 }],
+      selectors: ['localhost:3000'],
       inspection: disabledDestinationTunnelInspection(),
       window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
@@ -163,6 +163,7 @@ describe('destination tunnel dialer', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-localhost',
+      selectors: [],
       configHash: currentConfigHash(),
     });
     tunnel = await startup;
@@ -196,7 +197,7 @@ describe('destination tunnel dialer', () => {
     expect(controlFor('openFail', 82)).toEqual({
       type: 'openFail',
       connId: 82,
-      reason: 'route_not_allowed',
+      reason: 'selector_not_allowed',
     });
     expect(createConnection).toHaveBeenCalledTimes(1);
   });
@@ -439,7 +440,7 @@ describe('destination tunnel dialer', () => {
 
   test('rejects binary data before READY', async () => {
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes: [{ host: '127.0.0.1', port: 8000 }],
+      selectors: ['127.0.0.1:8000'],
       logLevel: 'none',
     });
     await waitFor(() => hasControl('start'));
@@ -450,7 +451,7 @@ describe('destination tunnel dialer', () => {
 
   test('fails startup when READY never arrives', async () => {
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes: [{ host: '127.0.0.1', port: 8000 }],
+      selectors: ['127.0.0.1:8000'],
       logLevel: 'none',
       handshakeTimeoutMs: 100,
     });
@@ -467,7 +468,7 @@ describe('destination tunnel dialer', () => {
     const port = (rawServer.address() as net.AddressInfo).port;
 
     const startup = startDestinationTcpTunnel(`ws://127.0.0.1:${port}/stalled`, 'test-token', {
-      routes: [{ host: '127.0.0.1', port: 8000 }],
+      selectors: ['127.0.0.1:8000'],
       logLevel: 'none',
       handshakeTimeoutMs: 100,
     });
@@ -519,9 +520,12 @@ describe('destination tunnel dialer', () => {
     } = {},
   ): Promise<DestinationTcpTunnel> {
     const { domains, ...tunnelOptions } = options;
+    const selectors = [
+      ...routes.map(({ host, port }) => `${host.includes(':') ? `[${host}]` : host}:${port}`),
+      ...(domains ?? []),
+    ];
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes,
-      ...(domains ? { domains } : {}),
+      selectors,
       logLevel: 'none',
       ...tunnelOptions,
     });
@@ -529,8 +533,7 @@ describe('destination tunnel dialer', () => {
     expect(controlFor('start')).toEqual({
       type: 'start',
       version: DESTINATION_TUNNEL_VERSION,
-      routes,
-      ...(domains ? { domains } : {}),
+      selectors,
       inspection: disabledDestinationTunnelInspection(),
       window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
@@ -538,6 +541,7 @@ describe('destination tunnel dialer', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
+      selectors: [],
       configHash: currentConfigHash(),
     });
     return startup;
@@ -546,13 +550,7 @@ describe('destination tunnel dialer', () => {
   function currentConfigHash(): string {
     const start = controlFor('start');
     if (start?.type !== 'start') throw new Error('missing START');
-    return destinationTunnelConfigHash(
-      {
-        ...(start.routes ? { routes: start.routes } : {}),
-        ...(start.domains ? { domains: start.domains } : {}),
-      },
-      start.inspection,
-    );
+    return destinationTunnelConfigHash(start.selectors, start.inspection);
   }
 
   async function listenLocal(onConnection: (socket: net.Socket) => void): Promise<number> {

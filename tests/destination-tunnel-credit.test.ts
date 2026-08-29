@@ -81,8 +81,7 @@ describe('destination tunnel credit and selector dialing', () => {
   test('advertises selectors and window in START and window in OPEN-OK', async () => {
     const localPort = await listenLocal(() => {});
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes: [{ host: '127.0.0.1', port: localPort }],
-      domains: ['*.corp.example'],
+      selectors: [`127.0.0.1:${localPort}`, '*.corp.example'],
       window: 4096,
       logLevel: 'none',
     });
@@ -90,8 +89,7 @@ describe('destination tunnel credit and selector dialing', () => {
     expect(controlFor('start')).toEqual({
       type: 'start',
       version: DESTINATION_TUNNEL_VERSION,
-      routes: [{ host: '127.0.0.1', port: localPort }],
-      domains: ['*.corp.example'],
+      selectors: [`127.0.0.1:${localPort}`, '*.corp.example'],
       inspection: disabledDestinationTunnelInspection(),
       window: 4096,
     });
@@ -99,6 +97,7 @@ describe('destination tunnel credit and selector dialing', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
+      selectors: [],
       configHash: currentConfigHash(),
     });
     tunnel = await startup;
@@ -129,7 +128,7 @@ describe('destination tunnel credit and selector dialing', () => {
       localSocket = socket;
     });
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes: [{ host: '127.0.0.1', port: localPort }],
+      selectors: [`127.0.0.1:${localPort}`],
       window: 4096,
       logLevel: 'none',
     });
@@ -138,6 +137,7 @@ describe('destination tunnel credit and selector dialing', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
+      selectors: [],
       configHash: currentConfigHash(),
     });
     tunnel = await startup;
@@ -174,7 +174,7 @@ describe('destination tunnel credit and selector dialing', () => {
       localSocket = socket;
     });
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes: [{ host: '127.0.0.1', port: localPort }],
+      selectors: [`127.0.0.1:${localPort}`],
       window: 4096,
       logLevel: 'none',
     });
@@ -183,6 +183,7 @@ describe('destination tunnel credit and selector dialing', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
+      selectors: [],
       configHash: currentConfigHash(),
     });
     tunnel = await startup;
@@ -221,7 +222,7 @@ describe('destination tunnel credit and selector dialing', () => {
       });
     });
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes: [{ host: '127.0.0.1', port: localPort }],
+      selectors: [`127.0.0.1:${localPort}`],
       window: 8,
       logLevel: 'none',
     });
@@ -230,6 +231,7 @@ describe('destination tunnel credit and selector dialing', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
+      selectors: [],
       configHash: currentConfigHash(),
     });
     tunnel = await startup;
@@ -262,10 +264,9 @@ describe('destination tunnel credit and selector dialing', () => {
       .mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
 
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      domains: ['*.corp.example'],
       // The exact route grants dialing the loopback address the mocked
       // resolver returns for the matched domain.
-      routes: [{ host: '127.0.0.1', port: localPort }],
+      selectors: [`127.0.0.1:${localPort}`, '*.corp.example'],
       logLevel: 'none',
     });
     await waitFor(() => hasControl('start'));
@@ -273,6 +274,7 @@ describe('destination tunnel credit and selector dialing', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
+      selectors: [],
       configHash: currentConfigHash(),
     });
     tunnel = await startup;
@@ -290,7 +292,7 @@ describe('destination tunnel credit and selector dialing', () => {
     expect(controlFor('openFail', 7)).toEqual({
       type: 'openFail',
       connId: 7,
-      reason: 'route_not_allowed',
+      reason: 'selector_not_allowed',
     });
     expect(accepted).toBe(0);
 
@@ -315,7 +317,7 @@ describe('destination tunnel credit and selector dialing', () => {
     ]);
 
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      domains: ['api.corp.example'],
+      selectors: ['api.corp.example'],
       logLevel: 'none',
     });
     await waitFor(() => hasControl('start'));
@@ -323,6 +325,7 @@ describe('destination tunnel credit and selector dialing', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
+      selectors: [],
       configHash: currentConfigHash(),
     });
     tunnel = await startup;
@@ -340,7 +343,7 @@ describe('destination tunnel credit and selector dialing', () => {
     expect(controlFor('openFail', 9)).toEqual({
       type: 'openFail',
       connId: 9,
-      reason: 'route_not_allowed',
+      reason: 'selector_not_allowed',
     });
   });
 
@@ -367,13 +370,7 @@ describe('destination tunnel credit and selector dialing', () => {
   function currentConfigHash(): string {
     const start = controlFor('start');
     if (start?.type !== 'start') throw new Error('missing START');
-    return destinationTunnelConfigHash(
-      {
-        ...(start.routes ? { routes: start.routes } : {}),
-        ...(start.domains ? { domains: start.domains } : {}),
-      },
-      start.inspection,
-    );
+    return destinationTunnelConfigHash(start.selectors, start.inspection);
   }
 
   function sendData(connId: number, payload: Buffer): void {

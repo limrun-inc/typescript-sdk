@@ -12,7 +12,7 @@ import { startTcpTunnel, isNonRetryableError } from './tunnel';
 import type { Tunnel } from './tunnel';
 import { syncFolder, type FolderSyncOptions, type SyncFolderResult } from './folder-sync';
 import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './destination-tunnel-dialer';
-import type { DestinationTunnelInspectionConfig, DestinationTunnelRoute } from './destination-tunnel';
+import type { DestinationTunnelInspectionConfig, DestinationTunnelSelectors } from './destination-tunnel';
 import type {
   DestinationTunnelInspectionErrorCallback,
   DestinationTunnelInspectionEventCallback,
@@ -30,10 +30,8 @@ const ANDROID_SIGNALING_PATH = '/ws';
 /** Transparent destination tunnel from the Android instance to this machine. */
 export type DestinationTunnel = DestinationTcpTunnel;
 export type DestinationTunnelOptions = {
-  /** Exact localhost or literal-IP TCP destinations, served on-device via bind listeners. */
-  routes?: DestinationTunnelRoute[];
-  /** Exact or `*.` wildcard domains intercepted on-device via fake-IP DNS. */
-  domains?: string[];
+  /** Exact endpoint and domain selector values interpreted by the Android tunnel server. */
+  selectors: DestinationTunnelSelectors;
   /** Inspection settings negotiated with the Android tunnel server. */
   inspection?: Partial<DestinationTunnelInspectionConfig>;
   /** Called for each validated inspection metadata or body event. */
@@ -1703,8 +1701,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const startTunnel = async (tunnelOptions: DestinationTunnelOptions): Promise<DestinationTunnel> => {
       return startDestinationTcpTunnel(deriveDestinationTunnelURL(requireAdbUrl()), options.token, {
-        ...(tunnelOptions.routes ? { routes: tunnelOptions.routes } : {}),
-        ...(tunnelOptions.domains ? { domains: tunnelOptions.domains } : {}),
+        selectors: tunnelOptions.selectors,
         inspection: {
           enabled: true,
           captureBodies: false,

@@ -2,21 +2,17 @@ import { nodeProxyTransport } from './proxy-transport';
 import { deriveDestinationTunnelStatusURL, deriveDestinationTunnelStopURL } from './destination-tunnel-url';
 import { readArray, readNonEmptyString, readRecord, readString } from './destination-tunnel-wire-reader';
 import {
-  validateDestinationTunnelSelectors,
   normalizeDestinationTunnelInspection,
-  type DestinationTunnelRoute,
   type DestinationTunnelBindReport,
   type DestinationTunnelInspectionConfig,
+  type DestinationTunnelSelectorReport,
 } from '../destination-tunnel';
 
 export interface DestinationTunnelStatus {
   active?: {
     tunnelId: string;
     state: 'starting' | 'ready' | 'stopping';
-    routes: DestinationTunnelRoute[];
-    domains?: string[];
-    /** Per exact route, the device-side bind outcomes (Android bind listeners). */
-    binds?: Record<string, DestinationTunnelBindReport[]>;
+    selectors: DestinationTunnelSelectorReport[];
     inspection: DestinationTunnelInspectionConfig;
   };
   lastFailure?: {
@@ -82,18 +78,10 @@ function readActiveTunnel(value: unknown): NonNullable<DestinationTunnelStatus['
   if (state !== 'starting' && state !== 'ready' && state !== 'stopping') {
     throw new Error(`invalid tunnel state ${state}`);
   }
-  const routes = active['routes'] === undefined ? [] : readArray(active, 'routes').map(readTunnelRoute);
-  const domains = active['domains'] === undefined ? [] : readArray(active, 'domains').map(readSelectorText);
-  const selectors = validateDestinationTunnelSelectors({
-    ...(routes.length > 0 ? { routes } : {}),
-    ...(domains.length > 0 ? { domains } : {}),
-  });
   return {
     tunnelId: readNonEmptyString(active, 'tunnelId'),
     state,
-    routes: selectors.routes ?? [],
-    ...(selectors.domains ? { domains: selectors.domains } : {}),
-    ...(active['binds'] === undefined ? {} : { binds: readBinds(active['binds']) }),
+    selectors: readArray(active, 'selectors').map(readSelectorReport),
     inspection: readInspection(active),
   };
 }
@@ -112,49 +100,36 @@ function readInspection(active: Record<string, unknown>): DestinationTunnelInspe
   return normalizeDestinationTunnelInspection({ enabled, captureBodies, maxBodyBytes });
 }
 
-function readSelectorText(value: unknown): string {
-  if (typeof value !== 'string') {
-    throw new Error('tunnel selector must be a string');
-  }
-  return value;
-}
-
-function readBinds(value: unknown): Record<string, DestinationTunnelBindReport[]> {
-  const record = readRecord(value, 'tunnel binds');
-  const binds: Record<string, DestinationTunnelBindReport[]> = {};
-  for (const [selectorId, reports] of Object.entries(record)) {
-    if (!Array.isArray(reports)) {
-      throw new Error('tunnel bind reports must be an array');
-    }
-    binds[selectorId] = reports.map((report) => {
-      const bind = readRecord(report, 'tunnel bind report');
-      const status = readString(bind, 'status');
-      if (status !== 'ok' && status !== 'conflict' && status !== 'error') {
-        throw new Error(`invalid tunnel bind status ${status}`);
-      }
-      const osCode = bind['osCode'];
-      if (osCode !== undefined && typeof osCode !== 'string') {
-        throw new Error('tunnel bind osCode must be a string');
-      }
-      return {
-        address: readNonEmptyString(bind, 'address'),
-        status,
-        ...(osCode === undefined ? {} : { osCode }),
-      };
-    });
-  }
-  return binds;
-}
-
-function readTunnelRoute(value: unknown): DestinationTunnelRoute {
-  const route = readRecord(value, 'tunnel route');
-  const port = route['port'];
-  if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new Error('tunnel route port must be an integer from 1 to 65535');
+function readSelectorReport(value: unknown): DestinationTunnelSelectorReport {
+  const report = readRecord(value, 'tunnel selector');
+  const kind = readString(report, 'kind');
+  if (kind !== 'route' && kind !== 'domain') {
+    throw new Error(`invalid tunnel selector kind ${kind}`);
   }
   return {
-    host: readNonEmptyString(route, 'host'),
-    port,
+    id: readNonEmptyString(report, 'id'),
+    kind,
+    value: readNonEmptyString(report, 'value'),
+    ...(report['binds'] === undefined ?
+      {}
+    : { binds: readArray(report, 'binds').map(readBindReport) }),
+  };
+}
+
+function readBindReport(value: unknown): DestinationTunnelBindReport {
+  const bind = readRecord(value, 'tunnel bind report');
+  const status = readString(bind, 'status');
+  if (status !== 'ok' && status !== 'conflict' && status !== 'error') {
+    throw new Error(`invalid tunnel bind status ${status}`);
+  }
+  const osCode = bind['osCode'];
+  if (osCode !== undefined && typeof osCode !== 'string') {
+    throw new Error('tunnel bind osCode must be a string');
+  }
+  return {
+    address: readNonEmptyString(bind, 'address'),
+    status,
+    ...(osCode === undefined ? {} : { osCode }),
   };
 }
 

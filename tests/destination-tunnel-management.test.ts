@@ -43,9 +43,9 @@ describe('destination tunnel management', () => {
           active: {
             tunnelId: 'tunnel-1',
             state: 'ready',
-            routes: [
-              { host: 'localhost', port: 3000 },
-              { host: '10.20.30.40', port: 443 },
+            selectors: [
+              { id: 'route-1', kind: 'route', value: 'localhost:3000' },
+              { id: 'route-2', kind: 'route', value: '10.20.30.40:443' },
             ],
             inspection: {
               enabled: false,
@@ -62,9 +62,9 @@ describe('destination tunnel management', () => {
       active: {
         tunnelId: 'tunnel-1',
         state: 'ready',
-        routes: [
-          { host: 'localhost', port: 3000 },
-          { host: '10.20.30.40', port: 443 },
+        selectors: [
+          { id: 'route-1', kind: 'route', value: 'localhost:3000' },
+          { id: 'route-2', kind: 'route', value: '10.20.30.40:443' },
         ],
         inspection: {
           enabled: false,
@@ -117,7 +117,7 @@ describe('destination tunnel management', () => {
     { active: null },
     { active: { tunnelId: 'one', state: 'future' } },
     { active: { tunnelId: '', state: 'ready' } },
-    { active: { tunnelId: 'one', state: 'ready', routes: [{ host: 'localhost', port: 0 }] } },
+    { active: { tunnelId: 'one', state: 'ready', selectors: [{ id: '', kind: 'route', value: '' }] } },
     { lastFailure: { tunnelId: '', code: 'internal' } },
     {
       lastDialFailure: {

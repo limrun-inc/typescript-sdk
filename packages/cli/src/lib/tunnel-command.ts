@@ -76,7 +76,8 @@ export type TunnelLogLevel = 'debug' | 'info' | 'none';
 export function tunnelClientFacade(
   client: {
     startTunnel: (
-      options: DestinationTunnelSelectors & {
+      options: {
+        selectors: DestinationTunnelSelectors;
         logLevel?: TunnelLogLevel;
         inspection?: Partial<DestinationTunnelInspectionConfig>;
         onInspectionEvent?: DestinationTunnelInspectionEventCallback;
@@ -92,7 +93,7 @@ export function tunnelClientFacade(
   return {
     startTunnel: (options) =>
       client.startTunnel({
-        ...options.selectors,
+        selectors: options.selectors,
         logLevel,
         inspection: options.inspection,
         ...(options.onInspectionEvent ? { onInspectionEvent: options.onInspectionEvent } : {}),

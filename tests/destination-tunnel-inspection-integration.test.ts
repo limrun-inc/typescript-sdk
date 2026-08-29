@@ -59,13 +59,8 @@ describe('destination tunnel inspection integration', () => {
             type: 'ready',
             version: DESTINATION_TUNNEL_VERSION,
             tunnelId: 'tunnel-1',
-            configHash: destinationTunnelConfigHash(
-              {
-                ...(start.routes ? { routes: start.routes } : {}),
-                ...(start.domains ? { domains: start.domains } : {}),
-              },
-              start.inspection,
-            ),
+            selectors: [],
+            configHash: destinationTunnelConfigHash(start.selectors, start.inspection),
           }),
         );
       });
@@ -86,7 +81,7 @@ describe('destination tunnel inspection integration', () => {
       `ws://127.0.0.1:${address.port}/tunnel`,
       'same-instance-token',
       {
-        routes: [{ host: '127.0.0.1', port: 8080 }],
+        selectors: ['127.0.0.1:8080'],
         inspection: { enabled: true, captureBodies: false },
         onInspectionError: (error) => errors.push(error),
         logLevel: 'none',
@@ -131,13 +126,8 @@ describe('destination tunnel inspection integration', () => {
             type: 'ready',
             version: DESTINATION_TUNNEL_VERSION,
             tunnelId: 'tunnel-1',
-            configHash: destinationTunnelConfigHash(
-              {
-                ...(start.routes ? { routes: start.routes } : {}),
-                ...(start.domains ? { domains: start.domains } : {}),
-              },
-              start.inspection,
-            ),
+            selectors: [],
+            configHash: destinationTunnelConfigHash(start.selectors, start.inspection),
           }),
         );
       });
@@ -193,7 +183,7 @@ describe('destination tunnel inspection integration', () => {
       `ws://127.0.0.1:${address.port}/tunnel`,
       'same-instance-token',
       {
-        routes: [{ host: '127.0.0.1', port: 8080 }],
+        selectors: ['127.0.0.1:8080'],
         inspection: { enabled: true, captureBodies: true },
         onInspectionEvent: (event) => events.push(event),
         logLevel: 'none',

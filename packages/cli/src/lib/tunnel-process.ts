@@ -6,7 +6,6 @@ import path from 'path';
 import {
   DESTINATION_TUNNEL_MAX_BODY_BYTES,
   validateDestinationTunnelSelectors,
-  type DestinationTunnelRoute,
   type DestinationTunnelSelectors,
   type DestinationTunnelStatus,
 } from '@limrun/api';
@@ -49,89 +48,22 @@ export function parseTunnelSelectors(
   values: readonly string[],
   options: { minPort?: number; allowDomains?: boolean } = {},
 ): DestinationTunnelSelectors {
-  const routes: DestinationTunnelRoute[] = [];
-  const domains: string[] = [];
-  for (const value of values) {
-    if (value.startsWith('[') || value.includes(':')) {
-      routes.push(parseExactSelector(value, options));
-    } else {
-      if (options.allowDomains === false) {
-        throw new Error(`Invalid selector "${value}"; this tunnel supports only localhost:port or literal IP:port`);
-      }
-      domains.push(parseDomainSelector(value));
-    }
+  const selectors = validateDestinationTunnelSelectors(
+    values,
+    options.minPort === undefined ? {} : { minRoutePort: options.minPort },
+  );
+  if (options.allowDomains === false && selectors.some((selector) => !selector.includes(':'))) {
+    throw new Error('This tunnel supports only localhost:port or literal IP:port selectors');
   }
-  return validateDestinationTunnelSelectors({
-    ...(routes.length > 0 ? { routes } : {}),
-    ...(domains.length > 0 ? { domains } : {}),
-  });
-}
-
-function parseExactSelector(value: string, options: { minPort?: number } = {}): DestinationTunnelRoute {
-  let host: string;
-  let portText: string;
-  if (value.startsWith('[')) {
-    const match = /^\[([^\]]+)\]:(\d+)$/.exec(value);
-    if (!match?.[1] || !match[2]) {
-      throw new Error(`Invalid selector "${value}"; use [IPv6]:port`);
-    }
-    host = match[1];
-    portText = match[2];
-  } else {
-    const separator = value.lastIndexOf(':');
-    if (separator <= 0 || value.indexOf(':') !== separator) {
-      throw new Error(`Invalid selector "${value}"; use localhost:port, IPv4:port, or [IPv6]:port`);
-    }
-    host = value.slice(0, separator);
-    portText = value.slice(separator + 1);
-  }
-
-  const port = Number(portText);
-  const minPort = options.minPort ?? 1;
-  if (!Number.isInteger(port) || port < minPort || port > 65_535) {
-    throw new Error(`Invalid selector port in "${value}"; expected ${minPort}-65535`);
-  }
-  // Delegate canonicalization to the shared contract validation (DNS-port
-  // rejection, localhost lowering, IPv6 canonicalization and IPv4-mapped
-  // unmapping, IPv4-compatible rejection).
-  try {
-    return validateDestinationTunnelSelectors(
-      { routes: [{ host, port }] },
-      options.minPort === undefined ? {} : { minRoutePort: options.minPort },
-    ).routes![0]!;
-  } catch (error) {
-    throw new Error(
-      `Invalid selector "${value}"; expected localhost or a literal IP with an allowed TCP port` +
-        (error instanceof Error ? ` (${error.message})` : ''),
-    );
-  }
-}
-
-function parseDomainSelector(value: string): string {
-  try {
-    return validateDestinationTunnelSelectors({ domains: [value] }).domains![0]!;
-  } catch (error) {
-    throw new Error(
-      `Invalid selector "${value}"; use an exact domain like api.corp.example or a wildcard like *.corp.example` +
-        (error instanceof Error ? ` (${error.message})` : ''),
-    );
-  }
+  return selectors;
 }
 
 export function newTunnelOwner(): string {
   return crypto.randomBytes(16).toString('hex');
 }
 
-export function formatTunnelRoute(route: DestinationTunnelRoute): string {
-  const host = route.host.includes(':') ? `[${route.host}]` : route.host;
-  return `${host}:${route.port}`;
-}
-
 export function formatTunnelSelectors(selectors: DestinationTunnelSelectors): string[] {
-  return [
-    ...(selectors.routes ?? []).map(formatTunnelRoute),
-    ...(selectors.domains ?? []),
-  ];
+  return [...selectors];
 }
 
 export function formatTunnelDialFailure(

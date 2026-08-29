@@ -16,7 +16,7 @@ import {
   DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT,
   DESTINATION_TUNNEL_VERSION,
   DestinationTunnelProtocolError,
-  DestinationTunnelRouteError,
+  DestinationTunnelSelectorError,
   assertDestinationTunnelOpenAllowed,
   assertDestinationTunnelReady,
   decodeDestinationTunnelDataFrame,
@@ -32,8 +32,7 @@ import {
   validateDestinationTunnelRoutes,
   validateDestinationTunnelSelectors,
   type DestinationTunnelClientMessage,
-  type DestinationTunnelRoute,
-  type DestinationTunnelRouteErrorCode,
+  type DestinationTunnelSelectorErrorCode,
   type DestinationTunnelSelectors,
   type DestinationTunnelServerMessage,
 } from '../src/destination-tunnel';
@@ -68,9 +67,9 @@ describe('destination tunnel wire contract', () => {
   test('pins vendored vectors to the canonical limrun commit', () => {
     expect(upstream).toEqual({
       repository: 'limrun-inc/limrun',
-      commit: 'b3cbe546d6af8111a7cd6d8d60609a8f2086591e',
+      commit: 'f072e9f26cefc7f390b7bf4b3f43469004660e36',
       path: 'design/destination-tunnel/v1',
-      messagesSha256: 'dba98ef0f8f0602a0a3decf0178a3fc0c85ff920d3239d78b82df1a061b90999',
+      messagesSha256: 'bb093dd00ce51e7b0dc156f6ceb5e8f117f067f8cce622d95692be9b814b2068',
       binarySha256: 'e6da913a0ff85a3402f09de6cbbb18d4f9b2e76007ca48b85f4d35b66810da7d',
     });
     expect(sha256('destination-tunnel-protocol.fixture.json')).toBe(upstream.messagesSha256);
@@ -118,18 +117,18 @@ describe('destination tunnel wire contract', () => {
     ).toThrow(DestinationTunnelProtocolError);
   });
 
-  test('canonicalizes START routes while encoding', () => {
+  test('canonicalizes START selectors while encoding', () => {
     const encoded = encodeDestinationTunnelClientMessage({
       type: 'start',
       version: DESTINATION_TUNNEL_VERSION,
-      routes: [{ host: '2001:0DB8:0:0:0:0:0:1', port: 443 }],
+      selectors: ['[2001:0DB8:0:0:0:0:0:1]:443'],
       inspection: disabledDestinationTunnelInspection(),
       window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     expect(JSON.parse(encoded)).toEqual({
       type: 'start',
       version: DESTINATION_TUNNEL_VERSION,
-      routes: [{ host: '2001:db8::1', port: 443 }],
+      selectors: ['[2001:db8::1]:443'],
       inspection: disabledDestinationTunnelInspection(),
       window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
@@ -183,7 +182,7 @@ describe('destination tunnel wire contract', () => {
       encodeDestinationTunnelClientMessage({
         type: 'start',
         version: DESTINATION_TUNNEL_VERSION,
-        routes: [{ host: 'localhost', port: 8080 }],
+        selectors: ['localhost:8080'],
         inspection: {
           enabled: false,
           captureBodies: true,
@@ -196,7 +195,7 @@ describe('destination tunnel wire contract', () => {
       encodeDestinationTunnelClientMessage({
         type: 'start',
         version: DESTINATION_TUNNEL_VERSION,
-        routes: [{ host: 'localhost', port: 8080 }],
+        selectors: ['localhost:8080'],
         inspection: {
           enabled: true,
           captureBodies: true,
@@ -221,15 +220,17 @@ describe('destination tunnel route contract', () => {
   });
 
   test.each(fixture.invalidRouteSets)('rejects $name with $error', ({ routes, error }) => {
-    const expected = expect.objectContaining<Partial<DestinationTunnelRouteError>>({
-      code: error as DestinationTunnelRouteErrorCode,
+    const expected = expect.objectContaining<Partial<DestinationTunnelSelectorError>>({
+      code: error as DestinationTunnelSelectorErrorCode,
     });
     expect(() => validateDestinationTunnelRoutes(routes)).toThrow(expected);
     expect(() =>
       encodeDestinationTunnelClientMessage({
         type: 'start',
         version: DESTINATION_TUNNEL_VERSION,
-        routes,
+        selectors: routes.map(
+          ({ host, port }) => `${host.includes(':') ? `[${host}]` : host}:${port}`,
+        ),
         inspection: disabledDestinationTunnelInspection(),
         window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       }),
@@ -237,7 +238,7 @@ describe('destination tunnel route contract', () => {
   });
 
   test('accepts exactly the declared OPEN destination', () => {
-    const routes = validateDestinationTunnelRoutes([{ host: '10.20.30.40', port: 8000 }]);
+    const selectors = validateDestinationTunnelSelectors(['10.20.30.40:8000']);
     const open = decodeDestinationTunnelServerMessage(
       fixture.server.find(({ name }) => name === 'open')!.message,
     );
@@ -245,7 +246,7 @@ describe('destination tunnel route contract', () => {
     expect(() =>
       assertDestinationTunnelOpenAllowed(
         open as Extract<DestinationTunnelServerMessage, { type: 'open' }>,
-        routes,
+        selectors,
       ),
     ).not.toThrow();
   });
@@ -255,7 +256,7 @@ describe('destination tunnel route contract', () => {
     { selectorId: 'route-1', host: '10.20.30.41', port: 8000 },
     { selectorId: 'route-1', host: '10.20.30.40', port: 8001 },
   ])('rejects undeclared OPEN $selectorId $host:$port', (requested) => {
-    const routes: DestinationTunnelRoute[] = [{ host: '10.20.30.40', port: 8000 }];
+    const selectors = ['10.20.30.40:8000'];
     expect(() =>
       assertDestinationTunnelOpenAllowed(
         {
@@ -265,7 +266,7 @@ describe('destination tunnel route contract', () => {
           transport: { type: 'tcp' },
           window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
         },
-        routes,
+        selectors,
       ),
     ).toThrow(DestinationTunnelProtocolError);
   });
@@ -288,8 +289,8 @@ describe('destination tunnel selector contract', () => {
 
   test.each(fixture.invalidDomainSets)('rejects domain set $name with $error', ({ domains, error }) => {
     expect(() => validateDestinationTunnelDomains(domains)).toThrow(
-      expect.objectContaining<Partial<DestinationTunnelRouteError>>({
-        code: error as DestinationTunnelRouteErrorCode,
+      expect.objectContaining<Partial<DestinationTunnelSelectorError>>({
+        code: error as DestinationTunnelSelectorErrorCode,
       }),
     );
   });
@@ -302,32 +303,29 @@ describe('destination tunnel selector contract', () => {
   );
 
   test('requires at least one selector of any kind', () => {
-    expect(() => validateDestinationTunnelSelectors({})).toThrow(
-      expect.objectContaining<Partial<DestinationTunnelRouteError>>({ code: 'empty' }),
+    expect(() => validateDestinationTunnelSelectors([])).toThrow(
+      expect.objectContaining<Partial<DestinationTunnelSelectorError>>({ code: 'empty' }),
     );
   });
 
   test('applies the Android minimum route port policy when requested', () => {
     expect(() =>
       validateDestinationTunnelSelectors(
-        { routes: [{ host: 'localhost', port: 80 }] },
+        ['localhost:80'],
         { minRoutePort: 1024 },
       ),
-    ).toThrow(expect.objectContaining<Partial<DestinationTunnelRouteError>>({ code: 'invalid_port' }));
+    ).toThrow(expect.objectContaining<Partial<DestinationTunnelSelectorError>>({ code: 'invalid_port' }));
     expect(
       validateDestinationTunnelSelectors(
-        { routes: [{ host: 'localhost', port: 8080 }] },
+        ['localhost:8080'],
         { minRoutePort: 1024 },
       ),
-    ).toEqual({ routes: [{ host: 'localhost', port: 8080 }] });
+    ).toEqual(['localhost:8080']);
   });
 
   test('assigns kind-scoped 1-based selector IDs', () => {
     expect(
-      destinationTunnelSelectorIds({
-        routes: [{ host: 'localhost', port: 8080 }],
-        domains: ['*.corp.example', 'db.internal'],
-      }),
+      destinationTunnelSelectorIds(['localhost:8080', '*.corp.example', 'db.internal']),
     ).toEqual(['route-1', 'domain-1', 'domain-2']);
   });
 
@@ -407,7 +405,7 @@ describe('destination tunnel selector contract', () => {
       encodeDestinationTunnelClientMessage({
         type: 'start',
         version: 1,
-        routes: [{ host: 'localhost', port: 8080 }],
+        selectors: ['localhost:8080'],
         inspection: disabledDestinationTunnelInspection(),
       } as DestinationTunnelClientMessage),
     ).toThrow('window must be an integer');
@@ -433,6 +431,7 @@ describe('destination tunnel selector contract', () => {
         type: 'ready',
         version: 1,
         tunnelId: 'tunnel-1',
+        selectors: [],
       }),
     ).toThrow('configHash must be a string');
   });
@@ -444,6 +443,7 @@ describe('destination tunnel selector contract', () => {
         version: 1,
         tunnelId: 'tunnel-1',
         selectors: [{ id: 'route-1', kind: 'domain', value: 'x' }],
+        configHash: 'hash',
       }),
     ).toThrow(DestinationTunnelProtocolError);
     expect(() =>
@@ -452,6 +452,7 @@ describe('destination tunnel selector contract', () => {
         version: 1,
         tunnelId: 'tunnel-1',
         selectors: [{ id: 'route-0', kind: 'route', value: 'localhost:1' }],
+        configHash: 'hash',
       }),
     ).toThrow(DestinationTunnelProtocolError);
     expect(() =>
@@ -462,6 +463,7 @@ describe('destination tunnel selector contract', () => {
         selectors: [
           { id: 'route-1', kind: 'route', value: 'localhost:1', binds: [{ address: 'x', status: 'nope' }] },
         ],
+        configHash: 'hash',
       }),
     ).toThrow(DestinationTunnelProtocolError);
   });

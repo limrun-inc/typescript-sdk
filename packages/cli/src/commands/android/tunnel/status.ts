@@ -2,7 +2,6 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { getAndroidInstanceClient } from '../../../lib/instance-client-factory';
 import { runTunnelStatus } from '../../../lib/tunnel-command';
-import { formatTunnelSelectors } from '../../../lib/tunnel-process';
 
 export default class AndroidTunnelStatus extends BaseCommand {
   static summary = 'Show the active destination tunnel';
@@ -47,17 +46,11 @@ export default class AndroidTunnelStatus extends BaseCommand {
         },
         io: this.tunnelCommandIO(),
         renderActive: (active, io) => {
-          const selectorLines = formatTunnelSelectors({
-            ...(active.routes.length > 0 ? { routes: active.routes } : {}),
-            ...(active.domains ? { domains: active.domains } : {}),
-          });
-          for (const line of selectorLines) {
-            io.output(`Selector: ${line}`);
-          }
-          for (const [selectorId, binds] of Object.entries(active.binds ?? {})) {
-            for (const bind of binds) {
+          for (const selector of active.selectors) {
+            io.output(`Selector: ${selector.value}`);
+            for (const bind of selector.binds ?? []) {
               const detail = bind.osCode ? `${bind.status}, ${bind.osCode}` : bind.status;
-              io.output(`Bind ${selectorId} ${bind.address}: ${detail}`);
+              io.output(`Bind ${selector.id} ${bind.address}: ${detail}`);
             }
           }
         },

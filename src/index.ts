@@ -35,6 +35,7 @@ export {
   normalizeDestinationTunnelInspection,
   disabledDestinationTunnelInspection,
   destinationTunnelConfigHash,
+  DestinationTunnelSelectorError,
   DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
   DESTINATION_TUNNEL_DEFAULT_WINDOW,
   DESTINATION_TUNNEL_MAX_BODY_BYTES,
@@ -43,8 +44,8 @@ export {
   type DestinationTunnelTransportResult,
   type DestinationTunnelSelectors,
   type DestinationTunnelSelectorReport,
+  type DestinationTunnelSelectorErrorCode,
   type DestinationTunnelBindReport,
-  type DestinationTunnelRoute,
 } from './destination-tunnel';
 export {
   startHttpProxy,

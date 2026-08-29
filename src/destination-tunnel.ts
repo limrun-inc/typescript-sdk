@@ -37,13 +37,11 @@ export interface DestinationTunnelRoute {
   port: number;
 }
 
-/**
- * Typed TCP selectors negotiated in `start` and echoed back in `ready`.
- * Routes are exact localhost/literal-IP destinations (iOS v1 behavior) and
- * domains are exact or `*.` label-bound wildcard names. At least one
- * selector of any kind is required.
- */
-export interface DestinationTunnelSelectors {
+/** Canonical selector values carried by the public protocol. */
+export type DestinationTunnelSelectors = string[];
+
+/** Internal classification used to enforce and dial canonical selectors. */
+export interface DestinationTunnelSelectorCatalog {
   routes?: DestinationTunnelRoute[];
   domains?: string[];
 }
@@ -101,7 +99,7 @@ export type DestinationTunnelOpenFailureReason =
   | 'unreachable'
   | 'permission_denied'
   | 'resource_exhausted'
-  | 'route_not_allowed'
+  | 'selector_not_allowed'
   | 'tls_handshake_failed'
   | 'tls_validation_failed'
   | 'tls_protocol_error'
@@ -120,9 +118,7 @@ export type DestinationTunnelResetReason =
 export type DestinationTunnelSessionErrorCode =
   | 'unsupported_version'
   | 'invalid_message'
-  | 'invalid_route'
   | 'invalid_selector'
-  | 'route_capacity'
   | 'already_active'
   | 'unavailable'
   | 'internal'
@@ -132,8 +128,7 @@ export type DestinationTunnelClientMessage =
   | {
       type: 'start';
       version: number;
-      routes?: DestinationTunnelRoute[];
-      domains?: string[];
+      selectors: DestinationTunnelSelectors;
       inspection: DestinationTunnelInspectionConfig;
       /** Default per-flow receive window this client grants. */
       window: number;
@@ -159,7 +154,7 @@ export type DestinationTunnelServerMessage =
       type: 'ready';
       version: number;
       tunnelId: string;
-      selectors?: DestinationTunnelSelectorReport[];
+      selectors: DestinationTunnelSelectorReport[];
       configHash: string;
     }
   | {
@@ -185,20 +180,15 @@ export type DestinationTunnelSelectorErrorCode =
   | 'invalid_domain'
   | 'duplicate';
 
-export type DestinationTunnelRouteErrorCode = DestinationTunnelSelectorErrorCode;
-
-export class DestinationTunnelRouteError extends Error {
+export class DestinationTunnelSelectorError extends Error {
   constructor(
     readonly code: DestinationTunnelSelectorErrorCode,
     message: string,
   ) {
     super(message);
-    this.name = 'DestinationTunnelRouteError';
+    this.name = 'DestinationTunnelSelectorError';
   }
 }
-
-/** Alias: selector validation reuses the route error class for compatibility. */
-export const DestinationTunnelSelectorError = DestinationTunnelRouteError;
 
 export function encodeDestinationTunnelDataFrame(connId: number, payload: Buffer): Buffer {
   validateConnectionId(connId);
@@ -229,10 +219,10 @@ export function validateDestinationTunnelRoutes(
   options: { minPort?: number } = {},
 ): DestinationTunnelRoute[] {
   if (routes.length === 0) {
-    throw new DestinationTunnelRouteError('empty', 'at least one tunnel route is required');
+    throw new DestinationTunnelSelectorError('empty', 'at least one tunnel route is required');
   }
   if (routes.length > DESTINATION_TUNNEL_MAX_ROUTES) {
-    throw new DestinationTunnelRouteError(
+    throw new DestinationTunnelSelectorError(
       'too_many',
       `at most ${DESTINATION_TUNNEL_MAX_ROUTES} tunnel routes are allowed`,
     );
@@ -244,7 +234,7 @@ export function validateDestinationTunnelRoutes(
     const canonical = canonicalizeDestinationTunnelRoute(route, options.minPort);
     const key = `${canonical.host}\0${canonical.port}`;
     if (seen.has(key)) {
-      throw new DestinationTunnelRouteError(
+      throw new DestinationTunnelSelectorError(
         'duplicate',
         `duplicate tunnel route ${canonical.host}:${canonical.port}`,
       );
@@ -261,30 +251,65 @@ export function validateDestinationTunnelRoutes(
  * expressed via options rather than separate message shapes.
  */
 export function validateDestinationTunnelSelectors(
-  selectors: DestinationTunnelSelectors,
+  selectors: readonly string[],
   options: { minRoutePort?: number } = {},
 ): DestinationTunnelSelectors {
-  const routes = selectors.routes ?? [];
-  const domains = selectors.domains ?? [];
-  if (routes.length === 0 && domains.length === 0) {
-    throw new DestinationTunnelRouteError('empty', 'at least one tunnel selector is required');
+  if (!Array.isArray(selectors)) {
+    throw new DestinationTunnelSelectorError('invalid_host', 'tunnel selectors must be an array');
   }
-  const canonical: DestinationTunnelSelectors = {};
-  if (routes.length > 0) {
-    canonical.routes = validateDestinationTunnelRoutes(
-      routes,
-      options.minRoutePort === undefined ? {} : { minPort: options.minRoutePort },
-    );
+  if (selectors.length === 0) {
+    throw new DestinationTunnelSelectorError('empty', 'at least one tunnel selector is required');
   }
-  if (domains.length > 0) {
-    canonical.domains = validateDestinationTunnelDomains(domains);
+  const canonical: string[] = [];
+  const seen = new Set<string>();
+  let routeCount = 0;
+  let domainCount = 0;
+  for (const selector of selectors) {
+    const parsed = parseDestinationTunnelSelector(selector, options.minRoutePort);
+    if (parsed.route) routeCount++;
+    else domainCount++;
+    if (routeCount > DESTINATION_TUNNEL_MAX_ROUTES) {
+      throw new DestinationTunnelSelectorError(
+        'too_many',
+        `at most ${DESTINATION_TUNNEL_MAX_ROUTES} exact tunnel selectors are allowed`,
+      );
+    }
+    if (domainCount > DESTINATION_TUNNEL_MAX_DOMAINS) {
+      throw new DestinationTunnelSelectorError(
+        'too_many',
+        `at most ${DESTINATION_TUNNEL_MAX_DOMAINS} domain tunnel selectors are allowed`,
+      );
+    }
+    if (seen.has(parsed.value)) {
+      throw new DestinationTunnelSelectorError('duplicate', `duplicate tunnel selector ${parsed.value}`);
+    }
+    seen.add(parsed.value);
+    canonical.push(parsed.value);
   }
   return canonical;
 }
 
+export function classifyDestinationTunnelSelectors(
+  selectors: readonly string[],
+  options: { minRoutePort?: number } = {},
+): DestinationTunnelSelectorCatalog {
+  const canonical = validateDestinationTunnelSelectors(selectors, options);
+  const routes: DestinationTunnelRoute[] = [];
+  const domains: string[] = [];
+  for (const selector of canonical) {
+    const parsed = parseDestinationTunnelSelector(selector, options.minRoutePort);
+    if (parsed.route) routes.push(parsed.route);
+    else domains.push(parsed.domain!);
+  }
+  return {
+    ...(routes.length > 0 ? { routes } : {}),
+    ...(domains.length > 0 ? { domains } : {}),
+  };
+}
+
 export function validateDestinationTunnelDomains(domains: readonly string[]): string[] {
   if (domains.length > DESTINATION_TUNNEL_MAX_DOMAINS) {
-    throw new DestinationTunnelRouteError(
+    throw new DestinationTunnelSelectorError(
       'too_many',
       `at most ${DESTINATION_TUNNEL_MAX_DOMAINS} tunnel domains are allowed`,
     );
@@ -294,7 +319,7 @@ export function validateDestinationTunnelDomains(domains: readonly string[]): st
   for (const domain of domains) {
     const normalized = canonicalizeDestinationTunnelDomain(domain);
     if (seen.has(normalized)) {
-      throw new DestinationTunnelRouteError('duplicate', `duplicate tunnel domain ${normalized}`);
+      throw new DestinationTunnelSelectorError('duplicate', `duplicate tunnel domain ${normalized}`);
     }
     seen.add(normalized);
     canonical.push(normalized);
@@ -305,24 +330,26 @@ export function validateDestinationTunnelDomains(domains: readonly string[]): st
 /**
  * Deterministic hash of the canonical selector configuration. Servers echo it
  * in `ready` so clients can detect config mismatches across reconnects. The
- * hashed JSON has fixed key order and omits empty selector arrays.
+ * hashed JSON has fixed key order.
  */
 export function destinationTunnelConfigHash(
   selectors: DestinationTunnelSelectors,
   inspection: DestinationTunnelInspectionConfig = disabledDestinationTunnelInspection(),
 ): string {
   const canonical = validateDestinationTunnelSelectors(selectors);
+  const catalog = classifyDestinationTunnelSelectors(canonical);
+  const hashSelectors = [
+    ...(catalog.routes ?? []).map((route) => {
+      const host = route.host.includes(':') ? `[${route.host}]` : route.host;
+      return `${host}:${route.port}`;
+    }),
+    ...(catalog.domains ?? []),
+  ];
   const canonicalInspection = normalizeDestinationTunnelInspection(inspection);
-  const parts: string[] = [`"version":${DESTINATION_TUNNEL_VERSION}`];
-  if (canonical.routes && canonical.routes.length > 0) {
-    const routes = canonical.routes.map(
-      (route) => `{"host":${JSON.stringify(route.host)},"port":${route.port}}`,
-    );
-    parts.push(`"routes":[${routes.join(',')}]`);
-  }
-  if (canonical.domains && canonical.domains.length > 0) {
-    parts.push(`"domains":[${canonical.domains.map((domain) => JSON.stringify(domain)).join(',')}]`);
-  }
+  const parts: string[] = [
+    `"version":${DESTINATION_TUNNEL_VERSION}`,
+    `"selectors":[${hashSelectors.map((selector) => JSON.stringify(selector)).join(',')}]`,
+  ];
   parts.push(
     `"inspection":{"enabled":${canonicalInspection.enabled},"captureBodies":${canonicalInspection.captureBodies},"maxBodyBytes":${canonicalInspection.maxBodyBytes}}`,
   );
@@ -359,9 +386,10 @@ export function disabledDestinationTunnelInspection(): DestinationTunnelInspecti
 
 /** Selector IDs are 1-based per kind: route-1, domain-1, ... */
 export function destinationTunnelSelectorIds(selectors: DestinationTunnelSelectors): string[] {
+  const catalog = classifyDestinationTunnelSelectors(selectors);
   const ids: string[] = [];
-  (selectors.routes ?? []).forEach((_, index) => ids.push(`route-${index + 1}`));
-  (selectors.domains ?? []).forEach((_, index) => ids.push(`domain-${index + 1}`));
+  (catalog.routes ?? []).forEach((_, index) => ids.push(`route-${index + 1}`));
+  (catalog.domains ?? []).forEach((_, index) => ids.push(`domain-${index + 1}`));
   return ids;
 }
 
@@ -380,12 +408,9 @@ export function destinationTunnelDomainMatches(pattern: string, host: string): b
  */
 export function assertDestinationTunnelOpenAllowed(
   message: Extract<DestinationTunnelServerMessage, { type: 'open' }>,
-  selectors: DestinationTunnelSelectors | readonly DestinationTunnelRoute[],
+  selectors: DestinationTunnelSelectors,
 ): void {
-  const normalized: DestinationTunnelSelectors =
-    Array.isArray(selectors) ?
-      { routes: selectors as DestinationTunnelRoute[] }
-    : (selectors as DestinationTunnelSelectors);
+  const catalog = classifyDestinationTunnelSelectors(selectors);
   const match = /^(route|domain)-([1-9]\d*)$/.exec(message.selectorId);
   const kind = match?.[1];
   const index = match?.[2] ? Number(match[2]) - 1 : -1;
@@ -398,12 +423,12 @@ export function assertDestinationTunnelOpenAllowed(
   if (message.port === 53) fail();
   switch (kind) {
     case 'route': {
-      const route = normalized.routes?.[index];
+      const route = catalog.routes?.[index];
       if (!route || message.host !== route.host || message.port !== route.port) fail();
       return;
     }
     case 'domain': {
-      const domain = normalized.domains?.[index];
+      const domain = catalog.domains?.[index];
       if (!domain || !destinationTunnelDomainMatches(domain, message.host)) fail();
       return;
     }
@@ -428,16 +453,19 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
       if (version !== DESTINATION_TUNNEL_VERSION) {
         throw new DestinationTunnelProtocolError(`unsupported tunnel version ${version}`);
       }
-      const selectors = validateDestinationTunnelSelectors({
-        ...(record['routes'] === undefined ? {} : { routes: readArray(record, 'routes').map(readRoute) }),
-        ...(record['domains'] === undefined ? {} : { domains: readArray(record, 'domains').map(readDomain) }),
-      });
+      const selectors = validateDestinationTunnelSelectors(
+        readArray(record, 'selectors').map((value) => {
+          if (typeof value !== 'string') {
+            throw new DestinationTunnelProtocolError('tunnel selector must be a string');
+          }
+          return value;
+        }),
+      );
       const inspection = readInspectionConfig(record);
       return JSON.stringify({
         type,
         version,
-        ...(selectors.routes ? { routes: selectors.routes } : {}),
-        ...(selectors.domains ? { domains: selectors.domains } : {}),
+        selectors,
         inspection,
         window: readWindow(record),
       });
@@ -480,9 +508,7 @@ export function decodeDestinationTunnelServerMessage(value: unknown): Destinatio
         type,
         version: readInteger(message, 'version'),
         tunnelId: readString(message, 'tunnelId'),
-        ...(message['selectors'] === undefined ?
-          {}
-        : { selectors: readArray(message, 'selectors').map(readSelectorReport) }),
+        selectors: readArray(message, 'selectors').map(readSelectorReport),
         configHash: readString(message, 'configHash'),
       };
     case 'open':
@@ -517,12 +543,49 @@ export function decodeDestinationTunnelServerMessage(value: unknown): Destinatio
   }
 }
 
+function parseDestinationTunnelSelector(
+  selector: string,
+  minRoutePort = 1,
+): { value: string; route?: DestinationTunnelRoute; domain?: string } {
+  if (typeof selector !== 'string' || selector.length === 0) {
+    throw new DestinationTunnelSelectorError('empty', 'tunnel selector must not be empty');
+  }
+  if (!selector.startsWith('[') && !selector.includes(':')) {
+    const domain = canonicalizeDestinationTunnelDomain(selector);
+    return { value: domain, domain };
+  }
+
+  let host: string;
+  let portText: string;
+  if (selector.startsWith('[')) {
+    const match = /^\[([^\]]+)\]:(\d+)$/.exec(selector);
+    if (!match?.[1] || !match[2]) {
+      throw new DestinationTunnelSelectorError('invalid_host', `invalid tunnel selector ${selector}`);
+    }
+    host = match[1];
+    portText = match[2];
+  } else {
+    const separator = selector.lastIndexOf(':');
+    if (separator <= 0 || selector.indexOf(':') !== separator) {
+      throw new DestinationTunnelSelectorError('invalid_host', `invalid tunnel selector ${selector}`);
+    }
+    host = selector.slice(0, separator);
+    portText = selector.slice(separator + 1);
+  }
+  if (!/^\d+$/.test(portText)) {
+    throw new DestinationTunnelSelectorError('invalid_port', `invalid tunnel selector port ${portText}`);
+  }
+  const route = canonicalizeDestinationTunnelRoute({ host, port: Number(portText) }, minRoutePort);
+  const formattedHost = route.host.includes(':') ? `[${route.host}]` : route.host;
+  return { value: `${formattedHost}:${route.port}`, route };
+}
+
 function canonicalizeDestinationTunnelRoute(
   route: DestinationTunnelRoute,
   minPort = 1,
 ): DestinationTunnelRoute {
   if (!Number.isInteger(route.port) || route.port < minPort || route.port > 65_535 || route.port === 53) {
-    throw new DestinationTunnelRouteError('invalid_port', `invalid tunnel route port ${route.port}`);
+    throw new DestinationTunnelSelectorError('invalid_port', `invalid tunnel route port ${route.port}`);
   }
 
   const asciiHost = Buffer.byteLength(route.host, 'utf8') === route.host.length;
@@ -538,17 +601,17 @@ function canonicalizeDestinationTunnelRoute(
     const hostname = new URL(`http://[${route.host}]/`).hostname;
     const canonical = hostname.slice(1, -1);
     if (canonical !== '::1' && /^::(?:[0-9a-f]{1,4}:)?[0-9a-f]{1,4}$/.test(canonical)) {
-      throw new DestinationTunnelRouteError('invalid_host', `invalid tunnel route host ${route.host}`);
+      throw new DestinationTunnelSelectorError('invalid_host', `invalid tunnel route host ${route.host}`);
     }
     return { host: canonicalizeIPv6(canonical), port: route.port };
   }
 
-  throw new DestinationTunnelRouteError('invalid_host', `invalid tunnel route host ${route.host}`);
+  throw new DestinationTunnelSelectorError('invalid_host', `invalid tunnel route host ${route.host}`);
 }
 
 function canonicalizeDestinationTunnelDomain(domain: string): string {
   const invalid = (): never => {
-    throw new DestinationTunnelRouteError('invalid_domain', `invalid tunnel domain ${domain}`);
+    throw new DestinationTunnelSelectorError('invalid_domain', `invalid tunnel domain ${domain}`);
   };
   if (typeof domain !== 'string' || domain.length === 0 || domain.length > 260) invalid();
   // ASCII only: reject anything IDNA mapping would change to avoid ambiguity
@@ -582,21 +645,6 @@ function canonicalizeIPv6(host: string): string {
   const high = Number.parseInt(mappedIPv4[1], 16);
   const low = Number.parseInt(mappedIPv4[2], 16);
   return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
-}
-
-function readRoute(value: unknown): DestinationTunnelRoute {
-  const route = readRecord(value, 'tunnel route');
-  return {
-    host: readString(route, 'host'),
-    port: readPort(route, 'port'),
-  };
-}
-
-function readDomain(value: unknown): string {
-  if (typeof value !== 'string') {
-    throw new DestinationTunnelProtocolError('tunnel domain must be a string');
-  }
-  return value;
 }
 
 function readSelectorReport(value: unknown): DestinationTunnelSelectorReport {

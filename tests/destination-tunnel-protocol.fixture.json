@@ -34,7 +34,7 @@
       "unreachable",
       "permission_denied",
       "resource_exhausted",
-      "route_not_allowed",
+      "selector_not_allowed",
       "tls_handshake_failed",
       "tls_validation_failed",
       "tls_protocol_error",
@@ -51,9 +51,7 @@
     "sessionErrorCodes": [
       "unsupported_version",
       "invalid_message",
-      "invalid_route",
       "invalid_selector",
-      "route_capacity",
       "already_active",
       "unavailable",
       "internal"
@@ -453,66 +451,42 @@
   "configHashCases": [
     {
       "name": "routes only",
-      "selectors": {
-        "routes": [
-          {
-            "host": "localhost",
-            "port": 3000
-          }
-        ]
-      },
+      "selectors": ["localhost:3000"],
       "inspection": {
         "enabled": false,
         "captureBodies": false,
         "maxBodyBytes": 10485760
       },
-      "canonicalJson": "{\"version\":1,\"routes\":[{\"host\":\"localhost\",\"port\":3000}],\"inspection\":{\"enabled\":false,\"captureBodies\":false,\"maxBodyBytes\":10485760}}",
-      "sha256": "e25fc32a185fad0665c67e722b128981da06a11fedb5466dee3f23666de1aeba"
+      "canonicalJson": "{\"version\":1,\"selectors\":[\"localhost:3000\"],\"inspection\":{\"enabled\":false,\"captureBodies\":false,\"maxBodyBytes\":10485760}}",
+      "sha256": "9a25cd54325c405ca51dfe6a6b609161ffaa730bf0927f3da8d2d82bcc394459"
     },
     {
       "name": "mixed selectors",
-      "selectors": {
-        "routes": [
-          {
-            "host": "10.20.30.40",
-            "port": 8000
-          }
-        ],
-        "domains": ["*.corp.example", "api.internal"]
-      },
+      "selectors": ["10.20.30.40:8000", "*.corp.example", "api.internal"],
       "inspection": {
         "enabled": true,
         "captureBodies": false,
         "maxBodyBytes": 10485760
       },
-      "canonicalJson": "{\"version\":1,\"routes\":[{\"host\":\"10.20.30.40\",\"port\":8000}],\"domains\":[\"*.corp.example\",\"api.internal\"],\"inspection\":{\"enabled\":true,\"captureBodies\":false,\"maxBodyBytes\":10485760}}",
-      "sha256": "7e5e9ce3627f9208d736ad7c9b565c29b2419c80421a5d92229052bdd2541493"
+      "canonicalJson": "{\"version\":1,\"selectors\":[\"10.20.30.40:8000\",\"*.corp.example\",\"api.internal\"],\"inspection\":{\"enabled\":true,\"captureBodies\":false,\"maxBodyBytes\":10485760}}",
+      "sha256": "cef2758748eb9bbbc94a7643f36dc5b968e6fc2a6b13cfa0ee8b1ce182c0ef56"
     },
     {
       "name": "domains only",
-      "selectors": {
-        "domains": ["db.internal"]
-      },
+      "selectors": ["db.internal"],
       "inspection": {
         "enabled": true,
         "captureBodies": true,
         "maxBodyBytes": 2097152
       },
-      "canonicalJson": "{\"version\":1,\"domains\":[\"db.internal\"],\"inspection\":{\"enabled\":true,\"captureBodies\":true,\"maxBodyBytes\":2097152}}",
-      "sha256": "3ab4121855dbc2dcfbb8ca09720160538f88016dc9de4ec019ee445094001f7d"
+      "canonicalJson": "{\"version\":1,\"selectors\":[\"db.internal\"],\"inspection\":{\"enabled\":true,\"captureBodies\":true,\"maxBodyBytes\":2097152}}",
+      "sha256": "e349e2e5368820dcfafeae7241a057c8e27ac83312e41f6822ef1f27c2ce5ee6"
     }
   ],
   "openAllowedCases": [
     {
       "name": "exact route",
-      "selectors": {
-        "routes": [
-          {
-            "host": "localhost",
-            "port": 8080
-          }
-        ]
-      },
+      "selectors": ["localhost:8080"],
       "open": {
         "selectorId": "route-1",
         "host": "localhost",
@@ -522,9 +496,7 @@
     },
     {
       "name": "wildcard domain any port",
-      "selectors": {
-        "domains": ["*.corp.example"]
-      },
+      "selectors": ["*.corp.example"],
       "open": {
         "selectorId": "domain-1",
         "host": "api.corp.example",
@@ -534,9 +506,7 @@
     },
     {
       "name": "domain base not covered by wildcard",
-      "selectors": {
-        "domains": ["*.corp.example"]
-      },
+      "selectors": ["*.corp.example"],
       "open": {
         "selectorId": "domain-1",
         "host": "corp.example",
@@ -546,15 +516,7 @@
     },
     {
       "name": "wrong selector kind",
-      "selectors": {
-        "routes": [
-          {
-            "host": "localhost",
-            "port": 8080
-          }
-        ],
-        "domains": ["api.corp.example"]
-      },
+      "selectors": ["localhost:8080", "api.corp.example"],
       "open": {
         "selectorId": "domain-1",
         "host": "localhost",
@@ -564,9 +526,7 @@
     },
     {
       "name": "DNS port never allowed",
-      "selectors": {
-        "domains": ["api.corp.example"]
-      },
+      "selectors": ["api.corp.example"],
       "open": {
         "selectorId": "domain-1",
         "host": "api.corp.example",
@@ -581,16 +541,7 @@
       "message": {
         "type": "start",
         "version": 1,
-        "routes": [
-          {
-            "host": "10.20.30.40",
-            "port": 8000
-          },
-          {
-            "host": "localhost",
-            "port": 3000
-          }
-        ],
+        "selectors": ["10.20.30.40:8000", "localhost:3000"],
         "inspection": {
           "enabled": false,
           "captureBodies": false,
@@ -604,13 +555,7 @@
       "message": {
         "type": "start",
         "version": 1,
-        "routes": [
-          {
-            "host": "localhost",
-            "port": 8080
-          }
-        ],
-        "domains": ["*.corp.example", "db.internal"],
+        "selectors": ["localhost:8080", "*.corp.example", "db.internal"],
         "inspection": {
           "enabled": true,
           "captureBodies": false,
@@ -686,7 +631,10 @@
         "type": "ready",
         "version": 1,
         "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
-        "configHash": "e25fc32a185fad0665c67e722b128981da06a11fedb5466dee3f23666de1aeba"
+        "selectors": [
+          { "id": "route-1", "kind": "route", "value": "localhost:3000" }
+        ],
+        "configHash": "9a25cd54325c405ca51dfe6a6b609161ffaa730bf0927f3da8d2d82bcc394459"
       }
     },
     {
@@ -722,7 +670,7 @@
             "value": "*.corp.example"
           }
         ],
-        "configHash": "7e5e9ce3627f9208d736ad7c9b565c29b2419c80421a5d92229052bdd2541493"
+        "configHash": "cef2758748eb9bbbc94a7643f36dc5b968e6fc2a6b13cfa0ee8b1ce182c0ef56"
       }
     },
     {
@@ -791,7 +739,7 @@
       "name": "error",
       "message": {
         "type": "error",
-        "code": "route_capacity"
+        "code": "invalid_selector"
       }
     }
   ],
@@ -802,12 +750,7 @@
       "input": {
         "type": "start",
         "version": 1,
-        "routes": [
-          {
-            "host": "localhost",
-            "port": 3000
-          }
-        ],
+        "selectors": ["localhost:3000"],
         "inspection": {
           "enabled": false,
           "captureBodies": false,
@@ -819,12 +762,7 @@
       "decoded": {
         "type": "start",
         "version": 1,
-        "routes": [
-          {
-            "host": "localhost",
-            "port": 3000
-          }
-        ],
+        "selectors": ["localhost:3000"],
         "inspection": {
           "enabled": false,
           "captureBodies": false,
@@ -840,14 +778,20 @@
         "type": "ready",
         "version": 1,
         "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
-        "configHash": "e25fc32a185fad0665c67e722b128981da06a11fedb5466dee3f23666de1aeba",
+        "selectors": [
+          { "id": "route-1", "kind": "route", "value": "localhost:3000" }
+        ],
+        "configHash": "9a25cd54325c405ca51dfe6a6b609161ffaa730bf0927f3da8d2d82bcc394459",
         "futureDiagnostic": "ignored"
       },
       "decoded": {
         "type": "ready",
         "version": 1,
         "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
-        "configHash": "e25fc32a185fad0665c67e722b128981da06a11fedb5466dee3f23666de1aeba"
+        "selectors": [
+          { "id": "route-1", "kind": "route", "value": "localhost:3000" }
+        ],
+        "configHash": "9a25cd54325c405ca51dfe6a6b609161ffaa730bf0927f3da8d2d82bcc394459"
       }
     }
   ]

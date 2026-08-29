@@ -55,7 +55,8 @@ describe('tunnel process state', () => {
     ['[2001:db8::1]:8443', { host: '2001:db8::1', port: 8443 }],
     ['[::ffff:192.0.2.1]:9443', { host: '192.0.2.1', port: 9443 }],
   ])('parses exact selector %s', (input, expected) => {
-    expect(parseTunnelSelectors([input])).toEqual({ routes: [expected] });
+    const host = expected.host.includes(':') ? `[${expected.host}]` : expected.host;
+    expect(parseTunnelSelectors([input])).toEqual([`${host}:${expected.port}`]);
   });
 
   test.each([
@@ -64,6 +65,8 @@ describe('tunnel process state', () => {
     '10.20.30.40:0',
     '10.20.30.40:53',
     '10.20.30.40:65536',
+    'localhost:+8000',
+    'localhost:1e3',
     '2001:db8::1:443',
     '[::192.0.2.1]:443',
     '[::2]:443',
@@ -72,31 +75,29 @@ describe('tunnel process state', () => {
   });
 
   test('applies the Android minimum selector port', () => {
-    expect(() => parseTunnelSelectors(['localhost:80'], { minPort: 1024 })).toThrow('expected 1024-65535');
-    expect(parseTunnelSelectors(['localhost:8080'], { minPort: 1024 })).toEqual({
-      routes: [{ host: 'localhost', port: 8080 }],
-    });
+    expect(() => parseTunnelSelectors(['localhost:80'], { minPort: 1024 })).toThrow();
+    expect(parseTunnelSelectors(['localhost:8080'], { minPort: 1024 })).toEqual(['localhost:8080']);
   });
 
   test.each([
     ['API.Corp.Example', 'api.corp.example'],
     ['*.Corp.Example', '*.corp.example'],
   ])('parses domain selector %s', (input, expected) => {
-    expect(parseTunnelSelectors([input])).toEqual({ domains: [expected] });
+    expect(parseTunnelSelectors([input])).toEqual([expected]);
   });
 
   test.each(['corp.example.', 'api.*.example', 'localhost', '192.0.2.1'])(
     'rejects malformed domain %s',
     (input) => {
-      expect(() => parseTunnelSelectors([input])).toThrow('Invalid selector');
+      expect(() => parseTunnelSelectors([input])).toThrow();
     },
   );
 
   test('parses mixed selectors and rejects domains where unsupported', () => {
-    expect(parseTunnelSelectors(['localhost:8080', '*.corp.example'])).toEqual({
-      routes: [{ host: 'localhost', port: 8080 }],
-      domains: ['*.corp.example'],
-    });
+    expect(parseTunnelSelectors(['localhost:8080', '*.corp.example'])).toEqual([
+      'localhost:8080',
+      '*.corp.example',
+    ]);
     expect(() => parseTunnelSelectors(['*.corp.example'], { allowDomains: false })).toThrow(
       'supports only localhost:port or literal IP:port',
     );
@@ -110,13 +111,7 @@ describe('tunnel process state', () => {
         product: 'android',
         instanceId: INSTANCE_ID,
         owner,
-        selectors: {
-          routes: [
-            { host: '10.20.30.40', port: 8000 },
-            { host: '2001:db8::1', port: 8443 },
-          ],
-          domains: ['*.corp.example'],
-        },
+        selectors: ['10.20.30.40:8000', '[2001:db8::1]:8443', '*.corp.example'],
       }),
     ).toEqual([
       '/lim/run.js',
@@ -143,7 +138,7 @@ describe('tunnel process state', () => {
       product: 'android',
       instanceId: INSTANCE_ID,
       owner,
-      selectors: { domains: ['*.corp.example'] },
+      selectors: ['*.corp.example'],
       verbose: true,
     });
     expect(args).toContain('--verbose');
@@ -157,7 +152,7 @@ describe('tunnel process state', () => {
       product: 'android',
       instanceId: INSTANCE_ID,
       owner,
-      selectors: { domains: ['api.example.test'] },
+      selectors: ['api.example.test'],
       inspect: true,
       harPath: '/tmp/private traffic.har',
       harBodyLimit: 4 * 1024 * 1024,
@@ -182,7 +177,7 @@ describe('tunnel process state', () => {
         product: 'ios',
         instanceId: 'ios_test_123',
         owner,
-        selectors: { routes: [{ host: '10.20.30.40', port: 8000 }] },
+        selectors: ['10.20.30.40:8000'],
       }),
     ).toEqual([
       '/lim/run.js',
@@ -212,10 +207,7 @@ describe('tunnel process state', () => {
 
   test('formats every selector kind for display', () => {
     expect(
-      formatTunnelSelectors({
-        routes: [{ host: 'localhost', port: 8080 }],
-        domains: ['*.corp.example'],
-      }),
+      formatTunnelSelectors(['localhost:8080', '*.corp.example']),
     ).toEqual(['localhost:8080', '*.corp.example']);
   });
 
@@ -431,20 +423,13 @@ describe('tunnel process state', () => {
     { tunnelId: 'premature' },
     { status: 'ready', pid: 0 },
     { product: 'linux' as unknown as TunnelProcessState['product'] },
-    { selectors: { routes: [{ host: '*.example.com', port: 443 }] } },
-    { selectors: { routes: [{ host: 'LOCALHOST', port: 3000 }] } },
-    { selectors: { routes: [{ host: '10.20.30.40', port: 53 }] } },
-    { selectors: { routes: [{ host: '::2', port: 443 }] } },
-    {
-      selectors: {
-        routes: [
-          { host: 'localhost', port: 3000 },
-          { host: 'localhost', port: 3000 },
-        ],
-      },
-    },
-    { selectors: { domains: ['api.*.example'] } },
-    { selectors: {} },
+    { selectors: ['*.example.com:443'] },
+    { selectors: ['LOCALHOST:3000'] },
+    { selectors: ['10.20.30.40:53'] },
+    { selectors: ['[::2]:443'] },
+    { selectors: ['localhost:3000', 'localhost:3000'] },
+    { selectors: ['api.*.example'] },
+    { selectors: [] },
   ] satisfies Array<Partial<TunnelProcessState>>)('rejects malformed persisted state %#', (overrides) => {
     const state = overrides.status === 'ready' ? makeReadyState(overrides) : makeState(overrides);
     const paths = tunnelProcessPaths(state.instanceId, state.owner, root);
@@ -526,7 +511,7 @@ describe('tunnel process state', () => {
       instanceId: INSTANCE_ID,
       product: 'android',
       status: 'starting',
-      selectors: { routes: [{ host: '10.20.30.40', port: 8000 }] },
+      selectors: ['10.20.30.40:8000'],
       startedAt: new Date().toISOString(),
       logPath: tunnelProcessPaths(INSTANCE_ID, owner, root).log,
       ...overrides,

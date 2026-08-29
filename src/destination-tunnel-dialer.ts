@@ -16,6 +16,7 @@ import {
   DestinationTunnelProtocolError,
   assertDestinationTunnelOpenAllowed,
   assertDestinationTunnelReady,
+  classifyDestinationTunnelSelectors,
   decodeDestinationTunnelDataFrame,
   decodeDestinationTunnelServerMessage,
   disabledDestinationTunnelInspection,
@@ -51,7 +52,7 @@ blockedResolvedAddresses.addSubnet('::ffff:224.0.0.0', 99, 'ipv6');
 export interface DestinationTcpTunnel {
   tunnelId: string;
   /** Normalized selectors echoed by the server, including bind reports. */
-  selectors?: DestinationTunnelSelectorReport[];
+  selectors: DestinationTunnelSelectorReport[];
   configHash: string;
   inspection: DestinationTunnelInspectionConfig;
   inspectionStream?: DestinationTunnelInspectionStream;
@@ -61,8 +62,7 @@ export interface DestinationTcpTunnel {
 }
 
 export interface DestinationTcpTunnelOptions {
-  routes?: DestinationTunnelRoute[];
-  domains?: string[];
+  selectors: DestinationTunnelSelectors;
   inspection?: Partial<DestinationTunnelInspectionConfig>;
   /** Called for validated inspection metadata and body frames. */
   onInspectionEvent?: DestinationTunnelInspectionEventCallback;
@@ -122,11 +122,8 @@ export async function startDestinationTcpTunnel(
   token: string,
   options: DestinationTcpTunnelOptions,
 ): Promise<DestinationTcpTunnel> {
-  const selectors = validateDestinationTunnelSelectors({
-    ...(options.routes ? { routes: options.routes } : {}),
-    ...(options.domains ? { domains: options.domains } : {}),
-  });
-  const routes = selectors.routes ?? [];
+  const selectors = validateDestinationTunnelSelectors(options.selectors);
+  const routes = classifyDestinationTunnelSelectors(selectors).routes ?? [];
   const inspection = normalizeDestinationTunnelInspection(
     options.inspection ?? disabledDestinationTunnelInspection(),
   );
@@ -466,7 +463,7 @@ export async function startDestinationTcpTunnel(
       try {
         assertDestinationTunnelOpenAllowed(message, selectors);
       } catch {
-        sendOpenFailure(message.connId, 'route_not_allowed');
+        sendOpenFailure(message.connId, 'selector_not_allowed');
         return;
       }
       if (connections.has(message.connId) || recentlyClosed.has(message.connId)) {
@@ -587,7 +584,7 @@ export async function startDestinationTcpTunnel(
       })().catch((error: NodeJS.ErrnoException) => {
         if (connections.get(message.connId) !== connection) return;
         logger.warn(`Failed to connect to ${message.host}:${message.port}: ${error.code ?? error.message}`);
-        const reason = error.code === 'EBLOCKED' ? 'route_not_allowed' : classifyOpenFailure(error);
+        const reason = error.code === 'EBLOCKED' ? 'selector_not_allowed' : classifyOpenFailure(error);
         sendOpenFailure(message.connId, reason, error.code === 'EBLOCKED' ? undefined : error.code);
         removeConnection(message.connId, true);
       });
@@ -699,7 +696,7 @@ export async function startDestinationTcpTunnel(
           }
           armLivenessDeadline();
           updateConnectionState('connected');
-          logger.info(`Destination tunnel ready with ${countSelectors(selectors)} selector(s)`);
+          logger.info(`Destination tunnel ready with ${selectors.length} selector(s)`);
           if (inspection.enabled) {
             try {
               inspectionStream = startDestinationTunnelInspectionStream(remoteURL, message.tunnelId, token, {
@@ -716,7 +713,7 @@ export async function startDestinationTcpTunnel(
           }
           resolve({
             tunnelId: message.tunnelId,
-            ...(message.selectors === undefined ? {} : { selectors: message.selectors }),
+            selectors: message.selectors,
             configHash: message.configHash,
             inspection,
             ...(inspectionStream ? { inspectionStream } : {}),
@@ -764,8 +761,7 @@ export async function startDestinationTcpTunnel(
       sendControl({
         type: 'start',
         version: DESTINATION_TUNNEL_VERSION,
-        ...(selectors.routes ? { routes: selectors.routes } : {}),
-        ...(selectors.domains ? { domains: selectors.domains } : {}),
+        selectors,
         inspection,
         window: creditWindow,
       });
@@ -889,9 +885,6 @@ export function classifyOpenFailure(error: NodeJS.ErrnoException): DestinationTu
   }
 }
 
-function countSelectors(selectors: DestinationTunnelSelectors): number {
-  return (selectors.routes?.length ?? 0) + (selectors.domains?.length ?? 0);
-}
 
 function positiveInteger(value: number, name: string): number {
   if (!Number.isInteger(value) || value <= 0) {

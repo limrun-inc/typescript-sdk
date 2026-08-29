@@ -2,7 +2,6 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
 import { runTunnelStatus } from '../../../lib/tunnel-command';
-import { formatTunnelRoute } from '../../../lib/tunnel-process';
 
 export default class IosTunnelStatus extends BaseCommand {
   static summary = 'Show the active destination tunnel';
@@ -47,8 +46,8 @@ export default class IosTunnelStatus extends BaseCommand {
         },
         io: this.tunnelCommandIO(),
         renderActive: (active, io) => {
-          for (const route of active.routes) {
-            io.output(`Route: ${formatTunnelRoute(route)}`);
+          for (const selector of active.selectors) {
+            io.output(`Selector: ${selector.value}`);
           }
         },
       });
