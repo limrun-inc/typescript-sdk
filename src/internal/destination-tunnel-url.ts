@@ -8,7 +8,7 @@ function deriveDestinationTunnelEndpointURL(apiUrl: string, suffix?: string): UR
   ) {
     throw new Error(`Unsupported apiUrl protocol for tunnel: ${url.protocol}`);
   }
-  const tunnelPath = `${url.pathname.replace(/\/+$/, '')}/tunnel`;
+  const tunnelPath = `${withoutTrailingSlashes(url.pathname)}/tunnel`;
   url.pathname = suffix === undefined ? tunnelPath : `${tunnelPath}/${suffix}`;
   url.search = '';
   url.hash = '';
@@ -48,9 +48,15 @@ export function deriveDestinationTunnelInspectionURL(
     throw new Error('afterSequence must be a safe non-negative integer');
   }
   const url = new URL(tunnelUrl);
-  url.pathname = `${url.pathname.replace(/\/+$/, '')}/${encodeURIComponent(tunnelId)}/inspection`;
+  url.pathname = `${withoutTrailingSlashes(url.pathname)}/${encodeURIComponent(tunnelId)}/inspection`;
   url.search = '';
   url.searchParams.set('after-sequence', String(afterSequence));
   url.hash = '';
   return url.toString();
+}
+
+function withoutTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path.charCodeAt(end - 1) === 47) end--;
+  return path.slice(0, end);
 }
