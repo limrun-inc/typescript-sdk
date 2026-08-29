@@ -1,6 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
+import type {
+  Entry as HAREntry,
+  Header as HARHeader,
+  PostData as HARPostData,
+  Request as HARRequest,
+  Response as HARResponse,
+} from 'har-format';
 import {
   type DestinationTunnelInspectionComplete,
   type DestinationTunnelInspectionEvent,
@@ -19,8 +26,15 @@ interface PendingCapture {
   gap: boolean;
 }
 
+type TunnelHarPostData = HARPostData & { _encoding?: string };
+type TunnelHarRequest = Omit<HARRequest, 'postData'> & { postData?: TunnelHarPostData };
+type TunnelHarResponse = HARResponse & { _trailers?: HARHeader[] };
+interface TunnelHarEntry extends HAREntry {
+  _limrun: Record<string, unknown>;
+}
+
 type SpoolRecord =
-  | { type: 'entry'; entry: Record<string, unknown> }
+  | { type: 'entry'; entry: TunnelHarEntry }
   | { type: 'gap'; gap: DestinationTunnelInspectionGap };
 
 export interface TunnelHarRecorder {
@@ -156,7 +170,7 @@ export function formatInspectionSummary(event: DestinationTunnelInspectionComple
 function makeHarEntry(
   complete: DestinationTunnelInspectionComplete,
   capture: PendingCapture,
-): Record<string, unknown> {
+): TunnelHarEntry {
   const requestBody = Buffer.concat(capture.requestBody, capture.requestBytes);
   const responseBody = Buffer.concat(capture.responseBody, capture.responseBytes);
   const request = addRequestBody(complete.request, requestBody);
@@ -188,28 +202,33 @@ function makeHarEntry(
   };
 }
 
-function addRequestBody(request: DestinationTunnelInspectionRequest, body: Buffer): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...request };
-  if (body.length === 0) return result;
+function addRequestBody(request: DestinationTunnelInspectionRequest, body: Buffer): TunnelHarRequest {
+  const { postData, ...base } = request;
+  const result: TunnelHarRequest = base;
   const mimeType = request.postData?.mimeType ?? headerValue(request.headers, 'content-type');
-  result['postData'] = {
-    ...(request.postData ?? {}),
-    ...encodedBody(body, mimeType),
-  };
+  if (body.length > 0) {
+    const encoded = encodedBody(body, mimeType);
+    result.postData = {
+      mimeType: mimeType ?? '',
+      text: encoded.text,
+      ...(encoded.encoding ? { _encoding: encoded.encoding } : {}),
+    };
+  } else if (postData?.params) {
+    result.postData = { mimeType: mimeType ?? '', params: postData.params };
+  }
   return result;
 }
 
-function addResponseBody(
-  response: DestinationTunnelInspectionResponse,
-  body: Buffer,
-): Record<string, unknown> {
-  if (body.length === 0) return { ...response };
+function addResponseBody(response: DestinationTunnelInspectionResponse, body: Buffer): TunnelHarResponse {
+  const { trailers, ...base } = response;
   return {
-    ...response,
+    ...base,
     content: {
       ...response.content,
-      ...encodedBody(body, response.content.mimeType),
+      mimeType: response.content.mimeType ?? '',
+      ...(body.length > 0 ? encodedBody(body, response.content.mimeType) : {}),
     },
+    ...(trailers ? { _trailers: trailers } : {}),
   };
 }
 
@@ -263,7 +282,7 @@ function parseSpoolRecord(line: string): SpoolRecord | undefined {
   try {
     const value = JSON.parse(line) as Partial<SpoolRecord>;
     if (value.type === 'entry' && typeof value.entry === 'object' && value.entry !== null) {
-      return { type: 'entry', entry: value.entry };
+      return { type: 'entry', entry: value.entry as TunnelHarEntry };
     }
     if (value.type === 'gap' && typeof value.gap === 'object' && value.gap !== null) {
       const gap = value.gap as DestinationTunnelInspectionGap;

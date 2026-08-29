@@ -1,20 +1,22 @@
 import { WebSocket, type RawData } from 'ws';
+import type {
+  Cache as HARCache,
+  Content as HARContent,
+  Cookie as HARCookie,
+  Entry as HAREntry,
+  Header as HARHeader,
+  Request as HARRequest,
+  Response as HARResponse,
+  Timings as HARTimings,
+} from 'har-format';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import { DestinationTunnelProtocolError } from './destination-tunnel';
 
 export const DESTINATION_TUNNEL_INSPECTION_BINARY_VERSION = 1;
 
-export interface DestinationTunnelInspectionNameValue {
-  name: string;
-  value: string;
-}
+export type DestinationTunnelInspectionNameValue = HARHeader;
 
-export interface DestinationTunnelInspectionCookie extends DestinationTunnelInspectionNameValue {
-  path?: string;
-  domain?: string;
-  expires?: string;
-  httpOnly?: boolean;
-  secure?: boolean;
+export interface DestinationTunnelInspectionCookie extends HARCookie {
   sameSite?: string;
 }
 
@@ -23,62 +25,41 @@ export interface DestinationTunnelInspectionPostData {
   params?: DestinationTunnelInspectionNameValue[];
 }
 
-export interface DestinationTunnelInspectionContent {
-  size: number;
+export interface DestinationTunnelInspectionContent extends Omit<HARContent, 'mimeType'> {
   mimeType?: string;
-  text?: string;
-  encoding?: string;
 }
 
-export interface DestinationTunnelInspectionRequest {
-  method: string;
-  url: string;
-  httpVersion: string;
+export interface DestinationTunnelInspectionRequest
+  extends Omit<HARRequest, 'headers' | 'queryString' | 'cookies' | 'postData'> {
   headers: DestinationTunnelInspectionNameValue[];
   queryString: DestinationTunnelInspectionNameValue[];
   cookies: DestinationTunnelInspectionCookie[];
-  headersSize: number;
-  bodySize: number;
   postData?: DestinationTunnelInspectionPostData;
 }
 
-export interface DestinationTunnelInspectionResponse {
-  status: number;
-  statusText: string;
-  httpVersion: string;
+export interface DestinationTunnelInspectionResponse
+  extends Omit<HARResponse, 'headers' | 'cookies' | 'content'> {
   headers: DestinationTunnelInspectionNameValue[];
   cookies: DestinationTunnelInspectionCookie[];
   content: DestinationTunnelInspectionContent;
-  redirectURL: string;
-  headersSize: number;
-  bodySize: number;
   trailers?: DestinationTunnelInspectionNameValue[];
 }
 
-export interface DestinationTunnelInspectionTimings {
-  blocked: number;
-  dns: number;
-  connect: number;
-  ssl: number;
-  send: number;
-  wait: number;
-  receive: number;
-}
+export type DestinationTunnelInspectionTimings = Required<
+  Pick<HARTimings, 'blocked' | 'dns' | 'connect' | 'ssl' | 'send' | 'wait' | 'receive'>
+>;
 
-export interface DestinationTunnelInspectionComplete {
+export interface DestinationTunnelInspectionComplete
+  extends Omit<HAREntry, 'request' | 'response' | 'cache' | 'timings'> {
   requestId: string;
   tunnelId: string;
   selectorId: string;
-  startedDateTime: string;
-  time: number;
   request: DestinationTunnelInspectionRequest;
   response: DestinationTunnelInspectionResponse;
-  cache: Record<string, never>;
+  cache: HARCache;
   timings: DestinationTunnelInspectionTimings;
   protocol: string;
   tls: boolean;
-  serverIPAddress?: string;
-  connection?: string;
   grpc?: boolean;
   webSocket?: boolean;
   error?: string;
@@ -420,7 +401,7 @@ function readComplete(
     time: readFiniteNumber(record, 'time'),
     request: readRequest(readRecord(record['request'], 'inspection request')),
     response: readResponse(readRecord(record['response'], 'inspection response')),
-    cache: readRecord(record['cache'], 'inspection cache') as Record<string, never>,
+    cache: readRecord(record['cache'], 'inspection cache') as HARCache,
     timings: readTimings(readRecord(record['timings'], 'inspection timings')),
     protocol: readString(record, 'protocol'),
     tls: readBoolean(record, 'tls'),
