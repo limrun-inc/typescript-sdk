@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import {
   DESTINATION_TUNNEL_MAX_BODY_BYTES,
+  DESTINATION_TUNNEL_MAX_TTL_SECONDS,
   validateDestinationTunnelSelectors,
   type DestinationTunnelSelectors,
   type DestinationTunnelStatus,
@@ -23,6 +24,8 @@ export interface TunnelProcessState {
   status: 'starting' | 'ready';
   selectors: DestinationTunnelSelectors;
   inspect?: boolean;
+  persist?: boolean;
+  ttlSeconds?: number;
   harPath?: string;
   harBodyLimit?: number;
   startedAt: string;
@@ -81,6 +84,8 @@ export function buildTunnelServeArgs(options: {
   owner: string;
   selectors: DestinationTunnelSelectors;
   inspect?: boolean;
+  persist?: boolean;
+  ttlSeconds?: number;
   harPath?: string;
   harBodyLimit?: number;
   verbose?: boolean;
@@ -98,6 +103,10 @@ export function buildTunnelServeArgs(options: {
     ...(options.verbose ? ['--verbose'] : []),
     ...(options.product === 'android' && options.inspect !== undefined ?
       [options.inspect ? '--inspect' : '--no-inspect']
+    : []),
+    ...(options.product === 'android' && options.persist ? ['--persist'] : []),
+    ...(options.product === 'android' && options.ttlSeconds !== undefined ?
+      ['--ttl', String(options.ttlSeconds)]
     : []),
     ...(options.product === 'android' && options.harPath ? ['--har', options.harPath] : []),
     ...(options.product === 'android' && options.harBodyLimit !== undefined ?
@@ -490,13 +499,24 @@ function validateTunnelProcessState(
   const startingFieldsValid = state.status !== 'starting' || state.tunnelId === undefined;
   const inspectionFieldsValid =
     (state.inspect === undefined || typeof state.inspect === 'boolean') &&
+    (state.persist === undefined || typeof state.persist === 'boolean') &&
+    (state.ttlSeconds === undefined ||
+      (Number.isInteger(state.ttlSeconds) &&
+        state.ttlSeconds > 0 &&
+        state.ttlSeconds <= DESTINATION_TUNNEL_MAX_TTL_SECONDS)) &&
     (state.harPath === undefined || (typeof state.harPath === 'string' && state.harPath.length > 0)) &&
     (state.harBodyLimit === undefined ||
       (Number.isInteger(state.harBodyLimit) &&
         state.harBodyLimit > 0 &&
         state.harBodyLimit <= DESTINATION_TUNNEL_MAX_BODY_BYTES)) &&
     (state.harPath === undefined || state.inspect === true) &&
-    (state.product === 'android' || (state.inspect === undefined && state.harPath === undefined));
+    (state.persist !== true || state.inspect === true) &&
+    (state.ttlSeconds === undefined || state.persist === true) &&
+    (state.product === 'android' ||
+      (state.inspect === undefined &&
+        state.persist === undefined &&
+        state.ttlSeconds === undefined &&
+        state.harPath === undefined));
   if (
     typeof state.owner !== 'string' ||
     !OWNER_PATTERN.test(state.owner) ||

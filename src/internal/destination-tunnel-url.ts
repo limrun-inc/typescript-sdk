@@ -42,15 +42,34 @@ export function deriveDestinationTunnelStopURL(apiUrl: string, tunnelId: string)
 export function deriveDestinationTunnelInspectionURL(
   tunnelUrl: string,
   tunnelId: string,
-  afterSequence = 0,
+  token: string,
+): string;
+export function deriveDestinationTunnelInspectionURL(
+  tunnelUrl: string,
+  tunnelId: string,
+  afterSequence?: number,
+  token?: string,
+): string;
+export function deriveDestinationTunnelInspectionURL(
+  tunnelUrl: string,
+  tunnelId: string,
+  afterSequenceOrToken: number | string = 0,
+  explicitToken?: string,
 ): string {
+  const afterSequence = typeof afterSequenceOrToken === 'number' ? afterSequenceOrToken : 0;
+  const token = typeof afterSequenceOrToken === 'string' ? afterSequenceOrToken : explicitToken;
   if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
     throw new Error('afterSequence must be a safe non-negative integer');
   }
   const url = new URL(tunnelUrl);
-  url.pathname = `${withoutTrailingSlashes(url.pathname)}/${encodeURIComponent(tunnelId)}/inspection`;
+  url.protocol =
+    url.protocol === 'wss:' ? 'https:'
+    : url.protocol === 'ws:' ? 'http:'
+    : url.protocol;
+  url.pathname = `${withoutTrailingSlashes(url.pathname)}/${encodeURIComponent(tunnelId)}/inspection/events`;
   url.search = '';
-  url.searchParams.set('after-sequence', String(afterSequence));
+  if (afterSequence > 0) url.searchParams.set('after-sequence', String(afterSequence));
+  if (token !== undefined) url.searchParams.set('token', token);
   url.hash = '';
   return url.toString();
 }

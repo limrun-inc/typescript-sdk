@@ -7,6 +7,11 @@ export { APIPromise } from './core/api-promise';
 export { Limrun, type ClientOptions } from './client';
 export { PagePromise } from './core/pagination';
 export * from './instance-client';
+export {
+  type SessionArtifact,
+  type SessionArtifactKind,
+  type SessionArtifactListParams,
+} from './session-artifacts';
 export * as Ios from './ios-client';
 export {
   isTerminalDestinationTunnelError,
@@ -14,11 +19,9 @@ export {
   type DestinationTcpTunnelOptions,
 } from './destination-tunnel-dialer';
 export {
-  decodeDestinationTunnelInspectionBodyFrame,
-  decodeDestinationTunnelInspectionMetadataFrame,
+  decodeDestinationTunnelInspectionSSEEvent,
   deriveDestinationTunnelInspectionURL,
   startDestinationTunnelInspectionStream,
-  DESTINATION_TUNNEL_INSPECTION_BINARY_VERSION,
   type DestinationTunnelInspectionBodyEvent,
   type DestinationTunnelInspectionComplete,
   type DestinationTunnelInspectionErrorCallback,
@@ -31,14 +34,21 @@ export {
   type DestinationTunnelInspectionStreamOptions,
 } from './destination-tunnel-inspection';
 export {
+  DestinationTunnelHARAssembler,
+  type DestinationTunnelHAREntry,
+  type DestinationTunnelHARExtension,
+} from './destination-tunnel-har';
+export {
   validateDestinationTunnelSelectors,
   normalizeDestinationTunnelInspection,
   disabledDestinationTunnelInspection,
   destinationTunnelConfigHash,
   DestinationTunnelSelectorError,
   DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+  DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS,
   DESTINATION_TUNNEL_DEFAULT_WINDOW,
   DESTINATION_TUNNEL_MAX_BODY_BYTES,
+  DESTINATION_TUNNEL_MAX_TTL_SECONDS,
   type DestinationTunnelInspectionConfig,
   type DestinationTunnelTransportRequest,
   type DestinationTunnelTransportResult,

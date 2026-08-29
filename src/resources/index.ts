@@ -83,3 +83,8 @@ export {
   type GradleBuildOptions,
   type GradleBuildLog,
 } from './gradle-instances-helpers';
+export {
+  type SessionArtifact,
+  type SessionArtifactKind,
+  type SessionArtifactListParams,
+} from '../session-artifacts';

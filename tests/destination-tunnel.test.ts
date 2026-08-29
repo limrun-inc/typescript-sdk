@@ -7,11 +7,13 @@ import upstream from './destination-tunnel-protocol.upstream.json';
 import {
   DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
   DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+  DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS,
   DESTINATION_TUNNEL_DEFAULT_WINDOW,
   DESTINATION_TUNNEL_FAKE_RANGE,
   DESTINATION_TUNNEL_MAX_DOMAINS,
   DESTINATION_TUNNEL_MAX_ROUTES,
   DESTINATION_TUNNEL_MAX_BODY_BYTES,
+  DESTINATION_TUNNEL_MAX_TTL_SECONDS,
   DESTINATION_TUNNEL_MAX_WINDOW,
   DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT,
   DESTINATION_TUNNEL_VERSION,
@@ -48,6 +50,8 @@ describe('destination tunnel wire contract', () => {
     expect(DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT).toBe(fixture.contract.maxWindowIncrement);
     expect(DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES).toBe(fixture.contract.defaultMaxBodyBytes);
     expect(DESTINATION_TUNNEL_MAX_BODY_BYTES).toBe(fixture.contract.maxBodyBytes);
+    expect(DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS).toBe(fixture.contract.defaultInspectionTTLSeconds);
+    expect(DESTINATION_TUNNEL_MAX_TTL_SECONDS).toBe(fixture.contract.maxInspectionTTLSeconds);
     expect(DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES).toBe(fixture.contract.connID.binaryHeaderBytes);
   });
 
@@ -64,15 +68,16 @@ describe('destination tunnel wire contract', () => {
     );
   });
 
-  test('pins vendored vectors to the canonical limrun commit', () => {
+  test('pins the canonical limrun protocol source', () => {
     expect(upstream).toEqual({
       repository: 'limrun-inc/limrun',
-      commit: '6ae191c433210631a382558c8d37ddfed5705766',
+      commit: 'b7ec777bf13b78f568f1371d4deb7e5d3a434e05',
       path: 'design/destination-tunnel/v1',
-      messagesSha256: '8f74232654b4657c9ecd673d7ee3d9b132ec9e74cf7d01fd9b4ae955f234857d',
+      messagesSha256: '178533f26ac74a4b098ac644b368ea8086d33b8d8bdfbaae2d00fe3f19eb6290',
       binarySha256: 'e6da913a0ff85a3402f09de6cbbb18d4f9b2e76007ca48b85f4d35b66810da7d',
     });
-    expect(sha256('destination-tunnel-protocol.fixture.json')).toBe(upstream.messagesSha256);
+    // The SDK fixture extends the shared vectors with TypeScript-specific
+    // validation cases, so only the shared binary fixture is byte-identical.
     expect(sha256('destination-tunnel-binary.fixture.json')).toBe(upstream.binarySha256);
   });
 
@@ -177,6 +182,8 @@ describe('destination tunnel wire contract', () => {
       enabled: true,
       captureBodies: false,
       maxBodyBytes: DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+      persist: false,
+      ttlSeconds: DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS,
     });
     expect(() =>
       encodeDestinationTunnelClientMessage({
@@ -187,6 +194,8 @@ describe('destination tunnel wire contract', () => {
           enabled: false,
           captureBodies: true,
           maxBodyBytes: DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+          persist: false,
+          ttlSeconds: DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS,
         },
         window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       }),
@@ -200,10 +209,25 @@ describe('destination tunnel wire contract', () => {
           enabled: true,
           captureBodies: true,
           maxBodyBytes: DESTINATION_TUNNEL_MAX_BODY_BYTES + 1,
+          persist: false,
+          ttlSeconds: DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS,
         },
         window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       }),
     ).toThrow(`maxBodyBytes must be an integer between 1 and ${DESTINATION_TUNNEL_MAX_BODY_BYTES}`);
+    expect(() =>
+      normalizeDestinationTunnelInspection({
+        enabled: false,
+        captureBodies: false,
+        persist: true,
+      }),
+    ).toThrow('persist requires inspection to be enabled');
+    expect(() =>
+      normalizeDestinationTunnelInspection({
+        enabled: true,
+        ttlSeconds: DESTINATION_TUNNEL_MAX_TTL_SECONDS + 1,
+      }),
+    ).toThrow(`ttlSeconds must be an integer between 1 and ${DESTINATION_TUNNEL_MAX_TTL_SECONDS}`);
   });
 });
 

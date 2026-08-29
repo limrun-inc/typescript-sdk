@@ -3,6 +3,7 @@ import path from 'path';
 import {
   DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
   DESTINATION_TUNNEL_MAX_BODY_BYTES,
+  DESTINATION_TUNNEL_MAX_TTL_SECONDS,
   type DestinationTunnelSelectors,
 } from '@limrun/api';
 import { BaseCommand } from '../../../base-command';
@@ -21,9 +22,17 @@ import { parseTunnelSelectors } from '../../../lib/tunnel-process';
 /** Bind listeners on the instance run unprivileged; system ports are refused. */
 const ANDROID_MIN_ROUTE_PORT = 1024;
 
-export function validateAndroidTunnelInspectionFlags(inspect: boolean, harPath?: string): void {
+export function validateAndroidTunnelInspectionFlags(
+  inspect: boolean,
+  harPath?: string,
+  persist = false,
+  ttlSeconds?: number,
+): void {
   if (harPath && !inspect) {
     throw new Error('--har cannot be combined with --no-inspect.');
+  }
+  if (ttlSeconds !== undefined && !persist) {
+    throw new Error('--ttl is only valid with --persist.');
   }
 }
 
@@ -40,6 +49,7 @@ export default class AndroidTunnel extends BaseCommand {
   static examples = [
     '<%= config.bin %> android tunnel --selector localhost:8080 --id <instance-ID>',
     '<%= config.bin %> android tunnel --selector "*.corp.example" --detach',
+    '<%= config.bin %> android tunnel --selector "*.api.example" --persist --ttl 604800',
     '<%= config.bin %> android tunnel status --id <instance-ID>',
     '<%= config.bin %> android tunnel stop --id <instance-ID>',
   ];
@@ -74,6 +84,16 @@ export default class AndroidTunnel extends BaseCommand {
     har: Flags.string({
       description: 'Capture inspected HTTP traffic as HAR 1.2 at this path.',
     }),
+    persist: Flags.boolean({
+      description: 'Persist a body-inclusive network log as a session artifact.',
+      default: false,
+    }),
+    ttl: Flags.integer({
+      description: 'Persisted network-log lifetime in seconds (default 259200; maximum 2592000).',
+      min: 1,
+      max: DESTINATION_TUNNEL_MAX_TTL_SECONDS,
+      dependsOn: ['persist'],
+    }),
     'har-body-limit': Flags.integer({
       description: 'Maximum captured bytes per request or response body.',
       default: DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
@@ -99,7 +119,12 @@ export default class AndroidTunnel extends BaseCommand {
       this.error('--detach cannot be combined with internal --serve mode.');
     }
     try {
-      validateAndroidTunnelInspectionFlags(flags.inspect, flags.har);
+      validateAndroidTunnelInspectionFlags(
+        flags.inspect || flags.persist,
+        flags.har,
+        flags.persist,
+        flags.ttl,
+      );
     } catch (error) {
       this.error(error instanceof Error ? error.message : String(error));
     }
@@ -112,7 +137,9 @@ export default class AndroidTunnel extends BaseCommand {
         const resolvedInstance = this.resolveAndroidInstance(flags.id);
         await serveTunnelDetached(
           this.tunnelContext(resolvedInstance.id, selectors, flags.verbose ? 'debug' : 'info', undefined, {
-            inspect: flags.inspect,
+            inspect: flags.inspect || flags.persist,
+            persist: flags.persist,
+            ...(flags.ttl === undefined ? {} : { ttlSeconds: flags.ttl }),
             ...(flags.har ? { harPath: path.resolve(flags.har) } : {}),
             harBodyLimit: flags['har-body-limit'],
           }),
@@ -127,7 +154,9 @@ export default class AndroidTunnel extends BaseCommand {
       if (flags.detach) {
         await startTunnelDetached({
           ...this.tunnelContext(resolvedInstance.id, selectors, 'info', flags['api-key'], {
-            inspect: flags.inspect,
+            inspect: flags.inspect || flags.persist,
+            persist: flags.persist,
+            ...(flags.ttl === undefined ? {} : { ttlSeconds: flags.ttl }),
             ...(flags.har ? { harPath: path.resolve(flags.har) } : {}),
             harBodyLimit: flags['har-body-limit'],
           }),
@@ -143,7 +172,9 @@ export default class AndroidTunnel extends BaseCommand {
             : 'info',
             undefined,
             {
-              inspect: flags.inspect,
+              inspect: flags.inspect || flags.persist,
+              persist: flags.persist,
+              ...(flags.ttl === undefined ? {} : { ttlSeconds: flags.ttl }),
               ...(flags.har ? { harPath: path.resolve(flags.har) } : {}),
               harBodyLimit: flags['har-body-limit'],
             },
@@ -158,7 +189,13 @@ export default class AndroidTunnel extends BaseCommand {
     selectors: DestinationTunnelSelectors,
     logLevel: TunnelLogLevel,
     apiKey?: string,
-    inspection: { inspect: boolean; harPath?: string; harBodyLimit: number } = {
+    inspection: {
+      inspect: boolean;
+      persist?: boolean;
+      ttlSeconds?: number;
+      harPath?: string;
+      harBodyLimit: number;
+    } = {
       inspect: true,
       harBodyLimit: DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
     },

@@ -1,5 +1,4 @@
-import { Limrun } from '@limrun/api';
-import { createInstanceClient } from '@limrun/api';
+import { DestinationTunnelHARAssembler, Limrun, createInstanceClient } from '@limrun/api';
 
 const apiKey = process.env['LIM_API_KEY'];
 
@@ -26,25 +25,39 @@ const client = await createInstanceClient({
   token: androidInstance.status.token,
 });
 
-const { address, close } = await client.startAdbTunnel();
-console.log(`ADB connected on ${address.address}:${address.port}`);
-console.log('You can run `adb devices` to see the connected device');
-console.log('Press Ctrl+C to exit or it will automatically close in 30 seconds');
+const assembler = new DestinationTunnelHARAssembler();
+const tunnel = await client.startTunnel({
+  selectors: ['*.example.test'],
+  inspection: {
+    enabled: true,
+    captureBodies: true,
+    persist: true,
+    ttlSeconds: 72 * 60 * 60,
+  },
+  onInspectionEvent: (event) => {
+    const entry = assembler.add(event);
+    if (entry) {
+      console.log(`${entry.request.method} ${entry.request.url} -> ${entry.response.status}`);
+    }
+  },
+});
+console.log(`Destination tunnel ${tunnel.tunnelId} is capturing network traffic`);
+console.log('Press Ctrl+C to stop or it will automatically close in 30 seconds');
 
 process.on('SIGINT', () => {
-  console.log('Closing the ADB tunnel');
-  close();
+  console.log('Closing the destination tunnel');
+  tunnel.close();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  console.log('Closing the ADB tunnel');
-  close();
+  console.log('Closing the destination tunnel');
+  tunnel.close();
   process.exit(0);
 });
 
 await new Promise((resolve) => setTimeout(resolve, 30_000));
-console.log('Closing the ADB tunnel');
-close();
+console.log('Closing the destination tunnel');
+tunnel.close();
 await limrun.androidInstances.delete(androidInstance.metadata.id);
 console.log('Deleted instance');

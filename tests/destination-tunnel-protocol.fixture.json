@@ -9,6 +9,8 @@
     "maxWindowIncrement": 2147483647,
     "defaultMaxBodyBytes": 10485760,
     "maxBodyBytes": 67108864,
+    "defaultInspectionTTLSeconds": 259200,
+    "maxInspectionTTLSeconds": 2592000,
     "connID": {
       "jsonType": "integer",
       "minimum": 0,
@@ -455,10 +457,12 @@
       "inspection": {
         "enabled": false,
         "captureBodies": false,
-        "maxBodyBytes": 10485760
+        "maxBodyBytes": 10485760,
+        "persist": false,
+        "ttlSeconds": 259200
       },
-      "canonicalJson": "{\"version\":1,\"selectors\":[\"localhost:3000\"],\"inspection\":{\"enabled\":false,\"captureBodies\":false,\"maxBodyBytes\":10485760}}",
-      "sha256": "9a25cd54325c405ca51dfe6a6b609161ffaa730bf0927f3da8d2d82bcc394459"
+      "canonicalJson": "{\"version\":1,\"selectors\":[\"localhost:3000\"],\"inspection\":{\"enabled\":false,\"captureBodies\":false,\"maxBodyBytes\":10485760,\"persist\":false,\"ttlSeconds\":259200}}",
+      "sha256": "4ee21ba346d8798a4de0e7a96f9f230510c6f73a292b364bcaaac8fb87bcbeeb"
     },
     {
       "name": "mixed selectors",
@@ -466,10 +470,12 @@
       "inspection": {
         "enabled": true,
         "captureBodies": false,
-        "maxBodyBytes": 10485760
+        "maxBodyBytes": 10485760,
+        "persist": true,
+        "ttlSeconds": 604800
       },
-      "canonicalJson": "{\"version\":1,\"selectors\":[\"*.corp.example\",\"10.20.30.40:8000\",\"api.internal\"],\"inspection\":{\"enabled\":true,\"captureBodies\":false,\"maxBodyBytes\":10485760}}",
-      "sha256": "d2967a671dc65c2edac4c8b7f8208e86c027126d75fe4025a02b15b81247911f"
+      "canonicalJson": "{\"version\":1,\"selectors\":[\"*.corp.example\",\"10.20.30.40:8000\",\"api.internal\"],\"inspection\":{\"enabled\":true,\"captureBodies\":false,\"maxBodyBytes\":10485760,\"persist\":true,\"ttlSeconds\":604800}}",
+      "sha256": "d99138b30aae243276d53f9a16bcf2fcc51a55a265eefc20688f767a04ff4b5e"
     },
     {
       "name": "domains only",
@@ -477,10 +483,12 @@
       "inspection": {
         "enabled": true,
         "captureBodies": true,
-        "maxBodyBytes": 2097152
+        "maxBodyBytes": 2097152,
+        "persist": false,
+        "ttlSeconds": 259200
       },
-      "canonicalJson": "{\"version\":1,\"selectors\":[\"db.internal\"],\"inspection\":{\"enabled\":true,\"captureBodies\":true,\"maxBodyBytes\":2097152}}",
-      "sha256": "e349e2e5368820dcfafeae7241a057c8e27ac83312e41f6822ef1f27c2ce5ee6"
+      "canonicalJson": "{\"version\":1,\"selectors\":[\"db.internal\"],\"inspection\":{\"enabled\":true,\"captureBodies\":true,\"maxBodyBytes\":2097152,\"persist\":false,\"ttlSeconds\":259200}}",
+      "sha256": "18d9ab8960865cdae278cc86107cd6c550b133e732d40cdb01c5d44d2005941c"
     }
   ],
   "openAllowedCases": [
@@ -545,7 +553,9 @@
         "inspection": {
           "enabled": false,
           "captureBodies": false,
-          "maxBodyBytes": 10485760
+          "maxBodyBytes": 10485760,
+          "persist": false,
+          "ttlSeconds": 259200
         },
         "window": 1048576
       }
@@ -559,7 +569,9 @@
         "inspection": {
           "enabled": true,
           "captureBodies": false,
-          "maxBodyBytes": 10485760
+          "maxBodyBytes": 10485760,
+          "persist": false,
+          "ttlSeconds": 259200
         },
         "window": 1048576
       }
@@ -634,7 +646,7 @@
         "selectors": [
           { "id": "selector-1", "kind": "route", "value": "localhost:3000" }
         ],
-        "configHash": "9a25cd54325c405ca51dfe6a6b609161ffaa730bf0927f3da8d2d82bcc394459"
+        "configHash": "4ee21ba346d8798a4de0e7a96f9f230510c6f73a292b364bcaaac8fb87bcbeeb"
       }
     },
     {
@@ -670,7 +682,7 @@
             "value": "*.corp.example"
           }
         ],
-        "configHash": "cef2758748eb9bbbc94a7643f36dc5b968e6fc2a6b13cfa0ee8b1ce182c0ef56"
+        "configHash": "07ea88c0a508d9ecf911938e459a3c517b7b5fcbee4efad13e340426ee313315"
       }
     },
     {
@@ -754,7 +766,9 @@
         "inspection": {
           "enabled": false,
           "captureBodies": false,
-          "maxBodyBytes": 10485760
+          "maxBodyBytes": 10485760,
+          "persist": false,
+          "ttlSeconds": 259200
         },
         "window": 1048576,
         "futureDiagnostic": "ignored"
@@ -766,7 +780,9 @@
         "inspection": {
           "enabled": false,
           "captureBodies": false,
-          "maxBodyBytes": 10485760
+          "maxBodyBytes": 10485760,
+          "persist": false,
+          "ttlSeconds": 259200
         },
         "window": 1048576
       }
@@ -781,7 +797,7 @@
         "selectors": [
           { "id": "selector-1", "kind": "route", "value": "localhost:3000" }
         ],
-        "configHash": "9a25cd54325c405ca51dfe6a6b609161ffaa730bf0927f3da8d2d82bcc394459",
+        "configHash": "4ee21ba346d8798a4de0e7a96f9f230510c6f73a292b364bcaaac8fb87bcbeeb",
         "futureDiagnostic": "ignored"
       },
       "decoded": {
@@ -791,7 +807,7 @@
         "selectors": [
           { "id": "selector-1", "kind": "route", "value": "localhost:3000" }
         ],
-        "configHash": "9a25cd54325c405ca51dfe6a6b609161ffaa730bf0927f3da8d2d82bcc394459"
+        "configHash": "4ee21ba346d8798a4de0e7a96f9f230510c6f73a292b364bcaaac8fb87bcbeeb"
       }
     }
   ]
