@@ -34,9 +34,17 @@ try {
   await client.launchApp('com.apple.Preferences');
   console.log('Launched Settings');
 
-  // Wait for Settings to render before tapping into General.
-  await sleep(1000);
-  await client.tapElement({ AXLabel: 'General' });
+  // Settings renders asynchronously; retry the tap until the row appears.
+  const tapDeadline = Date.now() + 15_000;
+  for (;;) {
+    try {
+      await client.tapElement({ AXLabel: 'General' });
+      break;
+    } catch (error) {
+      if (Date.now() > tapDeadline) throw error;
+      await sleep(1000);
+    }
+  }
   console.log('Opened General in Settings');
 
   // Open Safari to apple.com from the simulator.
@@ -56,6 +64,7 @@ try {
   console.log('Stopped recording and saved to video.mp4');
 } catch (error) {
   console.error('Error:', error);
+  process.exitCode = 1;
 } finally {
   client.disconnect();
   console.log('\nDisconnected from instance');
