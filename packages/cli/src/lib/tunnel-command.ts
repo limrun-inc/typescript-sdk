@@ -75,15 +75,13 @@ export type TunnelLogLevel = 'debug' | 'info' | 'none';
  */
 export function tunnelClientFacade(
   client: {
-    startTunnel: (
-      options: {
-        selectors: DestinationTunnelSelectors;
-        logLevel?: TunnelLogLevel;
-        inspection?: Partial<DestinationTunnelInspectionConfig>;
-        onInspectionEvent?: DestinationTunnelInspectionEventCallback;
-        onInspectionError?: DestinationTunnelInspectionErrorCallback;
-      },
-    ) => Promise<TunnelGeneration>;
+    startTunnel: (options: {
+      selectors: DestinationTunnelSelectors;
+      logLevel?: TunnelLogLevel;
+      inspection?: Partial<DestinationTunnelInspectionConfig>;
+      onInspectionEvent?: DestinationTunnelInspectionEventCallback;
+      onInspectionError?: DestinationTunnelInspectionErrorCallback;
+    }) => Promise<TunnelGeneration>;
     getTunnelStatus: () => Promise<DestinationTunnelStatus>;
     stopTunnel: (tunnelId: string) => Promise<void>;
   },

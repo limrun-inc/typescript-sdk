@@ -228,9 +228,7 @@ describe('destination tunnel route contract', () => {
       encodeDestinationTunnelClientMessage({
         type: 'start',
         version: DESTINATION_TUNNEL_VERSION,
-        selectors: routes.map(
-          ({ host, port }) => `${host.includes(':') ? `[${host}]` : host}:${port}`,
-        ),
+        selectors: routes.map(({ host, port }) => `${host.includes(':') ? `[${host}]` : host}:${port}`),
         inspection: disabledDestinationTunnelInspection(),
         window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       }),
@@ -309,24 +307,20 @@ describe('destination tunnel selector contract', () => {
   });
 
   test('applies the Android minimum route port policy when requested', () => {
-    expect(() =>
-      validateDestinationTunnelSelectors(
-        ['localhost:80'],
-        { minRoutePort: 1024 },
-      ),
-    ).toThrow(expect.objectContaining<Partial<DestinationTunnelSelectorError>>({ code: 'invalid_port' }));
-    expect(
-      validateDestinationTunnelSelectors(
-        ['localhost:8080'],
-        { minRoutePort: 1024 },
-      ),
-    ).toEqual(['localhost:8080']);
+    expect(() => validateDestinationTunnelSelectors(['localhost:80'], { minRoutePort: 1024 })).toThrow(
+      expect.objectContaining<Partial<DestinationTunnelSelectorError>>({ code: 'invalid_port' }),
+    );
+    expect(validateDestinationTunnelSelectors(['localhost:8080'], { minRoutePort: 1024 })).toEqual([
+      'localhost:8080',
+    ]);
   });
 
   test('assigns ordered 1-based selector IDs', () => {
-    expect(
-      destinationTunnelSelectorIds(['localhost:8080', '*.corp.example', 'db.internal']),
-    ).toEqual(['selector-1', 'selector-2', 'selector-3']);
+    expect(destinationTunnelSelectorIds(['localhost:8080', '*.corp.example', 'db.internal'])).toEqual([
+      'selector-1',
+      'selector-2',
+      'selector-3',
+    ]);
   });
 
   test.each(fixture.configHashCases)('pins config hash for $name', ({ selectors, inspection, sha256 }) => {
@@ -461,7 +455,12 @@ describe('destination tunnel selector contract', () => {
         version: 1,
         tunnelId: 'tunnel-1',
         selectors: [
-          { id: 'selector-1', kind: 'route', value: 'localhost:1', binds: [{ address: 'x', status: 'nope' }] },
+          {
+            id: 'selector-1',
+            kind: 'route',
+            value: 'localhost:1',
+            binds: [{ address: 'x', status: 'nope' }],
+          },
         ],
         configHash: 'hash',
       }),

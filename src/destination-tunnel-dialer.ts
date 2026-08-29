@@ -885,7 +885,6 @@ export function classifyOpenFailure(error: NodeJS.ErrnoException): DestinationTu
   }
 }
 
-
 function positiveInteger(value: number, name: string): number {
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error(`${name} must be a positive integer`);

@@ -116,9 +116,7 @@ function readSelectorReport(value: unknown, expectedId: string): DestinationTunn
     id,
     kind,
     value: readNonEmptyString(report, 'value'),
-    ...(report['binds'] === undefined ?
-      {}
-    : { binds: readArray(report, 'binds').map(readBindReport) }),
+    ...(report['binds'] === undefined ? {} : { binds: readArray(report, 'binds').map(readBindReport) }),
   };
 }
 

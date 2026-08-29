@@ -206,9 +206,10 @@ describe('tunnel process state', () => {
   });
 
   test('formats every selector kind for display', () => {
-    expect(
-      formatTunnelSelectors(['localhost:8080', '*.corp.example']),
-    ).toEqual(['localhost:8080', '*.corp.example']);
+    expect(formatTunnelSelectors(['localhost:8080', '*.corp.example'])).toEqual([
+      'localhost:8080',
+      '*.corp.example',
+    ]);
   });
 
   test('forwards an explicit API key only through the child environment', () => {
