@@ -5,13 +5,13 @@
 // persisted JSONL artifacts.
 
 /** The kind of a persisted session capture. */
-export type SessionArtifactKind = 'recording' | 'appLog' | 'eventLog';
+export type SessionArtifactKind = 'recording' | 'appLog' | 'eventLog' | 'networkLog';
 
 /**
  * One persisted session capture of an instance: a video recording, an app log
- * capture, or a coalesced event log. Returned by the director's
- * GET /v1/{ios,android}_instances/{id}/session_artifacts endpoint, optionally
- * narrowed with its kind query parameter.
+ * capture, a coalesced event log, or a HAR network log. Returned by the
+ * director's GET /v1/{ios,android}_instances/{id}/session_artifacts endpoint,
+ * optionally narrowed with its kind query parameter.
  */
 export interface SessionArtifact {
   id: string;
@@ -20,6 +20,12 @@ export interface SessionArtifact {
 
   /** Bundle id (iOS) or package name (Android) for app log captures. */
   bundleId?: string;
+
+  /** Destination tunnel that produced a networkLog artifact. */
+  tunnelId?: string;
+
+  /** Canonical selectors captured by a networkLog artifact. */
+  selectors?: string[];
 
   startedAt?: string;
 
@@ -32,7 +38,7 @@ export interface SessionArtifact {
 
   /**
    * Short-lived presigned GET URL for the raw artifact: MP4 for recordings,
-   * JSONL for app logs and event logs.
+   * JSONL for app logs and event logs, HAR for network logs.
    */
   downloadUrl: string;
 }

@@ -1179,6 +1179,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         case 'terminateAppResult':
         case 'watchAppResult':
         case 'unwatchAppResult':
+        case 'listAppsResult':
         case 'playOnMicrophoneResult':
         case 'cameraControlResult':
         case 'adbShellResult':

@@ -7,11 +7,6 @@ export { APIPromise } from './core/api-promise';
 export { Limrun, type ClientOptions } from './client';
 export { PagePromise } from './core/pagination';
 export * from './instance-client';
-export {
-  type SessionArtifact,
-  type SessionArtifactKind,
-  type SessionArtifactListParams,
-} from './session-artifacts';
 export * as Ios from './ios-client';
 export {
   isTerminalDestinationTunnelError,

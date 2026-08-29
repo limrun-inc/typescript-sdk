@@ -6,7 +6,6 @@ import { Items, type ItemsParams, PagePromise } from '../core/pagination';
 import { buildHeaders } from '../internal/headers';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
-import type { SessionArtifact, SessionArtifactListParams } from '../session-artifacts';
 
 export class IosInstances extends APIResource {
   /**
@@ -42,20 +41,6 @@ export class IosInstances extends APIResource {
    */
   get(id: string, options?: RequestOptions): APIPromise<IosInstance> {
     return this._client.get(path`/v1/ios_instances/${id}`, options);
-  }
-
-  /**
-   * List persisted session artifacts, including HAR network logs.
-   */
-  listSessionArtifacts(
-    id: string,
-    query: SessionArtifactListParams | null | undefined = {},
-    options?: RequestOptions,
-  ): APIPromise<SessionArtifact[]> {
-    return this._client.get(path`/v1/ios_instances/${id}/session_artifacts`, {
-      query,
-      ...options,
-    });
   }
 }
 

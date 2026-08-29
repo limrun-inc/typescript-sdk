@@ -19,9 +19,7 @@ artifact.
 Persisted captures can be listed later (even after instance termination):
 
 ```ts
-const logs = await limrun.androidInstances.listSessionArtifacts(instanceId, {
-  kind: 'networkLog',
-});
+const logs = await limrun.androidInstances.listSessionArtifacts(instanceId, 'networkLog');
 console.log(logs[0]?.downloadUrl);
 ```
 

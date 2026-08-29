@@ -27,7 +27,7 @@ describe('session artifact resources', () => {
       },
     });
 
-    const artifacts = await client[resourceName].listSessionArtifacts(id, { kind: 'networkLog' });
+    const artifacts = await client[resourceName].listSessionArtifacts(id, 'networkLog');
 
     expect(requestedURL?.pathname).toBe(pathname);
     expect(requestedURL?.searchParams.get('kind')).toBe('networkLog');
