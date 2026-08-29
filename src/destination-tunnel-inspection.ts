@@ -1,63 +1,27 @@
 import { WebSocket, type RawData } from 'ws';
 import type {
-  Cache as HARCache,
-  Content as HARContent,
-  Cookie as HARCookie,
-  Entry as HAREntry,
-  Header as HARHeader,
-  Request as HARRequest,
-  Response as HARResponse,
-  Timings as HARTimings,
+  Cache,
+  CacheDetails,
+  Content,
+  Cookie,
+  Entry,
+  Header,
+  Param,
+  PostData,
+  QueryString,
+  Request,
+  Response,
+  Timings,
 } from 'har-format';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import { DestinationTunnelProtocolError } from './destination-tunnel';
 
 export const DESTINATION_TUNNEL_INSPECTION_BINARY_VERSION = 1;
 
-export type DestinationTunnelInspectionNameValue = HARHeader;
-
-export interface DestinationTunnelInspectionCookie extends HARCookie {
-  sameSite?: string;
-}
-
-export interface DestinationTunnelInspectionPostData {
-  mimeType?: string;
-  params?: DestinationTunnelInspectionNameValue[];
-}
-
-export interface DestinationTunnelInspectionContent extends Omit<HARContent, 'mimeType'> {
-  mimeType?: string;
-}
-
-export interface DestinationTunnelInspectionRequest
-  extends Omit<HARRequest, 'headers' | 'queryString' | 'cookies' | 'postData'> {
-  headers: DestinationTunnelInspectionNameValue[];
-  queryString: DestinationTunnelInspectionNameValue[];
-  cookies: DestinationTunnelInspectionCookie[];
-  postData?: DestinationTunnelInspectionPostData;
-}
-
-export interface DestinationTunnelInspectionResponse
-  extends Omit<HARResponse, 'headers' | 'cookies' | 'content'> {
-  headers: DestinationTunnelInspectionNameValue[];
-  cookies: DestinationTunnelInspectionCookie[];
-  content: DestinationTunnelInspectionContent;
-  trailers?: DestinationTunnelInspectionNameValue[];
-}
-
-export type DestinationTunnelInspectionTimings = Required<
-  Pick<HARTimings, 'blocked' | 'dns' | 'connect' | 'ssl' | 'send' | 'wait' | 'receive'>
->;
-
-export interface DestinationTunnelInspectionComplete
-  extends Omit<HAREntry, 'request' | 'response' | 'cache' | 'timings'> {
+export interface DestinationTunnelInspectionExtension {
   requestId: string;
   tunnelId: string;
   selectorId: string;
-  request: DestinationTunnelInspectionRequest;
-  response: DestinationTunnelInspectionResponse;
-  cache: HARCache;
-  timings: DestinationTunnelInspectionTimings;
   protocol: string;
   tls: boolean;
   grpc?: boolean;
@@ -65,20 +29,26 @@ export interface DestinationTunnelInspectionComplete
   error?: string;
   requestBodyTruncated?: boolean;
   responseBodyTruncated?: boolean;
+  responseTrailers?: Header[];
+  responseCookieSameSite?: Array<{ index: number; value: string }>;
 }
+
+export type DestinationTunnelInspectionComplete = Entry & {
+  _limrun: DestinationTunnelInspectionExtension;
+};
 
 export type DestinationTunnelInspectionMetadataEvent =
   | {
       type: 'request';
       sequence: number;
       requestId: string;
-      data: DestinationTunnelInspectionRequest;
+      data: Request;
     }
   | {
       type: 'response';
       sequence: number;
       requestId: string;
-      data: DestinationTunnelInspectionResponse;
+      data: Response;
     }
   | {
       type: 'complete';
@@ -389,84 +359,129 @@ function readComplete(
   record: Record<string, unknown>,
   envelopeRequestId: string,
 ): DestinationTunnelInspectionComplete {
-  const requestId = readString(record, 'requestId');
-  if (requestId !== envelopeRequestId) {
+  const extension = readExtension(readRecord(record['_limrun'], 'inspection extension'));
+  if (extension.requestId !== envelopeRequestId) {
     throw new DestinationTunnelProtocolError('inspection complete request ID does not match its envelope');
   }
   return {
-    requestId,
-    tunnelId: readString(record, 'tunnelId'),
-    selectorId: readString(record, 'selectorId'),
     startedDateTime: readDateTime(record, 'startedDateTime'),
     time: readFiniteNumber(record, 'time'),
     request: readRequest(readRecord(record['request'], 'inspection request')),
     response: readResponse(readRecord(record['response'], 'inspection response')),
-    cache: readRecord(record['cache'], 'inspection cache') as HARCache,
+    cache: readCache(readRecord(record['cache'], 'inspection cache')),
     timings: readTimings(readRecord(record['timings'], 'inspection timings')),
-    protocol: readString(record, 'protocol'),
-    tls: readBoolean(record, 'tls'),
+    ...readOptionalString(record, 'pageref'),
     ...readOptionalString(record, 'serverIPAddress'),
     ...readOptionalString(record, 'connection'),
+    ...readOptionalString(record, 'comment'),
+    _limrun: extension,
+  };
+}
+
+function readExtension(record: Record<string, unknown>): DestinationTunnelInspectionExtension {
+  return {
+    requestId: readString(record, 'requestId'),
+    tunnelId: readString(record, 'tunnelId'),
+    selectorId: readString(record, 'selectorId'),
+    protocol: readString(record, 'protocol'),
+    tls: readBoolean(record, 'tls'),
     ...readOptionalBoolean(record, 'grpc'),
     ...readOptionalBoolean(record, 'webSocket'),
     ...readOptionalString(record, 'error'),
     ...readOptionalBoolean(record, 'requestBodyTruncated'),
     ...readOptionalBoolean(record, 'responseBodyTruncated'),
+    ...(record['responseTrailers'] === undefined ?
+      {}
+    : { responseTrailers: readHeaders(record['responseTrailers'], 'response trailers') }),
+    ...(record['responseCookieSameSite'] === undefined ?
+      {}
+    : { responseCookieSameSite: readResponseCookieSameSite(record['responseCookieSameSite']) }),
   };
 }
 
-function readRequest(record: Record<string, unknown>): DestinationTunnelInspectionRequest {
+function readRequest(record: Record<string, unknown>): Request {
   return {
     method: readString(record, 'method'),
     url: readString(record, 'url'),
     httpVersion: readString(record, 'httpVersion'),
-    headers: readNameValues(record['headers'], 'request headers'),
-    queryString: readNameValues(record['queryString'], 'request query string'),
+    headers: readHeaders(record['headers'], 'request headers'),
+    queryString: readQueryStrings(record['queryString']),
     cookies: readCookies(record['cookies']),
     headersSize: readFiniteNumber(record, 'headersSize'),
     bodySize: readFiniteNumber(record, 'bodySize'),
     ...(record['postData'] === undefined ?
       {}
     : { postData: readPostData(readRecord(record['postData'], 'request post data')) }),
+    ...readOptionalString(record, 'comment'),
   };
 }
 
-function readResponse(record: Record<string, unknown>): DestinationTunnelInspectionResponse {
+function readResponse(record: Record<string, unknown>): Response {
   return {
     status: readFiniteNumber(record, 'status'),
     statusText: readString(record, 'statusText'),
     httpVersion: readString(record, 'httpVersion'),
-    headers: readNameValues(record['headers'], 'response headers'),
+    headers: readHeaders(record['headers'], 'response headers'),
     cookies: readCookies(record['cookies']),
     content: readContent(readRecord(record['content'], 'response content')),
     redirectURL: readString(record, 'redirectURL'),
     headersSize: readFiniteNumber(record, 'headersSize'),
     bodySize: readFiniteNumber(record, 'bodySize'),
-    ...(record['trailers'] === undefined ?
-      {}
-    : { trailers: readNameValues(record['trailers'], 'response trailers') }),
+    ...readOptionalString(record, 'comment'),
   };
 }
 
-function readPostData(record: Record<string, unknown>): DestinationTunnelInspectionPostData {
-  return {
-    ...readOptionalString(record, 'mimeType'),
-    ...(record['params'] === undefined ?
-      {}
-    : { params: readNameValues(record['params'], 'post data params') }),
+function readPostData(record: Record<string, unknown>): PostData {
+  const hasParams = record['params'] !== undefined;
+  const hasText = record['text'] !== undefined;
+  if (hasParams === hasText) {
+    throw new DestinationTunnelProtocolError('request post data must contain exactly one of params or text');
+  }
+  const common = {
+    mimeType: readString(record, 'mimeType'),
+    ...readOptionalString(record, 'comment'),
   };
+  return hasParams ?
+      { ...common, params: readParams(record['params']) }
+    : { ...common, text: readString(record, 'text') };
 }
 
-function readContent(record: Record<string, unknown>): DestinationTunnelInspectionContent {
+function readContent(record: Record<string, unknown>): Content {
   return {
     size: readFiniteNumber(record, 'size'),
-    ...readOptionalString(record, 'mimeType'),
+    mimeType: readString(record, 'mimeType'),
+    ...readOptionalFiniteNumber(record, 'compression'),
     ...readOptionalString(record, 'text'),
     ...readOptionalString(record, 'encoding'),
+    ...readOptionalString(record, 'comment'),
   };
 }
 
-function readTimings(record: Record<string, unknown>): DestinationTunnelInspectionTimings {
+function readCache(record: Record<string, unknown>): Cache {
+  return {
+    ...(record['beforeRequest'] === undefined ?
+      {}
+    : { beforeRequest: readCacheDetailsOrNull(record['beforeRequest'], 'cache beforeRequest') }),
+    ...(record['afterRequest'] === undefined ?
+      {}
+    : { afterRequest: readCacheDetailsOrNull(record['afterRequest'], 'cache afterRequest') }),
+    ...readOptionalString(record, 'comment'),
+  };
+}
+
+function readCacheDetailsOrNull(value: unknown, name: string): CacheDetails | null {
+  if (value === null) return null;
+  const record = readRecord(value, name);
+  return {
+    lastAccess: readDateTime(record, 'lastAccess'),
+    eTag: readString(record, 'eTag'),
+    hitCount: readFiniteNumber(record, 'hitCount'),
+    ...readOptionalDateTime(record, 'expires'),
+    ...readOptionalString(record, 'comment'),
+  };
+}
+
+function readTimings(record: Record<string, unknown>): Timings {
   return {
     blocked: readFiniteNumber(record, 'blocked'),
     dns: readFiniteNumber(record, 'dns'),
@@ -475,10 +490,11 @@ function readTimings(record: Record<string, unknown>): DestinationTunnelInspecti
     send: readFiniteNumber(record, 'send'),
     wait: readFiniteNumber(record, 'wait'),
     receive: readFiniteNumber(record, 'receive'),
+    ...readOptionalString(record, 'comment'),
   };
 }
 
-function readNameValues(value: unknown, name: string): DestinationTunnelInspectionNameValue[] {
+function readHeaders(value: unknown, name: string): Header[] {
   // Go's nil slices encode as null on failures that occur before response
   // headers exist. Normalize those valid zero values to empty HAR arrays.
   if (value === null) return [];
@@ -487,11 +503,46 @@ function readNameValues(value: unknown, name: string): DestinationTunnelInspecti
   }
   return value.map((item) => {
     const record = readRecord(item, name);
-    return { name: readString(record, 'name'), value: readString(record, 'value') };
+    return {
+      name: readString(record, 'name'),
+      value: readString(record, 'value'),
+      ...readOptionalString(record, 'comment'),
+    };
   });
 }
 
-function readCookies(value: unknown): DestinationTunnelInspectionCookie[] {
+function readQueryStrings(value: unknown): QueryString[] {
+  if (value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new DestinationTunnelProtocolError('request query string must be an array');
+  }
+  return value.map((item) => {
+    const record = readRecord(item, 'request query string');
+    return {
+      name: readString(record, 'name'),
+      value: readString(record, 'value'),
+      ...readOptionalString(record, 'comment'),
+    };
+  });
+}
+
+function readParams(value: unknown): Param[] {
+  if (!Array.isArray(value)) {
+    throw new DestinationTunnelProtocolError('post data params must be an array');
+  }
+  return value.map((item) => {
+    const record = readRecord(item, 'post data param');
+    return {
+      name: readString(record, 'name'),
+      ...readOptionalString(record, 'value'),
+      ...readOptionalString(record, 'fileName'),
+      ...readOptionalString(record, 'contentType'),
+      ...readOptionalString(record, 'comment'),
+    };
+  });
+}
+
+function readCookies(value: unknown): Cookie[] {
   if (value === null) return [];
   if (!Array.isArray(value)) {
     throw new DestinationTunnelProtocolError('inspection cookies must be an array');
@@ -503,11 +554,27 @@ function readCookies(value: unknown): DestinationTunnelInspectionCookie[] {
       value: readString(record, 'value'),
       ...readOptionalString(record, 'path'),
       ...readOptionalString(record, 'domain'),
-      ...readOptionalString(record, 'expires'),
+      ...readOptionalDateTime(record, 'expires'),
       ...readOptionalBoolean(record, 'httpOnly'),
       ...readOptionalBoolean(record, 'secure'),
-      ...readOptionalString(record, 'sameSite'),
+      ...readOptionalString(record, 'comment'),
     };
+  });
+}
+
+function readResponseCookieSameSite(value: unknown): Array<{ index: number; value: string }> {
+  if (!Array.isArray(value)) {
+    throw new DestinationTunnelProtocolError('response cookie same-site metadata must be an array');
+  }
+  return value.map((item) => {
+    const record = readRecord(item, 'response cookie same-site metadata');
+    const index = record['index'];
+    if (!Number.isSafeInteger(index) || (index as number) < 0) {
+      throw new DestinationTunnelProtocolError(
+        'response cookie same-site index must be a safe non-negative integer',
+      );
+    }
+    return { index: index as number, value: readString(record, 'value') };
   });
 }
 
@@ -569,6 +636,17 @@ function readOptionalString(record: Record<string, unknown>, key: string): { [K 
 
 function readOptionalBoolean(record: Record<string, unknown>, key: string): { [K in typeof key]?: boolean } {
   return record[key] === undefined ? {} : { [key]: readBoolean(record, key) };
+}
+
+function readOptionalFiniteNumber(
+  record: Record<string, unknown>,
+  key: string,
+): { [K in typeof key]?: number } {
+  return record[key] === undefined ? {} : { [key]: readFiniteNumber(record, key) };
+}
+
+function readOptionalDateTime(record: Record<string, unknown>, key: string): { [K in typeof key]?: string } {
+  return record[key] === undefined ? {} : { [key]: readDateTime(record, key) };
 }
 
 function decodeUtf8(value: Buffer, name: string): string {

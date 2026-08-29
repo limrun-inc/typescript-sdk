@@ -37,8 +37,11 @@ describe('tunnel HAR capture', () => {
       requestId: 'request-2',
       data: {
         ...completeEvent(),
-        requestId: 'request-2',
-        tunnelId: 'tunnel-2',
+        _limrun: {
+          ...completeEvent()._limrun,
+          requestId: 'request-2',
+          tunnelId: 'tunnel-2',
+        },
       },
     });
 
@@ -50,14 +53,31 @@ describe('tunnel HAR capture', () => {
     const har = JSON.parse(fs.readFileSync(harPath, 'utf8'));
     expect(har.log.version).toBe('1.2');
     expect(har.log.entries).toHaveLength(2);
-    expect(har.log.entries[0].request.postData).toMatchObject({
-      text: 'hell',
+    expect(har.log.entries[0].request.postData).toEqual({
+      mimeType: 'application/octet-stream',
+      text: 'aGVsbA==',
     });
-    expect(har.log.entries[0].response.content).toMatchObject({
+    expect(har.log.entries[0].request.postData).not.toHaveProperty('_encoding');
+    expect(har.log.entries[0].response.content).toEqual({
+      size: 3,
+      mimeType: 'application/octet-stream',
       text: 'AAEC',
       encoding: 'base64',
     });
-    expect(har.log.entries[0]._limrun).toMatchObject({
+    expect(har.log.entries[0].response).not.toHaveProperty('trailers');
+    expect(har.log.entries[0].response).not.toHaveProperty('_trailers');
+    expect(har.log.entries[0].response.cookies[0]).not.toHaveProperty('sameSite');
+    expect(har.log.entries[0]._limrun).toEqual({
+      requestId: 'request-1',
+      tunnelId: 'tunnel-1',
+      selectorId: 'domain-1',
+      protocol: 'http/1.1',
+      tls: true,
+      grpc: false,
+      webSocket: true,
+      responseTrailers: [{ name: 'grpc-status', value: '0' }],
+      responseCookieSameSite: [{ index: 0, value: 'Strict' }],
+      requestBodyEncoding: 'base64',
       requestBodyTruncated: true,
       responseBodyTruncated: false,
       gap: true,
@@ -93,7 +113,9 @@ describe('tunnel HAR capture', () => {
     expect(formatInspectionSummary(completeEvent())).toBe(
       'POST https://example.test/full?q=secret 201 25ms 3 B',
     );
-    expect(formatInspectionSummary({ ...completeEvent(), error: 'connection reset' })).toBe(
+    const failed = completeEvent();
+    failed._limrun.error = 'connection reset';
+    expect(formatInspectionSummary(failed)).toBe(
       'POST https://example.test/full?q=secret ERROR connection reset 25ms 3 B',
     );
   });
@@ -109,9 +131,6 @@ function bodyEvent(
 
 function completeEvent(): DestinationTunnelInspectionComplete {
   return {
-    requestId: 'request-1',
-    tunnelId: 'tunnel-1',
-    selectorId: 'domain-1',
     startedDateTime: '2026-08-29T09:00:00.000Z',
     time: 25,
     request: {
@@ -119,14 +138,14 @@ function completeEvent(): DestinationTunnelInspectionComplete {
       url: 'https://example.test/full?q=secret',
       httpVersion: 'HTTP/1.1',
       headers: [
-        { name: 'Content-Type', value: 'text/plain' },
+        { name: 'Content-Type', value: 'application/octet-stream' },
         { name: 'Cookie', value: 'private=1' },
       ],
       queryString: [{ name: 'q', value: 'secret' }],
       cookies: [{ name: 'private', value: '1' }],
       headersSize: 50,
       bodySize: 5,
-      postData: { mimeType: 'text/plain' },
+      postData: { mimeType: 'application/octet-stream', text: 'original body' },
     },
     response: {
       status: 201,
@@ -141,7 +160,16 @@ function completeEvent(): DestinationTunnelInspectionComplete {
     },
     cache: {},
     timings: { blocked: 0, dns: 1, connect: 2, ssl: 3, send: 4, wait: 10, receive: 5 },
-    protocol: 'http/1.1',
-    tls: true,
+    _limrun: {
+      requestId: 'request-1',
+      tunnelId: 'tunnel-1',
+      selectorId: 'domain-1',
+      protocol: 'http/1.1',
+      tls: true,
+      grpc: false,
+      webSocket: true,
+      responseTrailers: [{ name: 'grpc-status', value: '0' }],
+      responseCookieSameSite: [{ index: 0, value: 'Strict' }],
+    },
   };
 }

@@ -64,6 +64,38 @@ describe('destination tunnel inspection stream', () => {
         JSON.stringify({ ...complete, data: { ...complete.data, request: { method: 'GET' } } }),
       ),
     ).toThrow(DestinationTunnelProtocolError);
+    expect(() =>
+      decodeDestinationTunnelInspectionMetadataFrame(
+        JSON.stringify({
+          ...complete,
+          data: {
+            ...complete.data,
+            response: {
+              ...complete.data.response,
+              content: { size: 2 },
+            },
+          },
+        }),
+      ),
+    ).toThrow('mimeType must be a string');
+    expect(() =>
+      decodeDestinationTunnelInspectionMetadataFrame(
+        JSON.stringify({
+          ...complete,
+          data: {
+            ...complete.data,
+            request: {
+              ...complete.data.request,
+              postData: {
+                mimeType: 'text/plain',
+                params: [],
+                text: 'body',
+              },
+            },
+          },
+        }),
+      ),
+    ).toThrow('request post data must contain exactly one of params or text');
   });
 
   test('accepts Go nil response slices on pre-response failures', () => {
@@ -73,7 +105,7 @@ describe('destination tunnel inspection stream', () => {
         ...complete,
         data: {
           ...complete.data,
-          error: 'dial failed',
+          _limrun: { ...complete.data._limrun, error: 'dial failed' },
           response: {
             ...complete.data.response,
             status: 0,
@@ -87,7 +119,7 @@ describe('destination tunnel inspection stream', () => {
     if (decoded.type !== 'complete') throw new Error('expected complete');
     expect(decoded.data.response.headers).toEqual([]);
     expect(decoded.data.response.cookies).toEqual([]);
-    expect(decoded.data.error).toBe('dial failed');
+    expect(decoded.data._limrun.error).toBe('dial failed');
   });
 
   test('reconnects independently, resumes, and surfaces an explicit gap', async () => {
@@ -173,9 +205,6 @@ function completeFrame(sequence: number) {
     type: 'complete' as const,
     requestId: 'request-1',
     data: {
-      requestId: 'request-1',
-      tunnelId: 'tunnel-1',
-      selectorId: 'domain-1',
       startedDateTime: '2026-08-29T09:00:00.000Z',
       time: 12,
       request: {
@@ -187,7 +216,7 @@ function completeFrame(sequence: number) {
         cookies: [],
         headersSize: 30,
         bodySize: 4,
-        postData: { mimeType: 'text/plain' },
+        postData: { mimeType: 'text/plain', text: 'body' },
       },
       response: {
         status: 200,
@@ -202,8 +231,15 @@ function completeFrame(sequence: number) {
       },
       cache: {},
       timings: { blocked: 0, dns: 1, connect: 2, ssl: 3, send: 1, wait: 4, receive: 1 },
-      protocol: 'http/1.1',
-      tls: true,
+      _limrun: {
+        requestId: 'request-1',
+        tunnelId: 'tunnel-1',
+        selectorId: 'domain-1',
+        protocol: 'http/1.1',
+        tls: true,
+        responseTrailers: [{ name: 'grpc-status', value: '0' }],
+        responseCookieSameSite: [{ index: 0, value: 'Lax' }],
+      },
     },
   };
 }

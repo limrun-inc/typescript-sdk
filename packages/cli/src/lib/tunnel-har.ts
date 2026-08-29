@@ -1,19 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
-import type {
-  Entry as HAREntry,
-  Header as HARHeader,
-  PostData as HARPostData,
-  Request as HARRequest,
-  Response as HARResponse,
-} from 'har-format';
+import type { Entry as HAREntry, Request as HARRequest, Response as HARResponse } from 'har-format';
 import {
   type DestinationTunnelInspectionComplete,
   type DestinationTunnelInspectionEvent,
+  type DestinationTunnelInspectionExtension,
   type DestinationTunnelInspectionGap,
-  type DestinationTunnelInspectionRequest,
-  type DestinationTunnelInspectionResponse,
 } from '@limrun/api';
 
 interface PendingCapture {
@@ -26,12 +19,14 @@ interface PendingCapture {
   gap: boolean;
 }
 
-type TunnelHarPostData = HARPostData & { _encoding?: string };
-type TunnelHarRequest = Omit<HARRequest, 'postData'> & { postData?: TunnelHarPostData };
-type TunnelHarResponse = HARResponse & { _trailers?: HARHeader[] };
-interface TunnelHarEntry extends HAREntry {
-  _limrun: Record<string, unknown>;
-}
+type TunnelHarExtension = DestinationTunnelInspectionExtension & {
+  requestBodyEncoding?: 'base64';
+  requestBodyTruncated: boolean;
+  responseBodyTruncated: boolean;
+  gap: boolean;
+};
+
+type TunnelHarEntry = HAREntry & { _limrun: TunnelHarExtension };
 
 type SpoolRecord =
   | { type: 'entry'; entry: TunnelHarEntry }
@@ -163,7 +158,7 @@ export function createTunnelHarRecorder(harPath: string, bodyLimit: number): Tun
 }
 
 export function formatInspectionSummary(event: DestinationTunnelInspectionComplete): string {
-  const outcome = event.error ? `ERROR ${event.error}` : String(event.response.status);
+  const outcome = event._limrun.error ? `ERROR ${event._limrun.error}` : String(event.response.status);
   return `${event.request.method} ${event.request.url} ${outcome} ${event.time}ms ${event.response.bodySize} B`;
 }
 
@@ -173,28 +168,24 @@ function makeHarEntry(
 ): TunnelHarEntry {
   const requestBody = Buffer.concat(capture.requestBody, capture.requestBytes);
   const responseBody = Buffer.concat(capture.responseBody, capture.responseBytes);
-  const request = addRequestBody(complete.request, requestBody);
+  const { request, encoding: requestBodyEncoding } = addRequestBody(complete.request, requestBody);
   const response = addResponseBody(complete.response, responseBody);
-  const requestTruncated = complete.requestBodyTruncated === true || capture.requestTruncated;
-  const responseTruncated = complete.responseBodyTruncated === true || capture.responseTruncated;
+  const requestTruncated = complete._limrun.requestBodyTruncated === true || capture.requestTruncated;
+  const responseTruncated = complete._limrun.responseBodyTruncated === true || capture.responseTruncated;
   return {
+    ...(complete.pageref === undefined ? {} : { pageref: complete.pageref }),
     startedDateTime: complete.startedDateTime,
     time: complete.time,
     request,
     response,
     cache: complete.cache,
     timings: complete.timings,
-    ...(complete.serverIPAddress ? { serverIPAddress: complete.serverIPAddress } : {}),
-    ...(complete.connection ? { connection: complete.connection } : {}),
+    ...(complete.serverIPAddress === undefined ? {} : { serverIPAddress: complete.serverIPAddress }),
+    ...(complete.connection === undefined ? {} : { connection: complete.connection }),
+    ...(complete.comment === undefined ? {} : { comment: complete.comment }),
     _limrun: {
-      requestId: complete.requestId,
-      tunnelId: complete.tunnelId,
-      selectorId: complete.selectorId,
-      protocol: complete.protocol,
-      tls: complete.tls,
-      ...(complete.grpc ? { grpc: true } : {}),
-      ...(complete.webSocket ? { webSocket: true } : {}),
-      ...(complete.error ? { error: complete.error } : {}),
+      ...complete._limrun,
+      ...(requestBodyEncoding ? { requestBodyEncoding } : {}),
       requestBodyTruncated: requestTruncated,
       responseBodyTruncated: responseTruncated,
       gap: capture.gap,
@@ -202,37 +193,37 @@ function makeHarEntry(
   };
 }
 
-function addRequestBody(request: DestinationTunnelInspectionRequest, body: Buffer): TunnelHarRequest {
-  const { postData, ...base } = request;
-  const result: TunnelHarRequest = base;
+function addRequestBody(request: HARRequest, body: Buffer): { request: HARRequest; encoding?: 'base64' } {
+  if (body.length === 0) return { request };
   const mimeType = request.postData?.mimeType ?? headerValue(request.headers, 'content-type');
-  if (body.length > 0) {
-    const encoded = encodedBody(body, mimeType);
-    result.postData = {
-      mimeType: mimeType ?? '',
-      text: encoded.text,
-      ...(encoded.encoding ? { _encoding: encoded.encoding } : {}),
-    };
-  } else if (postData?.params) {
-    result.postData = { mimeType: mimeType ?? '', params: postData.params };
-  }
-  return result;
-}
-
-function addResponseBody(response: DestinationTunnelInspectionResponse, body: Buffer): TunnelHarResponse {
-  const { trailers, ...base } = response;
+  const encoded = encodedBody(body, mimeType);
   return {
-    ...base,
-    content: {
-      ...response.content,
-      mimeType: response.content.mimeType ?? '',
-      ...(body.length > 0 ? encodedBody(body, response.content.mimeType) : {}),
+    request: {
+      ...request,
+      postData: {
+        mimeType: mimeType ?? '',
+        text: encoded.text,
+      },
     },
-    ...(trailers ? { _trailers: trailers } : {}),
+    ...(encoded.encoding ? { encoding: encoded.encoding } : {}),
   };
 }
 
-function encodedBody(body: Buffer, contentType: string | undefined): { text: string; encoding?: string } {
+function addResponseBody(response: HARResponse, body: Buffer): HARResponse {
+  if (body.length === 0) return response;
+  const content = { ...response.content };
+  delete content.text;
+  delete content.encoding;
+  return {
+    ...response,
+    content: {
+      ...content,
+      ...encodedBody(body, response.content.mimeType),
+    },
+  };
+}
+
+function encodedBody(body: Buffer, contentType: string | undefined): { text: string; encoding?: 'base64' } {
   if (isTextualContentType(contentType)) {
     return { text: body.toString('utf8') };
   }
