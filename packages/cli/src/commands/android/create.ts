@@ -5,6 +5,8 @@ import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { openInBrowser } from '../../lib/browser';
+import { parseDurationSeconds } from '../../lib/duration';
+import { startPersistedCaptures } from '../../lib/session-captures';
 import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-instances';
 
 export default class AndroidCreate extends BaseCommand {
@@ -20,6 +22,7 @@ export default class AndroidCreate extends BaseCommand {
     '<%= config.bin %> android create --jurisdiction us --label env=dev',
     '<%= config.bin %> android create --no-connect',
     '<%= config.bin %> android create --daemon=false',
+    '<%= config.bin %> android create --record --events --app-logs com.example.myapp --persist-ttl 24h',
   ];
 
   static flags = {
@@ -92,6 +95,25 @@ export default class AndroidCreate extends BaseCommand {
       default: true,
       allowNo: true,
     }),
+    record: Flags.boolean({
+      description:
+        'Start a persisted session recording as soon as the instance is ready. It keeps recording until stopped or the instance terminates; list results with `lim android recordings`.',
+      default: false,
+    }),
+    'app-logs': Flags.string({
+      description:
+        'Start a persisted app log capture for this package name as soon as the instance is ready. List results with `lim android app-logs`.',
+    }),
+    events: Flags.boolean({
+      description:
+        'Start a persisted event log capture (taps, scrolls, commands) as soon as the instance is ready. List results with `lim android events`.',
+      default: false,
+    }),
+    'persist-ttl': Flags.string({
+      description:
+        'How long captures started by --record, --app-logs, and --events are kept, as a duration like 72h or 90m.',
+      default: '72h',
+    }),
   };
 
   async run(): Promise<void> {
@@ -102,6 +124,9 @@ export default class AndroidCreate extends BaseCommand {
       );
     }
     this.setParsedFlags(flags);
+    const wantsCaptures = flags.record || Boolean(flags['app-logs']) || flags.events;
+    // Parsed before the instance is created so a bad TTL fails before billing.
+    const captureTtlSeconds = wantsCaptures ? parseDurationSeconds(flags['persist-ttl']) : 0;
 
     await this.withAuth(async () => {
       // Upload local files first. Uploaded files are installed via their
@@ -167,6 +192,31 @@ export default class AndroidCreate extends BaseCommand {
       const instance = await this.client.androidInstances.create(params);
       const signedStreamUrl = this.signedStreamUrl(instance.status);
       registerCreatedInstance(instance);
+
+      if (wantsCaptures) {
+        if (!instance.status.apiUrl) {
+          this.error(`Instance ${instance.metadata.id} has no apiUrl yet, cannot start captures.`);
+        }
+        const { createInstanceClient } = await import('@limrun/api');
+        const captureClient = await createInstanceClient({
+          apiUrl: instance.status.apiUrl,
+          token: instance.status.token,
+        });
+        try {
+          const started = await startPersistedCaptures(captureClient, {
+            record: flags.record,
+            appLogsBundleId: flags['app-logs'],
+            events: flags.events,
+            ttlSeconds: captureTtlSeconds,
+          });
+          for (const capture of started) {
+            this.info(`Started persisted ${capture} (kept for ${flags['persist-ttl']}).`);
+          }
+        } finally {
+          captureClient.disconnect();
+        }
+      }
+
       this.info(`Created a new instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.info(`Instance ID: ${instance.metadata.id}`);
       this.info(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);

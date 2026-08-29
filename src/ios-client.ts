@@ -25,6 +25,11 @@ import {
   type StartForwardHttpProxyOptions,
 } from './http-proxy';
 import { startXcrunShim as startClientXcrunShim } from './ios-shim';
+import { persistFields, type PersistOption } from './internal/persist-option';
+import { streamSessionEntries } from './internal/session-stream';
+import type { SessionLogLine, SessionEvent } from './resources/session-artifacts';
+
+export { type PersistOption } from './internal/persist-option';
 
 /**
  * Connection state of the instance client
@@ -236,6 +241,8 @@ export type InstalledApp = {
   bundleId: string;
   name: string;
   installType: string;
+  /** App icon as a base64-encoded 64px PNG; absent when the runtime could not extract one. */
+  icon?: string;
 };
 
 export type LsofEntry = {
@@ -677,7 +684,8 @@ export type InstanceClient = {
 
   /**
    * List installed apps on the simulator
-   * @returns Array of installed apps with bundleId, name, and installType
+   * @returns Array of installed apps with bundleId, name, installType, and,
+   *   when available, a small base64 PNG icon
    */
   listApps: () => Promise<InstalledApp[]>;
 
@@ -758,8 +766,11 @@ export type InstanceClient = {
    * Start recording simulator video. Use stopRecording() to stop the recording.
    * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
    * The server default is `5`.
+   * With `persist`, the completed recording is uploaded to Limrun's bucket
+   * when the recording stops or the instance terminates; list it with
+   * `iosInstances.listRecordings`.
    */
-  startRecording: (options?: { quality?: RecordingQuality }) => Promise<void>;
+  startRecording: (options?: { quality?: RecordingQuality; persist?: PersistOption }) => Promise<void>;
 
   /**
    * Stop the active server-side recording.
@@ -770,6 +781,54 @@ export type InstanceClient = {
    * Note that the download URL is only valid while the instance is running.
    */
   stopRecording: (saveTo: { presignedUrl?: string; localPath?: string }) => Promise<string>;
+
+  /**
+   * Start capturing an app's logs (one JSONL object per line) for the given
+   * bundle id. One app log capture runs at a time; the server rejects a
+   * second start. With `persist`, the capture is uploaded to Limrun's bucket
+   * when it stops or the instance terminates; list it with
+   * `iosInstances.listAppLogs`.
+   */
+  startAppLogCapture: (options: { bundleId: string; persist?: PersistOption }) => Promise<void>;
+
+  /** Stop the active app log capture. */
+  stopAppLogCapture: () => Promise<void>;
+
+  /**
+   * Start capturing the coalesced event log of user and agent actions (one
+   * JSONL object per line). One event capture runs at a time; the server
+   * rejects a second start. With `persist`, the capture is uploaded to
+   * Limrun's bucket when it stops or the instance terminates; list it with
+   * `iosInstances.listEvents`.
+   */
+  startEventCapture: (options?: { persist?: PersistOption }) => Promise<void>;
+
+  /** Stop the active event capture. */
+  stopEventCapture: () => Promise<void>;
+
+  /**
+   * Tail the live app log stream fed by {@link startAppLogCapture}. On
+   * connect the instance replays its recent buffer (up to 1000 lines), then
+   * delivers lines as they are captured; a dropped connection reconnects
+   * and resumes exactly where it left off, so every line is delivered once.
+   * The stream is independent of this client's websocket and survives
+   * {@link disconnect}; `onError` fires at most once, after the stream has
+   * kept failing for several minutes (e.g. the instance was deleted), and
+   * the stream is closed. Returns a function that closes the stream.
+   */
+  streamAppLogCapture: (handlers: {
+    onLine: (line: SessionLogLine) => void;
+    onError?: (error: Error) => void;
+  }) => () => void;
+
+  /**
+   * Tail the live coalesced event log fed by {@link startEventCapture}.
+   * Same delivery and lifecycle semantics as {@link streamAppLogCapture}.
+   */
+  streamEventCapture: (handlers: {
+    onEvent: (event: SessionEvent) => void;
+    onError?: (error: Error) => void;
+  }) => () => void;
 
   /**
    * Play an audio file as the simulator's microphone input. Stage the file on
@@ -1861,6 +1920,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }),
       startVideoRecordingResult: () => undefined,
       stopVideoRecordingResult: () => undefined,
+      startAppLogCaptureResult: () => undefined,
+      stopAppLogCaptureResult: () => undefined,
+      startEventCaptureResult: () => undefined,
+      stopEventCaptureResult: () => undefined,
       cameraControlResult: () => undefined,
       playOnMicrophoneResult: (msg): IosPlayOnMicrophoneResult => ({
         duration: msg.duration ?? 0,
@@ -2055,6 +2118,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             performActions,
             startRecording,
             stopRecording,
+            startAppLogCapture,
+            stopAppLogCapture,
+            startEventCapture,
+            stopEventCapture,
+            streamAppLogCapture,
+            streamEventCapture,
             playOnMicrophone,
             stopMicrophonePlayback,
             microphoneStatus,
@@ -2390,8 +2459,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<PerformActionsResult>('performActions', { actions }, undefined, timeoutMs);
     };
 
-    const startRecording = async (opts?: { quality?: RecordingQuality }): Promise<void> => {
-      const request: { quality?: RecordingQuality } = {};
+    const startRecording = async (opts?: {
+      quality?: RecordingQuality;
+      persist?: PersistOption;
+    }): Promise<void> => {
+      const request: { quality?: RecordingQuality; persist?: boolean; ttlSeconds?: number } = {
+        ...persistFields(opts?.persist),
+      };
       if (opts?.quality !== undefined) {
         if (!Number.isInteger(opts.quality) || opts.quality < 5 || opts.quality > 10) {
           throw new Error('quality must be one of: 5, 6, 7, 8, 9, 10');
@@ -2400,6 +2474,50 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }
       await sendRequest<void>('startVideoRecording', request);
     };
+
+    const startAppLogCapture = async (opts: { bundleId: string; persist?: PersistOption }): Promise<void> => {
+      if (!opts.bundleId) {
+        throw new Error('bundleId must be a non-empty string');
+      }
+      await sendRequest<void>('startAppLogCapture', {
+        bundleId: opts.bundleId,
+        ...persistFields(opts.persist),
+      });
+    };
+
+    const stopAppLogCapture = async (): Promise<void> => {
+      await sendRequest<void>('stopAppLogCapture');
+    };
+
+    const startEventCapture = async (opts?: { persist?: PersistOption }): Promise<void> => {
+      await sendRequest<void>('startEventCapture', { ...persistFields(opts?.persist) });
+    };
+
+    const stopEventCapture = async (): Promise<void> => {
+      await sendRequest<void>('stopEventCapture');
+    };
+
+    const streamAppLogCapture = (handlers: {
+      onLine: (line: SessionLogLine) => void;
+      onError?: (error: Error) => void;
+    }): (() => void) =>
+      streamSessionEntries<SessionLogLine>({
+        url: `${options.apiUrl}/session/applogs/events`,
+        token: options.token,
+        onEntry: handlers.onLine,
+        onError: handlers.onError,
+      });
+
+    const streamEventCapture = (handlers: {
+      onEvent: (event: SessionEvent) => void;
+      onError?: (error: Error) => void;
+    }): (() => void) =>
+      streamSessionEntries<SessionEvent>({
+        url: `${options.apiUrl}/session/events/events`,
+        token: options.token,
+        onEntry: handlers.onEvent,
+        onError: handlers.onError,
+      });
 
     const stopRecording = async (saveTo: { presignedUrl?: string; localPath?: string }): Promise<string> => {
       await sendRequest<void>('stopVideoRecording', {

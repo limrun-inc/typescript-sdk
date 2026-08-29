@@ -7,7 +7,9 @@ import { openInBrowser } from '../../lib/browser';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 import { formatDurationMs } from '../../lib/duration';
 import { resolveKeychainEncryptionKey } from '../../lib/keychain-encryption-key';
-import { type SimulatorAttachResult } from '@limrun/api';
+import { parseDurationSeconds } from '../../lib/duration';
+import { startPersistedCaptures } from '../../lib/session-captures';
+import { Ios, type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 
 export default class IosCreate extends BaseCommand {
@@ -25,6 +27,7 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create --install-url https://example.t3.storage.dev/MyApp.ipa?...',
     '<%= config.bin %> ios create --attach <xcode-instance-ID>',
     '<%= config.bin %> ios create --force-bundle-id com.example.myapp',
+    '<%= config.bin %> ios create --record --events --app-logs com.example.myapp --persist-ttl 24h',
   ];
 
   static args = {
@@ -119,6 +122,25 @@ export default class IosCreate extends BaseCommand {
       default: true,
       allowNo: true,
     }),
+    record: Flags.boolean({
+      description:
+        'Start a persisted session recording as soon as the instance is ready. It keeps recording until stopped or the instance terminates; list results with `lim ios recordings`.',
+      default: false,
+    }),
+    'app-logs': Flags.string({
+      description:
+        'Start a persisted app log capture for this bundle ID as soon as the instance is ready. List results with `lim ios app-logs`.',
+    }),
+    events: Flags.boolean({
+      description:
+        'Start a persisted event log capture (taps, scrolls, commands) as soon as the instance is ready. List results with `lim ios events`.',
+      default: false,
+    }),
+    'persist-ttl': Flags.string({
+      description:
+        'How long captures started by --record, --app-logs, and --events are kept, as a duration like 72h or 90m.',
+      default: '72h',
+    }),
   };
 
   async run(): Promise<void> {
@@ -135,6 +157,9 @@ export default class IosCreate extends BaseCommand {
     if (args.xcodeId && !flags.attach) {
       this.error('Xcode target argument requires --attach.');
     }
+    const wantsCaptures = flags.record || Boolean(flags['app-logs']) || flags.events;
+    // Parsed before the instance is created so a bad TTL fails before billing.
+    const captureTtlSeconds = wantsCaptures ? parseDurationSeconds(flags['persist-ttl']) : 0;
     const hasKeychainInitialAssets = Boolean(flags.keychain?.length || flags['keychain-url']?.length);
     if (!hasKeychainInitialAssets && (flags['encryption-key'] || flags['encryption-key-stdin'])) {
       this.error('Use --encryption-key or --encryption-key-stdin only with --keychain or --keychain-url.');
@@ -240,6 +265,29 @@ export default class IosCreate extends BaseCommand {
       const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
       const signedStreamUrl = this.signedStreamUrl(instance.status);
       registerCreatedInstance(instance);
+
+      if (wantsCaptures) {
+        if (!instance.status.apiUrl) {
+          this.error(`Instance ${instance.metadata.id} has no apiUrl yet, cannot start captures.`);
+        }
+        const captureClient = await Ios.createInstanceClient({
+          apiUrl: instance.status.apiUrl,
+          token: instance.status.token,
+        });
+        try {
+          const started = await startPersistedCaptures(captureClient, {
+            record: flags.record,
+            appLogsBundleId: flags['app-logs'],
+            events: flags.events,
+            ttlSeconds: captureTtlSeconds,
+          });
+          for (const capture of started) {
+            this.info(`Started persisted ${capture} (kept for ${flags['persist-ttl']}).`);
+          }
+        } finally {
+          captureClient.disconnect();
+        }
+      }
       let createdXcode: Awaited<ReturnType<typeof this.client.xcodeInstances.create>> | undefined;
       const cleanup = async () => {
         try {

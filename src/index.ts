@@ -7,11 +7,6 @@ export { APIPromise } from './core/api-promise';
 export { Limrun, type ClientOptions } from './client';
 export { PagePromise } from './core/pagination';
 export * from './instance-client';
-export {
-  type SessionArtifact,
-  type SessionArtifactKind,
-  type SessionArtifactListParams,
-} from './session-artifacts';
 export * as Ios from './ios-client';
 export {
   isTerminalDestinationTunnelError,
@@ -136,6 +131,14 @@ export {
   type GradleBuildLog,
 } from './resources/gradle-instances-helpers';
 export { type AssetUploadOptions } from './resources/daemon-client-shared';
+export {
+  type SessionArtifact,
+  type SessionArtifactKind,
+  type SessionLogLine,
+  type SessionEvent,
+  type SessionEventType,
+} from './resources/session-artifacts';
+export { SessionStreamLostError } from './internal/session-stream';
 export {
   LIMRUN_DIR,
   TRY_IMPORT_LINE,

@@ -23,6 +23,11 @@ import {
   type DestinationTunnelStatus,
 } from './internal/destination-tunnel-management';
 import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
+import { persistFields, type PersistOption } from './internal/persist-option';
+import { streamSessionEntries } from './internal/session-stream';
+import type { SessionLogLine, SessionEvent } from './resources/session-artifacts';
+
+export { type PersistOption } from './internal/persist-option';
 
 const ANDROID_RECORDING_PATH = '/data/local/tmp/recordings/video_recording.mp4';
 const ANDROID_SIGNALING_PATH = '/ws';
@@ -165,6 +170,12 @@ export type InstanceClient = {
    */
   terminateApp: (packageName: string) => Promise<void>;
   /**
+   * List the launchable apps installed on the instance, each with its package
+   * name (as `bundleId`), display name, install type (`user` or `system`),
+   * and, when available, a small base64 PNG icon.
+   */
+  listApps: () => Promise<InstalledApp[]>;
+  /**
    * Watch an app's exit/crash without launching it through {@link launchApp},
    * e.g. for apps that are already running or will be opened via a deeplink
    * (see {@link openUrl}). The callback fires once, with the same payload as a
@@ -276,8 +287,11 @@ export type InstanceClient = {
    * Start recording device video. Use stopRecording() to finish the recording.
    * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
    * The server default is `5`.
+   * With `persist`, the completed recording is uploaded to Limrun's bucket
+   * when the recording stops or the instance terminates; list it with
+   * `androidInstances.listRecordings`.
    */
-  startRecording: (options?: { quality?: RecordingQuality }) => Promise<void>;
+  startRecording: (options?: { quality?: RecordingQuality; persist?: PersistOption }) => Promise<void>;
   /**
    * Stop the active server-side recording.
    * If `saveTo.presignedUrl` is provided, the server uploads the completed file there before resolving.
@@ -285,6 +299,48 @@ export type InstanceClient = {
    * Returns a download URL for the completed recording.
    */
   stopRecording: (saveTo: { presignedUrl?: string; localPath?: string }) => Promise<string>;
+  /**
+   * Start capturing an app's logcat output (one JSONL object per line) for
+   * the given package name. One app log capture runs at a time; the server
+   * rejects a second start. With `persist`, the capture is uploaded to
+   * Limrun's bucket when it stops or the instance terminates; list it with
+   * `androidInstances.listAppLogs`.
+   */
+  startAppLogCapture: (options: { bundleId: string; persist?: PersistOption }) => Promise<void>;
+  /** Stop the active app log capture. */
+  stopAppLogCapture: () => Promise<void>;
+  /**
+   * Start capturing the coalesced event log of user and agent actions (one
+   * JSONL object per line). One event capture runs at a time; the server
+   * rejects a second start. With `persist`, the capture is uploaded to
+   * Limrun's bucket when it stops or the instance terminates; list it with
+   * `androidInstances.listEvents`.
+   */
+  startEventCapture: (options?: { persist?: PersistOption }) => Promise<void>;
+  /** Stop the active event capture. */
+  stopEventCapture: () => Promise<void>;
+  /**
+   * Tail the live app log stream fed by {@link startAppLogCapture}. On
+   * connect the instance replays its recent buffer (up to 1000 lines), then
+   * delivers lines as they are captured; a dropped connection reconnects
+   * and resumes exactly where it left off, so every line is delivered once.
+   * The stream is independent of this client's websocket and survives
+   * {@link disconnect}; `onError` fires at most once, after the stream has
+   * kept failing for several minutes (e.g. the instance was deleted), and
+   * the stream is closed. Returns a function that closes the stream.
+   */
+  streamAppLogCapture: (handlers: {
+    onLine: (line: SessionLogLine) => void;
+    onError?: (error: Error) => void;
+  }) => () => void;
+  /**
+   * Tail the live coalesced event log fed by {@link startEventCapture}.
+   * Same delivery and lifecycle semantics as {@link streamAppLogCapture}.
+   */
+  streamEventCapture: (handlers: {
+    onEvent: (event: SessionEvent) => void;
+    onError?: (error: Error) => void;
+  }) => () => void;
   /** Send an application-level keepAlive message on the control websocket. */
   keepAlive: () => void;
   /**
@@ -563,6 +619,18 @@ export type LaunchAppResult = {
   packageName: string;
 };
 
+/**
+ * One entry of {@link InstanceClient.listApps}. The package name is carried
+ * as `bundleId` so the shape matches iOS's listApps.
+ */
+export type InstalledApp = {
+  bundleId: string;
+  name: string;
+  installType: string;
+  /** App icon as a base64-encoded 64px PNG; absent when the runtime could not extract one. */
+  icon?: string;
+};
+
 /** Handle for an app watch registered via {@link InstanceClient.watchApp}. */
 export type AppWatch = {
   /** Identifier of this watch on the server. */
@@ -749,6 +817,13 @@ type WatchAppResultMessage = {
   error?: CommandError;
 };
 
+type ListAppsResultMessage = {
+  type: 'listAppsResult';
+  id: string;
+  payload?: { apps?: InstalledApp[] };
+  error?: CommandError;
+};
+
 type UnwatchAppResultMessage = {
   type: 'unwatchAppResult';
   id: string;
@@ -816,6 +891,34 @@ type StopVideoRecordingResultMessage = {
   error?: CommandError;
 };
 
+type StartAppLogCaptureResultMessage = {
+  type: 'startAppLogCaptureResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
+type StopAppLogCaptureResultMessage = {
+  type: 'stopAppLogCaptureResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
+type StartEventCaptureResultMessage = {
+  type: 'startEventCaptureResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
+type StopEventCaptureResultMessage = {
+  type: 'stopEventCaptureResult';
+  id: string;
+  payload?: EmptyCommandResult;
+  error?: CommandError;
+};
+
 type KnownCommandResultMessage =
   | ScreenshotResultMessage
   | GetElementTreeResultMessage
@@ -830,12 +933,17 @@ type KnownCommandResultMessage =
   | TerminateAppResultMessage
   | WatchAppResultMessage
   | UnwatchAppResultMessage
+  | ListAppsResultMessage
   | PlayOnMicrophoneResultMessage
   | CameraControlResultMessage
   | AdbShellResultMessage
   | SetWifiBandwidthResultMessage
   | StartVideoRecordingResultMessage
-  | StopVideoRecordingResultMessage;
+  | StopVideoRecordingResultMessage
+  | StartAppLogCaptureResultMessage
+  | StopAppLogCaptureResultMessage
+  | StartEventCaptureResultMessage
+  | StopEventCaptureResultMessage;
 
 type ServerMessage =
   | ScreenshotResponse
@@ -858,12 +966,17 @@ type CommandRequestMap = {
   terminateApp: { packageName: string };
   watchApp: { packageName: string; execId: string };
   unwatchApp: { execId: string };
+  listApps: {};
   playOnMicrophone: { path: string; once?: boolean };
   cameraControl: { action: 'setSource'; source: 'video'; arg: string; loop?: boolean } | { action: 'reset' };
   adbShell: { command: string; timeoutMs?: number };
   setWifiBandwidth: WifiBandwidthOptions;
-  startRecording: { quality?: RecordingQuality };
+  startRecording: { quality?: RecordingQuality; persist?: boolean; ttlSeconds?: number };
   stopRecording: { upload?: { presignedUrl: string } };
+  startAppLogCapture: { bundleId: string; persist?: boolean; ttlSeconds?: number };
+  stopAppLogCapture: {};
+  startEventCapture: { persist?: boolean; ttlSeconds?: number };
+  stopEventCapture: {};
 };
 
 type CommandResultMap = {
@@ -880,12 +993,17 @@ type CommandResultMap = {
   terminateApp: { packageName?: string };
   watchApp: { packageName?: string };
   unwatchApp: EmptyCommandResult;
+  listApps: { apps?: InstalledApp[] };
   playOnMicrophone: PlayOnMicrophoneResult;
   cameraControl: EmptyCommandResult;
   adbShell: AdbShellResultMessage;
   setWifiBandwidth: EmptyCommandResult;
   startRecording: EmptyCommandResult;
   stopRecording: EmptyCommandResult;
+  startAppLogCapture: EmptyCommandResult;
+  stopAppLogCapture: EmptyCommandResult;
+  startEventCapture: EmptyCommandResult;
+  stopEventCapture: EmptyCommandResult;
 };
 
 type PendingRequest<T> = {
@@ -1061,12 +1179,17 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         case 'terminateAppResult':
         case 'watchAppResult':
         case 'unwatchAppResult':
+        case 'listAppsResult':
         case 'playOnMicrophoneResult':
         case 'cameraControlResult':
         case 'adbShellResult':
         case 'setWifiBandwidthResult':
         case 'startRecordingResult':
         case 'stopRecordingResult':
+        case 'startAppLogCaptureResult':
+        case 'stopAppLogCaptureResult':
+        case 'startEventCaptureResult':
+        case 'stopEventCaptureResult':
           return 'id' in message && typeof message.id === 'string';
         default:
           return false;
@@ -1333,6 +1456,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             openUrl,
             launchApp,
             terminateApp,
+            listApps,
             watchApp,
             playOnMicrophone,
             pushFile,
@@ -1343,6 +1467,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             setWifiBandwidth,
             startRecording,
             stopRecording,
+            startAppLogCapture,
+            stopAppLogCapture,
+            startEventCapture,
+            stopEventCapture,
+            streamAppLogCapture,
+            streamEventCapture,
             keepAlive,
             disconnect,
             startAdbTunnel,
@@ -1484,6 +1614,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       await sendRequest('terminateApp', { packageName });
     };
 
+    const listApps = async (): Promise<InstalledApp[]> => {
+      const result = await sendRequest('listApps', {});
+      return result.apps ?? [];
+    };
+
     const watchApp = async (packageName: string, onExit: LaunchAppExitCallback): Promise<AppWatch> => {
       const { execId } = await withExitCallback('watch', onExit, (execId) =>
         sendRequest('watchApp', { packageName, execId }),
@@ -1600,8 +1735,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       await sendRequest('setWifiBandwidth', request);
     };
 
-    const startRecording = async (recordingOptions?: { quality?: RecordingQuality }): Promise<void> => {
-      const request: CommandRequestMap['startRecording'] = {};
+    const startRecording = async (recordingOptions?: {
+      quality?: RecordingQuality;
+      persist?: PersistOption;
+    }): Promise<void> => {
+      const request: CommandRequestMap['startRecording'] = {
+        ...persistFields(recordingOptions?.persist),
+      };
       if (recordingOptions?.quality !== undefined) {
         if (
           !Number.isInteger(recordingOptions.quality) ||
@@ -1627,6 +1767,53 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }
       return downloadUrl;
     };
+
+    const startAppLogCapture = async (captureOptions: {
+      bundleId: string;
+      persist?: PersistOption;
+    }): Promise<void> => {
+      if (!captureOptions.bundleId) {
+        throw new Error('bundleId must be a non-empty string');
+      }
+      await sendRequest('startAppLogCapture', {
+        bundleId: captureOptions.bundleId,
+        ...persistFields(captureOptions.persist),
+      });
+    };
+
+    const stopAppLogCapture = async (): Promise<void> => {
+      await sendRequest('stopAppLogCapture', {});
+    };
+
+    const startEventCapture = async (captureOptions?: { persist?: PersistOption }): Promise<void> => {
+      await sendRequest('startEventCapture', { ...persistFields(captureOptions?.persist) });
+    };
+
+    const stopEventCapture = async (): Promise<void> => {
+      await sendRequest('stopEventCapture', {});
+    };
+
+    const streamAppLogCapture = (handlers: {
+      onLine: (line: SessionLogLine) => void;
+      onError?: (error: Error) => void;
+    }): (() => void) =>
+      streamSessionEntries<SessionLogLine>({
+        url: `${options.apiUrl}/session/applogs/events`,
+        token: options.token,
+        onEntry: handlers.onLine,
+        onError: handlers.onError,
+      });
+
+    const streamEventCapture = (handlers: {
+      onEvent: (event: SessionEvent) => void;
+      onError?: (error: Error) => void;
+    }): (() => void) =>
+      streamSessionEntries<SessionEvent>({
+        url: `${options.apiUrl}/session/events/events`,
+        token: options.token,
+        onEntry: handlers.onEvent,
+        onError: handlers.onError,
+      });
 
     const keepAlive = (): void => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
