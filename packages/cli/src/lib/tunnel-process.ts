@@ -45,20 +45,42 @@ export interface TunnelProcessPaths {
   cancelled: string;
 }
 
-export function parseTunnelRoute(value: string, options: { minPort?: number } = {}): DestinationTunnelRoute {
+export function parseTunnelSelectors(
+  values: readonly string[],
+  options: { minPort?: number; allowDomains?: boolean } = {},
+): DestinationTunnelSelectors {
+  const routes: DestinationTunnelRoute[] = [];
+  const domains: string[] = [];
+  for (const value of values) {
+    if (value.startsWith('[') || value.includes(':')) {
+      routes.push(parseExactSelector(value, options));
+    } else {
+      if (options.allowDomains === false) {
+        throw new Error(`Invalid selector "${value}"; this tunnel supports only localhost:port or literal IP:port`);
+      }
+      domains.push(parseDomainSelector(value));
+    }
+  }
+  return validateDestinationTunnelSelectors({
+    ...(routes.length > 0 ? { routes } : {}),
+    ...(domains.length > 0 ? { domains } : {}),
+  });
+}
+
+function parseExactSelector(value: string, options: { minPort?: number } = {}): DestinationTunnelRoute {
   let host: string;
   let portText: string;
   if (value.startsWith('[')) {
     const match = /^\[([^\]]+)\]:(\d+)$/.exec(value);
     if (!match?.[1] || !match[2]) {
-      throw new Error(`Invalid route "${value}"; use [IPv6]:port`);
+      throw new Error(`Invalid selector "${value}"; use [IPv6]:port`);
     }
     host = match[1];
     portText = match[2];
   } else {
     const separator = value.lastIndexOf(':');
     if (separator <= 0 || value.indexOf(':') !== separator) {
-      throw new Error(`Invalid route "${value}"; use host:port or [IPv6]:port`);
+      throw new Error(`Invalid selector "${value}"; use localhost:port, IPv4:port, or [IPv6]:port`);
     }
     host = value.slice(0, separator);
     portText = value.slice(separator + 1);
@@ -67,7 +89,7 @@ export function parseTunnelRoute(value: string, options: { minPort?: number } = 
   const port = Number(portText);
   const minPort = options.minPort ?? 1;
   if (!Number.isInteger(port) || port < minPort || port > 65_535) {
-    throw new Error(`Invalid route port in "${value}"; expected ${minPort}-65535`);
+    throw new Error(`Invalid selector port in "${value}"; expected ${minPort}-65535`);
   }
   // Delegate canonicalization to the shared contract validation (DNS-port
   // rejection, localhost lowering, IPv6 canonicalization and IPv4-mapped
@@ -79,18 +101,18 @@ export function parseTunnelRoute(value: string, options: { minPort?: number } = 
     ).routes![0]!;
   } catch (error) {
     throw new Error(
-      `Invalid route "${value}"; expected localhost or a literal IP with an allowed TCP port` +
+      `Invalid selector "${value}"; expected localhost or a literal IP with an allowed TCP port` +
         (error instanceof Error ? ` (${error.message})` : ''),
     );
   }
 }
 
-export function parseTunnelDomain(value: string): string {
+function parseDomainSelector(value: string): string {
   try {
     return validateDestinationTunnelSelectors({ domains: [value] }).domains![0]!;
   } catch (error) {
     throw new Error(
-      `Invalid domain "${value}"; use an exact name like api.corp.example or a wildcard like *.corp.example` +
+      `Invalid selector "${value}"; use an exact domain like api.corp.example or a wildcard like *.corp.example` +
         (error instanceof Error ? ` (${error.message})` : ''),
     );
   }
@@ -107,8 +129,8 @@ export function formatTunnelRoute(route: DestinationTunnelRoute): string {
 
 export function formatTunnelSelectors(selectors: DestinationTunnelSelectors): string[] {
   return [
-    ...(selectors.routes ?? []).map((route) => `route ${formatTunnelRoute(route)}`),
-    ...(selectors.domains ?? []).map((domain) => `domain ${domain}`),
+    ...(selectors.routes ?? []).map(formatTunnelRoute),
+    ...(selectors.domains ?? []),
   ];
 }
 
@@ -149,8 +171,7 @@ export function buildTunnelServeArgs(options: {
     ...(options.product === 'android' && options.harBodyLimit !== undefined ?
       ['--har-body-limit', String(options.harBodyLimit)]
     : []),
-    ...(options.selectors.routes ?? []).flatMap((route) => ['--route', formatTunnelRoute(route)]),
-    ...(options.selectors.domains ?? []).flatMap((domain) => ['--domain', domain]),
+    ...formatTunnelSelectors(options.selectors).flatMap((selector) => ['--selector', selector]),
   ];
 }
 

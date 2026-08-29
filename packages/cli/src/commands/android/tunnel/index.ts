@@ -3,7 +3,6 @@ import path from 'path';
 import {
   DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
   DESTINATION_TUNNEL_MAX_BODY_BYTES,
-  validateDestinationTunnelSelectors,
   type DestinationTunnelSelectors,
 } from '@limrun/api';
 import { BaseCommand } from '../../../base-command';
@@ -17,7 +16,7 @@ import {
   type TunnelClientFacade,
   type TunnelCommandContext,
 } from '../../../lib/tunnel-command';
-import { parseTunnelDomain, parseTunnelRoute } from '../../../lib/tunnel-process';
+import { parseTunnelSelectors } from '../../../lib/tunnel-process';
 
 /** Bind listeners on the instance run unprivileged; system ports are refused. */
 const ANDROID_MIN_ROUTE_PORT = 1024;
@@ -29,18 +28,18 @@ export function validateAndroidTunnelInspectionFlags(inspect: boolean, harPath?:
 }
 
 export default class AndroidTunnel extends BaseCommand {
-  static summary = 'Route declared Android TCP destinations through this machine';
+  static summary = 'Send selected Android TCP destinations through this machine';
   static description =
-    'Start one transparent destination tunnel. Exact --route destinations (localhost:port or IP:port) ' +
+    'Start one transparent destination tunnel. Exact --selector destinations (localhost:port or IP:port) ' +
     'become listeners on the instance, also reachable as 10.0.2.2:<port> following the emulator ' +
-    'convention. --domain destinations are intercepted transparently on the instance and ' +
+    'convention. Domain selectors are intercepted transparently on the instance and ' +
     'dialed from this machine. Use --detach to keep the tunnel running after this command returns. ' +
     'Start the tunnel before launching your app: connections opened earlier keep their original ' +
     'route until they close. ' +
-    'Note: apps that resolve DNS themselves over HTTPS (DoH) bypass --domain interception.';
+    'Note: apps that resolve DNS themselves over HTTPS (DoH) bypass domain interception.';
   static examples = [
-    '<%= config.bin %> android tunnel --route localhost:8080 --id <instance-ID>',
-    '<%= config.bin %> android tunnel --domain "*.corp.example" --detach',
+    '<%= config.bin %> android tunnel --selector localhost:8080 --id <instance-ID>',
+    '<%= config.bin %> android tunnel --selector "*.corp.example" --detach',
     '<%= config.bin %> android tunnel status --id <instance-ID>',
     '<%= config.bin %> android tunnel stop --id <instance-ID>',
   ];
@@ -51,15 +50,11 @@ export default class AndroidTunnel extends BaseCommand {
       description:
         'Android instance ID to target. Defaults to the last created Android instance, but --id is recommended for scripts and agents.',
     }),
-    route: Flags.string({
+    selector: Flags.string({
       description:
-        'Exact TCP destination as localhost:port, IPv4:port, or [IPv6]:port (port >= 1024). Served on the instance as a listener, including on 10.0.2.2. Repeat for more routes.',
+        'Destination: localhost:port, IPv4:port, [IPv6]:port (port >= 1024), exact domain, or wildcard domain. Repeat for more selectors.',
       multiple: true,
-    }),
-    domain: Flags.string({
-      description:
-        'Domain destination, exact (api.corp.example) or wildcard (*.corp.example). Intercepted via instance DNS. Repeat for more domains.',
-      multiple: true,
+      required: true,
     }),
     detach: Flags.boolean({
       description: 'Run in a detached background process and return after READY.',
@@ -108,15 +103,7 @@ export default class AndroidTunnel extends BaseCommand {
     } catch (error) {
       this.error(error instanceof Error ? error.message : String(error));
     }
-    if (!flags.route?.length && !flags.domain?.length) {
-      this.error('Provide at least one --route or --domain destination.');
-    }
-    const selectors = validateDestinationTunnelSelectors({
-      ...(flags.route?.length ?
-        { routes: flags.route.map((route) => parseTunnelRoute(route, { minPort: ANDROID_MIN_ROUTE_PORT })) }
-      : {}),
-      ...(flags.domain?.length ? { domains: flags.domain.map(parseTunnelDomain) } : {}),
-    });
+    const selectors = parseTunnelSelectors(flags.selector, { minPort: ANDROID_MIN_ROUTE_PORT });
 
     if (flags.serve) {
       const owner = flags['tunnel-owner'];

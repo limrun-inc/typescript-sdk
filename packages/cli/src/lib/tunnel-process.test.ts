@@ -16,8 +16,7 @@ import {
   loadTunnelProcess,
   markTunnelProcessCancelled,
   newTunnelOwner,
-  parseTunnelDomain,
-  parseTunnelRoute,
+  parseTunnelSelectors,
   prepareTunnelLog,
   pruneTunnelLogs,
   readTunnelLogTail,
@@ -55,8 +54,8 @@ describe('tunnel process state', () => {
     ['10.20.30.40:8000', { host: '10.20.30.40', port: 8000 }],
     ['[2001:db8::1]:8443', { host: '2001:db8::1', port: 8443 }],
     ['[::ffff:192.0.2.1]:9443', { host: '192.0.2.1', port: 9443 }],
-  ])('parses route %s', (input, expected) => {
-    expect(parseTunnelRoute(input)).toEqual(expected);
+  ])('parses exact selector %s', (input, expected) => {
+    expect(parseTunnelSelectors([input])).toEqual({ routes: [expected] });
   });
 
   test.each([
@@ -68,28 +67,40 @@ describe('tunnel process state', () => {
     '2001:db8::1:443',
     '[::192.0.2.1]:443',
     '[::2]:443',
-  ])('rejects malformed route %s', (input) => {
-    expect(() => parseTunnelRoute(input)).toThrow();
+  ])('rejects malformed selector %s', (input) => {
+    expect(() => parseTunnelSelectors([input])).toThrow();
   });
 
-  test('applies the Android minimum route port', () => {
-    expect(() => parseTunnelRoute('localhost:80', { minPort: 1024 })).toThrow('expected 1024-65535');
-    expect(parseTunnelRoute('localhost:8080', { minPort: 1024 })).toEqual({ host: 'localhost', port: 8080 });
+  test('applies the Android minimum selector port', () => {
+    expect(() => parseTunnelSelectors(['localhost:80'], { minPort: 1024 })).toThrow('expected 1024-65535');
+    expect(parseTunnelSelectors(['localhost:8080'], { minPort: 1024 })).toEqual({
+      routes: [{ host: 'localhost', port: 8080 }],
+    });
   });
 
   test.each([
     ['API.Corp.Example', 'api.corp.example'],
     ['*.Corp.Example', '*.corp.example'],
-  ])('parses domain %s', (input, expected) => {
-    expect(parseTunnelDomain(input)).toBe(expected);
+  ])('parses domain selector %s', (input, expected) => {
+    expect(parseTunnelSelectors([input])).toEqual({ domains: [expected] });
   });
 
   test.each(['corp.example.', 'api.*.example', 'localhost', '192.0.2.1'])(
     'rejects malformed domain %s',
     (input) => {
-      expect(() => parseTunnelDomain(input)).toThrow('Invalid domain');
+      expect(() => parseTunnelSelectors([input])).toThrow('Invalid selector');
     },
   );
+
+  test('parses mixed selectors and rejects domains where unsupported', () => {
+    expect(parseTunnelSelectors(['localhost:8080', '*.corp.example'])).toEqual({
+      routes: [{ host: 'localhost', port: 8080 }],
+      domains: ['*.corp.example'],
+    });
+    expect(() => parseTunnelSelectors(['*.corp.example'], { allowDomains: false })).toThrow(
+      'supports only localhost:port or literal IP:port',
+    );
+  });
 
   test('builds a child command replaying every selector kind', () => {
     const owner = newTunnelOwner();
@@ -116,11 +127,11 @@ describe('tunnel process state', () => {
       '--id',
       INSTANCE_ID,
       `--tunnel-owner=${owner}`,
-      '--route',
+      '--selector',
       '10.20.30.40:8000',
-      '--route',
+      '--selector',
       '[2001:db8::1]:8443',
-      '--domain',
+      '--selector',
       '*.corp.example',
     ]);
   });
@@ -136,7 +147,7 @@ describe('tunnel process state', () => {
       verbose: true,
     });
     expect(args).toContain('--verbose');
-    expect(args.indexOf('--verbose')).toBeLessThan(args.indexOf('--domain'));
+    expect(args.indexOf('--verbose')).toBeLessThan(args.indexOf('--selector'));
   });
 
   test('replays only safe Android inspection and HAR options to the detached child', () => {
@@ -163,7 +174,7 @@ describe('tunnel process state', () => {
     expect(args.join(' ')).not.toContain('token');
   });
 
-  test('builds an iOS child command with routes only', () => {
+  test('builds an iOS child command with selectors', () => {
     const owner = newTunnelOwner();
     expect(
       buildTunnelServeArgs({
@@ -182,7 +193,7 @@ describe('tunnel process state', () => {
       '--id',
       'ios_test_123',
       `--tunnel-owner=${owner}`,
-      '--route',
+      '--selector',
       '10.20.30.40:8000',
     ]);
   });
@@ -205,7 +216,7 @@ describe('tunnel process state', () => {
         routes: [{ host: 'localhost', port: 8080 }],
         domains: ['*.corp.example'],
       }),
-    ).toEqual(['route localhost:8080', 'domain *.corp.example']);
+    ).toEqual(['localhost:8080', '*.corp.example']);
   });
 
   test('forwards an explicit API key only through the child environment', () => {

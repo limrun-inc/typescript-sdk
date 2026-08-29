@@ -1,5 +1,5 @@
 import { Flags } from '@oclif/core';
-import { validateDestinationTunnelSelectors, type DestinationTunnelSelectors } from '@limrun/api';
+import type { DestinationTunnelSelectors } from '@limrun/api';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
 import {
@@ -11,15 +11,15 @@ import {
   type TunnelCommandContext,
   type TunnelLogLevel,
 } from '../../../lib/tunnel-command';
-import { parseTunnelRoute } from '../../../lib/tunnel-process';
+import { parseTunnelSelectors } from '../../../lib/tunnel-process';
 
 export default class IosTunnel extends BaseCommand {
   static summary = 'Expose declared local TCP destinations to the simulator';
   static description =
-    'Start one transparent destination tunnel with exact localhost:port or literal IP:port routes. Use --detach to keep it running after this command returns.';
+    'Start one transparent destination tunnel with exact localhost:port or literal IP:port selectors. Use --detach to keep it running after this command returns.';
   static examples = [
-    '<%= config.bin %> ios tunnel --route localhost:3000 --id <instance-ID>',
-    '<%= config.bin %> ios tunnel --route 10.20.30.40:443 --route 10.20.30.41:8081 --detach',
+    '<%= config.bin %> ios tunnel --selector localhost:3000 --id <instance-ID>',
+    '<%= config.bin %> ios tunnel --selector 10.20.30.40:443 --selector 10.20.30.41:8081 --detach',
     '<%= config.bin %> ios tunnel status --id <instance-ID>',
     '<%= config.bin %> ios tunnel stop --id <instance-ID>',
   ];
@@ -30,9 +30,9 @@ export default class IosTunnel extends BaseCommand {
       description:
         'iOS instance ID to target. Defaults to the last created iOS instance, but --id is recommended for scripts and agents.',
     }),
-    route: Flags.string({
+    selector: Flags.string({
       description:
-        'Exact client-side TCP destination as localhost:port, IPv4:port, or [IPv6]:port. Repeat for more routes.',
+        'Exact client-side TCP destination as localhost:port, IPv4:port, or [IPv6]:port. Repeat for more selectors.',
       multiple: true,
       required: true,
     }),
@@ -63,9 +63,7 @@ export default class IosTunnel extends BaseCommand {
     if (flags.detach && flags.serve) {
       this.error('--detach cannot be combined with internal --serve mode.');
     }
-    const selectors = validateDestinationTunnelSelectors({
-      routes: flags.route.map((route) => parseTunnelRoute(route)),
-    });
+    const selectors = parseTunnelSelectors(flags.selector, { allowDomains: false });
 
     if (flags.serve) {
       const owner = flags['tunnel-owner'];
