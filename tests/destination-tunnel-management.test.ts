@@ -26,7 +26,7 @@ describe('destination tunnel management', () => {
     const lastDialFailure = {
       tunnelId: 'tunnel-1',
       connectionId: 0xffff_ffff,
-      routeId: 'route-3',
+      selectorId: 'selector-3',
       reason: 'connection_refused',
       osCode: 'ECONNREFUSED',
     };
@@ -43,10 +43,15 @@ describe('destination tunnel management', () => {
           active: {
             tunnelId: 'tunnel-1',
             state: 'ready',
-            routes: [
-              { host: 'localhost', port: 3000 },
-              { host: '10.20.30.40', port: 443 },
+            selectors: [
+              { id: 'selector-1', kind: 'route', value: 'localhost:3000' },
+              { id: 'selector-2', kind: 'route', value: '10.20.30.40:443' },
             ],
+            inspection: {
+              enabled: false,
+              captureBodies: false,
+              maxBodyBytes: 10 * 1024 * 1024,
+            },
           },
           lastDialFailure,
         }),
@@ -57,10 +62,15 @@ describe('destination tunnel management', () => {
       active: {
         tunnelId: 'tunnel-1',
         state: 'ready',
-        routes: [
-          { host: 'localhost', port: 3000 },
-          { host: '10.20.30.40', port: 443 },
+        selectors: [
+          { id: 'selector-1', kind: 'route', value: 'localhost:3000' },
+          { id: 'selector-2', kind: 'route', value: '10.20.30.40:443' },
         ],
+        inspection: {
+          enabled: false,
+          captureBodies: false,
+          maxBodyBytes: 10 * 1024 * 1024,
+        },
       },
       lastDialFailure,
     });
@@ -107,13 +117,13 @@ describe('destination tunnel management', () => {
     { active: null },
     { active: { tunnelId: 'one', state: 'future' } },
     { active: { tunnelId: '', state: 'ready' } },
-    { active: { tunnelId: 'one', state: 'ready', routes: [{ host: 'localhost', port: 0 }] } },
+    { active: { tunnelId: 'one', state: 'ready', selectors: [{ id: '', kind: 'route', value: '' }] } },
     { lastFailure: { tunnelId: '', code: 'internal' } },
     {
       lastDialFailure: {
         tunnelId: 'one',
         connectionId: -1,
-        routeId: 'route-1',
+        selectorId: 'selector-1',
         reason: 'internal',
       },
     },

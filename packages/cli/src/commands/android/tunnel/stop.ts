@@ -1,15 +1,15 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
-import { getIosInstanceClient } from '../../../lib/instance-client-factory';
+import { getAndroidInstanceClient } from '../../../lib/instance-client-factory';
 import { runTunnelStop } from '../../../lib/tunnel-command';
 
-export default class IosTunnelStop extends BaseCommand {
+export default class AndroidTunnelStop extends BaseCommand {
   static summary = 'Stop the active destination tunnel';
   static description =
     'Stop the instance-authoritative tunnel by its current ID, then gracefully stop and, if necessary, force-stop verified local detached owners.';
   static examples = [
-    '<%= config.bin %> ios tunnel stop --id <instance-ID>',
-    '<%= config.bin %> ios tunnel stop --id <instance-ID> --json',
+    '<%= config.bin %> android tunnel stop --id <instance-ID>',
+    '<%= config.bin %> android tunnel stop --id <instance-ID> --json',
   ];
 
   static flags = {
@@ -21,22 +21,22 @@ export default class IosTunnelStop extends BaseCommand {
       hidden: true,
     }),
     id: Flags.string({
-      description: 'iOS instance ID to stop. Defaults to the last created iOS instance.',
+      description: 'Android instance ID to stop. Defaults to the last created Android instance.',
     }),
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(IosTunnelStop);
+    const { flags } = await this.parse(AndroidTunnelStop);
     this.setParsedFlags(flags);
     if (flags.create) {
       this.error('Tunnel stop cannot create a replacement instance.');
     }
     await this.withAuth(async () => {
-      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const resolvedInstance = this.resolveAndroidInstance(flags.id);
       await runTunnelStop({
         instanceId: resolvedInstance.id,
         connect: async () => {
-          const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
+          const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
           return {
             getTunnelStatus: () => client.getTunnelStatus(),
             stopTunnel: (tunnelId: string) => client.stopTunnel(tunnelId),

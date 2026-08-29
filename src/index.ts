@@ -9,6 +9,45 @@ export { PagePromise } from './core/pagination';
 export * from './instance-client';
 export * as Ios from './ios-client';
 export {
+  isTerminalDestinationTunnelError,
+  type DestinationTcpTunnel,
+  type DestinationTcpTunnelOptions,
+} from './destination-tunnel-dialer';
+export {
+  decodeDestinationTunnelInspectionBodyFrame,
+  decodeDestinationTunnelInspectionMetadataFrame,
+  deriveDestinationTunnelInspectionURL,
+  startDestinationTunnelInspectionStream,
+  DESTINATION_TUNNEL_INSPECTION_BINARY_VERSION,
+  type DestinationTunnelInspectionBodyEvent,
+  type DestinationTunnelInspectionComplete,
+  type DestinationTunnelInspectionErrorCallback,
+  type DestinationTunnelInspectionEvent,
+  type DestinationTunnelInspectionEventCallback,
+  type DestinationTunnelInspectionExtension,
+  type DestinationTunnelInspectionGap,
+  type DestinationTunnelInspectionMetadataEvent,
+  type DestinationTunnelInspectionStream,
+  type DestinationTunnelInspectionStreamOptions,
+} from './destination-tunnel-inspection';
+export {
+  validateDestinationTunnelSelectors,
+  normalizeDestinationTunnelInspection,
+  disabledDestinationTunnelInspection,
+  destinationTunnelConfigHash,
+  DestinationTunnelSelectorError,
+  DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+  DESTINATION_TUNNEL_DEFAULT_WINDOW,
+  DESTINATION_TUNNEL_MAX_BODY_BYTES,
+  type DestinationTunnelInspectionConfig,
+  type DestinationTunnelTransportRequest,
+  type DestinationTunnelTransportResult,
+  type DestinationTunnelSelectors,
+  type DestinationTunnelSelectorReport,
+  type DestinationTunnelSelectorErrorCode,
+  type DestinationTunnelBindReport,
+} from './destination-tunnel';
+export {
   startHttpProxy,
   startForwardHttpProxy,
   type HttpProxy,

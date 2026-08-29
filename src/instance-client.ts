@@ -11,9 +11,39 @@ import { nodeProxyTransport } from './internal/proxy-transport';
 import { startTcpTunnel, isNonRetryableError } from './tunnel';
 import type { Tunnel } from './tunnel';
 import { syncFolder, type FolderSyncOptions, type SyncFolderResult } from './folder-sync';
+import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './destination-tunnel-dialer';
+import type { DestinationTunnelInspectionConfig, DestinationTunnelSelectors } from './destination-tunnel';
+import type {
+  DestinationTunnelInspectionErrorCallback,
+  DestinationTunnelInspectionEventCallback,
+} from './destination-tunnel-inspection';
+import {
+  getDestinationTunnelStatus,
+  stopDestinationTunnel,
+  type DestinationTunnelStatus,
+} from './internal/destination-tunnel-management';
+import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
 
 const ANDROID_RECORDING_PATH = '/data/local/tmp/recordings/video_recording.mp4';
 const ANDROID_SIGNALING_PATH = '/ws';
+
+/** Transparent destination tunnel from the Android instance to this machine. */
+export type DestinationTunnel = DestinationTcpTunnel;
+export type DestinationTunnelOptions = {
+  /** Exact endpoint and domain selector values interpreted by the Android tunnel server. */
+  selectors: DestinationTunnelSelectors;
+  /** Inspection settings negotiated with the Android tunnel server. */
+  inspection?: Partial<DestinationTunnelInspectionConfig>;
+  /** Called for each validated inspection metadata or body event. */
+  onInspectionEvent?: DestinationTunnelInspectionEventCallback;
+  /** Called when the independent inspection stream fails or reconnects. */
+  onInspectionError?: DestinationTunnelInspectionErrorCallback;
+  /** Per-flow receive window in bytes. Defaults to 1 MiB. */
+  window?: number;
+  /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
+  logLevel?: LogLevel;
+};
+export type { DestinationTunnelStatus } from './internal/destination-tunnel-management';
 
 /**
  * Connection state of the instance client
@@ -267,6 +297,22 @@ export type InstanceClient = {
    * Returns the local TCP port and a cleanup function.
    */
   startAdbTunnel: () => Promise<Tunnel>;
+
+  /**
+   * Transparently route declared Android TCP destinations through this
+   * machine. Exact `localhost` routes are also reachable on-device as
+   * `10.0.2.2:<port>`, following the emulator convention.
+   *
+   * The caller owns the returned tunnel and must close it. Disconnecting this
+   * instance client does not close the tunnel.
+   */
+  startTunnel: (options: DestinationTunnelOptions) => Promise<DestinationTunnel>;
+
+  /** Get the active destination tunnel and most recent terminal failure. */
+  getTunnelStatus: () => Promise<DestinationTunnelStatus>;
+
+  /** Stop the active destination tunnel only when its ID matches `tunnelId`. */
+  stopTunnel: (tunnelId: string) => Promise<void>;
   /**
    * Send an asset URL to the instance. The instance will download the asset
    * and process it (currently APK install is supported). Resolves on success,
@@ -1300,6 +1346,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             keepAlive,
             disconnect,
             startAdbTunnel,
+            startTunnel,
+            getTunnelStatus,
+            stopTunnel,
             sendAsset,
             syncApp,
             getConnectionState,
@@ -1641,6 +1690,36 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         throw err;
       }
       return tunnel;
+    };
+
+    const requireAdbUrl = (): string => {
+      if (!options.adbUrl) {
+        throw new Error('adbUrl is required to manage a destination tunnel.');
+      }
+      return options.adbUrl;
+    };
+
+    const startTunnel = async (tunnelOptions: DestinationTunnelOptions): Promise<DestinationTunnel> => {
+      return startDestinationTcpTunnel(deriveDestinationTunnelURL(requireAdbUrl()), options.token, {
+        selectors: tunnelOptions.selectors,
+        inspection: {
+          enabled: true,
+          captureBodies: false,
+          ...(tunnelOptions.inspection ?? {}),
+        },
+        ...(tunnelOptions.onInspectionEvent ? { onInspectionEvent: tunnelOptions.onInspectionEvent } : {}),
+        ...(tunnelOptions.onInspectionError ? { onInspectionError: tunnelOptions.onInspectionError } : {}),
+        ...(tunnelOptions.window === undefined ? {} : { window: tunnelOptions.window }),
+        logLevel: tunnelOptions.logLevel ?? logLevel,
+      });
+    };
+
+    const getTunnelStatus = async (): Promise<DestinationTunnelStatus> => {
+      return getDestinationTunnelStatus(requireAdbUrl(), options.token);
+    };
+
+    const stopTunnel = async (tunnelId: string): Promise<void> => {
+      await stopDestinationTunnel(requireAdbUrl(), options.token, tunnelId);
     };
 
     const sendAsset = async (url: string, timeoutMs?: number): Promise<void> => {

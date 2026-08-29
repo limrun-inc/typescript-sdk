@@ -62,7 +62,7 @@ export default class IosLaunchApp extends BaseCommand {
     }),
     'detox-server-url': Flags.string({
       description:
-        'Detox mediator URL reachable from the simulator, usually exposed with `lim ios tunnel --route localhost:<port>`',
+        'Detox mediator URL reachable from the simulator, usually exposed with `lim ios tunnel --selector localhost:<port>`',
     }),
     'detox-session-id': Flags.string({
       description: 'Detox session ID shared by the app and tester',

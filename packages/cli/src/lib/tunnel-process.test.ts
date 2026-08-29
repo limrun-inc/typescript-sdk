@@ -9,11 +9,14 @@ import {
   claimTunnelProcess,
   clearTunnelProcess,
   formatTunnelDialFailure,
+  formatTunnelSelectors,
   isSpawnedTunnelProcessAlive,
+  isTunnelProcessCancelled,
   listTunnelProcesses,
   loadTunnelProcess,
+  markTunnelProcessCancelled,
   newTunnelOwner,
-  parseTunnelRoute,
+  parseTunnelSelectors,
   prepareTunnelLog,
   pruneTunnelLogs,
   readTunnelLogTail,
@@ -23,24 +26,23 @@ import {
   subscribeTunnelDisconnect,
   tunnelChildEnvironment,
   tunnelOwnerProcessIdentity,
-  tunnelOwnerRemainsSelectedForStop,
   tunnelProcessPaths,
   tunnelProcessStartingLeaseExpired,
   updateTunnelProcess,
   waitForTunnelProcessReady,
-  type IosTunnelProcessState,
-} from './ios-tunnel-process';
+  type TunnelProcessState,
+} from './tunnel-process';
 
-const INSTANCE_ID = 'ios_test_123';
+const INSTANCE_ID = 'android_test_123';
 const OWNER_1 = '1'.repeat(32);
 const OWNER_2 = '2'.repeat(32);
 const OWNER_3 = '3'.repeat(32);
 
-describe('iOS tunnel process state', () => {
+describe('tunnel process state', () => {
   let root: string;
 
   beforeEach(() => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'lim-ios-tunnel-'));
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'lim-tunnel-'));
   });
 
   afterEach(() => {
@@ -52,8 +54,9 @@ describe('iOS tunnel process state', () => {
     ['10.20.30.40:8000', { host: '10.20.30.40', port: 8000 }],
     ['[2001:db8::1]:8443', { host: '2001:db8::1', port: 8443 }],
     ['[::ffff:192.0.2.1]:9443', { host: '192.0.2.1', port: 9443 }],
-  ])('parses route %s', (input, expected) => {
-    expect(parseTunnelRoute(input)).toEqual(expected);
+  ])('parses exact selector %s', (input, expected) => {
+    const host = expected.host.includes(':') ? `[${expected.host}]` : expected.host;
+    expect(parseTunnelSelectors([input])).toEqual([`${host}:${expected.port}`]);
   });
 
   test.each([
@@ -62,24 +65,119 @@ describe('iOS tunnel process state', () => {
     '10.20.30.40:0',
     '10.20.30.40:53',
     '10.20.30.40:65536',
+    'localhost:+8000',
+    'localhost:1e3',
     '2001:db8::1:443',
     '[::192.0.2.1]:443',
     '[::2]:443',
-  ])('rejects malformed route %s', (input) => {
-    expect(() => parseTunnelRoute(input)).toThrow();
+  ])('rejects malformed selector %s', (input) => {
+    expect(() => parseTunnelSelectors([input])).toThrow();
   });
 
-  test('builds a child command with an exact owner and IPv6 route', () => {
+  test('applies the Android minimum selector port', () => {
+    expect(() => parseTunnelSelectors(['localhost:80'], { minPort: 1024 })).toThrow();
+    expect(parseTunnelSelectors(['localhost:8080'], { minPort: 1024 })).toEqual(['localhost:8080']);
+  });
+
+  test.each([
+    ['API.Corp.Example', 'api.corp.example'],
+    ['*.Corp.Example', '*.corp.example'],
+  ])('parses domain selector %s', (input, expected) => {
+    expect(parseTunnelSelectors([input])).toEqual([expected]);
+  });
+
+  test.each(['corp.example.', 'api.*.example', 'localhost', '192.0.2.1'])(
+    'rejects malformed domain %s',
+    (input) => {
+      expect(() => parseTunnelSelectors([input])).toThrow();
+    },
+  );
+
+  test('parses mixed selectors and rejects domains where unsupported', () => {
+    expect(parseTunnelSelectors(['localhost:8080', '*.corp.example'])).toEqual([
+      'localhost:8080',
+      '*.corp.example',
+    ]);
+    expect(() => parseTunnelSelectors(['*.corp.example'], { allowDomains: false })).toThrow(
+      'supports only localhost:port or literal IP:port',
+    );
+  });
+
+  test('builds a child command replaying every selector kind', () => {
     const owner = newTunnelOwner();
     expect(
       buildTunnelServeArgs({
         scriptPath: '/lim/run.js',
+        product: 'android',
         instanceId: INSTANCE_ID,
         owner,
-        routes: [
-          { host: '10.20.30.40', port: 8000 },
-          { host: '2001:db8::1', port: 8443 },
-        ],
+        selectors: ['10.20.30.40:8000', '[2001:db8::1]:8443', '*.corp.example'],
+      }),
+    ).toEqual([
+      '/lim/run.js',
+      'android',
+      'tunnel',
+      '--serve',
+      '--no-create',
+      '--id',
+      INSTANCE_ID,
+      `--tunnel-owner=${owner}`,
+      '--selector',
+      '10.20.30.40:8000',
+      '--selector',
+      '[2001:db8::1]:8443',
+      '--selector',
+      '*.corp.example',
+    ]);
+  });
+
+  test('replays --verbose to the child command', () => {
+    const owner = newTunnelOwner();
+    const args = buildTunnelServeArgs({
+      scriptPath: '/lim/run.js',
+      product: 'android',
+      instanceId: INSTANCE_ID,
+      owner,
+      selectors: ['*.corp.example'],
+      verbose: true,
+    });
+    expect(args).toContain('--verbose');
+    expect(args.indexOf('--verbose')).toBeLessThan(args.indexOf('--selector'));
+  });
+
+  test('replays only safe Android inspection and HAR options to the detached child', () => {
+    const owner = newTunnelOwner();
+    const args = buildTunnelServeArgs({
+      scriptPath: '/lim/run.js',
+      product: 'android',
+      instanceId: INSTANCE_ID,
+      owner,
+      selectors: ['api.example.test'],
+      inspect: true,
+      harPath: '/tmp/private traffic.har',
+      harBodyLimit: 4 * 1024 * 1024,
+    });
+    expect(args).toEqual(
+      expect.arrayContaining([
+        '--inspect',
+        '--har',
+        '/tmp/private traffic.har',
+        '--har-body-limit',
+        String(4 * 1024 * 1024),
+      ]),
+    );
+    expect(args.join(' ')).not.toContain('token');
+  });
+
+  test('builds an iOS child command with selectors', () => {
+    const owner = newTunnelOwner();
+    expect(
+      buildTunnelServeArgs({
+        scriptPath: '/lim/run.js',
+        product: 'ios',
+        instanceId: 'ios_test_123',
+        owner,
+        selectors: ['10.20.30.40:8000'],
       }),
     ).toEqual([
       '/lim/run.js',
@@ -88,12 +186,10 @@ describe('iOS tunnel process state', () => {
       '--serve',
       '--no-create',
       '--id',
-      INSTANCE_ID,
+      'ios_test_123',
       `--tunnel-owner=${owner}`,
-      '--route',
+      '--selector',
       '10.20.30.40:8000',
-      '--route',
-      '[2001:db8::1]:8443',
     ]);
   });
 
@@ -102,11 +198,18 @@ describe('iOS tunnel process state', () => {
       formatTunnelDialFailure({
         tunnelId: 'tunnel-1',
         connectionId: 7,
-        routeId: 'route-3',
+        selectorId: 'selector-3',
         reason: 'dns_not_found',
         osCode: 'ENOTFOUND',
       }),
-    ).toBe('Last dial failure: tunnel tunnel-1, connection 7, route-3 (dns_not_found, ENOTFOUND)');
+    ).toBe('Last dial failure: tunnel tunnel-1, connection 7, selector-3 (dns_not_found, ENOTFOUND)');
+  });
+
+  test('formats every selector kind for display', () => {
+    expect(formatTunnelSelectors(['localhost:8080', '*.corp.example'])).toEqual([
+      'localhost:8080',
+      '*.corp.example',
+    ]);
   });
 
   test('forwards an explicit API key only through the child environment', () => {
@@ -175,23 +278,6 @@ describe('iOS tunnel process state', () => {
     ]);
   });
 
-  test('keeps a selected starting owner targeted if it becomes ready during stop', () => {
-    const starting = makeState({ owner: OWNER_1, pid: 456 });
-    const replacement = makeReadyState({
-      owner: OWNER_1,
-      pid: 456,
-      tunnelId: 'replacement',
-    });
-    expect(tunnelOwnerRemainsSelectedForStop(starting, replacement, 'old-tunnel')).toBe(true);
-    expect(
-      tunnelOwnerRemainsSelectedForStop(
-        makeReadyState({ owner: OWNER_1, tunnelId: 'old-tunnel' }),
-        replacement,
-        'old-tunnel',
-      ),
-    ).toBe(false);
-  });
-
   test('observes a disconnect that happened before subscription', () => {
     const unsubscribe = jest.fn();
     const onDisconnect = jest.fn();
@@ -235,6 +321,26 @@ describe('iOS tunnel process state', () => {
     expect(loadTunnelProcess(INSTANCE_ID, OWNER_1, root)).toEqual(ready);
     expect(clearTunnelProcess(INSTANCE_ID, OWNER_1, root)).toBe(true);
     expect(listTunnelProcesses(INSTANCE_ID, root)).toEqual([]);
+  });
+
+  test('a cancelled starting owner cannot become ready again', () => {
+    const starting = makeState({ owner: OWNER_1, pid: process.pid, status: 'starting' });
+    expect(claimTunnelProcess(starting, root)).toBe(true);
+    expect(isTunnelProcessCancelled(INSTANCE_ID, OWNER_1, root)).toBe(false);
+
+    // A stop marks cancellation first, before signaling the child.
+    markTunnelProcessCancelled(INSTANCE_ID, OWNER_1, root);
+    expect(isTunnelProcessCancelled(INSTANCE_ID, OWNER_1, root)).toBe(true);
+
+    // The child's ready transition (or reconnect replay) now fails closed.
+    expect(() =>
+      updateTunnelProcess(
+        makeState({ owner: OWNER_1, pid: process.pid, status: 'ready', tunnelId: 'tunnel-race' }),
+        OWNER_1,
+        root,
+      ),
+    ).toThrow('Tunnel process ownership changed during startup');
+    expect(claimTunnelProcess(starting, root)).toBe(false);
   });
 
   test('keeps expired ownership visible for process cleanup', () => {
@@ -317,17 +423,15 @@ describe('iOS tunnel process state', () => {
     { logPath: '/tmp/attacker.log' },
     { tunnelId: 'premature' },
     { status: 'ready', pid: 0 },
-    { routes: [{ host: '*.example.com', port: 443 }] },
-    { routes: [{ host: 'LOCALHOST', port: 3000 }] },
-    { routes: [{ host: '10.20.30.40', port: 53 }] },
-    { routes: [{ host: '::2', port: 443 }] },
-    {
-      routes: [
-        { host: 'localhost', port: 3000 },
-        { host: 'localhost', port: 3000 },
-      ],
-    },
-  ] satisfies Array<Partial<IosTunnelProcessState>>)('rejects malformed persisted state %#', (overrides) => {
+    { product: 'linux' as unknown as TunnelProcessState['product'] },
+    { selectors: ['*.example.com:443'] },
+    { selectors: ['LOCALHOST:3000'] },
+    { selectors: ['10.20.30.40:53'] },
+    { selectors: ['[::2]:443'] },
+    { selectors: ['localhost:3000', 'localhost:3000'] },
+    { selectors: ['api.*.example'] },
+    { selectors: [] },
+  ] satisfies Array<Partial<TunnelProcessState>>)('rejects malformed persisted state %#', (overrides) => {
     const state = overrides.status === 'ready' ? makeReadyState(overrides) : makeState(overrides);
     const paths = tunnelProcessPaths(state.instanceId, state.owner, root);
     fs.mkdirSync(paths.directory, { recursive: true });
@@ -336,7 +440,7 @@ describe('iOS tunnel process state', () => {
   });
 
   test('uses a bounded hashed path and reads the log tail', () => {
-    const paths = tunnelProcessPaths('ios_region_secret-customer-id', OWNER_1, root);
+    const paths = tunnelProcessPaths('android_region_secret-customer-id', OWNER_1, root);
     expect(paths.directory).not.toContain('secret-customer-id');
     fs.mkdirSync(paths.directory, { recursive: true });
     fs.writeFileSync(paths.log, `${'x'.repeat(128 * 1024)}\none\ntwo\nthree\n`);
@@ -391,7 +495,7 @@ describe('iOS tunnel process state', () => {
     expect(fs.existsSync(`${oldestPaths.log}.1`)).toBe(false);
   });
 
-  function makeReadyState(overrides: Partial<IosTunnelProcessState> = {}): IosTunnelProcessState {
+  function makeReadyState(overrides: Partial<TunnelProcessState> = {}): TunnelProcessState {
     return makeState({
       pid: 123,
       status: 'ready',
@@ -400,14 +504,15 @@ describe('iOS tunnel process state', () => {
     });
   }
 
-  function makeState(overrides: Partial<IosTunnelProcessState>): IosTunnelProcessState {
+  function makeState(overrides: Partial<TunnelProcessState>): TunnelProcessState {
     const owner = overrides.owner ?? OWNER_1;
     return {
       owner,
       pid: 0,
       instanceId: INSTANCE_ID,
+      product: 'android',
       status: 'starting',
-      routes: [{ host: '10.20.30.40', port: 8000 }],
+      selectors: ['10.20.30.40:8000'],
       startedAt: new Date().toISOString(),
       logPath: tunnelProcessPaths(INSTANCE_ID, owner, root).log,
       ...overrides,

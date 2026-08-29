@@ -1,4 +1,6 @@
+import http from 'http';
 import net from 'net';
+import tls from 'tls';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
   classifyOpenFailure,
@@ -7,11 +9,15 @@ import {
 } from '../src/destination-tunnel-dialer';
 import {
   DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
+  DESTINATION_TUNNEL_DEFAULT_WINDOW,
   DESTINATION_TUNNEL_VERSION,
+  destinationTunnelConfigHash,
+  disabledDestinationTunnelInspection,
   type DestinationTunnelClientMessage,
   type DestinationTunnelRoute,
   type DestinationTunnelServerMessage,
 } from '../src/destination-tunnel';
+import { testCa, testCertificate, testPrivateKey } from './fixtures/tls';
 
 type ClientEvent =
   | { kind: 'control'; message: DestinationTunnelClientMessage }
@@ -75,10 +81,11 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 7,
-      routeId: 'route-1',
+      selectorId: 'selector-1',
       host: route.host,
       port: route.port,
-      proto: 'tcp',
+      transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => hasControl('openOk', 7) && dataFor(7).toString() === 'greeting');
     const openIndex = events.findIndex(
@@ -121,17 +128,18 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 8,
-      routeId: 'route-1',
+      selectorId: 'selector-1',
       host: '127.0.0.2',
       port: localPort,
-      proto: 'tcp',
+      transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => hasControl('openFail', 8));
 
     expect(controlFor('openFail', 8)).toEqual({
       type: 'openFail',
       connId: 8,
-      reason: 'route_not_allowed',
+      reason: 'selector_not_allowed',
     });
     expect(acceptedConnections).toBe(0);
   });
@@ -140,29 +148,34 @@ describe('destination tunnel dialer', () => {
     const socket = new net.Socket({ allowHalfOpen: true });
     const createConnection = jest.spyOn(net, 'createConnection').mockReturnValue(socket);
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes: [{ host: 'LOCALHOST', port: 3000 }],
+      selectors: ['LOCALHOST:3000'],
       logLevel: 'none',
     });
     await waitFor(() => hasControl('start'));
     expect(controlFor('start')).toEqual({
       type: 'start',
       version: DESTINATION_TUNNEL_VERSION,
-      routes: [{ host: 'localhost', port: 3000 }],
+      selectors: ['localhost:3000'],
+      inspection: disabledDestinationTunnelInspection(),
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     sendControl({
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-localhost',
+      selectors: [],
+      configHash: currentConfigHash(),
     });
     tunnel = await startup;
 
     sendControl({
       type: 'open',
       connId: 81,
-      routeId: 'route-1',
+      selectorId: 'selector-1',
       host: 'localhost',
       port: 3000,
-      proto: 'tcp',
+      transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => createConnection.mock.calls.length === 1);
     expect(createConnection).toHaveBeenCalledWith({
@@ -174,16 +187,17 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 82,
-      routeId: 'route-1',
+      selectorId: 'selector-1',
       host: 'LOCALHOST',
       port: 3000,
-      proto: 'tcp',
+      transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => hasControl('openFail', 82));
     expect(controlFor('openFail', 82)).toEqual({
       type: 'openFail',
       connId: 82,
-      reason: 'route_not_allowed',
+      reason: 'selector_not_allowed',
     });
     expect(createConnection).toHaveBeenCalledTimes(1);
   });
@@ -196,10 +210,11 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 9,
-      routeId: 'route-1',
+      selectorId: 'selector-1',
       host: route.host,
       port: route.port,
-      proto: 'tcp',
+      transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => hasControl('openFail', 9));
 
@@ -209,6 +224,155 @@ describe('destination tunnel dialer', () => {
       reason: 'connection_refused',
       osCode: 'ECONNREFUSED',
     });
+  });
+
+  test('dials TLS with certificate validation, SNI, requested ALPN, and transport timings', async () => {
+    let serverName: string | undefined;
+    let received = Buffer.alloc(0);
+    const localPort = await listenTls((socket) => {
+      serverName = typeof socket.servername === 'string' ? socket.servername : undefined;
+      socket.write('greeting');
+      socket.on('data', (data) => {
+        received = Buffer.concat([received, data]);
+      });
+      socket.on('end', () => socket.end('tail'));
+    });
+    mockTlsTrust();
+    const route = { host: '127.0.0.1', port: localPort };
+    tunnel = await establish([route]);
+
+    sendControl({
+      type: 'open',
+      connId: 91,
+      selectorId: 'selector-1',
+      host: route.host,
+      port: route.port,
+      transport: {
+        type: 'tls',
+        serverName: 'localhost',
+        alpnProtocols: ['h2', 'http/1.1'],
+      },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
+    });
+    await waitFor(() => hasControl('openOk', 91) && dataFor(91).toString() === 'greeting');
+
+    expect(controlFor('openOk', 91)).toEqual({
+      type: 'openOk',
+      connId: 91,
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
+      transport: {
+        type: 'tls',
+        remoteAddress: '127.0.0.1',
+        connectMs: expect.any(Number),
+        tlsMs: expect.any(Number),
+        alpnProtocol: 'h2',
+      },
+    });
+    expect(serverName).toBe('localhost');
+    sendData(91, Buffer.from('request'));
+    await waitFor(() => received.toString() === 'request');
+    sendControl({ type: 'fin', connId: 91 });
+    await waitFor(() => dataFor(91).toString() === 'greetingtail' && hasControl('fin', 91));
+  });
+
+  test('maps TLS certificate failures without an insecure fallback', async () => {
+    const localPort = await listenTls(() => {});
+    const route = { host: '127.0.0.1', port: localPort };
+    tunnel = await establish([route]);
+
+    sendControl({
+      type: 'open',
+      connId: 92,
+      selectorId: 'selector-1',
+      host: route.host,
+      port: route.port,
+      transport: {
+        type: 'tls',
+        serverName: 'localhost',
+        alpnProtocols: ['http/1.1'],
+      },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
+    });
+    await waitFor(() => hasControl('openFail', 92));
+    expect(controlFor('openFail', 92)).toEqual(
+      expect.objectContaining({
+        type: 'openFail',
+        connId: 92,
+        reason: 'tls_validation_failed',
+      }),
+    );
+  });
+
+  test('proxies TLS to a locally validated domain IP while retaining hostname SNI', async () => {
+    let serverName: string | undefined;
+    const localPort = await listenTls((socket) => {
+      serverName = typeof socket.servername === 'string' ? socket.servername : undefined;
+      socket.write('proxied');
+    });
+    let connectAuthority = '';
+    const proxy = http.createServer();
+    proxy.on('connect', (request, clientSocket, head) => {
+      connectAuthority = request.url ?? '';
+      localSockets.add(clientSocket as net.Socket);
+      const upstream = net.createConnection({ host: '127.0.0.1', port: localPort }, () => {
+        clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        if (head.length > 0) upstream.write(head);
+        clientSocket.pipe(upstream);
+        upstream.pipe(clientSocket);
+      });
+      localSockets.add(upstream);
+      upstream.once('close', () => localSockets.delete(upstream));
+    });
+    localServers.push(proxy);
+    await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+    const proxyPort = (proxy.address() as net.AddressInfo).port;
+    const previousHttpsProxy = process.env['HTTPS_PROXY'];
+    const previousHttpsProxyLower = process.env['https_proxy'];
+    const previousHttpProxy = process.env['HTTP_PROXY'];
+    const previousHttpProxyLower = process.env['http_proxy'];
+    delete process.env['HTTP_PROXY'];
+    delete process.env['http_proxy'];
+    delete process.env['https_proxy'];
+    process.env['HTTPS_PROXY'] = `http://127.0.0.1:${proxyPort}`;
+    jest.spyOn(require('dns').promises, 'lookup').mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
+    mockTlsTrust();
+
+    try {
+      tunnel = await establish([{ host: '127.0.0.1', port: localPort }], {
+        domains: ['api.corp.example'],
+      });
+      sendControl({
+        type: 'open',
+        connId: 93,
+        selectorId: 'selector-2',
+        host: 'api.corp.example',
+        port: localPort,
+        transport: {
+          type: 'tls',
+          serverName: 'api.corp.example',
+          alpnProtocols: ['h2'],
+        },
+        window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
+      });
+      await waitFor(() => hasControl('openOk', 93) && dataFor(93).toString() === 'proxied');
+      expect(connectAuthority).toBe(`127.0.0.1:${localPort}`);
+      expect(serverName).toBe('api.corp.example');
+      expect(controlFor('openOk', 93)).toEqual(
+        expect.objectContaining({
+          transport: expect.objectContaining({
+            type: 'tls',
+            remoteAddress: '127.0.0.1',
+            dnsMs: expect.any(Number),
+            alpnProtocol: 'h2',
+          }),
+        }),
+      );
+    } finally {
+      restoreEnvironment('HTTPS_PROXY', previousHttpsProxy);
+      restoreEnvironment('https_proxy', previousHttpsProxyLower);
+      restoreEnvironment('HTTP_PROXY', previousHttpProxy);
+      restoreEnvironment('http_proxy', previousHttpProxyLower);
+    }
   });
 
   test('bounds data queued toward a stalled local connection', async () => {
@@ -231,10 +395,11 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 10,
-      routeId: 'route-1',
+      selectorId: 'selector-1',
       host: route.host,
       port: route.port,
-      proto: 'tcp',
+      transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => createConnection.mock.calls.length === 1);
     firstSocket.emit('connect');
@@ -254,10 +419,11 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 11,
-      routeId: 'route-1',
+      selectorId: 'selector-1',
       host: route.host,
       port: route.port,
-      proto: 'tcp',
+      transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => createConnection.mock.calls.length === 2);
     secondSocket.emit('connect');
@@ -274,7 +440,7 @@ describe('destination tunnel dialer', () => {
 
   test('rejects binary data before READY', async () => {
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes: [{ host: '127.0.0.1', port: 8000 }],
+      selectors: ['127.0.0.1:8000'],
       logLevel: 'none',
     });
     await waitFor(() => hasControl('start'));
@@ -285,7 +451,7 @@ describe('destination tunnel dialer', () => {
 
   test('fails startup when READY never arrives', async () => {
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes: [{ host: '127.0.0.1', port: 8000 }],
+      selectors: ['127.0.0.1:8000'],
       logLevel: 'none',
       handshakeTimeoutMs: 100,
     });
@@ -302,7 +468,7 @@ describe('destination tunnel dialer', () => {
     const port = (rawServer.address() as net.AddressInfo).port;
 
     const startup = startDestinationTcpTunnel(`ws://127.0.0.1:${port}/stalled`, 'test-token', {
-      routes: [{ host: '127.0.0.1', port: 8000 }],
+      selectors: ['127.0.0.1:8000'],
       logLevel: 'none',
       handshakeTimeoutMs: 100,
     });
@@ -333,8 +499,12 @@ describe('destination tunnel dialer', () => {
     ['ETIMEDOUT', 'connection_timed_out'],
     ['ENETUNREACH', 'unreachable'],
     ['EACCES', 'permission_denied'],
+    ['EPROXYAUTH', 'permission_denied'],
     ['EMFILE', 'resource_exhausted'],
     ['ECANCELED', 'cancelled'],
+    ['CERT_HAS_EXPIRED', 'tls_validation_failed'],
+    ['EPROTO', 'tls_protocol_error'],
+    ['ERR_SSL_WRONG_VERSION_NUMBER', 'tls_handshake_failed'],
     ['EUNKNOWN', 'internal'],
   ])('classifies %s as %s', (code, reason) => {
     expect(classifyOpenFailure(Object.assign(new Error(code), { code }))).toBe(reason);
@@ -346,25 +516,41 @@ describe('destination tunnel dialer', () => {
       maxPendingBytesPerConnection?: number;
       maxTotalPendingBytes?: number;
       livenessTimeoutMs?: number;
+      domains?: string[];
     } = {},
   ): Promise<DestinationTcpTunnel> {
+    const { domains, ...tunnelOptions } = options;
+    const selectors = [
+      ...routes.map(({ host, port }) => `${host.includes(':') ? `[${host}]` : host}:${port}`),
+      ...(domains ?? []),
+    ];
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
-      routes,
+      selectors,
       logLevel: 'none',
-      ...options,
+      ...tunnelOptions,
     });
     await waitFor(() => hasControl('start'));
     expect(controlFor('start')).toEqual({
       type: 'start',
       version: DESTINATION_TUNNEL_VERSION,
-      routes,
+      selectors,
+      inspection: disabledDestinationTunnelInspection(),
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     sendControl({
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
+      selectors: [],
+      configHash: currentConfigHash(),
     });
     return startup;
+  }
+
+  function currentConfigHash(): string {
+    const start = controlFor('start');
+    if (start?.type !== 'start') throw new Error('missing START');
+    return destinationTunnelConfigHash(start.selectors, start.inspection);
   }
 
   async function listenLocal(onConnection: (socket: net.Socket) => void): Promise<number> {
@@ -373,6 +559,24 @@ describe('destination tunnel dialer', () => {
       socket.once('close', () => localSockets.delete(socket));
       onConnection(socket);
     });
+    localServers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return (server.address() as net.AddressInfo).port;
+  }
+
+  async function listenTls(onConnection: (socket: tls.TLSSocket) => void): Promise<number> {
+    const server = tls.createServer(
+      {
+        key: testPrivateKey,
+        cert: testCertificate,
+        ALPNProtocols: ['h2', 'http/1.1'],
+      },
+      (socket) => {
+        localSockets.add(socket);
+        socket.once('close', () => localSockets.delete(socket));
+        onConnection(socket);
+      },
+    );
     localServers.push(server);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     return (server.address() as net.AddressInfo).port;
@@ -479,3 +683,16 @@ describe('destination tunnel dialer', () => {
     );
   }
 });
+
+function mockTlsTrust(): void {
+  const realConnect = tls.connect;
+  jest
+    .spyOn(tls, 'connect')
+    .mockImplementation(((options: tls.ConnectionOptions) =>
+      realConnect({ ...options, ca: testCa })) as typeof tls.connect);
+}
+
+function restoreEnvironment(key: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}

@@ -6,7 +6,7 @@ import { WebSocket, Data } from 'ws';
 import { EventEmitter } from 'events';
 import { assertPort, isNonRetryableError, startReverseTcpTunnel, type ReverseTunnel } from './tunnel';
 import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './destination-tunnel-dialer';
-import type { DestinationTunnelRoute } from './destination-tunnel';
+import { disabledDestinationTunnelInspection, type DestinationTunnelSelectors } from './destination-tunnel';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
 import { createIgnoreFn } from './folder-sync-ignore';
 import { prepareAppBundlePath, watchAppArchive } from './app-archive';
@@ -65,8 +65,8 @@ export function deriveReverseTunnelUrl(apiUrl: string, remotePort: number): stri
 export type { ReverseTunnel } from './tunnel';
 export type Tunnel = DestinationTcpTunnel;
 export type TunnelOptions = {
-  /** Exact localhost or literal-IP TCP destinations that the server may ask this client to dial. */
-  routes: DestinationTunnelRoute[];
+  /** Exact endpoint selector values that the server may ask this client to dial. */
+  selectors: DestinationTunnelSelectors;
   /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
   logLevel?: LogLevel;
 };
@@ -2858,7 +2858,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const startTunnel = async (tunnelOptions: TunnelOptions): Promise<Tunnel> => {
       return startDestinationTcpTunnel(deriveDestinationTunnelURL(options.apiUrl), options.token, {
-        routes: tunnelOptions.routes,
+        selectors: tunnelOptions.selectors,
+        inspection: disabledDestinationTunnelInspection(),
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });
     };

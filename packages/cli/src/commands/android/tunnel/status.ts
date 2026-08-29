@@ -1,15 +1,15 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
-import { getIosInstanceClient } from '../../../lib/instance-client-factory';
+import { getAndroidInstanceClient } from '../../../lib/instance-client-factory';
 import { runTunnelStatus } from '../../../lib/tunnel-command';
 
-export default class IosTunnelStatus extends BaseCommand {
+export default class AndroidTunnelStatus extends BaseCommand {
   static summary = 'Show the active destination tunnel';
   static description =
-    'Query the instance-authoritative tunnel state, most recent failure, and any local detached owner.';
+    'Query the instance-authoritative tunnel state, per-selector bind results, most recent failure, and any local detached owner.';
   static examples = [
-    '<%= config.bin %> ios tunnel status --id <instance-ID>',
-    '<%= config.bin %> ios tunnel status --id <instance-ID> --json',
+    '<%= config.bin %> android tunnel status --id <instance-ID>',
+    '<%= config.bin %> android tunnel status --id <instance-ID> --json',
   ];
 
   static flags = {
@@ -22,22 +22,22 @@ export default class IosTunnelStatus extends BaseCommand {
       hidden: true,
     }),
     id: Flags.string({
-      description: 'iOS instance ID to query. Defaults to the last created iOS instance.',
+      description: 'Android instance ID to query. Defaults to the last created Android instance.',
     }),
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(IosTunnelStatus);
+    const { flags } = await this.parse(AndroidTunnelStatus);
     this.setParsedFlags(flags);
     if (flags.create) {
       this.error('Tunnel status cannot create a replacement instance.');
     }
     await this.withAuth(async () => {
-      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const resolvedInstance = this.resolveAndroidInstance(flags.id);
       await runTunnelStatus({
         instanceId: resolvedInstance.id,
         connect: async () => {
-          const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
+          const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
           return {
             getTunnelStatus: () => client.getTunnelStatus(),
             stopTunnel: (tunnelId: string) => client.stopTunnel(tunnelId),
@@ -48,6 +48,10 @@ export default class IosTunnelStatus extends BaseCommand {
         renderActive: (active, io) => {
           for (const selector of active.selectors) {
             io.output(`Selector: ${selector.value}`);
+            for (const bind of selector.binds ?? []) {
+              const detail = bind.osCode ? `${bind.status}, ${bind.osCode}` : bind.status;
+              io.output(`Bind ${selector.id} ${bind.address}: ${detail}`);
+            }
           }
         },
       });
