@@ -46,3 +46,5 @@ process.on('SIGTERM', () => {
 await new Promise((resolve) => setTimeout(resolve, 30_000));
 console.log('Closing the ADB tunnel');
 close();
+await limrun.androidInstances.delete(androidInstance.metadata.id);
+console.log('Deleted instance');
