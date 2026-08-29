@@ -125,6 +125,20 @@ describe('tunnel process state', () => {
     ]);
   });
 
+  test('replays --verbose to the child command', () => {
+    const owner = newTunnelOwner();
+    const args = buildTunnelServeArgs({
+      scriptPath: '/lim/run.js',
+      product: 'android',
+      instanceId: INSTANCE_ID,
+      owner,
+      selectors: { domains: ['*.corp.example'] },
+      verbose: true,
+    });
+    expect(args).toContain('--verbose');
+    expect(args.indexOf('--verbose')).toBeLessThan(args.indexOf('--domain'));
+  });
+
   test('builds an iOS child command with routes only', () => {
     const owner = newTunnelOwner();
     expect(

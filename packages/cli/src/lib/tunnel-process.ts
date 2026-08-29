@@ -122,6 +122,7 @@ export function buildTunnelServeArgs(options: {
   instanceId: string;
   owner: string;
   selectors: DestinationTunnelSelectors;
+  verbose?: boolean;
 }): string[] {
   assertOwner(options.owner);
   return [
@@ -133,6 +134,7 @@ export function buildTunnelServeArgs(options: {
     '--id',
     options.instanceId,
     `--tunnel-owner=${options.owner}`,
+    ...(options.verbose ? ['--verbose'] : []),
     ...(options.selectors.routes ?? []).flatMap((route) => ['--route', formatTunnelRoute(route)]),
     ...(options.selectors.domains ?? []).flatMap((domain) => ['--domain', domain]),
   ];
