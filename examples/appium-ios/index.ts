@@ -46,8 +46,11 @@ console.log('Device UDID:', lim.deviceInfo.udid);
 
 // targetHttpPortUrlPrefix allows us to append any port to the URL to connect to that port
 // on the simulator and WDA listens on port 8100 by default.
-// The :443 addition is required by the Appium driver.
-const wdaUrl = instance.status.targetHttpPortUrlPrefix.replace('limrun.net', 'limrun.net:443') + '8100';
+// The Appium driver requires an explicit port in the URL and defaults to
+// 4444 when it is missing, so assemble one with the port spelled out.
+// (URL.toString() would drop an explicit :443 as the https default.)
+const wdaBase = new URL(instance.status.targetHttpPortUrlPrefix);
+const wdaUrl = `${wdaBase.protocol}//${wdaBase.hostname}:${wdaBase.port || '443'}${wdaBase.pathname}8100`;
 
 // WDA may crash during the test and launchMode in initialAssets is effective only for
 // the first installation. So, we make sure WDA is running before the test starts.
@@ -85,6 +88,9 @@ const driver = await remote({
     'appium:useNewWDA': false,
     'appium:usePreinstalledWDA': true,
     'appium:skipLogCapture': true,
+    // Safari's first launch on a fresh instance can take a while to expose
+    // its webviews to the remote debugger.
+    'appium:webviewConnectTimeout': 60_000,
     // @ts-expect-error -- limInstance* are our custom capabilities not known to webdriverio
     'appium:limInstanceApiUrl': instance.status.apiUrl,
     'appium:limInstanceToken': instance.status.token,
