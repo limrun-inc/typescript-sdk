@@ -36,7 +36,7 @@ try {
 
   // Wait for Settings to render before tapping into General.
   await sleep(1000);
-  await client.tapElement({ label: 'General' });
+  await client.tapElement({ AXLabel: 'General' });
   console.log('Opened General in Settings');
 
   // Open Safari to apple.com from the simulator.
