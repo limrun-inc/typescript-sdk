@@ -2,8 +2,10 @@ import { nodeProxyTransport } from './proxy-transport';
 import { deriveDestinationTunnelStatusURL, deriveDestinationTunnelStopURL } from './destination-tunnel-url';
 import {
   validateDestinationTunnelSelectors,
+  normalizeDestinationTunnelInspection,
   type DestinationTunnelRoute,
   type DestinationTunnelBindReport,
+  type DestinationTunnelInspectionConfig,
 } from '../destination-tunnel';
 
 export interface DestinationTunnelStatus {
@@ -14,6 +16,7 @@ export interface DestinationTunnelStatus {
     domains?: string[];
     /** Per exact route, the device-side bind outcomes (Android bind listeners). */
     binds?: Record<string, DestinationTunnelBindReport[]>;
+    inspection: DestinationTunnelInspectionConfig;
   };
   lastFailure?: {
     tunnelId: string;
@@ -90,7 +93,22 @@ function readActiveTunnel(value: unknown): NonNullable<DestinationTunnelStatus['
     routes: selectors.routes ?? [],
     ...(selectors.domains ? { domains: selectors.domains } : {}),
     ...(active['binds'] === undefined ? {} : { binds: readBinds(active['binds']) }),
+    inspection: readInspection(active),
   };
+}
+
+function readInspection(active: Record<string, unknown>): DestinationTunnelInspectionConfig {
+  const inspection = readRecord(active['inspection'], 'inspection');
+  const enabled = inspection['enabled'];
+  const captureBodies = inspection['captureBodies'];
+  if (typeof enabled !== 'boolean' || typeof captureBodies !== 'boolean') {
+    throw new Error('inspection enabled and captureBodies must be booleans');
+  }
+  const maxBodyBytes = inspection['maxBodyBytes'];
+  if (typeof maxBodyBytes !== 'number') {
+    throw new Error('inspection maxBodyBytes must be a number');
+  }
+  return normalizeDestinationTunnelInspection({ enabled, captureBodies, maxBodyBytes });
 }
 
 function readSelectorText(value: unknown): string {

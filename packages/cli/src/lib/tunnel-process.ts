@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
+  DESTINATION_TUNNEL_MAX_BODY_BYTES,
   validateDestinationTunnelSelectors,
   type DestinationTunnelRoute,
   type DestinationTunnelSelectors,
@@ -22,6 +23,9 @@ export interface TunnelProcessState {
   product: TunnelProduct;
   status: 'starting' | 'ready';
   selectors: DestinationTunnelSelectors;
+  inspect?: boolean;
+  harPath?: string;
+  harBodyLimit?: number;
   startedAt: string;
   logPath: string;
   tunnelId?: string;
@@ -122,6 +126,9 @@ export function buildTunnelServeArgs(options: {
   instanceId: string;
   owner: string;
   selectors: DestinationTunnelSelectors;
+  inspect?: boolean;
+  harPath?: string;
+  harBodyLimit?: number;
   verbose?: boolean;
 }): string[] {
   assertOwner(options.owner);
@@ -135,6 +142,13 @@ export function buildTunnelServeArgs(options: {
     options.instanceId,
     `--tunnel-owner=${options.owner}`,
     ...(options.verbose ? ['--verbose'] : []),
+    ...(options.product === 'android' && options.inspect !== undefined ?
+      [options.inspect ? '--inspect' : '--no-inspect']
+    : []),
+    ...(options.product === 'android' && options.harPath ? ['--har', options.harPath] : []),
+    ...(options.product === 'android' && options.harBodyLimit !== undefined ?
+      ['--har-body-limit', String(options.harBodyLimit)]
+    : []),
     ...(options.selectors.routes ?? []).flatMap((route) => ['--route', formatTunnelRoute(route)]),
     ...(options.selectors.domains ?? []).flatMap((domain) => ['--domain', domain]),
   ];
@@ -186,7 +200,11 @@ function tunnelProcessDirectory(instanceId: string, root: string): string {
   return path.join(root, key);
 }
 
-export function tunnelProcessPaths(instanceId: string, owner: string, root = TUNNELS_ROOT): TunnelProcessPaths {
+export function tunnelProcessPaths(
+  instanceId: string,
+  owner: string,
+  root = TUNNELS_ROOT,
+): TunnelProcessPaths {
   assertOwner(owner);
   const directory = tunnelProcessDirectory(instanceId, root);
   return {
@@ -517,6 +535,15 @@ function validateTunnelProcessState(
     state.status !== 'ready' ||
     (state.pid > 0 && typeof state.tunnelId === 'string' && state.tunnelId.length > 0);
   const startingFieldsValid = state.status !== 'starting' || state.tunnelId === undefined;
+  const inspectionFieldsValid =
+    (state.inspect === undefined || typeof state.inspect === 'boolean') &&
+    (state.harPath === undefined || (typeof state.harPath === 'string' && state.harPath.length > 0)) &&
+    (state.harBodyLimit === undefined ||
+      (Number.isInteger(state.harBodyLimit) &&
+        state.harBodyLimit > 0 &&
+        state.harBodyLimit <= DESTINATION_TUNNEL_MAX_BODY_BYTES)) &&
+    (state.harPath === undefined || state.inspect === true) &&
+    (state.product === 'android' || (state.inspect === undefined && state.harPath === undefined));
   if (
     typeof state.owner !== 'string' ||
     !OWNER_PATTERN.test(state.owner) ||
@@ -529,7 +556,8 @@ function validateTunnelProcessState(
     age < 0 ||
     state.logPath !== paths.log ||
     !readyFieldsValid ||
-    !startingFieldsValid
+    !startingFieldsValid ||
+    !inspectionFieldsValid
   ) {
     throw new Error('Invalid tunnel process state');
   }

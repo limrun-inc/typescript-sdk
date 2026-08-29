@@ -1,7 +1,15 @@
 import dns from 'dns';
 import net from 'net';
+import tls from 'tls';
 import { WebSocket, type RawData } from 'ws';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import {
+  startDestinationTunnelInspectionStream,
+  type DestinationTunnelInspectionErrorCallback,
+  type DestinationTunnelInspectionEventCallback,
+  type DestinationTunnelInspectionGapCallback,
+  type DestinationTunnelInspectionStream,
+} from './destination-tunnel-inspection';
 import {
   DESTINATION_TUNNEL_VERSION,
   DestinationTunnelProtocolError,
@@ -9,12 +17,15 @@ import {
   assertDestinationTunnelReady,
   decodeDestinationTunnelDataFrame,
   decodeDestinationTunnelServerMessage,
+  disabledDestinationTunnelInspection,
   destinationTunnelConfigHash,
   encodeDestinationTunnelDataFrame,
   encodeDestinationTunnelClientMessage,
+  normalizeDestinationTunnelInspection,
   validateDestinationTunnelSelectors,
   type DestinationTunnelClientMessage,
   type DestinationTunnelOpenFailureReason,
+  type DestinationTunnelInspectionConfig,
   type DestinationTunnelRoute,
   type DestinationTunnelResetReason,
   type DestinationTunnelSelectorReport,
@@ -28,6 +39,8 @@ export interface DestinationTcpTunnel {
   /** Normalized selectors echoed by the server, including bind reports. */
   selectors?: DestinationTunnelSelectorReport[];
   configHash?: string;
+  inspection: DestinationTunnelInspectionConfig;
+  inspectionStream?: DestinationTunnelInspectionStream;
   close: () => void;
   getConnectionState: () => TunnelConnectionState;
   onConnectionStateChange: (callback: TunnelConnectionStateCallback) => () => void;
@@ -36,6 +49,13 @@ export interface DestinationTcpTunnel {
 export interface DestinationTcpTunnelOptions {
   routes?: DestinationTunnelRoute[];
   domains?: string[];
+  inspection?: Partial<DestinationTunnelInspectionConfig>;
+  /** Called for validated inspection metadata and body frames. */
+  onInspectionEvent?: DestinationTunnelInspectionEventCallback;
+  /** Called whenever the stream reports or detects missing sequences. */
+  onInspectionGap?: DestinationTunnelInspectionGapCallback;
+  /** Called for inspection-only transport, protocol, or callback failures. */
+  onInspectionError?: DestinationTunnelInspectionErrorCallback;
   /**
    * Per-flow receive window in bytes. Setting it enables explicit credit
    * flow control: the client advertises the window in `start`/`openOk` and
@@ -54,8 +74,9 @@ export interface DestinationTcpTunnelOptions {
 }
 
 interface DialConnection {
-  socket: net.Socket;
+  socket?: net.Socket;
   phase: 'connecting' | 'open';
+  abortController: AbortController;
   connectTimer: NodeJS.Timeout;
   localInputEnded: boolean;
   remoteInputEnded: boolean;
@@ -69,6 +90,12 @@ interface DialConnection {
   finPending: boolean;
   /** Bytes accepted by the local socket since the last windowUpdate we sent. */
   deliveredSinceUpdate: number;
+  dnsMs?: number;
+}
+
+interface OpenDialConnection extends DialConnection {
+  socket: net.Socket;
+  phase: 'open';
 }
 
 /** Thrown (message prefix) when the server terminates the session with `error`. */
@@ -93,6 +120,9 @@ export async function startDestinationTcpTunnel(
     ...(options.domains ? { domains: options.domains } : {}),
   });
   const routes = selectors.routes ?? [];
+  const inspection = normalizeDestinationTunnelInspection(
+    options.inspection ?? disabledDestinationTunnelInspection(),
+  );
   const logLevel = options.logLevel ?? 'info';
   const creditWindow = options.window === undefined ? undefined : positiveInteger(options.window, 'window');
   const maxConnections = positiveInteger(options.maxConnections ?? 64, 'maxConnections');
@@ -147,6 +177,7 @@ export async function startDestinationTcpTunnel(
     let livenessTimer: NodeJS.Timeout | undefined;
     let tunnelReady = false;
     let closed = false;
+    let inspectionStream: DestinationTunnelInspectionStream | undefined;
     let pausedForBackpressure = false;
     let totalPendingWriteBytes = 0;
 
@@ -181,9 +212,10 @@ export async function startDestinationTcpTunnel(
       const connection = connections.get(connId);
       if (!connection) return;
       connections.delete(connId);
+      connection.abortController.abort();
       clearTimeout(connection.connectTimer);
       markRecentlyClosed(connId);
-      if (destroySocket && !connection.socket.destroyed) {
+      if (destroySocket && connection.socket && !connection.socket.destroyed) {
         connection.socket.destroy();
       }
     };
@@ -215,6 +247,8 @@ export async function startDestinationTcpTunnel(
         livenessTimer = undefined;
       }
       closeAllConnections();
+      inspectionStream?.close();
+      inspectionStream = undefined;
       ws.removeAllListeners('open');
       ws.removeAllListeners('message');
       ws.removeAllListeners('ping');
@@ -241,7 +275,7 @@ export async function startDestinationTcpTunnel(
       if (pausedForBackpressure) return;
       pausedForBackpressure = true;
       for (const connection of connections.values()) {
-        if (!connection.socket.destroyed) connection.socket.pause();
+        if (connection.socket && !connection.socket.destroyed) connection.socket.pause();
       }
     };
 
@@ -252,7 +286,9 @@ export async function startDestinationTcpTunnel(
         // Flows still waiting on per-flow credit stay paused; they resume
         // when the server grants more window, keeping one stalled flow from
         // holding every other flow back.
-        if (!connection.socket.destroyed && mayReadFromSocket(connection)) connection.socket.resume();
+        if (connection.socket && !connection.socket.destroyed && mayReadFromSocket(connection)) {
+          connection.socket.resume();
+        }
       }
     };
 
@@ -347,7 +383,7 @@ export async function startDestinationTcpTunnel(
         connection.localInputEnded = true;
         sendControl({ type: 'fin', connId });
       }
-      if (connection.socket.destroyed) return;
+      if (!connection.socket || connection.socket.destroyed) return;
       if (connection.creditQueueBytes > 0) {
         connection.socket.pause();
       } else if (!pausedForBackpressure) {
@@ -357,14 +393,16 @@ export async function startDestinationTcpTunnel(
 
     const dialTarget = async (
       message: Extract<DestinationTunnelServerMessage, { type: 'open' }>,
-    ): Promise<{ host: string }> => {
+    ): Promise<{ host: string; dnsMs: number }> => {
       // Domain selectors resolve through the user's OS resolver and may only
       // reach ordinary unicast targets. Loopback and similar special targets
       // require an explicit exact route grant.
+      const startedAt = Date.now();
       const results = await dns.promises.lookup(message.host, { all: true, verbatim: true });
+      const dnsMs = Date.now() - startedAt;
       for (const result of results) {
         if (isDialableResolvedAddress(result.address, message.port, routes)) {
-          return { host: result.address };
+          return { host: result.address, dnsMs };
         }
       }
       const blockedError: NodeJS.ErrnoException = new Error(
@@ -373,6 +411,49 @@ export async function startDestinationTcpTunnel(
       blockedError.code = 'EBLOCKED';
       throw blockedError;
     };
+
+    const wrapTls = (
+      socket: net.Socket,
+      transport: Extract<DestinationTunnelServerMessage, { type: 'open' }>['transport'] & {
+        type: 'tls';
+      },
+      abortController: AbortController,
+    ): Promise<tls.TLSSocket> =>
+      new Promise((resolveTls, rejectTls) => {
+        const tlsSocket = tls.connect({
+          socket,
+          rejectUnauthorized: true,
+          servername: transport.serverName,
+          ALPNProtocols: transport.alpnProtocols,
+        });
+        tlsSocket.allowHalfOpen = true;
+        const cleanup = (): void => {
+          tlsSocket.removeListener('secureConnect', onSecureConnect);
+          tlsSocket.removeListener('error', onError);
+          abortController.signal.removeEventListener('abort', onAbort);
+        };
+        const onSecureConnect = (): void => {
+          cleanup();
+          tlsSocket.pause();
+          resolveTls(tlsSocket);
+        };
+        const onError = (error: Error): void => {
+          cleanup();
+          rejectTls(error);
+        };
+        const onAbort = (): void => {
+          cleanup();
+          tlsSocket.destroy();
+          rejectTls(Object.assign(new Error('TLS connection cancelled'), { code: 'ECANCELED' }));
+        };
+        tlsSocket.once('secureConnect', onSecureConnect);
+        tlsSocket.once('error', onError);
+        if (abortController.signal.aborted) {
+          onAbort();
+        } else {
+          abortController.signal.addEventListener('abort', onAbort, { once: true });
+        }
+      });
 
     const handleOpen = (message: Extract<DestinationTunnelServerMessage, { type: 'open' }>): void => {
       try {
@@ -390,17 +471,7 @@ export async function startDestinationTcpTunnel(
       }
 
       const kind = message.routeId.split('-')[0];
-      // Exact routes dial the declared target directly. Domain targets
-      // resolve through the OS resolver first, so their socket starts
-      // detached and connects once an allowed address is found.
-      const socket =
-        kind === 'domain' ?
-          new net.Socket({ allowHalfOpen: true })
-        : net.createConnection({
-            host: message.host,
-            port: message.port,
-            allowHalfOpen: true,
-          });
+      const abortController = new AbortController();
       const connectTimer = setTimeout(() => {
         if (connections.get(message.connId)?.phase !== 'connecting') return;
         logger.warn(`Failed to connect to ${message.host}:${message.port}: timed out`);
@@ -409,8 +480,8 @@ export async function startDestinationTcpTunnel(
       }, connectTimeoutMs);
       connectTimer.unref();
       const connection: DialConnection = {
-        socket,
         phase: 'connecting',
+        abortController,
         connectTimer,
         localInputEnded: false,
         remoteInputEnded: false,
@@ -422,83 +493,102 @@ export async function startDestinationTcpTunnel(
         deliveredSinceUpdate: 0,
       };
       connections.set(message.connId, connection);
-      if (pausedForBackpressure) {
-        socket.pause();
-      }
 
-      socket.once('connect', () => {
-        if (connections.get(message.connId) !== connection) return;
+      void (async () => {
+        let host = message.host;
+        if (kind === 'domain') {
+          const resolved = await dialTarget(message);
+          host = resolved.host;
+          connection.dnsMs = resolved.dnsMs;
+        }
+        if (connections.get(message.connId) !== connection || closed) return;
+
+        const tcp = await nodeProxyTransport.connectTcp({
+          host,
+          port: message.port,
+          proxyLookupHost: message.host,
+          proxyLookupProtocol: message.transport.type === 'tls' ? 'https:' : 'http:',
+          timeoutMs: connectTimeoutMs,
+          signal: abortController.signal,
+        });
+        if (connections.get(message.connId) !== connection || closed) {
+          tcp.socket.destroy();
+          return;
+        }
+        connection.socket = tcp.socket;
+
+        let socket: net.Socket = tcp.socket;
+        let tlsMs: number | undefined;
+        if (message.transport.type === 'tls') {
+          const tlsStartedAt = Date.now();
+          socket = await wrapTls(tcp.socket, message.transport, abortController);
+          tlsMs = Date.now() - tlsStartedAt;
+          if (connections.get(message.connId) !== connection || closed) {
+            socket.destroy();
+            return;
+          }
+          connection.socket = socket;
+        }
+
         clearTimeout(connectTimer);
+        socket.on('data', (payload: Buffer) => {
+          if (connections.get(message.connId) !== connection || connection.phase !== 'open') return;
+          pushThroughCreditGate(message.connId, connection, payload);
+        });
+        socket.once('end', () => {
+          if (connections.get(message.connId) !== connection || connection.phase !== 'open') return;
+          if (connection.creditQueueBytes > 0) {
+            // Queued bytes are still waiting on send credit; fin must follow
+            // them, so defer it until the credit gate drains the queue.
+            connection.finPending = true;
+            return;
+          }
+          connection.localInputEnded = true;
+          sendControl({ type: 'fin', connId: message.connId });
+        });
+        socket.once('error', (error: NodeJS.ErrnoException) => {
+          if (connections.get(message.connId) !== connection) return;
+          sendReset(message.connId, 'connection_error', error.code);
+          removeConnection(message.connId, true);
+        });
+        socket.once('close', () => {
+          if (connections.get(message.connId) !== connection) return;
+          if (!connection.localInputEnded || !connection.remoteInputEnded) {
+            sendReset(message.connId, 'connection_error');
+          }
+          removeConnection(message.connId, false);
+        });
+
         connection.phase = 'open';
         sendControl({
           type: 'openOk',
           connId: message.connId,
+          transport: {
+            type: message.transport.type,
+            ...(tcp.remoteAddress === undefined ? {} : { remoteAddress: tcp.remoteAddress }),
+            ...(connection.dnsMs === undefined ? {} : { dnsMs: connection.dnsMs }),
+            connectMs: tcp.connectMs,
+            ...(tlsMs === undefined ? {} : { tlsMs }),
+            ...(socket instanceof tls.TLSSocket && socket.alpnProtocol ?
+              { alpnProtocol: socket.alpnProtocol }
+            : {}),
+          },
           ...(creditWindow === undefined ? {} : { window: creditWindow }),
         });
         logger.debug(`Forwarding connection ${message.connId} to ${message.host}:${message.port}`);
-      });
-
-      socket.on('data', (payload: Buffer) => {
-        if (connections.get(message.connId) !== connection || connection.phase !== 'open') return;
-        pushThroughCreditGate(message.connId, connection, payload);
-      });
-
-      socket.once('end', () => {
-        if (connections.get(message.connId) !== connection || connection.phase !== 'open') return;
-        if (connection.creditQueueBytes > 0) {
-          // Queued bytes are still waiting on send credit; fin must follow
-          // them, so defer it until the credit gate drains the queue.
-          connection.finPending = true;
-          return;
-        }
-        connection.localInputEnded = true;
-        sendControl({ type: 'fin', connId: message.connId });
-      });
-
-      socket.once('error', (error: NodeJS.ErrnoException) => {
+        if (!pausedForBackpressure && connection.creditQueueBytes === 0) socket.resume();
+      })().catch((error: NodeJS.ErrnoException) => {
         if (connections.get(message.connId) !== connection) return;
-        if (connection.phase === 'connecting') {
-          logger.warn(
-            `Failed to connect to ${message.host}:${message.port}: ${error.code ?? error.message}`,
-          );
-          sendOpenFailure(message.connId, classifyOpenFailure(error), error.code);
-        } else {
-          sendReset(message.connId, 'connection_error', error.code);
-        }
+        logger.warn(`Failed to connect to ${message.host}:${message.port}: ${error.code ?? error.message}`);
+        const reason = error.code === 'EBLOCKED' ? 'route_not_allowed' : classifyOpenFailure(error);
+        sendOpenFailure(message.connId, reason, error.code === 'EBLOCKED' ? undefined : error.code);
         removeConnection(message.connId, true);
       });
-
-      socket.once('close', () => {
-        if (connections.get(message.connId) !== connection) return;
-        if (connection.phase === 'connecting') {
-          sendOpenFailure(message.connId, 'internal');
-        } else if (!connection.localInputEnded || !connection.remoteInputEnded) {
-          sendReset(message.connId, 'connection_error');
-        }
-        removeConnection(message.connId, false);
-      });
-
-      if (kind === 'domain') {
-        dialTarget(message)
-          .then(({ host }) => {
-            if (connections.get(message.connId) !== connection || closed) return;
-            socket.connect({ host, port: message.port });
-          })
-          .catch((error: NodeJS.ErrnoException) => {
-            if (connections.get(message.connId) !== connection) return;
-            logger.warn(
-              `Failed to connect to ${message.host}:${message.port}: ${error.code ?? error.message}`,
-            );
-            const reason = error.code === 'EBLOCKED' ? 'route_not_allowed' : classifyOpenFailure(error);
-            sendOpenFailure(message.connId, reason, error.code === 'EBLOCKED' ? undefined : error.code);
-            removeConnection(message.connId, true);
-          });
-      }
     };
 
-    const findOpenConnection = (connId: number): DialConnection | undefined => {
+    const findOpenConnection = (connId: number): OpenDialConnection | undefined => {
       const connection = connections.get(connId);
-      if (connection?.phase === 'open') return connection;
+      if (connection?.phase === 'open' && connection.socket) return connection as OpenDialConnection;
       if (connection) {
         sendReset(connId, 'protocol_error');
         removeConnection(connId, true);
@@ -591,12 +681,19 @@ export async function startDestinationTcpTunnel(
           if (tunnelReady) throw new DestinationTunnelProtocolError('received duplicate READY');
           assertDestinationTunnelReady(message);
           if (message.configHash !== undefined) {
-            const expected = destinationTunnelConfigHash(selectors);
+            const expected = destinationTunnelConfigHash(selectors, inspection);
             if (message.configHash !== expected) {
               throw new DestinationTunnelProtocolError(
                 `server acknowledged config ${message.configHash} but ${expected} was negotiated`,
               );
             }
+          }
+          if (
+            message.inspection.enabled !== inspection.enabled ||
+            message.inspection.captureBodies !== inspection.captureBodies ||
+            message.inspection.maxBodyBytes !== inspection.maxBodyBytes
+          ) {
+            throw new DestinationTunnelProtocolError('server acknowledged different inspection settings');
           }
           tunnelReady = true;
           if (handshakeTimer) {
@@ -606,10 +703,27 @@ export async function startDestinationTcpTunnel(
           armLivenessDeadline();
           updateConnectionState('connected');
           logger.info(`Destination tunnel ready with ${countSelectors(selectors)} selector(s)`);
+          if (inspection.enabled) {
+            try {
+              inspectionStream = startDestinationTunnelInspectionStream(remoteURL, message.tunnelId, token, {
+                ...(options.onInspectionEvent ? { onEvent: options.onInspectionEvent } : {}),
+                ...(options.onInspectionGap ? { onGap: options.onInspectionGap } : {}),
+                ...(options.onInspectionError ? { onError: options.onInspectionError } : {}),
+              });
+            } catch (error) {
+              try {
+                options.onInspectionError?.(error instanceof Error ? error : new Error(String(error)));
+              } catch {
+                // Inspection callbacks are isolated from the main tunnel.
+              }
+            }
+          }
           resolve({
             tunnelId: message.tunnelId,
             ...(message.selectors === undefined ? {} : { selectors: message.selectors }),
             ...(message.configHash === undefined ? {} : { configHash: message.configHash }),
+            inspection: message.inspection,
+            ...(inspectionStream ? { inspectionStream } : {}),
             close,
             getConnectionState,
             onConnectionStateChange,
@@ -656,6 +770,7 @@ export async function startDestinationTcpTunnel(
         version: DESTINATION_TUNNEL_VERSION,
         ...(selectors.routes ? { routes: selectors.routes } : {}),
         ...(selectors.domains ? { domains: selectors.domains } : {}),
+        inspection,
         ...(creditWindow === undefined ? {} : { window: creditWindow }),
       });
       pingInterval = setInterval(() => {
@@ -757,6 +872,7 @@ export function classifyOpenFailure(error: NodeJS.ErrnoException): DestinationTu
       return 'unreachable';
     case 'EACCES':
     case 'EPERM':
+    case 'EPROXYAUTH':
       return 'permission_denied';
     case 'EMFILE':
     case 'ENFILE':
@@ -765,7 +881,30 @@ export function classifyOpenFailure(error: NodeJS.ErrnoException): DestinationTu
       return 'resource_exhausted';
     case 'ECANCELED':
       return 'cancelled';
+    case 'CERT_HAS_EXPIRED':
+    case 'CERT_NOT_YET_VALID':
+    case 'CERT_REJECTED':
+    case 'CERT_REVOKED':
+    case 'CERT_SIGNATURE_FAILURE':
+    case 'CERT_UNTRUSTED':
+    case 'DEPTH_ZERO_SELF_SIGNED_CERT':
+    case 'ERR_TLS_CERT_ALTNAME_FORMAT':
+    case 'SELF_SIGNED_CERT_IN_CHAIN':
+    case 'HOSTNAME_MISMATCH':
+    case 'INVALID_CA':
+    case 'INVALID_PURPOSE':
+    case 'PATH_LENGTH_EXCEEDED':
+    case 'UNABLE_TO_GET_ISSUER_CERT':
+    case 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY':
+    case 'UNABLE_TO_VERIFY_LEAF_SIGNATURE':
+    case 'ERR_TLS_CERT_ALTNAME_INVALID':
+      return 'tls_validation_failed';
+    case 'EPROTO':
+      return 'tls_protocol_error';
     default:
+      if (error.code?.startsWith('ERR_SSL_') || error.code?.startsWith('ERR_TLS_')) {
+        return 'tls_handshake_failed';
+      }
       return 'internal';
   }
 }

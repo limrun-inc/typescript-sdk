@@ -23,12 +23,18 @@ export function deriveDestinationTunnelURL(apiUrl: string): string {
 
 export function deriveDestinationTunnelStatusURL(apiUrl: string): URL {
   const url = deriveDestinationTunnelEndpointURL(apiUrl, 'status');
-  url.protocol = url.protocol === 'wss:' ? 'https:' : url.protocol === 'ws:' ? 'http:' : url.protocol;
+  url.protocol =
+    url.protocol === 'wss:' ? 'https:'
+    : url.protocol === 'ws:' ? 'http:'
+    : url.protocol;
   return url;
 }
 
 export function deriveDestinationTunnelStopURL(apiUrl: string, tunnelId: string): URL {
   const url = deriveDestinationTunnelEndpointURL(apiUrl, encodeURIComponent(tunnelId));
-  url.protocol = url.protocol === 'wss:' ? 'https:' : url.protocol === 'ws:' ? 'http:' : url.protocol;
+  url.protocol =
+    url.protocol === 'wss:' ? 'https:'
+    : url.protocol === 'ws:' ? 'http:'
+    : url.protocol;
   return url;
 }

@@ -47,6 +47,11 @@ describe('destination tunnel management', () => {
               { host: 'localhost', port: 3000 },
               { host: '10.20.30.40', port: 443 },
             ],
+            inspection: {
+              enabled: false,
+              captureBodies: false,
+              maxBodyBytes: 10 * 1024 * 1024,
+            },
           },
           lastDialFailure,
         }),
@@ -61,6 +66,11 @@ describe('destination tunnel management', () => {
           { host: 'localhost', port: 3000 },
           { host: '10.20.30.40', port: 443 },
         ],
+        inspection: {
+          enabled: false,
+          captureBodies: false,
+          maxBodyBytes: 10 * 1024 * 1024,
+        },
       },
       lastDialFailure,
     });

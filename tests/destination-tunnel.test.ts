@@ -6,9 +6,11 @@ import fixture from './destination-tunnel-protocol.fixture.json';
 import upstream from './destination-tunnel-protocol.upstream.json';
 import {
   DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
+  DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
   DESTINATION_TUNNEL_FAKE_RANGE,
   DESTINATION_TUNNEL_MAX_DOMAINS,
   DESTINATION_TUNNEL_MAX_ROUTES,
+  DESTINATION_TUNNEL_MAX_BODY_BYTES,
   DESTINATION_TUNNEL_MAX_WINDOW,
   DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT,
   DESTINATION_TUNNEL_VERSION,
@@ -19,10 +21,12 @@ import {
   decodeDestinationTunnelDataFrame,
   decodeDestinationTunnelServerMessage,
   destinationTunnelConfigHash,
+  disabledDestinationTunnelInspection,
   destinationTunnelDomainMatches,
   destinationTunnelSelectorIds,
   encodeDestinationTunnelDataFrame,
   encodeDestinationTunnelClientMessage,
+  normalizeDestinationTunnelInspection,
   validateDestinationTunnelDomains,
   validateDestinationTunnelRoutes,
   validateDestinationTunnelSelectors,
@@ -41,6 +45,8 @@ describe('destination tunnel wire contract', () => {
     expect(DESTINATION_TUNNEL_FAKE_RANGE).toBe(fixture.contract.fakeRange);
     expect(DESTINATION_TUNNEL_MAX_WINDOW).toBe(fixture.contract.maxWindow);
     expect(DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT).toBe(fixture.contract.maxWindowIncrement);
+    expect(DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES).toBe(fixture.contract.defaultMaxBodyBytes);
+    expect(DESTINATION_TUNNEL_MAX_BODY_BYTES).toBe(fixture.contract.maxBodyBytes);
     expect(DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES).toBe(fixture.contract.connID.binaryHeaderBytes);
   });
 
@@ -62,7 +68,7 @@ describe('destination tunnel wire contract', () => {
       repository: 'limrun-inc/limrun',
       commit: 'b3cbe546d6af8111a7cd6d8d60609a8f2086591e',
       path: 'design/destination-tunnel/v1',
-      messagesSha256: 'b054d33f5164b9d836b923153f0ea2bfc44342c368c62c0e220389881dd3bcf7',
+      messagesSha256: '01996ef062fe620fd23d38a80d43835685db9080c7035d0031b17715b832ba26',
       binarySha256: 'e6da913a0ff85a3402f09de6cbbb18d4f9b2e76007ca48b85f4d35b66810da7d',
     });
     expect(sha256('destination-tunnel-protocol.fixture.json')).toBe(upstream.messagesSha256);
@@ -83,6 +89,7 @@ describe('destination tunnel wire contract', () => {
         encodeDestinationTunnelClientMessage({
           type: 'openOk',
           connId,
+          transport: { type: 'tcp' },
         }),
       ).toThrow(DestinationTunnelProtocolError);
       expect(() =>
@@ -102,6 +109,7 @@ describe('destination tunnel wire contract', () => {
       encodeDestinationTunnelClientMessage({
         type: 'openOk',
         connId: Number.NaN,
+        transport: { type: 'tcp' },
       }),
     ).toThrow(DestinationTunnelProtocolError);
   });
@@ -111,11 +119,13 @@ describe('destination tunnel wire contract', () => {
       type: 'start',
       version: DESTINATION_TUNNEL_VERSION,
       routes: [{ host: '2001:0DB8:0:0:0:0:0:1', port: 443 }],
+      inspection: disabledDestinationTunnelInspection(),
     });
     expect(JSON.parse(encoded)).toEqual({
       type: 'start',
       version: DESTINATION_TUNNEL_VERSION,
       routes: [{ host: '2001:db8::1', port: 443 }],
+      inspection: disabledDestinationTunnelInspection(),
     });
   });
 
@@ -156,6 +166,38 @@ describe('destination tunnel wire contract', () => {
       osCode: 'EUNKNOWN',
     });
   });
+
+  test('defaults and validates inspection body capture limits', () => {
+    expect(normalizeDestinationTunnelInspection({ enabled: true, captureBodies: false })).toEqual({
+      enabled: true,
+      captureBodies: false,
+      maxBodyBytes: DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+    });
+    expect(() =>
+      encodeDestinationTunnelClientMessage({
+        type: 'start',
+        version: DESTINATION_TUNNEL_VERSION,
+        routes: [{ host: 'localhost', port: 8080 }],
+        inspection: {
+          enabled: false,
+          captureBodies: true,
+          maxBodyBytes: DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+        },
+      }),
+    ).toThrow('captureBodies requires inspection to be enabled');
+    expect(() =>
+      encodeDestinationTunnelClientMessage({
+        type: 'start',
+        version: DESTINATION_TUNNEL_VERSION,
+        routes: [{ host: 'localhost', port: 8080 }],
+        inspection: {
+          enabled: true,
+          captureBodies: true,
+          maxBodyBytes: DESTINATION_TUNNEL_MAX_BODY_BYTES + 1,
+        },
+      }),
+    ).toThrow(`maxBodyBytes must be an integer between 1 and ${DESTINATION_TUNNEL_MAX_BODY_BYTES}`);
+  });
 });
 
 function sha256(name: string): string {
@@ -180,6 +222,7 @@ describe('destination tunnel route contract', () => {
         type: 'start',
         version: DESTINATION_TUNNEL_VERSION,
         routes,
+        inspection: disabledDestinationTunnelInspection(),
       }),
     ).toThrow();
   });
@@ -211,6 +254,7 @@ describe('destination tunnel route contract', () => {
           connId: 1,
           ...requested,
           proto: 'tcp',
+          transport: { type: 'tcp' },
         },
         routes,
       ),
@@ -278,26 +322,30 @@ describe('destination tunnel selector contract', () => {
     ).toEqual(['route-1', 'domain-1', 'domain-2']);
   });
 
-  test.each(fixture.configHashCases)('pins config hash for $name', ({ selectors, sha256 }) => {
-    expect(destinationTunnelConfigHash(selectors as DestinationTunnelSelectors)).toBe(sha256);
+  test.each(fixture.configHashCases)('pins config hash for $name', ({ selectors, inspection, sha256 }) => {
+    expect(destinationTunnelConfigHash(selectors as DestinationTunnelSelectors, inspection)).toBe(sha256);
   });
 
-  test.each(fixture.openAllowedCases)('authorizes OPEN case $name: $allowed', ({ selectors, open, allowed }) => {
-    const message = {
-      type: 'open' as const,
-      connId: 1,
-      proto: 'tcp' as const,
-      ...open,
-    };
-    const selectorSet = validateDestinationTunnelSelectors(selectors as DestinationTunnelSelectors);
-    if (allowed) {
-      expect(() => assertDestinationTunnelOpenAllowed(message, selectorSet)).not.toThrow();
-    } else {
-      expect(() => assertDestinationTunnelOpenAllowed(message, selectorSet)).toThrow(
-        DestinationTunnelProtocolError,
-      );
-    }
-  });
+  test.each(fixture.openAllowedCases)(
+    'authorizes OPEN case $name: $allowed',
+    ({ selectors, open, allowed }) => {
+      const message = {
+        type: 'open' as const,
+        connId: 1,
+        proto: 'tcp' as const,
+        transport: { type: 'tcp' as const },
+        ...open,
+      };
+      const selectorSet = validateDestinationTunnelSelectors(selectors as DestinationTunnelSelectors);
+      if (allowed) {
+        expect(() => assertDestinationTunnelOpenAllowed(message, selectorSet)).not.toThrow();
+      } else {
+        expect(() => assertDestinationTunnelOpenAllowed(message, selectorSet)).toThrow(
+          DestinationTunnelProtocolError,
+        );
+      }
+    },
+  );
 
   test('round-trips windowUpdate messages in both directions', () => {
     const encoded = encodeDestinationTunnelClientMessage({
@@ -324,9 +372,14 @@ describe('destination tunnel selector contract', () => {
   );
 
   test.each([0, -5, 1.5, DESTINATION_TUNNEL_MAX_WINDOW + 1])('rejects invalid window %p', (window) => {
-    expect(() => encodeDestinationTunnelClientMessage({ type: 'openOk', connId: 5, window })).toThrow(
-      DestinationTunnelProtocolError,
-    );
+    expect(() =>
+      encodeDestinationTunnelClientMessage({
+        type: 'openOk',
+        connId: 5,
+        transport: { type: 'tcp' },
+        window,
+      }),
+    ).toThrow(DestinationTunnelProtocolError);
     expect(() =>
       decodeDestinationTunnelServerMessage({
         type: 'open',
@@ -335,6 +388,7 @@ describe('destination tunnel selector contract', () => {
         host: 'localhost',
         port: 8080,
         proto: 'tcp',
+        transport: { type: 'tcp' },
         window,
       }),
     ).toThrow(DestinationTunnelProtocolError);

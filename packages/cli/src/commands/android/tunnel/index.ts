@@ -1,5 +1,11 @@
 import { Flags } from '@oclif/core';
-import { validateDestinationTunnelSelectors, type DestinationTunnelSelectors } from '@limrun/api';
+import path from 'path';
+import {
+  DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+  DESTINATION_TUNNEL_MAX_BODY_BYTES,
+  validateDestinationTunnelSelectors,
+  type DestinationTunnelSelectors,
+} from '@limrun/api';
 import { BaseCommand } from '../../../base-command';
 import { getAndroidInstanceClient } from '../../../lib/instance-client-factory';
 import {
@@ -15,6 +21,12 @@ import { parseTunnelDomain, parseTunnelRoute } from '../../../lib/tunnel-process
 
 /** Bind listeners on the instance run unprivileged; system ports are refused. */
 const ANDROID_MIN_ROUTE_PORT = 1024;
+
+export function validateAndroidTunnelInspectionFlags(inspect: boolean, harPath?: string): void {
+  if (harPath && !inspect) {
+    throw new Error('--har cannot be combined with --no-inspect.');
+  }
+}
 
 export default class AndroidTunnel extends BaseCommand {
   static summary = 'Route declared Android TCP destinations through this machine';
@@ -58,6 +70,21 @@ export default class AndroidTunnel extends BaseCommand {
         'Log every forwarded connection and dial failure. With --detach, the lines go to the tunnel log file (see tunnel status).',
       default: false,
     }),
+    inspect: Flags.boolean({
+      description:
+        'Print one safe HTTP summary per completed request. Use --no-inspect to disable Android inspection.',
+      default: true,
+      allowNo: true,
+    }),
+    har: Flags.string({
+      description: 'Capture inspected HTTP traffic as HAR 1.2 at this path.',
+    }),
+    'har-body-limit': Flags.integer({
+      description: 'Maximum captured bytes per request or response body.',
+      default: DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+      min: 1,
+      max: DESTINATION_TUNNEL_MAX_BODY_BYTES,
+    }),
     serve: Flags.boolean({
       description: 'Internal: own the detached tunnel transport.',
       default: false,
@@ -76,6 +103,11 @@ export default class AndroidTunnel extends BaseCommand {
     if (flags.detach && flags.serve) {
       this.error('--detach cannot be combined with internal --serve mode.');
     }
+    try {
+      validateAndroidTunnelInspectionFlags(flags.inspect, flags.har);
+    } catch (error) {
+      this.error(error instanceof Error ? error.message : String(error));
+    }
     if (!flags.route?.length && !flags.domain?.length) {
       this.error('Provide at least one --route or --domain destination.');
     }
@@ -92,7 +124,11 @@ export default class AndroidTunnel extends BaseCommand {
       await this.withAuth(async () => {
         const resolvedInstance = this.resolveAndroidInstance(flags.id);
         await serveTunnelDetached(
-          this.tunnelContext(resolvedInstance.id, selectors, flags.verbose ? 'debug' : 'info'),
+          this.tunnelContext(resolvedInstance.id, selectors, flags.verbose ? 'debug' : 'info', undefined, {
+            inspect: flags.inspect,
+            ...(flags.har ? { harPath: path.resolve(flags.har) } : {}),
+            harBodyLimit: flags['har-body-limit'],
+          }),
           owner,
         );
       });
@@ -103,7 +139,11 @@ export default class AndroidTunnel extends BaseCommand {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       if (flags.detach) {
         await startTunnelDetached({
-          ...this.tunnelContext(resolvedInstance.id, selectors, 'info', flags['api-key']),
+          ...this.tunnelContext(resolvedInstance.id, selectors, 'info', flags['api-key'], {
+            inspect: flags.inspect,
+            ...(flags.har ? { harPath: path.resolve(flags.har) } : {}),
+            harBodyLimit: flags['har-body-limit'],
+          }),
           verbose: flags.verbose,
         });
       } else {
@@ -114,6 +154,12 @@ export default class AndroidTunnel extends BaseCommand {
             flags.verbose ? 'debug'
             : this.shouldSuppressInfo() ? 'none'
             : 'info',
+            undefined,
+            {
+              inspect: flags.inspect,
+              ...(flags.har ? { harPath: path.resolve(flags.har) } : {}),
+              harBodyLimit: flags['har-body-limit'],
+            },
           ),
         );
       }
@@ -125,6 +171,10 @@ export default class AndroidTunnel extends BaseCommand {
     selectors: DestinationTunnelSelectors,
     logLevel: TunnelLogLevel,
     apiKey?: string,
+    inspection: { inspect: boolean; harPath?: string; harBodyLimit: number } = {
+      inspect: true,
+      harBodyLimit: DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+    },
   ): TunnelCommandContext {
     return {
       product: 'android',
@@ -132,6 +182,7 @@ export default class AndroidTunnel extends BaseCommand {
       selectors,
       apiKey,
       reconnect: true,
+      ...inspection,
       connect: async (): Promise<TunnelClientFacade> => {
         const resolvedInstance = this.resolveAndroidInstance(instanceId);
         const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);

@@ -8,6 +8,7 @@ import {
 import {
   DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
   DESTINATION_TUNNEL_VERSION,
+  disabledDestinationTunnelInspection,
   type DestinationTunnelClientMessage,
   type DestinationTunnelServerMessage,
 } from '../src/destination-tunnel';
@@ -89,9 +90,15 @@ describe('destination tunnel credit and selector dialing', () => {
       version: DESTINATION_TUNNEL_VERSION,
       routes: [{ host: '127.0.0.1', port: localPort }],
       domains: ['*.corp.example'],
+      inspection: disabledDestinationTunnelInspection(),
       window: 4096,
     });
-    sendControl({ type: 'ready', version: DESTINATION_TUNNEL_VERSION, tunnelId: 'tunnel-1' });
+    sendControl({
+      type: 'ready',
+      version: DESTINATION_TUNNEL_VERSION,
+      tunnelId: 'tunnel-1',
+      inspection: disabledDestinationTunnelInspection(),
+    });
     tunnel = await startup;
 
     sendControl({
@@ -101,10 +108,18 @@ describe('destination tunnel credit and selector dialing', () => {
       host: '127.0.0.1',
       port: localPort,
       proto: 'tcp',
+      transport: { type: 'tcp' },
       window: 8,
     });
     await waitFor(() => hasControl('openOk', 1));
-    expect(controlFor('openOk', 1)).toEqual({ type: 'openOk', connId: 1, window: 4096 });
+    expect(controlFor('openOk', 1)).toEqual(
+      expect.objectContaining({
+        type: 'openOk',
+        connId: 1,
+        transport: expect.objectContaining({ type: 'tcp' }),
+        window: 4096,
+      }),
+    );
   });
 
   test('sends at most the granted window until windowUpdate arrives', async () => {
@@ -118,7 +133,12 @@ describe('destination tunnel credit and selector dialing', () => {
       logLevel: 'none',
     });
     await waitFor(() => hasControl('start'));
-    sendControl({ type: 'ready', version: DESTINATION_TUNNEL_VERSION, tunnelId: 'tunnel-1' });
+    sendControl({
+      type: 'ready',
+      version: DESTINATION_TUNNEL_VERSION,
+      tunnelId: 'tunnel-1',
+      inspection: disabledDestinationTunnelInspection(),
+    });
     tunnel = await startup;
 
     sendControl({
@@ -128,6 +148,7 @@ describe('destination tunnel credit and selector dialing', () => {
       host: '127.0.0.1',
       port: localPort,
       proto: 'tcp',
+      transport: { type: 'tcp' },
       window: 4,
     });
     await waitFor(() => hasControl('openOk', 5));
@@ -158,7 +179,12 @@ describe('destination tunnel credit and selector dialing', () => {
       logLevel: 'none',
     });
     await waitFor(() => hasControl('start'));
-    sendControl({ type: 'ready', version: DESTINATION_TUNNEL_VERSION, tunnelId: 'tunnel-1' });
+    sendControl({
+      type: 'ready',
+      version: DESTINATION_TUNNEL_VERSION,
+      tunnelId: 'tunnel-1',
+      inspection: disabledDestinationTunnelInspection(),
+    });
     tunnel = await startup;
 
     sendControl({
@@ -168,6 +194,7 @@ describe('destination tunnel credit and selector dialing', () => {
       host: '127.0.0.1',
       port: localPort,
       proto: 'tcp',
+      transport: { type: 'tcp' },
       window: 4,
     });
     await waitFor(() => hasControl('openOk', 11));
@@ -182,9 +209,7 @@ describe('destination tunnel credit and selector dialing', () => {
     sendControl({ type: 'windowUpdate', connId: 11, increment: 1000 });
     await waitFor(() => hasControl('fin', 11));
     expect(dataFor(11).toString()).toBe('0123456789');
-    const finIndex = events.findIndex(
-      (event) => event.kind === 'control' && event.message.type === 'fin',
-    );
+    const finIndex = events.findIndex((event) => event.kind === 'control' && event.message.type === 'fin');
     const lastDataIndex = events.map((event) => event.kind).lastIndexOf('data');
     expect(finIndex).toBeGreaterThan(lastDataIndex);
   });
@@ -202,7 +227,12 @@ describe('destination tunnel credit and selector dialing', () => {
       logLevel: 'none',
     });
     await waitFor(() => hasControl('start'));
-    sendControl({ type: 'ready', version: DESTINATION_TUNNEL_VERSION, tunnelId: 'tunnel-1' });
+    sendControl({
+      type: 'ready',
+      version: DESTINATION_TUNNEL_VERSION,
+      tunnelId: 'tunnel-1',
+      inspection: disabledDestinationTunnelInspection(),
+    });
     tunnel = await startup;
 
     sendControl({
@@ -212,6 +242,7 @@ describe('destination tunnel credit and selector dialing', () => {
       host: '127.0.0.1',
       port: localPort,
       proto: 'tcp',
+      transport: { type: 'tcp' },
       window: 1024,
     });
     await waitFor(() => hasControl('openOk', 6));
@@ -240,7 +271,12 @@ describe('destination tunnel credit and selector dialing', () => {
       logLevel: 'none',
     });
     await waitFor(() => hasControl('start'));
-    sendControl({ type: 'ready', version: DESTINATION_TUNNEL_VERSION, tunnelId: 'tunnel-1' });
+    sendControl({
+      type: 'ready',
+      version: DESTINATION_TUNNEL_VERSION,
+      tunnelId: 'tunnel-1',
+      inspection: disabledDestinationTunnelInspection(),
+    });
     tunnel = await startup;
 
     sendControl({
@@ -250,6 +286,7 @@ describe('destination tunnel credit and selector dialing', () => {
       host: 'evil.example',
       port: localPort,
       proto: 'tcp',
+      transport: { type: 'tcp' },
     });
     await waitFor(() => hasControl('openFail', 7));
     expect(controlFor('openFail', 7)).toEqual({
@@ -266,6 +303,7 @@ describe('destination tunnel credit and selector dialing', () => {
       host: 'api.corp.example',
       port: localPort,
       proto: 'tcp',
+      transport: { type: 'tcp' },
     });
     await waitFor(() => hasControl('openOk', 8));
     expect(lookup).toHaveBeenCalledWith('api.corp.example', { all: true, verbatim: true });
@@ -273,19 +311,22 @@ describe('destination tunnel credit and selector dialing', () => {
   });
 
   test('blocks domain dials that resolve only to special addresses', async () => {
-    jest
-      .spyOn(require('dns').promises, 'lookup')
-      .mockResolvedValue([
-        { address: '127.0.0.1', family: 4 },
-        { address: '169.254.169.254', family: 4 },
-      ]);
+    jest.spyOn(require('dns').promises, 'lookup').mockResolvedValue([
+      { address: '127.0.0.1', family: 4 },
+      { address: '169.254.169.254', family: 4 },
+    ]);
 
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
       domains: ['api.corp.example'],
       logLevel: 'none',
     });
     await waitFor(() => hasControl('start'));
-    sendControl({ type: 'ready', version: DESTINATION_TUNNEL_VERSION, tunnelId: 'tunnel-1' });
+    sendControl({
+      type: 'ready',
+      version: DESTINATION_TUNNEL_VERSION,
+      tunnelId: 'tunnel-1',
+      inspection: disabledDestinationTunnelInspection(),
+    });
     tunnel = await startup;
 
     sendControl({
@@ -295,6 +336,7 @@ describe('destination tunnel credit and selector dialing', () => {
       host: 'api.corp.example',
       port: 443,
       proto: 'tcp',
+      transport: { type: 'tcp' },
     });
     await waitFor(() => hasControl('openFail', 9));
     expect(controlFor('openFail', 9)).toEqual({

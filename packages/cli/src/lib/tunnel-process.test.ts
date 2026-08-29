@@ -139,6 +139,30 @@ describe('tunnel process state', () => {
     expect(args.indexOf('--verbose')).toBeLessThan(args.indexOf('--domain'));
   });
 
+  test('replays only safe Android inspection and HAR options to the detached child', () => {
+    const owner = newTunnelOwner();
+    const args = buildTunnelServeArgs({
+      scriptPath: '/lim/run.js',
+      product: 'android',
+      instanceId: INSTANCE_ID,
+      owner,
+      selectors: { domains: ['api.example.test'] },
+      inspect: true,
+      harPath: '/tmp/private traffic.har',
+      harBodyLimit: 4 * 1024 * 1024,
+    });
+    expect(args).toEqual(
+      expect.arrayContaining([
+        '--inspect',
+        '--har',
+        '/tmp/private traffic.har',
+        '--har-body-limit',
+        String(4 * 1024 * 1024),
+      ]),
+    );
+    expect(args.join(' ')).not.toContain('token');
+  });
+
   test('builds an iOS child command with routes only', () => {
     const owner = newTunnelOwner();
     expect(

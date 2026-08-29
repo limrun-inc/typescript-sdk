@@ -15,6 +15,8 @@ export const DESTINATION_TUNNEL_FAKE_RANGE = '198.18.0.0/15';
 export const DESTINATION_TUNNEL_MAX_WINDOW = 64 * 1024 * 1024;
 /** Upper bound for a single windowUpdate increment. */
 export const DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT = 0x7fff_ffff;
+export const DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024;
+export const DESTINATION_TUNNEL_MAX_BODY_BYTES = 64 * 1024 * 1024;
 
 export interface DestinationTunnelRoute {
   host: string;
@@ -30,6 +32,31 @@ export interface DestinationTunnelRoute {
 export interface DestinationTunnelSelectors {
   routes?: DestinationTunnelRoute[];
   domains?: string[];
+}
+
+export interface DestinationTunnelInspectionConfig {
+  enabled: boolean;
+  captureBodies: boolean;
+  maxBodyBytes: number;
+}
+
+export type DestinationTunnelTransportType = 'tcp' | 'tls';
+
+export type DestinationTunnelTransportRequest =
+  | { type: 'tcp' }
+  | {
+      type: 'tls';
+      serverName: string;
+      alpnProtocols: string[];
+    };
+
+export interface DestinationTunnelTransportResult {
+  type: DestinationTunnelTransportType;
+  alpnProtocol?: string;
+  remoteAddress?: string;
+  dnsMs?: number;
+  connectMs?: number;
+  tlsMs?: number;
 }
 
 export type DestinationTunnelSelectorKind = 'route' | 'domain';
@@ -61,6 +88,9 @@ export type DestinationTunnelOpenFailureReason =
   | 'permission_denied'
   | 'resource_exhausted'
   | 'route_not_allowed'
+  | 'tls_handshake_failed'
+  | 'tls_validation_failed'
+  | 'tls_protocol_error'
   | 'cancelled'
   | 'internal'
   | (string & {});
@@ -90,10 +120,16 @@ export type DestinationTunnelClientMessage =
       version: number;
       routes?: DestinationTunnelRoute[];
       domains?: string[];
+      inspection: DestinationTunnelInspectionConfig;
       /** Default per-flow receive window this client grants. Absent disables credit. */
       window?: number;
     }
-  | { type: 'openOk'; connId: number; window?: number }
+  | {
+      type: 'openOk';
+      connId: number;
+      transport: DestinationTunnelTransportResult;
+      window?: number;
+    }
   | {
       type: 'openFail';
       connId: number;
@@ -111,6 +147,7 @@ export type DestinationTunnelServerMessage =
       tunnelId: string;
       selectors?: DestinationTunnelSelectorReport[];
       configHash?: string;
+      inspection: DestinationTunnelInspectionConfig;
     }
   | {
       type: 'open';
@@ -120,6 +157,7 @@ export type DestinationTunnelServerMessage =
       host: string;
       port: number;
       proto: 'tcp';
+      transport: DestinationTunnelTransportRequest;
       /** Server's receive window for this flow. Absent disables credit. */
       window?: number;
     }
@@ -265,17 +303,54 @@ export function validateDestinationTunnelDomains(domains: readonly string[]): st
  * in `ready` so clients can detect config mismatches across reconnects. The
  * hashed JSON has fixed key order and omits empty selector arrays.
  */
-export function destinationTunnelConfigHash(selectors: DestinationTunnelSelectors): string {
+export function destinationTunnelConfigHash(
+  selectors: DestinationTunnelSelectors,
+  inspection: DestinationTunnelInspectionConfig = disabledDestinationTunnelInspection(),
+): string {
   const canonical = validateDestinationTunnelSelectors(selectors);
+  const canonicalInspection = normalizeDestinationTunnelInspection(inspection);
   const parts: string[] = [`"version":${DESTINATION_TUNNEL_VERSION}`];
   if (canonical.routes && canonical.routes.length > 0) {
-    const routes = canonical.routes.map((route) => `{"host":${JSON.stringify(route.host)},"port":${route.port}}`);
+    const routes = canonical.routes.map(
+      (route) => `{"host":${JSON.stringify(route.host)},"port":${route.port}}`,
+    );
     parts.push(`"routes":[${routes.join(',')}]`);
   }
   if (canonical.domains && canonical.domains.length > 0) {
     parts.push(`"domains":[${canonical.domains.map((domain) => JSON.stringify(domain)).join(',')}]`);
   }
-  return crypto.createHash('sha256').update(`{${parts.join(',')}}`, 'utf8').digest('hex');
+  parts.push(
+    `"inspection":{"enabled":${canonicalInspection.enabled},"captureBodies":${canonicalInspection.captureBodies},"maxBodyBytes":${canonicalInspection.maxBodyBytes}}`,
+  );
+  return crypto
+    .createHash('sha256')
+    .update(`{${parts.join(',')}}`, 'utf8')
+    .digest('hex');
+}
+
+export function normalizeDestinationTunnelInspection(
+  inspection: Partial<DestinationTunnelInspectionConfig>,
+): DestinationTunnelInspectionConfig {
+  const enabled = inspection.enabled ?? false;
+  const captureBodies = inspection.captureBodies ?? false;
+  const maxBodyBytes = inspection.maxBodyBytes ?? DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES;
+  if (captureBodies && !enabled) {
+    throw new DestinationTunnelProtocolError('captureBodies requires inspection to be enabled');
+  }
+  if (
+    !Number.isInteger(maxBodyBytes) ||
+    maxBodyBytes < 1 ||
+    maxBodyBytes > DESTINATION_TUNNEL_MAX_BODY_BYTES
+  ) {
+    throw new DestinationTunnelProtocolError(
+      `maxBodyBytes must be an integer between 1 and ${DESTINATION_TUNNEL_MAX_BODY_BYTES}`,
+    );
+  }
+  return { enabled, captureBodies, maxBodyBytes };
+}
+
+export function disabledDestinationTunnelInspection(): DestinationTunnelInspectionConfig {
+  return normalizeDestinationTunnelInspection({ enabled: false, captureBodies: false });
 }
 
 /** Selector IDs are 1-based per kind: route-1, domain-1, ... */
@@ -304,7 +379,9 @@ export function assertDestinationTunnelOpenAllowed(
   selectors: DestinationTunnelSelectors | readonly DestinationTunnelRoute[],
 ): void {
   const normalized: DestinationTunnelSelectors =
-    Array.isArray(selectors) ? { routes: selectors as DestinationTunnelRoute[] } : (selectors as DestinationTunnelSelectors);
+    Array.isArray(selectors) ?
+      { routes: selectors as DestinationTunnelRoute[] }
+    : (selectors as DestinationTunnelSelectors);
   if (message.proto !== 'tcp') {
     throw new DestinationTunnelProtocolError(`server requested unsupported transport ${message.proto}`);
   }
@@ -354,11 +431,13 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
         ...(record['routes'] === undefined ? {} : { routes: readArray(record, 'routes').map(readRoute) }),
         ...(record['domains'] === undefined ? {} : { domains: readArray(record, 'domains').map(readDomain) }),
       });
+      const inspection = readInspectionConfig(record);
       return JSON.stringify({
         type,
         version,
         ...(selectors.routes ? { routes: selectors.routes } : {}),
         ...(selectors.domains ? { domains: selectors.domains } : {}),
+        inspection,
         ...readOptionalWindow(record),
       });
     }
@@ -366,6 +445,7 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
       return JSON.stringify({
         type,
         connId: readConnectionId(record),
+        transport: readTransportResult(record),
         ...readOptionalWindow(record),
       });
     case 'fin':
@@ -403,6 +483,7 @@ export function decodeDestinationTunnelServerMessage(value: unknown): Destinatio
           {}
         : { selectors: readArray(message, 'selectors').map(readSelectorReport) }),
         ...readOptionalString(message, 'configHash'),
+        inspection: readInspectionConfig(message),
       };
     case 'open':
       return {
@@ -412,6 +493,7 @@ export function decodeDestinationTunnelServerMessage(value: unknown): Destinatio
         host: readString(message, 'host'),
         port: readPort(message, 'port'),
         proto: readTCP(message),
+        transport: readTransportRequest(message),
         ...readOptionalWindow(message),
       };
     case 'fin':
@@ -440,12 +522,7 @@ function canonicalizeDestinationTunnelRoute(
   route: DestinationTunnelRoute,
   minPort = 1,
 ): DestinationTunnelRoute {
-  if (
-    !Number.isInteger(route.port) ||
-    route.port < minPort ||
-    route.port > 65_535 ||
-    route.port === 53
-  ) {
+  if (!Number.isInteger(route.port) || route.port < minPort || route.port > 65_535 || route.port === 53) {
     throw new DestinationTunnelRouteError('invalid_port', `invalid tunnel route port ${route.port}`);
   }
 
@@ -560,6 +637,52 @@ function readBindReport(value: unknown): DestinationTunnelBindReport {
   };
 }
 
+function readInspectionConfig(record: Record<string, unknown>): DestinationTunnelInspectionConfig {
+  const inspection = readRecord(record['inspection'], 'inspection');
+  const enabled = readBoolean(inspection, 'enabled');
+  const captureBodies = readBoolean(inspection, 'captureBodies');
+  const maxBodyBytes = readInteger(inspection, 'maxBodyBytes');
+  return normalizeDestinationTunnelInspection({ enabled, captureBodies, maxBodyBytes });
+}
+
+function readTransportRequest(record: Record<string, unknown>): DestinationTunnelTransportRequest {
+  const transport = readRecord(record['transport'], 'transport');
+  const type = readString(transport, 'type');
+  if (type === 'tcp') {
+    return { type };
+  }
+  if (type === 'tls') {
+    const serverName = readString(transport, 'serverName');
+    if (serverName.length === 0) {
+      throw new DestinationTunnelProtocolError('TLS transport requires serverName');
+    }
+    const alpnProtocols = readArray(transport, 'alpnProtocols').map((protocol) => {
+      if (typeof protocol !== 'string' || protocol.length === 0) {
+        throw new DestinationTunnelProtocolError('alpnProtocols must contain non-empty strings');
+      }
+      return protocol;
+    });
+    return { type, serverName, alpnProtocols };
+  }
+  throw new DestinationTunnelProtocolError(`unsupported tunnel transport ${type}`);
+}
+
+function readTransportResult(record: Record<string, unknown>): DestinationTunnelTransportResult {
+  const transport = readRecord(record['transport'], 'transport');
+  const type = readString(transport, 'type');
+  if (type !== 'tcp' && type !== 'tls') {
+    throw new DestinationTunnelProtocolError(`unsupported tunnel transport ${type}`);
+  }
+  return {
+    type,
+    ...readOptionalString(transport, 'alpnProtocol'),
+    ...readOptionalString(transport, 'remoteAddress'),
+    ...readOptionalNonNegativeInteger(transport, 'dnsMs'),
+    ...readOptionalNonNegativeInteger(transport, 'connectMs'),
+    ...readOptionalNonNegativeInteger(transport, 'tlsMs'),
+  };
+}
+
 function readRecord(value: unknown, name: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new DestinationTunnelProtocolError(`${name} must be an object`);
@@ -583,6 +706,14 @@ function readString(record: Record<string, unknown>, key: string): string {
   return value;
 }
 
+function readBoolean(record: Record<string, unknown>, key: string): boolean {
+  const value = record[key];
+  if (typeof value !== 'boolean') {
+    throw new DestinationTunnelProtocolError(`${key} must be a boolean`);
+  }
+  return value;
+}
+
 function readOptionalString(record: Record<string, unknown>, key: string): { [K in typeof key]?: string } {
   const value = record[key];
   if (value === undefined) {
@@ -602,6 +733,20 @@ function readInteger(record: Record<string, unknown>, key: string): number {
   return value as number;
 }
 
+function readOptionalNonNegativeInteger(
+  record: Record<string, unknown>,
+  key: string,
+): { [K in typeof key]?: number } {
+  const value = record[key];
+  if (value === undefined) {
+    return {};
+  }
+  if (!Number.isInteger(value) || (value as number) < 0) {
+    throw new DestinationTunnelProtocolError(`${key} must be a non-negative integer`);
+  }
+  return { [key]: value as number };
+}
+
 function readPort(record: Record<string, unknown>, key: string): number {
   const value = readInteger(record, key);
   if (value < 1 || value > 65_535) {
@@ -615,7 +760,11 @@ function readOptionalWindow(record: Record<string, unknown>): { window?: number 
   if (value === undefined) {
     return {};
   }
-  if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > DESTINATION_TUNNEL_MAX_WINDOW) {
+  if (
+    !Number.isInteger(value) ||
+    (value as number) < 1 ||
+    (value as number) > DESTINATION_TUNNEL_MAX_WINDOW
+  ) {
     throw new DestinationTunnelProtocolError(
       `window must be an integer between 1 and ${DESTINATION_TUNNEL_MAX_WINDOW}`,
     );

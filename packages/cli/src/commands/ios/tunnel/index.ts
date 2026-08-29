@@ -113,6 +113,7 @@ export default class IosTunnel extends BaseCommand {
       selectors,
       apiKey,
       reconnect: false,
+      inspect: false,
       connect: async (): Promise<TunnelClientFacade> => {
         const resolvedInstance = this.resolveIosInstance(instanceId);
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

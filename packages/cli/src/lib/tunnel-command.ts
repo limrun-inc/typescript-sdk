@@ -1,6 +1,17 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
-import { defaultSleep, type DestinationTunnelSelectors, type DestinationTunnelStatus } from '@limrun/api';
+import {
+  DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+  defaultSleep,
+  type DestinationTunnelInspectionConfig,
+  type DestinationTunnelInspectionErrorCallback,
+  type DestinationTunnelInspectionEvent,
+  type DestinationTunnelInspectionEventCallback,
+  type DestinationTunnelInspectionGap,
+  type DestinationTunnelInspectionGapCallback,
+  type DestinationTunnelSelectors,
+  type DestinationTunnelStatus,
+} from '@limrun/api';
 import {
   buildTunnelServeArgs,
   capTunnelLog,
@@ -31,6 +42,7 @@ import {
   type TunnelProcessState,
   type TunnelProduct,
 } from './tunnel-process';
+import { createTunnelHarRecorder, formatInspectionSummary, type TunnelHarRecorder } from './tunnel-har';
 
 /** One live tunnel generation, as exposed by the SDK clients. */
 export interface TunnelGeneration extends TunnelLike {
@@ -47,7 +59,13 @@ export interface TunnelManagementFacade {
 
 /** Product-neutral view over the iOS/Android instance clients. */
 export interface TunnelClientFacade extends TunnelManagementFacade {
-  startTunnel: (selectors: DestinationTunnelSelectors) => Promise<TunnelGeneration>;
+  startTunnel: (options: {
+    selectors: DestinationTunnelSelectors;
+    inspection: DestinationTunnelInspectionConfig;
+    onInspectionEvent?: DestinationTunnelInspectionEventCallback;
+    onInspectionGap?: DestinationTunnelInspectionGapCallback;
+    onInspectionError?: DestinationTunnelInspectionErrorCallback;
+  }) => Promise<TunnelGeneration>;
 }
 
 /** 'debug' additionally logs every forwarded connection and dial failure. */
@@ -61,7 +79,13 @@ export type TunnelLogLevel = 'debug' | 'info' | 'none';
 export function tunnelClientFacade(
   client: {
     startTunnel: (
-      options: DestinationTunnelSelectors & { logLevel?: TunnelLogLevel },
+      options: DestinationTunnelSelectors & {
+        logLevel?: TunnelLogLevel;
+        inspection?: Partial<DestinationTunnelInspectionConfig>;
+        onInspectionEvent?: DestinationTunnelInspectionEventCallback;
+        onInspectionGap?: DestinationTunnelInspectionGapCallback;
+        onInspectionError?: DestinationTunnelInspectionErrorCallback;
+      },
     ) => Promise<TunnelGeneration>;
     getTunnelStatus: () => Promise<DestinationTunnelStatus>;
     stopTunnel: (tunnelId: string) => Promise<void>;
@@ -70,7 +94,15 @@ export function tunnelClientFacade(
   logLevel: TunnelLogLevel,
 ): TunnelClientFacade {
   return {
-    startTunnel: (selectors) => client.startTunnel({ ...selectors, logLevel }),
+    startTunnel: (options) =>
+      client.startTunnel({
+        ...options.selectors,
+        logLevel,
+        inspection: options.inspection,
+        ...(options.onInspectionEvent ? { onInspectionEvent: options.onInspectionEvent } : {}),
+        ...(options.onInspectionGap ? { onInspectionGap: options.onInspectionGap } : {}),
+        ...(options.onInspectionError ? { onInspectionError: options.onInspectionError } : {}),
+      }),
     getTunnelStatus: () => client.getTunnelStatus(),
     stopTunnel: (tunnelId) => client.stopTunnel(tunnelId),
     disconnect,
@@ -94,6 +126,15 @@ export interface TunnelCommandContext {
   verbose?: boolean;
   /** Reconnect with backoff after unexpected disconnects (Android behavior). */
   reconnect: boolean;
+  /** Whether Android HTTP inspection is negotiated for each generation. */
+  inspect: boolean;
+  /** Optional HAR destination; file IO remains in the CLI layer. */
+  harPath?: string;
+  /** Maximum captured bytes for each request and response body. */
+  harBodyLimit?: number;
+  onInspectionEvent?: DestinationTunnelInspectionEventCallback;
+  onInspectionGap?: DestinationTunnelInspectionGapCallback;
+  onInspectionError?: DestinationTunnelInspectionErrorCallback;
   connect: () => Promise<TunnelClientFacade>;
   io: TunnelCommandIO;
   sleep?: (milliseconds: number) => Promise<void>;
@@ -112,6 +153,73 @@ export type RemoteStopOutcome = { outcome: 'none' } | { outcome: 'stopped' | 'go
 const RECONNECT_INITIAL_BACKOFF_MS = 500;
 const RECONNECT_MAX_BACKOFF_MS = 30_000;
 
+interface InspectionSession {
+  config: DestinationTunnelInspectionConfig;
+  onEvent?: DestinationTunnelInspectionEventCallback;
+  onGap?: DestinationTunnelInspectionGapCallback;
+  onError?: DestinationTunnelInspectionErrorCallback;
+  finalize: () => Promise<void>;
+  close: () => void;
+}
+
+function createInspectionSession(context: TunnelCommandContext): InspectionSession {
+  const maxBodyBytes = context.harBodyLimit ?? DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES;
+  const config = {
+    enabled: context.inspect,
+    captureBodies: context.inspect && context.harPath !== undefined,
+    maxBodyBytes,
+  };
+  if (!context.inspect) {
+    return { config, finalize: async () => {}, close: () => {} };
+  }
+
+  let recorder: TunnelHarRecorder | undefined =
+    context.harPath ? createTunnelHarRecorder(context.harPath, maxBodyBytes) : undefined;
+  const reportError = (error: Error): void => {
+    context.io.info(`Inspection stream warning: ${error.message}`);
+    try {
+      context.onInspectionError?.(error);
+    } catch {
+      // User callbacks cannot affect tunnel ownership or reconnect behavior.
+    }
+  };
+  const invoke = (callback: (() => void) | undefined): void => {
+    try {
+      callback?.();
+    } catch (error) {
+      reportError(error instanceof Error ? error : new Error(String(error)));
+    }
+  };
+  const onEvent = (event: DestinationTunnelInspectionEvent): void => {
+    invoke(() => recorder?.onEvent(event));
+    if (event.type === 'complete') {
+      context.io.info(formatInspectionSummary(event.data));
+    }
+    invoke(() => context.onInspectionEvent?.(event));
+  };
+  const onGap = (gap: DestinationTunnelInspectionGap): void => {
+    context.io.info(gap.message);
+    invoke(() => recorder?.onGap(gap));
+    invoke(() => context.onInspectionGap?.(gap));
+  };
+
+  return {
+    config,
+    onEvent,
+    onGap,
+    onError: reportError,
+    finalize: async () => {
+      const current = recorder;
+      recorder = undefined;
+      await current?.finalize();
+    },
+    close: () => {
+      recorder?.close();
+      recorder = undefined;
+    },
+  };
+}
+
 /**
  * The shared start -> await-end -> backoff cycle behind both the foreground
  * and detached serve flows. `beforeStart` may veto a (re)start (e.g. the
@@ -121,6 +229,7 @@ const RECONNECT_MAX_BACKOFF_MS = 30_000;
 async function runTunnelLoop(
   context: TunnelCommandContext,
   client: TunnelClientFacade,
+  inspection: InspectionSession,
   hooks: {
     beforeStart?: () => boolean;
     onReady: (tunnel: TunnelGeneration, reconnected: boolean) => void;
@@ -133,11 +242,18 @@ async function runTunnelLoop(
     let backoffMs = RECONNECT_INITIAL_BACKOFF_MS;
     for (;;) {
       if (hooks.beforeStart && !hooks.beforeStart()) return 'cancelled';
-      tunnel = await client.startTunnel(context.selectors);
+      tunnel = await client.startTunnel({
+        selectors: context.selectors,
+        inspection: inspection.config,
+        ...(inspection.onEvent ? { onInspectionEvent: inspection.onEvent } : {}),
+        ...(inspection.onGap ? { onInspectionGap: inspection.onGap } : {}),
+        ...(inspection.onError ? { onInspectionError: inspection.onError } : {}),
+      });
       backoffMs = RECONNECT_INITIAL_BACKOFF_MS;
       hooks.onReady(tunnel, reconnected);
       reconnected = true;
       const outcome = await awaitTunnelEnd(tunnel);
+      tunnel.close();
       tunnel = undefined;
       if (outcome === 'shutdown') return 'shutdown';
       if (!context.reconnect) return 'disconnected';
@@ -152,8 +268,10 @@ async function runTunnelLoop(
 
 export async function runTunnelForeground(context: TunnelCommandContext): Promise<void> {
   const client = await context.connect();
+  let inspection: InspectionSession | undefined;
   try {
-    const end = await runTunnelLoop(context, client, {
+    inspection = createInspectionSession(context);
+    const end = await runTunnelLoop(context, client, inspection, {
       onReady: (tunnel, reconnected) => {
         if (reconnected) {
           context.io.info(`Tunnel reconnected with new ID ${tunnel.tunnelId}.`);
@@ -165,7 +283,9 @@ export async function runTunnelForeground(context: TunnelCommandContext): Promis
     if (end === 'disconnected') {
       throw new Error('Destination tunnel disconnected unexpectedly');
     }
+    await inspection.finalize();
   } finally {
+    inspection?.close();
     client.disconnect();
   }
 }
@@ -183,9 +303,12 @@ export async function serveTunnelDetached(context: TunnelCommandContext, owner: 
   }
 
   const client = await context.connect();
-  const capLogs = setInterval(() => capTunnelLog(starting.logPath), 30_000);
+  let inspection: InspectionSession | undefined;
+  let capLogs: NodeJS.Timeout | undefined;
   try {
-    await runTunnelLoop(context, client, {
+    inspection = createInspectionSession(context);
+    capLogs = setInterval(() => capTunnelLog(starting.logPath), 30_000);
+    await runTunnelLoop(context, client, inspection, {
       // A stop may have cancelled this owner while it was starting or in
       // backoff; never (re)create the tunnel for a cancelled owner.
       beforeStart: () =>
@@ -197,9 +320,11 @@ export async function serveTunnelDetached(context: TunnelCommandContext, owner: 
         updateTunnelProcess({ ...starting, status: 'ready', tunnelId: tunnel.tunnelId }, owner);
       },
     });
+    await inspection.finalize();
   } finally {
-    clearInterval(capLogs);
+    if (capLogs) clearInterval(capLogs);
     capTunnelLog(starting.logPath);
+    inspection?.close();
     client.disconnect();
     clearTunnelProcess(context.instanceId, owner);
   }
@@ -231,6 +356,13 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
     product: context.product,
     status: 'starting',
     selectors: context.selectors,
+    ...(context.product === 'android' ?
+      {
+        inspect: context.inspect,
+        ...(context.harPath ? { harPath: context.harPath } : {}),
+        ...(context.harBodyLimit ? { harBodyLimit: context.harBodyLimit } : {}),
+      }
+    : {}),
     startedAt: new Date().toISOString(),
     logPath: paths.log,
   };
@@ -255,6 +387,9 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
         instanceId: context.instanceId,
         owner,
         selectors: context.selectors,
+        inspect: context.inspect,
+        ...(context.harPath ? { harPath: context.harPath } : {}),
+        ...(context.harBodyLimit ? { harBodyLimit: context.harBodyLimit } : {}),
         ...(context.verbose ? { verbose: true } : {}),
       }),
       {

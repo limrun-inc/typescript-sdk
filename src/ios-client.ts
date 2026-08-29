@@ -6,7 +6,7 @@ import { WebSocket, Data } from 'ws';
 import { EventEmitter } from 'events';
 import { assertPort, isNonRetryableError, startReverseTcpTunnel, type ReverseTunnel } from './tunnel';
 import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './destination-tunnel-dialer';
-import type { DestinationTunnelRoute } from './destination-tunnel';
+import { disabledDestinationTunnelInspection, type DestinationTunnelRoute } from './destination-tunnel';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
 import { createIgnoreFn } from './folder-sync-ignore';
 import { prepareAppBundlePath, watchAppArchive } from './app-archive';
@@ -2859,6 +2859,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const startTunnel = async (tunnelOptions: TunnelOptions): Promise<Tunnel> => {
       return startDestinationTcpTunnel(deriveDestinationTunnelURL(options.apiUrl), options.token, {
         ...(tunnelOptions.routes ? { routes: tunnelOptions.routes } : {}),
+        inspection: disabledDestinationTunnelInspection(),
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });
     };

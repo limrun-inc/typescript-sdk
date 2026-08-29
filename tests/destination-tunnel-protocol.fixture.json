@@ -6,6 +6,8 @@
     "fakeRange": "198.18.0.0/15",
     "maxWindow": 67108864,
     "maxWindowIncrement": 2147483647,
+    "defaultMaxBodyBytes": 10485760,
+    "maxBodyBytes": 67108864,
     "connID": {
       "jsonType": "integer",
       "minimum": 0,
@@ -19,7 +21,8 @@
       ]
     },
     "transports": [
-      "tcp"
+      "tcp",
+      "tls"
     ],
     "openFailureReasons": [
       "dns_not_found",
@@ -31,6 +34,9 @@
       "permission_denied",
       "resource_exhausted",
       "route_not_allowed",
+      "tls_handshake_failed",
+      "tls_validation_failed",
+      "tls_protocol_error",
       "cancelled",
       "internal"
     ],
@@ -454,8 +460,13 @@
           }
         ]
       },
-      "canonicalJson": "{\"version\":1,\"routes\":[{\"host\":\"localhost\",\"port\":3000}]}",
-      "sha256": "8e40fb91edccd652ec2cb95a82a9a3d496c528ef999e9f996aff1fdcef8b3be1"
+      "inspection": {
+        "enabled": false,
+        "captureBodies": false,
+        "maxBodyBytes": 10485760
+      },
+      "canonicalJson": "{\"version\":1,\"routes\":[{\"host\":\"localhost\",\"port\":3000}],\"inspection\":{\"enabled\":false,\"captureBodies\":false,\"maxBodyBytes\":10485760}}",
+      "sha256": "e25fc32a185fad0665c67e722b128981da06a11fedb5466dee3f23666de1aeba"
     },
     {
       "name": "mixed selectors",
@@ -468,16 +479,26 @@
         ],
         "domains": ["*.corp.example", "api.internal"]
       },
-      "canonicalJson": "{\"version\":1,\"routes\":[{\"host\":\"10.20.30.40\",\"port\":8000}],\"domains\":[\"*.corp.example\",\"api.internal\"]}",
-      "sha256": "baa12659575454c148b8f668f5d89038f38033160d58db3a7f5f9b53bf5fd423"
+      "inspection": {
+        "enabled": true,
+        "captureBodies": false,
+        "maxBodyBytes": 10485760
+      },
+      "canonicalJson": "{\"version\":1,\"routes\":[{\"host\":\"10.20.30.40\",\"port\":8000}],\"domains\":[\"*.corp.example\",\"api.internal\"],\"inspection\":{\"enabled\":true,\"captureBodies\":false,\"maxBodyBytes\":10485760}}",
+      "sha256": "7e5e9ce3627f9208d736ad7c9b565c29b2419c80421a5d92229052bdd2541493"
     },
     {
       "name": "domains only",
       "selectors": {
         "domains": ["db.internal"]
       },
-      "canonicalJson": "{\"version\":1,\"domains\":[\"db.internal\"]}",
-      "sha256": "d40229279b2f4ebcf04a29842d4a800b269135760ae506335e3144fd24738167"
+      "inspection": {
+        "enabled": true,
+        "captureBodies": true,
+        "maxBodyBytes": 2097152
+      },
+      "canonicalJson": "{\"version\":1,\"domains\":[\"db.internal\"],\"inspection\":{\"enabled\":true,\"captureBodies\":true,\"maxBodyBytes\":2097152}}",
+      "sha256": "3ab4121855dbc2dcfbb8ca09720160538f88016dc9de4ec019ee445094001f7d"
     }
   ],
   "openAllowedCases": [
@@ -568,7 +589,12 @@
             "host": "localhost",
             "port": 3000
           }
-        ]
+        ],
+        "inspection": {
+          "enabled": false,
+          "captureBodies": false,
+          "maxBodyBytes": 10485760
+        }
       }
     },
     {
@@ -583,6 +609,11 @@
           }
         ],
         "domains": ["*.corp.example", "db.internal"],
+        "inspection": {
+          "enabled": true,
+          "captureBodies": false,
+          "maxBodyBytes": 10485760
+        },
         "window": 1048576
       }
     },
@@ -590,7 +621,10 @@
       "name": "openOk",
       "message": {
         "type": "openOk",
-        "connId": 4294967295
+        "connId": 4294967295,
+        "transport": {
+          "type": "tcp"
+        }
       }
     },
     {
@@ -598,6 +632,14 @@
       "message": {
         "type": "openOk",
         "connId": 11,
+        "transport": {
+          "type": "tls",
+          "alpnProtocol": "h2",
+          "remoteAddress": "192.0.2.10:443",
+          "dnsMs": 4,
+          "connectMs": 12,
+          "tlsMs": 31
+        },
         "window": 1048576
       }
     },
@@ -640,7 +682,12 @@
       "message": {
         "type": "ready",
         "version": 1,
-        "tunnelId": "123e4567-e89b-12d3-a456-426614174000"
+        "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
+        "inspection": {
+          "enabled": false,
+          "captureBodies": false,
+          "maxBodyBytes": 10485760
+        }
       }
     },
     {
@@ -649,6 +696,11 @@
         "type": "ready",
         "version": 1,
         "tunnelId": "tunnel-2",
+        "inspection": {
+          "enabled": true,
+          "captureBodies": false,
+          "maxBodyBytes": 10485760
+        },
         "selectors": [
           {
             "id": "route-1",
@@ -676,7 +728,7 @@
             "value": "*.corp.example"
           }
         ],
-        "configHash": "baa12659575454c148b8f668f5d89038f38033160d58db3a7f5f9b53bf5fd423"
+        "configHash": "7e5e9ce3627f9208d736ad7c9b565c29b2419c80421a5d92229052bdd2541493"
       }
     },
     {
@@ -687,7 +739,10 @@
         "routeId": "route-1",
         "host": "10.20.30.40",
         "port": 8000,
-        "proto": "tcp"
+        "proto": "tcp",
+        "transport": {
+          "type": "tcp"
+        }
       }
     },
     {
@@ -699,6 +754,11 @@
         "host": "api.corp.example",
         "port": 5432,
         "proto": "tcp",
+        "transport": {
+          "type": "tls",
+          "serverName": "api.corp.example",
+          "alpnProtocols": ["h2", "http/1.1"]
+        },
         "window": 1048576
       }
     },
@@ -755,6 +815,11 @@
             "port": 3000
           }
         ],
+        "inspection": {
+          "enabled": false,
+          "captureBodies": false,
+          "maxBodyBytes": 10485760
+        },
         "futureDiagnostic": "ignored"
       },
       "decoded": {
@@ -765,7 +830,12 @@
             "host": "localhost",
             "port": 3000
           }
-        ]
+        ],
+        "inspection": {
+          "enabled": false,
+          "captureBodies": false,
+          "maxBodyBytes": 10485760
+        }
       }
     },
     {
@@ -775,12 +845,22 @@
         "type": "ready",
         "version": 1,
         "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
+        "inspection": {
+          "enabled": false,
+          "captureBodies": false,
+          "maxBodyBytes": 10485760
+        },
         "futureDiagnostic": "ignored"
       },
       "decoded": {
         "type": "ready",
         "version": 1,
-        "tunnelId": "123e4567-e89b-12d3-a456-426614174000"
+        "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
+        "inspection": {
+          "enabled": false,
+          "captureBodies": false,
+          "maxBodyBytes": 10485760
+        }
       }
     }
   ]

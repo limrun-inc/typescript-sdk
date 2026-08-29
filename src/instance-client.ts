@@ -12,7 +12,12 @@ import { startTcpTunnel, isNonRetryableError } from './tunnel';
 import type { Tunnel } from './tunnel';
 import { syncFolder, type FolderSyncOptions, type SyncFolderResult } from './folder-sync';
 import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './destination-tunnel-dialer';
-import type { DestinationTunnelRoute } from './destination-tunnel';
+import type { DestinationTunnelInspectionConfig, DestinationTunnelRoute } from './destination-tunnel';
+import type {
+  DestinationTunnelInspectionErrorCallback,
+  DestinationTunnelInspectionEventCallback,
+  DestinationTunnelInspectionGapCallback,
+} from './destination-tunnel-inspection';
 import {
   getDestinationTunnelStatus,
   stopDestinationTunnel,
@@ -31,6 +36,14 @@ export type DestinationTunnelOptions = {
   routes?: DestinationTunnelRoute[];
   /** Exact or `*.` wildcard domains intercepted on-device via fake-IP DNS. */
   domains?: string[];
+  /** Inspection settings negotiated with the Android tunnel server. */
+  inspection?: Partial<DestinationTunnelInspectionConfig>;
+  /** Called for each validated inspection metadata or body event. */
+  onInspectionEvent?: DestinationTunnelInspectionEventCallback;
+  /** Called when inspection events were lost before or during delivery. */
+  onInspectionGap?: DestinationTunnelInspectionGapCallback;
+  /** Called when the independent inspection stream fails or reconnects. */
+  onInspectionError?: DestinationTunnelInspectionErrorCallback;
   /** Per-flow receive window in bytes. Defaults to 1 MiB. */
   window?: number;
   /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
@@ -1696,6 +1709,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return startDestinationTcpTunnel(deriveDestinationTunnelURL(requireAdbUrl()), options.token, {
         ...(tunnelOptions.routes ? { routes: tunnelOptions.routes } : {}),
         ...(tunnelOptions.domains ? { domains: tunnelOptions.domains } : {}),
+        inspection: {
+          enabled: true,
+          captureBodies: false,
+          ...(tunnelOptions.inspection ?? {}),
+        },
+        ...(tunnelOptions.onInspectionEvent ? { onInspectionEvent: tunnelOptions.onInspectionEvent } : {}),
+        ...(tunnelOptions.onInspectionGap ? { onInspectionGap: tunnelOptions.onInspectionGap } : {}),
+        ...(tunnelOptions.onInspectionError ? { onInspectionError: tunnelOptions.onInspectionError } : {}),
         window: tunnelOptions.window ?? ANDROID_TUNNEL_DEFAULT_WINDOW,
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });
