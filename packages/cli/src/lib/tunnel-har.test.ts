@@ -89,7 +89,7 @@ describe('tunnel HAR capture', () => {
     expect(fs.statSync(harPath).mode & 0o777).toBe(0o600);
   });
 
-  test('formats only the safe one-line completion summary', () => {
+  test('formats only the one-line completion summary', () => {
     expect(formatInspectionSummary(completeEvent())).toBe(
       'POST https://example.test/full?q=secret 201 25ms 3 B',
     );

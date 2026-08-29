@@ -72,7 +72,7 @@ export default class AndroidTunnel extends BaseCommand {
     }),
     inspect: Flags.boolean({
       description:
-        'Print one safe HTTP summary per completed request. Use --no-inspect to disable Android inspection.',
+        'Print one HTTP summary per completed request. Use --no-inspect to disable Android inspection.',
       default: true,
       allowNo: true,
     }),
