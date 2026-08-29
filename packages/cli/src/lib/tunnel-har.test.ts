@@ -20,10 +20,14 @@ describe('tunnel HAR capture', () => {
     const recorder = createTunnelHarRecorder(harPath, 4);
     recorder.onEvent(bodyEvent(1, 'request', Buffer.from('hello')));
     recorder.onEvent(bodyEvent(2, 'response', Buffer.from([0, 1, 2])));
-    recorder.onGap({
-      fromSequence: 3,
-      toSequence: 4,
-      message: 'Inspection stream gap: missing sequences 3-4',
+    recorder.onEvent({
+      type: 'gap',
+      sequence: 4,
+      data: {
+        fromSequence: 3,
+        toSequence: 4,
+        message: 'Inspection stream gap: missing sequences 3-4',
+      },
     });
     recorder.onEvent({
       type: 'complete',
@@ -39,7 +43,6 @@ describe('tunnel HAR capture', () => {
         ...completeEvent(),
         _limrun: {
           ...completeEvent()._limrun,
-          requestId: 'request-2',
           tunnelId: 'tunnel-2',
         },
       },
@@ -68,19 +71,13 @@ describe('tunnel HAR capture', () => {
     expect(har.log.entries[0].response).not.toHaveProperty('_trailers');
     expect(har.log.entries[0].response.cookies[0]).not.toHaveProperty('sameSite');
     expect(har.log.entries[0]._limrun).toEqual({
-      requestId: 'request-1',
       tunnelId: 'tunnel-1',
       selectorId: 'domain-1',
-      protocol: 'http/1.1',
-      tls: true,
-      grpc: false,
-      webSocket: true,
       responseTrailers: [{ name: 'grpc-status', value: '0' }],
       responseCookieSameSite: [{ index: 0, value: 'Strict' }],
       requestBodyEncoding: 'base64',
       requestBodyTruncated: true,
       responseBodyTruncated: false,
-      gap: true,
     });
     expect(har.log._limrun.gaps).toEqual([
       {
@@ -90,7 +87,6 @@ describe('tunnel HAR capture', () => {
       },
     ]);
     expect(har.log.entries[1]._limrun).toMatchObject({
-      requestId: 'request-2',
       tunnelId: 'tunnel-2',
     });
   });
@@ -161,13 +157,8 @@ function completeEvent(): DestinationTunnelInspectionComplete {
     cache: {},
     timings: { blocked: 0, dns: 1, connect: 2, ssl: 3, send: 4, wait: 10, receive: 5 },
     _limrun: {
-      requestId: 'request-1',
       tunnelId: 'tunnel-1',
       selectorId: 'domain-1',
-      protocol: 'http/1.1',
-      tls: true,
-      grpc: false,
-      webSocket: true,
       responseTrailers: [{ name: 'grpc-status', value: '0' }],
       responseCookieSameSite: [{ index: 0, value: 'Strict' }],
     },

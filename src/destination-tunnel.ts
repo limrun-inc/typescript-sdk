@@ -1,6 +1,18 @@
 import crypto from 'crypto';
 import net from 'net';
 import { domainToASCII } from 'url';
+import {
+  DestinationTunnelProtocolError,
+  readArray,
+  readBoolean,
+  readInteger,
+  readOptionalNonNegativeInteger,
+  readOptionalString,
+  readRecord,
+  readString,
+} from './internal/destination-tunnel-wire-reader';
+
+export { DestinationTunnelProtocolError } from './internal/destination-tunnel-wire-reader';
 
 export const DESTINATION_TUNNEL_VERSION = 1;
 export const DESTINATION_TUNNEL_MAX_ROUTES = 10;
@@ -13,6 +25,8 @@ export const DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES = 4;
 export const DESTINATION_TUNNEL_FAKE_RANGE = '198.18.0.0/15';
 /** Upper bound for per-flow receive windows advertised in open/openOk. */
 export const DESTINATION_TUNNEL_MAX_WINDOW = 64 * 1024 * 1024;
+/** Default receive window advertised by generic SDK tunnel clients. */
+export const DESTINATION_TUNNEL_DEFAULT_WINDOW = 1024 * 1024;
 /** Upper bound for a single windowUpdate increment. */
 export const DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT = 0x7fff_ffff;
 export const DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024;
@@ -121,14 +135,14 @@ export type DestinationTunnelClientMessage =
       routes?: DestinationTunnelRoute[];
       domains?: string[];
       inspection: DestinationTunnelInspectionConfig;
-      /** Default per-flow receive window this client grants. Absent disables credit. */
-      window?: number;
+      /** Default per-flow receive window this client grants. */
+      window: number;
     }
   | {
       type: 'openOk';
       connId: number;
       transport: DestinationTunnelTransportResult;
-      window?: number;
+      window: number;
     }
   | {
       type: 'openFail';
@@ -146,20 +160,17 @@ export type DestinationTunnelServerMessage =
       version: number;
       tunnelId: string;
       selectors?: DestinationTunnelSelectorReport[];
-      configHash?: string;
-      inspection: DestinationTunnelInspectionConfig;
+      configHash: string;
     }
   | {
       type: 'open';
       connId: number;
-      /** Selector ID (route-N or domain-N). Wire name kept from v1. */
-      routeId: string;
+      selectorId: string;
       host: string;
       port: number;
-      proto: 'tcp';
       transport: DestinationTunnelTransportRequest;
-      /** Server's receive window for this flow. Absent disables credit. */
-      window?: number;
+      /** Server's receive window for this flow. */
+      window: number;
     }
   | { type: 'fin'; connId: number }
   | { type: 'reset'; connId: number; reason: DestinationTunnelResetReason; osCode?: string }
@@ -188,13 +199,6 @@ export class DestinationTunnelRouteError extends Error {
 
 /** Alias: selector validation reuses the route error class for compatibility. */
 export const DestinationTunnelSelectorError = DestinationTunnelRouteError;
-
-export class DestinationTunnelProtocolError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'DestinationTunnelProtocolError';
-  }
-}
 
 export function encodeDestinationTunnelDataFrame(connId: number, payload: Buffer): Buffer {
   validateConnectionId(connId);
@@ -382,15 +386,12 @@ export function assertDestinationTunnelOpenAllowed(
     Array.isArray(selectors) ?
       { routes: selectors as DestinationTunnelRoute[] }
     : (selectors as DestinationTunnelSelectors);
-  if (message.proto !== 'tcp') {
-    throw new DestinationTunnelProtocolError(`server requested unsupported transport ${message.proto}`);
-  }
-  const match = /^(route|domain)-([1-9]\d*)$/.exec(message.routeId);
+  const match = /^(route|domain)-([1-9]\d*)$/.exec(message.selectorId);
   const kind = match?.[1];
   const index = match?.[2] ? Number(match[2]) - 1 : -1;
   const fail = (): never => {
     throw new DestinationTunnelProtocolError(
-      `server requested undeclared route ${message.routeId} ${message.host}:${message.port}/${message.proto}`,
+      `server requested undeclared selector ${message.selectorId} ${message.host}:${message.port}`,
     );
   };
   if (!kind || index < 0) fail();
@@ -438,7 +439,7 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
         ...(selectors.routes ? { routes: selectors.routes } : {}),
         ...(selectors.domains ? { domains: selectors.domains } : {}),
         inspection,
-        ...readOptionalWindow(record),
+        window: readWindow(record),
       });
     }
     case 'openOk':
@@ -446,7 +447,7 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
         type,
         connId: readConnectionId(record),
         transport: readTransportResult(record),
-        ...readOptionalWindow(record),
+        window: readWindow(record),
       });
     case 'fin':
       return JSON.stringify({ type, connId: readConnectionId(record) });
@@ -482,19 +483,17 @@ export function decodeDestinationTunnelServerMessage(value: unknown): Destinatio
         ...(message['selectors'] === undefined ?
           {}
         : { selectors: readArray(message, 'selectors').map(readSelectorReport) }),
-        ...readOptionalString(message, 'configHash'),
-        inspection: readInspectionConfig(message),
+        configHash: readString(message, 'configHash'),
       };
     case 'open':
       return {
         type,
         connId: readConnectionId(message),
-        routeId: readString(message, 'routeId'),
+        selectorId: readString(message, 'selectorId'),
         host: readString(message, 'host'),
         port: readPort(message, 'port'),
-        proto: readTCP(message),
         transport: readTransportRequest(message),
-        ...readOptionalWindow(message),
+        window: readWindow(message),
       };
     case 'fin':
       return { type, connId: readConnectionId(message) };
@@ -683,70 +682,6 @@ function readTransportResult(record: Record<string, unknown>): DestinationTunnel
   };
 }
 
-function readRecord(value: unknown, name: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new DestinationTunnelProtocolError(`${name} must be an object`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function readArray(record: Record<string, unknown>, key: string): unknown[] {
-  const value = record[key];
-  if (!Array.isArray(value)) {
-    throw new DestinationTunnelProtocolError(`${key} must be an array`);
-  }
-  return value;
-}
-
-function readString(record: Record<string, unknown>, key: string): string {
-  const value = record[key];
-  if (typeof value !== 'string') {
-    throw new DestinationTunnelProtocolError(`${key} must be a string`);
-  }
-  return value;
-}
-
-function readBoolean(record: Record<string, unknown>, key: string): boolean {
-  const value = record[key];
-  if (typeof value !== 'boolean') {
-    throw new DestinationTunnelProtocolError(`${key} must be a boolean`);
-  }
-  return value;
-}
-
-function readOptionalString(record: Record<string, unknown>, key: string): { [K in typeof key]?: string } {
-  const value = record[key];
-  if (value === undefined) {
-    return {};
-  }
-  if (typeof value !== 'string') {
-    throw new DestinationTunnelProtocolError(`${key} must be a string`);
-  }
-  return { [key]: value };
-}
-
-function readInteger(record: Record<string, unknown>, key: string): number {
-  const value = record[key];
-  if (!Number.isInteger(value)) {
-    throw new DestinationTunnelProtocolError(`${key} must be an integer`);
-  }
-  return value as number;
-}
-
-function readOptionalNonNegativeInteger(
-  record: Record<string, unknown>,
-  key: string,
-): { [K in typeof key]?: number } {
-  const value = record[key];
-  if (value === undefined) {
-    return {};
-  }
-  if (!Number.isInteger(value) || (value as number) < 0) {
-    throw new DestinationTunnelProtocolError(`${key} must be a non-negative integer`);
-  }
-  return { [key]: value as number };
-}
-
 function readPort(record: Record<string, unknown>, key: string): number {
   const value = readInteger(record, key);
   if (value < 1 || value > 65_535) {
@@ -755,21 +690,14 @@ function readPort(record: Record<string, unknown>, key: string): number {
   return value;
 }
 
-function readOptionalWindow(record: Record<string, unknown>): { window?: number } {
-  const value = record['window'];
-  if (value === undefined) {
-    return {};
-  }
-  if (
-    !Number.isInteger(value) ||
-    (value as number) < 1 ||
-    (value as number) > DESTINATION_TUNNEL_MAX_WINDOW
-  ) {
+function readWindow(record: Record<string, unknown>): number {
+  const value = readInteger(record, 'window');
+  if (value < 1 || value > DESTINATION_TUNNEL_MAX_WINDOW) {
     throw new DestinationTunnelProtocolError(
       `window must be an integer between 1 and ${DESTINATION_TUNNEL_MAX_WINDOW}`,
     );
   }
-  return { window: value as number };
+  return value;
 }
 
 function readWindowIncrement(record: Record<string, unknown>): number {
@@ -792,12 +720,4 @@ function validateConnectionId(value: number): void {
   if (!Number.isInteger(value) || value < 0 || value > 0xffff_ffff) {
     throw new DestinationTunnelProtocolError('connId must be an unsigned 32-bit integer');
   }
-}
-
-function readTCP(record: Record<string, unknown>): 'tcp' {
-  const value = readString(record, 'proto');
-  if (value !== 'tcp') {
-    throw new DestinationTunnelProtocolError(`unsupported tunnel transport ${value}`);
-  }
-  return value;
 }

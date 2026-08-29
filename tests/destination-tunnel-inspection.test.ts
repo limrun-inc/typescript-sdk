@@ -51,7 +51,7 @@ describe('destination tunnel inspection stream', () => {
     );
   });
 
-  test('validates complete metadata instead of passing through arbitrary JSON', () => {
+  test('validates complete envelope and core HAR objects without reconstructing entries', () => {
     const complete = completeFrame(7);
     expect(decodeDestinationTunnelInspectionMetadataFrame(JSON.stringify(complete))).toEqual(complete);
     expect(() =>
@@ -78,48 +78,42 @@ describe('destination tunnel inspection stream', () => {
         }),
       ),
     ).toThrow('mimeType must be a string');
+    const withExtension = {
+      ...complete,
+      data: { ...complete.data, futureHarField: 'retained' },
+    };
+    expect(decodeDestinationTunnelInspectionMetadataFrame(JSON.stringify(withExtension))).toEqual(
+      withExtension,
+    );
+  });
+
+  test.each(['request', 'response'])('rejects removed %s metadata events', (type) => {
+    expect(() =>
+      decodeDestinationTunnelInspectionMetadataFrame(
+        JSON.stringify({ sequence: 1, type, requestId: 'request-1', data: {} }),
+      ),
+    ).toThrow(`unknown inspection metadata type ${type}`);
+  });
+
+  test('rejects non-HAR response slices', () => {
+    const complete = completeFrame(8);
     expect(() =>
       decodeDestinationTunnelInspectionMetadataFrame(
         JSON.stringify({
           ...complete,
           data: {
             ...complete.data,
-            request: {
-              ...complete.data.request,
-              postData: {
-                mimeType: 'text/plain',
-                params: [],
-                text: 'body',
-              },
+            _limrun: { ...complete.data._limrun, error: 'dial failed' },
+            response: {
+              ...complete.data.response,
+              status: 0,
+              headers: null,
+              cookies: null,
             },
           },
         }),
       ),
-    ).toThrow('request post data must contain exactly one of params or text');
-  });
-
-  test('accepts Go nil response slices on pre-response failures', () => {
-    const complete = completeFrame(8);
-    const decoded = decodeDestinationTunnelInspectionMetadataFrame(
-      JSON.stringify({
-        ...complete,
-        data: {
-          ...complete.data,
-          _limrun: { ...complete.data._limrun, error: 'dial failed' },
-          response: {
-            ...complete.data.response,
-            status: 0,
-            headers: null,
-            cookies: null,
-          },
-        },
-      }),
-    );
-    expect(decoded.type).toBe('complete');
-    if (decoded.type !== 'complete') throw new Error('expected complete');
-    expect(decoded.data.response.headers).toEqual([]);
-    expect(decoded.data.response.cookies).toEqual([]);
-    expect(decoded.data._limrun.error).toBe('dial failed');
+    ).toThrow('response headers must be an array');
   });
 
   test('reconnects independently, resumes, and surfaces an explicit gap', async () => {
@@ -128,7 +122,6 @@ describe('destination tunnel inspection stream', () => {
     const address = server.address() as net.AddressInfo;
     const requests: Array<{ url: string | undefined; authorization: string | undefined }> = [];
     const events: DestinationTunnelInspectionEvent[] = [];
-    const gaps: string[] = [];
     const agent = jest.spyOn(nodeProxyTransport, 'getWebSocketAgent');
     let connections = 0;
     server.on('connection', (socket, request) => {
@@ -159,7 +152,6 @@ describe('destination tunnel inspection stream', () => {
         reconnectInitialDelayMs: 10,
         reconnectMaxDelayMs: 20,
         onEvent: (event) => events.push(event),
-        onGap: (gap) => gaps.push(gap.message),
       },
     );
     try {
@@ -179,7 +171,10 @@ describe('destination tunnel inspection stream', () => {
         ['gap', 2],
         ['inspection_error', 3],
       ]);
-      expect(gaps).toEqual(['Inspection stream gap: missing sequences 2-2']);
+      expect(events[1]).toMatchObject({
+        type: 'gap',
+        data: { message: 'Inspection stream gap: missing sequences 2-2' },
+      });
       expect(agent).toHaveBeenCalledWith(
         expect.stringContaining('/tunnel/tunnel%2F1/inspection?after-sequence='),
       );
@@ -232,11 +227,8 @@ function completeFrame(sequence: number) {
       cache: {},
       timings: { blocked: 0, dns: 1, connect: 2, ssl: 3, send: 1, wait: 4, receive: 1 },
       _limrun: {
-        requestId: 'request-1',
         tunnelId: 'tunnel-1',
         selectorId: 'domain-1',
-        protocol: 'http/1.1',
-        tls: true,
         responseTrailers: [{ name: 'grpc-status', value: '0' }],
         responseCookieSameSite: [{ index: 0, value: 'Lax' }],
       },

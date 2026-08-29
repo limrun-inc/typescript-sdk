@@ -5,6 +5,7 @@
     "maxDomains": 64,
     "fakeRange": "198.18.0.0/15",
     "maxWindow": 67108864,
+    "defaultWindow": 1048576,
     "maxWindowIncrement": 2147483647,
     "defaultMaxBodyBytes": 10485760,
     "maxBodyBytes": 67108864,
@@ -513,7 +514,7 @@
         ]
       },
       "open": {
-        "routeId": "route-1",
+        "selectorId": "route-1",
         "host": "localhost",
         "port": 8080
       },
@@ -525,7 +526,7 @@
         "domains": ["*.corp.example"]
       },
       "open": {
-        "routeId": "domain-1",
+        "selectorId": "domain-1",
         "host": "api.corp.example",
         "port": 5432
       },
@@ -537,7 +538,7 @@
         "domains": ["*.corp.example"]
       },
       "open": {
-        "routeId": "domain-1",
+        "selectorId": "domain-1",
         "host": "corp.example",
         "port": 443
       },
@@ -555,7 +556,7 @@
         "domains": ["api.corp.example"]
       },
       "open": {
-        "routeId": "domain-1",
+        "selectorId": "domain-1",
         "host": "localhost",
         "port": 8080
       },
@@ -567,7 +568,7 @@
         "domains": ["api.corp.example"]
       },
       "open": {
-        "routeId": "domain-1",
+        "selectorId": "domain-1",
         "host": "api.corp.example",
         "port": 53
       },
@@ -594,7 +595,8 @@
           "enabled": false,
           "captureBodies": false,
           "maxBodyBytes": 10485760
-        }
+        },
+        "window": 1048576
       }
     },
     {
@@ -624,7 +626,8 @@
         "connId": 4294967295,
         "transport": {
           "type": "tcp"
-        }
+        },
+        "window": 1048576
       }
     },
     {
@@ -683,11 +686,7 @@
         "type": "ready",
         "version": 1,
         "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
-        "inspection": {
-          "enabled": false,
-          "captureBodies": false,
-          "maxBodyBytes": 10485760
-        }
+        "configHash": "e25fc32a185fad0665c67e722b128981da06a11fedb5466dee3f23666de1aeba"
       }
     },
     {
@@ -696,11 +695,6 @@
         "type": "ready",
         "version": 1,
         "tunnelId": "tunnel-2",
-        "inspection": {
-          "enabled": true,
-          "captureBodies": false,
-          "maxBodyBytes": 10485760
-        },
         "selectors": [
           {
             "id": "route-1",
@@ -736,13 +730,13 @@
       "message": {
         "type": "open",
         "connId": 7,
-        "routeId": "route-1",
+        "selectorId": "route-1",
         "host": "10.20.30.40",
         "port": 8000,
-        "proto": "tcp",
         "transport": {
           "type": "tcp"
-        }
+        },
+        "window": 1048576
       }
     },
     {
@@ -750,10 +744,9 @@
       "message": {
         "type": "open",
         "connId": 13,
-        "routeId": "domain-1",
+        "selectorId": "domain-1",
         "host": "api.corp.example",
         "port": 5432,
-        "proto": "tcp",
         "transport": {
           "type": "tls",
           "serverName": "api.corp.example",
@@ -820,6 +813,7 @@
           "captureBodies": false,
           "maxBodyBytes": 10485760
         },
+        "window": 1048576,
         "futureDiagnostic": "ignored"
       },
       "decoded": {
@@ -835,7 +829,8 @@
           "enabled": false,
           "captureBodies": false,
           "maxBodyBytes": 10485760
-        }
+        },
+        "window": 1048576
       }
     },
     {
@@ -845,22 +840,14 @@
         "type": "ready",
         "version": 1,
         "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
-        "inspection": {
-          "enabled": false,
-          "captureBodies": false,
-          "maxBodyBytes": 10485760
-        },
+        "configHash": "e25fc32a185fad0665c67e722b128981da06a11fedb5466dee3f23666de1aeba",
         "futureDiagnostic": "ignored"
       },
       "decoded": {
         "type": "ready",
         "version": 1,
         "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
-        "inspection": {
-          "enabled": false,
-          "captureBodies": false,
-          "maxBodyBytes": 10485760
-        }
+        "configHash": "e25fc32a185fad0665c67e722b128981da06a11fedb5466dee3f23666de1aeba"
       }
     }
   ]

@@ -115,7 +115,7 @@ export function formatTunnelSelectors(selectors: DestinationTunnelSelectors): st
 export function formatTunnelDialFailure(
   failure: NonNullable<DestinationTunnelStatus['lastDialFailure']>,
 ): string {
-  const correlationIds = `tunnel ${failure.tunnelId}, connection ${failure.connectionId}, ${failure.routeId}`;
+  const correlationIds = `tunnel ${failure.tunnelId}, connection ${failure.connectionId}, ${failure.selectorId}`;
   const failureDetails = failure.osCode ? `${failure.reason}, ${failure.osCode}` : failure.reason;
   return `Last dial failure: ${correlationIds} (${failureDetails})`;
 }

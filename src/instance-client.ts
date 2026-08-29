@@ -16,7 +16,6 @@ import type { DestinationTunnelInspectionConfig, DestinationTunnelRoute } from '
 import type {
   DestinationTunnelInspectionErrorCallback,
   DestinationTunnelInspectionEventCallback,
-  DestinationTunnelInspectionGapCallback,
 } from './destination-tunnel-inspection';
 import {
   getDestinationTunnelStatus,
@@ -27,7 +26,6 @@ import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
 
 const ANDROID_RECORDING_PATH = '/data/local/tmp/recordings/video_recording.mp4';
 const ANDROID_SIGNALING_PATH = '/ws';
-const ANDROID_TUNNEL_DEFAULT_WINDOW = 1024 * 1024;
 
 /** Transparent destination tunnel from the Android instance to this machine. */
 export type DestinationTunnel = DestinationTcpTunnel;
@@ -40,8 +38,6 @@ export type DestinationTunnelOptions = {
   inspection?: Partial<DestinationTunnelInspectionConfig>;
   /** Called for each validated inspection metadata or body event. */
   onInspectionEvent?: DestinationTunnelInspectionEventCallback;
-  /** Called when inspection events were lost before or during delivery. */
-  onInspectionGap?: DestinationTunnelInspectionGapCallback;
   /** Called when the independent inspection stream fails or reconnects. */
   onInspectionError?: DestinationTunnelInspectionErrorCallback;
   /** Per-flow receive window in bytes. Defaults to 1 MiB. */
@@ -1715,9 +1711,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           ...(tunnelOptions.inspection ?? {}),
         },
         ...(tunnelOptions.onInspectionEvent ? { onInspectionEvent: tunnelOptions.onInspectionEvent } : {}),
-        ...(tunnelOptions.onInspectionGap ? { onInspectionGap: tunnelOptions.onInspectionGap } : {}),
         ...(tunnelOptions.onInspectionError ? { onInspectionError: tunnelOptions.onInspectionError } : {}),
-        window: tunnelOptions.window ?? ANDROID_TUNNEL_DEFAULT_WINDOW,
+        ...(tunnelOptions.window === undefined ? {} : { window: tunnelOptions.window }),
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });
     };

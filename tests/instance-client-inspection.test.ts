@@ -43,13 +43,11 @@ describe('Android instance tunnel inspection', () => {
       logLevel: 'none',
     });
     const onInspectionEvent = jest.fn();
-    const onInspectionGap = jest.fn();
     const onInspectionError = jest.fn();
     try {
       await client.startTunnel({
         domains: ['api.example.test'],
         onInspectionEvent,
-        onInspectionGap,
         onInspectionError,
       });
       expect(jest.mocked(startDestinationTcpTunnel)).toHaveBeenLastCalledWith(
@@ -59,7 +57,6 @@ describe('Android instance tunnel inspection', () => {
           domains: ['api.example.test'],
           inspection: { enabled: true, captureBodies: false },
           onInspectionEvent,
-          onInspectionGap,
           onInspectionError,
         }),
       );

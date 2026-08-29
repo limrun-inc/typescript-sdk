@@ -38,3 +38,19 @@ export function deriveDestinationTunnelStopURL(apiUrl: string, tunnelId: string)
     : url.protocol;
   return url;
 }
+
+export function deriveDestinationTunnelInspectionURL(
+  tunnelUrl: string,
+  tunnelId: string,
+  afterSequence = 0,
+): string {
+  if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+    throw new Error('afterSequence must be a safe non-negative integer');
+  }
+  const url = new URL(tunnelUrl);
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/${encodeURIComponent(tunnelId)}/inspection`;
+  url.search = '';
+  url.searchParams.set('after-sequence', String(afterSequence));
+  url.hash = '';
+  return url.toString();
+}

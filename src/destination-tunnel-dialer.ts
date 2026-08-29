@@ -3,14 +3,15 @@ import net from 'net';
 import tls from 'tls';
 import { WebSocket, type RawData } from 'ws';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import { toBuffer } from './internal/destination-tunnel-wire-reader';
 import {
   startDestinationTunnelInspectionStream,
   type DestinationTunnelInspectionErrorCallback,
   type DestinationTunnelInspectionEventCallback,
-  type DestinationTunnelInspectionGapCallback,
   type DestinationTunnelInspectionStream,
 } from './destination-tunnel-inspection';
 import {
+  DESTINATION_TUNNEL_DEFAULT_WINDOW,
   DESTINATION_TUNNEL_VERSION,
   DestinationTunnelProtocolError,
   assertDestinationTunnelOpenAllowed,
@@ -38,7 +39,7 @@ export interface DestinationTcpTunnel {
   tunnelId: string;
   /** Normalized selectors echoed by the server, including bind reports. */
   selectors?: DestinationTunnelSelectorReport[];
-  configHash?: string;
+  configHash: string;
   inspection: DestinationTunnelInspectionConfig;
   inspectionStream?: DestinationTunnelInspectionStream;
   close: () => void;
@@ -52,16 +53,9 @@ export interface DestinationTcpTunnelOptions {
   inspection?: Partial<DestinationTunnelInspectionConfig>;
   /** Called for validated inspection metadata and body frames. */
   onInspectionEvent?: DestinationTunnelInspectionEventCallback;
-  /** Called whenever the stream reports or detects missing sequences. */
-  onInspectionGap?: DestinationTunnelInspectionGapCallback;
   /** Called for inspection-only transport, protocol, or callback failures. */
   onInspectionError?: DestinationTunnelInspectionErrorCallback;
-  /**
-   * Per-flow receive window in bytes. Setting it enables explicit credit
-   * flow control: the client advertises the window in `start`/`openOk` and
-   * obeys the server's `open.window` grants. Leave unset for servers that
-   * predate credit (iOS v1 exact-route tunnels).
-   */
+  /** Per-flow receive window in bytes. Defaults to 1 MiB. */
   window?: number;
   logLevel?: LogLevel;
   maxConnections?: number;
@@ -81,7 +75,7 @@ interface DialConnection {
   localInputEnded: boolean;
   remoteInputEnded: boolean;
   pendingWriteBytes: number;
-  /** Bytes we may still send toward the server. Infinity when credit is off. */
+  /** Bytes we may still send toward the server. */
   sendCredit: number;
   /** Chunks read from the local socket awaiting send credit, FIFO. */
   creditQueue: Buffer[];
@@ -124,7 +118,7 @@ export async function startDestinationTcpTunnel(
     options.inspection ?? disabledDestinationTunnelInspection(),
   );
   const logLevel = options.logLevel ?? 'info';
-  const creditWindow = options.window === undefined ? undefined : positiveInteger(options.window, 'window');
+  const creditWindow = positiveInteger(options.window ?? DESTINATION_TUNNEL_DEFAULT_WINDOW, 'window');
   const maxConnections = positiveInteger(options.maxConnections ?? 64, 'maxConnections');
   const maxPendingBytesPerConnection = positiveInteger(
     options.maxPendingBytesPerConnection ?? 16 * 1024 * 1024,
@@ -470,7 +464,7 @@ export async function startDestinationTcpTunnel(
         return;
       }
 
-      const kind = message.routeId.split('-')[0];
+      const kind = message.selectorId.split('-')[0];
       const abortController = new AbortController();
       const connectTimer = setTimeout(() => {
         if (connections.get(message.connId)?.phase !== 'connecting') return;
@@ -486,7 +480,7 @@ export async function startDestinationTcpTunnel(
         localInputEnded: false,
         remoteInputEnded: false,
         pendingWriteBytes: 0,
-        sendCredit: message.window ?? Number.POSITIVE_INFINITY,
+        sendCredit: message.window,
         creditQueue: [],
         creditQueueBytes: 0,
         finPending: false,
@@ -573,7 +567,7 @@ export async function startDestinationTcpTunnel(
               { alpnProtocol: socket.alpnProtocol }
             : {}),
           },
-          ...(creditWindow === undefined ? {} : { window: creditWindow }),
+          window: creditWindow,
         });
         logger.debug(`Forwarding connection ${message.connId} to ${message.host}:${message.port}`);
         if (!pausedForBackpressure && connection.creditQueueBytes === 0) socket.resume();
@@ -621,7 +615,6 @@ export async function startDestinationTcpTunnel(
       const connection = connections.get(connId);
       // Updates racing a local close are expected; ignore unknown flows.
       if (!connection || connection.phase !== 'open') return;
-      if (connection.sendCredit === Number.POSITIVE_INFINITY) return;
       connection.sendCredit += increment;
       pushThroughCreditGate(connId, connection);
     };
@@ -663,7 +656,7 @@ export async function startDestinationTcpTunnel(
         }
         // Replenish the server's send window once the local socket accepted
         // the bytes, batching updates to roughly half the window.
-        if (creditWindow === undefined || connections.get(connId) !== connection) return;
+        if (connections.get(connId) !== connection) return;
         connection.deliveredSinceUpdate += payload.length;
         if (connection.deliveredSinceUpdate >= Math.ceil(creditWindow / 2)) {
           const increment = connection.deliveredSinceUpdate;
@@ -680,20 +673,11 @@ export async function startDestinationTcpTunnel(
         case 'ready': {
           if (tunnelReady) throw new DestinationTunnelProtocolError('received duplicate READY');
           assertDestinationTunnelReady(message);
-          if (message.configHash !== undefined) {
-            const expected = destinationTunnelConfigHash(selectors, inspection);
-            if (message.configHash !== expected) {
-              throw new DestinationTunnelProtocolError(
-                `server acknowledged config ${message.configHash} but ${expected} was negotiated`,
-              );
-            }
-          }
-          if (
-            message.inspection.enabled !== inspection.enabled ||
-            message.inspection.captureBodies !== inspection.captureBodies ||
-            message.inspection.maxBodyBytes !== inspection.maxBodyBytes
-          ) {
-            throw new DestinationTunnelProtocolError('server acknowledged different inspection settings');
+          const expected = destinationTunnelConfigHash(selectors, inspection);
+          if (message.configHash !== expected) {
+            throw new DestinationTunnelProtocolError(
+              `server acknowledged config ${message.configHash} but ${expected} was negotiated`,
+            );
           }
           tunnelReady = true;
           if (handshakeTimer) {
@@ -707,7 +691,6 @@ export async function startDestinationTcpTunnel(
             try {
               inspectionStream = startDestinationTunnelInspectionStream(remoteURL, message.tunnelId, token, {
                 ...(options.onInspectionEvent ? { onEvent: options.onInspectionEvent } : {}),
-                ...(options.onInspectionGap ? { onGap: options.onInspectionGap } : {}),
                 ...(options.onInspectionError ? { onError: options.onInspectionError } : {}),
               });
             } catch (error) {
@@ -721,8 +704,8 @@ export async function startDestinationTcpTunnel(
           resolve({
             tunnelId: message.tunnelId,
             ...(message.selectors === undefined ? {} : { selectors: message.selectors }),
-            ...(message.configHash === undefined ? {} : { configHash: message.configHash }),
-            inspection: message.inspection,
+            configHash: message.configHash,
+            inspection,
             ...(inspectionStream ? { inspectionStream } : {}),
             close,
             getConnectionState,
@@ -771,7 +754,7 @@ export async function startDestinationTcpTunnel(
         ...(selectors.routes ? { routes: selectors.routes } : {}),
         ...(selectors.domains ? { domains: selectors.domains } : {}),
         inspection,
-        ...(creditWindow === undefined ? {} : { window: creditWindow }),
+        window: creditWindow,
       });
       pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -918,11 +901,4 @@ function positiveInteger(value: number, name: string): number {
     throw new Error(`${name} must be a positive integer`);
   }
   return value;
-}
-
-function toBuffer(data: RawData): Buffer {
-  if (Buffer.isBuffer(data)) return data;
-  if (Array.isArray(data)) return Buffer.concat(data);
-  if (data instanceof ArrayBuffer) return Buffer.from(data);
-  throw new DestinationTunnelProtocolError('unsupported WebSocket payload type');
 }

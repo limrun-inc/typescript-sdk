@@ -7,6 +7,7 @@ import upstream from './destination-tunnel-protocol.upstream.json';
 import {
   DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
   DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+  DESTINATION_TUNNEL_DEFAULT_WINDOW,
   DESTINATION_TUNNEL_FAKE_RANGE,
   DESTINATION_TUNNEL_MAX_DOMAINS,
   DESTINATION_TUNNEL_MAX_ROUTES,
@@ -44,6 +45,7 @@ describe('destination tunnel wire contract', () => {
     expect(DESTINATION_TUNNEL_MAX_DOMAINS).toBe(fixture.contract.maxDomains);
     expect(DESTINATION_TUNNEL_FAKE_RANGE).toBe(fixture.contract.fakeRange);
     expect(DESTINATION_TUNNEL_MAX_WINDOW).toBe(fixture.contract.maxWindow);
+    expect(DESTINATION_TUNNEL_DEFAULT_WINDOW).toBe(fixture.contract.defaultWindow);
     expect(DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT).toBe(fixture.contract.maxWindowIncrement);
     expect(DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES).toBe(fixture.contract.defaultMaxBodyBytes);
     expect(DESTINATION_TUNNEL_MAX_BODY_BYTES).toBe(fixture.contract.maxBodyBytes);
@@ -68,7 +70,7 @@ describe('destination tunnel wire contract', () => {
       repository: 'limrun-inc/limrun',
       commit: 'b3cbe546d6af8111a7cd6d8d60609a8f2086591e',
       path: 'design/destination-tunnel/v1',
-      messagesSha256: '01996ef062fe620fd23d38a80d43835685db9080c7035d0031b17715b832ba26',
+      messagesSha256: 'dba98ef0f8f0602a0a3decf0178a3fc0c85ff920d3239d78b82df1a061b90999',
       binarySha256: 'e6da913a0ff85a3402f09de6cbbb18d4f9b2e76007ca48b85f4d35b66810da7d',
     });
     expect(sha256('destination-tunnel-protocol.fixture.json')).toBe(upstream.messagesSha256);
@@ -90,6 +92,7 @@ describe('destination tunnel wire contract', () => {
           type: 'openOk',
           connId,
           transport: { type: 'tcp' },
+          window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
         }),
       ).toThrow(DestinationTunnelProtocolError);
       expect(() =>
@@ -110,6 +113,7 @@ describe('destination tunnel wire contract', () => {
         type: 'openOk',
         connId: Number.NaN,
         transport: { type: 'tcp' },
+        window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       }),
     ).toThrow(DestinationTunnelProtocolError);
   });
@@ -120,12 +124,14 @@ describe('destination tunnel wire contract', () => {
       version: DESTINATION_TUNNEL_VERSION,
       routes: [{ host: '2001:0DB8:0:0:0:0:0:1', port: 443 }],
       inspection: disabledDestinationTunnelInspection(),
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     expect(JSON.parse(encoded)).toEqual({
       type: 'start',
       version: DESTINATION_TUNNEL_VERSION,
       routes: [{ host: '2001:db8::1', port: 443 }],
       inspection: disabledDestinationTunnelInspection(),
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
   });
 
@@ -183,6 +189,7 @@ describe('destination tunnel wire contract', () => {
           captureBodies: true,
           maxBodyBytes: DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
         },
+        window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       }),
     ).toThrow('captureBodies requires inspection to be enabled');
     expect(() =>
@@ -195,6 +202,7 @@ describe('destination tunnel wire contract', () => {
           captureBodies: true,
           maxBodyBytes: DESTINATION_TUNNEL_MAX_BODY_BYTES + 1,
         },
+        window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       }),
     ).toThrow(`maxBodyBytes must be an integer between 1 and ${DESTINATION_TUNNEL_MAX_BODY_BYTES}`);
   });
@@ -223,6 +231,7 @@ describe('destination tunnel route contract', () => {
         version: DESTINATION_TUNNEL_VERSION,
         routes,
         inspection: disabledDestinationTunnelInspection(),
+        window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       }),
     ).toThrow();
   });
@@ -242,10 +251,10 @@ describe('destination tunnel route contract', () => {
   });
 
   test.each([
-    { routeId: 'route-2', host: '10.20.30.40', port: 8000 },
-    { routeId: 'route-1', host: '10.20.30.41', port: 8000 },
-    { routeId: 'route-1', host: '10.20.30.40', port: 8001 },
-  ])('rejects undeclared OPEN $routeId $host:$port', (requested) => {
+    { selectorId: 'route-2', host: '10.20.30.40', port: 8000 },
+    { selectorId: 'route-1', host: '10.20.30.41', port: 8000 },
+    { selectorId: 'route-1', host: '10.20.30.40', port: 8001 },
+  ])('rejects undeclared OPEN $selectorId $host:$port', (requested) => {
     const routes: DestinationTunnelRoute[] = [{ host: '10.20.30.40', port: 8000 }];
     expect(() =>
       assertDestinationTunnelOpenAllowed(
@@ -253,8 +262,8 @@ describe('destination tunnel route contract', () => {
           type: 'open',
           connId: 1,
           ...requested,
-          proto: 'tcp',
           transport: { type: 'tcp' },
+          window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
         },
         routes,
       ),
@@ -332,8 +341,8 @@ describe('destination tunnel selector contract', () => {
       const message = {
         type: 'open' as const,
         connId: 1,
-        proto: 'tcp' as const,
         transport: { type: 'tcp' as const },
+        window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
         ...open,
       };
       const selectorSet = validateDestinationTunnelSelectors(selectors as DestinationTunnelSelectors);
@@ -384,14 +393,48 @@ describe('destination tunnel selector contract', () => {
       decodeDestinationTunnelServerMessage({
         type: 'open',
         connId: 5,
-        routeId: 'route-1',
+        selectorId: 'route-1',
         host: 'localhost',
         port: 8080,
-        proto: 'tcp',
         transport: { type: 'tcp' },
         window,
       }),
     ).toThrow(DestinationTunnelProtocolError);
+  });
+
+  test('requires windows in START, OPEN, and OPEN-OK and configHash in READY', () => {
+    expect(() =>
+      encodeDestinationTunnelClientMessage({
+        type: 'start',
+        version: 1,
+        routes: [{ host: 'localhost', port: 8080 }],
+        inspection: disabledDestinationTunnelInspection(),
+      } as DestinationTunnelClientMessage),
+    ).toThrow('window must be an integer');
+    expect(() =>
+      encodeDestinationTunnelClientMessage({
+        type: 'openOk',
+        connId: 1,
+        transport: { type: 'tcp' },
+      } as DestinationTunnelClientMessage),
+    ).toThrow('window must be an integer');
+    expect(() =>
+      decodeDestinationTunnelServerMessage({
+        type: 'open',
+        connId: 1,
+        selectorId: 'route-1',
+        host: 'localhost',
+        port: 8080,
+        transport: { type: 'tcp' },
+      }),
+    ).toThrow('window must be an integer');
+    expect(() =>
+      decodeDestinationTunnelServerMessage({
+        type: 'ready',
+        version: 1,
+        tunnelId: 'tunnel-1',
+      }),
+    ).toThrow('configHash must be a string');
   });
 
   test('rejects malformed selector reports in ready', () => {

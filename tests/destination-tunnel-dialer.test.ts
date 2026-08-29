@@ -9,7 +9,9 @@ import {
 } from '../src/destination-tunnel-dialer';
 import {
   DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
+  DESTINATION_TUNNEL_DEFAULT_WINDOW,
   DESTINATION_TUNNEL_VERSION,
+  destinationTunnelConfigHash,
   disabledDestinationTunnelInspection,
   type DestinationTunnelClientMessage,
   type DestinationTunnelRoute,
@@ -79,11 +81,11 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 7,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: route.host,
       port: route.port,
-      proto: 'tcp',
       transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => hasControl('openOk', 7) && dataFor(7).toString() === 'greeting');
     const openIndex = events.findIndex(
@@ -126,11 +128,11 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 8,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: '127.0.0.2',
       port: localPort,
-      proto: 'tcp',
       transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => hasControl('openFail', 8));
 
@@ -155,23 +157,24 @@ describe('destination tunnel dialer', () => {
       version: DESTINATION_TUNNEL_VERSION,
       routes: [{ host: 'localhost', port: 3000 }],
       inspection: disabledDestinationTunnelInspection(),
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     sendControl({
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-localhost',
-      inspection: disabledDestinationTunnelInspection(),
+      configHash: currentConfigHash(),
     });
     tunnel = await startup;
 
     sendControl({
       type: 'open',
       connId: 81,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: 'localhost',
       port: 3000,
-      proto: 'tcp',
       transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => createConnection.mock.calls.length === 1);
     expect(createConnection).toHaveBeenCalledWith({
@@ -183,11 +186,11 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 82,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: 'LOCALHOST',
       port: 3000,
-      proto: 'tcp',
       transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => hasControl('openFail', 82));
     expect(controlFor('openFail', 82)).toEqual({
@@ -206,11 +209,11 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 9,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: route.host,
       port: route.port,
-      proto: 'tcp',
       transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => hasControl('openFail', 9));
 
@@ -240,21 +243,22 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 91,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: route.host,
       port: route.port,
-      proto: 'tcp',
       transport: {
         type: 'tls',
         serverName: 'localhost',
         alpnProtocols: ['h2', 'http/1.1'],
       },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => hasControl('openOk', 91) && dataFor(91).toString() === 'greeting');
 
     expect(controlFor('openOk', 91)).toEqual({
       type: 'openOk',
       connId: 91,
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       transport: {
         type: 'tls',
         remoteAddress: '127.0.0.1',
@@ -278,15 +282,15 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 92,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: route.host,
       port: route.port,
-      proto: 'tcp',
       transport: {
         type: 'tls',
         serverName: 'localhost',
         alpnProtocols: ['http/1.1'],
       },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => hasControl('openFail', 92));
     expect(controlFor('openFail', 92)).toEqual(
@@ -339,15 +343,15 @@ describe('destination tunnel dialer', () => {
       sendControl({
         type: 'open',
         connId: 93,
-        routeId: 'domain-1',
+        selectorId: 'domain-1',
         host: 'api.corp.example',
         port: localPort,
-        proto: 'tcp',
         transport: {
           type: 'tls',
           serverName: 'api.corp.example',
           alpnProtocols: ['h2'],
         },
+        window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       });
       await waitFor(() => hasControl('openOk', 93) && dataFor(93).toString() === 'proxied');
       expect(connectAuthority).toBe(`127.0.0.1:${localPort}`);
@@ -390,11 +394,11 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 10,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: route.host,
       port: route.port,
-      proto: 'tcp',
       transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => createConnection.mock.calls.length === 1);
     firstSocket.emit('connect');
@@ -414,11 +418,11 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 11,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: route.host,
       port: route.port,
-      proto: 'tcp',
       transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     await waitFor(() => createConnection.mock.calls.length === 2);
     secondSocket.emit('connect');
@@ -528,14 +532,27 @@ describe('destination tunnel dialer', () => {
       routes,
       ...(domains ? { domains } : {}),
       inspection: disabledDestinationTunnelInspection(),
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     });
     sendControl({
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
-      inspection: disabledDestinationTunnelInspection(),
+      configHash: currentConfigHash(),
     });
     return startup;
+  }
+
+  function currentConfigHash(): string {
+    const start = controlFor('start');
+    if (start?.type !== 'start') throw new Error('missing START');
+    return destinationTunnelConfigHash(
+      {
+        ...(start.routes ? { routes: start.routes } : {}),
+        ...(start.domains ? { domains: start.domains } : {}),
+      },
+      start.inspection,
+    );
   }
 
   async function listenLocal(onConnection: (socket: net.Socket) => void): Promise<number> {

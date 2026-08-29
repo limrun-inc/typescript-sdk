@@ -16,14 +16,12 @@ interface PendingCapture {
   responseBody: Buffer[];
   responseBytes: number;
   responseTruncated: boolean;
-  gap: boolean;
 }
 
 type TunnelHarExtension = DestinationTunnelInspectionExtension & {
   requestBodyEncoding?: 'base64';
   requestBodyTruncated: boolean;
   responseBodyTruncated: boolean;
-  gap: boolean;
 };
 
 type TunnelHarEntry = HAREntry & { _limrun: TunnelHarExtension };
@@ -34,7 +32,6 @@ type SpoolRecord =
 
 export interface TunnelHarRecorder {
   onEvent: (event: DestinationTunnelInspectionEvent) => void;
-  onGap: (gap: DestinationTunnelInspectionGap) => void;
   finalize: () => Promise<void>;
   close: () => void;
 }
@@ -66,7 +63,6 @@ export function createTunnelHarRecorder(harPath: string, bodyLimit: number): Tun
         responseBody: [],
         responseBytes: 0,
         responseTruncated: false,
-        gap: false,
       };
       pending.set(requestId, state);
     }
@@ -78,13 +74,12 @@ export function createTunnelHarRecorder(harPath: string, bodyLimit: number): Tun
     fs.writeSync(descriptor, `${JSON.stringify(record)}\n`, undefined, 'utf8');
   };
 
-  const onGap = (gap: DestinationTunnelInspectionGap): void => {
-    for (const state of pending.values()) state.gap = true;
-    appendRecord({ type: 'gap', gap });
-  };
-
   const onEvent = (event: DestinationTunnelInspectionEvent): void => {
-    if (closed || event.type === 'gap') return;
+    if (closed) return;
+    if (event.type === 'gap') {
+      appendRecord({ type: 'gap', gap: event.data });
+      return;
+    }
     if (event.type === 'body') {
       const state = stateFor(event.requestId);
       const response = event.direction === 'response';
@@ -100,10 +95,6 @@ export function createTunnelHarRecorder(harPath: string, bodyLimit: number): Tun
         state.requestBytes += take;
         state.requestTruncated ||= take < event.body.length;
       }
-      return;
-    }
-    if (event.type === 'request' || event.type === 'response') {
-      stateFor(event.requestId);
       return;
     }
     if (event.type !== 'complete') return;
@@ -138,9 +129,9 @@ export function createTunnelHarRecorder(harPath: string, bodyLimit: number): Tun
         output,
         '{"log":{"version":"1.2","creator":{"name":"Limrun CLI","version":"1"},"entries":[',
       );
-      await copySpoolRecords(partialPath, 'entry', output);
+      const gaps = await copySpoolRecords(partialPath, output);
       fs.writeSync(output, '],"_limrun":{"gaps":[');
-      await copySpoolRecords(partialPath, 'gap', output);
+      fs.writeSync(output, gaps.map((gap) => JSON.stringify(gap)).join(','));
       fs.writeSync(output, ']}}}\n');
       fs.fsyncSync(output);
     } catch (error) {
@@ -154,7 +145,7 @@ export function createTunnelHarRecorder(harPath: string, bodyLimit: number): Tun
     fs.rmSync(partialPath, { force: true });
   };
 
-  return { onEvent, onGap, finalize, close };
+  return { onEvent, finalize, close };
 }
 
 export function formatInspectionSummary(event: DestinationTunnelInspectionComplete): string {
@@ -188,7 +179,6 @@ function makeHarEntry(
       ...(requestBodyEncoding ? { requestBodyEncoding } : {}),
       requestBodyTruncated: requestTruncated,
       responseBodyTruncated: responseTruncated,
-      gap: capture.gap,
     },
   };
 }
@@ -251,21 +241,26 @@ function headerValue(headers: Array<{ name: string; value: string }>, name: stri
 
 async function copySpoolRecords(
   partialPath: string,
-  type: SpoolRecord['type'],
   output: number,
-): Promise<void> {
+): Promise<DestinationTunnelInspectionGap[]> {
   const lines = readline.createInterface({
     input: fs.createReadStream(partialPath, { encoding: 'utf8' }),
     crlfDelay: Infinity,
   });
   let first = true;
+  const gaps: DestinationTunnelInspectionGap[] = [];
   for await (const line of lines) {
     const record = parseSpoolRecord(line);
-    if (!record || record.type !== type) continue;
+    if (!record) continue;
+    if (record.type === 'gap') {
+      gaps.push(record.gap);
+      continue;
+    }
     if (!first) fs.writeSync(output, ',');
-    fs.writeSync(output, JSON.stringify(record.type === 'entry' ? record.entry : record.gap));
+    fs.writeSync(output, JSON.stringify(record.entry));
     first = false;
   }
+  return gaps;
 }
 
 function parseSpoolRecord(line: string): SpoolRecord | undefined {

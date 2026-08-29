@@ -26,7 +26,7 @@ describe('destination tunnel management', () => {
     const lastDialFailure = {
       tunnelId: 'tunnel-1',
       connectionId: 0xffff_ffff,
-      routeId: 'route-3',
+      selectorId: 'route-3',
       reason: 'connection_refused',
       osCode: 'ECONNREFUSED',
     };
@@ -123,7 +123,7 @@ describe('destination tunnel management', () => {
       lastDialFailure: {
         tunnelId: 'one',
         connectionId: -1,
-        routeId: 'route-1',
+        selectorId: 'route-1',
         reason: 'internal',
       },
     },

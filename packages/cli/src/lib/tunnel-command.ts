@@ -7,8 +7,6 @@ import {
   type DestinationTunnelInspectionErrorCallback,
   type DestinationTunnelInspectionEvent,
   type DestinationTunnelInspectionEventCallback,
-  type DestinationTunnelInspectionGap,
-  type DestinationTunnelInspectionGapCallback,
   type DestinationTunnelSelectors,
   type DestinationTunnelStatus,
 } from '@limrun/api';
@@ -63,7 +61,6 @@ export interface TunnelClientFacade extends TunnelManagementFacade {
     selectors: DestinationTunnelSelectors;
     inspection: DestinationTunnelInspectionConfig;
     onInspectionEvent?: DestinationTunnelInspectionEventCallback;
-    onInspectionGap?: DestinationTunnelInspectionGapCallback;
     onInspectionError?: DestinationTunnelInspectionErrorCallback;
   }) => Promise<TunnelGeneration>;
 }
@@ -83,7 +80,6 @@ export function tunnelClientFacade(
         logLevel?: TunnelLogLevel;
         inspection?: Partial<DestinationTunnelInspectionConfig>;
         onInspectionEvent?: DestinationTunnelInspectionEventCallback;
-        onInspectionGap?: DestinationTunnelInspectionGapCallback;
         onInspectionError?: DestinationTunnelInspectionErrorCallback;
       },
     ) => Promise<TunnelGeneration>;
@@ -100,7 +96,6 @@ export function tunnelClientFacade(
         logLevel,
         inspection: options.inspection,
         ...(options.onInspectionEvent ? { onInspectionEvent: options.onInspectionEvent } : {}),
-        ...(options.onInspectionGap ? { onInspectionGap: options.onInspectionGap } : {}),
         ...(options.onInspectionError ? { onInspectionError: options.onInspectionError } : {}),
       }),
     getTunnelStatus: () => client.getTunnelStatus(),
@@ -133,7 +128,6 @@ export interface TunnelCommandContext {
   /** Maximum captured bytes for each request and response body. */
   harBodyLimit?: number;
   onInspectionEvent?: DestinationTunnelInspectionEventCallback;
-  onInspectionGap?: DestinationTunnelInspectionGapCallback;
   onInspectionError?: DestinationTunnelInspectionErrorCallback;
   connect: () => Promise<TunnelClientFacade>;
   io: TunnelCommandIO;
@@ -156,7 +150,6 @@ const RECONNECT_MAX_BACKOFF_MS = 30_000;
 interface InspectionSession {
   config: DestinationTunnelInspectionConfig;
   onEvent?: DestinationTunnelInspectionEventCallback;
-  onGap?: DestinationTunnelInspectionGapCallback;
   onError?: DestinationTunnelInspectionErrorCallback;
   finalize: () => Promise<void>;
   close: () => void;
@@ -192,21 +185,17 @@ function createInspectionSession(context: TunnelCommandContext): InspectionSessi
   };
   const onEvent = (event: DestinationTunnelInspectionEvent): void => {
     invoke(() => recorder?.onEvent(event));
-    if (event.type === 'complete') {
+    if (event.type === 'gap') {
+      context.io.info(event.data.message);
+    } else if (event.type === 'complete') {
       context.io.info(formatInspectionSummary(event.data));
     }
     invoke(() => context.onInspectionEvent?.(event));
-  };
-  const onGap = (gap: DestinationTunnelInspectionGap): void => {
-    context.io.info(gap.message);
-    invoke(() => recorder?.onGap(gap));
-    invoke(() => context.onInspectionGap?.(gap));
   };
 
   return {
     config,
     onEvent,
-    onGap,
     onError: reportError,
     finalize: async () => {
       const current = recorder;
@@ -246,7 +235,6 @@ async function runTunnelLoop(
         selectors: context.selectors,
         inspection: inspection.config,
         ...(inspection.onEvent ? { onInspectionEvent: inspection.onEvent } : {}),
-        ...(inspection.onGap ? { onInspectionGap: inspection.onGap } : {}),
         ...(inspection.onError ? { onInspectionError: inspection.onError } : {}),
       });
       backoffMs = RECONNECT_INITIAL_BACKOFF_MS;

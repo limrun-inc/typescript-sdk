@@ -192,7 +192,7 @@ describe('tunnel process state', () => {
       formatTunnelDialFailure({
         tunnelId: 'tunnel-1',
         connectionId: 7,
-        routeId: 'route-3',
+        selectorId: 'route-3',
         reason: 'dns_not_found',
         osCode: 'ENOTFOUND',
       }),

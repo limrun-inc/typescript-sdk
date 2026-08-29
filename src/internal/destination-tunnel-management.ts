@@ -1,5 +1,6 @@
 import { nodeProxyTransport } from './proxy-transport';
 import { deriveDestinationTunnelStatusURL, deriveDestinationTunnelStopURL } from './destination-tunnel-url';
+import { readArray, readNonEmptyString, readRecord, readString } from './destination-tunnel-wire-reader';
 import {
   validateDestinationTunnelSelectors,
   normalizeDestinationTunnelInspection,
@@ -25,7 +26,7 @@ export interface DestinationTunnelStatus {
   lastDialFailure?: {
     tunnelId: string;
     connectionId: number;
-    routeId: string;
+    selectorId: string;
     reason: string;
     osCode?: string;
   };
@@ -183,39 +184,8 @@ function readTunnelDialFailure(value: unknown): NonNullable<DestinationTunnelSta
   return {
     tunnelId: readNonEmptyString(failure, 'tunnelId'),
     connectionId,
-    routeId: readNonEmptyString(failure, 'routeId'),
+    selectorId: readNonEmptyString(failure, 'selectorId'),
     reason: readNonEmptyString(failure, 'reason'),
     ...(osCode === undefined ? {} : { osCode }),
   };
-}
-
-function readRecord(value: unknown, name: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`${name} must be an object`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function readArray(record: Record<string, unknown>, key: string): unknown[] {
-  const value = record[key];
-  if (!Array.isArray(value)) {
-    throw new Error(`${key} must be an array`);
-  }
-  return value;
-}
-
-function readString(record: Record<string, unknown>, key: string): string {
-  const value = record[key];
-  if (typeof value !== 'string') {
-    throw new Error(`${key} must be a string`);
-  }
-  return value;
-}
-
-function readNonEmptyString(record: Record<string, unknown>, key: string): string {
-  const value = readString(record, key);
-  if (value.length === 0) {
-    throw new Error(`${key} must not be empty`);
-  }
-  return value;
 }

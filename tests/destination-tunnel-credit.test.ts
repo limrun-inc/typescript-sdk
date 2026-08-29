@@ -7,7 +7,9 @@ import {
 } from '../src/destination-tunnel-dialer';
 import {
   DESTINATION_TUNNEL_CONN_ID_HEADER_BYTES,
+  DESTINATION_TUNNEL_DEFAULT_WINDOW,
   DESTINATION_TUNNEL_VERSION,
+  destinationTunnelConfigHash,
   disabledDestinationTunnelInspection,
   type DestinationTunnelClientMessage,
   type DestinationTunnelServerMessage,
@@ -97,17 +99,16 @@ describe('destination tunnel credit and selector dialing', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
-      inspection: disabledDestinationTunnelInspection(),
+      configHash: currentConfigHash(),
     });
     tunnel = await startup;
 
     sendControl({
       type: 'open',
       connId: 1,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: '127.0.0.1',
       port: localPort,
-      proto: 'tcp',
       transport: { type: 'tcp' },
       window: 8,
     });
@@ -137,17 +138,16 @@ describe('destination tunnel credit and selector dialing', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
-      inspection: disabledDestinationTunnelInspection(),
+      configHash: currentConfigHash(),
     });
     tunnel = await startup;
 
     sendControl({
       type: 'open',
       connId: 5,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: '127.0.0.1',
       port: localPort,
-      proto: 'tcp',
       transport: { type: 'tcp' },
       window: 4,
     });
@@ -183,17 +183,16 @@ describe('destination tunnel credit and selector dialing', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
-      inspection: disabledDestinationTunnelInspection(),
+      configHash: currentConfigHash(),
     });
     tunnel = await startup;
 
     sendControl({
       type: 'open',
       connId: 11,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: '127.0.0.1',
       port: localPort,
-      proto: 'tcp',
       transport: { type: 'tcp' },
       window: 4,
     });
@@ -231,17 +230,16 @@ describe('destination tunnel credit and selector dialing', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
-      inspection: disabledDestinationTunnelInspection(),
+      configHash: currentConfigHash(),
     });
     tunnel = await startup;
 
     sendControl({
       type: 'open',
       connId: 6,
-      routeId: 'route-1',
+      selectorId: 'route-1',
       host: '127.0.0.1',
       port: localPort,
-      proto: 'tcp',
       transport: { type: 'tcp' },
       window: 1024,
     });
@@ -275,17 +273,17 @@ describe('destination tunnel credit and selector dialing', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
-      inspection: disabledDestinationTunnelInspection(),
+      configHash: currentConfigHash(),
     });
     tunnel = await startup;
 
     sendControl({
       type: 'open',
       connId: 7,
-      routeId: 'domain-1',
+      selectorId: 'domain-1',
       host: 'evil.example',
       port: localPort,
-      proto: 'tcp',
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       transport: { type: 'tcp' },
     });
     await waitFor(() => hasControl('openFail', 7));
@@ -299,10 +297,10 @@ describe('destination tunnel credit and selector dialing', () => {
     sendControl({
       type: 'open',
       connId: 8,
-      routeId: 'domain-1',
+      selectorId: 'domain-1',
       host: 'api.corp.example',
       port: localPort,
-      proto: 'tcp',
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       transport: { type: 'tcp' },
     });
     await waitFor(() => hasControl('openOk', 8));
@@ -325,17 +323,17 @@ describe('destination tunnel credit and selector dialing', () => {
       type: 'ready',
       version: DESTINATION_TUNNEL_VERSION,
       tunnelId: 'tunnel-1',
-      inspection: disabledDestinationTunnelInspection(),
+      configHash: currentConfigHash(),
     });
     tunnel = await startup;
 
     sendControl({
       type: 'open',
       connId: 9,
-      routeId: 'domain-1',
+      selectorId: 'domain-1',
       host: 'api.corp.example',
       port: 443,
-      proto: 'tcp',
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       transport: { type: 'tcp' },
     });
     await waitFor(() => hasControl('openFail', 9));
@@ -364,6 +362,18 @@ describe('destination tunnel credit and selector dialing', () => {
 
   function sendControl(message: DestinationTunnelServerMessage): void {
     remoteSocket!.send(JSON.stringify(message));
+  }
+
+  function currentConfigHash(): string {
+    const start = controlFor('start');
+    if (start?.type !== 'start') throw new Error('missing START');
+    return destinationTunnelConfigHash(
+      {
+        ...(start.routes ? { routes: start.routes } : {}),
+        ...(start.domains ? { domains: start.domains } : {}),
+      },
+      start.inspection,
+    );
   }
 
   function sendData(connId: number, payload: Buffer): void {
