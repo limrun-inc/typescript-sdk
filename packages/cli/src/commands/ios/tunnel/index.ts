@@ -16,9 +16,15 @@ import { parseTunnelSelectors } from '../../../lib/tunnel-process';
 export default class IosTunnel extends BaseCommand {
   static summary = 'Expose declared local TCP destinations to the simulator';
   static description =
-    'Start one transparent destination tunnel with exact localhost:port or literal IP:port selectors. Use --detach to keep it running after this command returns.';
+    'Start one transparent destination tunnel. Exact --selector destinations (localhost:port or ' +
+    'literal IP:port) become listeners reachable from the simulator. Domain selectors are ' +
+    'intercepted transparently on the instance and dialed from this machine; only private names ' +
+    'that do not resolve on public DNS are accepted, and TLS stays end to end. ' +
+    'Use --detach to keep the tunnel running after this command returns. ' +
+    'Note: apps that resolve DNS themselves over HTTPS (DoH) bypass domain interception.';
   static examples = [
     '<%= config.bin %> ios tunnel --selector localhost:3000 --id <instance-ID>',
+    '<%= config.bin %> ios tunnel --selector "*.corp.example" --detach',
     '<%= config.bin %> ios tunnel --selector 10.20.30.40:443 --selector 10.20.30.41:8081 --detach',
     '<%= config.bin %> ios tunnel status --id <instance-ID>',
     '<%= config.bin %> ios tunnel stop --id <instance-ID>',
@@ -32,7 +38,8 @@ export default class IosTunnel extends BaseCommand {
     }),
     selector: Flags.string({
       description:
-        'Exact client-side TCP destination as localhost:port, IPv4:port, or [IPv6]:port. Repeat for more selectors.',
+        'Client-side TCP destination as localhost:port, IPv4:port, or [IPv6]:port, or a private ' +
+        'exact or *. wildcard domain. Repeat for more selectors.',
       multiple: true,
       required: true,
     }),
@@ -63,7 +70,7 @@ export default class IosTunnel extends BaseCommand {
     if (flags.detach && flags.serve) {
       this.error('--detach cannot be combined with internal --serve mode.');
     }
-    const selectors = parseTunnelSelectors(flags.selector, { allowDomains: false });
+    const selectors = parseTunnelSelectors(flags.selector);
 
     if (flags.serve) {
       const owner = flags['tunnel-owner'];
