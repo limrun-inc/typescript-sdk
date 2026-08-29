@@ -50,6 +50,9 @@ export interface TunnelClientFacade extends TunnelManagementFacade {
   startTunnel: (selectors: DestinationTunnelSelectors) => Promise<TunnelGeneration>;
 }
 
+/** 'debug' additionally logs every forwarded connection and dial failure. */
+export type TunnelLogLevel = 'debug' | 'info' | 'none';
+
 /**
  * Adapts an SDK instance client to the product-neutral facade. Both clients
  * accept the selectors shape directly, so the adapter only threads the CLI's
@@ -58,13 +61,13 @@ export interface TunnelClientFacade extends TunnelManagementFacade {
 export function tunnelClientFacade(
   client: {
     startTunnel: (
-      options: DestinationTunnelSelectors & { logLevel?: 'info' | 'none' },
+      options: DestinationTunnelSelectors & { logLevel?: TunnelLogLevel },
     ) => Promise<TunnelGeneration>;
     getTunnelStatus: () => Promise<DestinationTunnelStatus>;
     stopTunnel: (tunnelId: string) => Promise<void>;
   },
   disconnect: () => void,
-  logLevel: 'info' | 'none',
+  logLevel: TunnelLogLevel,
 ): TunnelClientFacade {
   return {
     startTunnel: (selectors) => client.startTunnel({ ...selectors, logLevel }),
@@ -87,6 +90,8 @@ export interface TunnelCommandContext {
   instanceId: string;
   selectors: DestinationTunnelSelectors;
   apiKey?: string | undefined;
+  /** Forward --verbose to the detached serve child so its log shows connections. */
+  verbose?: boolean;
   /** Reconnect with backoff after unexpected disconnects (Android behavior). */
   reconnect: boolean;
   connect: () => Promise<TunnelClientFacade>;
@@ -250,6 +255,7 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
         instanceId: context.instanceId,
         owner,
         selectors: context.selectors,
+        ...(context.verbose ? { verbose: true } : {}),
       }),
       {
         detached: true,

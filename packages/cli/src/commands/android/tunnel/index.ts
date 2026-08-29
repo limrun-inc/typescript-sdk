@@ -7,6 +7,7 @@ import {
   serveTunnelDetached,
   startTunnelDetached,
   tunnelClientFacade,
+  type TunnelLogLevel,
   type TunnelClientFacade,
   type TunnelCommandContext,
 } from '../../../lib/tunnel-command';
@@ -52,6 +53,11 @@ export default class AndroidTunnel extends BaseCommand {
       description: 'Run in a detached background process and return after READY.',
       default: false,
     }),
+    verbose: Flags.boolean({
+      description:
+        'Log every forwarded connection and dial failure. With --detach, the lines go to the tunnel log file (see tunnel status).',
+      default: false,
+    }),
     serve: Flags.boolean({
       description: 'Internal: own the detached tunnel transport.',
       default: false,
@@ -85,7 +91,10 @@ export default class AndroidTunnel extends BaseCommand {
       if (!owner) this.error('--serve requires --tunnel-owner.');
       await this.withAuth(async () => {
         const resolvedInstance = this.resolveAndroidInstance(flags.id);
-        await serveTunnelDetached(this.tunnelContext(resolvedInstance.id, selectors, 'info'), owner);
+        await serveTunnelDetached(
+          this.tunnelContext(resolvedInstance.id, selectors, flags.verbose ? 'debug' : 'info'),
+          owner,
+        );
       });
       return;
     }
@@ -93,12 +102,19 @@ export default class AndroidTunnel extends BaseCommand {
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       if (flags.detach) {
-        await startTunnelDetached(
-          this.tunnelContext(resolvedInstance.id, selectors, 'info', flags['api-key']),
-        );
+        await startTunnelDetached({
+          ...this.tunnelContext(resolvedInstance.id, selectors, 'info', flags['api-key']),
+          verbose: flags.verbose,
+        });
       } else {
         await runTunnelForeground(
-          this.tunnelContext(resolvedInstance.id, selectors, this.shouldSuppressInfo() ? 'none' : 'info'),
+          this.tunnelContext(
+            resolvedInstance.id,
+            selectors,
+            flags.verbose ? 'debug'
+            : this.shouldSuppressInfo() ? 'none'
+            : 'info',
+          ),
         );
       }
     });
@@ -107,7 +123,7 @@ export default class AndroidTunnel extends BaseCommand {
   private tunnelContext(
     instanceId: string,
     selectors: DestinationTunnelSelectors,
-    logLevel: 'info' | 'none',
+    logLevel: TunnelLogLevel,
     apiKey?: string,
   ): TunnelCommandContext {
     return {

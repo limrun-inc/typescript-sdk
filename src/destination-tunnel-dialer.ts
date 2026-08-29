@@ -403,6 +403,7 @@ export async function startDestinationTcpTunnel(
           });
       const connectTimer = setTimeout(() => {
         if (connections.get(message.connId)?.phase !== 'connecting') return;
+        logger.warn(`Failed to connect to ${message.host}:${message.port}: timed out`);
         sendOpenFailure(message.connId, 'connection_timed_out', 'ETIMEDOUT');
         removeConnection(message.connId, true);
       }, connectTimeoutMs);
@@ -434,7 +435,7 @@ export async function startDestinationTcpTunnel(
           connId: message.connId,
           ...(creditWindow === undefined ? {} : { window: creditWindow }),
         });
-        logger.debug(`Connected ${message.connId} to ${message.host}:${message.port}`);
+        logger.debug(`Forwarding connection ${message.connId} to ${message.host}:${message.port}`);
       });
 
       socket.on('data', (payload: Buffer) => {
@@ -457,6 +458,9 @@ export async function startDestinationTcpTunnel(
       socket.once('error', (error: NodeJS.ErrnoException) => {
         if (connections.get(message.connId) !== connection) return;
         if (connection.phase === 'connecting') {
+          logger.warn(
+            `Failed to connect to ${message.host}:${message.port}: ${error.code ?? error.message}`,
+          );
           sendOpenFailure(message.connId, classifyOpenFailure(error), error.code);
         } else {
           sendReset(message.connId, 'connection_error', error.code);
@@ -482,6 +486,9 @@ export async function startDestinationTcpTunnel(
           })
           .catch((error: NodeJS.ErrnoException) => {
             if (connections.get(message.connId) !== connection) return;
+            logger.warn(
+              `Failed to connect to ${message.host}:${message.port}: ${error.code ?? error.message}`,
+            );
             const reason = error.code === 'EBLOCKED' ? 'route_not_allowed' : classifyOpenFailure(error);
             sendOpenFailure(message.connId, reason, error.code === 'EBLOCKED' ? undefined : error.code);
             removeConnection(message.connId, true);
