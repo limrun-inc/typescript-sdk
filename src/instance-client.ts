@@ -170,6 +170,12 @@ export type InstanceClient = {
    */
   terminateApp: (packageName: string) => Promise<void>;
   /**
+   * List the launchable apps installed on the instance, each with its package
+   * name (as `bundleId`), display name, install type (`user` or `system`),
+   * and, when available, a small base64 PNG icon.
+   */
+  listApps: () => Promise<InstalledApp[]>;
+  /**
    * Watch an app's exit/crash without launching it through {@link launchApp},
    * e.g. for apps that are already running or will be opened via a deeplink
    * (see {@link openUrl}). The callback fires once, with the same payload as a
@@ -613,6 +619,18 @@ export type LaunchAppResult = {
   packageName: string;
 };
 
+/**
+ * One entry of {@link InstanceClient.listApps}. The package name is carried
+ * as `bundleId` so the shape matches iOS's listApps.
+ */
+export type InstalledApp = {
+  bundleId: string;
+  name: string;
+  installType: string;
+  /** App icon as a base64-encoded 64px PNG; absent when the runtime could not extract one. */
+  icon?: string;
+};
+
 /** Handle for an app watch registered via {@link InstanceClient.watchApp}. */
 export type AppWatch = {
   /** Identifier of this watch on the server. */
@@ -799,6 +817,13 @@ type WatchAppResultMessage = {
   error?: CommandError;
 };
 
+type ListAppsResultMessage = {
+  type: 'listAppsResult';
+  id: string;
+  payload?: { apps?: InstalledApp[] };
+  error?: CommandError;
+};
+
 type UnwatchAppResultMessage = {
   type: 'unwatchAppResult';
   id: string;
@@ -908,6 +933,7 @@ type KnownCommandResultMessage =
   | TerminateAppResultMessage
   | WatchAppResultMessage
   | UnwatchAppResultMessage
+  | ListAppsResultMessage
   | PlayOnMicrophoneResultMessage
   | CameraControlResultMessage
   | AdbShellResultMessage
@@ -940,6 +966,7 @@ type CommandRequestMap = {
   terminateApp: { packageName: string };
   watchApp: { packageName: string; execId: string };
   unwatchApp: { execId: string };
+  listApps: {};
   playOnMicrophone: { path: string; once?: boolean };
   cameraControl: { action: 'setSource'; source: 'video'; arg: string; loop?: boolean } | { action: 'reset' };
   adbShell: { command: string; timeoutMs?: number };
@@ -966,6 +993,7 @@ type CommandResultMap = {
   terminateApp: { packageName?: string };
   watchApp: { packageName?: string };
   unwatchApp: EmptyCommandResult;
+  listApps: { apps?: InstalledApp[] };
   playOnMicrophone: PlayOnMicrophoneResult;
   cameraControl: EmptyCommandResult;
   adbShell: AdbShellResultMessage;
@@ -1427,6 +1455,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             openUrl,
             launchApp,
             terminateApp,
+            listApps,
             watchApp,
             playOnMicrophone,
             pushFile,
@@ -1582,6 +1611,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const terminateApp = async (packageName: string): Promise<void> => {
       await sendRequest('terminateApp', { packageName });
+    };
+
+    const listApps = async (): Promise<InstalledApp[]> => {
+      const result = await sendRequest('listApps', {});
+      return result.apps ?? [];
     };
 
     const watchApp = async (packageName: string, onExit: LaunchAppExitCallback): Promise<AppWatch> => {

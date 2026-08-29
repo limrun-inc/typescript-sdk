@@ -241,6 +241,8 @@ export type InstalledApp = {
   bundleId: string;
   name: string;
   installType: string;
+  /** App icon as a base64-encoded 64px PNG; absent when the runtime could not extract one. */
+  icon?: string;
 };
 
 export type LsofEntry = {
@@ -682,7 +684,8 @@ export type InstanceClient = {
 
   /**
    * List installed apps on the simulator
-   * @returns Array of installed apps with bundleId, name, and installType
+   * @returns Array of installed apps with bundleId, name, installType, and,
+   *   when available, a small base64 PNG icon
    */
   listApps: () => Promise<InstalledApp[]>;
 
