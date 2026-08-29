@@ -198,11 +198,11 @@ describe('tunnel process state', () => {
       formatTunnelDialFailure({
         tunnelId: 'tunnel-1',
         connectionId: 7,
-        selectorId: 'route-3',
+        selectorId: 'selector-3',
         reason: 'dns_not_found',
         osCode: 'ENOTFOUND',
       }),
-    ).toBe('Last dial failure: tunnel tunnel-1, connection 7, route-3 (dns_not_found, ENOTFOUND)');
+    ).toBe('Last dial failure: tunnel tunnel-1, connection 7, selector-3 (dns_not_found, ENOTFOUND)');
   });
 
   test('formats every selector kind for display', () => {

@@ -172,7 +172,7 @@ describe('destination tunnel inspection integration', () => {
             },
             cache: {},
             timings: { blocked: -1, dns: -1, connect: -1, send: 0, wait: 1, receive: 1, ssl: -1 },
-            _limrun: { tunnelId: 'tunnel-1', selectorId: 'route-1' },
+            _limrun: { tunnelId: 'tunnel-1', selectorId: 'selector-1' },
           },
         }),
       );
@@ -204,7 +204,7 @@ describe('destination tunnel inspection integration', () => {
       expect(events[1]).toMatchObject({ requestId: 'request-1', direction: 'response' });
       expect(events[2]).toMatchObject({
         requestId: 'request-1',
-        data: { _limrun: { tunnelId: 'tunnel-1', selectorId: 'route-1' } },
+        data: { _limrun: { tunnelId: 'tunnel-1', selectorId: 'selector-1' } },
       });
     } finally {
       tunnel.close();

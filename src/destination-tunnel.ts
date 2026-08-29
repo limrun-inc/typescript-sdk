@@ -337,18 +337,10 @@ export function destinationTunnelConfigHash(
   inspection: DestinationTunnelInspectionConfig = disabledDestinationTunnelInspection(),
 ): string {
   const canonical = validateDestinationTunnelSelectors(selectors);
-  const catalog = classifyDestinationTunnelSelectors(canonical);
-  const hashSelectors = [
-    ...(catalog.routes ?? []).map((route) => {
-      const host = route.host.includes(':') ? `[${route.host}]` : route.host;
-      return `${host}:${route.port}`;
-    }),
-    ...(catalog.domains ?? []),
-  ];
   const canonicalInspection = normalizeDestinationTunnelInspection(inspection);
   const parts: string[] = [
     `"version":${DESTINATION_TUNNEL_VERSION}`,
-    `"selectors":[${hashSelectors.map((selector) => JSON.stringify(selector)).join(',')}]`,
+    `"selectors":[${canonical.map((selector) => JSON.stringify(selector)).join(',')}]`,
   ];
   parts.push(
     `"inspection":{"enabled":${canonicalInspection.enabled},"captureBodies":${canonicalInspection.captureBodies},"maxBodyBytes":${canonicalInspection.maxBodyBytes}}`,
@@ -384,13 +376,9 @@ export function disabledDestinationTunnelInspection(): DestinationTunnelInspecti
   return normalizeDestinationTunnelInspection({ enabled: false, captureBodies: false });
 }
 
-/** Selector IDs are 1-based per kind: route-1, domain-1, ... */
+/** Selector IDs are one-based positions in the canonical selector array. */
 export function destinationTunnelSelectorIds(selectors: DestinationTunnelSelectors): string[] {
-  const catalog = classifyDestinationTunnelSelectors(selectors);
-  const ids: string[] = [];
-  (catalog.routes ?? []).forEach((_, index) => ids.push(`route-${index + 1}`));
-  (catalog.domains ?? []).forEach((_, index) => ids.push(`domain-${index + 1}`));
-  return ids;
+  return validateDestinationTunnelSelectors(selectors).map((_, index) => `selector-${index + 1}`);
 }
 
 export function destinationTunnelDomainMatches(pattern: string, host: string): boolean {
@@ -409,30 +397,26 @@ export function destinationTunnelDomainMatches(pattern: string, host: string): b
 export function assertDestinationTunnelOpenAllowed(
   message: Extract<DestinationTunnelServerMessage, { type: 'open' }>,
   selectors: DestinationTunnelSelectors,
-): void {
-  const catalog = classifyDestinationTunnelSelectors(selectors);
-  const match = /^(route|domain)-([1-9]\d*)$/.exec(message.selectorId);
-  const kind = match?.[1];
-  const index = match?.[2] ? Number(match[2]) - 1 : -1;
+): DestinationTunnelSelectorKind {
+  const canonical = validateDestinationTunnelSelectors(selectors);
+  const match = /^selector-([1-9]\d*)$/.exec(message.selectorId);
+  const index = match?.[1] ? Number(match[1]) - 1 : -1;
   const fail = (): never => {
     throw new DestinationTunnelProtocolError(
       `server requested undeclared selector ${message.selectorId} ${message.host}:${message.port}`,
     );
   };
-  if (!kind || index < 0) fail();
+  if (index < 0) fail();
   if (message.port === 53) fail();
-  switch (kind) {
-    case 'route': {
-      const route = catalog.routes?.[index];
-      if (!route || message.host !== route.host || message.port !== route.port) fail();
-      return;
-    }
-    case 'domain': {
-      const domain = catalog.domains?.[index];
-      if (!domain || !destinationTunnelDomainMatches(domain, message.host)) fail();
-      return;
-    }
+  const selector = canonical[index];
+  if (selector === undefined) return fail();
+  const parsed = parseDestinationTunnelSelector(selector);
+  if (parsed.route) {
+    if (message.host !== parsed.route.host || message.port !== parsed.route.port) fail();
+    return 'route';
   }
+  if (!destinationTunnelDomainMatches(parsed.domain!, message.host)) fail();
+  return 'domain';
 }
 
 export function assertDestinationTunnelReady(
@@ -508,7 +492,9 @@ export function decodeDestinationTunnelServerMessage(value: unknown): Destinatio
         type,
         version: readInteger(message, 'version'),
         tunnelId: readString(message, 'tunnelId'),
-        selectors: readArray(message, 'selectors').map(readSelectorReport),
+        selectors: readArray(message, 'selectors').map((value, index) =>
+          readSelectorReport(value, `selector-${index + 1}`),
+        ),
         configHash: readString(message, 'configHash'),
       };
     case 'open':
@@ -647,18 +633,15 @@ function canonicalizeIPv6(host: string): string {
   return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
 }
 
-function readSelectorReport(value: unknown): DestinationTunnelSelectorReport {
+function readSelectorReport(value: unknown, expectedId: string): DestinationTunnelSelectorReport {
   const report = readRecord(value, 'tunnel selector');
   const id = readString(report, 'id');
-  if (!/^(route|domain)-([1-9]\d*)$/.test(id)) {
+  if (id !== expectedId) {
     throw new DestinationTunnelProtocolError(`invalid tunnel selector id ${id}`);
   }
   const kind = readString(report, 'kind');
   if (kind !== 'route' && kind !== 'domain') {
     throw new DestinationTunnelProtocolError(`invalid tunnel selector kind ${kind}`);
-  }
-  if (!id.startsWith(`${kind}-`)) {
-    throw new DestinationTunnelProtocolError(`tunnel selector id ${id} does not match kind ${kind}`);
   }
   const result: DestinationTunnelSelectorReport = {
     id,

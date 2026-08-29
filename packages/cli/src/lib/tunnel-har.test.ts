@@ -72,7 +72,7 @@ describe('tunnel HAR capture', () => {
     expect(har.log.entries[0].response.cookies[0]).not.toHaveProperty('sameSite');
     expect(har.log.entries[0]._limrun).toEqual({
       tunnelId: 'tunnel-1',
-      selectorId: 'domain-1',
+      selectorId: 'selector-1',
       responseTrailers: [{ name: 'grpc-status', value: '0' }],
       responseCookieSameSite: [{ index: 0, value: 'Strict' }],
       requestBodyEncoding: 'base64',
@@ -175,7 +175,7 @@ function completeEvent(): DestinationTunnelInspectionComplete {
     timings: { blocked: 0, dns: 1, connect: 2, ssl: 3, send: 4, wait: 10, receive: 5 },
     _limrun: {
       tunnelId: 'tunnel-1',
-      selectorId: 'domain-1',
+      selectorId: 'selector-1',
       responseTrailers: [{ name: 'grpc-status', value: '0' }],
       responseCookieSameSite: [{ index: 0, value: 'Strict' }],
     },

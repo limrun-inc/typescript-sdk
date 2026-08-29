@@ -228,7 +228,7 @@ function completeFrame(sequence: number) {
       timings: { blocked: 0, dns: 1, connect: 2, ssl: 3, send: 1, wait: 4, receive: 1 },
       _limrun: {
         tunnelId: 'tunnel-1',
-        selectorId: 'domain-1',
+        selectorId: 'selector-1',
         responseTrailers: [{ name: 'grpc-status', value: '0' }],
         responseCookieSameSite: [{ index: 0, value: 'Lax' }],
       },

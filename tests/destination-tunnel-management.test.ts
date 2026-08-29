@@ -26,7 +26,7 @@ describe('destination tunnel management', () => {
     const lastDialFailure = {
       tunnelId: 'tunnel-1',
       connectionId: 0xffff_ffff,
-      selectorId: 'route-3',
+      selectorId: 'selector-3',
       reason: 'connection_refused',
       osCode: 'ECONNREFUSED',
     };
@@ -44,8 +44,8 @@ describe('destination tunnel management', () => {
             tunnelId: 'tunnel-1',
             state: 'ready',
             selectors: [
-              { id: 'route-1', kind: 'route', value: 'localhost:3000' },
-              { id: 'route-2', kind: 'route', value: '10.20.30.40:443' },
+              { id: 'selector-1', kind: 'route', value: 'localhost:3000' },
+              { id: 'selector-2', kind: 'route', value: '10.20.30.40:443' },
             ],
             inspection: {
               enabled: false,
@@ -63,8 +63,8 @@ describe('destination tunnel management', () => {
         tunnelId: 'tunnel-1',
         state: 'ready',
         selectors: [
-          { id: 'route-1', kind: 'route', value: 'localhost:3000' },
-          { id: 'route-2', kind: 'route', value: '10.20.30.40:443' },
+          { id: 'selector-1', kind: 'route', value: 'localhost:3000' },
+          { id: 'selector-2', kind: 'route', value: '10.20.30.40:443' },
         ],
         inspection: {
           enabled: false,
@@ -123,7 +123,7 @@ describe('destination tunnel management', () => {
       lastDialFailure: {
         tunnelId: 'one',
         connectionId: -1,
-        selectorId: 'route-1',
+        selectorId: 'selector-1',
         reason: 'internal',
       },
     },

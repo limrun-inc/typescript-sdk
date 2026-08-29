@@ -460,8 +460,9 @@ export async function startDestinationTcpTunnel(
       });
 
     const handleOpen = (message: Extract<DestinationTunnelServerMessage, { type: 'open' }>): void => {
+      let kind: 'route' | 'domain';
       try {
-        assertDestinationTunnelOpenAllowed(message, selectors);
+        kind = assertDestinationTunnelOpenAllowed(message, selectors);
       } catch {
         sendOpenFailure(message.connId, 'selector_not_allowed');
         return;
@@ -474,7 +475,6 @@ export async function startDestinationTcpTunnel(
         return;
       }
 
-      const kind = message.selectorId.split('-')[0];
       const abortController = new AbortController();
       const connectTimer = setTimeout(() => {
         if (connections.get(message.connId)?.phase !== 'connecting') return;

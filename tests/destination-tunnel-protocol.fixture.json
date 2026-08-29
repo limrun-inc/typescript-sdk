@@ -462,14 +462,14 @@
     },
     {
       "name": "mixed selectors",
-      "selectors": ["10.20.30.40:8000", "*.corp.example", "api.internal"],
+      "selectors": ["*.corp.example", "10.20.30.40:8000", "api.internal"],
       "inspection": {
         "enabled": true,
         "captureBodies": false,
         "maxBodyBytes": 10485760
       },
-      "canonicalJson": "{\"version\":1,\"selectors\":[\"10.20.30.40:8000\",\"*.corp.example\",\"api.internal\"],\"inspection\":{\"enabled\":true,\"captureBodies\":false,\"maxBodyBytes\":10485760}}",
-      "sha256": "cef2758748eb9bbbc94a7643f36dc5b968e6fc2a6b13cfa0ee8b1ce182c0ef56"
+      "canonicalJson": "{\"version\":1,\"selectors\":[\"*.corp.example\",\"10.20.30.40:8000\",\"api.internal\"],\"inspection\":{\"enabled\":true,\"captureBodies\":false,\"maxBodyBytes\":10485760}}",
+      "sha256": "d2967a671dc65c2edac4c8b7f8208e86c027126d75fe4025a02b15b81247911f"
     },
     {
       "name": "domains only",
@@ -488,7 +488,7 @@
       "name": "exact route",
       "selectors": ["localhost:8080"],
       "open": {
-        "selectorId": "route-1",
+        "selectorId": "selector-1",
         "host": "localhost",
         "port": 8080
       },
@@ -498,7 +498,7 @@
       "name": "wildcard domain any port",
       "selectors": ["*.corp.example"],
       "open": {
-        "selectorId": "domain-1",
+        "selectorId": "selector-1",
         "host": "api.corp.example",
         "port": 5432
       },
@@ -508,7 +508,7 @@
       "name": "domain base not covered by wildcard",
       "selectors": ["*.corp.example"],
       "open": {
-        "selectorId": "domain-1",
+        "selectorId": "selector-1",
         "host": "corp.example",
         "port": 443
       },
@@ -518,7 +518,7 @@
       "name": "wrong selector kind",
       "selectors": ["localhost:8080", "api.corp.example"],
       "open": {
-        "selectorId": "domain-1",
+        "selectorId": "selector-2",
         "host": "localhost",
         "port": 8080
       },
@@ -528,7 +528,7 @@
       "name": "DNS port never allowed",
       "selectors": ["api.corp.example"],
       "open": {
-        "selectorId": "domain-1",
+        "selectorId": "selector-1",
         "host": "api.corp.example",
         "port": 53
       },
@@ -632,7 +632,7 @@
         "version": 1,
         "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
         "selectors": [
-          { "id": "route-1", "kind": "route", "value": "localhost:3000" }
+          { "id": "selector-1", "kind": "route", "value": "localhost:3000" }
         ],
         "configHash": "9a25cd54325c405ca51dfe6a6b609161ffaa730bf0927f3da8d2d82bcc394459"
       }
@@ -645,7 +645,7 @@
         "tunnelId": "tunnel-2",
         "selectors": [
           {
-            "id": "route-1",
+            "id": "selector-1",
             "kind": "route",
             "value": "localhost:8080",
             "binds": [
@@ -665,7 +665,7 @@
             ]
           },
           {
-            "id": "domain-1",
+            "id": "selector-2",
             "kind": "domain",
             "value": "*.corp.example"
           }
@@ -678,7 +678,7 @@
       "message": {
         "type": "open",
         "connId": 7,
-        "selectorId": "route-1",
+        "selectorId": "selector-1",
         "host": "10.20.30.40",
         "port": 8000,
         "transport": {
@@ -692,7 +692,7 @@
       "message": {
         "type": "open",
         "connId": 13,
-        "selectorId": "domain-1",
+        "selectorId": "selector-1",
         "host": "api.corp.example",
         "port": 5432,
         "transport": {
@@ -779,7 +779,7 @@
         "version": 1,
         "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
         "selectors": [
-          { "id": "route-1", "kind": "route", "value": "localhost:3000" }
+          { "id": "selector-1", "kind": "route", "value": "localhost:3000" }
         ],
         "configHash": "9a25cd54325c405ca51dfe6a6b609161ffaa730bf0927f3da8d2d82bcc394459",
         "futureDiagnostic": "ignored"
@@ -789,7 +789,7 @@
         "version": 1,
         "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
         "selectors": [
-          { "id": "route-1", "kind": "route", "value": "localhost:3000" }
+          { "id": "selector-1", "kind": "route", "value": "localhost:3000" }
         ],
         "configHash": "9a25cd54325c405ca51dfe6a6b609161ffaa730bf0927f3da8d2d82bcc394459"
       }

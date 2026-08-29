@@ -81,7 +81,7 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 7,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: route.host,
       port: route.port,
       transport: { type: 'tcp' },
@@ -128,7 +128,7 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 8,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: '127.0.0.2',
       port: localPort,
       transport: { type: 'tcp' },
@@ -171,7 +171,7 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 81,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: 'localhost',
       port: 3000,
       transport: { type: 'tcp' },
@@ -187,7 +187,7 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 82,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: 'LOCALHOST',
       port: 3000,
       transport: { type: 'tcp' },
@@ -210,7 +210,7 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 9,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: route.host,
       port: route.port,
       transport: { type: 'tcp' },
@@ -244,7 +244,7 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 91,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: route.host,
       port: route.port,
       transport: {
@@ -283,7 +283,7 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 92,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: route.host,
       port: route.port,
       transport: {
@@ -344,7 +344,7 @@ describe('destination tunnel dialer', () => {
       sendControl({
         type: 'open',
         connId: 93,
-        selectorId: 'domain-1',
+        selectorId: 'selector-2',
         host: 'api.corp.example',
         port: localPort,
         transport: {
@@ -395,7 +395,7 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 10,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: route.host,
       port: route.port,
       transport: { type: 'tcp' },
@@ -419,7 +419,7 @@ describe('destination tunnel dialer', () => {
     sendControl({
       type: 'open',
       connId: 11,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: route.host,
       port: route.port,
       transport: { type: 'tcp' },

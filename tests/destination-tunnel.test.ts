@@ -67,9 +67,9 @@ describe('destination tunnel wire contract', () => {
   test('pins vendored vectors to the canonical limrun commit', () => {
     expect(upstream).toEqual({
       repository: 'limrun-inc/limrun',
-      commit: 'f072e9f26cefc7f390b7bf4b3f43469004660e36',
+      commit: '6ae191c433210631a382558c8d37ddfed5705766',
       path: 'design/destination-tunnel/v1',
-      messagesSha256: 'bb093dd00ce51e7b0dc156f6ceb5e8f117f067f8cce622d95692be9b814b2068',
+      messagesSha256: '8f74232654b4657c9ecd673d7ee3d9b132ec9e74cf7d01fd9b4ae955f234857d',
       binarySha256: 'e6da913a0ff85a3402f09de6cbbb18d4f9b2e76007ca48b85f4d35b66810da7d',
     });
     expect(sha256('destination-tunnel-protocol.fixture.json')).toBe(upstream.messagesSha256);
@@ -252,9 +252,9 @@ describe('destination tunnel route contract', () => {
   });
 
   test.each([
-    { selectorId: 'route-2', host: '10.20.30.40', port: 8000 },
-    { selectorId: 'route-1', host: '10.20.30.41', port: 8000 },
-    { selectorId: 'route-1', host: '10.20.30.40', port: 8001 },
+    { selectorId: 'selector-2', host: '10.20.30.40', port: 8000 },
+    { selectorId: 'selector-1', host: '10.20.30.41', port: 8000 },
+    { selectorId: 'selector-1', host: '10.20.30.40', port: 8001 },
   ])('rejects undeclared OPEN $selectorId $host:$port', (requested) => {
     const selectors = ['10.20.30.40:8000'];
     expect(() =>
@@ -323,10 +323,10 @@ describe('destination tunnel selector contract', () => {
     ).toEqual(['localhost:8080']);
   });
 
-  test('assigns kind-scoped 1-based selector IDs', () => {
+  test('assigns ordered 1-based selector IDs', () => {
     expect(
       destinationTunnelSelectorIds(['localhost:8080', '*.corp.example', 'db.internal']),
-    ).toEqual(['route-1', 'domain-1', 'domain-2']);
+    ).toEqual(['selector-1', 'selector-2', 'selector-3']);
   });
 
   test.each(fixture.configHashCases)('pins config hash for $name', ({ selectors, inspection, sha256 }) => {
@@ -391,7 +391,7 @@ describe('destination tunnel selector contract', () => {
       decodeDestinationTunnelServerMessage({
         type: 'open',
         connId: 5,
-        selectorId: 'route-1',
+        selectorId: 'selector-1',
         host: 'localhost',
         port: 8080,
         transport: { type: 'tcp' },
@@ -420,7 +420,7 @@ describe('destination tunnel selector contract', () => {
       decodeDestinationTunnelServerMessage({
         type: 'open',
         connId: 1,
-        selectorId: 'route-1',
+        selectorId: 'selector-1',
         host: 'localhost',
         port: 8080,
         transport: { type: 'tcp' },
@@ -442,7 +442,7 @@ describe('destination tunnel selector contract', () => {
         type: 'ready',
         version: 1,
         tunnelId: 'tunnel-1',
-        selectors: [{ id: 'route-1', kind: 'domain', value: 'x' }],
+        selectors: [{ id: 'other-1', kind: 'domain', value: 'x' }],
         configHash: 'hash',
       }),
     ).toThrow(DestinationTunnelProtocolError);
@@ -451,7 +451,7 @@ describe('destination tunnel selector contract', () => {
         type: 'ready',
         version: 1,
         tunnelId: 'tunnel-1',
-        selectors: [{ id: 'route-0', kind: 'route', value: 'localhost:1' }],
+        selectors: [{ id: 'selector-0', kind: 'route', value: 'localhost:1' }],
         configHash: 'hash',
       }),
     ).toThrow(DestinationTunnelProtocolError);
@@ -461,7 +461,7 @@ describe('destination tunnel selector contract', () => {
         version: 1,
         tunnelId: 'tunnel-1',
         selectors: [
-          { id: 'route-1', kind: 'route', value: 'localhost:1', binds: [{ address: 'x', status: 'nope' }] },
+          { id: 'selector-1', kind: 'route', value: 'localhost:1', binds: [{ address: 'x', status: 'nope' }] },
         ],
         configHash: 'hash',
       }),

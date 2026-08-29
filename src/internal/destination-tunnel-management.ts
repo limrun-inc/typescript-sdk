@@ -81,7 +81,9 @@ function readActiveTunnel(value: unknown): NonNullable<DestinationTunnelStatus['
   return {
     tunnelId: readNonEmptyString(active, 'tunnelId'),
     state,
-    selectors: readArray(active, 'selectors').map(readSelectorReport),
+    selectors: readArray(active, 'selectors').map((selector, index) =>
+      readSelectorReport(selector, `selector-${index + 1}`),
+    ),
     inspection: readInspection(active),
   };
 }
@@ -100,14 +102,18 @@ function readInspection(active: Record<string, unknown>): DestinationTunnelInspe
   return normalizeDestinationTunnelInspection({ enabled, captureBodies, maxBodyBytes });
 }
 
-function readSelectorReport(value: unknown): DestinationTunnelSelectorReport {
+function readSelectorReport(value: unknown, expectedId: string): DestinationTunnelSelectorReport {
   const report = readRecord(value, 'tunnel selector');
+  const id = readNonEmptyString(report, 'id');
+  if (id !== expectedId) {
+    throw new Error(`invalid tunnel selector id ${id}`);
+  }
   const kind = readString(report, 'kind');
   if (kind !== 'route' && kind !== 'domain') {
     throw new Error(`invalid tunnel selector kind ${kind}`);
   }
   return {
-    id: readNonEmptyString(report, 'id'),
+    id,
     kind,
     value: readNonEmptyString(report, 'value'),
     ...(report['binds'] === undefined ?

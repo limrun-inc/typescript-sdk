@@ -105,7 +105,7 @@ describe('destination tunnel credit and selector dialing', () => {
     sendControl({
       type: 'open',
       connId: 1,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: '127.0.0.1',
       port: localPort,
       transport: { type: 'tcp' },
@@ -145,7 +145,7 @@ describe('destination tunnel credit and selector dialing', () => {
     sendControl({
       type: 'open',
       connId: 5,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: '127.0.0.1',
       port: localPort,
       transport: { type: 'tcp' },
@@ -191,7 +191,7 @@ describe('destination tunnel credit and selector dialing', () => {
     sendControl({
       type: 'open',
       connId: 11,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: '127.0.0.1',
       port: localPort,
       transport: { type: 'tcp' },
@@ -239,7 +239,7 @@ describe('destination tunnel credit and selector dialing', () => {
     sendControl({
       type: 'open',
       connId: 6,
-      selectorId: 'route-1',
+      selectorId: 'selector-1',
       host: '127.0.0.1',
       port: localPort,
       transport: { type: 'tcp' },
@@ -282,7 +282,7 @@ describe('destination tunnel credit and selector dialing', () => {
     sendControl({
       type: 'open',
       connId: 7,
-      selectorId: 'domain-1',
+      selectorId: 'selector-2',
       host: 'evil.example',
       port: localPort,
       window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
@@ -299,7 +299,7 @@ describe('destination tunnel credit and selector dialing', () => {
     sendControl({
       type: 'open',
       connId: 8,
-      selectorId: 'domain-1',
+      selectorId: 'selector-2',
       host: 'api.corp.example',
       port: localPort,
       window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
@@ -333,7 +333,7 @@ describe('destination tunnel credit and selector dialing', () => {
     sendControl({
       type: 'open',
       connId: 9,
-      selectorId: 'domain-1',
+      selectorId: 'selector-1',
       host: 'api.corp.example',
       port: 443,
       window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
