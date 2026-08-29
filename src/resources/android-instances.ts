@@ -6,6 +6,7 @@ import { Items, type ItemsParams, PagePromise } from '../core/pagination';
 import { buildHeaders } from '../internal/headers';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
+import type { SessionArtifact, SessionArtifactListParams } from '../session-artifacts';
 
 export class AndroidInstances extends APIResource {
   /**
@@ -41,6 +42,20 @@ export class AndroidInstances extends APIResource {
    */
   get(id: string, options?: RequestOptions): APIPromise<AndroidInstance> {
     return this._client.get(path`/v1/android_instances/${id}`, options);
+  }
+
+  /**
+   * List persisted session artifacts, including HAR network logs.
+   */
+  listSessionArtifacts(
+    id: string,
+    query: SessionArtifactListParams | null | undefined = {},
+    options?: RequestOptions,
+  ): APIPromise<SessionArtifact[]> {
+    return this._client.get(path`/v1/android_instances/${id}/session_artifacts`, {
+      query,
+      ...options,
+    });
   }
 }
 

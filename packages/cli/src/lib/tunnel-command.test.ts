@@ -25,7 +25,13 @@ describe('tunnel client facade inspection wiring', () => {
     const onInspectionError = (): void => {};
     await facade.startTunnel({
       selectors: ['api.example.test'],
-      inspection: { enabled: true, captureBodies: true, maxBodyBytes: 1024 },
+      inspection: {
+        enabled: true,
+        captureBodies: true,
+        maxBodyBytes: 1024,
+        persist: true,
+        ttlSeconds: 3600,
+      },
       onInspectionEvent,
       onInspectionError,
     });
@@ -33,7 +39,13 @@ describe('tunnel client facade inspection wiring', () => {
     expect(startTunnel).toHaveBeenCalledWith({
       selectors: ['api.example.test'],
       logLevel: 'info',
-      inspection: { enabled: true, captureBodies: true, maxBodyBytes: 1024 },
+      inspection: {
+        enabled: true,
+        captureBodies: true,
+        maxBodyBytes: 1024,
+        persist: true,
+        ttlSeconds: 3600,
+      },
       onInspectionEvent,
       onInspectionError,
     });

@@ -46,6 +46,12 @@ export default class AndroidTunnelStatus extends BaseCommand {
         },
         io: this.tunnelCommandIO(),
         renderActive: (active, io) => {
+          const inspection = active.inspection;
+          io.output(
+            `Inspection: ${inspection.enabled ? 'enabled' : 'disabled'}, bodies ${
+              inspection.captureBodies ? 'enabled' : 'disabled'
+            }, persistence ${inspection.persist ? `enabled (${inspection.ttlSeconds}s)` : 'disabled'}`,
+          );
           for (const selector of active.selectors) {
             io.output(`Selector: ${selector.value}`);
             for (const bind of selector.binds ?? []) {

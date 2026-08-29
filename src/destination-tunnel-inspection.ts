@@ -1,10 +1,9 @@
-import { WebSocket, type RawData } from 'ws';
+import { createEventSource, type EventSourceClient } from 'eventsource-client';
 import type { Entry, Header } from 'har-format';
 import { nodeProxyTransport } from './internal/proxy-transport';
 import { deriveDestinationTunnelInspectionURL } from './internal/destination-tunnel-url';
 import {
   DestinationTunnelProtocolError,
-  decodeUtf8,
   readArray,
   readFiniteNumber,
   readOptionalBoolean,
@@ -12,12 +11,9 @@ import {
   readRecord,
   readSafeNonNegativeInteger,
   readString,
-  toBuffer,
 } from './internal/destination-tunnel-wire-reader';
 
 export { deriveDestinationTunnelInspectionURL } from './internal/destination-tunnel-url';
-
-export const DESTINATION_TUNNEL_INSPECTION_BINARY_VERSION = 1;
 
 export interface DestinationTunnelInspectionExtension {
   tunnelId: string;
@@ -63,7 +59,7 @@ export interface DestinationTunnelInspectionBodyEvent {
   sequence: number;
   requestId: string;
   direction: 'request' | 'response';
-  body: Buffer;
+  body: Uint8Array;
 }
 
 export type DestinationTunnelInspectionEvent =
@@ -85,9 +81,9 @@ export interface DestinationTunnelInspectionStream {
 }
 
 /**
- * Follow one tunnel's inspection feed independently from its data WebSocket.
- * Transport and protocol failures are reported to callbacks and retried until
- * the owner closes this handle.
+ * Follow one tunnel's inspection SSE feed independently from its data
+ * WebSocket. Authentication is carried in `?token=` so the same endpoint can
+ * be consumed by browser-native EventSource.
  */
 export function startDestinationTunnelInspectionStream(
   remoteURL: string,
@@ -95,18 +91,8 @@ export function startDestinationTunnelInspectionStream(
   token: string,
   options: DestinationTunnelInspectionStreamOptions = {},
 ): DestinationTunnelInspectionStream {
-  const initialDelay = positiveInteger(options.reconnectInitialDelayMs ?? 250, 'reconnectInitialDelayMs');
-  const maxDelay = positiveInteger(options.reconnectMaxDelayMs ?? 5_000, 'reconnectMaxDelayMs');
-  if (initialDelay > maxDelay) {
-    throw new Error('reconnectInitialDelayMs must not exceed reconnectMaxDelayMs');
-  }
-
   let active = true;
-  let socket: WebSocket | undefined;
-  let reconnectTimer: NodeJS.Timeout | undefined;
-  let reconnectAttempt = 0;
   let lastSequence = 0;
-  let receivedOnConnection = false;
 
   const reportError = (error: Error): void => {
     invokeSafely(options.onError, error);
@@ -153,49 +139,16 @@ export function startDestinationTunnelInspectionStream(
       emitGap(lastSequence + 1, sequence - 1);
     }
     lastSequence = sequence;
-    if (!receivedOnConnection) {
-      receivedOnConnection = true;
-      reconnectAttempt = 0;
-    }
   };
 
-  const scheduleReconnect = (): void => {
-    if (!active || reconnectTimer) return;
-    const delay = Math.min(initialDelay * 2 ** reconnectAttempt, maxDelay);
-    reconnectAttempt = Math.min(reconnectAttempt + 1, 30);
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = undefined;
-      connect();
-    }, delay);
-    reconnectTimer.unref();
-  };
-
-  const failProtocol = (error: unknown): void => {
-    reportError(error instanceof Error ? error : new Error(String(error)));
-    if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) {
-      socket.close(1002, 'invalid inspection frame');
-    }
-  };
-
-  const connect = (): void => {
-    if (!active) return;
-    const url = deriveDestinationTunnelInspectionURL(remoteURL, tunnelId, lastSequence);
-    const agent = nodeProxyTransport.getWebSocketAgent(url);
-    const current = new WebSocket(url, {
-      headers: { Authorization: `Bearer ${token}` },
-      ...(agent ? { agent } : {}),
-      perMessageDeflate: false,
-    });
-    socket = current;
-    receivedOnConnection = false;
-
-    current.on('message', (data: RawData, isBinary: boolean) => {
-      if (!active || socket !== current) return;
+  const url = deriveDestinationTunnelInspectionURL(remoteURL, tunnelId, lastSequence, token);
+  const source: EventSourceClient = createEventSource({
+    url,
+    fetch: nodeProxyTransport.fetch.bind(nodeProxyTransport),
+    onMessage: (message) => {
+      if (!active) return;
       try {
-        const event =
-          isBinary ?
-            decodeDestinationTunnelInspectionBodyFrame(toBuffer(data))
-          : decodeDestinationTunnelInspectionMetadataFrame(toBuffer(data).toString('utf8'));
+        const event = decodeDestinationTunnelInspectionSSEEvent(message.id, message.data);
         if (event.type === 'gap') {
           acceptSequence(event.sequence, event.data);
         } else {
@@ -203,82 +156,77 @@ export function startDestinationTunnelInspectionStream(
           invokeSafely(options.onEvent, event, reportError);
         }
       } catch (error) {
-        failProtocol(error);
+        reportError(error instanceof Error ? error : new Error(String(error)));
       }
-    });
-    current.once('error', (error: Error) => {
-      if (!active || socket !== current) return;
-      reportError(error);
-    });
-    current.once('close', () => {
-      current.removeAllListeners();
-      if (socket === current) socket = undefined;
-      scheduleReconnect();
-    });
-  };
+    },
+    onDisconnect: () => {
+      if (active) reportError(new Error('Inspection SSE disconnected; reconnecting'));
+    },
+  });
 
   const close = (): void => {
     if (!active) return;
     active = false;
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = undefined;
-    const current = socket;
-    socket = undefined;
-    current?.removeAllListeners();
-    current?.on('error', () => {});
-    if (current?.readyState === WebSocket.OPEN || current?.readyState === WebSocket.CONNECTING) {
-      current.close(1000, 'tunnel closed');
-    }
+    source.close();
   };
 
-  connect();
   return { close };
 }
 
-export function decodeDestinationTunnelInspectionBodyFrame(
-  frame: Buffer,
-): DestinationTunnelInspectionBodyEvent {
-  if (frame.length < 12 || frame[0] !== DESTINATION_TUNNEL_INSPECTION_BINARY_VERSION) {
-    throw new DestinationTunnelProtocolError('invalid inspection body frame');
-  }
-  const rawSequence = frame.readBigUInt64BE(1);
-  if (rawSequence > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new DestinationTunnelProtocolError(
-      'inspection binary sequence exceeds JavaScript safe integer range',
-    );
-  }
-  const requestIdLength = frame.readUInt16BE(9);
-  if (frame.length < 12 + requestIdLength) {
-    throw new DestinationTunnelProtocolError('truncated inspection body frame');
-  }
-  const kind = frame[11];
-  if (kind !== 1 && kind !== 2) {
-    throw new DestinationTunnelProtocolError('invalid inspection body kind');
-  }
-  const requestId = decodeUtf8(frame.subarray(12, 12 + requestIdLength), 'inspection request ID');
-  if (!requestId) {
-    throw new DestinationTunnelProtocolError('inspection body request ID must not be empty');
-  }
-  return {
-    type: 'body',
-    sequence: Number(rawSequence),
-    requestId,
-    direction: kind === 1 ? 'request' : 'response',
-    body: Buffer.from(frame.subarray(12 + requestIdLength)),
-  };
-}
-
-export function decodeDestinationTunnelInspectionMetadataFrame(
+/**
+ * Decode one browser/EventSource message while keeping the public inspection
+ * event API independent of SSE transport details.
+ */
+export function decodeDestinationTunnelInspectionSSEEvent(
+  lastEventId: string | undefined,
   text: string,
-): DestinationTunnelInspectionMetadataEvent {
+): DestinationTunnelInspectionEvent {
+  if (lastEventId === undefined || !/^(0|[1-9]\d*)$/.test(lastEventId)) {
+    throw new DestinationTunnelProtocolError('inspection SSE event ID must be an unsigned integer');
+  }
+  const sequence = Number(lastEventId);
+  if (!Number.isSafeInteger(sequence)) {
+    throw new DestinationTunnelProtocolError('inspection sequence must be a safe non-negative integer');
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new DestinationTunnelProtocolError('inspection metadata frame must be valid JSON');
+    throw new DestinationTunnelProtocolError('inspection SSE data must be valid JSON');
   }
-  const record = readRecord(parsed, 'inspection metadata');
-  const sequence = readSafeNonNegativeInteger(record['sequence'], 'inspection sequence');
+  const record = readRecord(parsed, 'inspection event');
+  if (record['sequence'] !== undefined) {
+    const envelopeSequence = readSafeNonNegativeInteger(record['sequence'], 'inspection sequence');
+    if (envelopeSequence !== sequence) {
+      throw new DestinationTunnelProtocolError('inspection SSE event ID does not match envelope sequence');
+    }
+  }
+  if (readString(record, 'type') !== 'body') {
+    return decodeDestinationTunnelInspectionMetadataRecord(record, sequence);
+  }
+  const requestId = readRequiredRequestId(record);
+  const data = readRecord(record['data'], 'inspection body data');
+  const direction = readString(data, 'direction');
+  if (direction !== 'request' && direction !== 'response') {
+    throw new DestinationTunnelProtocolError('invalid inspection body direction');
+  }
+  if (readString(data, 'encoding') !== 'base64') {
+    throw new DestinationTunnelProtocolError('inspection body encoding must be base64');
+  }
+  const body = decodeCanonicalBase64(readString(data, 'chunk'));
+  return {
+    type: 'body',
+    sequence,
+    requestId,
+    direction,
+    body,
+  };
+}
+
+function decodeDestinationTunnelInspectionMetadataRecord(
+  record: Record<string, unknown>,
+  sequence: number,
+): DestinationTunnelInspectionMetadataEvent {
   const type = readString(record, 'type');
   const data = readRecord(record['data'], 'inspection metadata data');
   switch (type) {
@@ -407,9 +355,13 @@ function invokeSafely<T>(
   }
 }
 
-function positiveInteger(value: number, name: string): number {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`${name} must be a positive integer`);
+function decodeCanonicalBase64(value: string): Uint8Array {
+  try {
+    if (value.length % 4 !== 0) throw new Error('invalid base64 length');
+    const binary = atob(value);
+    if (btoa(binary) !== value) throw new Error('non-canonical base64');
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  } catch {
+    throw new DestinationTunnelProtocolError('inspection body chunk must be valid base64');
   }
-  return value;
 }

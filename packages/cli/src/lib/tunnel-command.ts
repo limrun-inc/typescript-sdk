@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import {
   DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+  DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS,
   defaultSleep,
   type DestinationTunnelInspectionConfig,
   type DestinationTunnelInspectionErrorCallback,
@@ -122,6 +123,10 @@ export interface TunnelCommandContext {
   reconnect: boolean;
   /** Whether Android HTTP inspection is negotiated for each generation. */
   inspect: boolean;
+  /** Persist the completed network log as a session artifact. */
+  persist?: boolean;
+  /** Persisted network-log lifetime in seconds. */
+  ttlSeconds?: number;
   /** Optional HAR destination; file IO remains in the CLI layer. */
   harPath?: string;
   /** Maximum captured bytes for each request and response body. */
@@ -159,8 +164,10 @@ function createInspectionSession(context: TunnelCommandContext): InspectionSessi
   const maxBodyBytes = context.harBodyLimit ?? DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES;
   const config = {
     enabled: context.inspect,
-    captureBodies: context.inspect && context.harPath !== undefined,
+    captureBodies: context.inspect && (context.harPath !== undefined || context.persist === true),
     maxBodyBytes,
+    persist: context.persist ?? false,
+    ttlSeconds: context.ttlSeconds ?? DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS,
   };
   if (!context.inspect) {
     return { config, resetPending: () => {}, finalize: async () => {}, close: () => {} };
@@ -349,6 +356,8 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
     ...(context.product === 'android' ?
       {
         inspect: context.inspect,
+        ...(context.persist ? { persist: true } : {}),
+        ...(context.ttlSeconds ? { ttlSeconds: context.ttlSeconds } : {}),
         ...(context.harPath ? { harPath: context.harPath } : {}),
         ...(context.harBodyLimit ? { harBodyLimit: context.harBodyLimit } : {}),
       }
@@ -378,6 +387,8 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
         owner,
         selectors: context.selectors,
         inspect: context.inspect,
+        ...(context.persist ? { persist: true } : {}),
+        ...(context.ttlSeconds ? { ttlSeconds: context.ttlSeconds } : {}),
         ...(context.harPath ? { harPath: context.harPath } : {}),
         ...(context.harBodyLimit ? { harBodyLimit: context.harBodyLimit } : {}),
         ...(context.verbose ? { verbose: true } : {}),

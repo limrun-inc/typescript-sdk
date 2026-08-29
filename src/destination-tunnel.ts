@@ -31,6 +31,8 @@ export const DESTINATION_TUNNEL_DEFAULT_WINDOW = 1024 * 1024;
 export const DESTINATION_TUNNEL_MAX_WINDOW_INCREMENT = 0x7fff_ffff;
 export const DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const DESTINATION_TUNNEL_MAX_BODY_BYTES = 64 * 1024 * 1024;
+export const DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS = 72 * 60 * 60;
+export const DESTINATION_TUNNEL_MAX_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export interface DestinationTunnelRoute {
   host: string;
@@ -50,6 +52,8 @@ export interface DestinationTunnelInspectionConfig {
   enabled: boolean;
   captureBodies: boolean;
   maxBodyBytes: number;
+  persist: boolean;
+  ttlSeconds: number;
 }
 
 export type DestinationTunnelTransportType = 'tcp' | 'tls';
@@ -343,7 +347,7 @@ export function destinationTunnelConfigHash(
     `"selectors":[${canonical.map((selector) => JSON.stringify(selector)).join(',')}]`,
   ];
   parts.push(
-    `"inspection":{"enabled":${canonicalInspection.enabled},"captureBodies":${canonicalInspection.captureBodies},"maxBodyBytes":${canonicalInspection.maxBodyBytes}}`,
+    `"inspection":{"enabled":${canonicalInspection.enabled},"captureBodies":${canonicalInspection.captureBodies},"maxBodyBytes":${canonicalInspection.maxBodyBytes},"persist":${canonicalInspection.persist},"ttlSeconds":${canonicalInspection.ttlSeconds}}`,
   );
   return crypto
     .createHash('sha256')
@@ -357,8 +361,13 @@ export function normalizeDestinationTunnelInspection(
   const enabled = inspection.enabled ?? false;
   const captureBodies = inspection.captureBodies ?? false;
   const maxBodyBytes = inspection.maxBodyBytes ?? DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES;
+  const persist = inspection.persist ?? false;
+  const ttlSeconds = inspection.ttlSeconds ?? DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS;
   if (captureBodies && !enabled) {
     throw new DestinationTunnelProtocolError('captureBodies requires inspection to be enabled');
+  }
+  if (persist && !enabled) {
+    throw new DestinationTunnelProtocolError('persist requires inspection to be enabled');
   }
   if (
     !Number.isInteger(maxBodyBytes) ||
@@ -369,7 +378,12 @@ export function normalizeDestinationTunnelInspection(
       `maxBodyBytes must be an integer between 1 and ${DESTINATION_TUNNEL_MAX_BODY_BYTES}`,
     );
   }
-  return { enabled, captureBodies, maxBodyBytes };
+  if (!Number.isInteger(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > DESTINATION_TUNNEL_MAX_TTL_SECONDS) {
+    throw new DestinationTunnelProtocolError(
+      `ttlSeconds must be an integer between 1 and ${DESTINATION_TUNNEL_MAX_TTL_SECONDS}`,
+    );
+  }
+  return { enabled, captureBodies, maxBodyBytes, persist, ttlSeconds };
 }
 
 export function disabledDestinationTunnelInspection(): DestinationTunnelInspectionConfig {
@@ -672,7 +686,15 @@ function readInspectionConfig(record: Record<string, unknown>): DestinationTunne
   const enabled = readBoolean(inspection, 'enabled');
   const captureBodies = readBoolean(inspection, 'captureBodies');
   const maxBodyBytes = readInteger(inspection, 'maxBodyBytes');
-  return normalizeDestinationTunnelInspection({ enabled, captureBodies, maxBodyBytes });
+  const persist = readBoolean(inspection, 'persist');
+  const ttlSeconds = readInteger(inspection, 'ttlSeconds');
+  return normalizeDestinationTunnelInspection({
+    enabled,
+    captureBodies,
+    maxBodyBytes,
+    persist,
+    ttlSeconds,
+  });
 }
 
 function readTransportRequest(record: Record<string, unknown>): DestinationTunnelTransportRequest {

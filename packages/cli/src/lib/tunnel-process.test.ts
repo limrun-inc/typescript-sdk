@@ -154,12 +154,17 @@ describe('tunnel process state', () => {
       owner,
       selectors: ['api.example.test'],
       inspect: true,
+      persist: true,
+      ttlSeconds: 604800,
       harPath: '/tmp/private traffic.har',
       harBodyLimit: 4 * 1024 * 1024,
     });
     expect(args).toEqual(
       expect.arrayContaining([
         '--inspect',
+        '--persist',
+        '--ttl',
+        '604800',
         '--har',
         '/tmp/private traffic.har',
         '--har-body-limit',

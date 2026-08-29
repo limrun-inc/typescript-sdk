@@ -1,6 +1,6 @@
 import http from 'http';
 import net from 'net';
-import { WebSocketServer, type WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
 import { startDestinationTcpTunnel } from '../src/destination-tunnel-dialer';
 import {
   DESTINATION_TUNNEL_VERSION,
@@ -17,36 +17,44 @@ async function waitFor(predicate: () => boolean, timeoutMs = 3_000): Promise<voi
   }
 }
 
-function inspectionBodyFrame(
+function inspectionBodyEnvelope(
   sequence: number,
   requestId: string,
   direction: 'request' | 'response',
   body: string,
-): Buffer {
-  const id = Buffer.from(requestId);
-  const payload = Buffer.from(body);
-  const frame = Buffer.alloc(12 + id.length + payload.length);
-  frame[0] = 1;
-  frame.writeBigUInt64BE(BigInt(sequence), 1);
-  frame.writeUInt16BE(id.length, 9);
-  frame[11] = direction === 'request' ? 1 : 2;
-  id.copy(frame, 12);
-  payload.copy(frame, 12 + id.length);
-  return frame;
+): unknown {
+  return {
+    sequence,
+    type: 'body',
+    requestId,
+    data: {
+      direction,
+      encoding: 'base64',
+      chunk: Buffer.from(body).toString('base64'),
+    },
+  };
+}
+
+function writeSSE(response: http.ServerResponse, id: number, data: unknown, retry?: number): void {
+  if (retry !== undefined) response.write(`retry: ${retry}\n`);
+  response.write(`id: ${id}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
 describe('destination tunnel inspection integration', () => {
   test('isolates inspection failures and closes its socket with the main tunnel', async () => {
-    const server = http.createServer();
-    const main = new WebSocketServer({ noServer: true });
-    const inspection = new WebSocketServer({ noServer: true });
-    const inspectionSockets = new Set<WebSocket>();
-    const authorizations: Array<string | undefined> = [];
+    const inspectionRequests: string[] = [];
     let inspectionClosed = false;
+    const server = http.createServer((request, response) => {
+      inspectionRequests.push(request.url ?? '');
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.end('id: 1\ndata: {not-json\n\n');
+      inspectionClosed = true;
+    });
+    const main = new WebSocketServer({ noServer: true });
+    const authorizations: Array<string | undefined> = [];
     server.on('upgrade', (request, socket, head) => {
-      const target = request.url?.includes('/inspection') ? inspection : main;
-      target.handleUpgrade(request, socket, head, (webSocket) => {
-        target.emit('connection', webSocket, request);
+      main.handleUpgrade(request, socket, head, (webSocket) => {
+        main.emit('connection', webSocket, request);
       });
     });
     main.on('connection', (socket, request) => {
@@ -65,15 +73,6 @@ describe('destination tunnel inspection integration', () => {
         );
       });
     });
-    inspection.on('connection', (socket, request) => {
-      authorizations.push(request.headers.authorization);
-      inspectionSockets.add(socket);
-      socket.once('close', () => {
-        inspectionSockets.delete(socket);
-        inspectionClosed = true;
-      });
-      socket.send('{not-json');
-    });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const address = server.address() as net.AddressInfo;
     const errors: Error[] = [];
@@ -90,31 +89,46 @@ describe('destination tunnel inspection integration', () => {
     try {
       await waitFor(() => errors.length > 0 && inspectionClosed);
       expect(tunnel.getConnectionState()).toBe('connected');
-      expect(authorizations).toEqual(['Bearer same-instance-token', 'Bearer same-instance-token']);
+      expect(authorizations).toEqual(['Bearer same-instance-token']);
+      expect(inspectionRequests).toEqual(['/tunnel/tunnel-1/inspection/events?token=same-instance-token']);
     } finally {
       tunnel.close();
-      await waitFor(() => inspectionSockets.size === 0);
       for (const socket of main.clients) socket.terminate();
-      for (const socket of inspection.clients) socket.terminate();
       await Promise.all([
         new Promise<void>((resolve) => main.close(() => resolve())),
-        new Promise<void>((resolve) => inspection.close(() => resolve())),
         new Promise<void>((resolve) => server.close(() => resolve())),
       ]);
     }
   });
 
   test('keeps body and complete events ordered across inspection reconnect and replay', async () => {
-    const server = http.createServer();
-    const main = new WebSocketServer({ noServer: true });
-    const inspection = new WebSocketServer({ noServer: true });
     const inspectionURLs: string[] = [];
+    const inspectionLastEventIDs: Array<string | undefined> = [];
     const events: DestinationTunnelInspectionEvent[] = [];
     let inspectionConnections = 0;
+    const server = http.createServer((request, response) => {
+      inspectionConnections++;
+      inspectionURLs.push(request.url ?? '');
+      const lastEventId = request.headers['last-event-id'];
+      inspectionLastEventIDs.push(Array.isArray(lastEventId) ? lastEventId[0] : lastEventId);
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      if (inspectionConnections === 1) {
+        writeSSE(response, 1, inspectionBodyEnvelope(1, 'request-1', 'request', 'one'), 10);
+        response.end();
+        return;
+      }
+      writeSSE(response, 2, inspectionBodyEnvelope(2, 'request-1', 'response', 'two'));
+      writeSSE(response, 3, {
+        sequence: 3,
+        type: 'complete',
+        requestId: 'request-1',
+        data: completeEntry(),
+      });
+    });
+    const main = new WebSocketServer({ noServer: true });
     server.on('upgrade', (request, socket, head) => {
-      const target = request.url?.includes('/inspection') ? inspection : main;
-      target.handleUpgrade(request, socket, head, (webSocket) => {
-        target.emit('connection', webSocket, request);
+      main.handleUpgrade(request, socket, head, (webSocket) => {
+        main.emit('connection', webSocket, request);
       });
     });
     main.on('connection', (socket) => {
@@ -132,51 +146,6 @@ describe('destination tunnel inspection integration', () => {
         );
       });
     });
-    inspection.on('connection', (socket, request) => {
-      inspectionConnections++;
-      inspectionURLs.push(request.url ?? '');
-      if (inspectionConnections === 1) {
-        socket.send(inspectionBodyFrame(1, 'request-1', 'request', 'one'));
-        socket.close();
-        return;
-      }
-      socket.send(inspectionBodyFrame(2, 'request-1', 'response', 'two'));
-      socket.send(
-        JSON.stringify({
-          sequence: 3,
-          type: 'complete',
-          requestId: 'request-1',
-          data: {
-            startedDateTime: new Date().toISOString(),
-            time: 2,
-            request: {
-              method: 'POST',
-              url: 'https://example.com/path',
-              httpVersion: 'HTTP/1.1',
-              headers: [],
-              queryString: [],
-              cookies: [],
-              headersSize: -1,
-              bodySize: 3,
-            },
-            response: {
-              status: 200,
-              statusText: 'OK',
-              httpVersion: 'HTTP/1.1',
-              headers: [],
-              cookies: [],
-              content: { size: 3, mimeType: 'text/plain' },
-              redirectURL: '',
-              headersSize: -1,
-              bodySize: 3,
-            },
-            cache: {},
-            timings: { blocked: -1, dns: -1, connect: -1, send: 0, wait: 1, receive: 1, ssl: -1 },
-            _limrun: { tunnelId: 'tunnel-1', selectorId: 'selector-1' },
-          },
-        }),
-      );
-    });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const address = server.address() as net.AddressInfo;
     const tunnel = await startDestinationTcpTunnel(
@@ -192,9 +161,10 @@ describe('destination tunnel inspection integration', () => {
     try {
       await waitFor(() => events.some((event) => event.type === 'complete'));
       expect(inspectionURLs).toEqual([
-        '/tunnel/tunnel-1/inspection?after-sequence=0',
-        '/tunnel/tunnel-1/inspection?after-sequence=1',
+        '/tunnel/tunnel-1/inspection/events?token=same-instance-token',
+        '/tunnel/tunnel-1/inspection/events?token=same-instance-token',
       ]);
+      expect(inspectionLastEventIDs).toEqual([undefined, '1']);
       expect(events.map((event) => [event.type, event.sequence])).toEqual([
         ['body', 1],
         ['body', 2],
@@ -209,12 +179,41 @@ describe('destination tunnel inspection integration', () => {
     } finally {
       tunnel.close();
       for (const socket of main.clients) socket.terminate();
-      for (const socket of inspection.clients) socket.terminate();
       await Promise.all([
         new Promise<void>((resolve) => main.close(() => resolve())),
-        new Promise<void>((resolve) => inspection.close(() => resolve())),
         new Promise<void>((resolve) => server.close(() => resolve())),
       ]);
     }
   });
 });
+
+function completeEntry() {
+  return {
+    startedDateTime: new Date().toISOString(),
+    time: 2,
+    request: {
+      method: 'POST',
+      url: 'https://example.com/path',
+      httpVersion: 'HTTP/1.1',
+      headers: [],
+      queryString: [],
+      cookies: [],
+      headersSize: -1,
+      bodySize: 3,
+    },
+    response: {
+      status: 200,
+      statusText: 'OK',
+      httpVersion: 'HTTP/1.1',
+      headers: [],
+      cookies: [],
+      content: { size: 3, mimeType: 'text/plain' },
+      redirectURL: '',
+      headersSize: -1,
+      bodySize: 3,
+    },
+    cache: {},
+    timings: { blocked: -1, dns: -1, connect: -1, send: 0, wait: 1, receive: 1, ssl: -1 },
+    _limrun: { tunnelId: 'tunnel-1', selectorId: 'selector-1' },
+  };
+}

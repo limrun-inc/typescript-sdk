@@ -92,14 +92,22 @@ function readInspection(active: Record<string, unknown>): DestinationTunnelInspe
   const inspection = readRecord(active['inspection'], 'inspection');
   const enabled = inspection['enabled'];
   const captureBodies = inspection['captureBodies'];
-  if (typeof enabled !== 'boolean' || typeof captureBodies !== 'boolean') {
-    throw new Error('inspection enabled and captureBodies must be booleans');
+  const persist = inspection['persist'];
+  if (typeof enabled !== 'boolean' || typeof captureBodies !== 'boolean' || typeof persist !== 'boolean') {
+    throw new Error('inspection enabled, captureBodies, and persist must be booleans');
   }
   const maxBodyBytes = inspection['maxBodyBytes'];
-  if (typeof maxBodyBytes !== 'number') {
-    throw new Error('inspection maxBodyBytes must be a number');
+  const ttlSeconds = inspection['ttlSeconds'];
+  if (typeof maxBodyBytes !== 'number' || typeof ttlSeconds !== 'number') {
+    throw new Error('inspection maxBodyBytes and ttlSeconds must be numbers');
   }
-  return normalizeDestinationTunnelInspection({ enabled, captureBodies, maxBodyBytes });
+  return normalizeDestinationTunnelInspection({
+    enabled,
+    captureBodies,
+    maxBodyBytes,
+    persist,
+    ttlSeconds,
+  });
 }
 
 function readSelectorReport(value: unknown, expectedId: string): DestinationTunnelSelectorReport {

@@ -19,9 +19,19 @@ describe('Android tunnel inspection flags', () => {
     expect(() => validateAndroidTunnelInspectionFlags(true, 'traffic.har')).not.toThrow();
   });
 
+  test('requires persistence when a TTL is specified', () => {
+    expect(() => validateAndroidTunnelInspectionFlags(true, undefined, false, 3600)).toThrow(
+      '--ttl is only valid with --persist.',
+    );
+    expect(() => validateAndroidTunnelInspectionFlags(false, undefined, true, 3600)).not.toThrow();
+    expect(AndroidTunnel.flags.persist.default).toBe(false);
+  });
+
   test('does not expose inspection or HAR flags on iOS', () => {
     expect('inspect' in IosTunnel.flags).toBe(false);
     expect('har' in IosTunnel.flags).toBe(false);
     expect('har-body-limit' in IosTunnel.flags).toBe(false);
+    expect('persist' in IosTunnel.flags).toBe(false);
+    expect('ttl' in IosTunnel.flags).toBe(false);
   });
 });
