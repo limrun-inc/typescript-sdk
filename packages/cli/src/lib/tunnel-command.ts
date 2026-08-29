@@ -151,6 +151,7 @@ interface InspectionSession {
   config: DestinationTunnelInspectionConfig;
   onEvent?: DestinationTunnelInspectionEventCallback;
   onError?: DestinationTunnelInspectionErrorCallback;
+  resetPending: () => void;
   finalize: () => Promise<void>;
   close: () => void;
 }
@@ -163,7 +164,7 @@ function createInspectionSession(context: TunnelCommandContext): InspectionSessi
     maxBodyBytes,
   };
   if (!context.inspect) {
-    return { config, finalize: async () => {}, close: () => {} };
+    return { config, resetPending: () => {}, finalize: async () => {}, close: () => {} };
   }
 
   let recorder: TunnelHarRecorder | undefined =
@@ -197,6 +198,7 @@ function createInspectionSession(context: TunnelCommandContext): InspectionSessi
     config,
     onEvent,
     onError: reportError,
+    resetPending: () => recorder?.resetPending(),
     finalize: async () => {
       const current = recorder;
       recorder = undefined;
@@ -243,6 +245,7 @@ async function runTunnelLoop(
       const outcome = await awaitTunnelEnd(tunnel);
       tunnel.close();
       tunnel = undefined;
+      inspection.resetPending();
       if (outcome === 'shutdown') return 'shutdown';
       if (!context.reconnect) return 'disconnected';
       context.io.info(`Tunnel disconnected; reconnecting in ${backoffMs}ms...`);

@@ -35,6 +35,19 @@ import {
 } from './destination-tunnel';
 import type { LogLevel, TunnelConnectionState, TunnelConnectionStateCallback } from './tunnel';
 
+const blockedResolvedAddresses = new net.BlockList();
+blockedResolvedAddresses.addSubnet('0.0.0.0', 8, 'ipv4');
+blockedResolvedAddresses.addSubnet('127.0.0.0', 8, 'ipv4');
+blockedResolvedAddresses.addSubnet('169.254.0.0', 16, 'ipv4');
+blockedResolvedAddresses.addSubnet('224.0.0.0', 3, 'ipv4');
+blockedResolvedAddresses.addSubnet('::', 96, 'ipv6');
+blockedResolvedAddresses.addSubnet('fe80::', 10, 'ipv6');
+blockedResolvedAddresses.addSubnet('ff00::', 8, 'ipv6');
+blockedResolvedAddresses.addSubnet('::ffff:0.0.0.0', 104, 'ipv6');
+blockedResolvedAddresses.addSubnet('::ffff:127.0.0.0', 104, 'ipv6');
+blockedResolvedAddresses.addSubnet('::ffff:169.254.0.0', 112, 'ipv6');
+blockedResolvedAddresses.addSubnet('::ffff:224.0.0.0', 99, 'ipv6');
+
 export interface DestinationTcpTunnel {
   tunnelId: string;
   /** Normalized selectors echoed by the server, including bind reports. */
@@ -817,24 +830,8 @@ export function isDialableResolvedAddress(
     if (route.host === 'localhost' && (address === '127.0.0.1' || address === '::1')) return true;
   }
   const version = net.isIP(address);
-  if (version === 4) {
-    const octets = address.split('.').map(Number);
-    const first = octets[0]!;
-    if (first === 127 || first === 0) return false;
-    if (first === 169 && octets[1] === 254) return false;
-    if (first >= 224) return false;
-    return true;
-  }
-  if (version === 6) {
-    const lowered = address.toLowerCase();
-    if (lowered === '::1' || lowered === '::') return false;
-    if (/^fe[89ab]/.test(lowered)) return false;
-    if (lowered.startsWith('ff')) return false;
-    if (lowered.startsWith('::ffff:')) {
-      return isDialableResolvedAddress(lowered.slice('::ffff:'.length), port, routes);
-    }
-    return true;
-  }
+  if (version === 4) return !blockedResolvedAddresses.check(address, 'ipv4');
+  if (version === 6) return !blockedResolvedAddresses.check(address, 'ipv6');
   return false;
 }
 

@@ -32,6 +32,7 @@ type SpoolRecord =
 
 export interface TunnelHarRecorder {
   onEvent: (event: DestinationTunnelInspectionEvent) => void;
+  resetPending: () => void;
   finalize: () => Promise<void>;
   close: () => void;
 }
@@ -112,6 +113,10 @@ export function createTunnelHarRecorder(harPath: string, bodyLimit: number): Tun
     }
   };
 
+  const resetPending = (): void => {
+    pending.clear();
+  };
+
   const close = (): void => {
     if (closed) return;
     closed = true;
@@ -145,7 +150,7 @@ export function createTunnelHarRecorder(harPath: string, bodyLimit: number): Tun
     fs.rmSync(partialPath, { force: true });
   };
 
-  return { onEvent, finalize, close };
+  return { onEvent, resetPending, finalize, close };
 }
 
 export function formatInspectionSummary(event: DestinationTunnelInspectionComplete): string {

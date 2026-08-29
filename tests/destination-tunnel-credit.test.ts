@@ -428,6 +428,8 @@ describe('resolved address dial policy', () => {
     ['2001:db8::1', true],
     ['::1', false],
     ['::', false],
+    ['::127.0.0.1', false],
+    ['::7f00:1', false],
     ['fe80::1', false],
     ['ff02::1', false],
   ])('address %s dialable: %s', (address, dialable) => {
@@ -444,6 +446,7 @@ describe('resolved address dial policy', () => {
 
   test('IPv4-mapped IPv6 addresses follow the IPv4 policy', () => {
     expect(isDialableResolvedAddress('::ffff:127.0.0.1', 443, [])).toBe(false);
+    expect(isDialableResolvedAddress('0:0:0:0:0:ffff:7f00:1', 443, [])).toBe(false);
     expect(isDialableResolvedAddress('::ffff:8.8.8.8', 443, [])).toBe(true);
   });
 });

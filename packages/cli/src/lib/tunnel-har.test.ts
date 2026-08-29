@@ -91,6 +91,23 @@ describe('tunnel HAR capture', () => {
     });
   });
 
+  test('drops incomplete body state between tunnel generations', async () => {
+    const harPath = path.join(directory, 'reconnected.har');
+    const recorder = createTunnelHarRecorder(harPath, 1024);
+    recorder.onEvent(bodyEvent(1, 'request', Buffer.from('old generation')));
+    recorder.resetPending();
+    recorder.onEvent({
+      type: 'complete',
+      sequence: 2,
+      requestId: 'request-1',
+      data: completeEvent(),
+    });
+
+    await recorder.finalize();
+    const har = JSON.parse(fs.readFileSync(harPath, 'utf8'));
+    expect(har.log.entries[0].request.postData.text).toBe('original body');
+  });
+
   test('recovers complete records before a torn final partial record', async () => {
     const harPath = path.join(directory, 'recovered.har');
     fs.writeFileSync(
