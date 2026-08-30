@@ -8,7 +8,7 @@ import { ByteProgressBar } from '../../lib/byte-progress';
 export default class AndroidSync extends BaseCommand {
   static summary = 'Sync an APK to a running Android instance';
   static description =
-    'Delta-sync a local APK to a running Android instance using xdelta3 and optionally install or relaunch it after each sync.';
+    'Delta-sync a local APK to an Android instance using xdelta3 and optionally install or relaunch it after each sync. Defaults to the most recent Android instance, creating one if needed.';
 
   static examples = [
     '<%= config.bin %> android sync ./app-debug.apk',
@@ -29,7 +29,8 @@ export default class AndroidSync extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     id: Flags.string({
-      description: 'Android instance ID to sync to. Defaults to the last created Android instance.',
+      description:
+        'Android instance ID to sync to. Defaults to the most recent Android instance, creating one if needed.',
     }),
     watch: Flags.boolean({
       description: 'Keep watching the APK file and push changes automatically',
@@ -55,7 +56,7 @@ export default class AndroidSync extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const resolvedInstance = this.resolveAndroidInstance(flags.id);
+      const resolvedInstance = await this.resolveAndroidInstanceOrCreate(flags.id);
       const id = resolvedInstance.id;
       const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
 

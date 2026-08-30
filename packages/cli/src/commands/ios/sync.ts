@@ -7,7 +7,7 @@ import { formatBytes } from '../../lib/bytes';
 export default class IosSync extends BaseCommand {
   static summary = 'Sync a built app bundle to a running iOS instance';
   static description =
-    'Push a built `.app` bundle folder (or the current working directory if omitted) to a running iOS instance and optionally install or relaunch it after each sync. Use `xcode sync` for source code and project file syncing.';
+    'Push a built `.app` bundle folder (or the current working directory if omitted) to an iOS instance and optionally install or relaunch it after each sync. Defaults to the most recent iOS instance, creating one if needed. Use `xcode sync` for source code and project file syncing.';
 
   static examples = [
     '<%= config.bin %> ios sync ./Build/Products/Debug-iphonesimulator/MyApp.app',
@@ -28,7 +28,8 @@ export default class IosSync extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     id: Flags.string({
-      description: 'iOS instance ID to sync to. Defaults to the last created iOS instance.',
+      description:
+        'iOS instance ID to sync to. Defaults to the most recent iOS instance, creating one if needed.',
     }),
     watch: Flags.boolean({
       description: 'Keep watching the app bundle folder and push changes automatically',
@@ -54,7 +55,7 @@ export default class IosSync extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const resolvedInstance = this.resolveIosInstance(flags.id);
+      const resolvedInstance = await this.resolveIosInstanceOrCreate(flags.id);
       const id = resolvedInstance.id;
       const syncPath = args.path ?? process.cwd();
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
