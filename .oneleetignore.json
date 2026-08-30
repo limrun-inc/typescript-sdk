@@ -1,0 +1,11 @@
+{
+  "$schema": "https://docs.oneleet.com/code-security/oneleetignore.schema.json",
+  "version": 1,
+  "ignores": [
+    {
+      "ruleIds": ["private-key"],
+      "pathPatterns": ["/tests/fixtures/tls.ts"],
+      "reason": "Synthetic private key used only by localhost TLS tests; it does not protect any system or data."
+    }
+  ]
+}
