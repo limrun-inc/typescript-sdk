@@ -629,6 +629,8 @@ export type InstalledApp = {
   installType: string;
   /** App icon as a base64-encoded 64px PNG; absent when the runtime could not extract one. */
   icon?: string;
+  /** Install time as epoch milliseconds; absent when the runtime cannot tell. */
+  installedAt?: number;
 };
 
 /** Handle for an app watch registered via {@link InstanceClient.watchApp}. */
