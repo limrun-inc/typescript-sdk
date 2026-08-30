@@ -374,7 +374,7 @@ export abstract class BaseCommand extends Command {
     return this.client.xcodeInstances.createClient({ instance });
   }
 
-  protected resolveAndroidInstance(providedId: string | undefined): LastAndroidInstance {
+  private tryResolveAndroidInstance(providedId: string | undefined): LastAndroidInstance | null {
     this._lastResolvedExpectedType = 'android';
     const id = this._overrideInstanceId ?? providedId;
     if (id) {
@@ -395,13 +395,43 @@ export abstract class BaseCommand extends Command {
       return instance;
     }
 
+    return null;
+  }
+
+  protected resolveAndroidInstance(providedId: string | undefined): LastAndroidInstance {
+    const instance = this.tryResolveAndroidInstance(providedId);
+    if (instance) {
+      return instance;
+    }
+
     throw new Error(
       `No instance ID provided and no recent android instance found${this.scopeSuffix()}.\n` +
         'Provide an instance ID or create one first with: lim android create',
     );
   }
 
-  protected resolveIosInstance(providedId: string | undefined): LastIosInstance {
+  protected async resolveAndroidInstanceOrCreate(
+    providedId: string | undefined,
+  ): Promise<LastAndroidInstance> {
+    const instance = this.tryResolveAndroidInstance(providedId);
+    if (instance) {
+      return instance;
+    }
+
+    if (!this.shouldAutoCreateOnNotFound()) {
+      throw new Error(
+        'No Android instance found.\n' +
+          'Create one first with: lim android create, provide --id, or rerun without --no-create.',
+      );
+    }
+
+    const replacement = await this.createAndroidInstance();
+    this.info(`No recent Android instance found. Created instance ${replacement.id}.`);
+    this._lastResolvedInstanceId = replacement.id;
+    return replacement;
+  }
+
+  private tryResolveIosInstance(providedId: string | undefined): LastIosInstance | null {
     this._lastResolvedExpectedType = 'ios';
     const id = this._overrideInstanceId ?? providedId;
     if (id) {
@@ -422,10 +452,38 @@ export abstract class BaseCommand extends Command {
       return instance;
     }
 
+    return null;
+  }
+
+  protected resolveIosInstance(providedId: string | undefined): LastIosInstance {
+    const instance = this.tryResolveIosInstance(providedId);
+    if (instance) {
+      return instance;
+    }
+
     throw new Error(
       `No instance ID provided and no recent ios instance found${this.scopeSuffix()}.\n` +
         'Provide an instance ID or create one first with: lim ios create',
     );
+  }
+
+  protected async resolveIosInstanceOrCreate(providedId: string | undefined): Promise<LastIosInstance> {
+    const instance = this.tryResolveIosInstance(providedId);
+    if (instance) {
+      return instance;
+    }
+
+    if (!this.shouldAutoCreateOnNotFound()) {
+      throw new Error(
+        'No iOS instance found.\n' +
+          'Create one first with: lim ios create, provide --id, or rerun without --no-create.',
+      );
+    }
+
+    const replacement = await this.createIosInstance();
+    this.info(`No recent iOS instance found. Created instance ${replacement.id}.`);
+    this._lastResolvedInstanceId = replacement.id;
+    return replacement;
   }
 
   protected resolveDeviceInstance(providedId: string | undefined): LastAndroidInstance | LastIosInstance {
@@ -707,21 +765,25 @@ export abstract class BaseCommand extends Command {
           return this.createSimulatorBackedXcodeInstance();
         }
         return this.createStandaloneXcodeInstance();
-      case 'ios': {
-        const instance = await this.client.iosInstances.create({ wait: true, spec: {} });
-        this._instancesCreatedThisRun.add(instance.metadata.id);
-        saveLastCreatedInstance(instance);
-        return loadLastIosInstance();
-      }
-      case 'android': {
-        const instance = await this.client.androidInstances.create({ wait: true, spec: {} });
-        this._instancesCreatedThisRun.add(instance.metadata.id);
-        saveLastCreatedInstance(instance);
-        return loadLastAndroidInstance();
-      }
+      case 'ios':
+        return this.createIosInstance();
+      case 'android':
+        return this.createAndroidInstance();
       default:
         return null;
     }
+  }
+
+  private async createIosInstance(): Promise<LastIosInstance> {
+    const instance = await this.client.iosInstances.create({ wait: true, spec: {} });
+    this._instancesCreatedThisRun.add(instance.metadata.id);
+    return saveLastCreatedInstance(instance) as LastIosInstance;
+  }
+
+  private async createAndroidInstance(): Promise<LastAndroidInstance> {
+    const instance = await this.client.androidInstances.create({ wait: true, spec: {} });
+    this._instancesCreatedThisRun.add(instance.metadata.id);
+    return saveLastCreatedInstance(instance) as LastAndroidInstance;
   }
 
   /** Whether `id` is a server-side instance THIS invocation auto-created. */
