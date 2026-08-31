@@ -1,4 +1,5 @@
-import { loginWithOptions } from './auth';
+import { AuthenticationError, PermissionDeniedError } from '@limrun/api';
+import { isLoginRequiredError, loginWithOptions } from './auth';
 import { type TelemetryCapture } from './telemetry';
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -7,6 +8,29 @@ function jsonResponse(status: number, body: unknown): Response {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+describe('login-required errors', () => {
+  const headers = new Headers();
+
+  it('accepts standard authentication errors', () => {
+    expect(isLoginRequiredError(new AuthenticationError(401, {}, undefined, headers))).toBe(true);
+  });
+
+  it('accepts unauthenticated responses returned as permission errors', () => {
+    const error = new PermissionDeniedError(
+      403,
+      { message: 'unauthenticated: no such token found' },
+      undefined,
+      headers,
+    );
+    expect(isLoginRequiredError(error)).toBe(true);
+  });
+
+  it('rejects genuine permission errors', () => {
+    const error = new PermissionDeniedError(403, { message: 'operation is not allowed' }, undefined, headers);
+    expect(isLoginRequiredError(error)).toBe(false);
+  });
+});
 
 describe('CLI browser authentication telemetry', () => {
   it('carries the anonymous ID and records completion with the organization', async () => {
