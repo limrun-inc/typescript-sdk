@@ -1,5 +1,5 @@
 import { Command, Flags } from '@oclif/core';
-import Limrun, { APIError, AuthenticationError, NotFoundError, XcodeCacheGoneError } from '@limrun/api';
+import Limrun, { APIError, NotFoundError, XcodeCacheGoneError } from '@limrun/api';
 import {
   clearLastInstanceId,
   loadAndroidInstanceCache,
@@ -18,7 +18,7 @@ import {
   type LastXcodeInstance,
   type LastGradleInstance,
 } from './lib/config';
-import { login } from './lib/auth';
+import { isLoginRequiredError, login } from './lib/auth';
 import { getScopeKey, isGlobalScopeKey, setScopeOverride } from './lib/scope';
 import { envInstanceTarget } from './lib/set-instance';
 import { renderTable } from './lib/formatting';
@@ -205,7 +205,7 @@ export abstract class BaseCommand extends Command {
     try {
       return await fn();
     } catch (err) {
-      if (err instanceof AuthenticationError) {
+      if (isLoginRequiredError(err)) {
         const config = readConfig();
         this.info('Session expired. Logging in...');
         await login(config.apiEndpoint, config.consoleEndpoint, VERSION, {

@@ -1,6 +1,7 @@
 import { execFileSync } from 'child_process';
 import os from 'os';
 import process from 'process';
+import { AuthenticationError, PermissionDeniedError } from '@limrun/api';
 import { writeConfig, CONFIG_KEYS } from './config';
 import {
   captureTelemetry,
@@ -49,6 +50,17 @@ type LoginRuntimeOptions = Omit<LoginOptions, 'apiEndpoint' | 'consoleEndpoint' 
 
 class RetryableLoginError extends Error {}
 class LoginTimeoutError extends Error {}
+
+export function isLoginRequiredError(err: unknown): boolean {
+  if (err instanceof AuthenticationError) {
+    return true;
+  }
+  if (!(err instanceof PermissionDeniedError)) {
+    return false;
+  }
+  const error = err.error as { message?: unknown };
+  return typeof error.message === 'string' && error.message.startsWith('unauthenticated:');
+}
 
 async function openLoginUrl(url: string): Promise<void> {
   const importEsm = new Function('specifier', 'return import(specifier)') as (
