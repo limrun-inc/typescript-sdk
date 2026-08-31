@@ -79,18 +79,28 @@ export default class AndroidAppLog extends BaseCommand {
 
       try {
         // The live stream is fed by an app log capture. Start a live-only
-        // one; if a capture is already active (e.g. started by
-        // `android create --app-logs`), attach to its stream instead and
-        // leave it running on exit.
+        // one; if a capture is already active for this package (e.g.
+        // started by `android create --app-logs`), attach to its stream
+        // instead and leave it running on exit. The instance rejects a
+        // second capture with the active package's name, which is also how
+        // an already-active failure is told apart from a transient one.
         let startedCapture = false;
         try {
           await client.startAppLogCapture({ bundleId: args.packageName });
           startedCapture = true;
         } catch (e) {
-          this.warn(
-            `Could not start a new app log capture (${e instanceof Error ? e.message : e}); ` +
-              "attaching to the instance's active capture stream.",
-          );
+          const message = e instanceof Error ? e.message : String(e);
+          const active = /already active for (\S+)/.exec(message)?.[1];
+          if (!active) {
+            this.error(`Could not start an app log capture: ${message}`);
+          }
+          if (active !== args.packageName) {
+            this.error(
+              `An app log capture is already active for ${active} and only one runs at a time; ` +
+                `run \`lim android app-log ${active} --follow\` to tail it.`,
+            );
+          }
+          this.warn(`Attaching to the app log capture already active for ${active}.`);
         }
 
         const closeStream = client.streamAppLogCapture({
