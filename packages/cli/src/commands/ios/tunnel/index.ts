@@ -18,8 +18,8 @@ export default class IosTunnel extends BaseCommand {
   static description =
     'Start one transparent destination tunnel. Exact --selector destinations (localhost:port or ' +
     'literal IP:port) become listeners reachable from the simulator. Domain selectors are ' +
-    'intercepted transparently on the instance and dialed from this machine; only private names ' +
-    'that do not resolve on public DNS are accepted, and TLS stays end to end. ' +
+    'intercepted transparently on the instance and dialed from this machine, whether or not ' +
+    'the name resolves on public DNS, and TLS stays end to end. ' +
     'Use --detach to keep the tunnel running after this command returns. ' +
     'Note: apps that resolve DNS themselves over HTTPS (DoH) bypass domain interception.';
   static examples = [
