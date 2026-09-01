@@ -107,8 +107,9 @@ export abstract class BaseCommand extends Command {
       // Without a key, still hand out a client: instance-credential paths
       // (createClient with an instance apiUrl + token) never send the
       // management key, so set-instance and env-pinned targets work keyless.
-      // An actual management call gets a 401 and flows into the existing
-      // AuthenticationError handling, same as an expired key.
+      // A management call with the placeholder gets a 403 marked
+      // "unauthenticated:", which withAuth turns into login guidance or a
+      // re-login.
       this._client = new Limrun({ apiKey: (apiKey as string) || 'unauthenticated', baseURL });
     }
     return this._client;
@@ -207,6 +208,17 @@ export abstract class BaseCommand extends Command {
     } catch (err) {
       if (isLoginRequiredError(err)) {
         const config = readConfig();
+        // Without any stored or passed credential the user never logged in;
+        // "session expired" would be wrong and auto-login a surprise.
+        if (!this.parsedFlags?.['api-key'] && !config.apiKey) {
+          this.error('Not authenticated. Run `lim login` first, or provide --api-key.');
+        }
+        // The browser login flow logs through this.info and blocks on a
+        // browser confirm. Without a terminal, or under --json/--quiet which
+        // swallow that output, it hangs silently; fail with guidance instead.
+        if (this.shouldSuppressInfo() || !process.stdin.isTTY || !process.stderr.isTTY) {
+          this.error('Session expired. Run `lim login` to re-authenticate.');
+        }
         this.info('Session expired. Logging in...');
         await login(config.apiEndpoint, config.consoleEndpoint, VERSION, {
           log: (message) => this.info(message),
