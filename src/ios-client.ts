@@ -133,7 +133,8 @@ export type ElementTreeNode = {
   AXFrame: string;
   AXLabel?: string | null;
   AXUniqueId?: string | null;
-  AXValue?: string | null;
+  /** Sliders report numeric values; text fields report strings. */
+  AXValue?: string | number | null;
   children?: ElementTreeNode[];
   content_required: boolean;
   custom_actions: string[];
