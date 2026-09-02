@@ -485,6 +485,9 @@ lim xcode build ./MyProject --webhook-url https://ci.example.com/hooks/limrun --
 # Headless one-shot build: return after submission and reap the fresh instance shortly after completion
 lim xcode build ./MyProject --detach --inactivity-timeout 3s --webhook-url https://ci.example.com/hooks/limrun
 
+# Tag the callback so your endpoint can tell builds apart; labels come back verbatim in the payload's "labels" field
+lim xcode build ./MyProject --detach --webhook-url https://ci.example.com/hooks/limrun --webhook-label pipeline=release --webhook-label commit="$GIT_SHA"
+
 # Same callback, configured through the environment instead of the command line
 LIM_WEBHOOK_URL=https://ci.example.com/hooks/limrun \
   LIM_WEBHOOK_HEADERS="Authorization=Bearer $HOOK_SECRET" \
@@ -724,7 +727,7 @@ lim asset pull my-app-build -o ./build-output
 
 `lim xcode build [PATH]` automatically performs a one-shot code sync for the given project path before invoking `xcodebuild`. The sync step automatically ignores build artifacts (`build/`, `DerivedData/`, `.build/`), dependency folders (`Pods/`, `Carthage/Build/`, `.swiftpm/`), and user-specific files (`xcuserdata/`, `.dSYM/`).
 
-For headless CI-style builds, pass `--detach --webhook-url <url>`. The command still creates or resolves the instance and syncs the project, but returns as soon as limbuild accepts the build rather than holding an SSE log stream open until completion. `--detach` requires a webhook so the terminal result remains observable. Pass `--inactivity-timeout <duration>` (for example `3s`) to skip any cached Xcode target and create a fresh one-shot instance with that timeout; it cannot be combined with `--id`. Active builds continually report activity, so a short timeout only starts expiring once build work stops. The inactivity controller checks approximately every 15 seconds, so actual teardown can lag the configured timeout by that interval.
+For headless CI-style builds, pass `--detach --webhook-url <url>`. The command still creates or resolves the instance and syncs the project, but returns as soon as limbuild accepts the build rather than holding an SSE log stream open until completion. `--detach` requires a webhook so the terminal result remains observable. To correlate the callback with your own context, add `--webhook-label KEY=VALUE` (repeatable, at most 32); the labels are echoed verbatim in the payload's `labels` field, so a receiver can route on `pipeline=release` or look up `commit=<sha>` without keeping a table keyed by `execId`. Pass `--inactivity-timeout <duration>` (for example `3s`) to skip any cached Xcode target and create a fresh one-shot instance with that timeout; it cannot be combined with `--id`. Active builds continually report activity, so a short timeout only starts expiring once build work stops. The inactivity controller checks approximately every 15 seconds, so actual teardown can lag the configured timeout by that interval.
 
 The build-capture flags are also readable from the environment (including a local `.env` file), so a wrapper or CI system can attach a callback without editing the command line — and without putting a bearer token or a signed URL into argv, where `ps` and parse-error output can expose it. This applies to both `lim xcode build` and `lim gradle build`:
 
@@ -732,9 +735,10 @@ The build-capture flags are also readable from the environment (including a loca
 | ----------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `LIM_WEBHOOK_URL`       | `--webhook-url`       | Satisfies `--detach` on its own.                                                                                                         |
 | `LIM_WEBHOOK_HEADERS`   | `--webhook-header`    | Several headers separated by commas, e.g. `Authorization=Bearer x,X-Trace=abc`. A literal comma inside a value is written `\,`.          |
+| `LIM_WEBHOOK_LABELS`    | `--webhook-label`     | Several labels separated by commas, e.g. `pipeline=release,commit=9f3a1c`. A literal comma inside a value is written `\,`.               |
 | `LIM_SIGNED_UPLOAD_URL` | `--signed-upload-url` | An explicit `--upload` takes precedence and the variable is ignored, so a wrapper's ambient URL never collides with a chosen asset name. |
 
-A flag passed on the command line always wins over its variable, and env-sourced values are validated and sent exactly like flag-sourced ones. For `--webhook-header` that means replacement, not merging: one `--webhook-header` on the command line drops every header `LIM_WEBHOOK_HEADERS` would have set, so repeat the ambient ones alongside yours if you need both.
+A flag passed on the command line always wins over its variable, and env-sourced values are validated and sent exactly like flag-sourced ones. For `--webhook-header` and `--webhook-label` that means replacement, not merging: one `--webhook-header` on the command line drops every header `LIM_WEBHOOK_HEADERS` would have set (and likewise for labels), so repeat the ambient ones alongside yours if you need both.
 
 #### Run project commands
 

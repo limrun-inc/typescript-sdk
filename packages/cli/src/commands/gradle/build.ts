@@ -34,6 +34,7 @@ export default class GradleBuild extends BaseCommand {
     '<%= config.bin %> gradle build --keystore upload.jks --keystore-password *** --key-alias upload --key-password *** --save-key',
     '<%= config.bin %> gradle build ./my-app --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
     '<%= config.bin %> gradle build ./my-app --detach --inactivity-timeout 3s --webhook-url https://ci.example.com/hooks/limrun',
+    '<%= config.bin %> gradle build ./my-app --detach --webhook-url https://ci.example.com/hooks/limrun --webhook-label pipeline=release --webhook-label commit="$GIT_SHA"',
     'LIM_WEBHOOK_URL=https://ci.example.com/hooks/limrun LIM_WEBHOOK_HEADERS="Authorization=Bearer $HOOK_SECRET" <%= config.bin %> gradle build ./my-app --detach',
     '<%= config.bin %> gradle build --sign --upload-to-playstore --playstore-service-account service-account.json',
   ];
@@ -127,6 +128,12 @@ export default class GradleBuild extends BaseCommand {
       // value unsplit and unwrapped, which would put a bare string behind a
       // string[] type. See repeatableFlagFromEnv.
       default: async () => repeatableFlagFromEnv('LIM_WEBHOOK_HEADERS'),
+    }),
+    'webhook-label': Flags.string({
+      description:
+        'Label echoed verbatim in the webhook payload\'s "labels" field as KEY=VALUE, for example pipeline=release, so your endpoint can correlate the callback with its own context. Requires --webhook-url. Repeat for multiple labels (at most 32). Defaults to LIM_WEBHOOK_LABELS, which holds several labels separated by commas; write a literal comma inside a value as \\,.',
+      multiple: true,
+      default: async () => repeatableFlagFromEnv('LIM_WEBHOOK_LABELS'),
     }),
     'upload-to-playstore': Flags.boolean({
       description:
