@@ -432,6 +432,11 @@ lim android record start --quality 8
 lim android record stop
 lim android record stop -o recording.mp4
 lim android record stop --presigned-url https://example.com/upload
+
+# Logcat (arguments after `--` are forwarded to logcat verbatim)
+lim android logcat
+lim android logcat -- -t 50
+lim android logcat -- -T 50 *:E
 ```
 
 #### ADB Tunnel
