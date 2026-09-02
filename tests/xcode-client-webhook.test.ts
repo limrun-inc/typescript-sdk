@@ -39,6 +39,7 @@ describe('xcode client build-finish webhook', () => {
         webhook: {
           url: 'https://ci.example.com/hooks/limrun',
           headers: { Authorization: 'Bearer hook-secret' },
+          labels: { pipeline: 'release', commit: '9f3a1c' },
         },
       },
     );
@@ -51,6 +52,7 @@ describe('xcode client build-finish webhook', () => {
       webhook: {
         url: 'https://ci.example.com/hooks/limrun',
         headers: { Authorization: 'Bearer hook-secret' },
+        labels: { pipeline: 'release', commit: '9f3a1c' },
       },
     });
   });
