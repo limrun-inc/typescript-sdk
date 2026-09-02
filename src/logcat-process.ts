@@ -94,6 +94,9 @@ export class LogcatProcess extends EventEmitter {
 
   private fail(error: Error): void {
     if (this.exited) return;
+    // The remote process must not outlive a lost stream; the idle sweep is
+    // only the fallback for when this delete is lost too.
+    this.deleteRun(this.runId);
     this.emit('error', error);
     this.finish(-1);
   }
