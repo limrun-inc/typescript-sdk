@@ -5,6 +5,7 @@ import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 import { parseCacheConfig } from '../../lib/cache';
 import { cacheFlags } from '../../lib/cache-flags';
+import { xcodeVersionFlags } from '../../lib/xcode-version';
 import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
 import {
   projectConfigFromFlags,
@@ -61,6 +62,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
     '<%= config.bin %> xcode build --cache-key myapp-pr51 --cache-restore-keys "myapp-pr51,myapp-main"',
     '<%= config.bin %> xcode build --configuration Debug',
+    '<%= config.bin %> xcode build --xcode-version 27',
     '<%= config.bin %> xcode build ./ExpoApp --configuration Debug --dev-server-url https://abc123.exp.direct',
     '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url "myapp://expo-development-client/?url=http%3A%2F%2F10.244.7.112%3A57090"',
     '<%= config.bin %> xcode build ./ExpoApp --expo-force-prebuild',
@@ -244,6 +246,7 @@ export default class XcodeBuild extends BaseCommand {
         'Return after the remote build is accepted instead of streaming logs and waiting for completion. Requires --webhook-url; use its callback to observe the terminal result.',
       default: false,
     }),
+    ...xcodeVersionFlags,
     ...cacheFlags,
   };
 
@@ -298,6 +301,7 @@ export default class XcodeBuild extends BaseCommand {
       await this.applyBuildCacheToTarget(target, parseCacheConfig(flags));
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);
+      await this.applyXcodeVersionToClient(xcodeClient, flags['xcode-version']);
 
       const settings: Record<string, string> = {
         ...(projectConfigFromFlags(flags) as Record<string, string>),

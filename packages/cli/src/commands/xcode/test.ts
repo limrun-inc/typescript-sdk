@@ -5,6 +5,7 @@ import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 import { parseCacheConfig } from '../../lib/cache';
 import { cacheFlags } from '../../lib/cache-flags';
+import { xcodeVersionFlags } from '../../lib/xcode-version';
 import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
 import {
   projectConfigFromFlags,
@@ -60,6 +61,7 @@ export default class XcodeTest extends BaseCommand {
       multipleNonGreedy: true,
     }),
     ...xcodeProjectFlags,
+    ...xcodeVersionFlags,
     ...syncFlags,
     ...cacheFlags,
   };
@@ -81,6 +83,7 @@ export default class XcodeTest extends BaseCommand {
       await this.applyBuildCacheToTarget(target, parseCacheConfig(flags));
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);
+      await this.applyXcodeVersionToClient(xcodeClient, flags['xcode-version']);
 
       const settings: XcodeProjectConfig = {
         action: 'build-for-testing',
