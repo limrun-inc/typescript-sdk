@@ -56,7 +56,12 @@ export {
 export {
   XcodeInstances,
   RbeUnsupportedError,
+  XcodeSelectionUnsupportedError,
   DEFAULT_RBE_TUNNEL_PORT,
+  type XcodeInfo,
+  type XcodeStatus,
+  type XcodeSelectResult,
+  type SandboxInfo,
   type XcodeCreateClientParams,
   type XcodeClient,
   type XcodeProjectConfig,

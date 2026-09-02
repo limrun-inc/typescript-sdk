@@ -1,5 +1,6 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { xcodeVersionFlags } from '../../lib/xcode-version';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
@@ -21,6 +22,7 @@ export default class XcodeCreate extends BaseCommand {
     '<%= config.bin %> xcode create --label env=dev --display-name ci-builder',
     '<%= config.bin %> xcode create --cache-restore-keys "myapp-features,myapp-main"',
     '<%= config.bin %> xcode create --cache-key myapp-pr51 --cache-paths "Pods,.build"',
+    '<%= config.bin %> xcode create --xcode-version 27',
   ];
 
   static flags = {
@@ -64,6 +66,7 @@ export default class XcodeCreate extends BaseCommand {
     'simulator-id': Flags.string({
       description: 'Existing iOS simulator instance ID to attach when --attach is used',
     }),
+    ...xcodeVersionFlags,
     ...cacheFlags,
   };
 
@@ -134,6 +137,20 @@ export default class XcodeCreate extends BaseCommand {
           }
         }
       };
+      if (flags['xcode-version']) {
+        try {
+          const xcodeClient = await this.client.xcodeInstances.createClient({ instance });
+          await this.applyXcodeVersionToClient(xcodeClient, flags['xcode-version']);
+        } catch (err) {
+          this.info(
+            `Created Xcode instance ${instance.metadata.id}, but selecting Xcode ${flags['xcode-version']} failed.`,
+          );
+          if (flags.rm) {
+            await cleanup();
+          }
+          throw err;
+        }
+      }
       let attachResult: SimulatorAttachResult | undefined;
       let attachedSimulator = simulator;
       let createdSimulator = false;

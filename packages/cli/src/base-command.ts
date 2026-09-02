@@ -35,9 +35,10 @@ import {
   skippedKeyLines,
   wantsRestore,
 } from './lib/cache';
-import type { XcodeCacheConfig, XcodeCacheFollowResult } from '@limrun/api';
+import type { XcodeCacheConfig, XcodeCacheFollowResult, XcodeClient, XcodeSelectResult } from '@limrun/api';
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
 import { xcodeSandboxIdFromUrl } from './lib/xcode-sandbox';
+import { formatXcode, parseXcodeMajor } from './lib/xcode-version';
 import type { TunnelCommandIO } from './lib/tunnel-command';
 import { captureTelemetry, telemetryIntentForCommand } from './lib/telemetry';
 
@@ -887,6 +888,50 @@ export abstract class BaseCommand extends Command {
     }
     if (cache.key) {
       await this.bindCacheKey(this.cacheInstanceId(target), cache.key);
+    }
+  }
+
+  /**
+   * Binds the sandbox to an Xcode major when the caller asked for one and the sandbox is on
+   * another. The version is a property of the sandbox, not of this invocation: nothing is
+   * remembered locally, and a later run without the flag keeps building with the switched
+   * Xcode. Refusals from the daemon (not installed, busy) surface with its message.
+   */
+  protected async applyXcodeVersionToClient(
+    xcodeClient: XcodeClient,
+    requested: string | undefined,
+  ): Promise<void> {
+    if (!requested) return;
+    const major = parseXcodeMajor(requested);
+    const status = await this.readXcodeSelection(() => xcodeClient.getXcode());
+    if (status.bound.major === major) return;
+    this.info(`Switching sandbox to Xcode ${major} (DerivedData reset)...`);
+    const result = await this.selectXcode(xcodeClient, major);
+    this.info(`Sandbox now uses Xcode ${formatXcode(result.bound)}`);
+  }
+
+  /** setXcode with the daemon's own refusal message instead of the transport's wrapping. */
+  protected async selectXcode(xcodeClient: XcodeClient, major: string): Promise<XcodeSelectResult> {
+    return this.readXcodeSelection(() => xcodeClient.setXcode(major));
+  }
+
+  private async readXcodeSelection<T>(call: () => Promise<T>): Promise<T> {
+    try {
+      return await call();
+    } catch (err) {
+      // Direct-instance errors carry the status and raw body structurally; 400 (not installed)
+      // and 409 (busy) are the daemon talking to the user, so surface its message verbatim.
+      const { status, body } = (err ?? {}) as { status?: number; body?: string };
+      if ((status === 400 || status === 409) && typeof body === 'string') {
+        let message = body;
+        try {
+          message = (JSON.parse(body) as { message?: string }).message ?? body;
+        } catch {
+          // not JSON: the raw body is the best we have
+        }
+        this.error(message);
+      }
+      throw err;
     }
   }
 

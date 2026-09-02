@@ -18,6 +18,7 @@ import {
 import { BaseCommand } from '../../../base-command';
 import { clearLastInstanceId } from '../../../lib/config';
 import { ProgressReporter } from '../../../lib/progress';
+import { xcodeVersionFlags } from '../../../lib/xcode-version';
 import { startAutoUploadWatcher } from '../../../lib/rbe-auto-upload';
 import {
   assertLocalPortFree,
@@ -43,6 +44,7 @@ export default class XcodeRbe extends BaseCommand {
     '<%= config.bin %> xcode rbe --no-daemon',
     '<%= config.bin %> xcode rbe --id <xcode-instance-ID>',
     '<%= config.bin %> xcode rbe --port 9980',
+    '<%= config.bin %> xcode rbe --xcode-version 27',
   ];
 
   static flags = {
@@ -87,6 +89,7 @@ export default class XcodeRbe extends BaseCommand {
       default: false,
       description: 'Internal: run only the tunnel serve loop (used by the detached background process).',
     }),
+    ...xcodeVersionFlags,
   };
 
   private reporter = new ProgressReporter(() => this.shouldSuppressInfo());
@@ -207,6 +210,7 @@ export default class XcodeRbe extends BaseCommand {
         const target = await this.resolveXcodeTargetOrCreate(flags.id);
         instanceId = typeof target === 'string' ? target : target.id;
         client = await this.resolveXcodeClient(target);
+        await this.applyXcodeVersionToClient(client, flags['xcode-version']);
 
         // resolveXcodeClient validates an iOS-backed target via iosInstances.get,
         // but a cached standalone Xcode target is trusted without a round-trip.

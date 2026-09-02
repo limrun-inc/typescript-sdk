@@ -373,6 +373,44 @@ export type RbeStatus = {
 /** Default local TCP port the RBE tunnel listens on. */
 export const DEFAULT_RBE_TUNNEL_PORT = 8980;
 
+/** One Xcode installed on the sandbox's node, as reported by limbuild's /xcode. */
+export type XcodeInfo = {
+  /** Major version, e.g. "27". Empty on nodes that predate the Xcode inventory. */
+  major: string;
+  /** Short version, e.g. "27.0". */
+  version: string;
+  /** Build, e.g. "27A5252f". */
+  build: string;
+  /**
+   * The version key builds and caches are stamped with (major.minor.patch.build,
+   * e.g. 27.0.0.27A5252f). Empty until resolved on a cold node.
+   */
+  versionKey: string;
+  developerDir: string;
+  /** Whether this is the Xcode the sandbox binds to when nothing was selected. */
+  nodeDefault: boolean;
+};
+
+/** The sandbox's Xcode binding and the Xcodes it can switch to. */
+export type XcodeStatus = {
+  bound: XcodeInfo;
+  installed: XcodeInfo[];
+};
+
+/** Result of binding the sandbox to an Xcode major. */
+export type XcodeSelectResult = {
+  bound: XcodeInfo;
+  alreadyBound: boolean;
+  /** Whether synced projects lost their DerivedData because the Xcode changed. */
+  derivedDataReset: boolean;
+};
+
+/** limbuild's GET /info: the sandbox home and, on daemons that support selection, its Xcode. */
+export type SandboxInfo = {
+  homeDir: string;
+  xcode?: XcodeInfo;
+};
+
 export type RbeStartOptions = {
   /** Max size of the content-addressable store (CAS), in bytes. */
   casMaxBytes?: number;
@@ -499,6 +537,22 @@ export type XcodeClient = {
   getSimulator: () => Promise<SimulatorStatus>;
 
   /**
+   * Return the Xcode this sandbox builds with and the Xcodes installed on its node.
+   * Throws XcodeSelectionUnsupportedError on a sandbox whose daemon predates selection.
+   */
+  getXcode: () => Promise<XcodeStatus>;
+
+  /**
+   * Bind the sandbox to an installed Xcode major (e.g. "27"). Switching resets every
+   * synced project's DerivedData. Refused (HTTP 409) while a build, command, sync, or
+   * the RBE stack is running, and (HTTP 400) when the major is not installed.
+   */
+  setXcode: (major: string) => Promise<XcodeSelectResult>;
+
+  /** Return the sandbox's home directory and, when the daemon reports it, its Xcode. */
+  getInfo: () => Promise<SandboxInfo>;
+
+  /**
    * Start the instance's embedded Bazel Remote Build Execution stack.
    * Idempotent: returns the running status when already up.
    */
@@ -591,19 +645,20 @@ function normalizeWorkspaceRelativePath(remotePath: string): string {
   return parts.join('/');
 }
 
-async function fetchSandboxInfo(apiUrl: string, token: string): Promise<{ homeDir: string }> {
+async function fetchSandboxInfo(apiUrl: string, token: string): Promise<SandboxInfo> {
   const res = await nodeProxyTransport.fetch(`${apiUrl}/info`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
     },
   });
-  const body = await readJsonResponse<{ homeDir?: string }>(res, 'GET /info');
+  const body = await readJsonResponse<{ homeDir?: string; xcode?: XcodeInfo }>(res, 'GET /info');
   if (!body.homeDir) {
     throw new Error('GET /info response is missing homeDir');
   }
   return {
     homeDir: normalizeWorkspaceRelativePath(body.homeDir),
+    ...(body.xcode ? { xcode: body.xcode } : {}),
   };
 }
 
@@ -644,6 +699,30 @@ export class RbeUnsupportedError extends LimrunError {
     );
     this.name = 'RbeUnsupportedError';
   }
+}
+
+/**
+ * Raised when an `/xcode` request returns 404: the sandbox's daemon predates Xcode
+ * version selection. Distinct from NotFoundError for the same reason as
+ * RbeUnsupportedError: the instance exists, only the feature is missing.
+ */
+export class XcodeSelectionUnsupportedError extends LimrunError {
+  constructor(operation: string) {
+    super(
+      `Xcode version selection is not available on this sandbox (${operation} returned 404): ` +
+        'its daemon predates Xcode selection. Create a new sandbox, or omit the Xcode version to build with its default.',
+    );
+    this.name = 'XcodeSelectionUnsupportedError';
+  }
+}
+
+/** Reads an `/xcode` JSON response, mapping a 404 to XcodeSelectionUnsupportedError. */
+async function readXcodeResponse<T>(res: Response, operation: string): Promise<T> {
+  if (res.status === 404) {
+    await res.text().catch(() => undefined);
+    throw new XcodeSelectionUnsupportedError(operation);
+  }
+  return readJsonResponse<T>(res, operation);
 }
 
 /**
@@ -777,7 +856,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
 
     const log = createDaemonLogger('[XcodeInstance]', params.logLevel ?? 'info');
     const client = this._client;
-    let sandboxInfoPromise: Promise<{ homeDir: string }> | undefined;
+    let sandboxInfoPromise: Promise<SandboxInfo> | undefined;
     const getSandboxInfo = () => {
       sandboxInfoPromise ??= fetchSandboxInfo(apiUrl, token);
       return sandboxInfoPromise;
@@ -995,6 +1074,30 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       attachSimulator: attachSimulatorImpl,
       attachNewSimulator: attachNewSimulatorImpl,
       deleteSimulator: deleteSimulatorImpl,
+
+      async getXcode(): Promise<XcodeStatus> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/xcode`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        return readXcodeResponse<XcodeStatus>(res, 'GET /xcode');
+      },
+
+      async setXcode(major: string): Promise<XcodeSelectResult> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/xcode`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ version: major }),
+        });
+        return readXcodeResponse<XcodeSelectResult>(res, 'POST /xcode');
+      },
+
+      getInfo: () => fetchSandboxInfo(apiUrl, token),
 
       async startRbe(opts?: RbeStartOptions): Promise<RbeStatus> {
         const res = await nodeProxyTransport.fetch(`${apiUrl}/rbe`, {
