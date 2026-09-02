@@ -70,7 +70,7 @@ export function deriveReverseTunnelUrl(apiUrl: string, remotePort: number): stri
 export type { ReverseTunnel } from './tunnel';
 export type Tunnel = DestinationTcpTunnel;
 export type TunnelOptions = {
-  /** Exact endpoint selector values that the server may ask this client to dial. */
+  /** Exact endpoint (host:port) and domain selector values; the server asks this client to dial exact endpoints and intercepted domains. */
   selectors: DestinationTunnelSelectors;
   /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
   logLevel?: LogLevel;
