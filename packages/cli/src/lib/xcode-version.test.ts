@@ -86,8 +86,7 @@ describe('a malformed request fails before any sandbox work', () => {
 });
 
 describe('xcodeNotes', () => {
-  type Info = XcodeInfo & { betaSeed?: string };
-  const x = (major: string, extra: Partial<Info> = {}): Info => ({
+  const x = (major: string, extra: Partial<XcodeInfo> = {}): XcodeInfo => ({
     major,
     version: `${major}.0`,
     build: 'B',
