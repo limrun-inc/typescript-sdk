@@ -77,7 +77,10 @@ describe('readXcodeSelectionOrForget', () => {
     expect(clearLastInstanceIdMock).not.toHaveBeenCalled();
   });
 
-  it('checks the sandbox behind a simulator-backed target, not the simulator', async () => {
+  it('checks the sandbox behind a simulator-backed target and keeps the simulator', async () => {
+    // The simulator is alive; only its child sandbox is gone (deleted, or being recreated by its
+    // owner). Neither a NotFoundError (withAuth would forget and replace the simulator) nor a
+    // silent forget is right: the user is told which sandbox is gone and the memory stays.
     const ios: LastIosInstance = {
       id: 'ios_euna_live',
       type: 'ios',
@@ -85,8 +88,14 @@ describe('readXcodeSelectionOrForget', () => {
     };
     const cmd = new TestCommand([], {} as never);
     cmd.probe.mockRejectedValue(notFound());
-    await expect(cmd.read(ios, true, () => Promise.reject(unsupported()))).resolves.toBeUndefined();
+    const err = await cmd.read(ios, true, () => Promise.reject(unsupported())).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(NotFoundError);
+    expect((err as Error).message).toContain('sandbox_euna_child');
+    expect((err as Error).message).toContain('ios_euna_live');
     expect(cmd.probe).toHaveBeenCalledWith('sandbox_euna_child');
+    expect(clearLastInstanceIdMock).not.toHaveBeenCalled();
+    expect(stopDaemonMock).not.toHaveBeenCalled();
   });
 
   it('keeps the unsupported error when the sandbox is alive', async () => {

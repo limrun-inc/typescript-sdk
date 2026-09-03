@@ -52,12 +52,18 @@ export default class XcodeVersionSet extends BaseCommand {
         const refusal = this.xcodeRefusal(err);
         if (!refusal) throw err;
         if (refusal.status === 400) {
-          const restored = previous !== major ? previous : undefined;
-          if (restored) setXcodeVersionPreference(restored);
+          // A preference this command introduced goes back; one the workspace already had is not
+          // ours to drop, so say how to.
+          if (previous === major) {
+            this.error(
+              `${refusal.message}. This workspace already preferred Xcode ${major}; drop it with: lim xcode version unset`,
+            );
+          }
+          if (previous) setXcodeVersionPreference(previous);
           else clearXcodeVersionPreference();
           this.error(
             `${refusal.message}. The workspace preference is back to ${
-              restored ? `Xcode ${restored}` : 'unset'
+              previous ? `Xcode ${previous}` : 'unset'
             }.`,
           );
         }
