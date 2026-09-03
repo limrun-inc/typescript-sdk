@@ -51,14 +51,9 @@ export function formatXcode(info: XcodeInfo | undefined): string {
   return info.versionKey || 'unknown';
 }
 
-/**
- * Notes column of `lim xcode version list`: beta seed, selection, node default, workspace
- * preference.
- * TODO(turkenh): drop the `betaSeed` intersection once package.json depends on @limrun/api
- * >= 0.49.2; the publish type-check runs against the installed package, which lacks the field.
- */
+/** Notes column of `lim xcode version list`: beta seed, selection, node default, workspace preference. */
 export function xcodeNotes(
-  info: XcodeInfo & { betaSeed?: string },
+  info: XcodeInfo,
   selectedMajor: string,
   preferredMajor: string | null | undefined,
 ): string {
