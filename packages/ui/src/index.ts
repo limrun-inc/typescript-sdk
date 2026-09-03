@@ -1,5 +1,11 @@
 export { RemoteControl } from './components/remote-control';
-export type { RemoteControlProps, RemoteControlHandle, MicrophoneState } from './components/remote-control';
+export type {
+  RemoteControlProps,
+  RemoteControlHandle,
+  MicrophoneState,
+  CameraStreamStats,
+} from './components/remote-control';
+export type { CameraCaptureInfo, CameraFacingMode, CameraRequest, CameraResult } from './core/camera';
 
 // Accessibility / inspect-mode types and helpers. Exported so customers can
 // build their own side panels, search UIs, or agent-driven inspectors on top
