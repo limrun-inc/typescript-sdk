@@ -1,4 +1,5 @@
-import { formatXcode, parseXcodeMajor, resolveRequestedXcodeVersion } from './xcode-version';
+import type { XcodeInfo } from '@limrun/api';
+import { formatXcode, parseXcodeMajor, resolveRequestedXcodeVersion, xcodeNotes } from './xcode-version';
 import { loadXcodeVersionPreference } from './config';
 
 jest.mock('./config', () => ({ loadXcodeVersionPreference: jest.fn() }));
@@ -81,5 +82,27 @@ describe('a malformed request fails before any sandbox work', () => {
   // typo like 27.0 is rejected before a sandbox could be created and billed.
   test('resolveRequestedXcodeVersion throws synchronously for a bad flag', () => {
     expect(() => resolveRequestedXcodeVersion('twenty-seven')).toThrow();
+  });
+});
+
+describe('xcodeNotes', () => {
+  type Info = XcodeInfo & { betaSeed?: string };
+  const x = (major: string, extra: Partial<Info> = {}): Info => ({
+    major,
+    version: `${major}.0`,
+    build: 'B',
+    versionKey: '',
+    developerDir: '',
+    nodeDefault: false,
+    ...extra,
+  });
+
+  test('labels a beta with its seed, ahead of selection and preference', () => {
+    expect(xcodeNotes(x('27', { betaSeed: '6' }), '27', '27')).toBe('beta 6, selected, preferred');
+  });
+
+  test('a release shows only selection and default', () => {
+    expect(xcodeNotes(x('26', { nodeDefault: true }), '26', undefined)).toBe('selected, default');
+    expect(xcodeNotes(x('27'), '26', undefined)).toBe('');
   });
 });

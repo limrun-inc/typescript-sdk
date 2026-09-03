@@ -1,5 +1,5 @@
 import { BaseCommand } from '../../../base-command';
-import { xcodeTargetFlags } from '../../../lib/xcode-version';
+import { xcodeNotes, xcodeTargetFlags } from '../../../lib/xcode-version';
 import { loadXcodeVersionPreference } from '../../../lib/config';
 
 export default class XcodeVersionList extends BaseCommand {
@@ -47,13 +47,7 @@ export default class XcodeVersionList extends BaseCommand {
       const rows = status.installed.map((x) => [
         x.major,
         `${x.version} (${x.build})`,
-        [
-          x.major === status.bound.major ? 'selected' : '',
-          x.nodeDefault ? 'default' : '',
-          x.major === preferred ? 'preferred' : '',
-        ]
-          .filter(Boolean)
-          .join(', '),
+        xcodeNotes(x, status.bound.major, preferred ?? undefined),
       ]);
       this.outputTable(['Major', 'Version', 'Notes'], rows);
     });
