@@ -916,12 +916,17 @@ export abstract class BaseCommand extends Command {
       result = await this.readXcodeSelection(() => xcodeClient.setXcode(requested.major));
     } catch (err) {
       if (!(err instanceof XcodeSelectionUnsupportedError)) throw err;
-      // A cached standalone target is trusted without a round-trip, so this is often the
-      // first call to the daemon. A 404 from a sandbox that no longer exists must stay a
-      // NotFoundError (withAuth clears the cache and recreates), not a claim that the daemon
-      // predates selection; asking the API tells the two apart.
-      if (target.type === 'xcode' && !this.wasCreatedThisRun(target.id)) {
-        await this.client.xcodeInstances.get(target.id);
+      // A cached target (standalone, or an iOS instance with a cached sandbox URL) is trusted
+      // without a round-trip, so this is often the first call to the daemon. A 404 from a
+      // sandbox that no longer exists must stay a NotFoundError (withAuth clears the cache and
+      // recreates), not a claim that the daemon predates selection; asking the API tells the
+      // two apart.
+      if (!this.wasCreatedThisRun(target.id)) {
+        if (target.type === 'ios') {
+          await this.client.iosInstances.get(target.id);
+        } else {
+          await this.client.xcodeInstances.get(target.id);
+        }
       }
       // The workspace preference is a standing wish, not this command's request: on a daemon
       // that cannot honour it, say so and build with what the sandbox has.
