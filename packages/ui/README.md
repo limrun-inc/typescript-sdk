@@ -15,17 +15,13 @@ component requests the browser's `user` or `environment` camera with an
 the same facing reuse the live track. Facing changes restart capture so mobile
 browsers can release one camera before opening the other.
 
-The simulated camera's output dimensions automatically follow incoming browser
-frames, including width/height swaps when captured video rotates.
-`cameraResolutionCap` independently controls browser capture: named caps use
-standard landscape ideals such as 1280×720 for `720p`, and the browser may
-select its nearest supported mode. `onCameraDemandChange` receives fresh
-`MediaStreamTrack.getSettings()` status metadata after track and resolution
-changes.
+WebRTC and the browser choose the capture resolution. The simulated camera's
+host output follows the decoded frame dimensions, including width/height swaps
+when captured video rotates. `onCameraDemandChange` receives fresh
+`MediaStreamTrack.getSettings()` status metadata after track changes.
 
 Camera API types (`CameraRequest`, `CameraResult`, `CameraFacingMode`,
-`CameraResolutionCap`, `CameraCaptureInfo`, and `CameraStreamStats`) are
-exported from `@limrun/ui`.
+`CameraCaptureInfo`, and `CameraStreamStats`) are exported from `@limrun/ui`.
 
 Related browser workflow packages are published separately:
 

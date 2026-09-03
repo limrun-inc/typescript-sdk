@@ -2,7 +2,6 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   CameraOperationCoordinator,
   cameraCaptureConstraints,
-  cameraResolutionRefreshConstraints,
   createGrantedCameraResult,
   parseCameraRequest,
   shouldReacquireCamera,
@@ -29,48 +28,16 @@ describe('parseCameraRequest', () => {
 });
 
 describe('cameraCaptureConstraints', () => {
-  test('uses ideal rather than exact facing mode', () => {
-    const constraints = cameraCaptureConstraints('auto', {
+  test('uses ideal facing and frame-rate preferences without geometry', () => {
+    const constraints = cameraCaptureConstraints({
+      active: true,
       facingMode: 'environment',
     });
 
-    expect(constraints.facingMode).toEqual({ ideal: 'environment' });
-  });
-
-  test('auto leaves capture geometry to the browser', () => {
-    const constraints = cameraCaptureConstraints('auto');
-
-    expect(constraints.width).toBeUndefined();
-    expect(constraints.height).toBeUndefined();
-    expect(constraints.aspectRatio).toBeUndefined();
-  });
-
-  test.each([
-    ['1080p', 1920, 1080],
-    ['720p', 1280, 720],
-    ['480p', 854, 480],
-  ] as const)('keeps %s capture geometry in landscape orientation', (cap, width, height) => {
-    const constraints = cameraCaptureConstraints(cap, { facingMode: 'user' });
-
-    expect(constraints).toMatchObject({
-      width: { ideal: width },
-      height: { ideal: height },
-      facingMode: { ideal: 'user' },
-    });
-    expect(constraints.aspectRatio).toBeUndefined();
-  });
-
-  test('refreshes a pending capture with the latest resolution cap', () => {
-    expect(
-      cameraResolutionRefreshConstraints(3, 4, '720p', {
-        facingMode: 'environment',
-      }),
-    ).toMatchObject({
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
+    expect(constraints).toEqual({
+      frameRate: { ideal: 30, max: 30 },
       facingMode: { ideal: 'environment' },
     });
-    expect(cameraResolutionRefreshConstraints(4, 4, '720p')).toBeUndefined();
   });
 });
 

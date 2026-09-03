@@ -1,13 +1,5 @@
 export type CameraFacingMode = 'user' | 'environment';
 
-/**
- * Resolution preference for browser camera capture.
- *
- * `'auto'` leaves dimensions to the browser. Named values request standard
- * landscape dimensions independently from the host's output aspect.
- */
-export type CameraResolutionCap = 'auto' | '1080p' | '720p' | '480p';
-
 /** Camera selection requested by the instance host. */
 export interface CameraRequest {
   active: boolean;
@@ -84,15 +76,6 @@ export class CameraOperationCoordinator {
   }
 }
 
-const CAMERA_CAP_DIMENSIONS: Record<
-  Exclude<CameraResolutionCap, 'auto'>,
-  { width: number; height: number }
-> = {
-  '1080p': { width: 1920, height: 1080 },
-  '720p': { width: 1280, height: 720 },
-  '480p': { width: 854, height: 480 },
-};
-
 export function parseCameraRequest(message: unknown): CameraRequest | null {
   if (!message || typeof message !== 'object') return null;
   const value = message as Record<string, unknown>;
@@ -108,41 +91,18 @@ export function parseCameraRequest(message: unknown): CameraRequest | null {
 /**
  * Builds best-effort capture constraints.
  *
- * Facing and geometry are preferences so browsers can fall back instead of
- * rejecting capture when a phone-facing label or exact mode is unavailable.
+ * Facing is a preference so browsers can fall back when a phone-facing label
+ * or exact mode is unavailable. The browser chooses capture dimensions.
  */
-export function cameraCaptureConstraints(
-  cap: CameraResolutionCap,
-  request?: Pick<CameraRequest, 'facingMode'>,
-): MediaTrackConstraints {
+export function cameraCaptureConstraints(request: CameraRequest): MediaTrackConstraints {
   const constraints: MediaTrackConstraints = {
     frameRate: { ideal: 30, max: 30 },
   };
-
-  if (cap !== 'auto') {
-    const dimensions = CAMERA_CAP_DIMENSIONS[cap];
-    constraints.width = { ideal: dimensions.width };
-    constraints.height = { ideal: dimensions.height };
-  }
 
   if (request?.facingMode) {
     constraints.facingMode = { ideal: request.facingMode };
   }
   return constraints;
-}
-
-/**
- * Returns constraints only when the resolution cap changed during
- * acquisition, allowing a newly granted track to catch up before commit.
- */
-export function cameraResolutionRefreshConstraints(
-  acquisitionGeneration: number,
-  currentGeneration: number,
-  cap: CameraResolutionCap,
-  request?: Pick<CameraRequest, 'facingMode'>,
-): MediaTrackConstraints | undefined {
-  if (acquisitionGeneration === currentGeneration) return undefined;
-  return cameraCaptureConstraints(cap, request);
 }
 
 export function shouldReacquireCamera(

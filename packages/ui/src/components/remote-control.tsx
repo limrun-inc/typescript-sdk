@@ -23,23 +23,15 @@ import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../co
 import {
   CameraOperationCoordinator,
   cameraCaptureConstraints,
-  cameraResolutionRefreshConstraints,
   createGrantedCameraResult,
   parseCameraRequest,
   shouldReacquireCamera,
   type CameraCaptureInfo,
   type CameraRequest,
-  type CameraResolutionCap,
 } from '../core/camera';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
 
-export type {
-  CameraCaptureInfo,
-  CameraFacingMode,
-  CameraRequest,
-  CameraResolutionCap,
-  CameraResult,
-} from '../core/camera';
+export type { CameraCaptureInfo, CameraFacingMode, CameraRequest, CameraResult } from '../core/camera';
 
 declare global {
   interface Window {
@@ -218,25 +210,6 @@ export interface RemoteControlProps {
    * itself — this is the canonical place.
    */
   onCameraStats?: (stats: CameraStreamStats | null) => void;
-
-  /**
-   * Optional resolution cap for outbound camera capture.
-   *
-   * - `'auto'` (default): no extra constraint. The browser captures
-   *   at its webcam's native max; WebRTC's quality scaler may step
-   *   down resolution on the encoder side under bandwidth pressure
-   *   while still feeding the simulator at the pool's native size.
-   * - `'1080p'` / `'720p'` / `'480p'`: preferred capture size applied via
-   *   `getUserMedia` constraints (for new captures) and
-   *   `track.applyConstraints` (for the currently-active track),
-   *   using standard landscape dimensions. The browser may select its
-   *   nearest supported mode.
-   *
-   * Bumping or lowering the cap mid-stream is supported; the
-   * change takes effect within a frame or two as the webcam
-   * re-negotiates.
-   */
-  cameraResolutionCap?: CameraResolutionCap;
 
   /**
    * When true, capture the user's microphone via
@@ -526,7 +499,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       androidElementTreeOptions,
       onCameraDemandChange,
       onCameraStats,
-      cameraResolutionCap = 'auto',
       microphoneEnabled = false,
       onMicrophoneStateChange,
     }: RemoteControlProps,
@@ -581,17 +553,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const outboundLocalStreamRef = useRef<MediaStream | null>(null);
     const outboundCameraRequestRef = useRef<CameraRequest | undefined>(undefined);
     const cameraOperations = useMemo(() => new CameraOperationCoordinator(), []);
-    // Separately guards prop-driven applyConstraints calls so quick cap
-    // changes cannot publish stale capture metadata.
-    const cameraConstraintGenerationRef = useRef(0);
-    const cameraResolutionCapRef = useRef(cameraResolutionCap);
-    // Changes synchronously during render so a getUserMedia promise
-    // resolving after a cap update can refresh the granted track.
-    const cameraResolutionGenerationRef = useRef(0);
-    if (cameraResolutionCapRef.current !== cameraResolutionCap) {
-      ++cameraResolutionGenerationRef.current;
-    }
-    cameraResolutionCapRef.current = cameraResolutionCap;
     // Mirror the demand-change callback into a ref so the WS message
     // handler always sees the freshest customer callback even when the
     // parent re-renders mid-session.
@@ -2167,10 +2128,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       sender: RTCRtpSender,
       isCurrentAttempt: () => boolean,
     ): Promise<void> => {
-      // Invalidate constraint updates before enqueueing. `enqueue` also
-      // increments its generation synchronously, so suspended permission
-      // work observes a newer request before the newer operation starts.
-      ++cameraConstraintGenerationRef.current;
+      // `enqueue` increments its generation synchronously, so suspended
+      // permission work becomes stale before the newer operation starts.
       return cameraOperations.enqueue(async ({ isCurrent }) => {
         const isCurrentCameraRequest = () =>
           isCurrent() &&
@@ -2245,11 +2204,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         }
 
         let stream: MediaStream | null = null;
-        const acquisitionResolutionGeneration = cameraResolutionGenerationRef.current;
-        const acquisitionConstraints = cameraCaptureConstraints(cameraResolutionCapRef.current, request);
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: acquisitionConstraints,
+            video: cameraCaptureConstraints(request),
             audio: false,
           });
         } catch (err) {
@@ -2272,38 +2229,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           if (!isCurrentCameraRequest()) return;
           ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
           safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
-          return;
-        }
-
-        // The cap can change while the browser permission prompt is open.
-        // Catch the granted track up before commit. Aspect is host output
-        // state and never modifies browser track constraints.
-        let appliedResolutionGeneration = acquisitionResolutionGeneration;
-        const applyLatestPendingResolution = async (): Promise<boolean> => {
-          if (!isCurrentCameraRequest()) return false;
-          while (appliedResolutionGeneration !== cameraResolutionGenerationRef.current) {
-            const latestResolutionGeneration = cameraResolutionGenerationRef.current;
-            const latestConstraints = cameraResolutionRefreshConstraints(
-              appliedResolutionGeneration,
-              latestResolutionGeneration,
-              cameraResolutionCapRef.current,
-              request,
-            );
-            if (!latestConstraints) break;
-            try {
-              await videoTrack.applyConstraints(latestConstraints);
-            } catch (err) {
-              // Capture is still usable when a browser rejects a preferred
-              // geometry. Mark this generation attempted and continue.
-              debugWarn('applyConstraints for pending camera resolution failed:', err);
-            }
-            appliedResolutionGeneration = latestResolutionGeneration;
-            if (!isCurrentCameraRequest()) return false;
-          }
-          return isCurrentCameraRequest();
-        };
-        if (!(await applyLatestPendingResolution())) {
-          stopMediaStream(stream);
           return;
         }
 
@@ -2333,16 +2258,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           return;
         }
 
-        if (!(await applyLatestPendingResolution())) {
-          try {
-            await sender.replaceTrack(null);
-          } catch (err) {
-            debugWarn('replaceTrack(null) for stale camera resolution failed:', err);
-          }
-          stopMediaStream(stream);
-          return;
-        }
-
         try {
           const params = sender.getParameters();
           if (!params.encodings || params.encodings.length === 0) {
@@ -2355,7 +2270,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         } catch (err) {
           debugWarn('setParameters on outbound camera failed:', err);
         }
-        if (!(await applyLatestPendingResolution())) {
+        if (!isCurrentCameraRequest()) {
           try {
             await sender.replaceTrack(null);
           } catch (err) {
@@ -2370,7 +2285,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
         videoTrack.onended = () => {
           if (outboundLocalStreamRef.current !== stream) return;
-          ++cameraConstraintGenerationRef.current;
           void cameraOperations
             .enqueueCurrent(async ({ isCurrent: isCurrentEndedCleanup }) => {
               if (
@@ -2424,7 +2338,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // browser doesn't leave the camera indicator lit between
       // reconnects.
       cameraOperations.invalidate();
-      ++cameraConstraintGenerationRef.current;
       stopCameraStatsPoller();
       stopOutboundLocalStream();
       outboundCameraRequestRef.current = undefined;
@@ -3304,40 +3217,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       event.stopPropagation();
       start();
     };
-
-    // Re-apply capture geometry whenever the resolution cap changes.
-    // A successful application gets a fresh settings ACK because browsers
-    // may choose dimensions that differ from the requested ideals.
-    useEffect(() => {
-      const capGeneration = ++cameraConstraintGenerationRef.current;
-      void cameraOperations
-        .enqueueCurrent(async ({ isCurrent }) => {
-          if (!isCurrent() || capGeneration !== cameraConstraintGenerationRef.current) return;
-          const stream = outboundLocalStreamRef.current;
-          const track = stream?.getVideoTracks()[0];
-          if (!stream || !track) return;
-          const constraints = cameraCaptureConstraints(cameraResolutionCap, outboundCameraRequestRef.current);
-          try {
-            await track.applyConstraints(constraints);
-          } catch (err) {
-            debugWarn('applyConstraints for camera resolution failed:', err);
-            return;
-          }
-          const ws = wsRef.current;
-          if (
-            !isCurrent() ||
-            capGeneration !== cameraConstraintGenerationRef.current ||
-            outboundLocalStreamRef.current !== stream ||
-            !ws ||
-            ws.readyState !== WebSocket.OPEN
-          ) {
-            return;
-          }
-          sendGrantedCameraResult(ws, track);
-        })
-        .catch((err) => debugWarn('queued camera resolution update failed:', err));
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [cameraResolutionCap]);
 
     // Drive the manual override without interrupting guest-driven demand.
     useEffect(() => {
