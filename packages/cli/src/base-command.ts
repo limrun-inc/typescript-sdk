@@ -38,7 +38,7 @@ import {
 import type { XcodeCacheConfig, XcodeCacheFollowResult, XcodeClient, XcodeSelectResult } from '@limrun/api';
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
 import { xcodeSandboxIdFromUrl } from './lib/xcode-sandbox';
-import { formatXcode, parseXcodeMajor } from './lib/xcode-version';
+import { formatXcode, type RequestedXcodeVersion } from './lib/xcode-version';
 import type { TunnelCommandIO } from './lib/tunnel-command';
 import { captureTelemetry, telemetryIntentForCommand } from './lib/telemetry';
 
@@ -899,14 +899,19 @@ export abstract class BaseCommand extends Command {
    */
   protected async applyXcodeVersionToClient(
     xcodeClient: XcodeClient,
-    requested: string | undefined,
+    requested: RequestedXcodeVersion | undefined,
   ): Promise<void> {
     if (!requested) return;
-    const major = parseXcodeMajor(requested);
     const status = await this.readXcodeSelection(() => xcodeClient.getXcode());
-    if (status.bound.major === major) return;
-    this.info(`Switching sandbox to Xcode ${major} (DerivedData reset)...`);
-    const result = await this.selectXcode(xcodeClient, major);
+    if (status.bound.major === requested.major) return;
+    if (requested.source === 'workspace') {
+      this.info(
+        `Sandbox is on Xcode ${status.bound.major}, this workspace prefers ${requested.major}; switching (DerivedData reset)...`,
+      );
+    } else {
+      this.info(`Switching sandbox to Xcode ${requested.major} (DerivedData reset)...`);
+    }
+    const result = await this.selectXcode(xcodeClient, requested.major);
     this.info(`Sandbox now uses Xcode ${formatXcode(result.bound)}`);
   }
 

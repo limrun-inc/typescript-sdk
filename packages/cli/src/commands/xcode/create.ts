@@ -1,6 +1,6 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { xcodeVersionFlags } from '../../lib/xcode-version';
+import { resolveRequestedXcodeVersion, xcodeVersionFlags } from '../../lib/xcode-version';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
@@ -137,13 +137,14 @@ export default class XcodeCreate extends BaseCommand {
           }
         }
       };
-      if (flags['xcode-version']) {
+      const requestedXcode = resolveRequestedXcodeVersion(flags['xcode-version']);
+      if (requestedXcode) {
         try {
           const xcodeClient = await this.client.xcodeInstances.createClient({ instance });
-          await this.applyXcodeVersionToClient(xcodeClient, flags['xcode-version']);
+          await this.applyXcodeVersionToClient(xcodeClient, requestedXcode);
         } catch (err) {
           this.info(
-            `Created Xcode instance ${instance.metadata.id}, but selecting Xcode ${flags['xcode-version']} failed.`,
+            `Created Xcode instance ${instance.metadata.id}, but selecting Xcode ${requestedXcode.major} failed.`,
           );
           if (flags.rm) {
             await cleanup();

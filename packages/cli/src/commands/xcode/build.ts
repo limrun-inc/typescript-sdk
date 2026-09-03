@@ -5,7 +5,7 @@ import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 import { parseCacheConfig } from '../../lib/cache';
 import { cacheFlags } from '../../lib/cache-flags';
-import { xcodeVersionFlags } from '../../lib/xcode-version';
+import { resolveRequestedXcodeVersion, xcodeVersionFlags } from '../../lib/xcode-version';
 import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
 import {
   projectConfigFromFlags,
@@ -301,7 +301,7 @@ export default class XcodeBuild extends BaseCommand {
       await this.applyBuildCacheToTarget(target, parseCacheConfig(flags));
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClient(target);
-      await this.applyXcodeVersionToClient(xcodeClient, flags['xcode-version']);
+      await this.applyXcodeVersionToClient(xcodeClient, resolveRequestedXcodeVersion(flags['xcode-version']));
 
       const settings: Record<string, string> = {
         ...(projectConfigFromFlags(flags) as Record<string, string>),
