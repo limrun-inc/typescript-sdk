@@ -1,4 +1,8 @@
-import { formatXcode, parseXcodeMajor } from './xcode-version';
+import { formatXcode, parseXcodeMajor, resolveRequestedXcodeVersion } from './xcode-version';
+
+jest.mock('./config', () => ({ loadXcodeVersionPreference: jest.fn() }));
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const config = require('./config') as { loadXcodeVersionPreference: jest.Mock };
 
 describe('parseXcodeMajor', () => {
   test('accepts a bare major', () => {
@@ -6,6 +10,31 @@ describe('parseXcodeMajor', () => {
   });
   test.each(['27.0', 'Xcode 27', '', '27a'])('rejects %j', (value) => {
     expect(() => parseXcodeMajor(value)).toThrow('--xcode-version takes an Xcode major such as 27');
+  });
+  test('names the caller in the error', () => {
+    expect(() => parseXcodeMajor('27.0', 'version set')).toThrow(
+      'version set takes an Xcode major such as 27',
+    );
+  });
+});
+
+describe('resolveRequestedXcodeVersion', () => {
+  afterEach(() => config.loadXcodeVersionPreference.mockReset());
+
+  test('the flag wins over the workspace preference and is not remembered', () => {
+    config.loadXcodeVersionPreference.mockReturnValue('27');
+    expect(resolveRequestedXcodeVersion('26')).toEqual({ major: '26', source: 'flag' });
+  });
+  test('falls back to the workspace preference', () => {
+    config.loadXcodeVersionPreference.mockReturnValue('27');
+    expect(resolveRequestedXcodeVersion(undefined)).toEqual({ major: '27', source: 'workspace' });
+  });
+  test('asks for nothing when neither is set, so the sandbox keeps its binding', () => {
+    config.loadXcodeVersionPreference.mockReturnValue(null);
+    expect(resolveRequestedXcodeVersion(undefined)).toBeUndefined();
+  });
+  test('rejects a malformed flag before any network call', () => {
+    expect(() => resolveRequestedXcodeVersion('27.0')).toThrow('--xcode-version takes an Xcode major');
   });
 });
 

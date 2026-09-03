@@ -143,9 +143,15 @@ export interface LastGradleInstance {
   token?: GradleInstance.Status['token'];
 }
 
-/** The set of last-used instances bound to a single directory scope. */
+/**
+ * The set of last-used instances bound to a single directory scope, plus the workspace's Xcode
+ * preference: the major `lim xcode version set` chose, which build/test/rbe/create apply to the
+ * sandbox they use. It outlives the instance slots (a deleted sandbox does not forget the
+ * preference) and goes with the scope when the scope is pruned.
+ */
 interface ScopeInstances {
   lastUsedAt?: string;
+  xcodeVersion?: string;
   ios?: LastIosInstance;
   android?: LastAndroidInstance;
   xcode?: LastIosInstance | LastXcodeInstance;
@@ -174,6 +180,8 @@ function sanitizeScope(value: unknown): ScopeInstances {
   const scope: ScopeInstances = {};
   if (!isRecord(value)) return scope;
   if (typeof value['lastUsedAt'] === 'string') scope.lastUsedAt = value['lastUsedAt'];
+  if (typeof value['xcodeVersion'] === 'string' && value['xcodeVersion'])
+    scope.xcodeVersion = value['xcodeVersion'];
   if (isLastAndroidInstance(value['android'])) scope.android = value['android'];
   if (isLastIosInstance(value['ios'])) scope.ios = value['ios'];
   if (isLastIosInstance(value['xcode']) || isLastXcodeInstance(value['xcode'])) {
@@ -184,7 +192,7 @@ function sanitizeScope(value: unknown): ScopeInstances {
 }
 
 function scopeHasInstance(scope: ScopeInstances): boolean {
-  return Boolean(scope.ios || scope.android || scope.xcode || scope.gradle);
+  return Boolean(scope.ios || scope.android || scope.xcode || scope.gradle || scope.xcodeVersion);
 }
 
 /** Copy any slots missing from `primary` out of `fallback`. */
@@ -194,6 +202,7 @@ function fillMissingScope(primary: ScopeInstances, fallback: ScopeInstances): Sc
   if (!out.android && fallback.android) out.android = fallback.android;
   if (!out.xcode && fallback.xcode) out.xcode = fallback.xcode;
   if (!out.gradle && fallback.gradle) out.gradle = fallback.gradle;
+  if (!out.xcodeVersion && fallback.xcodeVersion) out.xcodeVersion = fallback.xcodeVersion;
   if (!out.lastUsedAt && fallback.lastUsedAt) out.lastUsedAt = fallback.lastUsedAt;
   return out;
 }
@@ -262,6 +271,7 @@ function foldLegacyInto(file: LastInstancesFile, scopeKey: string): boolean {
   if (!scope.ios && legacy.ios) scope.ios = legacy.ios;
   if (!scope.xcode && legacy.xcode) scope.xcode = legacy.xcode;
   if (!scope.gradle && legacy.gradle) scope.gradle = legacy.gradle;
+  if (!scope.xcodeVersion && legacy.xcodeVersion) scope.xcodeVersion = legacy.xcodeVersion;
   if (!scope.lastUsedAt) scope.lastUsedAt = legacy.lastUsedAt ?? new Date().toISOString();
   return true;
 }
@@ -624,6 +634,29 @@ export function loadLastXcodeInstance(): LastIosInstance | LastXcodeInstance | n
 
 export function loadLastGradleInstance(): LastGradleInstance | null {
   return readScope(getScopeKey()).gradle ?? null;
+}
+
+/** The Xcode major this workspace prefers (`lim xcode version set`), or null when none. */
+export function loadXcodeVersionPreference(): string | null {
+  return readScope(getScopeKey()).xcodeVersion ?? null;
+}
+
+export function setXcodeVersionPreference(major: string): void {
+  mutate((file, scopeKey) => {
+    const scope = ensureScope(file, scopeKey);
+    scope.xcodeVersion = major;
+    scope.lastUsedAt = new Date().toISOString();
+  });
+}
+
+export function clearXcodeVersionPreference(): void {
+  mutate((file, scopeKey) => {
+    const scope = file.scopes[scopeKey];
+    if (!scope?.xcodeVersion) return false;
+    delete scope.xcodeVersion;
+    scope.lastUsedAt = new Date().toISOString();
+    return true;
+  });
 }
 
 function sandboxXcodeIdFromLastIosInstance(instance: LastIosInstance | undefined): string | undefined {

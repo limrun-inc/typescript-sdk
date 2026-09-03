@@ -18,7 +18,7 @@ import {
 import { BaseCommand } from '../../../base-command';
 import { clearLastInstanceId } from '../../../lib/config';
 import { ProgressReporter } from '../../../lib/progress';
-import { xcodeVersionFlags } from '../../../lib/xcode-version';
+import { resolveRequestedXcodeVersion, xcodeVersionFlags } from '../../../lib/xcode-version';
 import { startAutoUploadWatcher } from '../../../lib/rbe-auto-upload';
 import {
   assertLocalPortFree,
@@ -210,7 +210,7 @@ export default class XcodeRbe extends BaseCommand {
         const target = await this.resolveXcodeTargetOrCreate(flags.id);
         instanceId = typeof target === 'string' ? target : target.id;
         client = await this.resolveXcodeClient(target);
-        await this.applyXcodeVersionToClient(client, flags['xcode-version']);
+        await this.applyXcodeVersionToClient(client, resolveRequestedXcodeVersion(flags['xcode-version']));
 
         // resolveXcodeClient validates an iOS-backed target via iosInstances.get,
         // but a cached standalone Xcode target is trusted without a round-trip.

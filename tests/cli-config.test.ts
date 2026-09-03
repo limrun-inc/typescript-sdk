@@ -169,6 +169,29 @@ describe('CLI last instance config', () => {
     });
   });
 
+  test('keeps an Xcode version preference per directory scope, apart from the instance slots', async () => {
+    await withConfigModule((config, ctx) => {
+      ctx.setScope('/work/worktree-a');
+      config.setXcodeVersionPreference('27');
+      config.registerCreatedInstance(iosInstanceWithId('ios_euna_01aaaa'));
+
+      ctx.setScope('/work/worktree-b');
+      expect(config.loadXcodeVersionPreference()).toBeNull();
+
+      ctx.setScope('/work/worktree-a');
+      expect(config.loadXcodeVersionPreference()).toBe('27');
+      // A deleted or replaced sandbox does not forget the workspace's choice.
+      config.clearLastInstanceId('ios_euna_01aaaa');
+      expect(config.loadLastIosInstance()).toBeNull();
+      expect(config.loadXcodeVersionPreference()).toBe('27');
+
+      config.clearXcodeVersionPreference();
+      expect(config.loadXcodeVersionPreference()).toBeNull();
+      // Clearing an absent preference is a no-op, not an error.
+      config.clearXcodeVersionPreference();
+    });
+  });
+
   test('does not leak the last instance across unrelated directory scopes', async () => {
     await withConfigModule((config, ctx) => {
       ctx.setScope('/work/worktree-a');
