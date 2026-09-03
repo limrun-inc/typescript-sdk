@@ -14,7 +14,6 @@ export const xcodeVersionFlags = {
 
 /** Target selection for the `version` commands: an explicit sandbox, never an auto-created one. */
 export const xcodeTargetFlags = {
-  create: Flags.boolean({ hidden: true, default: false, allowNo: true }),
   id: Flags.string({
     description: 'Xcode instance ID to target. Defaults to the most recently created Xcode-capable target.',
   }),
@@ -54,12 +53,14 @@ export function formatXcode(info: XcodeInfo | undefined): string {
 
 /**
  * Notes column of `lim xcode version list`: beta seed, selection, node default, workspace
- * preference. `betaSeed` ships with @limrun/api 0.49.2; typed here until the CLI depends on it.
+ * preference.
+ * TODO(turkenh): drop the `betaSeed` intersection once package.json depends on @limrun/api
+ * >= 0.49.2; the publish type-check runs against the installed package, which lacks the field.
  */
 export function xcodeNotes(
   info: XcodeInfo & { betaSeed?: string },
   selectedMajor: string,
-  preferredMajor: string | undefined,
+  preferredMajor: string | null | undefined,
 ): string {
   return [
     info.betaSeed ? `beta ${info.betaSeed}` : '',

@@ -21,19 +21,16 @@ export default class XcodeVersionList extends BaseCommand {
     const preferred = loadXcodeVersionPreference();
 
     await this.withAuth(async () => {
-      const target = await this.tryResolveXcodeTarget(flags.id);
-      const status =
-        target ?
-          (await this.tryReadXcodeStatus(target, this.isRememberedXcodeTarget(flags.id)))?.status
-        : undefined;
-      if (!target || !status) {
+      const read = await this.tryReadXcodeStatus(flags.id);
+      if (!read) {
         if (flags.json) this.outputJson({ preferred, installed: [] });
         else
           this.output(
-            `No sandbox instance found${this.scopeSuffix()}; create one with \`lim xcode create\` to see the Xcodes its node offers.`,
+            `No sandbox instance found${this.scopeSuffix()}; the next one lists the Xcodes its node offers.`,
           );
         return;
       }
+      const { target, status } = read;
       if (flags.json) {
         this.outputJson({ instanceId: target.id, ...status, preferred });
         return;
@@ -45,7 +42,7 @@ export default class XcodeVersionList extends BaseCommand {
       const rows = status.installed.map((x) => [
         x.major,
         `${x.version} (${x.build})`,
-        xcodeNotes(x, status.bound.major, preferred ?? undefined),
+        xcodeNotes(x, status.bound.major, preferred),
       ]);
       this.outputTable(['Major', 'Version', 'Notes'], rows);
     });

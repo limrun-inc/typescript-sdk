@@ -1,4 +1,3 @@
-import type { XcodeSelectResult } from '@limrun/api';
 import { BaseCommand } from '../../../base-command';
 import { clearXcodeVersionPreference, loadXcodeVersionPreference } from '../../../lib/config';
 import { formatXcode, xcodeTargetFlags } from '../../../lib/xcode-version';
@@ -31,46 +30,32 @@ export default class XcodeVersionUnset extends BaseCommand {
     }
 
     await this.withAuth(async () => {
-      const target = await this.tryResolveXcodeTarget(flags.id);
-      const remembered = this.isRememberedXcodeTarget(flags.id);
-      const read = target ? await this.tryReadXcodeStatus(target, remembered) : undefined;
-      const nodeDefault = read?.status.installed.find((x) => x.nodeDefault);
-      if (!target || !read || !nodeDefault) {
+      const read = await this.tryReadXcodeStatus(flags.id);
+      if (!read) {
         if (flags.json) this.outputJson({ previous });
-        else this.output('No sandbox instance found; the next one uses the node default.');
+        else
+          this.output(`No sandbox instance found${this.scopeSuffix()}; the next one uses the node default.`);
         return;
       }
-      if (read.status.bound.major === nodeDefault.major) {
-        if (flags.json) this.outputJson({ previous, instanceId: target.id, bound: read.status.bound });
-        else this.output(`Sandbox ${target.id} already uses Xcode ${formatXcode(read.status.bound)}.`);
+      const { target, client, status } = read;
+      const nodeDefault = status.installed.find((x) => x.nodeDefault) ?? status.installed[0];
+      if (status.bound.major === nodeDefault.major) {
+        if (flags.json) this.outputJson({ previous, instanceId: target.id, bound: status.bound });
+        else this.output(`Sandbox ${target.id} already uses Xcode ${formatXcode(status.bound)}.`);
         return;
       }
       // Unset means "back to the default", so the sandbox follows the preference out; a busy
       // sandbox (409) keeps its Xcode and says so.
-      let result: XcodeSelectResult | undefined;
+      let result;
       try {
-        result = await this.readXcodeSelectionOrForget(target, remembered, () =>
-          read.client.setXcode(nodeDefault.major),
-        );
+        result = await client.setXcode(nodeDefault.major);
       } catch (err) {
         const refusal = this.xcodeRefusal(err);
         if (!refusal) throw err;
-        if (flags.json) {
-          this.outputJson({
-            previous,
-            instanceId: target.id,
-            bound: read.status.bound,
-            error: refusal.message,
-          });
-        }
-        this.error(`${refusal.message}. Sandbox ${target.id} keeps Xcode ${formatXcode(read.status.bound)}.`);
+        this.error(`${refusal.message}. Sandbox ${target.id} keeps Xcode ${formatXcode(status.bound)}.`);
       }
       if (flags.json) {
-        this.outputJson(result ? { previous, instanceId: target.id, ...result } : { previous });
-        return;
-      }
-      if (!result) {
-        this.output('No sandbox instance found; the next one uses the node default.');
+        this.outputJson({ previous, instanceId: target.id, ...result });
         return;
       }
       this.output(`Sandbox ${target.id} now uses Xcode ${formatXcode(result.bound)}.`);

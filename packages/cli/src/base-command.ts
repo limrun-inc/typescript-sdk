@@ -8,7 +8,7 @@ import Limrun, {
 } from '@limrun/api';
 import {
   clearLastInstanceId,
-  sandboxXcodeIdFromLastIosInstance,
+  xcodeSandboxIdOf,
   loadAndroidInstanceCache,
   loadIosInstanceCache,
   loadLastAndroidInstance,
@@ -44,7 +44,6 @@ import {
 } from './lib/cache';
 import type { XcodeCacheConfig, XcodeCacheFollowResult, XcodeClient, XcodeSelectResult } from '@limrun/api';
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
-import { xcodeSandboxIdFromUrl } from './lib/xcode-sandbox';
 import { formatXcode, type RequestedXcodeVersion } from './lib/xcode-version';
 import type { TunnelCommandIO } from './lib/tunnel-command';
 import { captureTelemetry, telemetryIntentForCommand } from './lib/telemetry';
@@ -127,6 +126,8 @@ export abstract class BaseCommand extends Command {
   private _lastResolvedInstanceId?: string;
   private _lastResolvedExpectedType?: 'ios' | 'android' | 'xcode' | 'gradle';
   private _xcodeReplacementIntent?: XcodeReplacementIntent;
+  /** Where resolveXcodeTarget found its target; only a remembered one may be forgotten. */
+  private _lastResolvedXcodeSource?: 'explicit' | 'env' | 'memory';
   private _overrideInstanceId?: string;
   private _createRetryCount = 0;
   private _intentCaptured = false;
@@ -341,12 +342,7 @@ export abstract class BaseCommand extends Command {
           });
         } catch (err) {
           if (this.isCachedXcodeClientNotFound(err)) {
-            throw new NotFoundError(
-              404,
-              { message: `Instance ${id} was not found` },
-              undefined,
-              new Headers(),
-            );
+            throw this.notFound(id);
           }
           throw err;
         }
@@ -383,7 +379,7 @@ export abstract class BaseCommand extends Command {
         });
       } catch (err) {
         if (this.isCachedXcodeClientNotFound(err)) {
-          throw new NotFoundError(404, { message: `Instance ${id} was not found` }, undefined, new Headers());
+          throw this.notFound(id);
         }
         throw err;
       }
@@ -556,6 +552,7 @@ export abstract class BaseCommand extends Command {
 
   protected async resolveXcodeTarget(providedId: string | undefined): Promise<XcodeTarget> {
     if (this._overrideInstanceId) {
+      this._lastResolvedXcodeSource = 'explicit';
       return this.xcodeTargetFromId(this._overrideInstanceId);
     }
 
@@ -564,18 +561,21 @@ export abstract class BaseCommand extends Command {
     if (providedId) {
       const target = this.xcodeTargetFromId(providedId);
       this._lastResolvedInstanceId = target.id;
+      this._lastResolvedXcodeSource = 'explicit';
       return target;
     }
 
     const envTarget = envInstanceTarget('xcode');
     if (envTarget) {
       this._lastResolvedInstanceId = envTarget.id;
+      this._lastResolvedXcodeSource = 'env';
       return envTarget;
     }
 
     const target = loadLastXcodeInstance();
     if (target) {
       this._lastResolvedInstanceId = target.id;
+      this._lastResolvedXcodeSource = 'memory';
       return target;
     }
 
@@ -919,8 +919,8 @@ export abstract class BaseCommand extends Command {
       if (!(err instanceof XcodeSelectionUnsupportedError)) throw err;
       // A vanished sandbox must stay a NotFoundError (withAuth clears the cache and recreates),
       // not a claim that the daemon predates selection.
-      const gone = await this.vanishedXcodeSandboxId(target);
-      if (gone) throw this.vanishedXcodeSandboxError(target, gone);
+      const gone = await this.vanishedXcodeSandboxError(target);
+      if (gone) throw gone;
       // The workspace preference is a standing wish, not this command's request: on a daemon
       // that cannot honour it, say so and build with what the sandbox has.
       if (requested.source === 'workspace') {
@@ -957,64 +957,46 @@ export abstract class BaseCommand extends Command {
   }
 
   /**
-   * The id of the sandbox behind a target's /xcode when that sandbox no longer exists, else
+   * The error a /xcode 404 deserves when the sandbox behind the target no longer exists, else
    * undefined. A cached target is trusted without a round-trip, so the SDK's "daemon predates
    * selection" reading of a 404 is also what a deleted sandbox produces; the API tells the two
-   * apart. The check is on the sandbox itself: for a simulator-backed target that is the sandbox
-   * behind its Xcode URL, not the simulator. Targets this run created, or pinned through the
-   * environment (whose ids can be synthetic), are taken at their word.
+   * apart. Sandboxes this run created, or pinned through the environment (synthetic ids), are
+   * taken at their word. A standalone sandbox is a NotFoundError like anywhere else; one behind a
+   * live simulator is not, because withAuth would then forget and replace the simulator itself.
    */
-  private async vanishedXcodeSandboxId(target: XcodeTarget): Promise<string | undefined> {
+  private async vanishedXcodeSandboxError(target: XcodeTarget): Promise<Error | undefined> {
     if (this.wasCreatedThisRun(target.id) || envInstanceTarget(target.type)?.id === target.id)
       return undefined;
-    const sandboxId = target.type === 'ios' ? sandboxXcodeIdFromLastIosInstance(target) : target.id;
+    const sandboxId = xcodeSandboxIdOf(target);
     if (!sandboxId) return undefined;
     try {
       await this.client.xcodeInstances.get(sandboxId);
       return undefined;
     } catch (err) {
-      if (err instanceof NotFoundError) return sandboxId;
-      throw err;
+      if (!(err instanceof NotFoundError)) throw err;
     }
-  }
-
-  /**
-   * A vanished standalone sandbox is a NotFoundError like anywhere else (withAuth cleans up and,
-   * for work commands, recreates). A vanished sandbox behind a live simulator is NOT: the
-   * simulator's owner recreates its sandbox, and a NotFoundError would make withAuth forget and
-   * replace the simulator itself.
-   */
-  private vanishedXcodeSandboxError(target: XcodeTarget, sandboxId: string): Error {
     if (target.type !== 'ios') return this.notFound(target.id);
     return new Error(
-      `The Xcode sandbox ${sandboxId} behind simulator ${target.id} no longer exists; the simulator is kept. ` +
-        `Retry shortly, or attach a new sandbox with: lim xcode create --attach --simulator-id ${target.id}`,
+      `Xcode sandbox ${sandboxId} behind simulator ${target.id} no longer exists; attach a new one with: lim xcode create --attach --simulator-id ${target.id}`,
     );
-  }
-
-  /** Whether the Xcode target comes from the workspace memory rather than --id or an env pin. */
-  protected isRememberedXcodeTarget(providedId: string | undefined): boolean {
-    return !providedId && !this._overrideInstanceId && !envInstanceTarget('xcode');
   }
 
   /**
    * Runs a /xcode call on a target. A remembered standalone sandbox that no longer exists is
    * forgotten (cache and daemon) and reported as undefined so the command takes its "no sandbox"
-   * path; any other vanished sandbox raises vanishedXcodeSandboxError; a live sandbox whose
-   * daemon predates selection keeps that error.
+   * path.
    */
   protected async readXcodeSelectionOrForget<T>(
     target: XcodeTarget,
-    remembered: boolean,
     call: () => Promise<T>,
   ): Promise<T | undefined> {
     try {
       return await call();
     } catch (err) {
       if (!(err instanceof XcodeSelectionUnsupportedError)) throw err;
-      const gone = await this.vanishedXcodeSandboxId(target);
+      const gone = await this.vanishedXcodeSandboxError(target);
       if (!gone) throw err;
-      if (!remembered || target.type === 'ios') throw this.vanishedXcodeSandboxError(target, gone);
+      if (this._lastResolvedXcodeSource !== 'memory' || target.type === 'ios') throw gone;
       stopDaemon(target.id);
       clearLastInstanceId(target.id);
       this.info(`Sandbox ${target.id} no longer exists; forgot it.`);
@@ -1022,11 +1004,16 @@ export abstract class BaseCommand extends Command {
     }
   }
 
-  /** The Xcode client and GET /xcode of a target, or undefined when a remembered sandbox is gone. */
-  protected async tryReadXcodeStatus(target: XcodeTarget, remembered: boolean) {
+  /**
+   * The target named by --id, an env pin or the workspace memory, its Xcode client and GET
+   * /xcode; undefined when nothing names a sandbox or the remembered one is gone.
+   */
+  protected async tryReadXcodeStatus(providedId: string | undefined) {
+    const target = await this.tryResolveXcodeTarget(providedId);
+    if (!target) return undefined;
     const client = await this.resolveXcodeClient(target);
-    const status = await this.readXcodeSelectionOrForget(target, remembered, () => client.getXcode());
-    return status ? { client, status } : undefined;
+    const status = await this.readXcodeSelectionOrForget(target, () => client.getXcode());
+    return status ? { target, client, status } : undefined;
   }
 
   /** setXcode with the daemon's own refusal message instead of the transport's wrapping. */
@@ -1044,11 +1031,7 @@ export abstract class BaseCommand extends Command {
     }
   }
 
-  /**
-   * The daemon's own words when it refused an Xcode selection: 400 (major not available on
-   * this node) or 409 (a build, command, sync or the RBE stack is running). Anything else is
-   * a transport failure and stays as it is.
-   */
+  /** The daemon's own words when it refused an Xcode selection (400 not available, 409 busy). */
   protected xcodeRefusal(err: unknown): { status: 400 | 409; message: string } | undefined {
     if (!isDirectInstanceHttpError(err, 400) && !isDirectInstanceHttpError(err, 409)) return undefined;
     let message = err.body;
@@ -1065,12 +1048,7 @@ export abstract class BaseCommand extends Command {
    * is the instance that owns the workspace.
    */
   protected cacheInstanceId(target: XcodeTarget): string {
-    if (target.type === 'ios') {
-      return (
-        xcodeSandboxIdFromUrl(target.sandboxXcodeUrl ?? target.status?.sandbox?.xcode?.url ?? '') ?? target.id
-      );
-    }
-    return target.id;
+    return xcodeSandboxIdOf(target) ?? target.id;
   }
 
   /**

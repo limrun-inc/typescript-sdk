@@ -33,8 +33,13 @@ class TestCommand extends BaseCommand {
     this._instancesCreatedThisRun.add(id);
   }
 
-  read<T>(target: LastXcodeInstance | LastIosInstance, remembered: boolean, call: () => Promise<T>) {
-    return this.readXcodeSelectionOrForget(target, remembered, call);
+  read<T>(
+    target: LastXcodeInstance | LastIosInstance,
+    source: 'explicit' | 'env' | 'memory',
+    call: () => Promise<T>,
+  ) {
+    (this as unknown as { _lastResolvedXcodeSource: string })._lastResolvedXcodeSource = source;
+    return this.readXcodeSelectionOrForget(target, call);
   }
 
   refusal(err: unknown) {
@@ -61,7 +66,7 @@ describe('readXcodeSelectionOrForget', () => {
     // 404 that the SDK phrases as "daemon predates selection"; the API says gone.
     const cmd = new TestCommand([], {} as never);
     cmd.probe.mockRejectedValue(notFound());
-    await expect(cmd.read(target, true, () => Promise.reject(unsupported()))).resolves.toBeUndefined();
+    await expect(cmd.read(target, 'memory', () => Promise.reject(unsupported()))).resolves.toBeUndefined();
     expect(cmd.probe).toHaveBeenCalledWith(target.id);
     expect(stopDaemonMock).toHaveBeenCalledWith(target.id);
     expect(clearLastInstanceIdMock).toHaveBeenCalledWith(target.id);
@@ -71,7 +76,7 @@ describe('readXcodeSelectionOrForget', () => {
   it('reports a vanished sandbox named explicitly as not found, not as "no sandbox"', async () => {
     const cmd = new TestCommand([], {} as never);
     cmd.probe.mockRejectedValue(notFound());
-    await expect(cmd.read(target, false, () => Promise.reject(unsupported()))).rejects.toBeInstanceOf(
+    await expect(cmd.read(target, 'explicit', () => Promise.reject(unsupported()))).rejects.toBeInstanceOf(
       NotFoundError,
     );
     expect(clearLastInstanceIdMock).not.toHaveBeenCalled();
@@ -88,7 +93,7 @@ describe('readXcodeSelectionOrForget', () => {
     };
     const cmd = new TestCommand([], {} as never);
     cmd.probe.mockRejectedValue(notFound());
-    const err = await cmd.read(ios, true, () => Promise.reject(unsupported())).catch((e: unknown) => e);
+    const err = await cmd.read(ios, 'memory', () => Promise.reject(unsupported())).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(Error);
     expect(err).not.toBeInstanceOf(NotFoundError);
     expect((err as Error).message).toContain('sandbox_euna_child');
@@ -101,7 +106,7 @@ describe('readXcodeSelectionOrForget', () => {
   it('keeps the unsupported error when the sandbox is alive', async () => {
     const cmd = new TestCommand([], {} as never);
     cmd.probe.mockResolvedValue({ metadata: { id: target.id } });
-    await expect(cmd.read(target, true, () => Promise.reject(unsupported()))).rejects.toBeInstanceOf(
+    await expect(cmd.read(target, 'memory', () => Promise.reject(unsupported()))).rejects.toBeInstanceOf(
       XcodeSelectionUnsupportedError,
     );
     expect(clearLastInstanceIdMock).not.toHaveBeenCalled();
@@ -110,14 +115,14 @@ describe('readXcodeSelectionOrForget', () => {
   it('takes a sandbox this run created, or an env-pinned one, at its word', async () => {
     const cmd = new TestCommand([], {} as never);
     cmd.markCreated(target.id);
-    await expect(cmd.read(target, true, () => Promise.reject(unsupported()))).rejects.toBeInstanceOf(
+    await expect(cmd.read(target, 'memory', () => Promise.reject(unsupported()))).rejects.toBeInstanceOf(
       XcodeSelectionUnsupportedError,
     );
     process.env.LIM_XCODE_INSTANCE_URL = 'https://euna.limrun.net/v1/sandbox_euna_pinned/xcode';
     process.env.LIM_XCODE_INSTANCE_TOKEN = 'opaque-token';
     const pinned = new TestCommand([], {} as never);
     const envTarget = (await import('./lib/set-instance')).envInstanceTarget('xcode')!;
-    await expect(pinned.read(envTarget, false, () => Promise.reject(unsupported()))).rejects.toBeInstanceOf(
+    await expect(pinned.read(envTarget, 'env', () => Promise.reject(unsupported()))).rejects.toBeInstanceOf(
       XcodeSelectionUnsupportedError,
     );
     expect(cmd.probe).not.toHaveBeenCalled();
@@ -126,8 +131,8 @@ describe('readXcodeSelectionOrForget', () => {
 
   it('passes other failures and successes through untouched', async () => {
     const cmd = new TestCommand([], {} as never);
-    await expect(cmd.read(target, true, () => Promise.resolve('ok'))).resolves.toBe('ok');
-    await expect(cmd.read(target, true, () => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
+    await expect(cmd.read(target, 'memory', () => Promise.resolve('ok'))).resolves.toBe('ok');
+    await expect(cmd.read(target, 'memory', () => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
     expect(cmd.probe).not.toHaveBeenCalled();
   });
 });

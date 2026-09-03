@@ -22,25 +22,18 @@ export default class XcodeVersion extends BaseCommand {
     const preferred = loadXcodeVersionPreference();
 
     await this.withAuth(async () => {
-      const target = await this.tryResolveXcodeTarget(flags.id);
-      const status =
-        target ?
-          (await this.tryReadXcodeStatus(target, this.isRememberedXcodeTarget(flags.id)))?.status
-        : undefined;
-      if (!target || !status) {
-        if (flags.json) {
-          this.outputJson({ preferred });
-        } else if (preferred) {
+      const read = await this.tryReadXcodeStatus(flags.id);
+      if (!read) {
+        if (flags.json) this.outputJson({ preferred });
+        else if (preferred)
           this.output(
-            `No sandbox instance found; the next one uses Xcode ${preferred}${this.scopeSuffix()}.`,
+            `No sandbox instance found${this.scopeSuffix()}; the next one uses Xcode ${preferred}.`,
           );
-        } else {
-          this.output(
-            `No sandbox instance found and no preference${this.scopeSuffix()}; sandboxes use the node default.`,
-          );
-        }
+        else
+          this.output(`No sandbox instance found${this.scopeSuffix()}; the next one uses the node default.`);
         return;
       }
+      const { target, status } = read;
       if (flags.json) {
         this.outputJson({ instanceId: target.id, bound: status.bound, preferred });
         return;
