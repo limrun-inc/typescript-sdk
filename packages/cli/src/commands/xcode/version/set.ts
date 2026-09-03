@@ -1,11 +1,7 @@
 import { Args } from '@oclif/core';
 import type { XcodeSelectResult } from '@limrun/api';
 import { BaseCommand } from '../../../base-command';
-import {
-  clearXcodeVersionPreference,
-  loadXcodeVersionPreference,
-  setXcodeVersionPreference,
-} from '../../../lib/config';
+import { loadXcodeVersionPreference, setXcodeVersionPreference } from '../../../lib/config';
 import { formatXcode, parseXcodeMajor, xcodeTargetFlags } from '../../../lib/xcode-version';
 
 export default class XcodeVersionSet extends BaseCommand {
@@ -32,11 +28,12 @@ export default class XcodeVersionSet extends BaseCommand {
     this.setParsedFlags(flags);
     const major = parseXcodeMajor(args.major, 'version set');
     const previous = loadXcodeVersionPreference();
-    // Recorded and announced up front: a busy sandbox (409) refuses the switch right now and the
-    // next command retries it. Only a major the node does not offer (400) takes it back below,
-    // because a preference for it would make every later command fail the same way.
-    setXcodeVersionPreference(major);
-    this.info(`Xcode ${major} is now the preferred version${this.scopeSuffix()}.`);
+    // The preference is the workspace's wish and is recorded whatever the sandbox answers, except
+    // a 400: a major the node does not offer would make every later command fail the same way.
+    const record = () => {
+      setXcodeVersionPreference(major);
+      this.info(`Xcode ${major} is now the preferred version${this.scopeSuffix()}.`);
+    };
 
     await this.withAuth(async () => {
       const target = await this.tryResolveXcodeTarget(flags.id);
@@ -44,40 +41,34 @@ export default class XcodeVersionSet extends BaseCommand {
       try {
         result =
           target ?
-            await this.readXcodeSelectionOrForget(target, this.isRememberedXcodeTarget(flags.id), async () =>
+            await this.readXcodeSelectionOrForget(target, async () =>
               (await this.resolveXcodeClient(target)).setXcode(major),
             )
           : undefined;
       } catch (err) {
         const refusal = this.xcodeRefusal(err);
-        if (!refusal) throw err;
-        if (refusal.status === 400) {
-          // A preference this command introduced goes back; one the workspace already had is not
-          // ours to drop, so say how to.
+        if (refusal?.status === 400) {
           if (previous === major) {
             this.error(
-              `${refusal.message}. This workspace already preferred Xcode ${major}; drop it with: lim xcode version unset`,
+              `${refusal.message}. This workspace already prefers Xcode ${major}; drop it with: lim xcode version unset`,
             );
           }
-          if (previous) setXcodeVersionPreference(previous);
-          else clearXcodeVersionPreference();
           this.error(
-            `${refusal.message}. The workspace preference is back to ${
-              previous ? `Xcode ${previous}` : 'unset'
-            }.`,
+            `${refusal.message}. The workspace preference stays ${previous ? `Xcode ${previous}` : 'unset'}.`,
           );
         }
-        this.error(`${refusal.message}. The preference is kept; the next command switches the sandbox.`);
+        record();
+        if (refusal) this.error(`${refusal.message}. The next command switches the sandbox.`);
+        throw err;
       }
-      if (flags.json) {
-        // A vanished sandbox was forgotten above: naming its id here would present it as live.
-        this.outputJson(
-          result ? { instanceId: target?.id, preferred: major, ...result } : { preferred: major },
-        );
+      record();
+      if (!target || !result) {
+        if (flags.json) this.outputJson({ preferred: major });
+        else this.output(`No sandbox instance found${this.scopeSuffix()}; the next one uses it.`);
         return;
       }
-      if (!target || !result) {
-        this.output('No sandbox instance found; the next one uses it.');
+      if (flags.json) {
+        this.outputJson({ instanceId: target.id, preferred: major, ...result });
         return;
       }
       const verb = result.alreadyBound ? 'already uses' : 'now uses';

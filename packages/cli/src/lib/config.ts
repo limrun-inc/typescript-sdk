@@ -660,9 +660,14 @@ export function clearXcodeVersionPreference(): void {
   });
 }
 
-export function sandboxXcodeIdFromLastIosInstance(instance: LastIosInstance | undefined): string | undefined {
+function sandboxXcodeIdFromLastIosInstance(instance: LastIosInstance | undefined): string | undefined {
   const sandboxXcodeUrl = instance?.sandboxXcodeUrl ?? instance?.status?.sandbox?.xcode?.url;
   return sandboxXcodeUrl ? xcodeSandboxIdFromUrl(sandboxXcodeUrl) : undefined;
+}
+
+/** The Xcode sandbox a target's daemon calls reach: the target itself, or the one behind a simulator. */
+export function xcodeSandboxIdOf(target: LastXcodeInstance | LastIosInstance): string | undefined {
+  return target.type === 'ios' ? sandboxXcodeIdFromLastIosInstance(target) : target.id;
 }
 
 export function clearLastInstanceId(instanceId: string): void {
