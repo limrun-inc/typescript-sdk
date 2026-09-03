@@ -33,13 +33,17 @@ export default class XcodeVersionSet extends BaseCommand {
 
     await this.withAuth(async () => {
       const target = await this.tryResolveXcodeTarget(flags.id);
-      if (!target) {
+      const result =
+        target ?
+          await this.readXcodeSelectionOrForget(target, async () =>
+            this.selectXcode(await this.resolveXcodeClient(target), major),
+          )
+        : undefined;
+      if (!target || !result) {
         if (flags.json) this.outputJson({ preferred: major });
-        else this.output('No sandbox yet; the next one uses it.');
+        else this.output('No sandbox instance found; the next one uses it.');
         return;
       }
-      const xcodeClient = await this.resolveXcodeClient(target);
-      const result = await this.selectXcode(xcodeClient, major);
       if (flags.json) {
         this.outputJson({ instanceId: target.id, preferred: major, ...result });
         return;

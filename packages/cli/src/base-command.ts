@@ -959,6 +959,35 @@ export abstract class BaseCommand extends Command {
     return this.resolveXcodeTarget(providedId);
   }
 
+  /**
+   * Runs a /xcode call against a remembered sandbox. A cached target is trusted without a
+   * round-trip, so a 404 (XcodeSelectionUnsupportedError) is also what a sandbox that no longer
+   * exists produces. The API tells the two apart: a vanished sandbox is forgotten (cache and
+   * daemon) and reported as undefined so the command takes its "no sandbox" path; a live one
+   * really predates selection and the error stands.
+   */
+  protected async readXcodeSelectionOrForget<T>(
+    target: XcodeTarget,
+    call: () => Promise<T>,
+  ): Promise<T | undefined> {
+    try {
+      return await call();
+    } catch (err) {
+      if (!(err instanceof XcodeSelectionUnsupportedError) || this.wasCreatedThisRun(target.id)) throw err;
+      try {
+        if (target.type === 'ios') await this.client.iosInstances.get(target.id);
+        else await this.client.xcodeInstances.get(target.id);
+      } catch (probeErr) {
+        if (!(probeErr instanceof NotFoundError)) throw probeErr;
+        stopDaemon(target.id);
+        clearLastInstanceId(target.id);
+        this.info(`Sandbox ${target.id} no longer exists; forgot it.`);
+        return undefined;
+      }
+      throw err;
+    }
+  }
+
   /** setXcode with the daemon's own refusal message instead of the transport's wrapping. */
   protected async selectXcode(xcodeClient: XcodeClient, major: string): Promise<XcodeSelectResult> {
     return this.readXcodeSelection(() => xcodeClient.setXcode(major));
