@@ -79,6 +79,7 @@ export default class XcodeBuild extends BaseCommand {
     `<%= config.bin %> xcode build ./MyProject --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"`,
     '<%= config.bin %> xcode build ./MyProject --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
     '<%= config.bin %> xcode build ./MyProject --detach --inactivity-timeout 3s --webhook-url https://ci.example.com/hooks/limrun',
+    '<%= config.bin %> xcode build ./MyProject --detach --webhook-url https://ci.example.com/hooks/limrun --webhook-label pipeline=release --webhook-label commit="$GIT_SHA"',
     'LIM_WEBHOOK_URL=https://ci.example.com/hooks/limrun LIM_WEBHOOK_HEADERS="Authorization=Bearer $HOOK_SECRET" <%= config.bin %> xcode build ./MyProject --detach',
     '<%= config.bin %> xcode build ./MyProject --basis-cache-dir ./.limsync-cache',
     '<%= config.bin %> xcode build ./MyProject --ignore "\\\\.xcuserdata/"',
@@ -238,6 +239,12 @@ export default class XcodeBuild extends BaseCommand {
       // value unsplit and unwrapped, which would put a bare string behind a
       // string[] type. See repeatableFlagFromEnv.
       default: async () => repeatableFlagFromEnv('LIM_WEBHOOK_HEADERS'),
+    }),
+    'webhook-label': Flags.string({
+      description:
+        'Label echoed verbatim in the webhook payload\'s "labels" field as KEY=VALUE, for example pipeline=release, so your endpoint can correlate the callback with its own context. Requires --webhook-url. Repeat for multiple labels (at most 32; key and value at most 64 printable ASCII characters each). Defaults to LIM_WEBHOOK_LABELS, which holds several labels separated by commas; write a literal comma inside a value as \\,.',
+      multiple: true,
+      default: async () => repeatableFlagFromEnv('LIM_WEBHOOK_LABELS'),
     }),
     detach: Flags.boolean({
       description:

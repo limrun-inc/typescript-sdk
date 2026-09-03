@@ -1,4 +1,4 @@
-import { webhookConfigFromFlags } from './webhook-options';
+import { MAX_WEBHOOK_LABELS, webhookConfigFromFlags } from './webhook-options';
 
 describe('webhookConfigFromFlags', () => {
   test('returns undefined without flags', () => {
@@ -74,5 +74,95 @@ describe('webhookConfigFromFlags', () => {
         'webhook-header': ['Authorization=Bearer one', 'authorization=Bearer two'],
       }),
     ).toThrow('Duplicate --webhook-header name "authorization".');
+  });
+
+  describe('labels', () => {
+    test('maps labels, preserving = in values and allowing empty values', () => {
+      expect(
+        webhookConfigFromFlags({
+          'webhook-url': 'https://ci.example.com/h',
+          'webhook-label': ['pipeline=release', 'query=a=b', 'flag='],
+        }),
+      ).toEqual({
+        url: 'https://ci.example.com/h',
+        labels: { pipeline: 'release', query: 'a=b', flag: '' },
+      });
+    });
+
+    test('omits labels key when none are given', () => {
+      expect(
+        webhookConfigFromFlags({ 'webhook-url': 'https://ci.example.com/h', 'webhook-label': [] }),
+      ).toEqual({ url: 'https://ci.example.com/h' });
+    });
+
+    test('rejects labels without a url', () => {
+      expect(() => webhookConfigFromFlags({ 'webhook-label': ['a=b'] })).toThrow(
+        '--webhook-label requires --webhook-url.',
+      );
+    });
+
+    test('rejects entries without KEY=VALUE shape', () => {
+      for (const entry of ['NoSeparator', '=value-only']) {
+        expect(() =>
+          webhookConfigFromFlags({ 'webhook-url': 'https://ci.example.com/h', 'webhook-label': [entry] }),
+        ).toThrow('Invalid --webhook-label entry 1: expected KEY=VALUE.');
+      }
+    });
+
+    test('rejects duplicate keys exactly, keeping distinct casings', () => {
+      expect(() =>
+        webhookConfigFromFlags({
+          'webhook-url': 'https://ci.example.com/h',
+          'webhook-label': ['env=staging', 'env=production'],
+        }),
+      ).toThrow('Duplicate --webhook-label key "env".');
+      // Labels are JSON object keys, not header names, so casing is significant.
+      expect(
+        webhookConfigFromFlags({
+          'webhook-url': 'https://ci.example.com/h',
+          'webhook-label': ['Env=a', 'env=b'],
+        }),
+      ).toEqual({ url: 'https://ci.example.com/h', labels: { Env: 'a', env: 'b' } });
+    });
+
+    test('keeps object-prototype names as ordinary labels', () => {
+      expect(
+        webhookConfigFromFlags({
+          'webhook-url': 'https://ci.example.com/h',
+          'webhook-label': ['constructor=x', '__proto__=y'],
+        })?.labels,
+      ).toEqual(
+        Object.fromEntries([
+          ['constructor', 'x'],
+          ['__proto__', 'y'],
+        ]),
+      );
+    });
+
+    test('leaves per-label length and character rules to the daemon', () => {
+      const long = 'k'.repeat(65);
+      expect(
+        webhookConfigFromFlags({
+          'webhook-url': 'https://ci.example.com/h',
+          'webhook-label': [`${long}=${long}`, 'pipelíne=relëase'],
+        })?.labels,
+      ).toEqual({ [long]: long, pipelíne: 'relëase' });
+    });
+
+    test(`accepts ${MAX_WEBHOOK_LABELS} labels and rejects one more`, () => {
+      const atLimit = Array.from({ length: MAX_WEBHOOK_LABELS }, (_, i) => `k${i}=v`);
+      expect(
+        Object.keys(
+          webhookConfigFromFlags({ 'webhook-url': 'https://ci.example.com/h', 'webhook-label': atLimit })
+            ?.labels ?? {},
+        ),
+      ).toHaveLength(MAX_WEBHOOK_LABELS);
+      expect(() =>
+        webhookConfigFromFlags({
+          'webhook-url': 'https://ci.example.com/h',
+          'webhook-label': [...atLimit, 'extra=v'],
+        }),
+      ).toThrow(`--webhook-label accepts at most ${MAX_WEBHOOK_LABELS} labels.`);
+    });
   });
 });

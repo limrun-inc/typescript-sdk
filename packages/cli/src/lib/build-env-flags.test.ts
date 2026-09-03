@@ -12,7 +12,7 @@ type BuildFlagValues = WebhookFlagValues & {
   'signed-upload-url'?: string;
 };
 
-const VARS = ['LIM_WEBHOOK_URL', 'LIM_WEBHOOK_HEADERS', 'LIM_SIGNED_UPLOAD_URL'];
+const VARS = ['LIM_WEBHOOK_URL', 'LIM_WEBHOOK_HEADERS', 'LIM_WEBHOOK_LABELS', 'LIM_SIGNED_UPLOAD_URL'];
 const saved: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -59,6 +59,24 @@ describe.each([
     expect(webhookConfigFromFlags(typed)).toEqual({
       url: 'https://typed.example.com/hooks',
       headers: { Authorization: 'Bearer typed' },
+    });
+  });
+
+  it('takes webhook labels from the environment, and lets an explicit flag replace them', async () => {
+    process.env['LIM_WEBHOOK_LABELS'] = 'pipeline=release,commit=9f3a1c';
+    const labelsOnly = await parseFlags(flags, []);
+    expect(() => webhookConfigFromFlags(labelsOnly)).toThrow('--webhook-label requires --webhook-url.');
+
+    process.env['LIM_WEBHOOK_URL'] = 'https://ambient.example.com/hooks';
+    expect(webhookConfigFromFlags(await parseFlags(flags, []))).toEqual({
+      url: 'https://ambient.example.com/hooks',
+      labels: { pipeline: 'release', commit: '9f3a1c' },
+    });
+
+    const typed = await parseFlags(flags, ['--webhook-label', 'pipeline=nightly']);
+    expect(webhookConfigFromFlags(typed)).toEqual({
+      url: 'https://ambient.example.com/hooks',
+      labels: { pipeline: 'nightly' },
     });
   });
 
