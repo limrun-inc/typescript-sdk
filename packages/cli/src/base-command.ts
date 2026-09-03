@@ -997,19 +997,26 @@ export abstract class BaseCommand extends Command {
     try {
       return await call();
     } catch (err) {
-      // 400 (not available) and 409 (busy) are the daemon talking to the user: surface its
-      // message verbatim instead of the transport's wrapping.
-      if (isDirectInstanceHttpError(err, 400) || isDirectInstanceHttpError(err, 409)) {
-        let message = err.body;
-        try {
-          message = (JSON.parse(err.body) as { message?: string }).message ?? err.body;
-        } catch {
-          // not JSON: the raw body is the best we have
-        }
-        this.error(message);
-      }
+      const refusal = this.xcodeRefusal(err);
+      if (refusal) this.error(refusal.message);
       throw err;
     }
+  }
+
+  /**
+   * The daemon's own words when it refused an Xcode selection: 400 (major not available on
+   * this node) or 409 (a build, command, sync or the RBE stack is running). Anything else is
+   * a transport failure and stays as it is.
+   */
+  protected xcodeRefusal(err: unknown): { status: 400 | 409; message: string } | undefined {
+    if (!isDirectInstanceHttpError(err, 400) && !isDirectInstanceHttpError(err, 409)) return undefined;
+    let message = err.body;
+    try {
+      message = (JSON.parse(err.body) as { message?: string }).message ?? err.body;
+    } catch {
+      // not JSON: the raw body is the best we have
+    }
+    return { status: err.status as 400 | 409, message };
   }
 
   /**

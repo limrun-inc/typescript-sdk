@@ -1,6 +1,11 @@
 import { Args } from '@oclif/core';
+import type { XcodeSelectResult } from '@limrun/api';
 import { BaseCommand } from '../../../base-command';
-import { setXcodeVersionPreference } from '../../../lib/config';
+import {
+  clearXcodeVersionPreference,
+  loadXcodeVersionPreference,
+  setXcodeVersionPreference,
+} from '../../../lib/config';
 import { formatXcode, parseXcodeMajor, xcodeTargetFlags } from '../../../lib/xcode-version';
 
 export default class XcodeVersionSet extends BaseCommand {
@@ -26,26 +31,43 @@ export default class XcodeVersionSet extends BaseCommand {
     const { args, flags } = await this.parse(XcodeVersionSet);
     this.setParsedFlags(flags);
     const major = parseXcodeMajor(args.major, 'version set');
-    // The preference is the workspace's wish and is recorded even when the sandbox refuses the
-    // switch right now (busy, or a major it does not have); the next command retries it.
+    const previous = loadXcodeVersionPreference();
+    // Recorded up front: a busy sandbox (409) refuses the switch right now and the next
+    // command retries it. Only a major the node does not offer (400) rolls it back below,
+    // because a preference for it would make every later command fail the same way.
     setXcodeVersionPreference(major);
-    this.info(`Xcode ${major} is now the preferred version${this.scopeSuffix()}.`);
+    const preferredLine = `Xcode ${major} is now the preferred version${this.scopeSuffix()}.`;
 
     await this.withAuth(async () => {
       const target = await this.tryResolveXcodeTarget(flags.id);
-      const result =
-        target ?
-          await this.readXcodeSelectionOrForget(target, async () =>
-            this.selectXcode(await this.resolveXcodeClient(target), major),
-          )
-        : undefined;
-      if (!target || !result) {
-        if (flags.json) this.outputJson({ preferred: major });
-        else this.output('No sandbox instance found; the next one uses it.');
-        return;
+      let result: XcodeSelectResult | undefined;
+      try {
+        result =
+          target ?
+            await this.readXcodeSelectionOrForget(target, async () =>
+              (await this.resolveXcodeClient(target)).setXcode(major),
+            )
+          : undefined;
+      } catch (err) {
+        const refusal = this.xcodeRefusal(err);
+        if (!refusal) throw err;
+        if (refusal.status === 400) {
+          if (previous) setXcodeVersionPreference(previous);
+          else clearXcodeVersionPreference();
+          this.error(
+            `${refusal.message}. The workspace preference stays ${previous ? `Xcode ${previous}` : 'unset'}.`,
+          );
+        }
+        this.info(preferredLine);
+        this.error(`${refusal.message}. The next command switches the sandbox.`);
       }
       if (flags.json) {
-        this.outputJson({ instanceId: target.id, preferred: major, ...result });
+        this.outputJson({ instanceId: target?.id, preferred: major, ...result });
+        return;
+      }
+      this.info(preferredLine);
+      if (!target || !result) {
+        this.output('No sandbox instance found; the next one uses it.');
         return;
       }
       const verb = result.alreadyBound ? 'already uses' : 'now uses';
