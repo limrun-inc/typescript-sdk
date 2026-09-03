@@ -32,11 +32,11 @@ export default class XcodeVersionSet extends BaseCommand {
     this.setParsedFlags(flags);
     const major = parseXcodeMajor(args.major, 'version set');
     const previous = loadXcodeVersionPreference();
-    // Recorded up front: a busy sandbox (409) refuses the switch right now and the next
-    // command retries it. Only a major the node does not offer (400) rolls it back below,
+    // Recorded and announced up front: a busy sandbox (409) refuses the switch right now and the
+    // next command retries it. Only a major the node does not offer (400) takes it back below,
     // because a preference for it would make every later command fail the same way.
     setXcodeVersionPreference(major);
-    const preferredLine = `Xcode ${major} is now the preferred version${this.scopeSuffix()}.`;
+    this.info(`Xcode ${major} is now the preferred version${this.scopeSuffix()}.`);
 
     await this.withAuth(async () => {
       const target = await this.tryResolveXcodeTarget(flags.id);
@@ -44,7 +44,7 @@ export default class XcodeVersionSet extends BaseCommand {
       try {
         result =
           target ?
-            await this.readXcodeSelectionOrForget(target, async () =>
+            await this.readXcodeSelectionOrForget(target, this.isRememberedXcodeTarget(flags.id), async () =>
               (await this.resolveXcodeClient(target)).setXcode(major),
             )
           : undefined;
@@ -52,14 +52,16 @@ export default class XcodeVersionSet extends BaseCommand {
         const refusal = this.xcodeRefusal(err);
         if (!refusal) throw err;
         if (refusal.status === 400) {
-          if (previous) setXcodeVersionPreference(previous);
+          const restored = previous !== major ? previous : undefined;
+          if (restored) setXcodeVersionPreference(restored);
           else clearXcodeVersionPreference();
           this.error(
-            `${refusal.message}. The workspace preference stays ${previous ? `Xcode ${previous}` : 'unset'}.`,
+            `${refusal.message}. The workspace preference is back to ${
+              restored ? `Xcode ${restored}` : 'unset'
+            }.`,
           );
         }
-        this.info(preferredLine);
-        this.error(`${refusal.message}. The next command switches the sandbox.`);
+        this.error(`${refusal.message}. The preference is kept; the next command switches the sandbox.`);
       }
       if (flags.json) {
         // A vanished sandbox was forgotten above: naming its id here would present it as live.
@@ -68,7 +70,6 @@ export default class XcodeVersionSet extends BaseCommand {
         );
         return;
       }
-      this.info(preferredLine);
       if (!target || !result) {
         this.output('No sandbox instance found; the next one uses it.');
         return;

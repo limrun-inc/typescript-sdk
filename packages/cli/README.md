@@ -503,7 +503,7 @@ lim xcode attach-simulator ios_abc123 --id sandbox_def456
 lim xcode version set 27
 lim xcode build ./MyProject           # builds with Xcode 27
 lim xcode build ./MyProject --xcode-version 26   # one-off override, not remembered
-lim xcode version unset               # forget the preference; the sandbox keeps its Xcode
+lim xcode version unset               # forget the preference; the sandbox goes back to the node default
 
 # Tune sync cache or ignore additional paths
 lim xcode sync ./MyProject --watch --basis-cache-dir ./.limsync-cache
