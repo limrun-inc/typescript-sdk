@@ -717,22 +717,30 @@ export class XcodeSelectionUnsupportedError extends LimrunError {
 }
 
 /** Reads an `/xcode` JSON response, mapping a 404 to XcodeSelectionUnsupportedError. */
-async function readXcodeResponse<T>(res: Response, operation: string): Promise<T> {
-  if (res.status === 404) {
-    await res.text().catch(() => undefined);
-    throw new XcodeSelectionUnsupportedError(operation);
-  }
-  return readJsonResponse<T>(res, operation);
+function readXcodeResponse<T>(res: Response, operation: string): Promise<T> {
+  return readOrUnsupported<T>(res, operation, (op) => new XcodeSelectionUnsupportedError(op));
 }
 
 /**
  * Reads an `/rbe` JSON response, mapping a 404 to RbeUnsupportedError (a route
  * 404 means RBE is not supported here, never a missing instance).
  */
-async function readRbeResponse<T>(res: Response, operation: string): Promise<T> {
+function readRbeResponse<T>(res: Response, operation: string): Promise<T> {
+  return readOrUnsupported<T>(res, operation, (op) => new RbeUnsupportedError(op));
+}
+
+/**
+ * Reads a JSON response from a limbuild route that only newer daemons serve: a 404 there means
+ * the feature is missing, never that the instance is (the caller's error class says which).
+ */
+async function readOrUnsupported<T>(
+  res: Response,
+  operation: string,
+  unsupported: (operation: string) => Error,
+): Promise<T> {
   if (res.status === 404) {
     await res.text().catch(() => undefined);
-    throw new RbeUnsupportedError(operation);
+    throw unsupported(operation);
   }
   return readJsonResponse<T>(res, operation);
 }

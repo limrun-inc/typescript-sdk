@@ -1,5 +1,5 @@
-import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
+import { xcodeTargetFlags } from '../../../lib/xcode-version';
 import { loadXcodeVersionPreference } from '../../../lib/config';
 
 export default class XcodeVersionList extends BaseCommand {
@@ -13,14 +13,7 @@ export default class XcodeVersionList extends BaseCommand {
     '<%= config.bin %> xcode version list --id <xcode-instance-ID>',
   ];
 
-  static flags = {
-    ...BaseCommand.baseFlags,
-    create: Flags.boolean({ hidden: true, default: false, allowNo: true }),
-    id: Flags.string({
-      description:
-        'Xcode instance ID to inspect. Defaults to the most recently created Xcode-capable target.',
-    }),
-  };
+  static flags = { ...BaseCommand.baseFlags, ...xcodeTargetFlags };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(XcodeVersionList);
@@ -28,7 +21,13 @@ export default class XcodeVersionList extends BaseCommand {
     const preferred = loadXcodeVersionPreference();
 
     await this.withAuth(async () => {
-      const target = await this.resolveXcodeTarget(flags.id);
+      const target = await this.tryResolveXcodeTarget(flags.id);
+      if (!target) {
+        if (flags.json) this.outputJson({ preferred, installed: [] });
+        else
+          this.output(`No sandbox yet${this.scopeSuffix()}; create one to see the Xcodes its node offers.`);
+        return;
+      }
       const status = await (await this.resolveXcodeClient(target)).getXcode();
       if (flags.json) {
         this.outputJson({ instanceId: target.id, ...status, preferred });
@@ -49,7 +48,7 @@ export default class XcodeVersionList extends BaseCommand {
           .filter(Boolean)
           .join(', '),
       ]);
-      this.outputTable(['MAJOR', 'VERSION', ''], rows);
+      this.outputTable(['Major', 'Version', 'Notes'], rows);
     });
   }
 }

@@ -1,8 +1,8 @@
 import { formatXcode, parseXcodeMajor, resolveRequestedXcodeVersion } from './xcode-version';
+import { loadXcodeVersionPreference } from './config';
 
 jest.mock('./config', () => ({ loadXcodeVersionPreference: jest.fn() }));
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const config = require('./config') as { loadXcodeVersionPreference: jest.Mock };
+const config = { loadXcodeVersionPreference: loadXcodeVersionPreference as jest.Mock };
 
 describe('parseXcodeMajor', () => {
   test('accepts a bare major', () => {
@@ -73,5 +73,13 @@ describe('formatXcode', () => {
       }),
     ).toBe('26.4.0.17E192');
     expect(formatXcode(undefined)).toBe('unknown (daemon predates Xcode selection)');
+  });
+});
+
+describe('a malformed request fails before any sandbox work', () => {
+  // build/test/rbe/create call resolveRequestedXcodeVersion right after parsing flags, so a
+  // typo like 27.0 is rejected before a sandbox could be created and billed.
+  test('resolveRequestedXcodeVersion throws synchronously for a bad flag', () => {
+    expect(() => resolveRequestedXcodeVersion('twenty-seven')).toThrow();
   });
 });

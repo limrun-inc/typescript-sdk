@@ -200,3 +200,4 @@ export {
   PermissionDeniedError,
   UnprocessableEntityError,
 } from './core/error';
+export { isDirectInstanceHttpError, type DirectInstanceHttpError } from './internal/direct-instance-errors';

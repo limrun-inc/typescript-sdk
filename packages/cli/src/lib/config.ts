@@ -180,8 +180,9 @@ function sanitizeScope(value: unknown): ScopeInstances {
   const scope: ScopeInstances = {};
   if (!isRecord(value)) return scope;
   if (typeof value['lastUsedAt'] === 'string') scope.lastUsedAt = value['lastUsedAt'];
-  if (typeof value['xcodeVersion'] === 'string' && value['xcodeVersion'])
+  if (typeof value['xcodeVersion'] === 'string' && /^\d+$/.test(value['xcodeVersion'])) {
     scope.xcodeVersion = value['xcodeVersion'];
+  }
   if (isLastAndroidInstance(value['android'])) scope.android = value['android'];
   if (isLastIosInstance(value['ios'])) scope.ios = value['ios'];
   if (isLastIosInstance(value['xcode']) || isLastXcodeInstance(value['xcode'])) {

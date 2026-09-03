@@ -1,5 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { resolveRequestedXcodeVersion } from '../../lib/xcode-version';
 import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
@@ -65,7 +66,10 @@ export default class XcodeRun extends BaseCommand {
 
     await this.withAuth(async () => {
       const target = await this.resolveXcodeTargetOrCreate(flags.id);
-      const xcodeClient = await this.resolveXcodeClient(target);
+      const xcodeClient = await this.resolveXcodeClientForWork(
+        target,
+        resolveRequestedXcodeVersion(undefined),
+      );
 
       // The build sandbox hosts no simulators, so simctl install/boot/launch
       // is denied there. Steer to the attach flow before the command runs.

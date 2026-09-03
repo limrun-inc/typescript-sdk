@@ -499,7 +499,7 @@ LIM_WEBHOOK_URL=https://ci.example.com/hooks/limrun \
 # Attach an existing simulator so builds auto-install there
 lim xcode attach-simulator ios_abc123 --id sandbox_def456
 
-# Pick the Xcode major for this workspace once; builds, tests, RBE and new sandboxes follow it
+# Pick the Xcode major for this workspace once; builds, tests, runs, syncs, RBE and new sandboxes follow it
 lim xcode version set 27
 lim xcode build ./MyProject           # builds with Xcode 27
 lim xcode build ./MyProject --xcode-version 26   # one-off override, not remembered

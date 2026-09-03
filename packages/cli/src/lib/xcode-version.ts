@@ -12,6 +12,14 @@ export const xcodeVersionFlags = {
   }),
 };
 
+/** Target selection for the `version` commands: an explicit sandbox, never an auto-created one. */
+export const xcodeTargetFlags = {
+  create: Flags.boolean({ hidden: true, default: false, allowNo: true }),
+  id: Flags.string({
+    description: 'Xcode instance ID to target. Defaults to the most recently created Xcode-capable target.',
+  }),
+};
+
 const majorPattern = /^\d+$/;
 
 /** Rejects anything but a bare major such as "27", before any network call. */
