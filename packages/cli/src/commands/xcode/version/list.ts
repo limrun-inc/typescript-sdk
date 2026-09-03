@@ -22,13 +22,20 @@ export default class XcodeVersionList extends BaseCommand {
 
     await this.withAuth(async () => {
       const target = await this.tryResolveXcodeTarget(flags.id);
-      if (!target) {
+      const status =
+        target ?
+          await this.readXcodeSelectionOrForget(target, async () =>
+            (await this.resolveXcodeClient(target)).getXcode(),
+          )
+        : undefined;
+      if (!target || !status) {
         if (flags.json) this.outputJson({ preferred, installed: [] });
         else
-          this.output(`No sandbox yet${this.scopeSuffix()}; create one to see the Xcodes its node offers.`);
+          this.output(
+            `No sandbox instance found${this.scopeSuffix()}; create one with \`lim xcode create\` to see the Xcodes its node offers.`,
+          );
         return;
       }
-      const status = await (await this.resolveXcodeClient(target)).getXcode();
       if (flags.json) {
         this.outputJson({ instanceId: target.id, ...status, preferred });
         return;
