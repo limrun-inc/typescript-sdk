@@ -62,7 +62,10 @@ export default class XcodeVersionSet extends BaseCommand {
         this.error(`${refusal.message}. The next command switches the sandbox.`);
       }
       if (flags.json) {
-        this.outputJson({ instanceId: target?.id, preferred: major, ...result });
+        // A vanished sandbox was forgotten above: naming its id here would present it as live.
+        this.outputJson(
+          result ? { instanceId: target?.id, preferred: major, ...result } : { preferred: major },
+        );
         return;
       }
       this.info(preferredLine);
