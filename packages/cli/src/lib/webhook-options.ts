@@ -7,13 +7,11 @@ export interface WebhookFlagValues {
 }
 
 /**
- * Server-side webhook label limits, enforced here too so a doomed build never
- * reaches a billed instance: at most 32 labels, each key and value at most 64
- * printable ASCII characters.
+ * Server-side cap on webhook labels, enforced here too so a doomed build never
+ * reaches a billed instance. Per-label shape (64 printable ASCII characters
+ * per key and value) is left to the daemon.
  */
 export const MAX_WEBHOOK_LABELS = 32;
-export const MAX_WEBHOOK_LABEL_LENGTH = 64;
-const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
 
 /**
  * Maps the shared --webhook-url / --webhook-header / --webhook-label flags
@@ -65,26 +63,11 @@ export function webhookConfigFromFlags(flags: WebhookFlagValues): WebhookConfig 
       throw new Error(`Invalid --webhook-label entry ${index + 1}: expected KEY=VALUE.`);
     }
     const key = entry.slice(0, separator);
-    const value = entry.slice(separator + 1);
     if (seenLabels.has(key)) {
       throw new Error(`Duplicate --webhook-label key ${JSON.stringify(key)}.`);
     }
-    if (key.length > MAX_WEBHOOK_LABEL_LENGTH || value.length > MAX_WEBHOOK_LABEL_LENGTH) {
-      throw new Error(
-        `Invalid --webhook-label entry ${
-          index + 1
-        }: key and value must be at most ${MAX_WEBHOOK_LABEL_LENGTH} characters each.`,
-      );
-    }
-    if (!PRINTABLE_ASCII.test(key) || !PRINTABLE_ASCII.test(value)) {
-      throw new Error(
-        `Invalid --webhook-label entry ${
-          index + 1
-        }: key and value must contain only printable ASCII characters.`,
-      );
-    }
     seenLabels.add(key);
-    labelPairs.push([key, value]);
+    labelPairs.push([key, entry.slice(separator + 1)]);
   }
   if (labelPairs.length > MAX_WEBHOOK_LABELS) {
     throw new Error(`--webhook-label accepts at most ${MAX_WEBHOOK_LABELS} labels.`);
