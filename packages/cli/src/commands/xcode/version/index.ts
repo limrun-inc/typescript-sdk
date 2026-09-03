@@ -5,7 +5,7 @@ import { formatXcode, xcodeTargetFlags } from '../../../lib/xcode-version';
 export default class XcodeVersion extends BaseCommand {
   static summary = 'Show the Xcode version the sandbox builds with';
   static description =
-    'Print the Xcode the remembered (or --id) sandbox is bound to, and the version this workspace prefers when it ' +
+    'Print the Xcode the remembered (or --id) sandbox has selected, and the version this workspace prefers when it ' +
     'differs. `lim xcode version set <major>` picks a version for the workspace, `lim xcode version list` shows ' +
     'the choices.';
 

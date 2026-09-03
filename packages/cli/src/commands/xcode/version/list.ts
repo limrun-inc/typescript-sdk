@@ -5,7 +5,7 @@ import { loadXcodeVersionPreference } from '../../../lib/config';
 export default class XcodeVersionList extends BaseCommand {
   static summary = 'List the Xcode versions the sandbox can build with';
   static description =
-    "Show the Xcodes installed on the sandbox's node, which one it is bound to, the node default, and the version " +
+    "Show the Xcodes installed on the sandbox's node, which one is selected, the node default, and the version " +
     'this workspace prefers. Pick one with `lim xcode version set <major>`.';
 
   static examples = [
@@ -41,7 +41,7 @@ export default class XcodeVersionList extends BaseCommand {
         x.major,
         `${x.version} (${x.build})`,
         [
-          x.major === status.bound.major ? 'bound' : '',
+          x.major === status.bound.major ? 'selected' : '',
           x.nodeDefault ? 'default' : '',
           x.major === preferred ? 'preferred' : '',
         ]

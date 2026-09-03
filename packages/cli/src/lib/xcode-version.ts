@@ -35,7 +35,7 @@ export type RequestedXcodeVersion = { major: string; source: 'flag' | 'workspace
 
 /**
  * The Xcode major a command should make its sandbox use: the flag when given, else the
- * workspace preference, else nothing (the sandbox keeps whatever it is bound to).
+ * workspace preference, else nothing (the sandbox keeps its selected Xcode).
  */
 export function resolveRequestedXcodeVersion(flag: string | undefined): RequestedXcodeVersion | undefined {
   if (flag) return { major: parseXcodeMajor(flag), source: 'flag' };
