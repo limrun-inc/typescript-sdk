@@ -660,7 +660,7 @@ export function clearXcodeVersionPreference(): void {
   });
 }
 
-function sandboxXcodeIdFromLastIosInstance(instance: LastIosInstance | undefined): string | undefined {
+export function sandboxXcodeIdFromLastIosInstance(instance: LastIosInstance | undefined): string | undefined {
   const sandboxXcodeUrl = instance?.sandboxXcodeUrl ?? instance?.status?.sandbox?.xcode?.url;
   return sandboxXcodeUrl ? xcodeSandboxIdFromUrl(sandboxXcodeUrl) : undefined;
 }

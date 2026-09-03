@@ -25,9 +25,7 @@ export default class XcodeVersion extends BaseCommand {
       const target = await this.tryResolveXcodeTarget(flags.id);
       const status =
         target ?
-          await this.readXcodeSelectionOrForget(target, async () =>
-            (await this.resolveXcodeClient(target)).getXcode(),
-          )
+          (await this.tryReadXcodeStatus(target, this.isRememberedXcodeTarget(flags.id)))?.status
         : undefined;
       if (!target || !status) {
         if (flags.json) {
