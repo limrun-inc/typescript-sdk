@@ -51,3 +51,22 @@ export function formatXcode(info: XcodeInfo | undefined): string {
   }
   return info.versionKey || 'unknown';
 }
+
+/**
+ * Notes column of `lim xcode version list`: beta seed, selection, node default, workspace
+ * preference. `betaSeed` ships with @limrun/api 0.49.2; typed here until the CLI depends on it.
+ */
+export function xcodeNotes(
+  info: XcodeInfo & { betaSeed?: string },
+  selectedMajor: string,
+  preferredMajor: string | undefined,
+): string {
+  return [
+    info.betaSeed ? `beta ${info.betaSeed}` : '',
+    info.major === selectedMajor ? 'selected' : '',
+    info.nodeDefault ? 'default' : '',
+    info.major === preferredMajor ? 'preferred' : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+}

@@ -387,6 +387,8 @@ export type XcodeInfo = {
    */
   versionKey: string;
   developerDir: string;
+  /** Apple's seed number when this Xcode is a beta ("6" for beta 6). Absent for a release. */
+  betaSeed?: string;
   /** Whether this is the Xcode the sandbox binds to when nothing was selected. */
   nodeDefault: boolean;
 };
