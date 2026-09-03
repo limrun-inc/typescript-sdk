@@ -1,8 +1,7 @@
-// Structural validation only. The server is authoritative on which build
-// settings are allowed (an allowlist of safe standard settings plus the
-// APP_CONFIG_* namespace), so the client checks only shape and size and lets
-// the server reject disallowed keys. This keeps the allowlist server-side, so
-// adding a setting does not require an SDK release.
+// Structural validation only. The server owns the key rules (it reserves a
+// few managed keys), so the client checks only shape and size and lets the
+// server reject what it does not accept. Changing a server rule then needs no
+// SDK release.
 export const buildSettingKeyPattern = /^[A-Z0-9_]+$/;
 
 const maxBuildSettingCount = 32;
