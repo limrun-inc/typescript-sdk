@@ -39,6 +39,14 @@ class TestCommand extends BaseCommand {
   read<T>(target: LastXcodeInstance, call: () => Promise<T>): Promise<T | undefined> {
     return this.readXcodeSelectionOrForget(target, call);
   }
+
+  refusal(err: unknown) {
+    return this.xcodeRefusal(err);
+  }
+}
+
+function daemonError(status: number, body: string): Error {
+  return Object.assign(new Error(`HTTP ${status}`), { status, body });
 }
 
 const target: LastXcodeInstance = { id: 'xcode_eunb_gone', type: 'xcode' };
@@ -86,5 +94,19 @@ describe('readXcodeSelectionOrForget', () => {
     await expect(cmd.read(target, () => Promise.resolve('ok'))).resolves.toBe('ok');
     await expect(cmd.read(target, () => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
     expect(cmd.probe).not.toHaveBeenCalled();
+  });
+});
+
+describe('xcodeRefusal', () => {
+  it('returns the daemon message for 400 and 409, nothing for other failures', () => {
+    const cmd = new TestCommand([], {} as never);
+    const notAvailable = 'Xcode 25 is not available on this sandbox; available: 26, 27';
+    expect(cmd.refusal(daemonError(400, JSON.stringify({ message: notAvailable })))).toEqual({
+      status: 400,
+      message: notAvailable,
+    });
+    expect(cmd.refusal(daemonError(409, 'busy'))).toEqual({ status: 409, message: 'busy' });
+    expect(cmd.refusal(daemonError(500, 'boom'))).toBeUndefined();
+    expect(cmd.refusal(new Error('network'))).toBeUndefined();
   });
 });
