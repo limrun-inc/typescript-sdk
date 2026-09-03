@@ -3,7 +3,6 @@ import {
   CameraOperationCoordinator,
   cameraCaptureConstraints,
   cameraResolutionRefreshConstraints,
-  createCameraAspectMessage,
   createGrantedCameraResult,
   parseCameraRequest,
   shouldReacquireCamera,
@@ -185,21 +184,5 @@ describe('camera result metadata', () => {
       label: 'Built-in Camera',
     });
     expect(getSettings).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('camera aspect messages', () => {
-  test('serializes undefined as auto to clear an override', () => {
-    expect(createCameraAspectMessage(undefined)).toEqual({
-      type: 'cameraAspect',
-      aspect: 'auto',
-    });
-  });
-
-  test('preserves explicit aspect overrides', () => {
-    expect(createCameraAspectMessage('4:3')).toEqual({
-      type: 'cameraAspect',
-      aspect: '4:3',
-    });
   });
 });

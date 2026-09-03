@@ -6,7 +6,6 @@ export type {
   CameraStreamStats,
 } from './components/remote-control';
 export type {
-  CameraAspect,
   CameraCaptureInfo,
   CameraFacingMode,
   CameraRequest,

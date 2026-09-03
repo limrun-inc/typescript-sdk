@@ -24,11 +24,9 @@ import {
   CameraOperationCoordinator,
   cameraCaptureConstraints,
   cameraResolutionRefreshConstraints,
-  createCameraAspectMessage,
   createGrantedCameraResult,
   parseCameraRequest,
   shouldReacquireCamera,
-  type CameraAspect,
   type CameraCaptureInfo,
   type CameraRequest,
   type CameraResolutionCap,
@@ -36,7 +34,6 @@ import {
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
 
 export type {
-  CameraAspect,
   CameraCaptureInfo,
   CameraFacingMode,
   CameraRequest,
@@ -233,28 +230,13 @@ export interface RemoteControlProps {
    *   `getUserMedia` constraints (for new captures) and
    *   `track.applyConstraints` (for the currently-active track),
    *   using standard landscape dimensions. The browser may select its
-   *   nearest supported mode. `cameraAspect` does not change capture.
+   *   nearest supported mode.
    *
    * Bumping or lowering the cap mid-stream is supported; the
    * change takes effect within a frame or two as the webcam
    * re-negotiates.
    */
   cameraResolutionCap?: CameraResolutionCap;
-  /**
-   * Output aspect ratio the simulator's virtual camera should report to apps.
-   * Picking an explicit value sends a `cameraAspect` message to the owner
-   * host, which crops/scales browser frames into that output shape.
-   *
-   * The browser still captures whatever the webcam offers; the host
-   * aspect-fills (cover, center-crop) into the new pool. Switching
-   * aspect at runtime is intentionally cheap so users can A/B preview
-   * styles without restarting the simulator.
-   *
-   * `'auto'` or `undefined` clears a prior override. The host then derives
-   * output dimensions from incoming frames; `cameraResult` dimensions remain
-   * status metadata and do not drive sizing.
-   */
-  cameraAspect?: CameraAspect;
 
   /**
    * When true, capture the user's microphone via
@@ -545,7 +527,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       onCameraDemandChange,
       onCameraStats,
       cameraResolutionCap = 'auto',
-      cameraAspect,
       microphoneEnabled = false,
       onMicrophoneStateChange,
     }: RemoteControlProps,
@@ -599,7 +580,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const outboundCameraSenderRef = useRef<RTCRtpSender | null>(null);
     const outboundLocalStreamRef = useRef<MediaStream | null>(null);
     const outboundCameraRequestRef = useRef<CameraRequest | undefined>(undefined);
-    const cameraDemandOwnerRef = useRef(false);
     const cameraOperations = useMemo(() => new CameraOperationCoordinator(), []);
     // Separately guards prop-driven applyConstraints calls so quick cap
     // changes cannot publish stale capture metadata.
@@ -612,12 +592,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       ++cameraResolutionGenerationRef.current;
     }
     cameraResolutionCapRef.current = cameraResolutionCap;
-    const cameraAspectRef = useRef<CameraAspect | undefined>(cameraAspect);
-    cameraAspectRef.current = cameraAspect;
-    // The aspect prop rides a ref so the active camera owner can replay
-    // its latest value when handling cameraRequest. Sending on WebSocket
-    // open is unsafe because a non-owner tab's default `auto` could clear
-    // another tab's explicit setting. The effect below handles prop changes.
     // Mirror the demand-change callback into a ref so the WS message
     // handler always sees the freshest customer callback even when the
     // parent re-renders mid-session.
@@ -2223,14 +2197,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           return;
         }
 
-        // Establish sizing only after the host selected this connection as
-        // camera owner. Non-owner tabs must not replay their default `auto`
-        // merely because their WebSocket connected.
-        try {
-          ws.send(JSON.stringify(createCameraAspectMessage(cameraAspectRef.current)));
-        } catch (err) {
-          debugWarn('cameraAspect replay for active camera failed:', err);
-        }
         safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true);
         const currentStream = outboundLocalStreamRef.current;
         const currentTrack = currentStream?.getVideoTracks()[0];
@@ -2459,7 +2425,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // reconnects.
       cameraOperations.invalidate();
       ++cameraConstraintGenerationRef.current;
-      cameraDemandOwnerRef.current = false;
       stopCameraStatsPoller();
       stopOutboundLocalStream();
       outboundCameraRequestRef.current = undefined;
@@ -3205,7 +3170,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 debugWarn('Received invalid cameraRequest:', message);
                 break;
               }
-              cameraDemandOwnerRef.current = request.active;
               // eslint-disable-next-line no-console
               console.info('[RemoteControl] cameraRequest received:', request.active, request.facingMode);
               await handleCameraRequest(request, ws, sender, isCurrentAttempt);
@@ -3374,21 +3338,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         .catch((err) => debugWarn('queued camera resolution update failed:', err));
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [cameraResolutionCap]);
-
-    // Push the aspect preference to the host whenever it changes.
-    // This changes host crop/output only; browser capture constraints stay
-    // untouched. Active requests replay the mirrored value after ownership
-    // is established. Undefined serializes as `auto` to clear an override.
-    useEffect(() => {
-      if (!cameraDemandOwnerRef.current) return;
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      try {
-        ws.send(JSON.stringify(createCameraAspectMessage(cameraAspect)));
-      } catch (err) {
-        debugWarn('cameraAspect send failed:', err);
-      }
-    }, [cameraAspect]);
 
     // Drive the manual override without interrupting guest-driven demand.
     useEffect(() => {

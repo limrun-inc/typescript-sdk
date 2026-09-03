@@ -8,13 +8,6 @@ export type CameraFacingMode = 'user' | 'environment';
  */
 export type CameraResolutionCap = 'auto' | '1080p' | '720p' | '480p';
 
-/**
- * Aspect reported by the simulated camera.
- *
- * `'auto'` clears an explicit override and lets the host follow capture.
- */
-export type CameraAspect = 'auto' | '16:9' | '4:3' | '1:1' | '9:16';
-
 /** Camera selection requested by the instance host. */
 export interface CameraRequest {
   active: boolean;
@@ -110,17 +103,6 @@ export function parseCameraRequest(message: unknown): CameraRequest | null {
     request.facingMode = value.facingMode;
   }
   return request;
-}
-
-export function normalizeCameraAspect(aspect: CameraAspect | undefined): CameraAspect {
-  return aspect ?? 'auto';
-}
-
-export function createCameraAspectMessage(aspect: CameraAspect | undefined): {
-  type: 'cameraAspect';
-  aspect: CameraAspect;
-} {
-  return { type: 'cameraAspect', aspect: normalizeCameraAspect(aspect) };
 }
 
 /**
