@@ -1,5 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+import { resolveRequestedXcodeVersion } from '../../lib/xcode-version';
 import { syncFlags } from '../../lib/sync-flags';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
@@ -54,7 +55,10 @@ export default class XcodeSync extends BaseCommand {
       const target = await this.resolveXcodeTargetOrCreate(flags.id);
       const id = target.id;
       const syncPath = args.path ?? process.cwd();
-      const xcodeClient = await this.resolveXcodeClient(target);
+      const xcodeClient = await this.resolveXcodeClientForWork(
+        target,
+        resolveRequestedXcodeVersion(undefined),
+      );
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);
 

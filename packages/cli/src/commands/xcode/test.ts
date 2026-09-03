@@ -69,6 +69,7 @@ export default class XcodeTest extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeTest);
     this.setParsedFlags(flags);
+    const requestedXcode = resolveRequestedXcodeVersion(flags['xcode-version']);
 
     if (flags.id && flags['inactivity-timeout']) {
       this.error('--inactivity-timeout controls newly created instances and cannot be combined with --id.');
@@ -82,8 +83,7 @@ export default class XcodeTest extends BaseCommand {
       const id = target.id;
       await this.applyBuildCacheToTarget(target, parseCacheConfig(flags));
       const syncPath = args.path ?? process.cwd();
-      const xcodeClient = await this.resolveXcodeClient(target);
-      await this.applyXcodeVersionToClient(xcodeClient, resolveRequestedXcodeVersion(flags['xcode-version']));
+      const xcodeClient = await this.resolveXcodeClientForWork(target, requestedXcode);
 
       const settings: XcodeProjectConfig = {
         action: 'build-for-testing',

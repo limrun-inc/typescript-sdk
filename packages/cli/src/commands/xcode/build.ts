@@ -253,6 +253,8 @@ export default class XcodeBuild extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeBuild);
     this.setParsedFlags(flags);
+    // Validated before any sandbox is created, so a typo never leaves a billed sandbox behind.
+    const requestedXcode = resolveRequestedXcodeVersion(flags['xcode-version']);
     if (flags['dev-server-url'] && flags.configuration === 'Release') {
       this.error('--dev-server-url is only supported for Debug builds.');
     }
@@ -300,8 +302,7 @@ export default class XcodeBuild extends BaseCommand {
       const id = target.id;
       await this.applyBuildCacheToTarget(target, parseCacheConfig(flags));
       const syncPath = args.path ?? process.cwd();
-      const xcodeClient = await this.resolveXcodeClient(target);
-      await this.applyXcodeVersionToClient(xcodeClient, resolveRequestedXcodeVersion(flags['xcode-version']));
+      const xcodeClient = await this.resolveXcodeClientForWork(target, requestedXcode);
 
       const settings: Record<string, string> = {
         ...(projectConfigFromFlags(flags) as Record<string, string>),

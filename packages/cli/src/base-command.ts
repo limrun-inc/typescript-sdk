@@ -1,5 +1,11 @@
 import { Command, Flags } from '@oclif/core';
-import Limrun, { APIError, NotFoundError, XcodeCacheGoneError } from '@limrun/api';
+import Limrun, {
+  APIError,
+  NotFoundError,
+  XcodeCacheGoneError,
+  XcodeSelectionUnsupportedError,
+  isDirectInstanceHttpError,
+} from '@limrun/api';
 import {
   clearLastInstanceId,
   loadAndroidInstanceCache,
@@ -898,21 +904,54 @@ export abstract class BaseCommand extends Command {
    * Xcode. Refusals from the daemon (not installed, busy) surface with its message.
    */
   protected async applyXcodeVersionToClient(
+    target: XcodeTarget,
     xcodeClient: XcodeClient,
     requested: RequestedXcodeVersion | undefined,
   ): Promise<void> {
     if (!requested) return;
-    const status = await this.readXcodeSelection(() => xcodeClient.getXcode());
-    if (status.bound.major === requested.major) return;
-    if (requested.source === 'workspace') {
-      this.info(
-        `Sandbox is on Xcode ${status.bound.major}, this workspace prefers ${requested.major}; switching (DerivedData reset)...`,
-      );
-    } else {
-      this.info(`Switching sandbox to Xcode ${requested.major} (DerivedData reset)...`);
+    // One round trip: the daemon answers alreadyBound for a no-op, before any busy check, so
+    // the steady state (sandbox already on the preferred major) costs no switch and no 409.
+    let result: XcodeSelectResult;
+    try {
+      result = await this.readXcodeSelection(() => xcodeClient.setXcode(requested.major));
+    } catch (err) {
+      if (!(err instanceof XcodeSelectionUnsupportedError)) throw err;
+      // A cached standalone target is trusted without a round-trip, so this is often the
+      // first call to the daemon. A 404 from a sandbox that no longer exists must stay a
+      // NotFoundError (withAuth clears the cache and recreates), not a claim that the daemon
+      // predates selection; asking the API tells the two apart.
+      if (target.type === 'xcode' && !this.wasCreatedThisRun(target.id)) {
+        await this.client.xcodeInstances.get(target.id);
+      }
+      // The workspace preference is a standing wish, not this command's request: on a daemon
+      // that cannot honour it, say so and build with what the sandbox has.
+      if (requested.source === 'workspace') {
+        this.warn(`${err.message} Building with the sandbox's current Xcode.`);
+        return;
+      }
+      throw err;
     }
-    const result = await this.selectXcode(xcodeClient, requested.major);
-    this.info(`Sandbox now uses Xcode ${formatXcode(result.bound)}`);
+    if (result.alreadyBound) return;
+    const why = requested.source === 'workspace' ? " (this workspace's preference)" : '';
+    this.info(`Sandbox now uses Xcode ${formatXcode(result.bound)}${why}; DerivedData was reset.`);
+  }
+
+  /** Resolves a work-bound Xcode client and applies the requested (or preferred) Xcode to it. */
+  protected async resolveXcodeClientForWork(
+    target: XcodeTarget,
+    requested: RequestedXcodeVersion | undefined,
+  ) {
+    const xcodeClient = await this.resolveXcodeClient(target);
+    await this.applyXcodeVersionToClient(target, xcodeClient, requested);
+    return xcodeClient;
+  }
+
+  /** resolveXcodeTarget, or undefined when nothing names a sandbox (no --id, env pin, or memory). */
+  protected async tryResolveXcodeTarget(providedId: string | undefined): Promise<XcodeTarget | undefined> {
+    if (!providedId && !this._overrideInstanceId && !envInstanceTarget('xcode') && !loadLastXcodeInstance()) {
+      return undefined;
+    }
+    return this.resolveXcodeTarget(providedId);
   }
 
   /** setXcode with the daemon's own refusal message instead of the transport's wrapping. */
@@ -924,13 +963,12 @@ export abstract class BaseCommand extends Command {
     try {
       return await call();
     } catch (err) {
-      // Direct-instance errors carry the status and raw body structurally; 400 (not installed)
-      // and 409 (busy) are the daemon talking to the user, so surface its message verbatim.
-      const { status, body } = (err ?? {}) as { status?: number; body?: string };
-      if ((status === 400 || status === 409) && typeof body === 'string') {
-        let message = body;
+      // 400 (not available) and 409 (busy) are the daemon talking to the user: surface its
+      // message verbatim instead of the transport's wrapping.
+      if (isDirectInstanceHttpError(err, 400) || isDirectInstanceHttpError(err, 409)) {
+        let message = err.body;
         try {
-          message = (JSON.parse(body) as { message?: string }).message ?? body;
+          message = (JSON.parse(err.body) as { message?: string }).message ?? err.body;
         } catch {
           // not JSON: the raw body is the best we have
         }

@@ -2,7 +2,6 @@ import { Args } from '@oclif/core';
 import { type SimulatorBuildStatus, type SimulatorStatus } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { loadLastXcodeInstance } from '../../lib/config';
-import { formatXcode } from '../../lib/xcode-version';
 
 export default class XcodeGet extends BaseCommand {
   static summary = 'Get details for a specific Xcode instance';
@@ -32,13 +31,11 @@ export default class XcodeGet extends BaseCommand {
 
     await this.withAuth(async () => {
       const target = await this.resolveXcodeTarget(args.id);
-      const xcodeClient = await this.resolveXcodeClient(target);
-      const simulatorStatus = await xcodeClient.getSimulator();
-      const xcode = (await xcodeClient.getInfo()).xcode;
+      const simulatorStatus = await (await this.resolveXcodeClient(target)).getSimulator();
       if (target.type === 'ios') {
         const instance = await this.client.iosInstances.get(target.id);
         if (flags.json) {
-          this.outputJson({ ...instance, simulator: simulatorStatus, xcode });
+          this.outputJson({ ...instance, simulator: simulatorStatus });
         } else {
           const signedStreamUrl = this.signedStreamUrl(instance.status);
           this.output(`ID: ${instance.metadata.id}`);
@@ -53,14 +50,13 @@ export default class XcodeGet extends BaseCommand {
             this.output(`Xcode Sandbox URL: ${instance.status.sandbox.xcode.url}`);
           }
           if (signedStreamUrl) this.output(`Signed Stream URL: ${signedStreamUrl}`);
-          this.output(`Xcode: ${formatXcode(xcode)}`);
           this.outputSimulatorStatus(simulatorStatus);
         }
         return;
       }
 
       if (flags.json) {
-        this.outputJson({ ...target, simulator: simulatorStatus, xcode });
+        this.outputJson({ ...target, simulator: simulatorStatus });
       } else {
         this.output(`ID: ${target.id}`);
         this.output(`Type: Xcode sandbox`);
@@ -69,7 +65,6 @@ export default class XcodeGet extends BaseCommand {
         this.output(`State: ${target.status?.state || ''}`);
         this.output(`Console URL: ${this.consoleStreamUrl(target.id)}`);
         if (target.apiUrl) this.output(`API URL: ${target.apiUrl}`);
-        this.output(`Xcode: ${formatXcode(xcode)}`);
         this.outputSimulatorStatus(simulatorStatus);
       }
     });

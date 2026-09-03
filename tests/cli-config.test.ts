@@ -192,6 +192,18 @@ describe('CLI last instance config', () => {
     });
   });
 
+  test('drops a hand-edited Xcode preference that is not a bare major', async () => {
+    await withConfigModule((config, ctx) => {
+      ctx.setScope('/work/worktree-a');
+      config.setXcodeVersionPreference('27');
+      const file = path.join(ctx.homeDir, '.lim', 'last-instances.json');
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      parsed.scopes['/work/worktree-a'].xcodeVersion = '27.0';
+      fs.writeFileSync(file, JSON.stringify(parsed));
+      expect(config.loadXcodeVersionPreference()).toBeNull();
+    });
+  });
+
   test('does not leak the last instance across unrelated directory scopes', async () => {
     await withConfigModule((config, ctx) => {
       ctx.setScope('/work/worktree-a');

@@ -1,7 +1,7 @@
-import { Args, Flags } from '@oclif/core';
+import { Args } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
-import { loadLastXcodeInstance, setXcodeVersionPreference } from '../../../lib/config';
-import { formatXcode, parseXcodeMajor } from '../../../lib/xcode-version';
+import { setXcodeVersionPreference } from '../../../lib/config';
+import { formatXcode, parseXcodeMajor, xcodeTargetFlags } from '../../../lib/xcode-version';
 
 export default class XcodeVersionSet extends BaseCommand {
   static summary = 'Pick the Xcode version this workspace builds with';
@@ -20,14 +20,7 @@ export default class XcodeVersionSet extends BaseCommand {
     major: Args.string({ description: 'Xcode major to prefer, e.g. 27.', required: true }),
   };
 
-  static flags = {
-    ...BaseCommand.baseFlags,
-    create: Flags.boolean({ hidden: true, default: false, allowNo: true }),
-    id: Flags.string({
-      description:
-        'Xcode instance ID to switch now. Defaults to the most recently created Xcode-capable target.',
-    }),
-  };
+  static flags = { ...BaseCommand.baseFlags, ...xcodeTargetFlags };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeVersionSet);
@@ -38,14 +31,13 @@ export default class XcodeVersionSet extends BaseCommand {
     setXcodeVersionPreference(major);
     this.info(`Xcode ${major} is now the preferred version${this.scopeSuffix()}.`);
 
-    if (!flags.id && !loadLastXcodeInstance()) {
-      if (flags.json) this.outputJson({ preferred: major });
-      else this.output('No sandbox yet; the next one uses it.');
-      return;
-    }
-
     await this.withAuth(async () => {
-      const target = await this.resolveXcodeTarget(flags.id);
+      const target = await this.tryResolveXcodeTarget(flags.id);
+      if (!target) {
+        if (flags.json) this.outputJson({ preferred: major });
+        else this.output('No sandbox yet; the next one uses it.');
+        return;
+      }
       const xcodeClient = await this.resolveXcodeClient(target);
       const result = await this.selectXcode(xcodeClient, major);
       if (flags.json) {

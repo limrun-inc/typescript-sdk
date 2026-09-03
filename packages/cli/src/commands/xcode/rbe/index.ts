@@ -97,6 +97,7 @@ export default class XcodeRbe extends BaseCommand {
   async run(): Promise<void> {
     const { flags } = await this.parse(XcodeRbe);
     this.setParsedFlags(flags);
+    const requestedXcode = resolveRequestedXcodeVersion(flags['xcode-version']);
     // Empty string would be treated as "off" by every truthiness check below,
     // silently starting a tunnel without the uploads the user asked for.
     // Checked before the serve branch so a hand-invoked serve child cannot
@@ -210,8 +211,6 @@ export default class XcodeRbe extends BaseCommand {
         const target = await this.resolveXcodeTargetOrCreate(flags.id);
         instanceId = typeof target === 'string' ? target : target.id;
         client = await this.resolveXcodeClient(target);
-        await this.applyXcodeVersionToClient(client, resolveRequestedXcodeVersion(flags['xcode-version']));
-
         // resolveXcodeClient validates an iOS-backed target via iosInstances.get,
         // but a cached standalone Xcode target is trusted without a round-trip.
         // Validate it so a stale "last instance" pointer or a deleted instance throws
@@ -223,6 +222,7 @@ export default class XcodeRbe extends BaseCommand {
         if (typeof target !== 'string' && target.type === 'xcode' && !this.wasCreatedThisRun(instanceId)) {
           await this.client.xcodeInstances.get(instanceId);
         }
+        await this.applyXcodeVersionToClient(target, client, requestedXcode);
 
         // Start the stack (retrying transient gateway blips right after instance
         // creation) and poll to running. From here the stack may be (partially)

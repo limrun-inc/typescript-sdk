@@ -1,6 +1,6 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { resolveRequestedXcodeVersion, xcodeVersionFlags } from '../../lib/xcode-version';
+import { formatXcode, resolveRequestedXcodeVersion, xcodeVersionFlags } from '../../lib/xcode-version';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
@@ -72,6 +72,8 @@ export default class XcodeCreate extends BaseCommand {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(XcodeCreate);
+    // Validated before the sandbox is created, so a typo never leaves a billed sandbox behind.
+    const requestedXcode = resolveRequestedXcodeVersion(flags['xcode-version']);
     if (flags.region) {
       this.warn(
         '--region is deprecated and only a preference; use --jurisdiction to constrain where it runs.',
@@ -121,6 +123,9 @@ export default class XcodeCreate extends BaseCommand {
         instance.status as { signedStreamUrl?: string } | undefined,
       );
       registerCreatedInstance(instance);
+      let attachResult: SimulatorAttachResult | undefined;
+      let attachedSimulator = simulator;
+      let createdSimulator = false;
       const cleanup = async () => {
         try {
           await this.client.xcodeInstances.delete(instance.metadata.id);
@@ -137,11 +142,13 @@ export default class XcodeCreate extends BaseCommand {
           }
         }
       };
-      const requestedXcode = resolveRequestedXcodeVersion(flags['xcode-version']);
       if (requestedXcode) {
         try {
           const xcodeClient = await this.client.xcodeInstances.createClient({ instance });
-          await this.applyXcodeVersionToClient(xcodeClient, requestedXcode);
+          const result = await this.selectXcode(xcodeClient, requestedXcode.major);
+          if (!result.alreadyBound) {
+            this.info(`Sandbox uses Xcode ${formatXcode(result.bound)}`);
+          }
         } catch (err) {
           this.info(
             `Created Xcode instance ${instance.metadata.id}, but selecting Xcode ${requestedXcode.major} failed.`,
@@ -152,9 +159,6 @@ export default class XcodeCreate extends BaseCommand {
           throw err;
         }
       }
-      let attachResult: SimulatorAttachResult | undefined;
-      let attachedSimulator = simulator;
-      let createdSimulator = false;
       if (flags.ios) {
         try {
           const xcodeClient = await this.client.xcodeInstances.createClient({ instance });
