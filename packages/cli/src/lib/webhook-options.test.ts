@@ -1,4 +1,4 @@
-import { MAX_WEBHOOK_LABELS, webhookConfigFromFlags } from './webhook-options';
+import { MAX_WEBHOOK_LABELS, MAX_WEBHOOK_LABEL_LENGTH, webhookConfigFromFlags } from './webhook-options';
 
 describe('webhookConfigFromFlags', () => {
   test('returns undefined without flags', () => {
@@ -137,6 +137,37 @@ describe('webhookConfigFromFlags', () => {
           ['__proto__', 'y'],
         ]),
       );
+    });
+
+    test(`accepts ${MAX_WEBHOOK_LABEL_LENGTH}-character keys and values and rejects longer ones`, () => {
+      const max = 'k'.repeat(MAX_WEBHOOK_LABEL_LENGTH);
+      expect(
+        webhookConfigFromFlags({
+          'webhook-url': 'https://ci.example.com/h',
+          'webhook-label': [`${max}=${max}`],
+        })?.labels,
+      ).toEqual({ [max]: max });
+      for (const entry of [`${max}x=v`, `k=${max}x`]) {
+        expect(() =>
+          webhookConfigFromFlags({ 'webhook-url': 'https://ci.example.com/h', 'webhook-label': [entry] }),
+        ).toThrow(
+          `Invalid --webhook-label entry 1: key and value must be at most ${MAX_WEBHOOK_LABEL_LENGTH} characters each.`,
+        );
+      }
+    });
+
+    test('accepts the printable ASCII range and rejects non-ASCII and control characters', () => {
+      expect(
+        webhookConfigFromFlags({ 'webhook-url': 'https://ci.example.com/h', 'webhook-label': [' !~=~! '] })
+          ?.labels,
+      ).toEqual({ ' !~': '~! ' });
+      for (const entry of ['pipelíne=release', 'pipeline=relëase', 'pipeline=a\nb', 'a\tb=v']) {
+        expect(() =>
+          webhookConfigFromFlags({ 'webhook-url': 'https://ci.example.com/h', 'webhook-label': [entry] }),
+        ).toThrow(
+          'Invalid --webhook-label entry 1: key and value must contain only printable ASCII characters.',
+        );
+      }
     });
 
     test(`accepts ${MAX_WEBHOOK_LABELS} labels and rejects one more`, () => {

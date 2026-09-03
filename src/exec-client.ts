@@ -150,7 +150,8 @@ export type WebhookConfig = {
    * Caller-defined key/value pairs echoed verbatim in the payload's `labels`
    * field, so the receiver can correlate the callback with its own context
    * (a pipeline run, a commit, a ticket) without keeping a lookup table
-   * keyed by execId. At most 32 entries; keys must not be empty. Older
+   * keyed by execId. At most 32 entries; keys and values are printable
+   * ASCII of at most 64 characters each, and keys must not be empty. Older
    * build daemons ignore it.
    */
   labels?: Record<string, string>;

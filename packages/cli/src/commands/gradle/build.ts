@@ -131,7 +131,7 @@ export default class GradleBuild extends BaseCommand {
     }),
     'webhook-label': Flags.string({
       description:
-        'Label echoed verbatim in the webhook payload\'s "labels" field as KEY=VALUE, for example pipeline=release, so your endpoint can correlate the callback with its own context. Requires --webhook-url. Repeat for multiple labels (at most 32). Defaults to LIM_WEBHOOK_LABELS, which holds several labels separated by commas; write a literal comma inside a value as \\,.',
+        'Label echoed verbatim in the webhook payload\'s "labels" field as KEY=VALUE, for example pipeline=release, so your endpoint can correlate the callback with its own context. Requires --webhook-url. Repeat for multiple labels (at most 32; key and value at most 64 printable ASCII characters each). Defaults to LIM_WEBHOOK_LABELS, which holds several labels separated by commas; write a literal comma inside a value as \\,.',
       multiple: true,
       default: async () => repeatableFlagFromEnv('LIM_WEBHOOK_LABELS'),
     }),
