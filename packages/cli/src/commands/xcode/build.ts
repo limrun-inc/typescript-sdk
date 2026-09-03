@@ -163,7 +163,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     'build-setting': Flags.string({
       description:
-        'Xcode build setting to pass as KEY=VALUE. Allowed keys are a server-maintained allowlist of safe settings (e.g. SWIFT_ACTIVE_COMPILATION_CONDITIONS) plus any APP_CONFIG_* key. Repeat for multiple.',
+        'Xcode build setting to pass as KEY=VALUE. Replaces the Limrun default with the same key; APP_CONFIG_* values are redacted from logs. Repeat for multiple.',
       multiple: true,
     }),
     env: Flags.string({

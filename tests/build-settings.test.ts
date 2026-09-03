@@ -13,9 +13,9 @@ describe('build settings helpers', () => {
     });
   });
 
-  test('does not enforce the allowlist (server is authoritative)', () => {
-    // A non-allowlisted key is structurally valid client-side; the server
-    // rejects it. The client must not block it.
+  test('accepts any well-formed key (server owns the key rules)', () => {
+    // A standard Xcode setting outside APP_CONFIG_* is valid client-side;
+    // the client must not block it.
     expect(() => validateBuildSettings({ INFOPLIST_PREPROCESSOR_DEFINITIONS: 'DEBUG=1' })).not.toThrow();
   });
 
