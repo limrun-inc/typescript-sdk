@@ -458,7 +458,8 @@ lim xcode list            # List all ready Xcode instances
 lim xcode get <ID>        # Get details of a specific instance
 lim xcode delete <ID>     # Delete an instance
 lim xcode attach-simulator <IOS_ID> --id <XCODE_ID>
-lim xcode set-xcode 27    # Bind the sandbox to another installed Xcode major
+lim xcode list-xcode      # Xcode versions the sandbox can build with
+lim xcode set-xcode 27    # Bind the sandbox to another available Xcode major
 ```
 
 ```bash
@@ -496,7 +497,7 @@ lim xcode attach-simulator ios_abc123 --id sandbox_def456
 
 # Build with a specific Xcode major (switches the sandbox if needed; DerivedData resets)
 lim xcode build ./MyProject --xcode-version 27
-lim xcode set-xcode 26          # switch back; `lim xcode get` shows the current Xcode
+lim xcode set-xcode 26          # switch back; `lim xcode list-xcode` shows versions and the current one
 
 # Tune sync cache or ignore additional paths
 lim xcode sync ./MyProject --watch --basis-cache-dir ./.limsync-cache

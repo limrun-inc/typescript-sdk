@@ -5,7 +5,7 @@ import type { XcodeInfo } from '@limrun/api';
 export const xcodeVersionFlags = {
   'xcode-version': Flags.string({
     description:
-      'Xcode major to build with, e.g. 27. Switches the sandbox when it is bound to another major, which resets its DerivedData. Defaults to the sandbox default.',
+      'Xcode major to build with, e.g. 27 (see `lim xcode list-xcode`). Switches the sandbox when it is bound to another major, which resets its DerivedData. Defaults to the sandbox default.',
     helpValue: '<major>',
   }),
 };

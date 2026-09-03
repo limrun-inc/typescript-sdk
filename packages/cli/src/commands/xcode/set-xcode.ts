@@ -7,7 +7,7 @@ export default class XcodeSetXcode extends BaseCommand {
   static description =
     'Switch the Xcode a sandbox builds with, e.g. 27 for the latest beta. The sandbox must be idle: a running build, ' +
     'command, sync, or remote build execution stack refuses the switch. Switching resets the DerivedData of every ' +
-    'synced project. `lim xcode get` shows the current binding.';
+    'synced project. `lim xcode list-xcode` shows the available versions and the current binding.';
 
   static examples = [
     '<%= config.bin %> xcode set-xcode 27',
