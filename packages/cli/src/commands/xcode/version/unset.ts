@@ -4,7 +4,7 @@ import { clearXcodeVersionPreference, loadXcodeVersionPreference } from '../../.
 export default class XcodeVersionUnset extends BaseCommand {
   static summary = 'Forget the Xcode version preference of this workspace';
   static description =
-    'Remove the preference set with `lim xcode version set`. Sandboxes keep the Xcode they are bound to; new ' +
+    'Remove the preference set with `lim xcode version set`. Sandboxes keep their selected Xcode; new ' +
     'sandboxes use the node default.';
 
   static examples = ['<%= config.bin %> xcode version unset'];
