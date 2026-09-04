@@ -9,8 +9,8 @@ export default class XcodeVersionSet extends BaseCommand {
   static description =
     'Remember an Xcode major for this workspace (the git repo, a `lim set-workspace-dir` assignment, or the global ' +
     'slot outside a repo) and switch the remembered sandbox to it now. Later builds, tests, RBE sessions and newly ' +
-    'created sandboxes follow it; `--xcode-version` overrides it for one command. Switching makes the next build ' +
-    'start cold and is refused while the sandbox is busy.';
+    'created sandboxes follow it; `--xcode-version` overrides it for one command. Switching invalidates the build cache from the other version (the next build starts cold) ' +
+    'and is refused while the sandbox is busy.';
 
   static examples = [
     '<%= config.bin %> xcode version set 27',
