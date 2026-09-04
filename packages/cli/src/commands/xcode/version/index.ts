@@ -25,12 +25,11 @@ export default class XcodeVersion extends BaseCommand {
       const read = await this.tryReadXcodeStatus(flags.id);
       if (!read) {
         if (flags.json) this.outputJson({ preferred });
-        else if (preferred)
-          this.output(
-            `No sandbox instance found${this.scopeSuffix()}; the next one uses Xcode ${preferred}.`,
-          );
         else
-          this.output(`No sandbox instance found${this.scopeSuffix()}; the next one uses the node default.`);
+          this.output(
+            `No sandbox instance found${this.scopeSuffix()}; create one with \`lim xcode create\` and run \`lim xcode version\` again.` +
+              (preferred ? ` It will use Xcode ${preferred}.` : ''),
+          );
         return;
       }
       const { target, status } = read;
