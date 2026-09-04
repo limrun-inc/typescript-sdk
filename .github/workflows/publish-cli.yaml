@@ -24,10 +24,11 @@ jobs:
         with:
           node-version: '24'
 
-      # npm OIDC trusted publishing needs npm >= 11.5; early Node 24 point
-      # releases bundle an older npm.
+      # npm OIDC trusted publishing needs npm >= 11.5, but `oclif pack` still
+      # runs `npm pack --unsafe-perm`, a flag npm 12 removed — so pin to the
+      # latest 11.x rather than latest overall.
       - name: Update npm
-        run: npm install -g npm@latest
+        run: npm install -g npm@11
 
       - name: Bootstrap root SDK
         run: ./scripts/bootstrap
