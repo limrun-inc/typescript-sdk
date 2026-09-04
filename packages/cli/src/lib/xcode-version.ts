@@ -7,7 +7,7 @@ export const xcodeVersionFlags = {
   'xcode-version': Flags.string({
     description:
       'Xcode major to build with for this invocation, e.g. 27 (see `lim xcode version list`). Overrides the ' +
-      'workspace preference set with `lim xcode version set` without changing it. Switching makes the next build start cold.',
+      'workspace preference set with `lim xcode version set` without changing it. Switching invalidates the build cache from the other version, so the next build starts cold.',
     helpValue: '<major>',
   }),
 };
