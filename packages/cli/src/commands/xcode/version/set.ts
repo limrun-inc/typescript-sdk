@@ -74,7 +74,7 @@ export default class XcodeVersionSet extends BaseCommand {
       const verb = result.alreadyBound ? 'already uses' : 'now uses';
       this.output(`Sandbox ${target.id} ${verb} Xcode ${formatXcode(result.bound)}`);
       if (result.derivedDataReset) {
-        this.output('The next build starts cold.');
+        this.output('The build cache from the previous Xcode is invalidated; the next build starts cold.');
       }
     });
   }

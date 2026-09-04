@@ -931,7 +931,11 @@ export abstract class BaseCommand extends Command {
     }
     if (result.alreadyBound) return;
     const why = requested.source === 'workspace' ? " (this workspace's preference)" : '';
-    this.info(`Sandbox now uses Xcode ${formatXcode(result.bound)}${why}; the next build starts cold.`);
+    this.info(
+      `Sandbox now uses Xcode ${formatXcode(
+        result.bound,
+      )}${why}; the build cache from the previous Xcode is invalidated, so the next build starts cold.`,
+    );
   }
 
   /** Resolves a work-bound Xcode client and applies the requested (or preferred) Xcode to it. */
