@@ -45,16 +45,6 @@ export default class XcodeVersionList extends BaseCommand {
         formatXcodeVersion(x),
       ]);
       this.outputTable(['', 'Major', 'Version'], rows);
-      this.output(`* in use by ${target.id}`);
-      const nodeDefault = status.installed.find((x) => x.nodeDefault);
-      if (preferred) {
-        const isDefault = nodeDefault?.major === preferred ? ' (node default)' : '';
-        this.output(`This workspace prefers Xcode ${preferred}${isDefault}.`);
-      } else if (nodeDefault) {
-        this.output(
-          `No workspace preference; new sandboxes use the node default (Xcode ${nodeDefault.major}).`,
-        );
-      }
     });
   }
 }
