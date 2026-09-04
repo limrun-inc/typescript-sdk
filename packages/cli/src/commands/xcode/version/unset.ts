@@ -60,7 +60,7 @@ export default class XcodeVersionUnset extends BaseCommand {
       }
       this.output(`Sandbox ${target.id} now uses Xcode ${formatXcode(result.bound)}.`);
       if (result.derivedDataReset) {
-        this.output('The next build starts cold.');
+        this.output('The build cache from the previous Xcode is invalidated; the next build starts cold.');
       }
     });
   }
