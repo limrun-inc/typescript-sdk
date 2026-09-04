@@ -1,5 +1,10 @@
 import type { XcodeInfo } from '@limrun/api';
-import { formatXcode, parseXcodeMajor, resolveRequestedXcodeVersion, xcodeNotes } from './xcode-version';
+import {
+  formatXcode,
+  formatXcodeVersion,
+  parseXcodeMajor,
+  resolveRequestedXcodeVersion,
+} from './xcode-version';
 import { loadXcodeVersionPreference } from './config';
 
 jest.mock('./config', () => ({ loadXcodeVersionPreference: jest.fn() }));
@@ -85,23 +90,25 @@ describe('a malformed request fails before any sandbox work', () => {
   });
 });
 
-describe('xcodeNotes', () => {
-  const x = (major: string, extra: Partial<XcodeInfo> = {}): XcodeInfo => ({
-    major,
-    version: `${major}.0`,
-    build: 'B',
+describe('formatXcodeVersion', () => {
+  const x = (extra: Partial<XcodeInfo> = {}): XcodeInfo => ({
+    major: '27',
+    version: '27.0',
+    build: '27A5252f',
     versionKey: '',
     developerDir: '',
     nodeDefault: false,
     ...extra,
   });
 
-  test('labels a beta with its seed, ahead of selection and preference', () => {
-    expect(xcodeNotes(x('27', { betaSeed: '6' }), '27', '27')).toBe('beta 6, selected, preferred');
+  test('names the beta seed between the version and the build', () => {
+    expect(formatXcodeVersion(x({ betaSeed: '6' }))).toBe('27.0 beta 6 (27A5252f)');
+    expect(formatXcodeVersion(x())).toBe('27.0 (27A5252f)');
   });
 
-  test('a release shows only selection and default', () => {
-    expect(xcodeNotes(x('26', { nodeDefault: true }), '26', undefined)).toBe('selected, default');
-    expect(xcodeNotes(x('27'), '26', undefined)).toBe('');
+  test('formatXcode keeps the node-default mark after it', () => {
+    expect(formatXcode(x({ major: '26', version: '26.4', build: '17E192', nodeDefault: true }))).toBe(
+      '26.4 (17E192) (node default)',
+    );
   });
 });

@@ -1,5 +1,5 @@
 import { BaseCommand } from '../../../base-command';
-import { xcodeNotes, xcodeTargetFlags } from '../../../lib/xcode-version';
+import { formatXcodeVersion, xcodeTargetFlags } from '../../../lib/xcode-version';
 import { loadXcodeVersionPreference } from '../../../lib/config';
 
 export default class XcodeVersionList extends BaseCommand {
@@ -26,7 +26,7 @@ export default class XcodeVersionList extends BaseCommand {
         if (flags.json) this.outputJson({ preferred, installed: [] });
         else
           this.output(
-            `No sandbox instance found${this.scopeSuffix()}; the next one lists the Xcodes its node offers.`,
+            `No sandbox instance found${this.scopeSuffix()}; create one with \`lim xcode create\` and run \`lim xcode version list\` again.`,
           );
         return;
       }
@@ -40,11 +40,21 @@ export default class XcodeVersionList extends BaseCommand {
         return;
       }
       const rows = status.installed.map((x) => [
+        x.major === status.bound.major ? '*' : '',
         x.major,
-        `${x.version} (${x.build})`,
-        xcodeNotes(x, status.bound.major, preferred),
+        formatXcodeVersion(x),
       ]);
-      this.outputTable(['Major', 'Version', 'Notes'], rows);
+      this.outputTable(['', 'Major', 'Version'], rows);
+      this.output(`* in use by ${target.id}`);
+      const nodeDefault = status.installed.find((x) => x.nodeDefault);
+      if (preferred) {
+        const isDefault = nodeDefault?.major === preferred ? ' (node default)' : '';
+        this.output(`This workspace prefers Xcode ${preferred}${isDefault}.`);
+      } else if (nodeDefault) {
+        this.output(
+          `No workspace preference; new sandboxes use the node default (Xcode ${nodeDefault.major}).`,
+        );
+      }
     });
   }
 }

@@ -9,8 +9,8 @@ export default class XcodeVersionSet extends BaseCommand {
   static description =
     'Remember an Xcode major for this workspace (the git repo, a `lim set-workspace-dir` assignment, or the global ' +
     'slot outside a repo) and switch the remembered sandbox to it now. Later builds, tests, RBE sessions and newly ' +
-    "created sandboxes follow it; `--xcode-version` overrides it for one command. Switching resets the sandbox's " +
-    'DerivedData and is refused while it is busy.';
+    'created sandboxes follow it; `--xcode-version` overrides it for one command. Switching makes the next build ' +
+    'start cold and is refused while the sandbox is busy.';
 
   static examples = [
     '<%= config.bin %> xcode version set 27',
@@ -74,7 +74,7 @@ export default class XcodeVersionSet extends BaseCommand {
       const verb = result.alreadyBound ? 'already uses' : 'now uses';
       this.output(`Sandbox ${target.id} ${verb} Xcode ${formatXcode(result.bound)}`);
       if (result.derivedDataReset) {
-        this.output('DerivedData was reset; the next build starts cold.');
+        this.output('The next build starts cold.');
       }
     });
   }

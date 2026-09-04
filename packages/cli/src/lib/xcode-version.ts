@@ -7,7 +7,7 @@ export const xcodeVersionFlags = {
   'xcode-version': Flags.string({
     description:
       'Xcode major to build with for this invocation, e.g. 27 (see `lim xcode version list`). Overrides the ' +
-      "workspace preference set with `lim xcode version set` without changing it. Switching resets the sandbox's DerivedData.",
+      'workspace preference set with `lim xcode version set` without changing it. Switching makes the next build start cold.',
     helpValue: '<major>',
   }),
 };
@@ -42,27 +42,16 @@ export function resolveRequestedXcodeVersion(flag: string | undefined): Requeste
   return preferred ? { major: preferred, source: 'workspace' } : undefined;
 }
 
-/** "27.0 (27A5252f)", falling back to the version key on nodes that report only that. */
+/** "27.0 (27A5252f)", or "27.0 beta 6 (27A5252f)" for a beta seed. */
+export function formatXcodeVersion(info: Pick<XcodeInfo, 'version' | 'build' | 'betaSeed'>): string {
+  return `${info.version}${info.betaSeed ? ` beta ${info.betaSeed}` : ''} (${info.build})`;
+}
+
+/** formatXcodeVersion plus the node-default mark, falling back to the version key on nodes that report only that. */
 export function formatXcode(info: XcodeInfo | undefined): string {
   if (!info) return 'unknown (daemon predates Xcode selection)';
   if (info.version && info.build) {
-    return `${info.version} (${info.build})${info.nodeDefault ? ' (node default)' : ''}`;
+    return `${formatXcodeVersion(info)}${info.nodeDefault ? ' (node default)' : ''}`;
   }
   return info.versionKey || 'unknown';
-}
-
-/** Notes column of `lim xcode version list`: beta seed, selection, node default, workspace preference. */
-export function xcodeNotes(
-  info: XcodeInfo,
-  selectedMajor: string,
-  preferredMajor: string | null | undefined,
-): string {
-  return [
-    info.betaSeed ? `beta ${info.betaSeed}` : '',
-    info.major === selectedMajor ? 'selected' : '',
-    info.nodeDefault ? 'default' : '',
-    info.major === preferredMajor ? 'preferred' : '',
-  ]
-    .filter(Boolean)
-    .join(', ');
 }
