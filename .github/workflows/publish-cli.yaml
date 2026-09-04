@@ -2,12 +2,13 @@ name: Publish lim CLI
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+  id-token: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     # Job-level so the key survives the rebuild that `npm publish` triggers
     # through prepublishOnly; a step-level env on Build alone gets clobbered.
     env:
@@ -16,6 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The Node set up here is also the runtime oclif bundles into the
+      # tarballs: `oclif pack` uses the version of the node process running it.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -45,40 +48,6 @@ jobs:
       - name: Publish lim
         working-directory: packages/cli
         run: npm publish
-
-  publish-binaries:
-    needs: publish
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    # Same telemetry env as the npm publish job, so the standalone binaries
-    # behave identically to the npm package.
-    env:
-      LIM_POSTHOG_PROJECT_KEY: ${{ secrets.LIMRUN_POSTHOG_PROJECT_KEY }}
-      LIM_POSTHOG_HOST: ${{ vars.LIMRUN_POSTHOG_HOST || 'https://l.limrun.com' }}
-    steps:
-      - uses: actions/checkout@v4
-
-      # The Node set up here is also the runtime oclif bundles into the
-      # tarballs: `oclif pack` uses the version of the node process running it.
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: Bootstrap root SDK
-        run: ./scripts/bootstrap
-
-      - name: Build root SDK
-        run: ./scripts/build
-
-      - name: Install dependencies
-        working-directory: packages/cli
-        run: yarn install --frozen-lockfile
-
-      - name: Build
-        working-directory: packages/cli
-        run: yarn build
 
       # oclif needs 7-zip to unpack the Windows Node distribution. The
       # GitHub-hosted Ubuntu image ships it; install only when missing.
