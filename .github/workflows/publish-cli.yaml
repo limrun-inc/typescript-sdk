@@ -105,10 +105,6 @@ jobs:
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/lim-v*.tar.gz --repo "$GITHUB_REPOSITORY" --clobber
           else
-            # --latest=false: the SDK's v* releases own the repository
-            # "latest" badge and /releases/latest; CLI releases must not
-            # steal them. --target: tag the exact commit this workflow
-            # built, not the default branch HEAD at release time.
             gh release create "$TAG" dist/lim-v*.tar.gz \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
