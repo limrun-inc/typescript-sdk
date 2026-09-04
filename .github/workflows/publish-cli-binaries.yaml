@@ -1,0 +1,74 @@
+name: Publish lim CLI binaries
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-binaries:
+    runs-on: ubuntu-latest
+    # Job-level so the telemetry key is present for every build step, matching
+    # publish-cli.yaml. Binaries must behave identically to the npm package.
+    env:
+      LIM_POSTHOG_PROJECT_KEY: ${{ secrets.LIMRUN_POSTHOG_PROJECT_KEY }}
+      LIM_POSTHOG_HOST: ${{ vars.LIMRUN_POSTHOG_HOST || 'https://l.limrun.com' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Bootstrap root SDK
+        run: ./scripts/bootstrap
+
+      - name: Build root SDK
+        run: ./scripts/build
+
+      - name: Install dependencies
+        working-directory: packages/cli
+        run: yarn install --frozen-lockfile
+
+      - name: Build
+        working-directory: packages/cli
+        run: yarn build
+
+      # Bundles the CLI together with a Node runtime into one self-contained
+      # tarball per platform, so users need neither Node nor npm installed.
+      # Windows is excluded: DotSlash cannot execute the .cmd launcher that
+      # oclif ships for win32, so Windows users install via npm instead.
+      - name: Pack standalone tarballs
+        working-directory: packages/cli
+        run: npx oclif@4.24.0 pack tarballs --targets linux-x64,linux-arm64,darwin-x64,darwin-arm64 --no-xz --parallel
+
+      - name: Read CLI version
+        id: version
+        working-directory: packages/cli
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release and upload tarballs
+        working-directory: packages/cli
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="lim-v${{ steps.version.outputs.version }}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/lim-v*.tar.gz --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/lim-v*.tar.gz \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "lim v${{ steps.version.outputs.version }}" \
+              --notes "Standalone \`lim\` CLI binaries with a bundled Node.js runtime, plus a [DotSlash](https://dotslash-cli.com/) file. Download the \`lim\` DotSlash file, \`chmod +x\` it, and run it with \`dotslash\` on your \`PATH\` — or extract a tarball for your platform and run \`lim/bin/lim\` directly."
+          fi
+
+      # Computes size/digest for each tarball and attaches the generated
+      # DotSlash file (named "lim") to the release created above.
+      - name: Generate and upload DotSlash file
+        uses: facebook/dotslash-publish-release@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          config: .github/workflows/dotslash-config.json
+          tag: lim-v${{ steps.version.outputs.version }}

@@ -1,0 +1,28 @@
+{
+  "outputs": {
+    "lim": {
+      "platforms": {
+        "macos-aarch64": {
+          "regex": "-darwin-arm64\\.tar\\.gz$",
+          "format": "tar.gz",
+          "path": "lim/bin/lim"
+        },
+        "macos-x86_64": {
+          "regex": "-darwin-x64\\.tar\\.gz$",
+          "format": "tar.gz",
+          "path": "lim/bin/lim"
+        },
+        "linux-aarch64": {
+          "regex": "-linux-arm64\\.tar\\.gz$",
+          "format": "tar.gz",
+          "path": "lim/bin/lim"
+        },
+        "linux-x86_64": {
+          "regex": "-linux-x64\\.tar\\.gz$",
+          "format": "tar.gz",
+          "path": "lim/bin/lim"
+        }
+      }
+    }
+  }
+}
