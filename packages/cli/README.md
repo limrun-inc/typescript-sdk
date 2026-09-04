@@ -26,7 +26,7 @@ chmod +x lim
 
 Windows does not use shebangs, so invoke the file through `dotslash` explicitly (`dotslash lim --version`) or create a sibling `lim.bat` containing `@dotslash.exe "%~dpn0" %*` as described in [DotSlash on Windows](https://dotslash-cli.com/docs/windows/).
 
-The same releases also carry the underlying per-platform tarballs (e.g. `lim-v0.32.1-<sha>-darwin-arm64.tar.gz`) if you prefer to extract one manually and run `lim/bin/lim` (`lim\bin\lim.cmd` on Windows) directly.
+The same releases also carry the underlying per-platform tarballs (e.g. `lim-v0.32.1-<sha>-darwin-arm64.tar.xz`) if you prefer to extract one manually and run `lim/bin/lim` (`lim\bin\lim.cmd` on Windows) directly.
 
 ### Migrating from `@limrun/cli`
 

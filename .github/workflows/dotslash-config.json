@@ -3,33 +3,33 @@
     "lim": {
       "platforms": {
         "macos-aarch64": {
-          "regex": "-darwin-arm64\\.tar\\.gz$",
-          "format": "tar.gz",
+          "regex": "-darwin-arm64\\.tar\\.xz$",
+          "format": "tar.xz",
           "path": "lim/bin/lim"
         },
         "macos-x86_64": {
-          "regex": "-darwin-x64\\.tar\\.gz$",
-          "format": "tar.gz",
+          "regex": "-darwin-x64\\.tar\\.xz$",
+          "format": "tar.xz",
           "path": "lim/bin/lim"
         },
         "linux-aarch64": {
-          "regex": "-linux-arm64\\.tar\\.gz$",
-          "format": "tar.gz",
+          "regex": "-linux-arm64\\.tar\\.xz$",
+          "format": "tar.xz",
           "path": "lim/bin/lim"
         },
         "linux-x86_64": {
-          "regex": "-linux-x64\\.tar\\.gz$",
-          "format": "tar.gz",
+          "regex": "-linux-x64\\.tar\\.xz$",
+          "format": "tar.xz",
           "path": "lim/bin/lim"
         },
         "windows-aarch64": {
-          "regex": "-win32-arm64\\.tar\\.gz$",
-          "format": "tar.gz",
+          "regex": "-win32-arm64\\.tar\\.xz$",
+          "format": "tar.xz",
           "path": "lim/bin/lim.cmd"
         },
         "windows-x86_64": {
-          "regex": "-win32-x64\\.tar\\.gz$",
-          "format": "tar.gz",
+          "regex": "-win32-x64\\.tar\\.xz$",
+          "format": "tar.xz",
           "path": "lim/bin/lim.cmd"
         }
       }

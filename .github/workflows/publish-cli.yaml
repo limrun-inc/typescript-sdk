@@ -87,9 +87,11 @@ jobs:
 
       # Bundles the CLI together with a Node runtime into one self-contained
       # tarball per platform, so users need neither Node nor npm installed.
+      # oclif emits both .tar.gz and .tar.xz; only the ~1/3 smaller .tar.xz
+      # files are uploaded to the release.
       - name: Pack standalone tarballs
         working-directory: packages/cli
-        run: npx oclif@4.24.0 pack tarballs --targets linux-x64,linux-arm64,darwin-x64,darwin-arm64,win32-x64,win32-arm64 --no-xz --parallel
+        run: npx oclif@4.24.0 pack tarballs --targets linux-x64,linux-arm64,darwin-x64,darwin-arm64,win32-x64,win32-arm64 --xz --parallel
 
       - name: Read CLI version
         id: version
@@ -103,9 +105,9 @@ jobs:
         run: |
           TAG="lim-v${{ steps.version.outputs.version }}"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/lim-v*.tar.gz --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$TAG" dist/lim-v*.tar.xz --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$TAG" dist/lim-v*.tar.gz \
+            gh release create "$TAG" dist/lim-v*.tar.xz \
               --repo "$GITHUB_REPOSITORY" \
               --title "lim v${{ steps.version.outputs.version }}" \
               --notes "Standalone \`lim\` CLI binaries with a bundled Node.js runtime, plus a [DotSlash](https://dotslash-cli.com/) file. Download the \`lim\` DotSlash file and run it with \`dotslash\` on your \`PATH\` (\`chmod +x\` it on macOS/Linux) — or extract a tarball for your platform and run \`lim/bin/lim\` (\`lim\\bin\\lim.cmd\` on Windows) directly."
