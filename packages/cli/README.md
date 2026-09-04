@@ -12,6 +12,22 @@ npm install -g lim
 npx lim <command>
 ```
 
+### DotSlash (standalone, no Node.js required)
+
+Every `lim-v*` [GitHub release](https://github.com/limrun-inc/typescript-sdk/releases) includes a [DotSlash](https://dotslash-cli.com/) file named `lim`. It is a small text file you can commit to your repository; the first time it runs, DotSlash fetches, verifies, and caches a self-contained `lim` build (with a bundled Node.js runtime) for your platform. Linux, macOS, and Windows are supported, each on x86_64 and arm64.
+
+With [`dotslash` on your `PATH`](https://dotslash-cli.com/docs/installation/), on macOS and Linux:
+
+```bash
+curl -LOSf https://github.com/limrun-inc/typescript-sdk/releases/download/lim-v0.32.1/lim
+chmod +x lim
+./lim --version
+```
+
+Windows does not use shebangs, so invoke the file through `dotslash` explicitly (`dotslash lim --version`) or create a sibling `lim.bat` containing `@dotslash.exe "%~dpn0" %*` as described in [DotSlash on Windows](https://dotslash-cli.com/docs/windows/).
+
+The same releases also carry the underlying per-platform tarballs (e.g. `lim-v0.32.1-<sha>-darwin-arm64.tar.gz`) if you prefer to extract one manually and run `lim/bin/lim` (`lim\bin\lim.cmd` on Windows) directly.
+
 ### Migrating from `@limrun/cli`
 
 `lim` is the canonical npm package for the Limrun CLI. If you already installed the older scoped package, remove it before installing `lim` so npm does not hit a global `lim` binary conflict:
