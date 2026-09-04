@@ -45,9 +45,17 @@ jobs:
 
       # Authenticates via the npm trusted publisher configured for this
       # workflow (OIDC); a configured token would take precedence and fail.
+      # Skips versions that are already on npm so the workflow can be
+      # re-dispatched to repair a release whose later steps failed.
       - name: Publish lim
         working-directory: packages/cli
-        run: npm publish
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "lim@$VERSION" version >/dev/null 2>&1; then
+            echo "lim@$VERSION is already on npm; skipping publish"
+          else
+            npm publish
+          fi
 
       # oclif needs 7-zip to unpack the Windows Node distribution. The
       # GitHub-hosted Ubuntu image ships it; install only when missing.
