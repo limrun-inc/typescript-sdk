@@ -9,13 +9,13 @@ import { parseDurationSeconds } from '../../lib/duration';
 import { startPersistedCaptures } from '../../lib/session-captures';
 import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-instances';
 
-type AndroidModel = 'phone' | 'tablet';
-type AndroidDeviceSelection = AndroidInstanceCreateParams.Spec & {
-  model?: AndroidModel;
-};
+type AndroidModel = NonNullable<AndroidInstanceCreateParams.Spec['model']>;
 
-export function androidDeviceSelection(osVersion?: string, model?: AndroidModel): AndroidDeviceSelection {
-  const spec: AndroidDeviceSelection = {};
+export function androidDeviceSelection(
+  osVersion?: string,
+  model?: AndroidModel,
+): AndroidInstanceCreateParams.Spec {
+  const spec: AndroidInstanceCreateParams.Spec = {};
   if (osVersion) {
     spec.clues = [{ kind: 'OSVersion', osVersion }];
   }
