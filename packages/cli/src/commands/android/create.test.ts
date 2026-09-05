@@ -1,4 +1,4 @@
-import AndroidCreate, { androidDeviceSelection } from '../packages/cli/src/commands/android/create';
+import AndroidCreate, { androidDeviceSelection } from './create';
 
 test('Android 15 tablet selection maps to separate OS and model fields', () => {
   expect(androidDeviceSelection('15', 'tablet')).toEqual({

@@ -198,11 +198,6 @@ export namespace AndroidInstanceCreateParams {
     jurisdiction?: 'us' | 'eu' | 'as';
 
     /**
-     * The Android device model. Default is phone.
-     */
-    model?: 'phone' | 'tablet';
-
-    /**
      * Where the instance will be created. If not given, the region is decided based on
      * scheduling clues (client IP) and availability.
      *
