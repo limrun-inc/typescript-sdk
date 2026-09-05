@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.49.3 (2026-09-05)
+
+Full Changelog: [v0.49.2...v0.49.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.49.2...v0.49.3)
+
+### Features
+
+* **cli:** add Windows x64/arm64 binaries and DotSlash entries ([7a33a0a](https://github.com/limrun-inc/typescript-sdk/commit/7a33a0a06d653584a7afb6eefae68d4f46aa824b))
+* **cli:** distribute lim via DotSlash ([f94cf8a](https://github.com/limrun-inc/typescript-sdk/commit/f94cf8a50533c61c076969508f68c27912c156e0))
+* **cli:** ship xz-compressed binaries ([f6686c6](https://github.com/limrun-inc/typescript-sdk/commit/f6686c6aaa65c5aef698753047b54d7103a971f9))
+
+
+### Bug Fixes
+
+* **ci:** anchor dotslash asset regexes at the name start ([2952480](https://github.com/limrun-inc/typescript-sdk/commit/29524802b0b25e42cf883842b1cb26153758e982))
+* **ci:** pin lim release target and drop latest badge ([f6708ea](https://github.com/limrun-inc/typescript-sdk/commit/f6708ea3329c5975e2b9c11675e0b7fff378aebb))
+* **ci:** pin npm to 11.x for oclif pack ([538d277](https://github.com/limrun-inc/typescript-sdk/commit/538d277fd3081f4bfac76f3d43dd8bb9283e875d))
+* **ci:** skip npm publish for already-published versions ([13a3fe8](https://github.com/limrun-inc/typescript-sdk/commit/13a3fe85ab330163616bd28e8fdc53bea632e247))
+
+
+### Chores
+
+* **ci:** drop release flag comment ([3d132a5](https://github.com/limrun-inc/typescript-sdk/commit/3d132a5618481783cfe0ff34ed94a2f334c7f480))
+
+
+### Build System
+
+* **deps:** bump fast-uri from 3.1.5 to 3.1.7 in /packages/apple-auth ([174d2fc](https://github.com/limrun-inc/typescript-sdk/commit/174d2fcc39cf268bf97c70020ea9af0e657bb390))
+* **deps:** bump fast-uri in /examples/ios-with-xcode ([e347ef9](https://github.com/limrun-inc/typescript-sdk/commit/e347ef9eec7b49efed1b66920c873be08edeeb91))
+* **deps:** bump fast-uri to 3.1.7 and qs to 6.16.0 across lockfiles ([46c1eb0](https://github.com/limrun-inc/typescript-sdk/commit/46c1eb0f17edb6cd5720230b89b3bf0239f7b235))
+* **deps:** bump qs in /examples/publish-to-stores/backend ([36ebf70](https://github.com/limrun-inc/typescript-sdk/commit/36ebf7035f10e2625741c0e326d8621a9d4221a3))
+
 ## 0.49.2 (2026-09-03)
 
 Full Changelog: [v0.49.1...v0.49.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.49.1...v0.49.2)
