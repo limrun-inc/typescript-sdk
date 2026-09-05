@@ -26,8 +26,11 @@ import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
 import { persistFields, type PersistOption } from './internal/persist-option';
 import { streamSessionEntries } from './internal/session-stream';
 import type { SessionLogLine, SessionEvent } from './resources/session-artifacts';
+import { LogcatProcess } from './logcat-process';
 
 export { type PersistOption } from './internal/persist-option';
+export { LogStream, type LogStreamEvents } from './log-stream';
+export { LogcatProcess, type LogcatProcessEvents } from './logcat-process';
 
 const ANDROID_RECORDING_PATH = '/data/local/tmp/recordings/video_recording.mp4';
 const ANDROID_SIGNALING_PATH = '/ws';
@@ -278,6 +281,14 @@ export type InstanceClient = {
    *   non-zero `exitCode` is returned in the result, not thrown.
    */
   adbShell: (command: string, args?: string[], options?: AdbShellOptions) => Promise<AdbShellResult>;
+  /**
+   * Run logcat with the given arguments and stream its output over a
+   * per-run SSE stream. Arguments are forwarded to logcat verbatim, so dump
+   * vs follow is logcat's own vocabulary: `['-d']` or `['-t', '50']` exits
+   * after the dump, `['-T', '50']` or no arguments follows until
+   * {@link LogcatProcess.stop}. 'exit' fires with logcat's exit code.
+   */
+  logcat: (args?: string[]) => LogcatProcess;
   /**
    * Set Android Wi-Fi bandwidth limits in Kbps. Omit a direction to leave it unchanged;
    * pass `0` to clear that direction's limit.
@@ -1466,6 +1477,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             setCameraVideo,
             clearCameraVideo,
             adbShell,
+            logcat,
             setWifiBandwidth,
             startRecording,
             stopRecording,
@@ -1719,6 +1731,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         exitCode: typeof result.exitCode === 'number' ? result.exitCode : -1,
         truncated: result.truncated === true,
       };
+    };
+
+    const logcat = (args: string[] = []): LogcatProcess => {
+      return new LogcatProcess(options.apiUrl, options.token, args);
     };
 
     const setWifiBandwidth = async (bandwidthOptions: WifiBandwidthOptions): Promise<void> => {
