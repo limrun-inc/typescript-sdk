@@ -384,8 +384,8 @@ lim android create
 # With apps pre-installed
 lim android create --install ./my-app.apk --install ./another.apk
 
-# With a specific Android OS version
-lim android create --os-version 15
+# With a specific Android OS version and device model
+lim android create --os-version 15 --model tablet
 
 # Create without opening an ADB tunnel
 lim android create --no-connect
@@ -398,7 +398,8 @@ lim android create --region us-west --display-name "CI Test" --label env=ci --rm
 
 | Flag                     | Description                                     |
 | ------------------------ | ----------------------------------------------- |
-| `--os-version <version>` | Android OS major version (14 or 15)             |
+| `--os-version <version>` | Android OS major version (`14` or `15`)         |
+| `--model <model>`        | Android device model (`phone` or `tablet`)      |
 | `--[no-]connect`         | Start an ADB tunnel immediately (default: true) |
 | `--adb-path <path>`      | Path to `adb` binary (default: `adb`)           |
 

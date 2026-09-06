@@ -9,6 +9,22 @@ import { parseDurationSeconds } from '../../lib/duration';
 import { startPersistedCaptures } from '../../lib/session-captures';
 import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-instances';
 
+type AndroidModel = NonNullable<AndroidInstanceCreateParams.Spec['model']>;
+
+export function androidDeviceSelection(
+  osVersion?: string,
+  model?: AndroidModel,
+): AndroidInstanceCreateParams.Spec {
+  const spec: AndroidInstanceCreateParams.Spec = {};
+  if (osVersion) {
+    spec.clues = [{ kind: 'OSVersion', osVersion }];
+  }
+  if (model) {
+    spec.model = model;
+  }
+  return spec;
+}
+
 export default class AndroidCreate extends BaseCommand {
   static summary = 'Create a new Android instance';
   static description =
@@ -18,7 +34,7 @@ export default class AndroidCreate extends BaseCommand {
     '<%= config.bin %> android create',
     '<%= config.bin %> android create --rm --install ./app.apk',
     '<%= config.bin %> android create --install-url https://example.t3.storage.dev/app.apk?...',
-    '<%= config.bin %> android create --os-version 15',
+    '<%= config.bin %> android create --os-version 15 --model tablet',
     '<%= config.bin %> android create --jurisdiction us --label env=dev',
     '<%= config.bin %> android create --no-connect',
     '<%= config.bin %> android create --daemon=false',
@@ -59,6 +75,11 @@ export default class AndroidCreate extends BaseCommand {
     }),
     'os-version': Flags.string({
       description: 'Android OS major version to create (14 or 15)',
+      options: ['14', '15'],
+    }),
+    model: Flags.string({
+      description: 'Android device model to create',
+      options: ['phone', 'tablet'],
     }),
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
     'inactivity-timeout': Flags.string({
@@ -175,9 +196,10 @@ export default class AndroidCreate extends BaseCommand {
 
       if (flags.region) params.spec!.region = flags.region;
       if (flags.jurisdiction) params.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';
-      if (flags['os-version']) {
-        params.spec!.clues = [{ kind: 'OSVersion', osVersion: flags['os-version'] }];
-      }
+      Object.assign(
+        params.spec!,
+        androidDeviceSelection(flags['os-version'], flags.model as AndroidModel | undefined),
+      );
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
 
