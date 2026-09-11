@@ -48,9 +48,12 @@
     "vite": "^7.1.4",
     "vite-plugin-dts": "^4.5.4",
     "vite-plugin-lib-inject-css": "^2.2.2",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "clsx": "^2.1.1"
+  },
+  "resolutions": {
+    "vite": "^7.1.4"
   }
 }

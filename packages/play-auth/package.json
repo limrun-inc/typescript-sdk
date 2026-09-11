@@ -57,9 +57,12 @@
     "typescript-eslint": "8.31.1",
     "vite": "^7.1.4",
     "vite-plugin-dts": "^4.5.4",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "node-forge": "^1.4.0"
+  },
+  "resolutions": {
+    "vite": "^7.1.4"
   }
 }
