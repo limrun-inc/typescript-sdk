@@ -2610,24 +2610,43 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           rtcConfiguration: RTCConfiguration;
           cameraSupported: boolean;
         }>((resolve, reject) => {
-          const timeoutId = window.setTimeout(() => reject(new Error('RTCConfiguration timeout')), 30000);
+          const settle = (callback: () => void) => {
+            window.clearTimeout(timeoutId);
+            ws.removeEventListener('message', messageHandler);
+            callback();
+          };
+          const timeoutId = window.setTimeout(
+            () => settle(() => reject(new Error('RTCConfiguration timeout'))),
+            30000,
+          );
 
           const messageHandler = (event: MessageEvent) => {
+            if (!isCurrentAttempt() || wsRef.current !== ws) {
+              return;
+            }
             try {
               const message = JSON.parse(event.data);
-              if (message.type === 'rtcConfiguration') {
-                window.clearTimeout(timeoutId);
-                ws.removeEventListener('message', messageHandler);
-                resolve({
-                  rtcConfiguration: message.rtcConfiguration,
-                  cameraSupported: message.cameraSupported === true,
-                });
+              if (
+                message.type === 'signalingError' &&
+                message.requestType === 'requestRtcConfiguration' &&
+                message.sessionId === sessionId
+              ) {
+                const reason =
+                  typeof message.error === 'string' ?
+                    message.error
+                  : 'Unable to load streaming configuration';
+                settle(() => reject(new Error(reason)));
+              } else if (message.type === 'rtcConfiguration') {
+                settle(() =>
+                  resolve({
+                    rtcConfiguration: message.rtcConfiguration,
+                    cameraSupported: message.cameraSupported === true,
+                  }),
+                );
               }
             } catch (e) {
-              window.clearTimeout(timeoutId);
-              ws.removeEventListener('message', messageHandler);
               console.error('Error handling RTC configuration:', e);
-              reject(e);
+              settle(() => reject(e));
             }
           };
 
@@ -2986,6 +3005,18 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }
           updateStatus('Received: ' + message.type);
           switch (message.type) {
+            case 'signalingError': {
+              if (message.requestType !== 'offer' || message.sessionId !== sessionId) {
+                break;
+              }
+              const reason =
+                typeof message.error === 'string' ?
+                  message.error
+                : 'Unable to establish the streaming connection';
+              updateStatus('Error: ' + reason);
+              scheduleRetry(reason, generation);
+              break;
+            }
             case 'answer':
               if (!peerConnectionRef.current || peerConnectionRef.current !== peerConnection) {
                 updateStatus('No peer connection, skipping answer');
