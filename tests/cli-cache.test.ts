@@ -69,11 +69,14 @@ describe('restore rendering', () => {
     );
   });
 
-  test('a cold instance is not a failure and explains itself', () => {
-    const cold = cache({ restore: { phase: 'skipped', reason: 'in_use' } });
+  test.each([
+    ['in_use', 'in use by another instance'],
+    ['object_missing', 'the stored cache archive no longer exists'],
+  ])('a cold instance with reason %s is not a failure and explains itself', (reason, explanation) => {
+    const cold = cache({ restore: { phase: 'skipped', reason } });
     const outcome = restoreOutcome(cold, 1_000);
     expect(outcome.failed).toBe(false);
-    expect(outcome.line).toMatch(/in use by another instance/);
+    expect(outcome.line).toContain(explanation);
     expect(outcome.line).toMatch(/cold workspace/);
   });
 

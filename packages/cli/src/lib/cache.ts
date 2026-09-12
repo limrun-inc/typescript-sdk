@@ -60,6 +60,7 @@ const SAVE_PROGRESS: Record<string, string> = {
 
 const REASONS: Record<string, string> = {
   no_match: 'no archive matched the restore keys',
+  object_missing: 'the stored cache archive no longer exists',
   in_use: 'the stable workspace directory is in use by another instance',
   link_conflict: 'the stable workspace directory conflicts with an existing one',
   unsupported_node: 'the node this instance landed on has no cache storage configured',
