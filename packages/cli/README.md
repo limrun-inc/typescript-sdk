@@ -525,7 +525,14 @@ lim xcode version unset               # forget the preference; the sandbox goes 
 # Tune sync cache or ignore additional paths
 lim xcode sync ./MyProject --watch --basis-cache-dir ./.limsync-cache
 lim xcode sync ./MyProject --ignore "\\.xcuserdata/" --ignore "^DerivedData/"
+lim xcode sync ./MyProject --ignore "^\\.env($|\\.)" --ignore "\\.xcconfig$"
 ```
+
+Sync precedence is: the client basis cache is always excluded; `--include`
+wins over `--ignore`; `--ignore` wins over built-in `.env` and `.xcconfig`
+force-includes; built-in exclusions and `.gitignore` rules then apply. Match
+an ignored parent directory to prune its subtree. Without `--ignore`, Xcode
+sync continues to include gitignored `.env`, `.env.*`, and `.xcconfig` files.
 
 ---
 

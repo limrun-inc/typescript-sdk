@@ -6,9 +6,10 @@ import { createIgnoreFn, type IgnoreFn } from '@limrun/api/folder-sync-ignore';
 // Precedence table mirroring the Go harness parity test
 // (limrun test/integration/limbuild/folder_sync_ignore_test.go). Layers,
 // first decisive answer wins:
-//   1. basis cache  2. user include  3. .git/.DS_Store
-//   4. xcode default junk  5. built-in force-include (.xcconfig, .env)
-//   6. .gitignore chain (root + nested)  7. user ignore
+//   1. basis cache  2. user include  3. user ignore
+//   4. .git/.DS_Store  5. xcode default junk
+//   6. built-in force-include (.xcconfig, .env)
+//   7. .gitignore chain (root + nested)
 describe('createIgnoreFn', () => {
   let dir: string;
   let ignore: IgnoreFn;
@@ -41,10 +42,14 @@ describe('createIgnoreFn', () => {
       xcodeDefaults: true,
       include: (rel) =>
         rel.startsWith('.git/') || rel.startsWith('apps/foo/Generated/Kit/') || rel.startsWith('pinned/'),
-      // Also excludes apps/foo/important.log, which the nested !important.log
-      // negation re-includes: proves --ignore still wins over a gitignore
-      // re-include (layer 7 runs after a non-decisive gitignore answer).
-      additional: (rel) => rel.startsWith('secrets/') || rel.endsWith('important.log'),
+      additional: (rel) =>
+        rel === '.env' ||
+        rel.startsWith('.env.') ||
+        rel === 'Config.xcconfig' ||
+        rel === 'apps/foo/.env.local' ||
+        rel.startsWith('secrets/') ||
+        rel.startsWith('pinned/') ||
+        rel.endsWith('important.log'),
     });
   });
 
@@ -60,16 +65,19 @@ describe('createIgnoreFn', () => {
     // Built-in excludes can be selectively overridden by user include.
     ['.git/HEAD', false, 'user --include rescues the root .git directory'],
     ['a/b/.git/config', true, 'unmatched nested .git stays excluded'],
-    ['.DS_Store', true, '.DS_Store is always excluded'],
-    ['sub/.DS_Store', true, 'nested .DS_Store is always excluded'],
-    // Always-include override.
-    ['Config.xcconfig', false, '.xcconfig overrides the *.xcconfig gitignore rule'],
-    ['.env', false, '.env overrides the .env* gitignore rule'],
-    ['.env.production', false, '.env.* variants are force-included'],
-    ['.env.production.local', false, 'dotenv-flow .local variants are force-included'],
-    ['.env.staging', false, 'custom NODE_ENV variants are force-included'],
-    ['apps/foo/.env.local', false, 'nested .env files are force-included'],
-    ['secrets/.env', false, 'built-in .env force-include beats user --ignore'],
+    ['.DS_Store', true, 'unmatched .DS_Store stays excluded'],
+    ['sub/.DS_Store', true, 'unmatched nested .DS_Store stays excluded'],
+    // User --ignore overrides built-in force-includes.
+    ['Config.xcconfig', true, 'user --ignore excludes a root xcconfig'],
+    ['.env', true, 'user --ignore excludes root .env'],
+    ['.env.production', true, 'user --ignore excludes root .env.* variants'],
+    ['.env.production.local', true, 'user --ignore excludes dotenv-flow variants'],
+    ['.env.staging', true, 'user --ignore excludes custom NODE_ENV variants'],
+    ['apps/foo/.env.local', true, 'user --ignore excludes a nested .env file'],
+    ['public/.env.local', false, 'unmatched nested .env files remain force-included'],
+    ['secrets/', true, 'user --ignore prunes a matching parent directory'],
+    ['secrets/.env', true, 'an ignored parent prevents .env force-inclusion'],
+    ['secrets/Config.xcconfig', true, 'an ignored parent prevents xcconfig force-inclusion'],
     // Root .gitignore (incl. dir-only rule and negation).
     ['node_modules/', true, 'dir-only gitignore rule prunes the directory'],
     ['node_modules/foo/index.js', true, 'files under a gitignored dir'],
@@ -84,7 +92,7 @@ describe('createIgnoreFn', () => {
     ['apps/bar/Generated/x.swift', false, "nested rules don't leak to sibling trees"],
     ['apps/foo/important.log', true, 'user --ignore wins over a gitignore negation re-include'],
     ['apps/foo/debug.log', true, 'root *.log still applies where not negated'],
-    // User include force-syncs past nested gitignore.
+    // User include force-syncs past nested gitignore and user ignore.
     ['apps/foo/Generated/Kit/Package.swift', false, 'include overrides nested gitignore'],
     // Gitignored generated projects are NOT force-included: limbuild
     // regenerates them from project.yml, and exact-version holdouts
@@ -92,7 +100,8 @@ describe('createIgnoreFn', () => {
     ['app/App.xcodeproj/project.pbxproj', true, 'gitignored .xcodeproj respects gitignore'],
     ['app/App.xcworkspace/contents.xcworkspacedata', true, 'gitignored .xcworkspace respects gitignore'],
     ['app/App.xcodeproj/', true, 'gitignored .xcodeproj directory is pruned'],
-    ['pinned/Exact.xcodeproj/project.pbxproj', false, '--include rescues a gitignored .xcodeproj'],
+    ['pinned/Exact.xcodeproj/project.pbxproj', false, '--include wins when --ignore also matches'],
+    ['pinned/.env', false, '--include wins over --ignore for a built-in force-include path'],
     // Default Xcode/dependency excludes (even if not gitignored).
     ['Pods/Manifest.lock', true, 'Pods/ is a default exclude'],
     ['.swiftpm/x', true, '.swiftpm/ is a default exclude'],
@@ -102,19 +111,31 @@ describe('createIgnoreFn', () => {
     ['sub/build/out', false, 'default dir excludes are root-anchored'],
     ['a/proj.xcodeproj/project.xcworkspace/xcuserdata/u.plist', true, 'xcuserdata anywhere'],
     ['Foo.dSYM/Contents/x', true, '.dSYM anywhere'],
-    // User ignore runs last.
+    // Other user ignores remain exclusions.
     ['secrets/key.pem', true, 'user --ignore excludes'],
-    ['secrets/Config.xcconfig', false, 'built-in force-include beats user --ignore (existing behavior)'],
   ])('ignore(%s) = %s  // %s', (rel, want) => {
     expect(ignore(rel)).toBe(want);
   });
 
-  test('basis cache remains excluded when user include matches it', async () => {
+  test('built-in force-includes are unchanged without user ignore', async () => {
+    const defaultIgnore = await createIgnoreFn(dir, {
+      basisCacheDir: path.join(os.tmpdir(), 'some-other-place'),
+      xcodeDefaults: true,
+    });
+
+    expect(defaultIgnore('Config.xcconfig')).toBe(false);
+    expect(defaultIgnore('.env')).toBe(false);
+    expect(defaultIgnore('.env.production.local')).toBe(false);
+    expect(defaultIgnore('apps/foo/.env.local')).toBe(false);
+  });
+
+  test('basis cache remains excluded when all user predicates match it', async () => {
     const basisCacheDir = path.join(dir, '.limsync-cache');
     const broadInclude = await createIgnoreFn(dir, {
       basisCacheDir,
       xcodeDefaults: true,
       include: () => true,
+      additional: () => true,
     });
 
     expect(broadInclude('.limsync-cache/')).toBe(true);
@@ -126,8 +147,8 @@ describe('createIgnoreFn', () => {
 // The app-bundle install sync calls createIgnoreFn without xcodeDefaults, and
 // must keep the legacy behavior: only the root .gitignore is read and no
 // default Xcode excludes apply (a build artifact is not reshaped by gitignore
-// files embedded in it). .xcconfig force-include stays unconditional, as it
-// always was.
+// files embedded in it). With no user ignore, project-file force-includes
+// remain unchanged.
 describe('createIgnoreFn without xcodeDefaults (app-install legacy mode)', () => {
   let dir: string;
   let ignore: IgnoreFn;
@@ -150,8 +171,8 @@ describe('createIgnoreFn without xcodeDefaults (app-install legacy mode)', () =>
     ['root.log', true, 'root .gitignore still applies'],
     ['nested/keep.txt', false, 'nested .gitignore is NOT honored in legacy mode'],
     ['App.xcodeproj/project.pbxproj', false, 'gitignored-or-not, no rule excludes it here'],
-    ['Config.xcconfig', false, '.xcconfig force-include is unconditional'],
-    ['.env', false, '.env force-include is unconditional'],
+    ['Config.xcconfig', false, '.xcconfig remains force-included'],
+    ['.env', false, '.env remains force-included'],
     ['Pods/Manifest.lock', false, 'default junk excludes are off without xcodeDefaults'],
   ])('ignore(%s) = %s  // %s', (rel, want) => {
     expect(ignore(rel)).toBe(want);
