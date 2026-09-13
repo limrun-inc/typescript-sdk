@@ -132,12 +132,13 @@
   resolved "https://registry.yarnpkg.com/@esbuild/win32-x64/-/win32-x64-0.28.2.tgz#b21affb804cc167c133d95f45b3a1dc1323b9a87"
   integrity sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g==
 
-"@limrun/api@^0.46.11":
-  version "0.46.11"
-  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.46.11.tgz#b421f9a2084e1f455a5e6d855ea91f860b4d9f2b"
-  integrity sha512-vSXSOnTTNsQQtbWB3T04KE2x7B6H1OlBjkO2rF8K/cSMUqYPT3x8UgcI1Kl4X9uBJgfVWT7BJBA0EWedpAxIUQ==
+"@limrun/api@^0.49.2":
+  version "0.49.3"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.49.3.tgz#e1df2d8537771b819db3525d0e8888897065715b"
+  integrity sha512-gkVhAutGRFnX5TAebXMvWlTHalODe5/KO3AI0pOb5c/xjO41c2GPjpt/pbMTknBxswo7KSI3KzOeK9ZDEuejGQ==
   dependencies:
     "@limrun/xdelta3-wasm" "0.2.0"
+    "@types/har-format" "^1.2.16"
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"
     ignore "^7.0.5"
@@ -150,6 +151,11 @@
   version "0.2.0"
   resolved "https://registry.yarnpkg.com/@limrun/xdelta3-wasm/-/xdelta3-wasm-0.2.0.tgz#f74444ba7eb2be90e86e0c24edf55e9505127354"
   integrity sha512-mEohO7CYj4Gdc0v1Gr/AjlBhfbXQnIz6+2wmMhRfwz8hXZrsIC/yqYQhfoDhu1ysqQwBnU5lDDLPUGdUu+8hPQ==
+
+"@types/har-format@^1.2.16":
+  version "1.2.16"
+  resolved "https://registry.yarnpkg.com/@types/har-format/-/har-format-1.2.16.tgz#b71ede8681400cc08b3685f061c31e416cf94944"
+  integrity sha512-fluxdy7ryD3MV6h8pTfTYpy/xQzCFC7m89nOH9y94cNqJ1mDIDPut7MnRHI3F6qRmh/cT2fUjG1MLdCNb4hE9A==
 
 "@types/node@^25.5.2":
   version "25.9.5"
