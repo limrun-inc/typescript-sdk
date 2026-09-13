@@ -59,5 +59,6 @@ process.on('SIGTERM', () => {
 await new Promise((resolve) => setTimeout(resolve, 30_000));
 console.log('Closing the destination tunnel');
 tunnel.close();
+client.disconnect();
 await limrun.androidInstances.delete(androidInstance.metadata.id);
 console.log('Deleted instance');
