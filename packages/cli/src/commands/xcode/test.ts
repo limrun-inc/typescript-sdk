@@ -13,6 +13,7 @@ import {
   xcodeProjectFlags,
 } from '../../lib/xcode-project-flags';
 import { formatCaseLine, formatSummaryLine } from '../../lib/xctest-render';
+import { artifactOutputFlags, artifactOutputsFromFlags } from '../../lib/artifact-output-options';
 
 export default class XcodeTest extends BaseCommand {
   static description =
@@ -23,6 +24,7 @@ export default class XcodeTest extends BaseCommand {
     '$ lim xcode test ./MyProject --scheme MyApp',
     '$ lim xcode test . --only-testing MyAppTests/LoginTests/testValidLogin',
     '$ lim xcode test . --skip-testing MyAppUITests',
+    '$ lim xcode test . --output products=testProducts --output xcresult=resultBundle',
     '$ lim xcode test . --json > results.ndjson',
   ];
 
@@ -64,12 +66,19 @@ export default class XcodeTest extends BaseCommand {
     ...xcodeVersionFlags,
     ...syncFlags,
     ...cacheFlags,
+    ...artifactOutputFlags,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeTest);
     this.setParsedFlags(flags);
     const requestedXcode = resolveRequestedXcodeVersion(flags['xcode-version']);
+    let artifactOutputs;
+    try {
+      artifactOutputs = artifactOutputsFromFlags(flags, 'test');
+    } catch (err) {
+      this.error(err instanceof Error ? err.message : String(err));
+    }
 
     if (flags.id && flags['inactivity-timeout']) {
       this.error('--inactivity-timeout controls newly created instances and cannot be combined with --id.');
@@ -95,6 +104,9 @@ export default class XcodeTest extends BaseCommand {
       };
 
       const options: XcodeBuildOptions = {};
+      if (artifactOutputs.length > 0) {
+        options.outputs = artifactOutputs;
+      }
       const xcodegen = xcodegenConfigFromFlags(flags);
       if (xcodegen) {
         options.xcodegen = xcodegen;
@@ -144,12 +156,24 @@ export default class XcodeTest extends BaseCommand {
         process.stdout.write(
           JSON.stringify({
             exitCode: result.exitCode,
+            ...(result.artifacts ? { artifacts: result.artifacts } : {}),
             ...(result.timedOut ? { timedOut: true, incomplete: result.incomplete } : {}),
           }) + '\n',
         );
       } else if (result.xctest) {
         this.output('');
         this.output(formatSummaryLine(result.xctest.summary));
+      }
+      if (!json) {
+        for (const artifact of result.artifacts ?? []) {
+          this.output(
+            artifact.uploaded ?
+              `Output ${artifact.name}: uploaded ${formatBytes(artifact.byteSize)}${
+                artifact.signedDownloadUrl ? ` (${artifact.signedDownloadUrl})` : ''
+              }`
+            : `Output ${artifact.name}: unavailable${artifact.error ? ` (${artifact.error})` : ''}`,
+          );
+        }
       }
       if (result.timedOut) {
         this.error(`Test run did not complete: ${result.incomplete?.message ?? 'timed out'}`);

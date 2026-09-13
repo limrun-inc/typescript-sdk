@@ -5,6 +5,7 @@ import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 import { parseEnvEntries } from '../../lib/env-entries';
+import { artifactOutputFlags, artifactOutputsFromFlags } from '../../lib/artifact-output-options';
 
 export default class XcodeRun extends BaseCommand {
   static summary = 'Run a command on an Xcode sandbox';
@@ -15,6 +16,7 @@ export default class XcodeRun extends BaseCommand {
     '<%= config.bin %> xcode run -- make api',
     '<%= config.bin %> xcode run apps/api -- make generate',
     '<%= config.bin %> xcode run --env API_ENV=development -- npm run generate',
+    '<%= config.bin %> xcode run --output reports=workspace:reports -- make reports',
     '<%= config.bin %> xcode run --no-sync -- mise run build',
   ];
 
@@ -29,6 +31,7 @@ export default class XcodeRun extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     ...syncFlags,
+    ...artifactOutputFlags,
     id: Flags.string({
       description: 'Xcode instance ID to run on. Defaults to the most recent standalone Xcode target.',
     }),
@@ -61,6 +64,12 @@ export default class XcodeRun extends BaseCommand {
     this.setParsedFlags(flags);
 
     const env = parseEnvEntries(flags.env ?? [], (message) => this.error(message));
+    let outputs;
+    try {
+      outputs = artifactOutputsFromFlags(flags, 'run');
+    } catch (err) {
+      this.error(err instanceof Error ? err.message : String(err));
+    }
     const commandLine =
       commandArgs.length === 1 ? commandArgs[0] : commandArgs.map(quoteShellArgument).join(' ');
 
@@ -97,6 +106,7 @@ export default class XcodeRun extends BaseCommand {
         cwd: args.cwd ?? '.',
         ...(env && { env }),
         ...(flags.timeout !== undefined && { timeoutSeconds: flags.timeout }),
+        ...(outputs.length && { outputs }),
       });
       proc.stdout.on('data', (line: string) => process.stdout.write(line + '\n'));
       proc.stderr.on('data', (line: string) => process.stderr.write(line + '\n'));
@@ -113,6 +123,15 @@ export default class XcodeRun extends BaseCommand {
           );
         }
         this.error(`Command failed with exit code ${result.exitCode}`, { exit: result.exitCode });
+      }
+      for (const artifact of result.artifacts ?? []) {
+        this.output(
+          artifact.uploaded ?
+            `Output ${artifact.name}: uploaded ${formatBytes(artifact.byteSize)}${
+              artifact.signedDownloadUrl ? ` (${artifact.signedDownloadUrl})` : ''
+            }`
+          : `Output ${artifact.name}: unavailable${artifact.error ? ` (${artifact.error})` : ''}`,
+        );
       }
     });
   }

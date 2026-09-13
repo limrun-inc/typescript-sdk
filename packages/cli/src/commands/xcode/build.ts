@@ -17,6 +17,7 @@ import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance }
 import { webhookConfigFromFlags } from '../../lib/webhook-options';
 import { parseUploadOptions } from '../../lib/upload-options';
 import { repeatableFlagFromEnv } from '../../lib/repeatable-flag-env';
+import { artifactOutputFlags, artifactOutputsFromFlags } from '../../lib/artifact-output-options';
 import {
   cloudSigningFlagsProblem,
   parseEntitlementsEntries,
@@ -77,6 +78,8 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build ./MyProject --scheme MyApp --certificate-p12 ./certificate.p12 --certificate-password "$P12_PASSWORD" --provisioning-profile ./app.mobileprovision --provisioning-profile ./widgets.mobileprovision --upload-to-appstore --asc-key-id 2X9R4HXF34 --asc-key ./AuthKey_2X9R4HXF34.p8',
     '<%= config.bin %> xcode build --id <ios-instance-ID> --project MyApp.xcodeproj --upload ios-build.zip',
     '<%= config.bin %> xcode build --signed-upload-url <url>',
+    '<%= config.bin %> xcode build ./MyProject --output archive=workspace:build/archive.zip --output xcresult=resultBundle',
+    '<%= config.bin %> xcode build --output logs=workspace:logs --output-url "logs=https://storage.example/upload?signature=a=b"',
     '<%= config.bin %> xcode build ./MyProject --scheme "MyApp Dev" --upload myapp-dev-build --artifact-name MyApp-dev.app',
     `<%= config.bin %> xcode build ./MyProject --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"`,
     '<%= config.bin %> xcode build ./MyProject --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
@@ -99,6 +102,7 @@ export default class XcodeBuild extends BaseCommand {
     ...BaseCommand.baseFlags,
     ...xcodeProjectFlags,
     ...syncFlags,
+    ...artifactOutputFlags,
     id: Flags.string({
       description:
         'Xcode instance ID to build on, or a legacy iOS instance ID with an embedded Xcode sandbox. Defaults to the most recent standalone Xcode target.',
@@ -262,6 +266,12 @@ export default class XcodeBuild extends BaseCommand {
     this.setParsedFlags(flags);
     // Validated before any sandbox is created, so a typo never leaves a billed sandbox behind.
     const requestedXcode = resolveRequestedXcodeVersion(flags['xcode-version']);
+    let artifactOutputs;
+    try {
+      artifactOutputs = artifactOutputsFromFlags(flags, 'build');
+    } catch (err) {
+      this.error(err instanceof Error ? err.message : String(err));
+    }
     if (flags['dev-server-url'] && flags.configuration === 'Release') {
       this.error('--dev-server-url is only supported for Debug builds.');
     }
@@ -328,6 +338,9 @@ export default class XcodeBuild extends BaseCommand {
       }
 
       const options: XcodeBuildOptions = {};
+      if (artifactOutputs.length > 0) {
+        options.outputs = artifactOutputs;
+      }
       if (flags['git-init']) {
         options.gitInit = true;
       }
@@ -499,6 +512,15 @@ export default class XcodeBuild extends BaseCommand {
       }
 
       this.output(`\nBuild succeeded (exit code ${result.exitCode})`);
+      for (const artifact of result.artifacts ?? []) {
+        this.output(
+          artifact.uploaded ?
+            `Output ${artifact.name}: uploaded ${formatBytes(artifact.byteSize)}${
+              artifact.signedDownloadUrl ? ` (${artifact.signedDownloadUrl})` : ''
+            }`
+          : `Output ${artifact.name}: unavailable${artifact.error ? ` (${artifact.error})` : ''}`,
+        );
+      }
       if (result.appstore?.state === 'accepted') {
         this.output('App Store Connect: upload accepted.');
       } else if (result.appstore?.state === 'processing') {

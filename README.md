@@ -48,6 +48,43 @@ const androidInstance: Limrun.AndroidInstance = await client.androidInstances.cr
 
 Documentation for each method, request param, and response field are available in docstrings and will appear on hover in most modern editors.
 
+### Xcode execution outputs
+
+Xcode sandbox builds, tests, and generic commands can upload named outputs without
+streaming artifact bodies through stdout. Use `assetName` to let the SDK create
+the signed upload URL, or provide `signedUploadUrl` directly:
+
+```ts
+const xcode = await client.xcodeInstances.createClient({
+  apiUrl: instance.status.apiUrl,
+  token: instance.status.token,
+});
+
+const result = await xcode.xcodebuild(
+  { action: 'build-for-testing', sdk: 'iphonesimulator' },
+  {
+    outputs: [
+      { name: 'products', source: 'testProducts', assetName: 'ci/test-products' },
+      { name: 'xcresult', source: 'resultBundle', assetName: 'ci/result-bundle' },
+      {
+        name: 'coverage',
+        source: 'workspace',
+        path: 'reports/coverage.json',
+        signedUploadUrl: process.env.COVERAGE_UPLOAD_URL!,
+      },
+    ],
+  },
+);
+
+console.log(result.artifacts);
+```
+
+`workspace` outputs require a relative `path`. `testProducts` is valid only
+with `action: 'build-for-testing'`; `resultBundle` is valid for Xcode builds
+and tests. Generic `xcode.run()` commands support workspace outputs. The
+awaited result carries the terminal artifact manifests from the SSE stream,
+and `xcode.getExec(execId)` retrieves the same metadata for recovery.
+
 ## Handling errors
 
 When the library is unable to connect to the API,

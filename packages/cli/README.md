@@ -493,6 +493,21 @@ lim xcode run -- make api
 # Build and upload artifact
 lim xcode build ./MyProject --scheme MyApp --upload my-app-build
 
+# Upload named files or directories from the synced workspace
+lim xcode build ./MyProject --output archive=workspace:build/archive.zip --output logs=workspace:logs
+
+# Upload the server-managed result bundle
+lim xcode build ./MyProject --output xcresult=resultBundle
+
+# Use a caller-minted URL. The parser preserves every = after NAME=.
+lim xcode run --output reports=workspace:reports \
+  --output-url 'reports=https://storage.example/upload?credential=abc&signature=a=b==' \
+  -- make reports
+
+# Build tests and upload both server-managed test outputs
+lim xcode test ./MyProject --scheme MyApp \
+  --output products=testProducts --output xcresult=resultBundle
+
 # Build with app config values available as Xcode build settings
 lim xcode build ./MyProject --scheme MyApp --build-setting 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) LIMRUN' --build-setting APP_CONFIG_DEV_LOGIN_SECRET="$DEV_LOGIN_SECRET"
 
@@ -778,6 +793,26 @@ lim xcode run --no-sync -- mise run build
 ```
 
 The sandbox includes Node, Ruby, CMake, Mint, and mise. mise and Mint installs are scoped to the instance's sandbox home. Homebrew is not available because its macOS packages require a shared system prefix; use mise, Mint, SwiftPM, or project-local binaries instead. Commands stream stdout and stderr and return the remote exit code, but do not provide an interactive terminal.
+
+#### Named execution outputs
+
+`lim xcode build`, `lim xcode test`, and `lim xcode run` accept repeatable
+`--output NAME=SOURCE` flags:
+
+- `NAME=workspace:PATH` uploads a relative file or directory from the synced workspace.
+- `NAME=testProducts` uploads build-for-testing products and is valid only with `lim xcode test`.
+- `NAME=resultBundle` uploads the server-managed xcresult and is valid with build or test.
+
+By default, the CLI creates or refreshes a Limrun asset named `NAME`, using a
+14-day TTL. Set one TTL for the asset-backed outputs with `--output-ttl 24h`.
+To use your own upload destination, add repeatable
+`--output-url NAME=HTTPS_URL`. The parser splits at the first `=` only, so
+signed query strings containing `=` are preserved exactly. Every
+`--output-url` name must match one declared `--output`.
+
+Outputs upload only after the complete execution succeeds. The command prints
+each terminal manifest, including whether the upload succeeded, its byte size,
+and the asset download URL when the CLI minted one.
 
 For [XcodeGen](https://github.com/yonaskolb/XcodeGen) projects whose generated `.xcodeproj` is gitignored, the server generates it from your synced `project.yml` automatically before the build — it looks next to a pinned `--project`/`--workspace` path, at the synced folder root, and one directory level down. If your spec has a different name or location, pin it with `--xcodegen-spec <path>`, optionally control the output directory with `--xcodegen-project <dir>`, and anchor relative paths in the spec with `--xcodegen-project-root <dir>`; all paths are relative to the synced folder root and mirror `xcodegen generate --spec/--project/--project-root`. Passing any of these flags always regenerates the project on the server:
 

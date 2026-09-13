@@ -42,6 +42,66 @@ export class ExecStreamClosedError extends Error {}
 
 export type ExecRequest = XcodeBuildExecRequest | GradleBuildExecRequest | RunExecRequest;
 
+export type ArtifactOutputSource = 'workspace' | 'testProducts' | 'resultBundle';
+
+/**
+ * One caller-selected execution output. This is the low-level wire shape:
+ * callers mint each upload URL before POST /exec.
+ */
+export type ArtifactOutput =
+  | {
+      name: string;
+      source?: 'workspace';
+      path: string;
+      signedUploadUrl: string;
+    }
+  | {
+      name: string;
+      source: 'testProducts' | 'resultBundle';
+      path?: never;
+      signedUploadUrl: string;
+    };
+
+/** One output upload reported by terminal execution metadata. */
+export type ArtifactManifest = {
+  name: string;
+  source: ArtifactOutputSource;
+  /** Resolved path relative to the synced workspace root. */
+  path: string;
+  kind: 'file' | 'directory' | 'unavailable';
+  transferFormat: 'raw' | 'tarGzip' | 'none';
+  /** Number of bytes in the uploaded request body. */
+  byteSize: number;
+  uploaded: boolean;
+  sha256?: string;
+  contentType?: string;
+  /** Safe upload failure summary. Never contains the signed URL. */
+  error?: string;
+};
+
+/** Execution state returned by GET /exec/{execId} and carried by meta SSE frames. */
+export type ExecMetadata = {
+  id: string;
+  status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  startedAt?: string;
+  finishedAt?: string;
+  exitCode?: number;
+  artifacts?: ArtifactManifest[];
+};
+
+/**
+ * High-level artifact result. The SDK adds signedDownloadUrl when it minted
+ * the output's Limrun asset URL.
+ */
+export type ArtifactResult = ArtifactManifest & {
+  signedDownloadUrl?: string;
+};
+
+type ExecClientMetadata = {
+  signedDownloadUrl?: string;
+  artifactDownloadUrls?: Record<string, string>;
+};
+
 export type XcodeBuildExecRequest = {
   command: 'xcodebuild';
   xcodebuild?: {
@@ -111,6 +171,7 @@ export type XcodeBuildExecRequest = {
   /** How xcodebuild stdout is processed before streaming. Defaults to 'xcbeautify'. */
   logProcessor?: 'xcbeautify' | 'none';
   signedUploadUrl?: string;
+  outputs?: ArtifactOutput[];
   /**
    * ID of the Limrun asset signedUploadUrl targets, when it was minted from
    * one. Lets limbuild record the built app's metadata (title, bundle
@@ -119,9 +180,7 @@ export type XcodeBuildExecRequest = {
    */
   assetId?: string;
   webhook?: WebhookConfig;
-  additionalMetadata?: {
-    signedDownloadUrl?: string;
-  };
+  additionalMetadata?: ExecClientMetadata;
 };
 
 /**
@@ -262,6 +321,9 @@ export type RunExecRequest = {
    */
   env?: string[];
   timeoutSeconds?: number;
+  outputs?: ArtifactOutput[];
+  /** @internal Client-only output download URLs, stripped before POST /exec. */
+  additionalMetadata?: ExecClientMetadata;
 };
 
 export type ExecOptions = {
@@ -281,6 +343,10 @@ export type ExecResult = {
   execId: string;
   status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
   signedDownloadUrl?: string;
+  /** Last execution metadata observed from SSE, or recovered with GET /exec/{execId}. */
+  metadata?: ExecMetadata;
+  /** Terminal artifact manifests, decorated with SDK-minted download URLs when available. */
+  artifacts?: ArtifactResult[];
   /**
    * Last App Store Connect upload state streamed by the server. Absent when
    * the build ran without an App Store upload, or when the server predates
@@ -464,6 +530,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private playstoreEvent: PlaystoreEvent | null = null;
   private xctestCases: XctestCaseEvent[] = [];
   private xctestSummary: XctestSummaryEvent | null = null;
+  private execMetadata: ExecMetadata | null = null;
   // Highest server-assigned event id already dispatched. The server numbers
   // every frame and replays the stream from the start on reconnect; skipping
   // ids at or below this mark drops the replayed prefix for every event type
@@ -564,11 +631,9 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     const { apiUrl, token } = this.options;
 
     // 1. Trigger the build via POST /exec.
-    // additionalMetadata is a client-only carrier (no daemon reads it; it is
-    // spread into ExecResult below so callers can surface the download URL), so
-    // it is stripped from the wire body: the daemon OpenAPI schemas do not
-    // declare it, and sending it would 400 under strict request validation.
-    // The 'run' command has no artifact upload and never carries it.
+    // additionalMetadata carries client-only download URLs for legacy and named
+    // output uploads. Every command strips it from the wire body because daemon
+    // OpenAPI schemas do not declare it and strict validation would reject it.
     const wireRequest = { ...request };
     if ('additionalMetadata' in wireRequest) {
       delete wireRequest.additionalMetadata;
@@ -713,11 +778,39 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       : exitCode === -1 ? 'CANCELLED'
       : 'FAILED';
 
+    const requestedOutputs = 'outputs' in request ? request.outputs : undefined;
+    if (!timedOut && requestedOutputs?.length && !isTerminalExecMetadata(this.execMetadata)) {
+      try {
+        this.execMetadata = await getExec(this.execId!, this.options);
+      } catch (err) {
+        this.log(
+          'warn',
+          `Failed to recover terminal metadata for execution ${this.execId}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+    const clientMetadata = ('additionalMetadata' in request ? request.additionalMetadata : undefined) as
+      | ExecClientMetadata
+      | undefined;
+    const artifacts =
+      isTerminalExecMetadata(this.execMetadata) && this.execMetadata.artifacts ?
+        this.execMetadata.artifacts.map((artifact) => ({
+          ...artifact,
+          ...(clientMetadata?.artifactDownloadUrls?.[artifact.name] ?
+            { signedDownloadUrl: clientMetadata.artifactDownloadUrls[artifact.name] }
+          : {}),
+        }))
+      : undefined;
+
     const result: ExecResult = {
       exitCode,
       execId: this.execId!,
       status,
-      ...('additionalMetadata' in request ? request.additionalMetadata ?? {} : {}),
+      ...(clientMetadata?.signedDownloadUrl ? { signedDownloadUrl: clientMetadata.signedDownloadUrl } : {}),
+      ...(this.execMetadata ? { metadata: this.execMetadata } : {}),
+      ...(artifacts ? { artifacts } : {}),
       ...(this.appStoreEvent ? { appstore: this.appStoreEvent } : {}),
       ...(this.playstoreEvent ? { playstore: this.playstoreEvent } : {}),
       ...(this.xctestCases.length > 0 || this.xctestSummary ?
@@ -930,6 +1023,19 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
                 this.log('warn', `onXctestEvent callback threw: ${String(err)}`);
               }
             }
+          } else if (eventType === 'meta') {
+            try {
+              const metadata = JSON.parse(data) as ExecMetadata;
+              if (!metadata?.id || !metadata.status) {
+                throw new Error('id or status is missing');
+              }
+              this.execMetadata = metadata;
+            } catch (err) {
+              this.log(
+                'warn',
+                `SSE meta event has invalid data: ${err instanceof Error ? err.message : err}`,
+              );
+            }
           } else if (eventType === 'exitCode') {
             const exitCode = parseInt(data, 10);
             if (Number.isNaN(exitCode)) {
@@ -964,4 +1070,35 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
  */
 export function exec(request: ExecRequest | Promise<ExecRequest>, options: ExecOptions): ExecChildProcess {
   return new ExecChildProcess(request, options);
+}
+
+/** Fetch current execution metadata, including terminal artifact manifests. */
+export async function getExec(execId: string, options: ExecOptions): Promise<ExecMetadata> {
+  if (!execId) {
+    throw new Error('execId must not be empty');
+  }
+  const response = await nodeProxyTransport.fetch(`${options.apiUrl}/exec/${encodeURIComponent(execId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${options.token}` },
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    let message = text;
+    try {
+      message = (JSON.parse(text) as { message?: string }).message || text;
+    } catch {
+      // Keep a non-JSON response body.
+    }
+    throw new Error(`get exec failed: ${response.status} ${message}`);
+  }
+  if (!text.trim()) {
+    throw new Error('get exec failed: server returned an empty response');
+  }
+  return JSON.parse(text) as ExecMetadata;
+}
+
+function isTerminalExecMetadata(metadata: ExecMetadata | null): metadata is ExecMetadata {
+  return (
+    metadata?.status === 'SUCCEEDED' || metadata?.status === 'FAILED' || metadata?.status === 'CANCELLED'
+  );
 }

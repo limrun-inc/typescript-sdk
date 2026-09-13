@@ -16,14 +16,17 @@ import {
 } from '../xcode-cache';
 import {
   exec,
+  getExec as getExecMetadata,
   type AppStoreUploadConfig,
+  type ArtifactOutput,
   type ExecChildProcess,
+  type ExecMetadata,
   type ExecRequest,
   type WebhookConfig,
   type XctestEvent,
 } from '../exec-client';
 
-export type { AppStoreUploadConfig, WebhookConfig } from '../exec-client';
+export type { AppStoreUploadConfig, ArtifactResult, ExecMetadata, WebhookConfig } from '../exec-client';
 import {
   syncFolder as syncFolderImpl,
   type AdditionalFileSyncEntry,
@@ -99,7 +102,52 @@ export type XcodeRunOptions = {
   env?: string[];
   /** Server-side timeout in seconds. Defaults to 3600; maximum 21600. */
   timeoutSeconds?: number;
+  /** Workspace outputs uploaded after the command succeeds. */
+  outputs?: RunArtifactOutput[];
 };
+
+export type ArtifactUploadDestination =
+  | {
+      /** Create or refresh a Limrun asset and mint its upload URL. */
+      assetName: string;
+      /** Asset TTL as a Go duration. Defaults to 336h (14 days). */
+      ttl?: string;
+      signedUploadUrl?: never;
+    }
+  | {
+      /** Upload to a caller-minted presigned URL. */
+      signedUploadUrl: string;
+      assetName?: never;
+      ttl?: never;
+    };
+
+export type WorkspaceArtifactOutput = {
+  name: string;
+  source?: 'workspace';
+  /** Relative path from the synced workspace root. */
+  path: string;
+} & ArtifactUploadDestination;
+
+export type TestProductsArtifactOutput = {
+  name: string;
+  source: 'testProducts';
+  path?: never;
+} & ArtifactUploadDestination;
+
+export type ResultBundleArtifactOutput = {
+  name: string;
+  source: 'resultBundle';
+  path?: never;
+} & ArtifactUploadDestination;
+
+/** Named outputs supported by xcodebuild executions. */
+export type XcodeArtifactOutput =
+  | WorkspaceArtifactOutput
+  | TestProductsArtifactOutput
+  | ResultBundleArtifactOutput;
+
+/** Generic run commands can only export paths from the synced workspace. */
+export type RunArtifactOutput = WorkspaceArtifactOutput;
 export type XcodeProjectConfig = {
   workspace?: string;
   project?: string;
@@ -305,6 +353,12 @@ export type XcodeBuildOptions = {
    * on ExecResult.xctest.
    */
   onXctestEvent?: (event: XctestEvent) => void;
+  /**
+   * Named outputs uploaded after the full build succeeds. testProducts
+   * requires action: 'build-for-testing'; resultBundle uses limbuild's
+   * server-managed xcresult path.
+   */
+  outputs?: XcodeArtifactOutput[];
 };
 
 export type SimulatorInstallState =
@@ -522,6 +576,9 @@ export type XcodeClient = {
    * Output and the remote exit code are streamed through the returned process.
    */
   run: (commandLine: string, options?: XcodeRunOptions) => ExecChildProcess;
+
+  /** Return current execution metadata, including terminal artifact manifests. */
+  getExec: (execId: string) => Promise<ExecMetadata>;
 
   /**
    * Attach a simulator to this xcode instance.
@@ -999,6 +1056,10 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         if (options?.buildSettings) {
           validateBuildSettings(options.buildSettings);
         }
+        validateArtifactOutputs(options?.outputs, {
+          allowResultBundle: true,
+          allowTestProducts: settings?.action === 'build-for-testing',
+        });
         const request: ExecRequest = {
           command: 'xcodebuild',
           ...(settings && { xcodebuild: settings }),
@@ -1026,24 +1087,37 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.onXctestEvent && { onXctestEvent: options.onXctestEvent }),
         };
 
-        if (options?.upload && 'assetName' in options.upload) {
-          const requestPromise = mintAssetUploadUrls(
-            client.assets,
-            options.upload.assetName,
-            options.upload.ttl,
-            options.upload.uploadOptions,
-          ).then((asset) => {
-            request.signedUploadUrl = asset.signedUploadUrl;
-            // Lets limbuild record the built app's metadata on the asset.
-            request.assetId = asset.id;
-            request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
-            return request;
-          });
-          return exec(requestPromise, execOptions);
-        }
-
         if (options?.upload && 'signedUploadUrl' in options.upload) {
           request.signedUploadUrl = options.upload.signedUploadUrl;
+        }
+
+        if ((options?.upload && 'assetName' in options.upload) || options?.outputs?.length) {
+          const requestPromise = (async (): Promise<ExecRequest> => {
+            if (options?.upload && 'assetName' in options.upload) {
+              const asset = await mintAssetUploadUrls(
+                client.assets,
+                options.upload.assetName,
+                options.upload.ttl,
+                options.upload.uploadOptions,
+              );
+              request.signedUploadUrl = asset.signedUploadUrl;
+              // Lets limbuild record the built app's metadata on the asset.
+              request.assetId = asset.id;
+              request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
+            }
+            if (options?.outputs?.length) {
+              const prepared = await prepareArtifactOutputs(client.assets, options.outputs);
+              request.outputs = prepared.outputs;
+              if (Object.keys(prepared.downloadUrls).length > 0) {
+                request.additionalMetadata = {
+                  ...request.additionalMetadata,
+                  artifactDownloadUrls: prepared.downloadUrls,
+                };
+              }
+            }
+            return request;
+          })();
+          return exec(requestPromise, execOptions);
         }
 
         return exec(request, execOptions);
@@ -1061,6 +1135,10 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         ) {
           throw new Error('timeoutSeconds must be an integer between 1 and 21600');
         }
+        validateArtifactOutputs(options?.outputs, {
+          allowResultBundle: false,
+          allowTestProducts: false,
+        });
         const request: ExecRequest = {
           command: 'run',
           commandLine,
@@ -1068,8 +1146,20 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.env && { env: options.env }),
           ...(options?.timeoutSeconds !== undefined && { timeoutSeconds: options.timeoutSeconds }),
         };
+        if (options?.outputs?.length) {
+          const requestPromise = prepareArtifactOutputs(client.assets, options.outputs).then((prepared) => {
+            request.outputs = prepared.outputs;
+            if (Object.keys(prepared.downloadUrls).length > 0) {
+              request.additionalMetadata = { artifactDownloadUrls: prepared.downloadUrls };
+            }
+            return request;
+          });
+          return exec(requestPromise, { apiUrl, token, log });
+        }
         return exec(request, { apiUrl, token, log });
       },
+
+      getExec: (execId: string): Promise<ExecMetadata> => getExecMetadata(execId, { apiUrl, token, log }),
 
       async getSimulator(): Promise<SimulatorStatus> {
         const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator`, {
@@ -1293,4 +1383,107 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       },
     };
   }
+}
+
+function validateArtifactOutputs(
+  outputs: XcodeArtifactOutput[] | RunArtifactOutput[] | undefined,
+  capabilities: { allowResultBundle: boolean; allowTestProducts: boolean },
+): void {
+  if (!outputs?.length) {
+    return;
+  }
+  if (outputs.length > 8) {
+    throw new Error('outputs must contain at most 8 entries');
+  }
+  const names = new Set<string>();
+  for (const [index, output] of outputs.entries()) {
+    const name = output.name ?? '';
+    const nameBytes = new TextEncoder().encode(name).byteLength;
+    if (nameBytes < 1 || nameBytes > 128 || name.includes('\0')) {
+      throw new Error(`outputs[${index}].name must contain 1 to 128 non-NUL bytes`);
+    }
+    if (names.has(name)) {
+      throw new Error(`outputs[${index}].name '${name}' is duplicated`);
+    }
+    names.add(name);
+
+    const source = output.source ?? 'workspace';
+    if (source !== 'workspace' && source !== 'testProducts' && source !== 'resultBundle') {
+      throw new Error(`outputs[${index}].source '${source}' is invalid`);
+    }
+    if (source === 'workspace') {
+      const path = output.path;
+      if (!path) {
+        throw new Error(`outputs[${index}].path is required for source workspace`);
+      }
+      if (
+        new TextEncoder().encode(path).byteLength > 512 ||
+        path.startsWith('/') ||
+        path.includes('\0') ||
+        path.split('/').includes('..')
+      ) {
+        throw new Error(`outputs[${index}].path must be a relative workspace path without parent traversal`);
+      }
+    } else {
+      if ('path' in output && output.path !== undefined) {
+        throw new Error(`outputs[${index}].path must be omitted for source ${source}`);
+      }
+      if (source === 'testProducts' && !capabilities.allowTestProducts) {
+        throw new Error(
+          `outputs[${index}].source testProducts requires xcodebuild action: 'build-for-testing'`,
+        );
+      }
+      if (source === 'resultBundle' && !capabilities.allowResultBundle) {
+        throw new Error(`outputs[${index}].source resultBundle is only supported for xcodebuild`);
+      }
+    }
+
+    if ('assetName' in output && !output.assetName) {
+      throw new Error(`outputs[${index}].assetName must not be empty`);
+    }
+    if ('signedUploadUrl' in output) {
+      let url: URL;
+      try {
+        url = new URL(output.signedUploadUrl);
+      } catch {
+        throw new Error(`outputs[${index}].signedUploadUrl must be an absolute HTTPS URL`);
+      }
+      if (url.protocol !== 'https:') {
+        throw new Error(`outputs[${index}].signedUploadUrl must be an absolute HTTPS URL`);
+      }
+    }
+  }
+}
+
+async function prepareArtifactOutputs(
+  assets: Parameters<typeof mintAssetUploadUrls>[0],
+  outputs: XcodeArtifactOutput[] | RunArtifactOutput[],
+): Promise<{ outputs: ArtifactOutput[]; downloadUrls: Record<string, string> }> {
+  const downloadUrls: Record<string, string> = {};
+  const prepared = await Promise.all(
+    outputs.map(async (output): Promise<ArtifactOutput> => {
+      let signedUploadUrl: string;
+      if ('assetName' in output) {
+        const asset = await mintAssetUploadUrls(assets, output.assetName, output.ttl);
+        signedUploadUrl = asset.signedUploadUrl;
+        downloadUrls[output.name] = asset.signedDownloadUrl;
+      } else {
+        signedUploadUrl = output.signedUploadUrl;
+      }
+      if ((output.source ?? 'workspace') === 'workspace') {
+        return {
+          name: output.name,
+          source: 'workspace',
+          path: (output as WorkspaceArtifactOutput).path,
+          signedUploadUrl,
+        };
+      }
+      return {
+        name: output.name,
+        source: output.source as 'testProducts' | 'resultBundle',
+        signedUploadUrl,
+      };
+    }),
+  );
+  return { outputs: prepared, downloadUrls };
 }
