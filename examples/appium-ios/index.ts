@@ -71,9 +71,9 @@ if (!wdaRunning) {
   console.log('WDA is not running, launching it...');
 
   await lim.simctl(['launch', 'booted', 'com.facebook.WebDriverAgentRunner.xctrunner']).wait();
-  lim.disconnect();
   console.log('WDA launched');
 }
+lim.disconnect();
 
 const driver = await remote({
   capabilities: {
