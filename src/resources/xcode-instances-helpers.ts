@@ -666,7 +666,7 @@ async function fetchSandboxInfo(apiUrl: string, token: string): Promise<SandboxI
 
 /**
  * Derives the websocket URL of limbuild's /rbe/tunnel endpoint from the
- * instance apiUrl, mirroring deriveReverseTunnelUrl in ios-client.ts.
+ * instance apiUrl.
  */
 export function deriveRbeTunnelUrl(apiUrl: string): string {
   const url = new URL(apiUrl);

@@ -55,8 +55,8 @@ yarn start
 1. Creates a remote iOS simulator where Expo Go 54 installed.
 2. Prints the signed stream URL that you can click and watch.
 3. Starts `detox run-server` locally.
-4. Starts a reverse tunnel from the simulator to the local Detox mediator.
-   The Detox traffic goes through a private HTTPS tunnel.
+4. Starts a destination tunnel so the simulator reaches the local Detox mediator
+   at the same `localhost:<port>` the tester uses.
 5. Runs `detox test` with the Limrun Detox driver.
 6. From Jest setup, launches Expo Go with the typed Limrun Detox runtime.
 7. Opens `EXPO_URL` and accepts Expo Go's `Open in "Expo Go"?` prompt when it appears.
