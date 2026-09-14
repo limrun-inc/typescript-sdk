@@ -1,3 +1,6 @@
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
 import { Limrun } from '@limrun/api';
 import { nodeProxyTransport } from '@limrun/api/internal/proxy-transport';
 import type { RequestInfo } from '../src/internal/builtin-types';
@@ -248,4 +251,58 @@ test('gradlebuild falls back to the raw body when the exec error is not JSON', a
 
   const gradle = await gradleClient();
   await expect(gradle.gradlebuild()).rejects.toThrow('exec failed: 502 upstream connect error');
+});
+
+test('build and run forward personal mise tools and caller env through the shared exec stream', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'gradle-mise-client-'));
+  const globalFile = path.join(directory, 'config.toml');
+  await fs.writeFile(
+    globalFile,
+    '[tools]\nnode="24.4.0"\njava="temurin-17"\n[env]\nSECRET="not forwarded"\n',
+  );
+  const previous = process.env['MISE_GLOBAL_CONFIG_FILE'];
+  process.env['MISE_GLOBAL_CONFIG_FILE'] = globalFile;
+  try {
+    const requests: Record<string, unknown>[] = [];
+    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/exec')) {
+        requests.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ execId: 'tools' }), { status: 200 });
+      }
+      if (url.endsWith('/events'))
+        return sseResponse(['event: stdout\ndata: selected tools\n\n', 'event: exitCode\ndata: 0\n\n']);
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const gradle = await gradleClient();
+    await gradle.gradlebuild({ env: ['API_ENV=development'] });
+    const proc = gradle.run('node --version', {
+      cwd: 'apps/mobile',
+      env: ['API_ENV=development'],
+      timeoutSeconds: 30,
+    });
+    const output: string[] = [];
+    proc.stdout.on('data', (line: string) => output.push(line));
+    expect((await proc).exitCode).toBe(0);
+    expect(output).toContain('selected tools');
+    const env = ['API_ENV=development', 'LIMRUN_MISE_DEFAULTS={"node":"24.4.0","java":"temurin-17"}'];
+    expect(requests).toEqual([
+      { command: 'gradlebuild', env },
+      { command: 'run', commandLine: 'node --version', cwd: 'apps/mobile', env, timeoutSeconds: 30 },
+    ]);
+  } finally {
+    if (previous === undefined) delete process.env['MISE_GLOBAL_CONFIG_FILE'];
+    else process.env['MISE_GLOBAL_CONFIG_FILE'] = previous;
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('run validates commands and timeout before making an exec request', async () => {
+  const gradle = await gradleClient();
+  nodeProxyTransport.fetch = jest.fn();
+  expect(() => gradle.run(' ')).toThrow('commandLine');
+  for (const timeoutSeconds of [0, 21601, 1.5]) {
+    expect(() => gradle.run('true', { timeoutSeconds })).toThrow('timeoutSeconds');
+  }
+  expect(nodeProxyTransport.fetch).not.toHaveBeenCalled();
 });

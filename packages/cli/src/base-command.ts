@@ -44,7 +44,7 @@ import {
 } from './lib/cache';
 import type { XcodeCacheConfig, XcodeCacheFollowResult, XcodeClient, XcodeSelectResult } from '@limrun/api';
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
-import { formatXcode, type RequestedXcodeVersion } from './lib/xcode-version';
+import { formatXcode, resolveRequestedXcodeVersion, type RequestedXcodeVersion } from './lib/xcode-version';
 import type { TunnelCommandIO } from './lib/tunnel-command';
 import { captureTelemetry, telemetryIntentForCommand } from './lib/telemetry';
 
@@ -1315,6 +1315,18 @@ export abstract class BaseCommand extends Command {
     const instance = await this.client.gradleInstances.get(target.id);
     saveLastCreatedInstance(instance);
     return this.client.gradleInstances.createClient({ instance });
+  }
+
+  protected async resolveBuildToolClient(platform: 'xcode' | 'gradle', id?: string) {
+    if (platform === 'gradle') {
+      const target = await this.resolveGradleTargetOrCreate(id);
+      return { target, client: await this.resolveGradleClient(target) };
+    }
+    const target = await this.resolveXcodeTargetOrCreate(id);
+    return {
+      target,
+      client: await this.resolveXcodeClientForWork(target, resolveRequestedXcodeVersion(undefined)),
+    };
   }
 
   private async createStandaloneGradleInstance(): Promise<LastGradleInstance> {

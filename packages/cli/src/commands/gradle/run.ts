@@ -1,3 +1,3 @@
 import { buildRunCommand } from '../../lib/build-run-command';
 
-export default buildRunCommand('xcode');
+export default buildRunCommand('gradle');

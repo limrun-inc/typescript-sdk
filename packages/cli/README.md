@@ -1072,3 +1072,69 @@ Iterating after the initial link:
 Note: any `yarn install` inside `packages/cli` restores the published copy of `@limrun/api`.
 Re-run `limx-from` to re-link the local build. `limx --where` always tells you the current
 state. (`limx --version` and `--help` still self-identify as `lim`; that's expected.)
+
+## Select tools and run commands
+
+The sandbox includes these mise-managed tools:
+
+| Tool                       | Included compatibility lines | Default    |
+| -------------------------- | ---------------------------- | ---------- |
+| Node.js (with npm and npx) | 22                           | 22         |
+| pnpm                       | 9, 10, 11                    | 10         |
+| Yarn                       | 1, 4                         | 1          |
+| Bun                        | 1 (stable)                   | 1          |
+| Java                       | Temurin 17                   | Temurin 17 |
+| bundletool                 | 1                            | 1          |
+
+Builds use your project's Gradle wrapper. Android SDK, NDK, and CMake packages
+remain managed by `sdkmanager`.
+
+Select tool versions and install missing versions explicitly:
+
+```bash
+lim gradle use node@24 java@temurin-17 pnpm@10
+lim gradle run -- mise install
+lim gradle tools
+```
+
+`use` writes compatibility lines to your client mise configuration and syncs
+the project. It preserves configuration values but rewrites comments and
+formatting. Add `--global` for personal defaults or `--cwd apps/mobile` for a
+nested project. Use the same working directory when installing its tools:
+`lim gradle run apps/mobile -- mise install`.
+
+Project `[tools]` declarations override personal defaults from the client's
+global mise file, which override image defaults and package-manager detection.
+Limrun imports only tool declarations, without executing client mise tasks or
+loading its environment settings. Client `mise.lock` pins do not control the
+sandbox selection. Most numeric requests retain the major version;
+Ruby, Python, Go, Flutter, Dart, and pre-1.0 tools retain `major.minor`.
+Limrun can update patch and minor releases within those lines independently.
+`latest` opts out of a fixed line.
+
+Each build or run resolves its mise environment once. Missing tools are never
+installed automatically. To select an exact release in the sandbox, run
+`lim gradle run -- mise use --pin node@24.5.0`. Subsequent operations respect
+that override. `lim gradle use node@24` clears the Node override in the selected
+directory and returns to the client preference.
+
+Run a command with the selected tools, or supply environment variables to a build:
+
+```bash
+lim gradle run -- node --version
+lim gradle run --env APP_ENV=staging -- npm run generate
+lim gradle build . --env APP_ENV=staging
+```
+
+`run` syncs the current directory first. Add `--no-sync` to use the existing
+remote workspace. Its optional positional directory is relative to that
+workspace; `--timeout` accepts 1 through 21600 seconds and defaults to 3600.
+Commands stream output and share the build slot: a new command or build cancels
+the active operation. Sandbox paths such as `HOME`, `PATH`, and Android SDK
+locations remain managed. The selected Node is also exposed as `NODE_BINARY`;
+mise sets `JAVA_HOME`.
+
+Image tools and user installs use separate directories. User installs persist
+for the instance's lifetime. Gradle does not transfer them, or its workspace,
+to a new instance. The image still includes warmed Gradle caches and a pnpm 10
+store; another pnpm major may need an initial registry download.

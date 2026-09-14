@@ -1,3 +1,4 @@
+import { parseEnvEntries } from './env-entries';
 import type { GradleAndroidABI, GradleBuildOptions } from '@limrun/api';
 import { webhookConfigFromFlags, type WebhookFlagValues } from './webhook-options';
 
@@ -16,6 +17,7 @@ export const gradleAndroidABIs = [
 
 export interface GradleBuildFlagValues extends WebhookFlagValues {
   task?: string[];
+  env?: string[];
   'project-path'?: string;
   'expo-app-dir'?: string;
   abi?: string[];
@@ -148,6 +150,10 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
   validateSigningFlags(flags);
   validatePlaystoreFlags(flags);
   const options: GradleBuildOptions = {};
+  const env = parseEnvEntries(flags.env ?? [], (message) => {
+    throw new Error(message);
+  });
+  if (env) options.env = env;
   if (flags.task?.length) {
     options.tasks = flags.task;
   }

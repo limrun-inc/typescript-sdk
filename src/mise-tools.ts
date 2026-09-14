@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { parse, stringify, type TomlTable } from 'smol-toml';
 
-/** Personal tool defaults read by Xcode clients. Project mise files take precedence remotely. */
+/** Personal tool defaults read by build clients. Project mise files take precedence remotely. */
 export function miseDefaultsFile(): string {
   return (
     process.env['MISE_GLOBAL_CONFIG_FILE'] ??
@@ -26,7 +26,7 @@ export function toolCompatibilityLine(name: string, input: string): string {
   const parts = /^v?([0-9]+)(?:\.([0-9]+))?(?:\.[0-9]+)*(?:[-+][A-Za-z0-9._+-]+)?$/.exec(version);
   if (!parts)
     throw new Error(
-      `${name}@${input} must name a numeric version. Use lim xcode run -- mise use for custom versions.`,
+      `${name}@${input} must name a numeric version. Use mise use through the sandbox run command for custom versions.`,
     );
   if (['ruby', 'python', 'go', 'flutter', 'dart'].includes(name) || parts[1] === '0') {
     if (!parts[2]) throw new Error(`${name} requires a major.minor version.`);
