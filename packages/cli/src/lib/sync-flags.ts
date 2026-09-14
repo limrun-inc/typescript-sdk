@@ -10,13 +10,13 @@ export const syncFlags = {
   }),
   ignore: Flags.string({
     description:
-      'Regular expression to ignore matching relative paths during the sync. Repeat for multiple patterns.',
+      'Regular expression to exclude matching relative paths, including .env and .xcconfig files that Xcode sync normally force-includes. If the same path also matches --include, --include wins. Match an excluded parent directory to prune its whole subtree. Repeat for multiple patterns.',
     multiple: true,
     multipleNonGreedy: true,
   }),
   include: Flags.string({
     description:
-      'Regular expression to force-sync matching relative paths even when excluded by a built-in rule or .gitignore (for example --include "^\\\\.git/" or --include "^ios/GeneratedKit/"). The client-side basis cache is never included. If a parent directory is itself excluded, the pattern must also match that directory (e.g. use "^ios/" not "GeneratedKit/") or the subtree stays pruned. Repeat for multiple patterns.',
+      'Regular expression to force-sync matching relative paths even when matched by --ignore, excluded by a built-in rule, or ignored by .gitignore (for example --include "^\\\\.git/" or --include "^ios/GeneratedKit/"). The client-side basis cache is never included. If a parent directory is itself excluded, the pattern must also match that directory (e.g. use "^ios/" not "GeneratedKit/") or the subtree stays pruned. Repeat for multiple patterns.',
     multiple: true,
     multipleNonGreedy: true,
   }),
