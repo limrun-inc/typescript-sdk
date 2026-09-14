@@ -1675,6 +1675,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     }
     if (ws) {
       ws.removeAllListeners();
+      // A retired socket can emit an error when an unfinished handshake is cancelled.
+      ws.on('error', () => {});
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         ws.close();
       }

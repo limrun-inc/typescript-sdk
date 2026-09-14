@@ -423,8 +423,10 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@limrun/ui@file:../../../packages/ui":
-  version "0.14.0"
+"@limrun/ui@^0.15.1":
+  version "0.15.1"
+  resolved "https://registry.yarnpkg.com/@limrun/ui/-/ui-0.15.1.tgz#982347505d4de97b4d98bb7753581f2bf794aba8"
+  integrity sha512-asCBs/xywVY2EBaOOuy50zjI/SYO1f6lQ2kqfiUVWbOHTJhjvja4SSHbUHonAv7ws0K2/uCWL2ltuQwzzcThgg==
   dependencies:
     clsx "^2.1.1"
 
