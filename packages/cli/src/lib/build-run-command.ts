@@ -1,8 +1,7 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../base-command';
 import { syncFlags, syncOptionsFromFlags } from './sync-flags';
-import { formatDurationMs } from './duration';
-import { formatBytes } from './bytes';
+import { syncBuildProject, streamBuildCommand } from './build-command-helpers';
 import { parseEnvEntries } from './env-entries';
 
 export function buildRunCommand(platform: 'xcode' | 'gradle'): typeof BaseCommand {
@@ -79,13 +78,7 @@ export function buildRunCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
         }
 
         if (!flags['no-sync']) {
-          const syncPath = process.cwd();
-          this.info(`Syncing ${syncPath} to instance ${target.id}...`);
-          const syncStart = Date.now();
-          const result = await client.sync(syncPath, syncOptionsFromFlags(flags));
-          const syncDuration = formatDurationMs(Date.now() - syncStart);
-          const syncedSize = result.bytesSent !== undefined ? ` (${formatBytes(result.bytesSent)} sent)` : '';
-          this.info(`Sync completed in ${syncDuration}${syncedSize}.`);
+          await syncBuildProject(client, syncOptionsFromFlags(flags), (message) => this.info(message));
         }
 
         this.info(`Running in ${args.cwd ?? '.'}: ${commandLine}`);
@@ -94,22 +87,7 @@ export function buildRunCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
           ...(env && { env }),
           ...(flags.timeout !== undefined && { timeoutSeconds: flags.timeout }),
         });
-        proc.stdout.on('data', (line: string) => process.stdout.write(line + '\n'));
-        proc.stderr.on('data', (line: string) => process.stderr.write(line + '\n'));
-        const result = await proc;
-        if (result.exitCode !== 0) {
-          if (result.timedOut) {
-            // 'timeout' means the stream was alive and the work outlived the
-            // budget; a lost or closed stream means the execution may be gone.
-            this.error(
-              result.incomplete && result.incomplete.reason !== 'timeout' ?
-                `${result.incomplete.message}.`
-              : 'Timed out waiting for the command to finish; the remote command may still be running.',
-              { exit: result.exitCode },
-            );
-          }
-          this.error(`Command failed with exit code ${result.exitCode}`, { exit: result.exitCode });
-        }
+        await streamBuildCommand(proc, (message, options) => this.error(message, options));
       });
     }
   };

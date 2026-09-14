@@ -796,6 +796,8 @@ lim xcode tools
 lim xcode run -- mise use --pin node@24.5.0
 ```
 
+`lim xcode tools` inspects an existing sandbox without syncing or creating an instance. Use `lim xcode tools --sync` to upload local changes first, and `--cwd apps/mobile` to inspect a nested project. Both forms require an existing sandbox; use `--id` to choose one.
+
 `use` saves compatibility lines in the client mise file, syncs the project, and shows the selection. Install missing versions explicitly with `lim xcode run -- mise install`. Each run or build resolves `mise env --json` once and injects that environment into its commands. It preserves configuration values but drops comments and rewrites formatting. Project tool declarations override personal defaults from the client global mise file. Most numeric requests retain the major; Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain `major.minor`. Automatic resolution ignores `mise.lock` and imports only tool declarations. `latest` opts out of a fixed line. Explicit sandbox `mise use --pin` overrides select exact releases; `lim xcode use` clears that tool's override in the selected directory.
 
 Image tools stay outside workspace caches. User-installed versions under `.limbuild-sandbox/home/.mise/` can be cached when the configured cache paths cover them, after a successful managed build. If a restored user gem references its old sandbox path, reinstall it explicitly, for example `lim xcode run -- mise install --force bundler`. Homebrew and Apple tools have separate management; use `lim xcode version` for Xcode.
@@ -1096,6 +1098,8 @@ lim gradle use node@24 java@temurin-17 pnpm@10
 lim gradle run -- mise install
 lim gradle tools
 ```
+
+`lim gradle tools` inspects an existing sandbox without syncing or creating an instance. Use `lim gradle tools --sync` to upload local changes first, and `--cwd apps/mobile` to inspect a nested project. Both forms require an existing sandbox; use `--id` to choose one.
 
 `use` writes compatibility lines to your client mise configuration and syncs
 the project. It preserves configuration values but rewrites comments and

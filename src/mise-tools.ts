@@ -1,3 +1,4 @@
+import { misePolicy } from './internal/mise-policy';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -11,28 +12,40 @@ export function miseDefaultsFile(): string {
   );
 }
 
+const toolAliases = new Map(Object.entries(misePolicy.aliases));
+const vendorPrefixes = new Map(
+  Object.entries(misePolicy.vendorPrefixes).map(([name, prefixes]) => [
+    name,
+    new Map(Object.entries(prefixes)),
+  ]),
+);
+const numericVersion = new RegExp(misePolicy.numericVersionPattern);
+
 export function toolCompatibilityLine(name: string, input: string): string {
+  name = canonicalToolName(name);
   let version = input.trim();
   if (version === 'latest') return version;
   let vendor = '';
-  if (name === 'java') {
-    const match = /^(jetbrains|jbr|corretto|temurin|openjdk|zulu|liberica|graalvm)-/.exec(version);
-    if (match) {
-      vendor = match[0];
-      version = version.slice(vendor.length);
-      if (vendor === 'jbr-') vendor = 'jetbrains-';
-    }
+  const dash = version.indexOf('-');
+  const canonical = vendorPrefixes.get(name)?.get(version.slice(0, dash));
+  if (dash !== -1 && canonical) {
+    vendor = canonical + '-';
+    version = version.slice(dash + 1);
   }
-  const parts = /^v?([0-9]+)(?:\.([0-9]+))?(?:\.[0-9]+)*(?:[-+][A-Za-z0-9._+-]+)?$/.exec(version);
+  const parts = numericVersion.exec(version);
   if (!parts)
     throw new Error(
       `${name}@${input} must name a numeric version. Use mise use through the sandbox run command for custom versions.`,
     );
-  if (['ruby', 'python', 'go', 'flutter', 'dart'].includes(name) || parts[1] === '0') {
+  if (misePolicy.minorSensitiveTools.includes(name) || parts[1] === '0') {
     if (!parts[2]) throw new Error(`${name} requires a major.minor version.`);
     return `${vendor}${parts[1]}.${parts[2]}`;
   }
   return `${vendor}${parts[1]}`;
+}
+
+function canonicalToolName(name: string): string {
+  return toolAliases.get(name) ?? name;
 }
 
 export function parseToolRequests(requests: string[]): Record<string, string> {
@@ -44,10 +57,8 @@ export function parseToolRequests(requests: string[]): Record<string, string> {
     let name = request.slice(0, at);
     if (!/^[A-Za-z0-9][A-Za-z0-9:_./-]*$/.test(name))
       throw new Error(`Invalid tool name ${JSON.stringify(name)}.`);
-    if (name === 'nodejs') name = 'node';
-    if (name === 'jdk') name = 'java';
-    if (['gem:bundler', 'gem:cocoapods', 'gem:cocoapods-patch'].includes(name)) name = name.slice(4);
-    if (['xcode', 'swift', 'brew', 'homebrew'].includes(name))
+    name = canonicalToolName(name);
+    if (misePolicy.excludedTools.includes(name))
       throw new Error(`${name} is managed separately from mise tools.`);
     tools[name] = toolCompatibilityLine(name, request.slice(at + 1));
   }
@@ -97,13 +108,7 @@ export async function writeMiseTools(
   if (existing !== undefined && (!existing || typeof existing !== 'object' || Array.isArray(existing)))
     throw new Error(`Expected [tools] in ${file}.`);
   const selected = { ...(existing as TomlTable | undefined), ...tools };
-  for (const [alias, canonical] of Object.entries({
-    nodejs: 'node',
-    jdk: 'java',
-    'gem:bundler': 'bundler',
-    'gem:cocoapods': 'cocoapods',
-    'gem:cocoapods-patch': 'cocoapods-patch',
-  })) {
+  for (const [alias, canonical] of Object.entries(misePolicy.aliases)) {
     if (canonical in tools) delete selected[alias];
   }
   config['tools'] = selected;

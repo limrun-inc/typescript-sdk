@@ -3,6 +3,7 @@ import { Args, Flags } from '@oclif/core';
 import { parseToolRequests, writeMiseTools } from '@limrun/api/mise-tools';
 import { BaseCommand } from '../base-command';
 import { syncFlags, syncOptionsFromFlags } from './sync-flags';
+import { syncBuildProject, streamBuildCommand } from './build-command-helpers';
 
 export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseCommand {
   return class BuildUse extends BaseCommand {
@@ -48,32 +49,33 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
         const { client } = await this.resolveBuildToolClient(platform, flags.id);
         const sync = syncOptionsFromFlags(flags);
         const fileRelative = path.relative(process.cwd(), file).split(path.sep).join('/');
-        await client.sync(process.cwd(), {
-          ...sync,
-          ...(!flags.global && {
-            include: (p: string) =>
-              p === fileRelative ||
-              fileRelative.startsWith(p.endsWith('/') ? p : `${p}/`) ||
-              (sync?.include?.(p) ?? false),
-          }),
-        });
+        await syncBuildProject(
+          client,
+          {
+            ...sync,
+            ...(!flags.global && {
+              include: (p: string) =>
+                p === fileRelative ||
+                fileRelative.startsWith(p.endsWith('/') ? p : `${p}/`) ||
+                (sync?.include?.(p) ?? false),
+            }),
+          },
+          (message) => this.info(message),
+        );
         // Remove explicit sandbox overrides for these tools before resolving the new client requests.
         const remove = Object.keys(tools)
           .map((name) => `'${name}'`)
           .join(' ');
         const command = [
-          `test -n "$MISE_SYSTEM_INSTALLS_DIR" || { echo "This sandbox needs a newer Limrun toolchain image." >&2; exit 1; }; if test -f .limrun-runtime-mise.toml; then mise unuse --no-prune --path .limrun-runtime-mise.toml ${remove}; fi`,
+          `if test -f .limrun-runtime-mise.toml; then mise unuse --no-prune --path .limrun-runtime-mise.toml ${remove}; fi`,
           'mise ls --current',
         ].join(' && ');
         const proc = client.run(command, { cwd: flags.cwd });
-        proc.stdout.on('data', (line: string) => process.stdout.write(line + '\n'));
-        proc.stderr.on('data', (line: string) => process.stderr.write(line + '\n'));
-        const result = await proc;
-        if (result.exitCode !== 0)
-          this.error(
-            `Tool selection failed with exit code ${result.exitCode}. The client configuration was saved; retry after correcting the error.`,
-            { exit: result.exitCode },
-          );
+        await streamBuildCommand(
+          proc,
+          (message, options) => this.error(message, options),
+          'Tool selection failed after saving the client configuration',
+        );
         this.info(`Run lim ${platform} run -- mise install if a selected version is missing.`);
       });
     }

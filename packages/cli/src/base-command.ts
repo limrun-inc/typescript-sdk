@@ -748,7 +748,7 @@ export abstract class BaseCommand extends Command {
     // Read-only or lifecycle verbs must never conjure an instance: `lim
     // gradle get <typo>` should fail with not-found, not create-and-show a
     // brand new sandbox.
-    if (['create', 'delete', 'list', 'get', 'version'].includes(verb)) {
+    if (['create', 'delete', 'list', 'get', 'version', 'tools'].includes(verb)) {
       return false;
     }
     return true;
@@ -1317,15 +1317,24 @@ export abstract class BaseCommand extends Command {
     return this.client.gradleInstances.createClient({ instance });
   }
 
-  protected async resolveBuildToolClient(platform: 'xcode' | 'gradle', id?: string) {
+  protected async resolveBuildToolClient(
+    platform: 'xcode' | 'gradle',
+    id?: string,
+    mode: 'work' | 'existing' = 'work',
+  ) {
     if (platform === 'gradle') {
-      const target = await this.resolveGradleTargetOrCreate(id);
+      const target =
+        mode === 'existing' ? this.resolveGradleTarget(id) : await this.resolveGradleTargetOrCreate(id);
       return { target, client: await this.resolveGradleClient(target) };
     }
-    const target = await this.resolveXcodeTargetOrCreate(id);
+    const target =
+      mode === 'existing' ? await this.resolveXcodeTarget(id) : await this.resolveXcodeTargetOrCreate(id);
     return {
       target,
-      client: await this.resolveXcodeClientForWork(target, resolveRequestedXcodeVersion(undefined)),
+      client:
+        mode === 'existing' ?
+          await this.resolveXcodeClient(target)
+        : await this.resolveXcodeClientForWork(target, resolveRequestedXcodeVersion(undefined)),
     };
   }
 

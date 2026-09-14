@@ -1,0 +1,107 @@
+[
+  {
+    "name": "node",
+    "input": "24.5.0",
+    "expected": "24"
+  },
+  {
+    "name": "nodejs",
+    "input": "v24.5.0",
+    "expected": "24"
+  },
+  {
+    "name": "pnpm",
+    "input": "10.12.1",
+    "expected": "10"
+  },
+  {
+    "name": "ruby",
+    "input": "3.3.7",
+    "expected": "3.3"
+  },
+  {
+    "name": "python",
+    "input": "3.13.6",
+    "expected": "3.13"
+  },
+  {
+    "name": "go",
+    "input": "1.24.4",
+    "expected": "1.24"
+  },
+  {
+    "name": "flutter",
+    "input": "3.35.1",
+    "expected": "3.35"
+  },
+  {
+    "name": "dart",
+    "input": "3.9.2",
+    "expected": "3.9"
+  },
+  {
+    "name": "mint",
+    "input": "0.18.0",
+    "expected": "0.18"
+  },
+  {
+    "name": "java",
+    "input": "jbr-21.0.11+1163.116",
+    "expected": "jetbrains-21"
+  },
+  {
+    "name": "jdk",
+    "input": "temurin-17.0.16+8",
+    "expected": "temurin-17"
+  },
+  {
+    "name": "java",
+    "input": "graalvm-24.0.2",
+    "expected": "graalvm-24"
+  },
+  {
+    "name": "gem:cocoapods",
+    "input": "1.16.2",
+    "expected": "1"
+  },
+  {
+    "name": "bun",
+    "input": "1.4.0-canary.1+6c12afd8e",
+    "expected": "1"
+  },
+  {
+    "name": "node",
+    "input": " latest ",
+    "expected": "latest"
+  },
+  {
+    "name": "ruby",
+    "input": "3",
+    "expected": null
+  },
+  {
+    "name": "ruby",
+    "input": "path:/host/ruby",
+    "expected": null
+  },
+  {
+    "name": "mint",
+    "input": "0",
+    "expected": null
+  },
+  {
+    "name": "node",
+    "input": "lts",
+    "expected": null
+  },
+  {
+    "name": "node",
+    "input": "^24.1",
+    "expected": null
+  },
+  {
+    "name": "java",
+    "input": "unknown-17",
+    "expected": null
+  }
+]

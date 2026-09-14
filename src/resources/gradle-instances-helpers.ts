@@ -1,12 +1,10 @@
 import { GradleInstances, type GradleInstance } from './gradle-instances';
-import { readMiseDefaults } from '../mise-tools';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
 import {
   exec,
   type ExecChildProcess,
-  type RunExecRequest,
   type GradleBuildExecRequest,
   type GradlePlaystoreConfig,
   type GradleReactNativeConfig,
@@ -16,6 +14,8 @@ import {
 import { syncFolder as syncFolderImpl, type FolderSyncOptions } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
 import {
+  createBuildCommandHelpers,
+  type BuildRunOptions,
   createDaemonLogger,
   deriveBasisCache,
   mintAssetUploadUrls,
@@ -88,14 +88,7 @@ export type GradleBuildOptions = {
   playstore?: GradlePlaystoreConfig;
 };
 
-export type GradleRunOptions = {
-  /** Working directory relative to the synced workspace. Defaults to ".". */
-  cwd?: string;
-  /** Extra KEY=VALUE entries; sandbox paths remain managed. */
-  env?: string[];
-  /** Command timeout in seconds, from 1 to 21600. Defaults to 3600. */
-  timeoutSeconds?: number;
-};
+export type GradleRunOptions = BuildRunOptions;
 
 export type GradleClient = {
   sync(localCodePath: string, opts?: GradleSyncOptions): Promise<SyncResult>;
@@ -161,10 +154,7 @@ class GradleInstancesHelpers extends GradleInstances {
 
     const log = createDaemonLogger('[GradleInstance]', params.logLevel ?? 'info');
     const client = this._client;
-    const miseDefaults = await readMiseDefaults();
-    const toolEnv =
-      Object.keys(miseDefaults).length ? [`LIMRUN_MISE_DEFAULTS=${JSON.stringify(miseDefaults)}`] : [];
-    const withToolDefaults = (env: string[] | undefined) => [...(env ?? []), ...toolEnv];
+    const commands = await createBuildCommandHelpers({ apiUrl, token, log });
 
     return {
       async sync(localCodePath: string, opts?: GradleSyncOptions): Promise<SyncResult> {
@@ -204,32 +194,12 @@ class GradleInstancesHelpers extends GradleInstances {
         return out;
       },
 
-      run(commandLine: string, options?: GradleRunOptions): ExecChildProcess {
-        if (commandLine.trim() === '') {
-          throw new Error('commandLine must not be empty');
-        }
-        if (
-          options?.timeoutSeconds !== undefined &&
-          (!Number.isInteger(options.timeoutSeconds) ||
-            options.timeoutSeconds < 1 ||
-            options.timeoutSeconds > 21600)
-        ) {
-          throw new Error('timeoutSeconds must be an integer between 1 and 21600');
-        }
-        const request: RunExecRequest = {
-          command: 'run',
-          commandLine,
-          cwd: options?.cwd ?? '.',
-          ...(withToolDefaults(options?.env).length && { env: withToolDefaults(options?.env) }),
-          ...(options?.timeoutSeconds !== undefined && { timeoutSeconds: options.timeoutSeconds }),
-        };
-        return exec(request, { apiUrl, token, log });
-      },
+      run: commands.run,
 
       gradlebuild(options?: GradleBuildOptions): ExecChildProcess {
         const request: GradleBuildExecRequest = {
           command: 'gradlebuild',
-          ...(withToolDefaults(options?.env).length && { env: withToolDefaults(options?.env) }),
+          ...commands.environment(options?.env),
           ...(options?.tasks?.length && { tasks: options.tasks }),
           ...(options?.projectPath && { projectPath: options.projectPath }),
           ...(options?.reactNative && { reactNative: options.reactNative }),

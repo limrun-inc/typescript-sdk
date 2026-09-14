@@ -1,7 +1,13 @@
+import compatibilityCases from './fixtures/mise-compatibility.json';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { parseToolRequests, readMiseDefaults, writeMiseTools } from '../src/mise-tools';
+import {
+  parseToolRequests,
+  readMiseDefaults,
+  writeMiseTools,
+  toolCompatibilityLine,
+} from '../src/mise-tools';
 
 let directory: string;
 beforeEach(async () => {
@@ -47,4 +53,9 @@ test('personal defaults transmit only tool requests and fail visibly on invalid 
   expect(await readMiseDefaults(file)).toEqual({ node: '24.5.0' });
   await fs.writeFile(file, '[invalid');
   await expect(readMiseDefaults(file)).rejects.toThrow('Cannot read mise configuration');
+});
+
+test.each(compatibilityCases)('shared compatibility contract: $name@$input', ({ name, input, expected }) => {
+  if (expected === null) expect(() => toolCompatibilityLine(name, input)).toThrow();
+  else expect(toolCompatibilityLine(name, input)).toBe(expected);
 });
