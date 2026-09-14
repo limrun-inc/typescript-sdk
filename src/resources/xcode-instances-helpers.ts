@@ -1,3 +1,4 @@
+import { readMiseDefaults } from '../mise-tools';
 import {
   XcodeInstances as GeneratedXcodeInstances,
   type XcodeInstance,
@@ -865,6 +866,10 @@ export class XcodeInstances extends GeneratedXcodeInstances {
     }
 
     const log = createDaemonLogger('[XcodeInstance]', params.logLevel ?? 'info');
+    const miseDefaults = await readMiseDefaults();
+    const toolEnv =
+      Object.keys(miseDefaults).length ? [`LIMRUN_MISE_DEFAULTS=${JSON.stringify(miseDefaults)}`] : [];
+    const withToolDefaults = (env: string[] | undefined) => [...(env ?? []), ...toolEnv];
     const client = this._client;
     let sandboxInfoPromise: Promise<SandboxInfo> | undefined;
     const getSandboxInfo = () => {
@@ -1010,7 +1015,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           // testflight until the exec API is revised separately.
           ...(options?.appstore && { testflight: options.appstore }),
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
-          ...(options?.env?.length && { env: options.env }),
+          ...(withToolDefaults(options?.env).length && { env: withToolDefaults(options?.env) }),
           ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
           ...(options?.logProcessor && { logProcessor: options.logProcessor }),
           ...(options?.webhook && { webhook: options.webhook }),
@@ -1065,7 +1070,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           command: 'run',
           commandLine,
           cwd: options?.cwd ?? '.',
-          ...(options?.env && { env: options.env }),
+          ...(withToolDefaults(options?.env).length && { env: withToolDefaults(options?.env) }),
           ...(options?.timeoutSeconds !== undefined && { timeoutSeconds: options.timeoutSeconds }),
         };
         return exec(request, { apiUrl, token, log });
