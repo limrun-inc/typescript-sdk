@@ -11,7 +11,7 @@ export function parseAdditionalFileFlags(values: string[] | undefined): Addition
     const separator = value.indexOf('=');
     if (separator <= 0 || separator === value.length - 1) {
       throw new Error(
-        `Invalid --additional-file value "${value}". Expected localPath=remotePath, for example ~/.netrc=~/.netrc`,
+        `Invalid --additional-file value "${value}". Expected localPath=remotePath, for example ~/.netrc=.netrc`,
       );
     }
     return {

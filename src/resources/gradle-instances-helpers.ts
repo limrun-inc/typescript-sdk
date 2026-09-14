@@ -30,6 +30,8 @@ export type GradleCreateClientParams = { logLevel?: LogLevel } & (
 );
 
 export type GradleSyncOptions = {
+  /** Extra files to sync to paths relative to the remote workspace. */
+  additionalFiles?: FolderSyncOptions['additionalFiles'];
   /**
    * Directory for the client-side folder-sync cache.
    * Defaults to a temporary directory under the OS temp directory.
@@ -191,6 +193,7 @@ class GradleInstancesHelpers extends GradleInstances {
           launchMode: 'ForegroundIfRunning',
           log,
           syncSymlinks: true,
+          ...(opts?.additionalFiles && { additionalFiles: opts.additionalFiles }),
         };
 
         const result = await syncFolderImpl(localCodePath, codeSyncOpts);
