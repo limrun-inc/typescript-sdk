@@ -20,6 +20,8 @@ test('records compatibility lines and excludes Apple and Homebrew tools', () => 
   });
   expect(() => parseToolRequests(['ruby@3'])).toThrow('major.minor');
   expect(parseToolRequests(['node@latest'])).toEqual({ node: 'latest' });
+  expect(parseToolRequests(['java@jetbrains-21.0.11-b1163.116'])).toEqual({ java: 'jetbrains-21' });
+  expect(parseToolRequests(['java@jbr-21'])).toEqual({ java: 'jetbrains-21' });
   expect(() => parseToolRequests(['xcode@27'])).toThrow('separately');
   expect(() => parseToolRequests(["node';echo@24"])).toThrow('Invalid tool');
 });

@@ -16,10 +16,11 @@ export function toolCompatibilityLine(name: string, input: string): string {
   if (version === 'latest') return version;
   let vendor = '';
   if (name === 'java') {
-    const match = /^(jbr|corretto|temurin|openjdk|zulu|liberica|graalvm)-/.exec(version);
+    const match = /^(jetbrains|jbr|corretto|temurin|openjdk|zulu|liberica|graalvm)-/.exec(version);
     if (match) {
       vendor = match[0];
       version = version.slice(vendor.length);
+      if (vendor === 'jbr-') vendor = 'jetbrains-';
     }
   }
   const parts = /^v?([0-9]+)(?:\.([0-9]+))?(?:\.[0-9]+)*(?:[-+][A-Za-z0-9._+-]+)?$/.exec(version);

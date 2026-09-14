@@ -8,7 +8,7 @@ import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
 export default class XcodeUse extends BaseCommand {
   static summary = 'Select developer tool versions for an Xcode sandbox';
   static description =
-    'Save compatibility lines in the client mise configuration, sync, and prepare the selected tools remotely. Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain major.minor; other tools retain the major.';
+    'Save compatibility lines in the client mise configuration and sync them to the sandbox. Run lim xcode run -- mise install to install missing versions. Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain major.minor; other tools retain the major.';
   static strict = false;
   static args = { tools: Args.string({ required: true, description: 'One or more tool@version requests' }) };
   static examples = [
@@ -57,22 +57,22 @@ export default class XcodeUse extends BaseCommand {
       });
       // Remove explicit sandbox overrides for these tools before resolving the new client requests.
       const remove = Object.keys(tools)
-        .map((name) => `--remove '${name}'`)
+        .map((name) => `'${name}'`)
         .join(' ');
-      for (const command of [
-        `test -n "$MISE_SYSTEM_INSTALLS_DIR" || { echo "This sandbox needs a newer Limrun toolchain image." >&2; exit 1; }; mise use --path .limrun-runtime-mise.toml ${remove}`,
+      const command = [
+        `test -n "$MISE_SYSTEM_INSTALLS_DIR" || { echo "This sandbox needs a newer Limrun toolchain image." >&2; exit 1; }; if test -f .limrun-runtime-mise.toml; then mise unuse --no-prune --path .limrun-runtime-mise.toml ${remove}; fi`,
         'mise ls --current',
-      ]) {
-        const proc = client.run(command, { cwd: flags.cwd });
-        proc.stdout.on('data', (line: string) => process.stdout.write(line + '\n'));
-        proc.stderr.on('data', (line: string) => process.stderr.write(line + '\n'));
-        const result = await proc;
-        if (result.exitCode !== 0)
-          this.error(
-            `Tool selection failed with exit code ${result.exitCode}. The client configuration was saved; retry after correcting the error.`,
-            { exit: result.exitCode },
-          );
-      }
+      ].join(' && ');
+      const proc = client.run(command, { cwd: flags.cwd });
+      proc.stdout.on('data', (line: string) => process.stdout.write(line + '\n'));
+      proc.stderr.on('data', (line: string) => process.stderr.write(line + '\n'));
+      const result = await proc;
+      if (result.exitCode !== 0)
+        this.error(
+          `Tool selection failed with exit code ${result.exitCode}. The client configuration was saved; retry after correcting the error.`,
+          { exit: result.exitCode },
+        );
+      this.info('Run lim xcode run -- mise install if a selected version is missing.');
     });
   }
 }
