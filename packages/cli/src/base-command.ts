@@ -15,6 +15,8 @@ import {
   loadLastIosInstance,
   loadLastXcodeInstance,
   loadXcodeInstanceCache,
+  loadXcodeVersionPreference,
+  setXcodeVersionPreference,
   readConfig,
   registerCreatedInstance,
   loadGradleInstanceCache,
@@ -211,7 +213,10 @@ export abstract class BaseCommand extends Command {
     };
   }
 
-  protected async withAuth<T>(fn: () => Promise<T>): Promise<T> {
+  protected async withAuth<T>(
+    fn: () => Promise<T>,
+    options: { createReplacement?: boolean } = {},
+  ): Promise<T> {
     try {
       return await fn();
     } catch (err) {
@@ -235,7 +240,7 @@ export abstract class BaseCommand extends Command {
         this.info('You are logged in now.');
         // Reset client so it picks up the new key
         this._client = undefined;
-        return this.withAuth(fn);
+        return this.withAuth(fn, options);
       }
       if (err instanceof NotFoundError) {
         const explicitId = err.message.match(INSTANCE_ID_PATTERN)?.[0] ?? null;
@@ -252,7 +257,7 @@ export abstract class BaseCommand extends Command {
           if (explicitId) {
             await this.deleteCreatedInstance(explicitId);
           }
-          if (this.shouldAutoCreateOnNotFound()) {
+          if (options.createReplacement !== false && this.shouldAutoCreateOnNotFound()) {
             const replacement = await this.createReplacementInstance(instanceId);
             if (replacement) {
               await this.deleteCreatedInstance(instanceId);
@@ -262,7 +267,7 @@ export abstract class BaseCommand extends Command {
               this._overrideInstanceId = replacement.id;
               this._createRetryCount += 1;
               try {
-                return await this.withAuth(fn);
+                return await this.withAuth(fn, options);
               } finally {
                 this._createRetryCount -= 1;
                 this._overrideInstanceId = undefined;
@@ -1018,6 +1023,64 @@ export abstract class BaseCommand extends Command {
     const client = await this.resolveXcodeClient(target);
     const status = await this.readXcodeSelectionOrForget(target, () => client.getXcode());
     return status ? { target, client, status } : undefined;
+  }
+
+  /** Save the workspace preference and switch its existing sandbox when available. */
+  protected async setPreferredXcodeVersion(major: string, providedId?: string): Promise<void> {
+    const previous = loadXcodeVersionPreference();
+    // Keep the workspace preference on transient failures, but reject majors the node cannot provide.
+    const record = () => {
+      setXcodeVersionPreference(major);
+      this.info(`Xcode ${major} is now the preferred version${this.scopeSuffix()}.`);
+    };
+
+    await this.withAuth(
+      async () => {
+        const target = await this.tryResolveXcodeTarget(providedId);
+        let result: XcodeSelectResult | undefined;
+        try {
+          result =
+            target ?
+              await this.readXcodeSelectionOrForget(target, async () =>
+                (await this.resolveXcodeClient(target)).setXcode(major),
+              )
+            : undefined;
+        } catch (err) {
+          const refusal = this.xcodeRefusal(err);
+          if (refusal?.status === 400) {
+            if (previous === major) {
+              this.error(
+                `${refusal.message}. This workspace already prefers Xcode ${major}; drop it with: lim xcode version unset`,
+              );
+            }
+            this.error(
+              `${refusal.message}. The workspace preference stays ${
+                previous ? `Xcode ${previous}` : 'unset'
+              }.`,
+            );
+          }
+          record();
+          if (refusal) this.error(`${refusal.message}. The next command switches the sandbox.`);
+          throw err;
+        }
+        record();
+        if (!target || !result) {
+          if (this.isJsonEnabled()) this.outputJson({ preferred: major });
+          else this.output(`No sandbox instance found${this.scopeSuffix()}; the next one uses it.`);
+          return;
+        }
+        if (this.isJsonEnabled()) {
+          this.outputJson({ instanceId: target.id, preferred: major, ...result });
+          return;
+        }
+        const verb = result.alreadyBound ? 'already uses' : 'now uses';
+        this.output(`Sandbox ${target.id} ${verb} Xcode ${formatXcode(result.bound)}`);
+        if (result.derivedDataReset) {
+          this.output('The build cache from the previous Xcode is invalidated; the next build starts cold.');
+        }
+      },
+      { createReplacement: false },
+    );
   }
 
   /** setXcode with the daemon's own refusal message instead of the transport's wrapping. */

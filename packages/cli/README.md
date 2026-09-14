@@ -476,7 +476,7 @@ lim xcode get <ID>        # Get details of a specific instance
 lim xcode delete <ID>     # Delete an instance
 lim xcode attach-simulator <IOS_ID> --id <XCODE_ID>
 lim xcode version         # Xcode the sandbox builds with
-lim xcode version set 27  # Prefer an Xcode major for this workspace (switches the sandbox now)
+lim xcode use xcode@27    # Prefer an Xcode major for this workspace (switches the sandbox now)
 lim xcode version list    # Xcode versions the sandbox can build with
 ```
 
@@ -517,7 +517,7 @@ LIM_WEBHOOK_URL=https://ci.example.com/hooks/limrun \
 lim xcode attach-simulator ios_abc123 --id sandbox_def456
 
 # Pick the Xcode major for this workspace once; builds, tests, runs, syncs, RBE and new sandboxes follow it
-lim xcode version set 27
+lim xcode use xcode@27
 lim xcode build ./MyProject           # builds with Xcode 27
 lim xcode build ./MyProject --xcode-version 26   # one-off override, not remembered
 lim xcode version unset               # forget the preference; the sandbox goes back to the node default
@@ -798,9 +798,11 @@ lim xcode run -- mise use --pin node@24.5.0
 
 `lim xcode tools` inspects an existing sandbox without syncing or creating an instance. Use `lim xcode tools --sync` to upload local changes first, and `--cwd apps/mobile` to inspect a nested project. Both forms require an existing sandbox; use `--id` to choose one.
 
-`use` saves compatibility lines in the client mise file, syncs the project, and shows the selection. Install missing versions explicitly with `lim xcode run -- mise install`. Each run or build resolves `mise env --json` once and injects that environment into its commands. It preserves configuration values but drops comments and rewrites formatting. Project tool declarations override personal defaults from the client global mise file. Most numeric requests retain the major; Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain `major.minor`. Automatic resolution ignores `mise.lock` and imports only tool declarations. `latest` opts out of a fixed line. Explicit sandbox `mise use --pin` overrides select exact releases; `lim xcode use` clears that tool's override in the selected directory.
+`lim xcode use xcode@27` is equivalent to `lim xcode version set 27`: it remembers the workspace Xcode major and switches the existing sandbox. With no sandbox, it saves the preference for the next one. This Xcode-only request does not sync files or write a mise configuration. You can combine requests, for example `lim xcode use xcode@27 node@24`; only the other tools go into mise. Xcode requires a bare major and does not support `--global`. `--cwd` applies only to mise tools; `--workspace` chooses the Limrun workspace preference.
 
-Image tools stay outside workspace caches. User-installed versions under `.limbuild-sandbox/home/.mise/` can be cached when the configured cache paths cover them, after a successful managed build. If a restored user gem references its old sandbox path, reinstall it explicitly, for example `lim xcode run -- mise install --force bundler`. Homebrew and Apple tools have separate management; use `lim xcode version` for Xcode.
+For mise tools, `use` saves compatibility lines in the client mise file, syncs the project, and shows the selection. Install missing versions explicitly with `lim xcode run -- mise install`. Each run or build resolves `mise env --json` once and injects that environment into its commands. It preserves configuration values but drops comments and rewrites formatting. Project tool declarations override personal defaults from the client global mise file. Most numeric requests retain the major; Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain `major.minor`. Automatic resolution ignores `mise.lock` and imports only tool declarations. `latest` opts out of a fixed line. Explicit sandbox `mise use --pin` overrides select exact releases; `lim xcode use` clears that tool's override in the selected directory.
+
+Image tools stay outside workspace caches. User-installed versions under `.limbuild-sandbox/home/.mise/` can be cached when the configured cache paths cover them, after a successful managed build. If a restored user gem references its old sandbox path, reinstall it explicitly, for example `lim xcode run -- mise install --force bundler`. Homebrew and Apple tools have separate management; select Xcode with `lim xcode use xcode@27` and inspect it with `lim xcode version`.
 
 For [XcodeGen](https://github.com/yonaskolb/XcodeGen) projects whose generated `.xcodeproj` is gitignored, the server generates it from your synced `project.yml` automatically before the build — it looks next to a pinned `--project`/`--workspace` path, at the synced folder root, and one directory level down. If your spec has a different name or location, pin it with `--xcodegen-spec <path>`, optionally control the output directory with `--xcodegen-project <dir>`, and anchor relative paths in the spec with `--xcodegen-project-root <dir>`; all paths are relative to the synced folder root and mirror `xcodegen generate --spec/--project/--project-root`. Passing any of these flags always regenerates the project on the server:
 
