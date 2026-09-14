@@ -4,7 +4,6 @@
 import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
-import { readMiseDefaults } from '../mise-tools';
 import { exec, type ExecOptions, type RunExecRequest } from '../exec-client';
 
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
@@ -145,34 +144,25 @@ export type BuildRunOptions = {
   timeoutSeconds?: number;
 };
 
-/** Capture personal defaults once for a client and apply them to every build and run. */
-export async function createBuildCommandHelpers(execOptions: ExecOptions) {
-  const defaults = await readMiseDefaults();
-  const toolEnv = Object.keys(defaults).length ? [`LIMRUN_MISE_DEFAULTS=${JSON.stringify(defaults)}`] : [];
-  const environment = (env?: string[]): { env?: string[] } => {
-    const combined = [...(env ?? []), ...toolEnv];
-    return combined.length ? { env: combined } : {};
-  };
-  return {
-    environment,
-    run(commandLine: string, options?: BuildRunOptions) {
-      if (commandLine.trim() === '') throw new Error('commandLine must not be empty');
-      if (
-        options?.timeoutSeconds !== undefined &&
-        (!Number.isInteger(options.timeoutSeconds) ||
-          options.timeoutSeconds < 1 ||
-          options.timeoutSeconds > 21600)
-      ) {
-        throw new Error('timeoutSeconds must be an integer between 1 and 21600');
-      }
-      const request: RunExecRequest = {
-        command: 'run',
-        commandLine,
-        cwd: options?.cwd ?? '.',
-        ...environment(options?.env),
-        ...(options?.timeoutSeconds !== undefined && { timeoutSeconds: options.timeoutSeconds }),
-      };
-      return exec(request, execOptions);
-    },
+/** Create the shared shell command runner for build sandboxes. */
+export function createBuildRun(execOptions: ExecOptions) {
+  return (commandLine: string, options?: BuildRunOptions) => {
+    if (commandLine.trim() === '') throw new Error('commandLine must not be empty');
+    if (
+      options?.timeoutSeconds !== undefined &&
+      (!Number.isInteger(options.timeoutSeconds) ||
+        options.timeoutSeconds < 1 ||
+        options.timeoutSeconds > 21600)
+    ) {
+      throw new Error('timeoutSeconds must be an integer between 1 and 21600');
+    }
+    const request: RunExecRequest = {
+      command: 'run',
+      commandLine,
+      cwd: options?.cwd ?? '.',
+      ...(options?.env?.length && { env: options.env }),
+      ...(options?.timeoutSeconds !== undefined && { timeoutSeconds: options.timeoutSeconds }),
+    };
+    return exec(request, execOptions);
   };
 }

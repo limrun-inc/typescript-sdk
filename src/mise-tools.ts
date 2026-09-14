@@ -1,16 +1,7 @@
 import { misePolicy } from './internal/mise-policy';
 import fs from 'fs/promises';
-import os from 'os';
 import path from 'path';
 import { parse, stringify, type TomlTable } from 'smol-toml';
-
-/** Personal tool defaults read by build clients. Project mise files take precedence remotely. */
-export function miseDefaultsFile(): string {
-  return (
-    process.env['MISE_GLOBAL_CONFIG_FILE'] ??
-    path.join(process.env['XDG_CONFIG_HOME'] ?? path.join(os.homedir(), '.config'), 'mise', 'config.toml')
-  );
-}
 
 const toolAliases = new Map(Object.entries(misePolicy.aliases));
 const vendorPrefixes = new Map(
@@ -74,33 +65,17 @@ async function readConfig(file: string): Promise<TomlTable> {
   }
 }
 
-export async function readMiseDefaults(file = miseDefaultsFile()): Promise<Record<string, unknown>> {
-  const config = await readConfig(file);
-  const tools = config['tools'];
-  if (tools === undefined) return {};
-  if (!tools || typeof tools !== 'object' || Array.isArray(tools))
-    throw new Error(`Expected [tools] in ${file}.`);
-  // Only tool requests cross the connection. Tasks, environment and secrets stay on the client.
-  return tools as Record<string, unknown>;
-}
-
 /** Save compatibility lines without installing anything on the client. */
-export async function writeMiseTools(
-  directory: string,
-  tools: Record<string, string>,
-  global = false,
-): Promise<string> {
-  let file = global ? miseDefaultsFile() : path.join(directory, 'mise.toml');
-  if (!global) {
-    // Update the highest-precedence existing file in this directory.
-    for (const name of ['mise.toml', '.mise.toml', 'mise.local.toml', '.mise.local.toml']) {
-      const candidate = path.join(directory, name);
-      try {
-        await fs.access(candidate);
-        file = candidate;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      }
+export async function writeMiseTools(directory: string, tools: Record<string, string>): Promise<string> {
+  let file = path.join(directory, 'mise.toml');
+  // Update the highest-precedence existing file in this directory.
+  for (const name of ['mise.toml', '.mise.toml', 'mise.local.toml', '.mise.local.toml']) {
+    const candidate = path.join(directory, name);
+    try {
+      await fs.access(candidate);
+      file = candidate;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
   }
   const config = await readConfig(file);

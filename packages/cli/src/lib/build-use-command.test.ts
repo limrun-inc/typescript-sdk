@@ -128,7 +128,7 @@ it('combines Xcode selection with mise tools without writing Xcode to TOML', asy
   const { command, client } = setup(XcodeUse, ['xcode@27', 'node@24.5.0', 'ruby@3.3.7']);
   await command.run();
   expect(setXcodeVersionPreference).toHaveBeenCalledWith('27');
-  expect(writeMiseTools).toHaveBeenCalledWith(process.cwd(), { node: '24', ruby: '3.3' }, undefined);
+  expect(writeMiseTools).toHaveBeenCalledWith(process.cwd(), { node: '24', ruby: '3.3' });
   expect(client.sync).toHaveBeenCalledTimes(1);
   expect(client.run).toHaveBeenCalledWith(expect.stringContaining("'node' 'ruby'"), { cwd: '.' });
   expect(client.run.mock.calls[0]![0]).not.toContain('xcode');
@@ -148,7 +148,6 @@ it.each(['xcode@27.1', 'xcode@latest', 'xcode@'])(
 
 it.each([
   { argv: ['xcode@27', 'invalid'], flags: {} },
-  { argv: ['xcode@27'], flags: { global: true } },
   { argv: ['xcode@27'], flags: { cwd: '..' } },
 ])('validates all requests and scope flags before switching Xcode', async ({ argv, flags }) => {
   const { command, client } = setup(XcodeUse, argv, flags);

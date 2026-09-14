@@ -11,9 +11,9 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
     static summary = `Select developer tool versions for a ${platform} sandbox`;
     static description =
       (platform === 'xcode' ?
-        'xcode@<major> selects Xcode for the workspace, like lim xcode version set. Xcode selection does not support --global. '
+        'xcode@<major> selects Xcode for the workspace, like lim xcode version set. '
       : '') +
-      `Save compatibility lines in the client mise configuration and sync them to the sandbox. Run lim ${platform} run -- mise install to install missing versions. Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain major.minor; other tools retain the major.`;
+      `Save compatibility lines in the project mise configuration and sync them to the sandbox. Run lim ${platform} run -- mise install to install missing versions. Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain major.minor; other tools retain the major.`;
     static strict = false;
     static args = {
       tools: Args.string({ required: true, description: 'One or more tool@version requests' }),
@@ -21,7 +21,6 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
     static examples = [
       ...(platform === 'xcode' ? ['<%= config.bin %> xcode use xcode@27'] : []),
       `<%= config.bin %> ${platform} use node@24 pnpm@10 ruby@3.3`,
-      `<%= config.bin %> ${platform} use --global node@24`,
       `<%= config.bin %> ${platform} use --cwd apps/mobile yarn@4`,
     ];
     static flags = {
@@ -31,10 +30,6 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
         description: `${platform} instance ID. Defaults to the most recent ${platform} target.`,
       }),
       cwd: Flags.string({ description: 'Project directory relative to the sync root.', default: '.' }),
-      global: Flags.boolean({
-        description: 'Save personal defaults in the client global mise configuration.',
-        default: false,
-      }),
     };
 
     async run(): Promise<void> {
@@ -49,8 +44,6 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
           requests.push(request);
         }
       }
-      if (xcodeMajor && flags.global)
-        this.error('Xcode selection is scoped to the workspace; omit --global when selecting xcode@<major>.');
       const tools = requests.length ? parseToolRequests(requests) : {};
       const directory = path.resolve(process.cwd(), flags.cwd);
       const relative = path.relative(process.cwd(), directory);
@@ -58,7 +51,7 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
         this.error('--cwd must stay inside the synced directory.');
       if (xcodeMajor) await this.setPreferredXcodeVersion(xcodeMajor, flags.id);
       if (!requests.length) return;
-      const file = await writeMiseTools(directory, tools, flags.global);
+      const file = await writeMiseTools(directory, tools);
       this.info(
         `Saved ${Object.entries(tools)
           .map(([name, version]) => `${name}@${version}`)
@@ -72,16 +65,14 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
           client,
           {
             ...sync,
-            ...(!flags.global && {
-              include: (p: string) =>
-                p === fileRelative ||
-                fileRelative.startsWith(p.endsWith('/') ? p : `${p}/`) ||
-                (sync?.include?.(p) ?? false),
-            }),
+            include: (p: string) =>
+              p === fileRelative ||
+              fileRelative.startsWith(p.endsWith('/') ? p : `${p}/`) ||
+              (sync?.include?.(p) ?? false),
           },
           (message) => this.info(message),
         );
-        // Remove explicit sandbox overrides for these tools before resolving the new client requests.
+        // Remove explicit sandbox overrides for these tools before resolving the new project requests.
         const remove = Object.keys(tools)
           .map((name) => `'${name}'`)
           .join(' ');
@@ -93,7 +84,7 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
         await streamBuildCommand(
           proc,
           (message, options) => this.error(message, options),
-          'Tool selection failed after saving the client configuration',
+          'Tool selection failed after saving the project configuration',
         );
         this.info(`Run lim ${platform} run -- mise install if a selected version is missing.`);
       });

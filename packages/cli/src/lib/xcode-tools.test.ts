@@ -12,13 +12,12 @@ import GradleTools from '../commands/gradle/tools';
 import GradleRun from '../commands/gradle/run';
 
 it('parses multiple tool requests alongside scope flags', async () => {
-  const result = await Parser.parse(['--global', '--cwd', 'apps/mobile', 'node@24', 'ruby@3.3'], {
+  const result = await Parser.parse(['--cwd', 'apps/mobile', 'node@24', 'ruby@3.3'], {
     flags: XcodeUse.flags,
     args: XcodeUse.args,
     strict: XcodeUse.strict,
   });
   expect(result.argv).toEqual(['node@24', 'ruby@3.3']);
-  expect(result.flags.global).toBe(true);
   expect(result.flags.cwd).toBe('apps/mobile');
 });
 
@@ -29,13 +28,12 @@ it('supports inspecting an existing workspace without sync', async () => {
 });
 
 it('gives Gradle the same tool-selection flags and Java vendor support', async () => {
-  const result = await Parser.parse(['--global', 'java@temurin-17', 'node@24'], {
+  const result = await Parser.parse(['java@temurin-17', 'node@24'], {
     flags: GradleUse.flags,
     args: GradleUse.args,
     strict: GradleUse.strict,
   });
   expect(result.argv).toEqual(['java@temurin-17', 'node@24']);
-  expect(result.flags.global).toBe(true);
   expect(Object.keys(GradleTools.flags)).toEqual(Object.keys(XcodeTools.flags));
   expect(GradleRun.examples?.[0]).toContain('gradle run');
 });
@@ -119,4 +117,14 @@ it.each(['xcode', 'gradle'])(
 
 it.each([XcodeTools, GradleTools])('accepts explicit --sync for tool inspection', async (Tools) => {
   expect((await Parser.parse(['--sync'], { flags: Tools.flags })).flags.sync).toBe(true);
+});
+
+it.each([XcodeUse, GradleUse])('rejects the removed personal-defaults flag', async (Use) => {
+  await expect(
+    Parser.parse(['--global', 'node@24'], {
+      flags: Use.flags,
+      args: Use.args,
+      strict: Use.strict,
+    }),
+  ).rejects.toThrow('Nonexistent flag');
 });

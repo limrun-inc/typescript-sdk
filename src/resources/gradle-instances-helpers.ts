@@ -14,7 +14,7 @@ import {
 import { syncFolder as syncFolderImpl, type FolderSyncOptions } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
 import {
-  createBuildCommandHelpers,
+  createBuildRun,
   type BuildRunOptions,
   createDaemonLogger,
   deriveBasisCache,
@@ -154,7 +154,6 @@ class GradleInstancesHelpers extends GradleInstances {
 
     const log = createDaemonLogger('[GradleInstance]', params.logLevel ?? 'info');
     const client = this._client;
-    const commands = await createBuildCommandHelpers({ apiUrl, token, log });
 
     return {
       async sync(localCodePath: string, opts?: GradleSyncOptions): Promise<SyncResult> {
@@ -194,12 +193,12 @@ class GradleInstancesHelpers extends GradleInstances {
         return out;
       },
 
-      run: commands.run,
+      run: createBuildRun({ apiUrl, token, log }),
 
       gradlebuild(options?: GradleBuildOptions): ExecChildProcess {
         const request: GradleBuildExecRequest = {
           command: 'gradlebuild',
-          ...commands.environment(options?.env),
+          ...(options?.env?.length && { env: options.env }),
           ...(options?.tasks?.length && { tasks: options.tasks }),
           ...(options?.projectPath && { projectPath: options.projectPath }),
           ...(options?.reactNative && { reactNative: options.reactNative }),

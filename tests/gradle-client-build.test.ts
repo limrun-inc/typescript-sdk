@@ -253,13 +253,10 @@ test('gradlebuild falls back to the raw body when the exec error is not JSON', a
   await expect(gradle.gradlebuild()).rejects.toThrow('exec failed: 502 upstream connect error');
 });
 
-test('build and run forward personal mise tools and caller env through the shared exec stream', async () => {
+test('build and run forward caller env without reading personal mise configuration', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'gradle-mise-client-'));
   const globalFile = path.join(directory, 'config.toml');
-  await fs.writeFile(
-    globalFile,
-    '[tools]\nnode="24.4.0"\njava="temurin-17"\n[env]\nSECRET="not forwarded"\n',
-  );
+  await fs.writeFile(globalFile, '[invalid personal mise configuration');
   const previous = process.env['MISE_GLOBAL_CONFIG_FILE'];
   process.env['MISE_GLOBAL_CONFIG_FILE'] = globalFile;
   try {
@@ -285,7 +282,7 @@ test('build and run forward personal mise tools and caller env through the share
     proc.stdout.on('data', (line: string) => output.push(line));
     expect((await proc).exitCode).toBe(0);
     expect(output).toContain('selected tools');
-    const env = ['API_ENV=development', 'LIMRUN_MISE_DEFAULTS={"node":"24.4.0","java":"temurin-17"}'];
+    const env = ['API_ENV=development'];
     expect(requests).toEqual([
       { command: 'gradlebuild', env },
       { command: 'run', commandLine: 'node --version', cwd: 'apps/mobile', env, timeoutSeconds: 30 },

@@ -31,7 +31,7 @@ import {
 } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
 import {
-  createBuildCommandHelpers,
+  createBuildRun,
   type BuildRunOptions,
   createDaemonLogger,
   deriveBasisCache,
@@ -856,7 +856,6 @@ export class XcodeInstances extends GeneratedXcodeInstances {
     }
 
     const log = createDaemonLogger('[XcodeInstance]', params.logLevel ?? 'info');
-    const commands = await createBuildCommandHelpers({ apiUrl, token, log });
     const client = this._client;
     let sandboxInfoPromise: Promise<SandboxInfo> | undefined;
     const getSandboxInfo = () => {
@@ -1002,7 +1001,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           // testflight until the exec API is revised separately.
           ...(options?.appstore && { testflight: options.appstore }),
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
-          ...commands.environment(options?.env),
+          ...(options?.env?.length && { env: options.env }),
           ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
           ...(options?.logProcessor && { logProcessor: options.logProcessor }),
           ...(options?.webhook && { webhook: options.webhook }),
@@ -1041,7 +1040,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         return exec(request, execOptions);
       },
 
-      run: commands.run,
+      run: createBuildRun({ apiUrl, token, log }),
 
       async getSimulator(): Promise<SimulatorStatus> {
         const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator`, {

@@ -791,16 +791,15 @@ Select developer tools for shell commands and managed builds with mise preferenc
 ```bash
 lim xcode use node@24 pnpm@10 ruby@3.3
 lim xcode run -- mise install
-lim xcode use --global node@24
 lim xcode tools
 lim xcode run -- mise use --pin node@24.5.0
 ```
 
 `lim xcode tools` inspects an existing sandbox without syncing or creating an instance. Use `lim xcode tools --sync` to upload local changes first, and `--cwd apps/mobile` to inspect a nested project. Both forms require an existing sandbox; use `--id` to choose one.
 
-`lim xcode use xcode@27` is equivalent to `lim xcode version set 27`: it remembers the workspace Xcode major and switches the existing sandbox. With no sandbox, it saves the preference for the next one. This Xcode-only request does not sync files or write a mise configuration. You can combine requests, for example `lim xcode use xcode@27 node@24`; only the other tools go into mise. Xcode requires a bare major and does not support `--global`. `--cwd` applies only to mise tools; `--workspace` chooses the Limrun workspace preference.
+`lim xcode use xcode@27` is equivalent to `lim xcode version set 27`: it remembers the workspace Xcode major and switches the existing sandbox. With no sandbox, it saves the preference for the next one. This Xcode-only request does not sync files or write a mise configuration. You can combine requests, for example `lim xcode use xcode@27 node@24`; only the other tools go into mise. Xcode requires a bare major. `--cwd` applies only to mise tools; `--workspace` chooses the Limrun workspace preference.
 
-For mise tools, `use` saves compatibility lines in the client mise file, syncs the project, and shows the selection. Install missing versions explicitly with `lim xcode run -- mise install`. Each run or build resolves `mise env --json` once and injects that environment into its commands. It preserves configuration values but drops comments and rewrites formatting. Project tool declarations override personal defaults from the client global mise file. Most numeric requests retain the major; Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain `major.minor`. Automatic resolution ignores `mise.lock` and imports only tool declarations. `latest` opts out of a fixed line. Explicit sandbox `mise use --pin` overrides select exact releases; `lim xcode use` clears that tool's override in the selected directory.
+For mise tools, `use` saves compatibility lines in the project mise file, syncs the project, and shows the selection. Install missing versions explicitly with `lim xcode run -- mise install`. Each run or build resolves `mise env --json` once and injects that environment into its commands. It preserves configuration values but drops comments and rewrites formatting. Project tool declarations override package-manager detection and image defaults. Personal mise configuration on the client is not read or forwarded. Most numeric requests retain the major; Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain `major.minor`. Automatic resolution ignores `mise.lock` and imports only tool declarations. `latest` opts out of a fixed line. Explicit sandbox `mise use --pin` overrides select exact releases; `lim xcode use` clears that tool's override in the selected directory.
 
 Image tools stay outside workspace caches. User-installed versions under `.limbuild-sandbox/home/.mise/` can be cached when the configured cache paths cover them, after a successful managed build. If a restored user gem references its old sandbox path, reinstall it explicitly, for example `lim xcode run -- mise install --force bundler`. Homebrew and Apple tools have separate management; select Xcode with `lim xcode use xcode@27` and inspect it with `lim xcode version`.
 
@@ -1103,14 +1102,14 @@ lim gradle tools
 
 `lim gradle tools` inspects an existing sandbox without syncing or creating an instance. Use `lim gradle tools --sync` to upload local changes first, and `--cwd apps/mobile` to inspect a nested project. Both forms require an existing sandbox; use `--id` to choose one.
 
-`use` writes compatibility lines to your client mise configuration and syncs
+`use` writes compatibility lines to your project mise configuration and syncs
 the project. It preserves configuration values but rewrites comments and
-formatting. Add `--global` for personal defaults or `--cwd apps/mobile` for a
-nested project. Use the same working directory when installing its tools:
+formatting. Use `--cwd apps/mobile` for a nested project. Use the same working
+directory when installing its tools:
 `lim gradle run apps/mobile -- mise install`.
 
-Project `[tools]` declarations override personal defaults from the client's
-global mise file, which override image defaults and package-manager detection.
+Project `[tools]` declarations override package-manager detection and image
+defaults. Personal mise configuration on the client is not read or forwarded.
 Limrun imports only tool declarations, without executing client mise tasks or
 loading its environment settings. Client `mise.lock` pins do not control the
 sandbox selection. Most numeric requests retain the major version;

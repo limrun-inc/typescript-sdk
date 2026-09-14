@@ -392,9 +392,9 @@ See [the contributing documentation](./CONTRIBUTING.md).
 
 ### Gradle tool selection and commands
 
-Gradle clients import personal tool defaults from the client mise configuration.
-Project tool declarations take precedence. Use `run` for explicit installs and
-other shell commands after syncing the project:
+Gradle builds and commands use tool declarations from synced project mise files.
+Personal mise configuration on the client is not read or forwarded. Use `run`
+for explicit installs and other shell commands after syncing the project:
 
 ```ts
 const gradle = await lim.gradleInstances.createClient({ instance });

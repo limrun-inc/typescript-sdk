@@ -1,13 +1,9 @@
 import compatibilityCases from './fixtures/mise-compatibility.json';
 import fs from 'fs/promises';
+import { parse } from 'smol-toml';
 import os from 'os';
 import path from 'path';
-import {
-  parseToolRequests,
-  readMiseDefaults,
-  writeMiseTools,
-  toolCompatibilityLine,
-} from '../src/mise-tools';
+import { parseToolRequests, writeMiseTools, toolCompatibilityLine } from '../src/mise-tools';
 
 let directory: string;
 beforeEach(async () => {
@@ -40,19 +36,10 @@ test('updates the effective project file while preserving unrelated configuratio
   );
   const file = await writeMiseTools(directory, { node: '24' });
   expect(file).toBe(path.join(directory, 'mise.local.toml'));
-  expect(await readMiseDefaults(file)).toEqual({ ruby: '3.3', node: '24' });
+  expect(parse(await fs.readFile(file, 'utf8'))['tools']).toEqual({ ruby: '3.3', node: '24' });
   expect(await fs.readFile(file, 'utf8')).toContain('kept local');
   expect(await fs.readFile(file, 'utf8')).toContain('echo yes');
   expect(await fs.readFile(path.join(directory, 'mise.toml'), 'utf8')).toContain('22');
-});
-
-test('personal defaults transmit only tool requests and fail visibly on invalid TOML', async () => {
-  const file = path.join(directory, 'global.toml');
-  expect(await readMiseDefaults(file)).toEqual({});
-  await fs.writeFile(file, '[tools]\nnode="24.5.0"\n[env]\nTOKEN="do not send"\n');
-  expect(await readMiseDefaults(file)).toEqual({ node: '24.5.0' });
-  await fs.writeFile(file, '[invalid');
-  await expect(readMiseDefaults(file)).rejects.toThrow('Cannot read mise configuration');
 });
 
 test.each(compatibilityCases)('shared compatibility contract: $name@$input', ({ name, input, expected }) => {
