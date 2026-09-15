@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.50.1 (2026-09-15)
+
+Full Changelog: [v0.50.0...v0.50.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.50.0...v0.50.1)
+
+### Chores
+
+* **cli:** bump version to 0.33.0 ([4cbdd18](https://github.com/limrun-inc/typescript-sdk/commit/4cbdd189aaebf8fec556d320317ac510a7d7a963))
+* update SDK consumers to @limrun/api 0.50.0 ([7b8f8d2](https://github.com/limrun-inc/typescript-sdk/commit/7b8f8d2d520b54b4cc198ea6f6f06828502a3eaf))
+
 ## 0.50.0 (2026-09-15)
 
 Full Changelog: [v0.49.3...v0.50.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.49.3...v0.50.0)
