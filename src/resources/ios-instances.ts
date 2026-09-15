@@ -205,7 +205,7 @@ export namespace IosInstanceCreateParams {
     /**
      * The model for the Apple Simulator. Default is iphone.
      */
-    model?: 'iphone' | 'ipad' | 'watch';
+    model?: 'iphone' | 'ipad' | 'watch' | 'iphone-duo-preview';
 
     /**
      * Where the instance will be created. If not given, the region is decided based on

@@ -254,7 +254,19 @@ export type LsofEntry = {
   path: string;
 };
 
+/** Experimental native Duo layout, pinned to the preview runtime build. */
+export type DuoViewport = {
+  profile: 'duo-preview-v1';
+  pose: 'open' | 'closed';
+  revision: number;
+  width: number;
+  height: number;
+  scale: number;
+  runtimeBuild: string;
+};
+
 export type DeviceInfo = {
+  duo?: DuoViewport;
   /** Device UDID */
   udid: string;
   /** Screen width in points (Swift Double) */
@@ -1169,6 +1181,8 @@ export type InstanceClient = {
    * Contains id, udid, screen dimensions, and model.
    */
   deviceInfo: DeviceInfo;
+  /** Fold the experimental Duo device, preserving its running app session. */
+  setDuoPose: (pose: DuoViewport['pose']) => Promise<DuoViewport>;
 };
 
 /**
@@ -1264,6 +1278,8 @@ type ServerResponse = {
   screenWidth?: number;
   screenHeight?: number;
   model?: string;
+  duo?: DuoViewport;
+  viewport?: DuoViewport;
   // Simctl streaming fields
   stdout?: string;
   stderr?: string;
@@ -1785,6 +1801,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         screenWidth: msg.screenWidth!,
         screenHeight: msg.screenHeight!,
         model: msg.model!,
+        ...(msg.duo ? { duo: msg.duo } : {}),
       }),
       openUrlResult: () => undefined,
       appInstallationResult: (msg) => ({
@@ -1808,6 +1825,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }),
       stopMicrophonePlaybackResult: () => undefined,
       microphoneStatusResult: (msg): IosMicrophoneStatus => msg.status ?? { source: 'silence' },
+      setDuoPoseResult: (msg): DuoViewport => {
+        if (!msg.viewport) throw new Error('Duo response is missing its viewport');
+        return msg.viewport;
+      },
       setOrientationResult: () => undefined,
       scrollResult: () => undefined,
       performActionsResult: (msg): PerformActionsResult => ({
@@ -1842,6 +1863,19 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
 
         if (handleAppExit(message)) {
+          return;
+        }
+        if (
+          message.type === 'setDuoPoseResult' &&
+          message.id === 'duo-viewport-changed' &&
+          message.viewport
+        ) {
+          if (cachedDeviceInfo)
+            Object.assign(cachedDeviceInfo, {
+              duo: message.viewport,
+              screenWidth: message.viewport.width,
+              screenHeight: message.viewport.height,
+            });
           return;
         }
 
@@ -1958,7 +1992,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         if (!hasResolved) {
           try {
             // Fetch device info before resolving connection
-            cachedDeviceInfo = await fetchDeviceInfo();
+            const freshDeviceInfo = await fetchDeviceInfo();
+            cachedDeviceInfo =
+              cachedDeviceInfo ? Object.assign(cachedDeviceInfo, freshDeviceInfo) : freshDeviceInfo;
             logger.debug('Device info fetched:', cachedDeviceInfo);
           } catch (err) {
             logger.error('Failed to fetch device info:', err);
@@ -2031,6 +2067,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             clearCameraVideo,
             lsof,
             deviceInfo: cachedDeviceInfo,
+            setDuoPose,
           });
         }
       });
@@ -2305,6 +2342,19 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         undefined,
         120_000,
       );
+    };
+
+    const setDuoPose = async (pose: DuoViewport['pose']): Promise<DuoViewport> => {
+      const info = await fetchDeviceInfo();
+      Object.assign(cachedDeviceInfo, info);
+      if (!info.duo) throw new Error('This simulator does not support folding');
+      const viewport = await sendRequest<DuoViewport>('setDuoPose', { pose, revision: info.duo.revision });
+      Object.assign(cachedDeviceInfo, {
+        duo: viewport,
+        screenWidth: viewport.width,
+        screenHeight: viewport.height,
+      });
+      return viewport;
     };
 
     const setOrientation = (orientation: 'Portrait' | 'Landscape'): Promise<void> => {
