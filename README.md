@@ -389,24 +389,3 @@ If you are interested in other runtime environments, please open or upvote an is
 ## Contributing
 
 See [the contributing documentation](./CONTRIBUTING.md).
-
-### Gradle tool selection and commands
-
-Gradle builds and commands use tool declarations from synced project mise files.
-Personal mise configuration on the client is not read or forwarded. Use `run`
-for explicit installs and other shell commands after syncing the project:
-
-```ts
-const gradle = await lim.gradleInstances.createClient({ instance });
-await gradle.sync('.');
-const install = await gradle.run('mise install', { timeoutSeconds: 600 });
-if (install.exitCode !== 0) throw new Error('Tool installation failed');
-const build = gradle.gradlebuild({ env: ['APP_ENV=staging'] });
-build.stdout.on('data', (line) => console.log(line));
-const result = await build;
-```
-
-`run` also accepts `cwd` (relative to the synced root) and `env` (`KEY=VALUE`
-entries). The server resolves mise once per run or build and never installs
-missing tools automatically. Image tools and user installs are separate;
-user installs persist for that Gradle instance's lifetime.
