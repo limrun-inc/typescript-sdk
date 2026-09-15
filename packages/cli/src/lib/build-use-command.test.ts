@@ -1,16 +1,11 @@
 import { EventEmitter } from 'events';
 import { NotFoundError } from '@limrun/api';
-import { writeMiseTools } from '@limrun/api/mise-tools';
 import { BaseCommand } from '../base-command';
 import XcodeUse from '../commands/xcode/use';
 import XcodeVersionSet from '../commands/xcode/version/set';
 import GradleUse from '../commands/gradle/use';
 import { loadXcodeVersionPreference, setXcodeVersionPreference } from './config';
 
-jest.mock('@limrun/api/mise-tools', () => ({
-  ...jest.requireActual('@limrun/api/mise-tools'),
-  writeMiseTools: jest.fn(),
-}));
 jest.mock('./config', () => ({
   ...jest.requireActual('./config'),
   clearLastInstanceId: jest.fn(),
@@ -64,7 +59,6 @@ function setup(
 beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(loadXcodeVersionPreference).mockReturnValue('26');
-  jest.mocked(writeMiseTools).mockResolvedValue(`${process.cwd()}/mise.toml`);
 });
 
 it.each([XcodeUse, XcodeVersionSet])(
@@ -81,7 +75,6 @@ it.each([XcodeUse, XcodeVersionSet])(
     expect(setXcodeVersionPreference).toHaveBeenCalledWith('27');
     expect(output).toHaveBeenCalledWith(expect.stringContaining('27.0 (27A5252f)'));
     expect(output).toHaveBeenCalledWith(expect.stringContaining('invalidated'));
-    expect(writeMiseTools).not.toHaveBeenCalled();
     expect(resolveBuild).not.toHaveBeenCalled();
     expect(client.sync).not.toHaveBeenCalled();
     expect(client.run).not.toHaveBeenCalled();
@@ -124,15 +117,14 @@ it('does not replace a missing sandbox during Xcode selection', async () => {
   expect(create).not.toHaveBeenCalled();
 });
 
-it('combines Xcode selection with mise tools without writing Xcode to TOML', async () => {
+it('combines Xcode selection with remote mise tools', async () => {
   const { command, client } = setup(XcodeUse, ['xcode@27', 'node@24.5.0', 'ruby@3.3.7']);
   await command.run();
   expect(setXcodeVersionPreference).toHaveBeenCalledWith('27');
-  expect(writeMiseTools).toHaveBeenCalledWith(process.cwd(), { node: '24.5.0', ruby: '3.3.7' });
-  expect(client.sync).toHaveBeenCalledTimes(1);
-  expect(client.run).toHaveBeenCalledWith(expect.stringContaining("'node' 'ruby'"), { cwd: '.' });
+  expect(client.sync).not.toHaveBeenCalled();
+  expect(client.run).toHaveBeenCalledWith("mise --quiet use 'node@24.5.0' 'ruby@3.3.7'", { cwd: '.' });
   expect(client.run.mock.calls[0]![0]).not.toContain('xcode');
-  expect(client.setXcode.mock.invocationCallOrder[0]).toBeLessThan(client.sync.mock.invocationCallOrder[0]!);
+  expect(client.setXcode.mock.invocationCallOrder[0]).toBeLessThan(client.run.mock.invocationCallOrder[0]!);
 });
 
 it.each(['xcode@27.1', 'xcode@latest', 'xcode@'])(
@@ -142,36 +134,40 @@ it.each(['xcode@27.1', 'xcode@latest', 'xcode@'])(
     await expect(command.run()).rejects.toThrow('takes an Xcode major');
     expect(client.setXcode).not.toHaveBeenCalled();
     expect(setXcodeVersionPreference).not.toHaveBeenCalled();
-    expect(writeMiseTools).not.toHaveBeenCalled();
   },
 );
 
-it.each([
-  { argv: ['xcode@27', 'invalid'], flags: {} },
-  { argv: ['xcode@27'], flags: { cwd: '..' } },
-])('validates all requests and scope flags before switching Xcode', async ({ argv, flags }) => {
-  const { command, client } = setup(XcodeUse, argv, flags);
+it('validates all requests before switching Xcode', async () => {
+  const { command, client } = setup(XcodeUse, ['xcode@27', 'invalid']);
   await expect(command.run()).rejects.toThrow();
   expect(client.setXcode).not.toHaveBeenCalled();
-  expect(writeMiseTools).not.toHaveBeenCalled();
 });
 
 it('keeps Xcode out of Gradle tool selection', async () => {
   const { command, client } = setup(GradleUse);
   await expect(command.run()).rejects.toThrow('Select Xcode with lim xcode use');
   expect(client.setXcode).not.toHaveBeenCalled();
-  expect(writeMiseTools).not.toHaveBeenCalled();
 });
 
-it.each([XcodeUse, GradleUse])('saves tool requests without client normalization', async (CommandClass) => {
-  const { command, client } = setup(CommandClass, ['node@24.5.0', 'ruby@3.3.7', 'java@jbr-21']);
-  await command.run();
-  expect(writeMiseTools).toHaveBeenCalledWith(process.cwd(), {
-    node: '24.5.0',
-    ruby: '3.3.7',
-    java: 'jbr-21',
-  });
-  expect(client.sync).toHaveBeenCalledTimes(1);
-  expect(client.run).toHaveBeenCalledTimes(1);
-  expect(client.setXcode).not.toHaveBeenCalled();
-});
+it.each([XcodeUse, GradleUse])(
+  'selects tools in an existing sandbox without syncing',
+  async (CommandClass) => {
+    const { command, client, resolveBuild, create } = setup(
+      CommandClass,
+      ['node@24', 'ruby@3.3', 'java@jbr-21'],
+      { cwd: 'apps/mobile', id: target.id },
+    );
+    await command.run();
+    expect(resolveBuild).toHaveBeenCalledWith(
+      CommandClass === XcodeUse ? 'xcode' : 'gradle',
+      target.id,
+      'existing',
+    );
+    expect(client.run).toHaveBeenCalledWith("mise --quiet use 'node@24' 'ruby@3.3' 'java@jbr-21'", {
+      cwd: 'apps/mobile',
+    });
+    expect(client.sync).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    expect(client.setXcode).not.toHaveBeenCalled();
+  },
+);
