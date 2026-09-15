@@ -11,7 +11,7 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
       (platform === 'xcode' ?
         'xcode@<major> selects Xcode for the workspace, like lim xcode version set. '
       : '') +
-      `Select tool versions in an existing sandbox. Sync your project first; this command does not change local files. Mise installs a requested version if needed. Use lim ${platform} tools install for synced project tool selections.`;
+      `Select tool versions in an existing sandbox after syncing your project. Mise installs a requested version if needed. Use lim ${platform} tools install for synced project tool selections.`;
     static strict = false;
     static args = {
       tools: Args.string({ required: true, description: 'One or more tool@version requests' }),

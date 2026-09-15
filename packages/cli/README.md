@@ -817,11 +817,11 @@ lim xcode run -- mise use --pin node@24.5.0
 
 `lim xcode tools install` syncs the project and runs `mise install` in that sandbox. Use `--no-sync` to install its current selections without syncing, `--cwd apps/mobile` for a nested project, and `--id` to choose an existing sandbox. The command never creates or replaces an instance.
 
-`lim xcode use xcode@27` is equivalent to `lim xcode version set 27`: it remembers the workspace Xcode major and switches the existing sandbox. With no sandbox, it saves the preference for the next one. This Xcode-only request does not sync files or write a mise configuration. You can combine requests, for example `lim xcode use xcode@27 node@24`; only the other tools go into mise. Xcode requires a bare major. `--cwd` applies only to mise tools; `--workspace` chooses the Limrun workspace preference.
+`lim xcode use xcode@27` is equivalent to `lim xcode version set 27`: it remembers the workspace Xcode major and switches the existing sandbox. With no sandbox, it saves the preference for the next one. You can combine requests, for example `lim xcode use xcode@27 node@24`; only the other tools go into mise. Xcode requires a bare major. `--cwd` applies only to mise tools; `--workspace` chooses the Limrun workspace preference.
 
-`lim xcode use` selects tools in the existing sandbox without editing local files or syncing the project. Sync the project first. Mise installs a requested version if needed; use `lim xcode tools install` to install tools declared by synced project files. Use `--cwd apps/mobile` for a nested project. Sandbox selections take precedence over synced project tool requests and apply to later runs and builds.
+`lim xcode use` selects tools in an existing sandbox after project sync. Mise installs a requested version if needed; use `lim xcode tools install` to install tools declared by synced project files. Use `--cwd apps/mobile` for a nested project. Sandbox selections take precedence over synced project tool requests and apply to later runs and builds.
 
-Each run or build resolves `mise env --json` once. Synced project tool declarations override package-manager detection and image defaults. The first operation with project tool declarations installs them once; later changes require `lim xcode tools install`. Personal client mise configuration is not forwarded. Project numeric requests retain the major, except Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain `major.minor`. Only tool declarations are imported; project `mise.lock` pins do not control sandbox selection. Use an explicit sandbox `mise use --pin` command to select an exact release.
+Each run or build resolves `mise env --json` once. Synced project tool declarations override package-manager detection and image defaults. The first operation with project tool declarations installs them once; later changes require `lim xcode tools install`. Project numeric requests retain the major, except Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain `major.minor`. Limrun imports the `[tools]` declarations from project mise files. Use an explicit sandbox `mise use --pin` command to select an exact release.
 
 Both Node 22 and 24 are preinstalled, with Node 22 as the default. Image tools stay outside workspace caches. User-installed versions under `.limbuild-sandbox/home/.mise/` can be cached when the configured cache paths cover them, after a successful managed build. If a restored user gem references its old sandbox path, reinstall it explicitly, for example `lim xcode run -- mise install --force bundler`. Homebrew and Apple tools have separate management; select Xcode with `lim xcode use xcode@27` and inspect it with `lim xcode version`.
 
@@ -1126,13 +1126,10 @@ lim gradle tools
 
 `lim gradle tools install` syncs the project and runs `mise install` in that sandbox. Use `--no-sync` to install its current selections without syncing, `--cwd apps/mobile` for a nested project, and `--id` to choose an existing sandbox. The command never creates or replaces an instance.
 
-`lim gradle use` selects tools in an existing sandbox without editing local files or syncing the project. Sync the project first. Mise installs a requested version if needed. Use `--cwd apps/mobile` for a nested project, and the same directory with `lim gradle tools install --cwd apps/mobile` when installing its synced project tools.
+`lim gradle use` selects tools in an existing sandbox after project sync. Mise installs a requested version if needed. Use `--cwd apps/mobile` for a nested project, and the same directory with `lim gradle tools install --cwd apps/mobile` when installing its synced project tools.
 
-Project `[tools]` declarations override package-manager detection and image
-defaults. Personal mise configuration on the client is not read or forwarded.
-Limrun imports only tool declarations, without executing client mise tasks or
-loading its environment settings. Client `mise.lock` pins do not control the
-sandbox selection. Most numeric project requests retain the major version;
+Limrun imports `[tools]` declarations from synced project mise files. These
+declarations override package-manager detection and image defaults. Most numeric project requests retain the major version;
 Ruby, Python, Go, Flutter, Dart, and pre-1.0 tools retain `major.minor`.
 Limrun can update patch and minor releases within those lines independently.
 `latest` opts out of a fixed line.
