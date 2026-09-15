@@ -31,19 +31,28 @@ describe('Limrun Detox Expo sample app', () => {
     await element(by.id(selectors.incrementButton)).tap();
     await element(by.id(selectors.incrementButton)).tap();
     await element(by.id(selectors.decrementButton)).tap();
-    await expect(element(by.id(selectors.counterValue))).toHaveText('1');
+    await waitFor(element(by.id(selectors.counterValue)))
+      .toHaveText('1')
+      .withTimeout(5000);
     await device.takeScreenshot('limrun-detox-counter');
 
-    await element(by.id(selectors.nameInput)).replaceText('Limrun');
+    await element(by.id(selectors.nameInput)).tap();
+    await element(by.id(selectors.nameInput)).typeText('Limrun');
     await element(by.id(selectors.nameInput)).tapReturnKey();
-    await expect(element(by.id(selectors.greetingMessage))).toHaveText('Hello, Limrun!');
+    await waitFor(element(by.id(selectors.greetingMessage)))
+      .toHaveText('Hello, Limrun!')
+      .withTimeout(5000);
     await device.takeScreenshot('limrun-detox-greeting');
 
     await element(by.id(selectors.openDetailButton)).tap();
-    await expect(element(by.id(selectors.detailScreen))).toBeVisible();
+    await waitFor(element(by.id(selectors.detailScreen)))
+      .toBeVisible()
+      .withTimeout(5000);
     await element(by.id(selectors.automationSwitch)).tap();
     await element(by.id(selectors.completeTaskButton)).tap();
-    await expect(element(by.id(selectors.successMessage))).toBeVisible();
+    await waitFor(element(by.id(selectors.successMessage)))
+      .toBeVisible()
+      .withTimeout(5000);
 
     await device.takeScreenshot('limrun-detox-success');
   });
