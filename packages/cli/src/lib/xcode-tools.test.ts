@@ -10,6 +10,8 @@ import XcodeTools from '../commands/xcode/tools';
 import GradleUse from '../commands/gradle/use';
 import GradleTools from '../commands/gradle/tools';
 import GradleRun from '../commands/gradle/run';
+import XcodeToolsInstall from '../commands/xcode/tools/install';
+import GradleToolsInstall from '../commands/gradle/tools/install';
 
 it('parses multiple tool requests alongside scope flags', async () => {
   const result = await Parser.parse(['--cwd', 'apps/mobile', 'node@24', 'ruby@3.3'], {
@@ -127,4 +129,73 @@ it.each([XcodeUse, GradleUse])('rejects the removed personal-defaults flag', asy
       strict: Use.strict,
     }),
   ).rejects.toThrow('Nonexistent flag');
+});
+
+it.each([XcodeToolsInstall, GradleToolsInstall])(
+  'syncs explicit installation by default',
+  async (Install) => {
+    expect((await Parser.parse([], { flags: Install.flags })).flags.sync).toBe(true);
+    const flags = (
+      await Parser.parse(['--no-sync', '--cwd', 'apps/mobile', '--id', 'sandbox'], { flags: Install.flags })
+    ).flags;
+    expect(flags.sync).toBe(false);
+    expect(flags.cwd).toBe('apps/mobile');
+    expect(flags.id).toBe('sandbox');
+  },
+);
+
+it.each([XcodeToolsInstall, GradleToolsInstall])(
+  'runs mise install in the selected existing sandbox',
+  async (Install) => {
+    for (const sync of [false, true]) {
+      const proc = Object.assign(Promise.resolve({ exitCode: 0 }), {
+        stdout: new EventEmitter(),
+        stderr: new EventEmitter(),
+      });
+      const client = { sync: jest.fn().mockResolvedValue({}), run: jest.fn().mockReturnValue(proc) };
+      const resolve = jest.fn().mockResolvedValue({ client });
+      const command = new (Install as unknown as new (argv: string[], config: never) => BaseCommand)(
+        [],
+        {} as never,
+      );
+      Object.assign(command, {
+        parse: async () => ({ flags: { sync, cwd: 'apps/mobile', id: 'sandbox' } }),
+        setParsedFlags: jest.fn(),
+        withAuth: async (fn: () => Promise<void>) => fn(),
+        resolveBuildToolClient: resolve,
+        info: jest.fn(),
+      });
+      await command.run();
+      expect(resolve).toHaveBeenCalledWith(
+        Install === XcodeToolsInstall ? 'xcode' : 'gradle',
+        'sandbox',
+        'existing',
+      );
+      expect(client.sync).toHaveBeenCalledTimes(sync ? 1 : 0);
+      expect(client.run).toHaveBeenCalledWith('mise install', { cwd: 'apps/mobile' });
+    }
+  },
+);
+
+it('reports installation failures', async () => {
+  const proc = Object.assign(Promise.resolve({ exitCode: 17 }), {
+    stdout: new EventEmitter(),
+    stderr: new EventEmitter(),
+  });
+  const command = new (XcodeToolsInstall as unknown as new (argv: string[], config: never) => BaseCommand)(
+    [],
+    {} as never,
+  );
+  const error = jest.fn((message: string) => {
+    throw new Error(message);
+  });
+  Object.assign(command, {
+    parse: async () => ({ flags: { sync: false, cwd: '.' } }),
+    setParsedFlags: jest.fn(),
+    withAuth: async (fn: () => Promise<void>) => fn(),
+    resolveBuildToolClient: async () => ({ client: { run: () => proc } }),
+    error,
+  });
+  await expect(command.run()).rejects.toThrow('Tool installation failed');
+  expect(error).toHaveBeenCalledWith(expect.stringContaining('Tool installation failed'), { exit: 17 });
 });

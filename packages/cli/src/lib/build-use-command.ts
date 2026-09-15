@@ -13,7 +13,7 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
       (platform === 'xcode' ?
         'xcode@<major> selects Xcode for the workspace, like lim xcode version set. '
       : '') +
-      `Save compatibility lines in the project mise configuration and sync them to the sandbox. Run lim ${platform} run -- mise install to install missing versions. Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain major.minor; other tools retain the major.`;
+      `Save compatibility lines in the project mise configuration and sync them to the sandbox. The first sandbox operation with project mise configuration initializes its tools. Run lim ${platform} tools install after later changes. Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain major.minor; other tools retain the major.`;
     static strict = false;
     static args = {
       tools: Args.string({ required: true, description: 'One or more tool@version requests' }),
@@ -86,7 +86,7 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
           (message, options) => this.error(message, options),
           'Tool selection failed after saving the project configuration',
         );
-        this.info(`Run lim ${platform} run -- mise install if a selected version is missing.`);
+        this.info(`Run lim ${platform} tools install if a selected version is missing.`);
       });
     }
   };
