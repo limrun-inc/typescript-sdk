@@ -176,27 +176,27 @@ lim ios create --xcode
 lim ios create --force-bundle-id com.example.myapp
 
 # Full options
-lim ios create --region us-west --display-name "CI Test" --label env=ci --rm
+lim ios create --jurisdiction us --display-name "CI Test" --label env=ci --rm
 ```
 
 **Flags for `ios create`:**
 
-| Flag                              | Description                                                                       |
-| --------------------------------- | --------------------------------------------------------------------------------- |
-| `--rm`                            | Auto-delete the instance on exit (Ctrl+C)                                         |
-| `--model <iphone\|ipad\|watch>`   | Simulator device model                                                            |
-| `--xcode`                         | Create an Xcode build sandbox and attach the simulator to it                      |
-| `--region <value>`                | Region for the instance (e.g. `us-west`)                                          |
-| `--jurisdiction <us\|eu\|as>`     | Jurisdiction the instance must be created in (hard constraint, unlike `--region`) |
-| `--display-name <value>`          | Human-readable name                                                               |
-| `--label <key=value>`             | Labels (repeatable). Used for filtering and reuse                                 |
-| `--hard-timeout <duration>`       | Max lifetime (e.g. `1m`, `10m`, `3h`). Default: none                              |
-| `--inactivity-timeout <duration>` | Idle timeout. Default: `3m`                                                       |
-| `--force-bundle-id <bundle-id>`   | Lock to an app after it first enters the foreground                               |
-| `--reuse-if-exists`               | Reuse an existing instance with matching labels/region                            |
-| `--install <file>`                | Local file to install (auto-uploads, repeatable)                                  |
-| `--install-asset <name>`          | Asset name to install (repeatable)                                                |
-| `--install-url <url>`             | Signed download URL of an app to install (repeatable)                             |
+| Flag                              | Description                                                                                                                   |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `--rm`                            | Auto-delete the instance on exit (Ctrl+C)                                                                                     |
+| `--model <iphone\|ipad\|watch>`   | Simulator device model                                                                                                        |
+| `--xcode`                         | Create an Xcode build sandbox and attach the simulator to it                                                                  |
+| `--jurisdiction <us\|eu\|as>`     | Jurisdiction the instance must be created in (hard constraint: creation fails when no region there has capacity)              |
+| `--region <value>`                | Deprecated. Region preference (e.g. `us-east1`), tried first and overflowing to other regions when full. Use `--jurisdiction` |
+| `--display-name <value>`          | Human-readable name                                                                                                           |
+| `--label <key=value>`             | Labels (repeatable). Used for filtering and reuse                                                                             |
+| `--hard-timeout <duration>`       | Max lifetime (e.g. `1m`, `10m`, `3h`). Default: none                                                                          |
+| `--inactivity-timeout <duration>` | Idle timeout. Default: `3m`                                                                                                   |
+| `--force-bundle-id <bundle-id>`   | Lock to an app after it first enters the foreground                                                                           |
+| `--reuse-if-exists`               | Reuse an existing instance with exactly the same labels, looked up in the region that handles the create                      |
+| `--install <file>`                | Local file to install (auto-uploads, repeatable)                                                                              |
+| `--install-asset <name>`          | Asset name to install (repeatable)                                                                                            |
+| `--install-url <url>`             | Signed download URL of an app to install (repeatable)                                                                         |
 
 #### List and Filter
 
@@ -204,7 +204,7 @@ lim ios create --region us-west --display-name "CI Test" --label env=ci --rm
 lim ios list                                   # Ready instances
 lim ios list --all                             # All states
 lim ios list --state creating                  # Filter by state
-lim ios list --region us-west                  # Filter by region
+lim ios list --region us-east1                 # Filter by region
 lim ios list --label-selector env=prod         # Filter by labels
 lim ios list --json                            # JSON output
 lim ios get <ID>                               # Single instance details
@@ -391,7 +391,7 @@ lim android create --os-version 15 --model tablet
 lim android create --no-connect
 
 # Full options
-lim android create --region us-west --display-name "CI Test" --label env=ci --rm
+lim android create --jurisdiction us --display-name "CI Test" --label env=ci --rm
 ```
 
 **Android-specific flags:**
@@ -487,7 +487,7 @@ lim xcode version list    # Xcode versions the sandbox can build with
 
 ```bash
 # Create with options
-lim xcode create --rm --region us-west --hard-timeout 1h
+lim xcode create --rm --jurisdiction us --hard-timeout 1h
 
 # Build (automatically syncs the project path first)
 lim xcode build ./MyProject --scheme MyApp --workspace MyApp.xcworkspace

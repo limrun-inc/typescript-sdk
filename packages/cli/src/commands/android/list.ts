@@ -18,7 +18,7 @@ export default class AndroidList extends BaseCommand {
     state: Flags.string({
       description: 'Lifecycle state to filter by: unknown, creating, ready, or terminated',
     }),
-    region: Flags.string({ description: 'Region to filter by, such as us-west' }),
+    region: Flags.string({ description: 'Region to filter by, such as us-east1' }),
     'label-selector': Flags.string({
       description: 'Comma-separated label filters, for example env=prod,team=mobile',
     }),
