@@ -508,6 +508,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const containerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
+    const duoControlsRef = useRef<HTMLDivElement>(null);
+    const [duoFrameStyle, setDuoFrameStyle] = useState<React.CSSProperties>({});
     const [videoLoaded, setVideoLoaded] = useState(false);
     const [retryExhausted, setRetryExhausted] = useState(false);
     // Set once we've concluded the instance is permanently gone (its
@@ -3396,9 +3398,40 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (!video) return;
 
       const updateVideoPosition = () => {
-        // If no frame, just refresh overlay geometry; no inset/letterbox math
-        // is needed since the video element is its own size.
-        if (!showFrame || !frame || duoViewport) {
+        if (duoViewport && container) {
+          // Fit the complete device above the controls, including its bezel and outer clearance.
+          const gutter = Math.max(16, Math.min(28, container.clientWidth * 0.035));
+          const controlsHeight = duoControlsRef.current?.offsetHeight ?? 44;
+          const availableHeight = Math.max(0, container.clientHeight - gutter * 2 - controlsHeight - 16);
+          const scale = Math.max(
+            0,
+            Math.min(
+              (container.clientWidth - gutter * 2) / (duoViewport.width + 16),
+              availableHeight / (duoViewport.height + 16),
+            ),
+          );
+          const top = gutter + availableHeight / 2;
+          const closed = duoViewport.pose === 'closed';
+          setDuoFrameStyle({
+            width: (duoViewport.width + 16) * scale,
+            height: (duoViewport.height + 16) * scale,
+            top,
+            borderWidth: 2 * scale,
+            borderRadius:
+              closed ? `${6 * scale}px ${34 * scale}px ${34 * scale}px ${6 * scale}px` : 34 * scale,
+          });
+          setVideoStyle({
+            width: duoViewport.width * scale,
+            height: duoViewport.height * scale,
+            top,
+            borderRadius:
+              closed ? `${3 * scale}px ${26 * scale}px ${26 * scale}px ${3 * scale}px` : 26 * scale,
+          });
+          recomputeOverlayGeometry();
+          return;
+        }
+        // Frameless devices use the video's intrinsic size.
+        if (!showFrame || !frame) {
           setVideoStyle({});
           recomputeOverlayGeometry();
           return;
@@ -3443,6 +3476,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (frame) resizeObserver.observe(frame);
       resizeObserver.observe(video);
       if (container) resizeObserver.observe(container);
+      if (duoControlsRef.current) resizeObserver.observe(duoControlsRef.current);
 
       // Also update when the frame image loads
       if (frame) frame.addEventListener('load', updateVideoPosition);
@@ -3740,7 +3774,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       >
         {duoViewport && (
           <div
+            ref={duoControlsRef}
             className="rc-duo-controls"
+            style={
+              typeof duoFrameStyle.top === 'number' && typeof duoFrameStyle.height === 'number' ?
+                { top: duoFrameStyle.top + duoFrameStyle.height / 2 + 16, bottom: 'auto' }
+              : undefined
+            }
             onMouseDown={(event) => event.stopPropagation()}
             onMouseUp={(event) => event.stopPropagation()}
             onTouchStart={(event) => event.stopPropagation()}
@@ -3775,6 +3815,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             />
           </>
         )}
+        {duoViewport && (
+          <div
+            className={clsx('rc-duo-frame', `rc-duo-frame-${duoViewport.pose}`)}
+            style={duoFrameStyle}
+            aria-hidden="true"
+          >
+            <span className="rc-duo-hinge" />
+            <span className="rc-duo-buttons" />
+          </div>
+        )}
         {showFrame && !duoViewport && (
           <img
             ref={frameRef}
@@ -3788,7 +3838,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           ref={videoRef}
           className={clsx(
             'rc-video',
-            (!showFrame || duoViewport) && 'rc-video-frameless',
+            !showFrame && !duoViewport && 'rc-video-frameless',
             duoViewport && 'rc-video-duo',
             !videoLoaded && 'rc-video-loading',
           )}
