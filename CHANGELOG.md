@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.50.0 (2026-09-15)
+
+Full Changelog: [v0.49.3...v0.50.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.49.3...v0.50.0)
+
+### Features
+
+* **cli:** select Xcode sandbox tools with mise ([#427](https://github.com/limrun-inc/typescript-sdk/issues/427)) ([0bce8a0](https://github.com/limrun-inc/typescript-sdk/commit/0bce8a07a23c1177c4d5ae1065fe75a76341e1c3))
+
+
+### Bug Fixes
+
+* **sync:** honor user ignores before force-includes ([#426](https://github.com/limrun-inc/typescript-sdk/issues/426)) ([d2f2e87](https://github.com/limrun-inc/typescript-sdk/commit/d2f2e878b240d1f231d5a14dcb4ee28e9b5478a5))
+
+
+### Build System
+
+* **deps:** bump js-yaml from 4.3.1 to 4.3.2 in /packages/apple-auth ([#418](https://github.com/limrun-inc/typescript-sdk/issues/418)) ([33702d0](https://github.com/limrun-inc/typescript-sdk/commit/33702d0e8c287afe5eb3debe0d6a50ff84ac01e3))
+
 ## 0.49.3 (2026-09-05)
 
 Full Changelog: [v0.49.2...v0.49.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.49.2...v0.49.3)
