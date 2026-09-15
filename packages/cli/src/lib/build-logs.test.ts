@@ -1,9 +1,10 @@
-import { getBuildLogs, type PersistedBuildLog } from './build-logs';
+import type { BuildLog } from '@limrun/api/resources/daemon-client-shared';
+import { getBuildLogs } from './build-logs';
 
 describe('getBuildLogs', () => {
   test('returns an active build snapshot', async () => {
     const onText = jest.fn();
-    const listPersisted = jest.fn(async (): Promise<PersistedBuildLog[]> => []);
+    const listPersisted = jest.fn(async (): Promise<BuildLog[]> => []);
 
     await expect(
       getBuildLogs({
@@ -11,15 +12,16 @@ describe('getBuildLogs', () => {
         follow: false,
         listPersisted,
         observe: async (execId, options) => {
+          expect(execId).toBe('latest');
           options.onEvent({ type: 'command', data: 'xcodebuild -scheme App' });
           options.onEvent({ type: 'stdout', data: 'Compiling' });
-          return { execId, status: 'RUNNING' };
+          return { execId: 'build-3', status: 'RUNNING' };
         },
         onText,
       }),
     ).resolves.toEqual({
       instanceId: 'xcode_test',
-      execId: 'active',
+      execId: 'build-3',
       status: 'RUNNING',
       logs: '$ xcodebuild -scheme App\nCompiling\n',
       source: 'retained',
@@ -28,8 +30,8 @@ describe('getBuildLogs', () => {
     expect(onText).toHaveBeenCalledTimes(2);
   });
 
-  test('falls back from no active build to the latest persisted build', async () => {
-    const records: PersistedBuildLog[] = [
+  test('falls back from missing retained logs to the latest persisted build', async () => {
+    const records: BuildLog[] = [
       { id: 'build-1', status: 'FAILED', exitCode: 1, downloadUrl: 'https://logs/1' },
       { id: 'build-2', status: 'SUCCEEDED', exitCode: 0, downloadUrl: 'https://logs/2' },
       { id: 'run-3', status: 'SUCCEEDED', exitCode: 0, downloadUrl: 'https://logs/run' },
@@ -86,7 +88,7 @@ describe('getBuildLogs', () => {
       downloadUrl: 'https://logs/1',
     };
     const listPersisted = jest
-      .fn<Promise<PersistedBuildLog[]>, []>()
+      .fn<Promise<BuildLog[]>, []>()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([record]);
 
@@ -106,14 +108,14 @@ describe('getBuildLogs', () => {
   });
 
   test('uses the latest retained build during the durable upload gap', async () => {
-    const listPersisted = jest.fn(async (): Promise<PersistedBuildLog[]> => []);
+    const listPersisted = jest.fn(async (): Promise<BuildLog[]> => []);
 
     const result = await getBuildLogs({
       instanceId: 'xcode_test',
       follow: false,
       listPersisted,
       observe: async (execId) => {
-        if (execId === 'active') throw notFound();
+        expect(execId).toBe('latest');
         return { execId: 'build-9', status: 'SUCCEEDED', exitCode: 0 };
       },
     });

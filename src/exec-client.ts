@@ -441,25 +441,25 @@ export class ReadableStream {
   }
 }
 
-type FollowExecEventStreamOptions<TResult> = {
+type FollowExecEventStreamOptions = {
   eventsUrl: string;
   token: string;
   signal?: AbortSignal;
   abortError: () => Error;
-  onEvent: (event: ExecLogEvent) => TResult | undefined;
+  onEvent: (event: ExecLogEvent) => void;
   onStreamDeadSince?: (since: number) => void;
   failOnClientError?: boolean;
   log?: ExecOptions['log'];
 };
 
-/** Follow execution events with bounded retries and replay deduplication. */
-function followExecEventStream<TResult>(options: FollowExecEventStreamOptions<TResult>): {
+/** Follow execution events until exitCode, with bounded retries and replay deduplication. */
+function followExecEventStream(options: FollowExecEventStreamOptions): {
   connection: EventSourceClient | null;
-  result: Promise<TResult>;
+  result: Promise<number>;
 } {
   let connection: EventSourceClient | null = null;
   const { eventsUrl, signal } = options;
-  const result = new Promise<TResult>((resolve, reject) => {
+  const result = new Promise<number>((resolve, reject) => {
     if (signal?.aborted) {
       reject(options.abortError());
       return;
@@ -480,11 +480,11 @@ function followExecEventStream<TResult>(options: FollowExecEventStreamOptions<TR
       eventSource?.close();
       signal?.removeEventListener('abort', onAbort);
     };
-    const succeed = (value: TResult) => {
+    const succeed = (exitCode: number) => {
       if (settled) return;
       settled = true;
       cleanup();
-      resolve(value);
+      resolve(exitCode);
     };
     const fail = (error: unknown) => {
       if (settled) return;
@@ -604,12 +604,17 @@ function followExecEventStream<TResult>(options: FollowExecEventStreamOptions<TR
           lastSeenEventId = eventId;
         }
         try {
-          const value = options.onEvent({
+          const event: ExecLogEvent = {
             ...(message.id !== undefined && { id: message.id }),
             type: message.event || 'message',
             data: typeof message.data === 'string' ? message.data : String(message.data ?? ''),
-          });
-          if (value !== undefined) succeed(value);
+          };
+          options.onEvent(event);
+          if (event.type === 'exitCode') {
+            const exitCode = parseExitCode(event.data);
+            options.log?.('debug', `Execution completed via SSE: exitCode=${exitCode}`);
+            succeed(exitCode);
+          }
         } catch (error) {
           fail(error);
         }
@@ -945,7 +950,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
    * closes the stream for good, or when the give-up clock runs out.
    */
   private connectSSE(eventsUrl: string): Promise<number> {
-    const stream = followExecEventStream<number>({
+    const stream = followExecEventStream({
       eventsUrl,
       token: this.options.token,
       signal: this.abortController.signal,
@@ -1007,16 +1012,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
               this.log('warn', `onXctestEvent callback threw: ${String(err)}`);
             }
           }
-        } else if (eventType === 'exitCode') {
-          const exitCode = parseInt(data, 10);
-          if (Number.isNaN(exitCode)) {
-            this.log('warn', `SSE exitCode event has invalid data: ${data}`);
-            return;
-          }
-          this.log('debug', `Execution completed via SSE: exitCode=${exitCode}`);
-          return exitCode;
         }
-        return undefined;
       },
     });
     this.sseConnection = stream.connection;
@@ -1085,7 +1081,7 @@ export async function observeExecLogs(
   }
 
   let resolvedExecId = execId;
-  const stream = followExecEventStream<ExecLogResult>({
+  const stream = followExecEventStream({
     eventsUrl: eventsUrl.toString(),
     token: options.token,
     ...(options.signal && { signal: options.signal }),
@@ -1095,13 +1091,10 @@ export async function observeExecLogs(
     onEvent: (event) => {
       resolvedExecId = execIdFromMeta(event, resolvedExecId);
       options.onEvent?.(event);
-      if (event.type === 'exitCode') {
-        return buildExecLogResult(resolvedExecId, parseExitCode(event.data));
-      }
-      return undefined;
     },
   });
-  return stream.result;
+  const exitCode = await stream.result;
+  return buildExecLogResult(resolvedExecId, exitCode);
 }
 
 function parseSSE(body: string): ExecLogEvent[] {

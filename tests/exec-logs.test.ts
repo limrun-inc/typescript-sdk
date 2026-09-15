@@ -72,13 +72,17 @@ describe('existing exec logs', () => {
     ).rejects.toMatchObject({ status: 404 });
   });
 
-  test('replays and follows until the terminal event', async () => {
+  test.each([
+    [0, 'SUCCEEDED'],
+    [7, 'FAILED'],
+    [-1, 'CANCELLED'],
+  ])('replays and follows until exit code %s (%s)', async (exitCode, status) => {
     nodeProxyTransport.fetch = jest.fn(async () => new Response(null, { status: 200 }));
     jest.mocked(createEventSource).mockImplementationOnce((optionsOrUrl) => {
       const options = optionsOrUrl as EventSourceOptions;
       setTimeout(() => {
         options.onMessage?.({ event: 'stdout', data: 'building' });
-        options.onMessage?.({ event: 'exitCode', data: '0' });
+        options.onMessage?.({ event: 'exitCode', data: String(exitCode) });
       }, 0);
       return { close: jest.fn() } as never;
     });
@@ -91,10 +95,10 @@ describe('existing exec logs', () => {
         follow: true,
         onEvent: (event) => events.push(event),
       }),
-    ).resolves.toEqual({ execId: 'build-3', status: 'SUCCEEDED', exitCode: 0 });
+    ).resolves.toEqual({ execId: 'build-3', status, exitCode });
     expect(events).toEqual([
       { type: 'stdout', data: 'building' },
-      { type: 'exitCode', data: '0' },
+      { type: 'exitCode', data: String(exitCode) },
     ]);
   });
 

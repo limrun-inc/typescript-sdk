@@ -1,20 +1,5 @@
-export type PersistedBuildLog = {
-  id: string;
-  status: string;
-  exitCode?: number;
-  downloadUrl: string;
-};
-
-export type ObservedBuildLogEvent = {
-  type: string;
-  data: string;
-};
-
-export type ObservedBuildLogResult = {
-  execId: string;
-  status: string;
-  exitCode?: number;
-};
+import type { ExecLogOptions, ExecLogResult } from '@limrun/api/exec-client';
+import type { BuildLog } from '@limrun/api/resources/daemon-client-shared';
 
 export type BuildLogsResult = {
   instanceId: string;
@@ -29,21 +14,18 @@ type BuildLogsOptions = {
   instanceId: string;
   execId?: string;
   follow: boolean;
-  listPersisted: () => Promise<PersistedBuildLog[]>;
+  listPersisted: () => Promise<BuildLog[]>;
   observe: (
     execId: string,
-    options: {
-      follow: boolean;
-      onEvent: (event: ObservedBuildLogEvent) => void;
-    },
-  ) => Promise<ObservedBuildLogResult>;
+    options: Required<Pick<ExecLogOptions, 'follow' | 'onEvent'>>,
+  ) => Promise<ExecLogResult>;
   fetchText?: (url: string) => Promise<string>;
   onText?: (text: string, stream: 'stdout' | 'stderr') => void;
 };
 
 /**
- * Selects an active/latest/specific build and returns its user-facing logs.
- * Retained SSE is preferred for active builds; durable object storage is
+ * Returns logs for a specific build or the latest build, including one still running.
+ * Retained SSE is preferred for the latest build; durable object storage is
  * preferred for a specific build once its metadata sidecar exists.
  */
 export async function getBuildLogs(options: BuildLogsOptions): Promise<BuildLogsResult> {
@@ -79,30 +61,21 @@ export async function getBuildLogs(options: BuildLogsOptions): Promise<BuildLogs
   }
 
   try {
-    return await readRetained(options, 'active');
-  } catch (activeError) {
-    if (!isRetainedBuildNotFound(activeError)) {
-      throw activeError;
+    return await readRetained(options, 'latest');
+  } catch (latestError) {
+    if (!isRetainedBuildNotFound(latestError)) {
+      throw latestError;
     }
-    try {
-      // The active pointer is cleared just before durable upload. The retained
-      // latest alias closes that gap and also avoids selecting a stale record.
-      return await readRetained(options, 'latest');
-    } catch (latestError) {
-      if (!isRetainedBuildNotFound(latestError)) {
-        throw latestError;
-      }
-      const persisted = await tryListPersisted(options.listPersisted);
-      const latest = persisted.records[persisted.records.length - 1];
-      if (latest) {
-        return readPersisted(options, latest);
-      }
-      if (persisted.error) {
-        throw persisted.error;
-      }
-      if (!isMissingBuild(latestError)) throw latestError;
-      throw new Error(`No active or persisted builds found for instance ${options.instanceId}.`);
+    const persisted = await tryListPersisted(options.listPersisted);
+    const latest = persisted.records[persisted.records.length - 1];
+    if (latest) {
+      return readPersisted(options, latest);
     }
+    if (persisted.error) {
+      throw persisted.error;
+    }
+    if (!isMissingBuild(latestError)) throw latestError;
+    throw new Error(`No active or persisted builds found for instance ${options.instanceId}.`);
   }
 }
 
@@ -137,7 +110,7 @@ async function readRetained(options: BuildLogsOptions, execId: string): Promise<
   };
 }
 
-async function readPersisted(options: BuildLogsOptions, record: PersistedBuildLog): Promise<BuildLogsResult> {
+async function readPersisted(options: BuildLogsOptions, record: BuildLog): Promise<BuildLogsResult> {
   const logs = await (options.fetchText ?? fetchBuildLog)(record.downloadUrl);
   options.onText?.(logs, 'stdout');
   return {
@@ -151,8 +124,8 @@ async function readPersisted(options: BuildLogsOptions, record: PersistedBuildLo
 }
 
 async function tryListPersisted(
-  listPersisted: () => Promise<PersistedBuildLog[]>,
-): Promise<{ records: PersistedBuildLog[]; error?: unknown }> {
+  listPersisted: () => Promise<BuildLog[]>,
+): Promise<{ records: BuildLog[]; error?: unknown }> {
   try {
     const records = (await listPersisted()).filter((record) => isBuildExecId(record.id));
     records.sort((a, b) => {

@@ -19,39 +19,42 @@ describe('exec log transport', () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  test('reconnects to the same concrete build and skips replayed output', async () => {
-    const urls: string[] = [];
-    server.on('request', (request, response) => {
-      urls.push(request.url!);
-      response.writeHead(200, { 'Content-Type': 'text/event-stream' });
-      if (urls.length === 1) {
-        response.end('id: 0\nevent: meta\ndata: {"id":"build-1"}\n\n');
-      } else {
-        response.write(
-          'retry: 1\n\nid: 0\nevent: meta\ndata: {"id":"build-1"}\n\nid: 1\nevent: stdout\ndata: compiling\n\n',
-        );
-        if (urls.length > 2) response.write('id: 2\nevent: exitCode\ndata: 0\n\n');
-        response.end();
-      }
-    });
-    const events: ExecLogEvent[] = [];
-    const result = await observeExecLogs('active', {
-      apiUrl,
-      token: 'test',
-      follow: true,
-      onEvent: (event) => events.push(event),
-    });
+  test.each(['active', 'latest'])(
+    'reconnects to the same concrete %s build and skips replayed output',
+    async (alias) => {
+      const urls: string[] = [];
+      server.on('request', (request, response) => {
+        urls.push(request.url!);
+        response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        if (urls.length === 1) {
+          response.end('id: 0\nevent: meta\ndata: {"id":"build-1"}\n\n');
+        } else {
+          response.write(
+            'retry: 1\n\nid: 0\nevent: meta\ndata: {"id":"build-1"}\n\nid: 1\nevent: stdout\ndata: compiling\n\n',
+          );
+          if (urls.length > 2) response.write('id: 2\nevent: exitCode\ndata: 0\n\n');
+          response.end();
+        }
+      });
+      const events: ExecLogEvent[] = [];
+      const result = await observeExecLogs(alias, {
+        apiUrl,
+        token: 'test',
+        follow: true,
+        onEvent: (event) => events.push(event),
+      });
 
-    expect(result).toEqual({ execId: 'build-1', status: 'SUCCEEDED', exitCode: 0 });
-    expect(urls).toEqual([
-      '/exec/active/events?follow=false',
-      '/exec/build-1/events?follow=true',
-      '/exec/build-1/events?follow=true',
-    ]);
-    expect(events.filter((event) => event.type === 'stdout')).toEqual([
-      { id: '1', type: 'stdout', data: 'compiling' },
-    ]);
-  });
+      expect(result).toEqual({ execId: 'build-1', status: 'SUCCEEDED', exitCode: 0 });
+      expect(urls).toEqual([
+        `/exec/${alias}/events?follow=false`,
+        '/exec/build-1/events?follow=true',
+        '/exec/build-1/events?follow=true',
+      ]);
+      expect(events.filter((event) => event.type === 'stdout')).toEqual([
+        { id: '1', type: 'stdout', data: 'compiling' },
+      ]);
+    },
+  );
 
   test('a transient HTTP failure reconnects rather than ending follow mode', async () => {
     let attempts = 0;
