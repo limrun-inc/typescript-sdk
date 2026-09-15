@@ -34,7 +34,7 @@
     "detox": ">=20.48.1 <21"
   },
   "devDependencies": {
-    "@limrun/api": "^0.46.11",
+    "@limrun/api": "^0.50.0",
     "@types/node": "^22",
     "typescript": "^5.8.3"
   },

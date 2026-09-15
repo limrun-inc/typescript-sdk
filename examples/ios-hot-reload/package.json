@@ -19,6 +19,6 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "@limrun/api": "^0.46.11"
+    "@limrun/api": "^0.50.0"
   }
 }

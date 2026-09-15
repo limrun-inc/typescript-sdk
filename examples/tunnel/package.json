@@ -14,7 +14,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@limrun/api": "^0.49.2"
+    "@limrun/api": "^0.50.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.2",
