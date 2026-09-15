@@ -22,7 +22,7 @@ export const syncFlags = {
   }),
   'additional-file': Flags.string({
     description:
-      'Additional file to sync as localPath=remotePath, for example ~/.netrc=~/.netrc. Repeat for multiple files.',
+      'Additional file to sync as localPath=remotePath, for example ~/.netrc=.netrc. Repeat for multiple files.',
     multiple: true,
     multipleNonGreedy: true,
   }),

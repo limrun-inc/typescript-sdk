@@ -1,4 +1,3 @@
-import { readMiseDefaults } from '../mise-tools';
 import {
   XcodeInstances as GeneratedXcodeInstances,
   type XcodeInstance,
@@ -32,6 +31,8 @@ import {
 } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
 import {
+  createBuildRun,
+  type BuildRunOptions,
   createDaemonLogger,
   deriveBasisCache,
   mintAssetUploadUrls,
@@ -89,18 +90,7 @@ export type SyncOptions = {
   onSyncComplete?: FolderSyncOptions['onSyncComplete'];
 };
 
-export type XcodeRunOptions = {
-  /** Working directory relative to the synced workspace root. Defaults to ".". */
-  cwd?: string;
-  /**
-   * Ordered KEY=VALUE entries added to limbuild's curated sandbox
-   * environment. Server-managed variables (PATH, HOME, ...) cannot be
-   * overridden; when a key repeats, the last entry wins.
-   */
-  env?: string[];
-  /** Server-side timeout in seconds. Defaults to 3600; maximum 21600. */
-  timeoutSeconds?: number;
-};
+export type XcodeRunOptions = BuildRunOptions;
 export type XcodeProjectConfig = {
   workspace?: string;
   project?: string;
@@ -866,10 +856,6 @@ export class XcodeInstances extends GeneratedXcodeInstances {
     }
 
     const log = createDaemonLogger('[XcodeInstance]', params.logLevel ?? 'info');
-    const miseDefaults = await readMiseDefaults();
-    const toolEnv =
-      Object.keys(miseDefaults).length ? [`LIMRUN_MISE_DEFAULTS=${JSON.stringify(miseDefaults)}`] : [];
-    const withToolDefaults = (env: string[] | undefined) => [...(env ?? []), ...toolEnv];
     const client = this._client;
     let sandboxInfoPromise: Promise<SandboxInfo> | undefined;
     const getSandboxInfo = () => {
@@ -1015,7 +1001,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           // testflight until the exec API is revised separately.
           ...(options?.appstore && { testflight: options.appstore }),
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
-          ...(withToolDefaults(options?.env).length && { env: withToolDefaults(options?.env) }),
+          ...(options?.env?.length && { env: options.env }),
           ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
           ...(options?.logProcessor && { logProcessor: options.logProcessor }),
           ...(options?.webhook && { webhook: options.webhook }),
@@ -1054,27 +1040,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         return exec(request, execOptions);
       },
 
-      run(commandLine: string, options?: XcodeRunOptions): ExecChildProcess {
-        if (commandLine.trim() === '') {
-          throw new Error('commandLine must not be empty');
-        }
-        if (
-          options?.timeoutSeconds !== undefined &&
-          (!Number.isInteger(options.timeoutSeconds) ||
-            options.timeoutSeconds < 1 ||
-            options.timeoutSeconds > 21600)
-        ) {
-          throw new Error('timeoutSeconds must be an integer between 1 and 21600');
-        }
-        const request: ExecRequest = {
-          command: 'run',
-          commandLine,
-          cwd: options?.cwd ?? '.',
-          ...(withToolDefaults(options?.env).length && { env: withToolDefaults(options?.env) }),
-          ...(options?.timeoutSeconds !== undefined && { timeoutSeconds: options.timeoutSeconds }),
-        };
-        return exec(request, { apiUrl, token, log });
-      },
+      run: createBuildRun({ apiUrl, token, log }),
 
       async getSimulator(): Promise<SimulatorStatus> {
         const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator`, {

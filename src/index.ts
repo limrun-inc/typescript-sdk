@@ -133,6 +133,7 @@ export {
   type GradleClient,
   type GradleSyncOptions,
   type GradleBuildOptions,
+  type GradleRunOptions,
   type GradleBuildLog,
 } from './resources/gradle-instances-helpers';
 export { type AssetUploadOptions } from './resources/daemon-client-shared';

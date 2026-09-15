@@ -68,3 +68,10 @@ describe('gradleBuildOptionsFromFlags signing validation', () => {
     expect(gradleBuildOptionsFromFlags({ sign: true }).signing).toBeUndefined();
   });
 });
+
+it('forwards validated build environment entries', () => {
+  expect(gradleBuildOptionsFromFlags({ env: ['APP_ENV=staging', 'EMPTY='] })).toEqual({
+    env: ['APP_ENV=staging', 'EMPTY='],
+  });
+  expect(() => gradleBuildOptionsFromFlags({ env: ['invalid'] })).toThrow('KEY=VALUE');
+});

@@ -1,3 +1,3 @@
 import { buildUseCommand } from '../../lib/build-use-command';
 
-export default buildUseCommand('xcode');
+export default buildUseCommand('gradle');

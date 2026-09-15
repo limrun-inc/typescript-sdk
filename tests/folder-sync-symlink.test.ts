@@ -1,3 +1,4 @@
+import { Limrun } from '@limrun/api';
 import fs from 'fs';
 import http from 'http';
 import os from 'os';
@@ -82,6 +83,29 @@ describe('folder-sync symlinks', () => {
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('Gradle sync sends additional files outside the source tree', async () => {
+    const extra = path.join(tmpDir, 'client-config');
+    fs.writeFileSync(extra, 'registry=https://registry.example.test\n');
+    const server = await startStubServer({ ok: true });
+    try {
+      const lim = new Limrun({ apiKey: 'test-key' });
+      const gradle = await lim.gradleInstances.createClient({
+        apiUrl: server.url,
+        token: 'test-token',
+        logLevel: 'none',
+      });
+      await gradle.sync(tree, {
+        basisCacheDir: cache,
+        additionalFiles: [{ localPath: extra, remotePath: '.npmrc' }],
+      });
+    } finally {
+      await server.close();
+    }
+    expect(server.requests).toHaveLength(1);
+    expect(server.requests[0]!.files.map((file) => file.path)).toContain('.npmrc');
+    expect(server.requests[0]!.payloads.map((payload) => payload.path)).toContain('.npmrc');
   });
 
   test('emits link entries with the literal target and no payload', async () => {

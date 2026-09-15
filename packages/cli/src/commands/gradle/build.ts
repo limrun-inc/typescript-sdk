@@ -47,6 +47,11 @@ export default class GradleBuild extends BaseCommand {
   };
 
   static flags = {
+    env: Flags.string({
+      description: 'Environment variable in KEY=VALUE form. Repeat for multiple variables.',
+      multiple: true,
+      multipleNonGreedy: true,
+    }),
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description: 'Gradle instance ID to build on. Defaults to the last used or a newly created one.',

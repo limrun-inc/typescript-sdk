@@ -476,7 +476,7 @@ lim xcode get <ID>        # Get details of a specific instance
 lim xcode delete <ID>     # Delete an instance
 lim xcode attach-simulator <IOS_ID> --id <XCODE_ID>
 lim xcode version         # Xcode the sandbox builds with
-lim xcode version set 27  # Prefer an Xcode major for this workspace (switches the sandbox now)
+lim xcode use xcode@27    # Prefer an Xcode major for this workspace (switches the sandbox now)
 lim xcode version list    # Xcode versions the sandbox can build with
 ```
 
@@ -517,7 +517,7 @@ LIM_WEBHOOK_URL=https://ci.example.com/hooks/limrun \
 lim xcode attach-simulator ios_abc123 --id sandbox_def456
 
 # Pick the Xcode major for this workspace once; builds, tests, runs, syncs, RBE and new sandboxes follow it
-lim xcode version set 27
+lim xcode use xcode@27
 lim xcode build ./MyProject           # builds with Xcode 27
 lim xcode build ./MyProject --xcode-version 26   # one-off override, not remembered
 lim xcode version unset               # forget the preference; the sandbox goes back to the node default
@@ -790,15 +790,20 @@ Select developer tools for shell commands and managed builds with mise preferenc
 
 ```bash
 lim xcode use node@24 pnpm@10 ruby@3.3
-lim xcode run -- mise install
-lim xcode use --global node@24
+lim xcode tools install
 lim xcode tools
 lim xcode run -- mise use --pin node@24.5.0
 ```
 
-`use` saves compatibility lines in the client mise file, syncs the project, and shows the selection. Install missing versions explicitly with `lim xcode run -- mise install`. Each run or build resolves `mise env --json` once and injects that environment into its commands. It preserves configuration values but drops comments and rewrites formatting. Project tool declarations override personal defaults from the client global mise file. Most numeric requests retain the major; Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain `major.minor`. Automatic resolution ignores `mise.lock` and imports only tool declarations. `latest` opts out of a fixed line. Explicit sandbox `mise use --pin` overrides select exact releases; `lim xcode use` clears that tool's override in the selected directory.
+`lim xcode tools` inspects an existing sandbox without syncing or creating an instance. Use `lim xcode tools --sync` to upload local changes first, and `--cwd apps/mobile` to inspect a nested project. Both forms require an existing sandbox; use `--id` to choose one.
 
-Image tools stay outside workspace caches. User-installed versions under `.limbuild-sandbox/home/.mise/` can be cached when the configured cache paths cover them, after a successful managed build. If a restored user gem references its old sandbox path, reinstall it explicitly, for example `lim xcode run -- mise install --force bundler`. Homebrew and Apple tools have separate management; use `lim xcode version` for Xcode.
+`lim xcode tools install` syncs the project and runs `mise install` in that sandbox. Use `--no-sync` to install its current selections without syncing, `--cwd apps/mobile` for a nested project, and `--id` to choose an existing sandbox. The command never creates or replaces an instance.
+
+`lim xcode use xcode@27` is equivalent to `lim xcode version set 27`: it remembers the workspace Xcode major and switches the existing sandbox. With no sandbox, it saves the preference for the next one. This Xcode-only request does not sync files or write a mise configuration. You can combine requests, for example `lim xcode use xcode@27 node@24`; only the other tools go into mise. Xcode requires a bare major. `--cwd` applies only to mise tools; `--workspace` chooses the Limrun workspace preference.
+
+For mise tools, `use` saves the requested names and versions unchanged in the project mise file, syncs the project, and shows the selection. The sandbox applies Limrun's major/minor compatibility rules. The first sandbox operation with a project mise file runs `mise install` once. Install later changes explicitly with `lim xcode tools install`. Each run or build resolves `mise env --json` once and injects that environment into its commands. It preserves configuration values but drops comments and rewrites formatting. Project tool declarations override package-manager detection and image defaults. Personal mise configuration on the client is not read or forwarded. Most numeric requests retain the major; Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain `major.minor`. Automatic resolution ignores `mise.lock` and imports only tool declarations. `latest` opts out of a fixed line. Explicit sandbox `mise use --pin` overrides select exact releases; `lim xcode use` clears that tool's override in the selected directory.
+
+Both Node 22 and 24 are preinstalled, with Node 22 as the default. Image tools stay outside workspace caches. User-installed versions under `.limbuild-sandbox/home/.mise/` can be cached when the configured cache paths cover them, after a successful managed build. If a restored user gem references its old sandbox path, reinstall it explicitly, for example `lim xcode run -- mise install --force bundler`. Homebrew and Apple tools have separate management; select Xcode with `lim xcode use xcode@27` and inspect it with `lim xcode version`.
 
 For [XcodeGen](https://github.com/yonaskolb/XcodeGen) projects whose generated `.xcodeproj` is gitignored, the server generates it from your synced `project.yml` automatically before the build — it looks next to a pinned `--project`/`--workspace` path, at the synced folder root, and one directory level down. If your spec has a different name or location, pin it with `--xcodegen-spec <path>`, optionally control the output directory with `--xcodegen-project <dir>`, and anchor relative paths in the spec with `--xcodegen-project-root <dir>`; all paths are relative to the synced folder root and mirror `xcodegen generate --spec/--project/--project-root`. Passing any of these flags always regenerates the project on the server:
 
@@ -1072,3 +1077,78 @@ Iterating after the initial link:
 Note: any `yarn install` inside `packages/cli` restores the published copy of `@limrun/api`.
 Re-run `limx-from` to re-link the local build. `limx --where` always tells you the current
 state. (`limx --version` and `--help` still self-identify as `lim`; that's expected.)
+
+## Select tools and run commands
+
+The sandbox includes these mise-managed tools:
+
+| Tool                       | Included compatibility lines | Default    |
+| -------------------------- | ---------------------------- | ---------- |
+| Node.js (with npm and npx) | 22, 24                       | 22         |
+| pnpm                       | 9, 10, 11                    | 10         |
+| Yarn                       | 1, 4                         | 1          |
+| Bun                        | 1 (stable)                   | 1          |
+| Java                       | Temurin 17                   | Temurin 17 |
+| bundletool                 | 1                            | 1          |
+
+Builds use your project's Gradle wrapper. Android SDK, NDK, and CMake packages
+remain managed by `sdkmanager`.
+
+Select tool versions and install missing versions explicitly:
+
+```bash
+lim gradle use node@24 java@temurin-17 pnpm@10
+lim gradle tools install
+lim gradle tools
+```
+
+`lim gradle tools` inspects an existing sandbox without syncing or creating an instance. Use `lim gradle tools --sync` to upload local changes first, and `--cwd apps/mobile` to inspect a nested project. Both forms require an existing sandbox; use `--id` to choose one.
+
+`lim gradle tools install` syncs the project and runs `mise install` in that sandbox. Use `--no-sync` to install its current selections without syncing, `--cwd apps/mobile` for a nested project, and `--id` to choose an existing sandbox. The command never creates or replaces an instance.
+
+`use` writes the requested names and versions unchanged to your project mise configuration
+and syncs the project. The sandbox applies Limrun's major/minor compatibility rules.
+The CLI preserves configuration values but rewrites comments and formatting. Use `--cwd apps/mobile` for a nested project. Use the same working
+directory when installing its tools:
+`lim gradle tools install --cwd apps/mobile`.
+
+Project `[tools]` declarations override package-manager detection and image
+defaults. Personal mise configuration on the client is not read or forwarded.
+Limrun imports only tool declarations, without executing client mise tasks or
+loading its environment settings. Client `mise.lock` pins do not control the
+sandbox selection. Most numeric requests retain the major version;
+Ruby, Python, Go, Flutter, Dart, and pre-1.0 tools retain `major.minor`.
+Limrun can update patch and minor releases within those lines independently.
+`latest` opts out of a fixed line.
+
+Each build or run resolves its mise environment once. The first sandbox operation
+that reads a project mise file runs `mise install` before exporting that environment.
+This happens once per sandbox. Without a project mise file, commands use image defaults.
+Later changes require `lim gradle tools install`. A failed or cancelled first install
+stops that operation and also requires an explicit retry. To select an exact release, run
+`lim gradle run -- mise use --pin node@24.5.0`. Subsequent operations respect
+that override. `lim gradle use node@24` clears the Node override in the selected
+directory and returns to the client preference.
+
+Run a command with the selected tools, or supply environment variables to a build:
+
+```bash
+lim gradle run -- node --version
+lim gradle run --env APP_ENV=staging -- npm run generate
+lim gradle build . --env APP_ENV=staging
+```
+
+`--additional-file localPath=remotePath` adds a file outside the source tree; its remote path is relative to the workspace.
+
+`run` syncs the current directory first. Add `--no-sync` to use the existing
+remote workspace. Its optional positional directory is relative to that
+workspace; `--timeout` accepts 1 through 21600 seconds and defaults to 3600.
+Commands stream output and share the build slot: a new command or build cancels
+the active operation. Sandbox paths such as `HOME`, `PATH`, and Android SDK
+locations remain managed. The selected Node is also exposed as `NODE_BINARY`;
+mise sets `JAVA_HOME`.
+
+Image tools and user installs use separate directories. User installs persist
+for the instance's lifetime. Gradle does not transfer them, or its workspace,
+to a new instance. The image still includes warmed Gradle caches and a pnpm 10
+store; another pnpm major may need an initial registry download.

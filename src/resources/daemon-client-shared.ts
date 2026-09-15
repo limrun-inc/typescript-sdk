@@ -4,6 +4,7 @@
 import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
+import { exec, type ExecOptions, type RunExecRequest } from '../exec-client';
 
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
 
@@ -131,5 +132,37 @@ export function createDaemonLogger(prefix: string, logLevel: LogLevel) {
     } else {
       console.log(prefix, msg);
     }
+  };
+}
+
+export type BuildRunOptions = {
+  /** Working directory relative to the synced workspace. Defaults to ".". */
+  cwd?: string;
+  /** Extra KEY=VALUE entries. Sandbox paths remain managed; the last repeated user entry wins. */
+  env?: string[];
+  /** Command timeout in seconds, from 1 to 21600. Defaults to 3600. */
+  timeoutSeconds?: number;
+};
+
+/** Create the shared shell command runner for build sandboxes. */
+export function createBuildRun(execOptions: ExecOptions) {
+  return (commandLine: string, options?: BuildRunOptions) => {
+    if (commandLine.trim() === '') throw new Error('commandLine must not be empty');
+    if (
+      options?.timeoutSeconds !== undefined &&
+      (!Number.isInteger(options.timeoutSeconds) ||
+        options.timeoutSeconds < 1 ||
+        options.timeoutSeconds > 21600)
+    ) {
+      throw new Error('timeoutSeconds must be an integer between 1 and 21600');
+    }
+    const request: RunExecRequest = {
+      command: 'run',
+      commandLine,
+      cwd: options?.cwd ?? '.',
+      ...(options?.env?.length && { env: options.env }),
+      ...(options?.timeoutSeconds !== undefined && { timeoutSeconds: options.timeoutSeconds }),
+    };
+    return exec(request, execOptions);
   };
 }

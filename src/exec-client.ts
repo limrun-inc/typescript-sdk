@@ -196,6 +196,7 @@ export type GradleSigningConfig = {
 
 export type GradleBuildExecRequest = {
   command: 'gradlebuild';
+  env?: string[];
   /**
    * Gradle tasks to run. Omit for the server default (assembleDebug, or
    * bundleRelease when signing is set).
