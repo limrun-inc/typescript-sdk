@@ -13,7 +13,7 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
       (platform === 'xcode' ?
         'xcode@<major> selects Xcode for the workspace, like lim xcode version set. '
       : '') +
-      `Save compatibility lines in the project mise configuration and sync them to the sandbox. The first sandbox operation with project mise configuration initializes its tools. Run lim ${platform} tools install after later changes. Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain major.minor; other tools retain the major.`;
+      `Save requested versions unchanged in the project mise configuration and sync them to the sandbox. The sandbox applies Limrun's major/minor compatibility rules. The first sandbox operation with project mise configuration initializes its tools. Run lim ${platform} tools install after later changes.`;
     static strict = false;
     static args = {
       tools: Args.string({ required: true, description: 'One or more tool@version requests' }),
@@ -38,7 +38,8 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
       let xcodeMajor: string | undefined;
       const requests: string[] = [];
       for (const request of argv as string[]) {
-        if (platform === 'xcode' && request.startsWith('xcode@')) {
+        if (request.startsWith('xcode@')) {
+          if (platform !== 'xcode') this.error('Select Xcode with lim xcode use xcode@<major>.');
           xcodeMajor = parseXcodeMajor(request.slice('xcode@'.length), 'xcode use xcode@<major>');
         } else {
           requests.push(request);

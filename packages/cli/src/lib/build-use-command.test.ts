@@ -128,7 +128,7 @@ it('combines Xcode selection with mise tools without writing Xcode to TOML', asy
   const { command, client } = setup(XcodeUse, ['xcode@27', 'node@24.5.0', 'ruby@3.3.7']);
   await command.run();
   expect(setXcodeVersionPreference).toHaveBeenCalledWith('27');
-  expect(writeMiseTools).toHaveBeenCalledWith(process.cwd(), { node: '24', ruby: '3.3' });
+  expect(writeMiseTools).toHaveBeenCalledWith(process.cwd(), { node: '24.5.0', ruby: '3.3.7' });
   expect(client.sync).toHaveBeenCalledTimes(1);
   expect(client.run).toHaveBeenCalledWith(expect.stringContaining("'node' 'ruby'"), { cwd: '.' });
   expect(client.run.mock.calls[0]![0]).not.toContain('xcode');
@@ -158,7 +158,20 @@ it.each([
 
 it('keeps Xcode out of Gradle tool selection', async () => {
   const { command, client } = setup(GradleUse);
-  await expect(command.run()).rejects.toThrow('managed separately');
+  await expect(command.run()).rejects.toThrow('Select Xcode with lim xcode use');
   expect(client.setXcode).not.toHaveBeenCalled();
   expect(writeMiseTools).not.toHaveBeenCalled();
+});
+
+it.each([XcodeUse, GradleUse])('saves tool requests without client normalization', async (CommandClass) => {
+  const { command, client } = setup(CommandClass, ['node@24.5.0', 'ruby@3.3.7', 'java@jbr-21']);
+  await command.run();
+  expect(writeMiseTools).toHaveBeenCalledWith(process.cwd(), {
+    node: '24.5.0',
+    ruby: '3.3.7',
+    java: 'jbr-21',
+  });
+  expect(client.sync).toHaveBeenCalledTimes(1);
+  expect(client.run).toHaveBeenCalledTimes(1);
+  expect(client.setXcode).not.toHaveBeenCalled();
 });

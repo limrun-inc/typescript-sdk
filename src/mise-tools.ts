@@ -1,57 +1,17 @@
-import { misePolicy } from './internal/mise-policy';
 import fs from 'fs/promises';
 import path from 'path';
 import { parse, stringify, type TomlTable } from 'smol-toml';
-
-const toolAliases = new Map(Object.entries(misePolicy.aliases));
-const vendorPrefixes = new Map(
-  Object.entries(misePolicy.vendorPrefixes).map(([name, prefixes]) => [
-    name,
-    new Map(Object.entries(prefixes)),
-  ]),
-);
-const numericVersion = new RegExp(misePolicy.numericVersionPattern);
-
-export function toolCompatibilityLine(name: string, input: string): string {
-  name = canonicalToolName(name);
-  let version = input.trim();
-  if (version === 'latest') return version;
-  let vendor = '';
-  const dash = version.indexOf('-');
-  const canonical = vendorPrefixes.get(name)?.get(version.slice(0, dash));
-  if (dash !== -1 && canonical) {
-    vendor = canonical + '-';
-    version = version.slice(dash + 1);
-  }
-  const parts = numericVersion.exec(version);
-  if (!parts)
-    throw new Error(
-      `${name}@${input} must name a numeric version. Use mise use through the sandbox run command for custom versions.`,
-    );
-  if (misePolicy.minorSensitiveTools.includes(name) || parts[1] === '0') {
-    if (!parts[2]) throw new Error(`${name} requires a major.minor version.`);
-    return `${vendor}${parts[1]}.${parts[2]}`;
-  }
-  return `${vendor}${parts[1]}`;
-}
-
-function canonicalToolName(name: string): string {
-  return toolAliases.get(name) ?? name;
-}
 
 export function parseToolRequests(requests: string[]): Record<string, string> {
   const tools: Record<string, string> = {};
   for (const request of requests) {
     const at = request.lastIndexOf('@');
-    if (at <= 0 || at === request.length - 1)
+    if (at <= 0 || !request.slice(at + 1).trim())
       throw new Error(`Expected tool@version, received ${JSON.stringify(request)}.`);
-    let name = request.slice(0, at);
+    const name = request.slice(0, at);
     if (!/^[A-Za-z0-9][A-Za-z0-9:_./-]*$/.test(name))
       throw new Error(`Invalid tool name ${JSON.stringify(name)}.`);
-    name = canonicalToolName(name);
-    if (misePolicy.excludedTools.includes(name))
-      throw new Error(`${name} is managed separately from mise tools.`);
-    tools[name] = toolCompatibilityLine(name, request.slice(at + 1));
+    tools[name] = request.slice(at + 1);
   }
   return tools;
 }
@@ -65,7 +25,7 @@ async function readConfig(file: string): Promise<TomlTable> {
   }
 }
 
-/** Save compatibility lines without installing anything on the client. */
+/** Save requested tool versions in the project configuration. */
 export async function writeMiseTools(directory: string, tools: Record<string, string>): Promise<string> {
   let file = path.join(directory, 'mise.toml');
   // Update the highest-precedence existing file in this directory.
@@ -82,11 +42,7 @@ export async function writeMiseTools(directory: string, tools: Record<string, st
   const existing = config['tools'];
   if (existing !== undefined && (!existing || typeof existing !== 'object' || Array.isArray(existing)))
     throw new Error(`Expected [tools] in ${file}.`);
-  const selected = { ...(existing as TomlTable | undefined), ...tools };
-  for (const [alias, canonical] of Object.entries(misePolicy.aliases)) {
-    if (canonical in tools) delete selected[alias];
-  }
-  config['tools'] = selected;
+  config['tools'] = { ...(existing as TomlTable | undefined), ...tools };
   await fs.mkdir(path.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.tmp`;
   try {
