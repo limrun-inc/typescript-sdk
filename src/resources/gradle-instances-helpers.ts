@@ -34,6 +34,10 @@ export type GradleCreateClientParams = { logLevel?: LogLevel } & (
 );
 
 export type GradleSyncOptions = {
+  /** Keep watching the source tree and sync changes. Defaults to false. */
+  watch?: boolean;
+  /** Called after the initial sync and each successful watch-triggered sync. */
+  onSyncComplete?: FolderSyncOptions['onSyncComplete'];
   /** Extra files to sync to paths relative to the remote workspace. */
   additionalFiles?: FolderSyncOptions['additionalFiles'];
   /**
@@ -183,18 +187,21 @@ class GradleInstancesHelpers extends GradleInstances {
             ...(opts?.include ? { include: opts.include } : {}),
           }),
           basisCacheDir,
-          // Gradle builds are one-shot; no dev-loop watch like xcode.
-          watch: false,
+          watch: opts?.watch ?? false,
           launchMode: 'ForegroundIfRunning',
           log,
           syncSymlinks: true,
           ...(opts?.additionalFiles && { additionalFiles: opts.additionalFiles }),
+          ...(opts?.onSyncComplete && { onSyncComplete: opts.onSyncComplete }),
         };
 
         const result = await syncFolderImpl(localCodePath, codeSyncOpts);
         const out: SyncResult = {};
         if (result.bytesSent !== undefined) {
           out.bytesSent = result.bytesSent;
+        }
+        if (result.stopWatching) {
+          out.stopWatching = result.stopWatching;
         }
         return out;
       },

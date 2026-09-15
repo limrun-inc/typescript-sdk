@@ -1100,6 +1100,9 @@ state. (`limx --version` and `--help` still self-identify as `lim`; that's expec
 
 ## Select tools and run commands
 
+Use `lim gradle sync [path]` to upload source without building; the path defaults
+to the current directory. Add `--watch` to keep syncing changes until Ctrl+C.
+
 The sandbox includes these mise-managed tools:
 
 | Tool                       | Included compatibility lines | Default    |
