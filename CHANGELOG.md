@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.51.0 (2026-09-15)
+
+Full Changelog: [v0.50.1...v0.51.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.50.1...v0.51.0)
+
+### Features
+
+* **cli:** add standalone Gradle source sync with watch mode ([eeb208b](https://github.com/limrun-inc/typescript-sdk/commit/eeb208bc08c3efd8622614606017465c356bd88f))
+
+
+### Chores
+
+* keep Gradle sync PR focused on implementation ([7411aa6](https://github.com/limrun-inc/typescript-sdk/commit/7411aa6769e542865ce28f1982494a6a6f086dd2))
+
+
+### Documentation
+
+* keep Gradle sync usage concise ([e1285d2](https://github.com/limrun-inc/typescript-sdk/commit/e1285d24c6ac269c2d87b1292f533f0a649218b7))
+
 ## 0.50.1 (2026-09-15)
 
 Full Changelog: [v0.50.0...v0.50.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.50.0...v0.50.1)
