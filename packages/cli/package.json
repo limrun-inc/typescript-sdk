@@ -54,7 +54,7 @@
     "topicSeparator": " ",
     "topics": {
       "android": {
-        "description": "Execute any task on remote Android Emulators: create, list, get, delete, connect, sync, screenshot, tap, tap-element, find-element, element-tree, type, press-key, scroll, open-url, install-app, launch-app, terminate-app, record, play-on-microphone, set-wifi-bandwidth"
+        "description": "Execute any task on remote Android Emulators: create, list, get, delete, connect, sync, screenshot, tap, tap-element, find-element, element-tree, type, press-key, scroll, open-url, install-app, launch-app, terminate-app, app-log, logcat, record, play-on-microphone, set-wifi-bandwidth, adb-shell"
       },
       "asset": {
         "description": "Upload, download, list, inspect, and delete files that can be used by iOS & Android as pre-installed apps: push, pull, list, delete"
