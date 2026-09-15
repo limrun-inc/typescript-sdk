@@ -4,12 +4,7 @@ import net from 'net';
 import path from 'path';
 
 import { Ios } from '@limrun/api';
-import type {
-  AccessibilitySelector,
-  ElementTreeNode,
-  InstanceClient,
-  ReverseTunnel,
-} from '@limrun/api/ios-client';
+import type { AccessibilitySelector, ElementTreeNode, InstanceClient, Tunnel } from '@limrun/api/ios-client';
 
 import { resolveInstalledDetoxVersion } from './resolve-installed-detox-version';
 
@@ -28,7 +23,7 @@ export type DetoxServerProcess = {
 
 type LimrunDetoxInstanceClient = Pick<
   InstanceClient,
-  | 'startReverseTunnel'
+  | 'startTunnel'
   | 'launchApp'
   | 'openUrl'
   | 'elementTree'
@@ -42,7 +37,6 @@ export type DetoxRunPrepareOptions = {
   client: LimrunDetoxInstanceClient;
   sessionId?: string;
   mediatorLocalPort?: number;
-  mediatorRemotePort?: number;
   version?: string;
   detoxLogLevel?: string;
   artifactDirectory?: string;
@@ -56,7 +50,7 @@ export type DetoxRunPrepareResult = {
   remoteDetoxServerUrl: string;
   version: string;
   server: DetoxServerProcess;
-  tunnel: ReverseTunnel;
+  tunnel: Tunnel;
   artifactDirectory: string;
   cleanup: () => Promise<void>;
 };
@@ -101,12 +95,11 @@ export async function prepareDetoxRun(options: DetoxRunPrepareOptions): Promise<
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const sessionId = options.sessionId || `limrun-detox-${Date.now()}`;
   const mediatorLocalPort = options.mediatorLocalPort ?? (await getAvailableTcpPort());
-  const mediatorRemotePort = options.mediatorRemotePort ?? 57091;
   const artifactDirectory = path.resolve(cwd, options.artifactDirectory || 'artifacts/limrun-detox');
   fs.mkdirSync(artifactDirectory, { recursive: true });
 
   let server: DetoxServerProcess | undefined;
-  let tunnel: ReverseTunnel | undefined;
+  let tunnel: Tunnel | undefined;
   try {
     server = await startDetoxServer({
       port: mediatorLocalPort,
@@ -116,15 +109,15 @@ export async function prepareDetoxRun(options: DetoxRunPrepareOptions): Promise<
       ...(options.detoxBin ? { detoxBin: options.detoxBin } : {}),
     });
 
-    tunnel = await options.client.startReverseTunnel({
-      remotePort: mediatorRemotePort,
-      localPort: mediatorLocalPort,
+    // The simulator reaches the mediator at the same localhost:port the tester uses.
+    tunnel = await options.client.startTunnel({
+      selectors: [`localhost:${mediatorLocalPort}`],
       logLevel: 'info',
     });
 
     const preparedServer = server;
     const preparedTunnel = tunnel;
-    const remoteDetoxServerUrl = `ws://${preparedTunnel.remoteAddress.address}:${preparedTunnel.remoteAddress.port}`;
+    const remoteDetoxServerUrl = `ws://localhost:${mediatorLocalPort}`;
     const version = options.version ?? resolveInstalledDetoxVersion(cwd);
 
     return {

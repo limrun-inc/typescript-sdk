@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { WebSocket, Data } from 'ws';
 import { EventEmitter } from 'events';
-import { assertPort, isNonRetryableError, startReverseTcpTunnel, type ReverseTunnel } from './tunnel';
+import { assertPort, isNonRetryableError } from './tunnel';
 import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './destination-tunnel-dialer';
 import { disabledDestinationTunnelInspection, type DestinationTunnelSelectors } from './destination-tunnel';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
@@ -44,8 +44,6 @@ export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'rec
 export type ConnectionStateCallback = (state: ConnectionState) => void;
 
 const ACTIVE_RECORDING_FILENAME = 'recording.mp4';
-export const REVERSE_TUNNEL_REMOTE_PORT_MIN = 57090;
-export const REVERSE_TUNNEL_REMOTE_PORT_MAX = 57099;
 /** Default tapElement timeout; see TapElementOptions.timeoutMs. */
 export const TAP_ELEMENT_TIMEOUT_MS = 90_000;
 
@@ -53,23 +51,6 @@ function buildDownloadUrl(apiUrl: string): string {
   return `${apiUrl}/files?name=${encodeURIComponent(ACTIVE_RECORDING_FILENAME)}`;
 }
 
-export function deriveReverseTunnelUrl(apiUrl: string, remotePort: number): string {
-  const url = new URL(apiUrl);
-  if (url.protocol === 'https:') {
-    url.protocol = 'wss:';
-  } else if (url.protocol === 'http:') {
-    url.protocol = 'ws:';
-  } else {
-    throw new Error(`Unsupported apiUrl protocol for reverse tunnel: ${url.protocol}`);
-  }
-  url.pathname = `${url.pathname.replace(/\/+$/, '')}/reverse-tunnel`;
-  url.search = '';
-  url.hash = '';
-  url.searchParams.set('remotePort', String(remotePort));
-  return url.toString();
-}
-
-export type { ReverseTunnel } from './tunnel';
 export type Tunnel = DestinationTcpTunnel;
 export type TunnelOptions = {
   /** Exact endpoint (host:port) and domain selector values; the server asks this client to dial exact endpoints and intercepted domains. */
@@ -424,17 +405,6 @@ export type SoftResetResult = {
   itemsCleared?: number;
   /** Wall-clock duration of the reset on the server. */
   durationMs: number;
-};
-
-export type ReverseTunnelOptions = {
-  /** Port to listen on near the simulator. Must be in 57090-57099. */
-  remotePort: number;
-  /** Local port for a client-first service on the user's machine. Defaults to remotePort. */
-  localPort?: number;
-  /** Local host on the user's machine. Defaults to 127.0.0.1. */
-  localHost?: string;
-  /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
-  logLevel?: LogLevel;
 };
 
 /**
@@ -927,12 +897,6 @@ export type InstanceClient = {
    *   missing for `strategy: 'full'` (409), or the request is malformed (400).
    */
   softReset: (bundleId: string, options?: SoftResetOptions) => Promise<SoftResetResult>;
-
-  /**
-   * Start a reverse tunnel from the simulator-facing LISTEN_IP:remotePort
-   * to a user-local client-first TCP service, such as HTTP or WebSocket.
-   */
-  startReverseTunnel: (options: ReverseTunnelOptions) => Promise<ReverseTunnel>;
 
   /**
    * Transparently route declared simulator TCP destinations through this machine.
@@ -2010,7 +1974,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             clearStoreKitConfig,
             discoverStoreKitConfig,
             softReset,
-            startReverseTunnel,
             startTunnel,
             getTunnelStatus,
             stopTunnel,
@@ -2831,24 +2794,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         out.itemsCleared = result.itemsCleared;
       }
       return out;
-    };
-
-    const startReverseTunnel = async (tunnelOptions: ReverseTunnelOptions): Promise<ReverseTunnel> => {
-      assertPort(
-        tunnelOptions.remotePort,
-        'remotePort',
-        REVERSE_TUNNEL_REMOTE_PORT_MIN,
-        REVERSE_TUNNEL_REMOTE_PORT_MAX,
-      );
-      const localPort = tunnelOptions.localPort ?? tunnelOptions.remotePort;
-      assertPort(localPort, 'localPort', 1, 65535);
-
-      const remoteURL = deriveReverseTunnelUrl(options.apiUrl, tunnelOptions.remotePort);
-      return startReverseTcpTunnel(remoteURL, options.token, {
-        localHost: tunnelOptions.localHost ?? '127.0.0.1',
-        localPort,
-        logLevel: tunnelOptions.logLevel ?? logLevel,
-      });
     };
 
     const startTunnel = async (tunnelOptions: TunnelOptions): Promise<Tunnel> => {
