@@ -4,13 +4,17 @@ import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
 import {
   exec,
+  observeExecLogs,
   type ExecChildProcess,
+  type ExecLogOptions,
+  type ExecLogResult,
   type GradleBuildExecRequest,
   type GradlePlaystoreConfig,
   type GradleReactNativeConfig,
   type GradleSigningConfig,
   type WebhookConfig,
 } from '../exec-client';
+export type { ExecLogOptions, ExecLogResult } from '../exec-client';
 import { syncFolder as syncFolderImpl, type FolderSyncOptions } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
 import {
@@ -94,6 +98,8 @@ export type GradleClient = {
   sync(localCodePath: string, opts?: GradleSyncOptions): Promise<SyncResult>;
   gradlebuild(options?: GradleBuildOptions): ExecChildProcess;
   run(commandLine: string, options?: GradleRunOptions): ExecChildProcess;
+  /** Replay an existing build's logs, optionally following it to completion. */
+  observeBuildLogs(execId: string, options?: ExecLogOptions): Promise<ExecLogResult>;
 };
 
 // Machine-local or regenerable files that must never reach the build
@@ -225,6 +231,10 @@ class GradleInstancesHelpers extends GradleInstances {
         }
 
         return exec(request, { apiUrl, token, log });
+      },
+
+      observeBuildLogs(execId: string, options?: ExecLogOptions): Promise<ExecLogResult> {
+        return observeExecLogs(execId, { apiUrl, token, log, ...options });
       },
     };
   }
