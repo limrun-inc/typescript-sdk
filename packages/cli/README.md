@@ -1098,6 +1098,29 @@ Note: any `yarn install` inside `packages/cli` restores the published copy of `@
 Re-run `limx-from` to re-link the local build. `limx --where` always tells you the current
 state. (`limx --version` and `--help` still self-identify as `lim`; that's expected.)
 
+## Sync source to a Gradle sandbox
+
+`lim gradle sync [path]` uploads source files without running a build. The path
+defaults to the current directory. It reuses the remembered Gradle instance or
+creates one when needed; pass `--id` to choose a target.
+
+```bash
+lim gradle sync
+lim gradle sync ./my-app --id <gradle-instance-id>
+lim gradle sync ./my-app --watch
+lim gradle sync ./my-app --additional-file ~/.npmrc=.npmrc
+```
+
+`--watch` pushes later source changes until Ctrl+C. Each completed sync reports
+its duration and bytes sent. Use `--basis-cache-dir` for a custom delta cache,
+`--ignore <regex>` to exclude paths, and `--include <regex>` to force-sync inputs.
+Repeat `--additional-file localPath=remotePath` to upload files outside the
+source tree to workspace-relative paths. These extra files are included in
+each sync pass but are not watched directly.
+
+Sync does not install dependencies or run Gradle. `lim gradle build` already
+syncs once before building, so a separate sync is optional.
+
 ## Select tools and run commands
 
 The sandbox includes these mise-managed tools:

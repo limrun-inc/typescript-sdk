@@ -8,6 +8,7 @@ import { syncFolder, type FolderSyncOptions } from '@limrun/api/folder-sync';
 
 type WireFile = { path: string; size: number; sha256: string; mode?: number; link?: string };
 type WireMeta = {
+  install?: boolean;
   files: WireFile[];
   payloads: { kind: 'delta' | 'full'; path: string; length: number }[];
 };
@@ -96,9 +97,16 @@ describe('folder-sync symlinks', () => {
         token: 'test-token',
         logLevel: 'none',
       });
-      await gradle.sync(tree, {
+      const onSyncComplete = jest.fn();
+      const result = await gradle.sync(tree, {
         basisCacheDir: cache,
         additionalFiles: [{ localPath: extra, remotePath: '.npmrc' }],
+        onSyncComplete,
+      });
+      expect(result.stopWatching).toBeUndefined();
+      expect(onSyncComplete).toHaveBeenCalledWith({
+        bytesSent: result.bytesSent,
+        durationMs: expect.any(Number),
       });
     } finally {
       await server.close();
@@ -106,6 +114,47 @@ describe('folder-sync symlinks', () => {
     expect(server.requests).toHaveLength(1);
     expect(server.requests[0]!.files.map((file) => file.path)).toContain('.npmrc');
     expect(server.requests[0]!.payloads.map((payload) => payload.path)).toContain('.npmrc');
+  });
+
+  test('Gradle watch sync uploads later source changes without installing', async () => {
+    const server = await startStubServer();
+    let stopWatching: (() => Promise<void>) | undefined;
+    try {
+      const lim = new Limrun({ apiKey: 'test-key' });
+      const gradle = await lim.gradleInstances.createClient({
+        apiUrl: server.url,
+        token: 'test-token',
+        logLevel: 'none',
+      });
+      let complete!: () => void;
+      const changed = new Promise<void>((resolve) => {
+        complete = resolve;
+      });
+      const onSyncComplete = jest.fn(() => {
+        if (server.requests.some((request) => request.files.some((file) => file.path === 'Main.kt'))) {
+          complete();
+        }
+      });
+      const result = await gradle.sync(tree, {
+        basisCacheDir: cache,
+        watch: true,
+        onSyncComplete,
+      });
+      stopWatching = result.stopWatching;
+      expect(stopWatching).toBeDefined();
+      expect(onSyncComplete).toHaveBeenCalledTimes(1);
+      fs.writeFileSync(path.join(tree, 'Main.kt'), 'fun main() {}\n');
+      await changed;
+      await stopWatching!();
+      expect(server.requests.length).toBeGreaterThanOrEqual(2);
+      expect(server.requests.every((request) => request.install === false)).toBe(true);
+      expect(server.requests[server.requests.length - 1]!.payloads).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path: 'Main.kt', kind: 'full' })]),
+      );
+    } finally {
+      await stopWatching?.();
+      await server.close();
+    }
   });
 
   test('emits link entries with the literal target and no payload', async () => {
