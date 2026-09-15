@@ -137,16 +137,18 @@
   resolved "https://registry.yarnpkg.com/@hono/node-server/-/node-server-2.1.0.tgz#c1823e1b9add6bdd14807fbbfec39b8b80614b25"
   integrity sha512-XovyyCCnBzW+zKu+z/zq8hwNs4KOR5rEMAOxo2f40Q5xoOI37IMm6MIg2COOUtUApo0i6850MTBKH2u4QLGIqg==
 
-"@limrun/api@^0.46.11":
-  version "0.46.11"
-  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.46.11.tgz#b421f9a2084e1f455a5e6d855ea91f860b4d9f2b"
-  integrity sha512-vSXSOnTTNsQQtbWB3T04KE2x7B6H1OlBjkO2rF8K/cSMUqYPT3x8UgcI1Kl4X9uBJgfVWT7BJBA0EWedpAxIUQ==
+"@limrun/api@^0.50.0":
+  version "0.50.0"
+  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.50.0.tgz#97b455f293948af28a3061e13b86e5104b9153a8"
+  integrity sha512-oHOd+9JYXIQpjUplnX84LmexhXHjtoDWigqtFYO8rXhhg+w0GgHgh0yEG/AZnkw70O4pI5ozWF3/3f6iXA4BNw==
   dependencies:
     "@limrun/xdelta3-wasm" "0.2.0"
+    "@types/har-format" "^1.2.16"
     eventsource-client "^1.2.0"
     https-proxy-agent "7.0.6"
     ignore "^7.0.5"
     proxy-from-env "^2.1.0"
+    smol-toml "^1.8.0"
     undici "7.29.0"
     ws "^8.21.1"
     yauzl "^3.4.0"
@@ -178,6 +180,11 @@
     raw-body "^3.0.0"
     zod "^3.25 || ^4.0"
     zod-to-json-schema "^3.25.1"
+
+"@types/har-format@^1.2.16":
+  version "1.2.16"
+  resolved "https://registry.npmjs.org/@types/har-format/-/har-format-1.2.16.tgz#b71ede8681400cc08b3685f061c31e416cf94944"
+  integrity sha512-fluxdy7ryD3MV6h8pTfTYpy/xQzCFC7m89nOH9y94cNqJ1mDIDPut7MnRHI3F6qRmh/cT2fUjG1MLdCNb4hE9A==
 
 "@types/node@^25.5.2":
   version "25.9.5"
@@ -830,6 +837,11 @@ side-channel@^1.1.1:
     side-channel-list "^1.0.1"
     side-channel-map "^1.0.1"
     side-channel-weakmap "^1.0.2"
+
+smol-toml@^1.8.0:
+  version "1.8.0"
+  resolved "https://registry.npmjs.org/smol-toml/-/smol-toml-1.8.0.tgz#dc5e0936825f1fef37bdf2c569081f709d8a009f"
+  integrity sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==
 
 statuses@^2.0.1, statuses@^2.0.2, statuses@~2.0.2:
   version "2.0.2"
