@@ -63,6 +63,8 @@ export type XcodeCacheRestoreStatus = {
   phase: XcodeCacheRestorePhase;
   reason?: string;
   message?: string;
+  /** Cumulative plain-text transcript, identical to the persisted cache activity log. */
+  log?: string;
   /** Restore key whose archive was used. */
   matchedKey?: string;
   matchKind?: 'exact_hit' | 'prefix_hit';
@@ -81,6 +83,8 @@ export type XcodeCacheSaveStatus = {
   phase: XcodeCacheSavePhase;
   reason?: string;
   message?: string;
+  /** Cumulative plain-text transcript, identical to the persisted cache activity log. */
+  log?: string;
   /** Destination key the archive is published under. */
   cacheKey?: string;
   paths?: string[];
@@ -206,7 +210,7 @@ export type XcodeCacheFollowTarget = {
  * instance is collected, or the wait times out.
  *
  * The transport is the same endpoint that serves a JSON snapshot, asked for as an event
- * stream. The server emits on phase change only, so every callback is a real transition.
+ * stream. The server emits when a phase changes or its transcript grows.
  */
 export function followXcodeCache(
   target: XcodeCacheFollowTarget,
@@ -304,10 +308,15 @@ export function followXcodeCache(
           confirmGone();
           return;
         }
-        // A reconnect replays the current state, which is not a transition.
-        const key = `${cache.restore.phase}/${cache.restore.reason ?? ''}|${cache.save.phase}/${
-          cache.save.reason ?? ''
-        }`;
+        // A transcript can grow within one phase; only identical updates are replays.
+        const key = JSON.stringify([
+          cache.restore.phase,
+          cache.restore.reason,
+          cache.restore.log,
+          cache.save.phase,
+          cache.save.reason,
+          cache.save.log,
+        ]);
         if (key !== lastKey) {
           lastKey = key;
           options.onUpdate?.(cache);

@@ -6,6 +6,26 @@ import type {
 } from '@limrun/api';
 import { formatDurationMs } from './duration';
 
+/** Prints appended server log lines, including phases missed before subscribing or reconnecting. */
+export class CacheLogPrinter {
+  constructor(
+    private readonly print: (line: string) => void,
+    private printed = '',
+  ) {}
+
+  update(log: string | undefined): boolean {
+    if (log === undefined) return false;
+    // Reconnects can replay an older snapshot. The server transcript only grows.
+    if (this.printed.startsWith(log)) return true;
+    if (!log.startsWith(this.printed)) this.printed = '';
+    const complete = log.slice(0, log.lastIndexOf('\n') + 1);
+    if (complete.length <= this.printed.length) return true;
+    for (const line of complete.slice(this.printed.length, -1).split('\n')) this.print(line);
+    this.printed = complete;
+    return true;
+  }
+}
+
 // The oclif flag definitions live in ./cache-flags so that everything here stays importable
 // without oclif, which is what lets the root test suite cover it.
 

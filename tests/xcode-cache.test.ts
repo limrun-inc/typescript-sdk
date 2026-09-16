@@ -83,6 +83,25 @@ describe('xcode cache follower', () => {
     expect(result.cache.restore.reason).toBe('no_match');
   });
 
+  test('delivers appended log text even when the phase stays the same', async () => {
+    const client = new Limrun({ apiKey: 'key', baseURL: 'https://api.example.test' });
+    const seen: string[] = [];
+    const following = client.xcodeInstances.followCache('sandbox_1', {
+      onUpdate: (cache) => seen.push(cache.restore.log ?? ''),
+    });
+    const source = await nextSource();
+    const cache = snapshot({ restore: 'placing' });
+    cache.restore.log = 'Restoring build cache...\n';
+    source.emit({ event: 'cache', data: JSON.stringify(cache) });
+    cache.restore.log += 'Cache restore: preparing the workspace directory...\n';
+    source.emit({ event: 'cache', data: JSON.stringify(cache) });
+    source.emit({ event: 'cache', data: JSON.stringify(cache) });
+    cache.restore.phase = 'skipped';
+    source.emit({ event: 'cache', data: JSON.stringify(cache) });
+    await following;
+    expect(seen).toEqual(['Restoring build cache...\n', cache.restore.log, cache.restore.log]);
+  });
+
   test('waiting on the save side ignores the restore reaching its own terminal phase', async () => {
     const client = new Limrun({ apiKey: 'key', baseURL: 'https://api.example.test' });
     const following = client.xcodeInstances.followCache('sandbox_1', { side: 'save' });
