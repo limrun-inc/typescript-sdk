@@ -1,6 +1,6 @@
 {
   "name": "@limrun/ui",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "publishConfig": {
     "access": "public"
   },
@@ -12,6 +12,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./lite": {
+      "types": "./dist/lite.d.ts",
+      "import": "./dist/lite.js",
+      "require": "./dist/lite.cjs"
     },
     "./package.json": "./package.json"
   },

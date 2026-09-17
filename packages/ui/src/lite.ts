@@ -1,5 +1,6 @@
-export { RemoteControl } from './components/remote-control-framed';
-export { defaultRemoteControlAssets } from './frame-assets';
+// Frameless entry: identical API, but no bundled device artwork. Pass `assets`
+// to add frames or boot logos.
+export { RemoteControl } from './components/remote-control';
 export type {
   RemoteControlProps,
   RemoteControlHandle,

@@ -6,6 +6,16 @@ types and helpers for building inspect, search, and agent interfaces.
 
 See [examples](../../examples/) to see how it can be used.
 
+## Frameless embeds
+
+`@limrun/ui` bundles Limrun's device frames and boot logos as inline images, about
+600 KB. Embeds that render the bare screen can import `@limrun/ui/lite` instead: the same
+`RemoteControl` API without any artwork, so `showFrame` has nothing to draw and the boot
+logo is omitted. Pass your own images through the `assets` prop if you want frames back.
+
+`onConnectionStateChange` reports `connecting`, `connected`, `reconnecting`, `failed`, and
+`terminated` so a host can show status text without tracking the retry logic.
+
 ## Simulated cameras
 
 `RemoteControl` responds automatically when an app in the instance opens,
