@@ -389,7 +389,12 @@ export const withAuthenticationToken = (url: string, token: string): string => {
   return endpoint.toString();
 };
 
-export type RemoteControlConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'failed' | 'terminated';
+export type RemoteControlConnectionState =
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'failed'
+  | 'terminated';
 
 export type RemoteControlPlatformAssets = {
   frame?: string;
@@ -2556,7 +2561,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       setRetryExhausted(false);
       // A drop after an established session restarts the attempt budget at 0
       // while staying 'reconnecting'; only a fresh start reports 'connecting'.
-      if (attemptNumber === 0 && connectionStateRef.current !== 'reconnecting') reportConnectionState('connecting');
+      if (attemptNumber === 0 && connectionStateRef.current !== 'reconnecting')
+        reportConnectionState('connecting');
       clearScheduledRetry();
       clearConnectionSuccessTimeout();
       stopRequestFrameLoop();
@@ -3719,7 +3725,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         )}
         <video
           ref={videoRef}
-          className={clsx('rc-video', !frameVisible && 'rc-video-frameless', !videoLoaded && 'rc-video-loading')}
+          className={clsx(
+            'rc-video',
+            !frameVisible && 'rc-video-frameless',
+            !videoLoaded && 'rc-video-loading',
+          )}
           style={{
             ...videoStyle,
             ...(loadingLogo ?
