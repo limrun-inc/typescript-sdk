@@ -725,6 +725,17 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     const platform = useMemo(() => detectPlatform(url), [url]);
     const config = deviceConfig[platform];
+    const platformAssets = assets?.[platform];
+    const frameImageSrc =
+      platform === 'android' && useAndroidTabletFrame ?
+        isLandscape ? platformAssets?.tabletFrameLandscape
+        : platformAssets?.tabletFrame
+      : isLandscape ? platformAssets?.frameLandscape
+      : platformAssets?.frame;
+    const loadingLogo = platformAssets?.loadingLogo;
+    // Without a frame image (the lite entry) the video lays out frameless
+    // whatever showFrame says.
+    const frameVisible = showFrame && !!frameImageSrc;
 
     const updateStatus = (message: string) => {
       // Use the wrapper for conditional logging
@@ -3345,7 +3356,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const updateVideoPosition = () => {
         // If no frame, just refresh overlay geometry; no inset/letterbox math
         // is needed since the video element is its own size.
-        if (!showFrame || !frame) {
+        if (!frameVisible || !frame) {
           setVideoStyle({});
           recomputeOverlayGeometry();
           return;
@@ -3418,7 +3429,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         video.removeEventListener('resize', bumpOnResize);
         if (frame) frame.removeEventListener('load', updateVideoPosition);
       };
-    }, [config, showFrame]);
+    }, [config, frameVisible]);
 
     // Start/stop the AX poller and reset inspect state when inspect mode
     // toggles. Connection state is independent: the fetcher gets created on
@@ -3662,14 +3673,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     // Show indicators when Alt is held and we have a valid hover point (null when outside)
     const showAltIndicators = isAltHeld && hoverPoint !== null;
-    const platformAssets = assets?.[platform];
-    const frameImageSrc =
-      platform === 'android' && useAndroidTabletFrame ?
-        isLandscape ? platformAssets?.tabletFrameLandscape
-        : platformAssets?.tabletFrame
-      : isLandscape ? platformAssets?.frameLandscape
-      : platformAssets?.frame;
-    const loadingLogo = platformAssets?.loadingLogo;
 
     return (
       <div
@@ -3705,7 +3708,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             />
           </>
         )}
-        {showFrame && frameImageSrc && (
+        {frameVisible && (
           <img
             ref={frameRef}
             src={frameImageSrc}
@@ -3716,7 +3719,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         )}
         <video
           ref={videoRef}
-          className={clsx('rc-video', !showFrame && 'rc-video-frameless', !videoLoaded && 'rc-video-loading')}
+          className={clsx('rc-video', !frameVisible && 'rc-video-frameless', !videoLoaded && 'rc-video-loading')}
           style={{
             ...videoStyle,
             ...(loadingLogo ?
