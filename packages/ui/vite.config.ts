@@ -11,6 +11,7 @@ export default defineConfig({
     lib: {
       entry: {
         index: resolve(__dirname, 'src/index.ts'),
+        lite: resolve(__dirname, 'src/lite.ts'),
       },
       name: 'LimrunUI',
       formats: ['es', 'cjs'],
@@ -19,6 +20,9 @@ export default defineConfig({
     rollupOptions: {
       external: ['react', 'react-dom', 'react/jsx-runtime'],
       output: {
+        // Both entries share one stylesheet; keep its historical name so
+        // consumers that reference dist/index.css directly keep working.
+        assetFileNames: (info) => (info.names?.some((n) => n.endsWith('.css')) ? 'index.css' : '[name][extname]'),
         globals: {
           react: 'React',
           'react-dom': 'ReactDOM',

@@ -4,14 +4,6 @@ import './remote-control.css';
 
 import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
 
-import iphoneFrameImage from '../assets/iphone16pro_black_bg.webp';
-import pixelFrameImage from '../assets/pixel9_black.webp';
-import pixelFrameImageLandscape from '../assets/pixel9_black_landscape.webp';
-import pixelTabletFrameImage from '../assets/pixel_tablet_portrait.webp';
-import pixelTabletFrameImageLandscape from '../assets/pixel_tablet_landscape.webp';
-import iphoneFrameImageLandscape from '../assets/iphone16pro_black_landscape_bg.webp';
-import appleLogoSvg from '../assets/Apple_logo_white.svg';
-import androidBootImage from '../assets/android_boot.webp';
 import {
   createTouchControlMessage,
   createInjectKeycodeMessage,
@@ -82,6 +74,15 @@ export interface RemoteControlProps {
    * etc.). It is not called for ordinary network drops.
    */
   onTerminated?: () => void;
+  /**
+   * Device frame and boot-logo images. The default export bundles Limrun's
+   * frames; `@limrun/ui/lite` omits them so a frameless embed stays small.
+   */
+  assets?: RemoteControlAssets;
+  /**
+   * Coarse connection lifecycle, for status UI outside the component.
+   */
+  onConnectionStateChange?: (state: RemoteControlConnectionState) => void;
 
   /**
    * Enable the inspect overlay. When set, the component starts polling the
@@ -388,17 +389,24 @@ export const withAuthenticationToken = (url: string, token: string): string => {
   return endpoint.toString();
 };
 
+export type RemoteControlConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'failed' | 'terminated';
+
+export type RemoteControlPlatformAssets = {
+  frame?: string;
+  frameLandscape?: string;
+  tabletFrame?: string;
+  tabletFrameLandscape?: string;
+  loadingLogo?: string;
+};
+
+export type RemoteControlAssets = Partial<Record<DevicePlatform, RemoteControlPlatformAssets>>;
+
 type DeviceConfig = {
   videoBorderRadiusMultiplier: number;
-  loadingLogo: string;
   loadingLogoSize: string;
   videoPosition: {
     portrait: { heightMultiplier?: number; widthMultiplier?: number };
     landscape: { heightMultiplier?: number; widthMultiplier?: number };
-  };
-  frame: {
-    image: string;
-    imageLandscape: string;
   };
 };
 
@@ -420,12 +428,7 @@ const isAndroidTabletVideo = (width: number, height: number): boolean =>
 // Video position percentages are relative to the frame image dimensions
 const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
   ios: {
-    frame: {
-      image: iphoneFrameImage,
-      imageLandscape: iphoneFrameImageLandscape,
-    },
     videoBorderRadiusMultiplier: 0.15,
-    loadingLogo: appleLogoSvg,
     loadingLogoSize: '20%',
     // Video position as percentage of frame dimensions
     videoPosition: {
@@ -434,12 +437,7 @@ const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
     },
   },
   android: {
-    frame: {
-      image: pixelFrameImage,
-      imageLandscape: pixelFrameImageLandscape,
-    },
     videoBorderRadiusMultiplier: 0.13,
-    loadingLogo: androidBootImage,
     loadingLogoSize: '40%',
     // Video position as percentage of frame dimensions
     videoPosition: {
@@ -490,6 +488,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       showFrame = true,
       autoReconnect = false,
       onTerminated,
+      assets,
+      onConnectionStateChange,
       inspectMode,
       onAxSnapshotChange,
       onInspectSelectionChange,
@@ -702,6 +702,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     onAxStatusChangeRef.current = onAxStatusChange;
     const onTerminatedRef = useRef(onTerminated);
     onTerminatedRef.current = onTerminated;
+    const onConnectionStateChangeRef = useRef(onConnectionStateChange);
+    onConnectionStateChangeRef.current = onConnectionStateChange;
+    const connectionStateRef = useRef<RemoteControlConnectionState | null>(null);
+    // Reports each transition once; callers get status text without tracking
+    // the retry machinery below.
+    const reportConnectionState = (next: RemoteControlConnectionState) => {
+      if (connectionStateRef.current === next) return;
+      connectionStateRef.current = next;
+      safeInvoke('onConnectionStateChange', onConnectionStateChangeRef.current, next);
+    };
 
     const inspectActive = inspectMode === true || inspectMode === 'hover-only';
     const inspectModeResolved: InspectMode = inspectMode === 'hover-only' ? 'hover-only' : 'select';
@@ -1809,6 +1819,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       firstFrameShownRef.current = true;
       stopRequestFrameLoop();
       setVideoLoaded(true);
+      reportConnectionState('connected');
     };
 
     // Stop every track on a MediaStream and release the device handle.
@@ -2454,6 +2465,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       clearIceDisconnectedGrace();
       teardownConnection();
       updateStatus('Instance terminated');
+      reportConnectionState('terminated');
       safeInvoke('onTerminated', onTerminatedRef.current);
     };
 
@@ -2489,6 +2501,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         if (!autoReconnectRef.current) {
           updateStatus(`Connection failed after it was established: ${reason}`);
           setRetryExhausted(true);
+          reportConnectionState('failed');
           teardownConnection();
           return;
         }
@@ -2504,11 +2517,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (nextAttempt >= MAX_CONNECTION_ATTEMPTS) {
         updateStatus(`Connection failed after ${MAX_CONNECTION_ATTEMPTS} attempts: ${reason}`);
         setRetryExhausted(true);
+        reportConnectionState('failed');
         teardownConnection();
         return;
       }
 
       updateStatus(`Retrying connection (${nextAttempt + 1}/${MAX_CONNECTION_ATTEMPTS})`);
+      reportConnectionState('reconnecting');
       teardownConnection();
       retryTimeoutRef.current = window.setTimeout(() => {
         retryTimeoutRef.current = undefined;
@@ -2528,6 +2543,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       connectionAttemptRef.current = attemptNumber;
       controlChannelOpenedRef.current = false;
       setRetryExhausted(false);
+      // A drop after an established session restarts the attempt budget at 0
+      // while staying 'reconnecting'; only a fresh start reports 'connecting'.
+      if (attemptNumber === 0 && connectionStateRef.current !== 'reconnecting') reportConnectionState('connecting');
       clearScheduledRetry();
       clearConnectionSuccessTimeout();
       stopRequestFrameLoop();
@@ -3644,12 +3662,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     // Show indicators when Alt is held and we have a valid hover point (null when outside)
     const showAltIndicators = isAltHeld && hoverPoint !== null;
+    const platformAssets = assets?.[platform];
     const frameImageSrc =
       platform === 'android' && useAndroidTabletFrame ?
-        isLandscape ? pixelTabletFrameImageLandscape
-        : pixelTabletFrameImage
-      : isLandscape ? config.frame.imageLandscape
-      : config.frame.image;
+        isLandscape ? platformAssets?.tabletFrameLandscape
+        : platformAssets?.tabletFrame
+      : isLandscape ? platformAssets?.frameLandscape
+      : platformAssets?.frame;
+    const loadingLogo = platformAssets?.loadingLogo;
 
     return (
       <div
@@ -3685,7 +3705,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             />
           </>
         )}
-        {showFrame && (
+        {showFrame && frameImageSrc && (
           <img
             ref={frameRef}
             src={frameImageSrc}
@@ -3699,9 +3719,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           className={clsx('rc-video', !showFrame && 'rc-video-frameless', !videoLoaded && 'rc-video-loading')}
           style={{
             ...videoStyle,
-            ...(config.loadingLogo ?
+            ...(loadingLogo ?
               {
-                backgroundImage: `url("${config.loadingLogo}")`,
+                backgroundImage: `url("${loadingLogo}")`,
                 backgroundRepeat: 'no-repeat',
                 backgroundPosition: 'center',
                 backgroundSize: config.loadingLogoSize,

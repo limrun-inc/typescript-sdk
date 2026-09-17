@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { RemoteControl, RemoteControlHandle } from './components/remote-control';
+import { RemoteControl } from './components/remote-control-framed';
+import type { RemoteControlHandle } from './components/remote-control';
 import { AxSnapshot } from './core/ax-tree';
 
 type InspectChoice = 'off' | 'hover-only' | 'select';
