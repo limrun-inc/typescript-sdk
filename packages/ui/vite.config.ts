@@ -22,7 +22,8 @@ export default defineConfig({
       output: {
         // Both entries share one stylesheet; keep its historical name so
         // consumers that reference dist/index.css directly keep working.
-        assetFileNames: (info) => (info.names?.some((n) => n.endsWith('.css')) ? 'index.css' : '[name][extname]'),
+        assetFileNames: (info) =>
+          info.names?.some((n) => n.endsWith('.css')) ? 'index.css' : '[name][extname]',
         globals: {
           react: 'React',
           'react-dom': 'ReactDOM',
