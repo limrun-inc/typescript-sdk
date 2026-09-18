@@ -6,12 +6,17 @@
 import { useRef, useState } from 'react';
 import {
   ANDROID_SIGNING_KEY_SECRET_TYPE,
+  ANDROID_PUBLISHER_SCOPE,
+  createPlayConsoleApp,
+  enrollPlayAppSigning,
+  PlayConsoleError,
+  type PlayConsoleApp,
   generateAndroidUploadKeystore,
   loadGoogleIdentityServices,
   requestGoogleAccessToken,
   type SigningSecretStore,
 } from '@limrun/play-auth';
-import { GOOGLE_OAUTH_CLIENT_ID } from '../config';
+import { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_PLAY_CONSOLE_SCOPE } from '../config';
 import {
   detectAndroidPackage,
   errorMessage,
@@ -56,6 +61,11 @@ export function usePlay({
   const accessTokenRef = useRef<string | undefined>(undefined);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
+  const creationBusyRef = useRef(false);
+  const [creation, setCreation] = useState<'idle' | 'running' | 'unknown' | 'ready'>('idle');
+  const [createdApp, setCreatedApp] = useState<PlayConsoleApp>();
+  const creationLocked =
+    creation === 'running' || creation === 'unknown' || (!!createdApp && creation !== 'ready');
 
   const [projectPath, setProjectPathState] = useState(() => localStorage.getItem(PROJECT_STORAGE_KEY) ?? '');
   const [packageName, setPackageNameState] = useState(() => localStorage.getItem(PACKAGE_STORAGE_KEY) ?? '');
@@ -88,7 +98,10 @@ export function usePlay({
     onError(undefined);
     setSigningIn(true);
     try {
-      const token = await requestGoogleAccessToken({ clientId: GOOGLE_OAUTH_CLIENT_ID });
+      const token = await requestGoogleAccessToken({
+        clientId: GOOGLE_OAUTH_CLIENT_ID,
+        scope: [ANDROID_PUBLISHER_SCOPE, GOOGLE_PLAY_CONSOLE_SCOPE].filter(Boolean).join(' '),
+      });
       accessTokenRef.current = token;
       setIsSignedIn(true);
       return token;
@@ -110,6 +123,9 @@ export function usePlay({
   // --- Project & package detection -----------------------------------------
 
   function setPackageName(value: string) {
+    if (creationLocked) return;
+    setCreatedApp(undefined);
+    setCreation('idle');
     probeSeq.current++;
     setPackageNameState(value);
     setPackageState({ status: 'unchecked' });
@@ -117,6 +133,9 @@ export function usePlay({
   }
 
   function setProjectPath(value: string) {
+    if (creationLocked) return;
+    setCreatedApp(undefined);
+    setCreation('idle');
     probeSeq.current++;
     setProjectPathState(value);
     setDetectionMiss(false);
@@ -125,13 +144,7 @@ export function usePlay({
     setPackageState({ status: 'unchecked' });
   }
 
-  /**
-   * Probes Play Console for the package, and — while the app listing does
-   * not exist yet (creating it is the one step Google reserves for humans)
-   * — keeps re-probing so the wizard moves on by itself the moment the
-   * user creates it. Verification also triggers the upload keystore check,
-   * the other half of the Connect gate.
-   */
+  /** Waits for release access, then checks the upload keystore. */
   async function verifyPackage(explicitName?: string) {
     const token = accessTokenRef.current;
     const name = (explicitName ?? packageName).trim();
@@ -166,6 +179,7 @@ export function usePlay({
    * backend fills expo.android.package into app.json at publish time.
    */
   async function detectApp() {
+    if (creationLocked) return;
     const trimmedPath = projectPath.trim();
     if (!trimmedPath) return;
     probeSeq.current++;
@@ -187,6 +201,55 @@ export function usePlay({
       onError(errorMessage(error, 'Could not inspect the project'));
     } finally {
       setDetecting(false);
+    }
+  }
+
+  // Preserve a successful creation so enrollment can be retried independently.
+  async function createApp(input?: {
+    developerId: string;
+    title: string;
+    defaultLanguage: string;
+    appMeetsGuidelines: boolean;
+    usExportCompliant: boolean;
+  }) {
+    if (
+      creationBusyRef.current ||
+      creation === 'unknown' ||
+      creation === 'ready' ||
+      (detecting && packageState.status !== 'waiting')
+    )
+      return;
+    const token = accessTokenRef.current;
+    if (!token || !GOOGLE_PLAY_CONSOLE_SCOPE) {
+      onError('App creation requires sign-in with a Google-approved Play Console scope.');
+      return;
+    }
+    creationBusyRef.current = true;
+    setCreation('running');
+    probeSeq.current++;
+    onError(undefined);
+    let app = createdApp;
+    try {
+      if (!app) {
+        if (!input) throw new Error('App details and declarations are required.');
+        app = await createPlayConsoleApp({
+          ...input,
+          accessToken: token,
+          packageName: packageName.trim(),
+          appType: 'app',
+          paid: false,
+        });
+        setCreatedApp(app);
+      }
+      await enrollPlayAppSigning({ ...app, accessToken: token });
+      setCreation('ready');
+      void verifyPackage();
+    } catch (error) {
+      setCreation(!app && error instanceof PlayConsoleError && error.outcomeUnknown ? 'unknown' : 'idle');
+      if (error instanceof PlayConsoleError && error.status === 401) signOut();
+      onError(errorMessage(error, 'Play Console app setup failed'));
+    } finally {
+      creationBusyRef.current = false;
     }
   }
 
@@ -323,6 +386,11 @@ export function usePlay({
     setPackageName,
     packageState,
     verifyPackage,
+    // Experimental app creation
+    createApp,
+    creation,
+    creationLocked,
+    createdApp,
     // Keystore
     keystoreState,
     keystoreBusy,

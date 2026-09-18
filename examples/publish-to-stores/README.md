@@ -81,9 +81,9 @@ sign-in.
 
 ## Google Play flow
 
-Google does not allow API clients to create the Play Console app listing, so
-create it once with the exact package name and grant the signed-in Google
-account release access. The wizard then:
+The normal `androidpublisher` scope requires an existing Play Console app.
+Create it once with the exact package name and grant the signed-in Google account
+release access, or use the experimental creation form described below. The wizard:
 
 1. Detects the package name from Expo `app.json` or Gradle build files.
 2. Signs into Google with the `androidpublisher` scope and verifies the app.
@@ -93,12 +93,27 @@ account release access. The wizard then:
 4. Resolves the next free `versionCode`, builds a signed AAB, uploads it as a
    Limrun asset, and publishes it to the internal track.
 
-The Google access token rides only the publish request and is never stored.
+The Google access token stays in memory. App setup sends it directly to Google;
+publishing sends it to the example backend. It is never persisted.
 The backend passes it to the CLI through `LIM_PLAYSTORE_ACCESS_TOKEN`, keeping
 it out of command arguments and shell history. Both build types request a fresh
 instance with a 3-second inactivity timeout; active builds count as activity.
 Replace `GOOGLE_OAUTH_CLIENT_ID` in `frontend/src/config.ts` when serving from
 an origin other than `http://localhost:5173`.
+
+### Experimental Create app button
+
+Set `GOOGLE_OAUTH_CLIENT_ID` to a client Google has approved for
+`https://www.googleapis.com/auth/play_console` or
+`https://www.googleapis.com/auth/playdeveloperapp`, and set
+`GOOGLE_PLAY_CONSOLE_SCOPE` in `frontend/src/config.ts` to that scope. Leave it
+empty for ordinary publishing. Unapproved scope requests fail with `invalid_scope`.
+
+The form collects app details and policy declarations, creates a free Android
+app, and enrolls Play App Signing. Enrollment retries retain the created app ID;
+unknown creation outcomes require checking Play Console before trying again.
+The OAuth path still needs end-to-end validation with an approved client.
+See [play-auth](../../packages/play-auth#experimental-app-creation) for the API.
 
 ## Requirements
 
