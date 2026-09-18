@@ -90,3 +90,40 @@ const { versionCode } = await publishToPlaystore({
   packageName: 'com.example.app',
 });
 ```
+
+## Experimental app creation
+
+Google must approve your OAuth client for `PLAY_CONSOLE_SCOPE`
+(`https://www.googleapis.com/auth/play_console`) or `PLAY_DEVELOPER_APP_SCOPE`
+(`https://www.googleapis.com/auth/playdeveloperapp`). Request only the scope Google
+approves, alongside `ANDROID_PUBLISHER_SCOPE` for publishing. Ordinary clients get
+`invalid_scope`; `androidpublisher` alone cannot authorize creation.
+
+This uses an undocumented API. **The OAuth flow is not yet verified end to end
+with an approved client.** Both functions use `fetch` directly against Google and
+can run in a browser or server environment.
+
+```ts
+import { createPlayConsoleApp, enrollPlayAppSigning } from '@limrun/play-auth';
+
+const app = await createPlayConsoleApp({
+  accessToken, // Obtained with a Google-approved Console scope.
+  developerId, // Numeric developer account ID, as a string.
+  packageName: 'com.example.app',
+  title: 'Example',
+  defaultLanguage: 'en-US',
+  appType: 'app',
+  paid: false,
+  appMeetsGuidelines: form.appMeetsGuidelines,
+  usExportCompliant: form.usExportCompliant,
+});
+// Retain this app reference if enrollment fails; retry enrollment only.
+await enrollPlayAppSigning({ accessToken, ...app });
+```
+
+Collect both declarations from the user. Creation registers a draft and package;
+enrollment asks Google to manage its distribution signing key. Neither publishes
+a release. Tokens are not persisted, and requests are never retried automatically.
+`PlayConsoleError` exposes `status` and `outcomeUnknown`. Check the developer account
+before retrying creation with an unknown outcome. An optional `signal` cancels the
+request but cannot undo a mutation.
