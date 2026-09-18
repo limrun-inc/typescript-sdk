@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.51.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.51.0...v0.51.1) (2026-09-18)
+
+
+### Bug Fixes
+
+* **deps:** fetch tsc-multi from the limrun-inc mirror ([a6e9da7](https://github.com/limrun-inc/typescript-sdk/commit/a6e9da7ae76d7d7edc85e6a9e710a0eb62acb66c))
+
+
+### Chores
+
+* drop dead Stainless codegen plumbing ([a4570f5](https://github.com/limrun-inc/typescript-sdk/commit/a4570f552d97b349342b443055d334bac1148fb3))
+
 ## 0.51.0 (2026-09-15)
 
 Full Changelog: [v0.50.1...v0.51.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.50.1...v0.51.0)
