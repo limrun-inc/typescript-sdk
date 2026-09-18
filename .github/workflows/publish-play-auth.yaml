@@ -14,7 +14,9 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-      - name: Install dependencies
+      - name: Install root lint dependencies
+        run: yarn install --frozen-lockfile --ignore-scripts
+      - name: Install package dependencies
         working-directory: packages/play-auth
         run: yarn install --frozen-lockfile
       - name: Verify package
