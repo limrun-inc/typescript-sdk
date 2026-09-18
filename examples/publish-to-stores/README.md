@@ -150,8 +150,6 @@ appended:
 ```bash
 export LIM_API_KEY="your api key"
 yarn --cwd examples/publish-to-stores/backend install
-yarn --cwd packages/play-auth install
-yarn --cwd packages/play-auth build
 yarn --cwd examples/publish-to-stores/frontend install
 yarn --cwd examples/publish-to-stores/backend dev
 ```
