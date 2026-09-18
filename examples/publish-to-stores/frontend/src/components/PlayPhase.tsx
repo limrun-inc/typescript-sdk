@@ -1,11 +1,6 @@
-// The Android wizard: sign into Google, point at the project,
-// and the wizard detects the application ID, verifies it on Play Console
-// (creating the listing there is the one step Google reserves for humans,
-// so the wizard waits and detects), and collects the upload keystore only
-// when one is not already stored. Publish is then a single click. All
-// behaviour lives in usePlay; this component renders its state and owns
-// only its own form fields.
+// The Android wizard prepares Play access and an upload key before publishing.
 import { useState } from 'react';
+import { CreatePlayApp } from './CreatePlayApp';
 import type { PlayController } from '../hooks/usePlay';
 import {
   errorBox,
@@ -21,9 +16,7 @@ import { Section } from './Section';
 
 const playConsoleUrl = 'https://play.google.com/console';
 
-// ID-less deep path: Play Console resolves the signed-in user's developer
-// account itself (no API exposes the numeric developer ID to OAuth clients),
-// landing single-account users straight on the create-app form.
+// Play Console resolves the signed-in user's developer account for this link.
 const createAppUrl = `${playConsoleUrl}/developers/create-new-app`;
 
 async function fileToBase64(file: File): Promise<string> {
@@ -64,7 +57,7 @@ export function PlayPhase({
   const running = play.state === 'running';
   const verified = play.packageState.status === 'verified';
   const showPackageField = play.packageName !== '' || play.detectionMiss;
-  const canDetect = !play.detecting && play.projectPath.trim() !== '';
+  const canDetect = !play.creationLocked && !play.detecting && play.projectPath.trim() !== '';
   const canSave = !play.keystoreBusy && keystoreFile && keystorePassword && keyAlias;
   const webhookUrlSet = webhookUrl.trim() !== '';
   const canPublish = play.connected && !running && webhookUrlSet;
@@ -95,6 +88,7 @@ export function PlayPhase({
             <input
               style={inputStyle}
               value={play.projectPath}
+              disabled={play.creationLocked}
               onChange={(event) => play.setProjectPath(event.target.value)}
               onBlur={() => canDetect && void play.detectApp()}
               placeholder="/path/to/MyAndroidApp"
@@ -115,8 +109,9 @@ export function PlayPhase({
                 <input
                   style={inputStyle}
                   value={play.packageName}
+                  disabled={play.creationLocked}
                   onChange={(event) => play.setPackageName(event.target.value)}
-                  onBlur={() => void play.verifyPackage()}
+                  onBlur={() => !play.creationLocked && void play.verifyPackage()}
                   placeholder="com.example.app"
                 />
               </>
@@ -129,10 +124,13 @@ export function PlayPhase({
                 <a href={createAppUrl} target="_blank" rel="noreferrer">
                   create the app in Play Console
                 </a>{' '}
-                with exactly this package name (Google does not allow creating it via API). Checking again
-                every few seconds… <br />
+                with exactly this package name, or use the experimental Create app form below if Google has
+                approved your OAuth client. <br />
                 <span style={hintText}>Google said: {play.packageState.message}</span>
               </div>
+            )}
+            {showPackageField && (!verified || play.createdApp || play.creation === 'unknown') && (
+              <CreatePlayApp play={play} />
             )}
             {verified && (
               <>

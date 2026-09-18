@@ -32,3 +32,10 @@ export const BACKEND_URL = 'http://localhost:3000';
  */
 export const GOOGLE_OAUTH_CLIENT_ID =
   '55460095094-d6q9j3op8dsqmahet2d1sil6cudmpfqn.apps.googleusercontent.com';
+
+/**
+ * Leave empty for ordinary publishing. Set to PLAY_CONSOLE_SCOPE or
+ * PLAY_DEVELOPER_APP_SCOPE from @limrun/play-auth only after Google approves
+ * that scope for your OAuth client. Unapproved clients receive invalid_scope.
+ */
+export const GOOGLE_PLAY_CONSOLE_SCOPE: string = '';

@@ -436,10 +436,8 @@
     "@foxt/js-srp" "^0.0.3-patch2"
     node-forge "^1.4.0"
 
-"@limrun/play-auth@^0.3.0":
-  version "0.3.0"
-  resolved "https://registry.yarnpkg.com/@limrun/play-auth/-/play-auth-0.3.0.tgz#5904a88ce6d41608a6fc16f81fd0d5e3bd4857d2"
-  integrity sha512-pdOfke7m8kQyptpELMXesNZWTSG45zNpGgYUEC2mD/RDyWabVZp7Hlh7g8+MCQL1HWXG5HXv5Nso0FXpp0Y1/g==
+"@limrun/play-auth@file:../../../packages/play-auth":
+  version "0.3.1"
   dependencies:
     node-forge "^1.4.0"
 
