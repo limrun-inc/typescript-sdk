@@ -133,6 +133,10 @@ export namespace XcodeInstanceCreateParams {
   }
 
   export interface Spec {
+    /**
+     * ClientLocation takes precedence over ClientIP regardless of clue order. Without
+     * either clue, routing uses Cloudflare visitor coordinates, then its client IP.
+     */
     clues?: Array<Spec.Clue>;
 
     /**
@@ -160,7 +164,7 @@ export namespace XcodeInstanceCreateParams {
 
     /**
      * Where the instance will be created. If not given, the region is decided based on
-     * scheduling clues (client IP) and availability.
+     * scheduling clues (client location or IP) and availability.
      *
      * A region is a preference, not a hard pin: the request always overflows to every
      * other available region, ordered by proximity, when the preferred ones are full.
@@ -168,8 +172,8 @@ export namespace XcodeInstanceCreateParams {
      * Accepted values:
      *
      * - A specific region name (e.g. "us-west1"). It is tried first, then the
-     *   remaining regions in order of proximity to it. Scheduling clues (client IP)
-     *   are ignored when a region is given.
+     *   remaining regions in order of proximity to it. Location clues are ignored
+     *   when a specific region is given.
      * - A region group name (e.g. "us", "eu"). Its member regions are tried first in
      *   their listed order, then the remaining regions by proximity to the first
      *   member.
@@ -182,9 +186,29 @@ export namespace XcodeInstanceCreateParams {
 
   export namespace Spec {
     export interface Clue {
-      kind: 'ClientIP';
+      kind: 'ClientIP' | 'ClientLocation';
 
       clientIp?: string;
+
+      /**
+       * Required for ClientLocation. Both coordinates must be finite and within their
+       * ranges. This location takes precedence over ClientIP.
+       */
+      clientLocation?: Clue.ClientLocation;
+    }
+
+    export namespace Clue {
+      export interface ClientLocation {
+        /**
+         * Latitude in decimal degrees, from -90 to 90 inclusive. Zero is valid.
+         */
+        latitude: number;
+
+        /**
+         * Longitude in decimal degrees, from -180 to 180 inclusive. Zero is valid.
+         */
+        longitude: number;
+      }
     }
   }
 }
