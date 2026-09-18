@@ -31,6 +31,28 @@ const androidInstance = await client.androidInstances.create();
 console.log(androidInstance.metadata);
 ```
 
+### Client location clues
+
+Pass coordinates to prefer regions near the client when creating Android, iOS, Xcode, or Gradle instances:
+
+```ts
+const instance = await client.iosInstances.create({
+  spec: {
+    clues: [
+      {
+        kind: 'ClientLocation',
+        clientLocation: { latitude: 37.7749, longitude: -122.4194 },
+      },
+    ],
+  },
+});
+```
+
+Both coordinates are required: latitude must be between -90 and 90, and longitude between -180 and 180.
+Zero is valid. `ClientLocation` takes precedence over `ClientIP` regardless of clue order.
+Without either clue, the API uses Cloudflare visitor coordinates when available, then Cloudflare's client IP.
+An explicit region preference takes precedence over location clues.
+
 ### Request & Response types
 
 This library includes TypeScript definitions for all request params and response fields. You may import and use them like so:
