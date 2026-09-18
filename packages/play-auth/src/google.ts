@@ -2,6 +2,10 @@ const GSI_SRC = 'https://accounts.google.com/gsi/client';
 
 export const ANDROID_PUBLISHER_SCOPE = 'https://www.googleapis.com/auth/androidpublisher';
 
+/** Experimental Console scopes. Google must approve the OAuth client before requesting either scope. */
+export const PLAY_CONSOLE_SCOPE = 'https://www.googleapis.com/auth/play_console';
+export const PLAY_DEVELOPER_APP_SCOPE = 'https://www.googleapis.com/auth/playdeveloperapp';
+
 type TokenResponse = { access_token?: string; error?: string; error_description?: string };
 type TokenClient = { requestAccessToken: () => void };
 type GoogleOAuth2 = {
