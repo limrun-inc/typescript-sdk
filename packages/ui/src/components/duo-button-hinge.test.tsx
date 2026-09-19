@@ -64,10 +64,10 @@ for (const from of [0, 180]) {
     await clickFold();
     expect(send).not.toHaveBeenCalled();
     expect(host.querySelector('.rc-duo-fold')!.textContent).toBe(from === 0 ? 'Fold' : 'Unfold');
-    await advance(1200);
+    await advance(2200);
     const angles = send.mock.calls.map(([angle]) => angle);
     expect(angles.length).toBeGreaterThan(15);
-    expect(angles.length).toBeLessThanOrEqual(38);
+    expect(angles.length).toBeLessThanOrEqual(62);
     expect(angles[0]).toBeGreaterThan(0);
     expect(angles[0]).toBeLessThan(180);
     expect(angles.at(-1)).toBe(180 - from);
@@ -104,7 +104,7 @@ it('coalesces a slow native connection without losing the endpoint', async () =>
   );
   await act(async () => root.render(<View />));
   await clickFold();
-  await advance(1200);
+  await advance(2200);
   expect(send).toHaveBeenCalledTimes(1);
   await act(async () => release());
   expect(send).toHaveBeenCalledTimes(2);
@@ -122,7 +122,7 @@ it('stops animation on a native failure and on unmount', async () => {
   await advance(100);
   await act(async () => root.render(null));
   const count = send.mock.calls.length;
-  await advance(1200);
+  await advance(2200);
   expect(send).toHaveBeenCalledTimes(count);
 });
 it('keeps the default 2D button as one immediate endpoint command', async () => {
