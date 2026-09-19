@@ -1,6 +1,18 @@
-import React, { useEffect, useRef, useMemo, useState, forwardRef, useImperativeHandle } from 'react';
+import React, {
+  useEffect,
+  useRef,
+  useMemo,
+  useState,
+  forwardRef,
+  useImperativeHandle,
+  lazy,
+  Suspense,
+} from 'react';
 import { clsx } from 'clsx';
 import './remote-control.css';
+
+import { createDisplayTouchMessage, type DuoState, type DuoOrientation } from '../core/duo';
+const DuoFrame = lazy(() => import('./duo-frame'));
 
 import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
 
@@ -57,6 +69,9 @@ export interface RemoteControlProps {
   // showFrame controls whether to display the device frame
   // around the video. Defaults to true.
   showFrame?: boolean;
+
+  /** Enables the official iPhone Duo's native displays and interactive folding frame. */
+  deviceModel?: 'iphone-duo';
 
   // When true, drops after a working session auto-reconnect instead of
   // surfacing the manual "Retry" button. Defaults to false.
@@ -306,7 +321,7 @@ export interface ImperativeKeyboardEvent {
 export interface RemoteControlHandle {
   openUrl: (url: string) => void;
   sendKeyEvent: (event: ImperativeKeyboardEvent) => void;
-  screenshot: () => Promise<ScreenshotData>;
+  screenshot: (display?: 'outer' | 'inner') => Promise<ScreenshotData>;
   terminateApp: (bundleId: string) => Promise<void>;
   reconnect: () => void;
 
@@ -491,6 +506,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       sessionId: propSessionId,
       openUrl,
       showFrame = true,
+      deviceModel,
       autoReconnect = false,
       onTerminated,
       assets,
@@ -512,6 +528,32 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const containerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
+    const [detectedDuo, setDetectedDuo] = useState(false);
+    const isDuo = deviceModel === 'iphone-duo' || detectedDuo;
+    const innerVideoRef = useRef<HTMLVideoElement>(null);
+    const [duoState, setDuoState] = useState<DuoState | null>(null);
+    const [duoError, setDuoError] = useState<string>();
+    const duoRequests = useRef(
+      new Map<
+        string,
+        { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+      >(),
+    );
+    const sendDuoControl = (type: string, parameters: object): Promise<void> =>
+      new Promise((resolve, reject) => {
+        const socket = wsRef.current;
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+          reject(new Error('Simulator disconnected'));
+          return;
+        }
+        const id = crypto.randomUUID();
+        const timer = setTimeout(() => {
+          duoRequests.current.delete(id);
+          reject(new Error('Hinge control timed out'));
+        }, 5000);
+        duoRequests.current.set(id, { resolve, reject, timer });
+        socket.send(JSON.stringify({ type, id, ...parameters }));
+      });
     const [videoLoaded, setVideoLoaded] = useState(false);
     const [retryExhausted, setRetryExhausted] = useState(false);
     // Set once we've concluded the instance is permanently gone (its
@@ -740,7 +782,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const loadingLogo = platformAssets?.loadingLogo;
     // Without a frame image (the lite entry) the video lays out frameless
     // whatever showFrame says.
-    const frameVisible = showFrame && !!frameImageSrc;
+    const frameVisible = !isDuo && showFrame && !!frameImageSrc;
 
     const updateStatus = (message: string) => {
       // Use the wrapper for conditional logging
@@ -1239,6 +1281,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     // Unified handler for both mouse and touch interactions
     const handleInteraction = (event: React.MouseEvent | React.TouchEvent) => {
+      if (isDuo) return;
       event.preventDefault();
       event.stopPropagation();
 
@@ -2354,6 +2397,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
 
     const teardownConnection = () => {
+      for (const request of duoRequests.current.values()) {
+        clearTimeout(request.timer);
+        request.reject(new Error('Simulator disconnected'));
+      }
+      duoRequests.current.clear();
+      setDuoState(null);
+      if (innerVideoRef.current) innerVideoRef.current.srcObject = null;
       clearConnectionSuccessTimeout();
       clearIceDisconnectedGrace();
       stopRequestFrameLoop();
@@ -2644,6 +2694,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         const rtcConfigPromise = new Promise<{
           rtcConfiguration: RTCConfiguration;
           cameraSupported: boolean;
+          foldSupported: boolean;
         }>((resolve, reject) => {
           const settle = (callback: () => void) => {
             window.clearTimeout(timeoutId);
@@ -2676,6 +2727,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                   resolve({
                     rtcConfiguration: message.rtcConfiguration,
                     cameraSupported: message.cameraSupported === true,
+                    foldSupported: message.foldSupported === true,
                   }),
                 );
               }
@@ -2694,16 +2746,23 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           );
         });
 
-        const { rtcConfiguration: rtcConfig, cameraSupported: serverCameraSupported } =
-          await rtcConfigPromise;
+        const {
+          rtcConfiguration: rtcConfig,
+          cameraSupported: serverCameraSupported,
+          foldSupported,
+        } = await rtcConfigPromise;
         if (!isCurrentAttempt() || wsRef.current !== ws) {
           return;
         }
 
+        const isDuo = deviceModel === 'iphone-duo' || foldSupported;
+        setDetectedDuo(isDuo);
         const peerConnection = new RTCPeerConnection(rtcConfig);
         peerConnectionRef.current = peerConnection;
         peerConnection.addTransceiver('audio', { direction: 'recvonly' });
         const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
+        const duoTransceiver =
+          isDuo ? peerConnection.addTransceiver('video', { direction: 'recvonly' }) : null;
 
         // iOS always supports camera/mic injection; Android servers
         // advertise it through `cameraSupported` (Android 15 and newer).
@@ -2757,6 +2816,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               return getCodecPriority(a) - getCodecPriority(b);
             });
             videoTransceiver.setCodecPreferences(sortedCodecs);
+            duoTransceiver?.setCodecPreferences(sortedCodecs);
             debugLog('Set codec preferences:', sortedCodecs.map((c) => c.mimeType).join(', '));
           }
         }
@@ -2828,6 +2888,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           controlChannelOpenedRef.current = true;
           clearConnectionSuccessTimeout();
           updateStatus('Control channel opened');
+          if (isDuo) ws.send(JSON.stringify({ type: 'getFoldState', id: 'duo-capabilities' }));
 
           // Spin up the AX fetcher now that we have a stable WS + control
           // channel. The fetcher's send function reuses this WS; it stops
@@ -2996,7 +3057,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           updateStatus('Received remote track: ' + event.track.kind);
           if (event.track.kind === 'video' && videoRef.current) {
             debugLog(`[${new Date().toISOString()}] Video track received:`, event.track);
-            videoRef.current.srcObject = event.streams[0];
+            const inner =
+              event.track.id === 'duo-inner' || event.streams.some((stream) => stream.id === 'duo-inner');
+            const target = inner ? innerVideoRef.current : videoRef.current;
+            if (target) {
+              target.srcObject =
+                isDuo ? new MediaStream([event.track]) : event.streams[0] ?? new MediaStream([event.track]);
+              void target.play().catch(() => undefined);
+            }
           }
         };
 
@@ -3040,6 +3108,23 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }
           updateStatus('Received: ' + message.type);
           switch (message.type) {
+            case 'foldStateResult':
+            case 'foldStateChanged': {
+              if (!isDuo) break;
+              if (message.state) {
+                setDuoState(message.state);
+                setDuoError(undefined);
+              } else if (message.id === 'duo-capabilities')
+                setDuoError(message.error || 'This instance does not support native iPhone Duo displays.');
+              const request = duoRequests.current.get(message.id);
+              if (request) {
+                clearTimeout(request.timer);
+                duoRequests.current.delete(message.id);
+                if (message.error) request.reject(new Error(message.error));
+                else request.resolve();
+              }
+              break;
+            }
             case 'signalingError': {
               if (message.requestType !== 'offer' || message.sessionId !== sessionId) {
                 break;
@@ -3244,6 +3329,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             ws.send(
               JSON.stringify({
                 type: 'offer',
+                ...(isDuo ? { displayStreams: true } : {}),
                 sdp: offer.sdp,
                 sessionId: sessionId,
               }),
@@ -3320,7 +3406,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // connection effect doesn't need to bounce when the camera
       // turns on/off — no SDP-affecting change.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [url, token, propSessionId]);
+    }, [url, token, propSessionId, deviceModel]);
 
     // Recompute the inspect-overlay geometry (container-local pixel rect of
     // the actually-rendered video content) from the current mapping context.
@@ -3556,7 +3642,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           sendBinaryControlMessage(message);
         }
       },
-      screenshot: (): Promise<ScreenshotData> => {
+      screenshot: (display?: 'outer' | 'inner'): Promise<ScreenshotData> => {
         return new Promise<ScreenshotData>((resolve, reject) => {
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
             debugWarn('WebSocket not open, cannot send screenshot command.');
@@ -3565,7 +3651,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
           const id = `ui-ss-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
           const request = {
-            type: 'screenshot', // Matches the type expected by instance API
+            type: display ? 'screenshotDisplay' : 'screenshot',
+            ...(display ? { display } : {}),
             id: id,
           };
 
@@ -3732,6 +3819,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           )}
           style={{
             ...videoStyle,
+            ...(isDuo ? { opacity: 0, width: 1, height: 1, pointerEvents: 'none' as const } : {}),
             ...(loadingLogo ?
               {
                 backgroundImage: `url("${loadingLogo}")`,
@@ -3760,7 +3848,41 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             }
           }}
         />
-        {inspectActive && (
+        {isDuo && (
+          <video
+            ref={innerVideoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+          />
+        )}
+        {isDuo && duoState && (
+          <Suspense fallback={<div>Loading iPhone Duo…</div>}>
+            <DuoFrame
+              outer={videoRef.current}
+              inner={innerVideoRef.current}
+              state={duoState}
+              setAngle={(angleDegrees) => sendDuoControl('setHingeAngle', { angleDegrees })}
+              setOrientation={(orientation: DuoOrientation) =>
+                sendDuoControl('setDuoOrientation', { orientation })
+              }
+              touch={(action, screenId, x, y) => {
+                const channel = dataChannelRef.current;
+                if (channel?.readyState === 'open')
+                  channel.send(createDisplayTouchMessage(action, screenId, x, y));
+              }}
+              onKeyDown={handleKeyboard}
+              onKeyUp={handleKeyboard}
+            />
+          </Suspense>
+        )}
+        {isDuo && duoError && (
+          <div role="alert" className="rc-duo-error">
+            {duoError}
+          </div>
+        )}
+        {!isDuo && inspectActive && (
           <InspectOverlay
             snapshot={axSnapshot}
             geometry={overlayGeometry}

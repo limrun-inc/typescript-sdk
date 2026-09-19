@@ -28,6 +28,10 @@ export default class IosTap extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    display: Flags.string({
+      options: ['outer', 'inner'],
+      description: 'Target a specific iPhone Duo display.',
+    }),
     id: Flags.string({
       description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
     }),
@@ -44,12 +48,13 @@ export default class IosTap extends BaseCommand {
         this.error('ios tap only supports iOS instances');
       }
 
-      if (await ensureDaemonSession(resolvedInstance)) {
+      if (!flags.display && (await ensureDaemonSession(resolvedInstance))) {
         await sendSessionCommand(id, 'tap', [args.x, args.y]);
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          await client.tap(args.x, args.y);
+          if (flags.display) await client.tapDisplay(flags.display as 'outer' | 'inner', args.x, args.y);
+          else await client.tap(args.x, args.y);
         } finally {
           disconnect();
         }

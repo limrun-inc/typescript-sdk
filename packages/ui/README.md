@@ -43,3 +43,17 @@ Related browser workflow packages are published separately:
 ## Releasing
 
 This package is not part of generated SDK, hence you need to publish it manually in GitHub Actions.
+
+## iPhone Duo
+
+`RemoteControl` discovers native Duo support during connection and loads a 3D
+frame with separate cover and inner display streams. No model prop is required.
+Use the hinge slider for any angle from 0° closed to 180° flat. Touch and drag
+on the visible display interact with iOS; Rotate view (or Alt-drag) moves the
+camera. Rotate device changes the native orientation. Laptop view sets the
+hinge and orientation; it does not enable Apple's separate Table Mode.
+
+The renderer requires WebGL. Duo currently supports single-finger gestures;
+accessibility inspection and the existing recording API do not follow the
+inner display. Use `screenshotDisplay` and `tapDisplay` from the TypeScript
+iOS client for explicit display automation.

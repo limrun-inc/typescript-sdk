@@ -207,9 +207,9 @@ export namespace IosInstanceCreateParams {
     jurisdiction?: 'us' | 'eu' | 'as';
 
     /**
-     * The model for the Apple Simulator. Default is iphone.
+     * The Apple Simulator model. iPhone Duo requires Xcode 27.1 and iOS 27.1 or newer. Default is iphone.
      */
-    model?: 'iphone' | 'ipad' | 'watch';
+    model?: 'iphone' | 'iphone-duo' | 'ipad' | 'watch';
 
     /**
      * Where the instance will be created. If not given, the region is decided based on

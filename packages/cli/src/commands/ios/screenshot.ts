@@ -26,6 +26,10 @@ export default class IosScreenshot extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    display: Flags.string({
+      options: ['outer', 'inner'],
+      description: 'Capture a specific iPhone Duo display.',
+    }),
     id: Flags.string({
       description: 'iOS instance ID to capture. Defaults to the last created iOS instance.',
     }),
@@ -43,12 +47,15 @@ export default class IosScreenshot extends BaseCommand {
       }
 
       let screenshot: any;
-      if (await ensureDaemonSession(resolvedInstance)) {
+      if (!flags.display && (await ensureDaemonSession(resolvedInstance))) {
         screenshot = await sendSessionCommand(id, 'screenshot');
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          screenshot = await client.screenshot();
+          screenshot =
+            flags.display ?
+              await client.screenshotDisplay(flags.display as 'outer' | 'inner')
+            : await client.screenshot();
         } finally {
           disconnect();
         }
