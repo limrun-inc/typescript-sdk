@@ -27,7 +27,9 @@ jobs:
         run: |
           npm run build
           version="$(node -p "require('./package.json').version")"
-          if [[ "$version" == *-* ]]; then
+          if [[ "$version" =~ -rc([.-]|$) ]]; then
+            tag="rc"
+          elif [[ "$version" == *-* ]]; then
             tag="next"
           else
             tag="latest"

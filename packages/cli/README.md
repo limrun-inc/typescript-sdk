@@ -1172,6 +1172,8 @@ store; another pnpm major may need an initial registry download.
 
 ```bash
 lim ios create --model iphone-duo
+lim ios fold --json --id <instance-ID>
+lim ios fold 90 --orientation landscape-left --id <instance-ID>
 lim ios fold 90 --id <instance-ID>
 lim ios fold 180 --id <instance-ID>
 lim ios screenshot ./inner.png --display inner --id <instance-ID>
@@ -1179,6 +1181,10 @@ lim ios tap 300 200 --display inner --id <instance-ID>
 ```
 
 Angles range from 0 (closed) to 180 (flat), including fractional degrees.
+Omit the angle to read fold state. `--orientation` accepts `portrait`, `pud`
+(portrait upside down), `landscape-left`, or `landscape-right`, independently of
+the hinge angle. Hardware buttons remain available through `ios perform` with
+`buttonDown`/`buttonUp` and `side`, `volumeUp`, or `volumeDown`.
 `--display outer` captures the cover; `--display inner` captures the unfolding
 display. Screenshots report upright point dimensions. Ordinary screenshot and
 recording commands do not automatically follow the Duo inner display.
