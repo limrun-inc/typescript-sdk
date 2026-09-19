@@ -12,6 +12,34 @@ const innerHeight = 110.8;
 const bendWidth = 1.1;
 const glassZ = 0.14;
 
+// Nearby studio lights vary across a rail even with the parallel camera used for simulator input.
+function polishSilver(material: THREE.MeshStandardMaterial, environment?: THREE.Texture) {
+  material.envMap = environment ?? null;
+  material.envMapIntensity = 1;
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = `varying vec3 vDuoStudioPosition;\n${shader.vertexShader}`.replace(
+      '#include <worldpos_vertex>',
+      '#include <worldpos_vertex>\nvDuoStudioPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+    );
+    shader.fragmentShader = `
+      varying vec3 vDuoStudioPosition;
+      vec3 duoStudioReflection(vec3 direction) {
+        float radius = 240.0;
+        float along = dot(vDuoStudioPosition, direction);
+        float distance = -along + sqrt(max(0.0, along * along + radius * radius - dot(vDuoStudioPosition, vDuoStudioPosition)));
+        return normalize(vDuoStudioPosition + direction * distance);
+      }
+    ${shader.fragmentShader}`.replace(
+      '#include <envmap_physical_pars_fragment>',
+      THREE.ShaderChunk.envmap_physical_pars_fragment.replace(
+        'envMapRotation * reflectVec',
+        'envMapRotation * duoStudioReflection(reflectVec)',
+      ),
+    );
+  };
+  material.customProgramCacheKey = () => 'duo-polished-silver-v1';
+}
+
 function outline(w: number, h: number, lr: number, rr: number) {
   const shape = new THREE.Shape();
   const x = -w / 2,
@@ -49,9 +77,9 @@ export function createDuoModel(
   const buttonTargets: THREE.Object3D[] = [];
   const resources: Array<{ dispose(): void }> = [];
   const metal = new THREE.MeshPhysicalMaterial({
-    color: 0xd5d3cf,
+    color: 0xe8ebee,
     metalness: 1,
-    roughness: 0.075,
+    roughness: 0.055,
     clearcoat: 1,
     clearcoatRoughness: 0.055,
     envMapIntensity: 1.15,
@@ -64,7 +92,9 @@ export function createDuoModel(
     clearcoatRoughness: 0.08,
   });
   const hingeMetal = metal.clone();
-  hingeMetal.roughness = 0.25;
+  hingeMetal.roughness = 0.085;
+  polishSilver(metal, environment);
+  polishSilver(hingeMetal, environment);
   const gasket = new THREE.MeshBasicMaterial({ color: 0x080a0c });
   const antenna = new THREE.MeshStandardMaterial({ color: 0xa4a5a0, roughness: 0.55 });
   const glass = new THREE.MeshPhysicalMaterial({
@@ -438,8 +468,13 @@ export function createDuoModel(
         importedResources.add(object.geometry);
         for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
           importedResources.add(material);
+          if (
+            material instanceof THREE.MeshStandardMaterial &&
+            material.userData['finish'] === 'polished-silver'
+          )
+            polishSilver(material, environment);
           for (const value of Object.values(material))
-            if (value instanceof THREE.Texture) importedResources.add(value);
+            if (value instanceof THREE.Texture && value !== environment) importedResources.add(value);
         }
       });
       if (disposed) {
