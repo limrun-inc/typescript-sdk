@@ -188,12 +188,43 @@
   touch-action: none;
   outline: none;
 }
-.rc-duo-flat-screen video {
+.rc-duo-flat-screen video,
+.rc-duo-flat-screen canvas {
   position: absolute;
   left: 50%;
   top: 50%;
   max-width: none;
   pointer-events: none;
+}
+.rc-duo-flat-stage[data-folding='true'] > .rc-duo-flat-device,
+.rc-duo-flat-stage[data-folding='true'] > .rc-duo-hardware {
+  visibility: hidden;
+  pointer-events: none;
+}
+.rc-duo-fold-hold {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+}
+.rc-duo-fold-still {
+  position: relative;
+}
+.rc-duo-fold-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rc-duo-fold-canvas,
+  .rc-duo-fold-hold {
+    display: none;
+  }
+  .rc-duo-flat-stage[data-folding='true'] > .rc-duo-flat-device {
+    visibility: visible;
+  }
 }
 .rc-duo .rc-duo-physical {
   position: absolute;

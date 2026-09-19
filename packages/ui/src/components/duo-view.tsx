@@ -4,6 +4,7 @@ import type { DuoFrameProps } from './duo-frame';
 import { DuoControls, DuoHardwareIcon, useDuoHinge } from './duo-controls';
 import { DuoFlatFrame } from './duo-flat-frame';
 import { flatFrameGeometry, flatHoverEdge } from './duo-flat-geometry';
+import { DuoFoldMotion, useDuoFoldMotion } from './duo-fold-motion';
 
 const DuoFrame = lazy(() => import('./duo-frame'));
 
@@ -39,7 +40,6 @@ function DuoFlat(props: DuoFrameProps) {
   const [edge, setEdge] = useState<ReturnType<typeof flatHoverEdge>>();
   const [hovered, setHovered] = useState<DuoButton>();
   const [pressed, setPressed] = useState<DuoButton>();
-  const { angle, changeAngle, interacting } = useDuoHinge(props.state.angleDegrees, props.setAngle, setError);
   const held = useRef<{ pointer: number; screenId: number; x: number; y: number } | undefined>(undefined);
   const hardware = useRef<DuoButtonSender | null>(null);
   const display = props.state.displays.find(
@@ -84,6 +84,21 @@ function DuoFlat(props: DuoFrameProps) {
     };
   }, [source, props.outer, props.inner]);
 
+  const { motion, finish: finishMotion, prepare } = useDuoFoldMotion(video, inner, frame);
+  const { angle, changeAngle, interacting } = useDuoHinge(
+    props.state.angleDegrees,
+    async (value) => {
+      prepare(value >= 90);
+      try {
+        await props.setAngle(value);
+      } catch (reason) {
+        finishMotion();
+        throw reason;
+      }
+    },
+    setError,
+  );
+
   const releaseTouch = () => {
     if (!held.current) return;
     const { screenId, x, y } = held.current;
@@ -116,7 +131,7 @@ function DuoFlat(props: DuoFrameProps) {
   };
   const buttonEvents = (button: DuoButton): React.ButtonHTMLAttributes<HTMLButtonElement> => ({
     onPointerDown: (event) => {
-      if (event.button !== 0) return;
+      if (motion || event.button !== 0) return;
       event.currentTarget.setPointerCapture(event.pointerId);
       hardware.current?.press(button);
       setPressed(button);
@@ -129,6 +144,7 @@ function DuoFlat(props: DuoFrameProps) {
     onPointerLeave: () => setHovered(undefined),
     onFocus: () => setEdge(frame.guides.find((g) => g.button === button)?.edge),
     onKeyDown: (event) => {
+      if (motion) return;
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         if (!event.repeat) {
@@ -157,6 +173,8 @@ function DuoFlat(props: DuoFrameProps) {
       <div
         ref={stage}
         className="rc-duo-flat-stage"
+        data-folding={!!motion}
+        aria-busy={!!motion}
         onPointerMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           setEdge(flatHoverEdge(event.clientX - rect.left, event.clientY - rect.top, frame.rect));
@@ -188,10 +206,10 @@ function DuoFlat(props: DuoFrameProps) {
               top: ((bodyHeight - screenHeight) / 2) * scale,
               borderRadius: inner ? 5.3 * scale : [0.8, 6.6, 6.6, 0.8].map((r) => r * scale + 'px').join(' '),
             }}
-            onKeyDown={props.onKeyDown}
+            onKeyDown={motion ? undefined : props.onKeyDown}
             onKeyUp={props.onKeyUp}
             onPointerDown={(event) => {
-              if (held.current || event.button !== 0 || !display) return;
+              if (motion || held.current || event.button !== 0 || !display) return;
               event.currentTarget.focus({ preventScroll: true });
               event.currentTarget.setPointerCapture(event.pointerId);
               const p = point(event);
@@ -269,6 +287,7 @@ function DuoFlat(props: DuoFrameProps) {
             <DuoHardwareIcon button={g.button} />
           </button>
         ))}
+        {motion && <DuoFoldMotion motion={motion} onFinish={finishMotion} />}
       </div>
       <DuoControls
         angle={angle}

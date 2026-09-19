@@ -53,7 +53,8 @@ to load the interactive frame and its model on demand. Returning to **2D** relea
 the renderer and its graphics resources without reconnecting the simulator.
 
 Use the hinge slider for any angle from 0° closed to 180° flat. In 2D, the active
-display stays flat; 3D shows the physical hinge pose. Touch and drag
+display stays flat between folds. A brief folding animation shows the silver frame, hinge and buttons
+when switching displays; 3D shows the physical hinge pose continuously. Touch and drag
 on the visible display interact with iOS. In 3D, position starts locked to prevent accidental
 rotation. Unlock it to drag the frame or background (or Alt-drag the screen) to move the
 camera. Rotate device changes the native orientation. Laptop view sets the
@@ -67,7 +68,8 @@ edge; Sleep/Wake appears beside its edge. Icons follow native rotation and foldi
 Hover raises the physical button slightly without changing the camera framing.
 Tab, Space and Enter also operate the icons. Camera Control is not yet supported.
 
-Only 3D requires WebGL. It renders when video frames arrive or the view changes,
+The optional 2D fold animation loads a small WebGL renderer on demand and releases it after each fold.
+Reduced motion or unavailable WebGL keeps the flat display. The full 3D view requires WebGL and renders when video frames arrive or the view changes,
 and pauses while hidden. Duo currently supports single-finger gestures;
 accessibility inspection and the existing recording API do not follow the
 inner display. Use `screenshotDisplay` and `tapDisplay` from the TypeScript

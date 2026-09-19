@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { captureDuoFrame, waitForDuoFrame } from './duo-screen-handoff';
 import { createDuoModel } from './duo-model';
 import { hardwareLayout, hardwareHoverEdge } from './duo-hardware';
 import { DuoControls, DuoHardwareIcon, useDuoHinge } from './duo-controls';
@@ -35,7 +36,24 @@ export default function DuoFrame(props: DuoFrameProps) {
   const latest = useRef(props);
   latest.current = props;
   const [error, setError] = useState<string>();
-  const { angle, changeAngle, interacting } = useDuoHinge(props.state.angleDegrees, props.setAngle, setError);
+  const handoff = useRef({
+    prepare: (_inner: boolean) => {},
+    confirm: (_inner: boolean) => {},
+    cancel: () => {},
+  });
+  const { angle, changeAngle, interacting } = useDuoHinge(
+    props.state.angleDegrees,
+    async (value) => {
+      handoff.current.prepare(value >= 90);
+      try {
+        await props.setAngle(value);
+      } catch (reason) {
+        handoff.current.cancel();
+        throw reason;
+      }
+    },
+    setError,
+  );
   const angleRef = useRef(angle);
   angleRef.current = angle;
   const [view, setView] = useState<View>('front');
@@ -48,8 +66,9 @@ export default function DuoFrame(props: DuoFrameProps) {
   const invalidateFrame = useRef<() => void>(() => undefined);
 
   useEffect(() => {
+    handoff.current.confirm(props.state.angleDegrees >= 90);
     invalidateFrame.current();
-  }, [angle, view, positionLocked, props.state.orientation]);
+  }, [props.state.angleDegrees, angle, view, positionLocked, props.state.orientation]);
 
   useEffect(() => {
     const container = host.current;
@@ -156,6 +175,65 @@ export default function DuoFrame(props: DuoFrameProps) {
       if (!animation && visible && !document.hidden && !disposed) animation = requestAnimationFrame(animate);
     };
     invalidateFrame.current = invalidate;
+    // Preserve the outgoing screen before iOS blanks it, then move once the new display is ready.
+    let screenHold: { inner: boolean; angle: number; waiting: boolean; readyAt: number } | undefined;
+    let stopWaiting: (() => void) | undefined;
+    let expiry: ReturnType<typeof setTimeout> | undefined;
+    const stillTextures: THREE.CanvasTexture[] = [];
+    const clearScreens = () => {
+      stopWaiting?.();
+      stopWaiting = undefined;
+      clearTimeout(expiry);
+      screenHold = undefined;
+      model.setScreenTextures(outerTexture, innerTexture);
+      for (const texture of stillTextures) texture.dispose();
+      stillTextures.length = 0;
+      invalidate();
+    };
+    const stillTexture = (image: HTMLCanvasElement) => {
+      const texture = new THREE.CanvasTexture(image);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.minFilter = texture.magFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
+      stillTextures.push(texture);
+      return texture;
+    };
+    let frozenOuter: THREE.Texture = outerTexture;
+    let frozenInner: THREE.Texture = innerTexture;
+    handoff.current = {
+      cancel: clearScreens,
+      prepare: (inner) => {
+        if (screenHold?.inner === inner) return;
+        if (inner === latest.current.state.angleDegrees >= 90) {
+          clearScreens();
+          return;
+        }
+        const outgoing = captureDuoFrame(inner ? props.outer : props.inner);
+        clearScreens();
+        if (!outgoing) return;
+        frozenOuter = inner ? stillTexture(outgoing) : outerTexture;
+        frozenInner = inner ? innerTexture : stillTexture(outgoing);
+        model.setScreenTextures(frozenOuter, frozenInner);
+        screenHold = { inner, angle: renderedAngle, waiting: true, readyAt: 0 };
+        expiry = setTimeout(clearScreens, 5000);
+      },
+      confirm: (inner) => {
+        if (!screenHold?.waiting || screenHold.inner !== inner || stopWaiting) return;
+        stopWaiting = waitForDuoFrame(inner ? props.inner : props.outer, (image) => {
+          if (!screenHold) return;
+          if (!image) {
+            clearScreens();
+            return;
+          }
+          if (inner) frozenInner = stillTexture(image);
+          else frozenOuter = stillTexture(image);
+          model.setScreenTextures(frozenOuter, frozenInner);
+          screenHold.waiting = false;
+          screenHold.readyAt = performance.now();
+          invalidate();
+        });
+      },
+    };
     let lastTime = 0;
     let layout: ReturnType<typeof hardwareLayout> | undefined;
     let hoveredEdge: ReturnType<typeof hardwareHoverEdge>;
@@ -190,7 +268,7 @@ export default function DuoFrame(props: DuoFrameProps) {
     };
     const down = (event: PointerEvent) => {
       invalidate();
-      if (drag || event.button !== 0) return;
+      if (screenHold || drag || event.button !== 0) return;
       if (!iconButton(event.target)) container.focus({ preventScroll: true });
       const picked = pick(event);
       const hardware = picked && 'button' in picked ? picked.button : undefined;
@@ -342,8 +420,10 @@ export default function DuoFrame(props: DuoFrameProps) {
         pitch = 0;
         previousViewRevision = viewRevision.current;
       }
-      renderedAngle = THREE.MathUtils.damp(renderedAngle, angleRef.current, 18, dt);
-      if (Math.abs(renderedAngle - angleRef.current) < 0.001) renderedAngle = angleRef.current;
+      const targetAngle = screenHold?.waiting ? screenHold.angle : angleRef.current;
+      renderedAngle = THREE.MathUtils.damp(renderedAngle, targetAngle, 18, dt);
+      if (Math.abs(renderedAngle - targetAngle) < 0.001) renderedAngle = targetAngle;
+      if (screenHold && !screenHold.waiting && time - screenHold.readyAt > 900) clearScreens();
       model.setAngle(renderedAngle);
       // Closed view presents the cover; intermediate poses retain depth and true occlusion.
       const closed = 1 - THREE.MathUtils.smoothstep(renderedAngle, 15, 110);
@@ -399,7 +479,8 @@ export default function DuoFrame(props: DuoFrameProps) {
         element.dataset.visible = String(guide.edge === hoveredEdge);
       }
       if (
-        renderedAngle !== angleRef.current ||
+        renderedAngle !== targetAngle ||
+        (screenHold && !screenHold.waiting) ||
         renderedYaw !== baseYaw ||
         camera.top !== halfHeight ||
         buttonsMoving
@@ -427,6 +508,8 @@ export default function DuoFrame(props: DuoFrameProps) {
     resize();
     return () => {
       disposed = true;
+      clearScreens();
+      handoff.current = { prepare: () => {}, confirm: () => {}, cancel: () => {} };
       invalidateFrame.current = () => undefined;
       intersection.disconnect();
       document.removeEventListener('visibilitychange', invalidate);
