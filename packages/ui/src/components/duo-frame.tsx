@@ -109,7 +109,7 @@ export default function DuoFrame(props: Props) {
       texture.magFilter = THREE.LinearFilter;
     }
 
-    const model = createDuoModel(outerTexture, innerTexture);
+    const model = createDuoModel(outerTexture, innerTexture, environmentMap.texture);
     const { device, hitObjects } = model;
     root.add(device);
     scene.add(root);

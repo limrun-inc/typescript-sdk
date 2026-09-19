@@ -29,7 +29,11 @@ function outline(w: number, h: number, lr: number, rr: number) {
 }
 
 /** Independent of WebGL so fold geometry and touch occlusion can be tested directly. */
-export function createDuoModel(outerTexture: THREE.Texture, innerTexture: THREE.Texture) {
+export function createDuoModel(
+  outerTexture: THREE.Texture,
+  innerTexture: THREE.Texture,
+  environment?: THREE.Texture,
+) {
   const device = new THREE.Group();
   const left = new THREE.Group();
   const right = new THREE.Group();
@@ -54,12 +58,14 @@ export function createDuoModel(outerTexture: THREE.Texture, innerTexture: THREE.
   const antenna = new THREE.MeshStandardMaterial({ color: 0xa4a5a0, roughness: 0.55 });
   const glass = new THREE.MeshPhysicalMaterial({
     color: 0x03060d,
+    envMap: environment,
     envMapIntensity: 0.05,
     metalness: 1,
     roughness: 0.22,
   });
   const optic = new THREE.MeshPhysicalMaterial({
     color: 0x102137,
+    envMap: environment,
     envMapIntensity: 0.04,
     metalness: 1,
     roughness: 0.3,
