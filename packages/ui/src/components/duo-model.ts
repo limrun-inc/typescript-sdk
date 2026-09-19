@@ -155,16 +155,16 @@ export function createDuoModel(
           bevelEnabled: bevel > 0,
           bevelSize: bevel,
           bevelThickness: bevel,
-          bevelSegments: 6,
+          bevelSegments: 3,
           steps: 1,
-          curveSegments: 40,
+          curveSegments: 20,
         }),
         Math.PI / 3,
       ),
       material,
     );
   const box = (w: number, h: number, d: number, radius: number, material: THREE.Material) =>
-    mesh(new RoundedBoxGeometry(w, h, d, 6, radius), material);
+    mesh(new RoundedBoxGeometry(w, h, d, 3, radius), material);
 
   for (const [part, side] of [
     [left, -1],
@@ -186,15 +186,6 @@ export function createDuoModel(
       const band = box(0.22, 0.65, depth - 0.8, 0.08, antenna);
       band.position.set(side * (half + 0.04), y, -depth / 2);
       part.add(band);
-    }
-    // Speaker perforations follow the top and bottom rails, clear of the hinge.
-    for (const edge of [-1, 1]) {
-      for (let i = 0; i < 6; i++) {
-        const hole = mesh(new THREE.CircleGeometry(0.36, 10), gasket);
-        hole.rotation.x = (-edge * Math.PI) / 2;
-        hole.position.set(side * (half - 19 - i * 1.7), edge * (height / 2 + 0.06), -depth / 2);
-        part.add(hole);
-      }
     }
   }
 
@@ -309,12 +300,7 @@ export function createDuoModel(
   const antennaWindow = box(0.35, 12, 2.5, 0.15, antenna);
   antennaWindow.position.set(half - 0.08, -12, -depth / 2);
   right.add(antennaWindow);
-  const port = plate(8.2, 2.25, 0.05, 1.12, 1.12, gasket, 0);
-  port.rotation.x = Math.PI / 2;
-  port.position.set(half / 2, -height / 2 - 0.07, -depth / 2);
-  right.add(port);
-
-  const segments = 64;
+  const segments = 32;
   const strip = (material: THREE.Material, display = false) => {
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array((segments + 1) * 2 * 3);
@@ -501,7 +487,9 @@ export function createDuoModel(
       resources.push(...importedResources);
       // Match the imported cover aperture exactly so the live image cannot expose seams beneath its bezel.
       const cover = coverBody.children.find(
-        (child) => child instanceof THREE.Mesh && child.material.name === 'cover-screen',
+        (child) =>
+          child instanceof THREE.Mesh &&
+          (child.userData['sourceDisplay'] === 'outer' || child.material.name === 'cover-screen'),
       ) as THREE.Mesh | undefined;
       if (cover) {
         const panel = device.getObjectByName('cover-display') as THREE.Mesh;
@@ -549,7 +537,11 @@ export function createDuoModel(
       ] as const) {
         for (const child of [...source.children]) {
           if (!(child instanceof THREE.Mesh)) continue;
-          if (['inner-screen', 'cover-screen'].includes(child.material.name)) continue;
+          if (
+            child.userData['sourceDisplay'] ||
+            ['inner-screen', 'cover-screen'].includes(child.material.name)
+          )
+            continue;
           // GLB geometry is measured in centimeters; runtime display geometry uses millimeters.
           child.geometry.scale(10, 10, 10);
           child.position.multiplyScalar(10);
@@ -590,6 +582,7 @@ export function createDuoModel(
       pressedButton = pressed;
     },
     animateButtons: (dt: number) => {
+      let moving = false;
       for (const [name, button] of buttons) {
         const base = buttonBases.get(name)!;
         const goal =
@@ -597,11 +590,14 @@ export function createDuoModel(
             pressedButton ? 0
             : 0.5
           : 0.16;
-        const offset = THREE.MathUtils.damp(buttonOffsets.get(name) ?? 0.16, goal, 22, dt);
+        let offset = THREE.MathUtils.damp(buttonOffsets.get(name) ?? 0.16, goal, 22, dt);
+        if (Math.abs(offset - goal) < 0.001) offset = goal;
+        else moving = true;
         buttonOffsets.set(name, offset);
         button.position.copy(base);
         button.position[name === 'side' ? 'x' : 'y'] += offset;
       }
+      return moving;
     },
     dispose: () => {
       disposed = true;

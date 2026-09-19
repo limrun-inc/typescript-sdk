@@ -192,33 +192,41 @@ describe('Prepared Duo appearance', () => {
     model.dispose();
   });
 
-  it('fits live cover video to the imported aperture while preserving native touch UVs', async () => {
-    const scene = appearance();
-    const material = new THREE.MeshBasicMaterial();
-    material.name = 'cover-screen';
-    const geometry = new THREE.PlaneGeometry(7.739, 11.251).rotateY(Math.PI).translate(-4.104, 0, -0.524);
-    scene.getObjectByName('folding-half')!.add(new THREE.Mesh(geometry, material));
-    vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue({ scene } as unknown as GLTF);
-    const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
-    await model.loadAppearance('/approved-model.glb');
-    model.setAngle(0);
-    model.device.rotation.y = Math.PI / 2;
-    model.device.updateMatrixWorld(true);
-    const panel = model.device.getObjectByName('cover-display') as THREE.Mesh;
-    expect(panel.geometry.boundingBox!.getSize(new THREE.Vector3()).x).toBeCloseTo(77.39);
-    for (const [x, y] of [
-      [-41.04, 0],
-      [-70, 40],
-    ]) {
-      const world = panel.localToWorld(new THREE.Vector3(x, y, -5.24));
-      const ray = new THREE.Raycaster(new THREE.Vector3(world.x, world.y, 300), new THREE.Vector3(0, 0, -1));
-      const hit = model.pick(ray)!;
-      expect(hit.object.userData['display']).toBe('outer');
-      expect(hit.uv!.x).toBeCloseTo((-2.345 - x!) / 77.39, 3);
-      expect(panelTouch(hit.uv!.x, hit.uv!.y).y).toBeCloseTo((56.255 - y!) / 112.51, 3);
-    }
-    model.dispose();
-  });
+  it.each([false, true])(
+    'fits live cover video to the imported aperture after material deduplication (%s)',
+    async (deduplicated) => {
+      const scene = appearance();
+      const material = new THREE.MeshBasicMaterial();
+      material.name = deduplicated ? 'inner-screen' : 'cover-screen';
+      const geometry = new THREE.PlaneGeometry(7.739, 11.251).rotateY(Math.PI).translate(-4.104, 0, -0.524);
+      const cover = new THREE.Mesh(geometry, material);
+      if (deduplicated) cover.userData['sourceDisplay'] = 'outer';
+      scene.getObjectByName('folding-half')!.add(cover);
+      vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue({ scene } as unknown as GLTF);
+      const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
+      await model.loadAppearance('/approved-model.glb');
+      model.setAngle(0);
+      model.device.rotation.y = Math.PI / 2;
+      model.device.updateMatrixWorld(true);
+      const panel = model.device.getObjectByName('cover-display') as THREE.Mesh;
+      expect(panel.geometry.boundingBox!.getSize(new THREE.Vector3()).x).toBeCloseTo(77.39);
+      for (const [x, y] of [
+        [-41.04, 0],
+        [-70, 40],
+      ]) {
+        const world = panel.localToWorld(new THREE.Vector3(x, y, -5.24));
+        const ray = new THREE.Raycaster(
+          new THREE.Vector3(world.x, world.y, 300),
+          new THREE.Vector3(0, 0, -1),
+        );
+        const hit = model.pick(ray)!;
+        expect(hit.object.userData['display']).toBe('outer');
+        expect(hit.uv!.x).toBeCloseTo((-2.345 - x!) / 77.39, 3);
+        expect(panelTouch(hit.uv!.x, hit.uv!.y).y).toBeCloseTo((56.255 - y!) / 112.51, 3);
+      }
+      model.dispose();
+    },
+  );
 
   it('retains the functional frame if a replacement has no hardware metadata', async () => {
     const scene = appearance();

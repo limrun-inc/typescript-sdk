@@ -13,7 +13,7 @@ import {
   type DuoOrientation,
 } from '../core/duo';
 
-interface Props {
+export interface DuoFrameProps {
   modelUrl?: string;
   outer: HTMLVideoElement | null;
   inner: HTMLVideoElement | null;
@@ -29,7 +29,7 @@ interface Props {
 type View = 'front' | 'book' | 'table' | 'back';
 
 /** A procedural titanium frame. Each glass panel carries its own native video texture. */
-export default function DuoFrame(props: Props) {
+export default function DuoFrame(props: DuoFrameProps) {
   const angleId = useId();
   const host = useRef<HTMLDivElement>(null);
   const hardwareNodes = useRef(new Map<DuoButton, HTMLButtonElement>());
@@ -49,6 +49,11 @@ export default function DuoFrame(props: Props) {
   const sender = useRef<HingeSender | null>(null);
   const interacting = useRef(false);
   const pendingAngle = useRef<number | undefined>(undefined);
+  const invalidateFrame = useRef<() => void>(() => undefined);
+
+  useEffect(() => {
+    invalidateFrame.current();
+  }, [angle, view, positionLocked, props.state.orientation]);
 
   useEffect(() => {
     sender.current = new HingeSender(
@@ -89,7 +94,7 @@ export default function DuoFrame(props: Props) {
       setError('3D rendering is unavailable in this browser. Enable WebGL to use the folding frame.');
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
@@ -147,7 +152,11 @@ export default function DuoFrame(props: Props) {
 
     const model = createDuoModel(outerTexture, innerTexture, environmentMap.texture);
     const { device } = model;
-    if (props.modelUrl) void model.loadAppearance(props.modelUrl).catch((reason) => setError(String(reason)));
+    if (props.modelUrl)
+      void model
+        .loadAppearance(props.modelUrl)
+        .then(() => invalidate())
+        .catch((reason) => setError(String(reason)));
     const buttons = new DuoButtonSender(
       (button, down) => latest.current.button(button, down),
       (reason) => setError(String(reason)),
@@ -174,6 +183,12 @@ export default function DuoFrame(props: Props) {
     let renderedAngle = angleRef.current;
     let renderedYaw = 0;
     let animation = 0;
+    let visible = true;
+    let disposed = false;
+    const invalidate = () => {
+      if (!animation && visible && !document.hidden && !disposed) animation = requestAnimationFrame(animate);
+    };
+    invalidateFrame.current = invalidate;
     let lastTime = 0;
     let layout: ReturnType<typeof hardwareLayout> | undefined;
     let hoveredEdge: ReturnType<typeof hardwareHoverEdge>;
@@ -207,6 +222,7 @@ export default function DuoFrame(props: Props) {
       return { screenId: display.screenId, ...panelTouch(intersection.uv.x, intersection.uv.y) };
     };
     const down = (event: PointerEvent) => {
+      invalidate();
       if (drag || event.button !== 0) return;
       if (!iconButton(event.target)) container.focus({ preventScroll: true });
       const picked = pick(event);
@@ -231,6 +247,7 @@ export default function DuoFrame(props: Props) {
       } else if (hit) latest.current.touch(0, hit.screenId, hit.x, hit.y);
     };
     const move = (event: PointerEvent) => {
+      invalidate();
       if (!drag) {
         const hit = pick(event);
         const button = hit && 'button' in hit ? hit.button : undefined;
@@ -261,6 +278,7 @@ export default function DuoFrame(props: Props) {
       drag.clientY = event.clientY;
     };
     const up = (event?: PointerEvent) => {
+      invalidate();
       if (!drag || (event && drag.pointer !== event.pointerId)) return;
       if (drag.button) {
         buttons.release();
@@ -270,12 +288,14 @@ export default function DuoFrame(props: Props) {
       if (event) move(event);
     };
     const leave = () => {
+      invalidate();
       if (!drag) {
         model.highlightButton();
         showEdge(undefined);
       }
     };
     const keyDown = (event: KeyboardEvent) => {
+      invalidate();
       const icon = iconButton(event.target);
       if (!icon) return;
       event.stopPropagation();
@@ -288,6 +308,7 @@ export default function DuoFrame(props: Props) {
       icon.dataset.pressed = 'true';
     };
     const keyUp = (event: KeyboardEvent) => {
+      invalidate();
       const icon = iconButton(event.target);
       if (!icon) return;
       event.stopPropagation();
@@ -302,6 +323,7 @@ export default function DuoFrame(props: Props) {
       if (icon) showEdge(layout?.guides.find((guide) => guide.button === icon.dataset.duoButton)?.edge);
     };
     const blur = () => {
+      invalidate();
       up();
       buttons.release();
       model.highlightButton();
@@ -336,14 +358,16 @@ export default function DuoFrame(props: Props) {
 
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
+      invalidate();
     };
     const observer = new ResizeObserver(resize);
     observer.observe(container);
-    resize();
     const bounds = new THREE.Box3();
     const center = new THREE.Vector3();
     const extent = new THREE.Vector3();
     const animate = (time: number) => {
+      animation = 0;
+      if (disposed || !visible || document.hidden) return;
       const dt = Math.min((time - lastTime) / 1000, 0.05);
       lastTime = time;
       if (viewRevision.current !== previousViewRevision) {
@@ -358,6 +382,7 @@ export default function DuoFrame(props: Props) {
       const closed = 1 - THREE.MathUtils.smoothstep(renderedAngle, 15, 110);
       const baseYaw = (closed * Math.PI) / 2 + (viewRef.current === 'back' ? Math.PI : 0);
       renderedYaw = THREE.MathUtils.damp(renderedYaw, baseYaw, 12, dt);
+      if (Math.abs(renderedYaw - baseYaw) < 0.001) renderedYaw = baseYaw;
       // Camera orbit stays independent of the native device orientation.
       root.rotation.set(
         pitch +
@@ -388,12 +413,13 @@ export default function DuoFrame(props: Props) {
       const usableHeight = Math.min(0.8, Math.max(0.35, 1 - 108 / height));
       const halfHeight = Math.max(extent.y / (2 * usableHeight), extent.x / (2 * aspect * usableWidth));
       camera.top = THREE.MathUtils.damp(camera.top, halfHeight, 14, dt);
+      if (Math.abs(camera.top - halfHeight) < 0.001) camera.top = halfHeight;
       camera.bottom = -camera.top;
       camera.left = -camera.top * aspect;
       camera.right = camera.top * aspect;
       camera.updateProjectionMatrix();
 
-      model.animateButtons(dt);
+      const buttonsMoving = model.animateButtons(dt);
       renderer.render(scene, camera);
       model.getBounds(bounds);
       layout = hardwareLayout(model.buttonAnchors(), bounds, camera, width, height);
@@ -404,10 +430,40 @@ export default function DuoFrame(props: Props) {
         element.style.top = `${guide.y}px`;
         element.dataset.visible = String(guide.edge === hoveredEdge);
       }
-      animation = requestAnimationFrame(animate);
+      if (
+        renderedAngle !== angleRef.current ||
+        renderedYaw !== baseYaw ||
+        camera.top !== halfHeight ||
+        buttonsMoving
+      )
+        invalidate();
     };
-    animation = requestAnimationFrame(animate);
+    const videoCallbacks = new Map<HTMLVideoElement, number>();
+    for (const video of [props.outer, props.inner]) {
+      const frame = () => {
+        if (disposed) return;
+        invalidate();
+        videoCallbacks.set(video, video.requestVideoFrameCallback(frame));
+      };
+      if ('requestVideoFrameCallback' in video)
+        videoCallbacks.set(video, video.requestVideoFrameCallback(frame));
+    }
+    const fallback =
+      !('requestVideoFrameCallback' in props.outer) ? window.setInterval(invalidate, 1000 / 30) : undefined;
+    const intersection = new IntersectionObserver(([entry]) => {
+      visible = !!entry?.isIntersecting;
+      invalidate();
+    });
+    intersection.observe(container);
+    document.addEventListener('visibilitychange', invalidate);
+    resize();
     return () => {
+      disposed = true;
+      invalidateFrame.current = () => undefined;
+      intersection.disconnect();
+      document.removeEventListener('visibilitychange', invalidate);
+      for (const [video, id] of videoCallbacks) video.cancelVideoFrameCallback(id);
+      clearInterval(fallback);
       up();
       buttons.release();
       cancelAnimationFrame(animation);
@@ -424,6 +480,7 @@ export default function DuoFrame(props: Props) {
       container.removeEventListener('focusin', focus);
       container.removeEventListener('focusout', focusOut);
       renderer.dispose();
+      renderer.forceContextLoss();
       model.dispose();
       outerTexture.dispose();
       innerTexture.dispose();
@@ -515,6 +572,7 @@ export default function DuoFrame(props: Props) {
               onClick={() => {
                 viewRevision.current++;
                 setView(value);
+                invalidateFrame.current();
                 if (value === 'book') {
                   void props
                     .setOrientation('portrait')

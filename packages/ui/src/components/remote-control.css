@@ -130,6 +130,73 @@
   color: #6b7280;
 }
 
+.rc-duo-view {
+  position: absolute;
+  inset: 0;
+}
+.rc-duo-mode {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 3;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: #fff;
+  border: 1px solid #d9dde4;
+  border-radius: 10px;
+}
+.rc-duo-mode button {
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 13px;
+  font: 12px system-ui;
+  color: #29313e;
+  background: transparent;
+  cursor: pointer;
+}
+.rc-duo-mode button[aria-pressed='true'] {
+  background: #202b3c;
+  color: white;
+}
+.rc-duo-flat-stage {
+  flex: 1;
+  min-height: 0;
+  margin-top: 48px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.rc-duo-flat-device {
+  flex: none;
+  padding: 5px;
+  border: 3px solid #b5b9bc;
+  background: #090b0d;
+  border-radius: 24px;
+  box-shadow:
+    0 8px 20px #17202e18,
+    inset 0 0 0 1px #eceff1;
+}
+.rc-duo-flat-screen {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  touch-action: none;
+  outline: none;
+}
+.rc-duo-flat-screen video {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  pointer-events: none;
+}
+.rc-duo-flat-controls {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 .rc-duo {
   position: absolute;
   inset: 0;

@@ -46,9 +46,12 @@ This package is not part of generated SDK, hence you need to publish it manually
 
 ## iPhone Duo
 
-`RemoteControl` discovers native Duo support during connection and loads a 3D
-frame with separate cover and inner display streams. No model prop is required.
-Use the hinge slider for any angle from 0° closed to 180° flat. Touch and drag
+`RemoteControl` discovers native Duo support and starts in 2D with native video,
+fold/unfold, rotation and hardware buttons. No model prop is required. Select **3D**
+to load the interactive frame and its model on demand. Returning to **2D** releases
+the renderer and its graphics resources without reconnecting the simulator.
+
+In 3D, use the hinge slider for any angle from 0° closed to 180° flat. Touch and drag
 on the visible display interact with iOS. Position starts locked to prevent accidental
 rotation. Unlock it to drag the frame or background (or Alt-drag the screen) to move the
 camera. Rotate device changes the native orientation. Laptop view sets the
@@ -62,7 +65,8 @@ edge; Sleep/Wake appears beside its edge. Icons follow native rotation and foldi
 Hover raises the physical button slightly without changing the camera framing.
 Tab, Space and Enter also operate the icons. Camera Control is not yet supported.
 
-The renderer requires WebGL. Duo currently supports single-finger gestures;
+Only 3D requires WebGL. It renders when video frames arrive or the view changes,
+and pauses while hidden. Duo currently supports single-finger gestures;
 accessibility inspection and the existing recording API do not follow the
 inner display. Use `screenshotDisplay` and `tapDisplay` from the TypeScript
 iOS client for explicit display automation.
@@ -78,7 +82,9 @@ The prepared model must contain `folding-half` and `stationary-half` groups with
 flat mesh children measured in centimeters. Inner display surfaces lie in the
 XY plane, centered at the hinge with positive Z facing the inner display.
 Material names `inner-screen` and `cover-screen` identify surfaces replaced by live
-video. Hardware meshes under `stationary-half` must carry `extras.button` with
+video. Optimized models may instead mark those mesh nodes with `extras.sourceDisplay`
+set to `inner` or `outer`, so material deduplication preserves display identity.
+Hardware meshes under `stationary-half` must carry `extras.button` with
 `side`, `volumeUp`, or `volumeDown`. All three are required. This is a prepared Duo
 appearance contract, not a general-purpose GLB viewer. Serve the file on the same
 origin or with suitable CORS headers.

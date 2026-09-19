@@ -12,7 +12,7 @@ import { clsx } from 'clsx';
 import './remote-control.css';
 
 import { createDisplayTouchMessage, type DuoState, type DuoOrientation } from '../core/duo';
-const DuoFrame = lazy(() => import('./duo-frame'));
+const DuoView = lazy(() => import('./duo-view'));
 
 import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
 
@@ -3840,7 +3840,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           autoPlay
           playsInline
           muted
-          tabIndex={0}
+          tabIndex={isDuo ? -1 : 0}
           onKeyDown={handleKeyboard}
           onKeyUp={handleKeyboard}
           onClick={handleVideoClick}
@@ -3867,7 +3867,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         )}
         {isDuo && duoState && (
           <Suspense fallback={<div>Loading iPhone Duo…</div>}>
-            <DuoFrame
+            <DuoView
               modelUrl={duoModelUrl}
               outer={videoRef.current}
               inner={innerVideoRef.current}

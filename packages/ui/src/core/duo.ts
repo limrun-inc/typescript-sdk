@@ -21,6 +21,16 @@ export interface DuoState {
 
 export const DUO_DIMENSIONS = { width: 164.6, height: 117.8, depth: 5.2 } as const;
 
+/** Invert the CSS display rotation before sending native panel coordinates. */
+export function flatDisplayTouch(x: number, y: number, turns: number): { x: number; y: number } {
+  x = Math.max(0, Math.min(1, x));
+  y = Math.max(0, Math.min(1, y));
+  if (turns === 1) return { x: y, y: 1 - x };
+  if (turns === 2) return { x: 1 - x, y: 1 - y };
+  if (turns === 3) return { x: 1 - y, y: x };
+  return { x, y };
+}
+
 export function validHingeAngle(angle: number): boolean {
   return Number.isFinite(angle) && angle >= 0 && angle <= 180;
 }

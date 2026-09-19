@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createDisplayTouchMessage,
+  flatDisplayTouch,
   duoPointerMode,
   DuoButtonSender,
   HingeSender,
@@ -9,6 +10,19 @@ import {
 } from './duo';
 
 describe('native Duo input', () => {
+  it.each([
+    [0, 0.2, 0.3],
+    [1, 0.3, 0.8],
+    [2, 0.8, 0.7],
+    [3, 0.7, 0.2],
+  ])('maps 2D screen coordinates back to the native panel at rotation %s', (turns, x, y) => {
+    const point = flatDisplayTouch(0.2, 0.3, turns!);
+    expect(point.x).toBeCloseTo(x!);
+    expect(point.y).toBeCloseTo(y!);
+  });
+  it('keeps a captured drag inside the native panel after it leaves the screen', () => {
+    expect(flatDisplayTouch(-1, 2, 1)).toEqual({ x: 1, y: 1 });
+  });
   it('rejects non-finite and out-of-range hinge values', () => {
     for (const angle of [NaN, Infinity, -1, 181]) expect(validHingeAngle(angle)).toBe(false);
     for (const angle of [0, 45.5, 90, 180]) expect(validHingeAngle(angle)).toBe(true);
