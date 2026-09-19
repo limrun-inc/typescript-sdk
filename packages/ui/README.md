@@ -46,18 +46,20 @@ This package is not part of generated SDK, hence you need to publish it manually
 
 ## iPhone Duo
 
-`RemoteControl` discovers native Duo support and starts in 2D with native video,
-fold/unfold, rotation and hardware buttons. No model prop is required. Select **3D**
+`RemoteControl` discovers native Duo support and starts in 2D with native video
+inside a silver Duo frame, including its hinge spine and physical buttons.
+Both modes share the fold, hinge-angle and rotation toolbar. No model prop is required. Select **3D**
 to load the interactive frame and its model on demand. Returning to **2D** releases
 the renderer and its graphics resources without reconnecting the simulator.
 
-In 3D, use the hinge slider for any angle from 0° closed to 180° flat. Touch and drag
-on the visible display interact with iOS. Position starts locked to prevent accidental
+Use the hinge slider for any angle from 0° closed to 180° flat. In 2D, the active
+display stays flat; 3D shows the physical hinge pose. Touch and drag
+on the visible display interact with iOS. In 3D, position starts locked to prevent accidental
 rotation. Unlock it to drag the frame or background (or Alt-drag the screen) to move the
 camera. Rotate device changes the native orientation. Laptop view sets the
 hinge and orientation; it does not enable Apple's separate Table Mode.
 
-Click the frame's Sleep/Wake, Volume Up, or Volume Down buttons to send native
+In either mode, click the frame's Sleep/Wake, Volume Up, or Volume Down buttons to send native
 hardware input. Press and hold is supported. These buttons remain active while
 the position is locked. Hover near an edge to reveal its button icons, then click
 either the icon or the physical button. Volume icons appear together above their

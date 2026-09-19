@@ -57,18 +57,4 @@ export function hardwareLayout(
   return { guides, rect };
 }
 
-/** A continuous hover band connects the physical edge to its icons without covering screen input. */
-export function hardwareHoverEdge(x: number, y: number, rect: THREE.Box2): Edge | undefined {
-  const edges: [Edge, number, number, number, number][] = [
-    ['top', rect.min.y - y, x, rect.min.x, rect.max.x],
-    ['bottom', y - rect.max.y, x, rect.min.x, rect.max.x],
-    ['left', rect.min.x - x, y, rect.min.y, rect.max.y],
-    ['right', x - rect.max.x, y, rect.min.y, rect.max.y],
-  ];
-  return edges
-    .filter(
-      ([, distance, along, min, max]) =>
-        distance >= -7 && distance <= 52 && along >= min - 12 && along <= max + 12,
-    )
-    .sort((a, b) => Math.abs(a[1]) - Math.abs(b[1]))[0]?.[0];
-}
+export { flatHoverEdge as hardwareHoverEdge } from './duo-flat-geometry';

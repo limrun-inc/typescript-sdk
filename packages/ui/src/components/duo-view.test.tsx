@@ -67,8 +67,28 @@ it('starts without a renderer, loads it on request and releases it when returnin
     await act(async () => root.render(<DuoView {...props} />));
     expect(renderer.loaded).not.toHaveBeenCalled();
     expect(host.querySelector('canvas')).toBeNull();
+    expect(host.querySelector('.rc-duo-flat-frame')).not.toBeNull();
+    expect(host.querySelectorAll('.rc-duo-physical')).toHaveLength(3);
+    expect(host.querySelectorAll('.rc-duo-hardware')).toHaveLength(3);
+    expect(host.querySelector('[aria-label="Rotate device"]')).not.toBeNull();
+    expect(host.querySelector('input[type=range]')).not.toBeNull();
     expect(host.querySelector('video')!.srcObject).toBe(outer.srcObject);
+    const press = async (selector: string, type: string) => {
+      await act(async () => {
+        host.querySelector(selector)!.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', bubbles: true }));
+      });
+    };
+    await press('.rc-duo-physical[data-duo-button=side]', 'keydown');
+    await press('.rc-duo-physical[data-duo-button=side]', 'keyup');
+    await press('.rc-duo-hardware[data-duo-button=volumeUp]', 'keydown');
+    await press('.rc-duo-hardware[data-duo-button=volumeUp]', 'keyup');
+    expect(props.button).toHaveBeenNthCalledWith(1, 'side', true);
+    expect(props.button).toHaveBeenNthCalledWith(2, 'side', false);
+    expect(props.button).toHaveBeenNthCalledWith(3, 'volumeUp', true);
+    expect(props.button).toHaveBeenNthCalledWith(4, 'volumeUp', false);
+    await press('.rc-duo-hardware[data-duo-button=volumeDown]', 'keydown');
     await clickMode('3D');
+    expect(props.button).toHaveBeenLastCalledWith('volumeDown', false);
     expect(renderer.loaded).toHaveBeenCalledOnce();
     expect(host.querySelector('canvas')).not.toBeNull();
     await clickMode('2D');

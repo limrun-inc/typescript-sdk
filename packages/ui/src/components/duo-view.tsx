@@ -1,6 +1,9 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { DUO_BUTTONS, DuoButtonSender, flatDisplayTouch, type DuoButton } from '../core/duo';
 import type { DuoFrameProps } from './duo-frame';
+import { DuoControls, DuoHardwareIcon, useDuoHinge } from './duo-controls';
+import { DuoFlatFrame } from './duo-flat-frame';
+import { flatFrameGeometry, flatHoverEdge } from './duo-flat-geometry';
 
 const DuoFrame = lazy(() => import('./duo-frame'));
 
@@ -33,7 +36,10 @@ function DuoFlat(props: DuoFrameProps) {
   latest.current = props;
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
+  const [edge, setEdge] = useState<ReturnType<typeof flatHoverEdge>>();
+  const [hovered, setHovered] = useState<DuoButton>();
+  const [pressed, setPressed] = useState<DuoButton>();
+  const { angle, changeAngle, interacting } = useDuoHinge(props.state.angleDegrees, props.setAngle, setError);
   const held = useRef<{ pointer: number; screenId: number; x: number; y: number } | undefined>(undefined);
   const hardware = useRef<DuoButtonSender | null>(null);
   const display = props.state.displays.find(
@@ -45,11 +51,11 @@ function DuoFlat(props: DuoFrameProps) {
     : display?.orientation === 3 ? 1
     : display?.orientation === 4 ? 3
     : 0;
-  const nativeWidth = display?.width ?? 1398;
-  const nativeHeight = display?.height ?? 2034;
-  const ratio = turns % 2 ? nativeHeight / nativeWidth : nativeWidth / nativeHeight;
-  const width = Math.max(0, Math.min(size.width - 64, (size.height - 64) * ratio));
-  const height = width / ratio;
+  const inner = display?.id === 'inner';
+  const frame = flatFrameGeometry(inner, turns, size.width, size.height);
+  const { bodyWidth, bodyHeight, screenWidth, screenHeight, scale } = frame;
+  const width = screenWidth * scale;
+  const height = screenHeight * scale;
 
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
@@ -92,6 +98,7 @@ function DuoFlat(props: DuoFrameProps) {
     const release = () => {
       releaseTouch();
       hardware.current?.release();
+      setPressed(undefined);
     };
     window.addEventListener('blur', release);
     return () => {
@@ -103,17 +110,40 @@ function DuoFlat(props: DuoFrameProps) {
     releaseTouch();
   }, [display?.screenId, turns]);
 
-  const control = async (action: () => Promise<void>) => {
-    setBusy(true);
-    setError(undefined);
-    try {
-      await action();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
+  const releaseButton = () => {
+    hardware.current?.release();
+    setPressed(undefined);
   };
+  const buttonEvents = (button: DuoButton): React.ButtonHTMLAttributes<HTMLButtonElement> => ({
+    onPointerDown: (event) => {
+      if (event.button !== 0) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      hardware.current?.press(button);
+      setPressed(button);
+    },
+    onPointerUp: releaseButton,
+    onPointerCancel: releaseButton,
+    onLostPointerCapture: releaseButton,
+    onBlur: releaseButton,
+    onPointerEnter: () => setHovered(button),
+    onPointerLeave: () => setHovered(undefined),
+    onFocus: () => setEdge(frame.guides.find((g) => g.button === button)?.edge),
+    onKeyDown: (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        if (!event.repeat) {
+          hardware.current?.press(button);
+          setPressed(button);
+        }
+      }
+    },
+    onKeyUp: (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        releaseButton();
+      }
+    },
+  });
   const point = (event: React.PointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     return flatDisplayTouch(
@@ -124,14 +154,40 @@ function DuoFlat(props: DuoFrameProps) {
   };
   return (
     <div className="rc-duo">
-      <div ref={stage} className="rc-duo-flat-stage">
-        <div className="rc-duo-flat-device" style={{ width: width + 16, height: height + 16 }}>
+      <div
+        ref={stage}
+        className="rc-duo-flat-stage"
+        onPointerMove={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          setEdge(flatHoverEdge(event.clientX - rect.left, event.clientY - rect.top, frame.rect));
+        }}
+        onPointerLeave={() => {
+          setEdge(undefined);
+          setHovered(undefined);
+        }}
+      >
+        <div
+          className="rc-duo-flat-device"
+          data-display={inner ? 'inner' : 'outer'}
+          style={{
+            width: bodyWidth * scale,
+            height: bodyHeight * scale,
+            transform: 'translate(-50%, -50%) rotate(' + frame.turns * 90 + 'deg)',
+          }}
+        >
+          <DuoFlatFrame inner={inner} width={bodyWidth} height={bodyHeight} />
           <div
             className="rc-duo-flat-screen"
             role="application"
             aria-label="iPhone Duo 2D simulator"
             tabIndex={0}
-            style={{ width, height }}
+            style={{
+              width,
+              height,
+              left: ((bodyWidth - screenWidth) / 2) * scale,
+              top: ((bodyHeight - screenHeight) / 2) * scale,
+              borderRadius: inner ? 5.3 * scale : [0.8, 6.6, 6.6, 0.8].map((r) => r * scale + 'px').join(' '),
+            }}
             onKeyDown={props.onKeyDown}
             onKeyUp={props.onKeyUp}
             onPointerDown={(event) => {
@@ -160,66 +216,64 @@ function DuoFlat(props: DuoFrameProps) {
               muted
               playsInline
               style={{
-                width: turns % 2 ? height : width,
-                height: turns % 2 ? width : height,
-                transform: `translate(-50%, -50%) rotate(${turns * 90}deg)`,
+                width: inner ? height : width,
+                height: inner ? width : height,
+                transform: 'translate(-50%, -50%) rotate(' + (inner ? 90 : 0) + 'deg)',
               }}
             />
           </div>
+          {frame.buttons.map((b) => (
+            <button
+              key={b.button}
+              type="button"
+              className="rc-duo-physical"
+              data-duo-button={b.button}
+              data-edge={b.edge}
+              data-highlighted={hovered === b.button}
+              data-pressed={pressed === b.button}
+              aria-label={DUO_BUTTONS[b.button] + ' physical button'}
+              title={DUO_BUTTONS[b.button]}
+              style={{
+                left: b.x * scale,
+                top: b.y * scale,
+                width: b.edge === 'top' ? Math.max(28, b.width * scale) : 28,
+                height: b.edge === 'top' ? 28 : Math.max(28, b.height * scale),
+              }}
+              {...buttonEvents(b.button)}
+            >
+              <span style={{ width: Math.max(2, b.width * scale), height: Math.max(2, b.height * scale) }} />
+            </button>
+          ))}
         </div>
-      </div>
-      <div className="rc-duo-controls rc-duo-flat-controls">
-        <button
-          disabled={busy}
-          onClick={() => void control(() => props.setAngle(props.state.angleDegrees < 90 ? 180 : 0))}
-        >
-          {props.state.angleDegrees < 90 ? 'Unfold' : 'Fold'}
-        </button>
-        <button
-          disabled={busy}
-          onClick={() =>
-            void control(() =>
-              props.setOrientation(props.state.orientation === 'portrait' ? 'landscape-left' : 'portrait'),
-            )
-          }
-        >
-          Rotate device
-        </button>
-        {(Object.keys(DUO_BUTTONS) as DuoButton[]).map((button) => (
+        {frame.guides.map((g) => (
           <button
-            key={button}
+            key={g.button}
             type="button"
-            aria-label={DUO_BUTTONS[button]}
-            onPointerDown={(event) => {
-              if (event.button !== 0) return;
-              event.currentTarget.setPointerCapture(event.pointerId);
-              hardware.current?.press(button);
-            }}
-            onPointerUp={() => hardware.current?.release()}
-            onPointerCancel={() => hardware.current?.release()}
-            onLostPointerCapture={() => hardware.current?.release()}
-            onBlur={() => hardware.current?.release()}
-            onKeyDown={(event) => {
-              if (['Enter', ' '].includes(event.key)) {
-                event.preventDefault();
-                if (!event.repeat) hardware.current?.press(button);
-              }
-            }}
-            onKeyUp={(event) => {
-              if (['Enter', ' '].includes(event.key)) {
-                event.preventDefault();
-                hardware.current?.release();
-              }
-            }}
+            className="rc-duo-hardware"
+            data-duo-button={g.button}
+            data-visible={edge === g.edge}
+            data-pressed={pressed === g.button}
+            aria-label={DUO_BUTTONS[g.button]}
+            title={DUO_BUTTONS[g.button]}
+            style={{ left: g.x, top: g.y }}
+            {...buttonEvents(g.button)}
           >
-            {button === 'side' ?
-              'Sleep/Wake'
-            : button === 'volumeUp' ?
-              'Volume +'
-            : 'Volume −'}
+            <DuoHardwareIcon button={g.button} />
           </button>
         ))}
       </div>
+      <DuoControls
+        angle={angle}
+        changeAngle={changeAngle}
+        interacting={interacting}
+        rotate={() => {
+          void props
+            .setOrientation(props.state.orientation === 'portrait' ? 'landscape-left' : 'portrait')
+            .catch((e) => setError(String(e)));
+        }}
+      >
+        <span className="rc-duo-view-label">Front view</span>
+      </DuoControls>
       {error && (
         <div role="alert" className="rc-duo-error">
           {error}

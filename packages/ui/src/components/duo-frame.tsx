@@ -1,9 +1,9 @@
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { createDuoModel } from './duo-model';
 import { hardwareLayout, hardwareHoverEdge } from './duo-hardware';
+import { DuoControls, DuoHardwareIcon, useDuoHinge } from './duo-controls';
 import {
-  HingeSender,
   panelTouch,
   duoPointerMode,
   DuoButtonSender,
@@ -30,12 +30,12 @@ type View = 'front' | 'book' | 'table' | 'back';
 
 /** A procedural titanium frame. Each glass panel carries its own native video texture. */
 export default function DuoFrame(props: DuoFrameProps) {
-  const angleId = useId();
   const host = useRef<HTMLDivElement>(null);
   const hardwareNodes = useRef(new Map<DuoButton, HTMLButtonElement>());
   const latest = useRef(props);
   latest.current = props;
-  const [angle, setAngle] = useState(props.state.angleDegrees);
+  const [error, setError] = useState<string>();
+  const { angle, changeAngle, interacting } = useDuoHinge(props.state.angleDegrees, props.setAngle, setError);
   const angleRef = useRef(angle);
   angleRef.current = angle;
   const [view, setView] = useState<View>('front');
@@ -45,44 +45,11 @@ export default function DuoFrame(props: DuoFrameProps) {
   const [positionLocked, setPositionLocked] = useState(true);
   const lockedRef = useRef(positionLocked);
   lockedRef.current = positionLocked;
-  const [error, setError] = useState<string>();
-  const sender = useRef<HingeSender | null>(null);
-  const interacting = useRef(false);
-  const pendingAngle = useRef<number | undefined>(undefined);
   const invalidateFrame = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     invalidateFrame.current();
   }, [angle, view, positionLocked, props.state.orientation]);
-
-  useEffect(() => {
-    sender.current = new HingeSender(
-      async (degrees) => {
-        await latest.current.setAngle(degrees);
-        if (pendingAngle.current === degrees) pendingAngle.current = undefined;
-      },
-      (reason) => {
-        setError(String(reason));
-        pendingAngle.current = undefined;
-        setAngle(latest.current.state.angleDegrees);
-      },
-    );
-    return () => {
-      sender.current?.stop();
-      sender.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!interacting.current && pendingAngle.current === undefined) setAngle(props.state.angleDegrees);
-  }, [props.state.angleDegrees]);
-
-  const changeAngle = (degrees: number) => {
-    setError(undefined);
-    pendingAngle.current = degrees;
-    setAngle(degrees);
-    sender.current?.set(degrees);
-  };
 
   useEffect(() => {
     const container = host.current;
@@ -515,113 +482,68 @@ export default function DuoFrame(props: DuoFrameProps) {
             aria-label={DUO_BUTTONS[button]}
             title={DUO_BUTTONS[button]}
           >
-            <svg
-              viewBox="0 0 24 24"
-              width="24"
-              height="24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              {button === 'side' ?
-                <>
-                  <rect x="6" y="10" width="12" height="11" rx="2" />
-                  <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-                </>
-              : <>
-                  <path d="M3 9h4l5-5v16l-5-5H3zM17 12h5" />
-                  {button === 'volumeUp' && <path d="M19.5 9.5v5" />}
-                </>
-              }
-            </svg>
+            <DuoHardwareIcon button={button} />
           </button>
         ))}
       </div>
-      <div className="rc-duo-controls" onPointerDown={(event) => event.stopPropagation()}>
-        <div className="rc-duo-hinge">
-          <button onClick={() => changeAngle(angle < 90 ? 180 : 0)}>{angle < 90 ? 'Unfold' : 'Fold'}</button>
-          <label htmlFor={angleId}>Hinge</label>
-          <input
-            id={angleId}
-            type="range"
-            min={0}
-            max={180}
-            step={1}
-            value={angle}
-            onPointerDown={() => {
-              interacting.current = true;
-            }}
-            onPointerUp={() => {
-              interacting.current = false;
-            }}
-            onPointerCancel={() => {
-              interacting.current = false;
-            }}
-            onChange={(event) => changeAngle(Number(event.target.value))}
-          />
-          <output>{Math.round(angle)}°</output>
-        </div>
-        <div className="rc-duo-views" aria-label="Device view">
-          {(['front', 'book', 'table', 'back'] as const).map((value) => (
-            <button
-              key={value}
-              aria-pressed={view === value}
-              onClick={() => {
-                viewRevision.current++;
-                setView(value);
-                invalidateFrame.current();
-                if (value === 'book') {
-                  void props
-                    .setOrientation('portrait')
-                    .then(() => changeAngle(110))
-                    .catch((reason) => setError(String(reason)));
-                }
-                if (value === 'table') {
-                  void props
-                    .setOrientation('landscape-left')
-                    .then(() => changeAngle(110))
-                    .catch((reason) => setError(String(reason)));
-                }
-              }}
-            >
-              {value === 'table' ? 'Laptop view' : value[0]!.toUpperCase() + value.slice(1)}
-            </button>
-          ))}
+      <DuoControls
+        angle={angle}
+        changeAngle={changeAngle}
+        interacting={interacting}
+        rotate={() => {
+          void props
+            .setOrientation(props.state.orientation === 'portrait' ? 'landscape-left' : 'portrait')
+            .catch((reason) => setError(String(reason)));
+        }}
+      >
+        {(['front', 'book', 'table', 'back'] as const).map((value) => (
           <button
+            key={value}
+            aria-pressed={view === value}
             onClick={() => {
-              const next = props.state.orientation === 'portrait' ? 'landscape-left' : 'portrait';
-              void props.setOrientation(next).catch((reason) => setError(String(reason)));
+              viewRevision.current++;
+              setView(value);
+              invalidateFrame.current();
+              if (value === 'book') {
+                void props
+                  .setOrientation('portrait')
+                  .then(() => changeAngle(110))
+                  .catch((reason) => setError(String(reason)));
+              }
+              if (value === 'table') {
+                void props
+                  .setOrientation('landscape-left')
+                  .then(() => changeAngle(110))
+                  .catch((reason) => setError(String(reason)));
+              }
             }}
           >
-            Rotate device
+            {value === 'table' ? 'Laptop view' : value[0]!.toUpperCase() + value.slice(1)}
           </button>
-          <button
-            className="rc-duo-lock"
-            aria-label="Lock position"
-            aria-pressed={positionLocked}
-            title={
-              positionLocked ?
-                'Position is locked. Screen touches still control iOS.'
-              : 'Drag the frame or background to rotate. Alt-drag rotates from the screen.'
-            }
-            onClick={() => setPositionLocked(!positionLocked)}
-          >
-            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <rect x="4" y="9" width="12" height="9" rx="2" stroke="currentColor" strokeWidth="1.6" />
-              <path
-                d={positionLocked ? 'M6 9V6a4 4 0 0 1 8 0v3' : 'M6 9V6a4 4 0 0 1 8 0'}
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
-            {positionLocked ? 'Position locked' : 'Lock position'}
-          </button>
-        </div>
-      </div>
+        ))}
+        <button
+          className="rc-duo-lock"
+          aria-label="Lock position"
+          aria-pressed={positionLocked}
+          title={
+            positionLocked ?
+              'Position is locked. Screen touches still control iOS.'
+            : 'Drag the frame or background to rotate. Alt-drag rotates from the screen.'
+          }
+          onClick={() => setPositionLocked(!positionLocked)}
+        >
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <rect x="4" y="9" width="12" height="9" rx="2" stroke="currentColor" strokeWidth="1.6" />
+            <path
+              d={positionLocked ? 'M6 9V6a4 4 0 0 1 8 0v3' : 'M6 9V6a4 4 0 0 1 8 0'}
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+          {positionLocked ? 'Position locked' : 'Lock position'}
+        </button>
+      </DuoControls>
       {error && (
         <div role="alert" className="rc-duo-error">
           {error}
