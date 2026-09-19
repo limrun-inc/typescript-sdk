@@ -43,3 +43,42 @@ Related browser workflow packages are published separately:
 ## Releasing
 
 This package is not part of generated SDK, hence you need to publish it manually in GitHub Actions.
+
+## iPhone Duo
+
+`RemoteControl` discovers native Duo support during connection and loads a 3D
+frame with separate cover and inner display streams. No model prop is required.
+Use the hinge slider for any angle from 0° closed to 180° flat. Touch and drag
+on the visible display interact with iOS. Position starts locked to prevent accidental
+rotation. Unlock it to drag the frame or background (or Alt-drag the screen) to move the
+camera. Rotate device changes the native orientation. Laptop view sets the
+hinge and orientation; it does not enable Apple's separate Table Mode.
+
+Click the frame's Sleep/Wake, Volume Up, or Volume Down buttons to send native
+hardware input. Press and hold is supported. These buttons remain active while
+the position is locked. Hover near an edge to reveal its button icons, then click
+either the icon or the physical button. Volume icons appear together above their
+edge; Sleep/Wake appears beside its edge. Icons follow native rotation and folding.
+Hover raises the physical button slightly without changing the camera framing.
+Tab, Space and Enter also operate the icons. Camera Control is not yet supported.
+
+The renderer requires WebGL. Duo currently supports single-finger gestures;
+accessibility inspection and the existing recording API do not follow the
+inner display. Use `screenshotDisplay` and `tapDisplay` from the TypeScript
+iOS client for explicit display automation.
+
+### Optional Duo appearance
+
+`duoModelUrl` replaces the rigid body with a host-supplied GLB. The host provides
+and licenses the asset; no third-party model is bundled with this package.
+Live simulator screens, hinge control and input remain active. A failed load keeps
+the built-in frame available and reports the error.
+
+The prepared model must contain `folding-half` and `stationary-half` groups with
+flat mesh children measured in centimeters. Inner display surfaces lie in the
+XY plane, centered at the hinge with positive Z facing the inner display.
+Material names `inner-screen` and `cover-screen` identify surfaces replaced by live
+video. Hardware meshes under `stationary-half` must carry `extras.button` with
+`side`, `volumeUp`, or `volumeDown`. All three are required. This is a prepared Duo
+appearance contract, not a general-purpose GLB viewer. Serve the file on the same
+origin or with suitable CORS headers.

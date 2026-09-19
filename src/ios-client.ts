@@ -254,6 +254,27 @@ export type LsofEntry = {
   path: string;
 };
 
+export type FoldDisplay = {
+  id: 'outer' | 'inner';
+  screenId: number;
+  trackId: string;
+  width: number;
+  height: number;
+  scale: number;
+  orientation: number;
+};
+
+export type DuoOrientation = 'portrait' | 'pud' | 'landscape-left' | 'landscape-right';
+
+export type FoldState = {
+  orientation: DuoOrientation;
+  /** Commanded mechanical angle in degrees. UIKit can report a calibrated angle. */
+  angleDegrees: number;
+  minAngleDegrees: number;
+  maxAngleDegrees: number;
+  displays: FoldDisplay[];
+};
+
 export type DeviceInfo = {
   /** Device UDID */
   udid: string;
@@ -503,8 +524,14 @@ export type PerformAction =
   | { type: 'touchUp'; x: number; y: number; screenWidth?: number; screenHeight?: number }
   | { type: 'keyDown'; keyCode: number }
   | { type: 'keyUp'; keyCode: number }
-  | { type: 'buttonDown'; button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | string }
-  | { type: 'buttonUp'; button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | string };
+  | {
+      type: 'buttonDown';
+      button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | 'volumeUp' | 'volumeDown' | string;
+    }
+  | {
+      type: 'buttonUp';
+      button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | 'volumeUp' | 'volumeDown' | string;
+    };
 
 /**
  * Per-action result in a `performActions` batch. `type` identifies which
@@ -723,6 +750,15 @@ export type InstanceClient = {
    * @param orientation The orientation to set ("Portrait" or "Landscape")
    */
   setOrientation: (orientation: 'Portrait' | 'Landscape') => Promise<void>;
+  /** Returns null for a simulator without a hinge. */
+  getFoldState: () => Promise<FoldState | null>;
+  /** Capture an upright Duo display. A powered-off display returns its native black image. */
+  screenshotDisplay: (display: 'outer' | 'inner') => Promise<ScreenshotData>;
+  /** Tap in point coordinates returned by screenshotDisplay. */
+  tapDisplay: (display: 'outer' | 'inner', x: number, y: number) => Promise<void>;
+  setDuoOrientation: (orientation: DuoOrientation) => Promise<FoldState>;
+  /** Sets the native Duo hinge: 0 closed, 180 flat. */
+  setHingeAngle: (angleDegrees: number) => Promise<FoldState>;
 
   /**
    * Scroll in a direction by a specified number of pixels
@@ -1244,6 +1280,7 @@ type SimctlRequest = {
  * Generic server response with optional error
  */
 type ServerResponse = {
+  state?: FoldState;
   type: string;
   id: string;
   error?: string;
@@ -1809,6 +1846,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       stopMicrophonePlaybackResult: () => undefined,
       microphoneStatusResult: (msg): IosMicrophoneStatus => msg.status ?? { source: 'silence' },
       setOrientationResult: () => undefined,
+      foldStateResult: (msg) => msg.state ?? null,
       scrollResult: () => undefined,
       performActionsResult: (msg): PerformActionsResult => ({
         results: msg.results ?? [],
@@ -1991,6 +2029,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             saveKeychain,
             restoreKeychain,
             setOrientation,
+            getFoldState,
+            screenshotDisplay,
+            tapDisplay,
+            setDuoOrientation,
+            setHingeAngle,
             scroll,
             performActions,
             startRecording,
@@ -2305,6 +2348,23 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         undefined,
         120_000,
       );
+    };
+
+    const setDuoOrientation = (orientation: DuoOrientation): Promise<FoldState> => {
+      if (!['portrait', 'pud', 'landscape-left', 'landscape-right'].includes(orientation))
+        return Promise.reject(new RangeError('Invalid iPhone Duo orientation'));
+      return sendRequest('setDuoOrientation', { orientation });
+    };
+    const screenshotDisplay = (display: 'outer' | 'inner'): Promise<ScreenshotData> =>
+      sendRequest('screenshotDisplay', { display });
+    const tapDisplay = (display: 'outer' | 'inner', x: number, y: number): Promise<void> =>
+      sendRequest('tapDisplay', { display, x, y });
+    const getFoldState = (): Promise<FoldState | null> => sendRequest('getFoldState');
+    const setHingeAngle = (angleDegrees: number): Promise<FoldState> => {
+      if (!Number.isFinite(angleDegrees) || angleDegrees < 0 || angleDegrees > 180) {
+        return Promise.reject(new RangeError('Hinge angle must be between 0 and 180 degrees'));
+      }
+      return sendRequest('setHingeAngle', { angleDegrees });
     };
 
     const setOrientation = (orientation: 'Portrait' | 'Landscape'): Promise<void> => {

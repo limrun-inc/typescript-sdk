@@ -68,7 +68,7 @@ export default class IosCreate extends BaseCommand {
     }),
     model: Flags.string({
       description: 'Device model to create',
-      options: ['iphone', 'ipad', 'watch'],
+      options: ['iphone', 'iphone-duo', 'ipad', 'watch'],
     }),
     'reuse-if-exists': Flags.boolean({
       description: 'Reuse an existing matching instance instead of creating a new one',
@@ -247,7 +247,7 @@ export default class IosCreate extends BaseCommand {
 
       if (flags.region) params.spec!.region = flags.region;
       if (flags.jurisdiction) params.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';
-      if (flags.model) params.spec!.model = flags.model as 'iphone' | 'ipad' | 'watch';
+      if (flags.model) params.spec!.model = flags.model as 'iphone' | 'iphone-duo' | 'ipad' | 'watch';
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
       if (flags['force-bundle-id']) params.spec!.forceBundleId = flags['force-bundle-id'];
