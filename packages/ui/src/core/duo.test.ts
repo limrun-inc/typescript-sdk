@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createDisplayTouchMessage, HingeSender, panelTouch, validHingeAngle } from './duo';
+import { createDisplayTouchMessage, duoPointerMode, HingeSender, panelTouch, validHingeAngle } from './duo';
 
 describe('native Duo input', () => {
   it('rejects non-finite and out-of-range hinge values', () => {
@@ -46,5 +46,17 @@ describe('native Duo input', () => {
     sender.stop();
     sender.set(0);
     expect(failed).toHaveBeenCalledOnce();
+  });
+});
+
+describe('Duo position lock', () => {
+  it.each([false, true])('keeps touch active while locked (Alt=%s)', (alt) => {
+    expect(duoPointerMode(true, true, alt)).toBe('touch');
+    expect(duoPointerMode(true, false, alt)).toBe('ignore');
+  });
+  it('allows deliberate orbit only after unlocking', () => {
+    expect(duoPointerMode(false, false, false)).toBe('orbit');
+    expect(duoPointerMode(false, true, false)).toBe('touch');
+    expect(duoPointerMode(false, true, true)).toBe('orbit');
   });
 });

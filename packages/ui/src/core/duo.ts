@@ -30,6 +30,16 @@ export function panelTouch(u: number, v: number): { x: number; y: number } {
   return { x: Math.max(0, Math.min(1, u)), y: Math.max(0, Math.min(1, 1 - v)) };
 }
 
+/** Locking the view never suppresses screen input, including accidental Alt presses. */
+export function duoPointerMode(
+  locked: boolean,
+  screenHit: boolean,
+  altKey: boolean,
+): 'touch' | 'orbit' | 'ignore' {
+  if (screenHit && (locked || !altKey)) return 'touch';
+  return locked ? 'ignore' : 'orbit';
+}
+
 export function createDisplayTouchMessage(
   action: number,
   screenId: number,

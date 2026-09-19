@@ -49,7 +49,8 @@ This package is not part of generated SDK, hence you need to publish it manually
 `RemoteControl` discovers native Duo support during connection and loads a 3D
 frame with separate cover and inner display streams. No model prop is required.
 Use the hinge slider for any angle from 0° closed to 180° flat. Touch and drag
-on the visible display interact with iOS; Rotate view (or Alt-drag) moves the
+on the visible display interact with iOS. Position starts locked to prevent accidental
+rotation. Unlock it to drag the frame or background (or Alt-drag the screen) to move the
 camera. Rotate device changes the native orientation. Laptop view sets the
 hinge and orientation; it does not enable Apple's separate Table Mode.
 
