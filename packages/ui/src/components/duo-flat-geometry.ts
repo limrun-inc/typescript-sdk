@@ -45,15 +45,17 @@ export function flatFrameGeometry(inner: boolean, displayTurns: number, width: n
     if (edge === 'bottom') p.y = rect.max.y + 28;
     if (edge === 'left') p.x = rect.min.x - 28;
     if (edge === 'right') p.x = rect.max.x + 28;
-    return { button: b.button, edge, ...p };
+    return { button: b.button, edge, ...p, targetX: p.x, targetY: p.y };
   });
   const volume = guides.filter((g) => g.button !== 'side');
   const axis = turns % 2 ? 'y' : 'x';
   volume.sort((a, b) => a[axis] - b[axis]);
-  if (volume[1]![axis] - volume[0]![axis] < 48) {
+  // Keep glyphs over the metal caps; only spread their invisible click areas.
+  const targetAxis = turns % 2 ? 'targetY' : 'targetX';
+  if (volume[1]![axis] - volume[0]![axis] < 44) {
     const center = (volume[0]![axis] + volume[1]![axis]) / 2;
-    volume[0]![axis] = center - 24;
-    volume[1]![axis] = center + 24;
+    volume[0]![targetAxis] = center - 22;
+    volume[1]![targetAxis] = center + 22;
   }
   return {
     bodyWidth,
@@ -65,7 +67,7 @@ export function flatFrameGeometry(inner: boolean, displayTurns: number, width: n
     buttons,
     guides,
     rect,
-    iconSize: hardwareIconSize(rect),
+    iconSize: Math.min(hardwareIconSize(rect), 12 * scale),
   };
 }
 

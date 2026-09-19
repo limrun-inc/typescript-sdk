@@ -293,6 +293,7 @@
 .rc-duo .rc-duo-hardware svg {
   width: var(--duo-hardware-icon-size, 24px);
   height: var(--duo-hardware-icon-size, 24px);
+  transform: translate(var(--duo-hardware-icon-x, 0px), var(--duo-hardware-icon-y, 0px));
 }
 .rc-duo .rc-duo-hardware:hover,
 .rc-duo .rc-duo-hardware:focus-visible,

@@ -22,19 +22,32 @@ describe('2D Duo frame controls', () => {
           const f = flatFrameGeometry(inner, turns, width!, height!);
           expect(f.scale).toBeGreaterThan(0);
           for (const g of f.guides) {
-            expect(g.x - 22).toBeGreaterThanOrEqual(0);
-            expect(g.x + 22).toBeLessThanOrEqual(width!);
-            expect(g.y - 22).toBeGreaterThanOrEqual(0);
-            expect(g.y + 22).toBeLessThanOrEqual(height!);
+            expect(g.targetX - 22).toBeGreaterThanOrEqual(0);
+            expect(g.targetX + 22).toBeLessThanOrEqual(width!);
+            expect(g.targetY - 22).toBeGreaterThanOrEqual(0);
+            expect(g.targetY + 22).toBeLessThanOrEqual(height!);
+            expect(Math.abs(g.x - g.targetX) + f.iconSize / 2).toBeLessThanOrEqual(22.000001);
+            expect(Math.abs(g.y - g.targetY) + f.iconSize / 2).toBeLessThanOrEqual(22.000001);
             expect(g.x < f.rect.min.x || g.x > f.rect.max.x || g.y < f.rect.min.y || g.y > f.rect.max.y).toBe(
               true,
             );
             expect(flatHoverEdge(g.x, g.y, f.rect)).toBe(g.edge);
           }
           const volume = f.guides.filter((g) => g.button !== 'side');
-          expect(Math.hypot(volume[0]!.x - volume[1]!.x, volume[0]!.y - volume[1]!.y)).toBeGreaterThanOrEqual(
-            48,
-          );
+          expect(
+            Math.hypot(volume[0]!.targetX - volume[1]!.targetX, volume[0]!.targetY - volume[1]!.targetY),
+          ).toBeGreaterThanOrEqual(44);
+          for (const g of f.guides) {
+            const b = f.buttons.find((b) => b.button === g.button)!;
+            const radians = (f.turns * Math.PI) / 2;
+            const x = (b.x - f.bodyWidth / 2) * f.scale;
+            const y = (b.y - f.bodyHeight / 2) * f.scale;
+            if (g.edge === 'top' || g.edge === 'bottom') {
+              expect(g.x).toBeCloseTo(width! / 2 + x * Math.cos(radians) - y * Math.sin(radians));
+            } else {
+              expect(g.y).toBeCloseTo(height! / 2 + x * Math.sin(radians) + y * Math.cos(radians));
+            }
+          }
         }
       });
     }

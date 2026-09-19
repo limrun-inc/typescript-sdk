@@ -257,9 +257,11 @@ function DuoFlat(props: DuoFrameProps) {
             title={DUO_BUTTONS[g.button]}
             style={
               {
-                left: g.x,
-                top: g.y,
+                left: g.targetX,
+                top: g.targetY,
                 '--duo-hardware-icon-size': `${frame.iconSize}px`,
+                '--duo-hardware-icon-x': `${g.x - g.targetX}px`,
+                '--duo-hardware-icon-y': `${g.y - g.targetY}px`,
               } as React.CSSProperties
             }
             {...buttonEvents(g.button)}
