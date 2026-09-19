@@ -54,17 +54,15 @@ export function createDuoModel(outerTexture: THREE.Texture, innerTexture: THREE.
   const antenna = new THREE.MeshStandardMaterial({ color: 0xa4a5a0, roughness: 0.55 });
   const glass = new THREE.MeshPhysicalMaterial({
     color: 0x03060d,
-    envMapIntensity: 0.22,
-    metalness: 0.15,
-    roughness: 0.07,
-    clearcoat: 1,
+    envMapIntensity: 0.05,
+    metalness: 1,
+    roughness: 0.22,
   });
   const optic = new THREE.MeshPhysicalMaterial({
     color: 0x102137,
-    envMapIntensity: 0.45,
-    metalness: 0.65,
-    roughness: 0.13,
-    clearcoat: 1,
+    envMapIntensity: 0.04,
+    metalness: 1,
+    roughness: 0.3,
   });
   const flash = new THREE.MeshStandardMaterial({ color: 0xefead4, roughness: 0.35 });
   const logo = new THREE.MeshStandardMaterial({
@@ -208,8 +206,8 @@ export function createDuoModel(outerTexture: THREE.Texture, innerTexture: THREE.
     right.add(ring);
     disc(7.35, gasket, x, cameraY, -depth - 3.43);
     disc(6.65, glass, x, cameraY, -depth - 3.46);
-    disc(3.4, optic, x, cameraY, -depth - 3.48);
-    disc(2.2, glass, x, cameraY, -depth - 3.5);
+    disc(2.5, optic, x, cameraY, -depth - 3.48);
+    disc(1.9, glass, x, cameraY, -depth - 3.5);
     const reflection = disc(0.7, optic, x - 1.1, cameraY + 1.15, -depth - 3.52);
     reflection.scale.y = 0.55;
   }
