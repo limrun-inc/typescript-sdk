@@ -83,9 +83,11 @@ export default function DuoFrame(props: Props) {
     const camera = new THREE.PerspectiveCamera(32, 1, 1, 2000);
     camera.position.set(0, 0, 340);
     const root = new THREE.Group();
+    const device = new THREE.Group();
     const left = new THREE.Group();
     const right = new THREE.Group();
-    root.add(left, right);
+    device.add(left, right);
+    root.add(device);
     scene.add(root);
     scene.add(new THREE.HemisphereLight(0xecf1ff, 0x33394b, 3));
     const key = new THREE.DirectionalLight(0xffffff, 4);
@@ -330,16 +332,24 @@ export default function DuoFrame(props: Props) {
       // Closed view presents the cover. Intermediate poses retain perspective and true occlusion.
       const closed = 1 - THREE.MathUtils.smoothstep(renderedAngle, 15, 110);
       const baseYaw = closed * Math.PI + (viewRef.current === 'back' ? Math.PI : 0);
-      renderedYaw = THREE.MathUtils.damp(renderedYaw, baseYaw + yaw, 12, dt);
+      renderedYaw = THREE.MathUtils.damp(renderedYaw, baseYaw, 12, dt);
+      // Camera orbit stays independent of the native device orientation.
       root.rotation.set(
         pitch +
           (viewRef.current === 'table' ? -0.8
           : viewRef.current === 'book' ? 0.12
           : 0),
+        yaw,
+        0,
+      );
+      // Apply screen rotation after turning the device over so the cover remains upright.
+      device.rotation.set(
+        0,
         renderedYaw,
         { portrait: 0, pud: Math.PI, 'landscape-left': Math.PI / 2, 'landscape-right': -Math.PI / 2 }[
           latest.current.state.orientation
         ] ?? 0,
+        'ZYX',
       );
       root.position.set(0, 0, 0);
       root.updateMatrixWorld(true);

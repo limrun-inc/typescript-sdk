@@ -1731,6 +1731,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const handleKeyboard = (event: React.KeyboardEvent) => {
       event.preventDefault();
       event.stopPropagation();
+      const inputFocused =
+        document.activeElement === videoRef.current ||
+        (isDuo && document.activeElement === event.currentTarget);
       // Use the wrapper for conditional logging
       debugLog('Keyboard event:', {
         type: event.type,
@@ -1738,12 +1741,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         keyCode: event.keyCode,
         code: event.code,
         target: (event.target as HTMLElement).tagName,
-        focused: document.activeElement === videoRef.current,
+        focused: inputFocused,
       });
 
-      if (document.activeElement !== videoRef.current) {
+      if (!inputFocused) {
         // Use the wrapper for conditional warning
-        debugWarn('Video element not focused, skipping keyboard event');
+        debugWarn('Simulator input not focused, skipping keyboard event');
         return;
       }
 
