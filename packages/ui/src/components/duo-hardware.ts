@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { DuoButton } from '../core/duo';
+import { hardwareIconSize } from './duo-flat-geometry';
 
 type Edge = 'top' | 'bottom' | 'left' | 'right';
 export type HardwareGuide = { button: DuoButton; edge: Edge; x: number; y: number };
@@ -54,7 +55,7 @@ export function hardwareLayout(
       volume[1]![axis] = center + 24;
     }
   }
-  return { guides, rect };
+  return { guides, rect, iconSize: hardwareIconSize(rect) };
 }
 
 export { flatHoverEdge as hardwareHoverEdge } from './duo-flat-geometry';

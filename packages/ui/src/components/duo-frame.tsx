@@ -395,6 +395,7 @@ export default function DuoFrame(props: DuoFrameProps) {
         if (!element) continue;
         element.style.left = `${guide.x}px`;
         element.style.top = `${guide.y}px`;
+        element.style.setProperty('--duo-hardware-icon-size', `${layout.iconSize}px`);
         element.dataset.visible = String(guide.edge === hoveredEdge);
       }
       if (

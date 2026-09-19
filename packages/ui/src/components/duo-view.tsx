@@ -255,7 +255,13 @@ function DuoFlat(props: DuoFrameProps) {
             data-pressed={pressed === g.button}
             aria-label={DUO_BUTTONS[g.button]}
             title={DUO_BUTTONS[g.button]}
-            style={{ left: g.x, top: g.y }}
+            style={
+              {
+                left: g.x,
+                top: g.y,
+                '--duo-hardware-icon-size': `${frame.iconSize}px`,
+              } as React.CSSProperties
+            }
             {...buttonEvents(g.button)}
           >
             <DuoHardwareIcon button={g.button} />

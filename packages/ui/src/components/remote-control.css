@@ -271,10 +271,12 @@
 }
 .rc-duo .rc-duo-hardware {
   position: absolute;
+  display: grid;
+  place-items: center;
   z-index: 1;
   width: 44px;
   height: 44px;
-  padding: 10px;
+  padding: 0;
   transform: translate(-50%, -50%);
   color: #73777c;
   opacity: 0;
@@ -287,6 +289,10 @@
 .rc-duo .rc-duo-hardware:focus-visible {
   opacity: 1;
   pointer-events: auto;
+}
+.rc-duo .rc-duo-hardware svg {
+  width: var(--duo-hardware-icon-size, 24px);
+  height: var(--duo-hardware-icon-size, 24px);
 }
 .rc-duo .rc-duo-hardware:hover,
 .rc-duo .rc-duo-hardware:focus-visible,

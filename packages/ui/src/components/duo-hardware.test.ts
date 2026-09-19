@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createDuoModel } from './duo-model';
 import { hardwareHoverEdge, hardwareLayout } from './duo-hardware';
+import { hardwareIconSize } from './duo-flat-geometry';
 
 describe('Duo edge hints', () => {
   it.each([0, 110, 180])('keeps icon targets outside the screen at %s degrees', (angle) => {
@@ -12,7 +13,7 @@ describe('Duo edge hints', () => {
     const camera = new THREE.OrthographicCamera(-120, 120, 120, -120, 1, 1000);
     camera.position.z = 340;
     camera.updateMatrixWorld(true);
-    const { guides, rect } = hardwareLayout(
+    const { guides, rect, iconSize } = hardwareLayout(
       model.buttonAnchors(),
       model.getBounds(new THREE.Box3()),
       camera,
@@ -20,6 +21,7 @@ describe('Duo edge hints', () => {
       500,
     );
     expect(guides).toHaveLength(3);
+    expect(iconSize).toBe(hardwareIconSize(rect));
     for (const guide of guides) {
       expect(rect.containsPoint(new THREE.Vector2(guide.x, guide.y))).toBe(false);
       expect(hardwareHoverEdge(guide.x, guide.y, rect)).toBe(guide.edge);

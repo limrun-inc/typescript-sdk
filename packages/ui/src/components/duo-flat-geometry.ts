@@ -55,7 +55,23 @@ export function flatFrameGeometry(inner: boolean, displayTurns: number, width: n
     volume[0]![axis] = center - 24;
     volume[1]![axis] = center + 24;
   }
-  return { bodyWidth, bodyHeight, screenWidth, screenHeight, scale, turns, buttons, guides, rect };
+  return {
+    bodyWidth,
+    bodyHeight,
+    screenWidth,
+    screenHeight,
+    scale,
+    turns,
+    buttons,
+    guides,
+    rect,
+    iconSize: hardwareIconSize(rect),
+  };
+}
+
+/** Scale the glyph with the device while its surrounding click target stays 44 pixels. */
+export function hardwareIconSize(rect: { min: { x: number; y: number }; max: { x: number; y: number } }) {
+  return Math.max(12, Math.min(24, Math.max(rect.max.x - rect.min.x, rect.max.y - rect.min.y) / 24));
 }
 
 /** The hover band joins the metal edge to its icons without covering the display. */

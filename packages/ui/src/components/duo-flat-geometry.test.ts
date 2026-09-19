@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { flatFrameGeometry, flatHoverEdge } from './duo-flat-geometry';
+import { flatFrameGeometry, flatHoverEdge, hardwareIconSize } from './duo-flat-geometry';
 
 describe('2D Duo frame controls', () => {
+  it('shrinks glyphs with the device without shrinking click targets', () => {
+    const compact = flatFrameGeometry(false, 0, 320, 360);
+    const regular = flatFrameGeometry(false, 0, 600, 600);
+    const large = flatFrameGeometry(false, 0, 1000, 1000);
+    expect(compact.iconSize).toBe(12);
+    expect(regular.iconSize).toBe(20);
+    expect(large.iconSize).toBe(24);
+    expect(hardwareIconSize({ min: { x: 0, y: 0 }, max: { x: 0, y: 0 } })).toBe(12);
+  });
   for (const inner of [false, true]) {
     for (const turns of [0, 1, 2, 3]) {
       it('keeps ' + (inner ? 'inner' : 'cover') + ' controls outside the glass at rotation ' + turns, () => {
