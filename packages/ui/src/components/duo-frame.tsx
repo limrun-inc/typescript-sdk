@@ -2,7 +2,16 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createDuoModel } from './duo-model';
-import { HingeSender, panelTouch, duoPointerMode, type DuoState, type DuoOrientation } from '../core/duo';
+import {
+  HingeSender,
+  panelTouch,
+  duoPointerMode,
+  DuoButtonSender,
+  DUO_BUTTONS,
+  type DuoButton,
+  type DuoState,
+  type DuoOrientation,
+} from '../core/duo';
 
 interface Props {
   outer: HTMLVideoElement | null;
@@ -10,6 +19,7 @@ interface Props {
   state: DuoState;
   setAngle: (degrees: number) => Promise<void>;
   setOrientation: (orientation: DuoOrientation) => Promise<void>;
+  button: (button: DuoButton, down: boolean) => Promise<void>;
   touch: (action: number, screenId: number, x: number, y: number) => void;
   onKeyDown: React.KeyboardEventHandler<HTMLDivElement>;
   onKeyUp: React.KeyboardEventHandler<HTMLDivElement>;
@@ -110,14 +120,26 @@ export default function DuoFrame(props: Props) {
     }
 
     const model = createDuoModel(outerTexture, innerTexture, environmentMap.texture);
-    const { device, hitObjects } = model;
+    const { device } = model;
+    const buttons = new DuoButtonSender(
+      (button, down) => latest.current.button(button, down),
+      (reason) => setError(String(reason)),
+    );
     root.add(device);
     scene.add(root);
 
     const ray = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let drag:
-      | { pointer: number; screenId?: number; x: number; y: number; clientX: number; clientY: number }
+      | {
+          pointer: number;
+          button?: DuoButton;
+          screenId?: number;
+          x: number;
+          y: number;
+          clientX: number;
+          clientY: number;
+        }
       | undefined;
     let yaw = 0,
       pitch = 0;
@@ -133,8 +155,11 @@ export default function DuoFrame(props: Props) {
         1 - ((event.clientY - rect.top) / rect.height) * 2,
       );
       ray.setFromCamera(pointer, camera);
-      const intersection = ray.intersectObjects(hitObjects, false)[0];
-      if (!intersection?.uv || !intersection.object.userData['display']) return undefined;
+      const intersection = model.pick(ray);
+      const button = intersection?.object.userData['button'] as DuoButton | undefined;
+      if (button) return { button };
+      if (!intersection?.object.userData['display']) return undefined;
+      if (!intersection.uv) return undefined;
       const display = latest.current.state.displays.find(
         (d) => d.id === intersection.object.userData['display'],
       );
@@ -145,11 +170,13 @@ export default function DuoFrame(props: Props) {
       if (drag || event.button !== 0) return;
       container.focus({ preventScroll: true });
       const picked = pick(event);
-      const mode = duoPointerMode(lockedRef.current, !!picked, event.altKey);
-      if (mode === 'ignore') return;
-      const hit = mode === 'touch' ? picked : undefined;
+      const hardware = picked && 'button' in picked ? picked.button : undefined;
+      const mode = duoPointerMode(lockedRef.current, !!picked && !hardware, event.altKey);
+      if (mode === 'ignore' && !hardware) return;
+      const hit = mode === 'touch' && picked && 'screenId' in picked ? picked : undefined;
       drag = {
         pointer: event.pointerId,
+        button: hardware,
         ...hit,
         x: hit?.x ?? 0,
         y: hit?.y ?? 0,
@@ -157,13 +184,25 @@ export default function DuoFrame(props: Props) {
         clientY: event.clientY,
       };
       renderer.domElement.setPointerCapture(event.pointerId);
-      if (hit) latest.current.touch(0, hit.screenId, hit.x, hit.y);
+      if (hardware) {
+        setError(undefined);
+        buttons.press(hardware);
+        model.highlightButton(hardware, true);
+      } else if (hit) latest.current.touch(0, hit.screenId, hit.x, hit.y);
     };
     const move = (event: PointerEvent) => {
-      if (!drag || drag.pointer !== event.pointerId) return;
+      if (!drag) {
+        const hit = pick(event);
+        const button = hit && 'button' in hit ? hit.button : undefined;
+        renderer.domElement.style.cursor = button ? 'pointer' : '';
+        renderer.domElement.title = button ? DUO_BUTTONS[button] : '';
+        model.highlightButton(button);
+        return;
+      }
+      if (drag.pointer !== event.pointerId || drag.button) return;
       if (drag.screenId) {
         const hit = pick(event);
-        if (hit && hit.screenId === drag.screenId) {
+        if (hit && 'screenId' in hit && hit.screenId === drag.screenId) {
           drag.x = hit.x;
           drag.y = hit.y;
           latest.current.touch(2, hit.screenId, hit.x, hit.y);
@@ -177,9 +216,15 @@ export default function DuoFrame(props: Props) {
     };
     const up = (event?: PointerEvent) => {
       if (!drag || (event && drag.pointer !== event.pointerId)) return;
-      if (drag.screenId) latest.current.touch(1, drag.screenId, drag.x, drag.y);
+      if (drag.button) {
+        buttons.release();
+        model.highlightButton();
+      } else if (drag.screenId) latest.current.touch(1, drag.screenId, drag.x, drag.y);
       drag = undefined;
     };
+    renderer.domElement.addEventListener('pointerleave', () => {
+      if (!drag) model.highlightButton();
+    });
     renderer.domElement.addEventListener('pointerdown', down);
     renderer.domElement.addEventListener('pointermove', move);
     renderer.domElement.addEventListener('pointerup', up);

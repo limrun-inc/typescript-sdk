@@ -54,6 +54,10 @@ rotation. Unlock it to drag the frame or background (or Alt-drag the screen) to 
 camera. Rotate device changes the native orientation. Laptop view sets the
 hinge and orientation; it does not enable Apple's separate Table Mode.
 
+Click the frame's Sleep/Wake, Volume Up, or Volume Down buttons to send native
+hardware input. Press and hold is supported. These buttons remain active while
+the position is locked; hovering highlights a button and shows its name.
+
 The renderer requires WebGL. Duo currently supports single-finger gestures;
 accessibility inspection and the existing recording API do not follow the
 inner display. Use `screenshotDisplay` and `tapDisplay` from the TypeScript

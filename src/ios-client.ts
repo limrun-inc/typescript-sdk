@@ -524,8 +524,14 @@ export type PerformAction =
   | { type: 'touchUp'; x: number; y: number; screenWidth?: number; screenHeight?: number }
   | { type: 'keyDown'; keyCode: number }
   | { type: 'keyUp'; keyCode: number }
-  | { type: 'buttonDown'; button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | string }
-  | { type: 'buttonUp'; button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | string };
+  | {
+      type: 'buttonDown';
+      button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | 'volumeUp' | 'volumeDown' | string;
+    }
+  | {
+      type: 'buttonUp';
+      button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | 'volumeUp' | 'volumeDown' | string;
+    };
 
 /**
  * Per-action result in a `performActions` batch. `type` identifies which

@@ -549,7 +549,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         const id = crypto.randomUUID();
         const timer = setTimeout(() => {
           duoRequests.current.delete(id);
-          reject(new Error('Hinge control timed out'));
+          reject(new Error('Device control timed out'));
         }, 5000);
         duoRequests.current.set(id, { resolve, reject, timer });
         socket.send(JSON.stringify({ type, id, ...parameters }));
@@ -3111,6 +3111,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }
           updateStatus('Received: ' + message.type);
           switch (message.type) {
+            case 'performActionsResult':
             case 'foldStateResult':
             case 'foldStateChanged': {
               if (!isDuo) break;
@@ -3869,6 +3870,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               setAngle={(angleDegrees) => sendDuoControl('setHingeAngle', { angleDegrees })}
               setOrientation={(orientation: DuoOrientation) =>
                 sendDuoControl('setDuoOrientation', { orientation })
+              }
+              button={(button, down) =>
+                sendDuoControl('performActions', {
+                  actions: [{ type: down ? 'buttonDown' : 'buttonUp', button }],
+                })
               }
               touch={(action, screenId, x, y) => {
                 const channel = dataChannelRef.current;

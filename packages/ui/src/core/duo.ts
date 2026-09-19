@@ -110,3 +110,37 @@ export class HingeSender {
     }
   }
 }
+
+export type DuoButton = 'side' | 'volumeUp' | 'volumeDown';
+export const DUO_BUTTONS: Record<DuoButton, string> = {
+  side: 'Sleep/Wake',
+  volumeUp: 'Volume Up',
+  volumeDown: 'Volume Down',
+};
+
+/** Keeps button edges ordered, including releases after cancellation or a failed press. */
+export class DuoButtonSender {
+  private held?: DuoButton;
+  private tail = Promise.resolve();
+  private timeout?: ReturnType<typeof setTimeout>;
+  constructor(
+    private send: (button: DuoButton, down: boolean) => Promise<void>,
+    private failed: (error: unknown) => void,
+  ) {}
+  press(button: DuoButton): void {
+    if (this.held) return;
+    this.held = button;
+    this.enqueue(button, true);
+    this.timeout = setTimeout(() => this.release(), 10000);
+  }
+  release(): void {
+    if (!this.held) return;
+    clearTimeout(this.timeout);
+    const button = this.held;
+    this.held = undefined;
+    this.enqueue(button, false);
+  }
+  private enqueue(button: DuoButton, down: boolean): void {
+    this.tail = this.tail.then(() => this.send(button, down)).catch(this.failed);
+  }
+}

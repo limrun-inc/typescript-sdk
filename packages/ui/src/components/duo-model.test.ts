@@ -74,3 +74,32 @@ describe('Duo display geometry', () => {
     model.dispose();
   });
 });
+
+describe('Duo hardware hit targets', () => {
+  it.each([0, 110, 180])('keeps all three hardware buttons clickable at %s°', (angle) => {
+    const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
+    model.setAngle(angle);
+    for (const name of ['side', 'volumeUp', 'volumeDown']) {
+      const button = model.device.getObjectByName(`button-${name}`)!;
+      const point = button.getWorldPosition(new THREE.Vector3());
+      const normal = new THREE.Vector3(
+        ...((name === 'side' ? [1, 0, 0] : [0, 1, 0]) as [number, number, number]),
+      ).transformDirection(button.matrixWorld);
+      const ray = new THREE.Raycaster(point.clone().addScaledVector(normal, 20), normal.negate());
+      expect(model.pick(ray)?.object.userData['button']).toBe(name);
+    }
+    model.dispose();
+  });
+  it('does not steal screen touches near the side button', () => {
+    const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
+    const ray = new THREE.Raycaster(new THREE.Vector3(76, 21, 80), new THREE.Vector3(0, 0, -1));
+    expect(model.pick(ray)?.object.userData['display']).toBe('inner');
+    model.dispose();
+  });
+  it('does not activate an occluded button through the chassis', () => {
+    const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
+    const ray = new THREE.Raycaster(new THREE.Vector3(-100, 21, -2.6), new THREE.Vector3(1, 0, 0));
+    expect(model.pick(ray)?.object.userData['button']).toBeUndefined();
+    model.dispose();
+  });
+});

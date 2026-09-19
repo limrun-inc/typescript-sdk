@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { DUO_DIMENSIONS } from '../core/duo';
+import { DUO_DIMENSIONS, type DuoButton } from '../core/duo';
 
 // Body dimensions are published by Apple; radii and hardware details follow its product photographs.
 const { width, height, depth } = DUO_DIMENSIONS;
@@ -39,6 +39,8 @@ export function createDuoModel(
   const right = new THREE.Group();
   device.add(left, right);
   const hitObjects: THREE.Object3D[] = [];
+  const buttons = new Map<DuoButton, THREE.Mesh>();
+  const buttonTargets: THREE.Object3D[] = [];
   const resources: Array<{ dispose(): void }> = [];
   const metal = new THREE.MeshPhysicalMaterial({
     color: 0xbec1c3,
@@ -58,14 +60,14 @@ export function createDuoModel(
   const antenna = new THREE.MeshStandardMaterial({ color: 0xa4a5a0, roughness: 0.55 });
   const glass = new THREE.MeshPhysicalMaterial({
     color: 0x03060d,
-    envMap: environment,
+    envMap: environment ?? null,
     envMapIntensity: 0.05,
     metalness: 1,
     roughness: 0.22,
   });
   const optic = new THREE.MeshPhysicalMaterial({
     color: 0x102137,
-    envMap: environment,
+    envMap: environment ?? null,
     envMapIntensity: 0.04,
     metalness: 1,
     roughness: 0.3,
@@ -240,19 +242,30 @@ export function createDuoModel(
   inlay.position.set(half / 2, -3, -depth - 0.16);
   right.add(inlay);
 
-  for (const [y, length] of [
-    [21, 13],
-    [-12, 12],
-  ] as const) {
-    const button = box(0.7, length, 2.5, 0.28, y > 0 ? metal : antenna);
-    button.position.set(half + 0.15, y, -depth / 2);
+  const addButton = (name: DuoButton, w: number, h: number, x: number, y: number) => {
+    const material = metal.clone();
+    resources.push(material);
+    const button = box(w, h, 2.5, 0.27, material);
+    button.name = `button-${name}`;
+    button.userData['button'] = name;
+    button.position.set(x, y, -depth / 2);
     right.add(button);
-  }
-  for (const x of [half - 25, half - 37]) {
-    const volume = box(9.5, 0.65, 2.1, 0.27, metal);
-    volume.position.set(x, height / 2 + 0.12, -depth / 2);
-    right.add(volume);
-  }
+    buttons.set(name, button);
+    // Extend away from the bezel so narrow hardware remains clickable without covering the glass.
+    const target = box(w < h ? 4.5 : w, w < h ? h : 4.5, depth, 0.1, material);
+    hitObjects.splice(hitObjects.indexOf(target), 1);
+    target.position.set(x + (w < h ? 2 : 0), y + (w < h ? 0 : 2), -depth / 2);
+    target.userData['button'] = name;
+    target.visible = false;
+    target.updateMatrix();
+    buttonTargets.push(target);
+  };
+  addButton('side', 0.7, 13, half + 0.15, 21);
+  addButton('volumeUp', 9.5, 0.65, half - 25, height / 2 + 0.12);
+  addButton('volumeDown', 9.5, 0.65, half - 37, height / 2 + 0.12);
+  const antennaWindow = box(0.35, 12, 2.5, 0.15, antenna);
+  antennaWindow.position.set(half - 0.08, -12, -depth / 2);
+  right.add(antennaWindow);
   const port = plate(8.2, 2.25, 0.05, 1.12, 1.12, gasket, 0);
   port.rotation.x = Math.PI / 2;
   port.position.set(half / 2, -height / 2 - 0.07, -depth / 2);
@@ -336,5 +349,31 @@ export function createDuoModel(
     device.updateMatrixWorld(true);
   };
   setAngle(180);
-  return { device, hitObjects, setAngle, dispose: () => resources.forEach((resource) => resource.dispose()) };
+  return {
+    device,
+    hitObjects,
+    setAngle,
+    pick: (ray: THREE.Raycaster) => {
+      const surface = ray.intersectObjects(hitObjects, false)[0];
+      if (surface?.object.userData['display'] || surface?.object.userData['button']) return surface;
+      for (const target of buttonTargets)
+        target.matrixWorld.multiplyMatrices(right.matrixWorld, target.matrix);
+      const hardware = ray.intersectObjects(buttonTargets, false)[0];
+      return hardware && (!surface || hardware.distance <= surface.distance) ? hardware : surface;
+    },
+    highlightButton: (name?: DuoButton, pressed = false) => {
+      for (const [id, button] of buttons) {
+        const material = button.material as THREE.MeshPhysicalMaterial;
+        material.color.set(
+          id === name ?
+            pressed ? 0x71899e
+            : 0xe5ecf1
+          : 0xbec1c3,
+        );
+        material.emissive.set(id === name ? 0x233342 : 0x000000);
+        material.emissiveIntensity = pressed ? 0.5 : 0.2;
+      }
+    },
+    dispose: () => resources.forEach((resource) => resource.dispose()),
+  };
 }
