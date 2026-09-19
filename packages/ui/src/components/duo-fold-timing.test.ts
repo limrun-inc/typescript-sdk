@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { duoFoldAngle } from './duo-fold-timing';
 
-it('takes 2 seconds and slows continuously toward the endpoint', () => {
+it('uses the requested 4×, 1× and 2× speed segments over two seconds', () => {
   for (const [from, target] of [
     [0, 180],
     [180, 0],
@@ -9,16 +9,20 @@ it('takes 2 seconds and slows continuously toward the endpoint', () => {
   ] as const) {
     const progress = (time: number) => (duoFoldAngle(from, target, time) - from) / (target - from);
     expect(progress(0)).toBeCloseTo(0, 12);
-    expect(progress(1)).toBeCloseTo(0.875, 12);
+    expect(progress(0.5)).toBeCloseTo(0.5, 12);
+    expect(progress(1)).toBeCloseTo(0.625, 12);
+    expect(progress(1.5)).toBeCloseTo(0.75, 12);
     expect(progress(1.999)).toBeLessThan(1);
     expect(progress(2)).toBe(1);
     expect(progress(3)).toBe(1);
-    let previousStep = Infinity;
     for (let step = 1; step <= 20; step++) {
       const delta = progress(step / 10) - progress((step - 1) / 10);
-      expect(delta).toBeGreaterThan(0);
-      expect(delta).toBeLessThan(previousStep);
-      previousStep = delta;
+      expect(delta).toBeCloseTo(
+        step <= 5 ? 0.1
+        : step <= 15 ? 0.025
+        : 0.05,
+        12,
+      );
     }
   }
 });
