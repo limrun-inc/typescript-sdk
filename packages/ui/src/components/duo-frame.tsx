@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { createDuoModel } from './duo-model';
+import { duoFoldAngle } from './duo-fold-timing';
 import { hardwareLayout, hardwareHoverEdge } from './duo-hardware';
 import { DuoControls, DuoHardwareIcon, useDuoHinge } from './duo-controls';
 import {
@@ -148,6 +149,10 @@ export default function DuoFrame(props: DuoFrameProps) {
       pitch = 0;
     let previousViewRevision = viewRevision.current;
     let renderedAngle = angleRef.current;
+    let foldFrom = renderedAngle;
+    let foldTarget = renderedAngle;
+    let foldStartedAt = 0;
+    let foldDragging = false;
     let renderedYaw = 0;
     let animation = 0;
     let visible = true;
@@ -342,7 +347,16 @@ export default function DuoFrame(props: DuoFrameProps) {
         pitch = 0;
         previousViewRevision = viewRevision.current;
       }
-      renderedAngle = THREE.MathUtils.damp(renderedAngle, angleRef.current, 18, dt);
+      if (foldTarget !== angleRef.current) {
+        foldFrom = renderedAngle;
+        foldTarget = angleRef.current;
+        foldStartedAt = time;
+        foldDragging = interacting.current;
+      }
+      renderedAngle =
+        foldDragging ?
+          THREE.MathUtils.damp(renderedAngle, foldTarget, 18, dt)
+        : duoFoldAngle(foldFrom, foldTarget, (time - foldStartedAt) / 1000);
       if (Math.abs(renderedAngle - angleRef.current) < 0.001) renderedAngle = angleRef.current;
       model.setAngle(renderedAngle);
       // Closed view presents the cover; intermediate poses retain depth and true occlusion.
