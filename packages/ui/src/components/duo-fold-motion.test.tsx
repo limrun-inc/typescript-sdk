@@ -12,13 +12,13 @@ const renderer = vi.hoisted(() => ({
 vi.mock('./duo-fold-renderer', () => ({ renderFold: renderer.start }));
 let ready: VideoFrameRequestCallback | undefined;
 let reduced = false;
-let pixels = new Uint8ClampedArray([255, 255, 255, 255]);
 const video = document.createElement('video');
 const host = document.createElement('div');
 let root: ReturnType<typeof createRoot>;
 let prepareFold: (inner: boolean) => void;
 const cancel = vi.fn();
 const draw = vi.fn();
+const readPixels = vi.fn();
 const changePreference = new EventTarget();
 function View({ inner = false, width = 600, turns }: { inner?: boolean; width?: number; turns?: number }) {
   const { motion, finish, prepare } = useDuoFoldMotion(
@@ -34,9 +34,9 @@ beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   reduced = false;
   ready = undefined;
-  pixels = new Uint8ClampedArray([255, 255, 255, 255]);
   cancel.mockClear();
   draw.mockClear();
+  readPixels.mockClear();
   renderer.start.mockReset();
   renderer.dispose.mockClear();
   renderer.start.mockImplementation((_canvas, _motion, finish) => {
@@ -65,7 +65,7 @@ beforeEach(() => {
   });
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
     drawImage: draw,
-    getImageData: () => ({ data: pixels }),
+    getImageData: readPixels,
   } as unknown as CanvasRenderingContext2D);
   root = createRoot(host);
 });
@@ -78,7 +78,6 @@ afterEach(async () => {
 });
 async function incoming() {
   await act(async () => ready!(0, {} as VideoFrameCallbackMetadata));
-  await act(async () => vi.advanceTimersByTime(600));
 }
 it('loads the renderer only for a confirmed fold and disposes it when finished', async () => {
   await act(async () => root.render(<View />));
@@ -129,16 +128,15 @@ it('skips GPU work with reduced motion and cancels when the preference changes',
   expect(renderer.dispose).toHaveBeenCalledTimes(1);
   expect(host.childElementCount).toBe(0);
 });
-it('keeps the outgoing image until the new display has nonblank pixels', async () => {
+it('starts on the first incoming frame without brightness checks or timer delays', async () => {
   await act(async () => root.render(<View />));
   await act(async () => root.render(<View inner />));
-  pixels = new Uint8ClampedArray([0, 0, 0, 255]);
-  await incoming();
   expect(renderer.start).not.toHaveBeenCalled();
   expect(host.querySelector('.rc-duo-fold-hold')).not.toBeNull();
-  pixels = new Uint8ClampedArray([30, 30, 30, 255]);
   await incoming();
   expect(renderer.start).toHaveBeenCalledTimes(1);
+  expect(readPixels).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
 });
 it('uses the settled native orientation without rotating the entire phone', async () => {
   await act(async () => root.render(<View />));
@@ -170,12 +168,8 @@ it('captures before the native command can blank the outgoing display', async ()
   expect(host.querySelector('.rc-duo-fold-hold')).not.toBeNull();
   const outgoingCaptures = () => draw.mock.calls.filter(([source]) => source === video).length;
   expect(outgoingCaptures()).toBe(1);
-  pixels = new Uint8ClampedArray([0, 0, 0, 255]);
   await act(async () => root.render(<View inner />));
   expect(outgoingCaptures()).toBe(1);
-  await incoming();
-  expect(renderer.start).not.toHaveBeenCalled();
-  pixels = new Uint8ClampedArray([255, 255, 255, 255]);
   await incoming();
   expect(renderer.start).toHaveBeenCalledTimes(1);
 });
@@ -187,16 +181,11 @@ it('releases a prepared image when a command never changes the native display', 
   expect(renderer.start).not.toHaveBeenCalled();
 });
 
-it('does not freeze the native fade at an intermediate brightness', async () => {
+it('accepts a black first frame without waiting for a brighter one', async () => {
   await act(async () => root.render(<View />));
   await act(async () => root.render(<View inner />));
-  pixels = new Uint8ClampedArray([60, 60, 60, 255]);
-  await act(async () => ready!(0, {} as VideoFrameCallbackMetadata));
-  await act(async () => vi.advanceTimersByTime(400));
-  pixels = new Uint8ClampedArray([180, 180, 180, 255]);
-  await act(async () => vi.advanceTimersByTime(200));
-  expect(renderer.start).not.toHaveBeenCalled();
-  pixels = new Uint8ClampedArray([255, 255, 255, 255]);
-  await act(async () => vi.advanceTimersByTime(300));
+  readPixels.mockReturnValue({ data: new Uint8ClampedArray([0, 0, 0, 255]) });
+  await incoming();
   expect(renderer.start).toHaveBeenCalledTimes(1);
+  expect(vi.getTimerCount()).toBe(0);
 });
