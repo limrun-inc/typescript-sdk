@@ -56,9 +56,11 @@ hinge and orientation; it does not enable Apple's separate Table Mode.
 
 Click the frame's Sleep/Wake, Volume Up, or Volume Down buttons to send native
 hardware input. Press and hold is supported. These buttons remain active while
-the position is locked. Hovering raises the physical button slightly and shows its
-name. Buttons remain reachable from the front, and hover does not change the camera
-framing.
+the position is locked. Hover near an edge to reveal its button icons, then click
+either the icon or the physical button. Volume icons appear together above their
+edge; Sleep/Wake appears beside its edge. Icons follow native rotation and folding.
+Hover raises the physical button slightly without changing the camera framing.
+Tab, Space and Enter also operate the icons. Camera Control is not yet supported.
 
 The renderer requires WebGL. Duo currently supports single-finger gestures;
 accessibility inspection and the existing recording API do not follow the

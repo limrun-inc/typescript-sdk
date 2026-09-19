@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { createDuoModel } from './duo-model';
+import { hardwareLayout, hardwareHoverEdge } from './duo-hardware';
 import {
   HingeSender,
   panelTouch,
@@ -31,6 +32,7 @@ type View = 'front' | 'book' | 'table' | 'back';
 export default function DuoFrame(props: Props) {
   const angleId = useId();
   const host = useRef<HTMLDivElement>(null);
+  const hardwareNodes = useRef(new Map<DuoButton, HTMLButtonElement>());
   const latest = useRef(props);
   latest.current = props;
   const [angle, setAngle] = useState(props.state.angleDegrees);
@@ -100,7 +102,7 @@ export default function DuoFrame(props: Props) {
     const root = new THREE.Group();
     // Broad studio cards and dark gaps give polished titanium recognizable moving reflections.
     const environment = new THREE.Scene();
-    environment.background = new THREE.Color(0xb7babf);
+    environment.background = new THREE.Color(0x373c43);
     const studioCards: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>[] = [];
     for (const [x, y, z, w, h, intensity] of [
       [-160, 70, 100, 70, 320, 4],
@@ -175,7 +177,20 @@ export default function DuoFrame(props: Props) {
     let renderedYaw = 0;
     let animation = 0;
     let lastTime = 0;
+    let layout: ReturnType<typeof hardwareLayout> | undefined;
+    let hoveredEdge: ReturnType<typeof hardwareHoverEdge>;
+    const iconButton = (target: EventTarget | null) =>
+      target instanceof Element ? target.closest<HTMLButtonElement>('[data-duo-button]') : null;
+    const showEdge = (edge: typeof hoveredEdge) => {
+      hoveredEdge = edge;
+      for (const guide of layout?.guides ?? []) {
+        const element = hardwareNodes.current.get(guide.button);
+        if (element) element.dataset.visible = String(guide.edge === edge);
+      }
+    };
     const pick = (event: PointerEvent) => {
+      const icon = iconButton(event.target);
+      if (icon) return { button: icon.dataset.duoButton as DuoButton };
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.set(
         ((event.clientX - rect.left) / rect.width) * 2 - 1,
@@ -195,7 +210,7 @@ export default function DuoFrame(props: Props) {
     };
     const down = (event: PointerEvent) => {
       if (drag || event.button !== 0) return;
-      container.focus({ preventScroll: true });
+      if (!iconButton(event.target)) container.focus({ preventScroll: true });
       const picked = pick(event);
       const hardware = picked && 'button' in picked ? picked.button : undefined;
       const mode = duoPointerMode(lockedRef.current, !!picked && !hardware, event.altKey);
@@ -210,7 +225,7 @@ export default function DuoFrame(props: Props) {
         clientX: event.clientX,
         clientY: event.clientY,
       };
-      renderer.domElement.setPointerCapture(event.pointerId);
+      container.setPointerCapture(event.pointerId);
       if (hardware) {
         setError(undefined);
         buttons.press(hardware);
@@ -221,6 +236,12 @@ export default function DuoFrame(props: Props) {
       if (!drag) {
         const hit = pick(event);
         const button = hit && 'button' in hit ? hit.button : undefined;
+        const rect = container.getBoundingClientRect();
+        showEdge(
+          button ?
+            layout?.guides.find((guide) => guide.button === button)?.edge
+          : layout && hardwareHoverEdge(event.clientX - rect.left, event.clientY - rect.top, layout.rect),
+        );
         renderer.domElement.style.cursor = button ? 'pointer' : '';
         renderer.domElement.title = button ? DUO_BUTTONS[button] : '';
         model.highlightButton(button);
@@ -248,20 +269,66 @@ export default function DuoFrame(props: Props) {
         model.highlightButton();
       } else if (drag.screenId) latest.current.touch(1, drag.screenId, drag.x, drag.y);
       drag = undefined;
+      if (event) move(event);
     };
-    renderer.domElement.addEventListener('pointerleave', () => {
-      if (!drag) model.highlightButton();
-    });
-    renderer.domElement.addEventListener('pointerdown', down);
-    renderer.domElement.addEventListener('pointermove', move);
-    renderer.domElement.addEventListener('pointerup', up);
-    renderer.domElement.addEventListener('pointercancel', up);
-    renderer.domElement.addEventListener('lostpointercapture', up);
+    const leave = () => {
+      if (!drag) {
+        model.highlightButton();
+        showEdge(undefined);
+      }
+    };
+    const keyDown = (event: KeyboardEvent) => {
+      const icon = iconButton(event.target);
+      if (!icon) return;
+      event.stopPropagation();
+      if (event.code !== 'Space' && event.code !== 'Enter') return;
+      event.preventDefault();
+      if (event.repeat) return;
+      const button = icon.dataset.duoButton as DuoButton;
+      buttons.press(button);
+      model.highlightButton(button, true);
+      icon.dataset.pressed = 'true';
+    };
+    const keyUp = (event: KeyboardEvent) => {
+      const icon = iconButton(event.target);
+      if (!icon) return;
+      event.stopPropagation();
+      if (event.code !== 'Space' && event.code !== 'Enter') return;
+      event.preventDefault();
+      buttons.release();
+      model.highlightButton(icon.dataset.duoButton as DuoButton);
+      icon.dataset.pressed = 'false';
+    };
+    const focus = (event: FocusEvent) => {
+      const icon = iconButton(event.target);
+      if (icon) showEdge(layout?.guides.find((guide) => guide.button === icon.dataset.duoButton)?.edge);
+    };
     const blur = () => {
       up();
       buttons.release();
       model.highlightButton();
+      showEdge(undefined);
+      hardwareNodes.current.forEach((element) => {
+        element.dataset.pressed = 'false';
+      });
     };
+    const focusOut = (event: FocusEvent) => {
+      if (!container.contains(event.relatedTarget as Node | null)) blur();
+      else if (iconButton(event.target)) {
+        buttons.release();
+        model.highlightButton();
+      }
+    };
+    container.addEventListener('pointerleave', leave);
+    container.addEventListener('pointerdown', down);
+    container.addEventListener('pointermove', move);
+    container.addEventListener('pointerup', up);
+    container.addEventListener('pointercancel', up);
+    container.addEventListener('lostpointercapture', up);
+    container.addEventListener('keydown', keyDown);
+    container.addEventListener('keyup', keyUp);
+    container.addEventListener('focusin', focus);
+    container.addEventListener('focusout', focusOut);
     window.addEventListener('blur', blur);
     const resize = () => {
       const w = container.clientWidth,
@@ -317,7 +384,11 @@ export default function DuoFrame(props: Props) {
       bounds.getSize(extent);
       root.position.copy(center).negate();
       // Parallel projection keeps the far leaf's buttons visible when the device is closed.
-      const halfHeight = Math.max(extent.y / 1.6, extent.x / (2 * aspect * 0.85));
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      const usableWidth = Math.max(0.4, 1 - 108 / width);
+      const usableHeight = Math.min(0.8, Math.max(0.35, 1 - 108 / height));
+      const halfHeight = Math.max(extent.y / (2 * usableHeight), extent.x / (2 * aspect * usableWidth));
       camera.top = THREE.MathUtils.damp(camera.top, halfHeight, 14, dt);
       camera.bottom = -camera.top;
       camera.left = -camera.top * aspect;
@@ -326,6 +397,15 @@ export default function DuoFrame(props: Props) {
 
       model.animateButtons(dt);
       renderer.render(scene, camera);
+      model.getBounds(bounds);
+      layout = hardwareLayout(model.buttonAnchors(), bounds, camera, width, height);
+      for (const guide of layout.guides) {
+        const element = hardwareNodes.current.get(guide.button);
+        if (!element) continue;
+        element.style.left = `${guide.x}px`;
+        element.style.top = `${guide.y}px`;
+        element.dataset.visible = String(guide.edge === hoveredEdge);
+      }
       animation = requestAnimationFrame(animate);
     };
     animation = requestAnimationFrame(animate);
@@ -335,6 +415,16 @@ export default function DuoFrame(props: Props) {
       cancelAnimationFrame(animation);
       observer.disconnect();
       window.removeEventListener('blur', blur);
+      container.removeEventListener('pointerleave', leave);
+      container.removeEventListener('pointerdown', down);
+      container.removeEventListener('pointermove', move);
+      container.removeEventListener('pointerup', up);
+      container.removeEventListener('pointercancel', up);
+      container.removeEventListener('lostpointercapture', up);
+      container.removeEventListener('keydown', keyDown);
+      container.removeEventListener('keyup', keyUp);
+      container.removeEventListener('focusin', focus);
+      container.removeEventListener('focusout', focusOut);
       renderer.dispose();
       model.dispose();
       outerTexture.dispose();
@@ -355,7 +445,46 @@ export default function DuoFrame(props: Props) {
         aria-label="iPhone Duo simulator. Touch the screen to control iOS. Unlock position to rotate the view."
         onKeyDown={props.onKeyDown}
         onKeyUp={props.onKeyUp}
-      />
+      >
+        {(Object.keys(DUO_BUTTONS) as DuoButton[]).map((button) => (
+          <button
+            key={button}
+            ref={(element) => {
+              if (element) hardwareNodes.current.set(button, element);
+              else hardwareNodes.current.delete(button);
+            }}
+            type="button"
+            className="rc-duo-hardware"
+            data-duo-button={button}
+            data-visible="false"
+            aria-label={DUO_BUTTONS[button]}
+            title={DUO_BUTTONS[button]}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              {button === 'side' ?
+                <>
+                  <rect x="6" y="10" width="12" height="11" rx="2" />
+                  <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                </>
+              : <>
+                  <path d="M3 9h4l5-5v16l-5-5H3zM17 12h5" />
+                  {button === 'volumeUp' && <path d="M19.5 9.5v5" />}
+                </>
+              }
+            </svg>
+          </button>
+        ))}
+      </div>
       <div className="rc-duo-controls" onPointerDown={(event) => event.stopPropagation()}>
         <div className="rc-duo-hinge">
           <button onClick={() => changeAngle(angle < 90 ? 180 : 0)}>{angle < 90 ? 'Unfold' : 'Fold'}</button>

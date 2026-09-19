@@ -352,7 +352,7 @@ export function createDuoModel(
     const handle = (2 * bendWidth) / 3;
     const backX = 0.45 * c + (depth + pivot) * s;
     const backZ = 0.45 * s - depth * c + pivot * (1 - c);
-    const spineZ = -depth * (1 - s) - 1.8 * s;
+    const spineZ = -depth * (1 - s) - 0.8 * s;
     for (let i = 0; i <= segments; i++) {
       const t = i / segments,
         a = 1 - t;
@@ -400,6 +400,15 @@ export function createDuoModel(
     device,
     hitObjects,
     setAngle,
+    buttonAnchors: () =>
+      [...buttonBases].map(([button, base]) => ({
+        button,
+        point: base.clone().applyMatrix4(right.matrixWorld),
+        outward: base
+          .clone()
+          .add(button === 'side' ? new THREE.Vector3(10, 0, 0) : new THREE.Vector3(0, 10, 0))
+          .applyMatrix4(right.matrixWorld),
+      })),
     getBounds: (bounds: THREE.Box3) => {
       bounds.makeEmpty();
       const objectBounds = new THREE.Box3();
@@ -455,6 +464,31 @@ export function createDuoModel(
         );
       }
       resources.push(...importedResources);
+      // Match the imported cover aperture exactly so the live image cannot expose seams beneath its bezel.
+      const cover = coverBody.children.find(
+        (child) => child instanceof THREE.Mesh && child.material.name === 'cover-screen',
+      ) as THREE.Mesh | undefined;
+      if (cover) {
+        const panel = device.getObjectByName('cover-display') as THREE.Mesh;
+        const geometry = cover.geometry.clone().scale(10, 10, 10);
+        geometry.computeBoundingBox();
+        const bounds = geometry.boundingBox!;
+        const positions = geometry.getAttribute('position');
+        const uv = new THREE.BufferAttribute(new Float32Array(positions.count * 2), 2);
+        for (let i = 0; i < positions.count; i++) {
+          uv.setXY(
+            i,
+            (bounds.max.x - positions.getX(i)) / (bounds.max.x - bounds.min.x),
+            (positions.getY(i) - bounds.min.y) / (bounds.max.y - bounds.min.y),
+          );
+        }
+        geometry.setAttribute('uv', uv);
+        panel.geometry = geometry;
+        panel.position.copy(cover.position).multiplyScalar(10);
+        panel.rotation.copy(cover.rotation);
+        panel.scale.copy(cover.scale);
+        resources.push(geometry);
+      }
       // Live display meshes and the flexible hinge stay under our input and fold control.
       for (const part of [left, right]) {
         for (const child of [...part.children]) {
@@ -525,10 +559,10 @@ export function createDuoModel(
         const base = buttonBases.get(name)!;
         const goal =
           name === hoveredButton ?
-            pressedButton ? 0.1
-            : 1.35
-          : 0.45;
-        const offset = THREE.MathUtils.damp(buttonOffsets.get(name) ?? 0.45, goal, 22, dt);
+            pressedButton ? 0
+            : 0.5
+          : 0.16;
+        const offset = THREE.MathUtils.damp(buttonOffsets.get(name) ?? 0.16, goal, 22, dt);
         buttonOffsets.set(name, offset);
         button.position.copy(base);
         button.position[name === 'side' ? 'x' : 'y'] += offset;
