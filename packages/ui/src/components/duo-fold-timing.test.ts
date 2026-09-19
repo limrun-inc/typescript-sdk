@@ -1,20 +1,25 @@
 import { expect, it } from 'vitest';
 import { duoFoldAngle } from './duo-fold-timing';
 
-it('takes three times as long to reach 95%, then twice as long to reach 99%', () => {
-  const original95 = -Math.log(0.05) / 18;
-  const original99 = -Math.log(0.01) / 18;
-  const at95 = original95 * 3;
-  const at99 = at95 + (original99 - original95) * 2;
+it('takes 1.2 seconds and slows continuously toward the endpoint', () => {
   for (const [from, target] of [
     [0, 180],
     [180, 0],
     [110, 0],
   ] as const) {
     const progress = (time: number) => (duoFoldAngle(from, target, time) - from) / (target - from);
-    expect(progress(at95)).toBeCloseTo(0.95, 12);
-    expect(progress(at99)).toBeCloseTo(0.99, 12);
-    expect(progress(at99 + Math.log(10) / 18)).toBeCloseTo(0.999, 12);
+    expect(progress(0)).toBeCloseTo(0, 12);
+    expect(progress(0.6)).toBeCloseTo(0.875, 12);
+    expect(progress(1.199)).toBeLessThan(1);
+    expect(progress(1.2)).toBe(1);
+    expect(progress(2)).toBe(1);
+    let previousStep = Infinity;
+    for (let step = 1; step <= 12; step++) {
+      const delta = progress(step / 10) - progress((step - 1) / 10);
+      expect(delta).toBeGreaterThan(0);
+      expect(delta).toBeLessThan(previousStep);
+      previousStep = delta;
+    }
   }
 });
 

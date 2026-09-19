@@ -44,20 +44,26 @@ export function DuoControls({
   changeAngle,
   interacting,
   rotate,
+  onFold,
+  foldTarget,
+  onHingeDrag,
   children,
 }: {
   angle: number;
   changeAngle: (value: number) => void;
   interacting: React.MutableRefObject<boolean>;
   rotate: () => void;
+  onFold?: () => void;
+  foldTarget?: number;
+  onHingeDrag?: () => void;
   children?: React.ReactNode;
 }) {
   const id = useId();
   return (
     <div className="rc-duo-controls" onPointerDown={(event) => event.stopPropagation()}>
       <div className="rc-duo-hinge">
-        <button className="rc-duo-fold" onClick={() => changeAngle(angle < 90 ? 180 : 0)}>
-          {angle < 90 ? 'Unfold' : 'Fold'}
+        <button className="rc-duo-fold" onClick={onFold ?? (() => changeAngle(angle < 90 ? 180 : 0))}>
+          {(foldTarget ?? angle) < 90 ? 'Unfold' : 'Fold'}
         </button>
         <label htmlFor={id}>Hinge</label>
         <input
@@ -68,6 +74,7 @@ export function DuoControls({
           step={1}
           value={angle}
           onPointerDown={(event) => {
+            onHingeDrag?.();
             interacting.current = true;
             event.currentTarget.setPointerCapture(event.pointerId);
           }}

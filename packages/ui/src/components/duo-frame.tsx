@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { createDuoModel } from './duo-model';
 import { duoFoldAngle } from './duo-fold-timing';
 import { hardwareLayout, hardwareHoverEdge } from './duo-hardware';
-import { DuoControls, DuoHardwareIcon, useDuoHinge } from './duo-controls';
+import { DuoControls, DuoHardwareIcon } from './duo-controls';
+import { useDuoButtonHinge } from './duo-button-hinge';
 import {
   panelTouch,
   duoPointerMode,
@@ -36,7 +37,11 @@ export default function DuoFrame(props: DuoFrameProps) {
   const latest = useRef(props);
   latest.current = props;
   const [error, setError] = useState<string>();
-  const { angle, changeAngle, interacting } = useDuoHinge(props.state.angleDegrees, props.setAngle, setError);
+  const { angle, changeAngle, interacting, motion, target, fold, cancelFold } = useDuoButtonHinge(
+    props.state.angleDegrees,
+    props.setAngle,
+    setError,
+  );
   const angleRef = useRef(angle);
   angleRef.current = angle;
   const [view, setView] = useState<View>('front');
@@ -50,7 +55,7 @@ export default function DuoFrame(props: DuoFrameProps) {
 
   useEffect(() => {
     invalidateFrame.current();
-  }, [angle, view, positionLocked, props.state.orientation]);
+  }, [angle, target, view, positionLocked, props.state.orientation]);
 
   useEffect(() => {
     const container = host.current;
@@ -353,9 +358,10 @@ export default function DuoFrame(props: DuoFrameProps) {
         foldStartedAt = time;
         foldDragging = interacting.current;
       }
+      const buttonFold = motion.current;
       renderedAngle =
-        foldDragging ?
-          THREE.MathUtils.damp(renderedAngle, foldTarget, 18, dt)
+        buttonFold ? duoFoldAngle(buttonFold.from, buttonFold.target, (time - buttonFold.startedAt) / 1000)
+        : foldDragging ? THREE.MathUtils.damp(renderedAngle, foldTarget, 18, dt)
         : duoFoldAngle(foldFrom, foldTarget, (time - foldStartedAt) / 1000);
       if (Math.abs(renderedAngle - angleRef.current) < 0.001) renderedAngle = angleRef.current;
       model.setAngle(renderedAngle);
@@ -413,6 +419,7 @@ export default function DuoFrame(props: DuoFrameProps) {
         element.dataset.visible = String(guide.edge === hoveredEdge);
       }
       if (
+        motion.current ||
         renderedAngle !== angleRef.current ||
         renderedYaw !== baseYaw ||
         camera.top !== halfHeight ||
@@ -503,6 +510,9 @@ export default function DuoFrame(props: DuoFrameProps) {
       </div>
       <DuoControls
         angle={angle}
+        onFold={fold}
+        foldTarget={target}
+        onHingeDrag={cancelFold}
         changeAngle={changeAngle}
         interacting={interacting}
         rotate={() => {
