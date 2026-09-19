@@ -1,6 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createDuoModel } from './duo-model';
 import {
   HingeSender,
@@ -14,6 +13,7 @@ import {
 } from '../core/duo';
 
 interface Props {
+  modelUrl?: string;
   outer: HTMLVideoElement | null;
   inner: HTMLVideoElement | null;
   state: DuoState;
@@ -94,21 +94,47 @@ export default function DuoFrame(props: Props) {
     renderer.setClearColor(0x000000, 0);
     container.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(32, 1, 1, 2000);
+    const camera = new THREE.OrthographicCamera(-150, 150, 150, -150, 1, 2000);
+    let aspect = 1;
     camera.position.set(0, 0, 340);
     const root = new THREE.Group();
-    const environment = new RoomEnvironment();
+    // Broad studio cards and dark gaps give polished titanium recognizable moving reflections.
+    const environment = new THREE.Scene();
+    environment.background = new THREE.Color(0xb7babf);
+    const studioCards: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>[] = [];
+    for (const [x, y, z, w, h, intensity] of [
+      [-160, 70, 100, 70, 320, 4],
+      [190, 30, 70, 36, 320, 5],
+      [0, 220, -80, 320, 55, 3.5],
+      [0, -120, 200, 300, 80, 1.5],
+      [0, 0, -240, 210, 300, 2],
+    ] as const) {
+      const card = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, h),
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color().setScalar(intensity),
+          side: THREE.DoubleSide,
+        }),
+      );
+      card.position.set(x, y, z);
+      card.lookAt(0, 0, 0);
+      environment.add(card);
+      studioCards.push(card);
+    }
     const pmrem = new THREE.PMREMGenerator(renderer);
-    const environmentMap = pmrem.fromScene(environment, 0.04);
+    const environmentMap = pmrem.fromScene(environment, 0.015);
     scene.environment = environmentMap.texture;
-    scene.environmentIntensity = 1.25;
-    environment.dispose();
+    scene.environmentIntensity = 1;
+    studioCards.forEach((card) => {
+      card.geometry.dispose();
+      card.material.dispose();
+    });
     pmrem.dispose();
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x9ba3af, 0.9));
-    const key = new THREE.DirectionalLight(0xffffff, 2.2);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xc1c8d1, 1.1));
+    const key = new THREE.DirectionalLight(0xffffff, 2.4);
     key.position.set(-100, 180, 260);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0xe4edff, 1.3);
+    const rim = new THREE.DirectionalLight(0xe4edff, 0.8);
     rim.position.set(200, -40, -200);
     scene.add(rim);
     const outerTexture = new THREE.VideoTexture(props.outer);
@@ -121,6 +147,7 @@ export default function DuoFrame(props: Props) {
 
     const model = createDuoModel(outerTexture, innerTexture, environmentMap.texture);
     const { device } = model;
+    if (props.modelUrl) void model.loadAppearance(props.modelUrl).catch((reason) => setError(String(reason)));
     const buttons = new DuoButtonSender(
       (button, down) => latest.current.button(button, down),
       (reason) => setError(String(reason)),
@@ -230,13 +257,17 @@ export default function DuoFrame(props: Props) {
     renderer.domElement.addEventListener('pointerup', up);
     renderer.domElement.addEventListener('pointercancel', up);
     renderer.domElement.addEventListener('lostpointercapture', up);
-    const blur = () => up();
+    const blur = () => {
+      up();
+      buttons.release();
+      model.highlightButton();
+    };
     window.addEventListener('blur', blur);
     const resize = () => {
       const w = container.clientWidth,
         h = container.clientHeight;
       if (!w || !h) return;
-      camera.aspect = w / h;
+      aspect = w / h;
 
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
@@ -256,8 +287,9 @@ export default function DuoFrame(props: Props) {
         previousViewRevision = viewRevision.current;
       }
       renderedAngle = THREE.MathUtils.damp(renderedAngle, angleRef.current, 18, dt);
+      if (Math.abs(renderedAngle - angleRef.current) < 0.001) renderedAngle = angleRef.current;
       model.setAngle(renderedAngle);
-      // Closed view presents the cover. Intermediate poses retain perspective and true occlusion.
+      // Closed view presents the cover; intermediate poses retain depth and true occlusion.
       const closed = 1 - THREE.MathUtils.smoothstep(renderedAngle, 15, 110);
       const baseYaw = (closed * Math.PI) / 2 + (viewRef.current === 'back' ? Math.PI : 0);
       renderedYaw = THREE.MathUtils.damp(renderedYaw, baseYaw, 12, dt);
@@ -281,21 +313,25 @@ export default function DuoFrame(props: Props) {
       );
       root.position.set(0, 0, 0);
       root.updateMatrixWorld(true);
-      bounds.setFromObject(root).getCenter(center);
+      model.getBounds(bounds).getCenter(center);
       bounds.getSize(extent);
       root.position.copy(center).negate();
-      const tangent = Math.tan((camera.fov * Math.PI) / 360);
-      const distance =
-        Math.max(extent.y / (2 * tangent * 0.8), extent.x / (2 * tangent * camera.aspect * 0.85)) +
-        extent.z / 2;
-      camera.position.z = THREE.MathUtils.damp(camera.position.z, distance, 14, dt);
+      // Parallel projection keeps the far leaf's buttons visible when the device is closed.
+      const halfHeight = Math.max(extent.y / 1.6, extent.x / (2 * aspect * 0.85));
+      camera.top = THREE.MathUtils.damp(camera.top, halfHeight, 14, dt);
+      camera.bottom = -camera.top;
+      camera.left = -camera.top * aspect;
+      camera.right = camera.top * aspect;
+      camera.updateProjectionMatrix();
 
+      model.animateButtons(dt);
       renderer.render(scene, camera);
       animation = requestAnimationFrame(animate);
     };
     animation = requestAnimationFrame(animate);
     return () => {
       up();
+      buttons.release();
       cancelAnimationFrame(animation);
       observer.disconnect();
       window.removeEventListener('blur', blur);
@@ -306,7 +342,7 @@ export default function DuoFrame(props: Props) {
       environmentMap.dispose();
       renderer.domElement.remove();
     };
-  }, [props.outer, props.inner]);
+  }, [props.outer, props.inner, props.modelUrl]);
 
   return (
     <div className="rc-duo">

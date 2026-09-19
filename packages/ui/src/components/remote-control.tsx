@@ -73,6 +73,9 @@ export interface RemoteControlProps {
   /** Enables the official iPhone Duo's native displays and interactive folding frame. */
   deviceModel?: 'iphone-duo';
 
+  /** Optional prepared Duo GLB, supplied and licensed by the host application. */
+  duoModelUrl?: string;
+
   // When true, drops after a working session auto-reconnect instead of
   // surfacing the manual "Retry" button. Defaults to false.
   autoReconnect?: boolean;
@@ -507,6 +510,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       openUrl,
       showFrame = true,
       deviceModel,
+      duoModelUrl,
       autoReconnect = false,
       onTerminated,
       assets,
@@ -3864,6 +3868,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         {isDuo && duoState && (
           <Suspense fallback={<div>Loading iPhone Duo…</div>}>
             <DuoFrame
+              modelUrl={duoModelUrl}
               outer={videoRef.current}
               inner={innerVideoRef.current}
               state={duoState}

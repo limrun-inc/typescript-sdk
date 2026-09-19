@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { DUO_DIMENSIONS, type DuoButton } from '../core/duo';
 
@@ -39,23 +40,31 @@ export function createDuoModel(
   const right = new THREE.Group();
   device.add(left, right);
   const hitObjects: THREE.Object3D[] = [];
-  const buttons = new Map<DuoButton, THREE.Mesh>();
+  const buttons = new Map<DuoButton, THREE.Object3D>();
+  const buttonBases = new Map<DuoButton, THREE.Vector3>();
+  const buttonOffsets = new Map<DuoButton, number>();
+  let hoveredButton: DuoButton | undefined;
+  let pressedButton = false;
+  let disposed = false;
   const buttonTargets: THREE.Object3D[] = [];
   const resources: Array<{ dispose(): void }> = [];
   const metal = new THREE.MeshPhysicalMaterial({
-    color: 0xbec1c3,
+    color: 0xd5d3cf,
     metalness: 1,
-    roughness: 0.19,
-    clearcoat: 0.5,
+    roughness: 0.075,
+    clearcoat: 1,
+    clearcoatRoughness: 0.055,
+    envMapIntensity: 1.15,
   });
   const ceramic = new THREE.MeshPhysicalMaterial({
-    color: 0xe3e2dc,
+    color: 0xf3f1eb,
     metalness: 0.04,
-    roughness: 0.3,
-    clearcoat: 0.65,
-    clearcoatRoughness: 0.18,
+    roughness: 0.2,
+    clearcoat: 1,
+    clearcoatRoughness: 0.08,
   });
-  const hingeMetal = new THREE.MeshStandardMaterial({ color: 0xa7a9a8, metalness: 0.85, roughness: 0.36 });
+  const hingeMetal = metal.clone();
+  hingeMetal.roughness = 0.25;
   const gasket = new THREE.MeshBasicMaterial({ color: 0x080a0c });
   const antenna = new THREE.MeshStandardMaterial({ color: 0xa4a5a0, roughness: 0.55 });
   const glass = new THREE.MeshPhysicalMaterial({
@@ -110,19 +119,22 @@ export function createDuoModel(
     bevel = 0.12,
   ) =>
     mesh(
-      new THREE.ExtrudeGeometry(outline(w, h, lr, rr), {
-        depth: d,
-        bevelEnabled: bevel > 0,
-        bevelSize: bevel,
-        bevelThickness: bevel,
-        bevelSegments: 3,
-        steps: 1,
-        curveSegments: 20,
-      }),
+      toCreasedNormals(
+        new THREE.ExtrudeGeometry(outline(w, h, lr, rr), {
+          depth: d,
+          bevelEnabled: bevel > 0,
+          bevelSize: bevel,
+          bevelThickness: bevel,
+          bevelSegments: 6,
+          steps: 1,
+          curveSegments: 40,
+        }),
+        Math.PI / 3,
+      ),
       material,
     );
   const box = (w: number, h: number, d: number, radius: number, material: THREE.Material) =>
-    mesh(new RoundedBoxGeometry(w, h, d, 3, radius), material);
+    mesh(new RoundedBoxGeometry(w, h, d, 6, radius), material);
 
   for (const [part, side] of [
     [left, -1],
@@ -130,8 +142,8 @@ export function createDuoModel(
   ] as const) {
     const lr = side === -1 ? 8.6 : 0.55;
     const rr = side === 1 ? 8.6 : 0.55;
-    const rail = plate(half - 0.3, height - 0.3, depth - 0.5, lr, rr, metal, 0.2);
-    rail.position.set((side * half) / 2, 0, -depth + 0.25);
+    const rail = plate(half - 0.3, height - 0.3, depth - 0.8, lr, rr, metal, 0.35);
+    rail.position.set((side * half) / 2, 0, -depth + 0.4);
     part.add(rail);
     const rear = plate(half - 1.25, height - 1.25, 0.2, lr - 0.3, rr - 0.3, ceramic);
     rear.position.set((side * half) / 2, 0, -depth - 0.02);
@@ -251,6 +263,7 @@ export function createDuoModel(
     button.position.set(x, y, -depth / 2);
     right.add(button);
     buttons.set(name, button);
+    buttonBases.set(name, button.position.clone());
     // Extend away from the bezel so narrow hardware remains clickable without covering the glass.
     const target = box(w < h ? 4.5 : w, w < h ? h : 4.5, depth, 0.1, material);
     hitObjects.splice(hitObjects.indexOf(target), 1);
@@ -271,7 +284,7 @@ export function createDuoModel(
   port.position.set(half / 2, -height / 2 - 0.07, -depth / 2);
   right.add(port);
 
-  const segments = 24;
+  const segments = 64;
   const strip = (material: THREE.Material, display = false) => {
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array((segments + 1) * 2 * 3);
@@ -299,9 +312,31 @@ export function createDuoModel(
   const bendSeal = strip(gasket);
   const bend = strip(innerMaterial, true);
   const spine = strip(hingeMetal);
+  const hingeCaps = [-1, 1].map((edge) => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(new Float32Array((segments + 1) * 2 * 3), 3).setUsage(THREE.DynamicDrawUsage),
+    );
+    const indices: number[] = [];
+    for (let i = 0; i < segments; i++) {
+      const a = i * 2;
+      indices.push(
+        ...(edge === 1 ? [a, a + 1, a + 2, a + 1, a + 3, a + 2] : [a, a + 2, a + 1, a + 1, a + 2, a + 3]),
+      );
+    }
+    geometry.setIndex(indices);
+    const cap = mesh(geometry, hingeMetal);
+    cap.name = `hinge-cap-${edge}`;
+    device.add(cap);
+    return { geometry, edge };
+  });
   spine.setIndex(Array.from(spine.getIndex()!.array).reverse());
 
+  let previousAngle: number | undefined;
   const setAngle = (degrees: number) => {
+    if (previousAngle === degrees) return;
+    previousAngle = degrees;
     const radians = THREE.MathUtils.degToRad((180 - degrees) / 2);
     const s = Math.sin(radians),
       c = Math.cos(radians);
@@ -340,11 +375,23 @@ export function createDuoModel(
             backZ + (spineZ - backZ) * Math.sin(edge),
           );
       }
+      // Close the hinge ends between the flexible display seal and the titanium spine.
+      for (const { geometry, edge: capEdge } of hingeCaps) {
+        const positions = geometry.getAttribute('position');
+        positions.setXYZ(i * 2, x, capEdge * (height / 2 - 0.45), z - 0.07);
+        positions.setXYZ(
+          i * 2 + 1,
+          -backX * Math.cos(edge),
+          capEdge * (height / 2 - 0.45),
+          backZ + (spineZ - backZ) * Math.sin(edge),
+        );
+      }
     }
-    for (const geometry of [bendSeal, bend, spine]) {
+    for (const geometry of [bendSeal, bend, spine, ...hingeCaps.map((cap) => cap.geometry)]) {
       geometry.getAttribute('position').needsUpdate = true;
       geometry.computeVertexNormals();
       geometry.computeBoundingSphere();
+      geometry.computeBoundingBox();
     }
     device.updateMatrixWorld(true);
   };
@@ -353,6 +400,17 @@ export function createDuoModel(
     device,
     hitObjects,
     setAngle,
+    getBounds: (bounds: THREE.Box3) => {
+      bounds.makeEmpty();
+      const objectBounds = new THREE.Box3();
+      for (const object of hitObjects) {
+        if (!(object instanceof THREE.Mesh) || object.userData['button']) continue;
+        if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
+        objectBounds.copy(object.geometry.boundingBox!).applyMatrix4(object.matrixWorld);
+        bounds.union(objectBounds);
+      }
+      return bounds;
+    },
     pick: (ray: THREE.Raycaster) => {
       const surface = ray.intersectObjects(hitObjects, false)[0];
       if (surface?.object.userData['display'] || surface?.object.userData['button']) return surface;
@@ -361,19 +419,124 @@ export function createDuoModel(
       const hardware = ray.intersectObjects(buttonTargets, false)[0];
       return hardware && (!surface || hardware.distance <= surface.distance) ? hardware : surface;
     },
-    highlightButton: (name?: DuoButton, pressed = false) => {
-      for (const [id, button] of buttons) {
-        const material = button.material as THREE.MeshPhysicalMaterial;
-        material.color.set(
-          id === name ?
-            pressed ? 0x71899e
-            : 0xe5ecf1
-          : 0xbec1c3,
+    // Imported appearances replace the rigid body while live screens and the hinge remain under our control.
+    loadAppearance: async (url: string) => {
+      const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+      const { scene } = await new GLTFLoader().loadAsync(url);
+      const importedResources = new Set<{ dispose(): void }>();
+      scene.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        importedResources.add(object.geometry);
+        for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+          importedResources.add(material);
+          for (const value of Object.values(material))
+            if (value instanceof THREE.Texture) importedResources.add(value);
+        }
+      });
+      if (disposed) {
+        importedResources.forEach((r) => r.dispose());
+        return;
+      }
+      const coverBody = scene.getObjectByName('folding-half');
+      const cameraBody = scene.getObjectByName('stationary-half');
+      const importedButtons = new Set<DuoButton>();
+      cameraBody?.traverse((object) => {
+        if (object instanceof THREE.Mesh && object.userData['button'])
+          importedButtons.add(object.userData['button']);
+      });
+      if (
+        !coverBody ||
+        !cameraBody ||
+        !['side', 'volumeUp', 'volumeDown'].every((name) => importedButtons.has(name as DuoButton))
+      ) {
+        importedResources.forEach((r) => r.dispose());
+        throw new Error(
+          'Duo appearance requires both body halves and side, volumeUp, and volumeDown button meshes.',
         );
-        material.emissive.set(id === name ? 0x233342 : 0x000000);
-        material.emissiveIntensity = pressed ? 0.5 : 0.2;
+      }
+      resources.push(...importedResources);
+      // Live display meshes and the flexible hinge stay under our input and fold control.
+      for (const part of [left, right]) {
+        for (const child of [...part.children]) {
+          if (child.userData['display']) continue;
+          part.remove(child);
+          const index = hitObjects.indexOf(child);
+          if (index !== -1) hitObjects.splice(index, 1);
+        }
+      }
+      buttons.clear();
+      buttonTargets.length = 0;
+      buttonBases.clear();
+      buttonOffsets.clear();
+      for (const name of ['side', 'volumeUp', 'volumeDown'] as const) {
+        const group = new THREE.Group();
+        group.name = `button-${name}`;
+        buttons.set(name, group);
+        right.add(group);
+      }
+      for (const [source, target] of [
+        [coverBody, left],
+        [cameraBody, right],
+      ] as const) {
+        for (const child of [...source.children]) {
+          if (!(child instanceof THREE.Mesh)) continue;
+          if (['inner-screen', 'cover-screen'].includes(child.material.name)) continue;
+          // GLB geometry is measured in centimeters; runtime display geometry uses millimeters.
+          child.geometry.scale(10, 10, 10);
+          child.position.multiplyScalar(10);
+          child.geometry.computeBoundingBox();
+          const buttonName = child.userData['button'] as DuoButton | undefined;
+          if (buttonName && buttons.has(buttonName)) {
+            buttons.get(buttonName)!.add(child);
+          } else target.add(child);
+          hitObjects.push(child);
+        }
+      }
+      for (const [name, group] of buttons) {
+        const bounds = new THREE.Box3();
+        for (const child of group.children) {
+          const mesh = child as THREE.Mesh;
+          mesh.updateMatrix();
+          bounds.union(mesh.geometry.boundingBox!.clone().applyMatrix4(mesh.matrix));
+        }
+        const center = bounds.getCenter(new THREE.Vector3());
+        for (const child of group.children) child.position.sub(center);
+        group.position.copy(center);
+        buttonBases.set(name, center);
+        const size = bounds.getSize(new THREE.Vector3());
+        const target = box(name === 'side' ? 5 : size.x, name === 'side' ? size.y : 5, depth, 0.1, metal);
+        hitObjects.splice(hitObjects.indexOf(target), 1);
+        target.position
+          .copy(center)
+          .add(new THREE.Vector3(name === 'side' ? 2 : 0, name === 'side' ? 0 : 2, 0));
+        target.userData['button'] = name;
+        target.visible = false;
+        target.updateMatrix();
+        buttonTargets.push(target);
+      }
+      device.updateMatrixWorld(true);
+    },
+    highlightButton: (name?: DuoButton, pressed = false) => {
+      hoveredButton = name;
+      pressedButton = pressed;
+    },
+    animateButtons: (dt: number) => {
+      for (const [name, button] of buttons) {
+        const base = buttonBases.get(name)!;
+        const goal =
+          name === hoveredButton ?
+            pressedButton ? 0.1
+            : 1.35
+          : 0.45;
+        const offset = THREE.MathUtils.damp(buttonOffsets.get(name) ?? 0.45, goal, 22, dt);
+        buttonOffsets.set(name, offset);
+        button.position.copy(base);
+        button.position[name === 'side' ? 'x' : 'y'] += offset;
       }
     },
-    dispose: () => resources.forEach((resource) => resource.dispose()),
+    dispose: () => {
+      disposed = true;
+      resources.forEach((resource) => resource.dispose());
+    },
   };
 }

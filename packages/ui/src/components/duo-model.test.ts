@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { createDuoModel } from './duo-model';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { panelTouch } from '../core/duo';
 
 function rayAt(model: ReturnType<typeof createDuoModel>, name: string) {
@@ -100,6 +101,107 @@ describe('Duo hardware hit targets', () => {
     const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
     const ray = new THREE.Raycaster(new THREE.Vector3(-100, 21, -2.6), new THREE.Vector3(1, 0, 0));
     expect(model.pick(ray)?.object.userData['button']).toBeUndefined();
+    model.dispose();
+  });
+});
+
+describe('Prepared Duo appearance', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function appearance() {
+    const scene = new THREE.Group();
+    const left = new THREE.Group();
+    left.name = 'folding-half';
+    const right = new THREE.Group();
+    right.name = 'stationary-half';
+    scene.add(left, right);
+    const material = new THREE.MeshStandardMaterial();
+    for (const [name, x, y, w, h] of [
+      ['side', 8.24, 2.1, 0.1, 1.8],
+      ['volumeUp', 5.6, 5.89, 1.09, 0.1],
+      ['volumeDown', 4.25, 5.89, 1.09, 0.1],
+    ] as const) {
+      const button = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.25).translate(x, y, -0.26), material);
+      button.userData['button'] = name;
+      right.add(button);
+    }
+    return scene;
+  }
+
+  it.each([0, 110, 180])('keeps button coordinates local when an appearance loads at %s°', async (angle) => {
+    const scene = appearance();
+    vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue({ scene } as unknown as GLTF);
+    const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
+    model.setAngle(angle);
+    model.device.rotation.set(0.2, 1.1, 0.5);
+    model.device.position.set(18, -12, -30);
+    model.device.updateMatrixWorld(true);
+    await model.loadAppearance('/approved-model.glb');
+    expect(model.device.getObjectByName('button-side')!.position.x).toBeCloseTo(82.4);
+    expect(model.device.getObjectByName('button-volumeUp')!.position.y).toBeCloseTo(58.9);
+    expect(rayAt(model, angle === 0 ? 'cover-display' : 'inner-display-1')!.object.userData['display']).toBe(
+      angle === 0 ? 'outer' : 'inner',
+    );
+    model.dispose();
+  });
+
+  it('keeps buttons visible and clickable from the closed front without detached controls', async () => {
+    vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue({ scene: appearance() } as unknown as GLTF);
+    const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
+    await model.loadAppearance('/approved-model.glb');
+    model.setAngle(0);
+    model.device.rotation.y = Math.PI / 2;
+    model.animateButtons(1);
+    model.device.updateMatrixWorld(true);
+    for (const name of ['side', 'volumeUp', 'volumeDown']) {
+      const position = model.device.getObjectByName(`button-${name}`)!.getWorldPosition(new THREE.Vector3());
+      const hit = model.pick(
+        new THREE.Raycaster(new THREE.Vector3(position.x, position.y, 300), new THREE.Vector3(0, 0, -1)),
+      );
+      expect(hit?.object.userData['button']).toBe(name);
+    }
+    model.dispose();
+  });
+
+  it('extends the physical mesh on hover and retracts after release', () => {
+    const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
+    const button = model.device.getObjectByName('button-volumeUp')!;
+    model.animateButtons(1);
+    const rest = button.position.y;
+    model.highlightButton('volumeUp');
+    model.animateButtons(1);
+    expect(button.position.y - rest).toBeCloseTo(0.9);
+    model.highlightButton('volumeUp', true);
+    model.animateButtons(1);
+    expect(button.position.y).toBeLessThan(rest);
+    model.highlightButton();
+    model.animateButtons(1);
+    expect(button.position.y).toBeCloseTo(rest);
+    model.dispose();
+  });
+
+  it('does not change camera framing when a button rises on hover', () => {
+    const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
+    model.animateButtons(1);
+    model.device.updateMatrixWorld(true);
+    const before = model.getBounds(new THREE.Box3()).clone();
+    model.highlightButton('volumeUp');
+    model.animateButtons(1);
+    model.device.updateMatrixWorld(true);
+    expect(model.getBounds(new THREE.Box3()).equals(before)).toBe(true);
+    model.dispose();
+  });
+
+  it('retains the functional frame if a replacement has no hardware metadata', async () => {
+    const scene = appearance();
+    scene.traverse((object) => {
+      delete object.userData['button'];
+    });
+    vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue({ scene } as unknown as GLTF);
+    const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
+    await expect(model.loadAppearance('/invalid.glb')).rejects.toThrow('button meshes');
+    expect(model.device.getObjectByName('button-side')).toBeDefined();
+    expect(rayAt(model, 'inner-display-1')!.object.userData['display']).toBe('inner');
     model.dispose();
   });
 });

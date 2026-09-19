@@ -56,9 +56,27 @@ hinge and orientation; it does not enable Apple's separate Table Mode.
 
 Click the frame's Sleep/Wake, Volume Up, or Volume Down buttons to send native
 hardware input. Press and hold is supported. These buttons remain active while
-the position is locked; hovering highlights a button and shows its name.
+the position is locked. Hovering raises the physical button slightly and shows its
+name. Buttons remain reachable from the front, and hover does not change the camera
+framing.
 
 The renderer requires WebGL. Duo currently supports single-finger gestures;
 accessibility inspection and the existing recording API do not follow the
 inner display. Use `screenshotDisplay` and `tapDisplay` from the TypeScript
 iOS client for explicit display automation.
+
+### Optional Duo appearance
+
+`duoModelUrl` replaces the rigid body with a host-supplied GLB. The host provides
+and licenses the asset; no third-party model is bundled with this package.
+Live simulator screens, hinge control and input remain active. A failed load keeps
+the built-in frame available and reports the error.
+
+The prepared model must contain `folding-half` and `stationary-half` groups with
+flat mesh children measured in centimeters. Inner display surfaces lie in the
+XY plane, centered at the hinge with positive Z facing the inner display.
+Material names `inner-screen` and `cover-screen` identify surfaces replaced by live
+video. Hardware meshes under `stationary-half` must carry `extras.button` with
+`side`, `volumeUp`, or `volumeDown`. All three are required. This is a prepared Duo
+appearance contract, not a general-purpose GLB viewer. Serve the file on the same
+origin or with suitable CORS headers.
