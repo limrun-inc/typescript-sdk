@@ -84,7 +84,11 @@ function DuoFlat(props: DuoFrameProps) {
     };
   }, [source, props.outer, props.inner]);
 
-  const { motion, finish: finishMotion, prepare } = useDuoFoldMotion(video, inner, frame);
+  const {
+    motion,
+    finish: finishMotion,
+    prepare,
+  } = useDuoFoldMotion(video, inner, frame, props.state.orientation);
   const { angle, changeAngle, interacting } = useDuoHinge(
     props.state.angleDegrees,
     async (value) => {

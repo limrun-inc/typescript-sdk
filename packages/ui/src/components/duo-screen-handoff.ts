@@ -28,11 +28,18 @@ export function waitForDuoFrame(
     ready(image);
   };
   const available = () => {
-    if (!stopped) finish(captureDuoFrame(video));
+    if (stopped) return;
+    const image = captureDuoFrame(video);
+    if (image) finish(image);
+  };
+  const frame = () => {
+    callback = undefined;
+    available();
+    if (!stopped) callback = video?.requestVideoFrameCallback?.(frame);
   };
   // Release the held image if the incoming stream never delivers a frame.
   const fallback = setTimeout(() => finish(undefined), 2500);
-  callback = video?.requestVideoFrameCallback?.(available);
+  callback = video?.requestVideoFrameCallback?.(frame);
   video?.addEventListener('loadeddata', available);
   if (!video?.requestVideoFrameCallback && video && video.readyState >= 2) available();
   function stop() {

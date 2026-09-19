@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DuoFoldMotion, useDuoFoldMotion } from './duo-fold-motion';
 import { flatFrameGeometry } from './duo-flat-geometry';
+import type { DuoOrientation } from '../core/duo';
 
 const renderer = vi.hoisted(() => ({
   start: vi.fn(),
@@ -20,11 +21,22 @@ const cancel = vi.fn();
 const draw = vi.fn();
 const readPixels = vi.fn();
 const changePreference = new EventTarget();
-function View({ inner = false, width = 600, turns }: { inner?: boolean; width?: number; turns?: number }) {
+function View({
+  inner = false,
+  width = 600,
+  turns,
+  orientation = 'portrait',
+}: {
+  inner?: boolean;
+  width?: number;
+  turns?: number;
+  orientation?: DuoOrientation;
+}) {
   const { motion, finish, prepare } = useDuoFoldMotion(
     { current: video },
     inner,
     flatFrameGeometry(inner, turns ?? (inner ? 1 : 0), width, 700),
+    orientation,
   );
   prepareFold = prepare;
   return motion && <DuoFoldMotion motion={motion} onFinish={finish} />;
@@ -146,6 +158,48 @@ it('uses the settled native orientation without rotating the entire phone', asyn
   const motion = renderer.start.mock.calls[0]![1];
   expect(motion.to.frame.turns).toBe(0);
   expect(motion.from.frame.turns).toBe(0);
+});
+for (const fromInner of [false, true]) {
+  for (const pose of [0, 1, 2, 3]) {
+    it(`finishes ${
+      fromInner ? 'folding' : 'unfolding'
+    } at pose ${pose} when orientation arrives after video`, async () => {
+      const fromTurns = (pose + (fromInner ? 1 : 0)) % 4;
+      const toTurns = (pose + (fromInner ? 0 : 1)) % 4;
+      await act(async () => root.render(<View inner={fromInner} turns={fromTurns} />));
+      await act(async () => root.render(<View inner={!fromInner} turns={fromTurns} />));
+      await incoming();
+      expect(renderer.start).toHaveBeenCalledTimes(1);
+      const motion = renderer.start.mock.calls[0]![1];
+      expect(motion.from.frame.turns).toBe(pose);
+      expect(motion.to.frame.turns).toBe(pose);
+      await act(async () => root.render(<View inner={!fromInner} turns={toTurns} />));
+      expect(renderer.start).toHaveBeenCalledTimes(1);
+      expect(renderer.dispose).not.toHaveBeenCalled();
+      expect(host.querySelector('.rc-duo-fold-canvas')).not.toBeNull();
+      await act(async () => renderer.finish!());
+      expect(renderer.dispose).toHaveBeenCalledTimes(1);
+    });
+  }
+}
+it('still cancels an active fold when the device is explicitly rotated', async () => {
+  await act(async () => root.render(<View />));
+  await act(async () => root.render(<View inner />));
+  await incoming();
+  await act(async () => root.render(<View inner turns={2} orientation="landscape-left" />));
+  expect(renderer.dispose).toHaveBeenCalledTimes(1);
+  expect(host.childElementCount).toBe(0);
+});
+it('waits for a usable frame if a video event precedes its dimensions', async () => {
+  await act(async () => root.render(<View />));
+  await act(async () => root.render(<View inner />));
+  Object.defineProperty(video, 'videoWidth', { configurable: true, value: 0 });
+  await incoming();
+  expect(renderer.start).not.toHaveBeenCalled();
+  expect(host.querySelector('.rc-duo-fold-hold')).not.toBeNull();
+  Object.defineProperty(video, 'videoWidth', { configurable: true, value: 1398 });
+  await incoming();
+  expect(renderer.start).toHaveBeenCalledTimes(1);
 });
 it('returns to live video on missing frames or WebGL failure', async () => {
   await act(async () => root.render(<View />));

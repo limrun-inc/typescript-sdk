@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DuoFlatFrame } from './duo-flat-frame';
 import { captureDuoFrame, waitForDuoFrame } from './duo-screen-handoff';
-import type { flatFrameGeometry } from './duo-flat-geometry';
+import { flatFrameGeometry } from './duo-flat-geometry';
+import type { DuoOrientation } from '../core/duo';
 
 type Frame = ReturnType<typeof flatFrameGeometry>;
 type Pose = { inner: boolean; frame: Frame };
@@ -18,8 +19,10 @@ export function useDuoFoldMotion(
   video: React.RefObject<HTMLVideoElement | null>,
   inner: boolean,
   frame: Frame,
+  orientation?: DuoOrientation,
 ) {
   const previous = useRef<Pose | undefined>(undefined);
+  const previousOrientation = useRef(orientation);
   const current = useRef<Pose>({ inner, frame });
   current.current = { inner, frame };
   const [motion, setMotion] = useState<FoldMotion>();
@@ -49,32 +52,43 @@ export function useDuoFoldMotion(
     const from = previous.current;
     const to = { inner, frame };
     previous.current = to;
+    const rotated = previousOrientation.current !== orientation;
+    previousOrientation.current = orientation;
     if (!from) return;
     const resized =
       Math.abs(from.frame.rect.min.x + from.frame.rect.max.x - frame.rect.min.x - frame.rect.max.x) > 0.5 ||
       Math.abs(from.frame.rect.min.y + from.frame.rect.max.y - frame.rect.min.y - frame.rect.max.y) > 0.5;
-    if (resized) {
+    if (resized || rotated) {
       finish();
       return;
     }
     if (from.inner === inner) {
-      // Native orientation can arrive after the display change. Use it before starting the hinge.
-      setMotion((active) => (active && !active.ready ? { ...active, to } : undefined));
+      // Display metadata can arrive mid-animation; it does not rotate the physical device.
       return;
     }
     setMotion(undefined);
     if (!from.frame.scale || !frame.scale) return;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     const before = prepared.current?.before ?? captureDuoFrame(video.current);
+    const origin = prepared.current?.from ?? from;
     clearTimeout(commandTimeout.current);
     prepared.current = undefined;
-    if (before) setMotion({ from, to, before, ready: false });
-  }, [inner, frame.scale, frame.turns, frame.rect.min.x, frame.rect.min.y]);
+    if (before) {
+      // Preserve the device's pose while iOS updates the incoming display's orientation.
+      to.frame = flatFrameGeometry(
+        inner,
+        (origin.frame.turns + (inner ? 1 : 0)) % 4,
+        frame.rect.min.x + frame.rect.max.x,
+        frame.rect.min.y + frame.rect.max.y,
+      );
+      setMotion({ from: origin, to, before, ready: false });
+    }
+  }, [inner, frame.scale, frame.turns, frame.rect.min.x, frame.rect.min.y, orientation]);
 
   useEffect(() => {
     if (!motion || motion.from.inner === inner) return;
     const stop = waitForDuoFrame(video.current, (after) => {
-      if (after) setMotion((active) => active && { ...active, to: current.current, after, ready: true });
+      if (after) setMotion((active) => active && { ...active, after, ready: true });
       else finish();
     });
     const preference = window.matchMedia?.('(prefers-reduced-motion: reduce)');
@@ -86,7 +100,7 @@ export function useDuoFoldMotion(
       stop();
       preference?.removeEventListener('change', reduce);
     };
-  }, [motion?.from]);
+  }, [motion?.from, inner]);
   return { motion, finish, prepare };
 }
 
