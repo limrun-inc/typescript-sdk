@@ -416,10 +416,6 @@ export function createDuoModel(
     device,
     hitObjects,
     setAngle,
-    setScreenTextures: (outer: THREE.Texture, inner: THREE.Texture) => {
-      outerMaterial.map = outer;
-      innerMaterial.map = inner;
-    },
     buttonAnchors: () =>
       [...buttonBases].map(([button, base]) => ({
         button,
