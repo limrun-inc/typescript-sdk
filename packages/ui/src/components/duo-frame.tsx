@@ -420,12 +420,16 @@ export default function DuoFrame(props: Props) {
               onClick={() => {
                 setView(value);
                 if (value === 'book') {
-                  changeAngle(110);
-                  void props.setOrientation('portrait').catch((reason) => setError(String(reason)));
+                  void props
+                    .setOrientation('portrait')
+                    .then(() => changeAngle(110))
+                    .catch((reason) => setError(String(reason)));
                 }
                 if (value === 'table') {
-                  changeAngle(110);
-                  void props.setOrientation('landscape-left').catch((reason) => setError(String(reason)));
+                  void props
+                    .setOrientation('landscape-left')
+                    .then(() => changeAngle(110))
+                    .catch((reason) => setError(String(reason)));
                 }
               }}
             >
