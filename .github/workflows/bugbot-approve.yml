@@ -1,0 +1,29 @@
+name: Bugbot Approve
+
+# Approves a PR once Cursor Bugbot has reviewed its head commit with no
+# unresolved finding above Low. The logic lives in limrun-inc/limrun; this
+# file only supplies the triggers. After resolving a Medium or higher thread
+# without pushing, comment "/limrunbot check" on the PR.
+on:
+  check_run:
+    types: [completed]
+  pull_request_target:
+    types: [synchronize]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number to evaluate"
+        required: true
+
+permissions:
+  pull-requests: read
+  checks: read
+
+jobs:
+  bugbot-approve:
+    uses: limrun-inc/limrun/.github/workflows/bugbot-approve.yaml@main
+    with:
+      pr: ${{ inputs.pr }}
+    secrets: inherit
