@@ -48,7 +48,7 @@ export default function DuoFrame(props: DuoFrameProps) {
   const viewRevision = useRef(0);
   const viewRef = useRef(view);
   viewRef.current = view;
-  const [positionLocked, setPositionLocked] = useState(true);
+  const [positionLocked, setPositionLocked] = useState(false);
   const lockedRef = useRef(positionLocked);
   lockedRef.current = positionLocked;
   const invalidateFrame = useRef<() => void>(() => undefined);
