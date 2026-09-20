@@ -486,7 +486,7 @@ export default function DuoFrame(props: DuoFrameProps) {
         data-position-locked={positionLocked}
         tabIndex={0}
         role="application"
-        aria-label="iPhone Duo simulator. Touch the screen to control iOS. Unlock position to rotate the view."
+        aria-label="iPhone Duo simulator. Touch the screen to control iOS. Drag the frame or background to rotate when position is unlocked."
         onKeyDown={props.onKeyDown}
         onKeyUp={props.onKeyUp}
       >

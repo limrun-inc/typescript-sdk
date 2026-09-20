@@ -9,7 +9,6 @@ type InspectChoice = 'off' | 'hover-only' | 'select';
 // Pre-fill from query string so the developer testing the demo can deeplink
 // `?url=...&token=...&inspect=select&autoconnect=1`. Nothing is persisted.
 const initialParams = new URLSearchParams(window.location.search);
-window.debugRemoteControl = initialParams.get('debug') === '1';
 const initialUrl = initialParams.get('url') || 'ws://localhost:8833/signaling';
 const initialToken = initialParams.get('token') || 'token';
 const initialPlatformParam = initialParams.get('platform');
@@ -64,18 +63,6 @@ function Demo() {
       }
     }
   };
-
-  if (initialParams.get('compact') === '1') {
-    return (
-      <div style={{ position: 'fixed', inset: 0, background: '#edf0f4' }}>
-        <RemoteControl
-          url={url}
-          token={token}
-          deviceModel={initialParams.get('model') === 'iphone-duo' ? 'iphone-duo' : undefined}
-        />
-      </div>
-    );
-  }
 
   return (
     <>

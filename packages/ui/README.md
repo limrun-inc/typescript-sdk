@@ -55,9 +55,9 @@ the renderer and its graphics resources without reconnecting the simulator.
 Use the hinge slider for any angle from 0° closed to 180° flat. In 2D, the active
 display stays flat between folds. A brief folding animation shows the silver frame, hinge and buttons
 when switching displays; 3D shows the physical hinge pose continuously. Touch and drag
-on the visible display interact with iOS. In 3D, position starts locked to prevent accidental
-rotation. Unlock it to drag the frame or background (or Alt-drag the screen) to move the
-camera. Rotate device changes the native orientation. Laptop view sets the
+on the visible display interact with iOS. In 3D, position starts unlocked. Drag the frame or
+background, or Alt-drag the screen, to rotate the view. Use Lock position to prevent
+rotation. Rotate device changes the native orientation. Laptop view sets the
 hinge and orientation; it does not enable Apple's separate Table Mode.
 
 In either mode, click the frame's Sleep/Wake, Volume Up, or Volume Down buttons to send native
