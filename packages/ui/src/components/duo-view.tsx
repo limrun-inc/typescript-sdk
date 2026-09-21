@@ -8,29 +8,34 @@ import { DuoFoldMotion, useDuoFoldMotion } from './duo-fold-motion';
 
 const DuoFrame = lazy(() => import('./duo-frame'));
 
+type DuoViewProps = DuoFrameProps & { showFrame?: boolean };
+
 /** Native video is the default; only an explicit 3D selection loads the renderer and body asset. */
-export default function DuoView(props: DuoFrameProps) {
+export default function DuoView(props: DuoViewProps) {
   const [mode, setMode] = useState<'2d' | '3d'>('2d');
   return (
     <div className="rc-duo-view">
-      {mode === '3d' ?
+      {props.showFrame !== false && mode === '3d' ?
         <Suspense fallback={<DuoFlat {...props} />}>
           <DuoFrame {...props} />
         </Suspense>
       : <DuoFlat {...props} />}
-      <div className="rc-duo-mode" role="group" aria-label="Device rendering">
-        <button type="button" aria-pressed={mode === '2d'} onClick={() => setMode('2d')}>
-          2D
-        </button>
-        <button type="button" aria-pressed={mode === '3d'} onClick={() => setMode('3d')}>
-          3D
-        </button>
-      </div>
+      {props.showFrame !== false && (
+        <div className="rc-duo-mode" role="group" aria-label="Device rendering">
+          <button type="button" aria-pressed={mode === '2d'} onClick={() => setMode('2d')}>
+            2D
+          </button>
+          <button type="button" aria-pressed={mode === '3d'} onClick={() => setMode('3d')}>
+            3D
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-function DuoFlat(props: DuoFrameProps) {
+function DuoFlat(props: DuoViewProps) {
+  const showFrame = props.showFrame !== false;
   const stage = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const latest = useRef(props);
@@ -53,7 +58,20 @@ function DuoFlat(props: DuoFrameProps) {
     : 0;
   const inner = display?.id === 'inner';
   const frame = flatFrameGeometry(inner, turns, size.width, size.height);
-  const { bodyWidth, bodyHeight, screenWidth, screenHeight, scale } = frame;
+  const screenWidth = showFrame ? frame.screenWidth : (inner ? display?.height : display?.width) ?? 1;
+  const screenHeight = showFrame ? frame.screenHeight : (inner ? display?.width : display?.height) ?? 1;
+  const bodyWidth = showFrame ? frame.bodyWidth : screenWidth;
+  const bodyHeight = showFrame ? frame.bodyHeight : screenHeight;
+  const scale =
+    showFrame ?
+      frame.scale
+    : Math.max(
+        0,
+        Math.min(
+          size.width / (frame.turns % 2 ? bodyHeight : bodyWidth),
+          size.height / (frame.turns % 2 ? bodyWidth : bodyHeight),
+        ),
+      );
   const width = screenWidth * scale;
   const height = screenHeight * scale;
 
@@ -88,7 +106,7 @@ function DuoFlat(props: DuoFrameProps) {
     motion,
     finish: finishMotion,
     prepare,
-  } = useDuoFoldMotion(video, inner, frame, props.state.orientation);
+  } = useDuoFoldMotion(video, inner, frame, props.state.orientation, showFrame);
   const { angle, changeAngle, interacting } = useDuoHinge(
     props.state.angleDegrees,
     async (value) => {
@@ -173,13 +191,14 @@ function DuoFlat(props: DuoFrameProps) {
     );
   };
   return (
-    <div className="rc-duo">
+    <div className={showFrame ? 'rc-duo' : 'rc-duo rc-duo-frameless'}>
       <div
         ref={stage}
         className="rc-duo-flat-stage"
         data-folding={!!motion}
         aria-busy={!!motion}
         onPointerMove={(event) => {
+          if (!showFrame) return;
           const rect = event.currentTarget.getBoundingClientRect();
           setEdge(flatHoverEdge(event.clientX - rect.left, event.clientY - rect.top, frame.rect));
         }}
@@ -197,7 +216,7 @@ function DuoFlat(props: DuoFrameProps) {
             transform: 'translate(-50%, -50%) rotate(' + frame.turns * 90 + 'deg)',
           }}
         >
-          <DuoFlatFrame inner={inner} width={bodyWidth} height={bodyHeight} />
+          {showFrame && <DuoFlatFrame inner={inner} width={bodyWidth} height={bodyHeight} />}
           <div
             className="rc-duo-flat-screen"
             role="application"
@@ -208,7 +227,10 @@ function DuoFlat(props: DuoFrameProps) {
               height,
               left: ((bodyWidth - screenWidth) / 2) * scale,
               top: ((bodyHeight - screenHeight) / 2) * scale,
-              borderRadius: inner ? 5.3 * scale : [0.8, 6.6, 6.6, 0.8].map((r) => r * scale + 'px').join(' '),
+              borderRadius:
+                !showFrame ? 0
+                : inner ? 5.3 * scale
+                : [0.8, 6.6, 6.6, 0.8].map((r) => r * scale + 'px').join(' '),
             }}
             onKeyDown={motion ? undefined : props.onKeyDown}
             onKeyUp={props.onKeyUp}
@@ -244,67 +266,73 @@ function DuoFlat(props: DuoFrameProps) {
               }}
             />
           </div>
-          {frame.buttons.map((b) => (
+          {showFrame &&
+            frame.buttons.map((b) => (
+              <button
+                key={b.button}
+                type="button"
+                className="rc-duo-physical"
+                data-duo-button={b.button}
+                data-edge={b.edge}
+                data-highlighted={hovered === b.button}
+                data-pressed={pressed === b.button}
+                aria-label={DUO_BUTTONS[b.button] + ' physical button'}
+                title={DUO_BUTTONS[b.button]}
+                style={{
+                  left: b.x * scale,
+                  top: b.y * scale,
+                  width: b.edge === 'top' ? Math.max(28, b.width * scale) : 28,
+                  height: b.edge === 'top' ? 28 : Math.max(28, b.height * scale),
+                }}
+                {...buttonEvents(b.button)}
+              >
+                <span
+                  style={{ width: Math.max(2, b.width * scale), height: Math.max(2, b.height * scale) }}
+                />
+              </button>
+            ))}
+        </div>
+        {showFrame &&
+          frame.guides.map((g) => (
             <button
-              key={b.button}
+              key={g.button}
               type="button"
-              className="rc-duo-physical"
-              data-duo-button={b.button}
-              data-edge={b.edge}
-              data-highlighted={hovered === b.button}
-              data-pressed={pressed === b.button}
-              aria-label={DUO_BUTTONS[b.button] + ' physical button'}
-              title={DUO_BUTTONS[b.button]}
-              style={{
-                left: b.x * scale,
-                top: b.y * scale,
-                width: b.edge === 'top' ? Math.max(28, b.width * scale) : 28,
-                height: b.edge === 'top' ? 28 : Math.max(28, b.height * scale),
-              }}
-              {...buttonEvents(b.button)}
+              className="rc-duo-hardware"
+              data-duo-button={g.button}
+              data-visible={edge === g.edge}
+              data-pressed={pressed === g.button}
+              aria-label={DUO_BUTTONS[g.button]}
+              title={DUO_BUTTONS[g.button]}
+              style={
+                {
+                  left: g.targetX,
+                  top: g.targetY,
+                  '--duo-hardware-icon-size': `${frame.iconSize}px`,
+                  '--duo-hardware-icon-x': `${g.x - g.targetX}px`,
+                  '--duo-hardware-icon-y': `${g.y - g.targetY}px`,
+                } as React.CSSProperties
+              }
+              {...buttonEvents(g.button)}
             >
-              <span style={{ width: Math.max(2, b.width * scale), height: Math.max(2, b.height * scale) }} />
+              <DuoHardwareIcon button={g.button} />
             </button>
           ))}
-        </div>
-        {frame.guides.map((g) => (
-          <button
-            key={g.button}
-            type="button"
-            className="rc-duo-hardware"
-            data-duo-button={g.button}
-            data-visible={edge === g.edge}
-            data-pressed={pressed === g.button}
-            aria-label={DUO_BUTTONS[g.button]}
-            title={DUO_BUTTONS[g.button]}
-            style={
-              {
-                left: g.targetX,
-                top: g.targetY,
-                '--duo-hardware-icon-size': `${frame.iconSize}px`,
-                '--duo-hardware-icon-x': `${g.x - g.targetX}px`,
-                '--duo-hardware-icon-y': `${g.y - g.targetY}px`,
-              } as React.CSSProperties
-            }
-            {...buttonEvents(g.button)}
-          >
-            <DuoHardwareIcon button={g.button} />
-          </button>
-        ))}
         {motion && <DuoFoldMotion motion={motion} onFinish={finishMotion} />}
       </div>
-      <DuoControls
-        angle={angle}
-        changeAngle={changeAngle}
-        interacting={interacting}
-        rotate={() => {
-          void props
-            .setOrientation(props.state.orientation === 'portrait' ? 'landscape-left' : 'portrait')
-            .catch((e) => setError(String(e)));
-        }}
-      >
-        <span className="rc-duo-view-label">Front view</span>
-      </DuoControls>
+      {showFrame && (
+        <DuoControls
+          angle={angle}
+          changeAngle={changeAngle}
+          interacting={interacting}
+          rotate={() => {
+            void props
+              .setOrientation(props.state.orientation === 'portrait' ? 'landscape-left' : 'portrait')
+              .catch((e) => setError(String(e)));
+          }}
+        >
+          <span className="rc-duo-view-label">Front view</span>
+        </DuoControls>
+      )}
       {error && (
         <div role="alert" className="rc-duo-error">
           {error}

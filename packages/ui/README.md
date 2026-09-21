@@ -52,6 +52,21 @@ Both modes share the fold, hinge-angle and rotation toolbar. No model prop is re
 to load the interactive frame and its model on demand. Returning to **2D** releases
 the renderer and its graphics resources without reconnecting the simulator.
 
+```tsx
+import { RemoteControl } from '@limrun/ui';
+
+<RemoteControl url={instanceWebsocketUrl} token={instanceToken} deviceModel="iphone-duo" showFrame />;
+```
+
+The built-in 2D frame and procedural 3D model ship with the UI package; customers
+do not need to host a model file. `deviceModel` can be omitted when native Duo
+capabilities are discovered from the connection. The CLI and API control the
+simulator; the UI package renders its frame.
+
+Set `showFrame={false}` for the active display alone, without the frame, hardware
+buttons, viewer toolbar, or 2D/3D toggle. Touch and keyboard input still work, and
+the video follows display and orientation changes without loading a 3D renderer.
+
 Use the hinge slider for any angle from 0° closed to 180° flat. In 2D, the active
 display stays flat between folds. A brief folding animation shows the silver frame, hinge and buttons
 when switching displays; 3D shows the physical hinge pose continuously. Touch and drag

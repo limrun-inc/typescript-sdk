@@ -439,3 +439,12 @@
 .rc-duo-stage[data-position-locked='false'] canvas:active {
   cursor: grabbing;
 }
+
+.rc-duo.rc-duo-frameless {
+  background: transparent;
+  border-radius: 0;
+}
+.rc-duo-frameless .rc-duo-flat-stage {
+  margin-top: 0;
+  min-height: 0;
+}

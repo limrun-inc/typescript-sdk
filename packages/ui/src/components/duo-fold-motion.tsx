@@ -20,6 +20,7 @@ export function useDuoFoldMotion(
   inner: boolean,
   frame: Frame,
   orientation?: DuoOrientation,
+  enabled = true,
 ) {
   const previous = useRef<Pose | undefined>(undefined);
   const previousOrientation = useRef(orientation);
@@ -34,7 +35,7 @@ export function useDuoFoldMotion(
     setMotion(undefined);
   }, []);
   const prepare = (targetInner: boolean) => {
-    if (targetInner === inner) {
+    if (!enabled || targetInner === inner) {
       finish();
       return;
     }
@@ -58,7 +59,7 @@ export function useDuoFoldMotion(
     const resized =
       Math.abs(from.frame.rect.min.x + from.frame.rect.max.x - frame.rect.min.x - frame.rect.max.x) > 0.5 ||
       Math.abs(from.frame.rect.min.y + from.frame.rect.max.y - frame.rect.min.y - frame.rect.max.y) > 0.5;
-    if (resized || rotated) {
+    if (!enabled || resized || rotated) {
       finish();
       return;
     }
@@ -83,7 +84,7 @@ export function useDuoFoldMotion(
       );
       setMotion({ from: origin, to, before, ready: false });
     }
-  }, [inner, frame.scale, frame.turns, frame.rect.min.x, frame.rect.min.y, orientation]);
+  }, [inner, frame.scale, frame.turns, frame.rect.min.x, frame.rect.min.y, orientation, enabled]);
 
   useEffect(() => {
     if (!motion || motion.from.inner === inner) return;

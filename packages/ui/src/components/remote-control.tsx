@@ -3868,6 +3868,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         {isDuo && duoState && (
           <Suspense fallback={<div>Loading iPhone Duo…</div>}>
             <DuoView
+              showFrame={showFrame}
               modelUrl={duoModelUrl}
               outer={videoRef.current}
               inner={innerVideoRef.current}
