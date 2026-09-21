@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.52.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.51.1...v0.52.0) (2026-09-21)
+
+
+### Features
+
+* add iPhone Duo SDK, 2D/3D viewer, and CLI controls ([1bef25f](https://github.com/limrun-inc/typescript-sdk/commit/1bef25f65c92d48d0ee8159e4b85ef6111e8cc0a))
+* add native iPhone Duo controls and interactive 3D frame ([d0d4849](https://github.com/limrun-inc/typescript-sdk/commit/d0d484973cd91eacc813a7eca38b02a8c23d0fec))
+* complete Duo CLI controls and prepare RC publishing ([850fdcf](https://github.com/limrun-inc/typescript-sdk/commit/850fdcf658d7c0dfbb5855f41fc139e0080abf78))
+
+
+### Bug Fixes
+
+* **ui:** honor frameless mode for iPhone Duo ([4c3060c](https://github.com/limrun-inc/typescript-sdk/commit/4c3060cf81dbd50d2983162a33ec346a16505f0b))
+
+
+### Chores
+
+* prepare CLI 0.34.0-rc.1 with Duo SDK ([4ab9bcc](https://github.com/limrun-inc/typescript-sdk/commit/4ab9bccb6d6389ee8c174189da97dab05325d8eb))
+* prepare SDK 0.52.0-rc.1 ([04e9251](https://github.com/limrun-inc/typescript-sdk/commit/04e9251a4c6f78fa60e370b184a61ea205b65603))
+* prepare UI 0.17.0-rc.1 ([4fc3d30](https://github.com/limrun-inc/typescript-sdk/commit/4fc3d305805aca8a56c5efefa06e628ac8c7bf15))
+
 ## [0.51.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.51.0...v0.51.1) (2026-09-18)
 
 
