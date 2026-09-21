@@ -129,3 +129,322 @@
   line-height: 1.3;
   color: #6b7280;
 }
+
+.rc-duo-view {
+  position: absolute;
+  inset: 0;
+}
+.rc-duo-mode {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 3;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: #fff;
+  border: 1px solid #d9dde4;
+  border-radius: 10px;
+}
+.rc-duo-mode button {
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 13px;
+  font: 12px system-ui;
+  color: #29313e;
+  background: transparent;
+  cursor: pointer;
+}
+.rc-duo-mode button[aria-pressed='true'] {
+  background: #202b3c;
+  color: white;
+}
+.rc-duo-flat-stage {
+  position: relative;
+  flex: 1;
+  min-height: 160px;
+  margin-top: 48px;
+}
+.rc-duo-flat-device {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  flex: none;
+  transform-origin: center;
+}
+.rc-duo-flat-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 5px 6px #17202e1c);
+}
+.rc-duo-flat-screen {
+  position: absolute;
+  overflow: hidden;
+  background: #090b0d;
+  touch-action: none;
+  outline: none;
+}
+.rc-duo-flat-screen video,
+.rc-duo-flat-screen canvas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  pointer-events: none;
+}
+.rc-duo-flat-stage[data-folding='true'] > .rc-duo-flat-device,
+.rc-duo-flat-stage[data-folding='true'] > .rc-duo-hardware {
+  visibility: hidden;
+  pointer-events: none;
+}
+.rc-duo-fold-hold {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+}
+.rc-duo-fold-still {
+  position: relative;
+}
+.rc-duo-fold-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rc-duo-fold-canvas,
+  .rc-duo-fold-hold {
+    display: none;
+  }
+  .rc-duo-flat-stage[data-folding='true'] > .rc-duo-flat-device {
+    visibility: visible;
+  }
+}
+.rc-duo .rc-duo-physical {
+  position: absolute;
+  z-index: 2;
+  padding: 0;
+  border-radius: 0;
+  touch-action: none;
+}
+.rc-duo-physical[data-edge='top'] {
+  transform: translate(-50%, -100%);
+}
+.rc-duo-physical[data-edge='right'] {
+  transform: translate(0, -50%);
+}
+.rc-duo-physical span {
+  position: absolute;
+  display: block;
+  border: 1px solid #7d8387;
+  border-radius: 2px;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #747d83, #fafcfb 32%, #afb5b9 64%, #636b70);
+  box-shadow: 0 0.5px 1px #0004;
+  transition: transform 110ms ease;
+  pointer-events: none;
+}
+.rc-duo-physical[data-edge='top'] span {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.rc-duo-physical[data-edge='right'] span {
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, #747d83, #fafcfb 32%, #afb5b9 64%, #636b70);
+}
+.rc-duo-physical[data-edge='top'][data-highlighted='true'] span,
+.rc-duo-physical[data-edge='top']:focus-visible span {
+  transform: translate(-50%, -2px);
+}
+.rc-duo-physical[data-edge='right'][data-highlighted='true'] span,
+.rc-duo-physical[data-edge='right']:focus-visible span {
+  transform: translate(2px, -50%);
+}
+.rc-duo-physical[data-edge='top'][data-pressed='true'] span {
+  transform: translate(-50%, 0.5px);
+}
+.rc-duo-physical[data-edge='right'][data-pressed='true'] span {
+  transform: translate(-0.5px, -50%);
+}
+.rc-duo {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 40%, #ffffff, #e8ebee);
+  border-radius: 16px;
+  color: #29313e;
+}
+.rc-duo-stage {
+  position: relative;
+  margin-top: 48px;
+  flex: 1;
+  min-height: 160px;
+  width: 100%;
+  outline: none;
+  touch-action: none;
+}
+.rc-duo-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+.rc-duo .rc-duo-hardware {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  z-index: 1;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  color: #73777c;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    color 100ms ease;
+}
+.rc-duo .rc-duo-hardware[data-visible='true'],
+.rc-duo .rc-duo-hardware:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.rc-duo .rc-duo-hardware svg {
+  width: var(--duo-hardware-icon-size, 24px);
+  height: var(--duo-hardware-icon-size, 24px);
+  transform: translate(var(--duo-hardware-icon-x, 0px), var(--duo-hardware-icon-y, 0px));
+}
+.rc-duo .rc-duo-hardware:hover,
+.rc-duo .rc-duo-hardware:focus-visible,
+.rc-duo .rc-duo-hardware[data-pressed='true'] {
+  color: #007aff;
+}
+.rc-duo-controls {
+  flex: none;
+  align-self: center;
+  width: min(540px, calc(100% - 40px));
+  box-sizing: border-box;
+  margin: 0 20px 20px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid #d9dde4;
+  border-radius: 16px;
+  box-shadow: 0 6px 25px #13203610;
+  font:
+    12px system-ui,
+    sans-serif;
+}
+.rc-duo-hinge,
+.rc-duo-views {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.rc-duo-hinge {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.rc-duo-hinge input {
+  flex: 1;
+  min-width: 30px;
+  width: 100%;
+  accent-color: #34435b;
+}
+.rc-duo-hinge output {
+  min-width: 32px;
+  font-variant-numeric: tabular-nums;
+}
+.rc-duo button {
+  border: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.rc-duo-hinge .rc-duo-fold {
+  flex: none;
+  background: #202b3c;
+  color: white;
+  min-width: 65px;
+}
+.rc-duo-views {
+  min-height: 29px;
+  margin-top: 8px;
+  gap: 2px;
+  font-size: 11px;
+}
+.rc-duo-views button {
+  padding: 6px 8px;
+}
+.rc-duo-view-label {
+  padding: 6px 8px;
+  color: #77808d;
+}
+.rc-duo .rc-duo-rotate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px;
+  border: 1px solid #d9dde4;
+}
+.rc-duo button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.rc-duo-views button[aria-pressed='true'] {
+  background: #e5eaf0;
+}
+.rc-duo button:focus-visible,
+.rc-duo input:focus-visible {
+  outline: 2px solid #4275c3;
+  outline-offset: 2px;
+}
+.rc-duo-error {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #fff0ee;
+  color: #9c2e26;
+  font: 13px system-ui;
+}
+
+.rc-duo .rc-duo-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  border: 1px solid #d3dae3;
+}
+.rc-duo-stage[data-position-locked='false'] canvas {
+  cursor: grab;
+}
+.rc-duo-stage[data-position-locked='false'] canvas:active {
+  cursor: grabbing;
+}
+
+.rc-duo.rc-duo-frameless {
+  background: transparent;
+  border-radius: 0;
+}
+.rc-duo-frameless .rc-duo-flat-stage {
+  margin-top: 0;
+  min-height: 0;
+}

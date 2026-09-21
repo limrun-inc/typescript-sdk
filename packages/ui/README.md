@@ -43,3 +43,67 @@ Related browser workflow packages are published separately:
 ## Releasing
 
 This package is not part of generated SDK, hence you need to publish it manually in GitHub Actions.
+
+## iPhone Duo
+
+`RemoteControl` discovers native Duo support and starts in 2D with native video
+inside a silver Duo frame, including its hinge spine and physical buttons.
+Both modes share the fold, hinge-angle and rotation toolbar. No model prop is required. Select **3D**
+to load the interactive frame and its model on demand. Returning to **2D** releases
+the renderer and its graphics resources without reconnecting the simulator.
+
+```tsx
+import { RemoteControl } from '@limrun/ui';
+
+<RemoteControl url={instanceWebsocketUrl} token={instanceToken} deviceModel="iphone-duo" showFrame />;
+```
+
+The built-in 2D frame and procedural 3D model ship with the UI package; customers
+do not need to host a model file. `deviceModel` can be omitted when native Duo
+capabilities are discovered from the connection. The CLI and API control the
+simulator; the UI package renders its frame.
+
+Set `showFrame={false}` for the active display alone, without the frame, hardware
+buttons, viewer toolbar, or 2D/3D toggle. Touch and keyboard input still work, and
+the video follows display and orientation changes without loading a 3D renderer.
+
+Use the hinge slider for any angle from 0° closed to 180° flat. In 2D, the active
+display stays flat between folds. A brief folding animation shows the silver frame, hinge and buttons
+when switching displays; 3D shows the physical hinge pose continuously. Touch and drag
+on the visible display interact with iOS. In 3D, position starts unlocked. Drag the frame or
+background, or Alt-drag the screen, to rotate the view. Use Lock position to prevent
+rotation. Rotate device changes the native orientation. Laptop view sets the
+hinge and orientation; it does not enable Apple's separate Table Mode.
+
+In either mode, click the frame's Sleep/Wake, Volume Up, or Volume Down buttons to send native
+hardware input. Press and hold is supported. These buttons remain active while
+the position is locked. Hover near an edge to reveal its button icons, then click
+either the icon or the physical button. Volume icons appear together above their
+edge; Sleep/Wake appears beside its edge. Icons follow native rotation and folding.
+Hover raises the physical button slightly without changing the camera framing.
+Tab, Space and Enter also operate the icons. Camera Control is not yet supported.
+
+The optional 2D fold animation loads a small WebGL renderer on demand and releases it after each fold.
+Reduced motion or unavailable WebGL keeps the flat display. The full 3D view requires WebGL and renders when video frames arrive or the view changes,
+and pauses while hidden. Duo currently supports single-finger gestures;
+accessibility inspection and the existing recording API do not follow the
+inner display. Use `screenshotDisplay` and `tapDisplay` from the TypeScript
+iOS client for explicit display automation.
+
+### Optional Duo appearance
+
+`duoModelUrl` replaces the rigid body with a host-supplied GLB. The host provides
+and licenses the asset; no third-party model is bundled with this package.
+Live simulator screens, hinge control and input remain active. A failed load keeps
+the built-in frame available and reports the error.
+
+The prepared model must contain `folding-half` and `stationary-half` groups with
+flat mesh children measured in centimeters. Inner display surfaces lie in the
+XY plane, centered at the hinge with positive Z facing the inner display.
+Material names `inner-screen` and `cover-screen` identify surfaces replaced by live
+video. Optimized models may instead mark those mesh nodes with `extras.sourceDisplay`
+set to `inner` or `outer`, so material deduplication preserves display identity.
+Hardware meshes under `stationary-half` must carry `extras.button` with
+`side`, `volumeUp`, or `volumeDown`. All three are required. This is a prepared Duo
+appearance contract, not a general-purpose GLB viewer. Serve the file on the same
+origin or with suitable CORS headers.

@@ -181,22 +181,22 @@ lim ios create --jurisdiction us --display-name "CI Test" --label env=ci --rm
 
 **Flags for `ios create`:**
 
-| Flag                              | Description                                                                                                                   |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `--rm`                            | Auto-delete the instance on exit (Ctrl+C)                                                                                     |
-| `--model <iphone\|ipad\|watch>`   | Simulator device model                                                                                                        |
-| `--xcode`                         | Create an Xcode build sandbox and attach the simulator to it                                                                  |
-| `--jurisdiction <us\|eu\|as>`     | Jurisdiction the instance must be created in (hard constraint: creation fails when no region there has capacity)              |
-| `--region <value>`                | Deprecated. Region preference (e.g. `us-east1`), tried first and overflowing to other regions when full. Use `--jurisdiction` |
-| `--display-name <value>`          | Human-readable name                                                                                                           |
-| `--label <key=value>`             | Labels (repeatable). Used for filtering and reuse                                                                             |
-| `--hard-timeout <duration>`       | Max lifetime (e.g. `1m`, `10m`, `3h`). Default: none                                                                          |
-| `--inactivity-timeout <duration>` | Idle timeout. Default: `3m`                                                                                                   |
-| `--force-bundle-id <bundle-id>`   | Lock to an app after it first enters the foreground                                                                           |
-| `--reuse-if-exists`               | Reuse an existing instance with exactly the same labels, looked up in the region that handles the create                      |
-| `--install <file>`                | Local file to install (auto-uploads, repeatable)                                                                              |
-| `--install-asset <name>`          | Asset name to install (repeatable)                                                                                            |
-| `--install-url <url>`             | Signed download URL of an app to install (repeatable)                                                                         |
+| Flag                                        | Description                                                                                                                   |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `--rm`                                      | Auto-delete the instance on exit (Ctrl+C)                                                                                     |
+| `--model <iphone\|iphone-duo\|ipad\|watch>` | Simulator device model                                                                                                        |
+| `--xcode`                                   | Create an Xcode build sandbox and attach the simulator to it                                                                  |
+| `--jurisdiction <us\|eu\|as>`               | Jurisdiction the instance must be created in (hard constraint: creation fails when no region there has capacity)              |
+| `--region <value>`                          | Deprecated. Region preference (e.g. `us-east1`), tried first and overflowing to other regions when full. Use `--jurisdiction` |
+| `--display-name <value>`                    | Human-readable name                                                                                                           |
+| `--label <key=value>`                       | Labels (repeatable). Used for filtering and reuse                                                                             |
+| `--hard-timeout <duration>`                 | Max lifetime (e.g. `1m`, `10m`, `3h`). Default: none                                                                          |
+| `--inactivity-timeout <duration>`           | Idle timeout. Default: `3m`                                                                                                   |
+| `--force-bundle-id <bundle-id>`             | Lock to an app after it first enters the foreground                                                                           |
+| `--reuse-if-exists`                         | Reuse an existing instance with exactly the same labels, looked up in the region that handles the create                      |
+| `--install <file>`                          | Local file to install (auto-uploads, repeatable)                                                                              |
+| `--install-asset <name>`                    | Asset name to install (repeatable)                                                                                            |
+| `--install-url <url>`                       | Signed download URL of an app to install (repeatable)                                                                         |
 
 #### List and Filter
 
@@ -1167,3 +1167,24 @@ Image tools and user installs use separate directories. User installs persist
 for the instance's lifetime. Gradle does not transfer them, or its workspace,
 to a new instance. The image still includes warmed Gradle caches and a pnpm 10
 store; another pnpm major may need an initial registry download.
+
+### Native iPhone Duo folding
+
+```bash
+lim ios create --model iphone-duo
+lim ios fold --json --id <instance-ID>
+lim ios fold 90 --orientation landscape-left --id <instance-ID>
+lim ios fold 90 --id <instance-ID>
+lim ios fold 180 --id <instance-ID>
+lim ios screenshot ./inner.png --display inner --id <instance-ID>
+lim ios tap 300 200 --display inner --id <instance-ID>
+```
+
+Angles range from 0 (closed) to 180 (flat), including fractional degrees.
+Omit the angle to read fold state. `--orientation` accepts `portrait`, `pud`
+(portrait upside down), `landscape-left`, or `landscape-right`, independently of
+the hinge angle. Hardware buttons remain available through `ios perform` with
+`buttonDown`/`buttonUp` and `side`, `volumeUp`, or `volumeDown`.
+`--display outer` captures the cover; `--display inner` captures the unfolding
+display. Screenshots report upright point dimensions. Ordinary screenshot and
+recording commands do not automatically follow the Duo inner display.

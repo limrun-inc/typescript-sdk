@@ -6,7 +6,7 @@ import { libInjectCss } from 'vite-plugin-lib-inject-css';
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), libInjectCss(), dts({ include: ['src'] })],
+  plugins: [react(), libInjectCss(), dts({ include: ['src'], exclude: ['src/demo.tsx', 'src/**/*.test.*'] })],
   build: {
     lib: {
       entry: {

@@ -195,6 +195,7 @@ function Demo() {
                 <h3>{platform === 'ios' ? '📱 iOS with Frame' : '🤖 Android (No Frame)'}</h3>
                 <div className="device-wrapper">
                   <RemoteControl
+                    deviceModel={initialParams.get('model') === 'iphone-duo' ? 'iphone-duo' : undefined}
                     key={key}
                     ref={remoteControlRef}
                     url={url}
