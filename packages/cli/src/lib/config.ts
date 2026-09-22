@@ -145,8 +145,8 @@ export interface LastGradleInstance {
 
 /**
  * The set of last-used instances bound to a single directory scope, plus the workspace's Xcode
- * preference: the major `lim xcode version set` chose, which build/test/rbe/create apply to the
- * sandbox they use. It outlives the instance slots (a deleted sandbox does not forget the
+ * preference: the version `lim xcode version set` chose (a major or a major.minor), which
+ * build/test/rbe/create apply to the sandbox they use. It outlives the instance slots (a deleted sandbox does not forget the
  * preference) and goes with the scope when the scope is pruned.
  */
 interface ScopeInstances {
@@ -180,7 +180,8 @@ function sanitizeScope(value: unknown): ScopeInstances {
   const scope: ScopeInstances = {};
   if (!isRecord(value)) return scope;
   if (typeof value['lastUsedAt'] === 'string') scope.lastUsedAt = value['lastUsedAt'];
-  if (typeof value['xcodeVersion'] === 'string' && /^\d+$/.test(value['xcodeVersion'])) {
+  // The daemon's selector grammar (see parseXcodeVersion): a major or a major.minor.
+  if (typeof value['xcodeVersion'] === 'string' && /^\d+(\.\d+)?$/.test(value['xcodeVersion'])) {
     scope.xcodeVersion = value['xcodeVersion'];
   }
   if (isLastAndroidInstance(value['android'])) scope.android = value['android'];
@@ -637,15 +638,15 @@ export function loadLastGradleInstance(): LastGradleInstance | null {
   return readScope(getScopeKey()).gradle ?? null;
 }
 
-/** The Xcode major this workspace prefers (`lim xcode version set`), or null when none. */
+/** The Xcode version this workspace prefers (`lim xcode version set`), or null when none. */
 export function loadXcodeVersionPreference(): string | null {
   return readScope(getScopeKey()).xcodeVersion ?? null;
 }
 
-export function setXcodeVersionPreference(major: string): void {
+export function setXcodeVersionPreference(version: string): void {
   mutate((file, scopeKey) => {
     const scope = ensureScope(file, scopeKey);
-    scope.xcodeVersion = major;
+    scope.xcodeVersion = version;
     scope.lastUsedAt = new Date().toISOString();
   });
 }

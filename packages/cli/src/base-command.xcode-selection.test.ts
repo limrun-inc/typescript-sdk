@@ -45,6 +45,11 @@ class TestCommand extends BaseCommand {
   refusal(err: unknown) {
     return this.xcodeRefusal(err);
   }
+
+  apply(setXcode: () => Promise<unknown>, requested: { version: string; source: 'flag' | 'workspace' }) {
+    const client = { setXcode } as unknown as Parameters<BaseCommand['applyXcodeVersionToClient']>[1];
+    return this.applyXcodeVersionToClient(target, client, requested);
+  }
 }
 
 const target: LastXcodeInstance = { id: 'sandbox_euna_gone', type: 'xcode' };
@@ -134,6 +139,40 @@ describe('readXcodeSelectionOrForget', () => {
     await expect(cmd.read(target, 'memory', () => Promise.resolve('ok'))).resolves.toBe('ok');
     await expect(cmd.read(target, 'memory', () => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
     expect(cmd.probe).not.toHaveBeenCalled();
+  });
+});
+
+describe('applyXcodeVersionToClient', () => {
+  const retired = 'Xcode 27.1 is not available on this sandbox; available: 26.4, 27.2';
+  const refusedWith = (status: number) => () =>
+    Promise.reject(daemonError(status, JSON.stringify({ message: retired })));
+
+  it('names the local fix when a saved minor is no longer installed', async () => {
+    const cmd = new TestCommand([], {} as never);
+    await expect(cmd.apply(refusedWith(400), { version: '27.1', source: 'workspace' })).rejects.toThrow(
+      `${retired}. This workspace prefers Xcode 27.1; pick an installed version with \`lim xcode version set <version>\``,
+    );
+  });
+  it('gives a flag the daemon words alone', async () => {
+    const cmd = new TestCommand([], {} as never);
+    await expect(cmd.apply(refusedWith(400), { version: '27.1', source: 'flag' })).rejects.toThrow(retired);
+    await expect(cmd.apply(refusedWith(400), { version: '27.1', source: 'flag' })).rejects.not.toThrow(
+      'prefers',
+    );
+  });
+  it('a busy sandbox is reported as such for a saved preference too', async () => {
+    const cmd = new TestCommand([], {} as never);
+    await expect(cmd.apply(refusedWith(409), { version: '27.1', source: 'workspace' })).rejects.toThrow(
+      retired,
+    );
+    await expect(cmd.apply(refusedWith(409), { version: '27.1', source: 'workspace' })).rejects.not.toThrow(
+      'prefers',
+    );
+  });
+  it('an already bound sandbox needs no switch', async () => {
+    const cmd = new TestCommand([], {} as never);
+    await cmd.apply(() => Promise.resolve({ alreadyBound: true }), { version: '27', source: 'workspace' });
+    expect(cmd.infoLines).toEqual([]);
   });
 });
 

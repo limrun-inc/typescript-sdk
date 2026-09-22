@@ -481,7 +481,7 @@ lim xcode get <ID>        # Get details of a specific instance
 lim xcode delete <ID>     # Delete an instance
 lim xcode attach-simulator <IOS_ID> --id <XCODE_ID>
 lim xcode version         # Xcode the sandbox builds with
-lim xcode use xcode@27    # Prefer an Xcode major for this workspace (switches the sandbox now)
+lim xcode use xcode@27    # Prefer an Xcode version for this workspace (switches the sandbox now)
 lim xcode version list    # Xcode versions the sandbox can build with
 ```
 
@@ -527,10 +527,11 @@ LIM_WEBHOOK_URL=https://ci.example.com/hooks/limrun \
 # Attach an existing simulator so builds auto-install there
 lim xcode attach-simulator ios_abc123 --id sandbox_def456
 
-# Pick the Xcode major for this workspace once; builds, tests, runs, syncs, RBE and new sandboxes follow it
+# Pick the Xcode for this workspace once; builds, tests, runs, syncs, RBE and new sandboxes follow it.
+# A bare major selects that major's GA release; a major.minor pins an exact version, typically a beta.
 lim xcode use xcode@27
-lim xcode build ./MyProject           # builds with Xcode 27
-lim xcode build ./MyProject --xcode-version 26   # one-off override, not remembered
+lim xcode build ./MyProject           # builds with the Xcode 27 GA
+lim xcode build ./MyProject --xcode-version 27.1   # one-off override to the 27.1 beta, not remembered
 lim xcode version unset               # forget the preference; the sandbox goes back to the node default
 
 # Tune sync cache or ignore additional paths
@@ -817,7 +818,7 @@ lim xcode run -- mise use --pin node@24.5.0
 
 `lim xcode tools install` syncs the project and runs `mise install` in that sandbox. Use `--no-sync` to install its current selections without syncing, `--cwd apps/mobile` for a nested project, and `--id` to choose an existing sandbox. The command never creates or replaces an instance.
 
-`lim xcode use xcode@27` is equivalent to `lim xcode version set 27`: it remembers the workspace Xcode major and switches the existing sandbox. With no sandbox, it saves the preference for the next one. You can combine requests, for example `lim xcode use xcode@27 node@24`; only the other tools go into mise. Xcode requires a bare major. `--cwd` applies only to mise tools; `--workspace` chooses the Limrun workspace preference.
+`lim xcode use xcode@27` is equivalent to `lim xcode version set 27`: it remembers the workspace Xcode version and switches the existing sandbox. With no sandbox, it saves the preference for the next one. You can combine requests, for example `lim xcode use xcode@27 node@24`; only the other tools go into mise. Xcode takes a major (`27`, the GA of that major) or a major.minor (`27.1`, an exact version). `--cwd` applies only to mise tools; `--workspace` chooses the Limrun workspace preference.
 
 `lim xcode use` selects tools in an existing sandbox after project sync. Mise installs a requested version if needed; use `lim xcode tools install` to install tools declared by synced project files. Use `--cwd apps/mobile` for a nested project. Sandbox selections take precedence over synced project tool requests and apply to later runs and builds.
 

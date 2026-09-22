@@ -1,7 +1,7 @@
 import { Args, Flags } from '@oclif/core';
 import { parseToolRequests } from '@limrun/api/mise-tools';
 import { BaseCommand } from '../base-command';
-import { parseXcodeMajor } from './xcode-version';
+import { parseXcodeVersion } from './xcode-version';
 import { streamBuildCommand } from './build-command-helpers';
 
 export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseCommand {
@@ -9,7 +9,7 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
     static summary = `Select developer tool versions for a ${platform} sandbox`;
     static description =
       (platform === 'xcode' ?
-        'xcode@<major> selects Xcode for the workspace, like lim xcode version set. '
+        'xcode@<version> selects Xcode for the workspace, like lim xcode version set: a major such as 27 for the GA, a major.minor such as 27.1 for a beta. '
       : '') +
       `Select tool versions in an existing sandbox after syncing your project. Mise installs a requested version if needed. Use lim ${platform} tools install for synced project tool selections.`;
     static strict = false;
@@ -32,18 +32,18 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
     async run(): Promise<void> {
       const { flags, argv } = await this.parse(BuildUse);
       this.setParsedFlags(flags);
-      let xcodeMajor: string | undefined;
+      let xcodeVersion: string | undefined;
       const requests: string[] = [];
       for (const request of argv as string[]) {
         if (request.startsWith('xcode@')) {
-          if (platform !== 'xcode') this.error('Select Xcode with lim xcode use xcode@<major>.');
-          xcodeMajor = parseXcodeMajor(request.slice('xcode@'.length), 'xcode use xcode@<major>');
+          if (platform !== 'xcode') this.error('Select Xcode with lim xcode use xcode@<version>.');
+          xcodeVersion = parseXcodeVersion(request.slice('xcode@'.length), 'xcode use xcode@<version>');
         } else {
           requests.push(request);
         }
       }
       parseToolRequests(requests);
-      if (xcodeMajor) await this.setPreferredXcodeVersion(xcodeMajor, flags.id);
+      if (xcodeVersion) await this.setPreferredXcodeVersion(xcodeVersion, flags.id);
       if (!requests.length) return;
       await this.withAuth(async () => {
         const { client } = await this.resolveBuildToolClient(platform, flags.id, 'existing');
