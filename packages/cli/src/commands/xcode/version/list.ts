@@ -1,12 +1,18 @@
 import { BaseCommand } from '../../../base-command';
-import { formatXcodeVersion, xcodeTargetFlags } from '../../../lib/xcode-version';
+import {
+  formatXcodeVersion,
+  xcodeSelectorFor,
+  xcodeTargetFlags,
+  type XcodeInfoWithChannel,
+} from '../../../lib/xcode-version';
 import { loadXcodeVersionPreference } from '../../../lib/config';
 
 export default class XcodeVersionList extends BaseCommand {
   static summary = 'List the Xcode versions the sandbox can build with';
   static description =
     "Show the Xcodes installed on the sandbox's node, which one is selected, the node default, and the version " +
-    'this workspace prefers. Pick one with `lim xcode version set <major>`.';
+    'this workspace prefers. Pick one with `lim xcode version set <version>`: the Select column is the value to ' +
+    'pass, a bare major for the GA release of that major and a major.minor for a beta.';
 
   static examples = [
     '<%= config.bin %> xcode version list',
@@ -36,15 +42,17 @@ export default class XcodeVersionList extends BaseCommand {
         return;
       }
       if (this.isQuietEnabled()) {
-        for (const x of status.installed) this.output(x.major);
+        for (const x of status.installed) this.output(xcodeSelectorFor(x));
         return;
       }
-      const rows = status.installed.map((x) => [
-        x.major === status.bound.major ? '*' : '',
-        x.major,
+      // Two Xcodes of one major share it, so the bound mark goes by the bundle, not the major.
+      const rows = (status.installed as XcodeInfoWithChannel[]).map((x) => [
+        x.developerDir === status.bound.developerDir ? '*' : '',
+        xcodeSelectorFor(x),
+        x.channel ?? '',
         formatXcodeVersion(x),
       ]);
-      this.outputTable(['', 'Major', 'Version'], rows);
+      this.outputTable(['', 'Select', 'Channel', 'Version'], rows);
     });
   }
 }

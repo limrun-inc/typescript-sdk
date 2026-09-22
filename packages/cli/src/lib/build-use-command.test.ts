@@ -41,7 +41,7 @@ function setup(
   const output = jest.fn();
   const outputJson = jest.fn();
   Object.assign(command, {
-    parse: async () => ({ flags: { cwd: '.', ...flags }, argv, args: { major: argv[0] } }),
+    parse: async () => ({ flags: { cwd: '.', ...flags }, argv, args: { version: argv[0] } }),
     getCommandParts: () => ['xcode', CommandClass === XcodeVersionSet ? 'version' : 'use'],
     scopeSuffix: () => ' in this workspace',
     tryResolveXcodeTarget: resolveTarget,
@@ -127,7 +127,14 @@ it('combines Xcode selection with remote mise tools', async () => {
   expect(client.setXcode.mock.invocationCallOrder[0]).toBeLessThan(client.run.mock.invocationCallOrder[0]!);
 });
 
-it.each(['xcode@27.1', 'xcode@latest', 'xcode@'])(
+it('pins a minor with xcode@<major.minor>', async () => {
+  const { command, client } = setup(XcodeUse, ['xcode@27.1'], { id: target.id });
+  await command.run();
+  expect(client.setXcode).toHaveBeenCalledWith('27.1');
+  expect(setXcodeVersionPreference).toHaveBeenCalledWith('27.1');
+});
+
+it.each(['xcode@27.1.2', 'xcode@latest', 'xcode@'])(
   'rejects invalid Xcode request %s before mutations',
   async (request) => {
     const { command, client } = setup(XcodeUse, ['node@24', request]);

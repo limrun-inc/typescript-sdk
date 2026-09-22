@@ -369,10 +369,20 @@ export const DEFAULT_RBE_TUNNEL_PORT = 8980;
 
 /** One Xcode installed on the sandbox's node, as reported by limbuild's /xcode. */
 export type XcodeInfo = {
-  /** Major version, e.g. "27". Empty on nodes that predate the Xcode inventory. */
+  /**
+   * Major version, e.g. "27". A node may carry several Xcodes of one major (its GA and a
+   * beta). Empty on nodes that predate the Xcode inventory.
+   */
   major: string;
-  /** Short version, e.g. "27.0". */
+  /** Short version, e.g. "27.0" or "27.1". */
   version: string;
+  /**
+   * "ga" for the Xcode a bare major selects (the lowest installed minor of its major), "beta"
+   * for every other Xcode of that major and for any bundle carrying a seed number. Gate App
+   * Store publishes on "ga": betaSeed alone is not a beta signal, some seeds ship without the
+   * marker. Absent on daemons that predate channels.
+   */
+  channel?: 'ga' | 'beta';
   /** Build, e.g. "27A5252f". */
   build: string;
   /**
@@ -393,7 +403,7 @@ export type XcodeStatus = {
   installed: XcodeInfo[];
 };
 
-/** Result of binding the sandbox to an Xcode major. */
+/** Result of binding the sandbox to an Xcode. */
 export type XcodeSelectResult = {
   bound: XcodeInfo;
   alreadyBound: boolean;
@@ -542,11 +552,12 @@ export type XcodeClient = {
   getXcode: () => Promise<XcodeStatus>;
 
   /**
-   * Bind the sandbox to an installed Xcode major (e.g. "27"). Switching resets every
+   * Bind the sandbox to an installed Xcode, by major ("27", that major's GA: its lowest
+   * installed minor) or by major.minor ("27.1", an exact version). Switching resets every
    * synced project's DerivedData. Refused (HTTP 409) while a build, command, sync, or
-   * the RBE stack is running, and (HTTP 400) when the major is not installed.
+   * the RBE stack is running, and (HTTP 400) when the version is not installed.
    */
-  setXcode: (major: string) => Promise<XcodeSelectResult>;
+  setXcode: (version: string) => Promise<XcodeSelectResult>;
 
   /** Return the sandbox's home directory and, when the daemon reports it, its Xcode. */
   getInfo: () => Promise<SandboxInfo>;
@@ -1075,14 +1086,14 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         return readXcodeResponse<XcodeStatus>(res, 'GET /xcode');
       },
 
-      async setXcode(major: string): Promise<XcodeSelectResult> {
+      async setXcode(version: string): Promise<XcodeSelectResult> {
         const res = await nodeProxyTransport.fetch(`${apiUrl}/xcode`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ version: major }),
+          body: JSON.stringify({ version }),
         });
         return readXcodeResponse<XcodeSelectResult>(res, 'POST /xcode');
       },

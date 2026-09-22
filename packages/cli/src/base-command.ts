@@ -911,7 +911,7 @@ export abstract class BaseCommand extends Command {
   }
 
   /**
-   * Binds the sandbox to an Xcode major when the caller asked for one and the sandbox is on
+   * Binds the sandbox to an Xcode version when the caller asked for one and the sandbox is on
    * another. The version is a property of the sandbox, not of this invocation: nothing is
    * remembered locally, and a later run without the flag keeps building with the switched
    * Xcode. Refusals from the daemon (not installed, busy) surface with its message.
@@ -923,23 +923,36 @@ export abstract class BaseCommand extends Command {
   ): Promise<void> {
     if (!requested) return;
     // One round trip: the daemon answers alreadyBound for a no-op, before any busy check, so
-    // the steady state (sandbox already on the preferred major) costs no switch and no 409.
+    // the steady state (sandbox already on the preferred version) costs no switch and no 409.
     let result: XcodeSelectResult;
     try {
-      result = await this.readXcodeSelection(() => xcodeClient.setXcode(requested.major));
+      result = await xcodeClient.setXcode(requested.version);
     } catch (err) {
-      if (!(err instanceof XcodeSelectionUnsupportedError)) throw err;
-      // A vanished sandbox must stay a NotFoundError (withAuth clears the cache and recreates),
-      // not a claim that the daemon predates selection.
-      const gone = await this.vanishedXcodeSandboxError(target);
-      if (gone) throw gone;
-      // The workspace preference is a standing wish, not this command's request: on a daemon
-      // that cannot honour it, say so and build with what the sandbox has.
-      if (requested.source === 'workspace') {
-        this.warn(`${err.message} Building with the sandbox's current Xcode.`);
-        return;
+      if (err instanceof XcodeSelectionUnsupportedError) {
+        // A vanished sandbox must stay a NotFoundError (withAuth clears the cache and recreates),
+        // not a claim that the daemon predates selection.
+        const gone = await this.vanishedXcodeSandboxError(target);
+        if (gone) throw gone;
+        // The workspace preference is a standing wish, not this command's request: on a daemon
+        // that cannot honour it, say so and build with what the sandbox has.
+        if (requested.source === 'workspace') {
+          this.warn(`${err.message} Building with the sandbox's current Xcode.`);
+          return;
+        }
+        throw err;
       }
-      throw err;
+      const refusal = this.xcodeRefusal(err);
+      if (!refusal) throw err;
+      // A saved minor outlives the beta it named once the fleet retires it; the fix is a local
+      // command, so name it. A flag is this command's own request and gets the daemon's words.
+      if (refusal.status === 400 && requested.source === 'workspace') {
+        this.error(
+          `${refusal.message}. This workspace prefers Xcode ${requested.version}; pick an installed version with ` +
+            '`lim xcode version set <version>` (a bare major such as 27 selects the GA) or drop the preference with ' +
+            '`lim xcode version unset`.',
+        );
+      }
+      this.error(refusal.message);
     }
     if (result.alreadyBound) return;
     const why = requested.source === 'workspace' ? " (this workspace's preference)" : '';
@@ -1033,12 +1046,12 @@ export abstract class BaseCommand extends Command {
   }
 
   /** Save the workspace preference and switch its existing sandbox when available. */
-  protected async setPreferredXcodeVersion(major: string, providedId?: string): Promise<void> {
+  protected async setPreferredXcodeVersion(version: string, providedId?: string): Promise<void> {
     const previous = loadXcodeVersionPreference();
-    // Keep the workspace preference on transient failures, but reject majors the node cannot provide.
+    // Keep the workspace preference on transient failures, but reject versions the node cannot provide.
     const record = () => {
-      setXcodeVersionPreference(major);
-      this.info(`Xcode ${major} is now the preferred version${this.scopeSuffix()}.`);
+      setXcodeVersionPreference(version);
+      this.info(`Xcode ${version} is now the preferred version${this.scopeSuffix()}.`);
     };
 
     await this.withAuth(
@@ -1049,15 +1062,15 @@ export abstract class BaseCommand extends Command {
           result =
             target ?
               await this.readXcodeSelectionOrForget(target, async () =>
-                (await this.resolveXcodeClient(target)).setXcode(major),
+                (await this.resolveXcodeClient(target)).setXcode(version),
               )
             : undefined;
         } catch (err) {
           const refusal = this.xcodeRefusal(err);
           if (refusal?.status === 400) {
-            if (previous === major) {
+            if (previous === version) {
               this.error(
-                `${refusal.message}. This workspace already prefers Xcode ${major}; drop it with: lim xcode version unset`,
+                `${refusal.message}. This workspace already prefers Xcode ${version}; drop it with: lim xcode version unset`,
               );
             }
             this.error(
@@ -1072,12 +1085,12 @@ export abstract class BaseCommand extends Command {
         }
         record();
         if (!target || !result) {
-          if (this.isJsonEnabled()) this.outputJson({ preferred: major });
+          if (this.isJsonEnabled()) this.outputJson({ preferred: version });
           else this.output(`No sandbox instance found${this.scopeSuffix()}; the next one uses it.`);
           return;
         }
         if (this.isJsonEnabled()) {
-          this.outputJson({ instanceId: target.id, preferred: major, ...result });
+          this.outputJson({ instanceId: target.id, preferred: version, ...result });
           return;
         }
         const verb = result.alreadyBound ? 'already uses' : 'now uses';
@@ -1091,8 +1104,8 @@ export abstract class BaseCommand extends Command {
   }
 
   /** setXcode with the daemon's own refusal message instead of the transport's wrapping. */
-  protected async selectXcode(xcodeClient: XcodeClient, major: string): Promise<XcodeSelectResult> {
-    return this.readXcodeSelection(() => xcodeClient.setXcode(major));
+  protected async selectXcode(xcodeClient: XcodeClient, version: string): Promise<XcodeSelectResult> {
+    return this.readXcodeSelection(() => xcodeClient.setXcode(version));
   }
 
   private async readXcodeSelection<T>(call: () => Promise<T>): Promise<T> {

@@ -1,13 +1,18 @@
 import { BaseCommand } from '../../../base-command';
 import { loadXcodeVersionPreference } from '../../../lib/config';
-import { formatXcode, xcodeTargetFlags } from '../../../lib/xcode-version';
+import {
+  formatXcode,
+  preferenceSelects,
+  xcodeSelectorFor,
+  xcodeTargetFlags,
+} from '../../../lib/xcode-version';
 
 export default class XcodeVersion extends BaseCommand {
   static summary = 'Show the Xcode version the sandbox builds with';
   static description =
     'Print the Xcode the remembered (or --id) sandbox has selected, and the version this workspace prefers when it ' +
-    'differs. `lim xcode version set <major>` picks a version for the workspace, `lim xcode version list` shows ' +
-    'the choices.';
+    'differs. `lim xcode version set <version>` picks a version for the workspace (a major such as 27 for the GA, a ' +
+    'major.minor such as 27.1 for a beta), `lim xcode version list` shows the choices.';
 
   static examples = [
     '<%= config.bin %> xcode version',
@@ -38,11 +43,11 @@ export default class XcodeVersion extends BaseCommand {
         return;
       }
       if (this.isQuietEnabled()) {
-        this.output(status.bound.major);
+        this.output(xcodeSelectorFor(status.bound));
         return;
       }
       this.output(formatXcode(status.bound));
-      if (preferred && preferred !== status.bound.major) {
+      if (preferred && !preferenceSelects(preferred, status.bound)) {
         this.output(`This workspace prefers Xcode ${preferred}; the next build switches the sandbox to it.`);
       }
     });

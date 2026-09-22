@@ -23,6 +23,7 @@ export default class XcodeCreate extends BaseCommand {
     '<%= config.bin %> xcode create --cache-restore-keys "myapp-features,myapp-main"',
     '<%= config.bin %> xcode create --cache-key myapp-pr51 --cache-paths "Pods,.build"',
     '<%= config.bin %> xcode create --xcode-version 27',
+    '<%= config.bin %> xcode create --xcode-version 27.1',
   ];
 
   static flags = {
@@ -145,13 +146,13 @@ export default class XcodeCreate extends BaseCommand {
       if (requestedXcode) {
         try {
           const xcodeClient = await this.client.xcodeInstances.createClient({ instance });
-          const result = await this.selectXcode(xcodeClient, requestedXcode.major);
+          const result = await this.selectXcode(xcodeClient, requestedXcode.version);
           if (!result.alreadyBound) {
             this.info(`Sandbox uses Xcode ${formatXcode(result.bound)}`);
           }
         } catch (err) {
           this.info(
-            `Created Xcode instance ${instance.metadata.id}, but selecting Xcode ${requestedXcode.major} failed.`,
+            `Created Xcode instance ${instance.metadata.id}, but selecting Xcode ${requestedXcode.version} failed.`,
           );
           if (flags.rm) {
             await cleanup();

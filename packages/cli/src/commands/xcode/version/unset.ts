@@ -1,6 +1,6 @@
 import { BaseCommand } from '../../../base-command';
 import { clearXcodeVersionPreference, loadXcodeVersionPreference } from '../../../lib/config';
-import { formatXcode, xcodeTargetFlags } from '../../../lib/xcode-version';
+import { formatXcode, xcodeSelectorFor, xcodeTargetFlags } from '../../../lib/xcode-version';
 
 export default class XcodeVersionUnset extends BaseCommand {
   static summary = 'Forget the Xcode version preference of this workspace';
@@ -39,7 +39,8 @@ export default class XcodeVersionUnset extends BaseCommand {
       }
       const { target, client, status } = read;
       const nodeDefault = status.installed.find((x) => x.nodeDefault) ?? status.installed[0];
-      if (status.bound.major === nodeDefault.major) {
+      // Two Xcodes of one major differ only in version, so compare the bundle, not the major.
+      if (status.bound.developerDir === nodeDefault.developerDir) {
         if (flags.json) this.outputJson({ previous, instanceId: target.id, bound: status.bound });
         else this.output(`Sandbox ${target.id} already uses Xcode ${formatXcode(status.bound)}.`);
         return;
@@ -48,7 +49,7 @@ export default class XcodeVersionUnset extends BaseCommand {
       // sandbox (409) keeps its Xcode and says so.
       let result;
       try {
-        result = await client.setXcode(nodeDefault.major);
+        result = await client.setXcode(xcodeSelectorFor(nodeDefault));
       } catch (err) {
         const refusal = this.xcodeRefusal(err);
         if (!refusal) throw err;
