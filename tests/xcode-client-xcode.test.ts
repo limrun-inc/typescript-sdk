@@ -36,6 +36,37 @@ describe('xcode client Xcode selection helpers', () => {
     expect((calls[0]?.init?.headers as Record<string, string>)['Authorization']).toBe('Bearer xcode-token');
   });
 
+  test("getXcode surfaces each installed Xcode's channel, the publish guard for betas", async () => {
+    const beta271 = {
+      ...xcode27,
+      version: '27.1',
+      build: '27A9269',
+      versionKey: '27.1.0.27A9269',
+      channel: 'beta',
+    };
+    const ga27 = { ...xcode27, channel: 'ga' };
+    nodeProxyTransport.fetch = jest.fn(async () => jsonResponse({ bound: ga27, installed: [ga27, beta271] }));
+    const status = await (await xcodeClient()).getXcode();
+    expect(status.installed.map((x) => [x.version, x.channel])).toEqual([
+      ['27.0', 'ga'],
+      ['27.1', 'beta'],
+    ]);
+  });
+
+  test('setXcode passes a major.minor selector through unchanged', async () => {
+    const calls: Array<{ input: RequestInfo; init: RequestInit | undefined }> = [];
+    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+      calls.push({ input, init });
+      return jsonResponse({
+        bound: { ...xcode27, version: '27.1' },
+        alreadyBound: false,
+        derivedDataReset: true,
+      });
+    });
+    await (await xcodeClient()).setXcode('27.1');
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ version: '27.1' });
+  });
+
   test('setXcode posts the major and returns the result', async () => {
     const calls: Array<{ input: RequestInfo; init: RequestInit | undefined }> = [];
     nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
