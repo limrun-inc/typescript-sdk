@@ -43,11 +43,11 @@ export default class XcodeVersion extends BaseCommand {
         return;
       }
       if (this.isQuietEnabled()) {
-        this.output(xcodeSelectorFor(status.bound));
+        this.output(xcodeSelectorFor(status.bound, status.installed));
         return;
       }
       this.output(formatXcode(status.bound));
-      if (preferred && !preferenceSelects(preferred, status.bound)) {
+      if (preferred && !preferenceSelects(preferred, status.bound, status.installed)) {
         this.output(`This workspace prefers Xcode ${preferred}; the next build switches the sandbox to it.`);
       }
     });
