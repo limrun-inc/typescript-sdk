@@ -104,13 +104,28 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** "27.0 (27A5252f)", or "27.0 beta 6 (27A5252f)" for a beta seed. */
-export function formatXcodeVersion(info: Pick<XcodeInfo, 'version' | 'build' | 'betaSeed'>): string {
-  return `${info.version}${info.betaSeed ? ` beta ${info.betaSeed}` : ''} (${info.build})`;
+/** Oldest first, the order a version list reads in; daemons before the sort listed the node default first. */
+export function sortXcodesByVersion<T extends Pick<XcodeInfo, 'version'>>(xcodes: readonly T[]): T[] {
+  return [...xcodes].sort((a, b) => compareVersions(a.version, b.version));
+}
+
+/**
+ * "27.0 (27A5252f)", "27.0 beta 6 (27A5252f)" for a seed with a number, "27.1 beta (27A9269)"
+ * for a beta without one: the word appears wherever a beta is shown or selected, since the
+ * version alone does not say so.
+ */
+export function formatXcodeVersion(
+  info: Pick<XcodeInfoWithChannel, 'version' | 'build' | 'betaSeed' | 'channel'>,
+): string {
+  const beta =
+    info.betaSeed ? ` beta ${info.betaSeed}`
+    : info.channel === 'beta' ? ' beta'
+    : '';
+  return `${info.version}${beta} (${info.build})`;
 }
 
 /** formatXcodeVersion plus the node-default mark, falling back to the version key on nodes that report only that. */
-export function formatXcode(info: XcodeInfo | undefined): string {
+export function formatXcode(info: XcodeInfoWithChannel | undefined): string {
   if (!info) return 'unknown (daemon predates Xcode selection)';
   if (info.version && info.build) {
     return `${formatXcodeVersion(info)}${info.nodeDefault ? ' (node default)' : ''}`;

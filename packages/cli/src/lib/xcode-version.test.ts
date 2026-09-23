@@ -5,6 +5,7 @@ import {
   parseXcodeVersion,
   preferenceSelects,
   resolveRequestedXcodeVersion,
+  sortXcodesByVersion,
   xcodeSelectorFor,
 } from './xcode-version';
 import { loadXcodeVersionPreference } from './config';
@@ -85,6 +86,30 @@ describe('preferenceSelects', () => {
   });
   test('on a daemon without channels a bare major matches its one Xcode of that major', () => {
     expect(preferenceSelects('27', legacy27, [ga26, legacy27])).toBe(true);
+  });
+});
+
+describe('formatXcodeVersion', () => {
+  test('names a beta whether or not Apple numbered the seed', () => {
+    expect(formatXcodeVersion({ version: '27.0', build: '27A5252f', betaSeed: '6', channel: 'beta' })).toBe(
+      '27.0 beta 6 (27A5252f)',
+    );
+    expect(formatXcodeVersion({ version: '27.1', build: '27A9269', channel: 'beta' })).toBe(
+      '27.1 beta (27A9269)',
+    );
+    expect(formatXcodeVersion({ version: '27.0', build: '27A266a', channel: 'ga' })).toBe('27.0 (27A266a)');
+  });
+});
+
+describe('sortXcodesByVersion', () => {
+  test('orders oldest first, numerically per component', () => {
+    const versions = sortXcodesByVersion([
+      { version: '27.1' },
+      { version: '26.10' },
+      { version: '27.0' },
+      { version: '26.4' },
+    ]);
+    expect(versions.map((x) => x.version)).toEqual(['26.4', '26.10', '27.0', '27.1']);
   });
 });
 
