@@ -377,10 +377,10 @@ export type XcodeInfo = {
   /** Short version, e.g. "27.0" or "27.1". */
   version: string;
   /**
-   * "ga" for the Xcode a bare major selects (the lowest installed minor of its major), "beta"
-   * for every other Xcode of that major and for any bundle carrying a seed number. Gate App
-   * Store publishes on "ga": betaSeed alone is not a beta signal, some seeds ship without the
-   * marker. Absent on daemons that predate channels.
+   * "beta" for Apple's developer seeds and for GM seeds Apple has not released yet, "ga" for
+   * released builds. A bare major binds only to "ga". Gate App Store publishes on "ga":
+   * betaSeed alone is not a beta signal, GM seeds ship without it. Absent on daemons that
+   * predate channels.
    */
   channel?: 'ga' | 'beta';
   /** Build, e.g. "27A5252f". */
@@ -552,8 +552,8 @@ export type XcodeClient = {
   getXcode: () => Promise<XcodeStatus>;
 
   /**
-   * Bind the sandbox to an installed Xcode, by major ("27", that major's GA: its lowest
-   * installed minor) or by major.minor ("27.1", an exact version). Switching resets every
+   * Bind the sandbox to an installed Xcode, by major ("27", that major's newest GA, never a
+   * beta) or by major.minor ("27.1", an exact version). Switching resets every
    * synced project's DerivedData. Refused (HTTP 409) while a build, command, sync, or
    * the RBE stack is running, and (HTTP 400) when the version is not installed.
    */

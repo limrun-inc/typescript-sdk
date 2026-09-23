@@ -48,34 +48,43 @@ describe('resolveRequestedXcodeVersion', () => {
   });
 });
 
-const ga27 = { major: '27', version: '27.0', channel: 'ga' as const };
-const beta271 = { major: '27', version: '27.1', channel: 'beta' as const };
-const legacy27 = { major: '27', version: '27.0' };
+const ga26 = { major: '26', version: '26.4', channel: 'ga' as const, developerDir: '/x/26.4' };
+const ga27 = { major: '27', version: '27.0', channel: 'ga' as const, developerDir: '/x/27.0' };
+const beta271 = { major: '27', version: '27.1', channel: 'beta' as const, developerDir: '/x/27.1' };
+const ga271 = { major: '27', version: '27.1', channel: 'ga' as const, developerDir: '/x/27.1' };
+const legacy27 = { major: '27', version: '27.0', developerDir: '/x/27.0' };
+const fleet = [ga26, ga27, beta271];
 
 describe('xcodeSelectorFor', () => {
   test('a GA is selected by its bare major, a beta by its version', () => {
-    expect(xcodeSelectorFor(ga27)).toBe('27');
-    expect(xcodeSelectorFor(beta271)).toBe('27.1');
+    expect(xcodeSelectorFor(ga27, fleet)).toBe('27');
+    expect(xcodeSelectorFor(beta271, fleet)).toBe('27.1');
+  });
+  test('with two GAs of one major only the newest answers to the bare major', () => {
+    const twoGAs = [ga26, ga27, ga271];
+    expect(xcodeSelectorFor(ga271, twoGAs)).toBe('27');
+    expect(xcodeSelectorFor(ga27, twoGAs)).toBe('27.0');
   });
   test('a daemon without channels carries one Xcode per major, so the major selects it', () => {
-    expect(xcodeSelectorFor(legacy27)).toBe('27');
+    expect(xcodeSelectorFor(legacy27, [ga26, legacy27])).toBe('27');
   });
 });
 
 describe('preferenceSelects', () => {
-  test('a bare major names the GA of that major, never its beta', () => {
-    expect(preferenceSelects('27', ga27)).toBe(true);
-    expect(preferenceSelects('27', beta271)).toBe(false);
-    expect(preferenceSelects('26', ga27)).toBe(false);
+  test('a bare major names the GA it would bind, never a beta', () => {
+    expect(preferenceSelects('27', ga27, fleet)).toBe(true);
+    expect(preferenceSelects('27', beta271, fleet)).toBe(false);
+    expect(preferenceSelects('26', ga27, fleet)).toBe(false);
+    expect(preferenceSelects('27', ga27, [ga26, ga27, ga271])).toBe(false);
   });
   test('a major.minor names that exact minor', () => {
-    expect(preferenceSelects('27.1', beta271)).toBe(true);
-    expect(preferenceSelects('27.1', ga27)).toBe(false);
-    expect(preferenceSelects('27.0', ga27)).toBe(true);
-    expect(preferenceSelects('26.4', { major: '26', version: '26.4.1', channel: 'ga' })).toBe(true);
+    expect(preferenceSelects('27.1', beta271, fleet)).toBe(true);
+    expect(preferenceSelects('27.1', ga27, fleet)).toBe(false);
+    expect(preferenceSelects('27.0', ga27, fleet)).toBe(true);
+    expect(preferenceSelects('26.4', { ...ga26, version: '26.4.1' }, fleet)).toBe(true);
   });
   test('on a daemon without channels a bare major matches its one Xcode of that major', () => {
-    expect(preferenceSelects('27', legacy27)).toBe(true);
+    expect(preferenceSelects('27', legacy27, [ga26, legacy27])).toBe(true);
   });
 });
 

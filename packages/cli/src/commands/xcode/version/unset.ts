@@ -49,7 +49,7 @@ export default class XcodeVersionUnset extends BaseCommand {
       // sandbox (409) keeps its Xcode and says so.
       let result;
       try {
-        result = await client.setXcode(xcodeSelectorFor(nodeDefault));
+        result = await client.setXcode(xcodeSelectorFor(nodeDefault, status.installed));
       } catch (err) {
         const refusal = this.xcodeRefusal(err);
         if (!refusal) throw err;

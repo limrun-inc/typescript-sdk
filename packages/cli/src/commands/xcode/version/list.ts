@@ -41,14 +41,15 @@ export default class XcodeVersionList extends BaseCommand {
         this.outputJson({ instanceId: target.id, ...status, preferred });
         return;
       }
+      const installed = status.installed as XcodeInfoWithChannel[];
       if (this.isQuietEnabled()) {
-        for (const x of status.installed) this.output(xcodeSelectorFor(x));
+        for (const x of installed) this.output(xcodeSelectorFor(x, installed));
         return;
       }
       // Two Xcodes of one major share it, so the bound mark goes by the bundle, not the major.
-      const rows = (status.installed as XcodeInfoWithChannel[]).map((x) => [
+      const rows = installed.map((x) => [
         x.developerDir === status.bound.developerDir ? '*' : '',
-        xcodeSelectorFor(x),
+        xcodeSelectorFor(x, installed),
         x.channel ?? '',
         formatXcodeVersion(x),
       ]);

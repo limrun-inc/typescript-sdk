@@ -52,38 +52,56 @@ export function resolveRequestedXcodeVersion(flag: string | undefined): Requeste
 }
 
 /**
- * XcodeInfo plus the daemon's channel, until the @limrun/api release that carries it. "ga" is
- * the Xcode a bare major selects (the lowest installed minor of its major), "beta" every other
- * Xcode of that major. Daemons that predate channels omit it.
+ * XcodeInfo plus the daemon's channel, until the @limrun/api release that carries it. "beta"
+ * marks Apple's developer seeds and GM seeds Apple has not released; "ga" a released build, the
+ * only kind a bare major binds to. Daemons that predate channels omit it.
  */
 export type XcodeInfoWithChannel = XcodeInfo & { channel?: 'ga' | 'beta' };
 
+type XcodeIdentity = Pick<XcodeInfoWithChannel, 'major' | 'version' | 'channel' | 'developerDir'>;
+
 /**
- * The value a user types to select this Xcode: the bare major for a GA (the daemon resolves a
- * major to its GA), the full version for a beta. Daemons that predate the channel report no
- * channel; they carry one Xcode per major, so the major is the selector there too.
+ * The value a user types to select this Xcode. The daemon binds a bare major to the newest GA
+ * of that major, so that one Xcode is selected by its major; every other Xcode, a beta or an
+ * older GA kept beside a newer one, needs its exact version. Daemons that predate the channel
+ * report none and carry one Xcode per major, so the major selects it there too.
  */
-export function xcodeSelectorFor(info: Pick<XcodeInfoWithChannel, 'major' | 'version' | 'channel'>): string {
-  return info.channel === 'beta' ? info.version : info.major;
+export function xcodeSelectorFor(info: XcodeIdentity, installed: readonly XcodeIdentity[]): string {
+  if (info.channel === 'beta') return info.version;
+  const newestGA = installed
+    .filter((x) => x.major === info.major && x.channel !== 'beta')
+    .sort((a, b) => compareVersions(b.version, a.version))[0];
+  return !newestGA || newestGA.developerDir === info.developerDir ? info.major : info.version;
 }
 
 /**
- * Whether a saved preference names the sandbox's bound Xcode: a bare major matches the GA of
- * that major, a major.minor matches that exact version. On a daemon without channels a bare
- * major matches its one Xcode of that major.
+ * Whether a saved preference names the sandbox's bound Xcode: a bare major matches the GA it
+ * would bind, a major.minor matches that exact version.
  */
 export function preferenceSelects(
   preferred: string,
-  bound: Pick<XcodeInfoWithChannel, 'major' | 'version' | 'channel'>,
+  bound: XcodeIdentity,
+  installed: readonly XcodeIdentity[],
 ): boolean {
   if (preferred.includes('.')) return normalizeMinor(bound.version) === normalizeMinor(preferred);
-  return bound.major === preferred && bound.channel !== 'beta';
+  return xcodeSelectorFor(bound, installed) === preferred;
 }
 
 /** "27" and "27.0" name one minor; "26.4.1" belongs to "26.4". */
 function normalizeMinor(version: string): string {
   const [major, minor = '0'] = version.split('.');
   return `${Number(major)}.${Number(minor)}`;
+}
+
+/** Numeric, component by component, so "26.10" sorts after "26.4". */
+function compareVersions(a: string, b: string): number {
+  const as = a.split('.').map(Number);
+  const bs = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(as.length, bs.length); i++) {
+    const diff = (as[i] ?? 0) - (bs[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
 }
 
 /** "27.0 (27A5252f)", or "27.0 beta 6 (27A5252f)" for a beta seed. */
