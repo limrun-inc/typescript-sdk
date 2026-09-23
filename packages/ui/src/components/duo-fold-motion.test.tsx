@@ -178,7 +178,7 @@ for (const fromInner of [false, true]) {
     });
   }
 }
-it('ends at the portrait-locked cover geometry after folding a rotated device', async () => {
+it('uses incoming geometry even when its rotation differs from the outgoing panel', async () => {
   await act(async () => root.render(<View inner turns={0} />));
   await act(async () => root.render(<View turns={0} />));
   await incoming();

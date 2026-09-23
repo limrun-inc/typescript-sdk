@@ -51,12 +51,17 @@ function DuoFlat(props: DuoViewProps) {
     (d) => d.id === (props.state.angleDegrees < 90 ? 'outer' : 'inner'),
   );
   const source = display?.id === 'inner' ? props.inner : props.outer;
-  const turns =
+  const displayTurns =
     display?.orientation === 2 ? 2
     : display?.orientation === 3 ? 1
     : display?.orientation === 4 ? 3
     : 0;
   const inner = display?.id === 'inner';
+  // The body follows the device even when the app keeps its display portrait-locked.
+  const deviceTurns = { portrait: 0, pud: 2, 'landscape-left': 3, 'landscape-right': 1 }[
+    props.state.orientation
+  ];
+  const turns = showFrame ? (deviceTurns + (inner ? 1 : 0)) % 4 : displayTurns;
   const frame = flatFrameGeometry(inner, turns, size.width, size.height);
   const screenWidth = showFrame ? frame.screenWidth : (inner ? display?.height : display?.width) ?? 1;
   const screenHeight = showFrame ? frame.screenHeight : (inner ? display?.width : display?.height) ?? 1;
