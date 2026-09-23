@@ -10,9 +10,11 @@ import React, {
 } from 'react';
 import { clsx } from 'clsx';
 import './remote-control.css';
+import { DuoLoading } from './duo-loading';
 
 import { createDisplayTouchMessage, type DuoState, type DuoOrientation } from '../core/duo';
-const DuoView = lazy(() => import('./duo-view'));
+const loadDuoView = () => import('./duo-view');
+const DuoView = lazy(loadDuoView);
 
 import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
 
@@ -534,6 +536,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const frameRef = useRef<HTMLImageElement>(null);
     const [detectedDuo, setDetectedDuo] = useState(false);
     const isDuo = deviceModel === 'iphone-duo' || detectedDuo;
+    useEffect(() => {
+      // Load the 2D frame while signaling connects; 3D stays behind its own lazy import.
+      if (isDuo) void loadDuoView().catch(() => undefined);
+    }, [isDuo]);
     const innerVideoRef = useRef<HTMLVideoElement>(null);
     const [duoState, setDuoState] = useState<DuoState | null>(null);
     const [duoError, setDuoError] = useState<string>();
@@ -2895,7 +2901,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           controlChannelOpenedRef.current = true;
           clearConnectionSuccessTimeout();
           updateStatus('Control channel opened');
-          if (isDuo) ws.send(JSON.stringify({ type: 'getFoldState', id: 'duo-capabilities' }));
 
           // Spin up the AX fetcher now that we have a stable WS + control
           // channel. The fetcher's send function reuses this WS; it stops
@@ -3318,6 +3323,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               break;
           }
         };
+
+        // Fold state travels over signaling and does not need an established media connection.
+        if (isDuo) ws.send(JSON.stringify({ type: 'getFoldState', id: 'duo-capabilities' }));
 
         // Create and send offer
         if (peerConnectionRef.current === peerConnection) {
@@ -3865,9 +3873,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
           />
         )}
+        {isDuo && !duoState && <DuoLoading logo={loadingLogo} showFrame={showFrame} />}
         {isDuo && duoState && (
-          <Suspense fallback={<div>Loading iPhone Duo…</div>}>
+          <Suspense fallback={<DuoLoading logo={loadingLogo} showFrame={showFrame} />}>
             <DuoView
+              loadingLogo={loadingLogo}
               showFrame={showFrame}
               modelUrl={duoModelUrl}
               outer={videoRef.current}

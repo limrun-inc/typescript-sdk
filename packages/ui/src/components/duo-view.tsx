@@ -2,13 +2,14 @@ import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { DUO_BUTTONS, DuoButtonSender, flatDisplayTouch, type DuoButton } from '../core/duo';
 import type { DuoFrameProps } from './duo-frame';
 import { DuoControls, DuoHardwareIcon, useDuoHinge } from './duo-controls';
+import { DuoLoadingScreen } from './duo-loading';
 import { DuoFlatFrame } from './duo-flat-frame';
 import { flatFrameGeometry, flatHoverEdge } from './duo-flat-geometry';
 import { DuoFoldMotion, useDuoFoldMotion } from './duo-fold-motion';
 
 const DuoFrame = lazy(() => import('./duo-frame'));
 
-type DuoViewProps = DuoFrameProps & { showFrame?: boolean };
+type DuoViewProps = DuoFrameProps & { showFrame?: boolean; loadingLogo?: string };
 
 /** Native video is the default; only an explicit 3D selection loads the renderer and body asset. */
 export default function DuoView(props: DuoViewProps) {
@@ -41,6 +42,7 @@ function DuoFlat(props: DuoViewProps) {
   const latest = useRef(props);
   latest.current = props;
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const [videoReady, setVideoReady] = useState(false);
   const [error, setError] = useState<string>();
   const [edge, setEdge] = useState<ReturnType<typeof flatHoverEdge>>();
   const [hovered, setHovered] = useState<DuoButton>();
@@ -87,7 +89,9 @@ function DuoFlat(props: DuoViewProps) {
     const target = video.current;
     if (!target || !source) return;
     const sync = () => {
-      if (target.srcObject !== source.srcObject) target.srcObject = source.srcObject;
+      if (target.srcObject !== source.srcObject) {
+        target.srcObject = source.srcObject;
+      }
       void target.play().catch(() => undefined);
       props.outer?.pause();
       props.inner?.pause();
@@ -256,6 +260,7 @@ function DuoFlat(props: DuoViewProps) {
           >
             <video
               ref={video}
+              onPlaying={() => setVideoReady(true)}
               autoPlay
               muted
               playsInline
@@ -265,6 +270,7 @@ function DuoFlat(props: DuoViewProps) {
                 transform: 'translate(-50%, -50%) rotate(' + (inner ? 90 : 0) + 'deg)',
               }}
             />
+            {!videoReady && <DuoLoadingScreen logo={props.loadingLogo} />}
           </div>
           {showFrame &&
             frame.buttons.map((b) => (

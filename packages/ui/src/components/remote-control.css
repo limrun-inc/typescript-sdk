@@ -448,3 +448,23 @@
   margin-top: 0;
   min-height: 0;
 }
+
+.rc-duo-loading-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  pointer-events: none;
+}
+.rc-duo-loading-screen img {
+  width: 20%;
+  height: 20%;
+  object-fit: contain;
+}
+.rc-duo-loading-controls {
+  height: 97px;
+  flex: none;
+  margin: 0 20px 20px;
+}
