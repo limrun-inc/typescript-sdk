@@ -161,27 +161,32 @@ it('uses the settled native orientation without rotating the entire phone', asyn
 });
 for (const fromInner of [false, true]) {
   for (const pose of [0, 1, 2, 3]) {
-    it(`finishes ${
-      fromInner ? 'folding' : 'unfolding'
-    } at pose ${pose} when orientation arrives after video`, async () => {
+    it(`uses the incoming geometry when ${fromInner ? 'folding' : 'unfolding'} at pose ${pose}`, async () => {
       const fromTurns = (pose + (fromInner ? 1 : 0)) % 4;
       const toTurns = (pose + (fromInner ? 0 : 1)) % 4;
       await act(async () => root.render(<View inner={fromInner} turns={fromTurns} />));
       await act(async () => root.render(<View inner={!fromInner} turns={fromTurns} />));
+      await act(async () => root.render(<View inner={!fromInner} turns={toTurns} />));
       await incoming();
       expect(renderer.start).toHaveBeenCalledTimes(1);
       const motion = renderer.start.mock.calls[0]![1];
       expect(motion.from.frame.turns).toBe(pose);
       expect(motion.to.frame.turns).toBe(pose);
-      await act(async () => root.render(<View inner={!fromInner} turns={toTurns} />));
-      expect(renderer.start).toHaveBeenCalledTimes(1);
-      expect(renderer.dispose).not.toHaveBeenCalled();
-      expect(host.querySelector('.rc-duo-fold-canvas')).not.toBeNull();
+      expect(motion.to.frame.scale).toBe(flatFrameGeometry(!fromInner, toTurns, 600, 700).scale);
       await act(async () => renderer.finish!());
       expect(renderer.dispose).toHaveBeenCalledTimes(1);
     });
   }
 }
+it('ends at the portrait-locked cover geometry after folding a rotated device', async () => {
+  await act(async () => root.render(<View inner turns={0} />));
+  await act(async () => root.render(<View turns={0} />));
+  await incoming();
+  const motion = renderer.start.mock.calls[0]![1];
+  expect(motion.from.frame.turns).toBe(3);
+  expect(motion.to.frame.turns).toBe(0);
+  expect(motion.to.frame.scale).toBe(flatFrameGeometry(false, 0, 600, 700).scale);
+});
 it('still cancels an active fold when the device is explicitly rotated', async () => {
   await act(async () => root.render(<View />));
   await act(async () => root.render(<View inner />));

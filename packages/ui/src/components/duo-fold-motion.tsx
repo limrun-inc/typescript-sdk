@@ -75,13 +75,6 @@ export function useDuoFoldMotion(
     clearTimeout(commandTimeout.current);
     prepared.current = undefined;
     if (before) {
-      // Preserve the device's pose while iOS updates the incoming display's orientation.
-      to.frame = flatFrameGeometry(
-        inner,
-        (origin.frame.turns + (inner ? 1 : 0)) % 4,
-        frame.rect.min.x + frame.rect.max.x,
-        frame.rect.min.y + frame.rect.max.y,
-      );
       setMotion({ from: origin, to, before, ready: false });
     }
   }, [inner, frame.scale, frame.turns, frame.rect.min.x, frame.rect.min.y, orientation, enabled]);
@@ -89,7 +82,7 @@ export function useDuoFoldMotion(
   useEffect(() => {
     if (!motion || motion.from.inner === inner) return;
     const stop = waitForDuoFrame(video.current, (after) => {
-      if (after) setMotion((active) => active && { ...active, after, ready: true });
+      if (after) setMotion((active) => active && { ...active, to: current.current, after, ready: true });
       else finish();
     });
     const preference = window.matchMedia?.('(prefers-reduced-motion: reduce)');
