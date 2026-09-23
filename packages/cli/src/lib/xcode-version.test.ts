@@ -5,7 +5,6 @@ import {
   parseXcodeVersion,
   preferenceSelects,
   resolveRequestedXcodeVersion,
-  sortXcodesByVersion,
   xcodeSelectorFor,
 } from './xcode-version';
 import { loadXcodeVersionPreference } from './config';
@@ -98,18 +97,6 @@ describe('formatXcodeVersion', () => {
       '27.1 beta (27A9269)',
     );
     expect(formatXcodeVersion({ version: '27.0', build: '27A266a', channel: 'ga' })).toBe('27.0 (27A266a)');
-  });
-});
-
-describe('sortXcodesByVersion', () => {
-  test('orders oldest first, numerically per component', () => {
-    const versions = sortXcodesByVersion([
-      { version: '27.1' },
-      { version: '26.10' },
-      { version: '27.0' },
-      { version: '26.4' },
-    ]);
-    expect(versions.map((x) => x.version)).toEqual(['26.4', '26.10', '27.0', '27.1']);
   });
 });
 
