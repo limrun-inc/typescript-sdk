@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.52.0...v0.53.0) (2026-09-23)
+
+
+### Features
+
+* **api:** expose channel on XcodeInfo and accept major.minor in setXcode ([6922ecc](https://github.com/limrun-inc/typescript-sdk/commit/6922ecc6db38a1aba803028fcf54b13ca0b94245))
+
 ## [0.52.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.51.1...v0.52.0) (2026-09-21)
 
 
