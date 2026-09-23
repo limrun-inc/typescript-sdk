@@ -51,14 +51,8 @@ export function resolveRequestedXcodeVersion(flag: string | undefined): Requeste
   return preferred ? { version: preferred, source: 'workspace' } : undefined;
 }
 
-/**
- * XcodeInfo plus the daemon's channel, until the @limrun/api release that carries it. "beta"
- * marks Apple's developer seeds and GM seeds Apple has not released; "ga" a released build, the
- * only kind a bare major binds to. Daemons that predate channels omit it.
- */
-export type XcodeInfoWithChannel = XcodeInfo & { channel?: 'ga' | 'beta' };
-
-type XcodeIdentity = Pick<XcodeInfoWithChannel, 'major' | 'version' | 'channel' | 'developerDir'>;
+/** What selection needs to know about an Xcode. Daemons that predate channels omit the channel. */
+type XcodeIdentity = Pick<XcodeInfo, 'major' | 'version' | 'channel' | 'developerDir'>;
 
 /**
  * The value a user types to select this Xcode. The daemon binds a bare major to the newest GA
@@ -110,7 +104,7 @@ function compareVersions(a: string, b: string): number {
  * version alone does not say so.
  */
 export function formatXcodeVersion(
-  info: Pick<XcodeInfoWithChannel, 'version' | 'build' | 'betaSeed' | 'channel'>,
+  info: Pick<XcodeInfo, 'version' | 'build' | 'betaSeed' | 'channel'>,
 ): string {
   const beta =
     info.betaSeed ? ` beta ${info.betaSeed}`
@@ -120,7 +114,7 @@ export function formatXcodeVersion(
 }
 
 /** formatXcodeVersion plus the node-default mark, falling back to the version key on nodes that report only that. */
-export function formatXcode(info: XcodeInfoWithChannel | undefined): string {
+export function formatXcode(info: XcodeInfo | undefined): string {
   if (!info) return 'unknown (daemon predates Xcode selection)';
   if (info.version && info.build) {
     return `${formatXcodeVersion(info)}${info.nodeDefault ? ' (node default)' : ''}`;

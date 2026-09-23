@@ -1,10 +1,5 @@
 import { BaseCommand } from '../../../base-command';
-import {
-  formatXcodeVersion,
-  xcodeSelectorFor,
-  xcodeTargetFlags,
-  type XcodeInfoWithChannel,
-} from '../../../lib/xcode-version';
+import { formatXcodeVersion, xcodeSelectorFor, xcodeTargetFlags } from '../../../lib/xcode-version';
 import { loadXcodeVersionPreference } from '../../../lib/config';
 
 export default class XcodeVersionList extends BaseCommand {
@@ -41,7 +36,7 @@ export default class XcodeVersionList extends BaseCommand {
         this.outputJson({ instanceId: target.id, ...status, preferred });
         return;
       }
-      const installed = status.installed as XcodeInfoWithChannel[];
+      const installed = status.installed;
       if (this.isQuietEnabled()) {
         for (const x of installed) this.output(xcodeSelectorFor(x, installed));
         return;
