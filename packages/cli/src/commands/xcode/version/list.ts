@@ -1,7 +1,6 @@
 import { BaseCommand } from '../../../base-command';
 import {
   formatXcodeVersion,
-  sortXcodesByVersion,
   xcodeSelectorFor,
   xcodeTargetFlags,
   type XcodeInfoWithChannel,
@@ -42,7 +41,7 @@ export default class XcodeVersionList extends BaseCommand {
         this.outputJson({ instanceId: target.id, ...status, preferred });
         return;
       }
-      const installed = sortXcodesByVersion(status.installed as XcodeInfoWithChannel[]);
+      const installed = status.installed as XcodeInfoWithChannel[];
       if (this.isQuietEnabled()) {
         for (const x of installed) this.output(xcodeSelectorFor(x, installed));
         return;

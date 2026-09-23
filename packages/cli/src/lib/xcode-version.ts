@@ -104,11 +104,6 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** Oldest first, the order a version list reads in; daemons before the sort listed the node default first. */
-export function sortXcodesByVersion<T extends Pick<XcodeInfo, 'version'>>(xcodes: readonly T[]): T[] {
-  return [...xcodes].sort((a, b) => compareVersions(a.version, b.version));
-}
-
 /**
  * "27.0 (27A5252f)", "27.0 beta 6 (27A5252f)" for a seed with a number, "27.1 beta (27A9269)"
  * for a beta without one: the word appears wherever a beta is shown or selected, since the
