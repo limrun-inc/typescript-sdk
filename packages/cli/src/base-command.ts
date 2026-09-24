@@ -36,6 +36,7 @@ import { detectInstanceType, setSessionAutoStart } from './lib/instance-client-f
 import { deleteCreatedInstance } from './lib/instance-cleanup';
 import { defaultSleep as sleep } from '@limrun/api';
 import {
+  CacheLogPrinter,
   parseCacheConfig,
   restoreOutcome,
   restoreProgressLine,
@@ -848,10 +849,12 @@ export abstract class BaseCommand extends Command {
   ): Promise<void> {
     const start = Date.now();
     this.info('Restoring build cache...');
+    const log = new CacheLogPrinter((line) => this.info(line), 'Restoring build cache...\n');
     let result;
     try {
       result = await this.client.xcodeInstances.followCache(cacheInstanceId, {
         onUpdate: (cache) => {
+          if (log.update(cache.restore.log)) return;
           const line = restoreProgressLine(cache);
           if (line) this.info(line);
         },
@@ -877,8 +880,13 @@ export abstract class BaseCommand extends Command {
     const outcome = restoreOutcome(result.cache, Date.now() - start);
     if (outcome.failed) {
       await removeInstance();
-      throw new Error(`${outcome.line}\nRemoved instance ${cacheInstanceId}.`);
+      throw new Error(
+        `${
+          result.cache.restore.log ? 'Cache restore failed.' : outcome.line
+        }\nRemoved instance ${cacheInstanceId}.`,
+      );
     }
+    if (result.cache.restore.log) return;
     this.info(outcome.line);
     if (result.cache.restore.phase !== 'restored') {
       for (const line of skippedKeyLines(result.cache)) {
@@ -1164,6 +1172,7 @@ export abstract class BaseCommand extends Command {
    */
   protected startCachePublicationFollow(cacheInstanceId: string): CachePublicationWatch {
     const start = Date.now();
+    const log = new CacheLogPrinter((line) => this.info(line));
     let open = () => {};
     const opened = new Promise<void>((resolve) => {
       open = resolve;
@@ -1173,6 +1182,7 @@ export abstract class BaseCommand extends Command {
         side: 'save',
         onOpen: open,
         onUpdate: (cache) => {
+          if (log.update(cache.save.log)) return;
           const line = saveProgressLine(cache);
           if (line) this.info(line);
         },
@@ -1205,7 +1215,7 @@ export abstract class BaseCommand extends Command {
       return false;
     }
     const outcome = saveOutcome(followed.result.cache, Date.now() - followed.start);
-    this.info(outcome.line);
+    if (!followed.result.cache.save.log) this.info(outcome.line);
     return !outcome.failed;
   }
 

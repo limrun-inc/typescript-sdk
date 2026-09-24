@@ -1,5 +1,6 @@
 import type { XcodeInstanceCache } from '@limrun/api';
 import {
+  CacheLogPrinter,
   formatBytes,
   parseCacheConfig,
   restoreOutcome,
@@ -8,6 +9,48 @@ import {
   skippedKeyLines,
   wantsRestore,
 } from '../packages/cli/src/lib/cache';
+
+describe('server cache transcript', () => {
+  const lines = [
+    'Restoring build cache...',
+    'Cache restore: preparing the workspace directory...',
+    'Cache restore: downloading the archive...',
+    'Cache restore: unpacking the archive into the workspace...',
+    'Cache restored from mastodon-1, 1.2 GB via the regional accelerator in 12.3s.',
+  ];
+  const transcript = (count: number) => lines.slice(0, count).join('\n') + '\n';
+
+  test('prints exactly the persisted text when updates skip phases and reconnect', () => {
+    const printed = [lines[0]!];
+    const log = new CacheLogPrinter((line) => printed.push(line), transcript(1));
+    expect(log.update('')).toBe(true);
+    log.update(transcript(3));
+    log.update(transcript(3));
+    log.update(transcript(2));
+    log.update(transcript(5));
+    log.update(transcript(5));
+    expect(printed.join('\n') + '\n').toBe(transcript(5));
+  });
+
+  test('a subscriber arriving after publication still prints its complete history', () => {
+    const persisted =
+      'Cache publish: archiving the workspace...\nCache published under mastodon-1, 1.2 GB in 38s.\n';
+    const printed: string[] = [];
+    const log = new CacheLogPrinter((line) => printed.push(line));
+    log.update(persisted);
+    expect(printed.join('\n') + '\n').toBe(persisted);
+  });
+
+  test('keeps old-server rendering available and waits for complete lines', () => {
+    const printed: string[] = [];
+    const log = new CacheLogPrinter((line) => printed.push(line));
+    expect(log.update(undefined)).toBe(false);
+    log.update('Cache pub');
+    expect(printed).toEqual([]);
+    log.update('Cache published.\n');
+    expect(printed).toEqual(['Cache published.']);
+  });
+});
 
 describe('cache flag parsing', () => {
   test('no cache flags means an ordinary uncached instance', () => {
