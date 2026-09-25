@@ -8,8 +8,13 @@ export class Analytics extends APIResource {
   /**
    * Get analytics for the authenticated organization
    */
+  get(
+    query: AnalyticsGetParams & { from: string; to: string },
+    options?: RequestOptions,
+  ): APIPromise<AnalyticsResponse & { from: string; to: string }>;
+  get(query: AnalyticsGetParams, options?: RequestOptions): APIPromise<AnalyticsResponse>;
   get(query: AnalyticsGetParams, options?: RequestOptions): APIPromise<AnalyticsResponse> {
-    return this._client.get('/v1/analytics', { query, ...options });
+    return this._client.get('/v1/analytics', { query: analyticsQuery(query), ...options });
   }
 
   /**
@@ -17,17 +22,25 @@ export class Analytics extends APIResource {
    * views.
    */
   getInstances(
+    query: AnalyticsGetInstancesParams & { from: string; to: string },
+    options?: RequestOptions,
+  ): APIPromise<AnalyticsInstancesResponse & { from: string; to: string }>;
+  getInstances(
+    query: AnalyticsGetInstancesParams,
+    options?: RequestOptions,
+  ): APIPromise<AnalyticsInstancesResponse>;
+  getInstances(
     query: AnalyticsGetInstancesParams,
     options?: RequestOptions,
   ): APIPromise<AnalyticsInstancesResponse> {
-    return this._client.get('/v1/analytics/instances', { query, ...options });
+    return this._client.get('/v1/analytics/instances', { query: analyticsQuery(query), ...options });
   }
 }
 
 export interface AnalyticsInstancesResponse {
   asOf: string;
 
-  from: string;
+  from?: string;
 
   series: Array<AnalyticsInstancesResponse.Series>;
 
@@ -36,7 +49,7 @@ export interface AnalyticsInstancesResponse {
    */
   timezone: string;
 
-  to: string;
+  to?: string;
 }
 
 export namespace AnalyticsInstancesResponse {
@@ -148,7 +161,7 @@ export interface AnalyticsResponse {
 
   bucket: 'hour' | 'day' | 'week' | 'minute';
 
-  from: string;
+  from?: string;
 
   series: Array<AnalyticsResponse.Series>;
 
@@ -162,7 +175,7 @@ export interface AnalyticsResponse {
    */
   timezone: string;
 
-  to: string;
+  to?: string;
 }
 
 export namespace AnalyticsResponse {
@@ -802,16 +815,43 @@ export namespace AnalyticsResponse {
   }
 }
 
+/** Timestamp bounds use RFC3339 strings. All supplied bounds apply together. */
+export interface AnalyticsTimeFilter {
+  /** Inclusive lower bound (greater than or equal to). */
+  gte?: string;
+  /** Inclusive upper bound (less than or equal to). */
+  lte?: string;
+}
+
+// The shared query encoder accepts primitives, so flatten these OpenAPI deepObject parameters.
+function analyticsQuery(query: AnalyticsGetParams | AnalyticsGetInstancesParams): Record<string, unknown> {
+  const { startedAt, stoppedAt, ...rest } = query;
+  const params: Record<string, unknown> = { ...rest };
+  for (const [field, bounds] of Object.entries({ startedAt, stoppedAt })) {
+    if (bounds === undefined) continue;
+    for (const [operator, value] of Object.entries(bounds)) {
+      if (value !== undefined) params[`${field}[${operator}]`] = value;
+    }
+  }
+  return params;
+}
+
 export interface AnalyticsGetParams {
-  /**
-   * Start of the time range (inclusive, RFC3339)
-   */
-  from: string;
+  /** Independent start-time bounds, combined with stoppedAt and legacy from/to. */
+  startedAt?: AnalyticsTimeFilter;
+
+  /** Independent termination-time bounds. Historical entries approximate this with billing time. */
+  stoppedAt?: AnalyticsTimeFilter;
 
   /**
-   * End of the time range (exclusive, RFC3339)
+   * Legacy inclusive lower bound on startedAt (RFC3339).
    */
-  to: string;
+  from?: string;
+
+  /**
+   * Legacy exclusive upper bound on startedAt (RFC3339).
+   */
+  to?: string;
 
   /**
    * Time bucket granularity for the analytics series
@@ -836,15 +876,21 @@ export interface AnalyticsGetParams {
 }
 
 export interface AnalyticsGetInstancesParams {
-  /**
-   * Start of the time range (inclusive, RFC3339)
-   */
-  from: string;
+  /** Independent start-time bounds, combined with stoppedAt and legacy from/to. */
+  startedAt?: AnalyticsTimeFilter;
+
+  /** Independent termination-time bounds. Historical entries approximate this with billing time. */
+  stoppedAt?: AnalyticsTimeFilter;
 
   /**
-   * End of the time range (exclusive, RFC3339)
+   * Legacy inclusive lower bound on startedAt (RFC3339).
    */
-  to: string;
+  from?: string;
+
+  /**
+   * Legacy exclusive upper bound on startedAt (RFC3339).
+   */
+  to?: string;
 
   /**
    * Label selector to filter instances (e.g., "env=prod,team=backend")
@@ -867,6 +913,7 @@ export declare namespace Analytics {
   export {
     type AnalyticsInstancesResponse as AnalyticsInstancesResponse,
     type AnalyticsResponse as AnalyticsResponse,
+    type AnalyticsTimeFilter as AnalyticsTimeFilter,
     type AnalyticsGetParams as AnalyticsGetParams,
     type AnalyticsGetInstancesParams as AnalyticsGetInstancesParams,
   };

@@ -4,6 +4,7 @@ export {
   Analytics,
   type AnalyticsInstancesResponse,
   type AnalyticsResponse,
+  type AnalyticsTimeFilter,
   type AnalyticsGetParams,
   type AnalyticsGetInstancesParams,
 } from './analytics';
