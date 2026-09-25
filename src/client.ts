@@ -23,6 +23,7 @@ import {
   Analytics,
   AnalyticsGetInstancesParams,
   AnalyticsGetParams,
+  AnalyticsTimeFilter,
   AnalyticsInstancesResponse,
   AnalyticsResponse,
 } from './resources/analytics';
@@ -923,6 +924,7 @@ export declare namespace Limrun {
     Analytics as Analytics,
     type AnalyticsInstancesResponse as AnalyticsInstancesResponse,
     type AnalyticsResponse as AnalyticsResponse,
+    type AnalyticsTimeFilter as AnalyticsTimeFilter,
     type AnalyticsGetParams as AnalyticsGetParams,
     type AnalyticsGetInstancesParams as AnalyticsGetInstancesParams,
   };
