@@ -696,7 +696,11 @@ export async function startDestinationTcpTunnel(
           }
           armLivenessDeadline();
           updateConnectionState('connected');
-          logger.info(`Destination tunnel ready with ${selectors.length} selector(s)`);
+          // The instance only captures connections opened from now on; an app
+          // that connected earlier can keep reusing them outside the tunnel.
+          logger.info(
+            `Destination tunnel ready with ${selectors.length} selector(s); relaunch apps that connected before it`,
+          );
           if (inspection.enabled) {
             try {
               inspectionStream = startDestinationTunnelInspectionStream(remoteURL, message.tunnelId, token, {
