@@ -717,6 +717,7 @@ function printTunnelReady(
     return;
   }
   context.io.output(`Tunnel ID: ${ready.tunnelId}`);
+  context.io.info('Only new connections use the tunnel; relaunch apps that connected before it.');
   if (detached) {
     context.io.output(`Logs: ${processInfo?.logPath}`);
     context.io.output(`Stop: lim ${context.product} tunnel stop --id ${context.instanceId}`);
