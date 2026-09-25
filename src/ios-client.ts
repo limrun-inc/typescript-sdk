@@ -6,7 +6,11 @@ import { WebSocket, Data } from 'ws';
 import { EventEmitter } from 'events';
 import { assertPort, isNonRetryableError, startReverseTcpTunnel, type ReverseTunnel } from './tunnel';
 import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './destination-tunnel-dialer';
-import { disabledDestinationTunnelInspection, type DestinationTunnelSelectors } from './destination-tunnel';
+import {
+  disabledDestinationTunnelInspection,
+  type DestinationTunnelInspectionConfig,
+  type DestinationTunnelSelectors,
+} from './destination-tunnel';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
 import { createIgnoreFn } from './folder-sync-ignore';
 import { prepareAppBundlePath, watchAppArchive } from './app-archive';
@@ -2914,7 +2918,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const startTunnel = async (tunnelOptions: TunnelOptions): Promise<Tunnel> => {
       // TunnelOptions has no inspection field, but untyped callers pass the
       // Android shape; refuse it rather than silently capturing nothing.
-      if ((tunnelOptions as { inspection?: { enabled?: boolean } }).inspection?.enabled) {
+      if (
+        (tunnelOptions as { inspection?: Partial<DestinationTunnelInspectionConfig> }).inspection?.enabled
+      ) {
         throw new Error(
           'Tunnel inspection is not available on iOS yet; start the tunnel without inspection.',
         );
