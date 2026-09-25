@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.53.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.53.0...v0.53.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **ui:** end Duo fold at incoming frame geometry ([e6b4131](https://github.com/limrun-inc/typescript-sdk/commit/e6b4131ce9804836656db18d07ab871a80a8e3e9))
+
+
+### Chores
+
+* **cli:** bump version to 0.34.0 on @limrun/api 0.53.0 ([5a99e23](https://github.com/limrun-inc/typescript-sdk/commit/5a99e230fe0c6e7111b633e1e7da297ac669508c))
+* **ui:** bump version to 0.17.0-rc.3 ([28f4272](https://github.com/limrun-inc/typescript-sdk/commit/28f4272751fddaf59aa8da62ba392490597f1296))
+
 ## [0.53.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.52.0...v0.53.0) (2026-09-23)
 
 
