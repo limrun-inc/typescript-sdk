@@ -817,10 +817,10 @@ export namespace AnalyticsResponse {
 
 /** Timestamp bounds use RFC3339 strings. All supplied bounds apply together. */
 export interface AnalyticsTimeFilter {
-  /** Exclusive lower bound. */
-  after?: string;
-  /** Exclusive upper bound. */
-  before?: string;
+  /** Inclusive lower bound (greater than or equal to). */
+  gte?: string;
+  /** Inclusive upper bound (less than or equal to). */
+  lte?: string;
 }
 
 // The shared query encoder accepts primitives, so flatten these OpenAPI deepObject parameters.
