@@ -2912,6 +2912,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const startTunnel = async (tunnelOptions: TunnelOptions): Promise<Tunnel> => {
+      // TunnelOptions has no inspection field, but untyped callers pass the
+      // Android shape; refuse it rather than silently capturing nothing.
+      if ((tunnelOptions as { inspection?: { enabled?: boolean } }).inspection?.enabled) {
+        throw new Error(
+          'Tunnel inspection is not available on iOS yet; start the tunnel without inspection.',
+        );
+      }
       return startDestinationTcpTunnel(deriveDestinationTunnelURL(options.apiUrl), options.token, {
         selectors: tunnelOptions.selectors,
         inspection: disabledDestinationTunnelInspection(),
