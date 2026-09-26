@@ -14,17 +14,13 @@ describe('Android tunnel inspection flags', () => {
   });
 
   test('rejects HAR capture when inspection is disabled', () => {
-    expect(() => validateTunnelInspectionFlags(false, 'traffic.har')).toThrow(
-      '--har cannot be combined with --no-inspect.',
-    );
-    expect(() => validateTunnelInspectionFlags(true, 'traffic.har')).not.toThrow();
+    const flags = { inspect: false, persist: false, har: 'traffic.har', 'har-body-limit': 1 };
+    expect(() => validateTunnelInspectionFlags(flags)).toThrow('--har cannot be combined with --no-inspect.');
+    expect(() => validateTunnelInspectionFlags({ ...flags, inspect: true })).not.toThrow();
   });
 
   test('requires persistence when a TTL is specified', () => {
-    expect(() => validateTunnelInspectionFlags(true, undefined, false, 3600)).toThrow(
-      '--ttl is only valid with --persist.',
-    );
-    expect(() => validateTunnelInspectionFlags(false, undefined, true, 3600)).not.toThrow();
+    expect(AndroidTunnel.flags.ttl.dependsOn).toEqual(['persist']);
     expect(AndroidTunnel.flags.persist.default).toBe(false);
   });
 

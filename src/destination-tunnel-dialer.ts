@@ -80,6 +80,34 @@ export interface DestinationTcpTunnelOptions {
   livenessTimeoutMs?: number;
 }
 
+/** Destination tunnel options the iOS and Android instance clients accept. */
+export type DestinationTunnelStartOptions = Pick<
+  DestinationTcpTunnelOptions,
+  'selectors' | 'inspection' | 'onInspectionEvent' | 'onInspectionError' | 'window' | 'logLevel'
+>;
+
+/**
+ * Applies the defaults both instance clients share, so the platforms cannot
+ * drift: inspection on, bodies off, and the client's log level.
+ */
+export function destinationTunnelDialOptions(
+  options: DestinationTunnelStartOptions,
+  logLevel: LogLevel,
+): DestinationTcpTunnelOptions {
+  return {
+    selectors: options.selectors,
+    inspection: {
+      enabled: true,
+      captureBodies: false,
+      ...(options.inspection ?? {}),
+    },
+    ...(options.onInspectionEvent ? { onInspectionEvent: options.onInspectionEvent } : {}),
+    ...(options.onInspectionError ? { onInspectionError: options.onInspectionError } : {}),
+    ...(options.window === undefined ? {} : { window: options.window }),
+    logLevel: options.logLevel ?? logLevel,
+  };
+}
+
 interface DialConnection {
   socket?: net.Socket;
   phase: 'connecting' | 'open';

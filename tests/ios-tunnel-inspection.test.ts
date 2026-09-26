@@ -1,4 +1,5 @@
 jest.mock('../src/destination-tunnel-dialer', () => ({
+  ...jest.requireActual('../src/destination-tunnel-dialer'),
   startDestinationTcpTunnel: jest.fn(async (_url: string, _token: string, options: unknown) => ({
     tunnelId: 'tunnel-1',
     selectors: [],

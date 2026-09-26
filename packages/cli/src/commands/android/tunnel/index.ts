@@ -1,5 +1,5 @@
 import { Flags } from '@oclif/core';
-import { DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES, type DestinationTunnelSelectors } from '@limrun/api';
+import type { DestinationTunnelSelectors } from '@limrun/api';
 import { BaseCommand } from '../../../base-command';
 import { getAndroidInstanceClient } from '../../../lib/instance-client-factory';
 import {
@@ -81,7 +81,7 @@ export default class AndroidTunnel extends BaseCommand {
       this.error('--detach cannot be combined with internal --serve mode.');
     }
     try {
-      validateTunnelInspectionFlags(flags.inspect || flags.persist, flags.har, flags.persist, flags.ttl);
+      validateTunnelInspectionFlags(flags);
     } catch (error) {
       this.error(error instanceof Error ? error.message : String(error));
     }
@@ -134,11 +134,8 @@ export default class AndroidTunnel extends BaseCommand {
     instanceId: string,
     selectors: DestinationTunnelSelectors,
     logLevel: TunnelLogLevel,
-    apiKey?: string,
-    inspection: TunnelInspectionContext = {
-      inspect: true,
-      harBodyLimit: DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
-    },
+    apiKey: string | undefined,
+    inspection: TunnelInspectionContext,
   ): TunnelCommandContext {
     return {
       product: 'android',
