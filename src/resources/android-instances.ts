@@ -91,7 +91,12 @@ export namespace AndroidInstance {
   }
 
   export interface Status {
-    token: string;
+    /**
+     * A signed token with full control of this instance, the credential its
+     * data-plane endpoints accept. Returned only to callers with full control of the
+     * instance: a read-only API key or a viewer seat gets records without it.
+     */
+    token?: string;
 
     state: 'unknown' | 'creating' | 'assigned' | 'ready' | 'terminated';
 
@@ -108,6 +113,14 @@ export namespace AndroidInstance {
     sandbox?: Status.Sandbox;
 
     signedStreamUrl?: string;
+
+    /**
+     * A signed token that grants only streaming on this instance: it opens the
+     * screen-streaming WebSocket and nothing else, so a browser can hold it while
+     * `token` stays on your backend. Create, get and list return it to callers with
+     * full control of the instance; get and list only while the instance runs.
+     */
+    streamToken?: string;
 
     targetHttpPortUrlPrefix?: string;
 

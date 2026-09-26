@@ -78,7 +78,12 @@ export namespace XcodeInstance {
   }
 
   export interface Status {
-    token: string;
+    /**
+     * A signed token with full control of this instance, the credential its
+     * data-plane endpoints accept. Returned only to callers with full control of the
+     * instance: a read-only API key or a viewer seat gets records without it.
+     */
+    token?: string;
 
     state: 'unknown' | 'creating' | 'assigned' | 'ready' | 'terminated';
 

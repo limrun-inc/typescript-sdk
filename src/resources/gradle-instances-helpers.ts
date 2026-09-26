@@ -2,6 +2,7 @@ import { GradleInstances, type GradleInstance } from './gradle-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
+import { instanceToken } from '../instance-token';
 import {
   exec,
   observeExecLogs,
@@ -156,7 +157,7 @@ class GradleInstancesHelpers extends GradleInstances {
         throw new Error('Instance not ready: apiUrl is not available');
       }
       apiUrl = params.instance.status.apiUrl;
-      token = params.instance.status.token;
+      token = instanceToken(params.instance);
     } else {
       apiUrl = params.apiUrl;
       token = params.token;
