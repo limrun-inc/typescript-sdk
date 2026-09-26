@@ -7,6 +7,7 @@ import { type IosInstance } from './ios-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
+import { instanceToken } from '../instance-token';
 import {
   followXcodeCache,
   type XcodeCacheConfig,
@@ -866,7 +867,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         throw new Error('Instance not ready: apiUrl is not available');
       }
       apiUrl = params.instance.status.apiUrl;
-      token = params.instance.status.token;
+      token = instanceToken(params.instance);
     } else {
       apiUrl = params.apiUrl;
       token = params.token;
@@ -893,7 +894,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           throw new Error('Simulator instance not ready: apiUrl is not available');
         }
         simApiUrl = simulator.status.apiUrl;
-        simToken = simulator.status.token;
+        simToken = instanceToken(simulator);
       } else {
         simApiUrl = simulator.apiUrl;
         simToken = simulator.token;
