@@ -7,7 +7,6 @@ import { type AndroidInstance } from '@limrun/api/resources/android-instances';
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
 import { type XcodeInstance } from '@limrun/api/resources/xcode-instances';
 import { type GradleInstance } from '@limrun/api/resources/gradle-instances';
-import { xcodeSandboxIdFromUrl } from './xcode-sandbox';
 import { getScopeKey, GLOBAL_SCOPE_KEY } from './scope';
 
 const CONFIG_DIR = path.join(os.homedir(), '.lim');
@@ -120,7 +119,6 @@ export interface LastIosInstance {
   mcpUrl?: IosInstance.Status['mcpUrl'];
   signedStreamUrl?: IosInstance.Status['signedStreamUrl'];
   targetHttpPortUrlPrefix?: IosInstance.Status['targetHttpPortUrlPrefix'];
-  sandboxXcodeUrl?: NonNullable<NonNullable<IosInstance.Status['sandbox']>['xcode']>['url'];
 }
 
 export interface LastXcodeInstance {
@@ -154,7 +152,7 @@ interface ScopeInstances {
   xcodeVersion?: string;
   ios?: LastIosInstance;
   android?: LastAndroidInstance;
-  xcode?: LastIosInstance | LastXcodeInstance;
+  xcode?: LastXcodeInstance;
   gradle?: LastGradleInstance;
 }
 
@@ -186,9 +184,8 @@ function sanitizeScope(value: unknown): ScopeInstances {
   }
   if (isLastAndroidInstance(value['android'])) scope.android = value['android'];
   if (isLastIosInstance(value['ios'])) scope.ios = value['ios'];
-  if (isLastIosInstance(value['xcode']) || isLastXcodeInstance(value['xcode'])) {
-    scope.xcode = value['xcode'] as LastIosInstance | LastXcodeInstance;
-  }
+  // An iOS record here is a paired simulator from an older CLI; its embedded sandbox is no longer driven.
+  if (isLastXcodeInstance(value['xcode'])) scope.xcode = value['xcode'];
   if (isLastGradleInstance(value['gradle'])) scope.gradle = value['gradle'];
   return scope;
 }
@@ -495,7 +492,6 @@ function buildLastInstanceRecord(
       mcpUrl: instanceOrId.status.mcpUrl,
       signedStreamUrl: instanceOrId.status.signedStreamUrl,
       targetHttpPortUrlPrefix: instanceOrId.status.targetHttpPortUrlPrefix,
-      sandboxXcodeUrl: instanceOrId.status.sandbox?.xcode?.url,
     };
   }
   if (isXcodeInstance(instanceOrId)) {
@@ -516,64 +512,13 @@ function buildLastInstanceRecord(
   };
 }
 
-function buildLastXcodeSlotRecord(instanceOrId: InstanceInput): LastIosInstance | LastXcodeInstance | null {
-  const record = buildLastInstanceRecord(instanceOrId);
-  if (record.type === 'xcode') {
-    return record;
-  }
-  if (record.type !== 'ios' || !isIosInstance(instanceOrId)) {
-    return null;
-  }
-
-  const sandboxXcodeUrl = instanceOrId.status.sandbox?.xcode?.url;
-  const sandboxXcodeId = sandboxXcodeUrl ? xcodeSandboxIdFromUrl(sandboxXcodeUrl) : undefined;
-  if (!sandboxXcodeUrl || !sandboxXcodeId) {
-    return record;
-  }
-
-  const metadata: XcodeInstance.Metadata = {
-    id: sandboxXcodeId,
-    createdAt: instanceOrId.metadata.createdAt,
-    organizationId: instanceOrId.metadata.organizationId,
-  };
-  if (instanceOrId.metadata.displayName) {
-    metadata.displayName = instanceOrId.metadata.displayName;
-  }
-
-  const spec: XcodeInstance.Spec = {
-    region: instanceOrId.spec.region,
-    inactivityTimeout: instanceOrId.spec.inactivityTimeout,
-  };
-  if (instanceOrId.spec.hardTimeout) {
-    spec.hardTimeout = instanceOrId.spec.hardTimeout;
-  }
-
-  return {
-    id: sandboxXcodeId,
-    type: 'xcode',
-    metadata,
-    spec,
-    status: {
-      state: instanceOrId.status.state,
-      apiUrl: sandboxXcodeUrl,
-      token: instanceOrId.status.token,
-    },
-    apiUrl: sandboxXcodeUrl,
-    token: instanceOrId.status.token,
-  };
-}
-
 function saveLastInstance(
   instanceOrId: InstanceInput,
-  slot?: 'xcode',
 ): LastAndroidInstance | LastIosInstance | LastXcodeInstance | LastGradleInstance {
   const record = buildLastInstanceRecord(instanceOrId);
   mutate((file, scopeKey) => {
     const scope = ensureScope(file, scopeKey);
-    if (slot === 'xcode') {
-      const xcodeRecord = buildLastXcodeSlotRecord(instanceOrId);
-      if (xcodeRecord) scope.xcode = xcodeRecord;
-    } else if (record.type === 'android') {
+    if (record.type === 'android') {
       scope.android = record;
     } else if (record.type === 'ios') {
       scope.ios = record;
@@ -613,13 +558,8 @@ export function setLastInstance(
 /** Returns the record it persisted, so callers don't rebuild the same shape. */
 export function registerCreatedInstance(
   instanceOrId: InstanceInput,
-  relatedTypes: Array<'xcode'> = [],
 ): LastAndroidInstance | LastIosInstance | LastXcodeInstance | LastGradleInstance {
-  const record = saveLastInstance(instanceOrId);
-  if (relatedTypes.includes('xcode')) {
-    saveLastInstance(instanceOrId, 'xcode');
-  }
-  return record;
+  return saveLastInstance(instanceOrId);
 }
 
 export function loadLastAndroidInstance(): LastAndroidInstance | null {
@@ -630,7 +570,7 @@ export function loadLastIosInstance(): LastIosInstance | null {
   return readScope(getScopeKey()).ios ?? null;
 }
 
-export function loadLastXcodeInstance(): LastIosInstance | LastXcodeInstance | null {
+export function loadLastXcodeInstance(): LastXcodeInstance | null {
   return readScope(getScopeKey()).xcode ?? null;
 }
 
@@ -661,32 +601,15 @@ export function clearXcodeVersionPreference(): void {
   });
 }
 
-function sandboxXcodeIdFromLastIosInstance(instance: LastIosInstance | undefined): string | undefined {
-  const sandboxXcodeUrl = instance?.sandboxXcodeUrl ?? instance?.status?.sandbox?.xcode?.url;
-  return sandboxXcodeUrl ? xcodeSandboxIdFromUrl(sandboxXcodeUrl) : undefined;
-}
-
-/** The Xcode sandbox a target's daemon calls reach: the target itself, or the one behind a simulator. */
-export function xcodeSandboxIdOf(target: LastXcodeInstance | LastIosInstance): string | undefined {
-  return target.type === 'ios' ? sandboxXcodeIdFromLastIosInstance(target) : target.id;
-}
-
 export function clearLastInstanceId(instanceId: string): void {
   mutate((file) => {
     let changed = false;
     for (const scope of Object.values(file.scopes)) {
-      const iosRecord = scope.ios;
       for (const key of ['ios', 'android', 'xcode', 'gradle'] as const) {
         if (scope[key]?.id === instanceId) {
           delete scope[key];
           changed = true;
         }
-      }
-      const sandboxXcodeId =
-        iosRecord?.id === instanceId ? sandboxXcodeIdFromLastIosInstance(iosRecord) : undefined;
-      if (sandboxXcodeId && scope.xcode?.type === 'xcode' && scope.xcode.id === sandboxXcodeId) {
-        delete scope.xcode;
-        changed = true;
       }
     }
     return changed;
@@ -721,10 +644,11 @@ export function saveInstanceCache(
         changed = true;
       }
       if (scope.xcode?.id === instanceId) {
-        scope.xcode =
-          scope.xcode.type === 'ios' ?
-            { ...scope.xcode, ...(data as Partial<LastIosInstance>), type: 'ios' }
-          : { ...scope.xcode, ...(data as Partial<LastXcodeInstance>), type: 'xcode' };
+        scope.xcode = {
+          ...scope.xcode,
+          ...(data as Partial<LastXcodeInstance>),
+          type: 'xcode',
+        };
         changed = true;
       }
       if (scope.gradle?.id === instanceId) {
@@ -750,14 +674,13 @@ export function loadAndroidInstanceCache(instanceId: string): LastAndroidInstanc
 export function loadIosInstanceCache(instanceId: string): LastIosInstance | null {
   for (const scope of Object.values(readNormalizedFile().scopes)) {
     if (scope.ios?.id === instanceId) return scope.ios;
-    if (scope.xcode?.type === 'ios' && scope.xcode.id === instanceId) return scope.xcode;
   }
   return null;
 }
 
 export function loadXcodeInstanceCache(instanceId: string): LastXcodeInstance | null {
   for (const scope of Object.values(readNormalizedFile().scopes)) {
-    if (scope.xcode?.type === 'xcode' && scope.xcode.id === instanceId) return scope.xcode;
+    if (scope.xcode?.id === instanceId) return scope.xcode;
   }
   return null;
 }

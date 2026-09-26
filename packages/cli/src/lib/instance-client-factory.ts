@@ -1,4 +1,5 @@
 import Limrun, { createInstanceClient, Ios, type InstanceClient } from '@limrun/api';
+import { instanceToken } from '@limrun/api/instance-token';
 import { isSessionActive, sendCommand } from './daemon-client';
 import { spawnSessionDaemon } from './daemon';
 import { saveInstanceCache, type LastAndroidInstance, type LastIosInstance } from './config';
@@ -108,7 +109,7 @@ export async function getAndroidInstanceClient(
 
   const instance = await lim.androidInstances.get(target.id);
   const apiUrl = instance.status.apiUrl;
-  const token = instance.status.token;
+  const token = instanceToken(instance);
   if (!apiUrl) {
     throw new Error(`Android instance ${target.id} does not have an apiUrl. Is it ready?`);
   }
@@ -141,7 +142,7 @@ export async function getIosInstanceClient(
 
   const instance = await lim.iosInstances.get(target.id);
   const apiUrl = instance.status.apiUrl;
-  const token = instance.status.token;
+  const token = instanceToken(instance);
   if (!apiUrl) {
     throw new Error(`iOS instance ${target.id} does not have an apiUrl. Is it ready?`);
   }
@@ -152,7 +153,6 @@ export async function getIosInstanceClient(
     mcpUrl: instance.status.mcpUrl,
     signedStreamUrl: instance.status.signedStreamUrl,
     targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix,
-    sandboxXcodeUrl: instance.status.sandbox?.xcode?.url,
   });
   const client = await Ios.createInstanceClient({ apiUrl, token });
   return { type: 'ios', client, disconnect: () => client.disconnect(), isSession: false };

@@ -8,7 +8,6 @@ import Limrun, {
 } from '@limrun/api';
 import {
   clearLastInstanceId,
-  xcodeSandboxIdOf,
   loadAndroidInstanceCache,
   loadIosInstanceCache,
   loadLastAndroidInstance,
@@ -55,7 +54,7 @@ const VERSION = require('../package.json').version;
 // TypeIDs are lowercase, so no /i flag; this avoids matching bare prefix words
 // in error text (e.g. GRADLE_USER_HOME, gradle_wrapper) as if they were ids.
 const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox|gradle)_[a-z0-9]+_[a-z0-9]{20,}\b/;
-type XcodeTarget = LastIosInstance | LastXcodeInstance;
+type XcodeTarget = LastXcodeInstance;
 type XcodeReplacementIntent = 'standalone' | 'simulator-backed';
 type CachePublicationFollow =
   | { start: number; result: XcodeCacheFollowResult }
@@ -345,44 +344,6 @@ export abstract class BaseCommand extends Command {
     const resolvedTarget = typeof target === 'string' ? this.xcodeTargetFromId(target) : target;
     const id = resolvedTarget.id;
 
-    if (resolvedTarget.type === 'ios') {
-      if (resolvedTarget.sandboxXcodeUrl && resolvedTarget.token) {
-        try {
-          return await this.client.xcodeInstances.createClient({
-            apiUrl: resolvedTarget.sandboxXcodeUrl,
-            token: resolvedTarget.token,
-          });
-        } catch (err) {
-          if (this.isCachedXcodeClientNotFound(err)) {
-            throw this.notFound(id);
-          }
-          throw err;
-        }
-      }
-
-      const instance = await this.client.iosInstances.get(id);
-      let sandboxUrl = instance.status.sandbox?.xcode?.url;
-      let token = instance.status.token;
-      registerCreatedInstance(instance, ['xcode']);
-
-      if (!sandboxUrl) {
-        if (resolvedTarget.sandboxXcodeUrl) {
-          sandboxUrl = resolvedTarget.sandboxXcodeUrl;
-          token = resolvedTarget.token || token;
-        }
-      }
-
-      if (!sandboxUrl) {
-        this.error(
-          `iOS instance ${id} does not have an Xcode sandbox. Create one and attach the simulator with: lim xcode create --attach --simulator-id ${id}`,
-        );
-      }
-      return this.client.xcodeInstances.createClient({
-        apiUrl: sandboxUrl,
-        token,
-      });
-    }
-
     if (resolvedTarget.apiUrl && resolvedTarget.token) {
       try {
         return await this.client.xcodeInstances.createClient({
@@ -626,7 +587,7 @@ export abstract class BaseCommand extends Command {
     // A requested creation-time timeout cannot be applied to an existing
     // instance. Skip the cached target so headless one-shot commands get a
     // fresh instance with the requested lifecycle.
-    if (target?.type === 'xcode' && !this.autoCreateInactivityTimeout()) {
+    if (target && !this.autoCreateInactivityTimeout()) {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
@@ -652,10 +613,8 @@ export abstract class BaseCommand extends Command {
     const id = this._overrideInstanceId ?? providedId;
     if (id) {
       const target = this.xcodeTargetFromId(id);
-      if (target.type === 'xcode' && !(await this.xcodeTargetHasAttachedSimulator(target))) {
-        throw new Error(
-          `--ios requires an iOS-backed Xcode target or an Xcode instance with an attached simulator, got ${id}`,
-        );
+      if (!(await this.xcodeTargetHasAttachedSimulator(target))) {
+        throw new Error(`--ios requires an Xcode instance with an attached simulator, got ${id}`);
       }
       this._lastResolvedInstanceId = target.id;
       return target;
@@ -682,15 +641,11 @@ export abstract class BaseCommand extends Command {
 
     const target = loadLastXcodeInstance();
     const forceFresh = Boolean(this.autoCreateInactivityTimeout());
-    if (target?.type === 'ios' && !forceFresh) {
-      this._lastResolvedInstanceId = target.id;
-      return target;
-    }
     // The recorded Xcode target wins even when it has no simulator yet:
     // attach one instead of abandoning it for a fresh sandbox, so a prior
     // `lim xcode sync` or `lim xcode create` keeps all commands pointed at
     // the same instance. Only a dead target falls through to creation.
-    if (target?.type === 'xcode' && !forceFresh) {
+    if (target && !forceFresh) {
       try {
         const xcodeClient = await this.resolveXcodeClient(target);
         const status = await xcodeClient.getSimulator();
@@ -906,7 +861,7 @@ export abstract class BaseCommand extends Command {
       );
     }
     if (cache.key) {
-      await this.bindCacheKey(this.cacheInstanceId(target), cache.key);
+      await this.bindCacheKey(target.id, cache.key);
     }
   }
 
@@ -990,24 +945,17 @@ export abstract class BaseCommand extends Command {
    * undefined. A cached target is trusted without a round-trip, so the SDK's "daemon predates
    * selection" reading of a 404 is also what a deleted sandbox produces; the API tells the two
    * apart. Sandboxes this run created, or pinned through the environment (synthetic ids), are
-   * taken at their word. A standalone sandbox is a NotFoundError like anywhere else; one behind a
-   * live simulator is not, because withAuth would then forget and replace the simulator itself.
+   * taken at their word.
    */
   private async vanishedXcodeSandboxError(target: XcodeTarget): Promise<Error | undefined> {
-    if (this.wasCreatedThisRun(target.id) || envInstanceTarget(target.type)?.id === target.id)
-      return undefined;
-    const sandboxId = xcodeSandboxIdOf(target);
-    if (!sandboxId) return undefined;
+    if (this.wasCreatedThisRun(target.id) || envInstanceTarget('xcode')?.id === target.id) return undefined;
     try {
-      await this.client.xcodeInstances.get(sandboxId);
+      await this.client.xcodeInstances.get(target.id);
       return undefined;
     } catch (err) {
       if (!(err instanceof NotFoundError)) throw err;
     }
-    if (target.type !== 'ios') return this.notFound(target.id);
-    return new Error(
-      `Xcode sandbox ${sandboxId} behind simulator ${target.id} no longer exists; attach a new one with: lim xcode create --attach --simulator-id ${target.id}`,
-    );
+    return this.notFound(target.id);
   }
 
   /**
@@ -1025,7 +973,7 @@ export abstract class BaseCommand extends Command {
       if (!(err instanceof XcodeSelectionUnsupportedError)) throw err;
       const gone = await this.vanishedXcodeSandboxError(target);
       if (!gone) throw err;
-      if (this._lastResolvedXcodeSource !== 'memory' || target.type === 'ios') throw gone;
+      if (this._lastResolvedXcodeSource !== 'memory') throw gone;
       stopDaemon(target.id);
       clearLastInstanceId(target.id);
       this.info(`Sandbox ${target.id} no longer exists; forgot it.`);
@@ -1131,14 +1079,6 @@ export abstract class BaseCommand extends Command {
   }
 
   /**
-   * The id the cache endpoints take. For an iOS-backed target that is its Xcode sandbox, which
-   * is the instance that owns the workspace.
-   */
-  protected cacheInstanceId(target: XcodeTarget): string {
-    return xcodeSandboxIdOf(target) ?? target.id;
-  }
-
-  /**
    * Binds the key an existing instance publishes under. The build happens now and publication
    * only at termination, possibly long after this process is gone, so the key has to live on
    * the instance rather than in this invocation.
@@ -1241,18 +1181,10 @@ export abstract class BaseCommand extends Command {
   }
 
   private xcodeTargetFromId(id: string): XcodeTarget {
-    const type = detectInstanceType(id);
-    if (type === 'ios') {
-      const cached = loadIosInstanceCache(id);
-      if (cached) return cached;
-      return { id, type: 'ios' };
+    if (detectInstanceType(id) !== 'xcode') {
+      throw new Error(`Expected an Xcode instance (sandbox_...), got ${id}`);
     }
-    if (type === 'xcode') {
-      const cached = loadXcodeInstanceCache(id);
-      if (cached) return cached;
-      return { id, type: 'xcode' };
-    }
-    throw new Error(`Expected an iOS or Xcode target, got ${id}`);
+    return loadXcodeInstanceCache(id) ?? { id, type: 'xcode' };
   }
 
   private androidInstanceFromId(id: string): LastAndroidInstance {
@@ -1436,6 +1368,6 @@ export abstract class BaseCommand extends Command {
   }
 }
 
-function saveLastCreatedInstance(instanceOrId: InstanceInput, relatedTypes: Array<'xcode'> = []) {
-  return registerCreatedInstance(instanceOrId, relatedTypes);
+function saveLastCreatedInstance(instanceOrId: InstanceInput) {
+  return registerCreatedInstance(instanceOrId);
 }

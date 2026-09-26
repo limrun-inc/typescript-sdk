@@ -43,9 +43,6 @@ export default class IosGet extends BaseCommand {
           this.output(`Termination Reason: ${instance.status.terminationReason}`);
         this.output(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
         if (instance.status.apiUrl) this.output(`API URL: ${instance.status.apiUrl}`);
-        if (instance.status.sandbox?.xcode?.url) {
-          this.output(`Xcode Sandbox URL: ${instance.status.sandbox.xcode.url}`);
-        }
         if (signedStreamUrl) this.output(`Signed Stream URL: ${signedStreamUrl}`);
       }
     });

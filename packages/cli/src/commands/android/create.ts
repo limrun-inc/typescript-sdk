@@ -8,6 +8,7 @@ import { openInBrowser } from '../../lib/browser';
 import { parseDurationSeconds } from '../../lib/duration';
 import { startPersistedCaptures } from '../../lib/session-captures';
 import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-instances';
+import { instanceToken } from '@limrun/api/instance-token';
 
 type AndroidModel = NonNullable<AndroidInstanceCreateParams.Spec['model']>;
 
@@ -222,7 +223,7 @@ export default class AndroidCreate extends BaseCommand {
         const { createInstanceClient } = await import('@limrun/api');
         const captureClient = await createInstanceClient({
           apiUrl: instance.status.apiUrl,
-          token: instance.status.token,
+          token: instanceToken(instance),
         });
         try {
           const started = await startPersistedCaptures(captureClient, {
@@ -304,7 +305,7 @@ export default class AndroidCreate extends BaseCommand {
         const instanceClient = await createInstanceClient({
           apiUrl: instance.status.apiUrl!,
           adbUrl: instance.status.adbWebSocketUrl,
-          token: instance.status.token,
+          token: instanceToken(instance),
         });
 
         const tunnel = await instanceClient.startAdbTunnel();

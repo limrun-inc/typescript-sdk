@@ -32,8 +32,7 @@ export default class XcodeAttachSimulator extends BaseCommand {
       allowNo: true,
     }),
     id: Flags.string({
-      description:
-        'Xcode instance ID to attach to, or a legacy iOS instance ID with an embedded Xcode sandbox. Defaults to the most recently created Xcode-capable target.',
+      description: 'Xcode instance ID to attach to. Defaults to the most recently created Xcode target.',
     }),
   };
 

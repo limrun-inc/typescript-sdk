@@ -11,6 +11,7 @@ import { parseDurationSeconds } from '../../lib/duration';
 import { startPersistedCaptures } from '../../lib/session-captures';
 import { Ios, type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
+import { instanceToken } from '@limrun/api/instance-token';
 
 export default class IosCreate extends BaseCommand {
   static summary = 'Create a new iOS instance';
@@ -272,7 +273,7 @@ export default class IosCreate extends BaseCommand {
         }
         const captureClient = await Ios.createInstanceClient({
           apiUrl: instance.status.apiUrl,
-          token: instance.status.token,
+          token: instanceToken(instance),
         });
         try {
           const started = await startPersistedCaptures(captureClient, {

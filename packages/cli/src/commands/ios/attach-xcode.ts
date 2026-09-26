@@ -8,7 +8,7 @@ export default class IosAttachXcode extends BaseCommand {
   static description =
     'Attach an Xcode sandbox to an existing iOS simulator so future builds can auto-install on that simulator. ' +
     'When the Xcode target is omitted, the LIM_XCODE_INSTANCE_URL/LIM_XCODE_INSTANCE_TOKEN pair or the last used ' +
-    'Xcode-capable target is attached; if the simulator credentials are known locally, no API key is needed.';
+    'Xcode target is attached; if the simulator credentials are known locally, no API key is needed.';
 
   static examples = [
     '<%= config.bin %> ios attach-xcode',

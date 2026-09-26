@@ -13,7 +13,7 @@ import {
   xcodeProjectFlags,
 } from '../../lib/xcode-project-flags';
 import { parseEnvEntries } from '../../lib/env-entries';
-import { registerCreatedInstance, type LastIosInstance, type LastXcodeInstance } from '../../lib/config';
+import { registerCreatedInstance } from '../../lib/config';
 import { webhookConfigFromFlags } from '../../lib/webhook-options';
 import { parseUploadOptions } from '../../lib/upload-options';
 import { repeatableFlagFromEnv } from '../../lib/repeatable-flag-env';
@@ -100,8 +100,7 @@ export default class XcodeBuild extends BaseCommand {
     ...xcodeProjectFlags,
     ...syncFlags,
     id: Flags.string({
-      description:
-        'Xcode instance ID to build on, or a legacy iOS instance ID with an embedded Xcode sandbox. Defaults to the most recent standalone Xcode target.',
+      description: 'Xcode instance ID to build on. Defaults to the most recent standalone Xcode target.',
     }),
     'inactivity-timeout': Flags.string({
       description:
@@ -516,12 +515,8 @@ export default class XcodeBuild extends BaseCommand {
         this.output('App Store Connect: upload status could not be read; check App Store Connect.');
       }
       if (flags.ios) {
-        const signedStreamUrl = await this.resolveSimulatorStreamUrl(target, xcodeClient);
-        if (signedStreamUrl) {
-          this.output(`Signed Stream URL: ${signedStreamUrl}`);
-        } else if (target.type === 'ios') {
-          this.output(`iOS Simulator URL: ${this.consoleStreamUrl(target.id)}`);
-        }
+        const signedStreamUrl = await this.resolveSimulatorStreamUrl(xcodeClient);
+        if (signedStreamUrl) this.output(`Signed Stream URL: ${signedStreamUrl}`);
       }
       if (flags.upload && result.signedDownloadUrl) {
         this.output(`Artifact download URL: ${result.signedDownloadUrl}`);
@@ -620,26 +615,7 @@ export default class XcodeBuild extends BaseCommand {
     };
   }
 
-  private async resolveIosSignedStreamUrl(target: LastIosInstance): Promise<string | undefined> {
-    const cached = target.signedStreamUrl ?? this.signedStreamUrl(target.status);
-    if (cached) {
-      return cached;
-    }
-    try {
-      const instance = await this.client.iosInstances.get(target.id);
-      return this.signedStreamUrl(instance.status);
-    } catch {
-      return undefined;
-    }
-  }
-
-  private async resolveSimulatorStreamUrl(
-    target: LastIosInstance | LastXcodeInstance,
-    xcodeClient: XcodeClient,
-  ): Promise<string | undefined> {
-    if (target.type === 'ios') {
-      return this.resolveIosSignedStreamUrl(target);
-    }
+  private async resolveSimulatorStreamUrl(xcodeClient: XcodeClient): Promise<string | undefined> {
     try {
       const status = await xcodeClient.getSimulator();
       const iosInstanceId = status.simulator?.iosInstanceId;

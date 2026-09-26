@@ -32,29 +32,6 @@ export default class XcodeGet extends BaseCommand {
     await this.withAuth(async () => {
       const target = await this.resolveXcodeTarget(args.id);
       const simulatorStatus = await (await this.resolveXcodeClient(target)).getSimulator();
-      if (target.type === 'ios') {
-        const instance = await this.client.iosInstances.get(target.id);
-        if (flags.json) {
-          this.outputJson({ ...instance, simulator: simulatorStatus });
-        } else {
-          const signedStreamUrl = this.signedStreamUrl(instance.status);
-          this.output(`ID: ${instance.metadata.id}`);
-          this.output(`Type: iOS with Xcode sandbox`);
-          this.output(`Name: ${instance.metadata.displayName || ''}`);
-          this.output(`Region: ${instance.spec.region}`);
-          this.output(`State: ${instance.status.state}`);
-          if (instance.status.terminationReason)
-            this.output(`Termination Reason: ${instance.status.terminationReason}`);
-          this.output(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
-          if (instance.status.sandbox?.xcode?.url) {
-            this.output(`Xcode Sandbox URL: ${instance.status.sandbox.xcode.url}`);
-          }
-          if (signedStreamUrl) this.output(`Signed Stream URL: ${signedStreamUrl}`);
-          this.outputSimulatorStatus(simulatorStatus);
-        }
-        return;
-      }
-
       if (flags.json) {
         this.outputJson({ ...target, simulator: simulatorStatus });
       } else {

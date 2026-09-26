@@ -1,7 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getBuildLogs } from '../../lib/build-logs';
-import { xcodeSandboxIdOf } from '../../lib/config';
 
 export default class XcodeLogs extends BaseCommand {
   static summary = 'Fetch logs for an active, recent, or specific Xcode build';
@@ -25,7 +24,7 @@ export default class XcodeLogs extends BaseCommand {
 
   static flags = {
     id: Flags.string({
-      description: 'Xcode or iOS-backed Xcode instance ID. Defaults to the most recently used Xcode target.',
+      description: 'Xcode instance ID. Defaults to the most recently used Xcode target.',
     }),
     follow: Flags.boolean({
       description: 'Continue streaming an active build until it reaches a terminal state.',
@@ -43,22 +42,7 @@ export default class XcodeLogs extends BaseCommand {
         instanceId: target.id,
         ...(args.execId && { execId: args.execId }),
         follow: flags.follow,
-        listPersisted: async () => {
-          let sandboxId = xcodeSandboxIdOf(target);
-          if (!sandboxId && target.type === 'ios') {
-            const instance = await this.client.iosInstances.get(target.id);
-            sandboxId = xcodeSandboxIdOf({
-              ...target,
-              sandboxXcodeUrl: instance.status.sandbox?.xcode?.url,
-            });
-          }
-          if (!sandboxId) {
-            throw new Error(
-              'No attached Xcode sandbox was found. Pass its ID with --id to read persisted logs.',
-            );
-          }
-          return this.client.xcodeInstances.listBuildLogs(sandboxId);
-        },
+        listPersisted: () => this.client.xcodeInstances.listBuildLogs(target.id),
         observe: async (execId, options) => {
           const xcodeClient = await this.resolveXcodeClient(target);
           return xcodeClient.observeBuildLogs(execId, options);
