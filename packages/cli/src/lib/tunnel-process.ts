@@ -101,17 +101,11 @@ export function buildTunnelServeArgs(options: {
     options.instanceId,
     `--tunnel-owner=${options.owner}`,
     ...(options.verbose ? ['--verbose'] : []),
-    ...(options.product === 'android' && options.inspect !== undefined ?
-      [options.inspect ? '--inspect' : '--no-inspect']
-    : []),
-    ...(options.product === 'android' && options.persist ? ['--persist'] : []),
-    ...(options.product === 'android' && options.ttlSeconds !== undefined ?
-      ['--ttl', String(options.ttlSeconds)]
-    : []),
-    ...(options.product === 'android' && options.harPath ? ['--har', options.harPath] : []),
-    ...(options.product === 'android' && options.harBodyLimit !== undefined ?
-      ['--har-body-limit', String(options.harBodyLimit)]
-    : []),
+    ...(options.inspect !== undefined ? [options.inspect ? '--inspect' : '--no-inspect'] : []),
+    ...(options.persist ? ['--persist'] : []),
+    ...(options.ttlSeconds !== undefined ? ['--ttl', String(options.ttlSeconds)] : []),
+    ...(options.harPath ? ['--har', options.harPath] : []),
+    ...(options.harBodyLimit !== undefined ? ['--har-body-limit', String(options.harBodyLimit)] : []),
     ...formatTunnelSelectors(options.selectors).flatMap((selector) => ['--selector', selector]),
   ];
 }

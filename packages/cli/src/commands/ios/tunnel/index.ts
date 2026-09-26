@@ -1,5 +1,5 @@
 import { Flags } from '@oclif/core';
-import type { DestinationTunnelSelectors } from '@limrun/api';
+import { DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES, type DestinationTunnelSelectors } from '@limrun/api';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
 import {
@@ -11,6 +11,12 @@ import {
   type TunnelCommandContext,
   type TunnelLogLevel,
 } from '../../../lib/tunnel-command';
+import {
+  tunnelInspectionContext,
+  tunnelInspectionFlags,
+  validateTunnelInspectionFlags,
+  type TunnelInspectionContext,
+} from '../../../lib/tunnel-inspection-flags';
 import { parseTunnelSelectors } from '../../../lib/tunnel-process';
 
 export default class IosTunnel extends BaseCommand {
@@ -19,13 +25,17 @@ export default class IosTunnel extends BaseCommand {
     'Start one transparent destination tunnel. Exact --selector destinations (localhost:port or ' +
     'literal IP:port) become listeners reachable from the simulator. Domain selectors are ' +
     'intercepted transparently on the instance and dialed from this machine, whether or not ' +
-    'the name resolves on public DNS, and TLS stays end to end. ' +
+    'the name resolves on public DNS. HTTP and HTTPS through the tunnel are inspected with a ' +
+    'certificate the simulator trusts; use --no-inspect to keep TLS end to end. ' +
     'Use --detach to keep the tunnel running after this command returns. ' +
+    'Start the tunnel before launching your app: connections opened earlier keep their original ' +
+    'route until they close. ' +
     'Note: apps that resolve DNS themselves over HTTPS (DoH) bypass domain interception.';
   static examples = [
     '<%= config.bin %> ios tunnel --selector localhost:3000 --id <instance-ID>',
     '<%= config.bin %> ios tunnel --selector "*.corp.example" --detach',
     '<%= config.bin %> ios tunnel --selector 10.20.30.40:443 --selector 10.20.30.41:8081 --detach',
+    '<%= config.bin %> ios tunnel --selector "*.api.example" --har ./traffic.har',
     '<%= config.bin %> ios tunnel status --id <instance-ID>',
     '<%= config.bin %> ios tunnel stop --id <instance-ID>',
   ];
@@ -52,6 +62,7 @@ export default class IosTunnel extends BaseCommand {
         'Log every forwarded connection and dial failure. With --detach, the lines go to the tunnel log file (see tunnel status).',
       default: false,
     }),
+    ...tunnelInspectionFlags,
     serve: Flags.boolean({
       description: 'Internal: own the detached tunnel transport.',
       default: false,
@@ -70,6 +81,12 @@ export default class IosTunnel extends BaseCommand {
     if (flags.detach && flags.serve) {
       this.error('--detach cannot be combined with internal --serve mode.');
     }
+    try {
+      validateTunnelInspectionFlags(flags.inspect || flags.persist, flags.har, flags.persist, flags.ttl);
+    } catch (error) {
+      this.error(error instanceof Error ? error.message : String(error));
+    }
+    const inspection = tunnelInspectionContext(flags);
     const selectors = parseTunnelSelectors(flags.selector);
 
     if (flags.serve) {
@@ -78,7 +95,13 @@ export default class IosTunnel extends BaseCommand {
       await this.withAuth(async () => {
         const resolvedInstance = this.resolveIosInstance(flags.id);
         await serveTunnelDetached(
-          this.tunnelContext(resolvedInstance.id, selectors, flags.verbose ? 'debug' : 'info'),
+          this.tunnelContext(
+            resolvedInstance.id,
+            selectors,
+            flags.verbose ? 'debug' : 'info',
+            undefined,
+            inspection,
+          ),
           owner,
         );
       });
@@ -89,7 +112,7 @@ export default class IosTunnel extends BaseCommand {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       if (flags.detach) {
         await startTunnelDetached({
-          ...this.tunnelContext(resolvedInstance.id, selectors, 'info', flags['api-key']),
+          ...this.tunnelContext(resolvedInstance.id, selectors, 'info', flags['api-key'], inspection),
           verbose: flags.verbose,
         });
       } else {
@@ -100,6 +123,8 @@ export default class IosTunnel extends BaseCommand {
             flags.verbose ? 'debug'
             : this.shouldSuppressInfo() ? 'none'
             : 'info',
+            undefined,
+            inspection,
           ),
         );
       }
@@ -111,6 +136,10 @@ export default class IosTunnel extends BaseCommand {
     selectors: DestinationTunnelSelectors,
     logLevel: TunnelLogLevel,
     apiKey?: string,
+    inspection: TunnelInspectionContext = {
+      inspect: true,
+      harBodyLimit: DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+    },
   ): TunnelCommandContext {
     return {
       product: 'ios',
@@ -118,7 +147,7 @@ export default class IosTunnel extends BaseCommand {
       selectors,
       apiKey,
       reconnect: false,
-      inspect: false,
+      ...inspection,
       connect: async (): Promise<TunnelClientFacade> => {
         const resolvedInstance = this.resolveIosInstance(instanceId);
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

@@ -6,7 +6,14 @@ import { WebSocket, Data } from 'ws';
 import { EventEmitter } from 'events';
 import { assertPort, isNonRetryableError, startReverseTcpTunnel, type ReverseTunnel } from './tunnel';
 import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './destination-tunnel-dialer';
-import { disabledDestinationTunnelInspection, type DestinationTunnelSelectors } from './destination-tunnel';
+import {
+  type DestinationTunnelInspectionConfig,
+  type DestinationTunnelSelectors,
+} from './destination-tunnel';
+import {
+  type DestinationTunnelInspectionErrorCallback,
+  type DestinationTunnelInspectionEventCallback,
+} from './destination-tunnel-inspection';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
 import { createIgnoreFn } from './folder-sync-ignore';
 import { prepareAppBundlePath, watchAppArchive } from './app-archive';
@@ -74,6 +81,14 @@ export type Tunnel = DestinationTcpTunnel;
 export type TunnelOptions = {
   /** Exact endpoint (host:port) and domain selector values; the server asks this client to dial exact endpoints and intercepted domains. */
   selectors: DestinationTunnelSelectors;
+  /** Inspection settings; HTTP and HTTPS inspection is on unless `enabled` is false. */
+  inspection?: Partial<DestinationTunnelInspectionConfig>;
+  /** Called for each validated inspection metadata or body event. */
+  onInspectionEvent?: DestinationTunnelInspectionEventCallback;
+  /** Called when the independent inspection stream fails or reconnects. */
+  onInspectionError?: DestinationTunnelInspectionErrorCallback;
+  /** Per-flow receive window in bytes. Defaults to 1 MiB. */
+  window?: number;
   /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
   logLevel?: LogLevel;
 };
@@ -2911,10 +2926,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
     };
 
+    // Same defaults as the Android client: inspection on, bodies off.
     const startTunnel = async (tunnelOptions: TunnelOptions): Promise<Tunnel> => {
       return startDestinationTcpTunnel(deriveDestinationTunnelURL(options.apiUrl), options.token, {
         selectors: tunnelOptions.selectors,
-        inspection: disabledDestinationTunnelInspection(),
+        inspection: {
+          enabled: true,
+          captureBodies: false,
+          ...(tunnelOptions.inspection ?? {}),
+        },
+        ...(tunnelOptions.onInspectionEvent ? { onInspectionEvent: tunnelOptions.onInspectionEvent } : {}),
+        ...(tunnelOptions.onInspectionError ? { onInspectionError: tunnelOptions.onInspectionError } : {}),
+        ...(tunnelOptions.window === undefined ? {} : { window: tunnelOptions.window }),
         logLevel: tunnelOptions.logLevel ?? logLevel,
       });
     };

@@ -121,7 +121,7 @@ export interface TunnelCommandContext {
   verbose?: boolean;
   /** Reconnect with backoff after unexpected disconnects (Android behavior). */
   reconnect: boolean;
-  /** Whether Android HTTP inspection is negotiated for each generation. */
+  /** Whether HTTP inspection is negotiated for each generation. */
   inspect: boolean;
   /** Persist the completed network log as a session artifact. */
   persist?: boolean;
@@ -353,15 +353,11 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
     product: context.product,
     status: 'starting',
     selectors: context.selectors,
-    ...(context.product === 'android' ?
-      {
-        inspect: context.inspect,
-        ...(context.persist ? { persist: true } : {}),
-        ...(context.ttlSeconds ? { ttlSeconds: context.ttlSeconds } : {}),
-        ...(context.harPath ? { harPath: context.harPath } : {}),
-        ...(context.harBodyLimit ? { harBodyLimit: context.harBodyLimit } : {}),
-      }
-    : {}),
+    inspect: context.inspect,
+    ...(context.persist ? { persist: true } : {}),
+    ...(context.ttlSeconds ? { ttlSeconds: context.ttlSeconds } : {}),
+    ...(context.harPath ? { harPath: context.harPath } : {}),
+    ...(context.harBodyLimit ? { harBodyLimit: context.harBodyLimit } : {}),
     startedAt: new Date().toISOString(),
     logPath: paths.log,
   };
