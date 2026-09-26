@@ -145,34 +145,37 @@ describe('tunnel process state', () => {
     expect(args.indexOf('--verbose')).toBeLessThan(args.indexOf('--selector'));
   });
 
-  test('replays only safe Android inspection and HAR options to the detached child', () => {
-    const owner = newTunnelOwner();
-    const args = buildTunnelServeArgs({
-      scriptPath: '/lim/run.js',
-      product: 'android',
-      instanceId: INSTANCE_ID,
-      owner,
-      selectors: ['api.example.test'],
-      inspect: true,
-      persist: true,
-      ttlSeconds: 604800,
-      harPath: '/tmp/private traffic.har',
-      harBodyLimit: 4 * 1024 * 1024,
-    });
-    expect(args).toEqual(
-      expect.arrayContaining([
-        '--inspect',
-        '--persist',
-        '--ttl',
-        '604800',
-        '--har',
-        '/tmp/private traffic.har',
-        '--har-body-limit',
-        String(4 * 1024 * 1024),
-      ]),
-    );
-    expect(args.join(' ')).not.toContain('token');
-  });
+  test.each(['android', 'ios'] as const)(
+    'replays only safe %s inspection and HAR options to the detached child',
+    (product) => {
+      const owner = newTunnelOwner();
+      const args = buildTunnelServeArgs({
+        scriptPath: '/lim/run.js',
+        product,
+        instanceId: INSTANCE_ID,
+        owner,
+        selectors: ['api.example.test'],
+        inspect: true,
+        persist: true,
+        ttlSeconds: 604800,
+        harPath: '/tmp/private traffic.har',
+        harBodyLimit: 4 * 1024 * 1024,
+      });
+      expect(args).toEqual(
+        expect.arrayContaining([
+          '--inspect',
+          '--persist',
+          '--ttl',
+          '604800',
+          '--har',
+          '/tmp/private traffic.har',
+          '--har-body-limit',
+          String(4 * 1024 * 1024),
+        ]),
+      );
+      expect(args.join(' ')).not.toContain('token');
+    },
+  );
 
   test('builds an iOS child command with selectors', () => {
     const owner = newTunnelOwner();
