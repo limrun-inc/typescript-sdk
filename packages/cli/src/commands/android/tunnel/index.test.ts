@@ -1,6 +1,7 @@
 import { DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES, DESTINATION_TUNNEL_MAX_BODY_BYTES } from '@limrun/api';
 import IosTunnel from '../../ios/tunnel';
-import AndroidTunnel, { validateAndroidTunnelInspectionFlags } from '.';
+import AndroidTunnel from '.';
+import { validateTunnelInspectionFlags } from '../../../lib/tunnel-inspection-flags';
 
 describe('Android tunnel inspection flags', () => {
   test('enables inspection and the 10 MiB HAR limit by default', () => {
@@ -13,25 +14,19 @@ describe('Android tunnel inspection flags', () => {
   });
 
   test('rejects HAR capture when inspection is disabled', () => {
-    expect(() => validateAndroidTunnelInspectionFlags(false, 'traffic.har')).toThrow(
-      '--har cannot be combined with --no-inspect.',
-    );
-    expect(() => validateAndroidTunnelInspectionFlags(true, 'traffic.har')).not.toThrow();
+    const flags = { inspect: false, persist: false, har: 'traffic.har', 'har-body-limit': 1 };
+    expect(() => validateTunnelInspectionFlags(flags)).toThrow('--har cannot be combined with --no-inspect.');
+    expect(() => validateTunnelInspectionFlags({ ...flags, inspect: true })).not.toThrow();
   });
 
   test('requires persistence when a TTL is specified', () => {
-    expect(() => validateAndroidTunnelInspectionFlags(true, undefined, false, 3600)).toThrow(
-      '--ttl is only valid with --persist.',
-    );
-    expect(() => validateAndroidTunnelInspectionFlags(false, undefined, true, 3600)).not.toThrow();
+    expect(AndroidTunnel.flags.ttl.dependsOn).toEqual(['persist']);
     expect(AndroidTunnel.flags.persist.default).toBe(false);
   });
 
-  test('does not expose inspection or HAR flags on iOS', () => {
-    expect('inspect' in IosTunnel.flags).toBe(false);
-    expect('har' in IosTunnel.flags).toBe(false);
-    expect('har-body-limit' in IosTunnel.flags).toBe(false);
-    expect('persist' in IosTunnel.flags).toBe(false);
-    expect('ttl' in IosTunnel.flags).toBe(false);
+  test('exposes the same inspection flags on iOS', () => {
+    for (const flag of ['inspect', 'har', 'har-body-limit', 'persist', 'ttl'] as const) {
+      expect(IosTunnel.flags[flag]).toBe(AndroidTunnel.flags[flag]);
+    }
   });
 });

@@ -12,47 +12,67 @@ jest.mock('../src/destination-tunnel-dialer', () => ({
 
 jest.mock('ws', () => {
   const { EventEmitter } = require('events');
+
   class MockWebSocket extends EventEmitter {
     static CONNECTING = 0;
     static OPEN = 1;
+
     readyState = MockWebSocket.OPEN;
+
     constructor() {
       super();
       process.nextTick(() => this['emit']('open'));
     }
-    send(_data: string, callback?: (error?: Error) => void): void {
+
+    send(data: string, callback?: (err?: Error) => void): void {
+      const message = JSON.parse(data);
+      if (message.type === 'deviceInfo') {
+        process.nextTick(() =>
+          this['emit'](
+            'message',
+            Buffer.from(
+              JSON.stringify({
+                type: 'deviceInfoResult',
+                id: message.id,
+                udid: 'test-udid',
+                screenWidth: 390,
+                screenHeight: 844,
+                model: 'iphone',
+              }),
+            ),
+          ),
+        );
+      }
       callback?.();
     }
+
     ping(): void {}
+
     close(): void {
       this.readyState = 3;
       this['emit']('close');
     }
   }
+
   return { WebSocket: MockWebSocket };
 });
 
 import { startDestinationTcpTunnel } from '../src/destination-tunnel-dialer';
-import { createInstanceClient } from '../src/instance-client';
+import { createInstanceClient } from '../src/ios-client';
 
-describe('Android instance tunnel inspection', () => {
-  test('defaults inspection on and forwards body capture callbacks', async () => {
+describe('iOS destination tunnel inspection', () => {
+  it('defaults inspection on and forwards callbacks like Android', async () => {
     const client = await createInstanceClient({
-      apiUrl: 'https://example.test/android',
-      adbUrl: 'wss://example.test/android/adb',
+      apiUrl: 'https://example.test/ios',
       token: 'instance-token',
       logLevel: 'none',
     });
     const onInspectionEvent = jest.fn();
     const onInspectionError = jest.fn();
     try {
-      await client.startTunnel({
-        selectors: ['api.example.test'],
-        onInspectionEvent,
-        onInspectionError,
-      });
+      await client.startTunnel({ selectors: ['api.example.test'], onInspectionEvent, onInspectionError });
       expect(jest.mocked(startDestinationTcpTunnel)).toHaveBeenLastCalledWith(
-        'wss://example.test/android/adb/tunnel',
+        'wss://example.test/ios/tunnel',
         'instance-token',
         expect.objectContaining({
           selectors: ['api.example.test'],
@@ -62,16 +82,11 @@ describe('Android instance tunnel inspection', () => {
         }),
       );
 
-      await client.startTunnel({
-        selectors: ['api.example.test'],
-        inspection: { captureBodies: true, maxBodyBytes: 4096 },
-      });
+      await client.startTunnel({ selectors: ['api.example.test'], inspection: { enabled: false } });
       expect(jest.mocked(startDestinationTcpTunnel)).toHaveBeenLastCalledWith(
         expect.any(String),
         'instance-token',
-        expect.objectContaining({
-          inspection: { enabled: true, captureBodies: true, maxBodyBytes: 4096 },
-        }),
+        expect.objectContaining({ inspection: { enabled: false, captureBodies: false } }),
       );
     } finally {
       client.disconnect();

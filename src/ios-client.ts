@@ -5,8 +5,12 @@ import fs from 'fs';
 import { WebSocket, Data } from 'ws';
 import { EventEmitter } from 'events';
 import { assertPort, isNonRetryableError, startReverseTcpTunnel, type ReverseTunnel } from './tunnel';
-import { startDestinationTcpTunnel, type DestinationTcpTunnel } from './destination-tunnel-dialer';
-import { disabledDestinationTunnelInspection, type DestinationTunnelSelectors } from './destination-tunnel';
+import {
+  destinationTunnelDialOptions,
+  startDestinationTcpTunnel,
+  type DestinationTcpTunnel,
+  type DestinationTunnelStartOptions,
+} from './destination-tunnel-dialer';
 import { type SyncFolderResult, type FolderSyncOptions, syncFolder } from './folder-sync';
 import { createIgnoreFn } from './folder-sync-ignore';
 import { prepareAppBundlePath, watchAppArchive } from './app-archive';
@@ -71,12 +75,7 @@ export function deriveReverseTunnelUrl(apiUrl: string, remotePort: number): stri
 
 export type { ReverseTunnel } from './tunnel';
 export type Tunnel = DestinationTcpTunnel;
-export type TunnelOptions = {
-  /** Exact endpoint (host:port) and domain selector values; the server asks this client to dial exact endpoints and intercepted domains. */
-  selectors: DestinationTunnelSelectors;
-  /** Controls tunnel logging verbosity. Defaults to the instance client's log level. */
-  logLevel?: LogLevel;
-};
+export type TunnelOptions = DestinationTunnelStartOptions;
 export type TunnelStatus = DestinationTunnelStatus;
 
 /**
@@ -2912,11 +2911,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const startTunnel = async (tunnelOptions: TunnelOptions): Promise<Tunnel> => {
-      return startDestinationTcpTunnel(deriveDestinationTunnelURL(options.apiUrl), options.token, {
-        selectors: tunnelOptions.selectors,
-        inspection: disabledDestinationTunnelInspection(),
-        logLevel: tunnelOptions.logLevel ?? logLevel,
-      });
+      return startDestinationTcpTunnel(
+        deriveDestinationTunnelURL(options.apiUrl),
+        options.token,
+        destinationTunnelDialOptions(tunnelOptions, logLevel),
+      );
     };
 
     const getTunnelStatus = async (): Promise<TunnelStatus> => {
