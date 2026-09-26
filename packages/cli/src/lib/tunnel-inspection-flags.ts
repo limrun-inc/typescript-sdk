@@ -50,17 +50,10 @@ export type TunnelInspectionContext = {
   harBodyLimit: number;
 };
 
-export function validateTunnelInspectionFlags(
-  inspect: boolean,
-  harPath?: string,
-  persist = false,
-  ttlSeconds?: number,
-): void {
-  if (harPath && !inspect) {
+/** Rejects flag combinations oclif cannot express; --ttl needs --persist via dependsOn. */
+export function validateTunnelInspectionFlags(flags: TunnelInspectionFlags): void {
+  if (flags.har && !flags.inspect && !flags.persist) {
     throw new Error('--har cannot be combined with --no-inspect.');
-  }
-  if (ttlSeconds !== undefined && !persist) {
-    throw new Error('--ttl is only valid with --persist.');
   }
 }
 
