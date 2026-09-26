@@ -80,7 +80,6 @@ export default class SessionStart extends BaseCommand {
             mcpUrl: instance.status.mcpUrl,
             signedStreamUrl: instance.status.signedStreamUrl,
             targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix,
-            sandboxXcodeUrl: instance.status.sandbox?.xcode?.url,
           });
         }
       }

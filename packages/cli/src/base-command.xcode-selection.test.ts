@@ -1,6 +1,6 @@
 import { NotFoundError, XcodeSelectionUnsupportedError } from '@limrun/api';
 import { BaseCommand } from './base-command';
-import { clearLastInstanceId, LastIosInstance, LastXcodeInstance } from './lib/config';
+import { clearLastInstanceId, LastXcodeInstance } from './lib/config';
 import { stopDaemon } from './lib/daemon';
 
 jest.mock('./lib/config', () => ({
@@ -33,11 +33,7 @@ class TestCommand extends BaseCommand {
     this._instancesCreatedThisRun.add(id);
   }
 
-  read<T>(
-    target: LastXcodeInstance | LastIosInstance,
-    source: 'explicit' | 'env' | 'memory',
-    call: () => Promise<T>,
-  ) {
+  read<T>(target: LastXcodeInstance, source: 'explicit' | 'env' | 'memory', call: () => Promise<T>) {
     (this as unknown as { _lastResolvedXcodeSource: string })._lastResolvedXcodeSource = source;
     return this.readXcodeSelectionOrForget(target, call);
   }
@@ -85,27 +81,6 @@ describe('readXcodeSelectionOrForget', () => {
       NotFoundError,
     );
     expect(clearLastInstanceIdMock).not.toHaveBeenCalled();
-  });
-
-  it('checks the sandbox behind a simulator-backed target and keeps the simulator', async () => {
-    // The simulator is alive; only its child sandbox is gone (deleted, or being recreated by its
-    // owner). Neither a NotFoundError (withAuth would forget and replace the simulator) nor a
-    // silent forget is right: the user is told which sandbox is gone and the memory stays.
-    const ios: LastIosInstance = {
-      id: 'ios_euna_live',
-      type: 'ios',
-      sandboxXcodeUrl: 'https://euna.limrun.net/v1/sandbox_euna_child/xcode',
-    };
-    const cmd = new TestCommand([], {} as never);
-    cmd.probe.mockRejectedValue(notFound());
-    const err = await cmd.read(ios, 'memory', () => Promise.reject(unsupported())).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(Error);
-    expect(err).not.toBeInstanceOf(NotFoundError);
-    expect((err as Error).message).toContain('sandbox_euna_child');
-    expect((err as Error).message).toContain('ios_euna_live');
-    expect(cmd.probe).toHaveBeenCalledWith('sandbox_euna_child');
-    expect(clearLastInstanceIdMock).not.toHaveBeenCalled();
-    expect(stopDaemonMock).not.toHaveBeenCalled();
   });
 
   it('keeps the unsupported error when the sandbox is alive', async () => {

@@ -1,7 +1,6 @@
 import { BaseCommand } from '../../base-command';
 import { listActiveSessions, loadState } from '../../lib/daemon';
 import { sendCommand } from '../../lib/daemon-client';
-import { loadIosInstanceCache } from '../../lib/config';
 
 export default class SessionStatus extends BaseCommand {
   static summary = 'Show active sessions';
@@ -21,7 +20,6 @@ export default class SessionStatus extends BaseCommand {
       const details = [];
       for (const s of sessions) {
         const state = loadState(s.instanceId);
-        const cache = loadIosInstanceCache(s.instanceId);
         let connected = false;
         try {
           const status = (await sendCommand(s.instanceId, 'status')) as any;
@@ -32,7 +30,6 @@ export default class SessionStatus extends BaseCommand {
           pid: s.pid,
           type: state?.instanceType,
           connected,
-          xcodeSandbox: cache?.sandboxXcodeUrl || null,
         });
       }
       this.outputJson(details);
@@ -52,10 +49,6 @@ export default class SessionStatus extends BaseCommand {
       this.log(`    PID:  ${s.pid}`);
       if (state) {
         this.log(`    Type: ${state.instanceType}`);
-      }
-      const cache = loadIosInstanceCache(s.instanceId);
-      if (cache?.sandboxXcodeUrl) {
-        this.log(`    Xcode: ${cache.sandboxXcodeUrl}`);
       }
       try {
         const status = (await sendCommand(s.instanceId, 'status')) as any;

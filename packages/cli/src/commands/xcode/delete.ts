@@ -42,9 +42,7 @@ export default class XcodeDelete extends BaseCommand {
       // to publish is collected in about as long, which is a race the watcher loses in silence:
       // the endpoint answers from the region, so it is a 404 by the time the stream gets there.
       const following =
-        flags['wait-cache'] ?
-          this.startCachePublicationFollow(this.cacheInstanceId(resolvedInstance))
-        : undefined;
+        flags['wait-cache'] ? this.startCachePublicationFollow(resolvedInstance.id) : undefined;
       await following?.opened;
       try {
         await this.client.xcodeInstances.delete(id);
