@@ -11,7 +11,7 @@ import {
 } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';
-import { instanceToken } from '../../lib/instance-token';
+import { instanceToken } from '@limrun/api/instance-token';
 import { INJECTED_MAESTRO_FLAGS, MAESTRO_RUNNER_ASSET_NAME } from '../../lib/maestro';
 
 export default class IosMaestro extends BaseCommand {

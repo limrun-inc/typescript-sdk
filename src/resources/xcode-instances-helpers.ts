@@ -7,7 +7,7 @@ import { type IosInstance } from './ios-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
-import { instanceToken } from '../internal/instance-token';
+import { instanceToken } from '../instance-token';
 import {
   followXcodeCache,
   type XcodeCacheConfig,

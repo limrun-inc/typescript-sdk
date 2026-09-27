@@ -1,5 +1,5 @@
 import Limrun, { createInstanceClient, Ios, type InstanceClient } from '@limrun/api';
-import { instanceToken } from './instance-token';
+import { instanceToken } from '@limrun/api/instance-token';
 import { isSessionActive, sendCommand } from './daemon-client';
 import { spawnSessionDaemon } from './daemon';
 import { saveInstanceCache, type LastAndroidInstance, type LastIosInstance } from './config';

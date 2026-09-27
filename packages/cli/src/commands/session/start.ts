@@ -2,7 +2,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { isDaemonRunning, spawnSessionDaemon, type SessionState } from '../../lib/daemon';
 import { saveInstanceCache } from '../../lib/config';
-import { instanceToken } from '../../lib/instance-token';
+import { instanceToken } from '@limrun/api/instance-token';
 
 export default class SessionStart extends BaseCommand {
   static summary = 'Start a persistent session for fast device interaction';
