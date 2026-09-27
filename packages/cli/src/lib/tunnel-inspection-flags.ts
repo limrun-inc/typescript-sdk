@@ -50,10 +50,16 @@ export type TunnelInspectionContext = {
   harBodyLimit: number;
 };
 
-/** Rejects flag combinations oclif cannot express; --ttl needs --persist via dependsOn. */
+/**
+ * Rejects flag combinations oclif cannot express. dependsOn alone does not
+ * catch --ttl without --persist, because persist defaults to false.
+ */
 export function validateTunnelInspectionFlags(flags: TunnelInspectionFlags): void {
   if (flags.har && !flags.inspect && !flags.persist) {
     throw new Error('--har cannot be combined with --no-inspect.');
+  }
+  if (flags.ttl !== undefined && !flags.persist) {
+    throw new Error('--ttl is only valid with --persist.');
   }
 }
 

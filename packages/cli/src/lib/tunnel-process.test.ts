@@ -331,6 +331,19 @@ describe('tunnel process state', () => {
     expect(listTunnelProcesses(INSTANCE_ID, root)).toEqual([]);
   });
 
+  test.each(['android', 'ios'] as const)('claims a detached %s tunnel with inspection options', (product) => {
+    const state = makeState({
+      product,
+      inspect: true,
+      persist: true,
+      ttlSeconds: 3600,
+      harPath: '/tmp/traffic.har',
+      harBodyLimit: 4 * 1024 * 1024,
+    });
+    expect(claimTunnelProcess(state, root)).toBe(true);
+    expect(loadTunnelProcess(INSTANCE_ID, OWNER_1, root)).toEqual(state);
+  });
+
   test('a cancelled starting owner cannot become ready again', () => {
     const starting = makeState({ owner: OWNER_1, pid: process.pid, status: 'starting' });
     expect(claimTunnelProcess(starting, root)).toBe(true);

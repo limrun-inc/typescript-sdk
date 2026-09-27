@@ -505,12 +505,7 @@ function validateTunnelProcessState(
         state.harBodyLimit <= DESTINATION_TUNNEL_MAX_BODY_BYTES)) &&
     (state.harPath === undefined || state.inspect === true) &&
     (state.persist !== true || state.inspect === true) &&
-    (state.ttlSeconds === undefined || state.persist === true) &&
-    (state.product === 'android' ||
-      (state.inspect === undefined &&
-        state.persist === undefined &&
-        state.ttlSeconds === undefined &&
-        state.harPath === undefined));
+    (state.ttlSeconds === undefined || state.persist === true);
   if (
     typeof state.owner !== 'string' ||
     !OWNER_PATTERN.test(state.owner) ||
