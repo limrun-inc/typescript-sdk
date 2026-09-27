@@ -20,8 +20,9 @@ describe('Android tunnel inspection flags', () => {
   });
 
   test('requires persistence when a TTL is specified', () => {
-    expect(AndroidTunnel.flags.ttl.dependsOn).toEqual(['persist']);
-    expect(AndroidTunnel.flags.persist.default).toBe(false);
+    const flags = { inspect: true, persist: false, ttl: 3600, 'har-body-limit': 1 };
+    expect(() => validateTunnelInspectionFlags(flags)).toThrow('--ttl is only valid with --persist.');
+    expect(() => validateTunnelInspectionFlags({ ...flags, persist: true })).not.toThrow();
   });
 
   test('exposes the same inspection flags on iOS', () => {
