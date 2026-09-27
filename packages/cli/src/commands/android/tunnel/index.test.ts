@@ -1,7 +1,7 @@
 import { DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES, DESTINATION_TUNNEL_MAX_BODY_BYTES } from '@limrun/api';
 import IosTunnel from '../../ios/tunnel';
 import AndroidTunnel from '.';
-import { validateTunnelInspectionFlags } from '../../../lib/tunnel-inspection-flags';
+import { tunnelInspectionContext } from '../../../lib/tunnel-inspection-flags';
 
 describe('Android tunnel inspection flags', () => {
   test('enables inspection and the 10 MiB HAR limit by default', () => {
@@ -15,14 +15,14 @@ describe('Android tunnel inspection flags', () => {
 
   test('rejects HAR capture when inspection is disabled', () => {
     const flags = { inspect: false, persist: false, har: 'traffic.har', 'har-body-limit': 1 };
-    expect(() => validateTunnelInspectionFlags(flags)).toThrow('--har cannot be combined with --no-inspect.');
-    expect(() => validateTunnelInspectionFlags({ ...flags, inspect: true })).not.toThrow();
+    expect(() => tunnelInspectionContext(flags)).toThrow('--har cannot be combined with --no-inspect.');
+    expect(() => tunnelInspectionContext({ ...flags, inspect: true })).not.toThrow();
   });
 
   test('requires persistence when a TTL is specified', () => {
     const flags = { inspect: true, persist: false, ttl: 3600, 'har-body-limit': 1 };
-    expect(() => validateTunnelInspectionFlags(flags)).toThrow('--ttl is only valid with --persist.');
-    expect(() => validateTunnelInspectionFlags({ ...flags, persist: true })).not.toThrow();
+    expect(() => tunnelInspectionContext(flags)).toThrow('--ttl is only valid with --persist.');
+    expect(() => tunnelInspectionContext({ ...flags, persist: true })).not.toThrow();
   });
 
   test('exposes the same inspection flags on iOS', () => {

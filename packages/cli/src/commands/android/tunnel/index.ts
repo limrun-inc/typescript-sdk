@@ -14,7 +14,6 @@ import {
 import {
   tunnelInspectionContext,
   tunnelInspectionFlags,
-  validateTunnelInspectionFlags,
   type TunnelInspectionContext,
 } from '../../../lib/tunnel-inspection-flags';
 import { parseTunnelSelectors } from '../../../lib/tunnel-process';
@@ -80,12 +79,12 @@ export default class AndroidTunnel extends BaseCommand {
     if (flags.detach && flags.serve) {
       this.error('--detach cannot be combined with internal --serve mode.');
     }
+    let inspection: TunnelInspectionContext;
     try {
-      validateTunnelInspectionFlags(flags);
+      inspection = tunnelInspectionContext(flags);
     } catch (error) {
       this.error(error instanceof Error ? error.message : String(error));
     }
-    const inspection = tunnelInspectionContext(flags);
     const selectors = parseTunnelSelectors(flags.selector, { minPort: ANDROID_MIN_ROUTE_PORT });
 
     if (flags.serve) {
@@ -94,13 +93,7 @@ export default class AndroidTunnel extends BaseCommand {
       await this.withAuth(async () => {
         const resolvedInstance = this.resolveAndroidInstance(flags.id);
         await serveTunnelDetached(
-          this.tunnelContext(
-            resolvedInstance.id,
-            selectors,
-            flags.verbose ? 'debug' : 'info',
-            undefined,
-            inspection,
-          ),
+          this.tunnelContext(resolvedInstance.id, selectors, flags.verbose ? 'debug' : 'info', inspection),
           owner,
         );
       });
@@ -111,7 +104,7 @@ export default class AndroidTunnel extends BaseCommand {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       if (flags.detach) {
         await startTunnelDetached({
-          ...this.tunnelContext(resolvedInstance.id, selectors, 'info', flags['api-key'], inspection),
+          ...this.tunnelContext(resolvedInstance.id, selectors, 'info', inspection, flags['api-key']),
           verbose: flags.verbose,
         });
       } else {
@@ -122,7 +115,6 @@ export default class AndroidTunnel extends BaseCommand {
             flags.verbose ? 'debug'
             : this.shouldSuppressInfo() ? 'none'
             : 'info',
-            undefined,
             inspection,
           ),
         );
@@ -134,8 +126,8 @@ export default class AndroidTunnel extends BaseCommand {
     instanceId: string,
     selectors: DestinationTunnelSelectors,
     logLevel: TunnelLogLevel,
-    apiKey: string | undefined,
     inspection: TunnelInspectionContext,
+    apiKey?: string,
   ): TunnelCommandContext {
     return {
       product: 'android',

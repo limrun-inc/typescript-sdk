@@ -73,6 +73,7 @@ describe('tunnel client facade inspection wiring', () => {
           selectors: ['api.example.test'],
           reconnect: true,
           inspect: true,
+          harBodyLimit: 1024,
           harPath: path.join(occupiedPath, 'capture.har'),
           connect: async () => client,
           io: {
