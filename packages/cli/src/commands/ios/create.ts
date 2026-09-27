@@ -180,11 +180,6 @@ export default class IosCreate extends BaseCommand {
 
     await this.withAuth(async () => {
       const attachTarget = flags.attach ? await this.resolveXcodeTarget(args.xcodeId) : undefined;
-      if (attachTarget && attachTarget.type !== 'xcode') {
-        this.error(
-          '--attach requires a standalone Xcode instance. Create one with `lim xcode create`, then rerun with its ID.',
-        );
-      }
       const attachClient = attachTarget ? await this.resolveXcodeClient(attachTarget) : undefined;
 
       // Uploaded files are installed via their signed download URL so the

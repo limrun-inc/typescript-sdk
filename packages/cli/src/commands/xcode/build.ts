@@ -524,11 +524,7 @@ export default class XcodeBuild extends BaseCommand {
       // Nudge toward the attach flow after simulator builds on a bare Xcode
       // instance: an attached simulator receives this build and every next
       // one automatically.
-      if (
-        !this.isJsonEnabled() &&
-        target.type === 'xcode' &&
-        (!settings.sdk || settings.sdk === 'iphonesimulator')
-      ) {
+      if (!this.isJsonEnabled() && (!settings.sdk || settings.sdk === 'iphonesimulator')) {
         // Assume attached when the status can't be read (old servers have
         // no /simulator endpoint); a wrong hint is worse than none.
         let attached = true;
