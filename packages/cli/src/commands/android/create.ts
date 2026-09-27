@@ -8,7 +8,7 @@ import { openInBrowser } from '../../lib/browser';
 import { parseDurationSeconds } from '../../lib/duration';
 import { startPersistedCaptures } from '../../lib/session-captures';
 import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-instances';
-import { instanceToken } from '@limrun/api/instance-token';
+import { instanceToken } from '../../lib/instance-token';
 
 type AndroidModel = NonNullable<AndroidInstanceCreateParams.Spec['model']>;
 

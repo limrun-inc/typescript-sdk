@@ -1,4 +1,4 @@
-import { instanceToken } from '@limrun/api/instance-token';
+import { instanceToken } from '@limrun/api/internal/instance-token';
 
 describe('instanceToken', () => {
   test('returns the token of a record read with control', () => {

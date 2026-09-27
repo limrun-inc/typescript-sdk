@@ -2,7 +2,7 @@ import { GradleInstances, type GradleInstance } from './gradle-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
-import { instanceToken } from '../instance-token';
+import { instanceToken } from '../internal/instance-token';
 import {
   exec,
   observeExecLogs,
