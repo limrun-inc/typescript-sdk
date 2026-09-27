@@ -11,7 +11,7 @@ import { parseDurationSeconds } from '../../lib/duration';
 import { startPersistedCaptures } from '../../lib/session-captures';
 import { Ios, type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
-import { instanceToken } from '@limrun/api/instance-token';
+import { instanceToken } from '../../lib/instance-token';
 
 export default class IosCreate extends BaseCommand {
   static summary = 'Create a new iOS instance';
