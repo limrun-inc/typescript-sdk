@@ -11,6 +11,7 @@ import {
 } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';
+import { instanceToken } from '@limrun/api/instance-token';
 import { INJECTED_MAESTRO_FLAGS, MAESTRO_RUNNER_ASSET_NAME } from '../../lib/maestro';
 
 export default class IosMaestro extends BaseCommand {
@@ -65,7 +66,7 @@ export default class IosMaestro extends BaseCommand {
       if (!targetHttpPortUrlPrefix || !token) {
         const instance = await this.client.iosInstances.get(id);
         targetHttpPortUrlPrefix = instance.status.targetHttpPortUrlPrefix;
-        token = instance.status.token;
+        token = instanceToken(instance);
         // Forward the fresh endpoints so getIosInstanceClient connects directly
         // instead of fetching the instance a second time.
         resolvedInstance.apiUrl = instance.status.apiUrl;

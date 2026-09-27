@@ -2,6 +2,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { isDaemonRunning, spawnSessionDaemon, type SessionState } from '../../lib/daemon';
 import { saveInstanceCache } from '../../lib/config';
+import { instanceToken } from '@limrun/api/instance-token';
 
 export default class SessionStart extends BaseCommand {
   static summary = 'Start a persistent session for fast device interaction';
@@ -54,7 +55,7 @@ export default class SessionStart extends BaseCommand {
           const instance = await this.client.androidInstances.get(id);
           apiUrl = instance.status.apiUrl;
           adbUrl = instance.status.adbWebSocketUrl;
-          token = instance.status.token;
+          token = instanceToken(instance);
           saveInstanceCache(instance.metadata.id, {
             apiUrl,
             adbWebSocketUrl: adbUrl,
@@ -72,7 +73,7 @@ export default class SessionStart extends BaseCommand {
         } else {
           const instance = await this.client.iosInstances.get(id);
           apiUrl = instance.status.apiUrl;
-          token = instance.status.token;
+          token = instanceToken(instance);
           saveInstanceCache(instance.metadata.id, {
             apiUrl,
             token,
