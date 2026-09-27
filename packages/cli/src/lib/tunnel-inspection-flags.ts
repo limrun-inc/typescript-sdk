@@ -43,10 +43,15 @@ export type TunnelInspectionFlags = {
 };
 
 export type TunnelInspectionContext = {
+  /** Whether HTTP inspection is negotiated for each generation. */
   inspect: boolean;
+  /** Persist the completed network log as a session artifact. */
   persist?: boolean;
+  /** Persisted network-log lifetime in seconds. */
   ttlSeconds?: number;
+  /** Optional HAR destination; file IO remains in the CLI layer. */
   harPath?: string;
+  /** Maximum captured bytes for each request and response body. */
   harBodyLimit: number;
 };
 
@@ -54,7 +59,7 @@ export type TunnelInspectionContext = {
  * Rejects flag combinations oclif cannot express. dependsOn alone does not
  * catch --ttl without --persist, because persist defaults to false.
  */
-export function validateTunnelInspectionFlags(flags: TunnelInspectionFlags): void {
+function validateTunnelInspectionFlags(flags: TunnelInspectionFlags): void {
   if (flags.har && !flags.inspect && !flags.persist) {
     throw new Error('--har cannot be combined with --no-inspect.');
   }
@@ -63,8 +68,12 @@ export function validateTunnelInspectionFlags(flags: TunnelInspectionFlags): voi
   }
 }
 
-/** Maps the parsed flags onto the tunnel context; --persist implies inspection. */
+/**
+ * Validates the parsed flags and maps them onto the tunnel context; --persist
+ * implies inspection.
+ */
 export function tunnelInspectionContext(flags: TunnelInspectionFlags): TunnelInspectionContext {
+  validateTunnelInspectionFlags(flags);
   return {
     inspect: flags.inspect || flags.persist,
     persist: flags.persist,

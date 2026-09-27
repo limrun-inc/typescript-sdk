@@ -42,6 +42,7 @@ import {
   type TunnelProduct,
 } from './tunnel-process';
 import { createTunnelHarRecorder, formatInspectionSummary, type TunnelHarRecorder } from './tunnel-har';
+import type { TunnelInspectionContext } from './tunnel-inspection-flags';
 
 /** One live tunnel generation, as exposed by the SDK clients. */
 export interface TunnelGeneration extends TunnelLike {
@@ -112,7 +113,7 @@ export interface TunnelCommandIO {
   isJsonEnabled: () => boolean;
 }
 
-export interface TunnelCommandContext {
+export interface TunnelCommandContext extends TunnelInspectionContext {
   product: TunnelProduct;
   instanceId: string;
   selectors: DestinationTunnelSelectors;
@@ -121,16 +122,6 @@ export interface TunnelCommandContext {
   verbose?: boolean;
   /** Reconnect with backoff after unexpected disconnects (Android behavior). */
   reconnect: boolean;
-  /** Whether HTTP inspection is negotiated for each generation. */
-  inspect: boolean;
-  /** Persist the completed network log as a session artifact. */
-  persist?: boolean;
-  /** Persisted network-log lifetime in seconds. */
-  ttlSeconds?: number;
-  /** Optional HAR destination; file IO remains in the CLI layer. */
-  harPath?: string;
-  /** Maximum captured bytes for each request and response body. */
-  harBodyLimit?: number;
   onInspectionEvent?: DestinationTunnelInspectionEventCallback;
   onInspectionError?: DestinationTunnelInspectionErrorCallback;
   connect: () => Promise<TunnelClientFacade>;
@@ -357,7 +348,7 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
     ...(context.persist ? { persist: true } : {}),
     ...(context.ttlSeconds ? { ttlSeconds: context.ttlSeconds } : {}),
     ...(context.harPath ? { harPath: context.harPath } : {}),
-    ...(context.harBodyLimit ? { harBodyLimit: context.harBodyLimit } : {}),
+    harBodyLimit: context.harBodyLimit,
     startedAt: new Date().toISOString(),
     logPath: paths.log,
   };
@@ -386,7 +377,7 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
         ...(context.persist ? { persist: true } : {}),
         ...(context.ttlSeconds ? { ttlSeconds: context.ttlSeconds } : {}),
         ...(context.harPath ? { harPath: context.harPath } : {}),
-        ...(context.harBodyLimit ? { harBodyLimit: context.harBodyLimit } : {}),
+        harBodyLimit: context.harBodyLimit,
         ...(context.verbose ? { verbose: true } : {}),
       }),
       {
@@ -446,9 +437,9 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
 }
 
 /**
- * Shared status flow: owner listing, JSON assembly, and failure lines are
- * identical across products; only how the active tunnel's targets are
- * rendered differs (iOS shows routes, Android shows selectors and binds).
+ * Shared status flow: owner listing, JSON assembly, inspection, and failure
+ * lines are identical across products; only how the active tunnel's targets
+ * are rendered differs (Android adds binds to each selector).
  */
 export async function runTunnelStatus(
   context: TunnelManagementContext & {
@@ -476,7 +467,13 @@ export async function runTunnelStatus(
     }
 
     if (status.active) {
+      const { inspection } = status.active;
       context.io.output(`Tunnel ${status.active.tunnelId}: ${status.active.state}`);
+      context.io.output(
+        `Inspection: ${inspection.enabled ? 'enabled' : 'disabled'}, bodies ${
+          inspection.captureBodies ? 'enabled' : 'disabled'
+        }, persistence ${inspection.persist ? `enabled (${inspection.ttlSeconds}s)` : 'disabled'}`,
+      );
       context.renderActive(status.active, context.io);
     } else {
       context.io.output('No active destination tunnel.');
