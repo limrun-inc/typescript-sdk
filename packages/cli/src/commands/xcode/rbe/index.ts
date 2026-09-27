@@ -209,7 +209,7 @@ export default class XcodeRbe extends BaseCommand {
       let xcodeVersion!: string;
       for (let attempt = 0; ; attempt++) {
         const target = await this.resolveXcodeTargetOrCreate(flags.id);
-        instanceId = typeof target === 'string' ? target : target.id;
+        instanceId = target.id;
         client = await this.resolveXcodeClient(target);
         // resolveXcodeClient trusts a cached Xcode target without a round-trip.
         // Validate it so a stale "last instance" pointer or a deleted instance throws
@@ -218,7 +218,7 @@ export default class XcodeRbe extends BaseCommand {
         // already proved it exists, and get() reads the central read-model that the region
         // populates asynchronously, so validating it here would race that lag and tear down
         // a live session for nothing.
-        if (typeof target !== 'string' && !this.wasCreatedThisRun(instanceId)) {
+        if (!this.wasCreatedThisRun(instanceId)) {
           await this.client.xcodeInstances.get(instanceId);
         }
         await this.applyXcodeVersionToClient(target, client, requestedXcode);

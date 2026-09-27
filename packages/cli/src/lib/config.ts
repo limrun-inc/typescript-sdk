@@ -512,7 +512,8 @@ function buildLastInstanceRecord(
   };
 }
 
-function saveLastInstance(
+/** Returns the record it persisted, so callers don't rebuild the same shape. */
+export function registerCreatedInstance(
   instanceOrId: InstanceInput,
 ): LastAndroidInstance | LastIosInstance | LastXcodeInstance | LastGradleInstance {
   const record = buildLastInstanceRecord(instanceOrId);
@@ -553,13 +554,6 @@ export function setLastInstance(
     }
     scope.lastUsedAt = new Date().toISOString();
   });
-}
-
-/** Returns the record it persisted, so callers don't rebuild the same shape. */
-export function registerCreatedInstance(
-  instanceOrId: InstanceInput,
-): LastAndroidInstance | LastIosInstance | LastXcodeInstance | LastGradleInstance {
-  return saveLastInstance(instanceOrId);
 }
 
 export function loadLastAndroidInstance(): LastAndroidInstance | null {

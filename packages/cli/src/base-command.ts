@@ -20,7 +20,6 @@ import {
   registerCreatedInstance,
   loadGradleInstanceCache,
   loadLastGradleInstance,
-  type InstanceInput,
   type LastAndroidInstance,
   type LastIosInstance,
   type LastXcodeInstance,
@@ -340,25 +339,19 @@ export abstract class BaseCommand extends Command {
     return status?.signedStreamUrl;
   }
 
-  protected async resolveXcodeClient(target: string | XcodeTarget) {
-    const resolvedTarget = typeof target === 'string' ? this.xcodeTargetFromId(target) : target;
-    const id = resolvedTarget.id;
-
-    if (resolvedTarget.apiUrl && resolvedTarget.token) {
+  protected async resolveXcodeClient(target: XcodeTarget) {
+    if (target.apiUrl && target.token) {
       try {
-        return await this.client.xcodeInstances.createClient({
-          apiUrl: resolvedTarget.apiUrl,
-          token: resolvedTarget.token,
-        });
+        return await this.client.xcodeInstances.createClient({ apiUrl: target.apiUrl, token: target.token });
       } catch (err) {
         if (this.isCachedXcodeClientNotFound(err)) {
-          throw this.notFound(id);
+          throw this.notFound(target.id);
         }
         throw err;
       }
     }
 
-    const instance = await this.client.xcodeInstances.get(id);
+    const instance = await this.client.xcodeInstances.get(target.id);
     registerCreatedInstance(instance);
     return this.client.xcodeInstances.createClient({ instance });
   }
@@ -660,7 +653,7 @@ export abstract class BaseCommand extends Command {
           // attachNewSimulator deletes the simulator itself when the attach fails.
           const { simulator } = await xcodeClient.attachNewSimulator();
           this._instancesCreatedThisRun.add(simulator.metadata.id);
-          saveLastCreatedInstance(simulator);
+          registerCreatedInstance(simulator);
           this.info(`Attached new simulator ${simulator.metadata.id} to Xcode target ${target.id}.`);
         }
         this._lastResolvedInstanceId = target.id;
@@ -686,7 +679,7 @@ export abstract class BaseCommand extends Command {
     return replacement;
   }
 
-  private async xcodeTargetHasAttachedSimulator(target: LastXcodeInstance): Promise<boolean> {
+  private async xcodeTargetHasAttachedSimulator(target: XcodeTarget): Promise<boolean> {
     const xcodeClient = await this.resolveXcodeClient(target);
     const status = await xcodeClient.getSimulator();
     return status.attached;
@@ -764,13 +757,13 @@ export abstract class BaseCommand extends Command {
   private async createIosInstance(): Promise<LastIosInstance> {
     const instance = await this.client.iosInstances.create({ wait: true, spec: {} });
     this._instancesCreatedThisRun.add(instance.metadata.id);
-    return saveLastCreatedInstance(instance) as LastIosInstance;
+    return registerCreatedInstance(instance) as LastIosInstance;
   }
 
   private async createAndroidInstance(): Promise<LastAndroidInstance> {
     const instance = await this.client.androidInstances.create({ wait: true, spec: {} });
     this._instancesCreatedThisRun.add(instance.metadata.id);
-    return saveLastCreatedInstance(instance) as LastAndroidInstance;
+    return registerCreatedInstance(instance) as LastAndroidInstance;
   }
 
   /** Whether `id` is a server-side instance THIS invocation auto-created. */
@@ -798,14 +791,14 @@ export abstract class BaseCommand extends Command {
    * the caller asked for a warm workspace and handing back a silently cold one is worse.
    */
   protected async awaitCacheRestore(
-    cacheInstanceId: string,
+    instanceId: string,
     removeInstance: () => Promise<unknown>,
   ): Promise<void> {
     const start = Date.now();
     this.info('Restoring build cache...');
     let result;
     try {
-      result = await this.client.xcodeInstances.followCache(cacheInstanceId, {
+      result = await this.client.xcodeInstances.followCache(instanceId, {
         onUpdate: (cache) => {
           const line = restoreProgressLine(cache);
           if (line) this.info(line);
@@ -814,25 +807,25 @@ export abstract class BaseCommand extends Command {
     } catch (err) {
       if (err instanceof XcodeCacheGoneError) {
         // Not a wait that broke but an instance that ended, so there is nothing to keep or check.
-        throw new Error(`Instance ${cacheInstanceId} was collected before its cache restore started.`);
+        throw new Error(`Instance ${instanceId} was collected before its cache restore started.`);
       }
       // The restore may well still be running, so the instance stays: deleting it over a
       // client-side wait that broke would throw away a workspace that is probably fine.
       throw new Error(
-        `Could not follow the cache restore of ${cacheInstanceId}: ${
+        `Could not follow the cache restore of ${instanceId}: ${
           err instanceof Error ? err.message : String(err)
-        }\n` + `The instance is still there. Check it with: lim xcode get ${cacheInstanceId}`,
+        }\n` + `The instance is still there. Check it with: lim xcode get ${instanceId}`,
       );
     }
     if (result.gone) {
       throw new Error(
-        `Instance ${cacheInstanceId} was gone before its cache restore finished (last phase: ${result.cache.restore.phase}).`,
+        `Instance ${instanceId} was gone before its cache restore finished (last phase: ${result.cache.restore.phase}).`,
       );
     }
     const outcome = restoreOutcome(result.cache, Date.now() - start);
     if (outcome.failed) {
       await removeInstance();
-      throw new Error(`${outcome.line}\nRemoved instance ${cacheInstanceId}.`);
+      throw new Error(`${outcome.line}\nRemoved instance ${instanceId}.`);
     }
     this.info(outcome.line);
     if (result.cache.restore.phase !== 'restored') {
@@ -941,7 +934,7 @@ export abstract class BaseCommand extends Command {
   }
 
   /**
-   * The error a /xcode 404 deserves when the sandbox behind the target no longer exists, else
+   * The error a /xcode 404 deserves when the target no longer exists, else
    * undefined. A cached target is trusted without a round-trip, so the SDK's "daemon predates
    * selection" reading of a 404 is also what a deleted sandbox produces; the API tells the two
    * apart. Sandboxes this run created, or pinned through the environment (synthetic ids), are
@@ -1083,9 +1076,9 @@ export abstract class BaseCommand extends Command {
    * only at termination, possibly long after this process is gone, so the key has to live on
    * the instance rather than in this invocation.
    */
-  protected async bindCacheKey(cacheInstanceId: string, key: string): Promise<void> {
+  protected async bindCacheKey(instanceId: string, key: string): Promise<void> {
     try {
-      await this.client.xcodeInstances.bindCacheKey(cacheInstanceId, key);
+      await this.client.xcodeInstances.bindCacheKey(instanceId, key);
       this.info(`Cache: publishing this workspace under ${key} when the instance terminates.`);
     } catch (err) {
       if (err instanceof APIError && err.message.includes('no cache workspace')) {
@@ -1102,14 +1095,14 @@ export abstract class BaseCommand extends Command {
    * Starts following an instance's cache publication before it is deleted, so a publication
    * that finishes quickly is still seen. Never rejects; the caller renders the result.
    */
-  protected startCachePublicationFollow(cacheInstanceId: string): CachePublicationWatch {
+  protected startCachePublicationFollow(instanceId: string): CachePublicationWatch {
     const start = Date.now();
     let open = () => {};
     const opened = new Promise<void>((resolve) => {
       open = resolve;
     });
     const done = this.client.xcodeInstances
-      .followCache(cacheInstanceId, {
+      .followCache(instanceId, {
         side: 'save',
         onOpen: open,
         onUpdate: (cache) => {
@@ -1204,9 +1197,7 @@ export abstract class BaseCommand extends Command {
   }
 
   // Creates a standalone Xcode instance plus a fresh simulator and attaches
-  // them, replacing the legacy server-side paired creation
-  // (spec.sandbox.xcode.enabled). Separate creation keeps the two lifecycles
-  // independent and is the supported way to get a simulator-backed target.
+  // them. Separate creation keeps the two lifecycles independent.
   // The simulator keeps the org-default inactivity timeout on purpose: a
   // build-scoped --inactivity-timeout (e.g. 3s) belongs to the build sandbox,
   // and a simulator carrying it would idle out before the build finishes.
@@ -1222,7 +1213,7 @@ export abstract class BaseCommand extends Command {
       throw err;
     }
     this._instancesCreatedThisRun.add(simulator.metadata.id);
-    saveLastCreatedInstance(simulator);
+    registerCreatedInstance(simulator);
     return target;
   }
 
@@ -1237,14 +1228,14 @@ export abstract class BaseCommand extends Command {
       },
     });
     this._instancesCreatedThisRun.add(instance.metadata.id);
-    saveLastCreatedInstance(instance);
+    registerCreatedInstance(instance);
     if (wantsRestore(cache)) {
       await this.awaitCacheRestore(instance.metadata.id, () =>
         this.deleteCreatedInstance(instance.metadata.id),
       );
     }
     const target = loadLastXcodeInstance();
-    if (!target || target.type !== 'xcode') {
+    if (!target) {
       throw new Error(
         `Created Xcode instance ${instance.metadata.id}, but failed to load it from local cache.`,
       );
@@ -1328,7 +1319,7 @@ export abstract class BaseCommand extends Command {
       return this.client.gradleInstances.createClient({ apiUrl: target.apiUrl, token: target.token });
     }
     const instance = await this.client.gradleInstances.get(target.id);
-    saveLastCreatedInstance(instance);
+    registerCreatedInstance(instance);
     return this.client.gradleInstances.createClient({ instance });
   }
 
@@ -1364,10 +1355,6 @@ export abstract class BaseCommand extends Command {
     this._instancesCreatedThisRun.add(instance.metadata.id);
     // The save path builds the record from the instance we just created, so
     // the returned union member is necessarily the gradle shape.
-    return saveLastCreatedInstance(instance) as LastGradleInstance;
+    return registerCreatedInstance(instance) as LastGradleInstance;
   }
-}
-
-function saveLastCreatedInstance(instanceOrId: InstanceInput) {
-  return registerCreatedInstance(instanceOrId);
 }
