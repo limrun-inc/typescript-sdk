@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.54.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.53.1...v0.54.0) (2026-09-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** drop the embedded Xcode sandbox of paired iOS instances
+* **api:** optional instance token, streamToken, embedded Xcode sandbox removed
+
+### Features
+
+* **api:** optional instance token, streamToken, embedded Xcode sandbox removed ([c6a91d8](https://github.com/limrun-inc/typescript-sdk/commit/c6a91d8409972596659b45f32c36d1be5ac38f7a))
+* **cli:** drop the embedded Xcode sandbox of paired iOS instances ([ad811c3](https://github.com/limrun-inc/typescript-sdk/commit/ad811c3629b20ba4dc8704b863f02b078d008930))
+* **ios:** inspect destination tunnels like Android ([c7d71e0](https://github.com/limrun-inc/typescript-sdk/commit/c7d71e0d05c23b1e12e28e5f01614d608d976d8f))
+
+
+### Bug Fixes
+
+* **cli:** accept detached iOS tunnels with inspection and reject --ttl without --persist ([1033ac7](https://github.com/limrun-inc/typescript-sdk/commit/1033ac7c2acb407d245179d81d1b94a9cee4420f))
+* **cli:** keep the token check local so the CLI runs on the published SDK ([5155484](https://github.com/limrun-inc/typescript-sdk/commit/515548475f3774cb4dca6747597d9755972983cb))
+* **cli:** print the relaunch hint once in foreground tunnels ([e339b91](https://github.com/limrun-inc/typescript-sdk/commit/e339b91af29c5034f14f2cb67e6585dc71374f36))
+* **cli:** session start and ios maestro explain a record read without its token ([b7bacef](https://github.com/limrun-inc/typescript-sdk/commit/b7baceffabf9db7fbe2004c0531ac7cb5bbfb6b5))
+* **tunnel:** hint that apps connected before the tunnel need a relaunch ([cf59ae4](https://github.com/limrun-inc/typescript-sdk/commit/cf59ae453b10b537cc494e6132dfdbfde0fedb0e))
+
+
+### Refactors
+
+* **cli:** drop checks and wrappers the paired iOS path left behind ([1240f50](https://github.com/limrun-inc/typescript-sdk/commit/1240f5031ad637d014918f94100ded100d6a01a9))
+* **cli:** share the tunnel inspection status line and context type ([051e49a](https://github.com/limrun-inc/typescript-sdk/commit/051e49a2dd2190969a6ff20098731e372934b27e))
+* **tunnel:** share the instance clients' tunnel options and defaults ([4a3900d](https://github.com/limrun-inc/typescript-sdk/commit/4a3900d35a5cc9fda2617cbd94e33d5cfa22c1a4))
+
 ## [0.53.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.53.0...v0.53.1) (2026-09-25)
 
 
