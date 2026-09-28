@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.55.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.54.0...v0.55.0) (2026-09-28)
+
+
+### Features
+
+* add Xcode snapshot interfaces with cache compatibility ([5f55e8b](https://github.com/limrun-inc/typescript-sdk/commit/5f55e8b664af4bd5ae4db9fcaa2498eefec2e86c))
+
+
+### Bug Fixes
+
+* **cli:** attach supplied simulator before lim run builds ([5a4ac2b](https://github.com/limrun-inc/typescript-sdk/commit/5a4ac2bd2afbe0ca99bd3953bb81398841f357b5))
+* **cli:** attach supplied simulator before lim run builds ([2dfe622](https://github.com/limrun-inc/typescript-sdk/commit/2dfe6222372b335ea2042c262fc0596733094cc9))
+
+
+### Chores
+
+* **cli:** bump version to 0.35.0 on @limrun/api 0.54.0 ([0f9aac6](https://github.com/limrun-inc/typescript-sdk/commit/0f9aac65d6bbeec18788c58cfc6b7fd0d0a74cb5))
+* **cli:** bump version to 0.35.1 ([cccac5a](https://github.com/limrun-inc/typescript-sdk/commit/cccac5a3eb3c2c71bba3fbc3137bb5b37a450355))
+* **cli:** omit documentation update ([8bde1b7](https://github.com/limrun-inc/typescript-sdk/commit/8bde1b7a0442a53b5425430b7ca00bb9fd546a60))
+* **cli:** remove run regression tests ([23b7e8c](https://github.com/limrun-inc/typescript-sdk/commit/23b7e8ca6fda082d4b19ac89851a766fcfa9ea2f))
+
 ## [0.54.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.53.1...v0.54.0) (2026-09-27)
 
 
