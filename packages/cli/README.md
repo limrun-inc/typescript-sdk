@@ -485,7 +485,7 @@ lim xcode use xcode@27    # Prefer an Xcode version for this workspace (switches
 lim xcode version list    # Xcode versions the sandbox can build with
 ```
 
-### Workspace snapshots
+### Disk snapshots
 
 Restore and save build state across Xcode instances with a snapshot key:
 
@@ -845,7 +845,7 @@ lim xcode run -- mise use --pin node@24.5.0
 
 Each run or build resolves `mise env --json` once. Synced project tool declarations override package-manager detection and image defaults. The first operation with project tool declarations installs them once; later changes require `lim xcode tools install`. Project numeric requests retain the major, except Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain `major.minor`. Limrun imports the `[tools]` declarations from project mise files. Use an explicit sandbox `mise use --pin` command to select an exact release.
 
-Both Node 22 and 24 are preinstalled, with Node 22 as the default. Image tools stay outside workspace snapshots. User-installed versions under `.limbuild-sandbox/home/.mise/` can be saved when the configured snapshot paths cover them, after a successful managed build. If a restored user gem references its old sandbox path, reinstall it explicitly, for example `lim xcode run -- mise install --force bundler`. Homebrew and Apple tools have separate management; select Xcode with `lim xcode use xcode@27` and inspect it with `lim xcode version`.
+Both Node 22 and 24 are preinstalled, with Node 22 as the default. Image tools stay outside disk snapshots. User-installed versions under `.limbuild-sandbox/home/.mise/` can be saved when the configured snapshot paths cover them, after a successful managed build. If a restored user gem references its old sandbox path, reinstall it explicitly, for example `lim xcode run -- mise install --force bundler`. Homebrew and Apple tools have separate management; select Xcode with `lim xcode use xcode@27` and inspect it with `lim xcode version`.
 
 For [XcodeGen](https://github.com/yonaskolb/XcodeGen) projects whose generated `.xcodeproj` is gitignored, the server generates it from your synced `project.yml` automatically before the build — it looks next to a pinned `--project`/`--workspace` path, at the synced folder root, and one directory level down. If your spec has a different name or location, pin it with `--xcodegen-spec <path>`, optionally control the output directory with `--xcodegen-project <dir>`, and anchor relative paths in the spec with `--xcodegen-project-root <dir>`; all paths are relative to the synced folder root and mirror `xcodegen generate --spec/--project/--project-root`. Passing any of these flags always regenerates the project on the server:
 

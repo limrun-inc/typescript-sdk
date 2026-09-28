@@ -643,7 +643,7 @@ export type XcodeCreateClientParams =
   | { instance: XcodeInstance; logLevel?: LogLevel }
   | { apiUrl: string; token: string; logLevel?: LogLevel };
 
-/** Create an Xcode instance with a persistent workspace snapshot. */
+/** Create an Xcode instance with a persistent disk snapshot. */
 export type XcodeInstanceCreateParamsWithSnapshot = Omit<XcodeInstanceCreateParams, 'spec'> & {
   spec?: XcodeInstanceCreateParams['spec'] & {
     snapshot?: XcodeSnapshotConfig;
@@ -830,7 +830,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
     return this._client.get(path`/v1/xcode_instances/${id}/bazel_build_logs`, options);
   }
 
-  /** Create an Xcode instance, optionally restoring and saving a workspace snapshot. */
+  /** Create an Xcode instance, optionally restoring and saving a disk snapshot. */
   override create(
     params: XcodeInstanceCreateParamsWithSnapshot,
     options?: RequestOptions,
@@ -858,10 +858,10 @@ export class XcodeInstances extends GeneratedXcodeInstances {
     return this.bindCacheKey(id, key, options)._thenUnwrap(snapshotFromCache);
   }
 
-  /** Follow snapshot restoration or publication until it reaches a terminal phase. */
+  /** Follow disk snapshot restoration or publication until it reaches a terminal phase. */
   followSnapshot(id: string, options?: XcodeSnapshotFollowOptions): Promise<XcodeSnapshotFollowResult> {
     const apiKey = this._client.apiKey;
-    if (!apiKey) throw new Error('Following snapshot status needs an API key on the client');
+    if (!apiKey) throw new Error('Following disk snapshot status needs an API key on the client');
     return followXcodeSnapshot({ baseURL: this._client.baseURL, apiKey, instanceId: id }, options);
   }
 

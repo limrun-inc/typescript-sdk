@@ -795,7 +795,7 @@ export abstract class BaseCommand extends Command {
     removeInstance: () => Promise<unknown>,
   ): Promise<void> {
     const start = Date.now();
-    this.info('Restoring snapshot...');
+    this.info('Restoring disk snapshot...');
     let result;
     try {
       result = await this.client.xcodeInstances.followCache(instanceId, {
@@ -807,19 +807,19 @@ export abstract class BaseCommand extends Command {
     } catch (err) {
       if (err instanceof XcodeCacheGoneError) {
         // Not a wait that broke but an instance that ended, so there is nothing to keep or check.
-        throw new Error(`Instance ${instanceId} was collected before its snapshot restore started.`);
+        throw new Error(`Instance ${instanceId} was collected before its disk snapshot restore started.`);
       }
       // The restore may well still be running, so the instance stays: deleting it over a
       // client-side wait that broke would throw away a workspace that is probably fine.
       throw new Error(
-        `Could not follow the snapshot restore of ${instanceId}: ${
+        `Could not follow the disk snapshot restore of ${instanceId}: ${
           err instanceof Error ? err.message : String(err)
         }\n` + `The instance is still there. Check it with: lim xcode get ${instanceId}`,
       );
     }
     if (result.gone) {
       throw new Error(
-        `Instance ${instanceId} was gone before its snapshot restore finished (last phase: ${result.cache.restore.phase}).`,
+        `Instance ${instanceId} was gone before its disk snapshot restore finished (last phase: ${result.cache.restore.phase}).`,
       );
     }
     const outcome = restoreOutcome(result.cache, Date.now() - start);
@@ -850,7 +850,7 @@ export abstract class BaseCommand extends Command {
     }
     if (cache.restoreKeys || cache.paths) {
       this.info(
-        `Snapshot: instance ${target.id} already exists, so its restore keys and paths stay as they were created.`,
+        `Disk snapshot: instance ${target.id} already exists, so its restore keys and paths stay as they were created.`,
       );
     }
     if (cache.key) {
@@ -1079,7 +1079,7 @@ export abstract class BaseCommand extends Command {
   protected async bindCacheKey(instanceId: string, key: string): Promise<void> {
     try {
       await this.client.xcodeInstances.bindCacheKey(instanceId, key);
-      this.info(`Snapshot: publishing this workspace under ${key} when the instance terminates.`);
+      this.info(`Disk snapshot: publishing this workspace under ${key} when the instance terminates.`);
     } catch (err) {
       if (err instanceof APIError && err.message.includes('no cache workspace')) {
         throw new Error(
@@ -1092,7 +1092,7 @@ export abstract class BaseCommand extends Command {
   }
 
   /**
-   * Starts following an instance's snapshot publication before it is deleted, so a publication
+   * Starts following an instance's disk snapshot publication before it is deleted, so a publication
    * that finishes quickly is still seen. Never rejects; the caller renders the result.
    */
   protected startCachePublicationFollow(instanceId: string): CachePublicationWatch {
@@ -1127,11 +1127,11 @@ export abstract class BaseCommand extends Command {
         // Nothing was published under this instance's key that this command could have waited
         // for: the region had already let it go by the time the stream opened. Not a failure,
         // since a publication that was underway holds the instance until it finishes.
-        this.info('The instance was already gone, so it had no snapshot publication to report.');
+        this.info('The instance was already gone, so it had no disk snapshot publication to report.');
         return true;
       }
       this.info(
-        `Could not follow the snapshot publication: ${
+        `Could not follow the disk snapshot publication: ${
           followed.error instanceof Error ? followed.error.message : String(followed.error)
         }`,
       );

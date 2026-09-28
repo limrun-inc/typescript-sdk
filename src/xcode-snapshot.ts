@@ -15,7 +15,7 @@ import {
   type XcodeInstanceCache,
 } from './xcode-cache';
 
-/** A saved Xcode workspace to restore at creation and publish at termination. */
+/** A disk snapshot of the Xcode workspace, restored at creation and published at termination. */
 export type XcodeSnapshotConfig = {
   /** Save under this organization-scoped key at termination. Defaults to restoring this key too. */
   key?: string;
@@ -53,12 +53,12 @@ export type XcodeSnapshotFollowResult = {
   gone: boolean;
 };
 
-/** The instance disappeared before reporting its snapshot state. */
+/** The instance disappeared before reporting its disk snapshot state. */
 export class XcodeSnapshotGoneError extends XcodeCacheGoneError {
   constructor(instanceId: string) {
     super(instanceId);
     this.name = 'XcodeSnapshotGoneError';
-    this.message = `Instance ${instanceId} was gone before it reported any snapshot status`;
+    this.message = `Instance ${instanceId} was gone before it reported any disk snapshot status`;
   }
 }
 
@@ -68,7 +68,7 @@ export class XcodeSnapshotTimeoutError extends XcodeCacheTimeoutError {
   constructor(error: XcodeCacheTimeoutError) {
     super(error.side, error.timeoutMs, error.cache);
     this.name = 'XcodeSnapshotTimeoutError';
-    this.message = error.message.replace('the cache ', 'the snapshot ');
+    this.message = error.message.replace('the cache ', 'the disk snapshot ');
     this.snapshot = error.cache ? snapshotFromCache(error.cache) : undefined;
   }
 }
