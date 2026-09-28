@@ -34,7 +34,7 @@ import { detectInstanceType, setSessionAutoStart } from './lib/instance-client-f
 import { deleteCreatedInstance } from './lib/instance-cleanup';
 import { defaultSleep as sleep } from '@limrun/api';
 import {
-  parseCacheConfig,
+  parseSnapshotConfig,
   restoreOutcome,
   restoreProgressLine,
   saveOutcome,
@@ -777,10 +777,10 @@ export abstract class BaseCommand extends Command {
     if (!flags) return undefined;
     const asString = (name: string) =>
       typeof flags[name] === 'string' ? (flags[name] as string) : undefined;
-    return parseCacheConfig({
-      'cache-key': asString('cache-key'),
-      'cache-restore-keys': asString('cache-restore-keys'),
-      'cache-paths': asString('cache-paths'),
+    return parseSnapshotConfig({
+      'snapshot-key': asString('snapshot-key'),
+      'snapshot-restore-keys': asString('snapshot-restore-keys'),
+      'snapshot-paths': asString('snapshot-paths'),
     });
   }
 
@@ -795,7 +795,7 @@ export abstract class BaseCommand extends Command {
     removeInstance: () => Promise<unknown>,
   ): Promise<void> {
     const start = Date.now();
-    this.info('Restoring build cache...');
+    this.info('Restoring disk snapshot...');
     let result;
     try {
       result = await this.client.xcodeInstances.followCache(instanceId, {
@@ -807,19 +807,19 @@ export abstract class BaseCommand extends Command {
     } catch (err) {
       if (err instanceof XcodeCacheGoneError) {
         // Not a wait that broke but an instance that ended, so there is nothing to keep or check.
-        throw new Error(`Instance ${instanceId} was collected before its cache restore started.`);
+        throw new Error(`Instance ${instanceId} was collected before its disk snapshot restore started.`);
       }
       // The restore may well still be running, so the instance stays: deleting it over a
       // client-side wait that broke would throw away a workspace that is probably fine.
       throw new Error(
-        `Could not follow the cache restore of ${instanceId}: ${
+        `Could not follow the disk snapshot restore of ${instanceId}: ${
           err instanceof Error ? err.message : String(err)
         }\n` + `The instance is still there. Check it with: lim xcode get ${instanceId}`,
       );
     }
     if (result.gone) {
       throw new Error(
-        `Instance ${instanceId} was gone before its cache restore finished (last phase: ${result.cache.restore.phase}).`,
+        `Instance ${instanceId} was gone before its disk snapshot restore finished (last phase: ${result.cache.restore.phase}).`,
       );
     }
     const outcome = restoreOutcome(result.cache, Date.now() - start);
@@ -850,7 +850,7 @@ export abstract class BaseCommand extends Command {
     }
     if (cache.restoreKeys || cache.paths) {
       this.info(
-        `Cache: instance ${target.id} already exists, so its restore keys and paths stay as they were created.`,
+        `Disk snapshot: instance ${target.id} already exists, so its restore keys and paths stay as they were created.`,
       );
     }
     if (cache.key) {
@@ -907,7 +907,7 @@ export abstract class BaseCommand extends Command {
     this.info(
       `Sandbox now uses Xcode ${formatXcode(
         result.bound,
-      )}${why}; the build cache from the previous Xcode is invalidated, so the next build starts cold.`,
+      )}${why}; the build state from the previous Xcode is invalidated, so the next build starts cold.`,
     );
   }
 
@@ -1037,7 +1037,7 @@ export abstract class BaseCommand extends Command {
         const verb = result.alreadyBound ? 'already uses' : 'now uses';
         this.output(`Sandbox ${target.id} ${verb} Xcode ${formatXcode(result.bound)}`);
         if (result.derivedDataReset) {
-          this.output('The build cache from the previous Xcode is invalidated; the next build starts cold.');
+          this.output('The build state from the previous Xcode is invalidated; the next build starts cold.');
         }
       },
       { createReplacement: false },
@@ -1079,12 +1079,12 @@ export abstract class BaseCommand extends Command {
   protected async bindCacheKey(instanceId: string, key: string): Promise<void> {
     try {
       await this.client.xcodeInstances.bindCacheKey(instanceId, key);
-      this.info(`Cache: publishing this workspace under ${key} when the instance terminates.`);
+      this.info(`Disk snapshot: publishing this workspace under ${key} when the instance terminates.`);
     } catch (err) {
       if (err instanceof APIError && err.message.includes('no cache workspace')) {
         throw new Error(
           `${err.message}\n` +
-            `Publishing needs the stable workspace directory an instance only gets at create: lim xcode create --cache-key ${key}`,
+            `Publishing needs the stable workspace directory an instance only gets at create: lim xcode create --snapshot-key ${key}`,
         );
       }
       throw err;
@@ -1092,7 +1092,7 @@ export abstract class BaseCommand extends Command {
   }
 
   /**
-   * Starts following an instance's cache publication before it is deleted, so a publication
+   * Starts following an instance's disk snapshot publication before it is deleted, so a publication
    * that finishes quickly is still seen. Never rejects; the caller renders the result.
    */
   protected startCachePublicationFollow(instanceId: string): CachePublicationWatch {
@@ -1127,11 +1127,11 @@ export abstract class BaseCommand extends Command {
         // Nothing was published under this instance's key that this command could have waited
         // for: the region had already let it go by the time the stream opened. Not a failure,
         // since a publication that was underway holds the instance until it finishes.
-        this.info('The instance was already gone, so it had no cache publication to report.');
+        this.info('The instance was already gone, so it had no disk snapshot publication to report.');
         return true;
       }
       this.info(
-        `Could not follow the cache publication: ${
+        `Could not follow the disk snapshot publication: ${
           followed.error instanceof Error ? followed.error.message : String(followed.error)
         }`,
       );

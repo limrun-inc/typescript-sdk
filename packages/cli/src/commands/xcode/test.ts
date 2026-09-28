@@ -3,8 +3,8 @@ import type { XcodeBuildOptions, XcodeProjectConfig, XctestEvent } from '@limrun
 import { BaseCommand } from '../../base-command';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
-import { parseCacheConfig } from '../../lib/cache';
-import { cacheFlags } from '../../lib/cache-flags';
+import { parseSnapshotConfig } from '../../lib/cache';
+import { snapshotFlags } from '../../lib/cache-flags';
 import { resolveRequestedXcodeVersion, xcodeVersionFlags } from '../../lib/xcode-version';
 import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
 import {
@@ -63,7 +63,7 @@ export default class XcodeTest extends BaseCommand {
     ...xcodeProjectFlags,
     ...xcodeVersionFlags,
     ...syncFlags,
-    ...cacheFlags,
+    ...snapshotFlags,
   };
 
   async run(): Promise<void> {
@@ -81,7 +81,7 @@ export default class XcodeTest extends BaseCommand {
           await this.resolveXcodeTargetOrCreate(flags.id)
         : await this.resolveSimulatorBackedXcodeTargetOrCreate(flags.id);
       const id = target.id;
-      await this.applyBuildCacheToTarget(target, parseCacheConfig(flags));
+      await this.applyBuildCacheToTarget(target, parseSnapshotConfig(flags));
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClientForWork(target, requestedXcode);
 

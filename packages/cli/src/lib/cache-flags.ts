@@ -1,17 +1,27 @@
 import { Flags } from '@oclif/core';
 
-/** Cache flags shared by the commands that can create or bind a cache. */
-export const cacheFlags = {
-  'cache-key': Flags.string({
+/** Disk snapshot flags shared by commands that can create or bind a snapshot. */
+export const snapshotFlags = {
+  'snapshot-key': Flags.string({
+    aliases: ['cache-key'],
     description:
-      'Key this instance publishes its workspace under when it terminates. Reusing a key replaces its archive. Also used as the restore key when --cache-restore-keys is omitted.',
+      'Disk snapshot key this instance publishes its workspace under when it terminates. Reusing a key replaces its archive. Also used as the restore key when --snapshot-restore-keys is omitted.',
   }),
-  'cache-restore-keys': Flags.string({
+  'snapshot-restore-keys': Flags.string({
+    aliases: ['cache-restore-keys'],
     description:
-      'Comma-separated keys to restore from, tried in this order: exact match first, then keys starting with the given prefix, newest archive first.',
+      'Comma-separated disk snapshot keys to restore from, tried in this order: exact match first, then keys starting with the given prefix, newest archive first.',
   }),
-  'cache-paths': Flags.string({
+  'snapshot-paths': Flags.string({
+    aliases: ['cache-paths'],
     description:
-      'Comma-separated project-root-relative paths to cache, such as "Pods,.build". Defaults to the whole workspace. The first publication under a key fixes its path set.',
+      'Comma-separated project-root-relative paths to include in the disk snapshot, such as "Pods,.build". Defaults to the whole workspace. The first publication under a key fixes its path set.',
   }),
 };
+
+export const waitSnapshotFlag = Flags.boolean({
+  aliases: ['wait-cache'],
+  description:
+    'Wait for the disk snapshot to finish publishing, reporting each phase. Deletion returns as soon as it is accepted otherwise, while publication continues in the background.',
+  default: false,
+});

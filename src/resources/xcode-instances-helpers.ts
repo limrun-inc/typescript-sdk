@@ -16,6 +16,14 @@ import {
   type XcodeInstanceCache,
 } from '../xcode-cache';
 import {
+  followXcodeSnapshot,
+  snapshotFromCache,
+  type XcodeSnapshotConfig,
+  type XcodeSnapshotFollowOptions,
+  type XcodeSnapshotFollowResult,
+  type XcodeInstanceSnapshot,
+} from '../xcode-snapshot';
+import {
   exec,
   observeExecLogs,
   type AppStoreUploadConfig,
@@ -635,10 +643,17 @@ export type XcodeCreateClientParams =
   | { instance: XcodeInstance; logLevel?: LogLevel }
   | { apiUrl: string; token: string; logLevel?: LogLevel };
 
-/** Generated create params plus the build cache the generator does not know about yet. */
-export type XcodeInstanceCreateParamsWithCache = Omit<XcodeInstanceCreateParams, 'spec'> & {
-  spec?: XcodeInstanceCreateParams['spec'] & { cache?: XcodeCacheConfig };
+/** Create an Xcode instance with a persistent disk snapshot. */
+export type XcodeInstanceCreateParamsWithSnapshot = Omit<XcodeInstanceCreateParams, 'spec'> & {
+  spec?: XcodeInstanceCreateParams['spec'] & {
+    snapshot?: XcodeSnapshotConfig;
+    /** @deprecated Use snapshot instead. */
+    cache?: XcodeCacheConfig;
+  };
 };
+
+/** @deprecated Use XcodeInstanceCreateParamsWithSnapshot instead. */
+export type XcodeInstanceCreateParamsWithCache = XcodeInstanceCreateParamsWithSnapshot;
 
 function normalizeWorkspaceRelativePath(remotePath: string): string {
   if (
@@ -815,25 +830,48 @@ export class XcodeInstances extends GeneratedXcodeInstances {
     return this._client.get(path`/v1/xcode_instances/${id}/bazel_build_logs`, options);
   }
 
-  /**
-   * Create an Xcode instance, optionally with a build cache.
-   *
-   * Widens the generated signature with `spec.cache`; drop this override once the generator
-   * knows about the field. The request body passes through untouched either way.
-   */
+  /** Create an Xcode instance, optionally restoring and saving a disk snapshot. */
   override create(
-    params: XcodeInstanceCreateParamsWithCache,
+    params: XcodeInstanceCreateParamsWithSnapshot,
     options?: RequestOptions,
   ): APIPromise<XcodeInstance> {
+    if (params.spec?.snapshot !== undefined) {
+      const { snapshot, cache, ...spec } = params.spec;
+      if (cache !== undefined) {
+        throw new Error('Use either spec.snapshot or the legacy spec.cache, not both.');
+      }
+      return super.create(
+        { ...params, spec: { ...spec, cache: snapshot } } as XcodeInstanceCreateParams,
+        options,
+      );
+    }
     return super.create(params as XcodeInstanceCreateParams, options);
   }
 
-  /** Current cache configuration and status of an instance. */
+  /** Current snapshot configuration and status. */
+  getSnapshot(id: string, options?: RequestOptions): APIPromise<XcodeInstanceSnapshot> {
+    return this.getCache(id, options)._thenUnwrap(snapshotFromCache);
+  }
+
+  /** Set the publication key once for an instance created with snapshot configuration. */
+  bindSnapshotKey(id: string, key: string, options?: RequestOptions): APIPromise<XcodeInstanceSnapshot> {
+    return this.bindCacheKey(id, key, options)._thenUnwrap(snapshotFromCache);
+  }
+
+  /** Follow disk snapshot restoration or publication until it reaches a terminal phase. */
+  followSnapshot(id: string, options?: XcodeSnapshotFollowOptions): Promise<XcodeSnapshotFollowResult> {
+    const apiKey = this._client.apiKey;
+    if (!apiKey) throw new Error('Following disk snapshot status needs an API key on the client');
+    return followXcodeSnapshot({ baseURL: this._client.baseURL, apiKey, instanceId: id }, options);
+  }
+
+  /** @deprecated Use getSnapshot instead. */
   getCache(id: string, options?: RequestOptions): APIPromise<XcodeInstanceCache> {
     return this._client.get<XcodeInstanceCache>(path`/v1/xcode_instances/${id}/cache`, options);
   }
 
   /**
+   * @deprecated Use bindSnapshotKey instead.
    * Bind the destination key this instance publishes under at termination. Set once: binding
    * the same key again is accepted, a different one is rejected.
    *
@@ -848,6 +886,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
   }
 
   /**
+   * @deprecated Use followSnapshot instead.
    * Follow an instance's cache status until the chosen side reaches a terminal phase. Reports
    * every phase change through `onUpdate`, so a caller can show a restore as it happens.
    */

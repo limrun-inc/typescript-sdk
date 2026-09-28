@@ -35,7 +35,12 @@ jest.mock('eventsource-client', () => ({
   ),
 }));
 
-import Limrun, { XcodeCacheGoneError } from '@limrun/api';
+import Limrun, {
+  XcodeCacheGoneError,
+  XcodeSnapshotGoneError,
+  XcodeSnapshotTimeoutError,
+  type XcodeInstanceSnapshot,
+} from '@limrun/api';
 import { nodeProxyTransport } from '@limrun/api/internal/proxy-transport';
 import type { XcodeInstanceCache } from '../src/xcode-cache';
 
@@ -173,6 +178,64 @@ describe('xcode cache follower', () => {
     source.emit(cacheEvent({ restore: 'downloading' }));
 
     await expect(following).rejects.toThrow(/Timed out/);
+    expect(source.closed).toBe(true);
+  });
+});
+
+describe('snapshot follower compatibility', () => {
+  beforeEach(() => {
+    sources.length = 0;
+  });
+  afterEach(() => {
+    nodeProxyTransport.fetch = originalFetch;
+  });
+
+  test('maps legacy stream events to snapshot updates and results', async () => {
+    const client = new Limrun({ apiKey: 'key', baseURL: 'https://api.example.test' });
+    const seen: XcodeInstanceSnapshot[] = [];
+    const onOpen = jest.fn();
+    const following = client.xcodeInstances.followSnapshot('sandbox_1', {
+      side: 'save',
+      onOpen,
+      onUpdate: (state) => seen.push(state),
+    });
+    const source = await nextSource();
+    source.announceOpen();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    source.emit(cacheEvent({ restore: 'restored', save: 'uploading' }));
+    source.emit({
+      event: 'cache',
+      data: JSON.stringify({
+        restore: { phase: 'restored' },
+        save: { phase: 'published', cacheKey: 'myapp-main' },
+      }),
+    });
+    const result = await following;
+    expect(result.snapshot.save).toEqual({ phase: 'published', snapshotKey: 'myapp-main' });
+    expect(seen[1]).toEqual(result.snapshot);
+    expect(result.gone).toBe(false);
+    expect(source.url).toBe('https://api.example.test/v1/xcode_instances/sandbox_1/cache');
+    expect(source.closed).toBe(true);
+  });
+
+  test('maps disappearance to the snapshot error while retaining the legacy error superclass', async () => {
+    const client = new Limrun({ apiKey: 'key', baseURL: 'https://api.example.test' });
+    nodeProxyTransport.fetch = jest.fn(async () => new Response('{}', { status: 404 }));
+    const following = client.xcodeInstances.followSnapshot('sandbox_1');
+    const source = await nextSource();
+    await source.connect();
+    await expect(following).rejects.toBeInstanceOf(XcodeSnapshotGoneError);
+    await expect(following).rejects.toBeInstanceOf(XcodeCacheGoneError);
+    expect(source.closed).toBe(true);
+  });
+
+  test('timeout exposes the last snapshot status', async () => {
+    const client = new Limrun({ apiKey: 'key', baseURL: 'https://api.example.test' });
+    const following = client.xcodeInstances.followSnapshot('sandbox_1', { timeoutMs: 20 });
+    const source = await nextSource();
+    source.emit(cacheEvent({ restore: 'downloading' }));
+    await expect(following).rejects.toBeInstanceOf(XcodeSnapshotTimeoutError);
+    await expect(following).rejects.toMatchObject({ snapshot: { restore: { phase: 'downloading' } } });
     expect(source.closed).toBe(true);
   });
 });

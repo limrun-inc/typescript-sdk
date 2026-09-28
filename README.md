@@ -48,6 +48,29 @@ const androidInstance: Limrun.AndroidInstance = await client.androidInstances.cr
 
 Documentation for each method, request param, and response field are available in docstrings and will appear on hover in most modern editors.
 
+## Disk snapshots
+
+Pass `spec.snapshot` when creating an Xcode instance to restore a saved workspace
+and publish the next successful build when the instance terminates:
+
+```ts
+const instance = await client.xcodeInstances.create({
+  wait: true,
+  spec: { snapshot: { key: 'myapp-main' } },
+});
+const { snapshot } = await client.xcodeInstances.followSnapshot(instance.metadata.id);
+```
+
+Check `snapshot.restore.phase` before syncing and building. Use `getSnapshot` to
+read the current state and `bindSnapshotKey` to set a publication key once on an
+instance already prepared for snapshots. A save watcher uses `followSnapshot`
+with `side: 'save'`; subscribe before deleting the instance. See the
+[disk snapshot guide](https://docs.limrun.com/docs/ios/snapshots) for the full lifecycle.
+
+Existing `spec.cache`, `getCache`, `bindCacheKey`, `followCache`, and cache-named
+types remain supported. Snapshot methods expose the saved key as
+`save.snapshotKey`; legacy methods keep `save.cacheKey`.
+
 ## Handling errors
 
 When the library is unable to connect to the API,

@@ -10,16 +10,19 @@ import { formatDurationMs } from './duration';
 // without oclif, which is what lets the root test suite cover it.
 
 export type CacheFlags = {
+  'snapshot-key'?: string | undefined;
+  'snapshot-restore-keys'?: string | undefined;
+  'snapshot-paths'?: string | undefined;
   'cache-key'?: string | undefined;
   'cache-restore-keys'?: string | undefined;
   'cache-paths'?: string | undefined;
 };
 
 /** The cache configuration a create request carries, or undefined for an ordinary instance. */
-export function parseCacheConfig(flags: CacheFlags): XcodeCacheConfig | undefined {
-  const key = flags['cache-key']?.trim() || undefined;
-  const restoreKeys = splitList(flags['cache-restore-keys']);
-  const paths = splitList(flags['cache-paths']);
+export function parseSnapshotConfig(flags: CacheFlags): XcodeCacheConfig | undefined {
+  const key = (flags['snapshot-key'] ?? flags['cache-key'])?.trim() || undefined;
+  const restoreKeys = splitList(flags['snapshot-restore-keys'] ?? flags['cache-restore-keys']);
+  const paths = splitList(flags['snapshot-paths'] ?? flags['cache-paths']);
   if (!key && !restoreKeys && !paths) {
     return undefined;
   }
@@ -29,6 +32,9 @@ export function parseCacheConfig(flags: CacheFlags): XcodeCacheConfig | undefine
     ...(paths ? { paths } : {}),
   };
 }
+
+/** @deprecated Use parseSnapshotConfig. */
+export const parseCacheConfig = parseSnapshotConfig;
 
 function splitList(value: string | undefined): string[] | undefined {
   if (!value) return undefined;
@@ -82,12 +88,12 @@ function explain(reason: string | undefined): string | undefined {
 /** A line for a phase that is still moving, or undefined for phases with nothing to say. */
 export function restoreProgressLine(cache: XcodeInstanceCache): string | undefined {
   const text = RESTORE_PROGRESS[cache.restore.phase];
-  return text ? `Cache restore: ${text}...` : undefined;
+  return text ? `Disk snapshot restore: ${text}...` : undefined;
 }
 
 export function saveProgressLine(cache: XcodeInstanceCache): string | undefined {
   const text = SAVE_PROGRESS[cache.save.phase];
-  return text ? `Cache publish: ${text}...` : undefined;
+  return text ? `Disk snapshot publish: ${text}...` : undefined;
 }
 
 /**
@@ -110,20 +116,20 @@ export function restoreOutcome(
         restore.source === 'tag' ? ' via the regional accelerator'
         : restore.source === 'tigris' ? ' direct from object storage'
         : '';
-      return { line: `Cache restored${from}${kind}${size}${via}${took}.`, failed: false };
+      return { line: `Disk snapshot restored${from}${kind}${size}${via}${took}.`, failed: false };
     }
     case 'failed': {
       const why = explain(restore.reason);
       const detail = restore.message ? `: ${restore.message}` : '';
       return {
-        line: `Cache restore failed${why ? ` — ${why}` : ''}${detail}${took}.`,
+        line: `Disk snapshot restore failed${why ? ` — ${why}` : ''}${detail}${took}.`,
         failed: true,
       };
     }
     default: {
       const why = explain(restore.reason);
       return {
-        line: `No cache restored${why ? ` — ${why}` : ''}. Continuing with a cold workspace.`,
+        line: `No disk snapshot restored${why ? ` — ${why}` : ''}. Continuing with a cold workspace.`,
         failed: false,
       };
     }
@@ -148,17 +154,20 @@ export function saveOutcome(
     case 'published': {
       const under = save.cacheKey ? ` under ${save.cacheKey}` : '';
       const size = save.bytes ? `, ${formatBytes(save.bytes)}` : '';
-      return { line: `Cache published${under}${size}${took}.`, failed: false };
+      return { line: `Disk snapshot published${under}${size}${took}.`, failed: false };
     }
     case 'failed':
       return {
-        line: `Cache publish failed${why ? ` — ${why}` : ''}${
+        line: `Disk snapshot publish failed${why ? ` — ${why}` : ''}${
           save.message ? `: ${save.message}` : ''
         }${took}.`,
         failed: true,
       };
     case 'timed_out':
-      return { line: `Cache publish timed out${took}. The previous archive is untouched.`, failed: true };
+      return {
+        line: `Disk snapshot publish timed out${took}. The previous archive is untouched.`,
+        failed: true,
+      };
     default:
       return { line: `Nothing published${why ? ` — ${why}` : ''}.`, failed: false };
   }
