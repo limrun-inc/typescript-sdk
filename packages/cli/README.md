@@ -132,8 +132,6 @@ This avoids relying on locally cached "last created" state and keeps the target 
 
 ### Run
 
-Use `lim run --ios-id <ios-instance-id>` to run on an existing simulator. It attaches the simulator to the cloud builder before syncing and compiling, so the console can show live build output. Build or install failures leave the supplied simulator running for retries. Without `--ios-id`, the command creates a simulator only after a successful build.
-
 `lim run` logs in if needed, then chooses the fastest useful path:
 
 ```bash
