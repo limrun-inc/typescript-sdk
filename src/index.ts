@@ -126,6 +126,7 @@ export {
   type SimulatorInstallState,
   type XcodeBuildLog,
   type BazelBuildLog,
+  type XcodeInstanceCreateParamsWithSnapshot,
   type XcodeInstanceCreateParamsWithCache,
 } from './resources/xcode-instances-helpers';
 export {
@@ -186,6 +187,23 @@ export {
   type XcodeCacheFollowResult,
   type XcodeCacheFollowTarget,
 } from './xcode-cache';
+export {
+  followXcodeSnapshot,
+  isSnapshotTerminal,
+  XcodeSnapshotTimeoutError,
+  XcodeSnapshotGoneError,
+  type XcodeSnapshotConfig,
+  type XcodeInstanceSnapshot,
+  type XcodeSnapshotRestoreStatus,
+  type XcodeSnapshotSaveStatus,
+  type XcodeSnapshotRestorePhase,
+  type XcodeSnapshotSavePhase,
+  type XcodeSnapshotSkippedKey,
+  type XcodeSnapshotSide,
+  type XcodeSnapshotFollowOptions,
+  type XcodeSnapshotFollowResult,
+  type XcodeSnapshotFollowTarget,
+} from './xcode-snapshot';
 export {
   LimrunError,
   APIError,

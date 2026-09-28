@@ -83,6 +83,7 @@ export {
   type XcodeBuildLog,
   type BazelBuildLog,
   type WebhookConfig,
+  type XcodeInstanceCreateParamsWithSnapshot,
   type XcodeInstanceCreateParamsWithCache,
 } from './xcode-instances-helpers';
 // Side-effect import: grafts the createClient/listBuildLogs helpers onto the

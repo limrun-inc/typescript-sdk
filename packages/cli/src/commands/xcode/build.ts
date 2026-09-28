@@ -3,8 +3,8 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
-import { parseCacheConfig } from '../../lib/cache';
-import { cacheFlags } from '../../lib/cache-flags';
+import { parseSnapshotConfig } from '../../lib/cache';
+import { snapshotFlags } from '../../lib/cache-flags';
 import { resolveRequestedXcodeVersion, xcodeVersionFlags } from '../../lib/xcode-version';
 import { syncFlags, syncOptionsFromFlags } from '../../lib/sync-flags';
 import {
@@ -60,7 +60,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build ./MyProject --id <xcode-instance-ID>',
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
-    '<%= config.bin %> xcode build --cache-key myapp-pr51 --cache-restore-keys "myapp-pr51,myapp-main"',
+    '<%= config.bin %> xcode build --snapshot-key myapp-pr51 --snapshot-restore-keys "myapp-pr51,myapp-main"',
     '<%= config.bin %> xcode build --configuration Debug',
     '<%= config.bin %> xcode build --xcode-version 27',
     '<%= config.bin %> xcode build ./ExpoApp --configuration Debug --dev-server-url https://abc123.exp.direct',
@@ -253,7 +253,7 @@ export default class XcodeBuild extends BaseCommand {
       default: false,
     }),
     ...xcodeVersionFlags,
-    ...cacheFlags,
+    ...snapshotFlags,
   };
 
   async run(): Promise<void> {
@@ -302,7 +302,7 @@ export default class XcodeBuild extends BaseCommand {
           await this.resolveSimulatorBackedXcodeTargetOrCreate(flags.id)
         : await this.resolveXcodeTargetOrCreate(flags.id);
       const id = target.id;
-      await this.applyBuildCacheToTarget(target, parseCacheConfig(flags));
+      await this.applyBuildCacheToTarget(target, parseSnapshotConfig(flags));
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClientForWork(target, requestedXcode);
 

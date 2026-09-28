@@ -1,8 +1,9 @@
 import { NotFoundError } from '@limrun/api';
-import { Args, Flags } from '@oclif/core';
+import { Args } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { clearLastInstanceId } from '../../lib/config';
 import { stopDaemon } from '../../lib/daemon';
+import { waitSnapshotFlag } from '../../lib/cache-flags';
 
 export default class XcodeDelete extends BaseCommand {
   static summary = 'Delete an Xcode instance';
@@ -11,7 +12,7 @@ export default class XcodeDelete extends BaseCommand {
     '<%= config.bin %> xcode delete',
     '<%= config.bin %> xcode delete <ID>',
     '<%= config.bin %> xcode delete xcode_abc123',
-    '<%= config.bin %> xcode delete --wait-cache',
+    '<%= config.bin %> xcode delete --wait-snapshot',
   ];
 
   static args = {
@@ -23,11 +24,7 @@ export default class XcodeDelete extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    'wait-cache': Flags.boolean({
-      description:
-        'Wait for the build cache to finish publishing, reporting each phase. Deletion returns as soon as it is accepted otherwise, while publication continues in the background.',
-      default: false,
-    }),
+    'wait-snapshot': waitSnapshotFlag,
   };
 
   async run(): Promise<void> {
@@ -42,7 +39,7 @@ export default class XcodeDelete extends BaseCommand {
       // to publish is collected in about as long, which is a race the watcher loses in silence:
       // the endpoint answers from the region, so it is a 404 by the time the stream gets there.
       const following =
-        flags['wait-cache'] ? this.startCachePublicationFollow(resolvedInstance.id) : undefined;
+        flags['wait-snapshot'] ? this.startCachePublicationFollow(resolvedInstance.id) : undefined;
       await following?.opened;
       try {
         await this.client.xcodeInstances.delete(id);
@@ -61,7 +58,7 @@ export default class XcodeDelete extends BaseCommand {
       const published = following ? await this.renderCachePublication(following) : true;
       this.log(`Deleted Xcode instance: ${id}`);
       if (!published) {
-        this.error('The build cache was not published.');
+        this.error('The snapshot was not published.');
       }
     });
   }

@@ -4,8 +4,8 @@ import { formatXcode, resolveRequestedXcodeVersion, xcodeVersionFlags } from '..
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
-import { parseCacheConfig, wantsRestore } from '../../lib/cache';
-import { cacheFlags } from '../../lib/cache-flags';
+import { parseSnapshotConfig, wantsRestore } from '../../lib/cache';
+import { snapshotFlags } from '../../lib/cache-flags';
 import { type SimulatorAttachResult, type XcodeInstanceCreateParamsWithCache } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 
@@ -20,8 +20,8 @@ export default class XcodeCreate extends BaseCommand {
     '<%= config.bin %> xcode create --attach --simulator-id <ios-instance-ID>',
     '<%= config.bin %> xcode create --rm --jurisdiction us',
     '<%= config.bin %> xcode create --label env=dev --display-name ci-builder',
-    '<%= config.bin %> xcode create --cache-restore-keys "myapp-features,myapp-main"',
-    '<%= config.bin %> xcode create --cache-key myapp-pr51 --cache-paths "Pods,.build"',
+    '<%= config.bin %> xcode create --snapshot-restore-keys "myapp-features,myapp-main"',
+    '<%= config.bin %> xcode create --snapshot-key myapp-pr51 --snapshot-paths "Pods,.build"',
     '<%= config.bin %> xcode create --xcode-version 27',
     '<%= config.bin %> xcode create --xcode-version 27.1',
   ];
@@ -68,7 +68,7 @@ export default class XcodeCreate extends BaseCommand {
       description: 'Existing iOS simulator instance ID to attach when --attach is used',
     }),
     ...xcodeVersionFlags,
-    ...cacheFlags,
+    ...snapshotFlags,
   };
 
   async run(): Promise<void> {
@@ -91,9 +91,9 @@ export default class XcodeCreate extends BaseCommand {
       this.error('--simulator-id requires --attach.');
     }
 
-    const cache = parseCacheConfig(flags);
+    const cache = parseSnapshotConfig(flags);
     if (cache && flags['reuse-if-exists']) {
-      this.info('A reused instance keeps the cache configuration it was created with.');
+      this.info('A reused instance keeps the snapshot configuration it was created with.');
     }
 
     await this.withAuth(async () => {

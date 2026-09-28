@@ -2,31 +2,8 @@ import { createEventSource, type EventSourceMessage } from 'eventsource-client';
 
 import { nodeProxyTransport } from './internal/proxy-transport';
 
-/**
- * Build cache configuration for an Xcode instance. Omitted means an ordinary uncached
- * instance, which resolves nothing, adopts no stable directory, and publishes nothing.
- */
-export type XcodeCacheConfig = {
-  /**
-   * Where this instance's workspace is published at termination. Organization-scoped and set
-   * once, either here or later through `bindCacheKey`. Reusing a key is normal operation:
-   * termination replaces its archive.
-   *
-   * With no restoreKeys, a key given here also serves as the single restore key.
-   */
-  key?: string;
-  /**
-   * Keys to restore from, tried in exactly this order: exact match first, then literal prefix,
-   * newest archive first within a prefix. Immutable after create.
-   */
-  restoreKeys?: string[];
-  /**
-   * Project-root-relative paths to store. Create-only, and it controls what is STORED: the
-   * first publication under a key fixes its path set and restores materialize that set.
-   * Omitted means the whole deterministic workspace.
-   */
-  paths?: string[];
-};
+/** @deprecated Use XcodeSnapshotConfig instead. */
+export type XcodeCacheConfig = import('./xcode-snapshot').XcodeSnapshotConfig;
 
 /**
  * How far a restore got. `disabled`, `unsupported` and `skipped` are not failures: they

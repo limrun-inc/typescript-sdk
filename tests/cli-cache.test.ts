@@ -65,7 +65,7 @@ describe('restore rendering', () => {
     );
     expect(outcome.failed).toBe(false);
     expect(outcome.line).toBe(
-      'Cache restored from myapp-main (prefix match), 2 GB via the regional accelerator in 41s.',
+      'Snapshot restored from myapp-main (prefix match), 2 GB via the regional accelerator in 41s.',
     );
   });
 
@@ -126,7 +126,7 @@ describe('publication rendering', () => {
       1,
     );
     expect(outcome.failed).toBe(false);
-    expect(outcome.line).toBe('Cache published under myapp-main, 1.5 KB in 1m4s.');
+    expect(outcome.line).toBe('Snapshot published under myapp-main, 1.5 KB in 1m4s.');
   });
 
   test('a timeout leaves the previous archive alone and counts as a failure', () => {
