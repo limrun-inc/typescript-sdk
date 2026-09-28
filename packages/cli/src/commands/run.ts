@@ -60,7 +60,7 @@ export default class Run extends BaseCommand {
   static flags = {
     'ios-id': Flags.string({
       description:
-        'Launch the built app on this existing iOS simulator instance instead of creating a new one.',
+        'Attach this existing iOS simulator before building, so the console can stream build output live.',
     }),
   };
   static hiddenAliases = ['go'];
@@ -327,9 +327,11 @@ export default class Run extends BaseCommand {
     let recoveryPrinted = false;
     try {
       return await this.withAuth(async () => {
-        // The simulator is created only after the build succeeds: a simulator
-        // that sits idle during a long build can hit its inactivity timeout
-        // and take the build sandbox down with it.
+        // Resolve a supplied simulator before allocating a builder. New simulators
+        // are still created after a successful build to avoid idle billed devices.
+        this.runFailureStage = 'simulator_attach';
+        let simulator =
+          this.iosInstanceId ? await this.client.iosInstances.get(this.iosInstanceId) : undefined;
         this.runFailureStage = 'instance_create';
         const sandbox = await this.reporter.withProgress('Preparing a Limrun Xcode build sandbox', () =>
           this.client.xcodeInstances.create({
@@ -344,6 +346,15 @@ export default class Run extends BaseCommand {
         registerCreatedInstance(sandbox);
 
         const xcode = await this.client.xcodeInstances.createClient({ instance: sandbox });
+
+        if (simulator) {
+          this.runFailureStage = 'simulator_attach';
+          await this.reporter.withProgress('Attaching your iOS simulator before building', () =>
+            xcode.attachSimulator(simulator!),
+          );
+          // An installError here belongs to an older build on a reused sandbox.
+          // The new build will install again; validate its result after building.
+        }
 
         this.runFailureStage = 'sync';
         await this.reporter.withProgress('Syncing project to the sandbox', () =>
@@ -376,11 +387,8 @@ export default class Run extends BaseCommand {
         this.runFailureStage = 'simulator_attach';
         this.reporter.start('Launching app in a Limrun iOS simulator');
         const launchStart = Date.now();
-        let simulator: Awaited<ReturnType<typeof this.client.iosInstances.create>> | undefined;
         try {
-          if (this.iosInstanceId) {
-            simulator = await this.client.iosInstances.get(this.iosInstanceId);
-          } else {
+          if (!simulator) {
             simulator = await this.client.iosInstances.create({
               wait: true,
               reuseIfExists: true,
@@ -403,10 +411,9 @@ export default class Run extends BaseCommand {
           }
         } catch (err) {
           this.reporter.stop('failure');
-          // The simulator is useless without the attach; never leak a billed
-          // one. Reuse only matches lim run's own labels, so a reused
-          // instance is part of this same workflow and fine to delete too.
-          if (simulator) {
+          // Only clean up this workflow's simulator. A supplied device belongs
+          // to the caller and must remain available for another build attempt.
+          if (simulator && !this.iosInstanceId) {
             await this.client.iosInstances.delete(simulator.metadata.id).catch(() => {});
           }
           throw err;
