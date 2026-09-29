@@ -1024,6 +1024,7 @@ export type InstanceClient = {
    * @param args Arguments to pass to simctl
    * @param opts Options for the simctl execution
    * @param opts.disconnectOnExit If true, disconnect from the instance when the command completes
+   * @param opts.stdin Data written to the command's standard input, which is then closed
    * @returns A SimctlExecution handle for listening to command output
    *
    * @example
@@ -1057,7 +1058,7 @@ export type InstanceClient = {
    * const execution2 = client.simctl(['status'], { disconnectOnExit: true });
    * ```
    */
-  simctl: (args: string[], opts?: { disconnectOnExit?: boolean }) => SimctlExecution;
+  simctl: (args: string[], opts?: SimctlOptions) => SimctlExecution;
 
   /**
    * Push a local file to the simulator. Returns the path of the file on the simulator host
@@ -1268,11 +1269,23 @@ type PendingRequest<T> = {
   transform?: (message: ServerResponse) => T;
 };
 
+/**
+ * Options for a simctl execution
+ */
+export type SimctlOptions = {
+  /** Disconnect from the instance when the command completes */
+  disconnectOnExit?: boolean;
+  /** Data written to the command's standard input, which is then closed */
+  stdin?: string | Buffer;
+};
+
 // Simctl uses streaming, so it's handled separately
 type SimctlRequest = {
   type: 'simctl';
   id: string;
   args: string[];
+  /** Base64 of the command's standard input */
+  stdin?: string;
 };
 
 /**
@@ -2609,7 +2622,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     // Cached device info, populated during connection
     let cachedDeviceInfo: DeviceInfo;
 
-    const simctl = (args: string[], opts: { disconnectOnExit?: boolean } = {}): SimctlExecution => {
+    const simctl = (args: string[], opts: SimctlOptions = {}): SimctlExecution => {
       const id = generateId();
 
       const cancelCallback = () => {
@@ -2651,6 +2664,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         type: 'simctl',
         id,
         args,
+        ...(opts.stdin !== undefined && { stdin: Buffer.from(opts.stdin).toString('base64') }),
       };
 
       logger.debug('Sending simctl request:', simctlRequest);

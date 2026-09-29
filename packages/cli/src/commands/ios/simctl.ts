@@ -1,6 +1,7 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';
+import { readStdin } from '../../lib/stdin';
 
 type SimctlResult = {
   code: number;
@@ -16,6 +17,8 @@ export default class IosSimctl extends BaseCommand {
     '<%= config.bin %> ios simctl -- listapps booted',
     '<%= config.bin %> ios simctl -- getenv booted HOME',
     '<%= config.bin %> ios simctl -- listapps booted --json',
+    'echo hello | <%= config.bin %> ios simctl -- pbcopy booted',
+    '<%= config.bin %> ios simctl -- pbpaste booted',
   ];
 
   static strict = false;
@@ -46,10 +49,12 @@ export default class IosSimctl extends BaseCommand {
         this.error('ios simctl only supports iOS instances');
       }
 
+      // pbcopy is the only allowed subcommand that reads standard input.
+      const stdin = rawArgs[0] === 'pbcopy' ? await readStdin() : undefined;
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
 
       try {
-        const execution = client.simctl(rawArgs);
+        const execution = client.simctl(rawArgs, stdin === undefined ? {} : { stdin });
 
         if (flags.json) {
           const result = (await execution.wait()) as SimctlResult;
