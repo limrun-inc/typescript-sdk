@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.56.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.55.0...v0.56.0) (2026-09-29)
+
+
+### Features
+
+* **ios:** clipboard, defaults and notify ([a7a27aa](https://github.com/limrun-inc/typescript-sdk/commit/a7a27aa8d3f58cd00213d88a4d41d3f477a80d83))
+
+
+### Bug Fixes
+
+* **cli:** read pbcopy stdin once, --json for defaults and notify ([a30b63c](https://github.com/limrun-inc/typescript-sdk/commit/a30b63c2ccb1bf9d040276d95c0c09e9838ed8a2))
+
+
+### Chores
+
+* **cli:** bump version to 0.35.2 for snapshot flags ([2f83200](https://github.com/limrun-inc/typescript-sdk/commit/2f832008a6c5250c2082abf99ae1dde69ce84ebf))
+
+
+### Refactors
+
+* **cli:** share one simctl runner across clipboard, defaults and notify ([4fa4433](https://github.com/limrun-inc/typescript-sdk/commit/4fa443329d5baf692fb856f40cdb3c0e8ec402f3))
+
 ## [0.55.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.54.0...v0.55.0) (2026-09-28)
 
 
