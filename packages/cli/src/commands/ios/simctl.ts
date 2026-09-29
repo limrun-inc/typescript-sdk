@@ -38,6 +38,10 @@ export default class IosSimctl extends BaseCommand {
     const rawArgs = (parsed.argv as string[]) ?? [];
     this.setParsedFlags(flags);
 
+    // pbcopy is the only allowed subcommand that reads standard input. Read it once, outside
+    // withAuth: a retry against a replacement instance would find stdin drained.
+    const stdin = rawArgs[0] === 'pbcopy' ? await readStdin() : undefined;
+
     await this.withAuth(async () => {
       if (rawArgs.length === 0) {
         this.error('Provide at least one simctl argument after `lim ios simctl --`.');
@@ -49,8 +53,6 @@ export default class IosSimctl extends BaseCommand {
         this.error('ios simctl only supports iOS instances');
       }
 
-      // pbcopy is the only allowed subcommand that reads standard input.
-      const stdin = rawArgs[0] === 'pbcopy' ? await readStdin() : undefined;
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
 
       try {

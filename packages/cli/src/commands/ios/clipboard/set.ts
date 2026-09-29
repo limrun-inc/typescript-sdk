@@ -31,18 +31,24 @@ export default class IosClipboardSet extends BaseCommand {
     const { args, flags } = await this.parse(IosClipboardSet);
     this.setParsedFlags(flags);
 
+    if (args.text === undefined && process.stdin.isTTY) {
+      this.error('Provide the text as an argument or pipe it on stdin.');
+    }
+    // Read once, outside withAuth: a retry against a replacement instance would find stdin drained.
+    const text = args.text ?? (await readStdin()).toString('utf8');
+
     await this.withAuth(async () => {
-      if (args.text === undefined && process.stdin.isTTY) {
-        this.error('Provide the text as an argument or pipe it on stdin.');
-      }
-      const text = args.text ?? (await readStdin()).toString('utf8');
       const { client, disconnect } = await getIosInstanceClient(
         this.client,
         this.resolveIosInstance(flags.id),
       );
       try {
         const result = await client.simctl(['pbcopy', 'booted'], { stdin: text }).wait();
-        if (result.code !== 0) this.error(result.stderr.trim(), { exit: result.code });
+        if (result.code !== 0) {
+          this.error(result.stderr.trim() || `pbcopy failed with exit code ${result.code}`, {
+            exit: result.code,
+          });
+        }
       } finally {
         disconnect();
       }

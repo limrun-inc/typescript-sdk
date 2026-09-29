@@ -52,8 +52,12 @@ export default class IosNotify extends BaseCommand {
       );
       try {
         const result = await client.simctl(['spawn', 'booted', 'notifyutil', ...notifyArgs]).wait();
-        process.stdout.write(result.stdout);
-        process.stderr.write(result.stderr);
+        if (flags.json) {
+          this.outputJson(result);
+        } else {
+          process.stdout.write(result.stdout);
+          process.stderr.write(result.stderr);
+        }
         if (result.code !== 0) this.exit(result.code);
       } finally {
         disconnect();
