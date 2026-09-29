@@ -1,6 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
-import { getIosInstanceClient } from '../../../lib/instance-client-factory';
+import { runIosSimctl } from '../../../lib/instance-client-factory';
 import { readStdin } from '../../../lib/stdin';
 
 export default class IosClipboardSet extends BaseCommand {
@@ -35,22 +35,21 @@ export default class IosClipboardSet extends BaseCommand {
       this.error('Provide the text as an argument or pipe it on stdin.');
     }
     // Read once, outside withAuth: a retry against a replacement instance would find stdin drained.
-    const text = args.text ?? (await readStdin()).toString('utf8');
+    const text = args.text ?? (await readStdin());
 
     await this.withAuth(async () => {
-      const { client, disconnect } = await getIosInstanceClient(
+      const result = await runIosSimctl(
         this.client,
         this.resolveIosInstance(flags.id),
+        ['pbcopy', 'booted'],
+        {
+          stdin: text,
+        },
       );
-      try {
-        const result = await client.simctl(['pbcopy', 'booted'], { stdin: text }).wait();
-        if (result.code !== 0) {
-          this.error(result.stderr.trim() || `pbcopy failed with exit code ${result.code}`, {
-            exit: result.code,
-          });
-        }
-      } finally {
-        disconnect();
+      if (result.code !== 0) {
+        this.error(result.stderr.trim() || `pbcopy failed with exit code ${result.code}`, {
+          exit: result.code,
+        });
       }
 
       if (flags.json) {

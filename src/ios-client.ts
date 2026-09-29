@@ -2667,7 +2667,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         ...(opts.stdin !== undefined && { stdin: Buffer.from(opts.stdin).toString('base64') }),
       };
 
-      logger.debug('Sending simctl request:', simctlRequest);
+      // stdin can carry secrets such as one-time codes, so it stays out of the log.
+      logger.debug('Sending simctl request:', { ...simctlRequest, stdin: undefined });
       ws.send(JSON.stringify(simctlRequest), (err?: Error) => {
         if (err) {
           logger.error('Failed to send simctl request:', err);

@@ -1,6 +1,6 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
-import { getIosInstanceClient } from '../../../lib/instance-client-factory';
+import { runIosSimctl } from '../../../lib/instance-client-factory';
 
 export default class IosClipboardGet extends BaseCommand {
   static summary = 'Print the clipboard of a running iOS instance';
@@ -26,22 +26,16 @@ export default class IosClipboardGet extends BaseCommand {
     this.setParsedFlags(flags);
 
     await this.withAuth(async () => {
-      const { client, disconnect } = await getIosInstanceClient(
-        this.client,
-        this.resolveIosInstance(flags.id),
-      );
-      let text: string;
-      try {
-        const result = await client.simctl(['pbpaste', 'booted']).wait();
-        if (result.code !== 0) {
-          this.error(result.stderr.trim() || `pbpaste failed with exit code ${result.code}`, {
-            exit: result.code,
-          });
-        }
-        text = result.stdout;
-      } finally {
-        disconnect();
+      const result = await runIosSimctl(this.client, this.resolveIosInstance(flags.id), [
+        'pbpaste',
+        'booted',
+      ]);
+      if (result.code !== 0) {
+        this.error(result.stderr.trim() || `pbpaste failed with exit code ${result.code}`, {
+          exit: result.code,
+        });
       }
+      const text = result.stdout;
 
       if (flags.json) {
         this.outputJson({ text });

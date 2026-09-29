@@ -1,6 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getIosInstanceClient } from '../../lib/instance-client-factory';
+import { runIosSimctl } from '../../lib/instance-client-factory';
 
 const NOTIFYUTIL_FLAGS = { post: '-p', set: '-s', get: '-g' } as const;
 
@@ -36,32 +36,30 @@ export default class IosNotify extends BaseCommand {
     const { args, flags } = await this.parse(IosNotify);
     this.setParsedFlags(flags);
 
+    const action = args.action as keyof typeof NOTIFYUTIL_FLAGS;
+    if ((action === 'set') !== (args.state !== undefined)) {
+      this.error('Pass a state for `set`, and only for `set`.');
+    }
+    const notifyArgs = [
+      NOTIFYUTIL_FLAGS[action],
+      args.name,
+      ...(args.state === undefined ? [] : [args.state]),
+    ];
+
     await this.withAuth(async () => {
-      const action = args.action as keyof typeof NOTIFYUTIL_FLAGS;
-      if ((action === 'set') !== (args.state !== undefined)) {
-        this.error('Pass a state for `set`, and only for `set`.');
+      const result = await runIosSimctl(this.client, this.resolveIosInstance(flags.id), [
+        'spawn',
+        'booted',
+        'notifyutil',
+        ...notifyArgs,
+      ]);
+      if (flags.json) {
+        this.outputJson(result);
+      } else {
+        process.stdout.write(result.stdout);
+        process.stderr.write(result.stderr);
       }
-      const notifyArgs = [
-        NOTIFYUTIL_FLAGS[action],
-        args.name,
-        ...(args.state === undefined ? [] : [args.state]),
-      ];
-      const { client, disconnect } = await getIosInstanceClient(
-        this.client,
-        this.resolveIosInstance(flags.id),
-      );
-      try {
-        const result = await client.simctl(['spawn', 'booted', 'notifyutil', ...notifyArgs]).wait();
-        if (flags.json) {
-          this.outputJson(result);
-        } else {
-          process.stdout.write(result.stdout);
-          process.stderr.write(result.stderr);
-        }
-        if (result.code !== 0) this.exit(result.code);
-      } finally {
-        disconnect();
-      }
+      if (result.code !== 0) this.exit(result.code);
     });
   }
 }
