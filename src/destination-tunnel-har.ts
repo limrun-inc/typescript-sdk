@@ -1,4 +1,5 @@
 import type { Entry as HAREntry, Request as HARRequest, Response as HARResponse } from 'har-format';
+import * as zlib from 'zlib';
 import { DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES } from './destination-tunnel';
 import type {
   DestinationTunnelInspectionComplete,
@@ -93,8 +94,14 @@ function makeDestinationTunnelHAREntry(
 ): DestinationTunnelHAREntry {
   const requestBody = concatBytes(capture.requestBody, capture.requestBytes);
   const responseBody = concatBytes(capture.responseBody, capture.responseBytes);
-  const { request, encoding: requestBodyEncoding } = addRequestBody(complete.request, requestBody);
-  const response = addResponseBody(complete.response, responseBody);
+  const requestTruncated = complete._limrun.requestBodyTruncated === true || capture.requestTruncated;
+  const responseTruncated = complete._limrun.responseBodyTruncated === true || capture.responseTruncated;
+  const { request, encoding: requestBodyEncoding } = addRequestBody(
+    complete.request,
+    requestBody,
+    requestTruncated,
+  );
+  const response = addResponseBody(complete.response, responseBody, responseTruncated);
   return {
     ...(complete.pageref === undefined ? {} : { pageref: complete.pageref }),
     startedDateTime: complete.startedDateTime,
@@ -109,16 +116,20 @@ function makeDestinationTunnelHAREntry(
     _limrun: {
       ...complete._limrun,
       ...(requestBodyEncoding ? { requestBodyEncoding } : {}),
-      requestBodyTruncated: complete._limrun.requestBodyTruncated === true || capture.requestTruncated,
-      responseBodyTruncated: complete._limrun.responseBodyTruncated === true || capture.responseTruncated,
+      requestBodyTruncated: requestTruncated,
+      responseBodyTruncated: responseTruncated,
     },
   };
 }
 
-function addRequestBody(request: HARRequest, body: Uint8Array): { request: HARRequest; encoding?: 'base64' } {
+function addRequestBody(
+  request: HARRequest,
+  body: Uint8Array,
+  truncated: boolean,
+): { request: HARRequest; encoding?: 'base64' } {
   if (body.byteLength === 0) return { request };
   const mimeType = request.postData?.mimeType ?? headerValue(request.headers, 'content-type');
-  const encoded = encodedBody(body, mimeType);
+  const encoded = encodedBody(body, mimeType, headerValue(request.headers, 'content-encoding'), truncated);
   return {
     request: {
       ...request,
@@ -131,28 +142,112 @@ function addRequestBody(request: HARRequest, body: Uint8Array): { request: HARRe
   };
 }
 
-function addResponseBody(response: HARResponse, body: Uint8Array): HARResponse {
+function addResponseBody(response: HARResponse, body: Uint8Array, truncated: boolean): HARResponse {
   if (body.byteLength === 0) return response;
   const content = { ...response.content };
   delete content.text;
   delete content.encoding;
+  const { decodedSize, ...encoded } = encodedBody(
+    body,
+    response.content.mimeType,
+    headerValue(response.headers, 'content-encoding'),
+    truncated,
+  );
   return {
     ...response,
     content: {
       ...content,
-      ...encodedBody(body, response.content.mimeType),
+      ...(decodedSize === undefined ? {} : { size: decodedSize, compression: decodedSize - body.byteLength }),
+      ...encoded,
     },
   };
 }
 
+/**
+ * Renders a captured body as HAR text. Content-Encoding is undone first so
+ * the HAR holds the decoded body, as HAR 1.2 and browser exports do. Anything
+ * that cannot be represented losslessly as UTF-8 text (unknown or corrupt
+ * encodings, truncated compressed bodies, non-UTF-8 bytes under a textual
+ * type) falls back to base64 of the bytes rather than lossy text.
+ *
+ * `decodedSize` is set only when a Content-Encoding was successfully removed.
+ */
 function encodedBody(
   body: Uint8Array,
   contentType: string | undefined,
-): { text: string; encoding?: 'base64' } {
-  if (isTextualContentType(contentType)) {
-    return { text: new TextDecoder().decode(body) };
+  contentEncoding: string | undefined,
+  truncated: boolean,
+): { text: string; encoding?: 'base64'; decodedSize?: number } {
+  let decoded = body;
+  let decodedSize: number | undefined;
+  const codings = parseContentEncoding(contentEncoding);
+  if (codings.length > 0) {
+    // A truncated stream cannot be decoded reliably (zstd, for one, returns
+    // partial output without an error), so keep the raw bytes.
+    if (truncated) return { text: bytesToBase64(body), encoding: 'base64' };
+    try {
+      decoded = decodeContentCodings(body, codings);
+      decodedSize = decoded.byteLength;
+    } catch {
+      return { text: bytesToBase64(body), encoding: 'base64' };
+    }
   }
-  return { text: bytesToBase64(body), encoding: 'base64' };
+  const sized = decodedSize === undefined ? {} : { decodedSize };
+  if (isTextualContentType(contentType)) {
+    try {
+      return { text: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(decoded), ...sized };
+    } catch {
+      // Not valid UTF-8; fall through to base64.
+    }
+  }
+  return { text: bytesToBase64(decoded), encoding: 'base64', ...sized };
+}
+
+// Guards against decompression bombs; larger bodies fall back to base64 of the raw bytes.
+const MAX_DECODED_BODY_BYTES = 64 * 1024 * 1024;
+
+function parseContentEncoding(contentEncoding: string | undefined): string[] {
+  return (contentEncoding ?? '')
+    .split(',')
+    .map((coding) => coding.trim().toLowerCase())
+    .filter((coding) => coding !== '' && coding !== 'identity');
+}
+
+/** Undoes codings in reverse of the order they were applied. Throws on unknown or corrupt input. */
+function decodeContentCodings(body: Uint8Array, codings: string[]): Uint8Array {
+  const options = { maxOutputLength: MAX_DECODED_BODY_BYTES };
+  let data: Uint8Array = body;
+  for (const coding of [...codings].reverse()) {
+    switch (coding) {
+      case 'gzip':
+      case 'x-gzip':
+        data = zlib.gunzipSync(data, options);
+        break;
+      case 'deflate':
+        // Servers send both zlib-wrapped (per spec) and raw deflate streams.
+        try {
+          data = zlib.inflateSync(data, options);
+        } catch {
+          data = zlib.inflateRawSync(data, options);
+        }
+        break;
+      case 'br':
+        data = zlib.brotliDecompressSync(data, options);
+        break;
+      case 'zstd': {
+        // Available from Node 22.15 / 23.8.
+        const zstdDecompressSync = (zlib as any).zstdDecompressSync as
+          | ((buffer: Uint8Array, options?: object) => Buffer)
+          | undefined;
+        if (!zstdDecompressSync) throw new Error('zstd decompression is not supported by this Node.js');
+        data = zstdDecompressSync(data, options);
+        break;
+      }
+      default:
+        throw new Error(`Unsupported content encoding: ${coding}`);
+    }
+  }
+  return data;
 }
 
 function isTextualContentType(contentType: string | undefined): boolean {
