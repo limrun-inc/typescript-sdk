@@ -131,6 +131,24 @@ export async function getAndroidInstanceClient(
   return { type: 'android', client, disconnect: () => client.disconnect(), isSession: false };
 }
 
+/**
+ * Runs one simctl command on an iOS instance and collects its output, for commands that
+ * print the result once instead of streaming it.
+ */
+export async function runIosSimctl(
+  lim: Limrun,
+  target: LastIosInstance,
+  args: string[],
+  opts: Ios.SimctlOptions = {},
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const { client, disconnect } = await getIosInstanceClient(lim, target);
+  try {
+    return await client.simctl(args, opts).wait();
+  } finally {
+    disconnect();
+  }
+}
+
 export async function getIosInstanceClient(
   lim: Limrun,
   target: LastIosInstance,

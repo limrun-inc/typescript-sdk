@@ -1,6 +1,6 @@
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { getIosInstanceClient } from '../../lib/instance-client-factory';
+import { runIosSimctl } from '../../lib/instance-client-factory';
 
 export default class IosDefaults extends BaseCommand {
   static summary = 'Read or write user defaults on a running iOS instance';
@@ -30,26 +30,25 @@ export default class IosDefaults extends BaseCommand {
     const rawArgs = (parsed.argv as string[]) ?? [];
     this.setParsedFlags(flags);
 
+    // limulator decides which defaults verbs run; the CLI only needs something to send.
+    if (rawArgs.length === 0) {
+      this.error('Usage: lim ios defaults -- read|write|delete <domain> [key] [value...]');
+    }
+
     await this.withAuth(async () => {
-      if (!['read', 'write', 'delete'].includes(rawArgs[0] ?? '')) {
-        this.error('Usage: lim ios defaults -- read|write|delete <domain> [key] [value...]');
+      const result = await runIosSimctl(this.client, this.resolveIosInstance(flags.id), [
+        'spawn',
+        'booted',
+        'defaults',
+        ...rawArgs,
+      ]);
+      if (flags.json) {
+        this.outputJson(result);
+      } else {
+        process.stdout.write(result.stdout);
+        process.stderr.write(result.stderr);
       }
-      const { client, disconnect } = await getIosInstanceClient(
-        this.client,
-        this.resolveIosInstance(flags.id),
-      );
-      try {
-        const result = await client.simctl(['spawn', 'booted', 'defaults', ...rawArgs]).wait();
-        if (flags.json) {
-          this.outputJson(result);
-        } else {
-          process.stdout.write(result.stdout);
-          process.stderr.write(result.stderr);
-        }
-        if (result.code !== 0) this.exit(result.code);
-      } finally {
-        disconnect();
-      }
+      if (result.code !== 0) this.exit(result.code);
     });
   }
 }
