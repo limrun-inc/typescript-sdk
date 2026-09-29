@@ -253,14 +253,18 @@ export type LsofEntry = {
   path: string;
 };
 
+export type DuoDisplay = 'outer' | 'inner';
+
 export type FoldDisplay = {
-  id: 'outer' | 'inner';
+  id: DuoDisplay;
   screenId: number;
   trackId: string;
   width: number;
   height: number;
   scale: number;
   orientation: number;
+  /** True when this display presents content. Populated by getFoldState on supported servers. */
+  active?: boolean;
 };
 
 export type DuoOrientation = 'portrait' | 'pud' | 'landscape-left' | 'landscape-right';
@@ -764,13 +768,14 @@ export type InstanceClient = {
    * @param direction Direction content moves: "up", "down", "left", "right"
    * @param pixels Total pixels to scroll (finger movement distance)
    * @param options Optional scroll options
+   * @param options.display Duo display to scroll, in upright screenshotDisplay points. Omit for the primary display.
    * @param options.coordinate Starting coordinate [x, y]. Defaults to screen center.
    * @param options.momentum 0.0-1.0 controlling scroll speed and inertia. 0 (default) = slow scroll, no momentum. 1 = fastest with max inertia.
    */
   scroll: (
     direction: 'up' | 'down' | 'left' | 'right',
     pixels: number,
-    options?: { coordinate?: [number, number]; momentum?: number },
+    options?: { coordinate?: [number, number]; momentum?: number; display?: DuoDisplay },
   ) => Promise<void>;
 
   /**
@@ -793,12 +798,14 @@ export type InstanceClient = {
    * `options.timeoutMs` to override.
    *
    * @param actions The actions to run in order.
+   * @param options.display Duo display for coordinate taps, scrolls, and raw touches.
+   * Uses upright screenshotDisplay points. Element actions follow the active display.
    * @param options.timeoutMs Custom client-side timeout in milliseconds.
    * @throws If any action fails — subsequent actions are not executed.
    */
   performActions: (
     actions: PerformAction[],
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; display?: DuoDisplay },
   ) => Promise<PerformActionsResult>;
 
   /**
@@ -2187,14 +2194,24 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       // anchored drag lands in the wrong place in landscape. The server
       // starts center-screen in rotated space, which halves the effective
       // page but stays correct in every orientation.
-      const pagePixels = Math.round(cachedDeviceInfo.screenHeight * 0.6);
+      let pageHeight = cachedDeviceInfo.screenHeight;
+      let display: DuoDisplay | undefined;
+      if (cachedDeviceInfo.model === 'iPhone Duo') {
+        const state = await getFoldState();
+        const active = state?.displays.find((candidate) => candidate.active);
+        if (!active) throw new Error('The server did not report an active Duo display for scroll search.');
+        display = active.id;
+        const rotated = active.orientation === 3 || active.orientation === 4;
+        pageHeight = (rotated ? active.width : active.height) / active.scale;
+      }
+      const pagePixels = Math.round(pageHeight * 0.6);
       for (const [direction, count] of [
         ['down', 3],
         ['up', 6],
       ] as const) {
         for (let page = 0; page < count; page += 1) {
           if (Date.now() >= deadline) break;
-          await scroll(direction, pagePixels);
+          await scroll(direction, pagePixels, display ? { display } : undefined);
           // Let lazily-materializing cells appear before re-reading.
           await sleep(300);
           try {
@@ -2386,26 +2403,32 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const scroll = (
       direction: 'up' | 'down' | 'left' | 'right',
       pixels: number,
-      options?: { coordinate?: [number, number]; momentum?: number },
+      options?: { coordinate?: [number, number]; momentum?: number; display?: DuoDisplay },
     ): Promise<void> => {
       return sendRequest<void>('scroll', {
         direction,
         pixels,
         coordinate: options?.coordinate,
         momentum: options?.momentum,
+        display: options?.display,
       });
     };
 
     const performActions = (
       actions: PerformAction[],
-      options?: { timeoutMs?: number },
+      options?: { timeoutMs?: number; display?: DuoDisplay },
     ): Promise<PerformActionsResult> => {
       // Batch duration is unbounded (user-supplied `wait` durations, plus
       // per-action server work), so we grow the timeout with the batch
       // rather than sticking to sendRequest's 30s default.
       const waitMs = actions.reduce((acc, a) => acc + (a.type === 'wait' ? Math.max(0, a.durationMs) : 0), 0);
       const timeoutMs = options?.timeoutMs ?? 30_000 + waitMs + actions.length * 2_000;
-      return sendRequest<PerformActionsResult>('performActions', { actions }, undefined, timeoutMs);
+      return sendRequest<PerformActionsResult>(
+        'performActions',
+        { actions, display: options?.display },
+        undefined,
+        timeoutMs,
+      );
     };
 
     const startRecording = async (opts?: {

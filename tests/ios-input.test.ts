@@ -2,6 +2,7 @@ const sentMessages: Record<string, unknown>[] = [];
 // When > 0, tapElement replies with the server's fail-fast "matched nothing"
 // error and decrements; the client-side scroll search retries against this.
 let tapElementMissesRemaining = 0;
+let deviceModel = 'iphone';
 
 jest.mock('ws', () => {
   const { EventEmitter } = require('events');
@@ -21,7 +22,7 @@ jest.mock('ws', () => {
       const message = JSON.parse(data);
       sentMessages.push(message);
 
-      if (message.type === 'setElementValue') {
+      if (message['type'] === 'setElementValue') {
         process.nextTick(() => {
           this['emit'](
             'message',
@@ -34,7 +35,7 @@ jest.mock('ws', () => {
             ),
           );
         });
-      } else if (message.type === 'deviceInfo') {
+      } else if (message['type'] === 'deviceInfo') {
         process.nextTick(() => {
           this['emit'](
             'message',
@@ -45,16 +46,56 @@ jest.mock('ws', () => {
                 udid: 'test-udid',
                 screenWidth: 390,
                 screenHeight: 844,
-                model: 'iphone',
+                model: deviceModel,
               }),
             ),
           );
         });
-      } else if (message.type === 'typeText') {
+      } else if (message['type'] === 'getFoldState') {
+        process.nextTick(() => {
+          this['emit'](
+            'message',
+            Buffer.from(
+              JSON.stringify({
+                type: 'foldStateResult',
+                id: message.id,
+                state: {
+                  angleDegrees: 80,
+                  orientation: 'portrait',
+                  minAngleDegrees: 0,
+                  maxAngleDegrees: 180,
+                  displays: [
+                    {
+                      id: 'outer',
+                      screenId: 1,
+                      trackId: 'video0',
+                      width: 1398,
+                      height: 2034,
+                      scale: 3,
+                      orientation: 1,
+                      active: false,
+                    },
+                    {
+                      id: 'inner',
+                      screenId: 3,
+                      trackId: 'duo-inner',
+                      width: 2007,
+                      height: 2853,
+                      scale: 3,
+                      orientation: 3,
+                      active: true,
+                    },
+                  ],
+                },
+              }),
+            ),
+          );
+        });
+      } else if (message['type'] === 'typeText') {
         process.nextTick(() => {
           this['emit']('message', Buffer.from(JSON.stringify({ type: 'typeTextResult', id: message.id })));
         });
-      } else if (message.type === 'tapElement') {
+      } else if (message['type'] === 'tapElement') {
         const miss = tapElementMissesRemaining > 0;
         if (miss) tapElementMissesRemaining -= 1;
         process.nextTick(() => {
@@ -80,7 +121,7 @@ jest.mock('ws', () => {
             ),
           );
         });
-      } else if (message.type === 'scroll') {
+      } else if (message['type'] === 'scroll') {
         process.nextTick(() => {
           this['emit']('message', Buffer.from(JSON.stringify({ type: 'scrollResult', id: message.id })));
         });
@@ -113,6 +154,27 @@ describe('iOS input serialization', () => {
   beforeEach(() => {
     sentMessages.length = 0;
     tapElementMissesRemaining = 0;
+    deviceModel = 'iphone';
+  });
+
+  it('scroll-searches the active inner display using its upright height', async () => {
+    deviceModel = 'iPhone Duo';
+    tapElementMissesRemaining = 1;
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test',
+      token: 'test',
+      logLevel: 'none',
+    });
+    try {
+      await client.tapElement({ AXLabel: 'Submit' }, { scrollSearch: true });
+      expect(sentMessages.find((message) => message['type'] === 'scroll')).toMatchObject({
+        display: 'inner',
+        pixels: 401,
+      });
+    } finally {
+      client.disconnect();
+    }
   });
 
   it('serializes typeText with its original payload shape', async () => {
