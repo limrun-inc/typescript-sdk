@@ -33,7 +33,11 @@ export default class IosClipboardGet extends BaseCommand {
       let text: string;
       try {
         const result = await client.simctl(['pbpaste', 'booted']).wait();
-        if (result.code !== 0) this.error(result.stderr.trim(), { exit: result.code });
+        if (result.code !== 0) {
+          this.error(result.stderr.trim() || `pbpaste failed with exit code ${result.code}`, {
+            exit: result.code,
+          });
+        }
         text = result.stdout;
       } finally {
         disconnect();
