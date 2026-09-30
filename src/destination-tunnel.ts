@@ -6,6 +6,7 @@ import {
   readArray,
   readBoolean,
   readInteger,
+  readOptionalBoolean,
   readOptionalNonNegativeInteger,
   readOptionalString,
   readRecord,
@@ -33,6 +34,12 @@ export const DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const DESTINATION_TUNNEL_MAX_BODY_BYTES = 64 * 1024 * 1024;
 export const DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS = 72 * 60 * 60;
 export const DESTINATION_TUNNEL_MAX_TTL_SECONDS = 30 * 24 * 60 * 60;
+/**
+ * Selector ID of opens from the device's system proxy. Their destination comes
+ * from each proxy request, so they are allowed only when the client asked for
+ * `systemProxy`.
+ */
+export const DESTINATION_TUNNEL_SYSTEM_PROXY_SELECTOR_ID = 'system-proxy';
 
 export interface DestinationTunnelRoute {
   host: string;
@@ -86,6 +93,12 @@ export interface DestinationTunnelBindReport {
   osCode?: string;
 }
 
+/** Device-side proxy address the server echoes when it honored `systemProxy`. */
+export interface DestinationTunnelSystemProxyReport {
+  host: string;
+  port: number;
+}
+
 /** Normalized selector the server acknowledges in `ready` and status. */
 export interface DestinationTunnelSelectorReport {
   id: string;
@@ -134,6 +147,8 @@ export type DestinationTunnelClientMessage =
       version: number;
       selectors: DestinationTunnelSelectors;
       inspection: DestinationTunnelInspectionConfig;
+      /** Points the device's system proxy at the tunnel. */
+      systemProxy?: boolean;
       /** Default per-flow receive window this client grants. */
       window: number;
     }
@@ -160,6 +175,7 @@ export type DestinationTunnelServerMessage =
       tunnelId: string;
       selectors: DestinationTunnelSelectorReport[];
       configHash: string;
+      systemProxy?: DestinationTunnelSystemProxyReport;
     }
   | {
       type: 'open';
@@ -252,16 +268,17 @@ export function validateDestinationTunnelRoutes(
 /**
  * Validate and canonicalize a full selector set. Selector policy specific to
  * one product (such as the Android bind-listener minimum route port) is
- * expressed via options rather than separate message shapes.
+ * expressed via options rather than separate message shapes. A system proxy
+ * tunnel may declare no selectors at all.
  */
 export function validateDestinationTunnelSelectors(
   selectors: readonly string[],
-  options: { minRoutePort?: number } = {},
+  options: { minRoutePort?: number; systemProxy?: boolean } = {},
 ): DestinationTunnelSelectors {
   if (!Array.isArray(selectors)) {
     throw new DestinationTunnelSelectorError('invalid_host', 'tunnel selectors must be an array');
   }
-  if (selectors.length === 0) {
+  if (selectors.length === 0 && !options.systemProxy) {
     throw new DestinationTunnelSelectorError('empty', 'at least one tunnel selector is required');
   }
   const canonical: string[] = [];
@@ -295,7 +312,7 @@ export function validateDestinationTunnelSelectors(
 
 export function classifyDestinationTunnelSelectors(
   selectors: readonly string[],
-  options: { minRoutePort?: number } = {},
+  options: { minRoutePort?: number; systemProxy?: boolean } = {},
 ): DestinationTunnelSelectorCatalog {
   const canonical = validateDestinationTunnelSelectors(selectors, options);
   const routes: DestinationTunnelRoute[] = [];
@@ -339,13 +356,18 @@ export function validateDestinationTunnelDomains(domains: readonly string[]): st
 export function destinationTunnelConfigHash(
   selectors: DestinationTunnelSelectors,
   inspection: DestinationTunnelInspectionConfig = disabledDestinationTunnelInspection(),
+  systemProxy = false,
 ): string {
-  const canonical = validateDestinationTunnelSelectors(selectors);
+  const canonical = validateDestinationTunnelSelectors(selectors, { systemProxy });
   const canonicalInspection = normalizeDestinationTunnelInspection(inspection);
   const parts: string[] = [
     `"version":${DESTINATION_TUNNEL_VERSION}`,
     `"selectors":[${canonical.map((selector) => JSON.stringify(selector)).join(',')}]`,
   ];
+  if (systemProxy) {
+    // Written only when set, so hashes of other configurations stay unchanged.
+    parts.push('"systemProxy":true');
+  }
   parts.push(
     `"inspection":{"enabled":${canonicalInspection.enabled},"captureBodies":${canonicalInspection.captureBodies},"maxBodyBytes":${canonicalInspection.maxBodyBytes},"persist":${canonicalInspection.persist},"ttlSeconds":${canonicalInspection.ttlSeconds}}`,
   );
@@ -406,22 +428,29 @@ export function destinationTunnelDomainMatches(pattern: string, host: string): b
 
 /**
  * Verify a server OPEN against the negotiated selectors. Every OPEN must name
- * a known selector ID and a target that the selector actually covers.
+ * a known selector ID and a target that the selector actually covers. A
+ * `system-proxy` open may name any target, but only when the client asked for
+ * the system proxy; the dialer still refuses special addresses it resolves.
  */
 export function assertDestinationTunnelOpenAllowed(
   message: Extract<DestinationTunnelServerMessage, { type: 'open' }>,
   selectors: DestinationTunnelSelectors,
-): DestinationTunnelSelectorKind {
-  const canonical = validateDestinationTunnelSelectors(selectors);
-  const match = /^selector-([1-9]\d*)$/.exec(message.selectorId);
-  const index = match?.[1] ? Number(match[1]) - 1 : -1;
+  options: { systemProxy?: boolean } = {},
+): DestinationTunnelSelectorKind | 'system-proxy' {
   const fail = (): never => {
     throw new DestinationTunnelProtocolError(
       `server requested undeclared selector ${message.selectorId} ${message.host}:${message.port}`,
     );
   };
-  if (index < 0) fail();
   if (message.port === 53) fail();
+  if (message.selectorId === DESTINATION_TUNNEL_SYSTEM_PROXY_SELECTOR_ID) {
+    if (!options.systemProxy) fail();
+    return 'system-proxy';
+  }
+  const canonical = validateDestinationTunnelSelectors(selectors, options);
+  const match = /^selector-([1-9]\d*)$/.exec(message.selectorId);
+  const index = match?.[1] ? Number(match[1]) - 1 : -1;
+  if (index < 0) fail();
   const selector = canonical[index];
   if (selector === undefined) return fail();
   const parsed = parseDestinationTunnelSelector(selector);
@@ -451,6 +480,7 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
       if (version !== DESTINATION_TUNNEL_VERSION) {
         throw new DestinationTunnelProtocolError(`unsupported tunnel version ${version}`);
       }
+      const systemProxy = readOptionalBoolean(record, 'systemProxy')['systemProxy'] === true;
       const selectors = validateDestinationTunnelSelectors(
         readArray(record, 'selectors').map((value) => {
           if (typeof value !== 'string') {
@@ -458,13 +488,18 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
           }
           return value;
         }),
+        { systemProxy },
       );
       const inspection = readInspectionConfig(record);
+      if (systemProxy && !inspection.enabled) {
+        throw new DestinationTunnelProtocolError('systemProxy requires inspection to be enabled');
+      }
       return JSON.stringify({
         type,
         version,
         selectors,
         inspection,
+        ...(systemProxy ? { systemProxy } : {}),
         window: readWindow(record),
       });
     }
@@ -510,6 +545,7 @@ export function decodeDestinationTunnelServerMessage(value: unknown): Destinatio
           readSelectorReport(value, `selector-${index + 1}`),
         ),
         configHash: readString(message, 'configHash'),
+        ...readOptionalSystemProxy(message),
       };
     case 'open':
       return {
@@ -666,6 +702,14 @@ function readSelectorReport(value: unknown, expectedId: string): DestinationTunn
     result.binds = readArray(report, 'binds').map(readBindReport);
   }
   return result;
+}
+
+function readOptionalSystemProxy(record: Record<string, unknown>): {
+  systemProxy?: DestinationTunnelSystemProxyReport;
+} {
+  if (record['systemProxy'] === undefined) return {};
+  const proxy = readRecord(record['systemProxy'], 'systemProxy');
+  return { systemProxy: { host: readString(proxy, 'host'), port: readPort(proxy, 'port') } };
 }
 
 function readBindReport(value: unknown): DestinationTunnelBindReport {

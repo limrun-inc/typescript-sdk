@@ -6,6 +6,7 @@ import {
   type DestinationTunnelBindReport,
   type DestinationTunnelInspectionConfig,
   type DestinationTunnelSelectorReport,
+  type DestinationTunnelSystemProxyReport,
 } from '../destination-tunnel';
 
 export interface DestinationTunnelStatus {
@@ -14,6 +15,7 @@ export interface DestinationTunnelStatus {
     state: 'starting' | 'ready' | 'stopping';
     selectors: DestinationTunnelSelectorReport[];
     inspection: DestinationTunnelInspectionConfig;
+    systemProxy?: DestinationTunnelSystemProxyReport;
   };
   lastFailure?: {
     tunnelId: string;
@@ -85,7 +87,17 @@ function readActiveTunnel(value: unknown): NonNullable<DestinationTunnelStatus['
       readSelectorReport(selector, `selector-${index + 1}`),
     ),
     inspection: readInspection(active),
+    ...(active['systemProxy'] === undefined ? {} : { systemProxy: readSystemProxy(active['systemProxy']) }),
   };
+}
+
+function readSystemProxy(value: unknown): DestinationTunnelSystemProxyReport {
+  const proxy = readRecord(value, 'system proxy');
+  const port = proxy['port'];
+  if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error('system proxy port must be an integer between 1 and 65535');
+  }
+  return { host: readNonEmptyString(proxy, 'host'), port };
 }
 
 function readInspection(active: Record<string, unknown>): DestinationTunnelInspectionConfig {

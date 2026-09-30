@@ -33,6 +33,7 @@ import {
   type DestinationTunnelSelectorReport,
   type DestinationTunnelSelectors,
   type DestinationTunnelServerMessage,
+  type DestinationTunnelSystemProxyReport,
 } from './destination-tunnel';
 import type { LogLevel, TunnelConnectionState, TunnelConnectionStateCallback } from './tunnel';
 
@@ -55,6 +56,8 @@ export interface DestinationTcpTunnel {
   selectors: DestinationTunnelSelectorReport[];
   configHash: string;
   inspection: DestinationTunnelInspectionConfig;
+  /** Device-side proxy address when the tunnel runs as the system proxy. */
+  systemProxy?: DestinationTunnelSystemProxyReport;
   inspectionStream?: DestinationTunnelInspectionStream;
   close: () => void;
   getConnectionState: () => TunnelConnectionState;
@@ -62,7 +65,19 @@ export interface DestinationTcpTunnel {
 }
 
 export interface DestinationTcpTunnelOptions {
+  /** May be empty when systemProxy is set. */
   selectors: DestinationTunnelSelectors;
+  /**
+   * Points the device's system proxy at the tunnel, so every app that honors
+   * it reaches any destination through this machine. Requires inspection.
+   */
+  systemProxy?: boolean;
+  /**
+   * Proxy for the tunnel's outbound connections to domains and system-proxy
+   * destinations. It replaces HTTP_PROXY/HTTPS_PROXY for those connections
+   * only; `ca` is also trusted for TLS made through it.
+   */
+  upstreamProxy?: { url: string; ca?: string | Buffer };
   inspection?: Partial<DestinationTunnelInspectionConfig>;
   /** Called for validated inspection metadata and body frames. */
   onInspectionEvent?: DestinationTunnelInspectionEventCallback;
@@ -83,7 +98,14 @@ export interface DestinationTcpTunnelOptions {
 /** Destination tunnel options the iOS and Android instance clients accept. */
 export type DestinationTunnelStartOptions = Pick<
   DestinationTcpTunnelOptions,
-  'selectors' | 'inspection' | 'onInspectionEvent' | 'onInspectionError' | 'window' | 'logLevel'
+  | 'selectors'
+  | 'systemProxy'
+  | 'upstreamProxy'
+  | 'inspection'
+  | 'onInspectionEvent'
+  | 'onInspectionError'
+  | 'window'
+  | 'logLevel'
 >;
 
 /**
@@ -96,6 +118,8 @@ export function destinationTunnelDialOptions(
 ): DestinationTcpTunnelOptions {
   return {
     selectors: options.selectors,
+    ...(options.systemProxy ? { systemProxy: true } : {}),
+    ...(options.upstreamProxy ? { upstreamProxy: options.upstreamProxy } : {}),
     inspection: {
       enabled: true,
       captureBodies: false,
@@ -136,6 +160,8 @@ interface OpenDialConnection extends DialConnection {
 /** Thrown (message prefix) when the server terminates the session with `error`. */
 export const DESTINATION_TUNNEL_SERVER_ERROR_PREFIX = 'destination tunnel failed: ';
 
+const SYSTEM_PROXY_UNSUPPORTED = 'this instance does not support the system proxy yet';
+
 /**
  * True when the failure is a terminal protocol/policy rejection from the
  * server rather than a transient transport problem. Reconnect supervisors
@@ -150,11 +176,16 @@ export async function startDestinationTcpTunnel(
   token: string,
   options: DestinationTcpTunnelOptions,
 ): Promise<DestinationTcpTunnel> {
-  const selectors = validateDestinationTunnelSelectors(options.selectors);
-  const routes = classifyDestinationTunnelSelectors(selectors).routes ?? [];
+  const systemProxy = options.systemProxy === true;
+  const selectors = validateDestinationTunnelSelectors(options.selectors, { systemProxy });
+  const routes = classifyDestinationTunnelSelectors(selectors, { systemProxy }).routes ?? [];
   const inspection = normalizeDestinationTunnelInspection(
     options.inspection ?? disabledDestinationTunnelInspection(),
   );
+  if (systemProxy && !inspection.enabled) {
+    throw new DestinationTunnelProtocolError('systemProxy requires inspection to be enabled');
+  }
+  const upstreamProxy = options.upstreamProxy;
   const logLevel = options.logLevel ?? 'info';
   const creditWindow = positiveInteger(options.window ?? DESTINATION_TUNNEL_DEFAULT_WINDOW, 'window');
   const maxConnections = positiveInteger(options.maxConnections ?? 64, 'maxConnections');
@@ -450,6 +481,7 @@ export async function startDestinationTcpTunnel(
         type: 'tls';
       },
       abortController: AbortController,
+      extraCa?: string | Buffer,
     ): Promise<tls.TLSSocket> =>
       new Promise((resolveTls, rejectTls) => {
         const tlsSocket = tls.connect({
@@ -457,6 +489,8 @@ export async function startDestinationTcpTunnel(
           rejectUnauthorized: true,
           servername: transport.serverName,
           ALPNProtocols: transport.alpnProtocols,
+          // A recording proxy re-signs upstream TLS with its own CA.
+          ...(extraCa ? { ca: [...tls.rootCertificates, extraCa] } : {}),
         });
         tlsSocket.allowHalfOpen = true;
         const cleanup = (): void => {
@@ -488,9 +522,9 @@ export async function startDestinationTcpTunnel(
       });
 
     const handleOpen = (message: Extract<DestinationTunnelServerMessage, { type: 'open' }>): void => {
-      let kind: 'route' | 'domain';
+      let kind: ReturnType<typeof assertDestinationTunnelOpenAllowed>;
       try {
-        kind = assertDestinationTunnelOpenAllowed(message, selectors);
+        kind = assertDestinationTunnelOpenAllowed(message, selectors, { systemProxy });
       } catch {
         sendOpenFailure(message.connId, 'selector_not_allowed');
         return;
@@ -527,8 +561,18 @@ export async function startDestinationTcpTunnel(
       connections.set(message.connId, connection);
 
       void (async () => {
+        const proxyLookupProtocol = message.transport.type === 'tls' ? 'https:' : 'http:';
+        // Exact routes name local or private targets and always dial directly
+        // (or through the environment proxy, as before). Other opens go
+        // through the upstream proxy when one is set, and a proxy resolves
+        // the name itself, so the hostname goes into CONNECT.
+        const proxy =
+          kind === 'route' ? undefined : (
+            upstreamProxy ??
+            nodeProxyTransport.proxyForDestination(message.host, message.port, proxyLookupProtocol)
+          );
         let host = message.host;
-        if (kind === 'domain') {
+        if (kind !== 'route' && !proxy) {
           const resolved = await dialTarget(message);
           host = resolved.host;
           connection.dnsMs = resolved.dnsMs;
@@ -539,7 +583,8 @@ export async function startDestinationTcpTunnel(
           host,
           port: message.port,
           proxyLookupHost: message.host,
-          proxyLookupProtocol: message.transport.type === 'tls' ? 'https:' : 'http:',
+          proxyLookupProtocol,
+          ...(proxy ? { proxy } : {}),
           timeoutMs: connectTimeoutMs,
           signal: abortController.signal,
         });
@@ -553,7 +598,12 @@ export async function startDestinationTcpTunnel(
         let tlsMs: number | undefined;
         if (message.transport.type === 'tls') {
           const tlsStartedAt = Date.now();
-          socket = await wrapTls(tcp.socket, message.transport, abortController);
+          socket = await wrapTls(
+            tcp.socket,
+            message.transport,
+            abortController,
+            proxy === upstreamProxy ? upstreamProxy?.ca : undefined,
+          );
           tlsMs = Date.now() - tlsStartedAt;
           if (connections.get(message.connId) !== connection || closed) {
             socket.destroy();
@@ -711,7 +761,11 @@ export async function startDestinationTcpTunnel(
         case 'ready': {
           if (tunnelReady) throw new DestinationTunnelProtocolError('received duplicate READY');
           assertDestinationTunnelReady(message);
-          const expected = destinationTunnelConfigHash(selectors, inspection);
+          if (systemProxy && !message.systemProxy) {
+            // Older servers ignore the field they do not know.
+            throw new Error(`${DESTINATION_TUNNEL_SERVER_ERROR_PREFIX}${SYSTEM_PROXY_UNSUPPORTED}`);
+          }
+          const expected = destinationTunnelConfigHash(selectors, inspection, systemProxy);
           if (message.configHash !== expected) {
             throw new DestinationTunnelProtocolError(
               `server acknowledged config ${message.configHash} but ${expected} was negotiated`,
@@ -726,8 +780,12 @@ export async function startDestinationTcpTunnel(
           updateConnectionState('connected');
           // The instance only captures connections opened from now on; an app
           // that connected earlier can keep reusing them outside the tunnel.
+          const proxyNote =
+            message.systemProxy ?
+              ` and the system proxy at ${message.systemProxy.host}:${message.systemProxy.port}`
+            : '';
           logger.info(
-            `Destination tunnel ready with ${selectors.length} selector(s); relaunch apps that connected before it`,
+            `Destination tunnel ready with ${selectors.length} selector(s)${proxyNote}; relaunch apps that connected before it`,
           );
           if (inspection.enabled) {
             try {
@@ -748,6 +806,7 @@ export async function startDestinationTcpTunnel(
             selectors: message.selectors,
             configHash: message.configHash,
             inspection,
+            ...(message.systemProxy ? { systemProxy: message.systemProxy } : {}),
             ...(inspectionStream ? { inspectionStream } : {}),
             close,
             getConnectionState,
@@ -756,6 +815,10 @@ export async function startDestinationTcpTunnel(
           return;
         }
         case 'error':
+          if (systemProxy && selectors.length === 0 && message.code === 'invalid_selector') {
+            // Older servers reject the empty selector list of a proxy-only tunnel.
+            throw new Error(`${DESTINATION_TUNNEL_SERVER_ERROR_PREFIX}${SYSTEM_PROXY_UNSUPPORTED}`);
+          }
           throw new Error(`${DESTINATION_TUNNEL_SERVER_ERROR_PREFIX}${message.code}`);
         case 'open':
           if (!tunnelReady) throw new DestinationTunnelProtocolError('received OPEN before READY');
@@ -795,6 +858,7 @@ export async function startDestinationTcpTunnel(
         version: DESTINATION_TUNNEL_VERSION,
         selectors,
         inspection,
+        ...(systemProxy ? { systemProxy } : {}),
         window: creditWindow,
       });
       pingInterval = setInterval(() => {

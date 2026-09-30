@@ -43,6 +43,7 @@ import {
 } from './tunnel-process';
 import { createTunnelHarRecorder, formatInspectionSummary, type TunnelHarRecorder } from './tunnel-har';
 import type { TunnelInspectionContext } from './tunnel-inspection-flags';
+import { upstreamProxyOrigin, type TunnelProxyContext } from './tunnel-proxy-flags';
 
 /** One live tunnel generation, as exposed by the SDK clients. */
 export interface TunnelGeneration extends TunnelLike {
@@ -61,6 +62,8 @@ export interface TunnelManagementFacade {
 export interface TunnelClientFacade extends TunnelManagementFacade {
   startTunnel: (options: {
     selectors: DestinationTunnelSelectors;
+    systemProxy?: boolean;
+    upstreamProxy?: { url: string; ca?: string };
     inspection: DestinationTunnelInspectionConfig;
     onInspectionEvent?: DestinationTunnelInspectionEventCallback;
     onInspectionError?: DestinationTunnelInspectionErrorCallback;
@@ -79,6 +82,8 @@ export function tunnelClientFacade(
   client: {
     startTunnel: (options: {
       selectors: DestinationTunnelSelectors;
+      systemProxy?: boolean;
+      upstreamProxy?: { url: string; ca?: string };
       logLevel?: TunnelLogLevel;
       inspection?: Partial<DestinationTunnelInspectionConfig>;
       onInspectionEvent?: DestinationTunnelInspectionEventCallback;
@@ -94,6 +99,8 @@ export function tunnelClientFacade(
     startTunnel: (options) =>
       client.startTunnel({
         selectors: options.selectors,
+        ...(options.systemProxy ? { systemProxy: true } : {}),
+        ...(options.upstreamProxy ? { upstreamProxy: options.upstreamProxy } : {}),
         logLevel,
         inspection: options.inspection,
         ...(options.onInspectionEvent ? { onInspectionEvent: options.onInspectionEvent } : {}),
@@ -113,7 +120,7 @@ export interface TunnelCommandIO {
   isJsonEnabled: () => boolean;
 }
 
-export interface TunnelCommandContext extends TunnelInspectionContext {
+export interface TunnelCommandContext extends TunnelInspectionContext, Partial<TunnelProxyContext> {
   product: TunnelProduct;
   instanceId: string;
   selectors: DestinationTunnelSelectors;
@@ -232,6 +239,8 @@ async function runTunnelLoop(
       if (hooks.beforeStart && !hooks.beforeStart()) return 'cancelled';
       tunnel = await client.startTunnel({
         selectors: context.selectors,
+        ...(context.systemProxy ? { systemProxy: true } : {}),
+        ...(context.upstreamProxy ? { upstreamProxy: context.upstreamProxy } : {}),
         inspection: inspection.config,
         ...(inspection.onEvent ? { onInspectionEvent: inspection.onEvent } : {}),
         ...(inspection.onError ? { onInspectionError: inspection.onError } : {}),
@@ -349,6 +358,8 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
     ...(context.ttlSeconds ? { ttlSeconds: context.ttlSeconds } : {}),
     ...(context.harPath ? { harPath: context.harPath } : {}),
     harBodyLimit: context.harBodyLimit,
+    ...(context.systemProxy ? { systemProxy: true } : {}),
+    ...(context.upstreamProxy ? { upstreamProxy: upstreamProxyOrigin(context.upstreamProxy.url) } : {}),
     startedAt: new Date().toISOString(),
     logPath: paths.log,
   };
@@ -378,13 +389,15 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
         ...(context.ttlSeconds ? { ttlSeconds: context.ttlSeconds } : {}),
         ...(context.harPath ? { harPath: context.harPath } : {}),
         harBodyLimit: context.harBodyLimit,
+        ...(context.systemProxy ? { systemProxy: true } : {}),
+        ...(context.upstreamProxyCaPath ? { upstreamProxyCaPath: context.upstreamProxyCaPath } : {}),
         ...(context.verbose ? { verbose: true } : {}),
       }),
       {
         detached: true,
         windowsHide: true,
         stdio: ['ignore', logDescriptor, logDescriptor],
-        env: tunnelChildEnvironment(context.apiKey),
+        env: tunnelChildEnvironment(context.apiKey, process.env, context.upstreamProxy?.url),
       },
     );
   } catch (error) {
@@ -455,6 +468,7 @@ export async function runTunnelStatus(
       status: state.status,
       tunnelId: state.tunnelId,
       logPath: state.logPath,
+      ...(state.upstreamProxy ? { upstreamProxy: state.upstreamProxy } : {}),
       process: tunnelOwnerProcessIdentity(state),
     }));
     if (context.io.isJsonEnabled()) {
@@ -474,6 +488,10 @@ export async function runTunnelStatus(
           inspection.captureBodies ? 'enabled' : 'disabled'
         }, persistence ${inspection.persist ? `enabled (${inspection.ttlSeconds}s)` : 'disabled'}`,
       );
+      if (status.active.systemProxy) {
+        const { host, port } = status.active.systemProxy;
+        context.io.output(`System proxy: ${host}:${port}`);
+      }
       context.renderActive(status.active, context.io);
     } else {
       context.io.output('No active destination tunnel.');
@@ -487,8 +505,8 @@ export async function runTunnelStatus(
     for (const owner of owners) {
       context.io.output(
         `Local owner: PID ${owner.pid} (${owner.process}, ${owner.status})${
-          owner.logPath ? `, logs: ${owner.logPath}` : ''
-        }`,
+          owner.upstreamProxy ? `, upstream proxy: ${owner.upstreamProxy}` : ''
+        }${owner.logPath ? `, logs: ${owner.logPath}` : ''}`,
       );
     }
   } finally {
@@ -710,6 +728,9 @@ function printTunnelReady(
     return;
   }
   context.io.output(`Tunnel ID: ${ready.tunnelId}`);
+  if (context.systemProxy) {
+    context.io.info("The device's system proxy now points at this tunnel until it stops.");
+  }
   if (detached) {
     // A foreground run already shows the SDK's ready line with this hint.
     context.io.info('Only new connections use the tunnel; relaunch apps that connected before it.');

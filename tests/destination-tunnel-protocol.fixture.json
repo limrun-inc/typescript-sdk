@@ -577,6 +577,23 @@
       }
     },
     {
+      "name": "startSystemProxy",
+      "message": {
+        "type": "start",
+        "version": 1,
+        "selectors": [],
+        "inspection": {
+          "enabled": true,
+          "captureBodies": false,
+          "maxBodyBytes": 10485760,
+          "persist": false,
+          "ttlSeconds": 259200
+        },
+        "systemProxy": true,
+        "window": 1048576
+      }
+    },
+    {
       "name": "openOk",
       "message": {
         "type": "openOk",
@@ -650,6 +667,17 @@
       }
     },
     {
+      "name": "readySystemProxy",
+      "message": {
+        "type": "ready",
+        "version": 1,
+        "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
+        "selectors": [],
+        "configHash": "29463bee2b1ed52b12c133f3a55c9142d1d5b60fcad37f55c20f89d689fde9d5",
+        "systemProxy": { "host": "127.0.0.1", "port": 41234 }
+      }
+    },
+    {
       "name": "ready with selectors",
       "message": {
         "type": "ready",
@@ -712,6 +740,18 @@
           "serverName": "api.corp.example",
           "alpnProtocols": ["h2", "http/1.1"]
         },
+        "window": 1048576
+      }
+    },
+    {
+      "name": "openSystemProxy",
+      "message": {
+        "type": "open",
+        "connId": 11,
+        "selectorId": "system-proxy",
+        "host": "api.example.com",
+        "port": 80,
+        "transport": { "type": "tcp" },
         "window": 1048576
       }
     },

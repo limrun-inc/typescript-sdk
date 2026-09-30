@@ -293,6 +293,44 @@ describe('destination tunnel route contract', () => {
     ).toThrow(DestinationTunnelProtocolError);
   });
 
+  test('admits system-proxy OPENs to any destination only when the client asked', () => {
+    const open = decodeDestinationTunnelServerMessage(
+      fixture.server.find(({ name }) => name === 'openSystemProxy')!.message,
+    ) as Extract<DestinationTunnelServerMessage, { type: 'open' }>;
+    expect(assertDestinationTunnelOpenAllowed(open, [], { systemProxy: true })).toBe('system-proxy');
+    expect(() => assertDestinationTunnelOpenAllowed(open, ['localhost:8081'])).toThrow(
+      DestinationTunnelProtocolError,
+    );
+    expect(() =>
+      assertDestinationTunnelOpenAllowed({ ...open, port: 53 }, [], { systemProxy: true }),
+    ).toThrow(DestinationTunnelProtocolError);
+  });
+
+  test('pins the system proxy config hash shared with limrun', () => {
+    const inspection = normalizeDestinationTunnelInspection({ enabled: true });
+    // Golden vectors of pkg/tunnel TestConfigHashSystemProxyGoldenVector.
+    expect(destinationTunnelConfigHash([], inspection, true)).toBe(
+      '29463bee2b1ed52b12c133f3a55c9142d1d5b60fcad37f55c20f89d689fde9d5',
+    );
+    expect(destinationTunnelConfigHash(['localhost:8081'], inspection, true)).toBe(
+      'a7c7f4e5f2da8c107ea4f53e05567140622aca94345f250fcf7f8402d92b7197',
+    );
+    expect(() => destinationTunnelConfigHash([], inspection)).toThrow('at least one tunnel selector');
+  });
+
+  test('refuses to encode a system proxy START without inspection', () => {
+    expect(() =>
+      encodeDestinationTunnelClientMessage({
+        type: 'start',
+        version: DESTINATION_TUNNEL_VERSION,
+        selectors: [],
+        inspection: disabledDestinationTunnelInspection(),
+        systemProxy: true,
+        window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
+      }),
+    ).toThrow('systemProxy requires inspection');
+  });
+
   test('requires READY to use the negotiated version', () => {
     const readyMessage = decodeDestinationTunnelServerMessage(
       fixture.server.find(({ name }) => name === 'ready')!.message,

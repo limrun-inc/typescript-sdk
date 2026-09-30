@@ -10,6 +10,7 @@ import {
   type DestinationTunnelSelectors,
   type DestinationTunnelStatus,
 } from '@limrun/api';
+import { UPSTREAM_PROXY_ENV } from './tunnel-proxy-flags';
 
 export const TUNNELS_ROOT = path.join(os.homedir(), '.lim', 'tunnels');
 const OWNER_PATTERN = /^[0-9a-f]{32}$/;
@@ -28,6 +29,9 @@ export interface TunnelProcessState {
   ttlSeconds?: number;
   harPath?: string;
   harBodyLimit?: number;
+  systemProxy?: boolean;
+  /** Upstream proxy origin, without credentials. */
+  upstreamProxy?: string;
   startedAt: string;
   logPath: string;
   tunnelId?: string;
@@ -49,12 +53,12 @@ export interface TunnelProcessPaths {
 
 export function parseTunnelSelectors(
   values: readonly string[],
-  options: { minPort?: number; allowDomains?: boolean } = {},
+  options: { minPort?: number; allowDomains?: boolean; systemProxy?: boolean } = {},
 ): DestinationTunnelSelectors {
-  const selectors = validateDestinationTunnelSelectors(
-    values,
-    options.minPort === undefined ? {} : { minRoutePort: options.minPort },
-  );
+  const selectors = validateDestinationTunnelSelectors(values, {
+    ...(options.minPort === undefined ? {} : { minRoutePort: options.minPort }),
+    ...(options.systemProxy ? { systemProxy: true } : {}),
+  });
   if (options.allowDomains === false && selectors.some((selector) => !selector.includes(':'))) {
     throw new Error('This tunnel supports only localhost:port or literal IP:port selectors');
   }
@@ -88,6 +92,8 @@ export function buildTunnelServeArgs(options: {
   ttlSeconds?: number;
   harPath?: string;
   harBodyLimit?: number;
+  systemProxy?: boolean;
+  upstreamProxyCaPath?: string;
   verbose?: boolean;
 }): string[] {
   assertOwner(options.owner);
@@ -106,18 +112,28 @@ export function buildTunnelServeArgs(options: {
     ...(options.ttlSeconds !== undefined ? ['--ttl', String(options.ttlSeconds)] : []),
     ...(options.harPath ? ['--har', options.harPath] : []),
     ...(options.harBodyLimit !== undefined ? ['--har-body-limit', String(options.harBodyLimit)] : []),
+    ...(options.systemProxy ? ['--system-proxy'] : []),
+    ...(options.upstreamProxyCaPath ? ['--upstream-proxy-ca', options.upstreamProxyCaPath] : []),
     ...formatTunnelSelectors(options.selectors).flatMap((selector) => ['--selector', selector]),
   ];
 }
 
+/**
+ * The detached child's environment. The API key and upstream proxy URL travel
+ * here rather than as arguments, which other local users can read.
+ */
 export function tunnelChildEnvironment(
   apiKey: string | undefined,
   environment: NodeJS.ProcessEnv = process.env,
+  upstreamProxyUrl?: string,
 ): NodeJS.ProcessEnv {
-  return {
+  const child: NodeJS.ProcessEnv = {
     ...environment,
     ...(apiKey ? { LIM_API_KEY: apiKey } : {}),
   };
+  delete child[UPSTREAM_PROXY_ENV];
+  if (upstreamProxyUrl) child[UPSTREAM_PROXY_ENV] = upstreamProxyUrl;
+  return child;
 }
 
 export async function waitForTunnelProcessReady(options: {
@@ -464,8 +480,11 @@ export function capTunnelLog(logPath: string, maxBytes = 5 * 1024 * 1024): boole
   }
 }
 
-function validateStoredSelectors(selectors: DestinationTunnelSelectors): DestinationTunnelSelectors {
-  const canonical = validateDestinationTunnelSelectors(selectors);
+function validateStoredSelectors(
+  selectors: DestinationTunnelSelectors,
+  systemProxy: boolean,
+): DestinationTunnelSelectors {
+  const canonical = validateDestinationTunnelSelectors(selectors, { systemProxy });
   // Persisted state must already be canonical; anything else was not
   // written by us and is rejected rather than silently normalized.
   if (JSON.stringify(selectors) !== JSON.stringify(canonical)) {
@@ -483,7 +502,7 @@ function validateTunnelProcessState(
   const startedAtValid = Number.isFinite(startedAt) && new Date(startedAt).toISOString() === state.startedAt;
   const age = Date.now() - startedAt;
   try {
-    validateStoredSelectors(state.selectors);
+    validateStoredSelectors(state.selectors, state.systemProxy === true);
   } catch {
     throw new Error('Invalid tunnel process state');
   }
@@ -505,7 +524,10 @@ function validateTunnelProcessState(
         state.harBodyLimit <= DESTINATION_TUNNEL_MAX_BODY_BYTES)) &&
     (state.harPath === undefined || state.inspect === true) &&
     (state.persist !== true || state.inspect === true) &&
-    (state.ttlSeconds === undefined || state.persist === true);
+    (state.ttlSeconds === undefined || state.persist === true) &&
+    (state.systemProxy === undefined || (state.systemProxy === true && state.inspect === true)) &&
+    (state.upstreamProxy === undefined ||
+      (typeof state.upstreamProxy === 'string' && state.upstreamProxy.length > 0));
   if (
     typeof state.owner !== 'string' ||
     !OWNER_PATTERN.test(state.owner) ||

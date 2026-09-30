@@ -303,7 +303,7 @@ describe('destination tunnel dialer', () => {
     );
   });
 
-  test('proxies TLS to a locally validated domain IP while retaining hostname SNI', async () => {
+  test('proxies TLS to a domain by name so the proxy resolves it, retaining hostname SNI', async () => {
     let serverName: string | undefined;
     const localPort = await listenTls((socket) => {
       serverName = typeof socket.servername === 'string' ? socket.servername : undefined;
@@ -334,7 +334,7 @@ describe('destination tunnel dialer', () => {
     delete process.env['http_proxy'];
     delete process.env['https_proxy'];
     process.env['HTTPS_PROXY'] = `http://127.0.0.1:${proxyPort}`;
-    jest.spyOn(require('dns').promises, 'lookup').mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
+    const lookup = jest.spyOn(require('dns').promises, 'lookup');
     mockTlsTrust();
 
     try {
@@ -355,14 +355,15 @@ describe('destination tunnel dialer', () => {
         window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       });
       await waitFor(() => hasControl('openOk', 93) && dataFor(93).toString() === 'proxied');
-      expect(connectAuthority).toBe(`127.0.0.1:${localPort}`);
+      // A recording proxy must see the name the app asked for, not our lookup.
+      expect(connectAuthority).toBe(`api.corp.example:${localPort}`);
+      expect(lookup).not.toHaveBeenCalled();
       expect(serverName).toBe('api.corp.example');
       expect(controlFor('openOk', 93)).toEqual(
         expect.objectContaining({
           transport: expect.objectContaining({
             type: 'tls',
-            remoteAddress: '127.0.0.1',
-            dnsMs: expect.any(Number),
+            remoteAddress: 'api.corp.example',
             alpnProtocol: 'h2',
           }),
         }),
@@ -373,6 +374,95 @@ describe('destination tunnel dialer', () => {
       restoreEnvironment('HTTP_PROXY', previousHttpProxy);
       restoreEnvironment('http_proxy', previousHttpProxyLower);
     }
+  });
+
+  test('sends system-proxy opens through the upstream proxy and trusts only its CA for them', async () => {
+    const localPort = await listenTls((socket) => socket.write('recorded'));
+    let connectAuthority = '';
+    const recorder = http.createServer();
+    recorder.on('connect', (request, clientSocket, head) => {
+      connectAuthority = request.url ?? '';
+      localSockets.add(clientSocket as net.Socket);
+      const upstream = net.createConnection({ host: '127.0.0.1', port: localPort }, () => {
+        clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        if (head.length > 0) upstream.write(head);
+        clientSocket.pipe(upstream);
+        upstream.pipe(clientSocket);
+      });
+      localSockets.add(upstream);
+    });
+    localServers.push(recorder);
+    await new Promise<void>((resolve) => recorder.listen(0, '127.0.0.1', resolve));
+    const recorderPort = (recorder.address() as net.AddressInfo).port;
+
+    const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
+      selectors: [],
+      systemProxy: true,
+      upstreamProxy: { url: `http://127.0.0.1:${recorderPort}`, ca: testCa },
+      inspection: { enabled: true },
+      onInspectionError: () => {},
+      logLevel: 'none',
+    });
+    await waitFor(() => hasControl('start'));
+    expect(controlFor('start')).toEqual(expect.objectContaining({ selectors: [], systemProxy: true }));
+    sendControl({
+      type: 'ready',
+      version: DESTINATION_TUNNEL_VERSION,
+      tunnelId: 'tunnel-1',
+      selectors: [],
+      systemProxy: { host: '127.0.0.1', port: 41234 },
+      configHash: currentConfigHash(),
+    });
+    tunnel = await startup;
+    expect(tunnel.systemProxy).toEqual({ host: '127.0.0.1', port: 41234 });
+
+    sendControl({
+      type: 'open',
+      connId: 94,
+      selectorId: 'system-proxy',
+      host: 'api.corp.example',
+      port: localPort,
+      transport: { type: 'tls', serverName: 'api.corp.example', alpnProtocols: ['http/1.1'] },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
+    });
+    await waitFor(() => hasControl('openOk', 94) && dataFor(94).toString() === 'recorded');
+    expect(connectAuthority).toBe(`api.corp.example:${localPort}`);
+  });
+
+  test('refuses system-proxy opens the client did not ask for', async () => {
+    tunnel = await establish([{ host: '127.0.0.1', port: 9 }]);
+    sendControl({
+      type: 'open',
+      connId: 95,
+      selectorId: 'system-proxy',
+      host: 'api.corp.example',
+      port: 443,
+      transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
+    });
+    await waitFor(() => hasControl('openFail', 95));
+    expect(controlFor('openFail', 95)).toEqual(expect.objectContaining({ reason: 'selector_not_allowed' }));
+  });
+
+  test('fails clearly when an older server ignores the system proxy', async () => {
+    const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
+      selectors: ['localhost:8081'],
+      systemProxy: true,
+      inspection: { enabled: true },
+      logLevel: 'none',
+    });
+    await waitFor(() => hasControl('start'));
+    const start = controlFor('start');
+    if (start?.type !== 'start') throw new Error('missing START');
+    sendControl({
+      type: 'ready',
+      version: DESTINATION_TUNNEL_VERSION,
+      tunnelId: 'tunnel-1',
+      selectors: [],
+      // An older server hashes without the field it ignored and echoes nothing.
+      configHash: destinationTunnelConfigHash(start.selectors, start.inspection),
+    });
+    await expect(startup).rejects.toThrow('does not support the system proxy');
   });
 
   test('bounds data queued toward a stalled local connection', async () => {
@@ -550,7 +640,7 @@ describe('destination tunnel dialer', () => {
   function currentConfigHash(): string {
     const start = controlFor('start');
     if (start?.type !== 'start') throw new Error('missing START');
-    return destinationTunnelConfigHash(start.selectors, start.inspection);
+    return destinationTunnelConfigHash(start.selectors, start.inspection, start.systemProxy === true);
   }
 
   async function listenLocal(onConnection: (socket: net.Socket) => void): Promise<number> {

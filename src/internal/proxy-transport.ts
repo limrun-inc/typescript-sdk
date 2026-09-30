@@ -26,8 +26,16 @@ export interface TcpConnectOptions {
    */
   proxyLookupHost?: string;
   proxyLookupProtocol: 'http:' | 'https:';
+  /** Proxy that replaces the HTTP_PROXY/HTTPS_PROXY/NO_PROXY selection. */
+  proxy?: TcpProxy;
   timeoutMs: number;
   signal?: AbortSignal;
+}
+
+export interface TcpProxy {
+  url: string;
+  /** Extra CA trusted for an https: proxy's own certificate. */
+  ca?: string | Buffer;
 }
 
 export interface TcpConnectResult {
@@ -94,13 +102,23 @@ class NodeProxyTransport {
    * socket and must resume it after installing data/end/error handlers.
    */
   connectTcp(options: TcpConnectOptions): Promise<TcpConnectResult> {
-    const lookupHost = options.proxyLookupHost ?? options.host;
-    const lookupUrl = `${options.proxyLookupProtocol}//${formatAuthority(lookupHost, options.port)}`;
-    const proxyUrl = getProxyForUrl(lookupUrl);
-    if (!proxyUrl) {
+    const proxy =
+      options.proxy ??
+      this.proxyForDestination(
+        options.proxyLookupHost ?? options.host,
+        options.port,
+        options.proxyLookupProtocol,
+      );
+    if (!proxy) {
       return connectDirect(options);
     }
-    return connectThroughProxy(proxyUrl, options);
+    return connectThroughProxy(proxy, options);
+  }
+
+  /** The proxy HTTP_PROXY/HTTPS_PROXY/NO_PROXY select for a destination, if any. */
+  proxyForDestination(host: string, port: number, protocol: 'http:' | 'https:'): TcpProxy | undefined {
+    const url = getProxyForUrl(`${protocol}//${formatAuthority(host, port)}`);
+    return url ? { url } : undefined;
   }
 
   private getEnvHttpProxyAgent(): EnvHttpProxyAgent {
@@ -180,16 +198,16 @@ function connectDirect(options: TcpConnectOptions): Promise<TcpConnectResult> {
   });
 }
 
-function connectThroughProxy(proxyUrlString: string, options: TcpConnectOptions): Promise<TcpConnectResult> {
+function connectThroughProxy(proxy: TcpProxy, options: TcpConnectOptions): Promise<TcpConnectResult> {
   const startedAt = Date.now();
   return new Promise((resolve, reject) => {
     let settled = false;
     let response = Buffer.alloc(0);
     let proxyUrl: URL;
     try {
-      proxyUrl = new URL(proxyUrlString);
+      proxyUrl = new URL(proxy.url);
     } catch {
-      reject(codedError(`invalid proxy URL: ${proxyUrlString}`, 'EPROXY'));
+      reject(codedError(`invalid proxy URL: ${proxy.url}`, 'EPROXY'));
       return;
     }
     if (proxyUrl.protocol !== 'http:' && proxyUrl.protocol !== 'https:') {
@@ -209,6 +227,7 @@ function connectThroughProxy(proxyUrlString: string, options: TcpConnectOptions)
           port: proxyPort,
           rejectUnauthorized: true,
           ...(net.isIP(proxyHost) ? {} : { servername: proxyHost }),
+          ...(proxy.ca ? { ca: [...tls.rootCertificates, proxy.ca] } : {}),
           ALPNProtocols: ['http/1.1'],
         })
       : net.createConnection({

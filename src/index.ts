@@ -51,6 +51,7 @@ export {
   type DestinationTunnelSelectorReport,
   type DestinationTunnelSelectorErrorCode,
   type DestinationTunnelBindReport,
+  type DestinationTunnelSystemProxyReport,
 } from './destination-tunnel';
 export {
   startHttpProxy,

@@ -227,6 +227,34 @@ describe('tunnel process state', () => {
     });
   });
 
+  test('forwards the upstream proxy only through the child environment', () => {
+    const owner = newTunnelOwner();
+    const args = buildTunnelServeArgs({
+      scriptPath: '/lim/run.js',
+      product: 'ios',
+      instanceId: INSTANCE_ID,
+      owner,
+      selectors: [],
+      inspect: true,
+      systemProxy: true,
+      upstreamProxyCaPath: '/tmp/recorder-ca.pem',
+    });
+    expect(args).toEqual(
+      expect.arrayContaining(['--system-proxy', '--upstream-proxy-ca', '/tmp/recorder-ca.pem']),
+    );
+    expect(args.join(' ')).not.toContain('upstream-proxy ');
+    expect(tunnelChildEnvironment(undefined, { PATH: '/bin' }, 'http://user:pass@rec:8080')).toEqual({
+      PATH: '/bin',
+      LIM_TUNNEL_UPSTREAM_PROXY: 'http://user:pass@rec:8080',
+    });
+    // A value inherited from the parent shell never leaks into a tunnel without one.
+    expect(
+      tunnelChildEnvironment(undefined, { PATH: '/bin', LIM_TUNNEL_UPSTREAM_PROXY: 'http://old:1' }),
+    ).toEqual({
+      PATH: '/bin',
+    });
+  });
+
   test('accepts READY written exactly at the parent deadline', async () => {
     let now = 0;
     let reads = 0;
@@ -452,12 +480,27 @@ describe('tunnel process state', () => {
     { selectors: ['localhost:3000', 'localhost:3000'] },
     { selectors: ['api.*.example'] },
     { selectors: [] },
+    // The system proxy needs inspection, like the live command.
+    { selectors: [], systemProxy: true },
+    { systemProxy: false },
+    { upstreamProxy: '' },
   ] satisfies Array<Partial<TunnelProcessState>>)('rejects malformed persisted state %#', (overrides) => {
     const state = overrides.status === 'ready' ? makeReadyState(overrides) : makeState(overrides);
     const paths = tunnelProcessPaths(state.instanceId, state.owner, root);
     fs.mkdirSync(paths.directory, { recursive: true });
     fs.writeFileSync(paths.state, JSON.stringify(state));
     expect(loadTunnelProcess(state.instanceId, state.owner, root)).toBeUndefined();
+  });
+
+  test('keeps a proxy-only system proxy tunnel with no selectors', () => {
+    const state = makeState({
+      selectors: [],
+      inspect: true,
+      systemProxy: true,
+      upstreamProxy: 'http://rec:8080',
+    });
+    expect(claimTunnelProcess(state, root)).toBe(true);
+    expect(loadTunnelProcess(state.instanceId, state.owner, root)).toEqual(state);
   });
 
   test('uses a bounded hashed path and reads the log tail', () => {

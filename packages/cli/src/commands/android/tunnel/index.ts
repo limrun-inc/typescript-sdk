@@ -17,6 +17,12 @@ import {
   type TunnelInspectionContext,
 } from '../../../lib/tunnel-inspection-flags';
 import { parseTunnelSelectors } from '../../../lib/tunnel-process';
+import {
+  requireTunnelTarget,
+  tunnelProxyContext,
+  tunnelProxyFlags,
+  type TunnelProxyContext,
+} from '../../../lib/tunnel-proxy-flags';
 
 /** Bind listeners on the instance run unprivileged; system ports are refused. */
 const ANDROID_MIN_ROUTE_PORT = 1024;
@@ -28,6 +34,8 @@ export default class AndroidTunnel extends BaseCommand {
     'become listeners on the instance, also reachable as 10.0.2.2:<port> following the emulator ' +
     'convention. Domain selectors are intercepted transparently on the instance and ' +
     'dialed from this machine. Use --detach to keep the tunnel running after this command returns. ' +
+    '--system-proxy points the device proxy at the tunnel, so every app that honors it sends its ' +
+    'HTTP and HTTPS traffic through this machine. ' +
     'Start the tunnel before launching your app: connections opened earlier keep their original ' +
     'route until they close. ' +
     'Note: apps that resolve DNS themselves over HTTPS (DoH) bypass domain interception.';
@@ -35,6 +43,8 @@ export default class AndroidTunnel extends BaseCommand {
     '<%= config.bin %> android tunnel --selector localhost:8080 --id <instance-ID>',
     '<%= config.bin %> android tunnel --selector "*.corp.example" --detach',
     '<%= config.bin %> android tunnel --selector "*.api.example" --persist --ttl 604800',
+    '<%= config.bin %> android tunnel --system-proxy --har ./traffic.har',
+    '<%= config.bin %> android tunnel --system-proxy --upstream-proxy http://recorder.internal:8080 --upstream-proxy-ca ./recorder-ca.pem --detach',
     '<%= config.bin %> android tunnel status --id <instance-ID>',
     '<%= config.bin %> android tunnel stop --id <instance-ID>',
   ];
@@ -49,7 +59,6 @@ export default class AndroidTunnel extends BaseCommand {
       description:
         'Destination: localhost:port, IPv4:port, [IPv6]:port (port >= 1024), exact domain, or wildcard domain. Repeat for more selectors.',
       multiple: true,
-      required: true,
     }),
     detach: Flags.boolean({
       description: 'Run in a detached background process and return after READY.',
@@ -61,6 +70,7 @@ export default class AndroidTunnel extends BaseCommand {
       default: false,
     }),
     ...tunnelInspectionFlags,
+    ...tunnelProxyFlags,
     serve: Flags.boolean({
       description: 'Internal: own the detached tunnel transport.',
       default: false,
@@ -80,12 +90,19 @@ export default class AndroidTunnel extends BaseCommand {
       this.error('--detach cannot be combined with internal --serve mode.');
     }
     let inspection: TunnelInspectionContext;
+    let proxy: TunnelProxyContext;
+    let selectorValues: string[];
     try {
       inspection = tunnelInspectionContext(flags);
+      proxy = tunnelProxyContext(flags, inspection.inspect);
+      selectorValues = requireTunnelTarget(flags.selector, proxy.systemProxy);
     } catch (error) {
       this.error(error instanceof Error ? error.message : String(error));
     }
-    const selectors = parseTunnelSelectors(flags.selector, { minPort: ANDROID_MIN_ROUTE_PORT });
+    const selectors = parseTunnelSelectors(selectorValues, {
+      minPort: ANDROID_MIN_ROUTE_PORT,
+      systemProxy: proxy.systemProxy,
+    });
 
     if (flags.serve) {
       const owner = flags['tunnel-owner'];
@@ -93,7 +110,13 @@ export default class AndroidTunnel extends BaseCommand {
       await this.withAuth(async () => {
         const resolvedInstance = this.resolveAndroidInstance(flags.id);
         await serveTunnelDetached(
-          this.tunnelContext(resolvedInstance.id, selectors, flags.verbose ? 'debug' : 'info', inspection),
+          this.tunnelContext(
+            resolvedInstance.id,
+            selectors,
+            flags.verbose ? 'debug' : 'info',
+            inspection,
+            proxy,
+          ),
           owner,
         );
       });
@@ -104,7 +127,7 @@ export default class AndroidTunnel extends BaseCommand {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       if (flags.detach) {
         await startTunnelDetached({
-          ...this.tunnelContext(resolvedInstance.id, selectors, 'info', inspection, flags['api-key']),
+          ...this.tunnelContext(resolvedInstance.id, selectors, 'info', inspection, proxy, flags['api-key']),
           verbose: flags.verbose,
         });
       } else {
@@ -116,6 +139,7 @@ export default class AndroidTunnel extends BaseCommand {
             : this.shouldSuppressInfo() ? 'none'
             : 'info',
             inspection,
+            proxy,
           ),
         );
       }
@@ -127,6 +151,7 @@ export default class AndroidTunnel extends BaseCommand {
     selectors: DestinationTunnelSelectors,
     logLevel: TunnelLogLevel,
     inspection: TunnelInspectionContext,
+    proxy: TunnelProxyContext,
     apiKey?: string,
   ): TunnelCommandContext {
     return {
@@ -136,6 +161,7 @@ export default class AndroidTunnel extends BaseCommand {
       apiKey,
       reconnect: true,
       ...inspection,
+      ...proxy,
       connect: async (): Promise<TunnelClientFacade> => {
         const resolvedInstance = this.resolveAndroidInstance(instanceId);
         const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
