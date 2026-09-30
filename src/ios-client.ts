@@ -499,6 +499,8 @@ export type AppInstallationOptions = {
  * HID primitives (`touchDown`/`touchMove`/`touchUp`, `keyDown`/`keyUp`,
  * `buttonDown`/`buttonUp`) are deliberately unpaired so callers can build
  * their own gestures (e.g. long-press = `touchDown` + `wait` + `touchUp`).
+ * Supply x2 and y2 together for a second touch, keeping the same contact count
+ * through down, move, and up. Both contacts use the selected display space.
  */
 export type PerformAction =
   | { type: 'tap'; x: number; y: number; screenWidth?: number; screenHeight?: number }
@@ -522,9 +524,33 @@ export type PerformAction =
   | { type: 'openUrl'; url: string }
   | { type: 'setOrientation'; orientation: 'Portrait' | 'Landscape' }
   | { type: 'wait'; durationMs: number }
-  | { type: 'touchDown'; x: number; y: number; screenWidth?: number; screenHeight?: number }
-  | { type: 'touchMove'; x: number; y: number; screenWidth?: number; screenHeight?: number }
-  | { type: 'touchUp'; x: number; y: number; screenWidth?: number; screenHeight?: number }
+  | {
+      type: 'touchDown';
+      x: number;
+      y: number;
+      x2?: number;
+      y2?: number;
+      screenWidth?: number;
+      screenHeight?: number;
+    }
+  | {
+      type: 'touchMove';
+      x: number;
+      y: number;
+      x2?: number;
+      y2?: number;
+      screenWidth?: number;
+      screenHeight?: number;
+    }
+  | {
+      type: 'touchUp';
+      x: number;
+      y: number;
+      x2?: number;
+      y2?: number;
+      screenWidth?: number;
+      screenHeight?: number;
+    }
   | { type: 'keyDown'; keyCode: number }
   | { type: 'keyUp'; keyCode: number }
   | {
@@ -2200,7 +2226,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         const state = await getFoldState();
         const activeDisplays = state?.displays.filter((candidate) => candidate.active) ?? [];
         if (activeDisplays.length !== 1) {
-          throw new Error('Scroll search requires exactly one active Duo display; retry after the fold settles.');
+          throw new Error(
+            'Scroll search requires exactly one active Duo display; retry after the fold settles.',
+          );
         }
         const active = activeDisplays[0]!;
         display = active.id;

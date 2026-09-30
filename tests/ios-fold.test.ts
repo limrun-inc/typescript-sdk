@@ -1,4 +1,4 @@
-export {};
+import type { PerformAction } from '../src/ios-client';
 
 const sentMessages: Record<string, unknown>[] = [];
 const mockSockets: Array<{ emit: (event: string, ...args: unknown[]) => boolean }> = [];
@@ -105,11 +105,11 @@ describe('native iPhone Duo controls', () => {
       logLevel: 'none',
     });
     try {
-      const actions = [
-        { type: 'touchDown' as const, x: 700, y: 300 },
+      const actions: PerformAction[] = [
+        { type: 'touchDown', x: 700, y: 300, x2: 740, y2: 300 },
         { type: 'wait' as const, durationMs: 600 },
-        { type: 'touchMove' as const, x: 600, y: 300 },
-        { type: 'touchUp' as const, x: 600, y: 300 },
+        { type: 'touchMove', x: 600, y: 300, x2: 780, y2: 300 },
+        { type: 'touchUp', x: 600, y: 300, x2: 780, y2: 300 },
       ];
       await client.performActions(actions, { display: 'inner' });
       await client.scroll('down', 300, { display: 'inner', coordinate: [700, 400], momentum: 0 });
