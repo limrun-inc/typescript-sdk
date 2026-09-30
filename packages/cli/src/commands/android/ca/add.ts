@@ -9,7 +9,7 @@ export default class AndroidCaAdd extends BaseCommand {
   static description =
     "Add a PEM-encoded CA certificate to the device's system trust store, for example the CA of an " +
     'intercepting proxy you record traffic with. Apps and WebViews trust it on their next connection, ' +
-    'without a restart; the Chrome browser does not use it. The certificate lasts as long as the instance.';
+    'without a restart; the Chrome browser does not use it. The certificate lasts until the device restarts.';
 
   static examples = [
     '<%= config.bin %> android ca add ./proxy-ca.pem',
