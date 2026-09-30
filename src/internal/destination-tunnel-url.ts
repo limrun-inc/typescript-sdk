@@ -1,4 +1,5 @@
-function deriveDestinationTunnelEndpointURL(apiUrl: string, suffix?: string): URL {
+/** The endpoint at `path` under an instance URL, without query or fragment. */
+function deriveEndpointURL(apiUrl: string, path: string): URL {
   const url = new URL(apiUrl);
   if (
     url.protocol !== 'https:' &&
@@ -6,37 +7,36 @@ function deriveDestinationTunnelEndpointURL(apiUrl: string, suffix?: string): UR
     url.protocol !== 'wss:' &&
     url.protocol !== 'ws:'
   ) {
-    throw new Error(`Unsupported apiUrl protocol for tunnel: ${url.protocol}`);
+    throw new Error(`Unsupported apiUrl protocol: ${url.protocol}`);
   }
-  const tunnelPath = `${withoutTrailingSlashes(url.pathname)}/tunnel`;
-  url.pathname = suffix === undefined ? tunnelPath : `${tunnelPath}/${suffix}`;
+  url.pathname = `${withoutTrailingSlashes(url.pathname)}/${path}`;
   url.search = '';
   url.hash = '';
   return url;
 }
 
+/** The HTTP endpoint at `path` under an instance's ADB WebSocket URL. */
+export function deriveAdbHttpURL(adbUrl: string, path: string): URL {
+  const url = deriveEndpointURL(adbUrl, path);
+  url.protocol =
+    url.protocol === 'wss:' ? 'https:'
+    : url.protocol === 'ws:' ? 'http:'
+    : url.protocol;
+  return url;
+}
+
 export function deriveDestinationTunnelURL(apiUrl: string): string {
-  const url = deriveDestinationTunnelEndpointURL(apiUrl);
+  const url = deriveEndpointURL(apiUrl, 'tunnel');
   url.protocol = url.protocol === 'https:' || url.protocol === 'wss:' ? 'wss:' : 'ws:';
   return url.toString();
 }
 
 export function deriveDestinationTunnelStatusURL(apiUrl: string): URL {
-  const url = deriveDestinationTunnelEndpointURL(apiUrl, 'status');
-  url.protocol =
-    url.protocol === 'wss:' ? 'https:'
-    : url.protocol === 'ws:' ? 'http:'
-    : url.protocol;
-  return url;
+  return deriveAdbHttpURL(apiUrl, 'tunnel/status');
 }
 
 export function deriveDestinationTunnelStopURL(apiUrl: string, tunnelId: string): URL {
-  const url = deriveDestinationTunnelEndpointURL(apiUrl, encodeURIComponent(tunnelId));
-  url.protocol =
-    url.protocol === 'wss:' ? 'https:'
-    : url.protocol === 'ws:' ? 'http:'
-    : url.protocol;
-  return url;
+  return deriveAdbHttpURL(apiUrl, `tunnel/${encodeURIComponent(tunnelId)}`);
 }
 
 export function deriveDestinationTunnelInspectionURL(

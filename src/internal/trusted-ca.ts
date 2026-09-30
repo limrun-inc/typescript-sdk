@@ -1,3 +1,4 @@
+import { deriveAdbHttpURL } from './destination-tunnel-url';
 import { nodeProxyTransport } from './proxy-transport';
 
 /** A CA certificate the device now trusts. */
@@ -15,20 +16,12 @@ export interface TrustedCaCertificate {
 export async function addTrustedCaCertificate(
   adbUrl: string,
   token: string,
-  pem: string | Buffer,
+  pem: string,
 ): Promise<TrustedCaCertificate> {
-  const url = new URL(adbUrl);
-  url.protocol =
-    url.protocol === 'wss:' ? 'https:'
-    : url.protocol === 'ws:' ? 'http:'
-    : url.protocol;
-  url.pathname = `${url.pathname.replace(/\/+$/, '')}/trusted-cas`;
-  url.search = '';
-  url.hash = '';
-  const response = await nodeProxyTransport.fetch(url.toString(), {
+  const response = await nodeProxyTransport.fetch(deriveAdbHttpURL(adbUrl, 'trusted-cas').toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-pem-file', Authorization: `Bearer ${token}` },
-    body: typeof pem === 'string' ? pem : pem.toString('utf8'),
+    body: pem,
   });
   if (!response.ok) {
     const reason = (await response.text()).trim();
