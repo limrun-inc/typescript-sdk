@@ -2,7 +2,7 @@ import dns from 'dns';
 import net from 'net';
 import tls from 'tls';
 import { WebSocket, type RawData } from 'ws';
-import { nodeProxyTransport } from './internal/proxy-transport';
+import { nodeProxyTransport, secureContextTrusting } from './internal/proxy-transport';
 import { toBuffer } from './internal/destination-tunnel-wire-reader';
 import {
   startDestinationTunnelInspectionStream,
@@ -490,7 +490,7 @@ export async function startDestinationTcpTunnel(
           servername: transport.serverName,
           ALPNProtocols: transport.alpnProtocols,
           // A recording proxy re-signs upstream TLS with its own CA.
-          ...(extraCa ? { ca: [...tls.rootCertificates, extraCa] } : {}),
+          ...(extraCa ? { secureContext: secureContextTrusting(extraCa) } : {}),
         });
         tlsSocket.allowHalfOpen = true;
         const cleanup = (): void => {
@@ -562,17 +562,20 @@ export async function startDestinationTcpTunnel(
 
       void (async () => {
         const proxyLookupProtocol = message.transport.type === 'tls' ? 'https:' : 'http:';
-        // Exact routes name local or private targets and always dial directly
-        // (or through the environment proxy, as before). Other opens go
-        // through the upstream proxy when one is set, and a proxy resolves
-        // the name itself, so the hostname goes into CONNECT.
-        const proxy =
-          kind === 'route' ? undefined : (
-            upstreamProxy ??
-            nodeProxyTransport.proxyForDestination(message.host, message.port, proxyLookupProtocol)
-          );
+        // Exact routes name local or private targets and always dial as
+        // before. Other opens go through the upstream proxy when one is set;
+        // it resolves the name itself, so the hostname goes into CONNECT and
+        // only literal special targets can be refused here. Without it they
+        // resolve on this machine, blocklist included, as before.
+        const proxy = kind === 'route' ? undefined : upstreamProxy;
         let host = message.host;
-        if (kind !== 'route' && !proxy) {
+        if (proxy) {
+          if (!isProxyableTarget(message.host, message.port, routes)) {
+            throw Object.assign(new Error(`${message.host} is not a dialable destination`), {
+              code: 'EBLOCKED',
+            });
+          }
+        } else if (kind !== 'route') {
           const resolved = await dialTarget(message);
           host = resolved.host;
           connection.dnsMs = resolved.dnsMs;
@@ -925,6 +928,24 @@ export function isDialableResolvedAddress(
   if (version === 4) return !blockedResolvedAddresses.check(address, 'ipv4');
   if (version === 6) return !blockedResolvedAddresses.check(address, 'ipv6');
   return false;
+}
+
+/**
+ * Whether a destination may go to the upstream proxy unresolved. Literal
+ * addresses and localhost names get the same blocklist as resolved domains,
+ * so the proxy never reaches this machine's own services for the device.
+ */
+export function isProxyableTarget(
+  host: string,
+  port: number,
+  routes: readonly DestinationTunnelRoute[],
+): boolean {
+  if (net.isIP(host) !== 0) return isDialableResolvedAddress(host, port, routes);
+  const name = host.toLowerCase().replace(/\.$/, '');
+  if (name === 'localhost' || name.endsWith('.localhost')) {
+    return routes.some((route) => route.host === 'localhost' && route.port === port);
+  }
+  return true;
 }
 
 export function classifyOpenFailure(error: NodeJS.ErrnoException): DestinationTunnelOpenFailureReason {

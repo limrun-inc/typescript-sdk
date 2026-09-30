@@ -303,7 +303,7 @@ describe('destination tunnel dialer', () => {
     );
   });
 
-  test('proxies TLS to a domain by name so the proxy resolves it, retaining hostname SNI', async () => {
+  test('proxies TLS to a locally validated domain IP while retaining hostname SNI', async () => {
     let serverName: string | undefined;
     const localPort = await listenTls((socket) => {
       serverName = typeof socket.servername === 'string' ? socket.servername : undefined;
@@ -334,7 +334,7 @@ describe('destination tunnel dialer', () => {
     delete process.env['http_proxy'];
     delete process.env['https_proxy'];
     process.env['HTTPS_PROXY'] = `http://127.0.0.1:${proxyPort}`;
-    const lookup = jest.spyOn(require('dns').promises, 'lookup');
+    jest.spyOn(require('dns').promises, 'lookup').mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
     mockTlsTrust();
 
     try {
@@ -355,15 +355,14 @@ describe('destination tunnel dialer', () => {
         window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
       });
       await waitFor(() => hasControl('openOk', 93) && dataFor(93).toString() === 'proxied');
-      // A recording proxy must see the name the app asked for, not our lookup.
-      expect(connectAuthority).toBe(`api.corp.example:${localPort}`);
-      expect(lookup).not.toHaveBeenCalled();
+      expect(connectAuthority).toBe(`127.0.0.1:${localPort}`);
       expect(serverName).toBe('api.corp.example');
       expect(controlFor('openOk', 93)).toEqual(
         expect.objectContaining({
           transport: expect.objectContaining({
             type: 'tls',
-            remoteAddress: 'api.corp.example',
+            remoteAddress: '127.0.0.1',
+            dnsMs: expect.any(Number),
             alpnProtocol: 'h2',
           }),
         }),
@@ -427,6 +426,43 @@ describe('destination tunnel dialer', () => {
     });
     await waitFor(() => hasControl('openOk', 94) && dataFor(94).toString() === 'recorded');
     expect(connectAuthority).toBe(`api.corp.example:${localPort}`);
+  });
+
+  test.each([
+    ['127.0.0.1', 6379],
+    ['169.254.169.254', 80],
+    ['localhost', 22],
+    ['db.localhost', 5432],
+  ])('refuses to hand special target %s:%d to the upstream proxy', async (host, port) => {
+    const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
+      selectors: [],
+      systemProxy: true,
+      upstreamProxy: { url: 'http://127.0.0.1:9' },
+      inspection: { enabled: true },
+      onInspectionError: () => {},
+      logLevel: 'none',
+    });
+    await waitFor(() => hasControl('start'));
+    sendControl({
+      type: 'ready',
+      version: DESTINATION_TUNNEL_VERSION,
+      tunnelId: 'tunnel-1',
+      selectors: [],
+      systemProxy: { host: '127.0.0.1', port: 41234 },
+      configHash: currentConfigHash(),
+    });
+    tunnel = await startup;
+    sendControl({
+      type: 'open',
+      connId: 96,
+      selectorId: 'system-proxy',
+      host,
+      port,
+      transport: { type: 'tcp' },
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
+    });
+    await waitFor(() => hasControl('openFail', 96));
+    expect(controlFor('openFail', 96)).toEqual(expect.objectContaining({ reason: 'selector_not_allowed' }));
   });
 
   test('refuses system-proxy opens the client did not ask for', async () => {

@@ -148,6 +148,16 @@ class NodeProxyTransport {
 
 export const nodeProxyTransport = new NodeProxyTransport();
 
+/**
+ * A TLS context that trusts Node's default CAs (including NODE_EXTRA_CA_CERTS)
+ * plus `ca`. Passing `ca` to tls.connect directly would replace the defaults.
+ */
+export function secureContextTrusting(ca: string | Buffer): tls.SecureContext {
+  const context = tls.createSecureContext();
+  context.context.addCACert(ca);
+  return context;
+}
+
 function connectDirect(options: TcpConnectOptions): Promise<TcpConnectResult> {
   const startedAt = Date.now();
   return new Promise((resolve, reject) => {
@@ -227,7 +237,7 @@ function connectThroughProxy(proxy: TcpProxy, options: TcpConnectOptions): Promi
           port: proxyPort,
           rejectUnauthorized: true,
           ...(net.isIP(proxyHost) ? {} : { servername: proxyHost }),
-          ...(proxy.ca ? { ca: [...tls.rootCertificates, proxy.ca] } : {}),
+          ...(proxy.ca ? { secureContext: secureContextTrusting(proxy.ca) } : {}),
           ALPNProtocols: ['http/1.1'],
         })
       : net.createConnection({
