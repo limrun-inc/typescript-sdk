@@ -7,9 +7,9 @@ import { getAndroidInstanceClient } from '../../../lib/instance-client-factory';
 export default class AndroidCaAdd extends BaseCommand {
   static summary = 'Trust a CA certificate on a running Android instance';
   static description =
-    "Add a PEM-encoded CA certificate to the device's system trust store, for example the CA of an " +
-    'intercepting proxy you record traffic with. Apps and WebViews trust it on their next connection, ' +
-    'without a restart; the Chrome browser does not use it. The certificate lasts until the device restarts.';
+    "Add a PEM-encoded CA certificate to the device's trust stores, for example the CA of an " +
+    'intercepting proxy you record traffic with. Apps, WebViews and the Chrome browser trust it on their ' +
+    'next connection, without a restart. The certificate lasts for the life of the instance.';
 
   static examples = [
     '<%= config.bin %> android ca add ./proxy-ca.pem',
