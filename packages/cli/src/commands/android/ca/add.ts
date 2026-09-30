@@ -37,7 +37,7 @@ export default class AndroidCaAdd extends BaseCommand {
     if (!fs.existsSync(localPath)) {
       this.error(`File not found: ${localPath}`);
     }
-    const pem = fs.readFileSync(localPath);
+    const pem = fs.readFileSync(localPath, 'utf8');
 
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);

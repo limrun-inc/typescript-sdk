@@ -30,7 +30,7 @@ describe('trusted CA certificates', () => {
       response.end(JSON.stringify({ filename: '8c1d60e6.0', sha256: 'ab' }));
     };
     const pem = '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n';
-    await expect(addTrustedCaCertificate(adbUrl(), 'token-1', Buffer.from(pem))).resolves.toEqual({
+    await expect(addTrustedCaCertificate(adbUrl(), 'token-1', pem)).resolves.toEqual({
       filename: '8c1d60e6.0',
       sha256: 'ab',
     });

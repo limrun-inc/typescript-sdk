@@ -376,7 +376,7 @@ export type InstanceClient = {
    * an intercepting proxy. Apps, WebViews and the Chrome browser trust it on
    * their next connection. It lasts for the life of the instance.
    */
-  addCaCertificate: (pem: string | Buffer) => Promise<TrustedCaCertificate>;
+  addCaCertificate: (pem: string) => Promise<TrustedCaCertificate>;
   /**
    * Send an asset URL to the instance. The instance will download the asset
    * and process it (currently APK install is supported). Resolves on success,
@@ -1895,9 +1895,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return tunnel;
     };
 
-    const requireAdbUrl = (): string => {
+    const requireAdbUrl = (action = 'manage a destination tunnel'): string => {
       if (!options.adbUrl) {
-        throw new Error('adbUrl is required to manage a destination tunnel.');
+        throw new Error(`adbUrl is required to ${action}.`);
       }
       return options.adbUrl;
     };
@@ -1918,12 +1918,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       await stopDestinationTunnel(requireAdbUrl(), options.token, tunnelId);
     };
 
-    const addCaCertificate = async (pem: string | Buffer): Promise<TrustedCaCertificate> => {
-      if (!options.adbUrl) {
-        throw new Error('adbUrl is required to add a CA certificate.');
-      }
-      return addTrustedCaCertificate(options.adbUrl, options.token, pem);
-    };
+    const addCaCertificate = (pem: string): Promise<TrustedCaCertificate> =>
+      addTrustedCaCertificate(requireAdbUrl('add a CA certificate'), options.token, pem);
 
     const sendAsset = async (url: string, timeoutMs?: number): Promise<void> => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {

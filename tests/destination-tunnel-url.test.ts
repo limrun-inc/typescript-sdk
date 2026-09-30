@@ -15,7 +15,7 @@ describe('destination tunnel URL', () => {
 
   test('rejects unsupported schemes', () => {
     expect(() => deriveDestinationTunnelURL('file:///v1/ios_123/api')).toThrow(
-      'Unsupported apiUrl protocol for tunnel: file:',
+      'Unsupported apiUrl protocol: file:',
     );
   });
 });
