@@ -374,8 +374,8 @@ export type InstanceClient = {
   /**
    * Trust a PEM-encoded CA certificate in the device's system store, for
    * example the CA of an intercepting proxy. Apps and WebViews trust it on
-   * their next connection; the Chrome browser does not. It lasts as long as
-   * the instance.
+   * their next connection; the Chrome browser does not. It lasts until the
+   * device restarts.
    */
   addCaCertificate: (pem: string | Buffer) => Promise<TrustedCaCertificate>;
   /**
