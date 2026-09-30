@@ -263,7 +263,7 @@ export type FoldDisplay = {
   height: number;
   scale: number;
   orientation: number;
-  /** True when this display presents content. Populated by getFoldState on supported servers. */
+  /** True when this display presents content. Omitted if native activity is unavailable; transitions may activate both panels. */
   active?: boolean;
 };
 
@@ -2198,8 +2198,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       let display: DuoDisplay | undefined;
       if (cachedDeviceInfo.model === 'iPhone Duo') {
         const state = await getFoldState();
-        const active = state?.displays.find((candidate) => candidate.active);
-        if (!active) throw new Error('The server did not report an active Duo display for scroll search.');
+        const activeDisplays = state?.displays.filter((candidate) => candidate.active) ?? [];
+        if (activeDisplays.length !== 1) {
+          throw new Error('Scroll search requires exactly one active Duo display; retry after the fold settles.');
+        }
+        const active = activeDisplays[0]!;
         display = active.id;
         const rotated = active.orientation === 3 || active.orientation === 4;
         pageHeight = (rotated ? active.width : active.height) / active.scale;

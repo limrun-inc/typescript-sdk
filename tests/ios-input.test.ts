@@ -3,6 +3,7 @@ const sentMessages: Record<string, unknown>[] = [];
 // error and decrements; the client-side scroll search retries against this.
 let tapElementMissesRemaining = 0;
 let deviceModel = 'iphone';
+let panelActivity: Array<boolean | undefined> = [false, true];
 
 jest.mock('ws', () => {
   const { EventEmitter } = require('events');
@@ -73,7 +74,7 @@ jest.mock('ws', () => {
                       height: 2034,
                       scale: 3,
                       orientation: 1,
-                      active: false,
+                      active: panelActivity[0],
                     },
                     {
                       id: 'inner',
@@ -83,7 +84,7 @@ jest.mock('ws', () => {
                       height: 2853,
                       scale: 3,
                       orientation: 3,
-                      active: true,
+                      active: panelActivity[1],
                     },
                   ],
                 },
@@ -155,6 +156,7 @@ describe('iOS input serialization', () => {
     sentMessages.length = 0;
     tapElementMissesRemaining = 0;
     deviceModel = 'iphone';
+    panelActivity = [false, true];
   });
 
   it('scroll-searches the active inner display using its upright height', async () => {
@@ -172,6 +174,25 @@ describe('iOS input serialization', () => {
         display: 'inner',
         pixels: 401,
       });
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it.each([
+    ['overlapping', [true, true]],
+    ['inactive', [false, false]],
+    ['unavailable', [undefined, undefined]],
+  ] as const)('does not scroll an arbitrary panel when Duo activity is %s', async (_, activity) => {
+    deviceModel = 'iPhone Duo';
+    panelActivity = [...activity];
+    tapElementMissesRemaining = 1;
+    const client = await connect();
+    try {
+      await expect(client.tapElement({ AXLabel: 'Submit' }, { scrollSearch: true })).rejects.toThrow(
+        'exactly one active Duo display',
+      );
+      expect(sentMessages.some((message) => message['type'] === 'scroll')).toBe(false);
     } finally {
       client.disconnect();
     }
