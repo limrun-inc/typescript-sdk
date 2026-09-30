@@ -23,6 +23,7 @@ import {
   type DestinationTunnelStatus,
 } from './internal/destination-tunnel-management';
 import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
+import { addTrustedCaCertificate, type TrustedCaCertificate } from './internal/trusted-ca';
 import { persistFields, type PersistOption } from './internal/persist-option';
 import { streamSessionEntries } from './internal/session-stream';
 import type { SessionLogLine, SessionEvent } from './resources/session-artifacts';
@@ -38,6 +39,8 @@ const ANDROID_SIGNALING_PATH = '/ws';
 /** Transparent destination tunnel from the Android instance to this machine. */
 export type DestinationTunnel = DestinationTcpTunnel;
 export type DestinationTunnelOptions = DestinationTunnelStartOptions;
+
+export type { TrustedCaCertificate } from './internal/trusted-ca';
 export type { DestinationTunnelStatus } from './internal/destination-tunnel-management';
 
 /**
@@ -367,6 +370,14 @@ export type InstanceClient = {
 
   /** Stop the active destination tunnel only when its ID matches `tunnelId`. */
   stopTunnel: (tunnelId: string) => Promise<void>;
+
+  /**
+   * Trust a PEM-encoded CA certificate in the device's system store, for
+   * example the CA of an intercepting proxy. Apps and WebViews trust it on
+   * their next connection; the Chrome browser does not. It lasts as long as
+   * the instance.
+   */
+  addCaCertificate: (pem: string | Buffer) => Promise<TrustedCaCertificate>;
   /**
    * Send an asset URL to the instance. The instance will download the asset
    * and process it (currently APK install is supported). Resolves on success,
@@ -1480,6 +1491,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             startTunnel,
             getTunnelStatus,
             stopTunnel,
+            addCaCertificate,
             sendAsset,
             syncApp,
             getConnectionState,
@@ -1905,6 +1917,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const stopTunnel = async (tunnelId: string): Promise<void> => {
       await stopDestinationTunnel(requireAdbUrl(), options.token, tunnelId);
+    };
+
+    const addCaCertificate = async (pem: string | Buffer): Promise<TrustedCaCertificate> => {
+      if (!options.adbUrl) {
+        throw new Error('adbUrl is required to add a CA certificate.');
+      }
+      return addTrustedCaCertificate(options.adbUrl, options.token, pem);
     };
 
     const sendAsset = async (url: string, timeoutMs?: number): Promise<void> => {
