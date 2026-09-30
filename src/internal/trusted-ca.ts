@@ -2,7 +2,7 @@ import { nodeProxyTransport } from './proxy-transport';
 
 /** A CA certificate the device now trusts. */
 export interface TrustedCaCertificate {
-  /** File name in the store, Android's subject hash plus a suffix. */
+  /** File name in Android's system store: the subject hash plus a suffix. */
   filename: string;
   /** SHA-256 of the certificate's DER encoding, in hex. */
   sha256: string;
