@@ -372,10 +372,9 @@ export type InstanceClient = {
   stopTunnel: (tunnelId: string) => Promise<void>;
 
   /**
-   * Trust a PEM-encoded CA certificate in the device's system store, for
-   * example the CA of an intercepting proxy. Apps and WebViews trust it on
-   * their next connection; the Chrome browser does not. It lasts until the
-   * device restarts.
+   * Trust a PEM-encoded CA certificate on the device, for example the CA of
+   * an intercepting proxy. Apps, WebViews and the Chrome browser trust it on
+   * their next connection. It lasts for the life of the instance.
    */
   addCaCertificate: (pem: string | Buffer) => Promise<TrustedCaCertificate>;
   /**

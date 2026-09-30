@@ -1,6 +1,6 @@
 import { nodeProxyTransport } from './proxy-transport';
 
-/** A CA certificate the device's system store now trusts. */
+/** A CA certificate the device now trusts. */
 export interface TrustedCaCertificate {
   /** File name in the store, Android's subject hash plus a suffix. */
   filename: string;
@@ -9,7 +9,7 @@ export interface TrustedCaCertificate {
 }
 
 /**
- * Adds a PEM CA certificate to an Android instance's system trust store
+ * Adds a PEM CA certificate to an Android instance's trust stores
  * through websocket-proxy, which answers on the instance's ADB URL.
  */
 export async function addTrustedCaCertificate(
