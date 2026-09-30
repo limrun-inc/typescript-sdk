@@ -43,7 +43,7 @@ import {
 } from './tunnel-process';
 import { createTunnelHarRecorder, formatInspectionSummary, type TunnelHarRecorder } from './tunnel-har';
 import type { TunnelInspectionContext } from './tunnel-inspection-flags';
-import { upstreamProxyOrigin, type TunnelProxyContext } from './tunnel-proxy-flags';
+import { upstreamProxyOrigin, type TunnelProxyContext, type UpstreamProxy } from './tunnel-proxy-flags';
 
 /** One live tunnel generation, as exposed by the SDK clients. */
 export interface TunnelGeneration extends TunnelLike {
@@ -63,7 +63,7 @@ export interface TunnelClientFacade extends TunnelManagementFacade {
   startTunnel: (options: {
     selectors: DestinationTunnelSelectors;
     systemProxy?: boolean;
-    upstreamProxy?: { url: string; ca?: string };
+    upstreamProxy?: UpstreamProxy;
     inspection: DestinationTunnelInspectionConfig;
     onInspectionEvent?: DestinationTunnelInspectionEventCallback;
     onInspectionError?: DestinationTunnelInspectionErrorCallback;
@@ -83,7 +83,7 @@ export function tunnelClientFacade(
     startTunnel: (options: {
       selectors: DestinationTunnelSelectors;
       systemProxy?: boolean;
-      upstreamProxy?: { url: string; ca?: string };
+      upstreamProxy?: UpstreamProxy;
       logLevel?: TunnelLogLevel;
       inspection?: Partial<DestinationTunnelInspectionConfig>;
       onInspectionEvent?: DestinationTunnelInspectionEventCallback;
@@ -120,7 +120,7 @@ export interface TunnelCommandIO {
   isJsonEnabled: () => boolean;
 }
 
-export interface TunnelCommandContext extends TunnelInspectionContext, Partial<TunnelProxyContext> {
+export interface TunnelCommandContext extends TunnelInspectionContext, TunnelProxyContext {
   product: TunnelProduct;
   instanceId: string;
   selectors: DestinationTunnelSelectors;
@@ -397,7 +397,7 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
         detached: true,
         windowsHide: true,
         stdio: ['ignore', logDescriptor, logDescriptor],
-        env: tunnelChildEnvironment(context.apiKey, process.env, context.upstreamProxy?.url),
+        env: tunnelChildEnvironment({ apiKey: context.apiKey, upstreamProxyUrl: context.upstreamProxy?.url }),
       },
     );
   } catch (error) {

@@ -221,7 +221,7 @@ describe('tunnel process state', () => {
   });
 
   test('forwards an explicit API key only through the child environment', () => {
-    expect(tunnelChildEnvironment('secret', { PATH: '/bin', LIM_API_KEY: 'old' })).toEqual({
+    expect(tunnelChildEnvironment({ apiKey: 'secret' }, { PATH: '/bin', LIM_API_KEY: 'old' })).toEqual({
       PATH: '/bin',
       LIM_API_KEY: 'secret',
     });
@@ -243,14 +243,14 @@ describe('tunnel process state', () => {
       expect.arrayContaining(['--system-proxy', '--upstream-proxy-ca', '/tmp/recorder-ca.pem']),
     );
     expect(args.join(' ')).not.toContain('upstream-proxy ');
-    expect(tunnelChildEnvironment(undefined, { PATH: '/bin' }, 'http://user:pass@rec:8080')).toEqual({
+    expect(
+      tunnelChildEnvironment({ upstreamProxyUrl: 'http://user:pass@rec:8080' }, { PATH: '/bin' }),
+    ).toEqual({
       PATH: '/bin',
       LIM_TUNNEL_UPSTREAM_PROXY: 'http://user:pass@rec:8080',
     });
     // A value inherited from the parent shell never leaks into a tunnel without one.
-    expect(
-      tunnelChildEnvironment(undefined, { PATH: '/bin', LIM_TUNNEL_UPSTREAM_PROXY: 'http://old:1' }),
-    ).toEqual({
+    expect(tunnelChildEnvironment({}, { PATH: '/bin', LIM_TUNNEL_UPSTREAM_PROXY: 'http://old:1' })).toEqual({
       PATH: '/bin',
     });
   });

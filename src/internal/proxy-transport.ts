@@ -116,7 +116,11 @@ class NodeProxyTransport {
   }
 
   /** The proxy HTTP_PROXY/HTTPS_PROXY/NO_PROXY select for a destination, if any. */
-  proxyForDestination(host: string, port: number, protocol: 'http:' | 'https:'): TcpProxy | undefined {
+  private proxyForDestination(
+    host: string,
+    port: number,
+    protocol: 'http:' | 'https:',
+  ): TcpProxy | undefined {
     const url = getProxyForUrl(`${protocol}//${formatAuthority(host, port)}`);
     return url ? { url } : undefined;
   }
@@ -153,10 +157,19 @@ export const nodeProxyTransport = new NodeProxyTransport();
  * plus `ca`. Passing `ca` to tls.connect directly would replace the defaults.
  */
 export function secureContextTrusting(ca: string | Buffer): tls.SecureContext {
-  const context = tls.createSecureContext();
-  context.context.addCACert(ca);
+  // Building a context copies the whole default store, so each CA gets one
+  // context shared by every connection.
+  const key = ca.toString();
+  let context = trustingContexts.get(key);
+  if (!context) {
+    context = tls.createSecureContext();
+    context.context.addCACert(ca);
+    trustingContexts.set(key, context);
+  }
   return context;
 }
+
+const trustingContexts = new Map<string, tls.SecureContext>();
 
 function connectDirect(options: TcpConnectOptions): Promise<TcpConnectResult> {
   const startedAt = Date.now();

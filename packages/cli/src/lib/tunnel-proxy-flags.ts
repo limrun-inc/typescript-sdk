@@ -2,11 +2,10 @@ import { Flags } from '@oclif/core';
 import fs from 'fs';
 import path from 'path';
 
-/**
- * Carries --upstream-proxy to the detached tunnel process. The URL may hold
- * credentials, and command-line arguments are visible to other local users.
- */
-export const UPSTREAM_PROXY_ENV = 'LIM_TUNNEL_UPSTREAM_PROXY';
+import { UPSTREAM_PROXY_ENV } from './tunnel-process';
+
+/** A proxy for tunnel egress; `ca` holds PEM text. */
+export type UpstreamProxy = { url: string; ca?: string };
 
 /** System and upstream proxy flags shared by `android tunnel` and `ios tunnel`. */
 export const tunnelProxyFlags = {
@@ -39,8 +38,8 @@ export type TunnelProxyFlags = {
 export type TunnelProxyContext = {
   /** Point the device's system proxy at the tunnel. */
   systemProxy: boolean;
-  /** Proxy for tunnel egress; `ca` holds the PEM text. */
-  upstreamProxy?: { url: string; ca?: string };
+  /** Proxy for tunnel egress. */
+  upstreamProxy?: UpstreamProxy;
   /** Absolute --upstream-proxy-ca path, replayed to the detached process. */
   upstreamProxyCaPath?: string;
 };
@@ -88,15 +87,4 @@ export function tunnelProxyContext(flags: TunnelProxyFlags, inspect: boolean): T
 export function upstreamProxyOrigin(url: string): string {
   const parsed = new URL(url);
   return `${parsed.protocol}//${parsed.host}`;
-}
-
-/** Requires a selector unless the system proxy alone defines the tunnel. */
-export function requireTunnelTarget(
-  selectors: readonly string[] | undefined,
-  systemProxy: boolean,
-): string[] {
-  if ((selectors === undefined || selectors.length === 0) && !systemProxy) {
-    throw new Error('Pass at least one --selector, or --system-proxy.');
-  }
-  return [...(selectors ?? [])];
 }

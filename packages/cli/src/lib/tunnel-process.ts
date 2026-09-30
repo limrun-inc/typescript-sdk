@@ -10,7 +10,12 @@ import {
   type DestinationTunnelSelectors,
   type DestinationTunnelStatus,
 } from '@limrun/api';
-import { UPSTREAM_PROXY_ENV } from './tunnel-proxy-flags';
+
+/**
+ * Carries --upstream-proxy to the detached tunnel process. The URL may hold
+ * credentials, and command-line arguments are visible to other local users.
+ */
+export const UPSTREAM_PROXY_ENV = 'LIM_TUNNEL_UPSTREAM_PROXY';
 
 export const TUNNELS_ROOT = path.join(os.homedir(), '.lim', 'tunnels');
 const OWNER_PATTERN = /^[0-9a-f]{32}$/;
@@ -55,9 +60,12 @@ export function parseTunnelSelectors(
   values: readonly string[],
   options: { minPort?: number; allowDomains?: boolean; systemProxy?: boolean } = {},
 ): DestinationTunnelSelectors {
+  if (values.length === 0 && !options.systemProxy) {
+    throw new Error('Pass at least one --selector, or --system-proxy.');
+  }
   const selectors = validateDestinationTunnelSelectors(values, {
     ...(options.minPort === undefined ? {} : { minRoutePort: options.minPort }),
-    ...(options.systemProxy ? { systemProxy: true } : {}),
+    ...(options.systemProxy ? { allowEmpty: true } : {}),
   });
   if (options.allowDomains === false && selectors.some((selector) => !selector.includes(':'))) {
     throw new Error('This tunnel supports only localhost:port or literal IP:port selectors');
@@ -123,17 +131,16 @@ export function buildTunnelServeArgs(options: {
  * here rather than as arguments, which other local users can read.
  */
 export function tunnelChildEnvironment(
-  apiKey: string | undefined,
+  options: { apiKey?: string | undefined; upstreamProxyUrl?: string | undefined },
   environment: NodeJS.ProcessEnv = process.env,
-  upstreamProxyUrl?: string,
 ): NodeJS.ProcessEnv {
-  const child: NodeJS.ProcessEnv = {
-    ...environment,
-    ...(apiKey ? { LIM_API_KEY: apiKey } : {}),
+  // A value inherited from the parent shell never reaches a tunnel without one.
+  const { [UPSTREAM_PROXY_ENV]: _inherited, ...child } = environment;
+  return {
+    ...child,
+    ...(options.apiKey ? { LIM_API_KEY: options.apiKey } : {}),
+    ...(options.upstreamProxyUrl ? { [UPSTREAM_PROXY_ENV]: options.upstreamProxyUrl } : {}),
   };
-  delete child[UPSTREAM_PROXY_ENV];
-  if (upstreamProxyUrl) child[UPSTREAM_PROXY_ENV] = upstreamProxyUrl;
-  return child;
 }
 
 export async function waitForTunnelProcessReady(options: {
@@ -484,7 +491,7 @@ function validateStoredSelectors(
   selectors: DestinationTunnelSelectors,
   systemProxy: boolean,
 ): DestinationTunnelSelectors {
-  const canonical = validateDestinationTunnelSelectors(selectors, { systemProxy });
+  const canonical = validateDestinationTunnelSelectors(selectors, { allowEmpty: systemProxy });
   // Persisted state must already be canonical; anything else was not
   // written by us and is rejected rather than silently normalized.
   if (JSON.stringify(selectors) !== JSON.stringify(canonical)) {

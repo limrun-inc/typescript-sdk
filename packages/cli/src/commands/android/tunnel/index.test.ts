@@ -5,12 +5,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { tunnelInspectionContext } from '../../../lib/tunnel-inspection-flags';
-import {
-  UPSTREAM_PROXY_ENV,
-  requireTunnelTarget,
-  tunnelProxyContext,
-  upstreamProxyOrigin,
-} from '../../../lib/tunnel-proxy-flags';
+import { tunnelProxyContext, upstreamProxyOrigin } from '../../../lib/tunnel-proxy-flags';
+import { UPSTREAM_PROXY_ENV, parseTunnelSelectors } from '../../../lib/tunnel-process';
 
 describe('Android tunnel inspection flags', () => {
   test('enables inspection and the 10 MiB HAR limit by default', () => {
@@ -60,11 +56,9 @@ describe('tunnel system and upstream proxy flags', () => {
   });
 
   test('requires a selector unless the system proxy defines the tunnel', () => {
-    expect(() => requireTunnelTarget(undefined, false)).toThrow(
-      'Pass at least one --selector, or --system-proxy.',
-    );
-    expect(requireTunnelTarget(undefined, true)).toEqual([]);
-    expect(requireTunnelTarget(['localhost:8081'], true)).toEqual(['localhost:8081']);
+    expect(() => parseTunnelSelectors([])).toThrow('Pass at least one --selector, or --system-proxy.');
+    expect(parseTunnelSelectors([], { systemProxy: true })).toEqual([]);
+    expect(parseTunnelSelectors(['localhost:8081'], { systemProxy: true })).toEqual(['localhost:8081']);
   });
 
   test('accepts only http and https upstream proxies and reads the CA file', () => {

@@ -177,8 +177,8 @@ export async function startDestinationTcpTunnel(
   options: DestinationTcpTunnelOptions,
 ): Promise<DestinationTcpTunnel> {
   const systemProxy = options.systemProxy === true;
-  const selectors = validateDestinationTunnelSelectors(options.selectors, { systemProxy });
-  const routes = classifyDestinationTunnelSelectors(selectors, { systemProxy }).routes ?? [];
+  const selectors = validateDestinationTunnelSelectors(options.selectors, { allowEmpty: systemProxy });
+  const routes = classifyDestinationTunnelSelectors(selectors, { allowEmpty: systemProxy }).routes ?? [];
   const inspection = normalizeDestinationTunnelInspection(
     options.inspection ?? disabledDestinationTunnelInspection(),
   );
@@ -601,12 +601,7 @@ export async function startDestinationTcpTunnel(
         let tlsMs: number | undefined;
         if (message.transport.type === 'tls') {
           const tlsStartedAt = Date.now();
-          socket = await wrapTls(
-            tcp.socket,
-            message.transport,
-            abortController,
-            proxy === upstreamProxy ? upstreamProxy?.ca : undefined,
-          );
+          socket = await wrapTls(tcp.socket, message.transport, abortController, proxy?.ca);
           tlsMs = Date.now() - tlsStartedAt;
           if (connections.get(message.connId) !== connection || closed) {
             socket.destroy();

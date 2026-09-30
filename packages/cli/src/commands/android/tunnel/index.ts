@@ -18,7 +18,6 @@ import {
 } from '../../../lib/tunnel-inspection-flags';
 import { parseTunnelSelectors } from '../../../lib/tunnel-process';
 import {
-  requireTunnelTarget,
   tunnelProxyContext,
   tunnelProxyFlags,
   type TunnelProxyContext,
@@ -91,18 +90,17 @@ export default class AndroidTunnel extends BaseCommand {
     }
     let inspection: TunnelInspectionContext;
     let proxy: TunnelProxyContext;
-    let selectorValues: string[];
+    let selectors: DestinationTunnelSelectors;
     try {
       inspection = tunnelInspectionContext(flags);
       proxy = tunnelProxyContext(flags, inspection.inspect);
-      selectorValues = requireTunnelTarget(flags.selector, proxy.systemProxy);
+      selectors = parseTunnelSelectors(flags.selector ?? [], {
+        minPort: ANDROID_MIN_ROUTE_PORT,
+        systemProxy: proxy.systemProxy,
+      });
     } catch (error) {
       this.error(error instanceof Error ? error.message : String(error));
     }
-    const selectors = parseTunnelSelectors(selectorValues, {
-      minPort: ANDROID_MIN_ROUTE_PORT,
-      systemProxy: proxy.systemProxy,
-    });
 
     if (flags.serve) {
       const owner = flags['tunnel-owner'];

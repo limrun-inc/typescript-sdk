@@ -6,6 +6,7 @@ import {
   readArray,
   readBoolean,
   readInteger,
+  readNonEmptyString,
   readOptionalBoolean,
   readOptionalNonNegativeInteger,
   readOptionalString,
@@ -273,12 +274,12 @@ export function validateDestinationTunnelRoutes(
  */
 export function validateDestinationTunnelSelectors(
   selectors: readonly string[],
-  options: { minRoutePort?: number; systemProxy?: boolean } = {},
+  options: { minRoutePort?: number; allowEmpty?: boolean } = {},
 ): DestinationTunnelSelectors {
   if (!Array.isArray(selectors)) {
     throw new DestinationTunnelSelectorError('invalid_host', 'tunnel selectors must be an array');
   }
-  if (selectors.length === 0 && !options.systemProxy) {
+  if (selectors.length === 0 && !options.allowEmpty) {
     throw new DestinationTunnelSelectorError('empty', 'at least one tunnel selector is required');
   }
   const canonical: string[] = [];
@@ -312,7 +313,7 @@ export function validateDestinationTunnelSelectors(
 
 export function classifyDestinationTunnelSelectors(
   selectors: readonly string[],
-  options: { minRoutePort?: number; systemProxy?: boolean } = {},
+  options: { minRoutePort?: number; allowEmpty?: boolean } = {},
 ): DestinationTunnelSelectorCatalog {
   const canonical = validateDestinationTunnelSelectors(selectors, options);
   const routes: DestinationTunnelRoute[] = [];
@@ -358,7 +359,7 @@ export function destinationTunnelConfigHash(
   inspection: DestinationTunnelInspectionConfig = disabledDestinationTunnelInspection(),
   systemProxy = false,
 ): string {
-  const canonical = validateDestinationTunnelSelectors(selectors, { systemProxy });
+  const canonical = validateDestinationTunnelSelectors(selectors, { allowEmpty: systemProxy });
   const canonicalInspection = normalizeDestinationTunnelInspection(inspection);
   const parts: string[] = [
     `"version":${DESTINATION_TUNNEL_VERSION}`,
@@ -447,7 +448,7 @@ export function assertDestinationTunnelOpenAllowed(
     if (!options.systemProxy) fail();
     return 'system-proxy';
   }
-  const canonical = validateDestinationTunnelSelectors(selectors, options);
+  const canonical = validateDestinationTunnelSelectors(selectors);
   const match = /^selector-([1-9]\d*)$/.exec(message.selectorId);
   const index = match?.[1] ? Number(match[1]) - 1 : -1;
   if (index < 0) fail();
@@ -488,7 +489,7 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
           }
           return value;
         }),
-        { systemProxy },
+        { allowEmpty: systemProxy },
       );
       const inspection = readInspectionConfig(record);
       if (systemProxy && !inspection.enabled) {
@@ -708,8 +709,13 @@ function readOptionalSystemProxy(record: Record<string, unknown>): {
   systemProxy?: DestinationTunnelSystemProxyReport;
 } {
   if (record['systemProxy'] === undefined) return {};
-  const proxy = readRecord(record['systemProxy'], 'systemProxy');
-  return { systemProxy: { host: readString(proxy, 'host'), port: readPort(proxy, 'port') } };
+  return { systemProxy: readDestinationTunnelSystemProxyReport(record['systemProxy']) };
+}
+
+/** Reads the `{host, port}` system proxy report of ready and status. */
+export function readDestinationTunnelSystemProxyReport(value: unknown): DestinationTunnelSystemProxyReport {
+  const proxy = readRecord(value, 'systemProxy');
+  return { host: readNonEmptyString(proxy, 'host'), port: readPort(proxy, 'port') };
 }
 
 function readBindReport(value: unknown): DestinationTunnelBindReport {

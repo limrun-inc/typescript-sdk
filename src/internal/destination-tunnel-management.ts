@@ -3,6 +3,7 @@ import { deriveDestinationTunnelStatusURL, deriveDestinationTunnelStopURL } from
 import { readArray, readNonEmptyString, readRecord, readString } from './destination-tunnel-wire-reader';
 import {
   normalizeDestinationTunnelInspection,
+  readDestinationTunnelSystemProxyReport,
   type DestinationTunnelBindReport,
   type DestinationTunnelInspectionConfig,
   type DestinationTunnelSelectorReport,
@@ -87,17 +88,10 @@ function readActiveTunnel(value: unknown): NonNullable<DestinationTunnelStatus['
       readSelectorReport(selector, `selector-${index + 1}`),
     ),
     inspection: readInspection(active),
-    ...(active['systemProxy'] === undefined ? {} : { systemProxy: readSystemProxy(active['systemProxy']) }),
+    ...(active['systemProxy'] === undefined ?
+      {}
+    : { systemProxy: readDestinationTunnelSystemProxyReport(active['systemProxy']) }),
   };
-}
-
-function readSystemProxy(value: unknown): DestinationTunnelSystemProxyReport {
-  const proxy = readRecord(value, 'system proxy');
-  const port = proxy['port'];
-  if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new Error('system proxy port must be an integer between 1 and 65535');
-  }
-  return { host: readNonEmptyString(proxy, 'host'), port };
 }
 
 function readInspection(active: Record<string, unknown>): DestinationTunnelInspectionConfig {
