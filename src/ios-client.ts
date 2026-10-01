@@ -2147,12 +2147,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const tap = (x: number, y: number): Promise<void> => {
-      return sendRequest<void>('tap', {
-        x,
-        y,
-        screenWidth: cachedDeviceInfo?.screenWidth,
-        screenHeight: cachedDeviceInfo?.screenHeight,
-      });
+      // Connection-time dimensions can describe a different panel or orientation.
+      // Native-point taps leave geometry selection to the server.
+      return sendRequest<void>('tap', { x, y });
     };
 
     /**

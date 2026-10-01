@@ -130,6 +130,25 @@ describe('native iPhone Duo controls', () => {
     }
   });
 
+  it('does not rescale native-point taps with cached screen dimensions', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test',
+      token: 'test',
+      logLevel: 'none',
+    });
+    try {
+      expect(client.deviceInfo?.screenWidth).toBe(390);
+      await client.tap(700, 300);
+      await client.tapWithScreenSize(350, 150, 475.5, 334.5);
+      const taps = sentMessages.filter((message) => message['type'] === 'tap');
+      expect(taps[0]).toEqual({ type: 'tap', id: expect.any(String), x: 700, y: 300 });
+      expect(taps[1]).toMatchObject({ x: 350, y: 150, screenWidth: 475.5, screenHeight: 334.5 });
+    } finally {
+      client.disconnect();
+    }
+  });
+
   it('omits the recording target by default and forwards explicit panel overrides', async () => {
     const { createInstanceClient } = await import('../src/ios-client');
     const client = await createInstanceClient({
