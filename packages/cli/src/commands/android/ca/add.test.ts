@@ -31,7 +31,7 @@ test('sends the PEM file to the instance and reports the stored certificate', as
   fs.writeFileSync(pemPath, '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n');
   const { command, client, disconnect } = setup(pemPath);
   await command.run();
-  expect(client.addCaCertificate).toHaveBeenCalledWith(fs.readFileSync(pemPath));
+  expect(client.addCaCertificate).toHaveBeenCalledWith(fs.readFileSync(pemPath, 'utf8'));
   expect(command.outputJson).toHaveBeenCalledWith({ filename: '8c1d60e6.0', sha256: 'ab' });
   expect(disconnect).toHaveBeenCalledTimes(1);
 });
