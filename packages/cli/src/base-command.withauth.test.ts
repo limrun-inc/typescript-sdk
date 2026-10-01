@@ -31,6 +31,10 @@ class TestCommand extends BaseCommand {
     (this as unknown as { _parsedFlags: Record<string, unknown> })._parsedFlags = flags;
   }
 
+  parseFlagsForTest(flags: Record<string, unknown>): void {
+    this.setParsedFlags(flags);
+  }
+
   runWithAuth<T>(fn: () => Promise<T>): Promise<T> {
     return this.withAuth(fn);
   }
@@ -82,6 +86,28 @@ describe('withAuth login handling', () => {
       /Not authenticated\. Run `lim login` first, or provide --api-key\./,
     );
     expect(loginMock).not.toHaveBeenCalled();
+  });
+
+  it('never starts browser login when a paired MCP credential is rejected', async () => {
+    readConfigMock.mockReturnValue({
+      apiKey: 'paired-key',
+      apiEndpoint: 'https://staging.example.test',
+      consoleEndpoint: 'https://console.example.test',
+      mcpPaired: true,
+    });
+    await withTty(async () => {
+      await expect(makeCommand().runWithAuth(() => Promise.reject(unauthenticated403()))).rejects.toThrow(
+        'Pair this workspace again',
+      );
+    });
+    expect(loginMock).not.toHaveBeenCalled();
+  });
+
+  it('checks paired credentials before cached-instance commands run', () => {
+    readConfigMock.mockImplementation(() => {
+      throw new Error('MCP CLI access expired');
+    });
+    expect(() => makeCommand().parseFlagsForTest({})).toThrow('MCP CLI access expired');
   });
 
   it('re-logins and retries when a stored credential is rejected interactively', async () => {

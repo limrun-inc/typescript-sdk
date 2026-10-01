@@ -117,6 +117,8 @@ export abstract class BaseCommand extends Command {
     if (!this._client) {
       const config = readConfig();
       const flags = this.parsedFlags;
+      if (config.mcpPaired && flags?.['api-key'] && flags['api-key'] !== config.apiKey)
+        this.error('The --api-key flag conflicts with this workspace’s MCP connection.');
       const apiKey = flags?.['api-key'] || config.apiKey;
       const baseURL = config.apiEndpoint;
 
@@ -166,6 +168,8 @@ export abstract class BaseCommand extends Command {
     if (workspaceIsScope && typeof workspace === 'string' && workspace.trim()) {
       setScopeOverride(workspace.trim());
     }
+    // Check paired access even when a command uses a cached instance token.
+    if (this.id !== 'login' && this.id !== 'logout') readConfig();
     setSessionAutoStart({
       enabled: flags['daemon'] !== false,
       silent: Boolean(flags['json']) || Boolean(flags['quiet']),
@@ -229,6 +233,10 @@ export abstract class BaseCommand extends Command {
     } catch (err) {
       if (isLoginRequiredError(err)) {
         const config = readConfig();
+        if (config.mcpPaired)
+          this.error(
+            'MCP CLI access expired or was revoked. Pair this workspace again through get-cli-auth-context and approve-cli-login.',
+          );
         // Without any stored or passed credential the user never logged in;
         // "session expired" would be wrong and auto-login a surprise.
         if (!this.parsedFlags?.['api-key'] && !config.apiKey) {
