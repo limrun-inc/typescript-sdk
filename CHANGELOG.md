@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.58.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.57.0...v0.58.0) (2026-10-01)
+
+
+### Features
+
+* **ios:** follow the active Duo display in SDK and CLI actions and captures ([4880075](https://github.com/limrun-inc/typescript-sdk/commit/4880075ccdacd2e05629e36e787b112a13cf1798))
+* **ios:** prepare active-display SDK and CLI release ([6430f3f](https://github.com/limrun-inc/typescript-sdk/commit/6430f3f7f9096f3421226ed18d12d7b80ed157d9))
+
+
+### Chores
+
+* **cli:** bump version to 0.37.0 on @limrun/api 0.57.0 ([8e8976e](https://github.com/limrun-inc/typescript-sdk/commit/8e8976e33df002b50690d4977b1b8d0179064227))
+
 ## [0.57.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.56.0...v0.57.0) (2026-10-01)
 
 
