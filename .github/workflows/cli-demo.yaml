@@ -1,0 +1,74 @@
+name: Build Windows CLI demo
+on:
+  push:
+    branches: [mcp-cli-windows-demo]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - run: npm install -g npm@11
+      - run: ./scripts/bootstrap
+      - run: ./scripts/build
+      - run: yarn install --frozen-lockfile
+        working-directory: packages/cli
+      - run: yarn build
+        working-directory: packages/cli
+      - name: Ensure 7-zip
+        run: command -v 7z || sudo apt-get install -y p7zip-full
+      - name: Bundle Windows CLI and Node runtime
+        working-directory: packages/cli
+        run: npx oclif@4.24.0 pack tarballs --targets win32-x64 --no-xz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-cli-tarball
+          path: packages/cli/dist/lim-*-win32-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  verify-windows:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-cli-tarball
+          path: bundle
+      - name: Extract and test the bundled CLI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path unpacked | Out-Null
+          $archive = (Get-ChildItem bundle/*.tar.gz).FullName
+          tar -xzf $archive -C unpacked
+          if ($LASTEXITCODE -ne 0) { throw 'Extraction failed' }
+          $cli = (Get-ChildItem unpacked -Recurse -Filter lim.cmd | Select-Object -First 1).FullName
+          if (-not $cli) { throw 'CLI launcher missing' }
+          $bundledNode = Get-ChildItem unpacked -Recurse -Filter node.exe | Select-Object -First 1
+          if (-not $bundledNode) { throw 'Bundled Node runtime missing' }
+          & $cli --version
+          if ($LASTEXITCODE -ne 0) { throw 'Version check failed' }
+          $help = & $cli login --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Login help failed' }
+          foreach ($flag in @('--mcp', '--complete', '--auth-endpoint')) {
+            if (-not $help.Contains($flag)) { throw "Missing pairing flag: $flag" }
+          }
+          & $cli xcode build --help
+          if ($LASTEXITCODE -ne 0) { throw 'Xcode help failed' }
+          & $cli gradle build --help
+          if ($LASTEXITCODE -ne 0) { throw 'Gradle help failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lim-windows-x64-demo
+          path: unpacked/lim/
+          if-no-files-found: error
+          retention-days: 14
