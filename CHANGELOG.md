@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.57.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.56.0...v0.57.0) (2026-10-01)
+
+
+### Features
+
+* **android:** trust a CA certificate on a running instance ([7849daf](https://github.com/limrun-inc/typescript-sdk/commit/7849daf161a8ba9dcd8f838b27a3f611d5edf52f))
+
+
+### Chores
+
+* **cli:** bump version to 0.36.0 on @limrun/api 0.56.0 ([2ff331b](https://github.com/limrun-inc/typescript-sdk/commit/2ff331b5fcb45ef5a2553a651a7d97163ab0d258))
+
+
+### Documentation
+
+* **android:** the trusted CA lasts until the device restarts ([bf9d4b3](https://github.com/limrun-inc/typescript-sdk/commit/bf9d4b3521c7f772964fa771fced86ab5db3ac06))
+
 ## [0.56.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.55.0...v0.56.0) (2026-09-29)
 
 
