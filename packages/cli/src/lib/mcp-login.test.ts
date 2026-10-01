@@ -4,7 +4,8 @@ import path from 'path';
 
 const org = '12345678-1234-1234-1234-123456789abc';
 const sessionId = 'mcpcli_01kkkkkkkkkkkkkkkkkkkkkkkk';
-const apiEndpoint = 'https://api-staging.limrun.dev';
+const apiEndpoint = 'https://eu-staging.limrun.dev';
+const authEndpoint = 'https://api-staging.limrun.dev';
 const consoleEndpoint = 'https://console-staging.limrun.dev';
 const expiresAt = () => new Date(Date.now() + 60_000).toISOString();
 const response = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
@@ -43,11 +44,12 @@ async function begin() {
     }),
   );
   const output = await login.beginMCPLogin(
-    { apiEndpoint, consoleEndpoint, organizationId: org },
+    { apiEndpoint, authEndpoint, consoleEndpoint, organizationId: org },
     'test',
     fetcher,
   );
   expect(JSON.stringify(output)).not.toContain('private-collection-secret');
+  expect(new URL(String(fetcher.mock.calls[0]?.[0])).origin).toBe(authEndpoint);
   expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).mcp).toBe(true);
   return output;
 }
@@ -62,7 +64,7 @@ it('pairs into the exact workspace and environment without exposing credentials'
   const output = await login.completeMCPLogin(sessionId, fetcher);
   expect(JSON.stringify(output)).not.toContain('paired-key');
   const requested = new URL(String(fetcher.mock.calls[0]?.[0]));
-  expect(requested.origin).toBe(apiEndpoint);
+  expect(requested.origin).toBe(authEndpoint);
   expect(requested.searchParams.get('secret')).toBe('private-collection-secret');
   expect(fetcher.mock.calls[0]?.[1]?.redirect).toBe('error');
   expect(config.readConfig()).toMatchObject({

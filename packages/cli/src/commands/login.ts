@@ -28,6 +28,10 @@ export default class Login extends BaseCommand {
       description: 'API endpoint returned by get-cli-auth-context.',
       dependsOn: ['mcp'],
     }),
+    'auth-endpoint': Flags.string({
+      description: 'Authentication endpoint returned by get-cli-auth-context.',
+      dependsOn: ['mcp'],
+    }),
     'console-endpoint': Flags.string({
       description: 'Console endpoint returned by get-cli-auth-context.',
       dependsOn: ['mcp'],
@@ -42,15 +46,21 @@ export default class Login extends BaseCommand {
     const { flags } = await this.parse(Login);
     this.setParsedFlags(flags);
     if (flags.mcp) {
-      if (!flags['api-endpoint'] || !flags['console-endpoint'] || !flags['organization-id'])
+      if (
+        !flags['api-endpoint'] ||
+        !flags['auth-endpoint'] ||
+        !flags['console-endpoint'] ||
+        !flags['organization-id']
+      )
         this.error(
-          'MCP pairing requires --api-endpoint, --console-endpoint, and --organization-id from get-cli-auth-context.',
+          'MCP pairing requires --api-endpoint, --auth-endpoint, --console-endpoint, and --organization-id from get-cli-auth-context.',
         );
       this.log(
         JSON.stringify(
           await beginMCPLogin(
             {
               apiEndpoint: flags['api-endpoint'],
+              authEndpoint: flags['auth-endpoint'],
               consoleEndpoint: flags['console-endpoint'],
               organizationId: flags['organization-id'],
             },

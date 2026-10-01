@@ -18,6 +18,7 @@ interface PendingPairing {
   secret: string;
   scope: string;
   apiEndpoint: string;
+  authEndpoint: string;
   consoleEndpoint: string;
   organizationId: string;
   expiresAt: string;
@@ -29,11 +30,12 @@ function pendingFile(sessionId: string): string {
 }
 
 export async function beginMCPLogin(
-  input: { apiEndpoint: string; consoleEndpoint: string; organizationId: string },
+  input: { apiEndpoint: string; authEndpoint: string; consoleEndpoint: string; organizationId: string },
   version: string,
   fetcher: typeof fetch = fetch,
 ) {
   const apiEndpoint = validEndpoint(input.apiEndpoint);
+  const authEndpoint = validEndpoint(input.authEndpoint);
   const consoleEndpoint = validEndpoint(input.consoleEndpoint);
   if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(input.organizationId))
     throw new Error('Invalid organization ID from MCP.');
@@ -41,7 +43,7 @@ export async function beginMCPLogin(
     assignWorkspaceDir(process.cwd(), normalizeDir(process.cwd()));
     setScopeOverride(normalizeDir(process.cwd()));
   }
-  const response = await fetcher(new URL('/authn/cli/sessions', apiEndpoint), {
+  const response = await fetcher(new URL('/authn/cli/sessions', authEndpoint), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     redirect: 'error',
@@ -70,6 +72,7 @@ export async function beginMCPLogin(
     secret: session.secret,
     scope: getScopeKey(),
     apiEndpoint,
+    authEndpoint,
     consoleEndpoint,
     organizationId: input.organizationId,
     expiresAt: session.expiresAt,
@@ -85,8 +88,9 @@ export async function completeMCPLogin(sessionId: string, fetcher: typeof fetch 
   if (!Number.isFinite(Date.parse(pending.expiresAt)) || Date.parse(pending.expiresAt) <= Date.now())
     throw new Error('Pairing expired. Start a new MCP CLI pairing.');
   const endpoint = validEndpoint(pending.apiEndpoint);
+  const authEndpoint = validEndpoint(pending.authEndpoint);
   validEndpoint(pending.consoleEndpoint);
-  const url = new URL(`/authn/cli/sessions/${sessionId}/token`, endpoint);
+  const url = new URL(`/authn/cli/sessions/${sessionId}/token`, authEndpoint);
   url.searchParams.set('secret', pending.secret);
   const response = await fetcher(url, { redirect: 'error', signal: AbortSignal.timeout(15_000) });
   if (response.status === 202)
