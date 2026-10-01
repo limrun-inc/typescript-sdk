@@ -171,7 +171,7 @@ function estimateTimeoutMs(actions: PerformActionInput[], overrideTimeoutMs?: nu
 export default class IosPerform extends BaseCommand {
   static summary = 'Perform multiple iOS actions in a single batch';
   static description =
-    'Run a batch of iOS actions in a single CLI invocation using repeated `--action` flags or a JSON/YAML action file. This is the best choice for agent-driven multi-step interactions that should execute without reconnecting between steps.';
+    'Run a batch of iOS actions using repeated --action flags or a JSON/YAML file. Coordinate gestures use the active Duo panel; --display overrides it for the batch.';
   static examples = [
     '<%= config.bin %> ios perform --action type=tap,x=100,y=200 --action "type=typeText,text=Hello World"',
     '<%= config.bin %> ios perform --action type=wait,durationMs=1000 --action type=pressKey,key=enter',
@@ -180,6 +180,10 @@ export default class IosPerform extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    display: Flags.string({
+      options: ['inner', 'outer'],
+      description: 'Override the active iPhone Duo display.',
+    }),
     id: Flags.string({
       description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
     }),
@@ -249,7 +253,7 @@ YAML example:
       const ipcTimeoutMs = timeoutMs + IPC_TIMEOUT_BUFFER_MS;
 
       let result: PerformActionsResult;
-      if (await ensureDaemonSession(resolvedInstance)) {
+      if (!flags.display && (await ensureDaemonSession(resolvedInstance))) {
         result = (await sendSessionCommand(
           id,
           'perform-actions',
@@ -261,7 +265,9 @@ YAML example:
         try {
           result = (await client.performActions(
             actions as Parameters<typeof client.performActions>[0],
-            flags.timeout !== undefined ? { timeoutMs: flags.timeout } : undefined,
+            flags.timeout !== undefined || flags.display !== undefined ?
+              { timeoutMs: flags.timeout, display: flags.display as 'inner' | 'outer' | undefined }
+            : undefined,
           )) as PerformActionsResult;
         } finally {
           disconnect();

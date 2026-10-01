@@ -9,7 +9,7 @@ import {
 export default class IosTap extends BaseCommand {
   static summary = 'Tap at coordinates on a running iOS instance';
   static description =
-    'Tap a specific coordinate on the current screen of a running iOS instance. Use this when element selectors are unavailable or when automating canvas-style UIs.';
+    'Tap a specific coordinate on the active screen of a running iOS instance. Use --display to override the active Duo panel. Use this when element selectors are unavailable or when automating canvas-style UIs.';
   static examples = [
     '<%= config.bin %> ios tap 100 200',
     '<%= config.bin %> ios tap 100 200 --id <instance-ID>',
@@ -30,7 +30,7 @@ export default class IosTap extends BaseCommand {
     ...BaseCommand.baseFlags,
     display: Flags.string({
       options: ['outer', 'inner'],
-      description: 'Target a specific iPhone Duo display.',
+      description: 'Override the active iPhone Duo display.',
     }),
     id: Flags.string({
       description: 'iOS instance ID to target. Defaults to the last created iOS instance.',

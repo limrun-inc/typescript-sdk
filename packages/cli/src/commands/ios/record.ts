@@ -32,6 +32,10 @@ export default class IosRecord extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    display: Flags.string({
+      options: ['inner', 'outer'],
+      description: 'Record one Duo panel instead of following the active display. Applies to start.',
+    }),
     id: Flags.string({
       description: 'iOS instance ID to record. Defaults to the last created iOS instance.',
     }),
@@ -74,6 +78,9 @@ export default class IosRecord extends BaseCommand {
       if (flags['persist-ttl'] && !flags.persist) {
         this.error('--persist-ttl requires --persist.');
       }
+      if (flags.display && args.action !== 'start') {
+        this.error('--display only applies to the `start` action.');
+      }
       if (flags.persist && args.action !== 'start') {
         this.error('--persist only applies to the `start` action.');
       }
@@ -85,14 +92,17 @@ export default class IosRecord extends BaseCommand {
               { ttlSeconds: parseDurationSeconds(flags['persist-ttl']) }
             : true
           : undefined;
-        // A running daemon may predate persist support and would silently
-        // drop it, so persisted starts always go over a direct connection.
-        if (!persist && (await ensureDaemonSession(resolvedInstance))) {
+        // Older daemons drop persistence and display options, so send those starts directly.
+        if (!persist && !flags.display && (await ensureDaemonSession(resolvedInstance))) {
           await sendSessionCommand(id, 'start-recording', [flags.quality]);
         } else {
           const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
           try {
-            await client.startRecording({ quality: flags.quality, persist });
+            await client.startRecording({
+              quality: flags.quality,
+              persist,
+              display: flags.display as 'inner' | 'outer' | undefined,
+            });
           } finally {
             disconnect();
           }

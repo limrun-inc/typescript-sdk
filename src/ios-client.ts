@@ -253,14 +253,18 @@ export type LsofEntry = {
   path: string;
 };
 
+export type DuoDisplay = 'outer' | 'inner';
+
 export type FoldDisplay = {
-  id: 'outer' | 'inner';
+  id: DuoDisplay;
   screenId: number;
   trackId: string;
   width: number;
   height: number;
   scale: number;
   orientation: number;
+  /** True when this display presents content. Omitted if native activity is unavailable; transitions may activate both panels. */
+  active?: boolean;
 };
 
 export type DuoOrientation = 'portrait' | 'pud' | 'landscape-left' | 'landscape-right';
@@ -495,6 +499,8 @@ export type AppInstallationOptions = {
  * HID primitives (`touchDown`/`touchMove`/`touchUp`, `keyDown`/`keyUp`,
  * `buttonDown`/`buttonUp`) are deliberately unpaired so callers can build
  * their own gestures (e.g. long-press = `touchDown` + `wait` + `touchUp`).
+ * Supply x2 and y2 together for a second touch, keeping the same contact count
+ * through down, move, and up. Both contacts use the selected display space.
  */
 export type PerformAction =
   | { type: 'tap'; x: number; y: number; screenWidth?: number; screenHeight?: number }
@@ -518,9 +524,33 @@ export type PerformAction =
   | { type: 'openUrl'; url: string }
   | { type: 'setOrientation'; orientation: 'Portrait' | 'Landscape' }
   | { type: 'wait'; durationMs: number }
-  | { type: 'touchDown'; x: number; y: number; screenWidth?: number; screenHeight?: number }
-  | { type: 'touchMove'; x: number; y: number; screenWidth?: number; screenHeight?: number }
-  | { type: 'touchUp'; x: number; y: number; screenWidth?: number; screenHeight?: number }
+  | {
+      type: 'touchDown';
+      x: number;
+      y: number;
+      x2?: number;
+      y2?: number;
+      screenWidth?: number;
+      screenHeight?: number;
+    }
+  | {
+      type: 'touchMove';
+      x: number;
+      y: number;
+      x2?: number;
+      y2?: number;
+      screenWidth?: number;
+      screenHeight?: number;
+    }
+  | {
+      type: 'touchUp';
+      x: number;
+      y: number;
+      x2?: number;
+      y2?: number;
+      screenWidth?: number;
+      screenHeight?: number;
+    }
   | { type: 'keyDown'; keyCode: number }
   | { type: 'keyUp'; keyCode: number }
   | {
@@ -577,7 +607,7 @@ export type IosMicrophoneStatus = {
  */
 export type InstanceClient = {
   /**
-   * Take a screenshot of the current screen
+   * Take a screenshot of the active screen
    * @returns A promise that resolves to the screenshot data with base64 image and dimensions
    */
   screenshot: () => Promise<ScreenshotData>;
@@ -597,7 +627,7 @@ export type InstanceClient = {
   elementTreeRaw: (point?: AccessibilityPoint) => Promise<string>;
 
   /**
-   * Tap at the specified coordinates (uses device's native screen dimensions)
+   * Tap at the specified coordinates on the active screen (uses native screen dimensions)
    * @param x X coordinate in points
    * @param y Y coordinate in points
    */
@@ -764,13 +794,14 @@ export type InstanceClient = {
    * @param direction Direction content moves: "up", "down", "left", "right"
    * @param pixels Total pixels to scroll (finger movement distance)
    * @param options Optional scroll options
+   * @param options.display Duo display to scroll, in upright screenshotDisplay points. Omit to use the active display.
    * @param options.coordinate Starting coordinate [x, y]. Defaults to screen center.
    * @param options.momentum 0.0-1.0 controlling scroll speed and inertia. 0 (default) = slow scroll, no momentum. 1 = fastest with max inertia.
    */
   scroll: (
     direction: 'up' | 'down' | 'left' | 'right',
     pixels: number,
-    options?: { coordinate?: [number, number]; momentum?: number },
+    options?: { coordinate?: [number, number]; momentum?: number; display?: DuoDisplay },
   ) => Promise<void>;
 
   /**
@@ -793,23 +824,31 @@ export type InstanceClient = {
    * `options.timeoutMs` to override.
    *
    * @param actions The actions to run in order.
+   * @param options.display Duo display for coordinate taps, scrolls, and raw touches.
+   * Uses upright screenshotDisplay points. Omit to use the active display. Element actions follow the active display.
    * @param options.timeoutMs Custom client-side timeout in milliseconds.
    * @throws If any action fails — subsequent actions are not executed.
    */
   performActions: (
     actions: PerformAction[],
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; display?: DuoDisplay },
   ) => Promise<PerformActionsResult>;
 
   /**
-   * Start recording simulator video. Use stopRecording() to stop the recording.
+   * Start recording the active screen. Use stopRecording() to stop the recording.
+   * On Duo, follows native display activity and fits each panel into the initial
+   * canvas without stretching. Pass display to keep recording one panel.
    * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
    * The server default is `5`.
    * With `persist`, the completed recording is uploaded to Limrun's bucket
    * when the recording stops or the instance terminates; list it with
    * `iosInstances.listRecordings`.
    */
-  startRecording: (options?: { quality?: RecordingQuality; persist?: PersistOption }) => Promise<void>;
+  startRecording: (options?: {
+    quality?: RecordingQuality;
+    persist?: PersistOption;
+    display?: DuoDisplay;
+  }) => Promise<void>;
 
   /**
    * Stop the active server-side recording.
@@ -2108,12 +2147,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const tap = (x: number, y: number): Promise<void> => {
-      return sendRequest<void>('tap', {
-        x,
-        y,
-        screenWidth: cachedDeviceInfo?.screenWidth,
-        screenHeight: cachedDeviceInfo?.screenHeight,
-      });
+      // Connection-time dimensions can describe a different panel or orientation.
+      // Native-point taps leave geometry selection to the server.
+      return sendRequest<void>('tap', { x, y });
     };
 
     /**
@@ -2187,14 +2223,29 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       // anchored drag lands in the wrong place in landscape. The server
       // starts center-screen in rotated space, which halves the effective
       // page but stays correct in every orientation.
-      const pagePixels = Math.round(cachedDeviceInfo.screenHeight * 0.6);
+      let pageHeight = cachedDeviceInfo.screenHeight;
+      let display: DuoDisplay | undefined;
+      if (cachedDeviceInfo.model === 'iPhone Duo') {
+        const state = await getFoldState();
+        const activeDisplays = state?.displays.filter((candidate) => candidate.active) ?? [];
+        if (activeDisplays.length !== 1) {
+          throw new Error(
+            'Scroll search requires exactly one active Duo display; retry after the fold settles.',
+          );
+        }
+        const active = activeDisplays[0]!;
+        display = active.id;
+        const rotated = active.orientation === 3 || active.orientation === 4;
+        pageHeight = (rotated ? active.width : active.height) / active.scale;
+      }
+      const pagePixels = Math.round(pageHeight * 0.6);
       for (const [direction, count] of [
         ['down', 3],
         ['up', 6],
       ] as const) {
         for (let page = 0; page < count; page += 1) {
           if (Date.now() >= deadline) break;
-          await scroll(direction, pagePixels);
+          await scroll(direction, pagePixels, display ? { display } : undefined);
           // Let lazily-materializing cells appear before re-reading.
           await sleep(300);
           try {
@@ -2386,33 +2437,45 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const scroll = (
       direction: 'up' | 'down' | 'left' | 'right',
       pixels: number,
-      options?: { coordinate?: [number, number]; momentum?: number },
+      options?: { coordinate?: [number, number]; momentum?: number; display?: DuoDisplay },
     ): Promise<void> => {
       return sendRequest<void>('scroll', {
         direction,
         pixels,
         coordinate: options?.coordinate,
         momentum: options?.momentum,
+        display: options?.display,
       });
     };
 
     const performActions = (
       actions: PerformAction[],
-      options?: { timeoutMs?: number },
+      options?: { timeoutMs?: number; display?: DuoDisplay },
     ): Promise<PerformActionsResult> => {
       // Batch duration is unbounded (user-supplied `wait` durations, plus
       // per-action server work), so we grow the timeout with the batch
       // rather than sticking to sendRequest's 30s default.
       const waitMs = actions.reduce((acc, a) => acc + (a.type === 'wait' ? Math.max(0, a.durationMs) : 0), 0);
       const timeoutMs = options?.timeoutMs ?? 30_000 + waitMs + actions.length * 2_000;
-      return sendRequest<PerformActionsResult>('performActions', { actions }, undefined, timeoutMs);
+      return sendRequest<PerformActionsResult>(
+        'performActions',
+        { actions, display: options?.display },
+        undefined,
+        timeoutMs,
+      );
     };
 
     const startRecording = async (opts?: {
       quality?: RecordingQuality;
       persist?: PersistOption;
+      display?: DuoDisplay;
     }): Promise<void> => {
-      const request: { quality?: RecordingQuality; persist?: boolean; ttlSeconds?: number } = {
+      const request: {
+        quality?: RecordingQuality;
+        persist?: boolean;
+        ttlSeconds?: number;
+        display?: DuoDisplay;
+      } = {
         ...persistFields(opts?.persist),
       };
       if (opts?.quality !== undefined) {
@@ -2421,6 +2484,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
         request.quality = opts.quality;
       }
+      if (opts?.display !== undefined) request.display = opts.display;
       await sendRequest<void>('startVideoRecording', request);
     };
 

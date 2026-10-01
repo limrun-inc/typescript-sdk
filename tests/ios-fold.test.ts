@@ -1,4 +1,4 @@
-export {};
+import type { PerformAction } from '../src/ios-client';
 
 const sentMessages: Record<string, unknown>[] = [];
 const mockSockets: Array<{ emit: (event: string, ...args: unknown[]) => boolean }> = [];
@@ -23,7 +23,7 @@ jest.mock('ws', () => {
       const message = JSON.parse(data);
       sentMessages.push(message);
 
-      if (message.type === 'deviceInfo') {
+      if (message['type'] === 'deviceInfo') {
         process.nextTick(() => {
           this['emit'](
             'message',
@@ -42,12 +42,15 @@ jest.mock('ws', () => {
       } else {
         const type =
           (
-            message.type === 'getFoldState' ||
-            message.type === 'setHingeAngle' ||
-            message.type === 'setDuoOrientation'
+            message['type'] === 'getFoldState' ||
+            message['type'] === 'setHingeAngle' ||
+            message['type'] === 'setDuoOrientation'
           ) ?
             'foldStateResult'
-          : message.type === 'screenshotDisplay' ? 'screenshotResult'
+          : message['type'] === 'screenshotDisplay' ? 'screenshotResult'
+          : message['type'] === 'performActions' ? 'performActionsResult'
+          : message['type'] === 'scroll' ? 'scrollResult'
+          : message['type'] === 'startVideoRecording' ? 'startVideoRecordingResult'
           : 'tapResult';
         process.nextTick(() =>
           this['emit'](
@@ -57,7 +60,7 @@ jest.mock('ws', () => {
                 type,
                 id: message.id,
                 state:
-                  message.type === 'getFoldState' ?
+                  message['type'] === 'getFoldState' ?
                     null
                   : {
                       angleDegrees: message.angleDegrees ?? 180,
@@ -66,6 +69,7 @@ jest.mock('ws', () => {
                       maxAngleDegrees: 180,
                       displays: [],
                     },
+                results: message.actions?.map((action: { type: string }) => ({ type: action.type })),
                 base64: 'aW1hZ2U=',
                 width: 951,
                 height: 669,
@@ -94,6 +98,77 @@ describe('native iPhone Duo controls', () => {
     sentMessages.length = 0;
     mockSockets.length = 0;
   });
+  it('routes inner-display gestures and scrolls without changing legacy requests', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test',
+      token: 'test',
+      logLevel: 'none',
+    });
+    try {
+      const actions: PerformAction[] = [
+        { type: 'touchDown', x: 700, y: 300, x2: 740, y2: 300 },
+        { type: 'wait' as const, durationMs: 600 },
+        { type: 'touchMove', x: 600, y: 300, x2: 780, y2: 300 },
+        { type: 'touchUp', x: 600, y: 300, x2: 780, y2: 300 },
+      ];
+      await client.performActions(actions, { display: 'inner' });
+      await client.scroll('down', 300, { display: 'inner', coordinate: [700, 400], momentum: 0 });
+      await client.performActions([{ type: 'tap', x: 20, y: 30 }]);
+      const batches = sentMessages.filter((message) => message['type'] === 'performActions');
+      expect(batches[0]).toMatchObject({ display: 'inner', actions });
+      expect(batches[1]).not.toHaveProperty('display');
+      expect(sentMessages.find((message) => message['type'] === 'scroll')).toMatchObject({
+        display: 'inner',
+        direction: 'down',
+        pixels: 300,
+        coordinate: [700, 400],
+        momentum: 0,
+      });
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it('does not rescale native-point taps with cached screen dimensions', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test',
+      token: 'test',
+      logLevel: 'none',
+    });
+    try {
+      expect(client.deviceInfo?.screenWidth).toBe(390);
+      await client.tap(700, 300);
+      await client.tapWithScreenSize(350, 150, 475.5, 334.5);
+      const taps = sentMessages.filter((message) => message['type'] === 'tap');
+      expect(taps[0]).toEqual({ type: 'tap', id: expect.any(String), x: 700, y: 300 });
+      expect(taps[1]).toMatchObject({ x: 350, y: 150, screenWidth: 475.5, screenHeight: 334.5 });
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it('omits the recording target by default and forwards explicit panel overrides', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test',
+      token: 'test',
+      logLevel: 'none',
+    });
+    try {
+      await client.startRecording();
+      await client.startRecording({ display: 'inner' });
+      await client.startRecording({ display: 'outer' });
+      const recordings = sentMessages.filter((message) => message['type'] === 'startVideoRecording');
+      expect(recordings[0]).not.toHaveProperty('display');
+      expect(recordings[1]).toMatchObject({ display: 'inner' });
+      expect(recordings[2]).toMatchObject({ display: 'outer' });
+    } finally {
+      client.disconnect();
+    }
+  });
+
   it('supports capability absence and routes explicit displays and hinge controls', async () => {
     const { createInstanceClient } = await import('../src/ios-client');
     const client = await createInstanceClient({

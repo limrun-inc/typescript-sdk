@@ -13,7 +13,7 @@ const IPC_TIMEOUT_BUFFER_MS = 15_000;
 export default class IosSwipe extends BaseCommand {
   static summary = 'Swipe between two points on a running iOS instance';
   static description =
-    'Perform a touch drag gesture from one screen point to another, expressed in screen points. ' +
+    'Perform a touch drag gesture on the active screen, expressed in screen points. Use --display to override the active Duo panel. ' +
     'Use `ios scroll` for plain content scrolling; swipe gives explicit start/end points and duration ' +
     'for gestures that need them: pull-to-refresh from a specific area, carousel paging, sliders, and diagonal drags.';
   static examples = [
@@ -24,6 +24,10 @@ export default class IosSwipe extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    display: Flags.string({
+      options: ['inner', 'outer'],
+      description: 'Override the active iPhone Duo display.',
+    }),
     id: Flags.string({
       description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
     }),
@@ -56,7 +60,7 @@ export default class IosSwipe extends BaseCommand {
       // gets a buffer on top, so the real error surfaces before the socket
       // times out.
       const timeoutMs = flags.duration + IPC_TIMEOUT_BUFFER_MS;
-      if (await ensureDaemonSession(resolvedInstance)) {
+      if (!flags.display && (await ensureDaemonSession(resolvedInstance))) {
         try {
           await sendSessionCommand(
             id,
@@ -71,9 +75,16 @@ export default class IosSwipe extends BaseCommand {
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          await client.performActions(actions, { timeoutMs });
+          await client.performActions(actions, {
+            timeoutMs,
+            display: flags.display as 'inner' | 'outer' | undefined,
+          });
         } catch (error) {
-          await liftFinger((batch) => client.performActions(batch), to);
+          await liftFinger(
+            (batch) =>
+              client.performActions(batch, { display: flags.display as 'inner' | 'outer' | undefined }),
+            to,
+          );
           throw error;
         } finally {
           disconnect();
