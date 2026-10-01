@@ -10,7 +10,7 @@ import { parsePointFlag } from '../../lib/parse-point';
 export default class IosScroll extends BaseCommand {
   static summary = 'Scroll on a running iOS instance';
   static description =
-    'Scroll the current screen on a running iOS instance. The amount is interpreted as pixels.';
+    'Scroll the active screen on a running iOS instance. Use --display to override the active Duo panel. The amount is interpreted as pixels.';
   static examples = [
     '<%= config.bin %> ios scroll down --amount 500',
     '<%= config.bin %> ios scroll down --amount 500 --momentum 0.4',
@@ -27,6 +27,10 @@ export default class IosScroll extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    display: Flags.string({
+      options: ['inner', 'outer'],
+      description: 'Override the active iPhone Duo display.',
+    }),
     id: Flags.string({
       description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
     }),
@@ -58,9 +62,11 @@ export default class IosScroll extends BaseCommand {
       const momentum = parseMomentum(flags.momentum);
       const coordinate = flags.coordinate ? parsePointFlag(flags.coordinate, '--coordinate') : undefined;
       const scrollOptions =
-        momentum === undefined && coordinate === undefined ? undefined : { momentum, coordinate };
+        momentum === undefined && coordinate === undefined && flags.display === undefined ?
+          undefined
+        : { momentum, coordinate, display: flags.display as 'inner' | 'outer' | undefined };
 
-      if (await ensureDaemonSession(resolvedInstance)) {
+      if (!flags.display && (await ensureDaemonSession(resolvedInstance))) {
         await sendSessionCommand(id, 'scroll', [args.direction, flags.amount, scrollOptions]);
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);

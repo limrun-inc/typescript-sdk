@@ -50,6 +50,7 @@ jest.mock('ws', () => {
           : message['type'] === 'screenshotDisplay' ? 'screenshotResult'
           : message['type'] === 'performActions' ? 'performActionsResult'
           : message['type'] === 'scroll' ? 'scrollResult'
+          : message['type'] === 'startVideoRecording' ? 'startVideoRecordingResult'
           : 'tapResult';
         process.nextTick(() =>
           this['emit'](
@@ -124,6 +125,26 @@ describe('native iPhone Duo controls', () => {
         coordinate: [700, 400],
         momentum: 0,
       });
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it('omits the recording target by default and forwards explicit panel overrides', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test',
+      token: 'test',
+      logLevel: 'none',
+    });
+    try {
+      await client.startRecording();
+      await client.startRecording({ display: 'inner' });
+      await client.startRecording({ display: 'outer' });
+      const recordings = sentMessages.filter((message) => message['type'] === 'startVideoRecording');
+      expect(recordings[0]).not.toHaveProperty('display');
+      expect(recordings[1]).toMatchObject({ display: 'inner' });
+      expect(recordings[2]).toMatchObject({ display: 'outer' });
     } finally {
       client.disconnect();
     }

@@ -607,7 +607,7 @@ export type IosMicrophoneStatus = {
  */
 export type InstanceClient = {
   /**
-   * Take a screenshot of the current screen
+   * Take a screenshot of the active screen
    * @returns A promise that resolves to the screenshot data with base64 image and dimensions
    */
   screenshot: () => Promise<ScreenshotData>;
@@ -627,7 +627,7 @@ export type InstanceClient = {
   elementTreeRaw: (point?: AccessibilityPoint) => Promise<string>;
 
   /**
-   * Tap at the specified coordinates (uses device's native screen dimensions)
+   * Tap at the specified coordinates on the active screen (uses native screen dimensions)
    * @param x X coordinate in points
    * @param y Y coordinate in points
    */
@@ -794,7 +794,7 @@ export type InstanceClient = {
    * @param direction Direction content moves: "up", "down", "left", "right"
    * @param pixels Total pixels to scroll (finger movement distance)
    * @param options Optional scroll options
-   * @param options.display Duo display to scroll, in upright screenshotDisplay points. Omit for the primary display.
+   * @param options.display Duo display to scroll, in upright screenshotDisplay points. Omit to use the active display.
    * @param options.coordinate Starting coordinate [x, y]. Defaults to screen center.
    * @param options.momentum 0.0-1.0 controlling scroll speed and inertia. 0 (default) = slow scroll, no momentum. 1 = fastest with max inertia.
    */
@@ -825,7 +825,7 @@ export type InstanceClient = {
    *
    * @param actions The actions to run in order.
    * @param options.display Duo display for coordinate taps, scrolls, and raw touches.
-   * Uses upright screenshotDisplay points. Element actions follow the active display.
+   * Uses upright screenshotDisplay points. Omit to use the active display. Element actions follow the active display.
    * @param options.timeoutMs Custom client-side timeout in milliseconds.
    * @throws If any action fails — subsequent actions are not executed.
    */
@@ -835,14 +835,20 @@ export type InstanceClient = {
   ) => Promise<PerformActionsResult>;
 
   /**
-   * Start recording simulator video. Use stopRecording() to stop the recording.
+   * Start recording the active screen. Use stopRecording() to stop the recording.
+   * On Duo, follows native display activity and fits each panel into the initial
+   * canvas without stretching. Pass display to keep recording one panel.
    * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
    * The server default is `5`.
    * With `persist`, the completed recording is uploaded to Limrun's bucket
    * when the recording stops or the instance terminates; list it with
    * `iosInstances.listRecordings`.
    */
-  startRecording: (options?: { quality?: RecordingQuality; persist?: PersistOption }) => Promise<void>;
+  startRecording: (options?: {
+    quality?: RecordingQuality;
+    persist?: PersistOption;
+    display?: DuoDisplay;
+  }) => Promise<void>;
 
   /**
    * Stop the active server-side recording.
@@ -2465,8 +2471,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const startRecording = async (opts?: {
       quality?: RecordingQuality;
       persist?: PersistOption;
+      display?: DuoDisplay;
     }): Promise<void> => {
-      const request: { quality?: RecordingQuality; persist?: boolean; ttlSeconds?: number } = {
+      const request: {
+        quality?: RecordingQuality;
+        persist?: boolean;
+        ttlSeconds?: number;
+        display?: DuoDisplay;
+      } = {
         ...persistFields(opts?.persist),
       };
       if (opts?.quality !== undefined) {
@@ -2475,6 +2487,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
         request.quality = opts.quality;
       }
+      if (opts?.display !== undefined) request.display = opts.display;
       await sendRequest<void>('startVideoRecording', request);
     };
 
