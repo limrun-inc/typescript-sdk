@@ -1,3 +1,4 @@
+import { checkedMCPConnection, loadMCPConnection, saveMCPConnection } from './mcp-connection';
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
@@ -24,6 +25,7 @@ const DEFAULTS: Record<string, string> = {
 };
 
 export interface LimConfig {
+  mcpPaired?: boolean;
   apiKey: string;
   apiEndpoint: string;
   consoleEndpoint: string;
@@ -54,6 +56,14 @@ function writeRawConfig(config: Record<string, string>): void {
 }
 
 export function readConfig(): LimConfig {
+  const paired = checkedMCPConnection();
+  if (paired)
+    return {
+      apiKey: paired.apiKey,
+      apiEndpoint: paired.apiEndpoint,
+      consoleEndpoint: paired.consoleEndpoint,
+      mcpPaired: true,
+    };
   const raw = readRawConfig();
   return {
     apiKey: process.env['LIM_API_KEY'] || raw[CONFIG_KEYS.apiKey] || '',
@@ -73,6 +83,11 @@ export function writeConfig(partial: Partial<Record<string, string>>): void {
 }
 
 export function clearApiKey(): void {
+  const paired = loadMCPConnection();
+  if (paired) {
+    saveMCPConnection({ ...paired, apiKey: '', expiresAt: new Date(0).toISOString() });
+    return;
+  }
   const raw = readRawConfig();
   delete raw[CONFIG_KEYS.apiKey];
   writeRawConfig(raw);
@@ -684,4 +699,11 @@ export function loadGradleInstanceCache(instanceId: string): LastGradleInstance 
     if (scope.gradle?.id === instanceId) return scope.gradle;
   }
   return null;
+}
+
+// A new account or environment cannot inherit remembered devices from the old connection.
+export function clearWorkspaceInstances(): void {
+  mutate((file, scopeKey) => {
+    delete file.scopes[scopeKey];
+  });
 }
