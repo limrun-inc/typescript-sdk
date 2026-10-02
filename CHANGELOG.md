@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.58.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.58.0...v0.58.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* **tunnel:** decode Content-Encoding before writing HAR bodies ([2a203a0](https://github.com/limrun-inc/typescript-sdk/commit/2a203a0797a8efdc7061c02933ad71372321d317))
+
+
+### Chores
+
+* **cli:** pin published SDK 0.58.0 for release ([2497158](https://github.com/limrun-inc/typescript-sdk/commit/249715841fa09129871e820b4df17536062544c1))
+* **cli:** pin SDK 0.58.0 for CLI 0.38.0 release ([c1b1d8a](https://github.com/limrun-inc/typescript-sdk/commit/c1b1d8a8c47401bcc8e9887197bf04f100a1baec))
+
 ## [0.58.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.57.0...v0.58.0) (2026-10-01)
 
 
