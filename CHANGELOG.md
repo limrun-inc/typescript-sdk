@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.58.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.58.1...v0.58.2) (2026-10-02)
+
+
+### Chores
+
+* **cli:** bump version to 0.38.1 on @limrun/api 0.58.1 ([47b9228](https://github.com/limrun-inc/typescript-sdk/commit/47b922881917844d6e3051486d85a7b85a300634))
+
 ## [0.58.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.58.0...v0.58.1) (2026-10-02)
 
 
