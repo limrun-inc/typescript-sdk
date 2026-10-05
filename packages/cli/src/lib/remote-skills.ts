@@ -48,6 +48,8 @@ export interface LoadRemoteSkillsOptions {
   owner?: string;
   repo?: string;
   ref?: string;
+  version?: string;
+  commit?: string;
   cloneImpl?: (owner: string, repo: string, ref: string) => Promise<ClonedSkillsRepo>;
 }
 
@@ -172,7 +174,7 @@ function readJsonFile(filePath: string): string {
 async function cloneSkillsRepo(owner: string, repo: string, ref: string): Promise<ClonedSkillsRepo> {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'limrun-skills-'));
   const repoUrl = `https://github.com/${owner}/${repo}.git`;
-  const cloneArgs = [
+  const gitConfig = [
     '-c',
     'filter.lfs.required=false',
     '-c',
@@ -181,13 +183,6 @@ async function cloneSkillsRepo(owner: string, repo: string, ref: string): Promis
     'filter.lfs.clean=',
     '-c',
     'filter.lfs.process=',
-    'clone',
-    '--depth',
-    '1',
-    '--branch',
-    ref,
-    repoUrl,
-    rootDir,
   ];
   const env = {
     ...process.env,
@@ -196,7 +191,16 @@ async function cloneSkillsRepo(owner: string, repo: string, ref: string): Promis
   };
 
   try {
-    await execFileAsync('git', cloneArgs, { env, timeout: CLONE_TIMEOUT_MS });
+    await execFileAsync('git', ['init', rootDir], { env, timeout: 30_000 });
+    // Fetching a revision directly also supports commits outside the branch tip.
+    await execFileAsync('git', ['-C', rootDir, 'fetch', '--depth', '1', repoUrl, ref], {
+      env,
+      timeout: CLONE_TIMEOUT_MS,
+    });
+    await execFileAsync('git', [...gitConfig, '-C', rootDir, 'checkout', '--detach', 'FETCH_HEAD'], {
+      env,
+      timeout: CLONE_TIMEOUT_MS,
+    });
     const { stdout } = await execFileAsync('git', ['-C', rootDir, 'rev-parse', 'HEAD'], {
       env,
       timeout: 30_000,
@@ -284,10 +288,28 @@ function loadSkillsFromCheckout(params: {
 export async function loadRemoteSkills(options: LoadRemoteSkillsOptions = {}): Promise<LoadedRemoteSkills> {
   const owner = options.owner ?? DEFAULT_SKILLS_OWNER;
   const repo = options.repo ?? DEFAULT_SKILLS_REPO;
-  const ref = options.ref ?? DEFAULT_SKILLS_REF;
+  if ([options.ref, options.version, options.commit].filter((value) => value !== undefined).length > 1) {
+    throw new RemoteSkillsError('Specify only one skills ref, version, or commit');
+  }
+  if (
+    options.version !== undefined &&
+    !/^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(options.version)
+  ) {
+    throw new RemoteSkillsError('Skills version must be a release version such as 0.1.17 or v0.1.17');
+  }
+  if (options.commit !== undefined && !/^[a-fA-F0-9]{40}$/.test(options.commit)) {
+    throw new RemoteSkillsError('Skills commit must be a full 40-character hexadecimal SHA');
+  }
+  const ref =
+    options.commit?.toLowerCase() ??
+    (options.version !== undefined ? `refs/tags/v${options.version.replace(/^v/, '')}` : options.ref) ??
+    DEFAULT_SKILLS_REF;
   const cloneImpl = options.cloneImpl ?? cloneSkillsRepo;
   const cloned = await cloneImpl(owner, repo, ref);
   try {
+    if (options.commit !== undefined && cloned.commit !== ref) {
+      throw new RemoteSkillsError(`Requested skills commit ${ref}, but fetched ${cloned.commit}`);
+    }
     return loadSkillsFromCheckout({
       owner,
       repo,

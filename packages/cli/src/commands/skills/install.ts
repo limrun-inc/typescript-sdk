@@ -81,15 +81,26 @@ function statusLabel(status: Status): string {
 export default class SkillsInstall extends Command {
   static summary = 'Install Limrun skills for AI coding agents';
   static description =
-    'Fetch the latest Limrun skills from limrun-inc/skills and install them into the native skills directory for each agent (Claude Code, Cursor, Codex). By default all skills are installed for all agents; in project scope, Bazel and Detox skills are only included when the folder scan finds matching clues, while global installs include every skill. An existing skills structure (e.g. .claude/skills/) is adopted instead of creating directories for every agent. Existing skill directories with different content are updated in place; review the change in your VCS diff, or pass --keep-existing to leave them untouched.';
+    'Fetch Limrun skills from limrun-inc/skills and install them into the native skills directory for each agent (Claude Code, Cursor, Codex). Defaults to the latest skills on main; use --version for a release tag or --commit for an exact commit. By default all skills are installed for all agents; in project scope, Bazel and Detox skills are only included when the folder scan finds matching clues, while global installs include every skill. An existing skills structure (e.g. .claude/skills/) is adopted instead of creating directories for every agent. Existing skill directories with different content are updated in place; review the change in your VCS diff, or pass --keep-existing to leave them untouched.';
   static examples = [
     '<%= config.bin %> skills install',
+    '<%= config.bin %> skills install --version 0.1.17',
+    '<%= config.bin %> skills install --commit <full-commit-sha>',
     '<%= config.bin %> skills install --agents claude --agents cursor',
     '<%= config.bin %> skills install --agents cursor --skills limrun-xcode --skills limrun-ios-simulator',
     '<%= config.bin %> skills install --keep-existing',
     '<%= config.bin %> skills install --agents codex --scope global',
   ];
   static flags = {
+    version: Flags.string({
+      description: 'Skills release version, with or without the v prefix. Mutually exclusive with --commit.',
+      exclusive: ['commit'],
+    }),
+    commit: Flags.string({
+      description:
+        'Exact skills commit to install, as a full 40-character SHA. Mutually exclusive with --version.',
+      exclusive: ['version'],
+    }),
     agents: Flags.string({
       description:
         'Target agent. Repeat to pick multiple. Defaults to agents with an existing skills directory, or all agents when none exists.',
@@ -138,9 +149,15 @@ export default class SkillsInstall extends Command {
     });
     try {
       if (verbose) {
-        process.stderr.write('Fetching latest Limrun skills...\n');
+        const revision = flags.version ?? flags.commit;
+        process.stderr.write(
+          revision ? `Fetching Limrun skills at ${revision}...\n` : 'Fetching latest Limrun skills...\n',
+        );
       }
-      source = await loadRemoteSkills();
+      source = await loadRemoteSkills({
+        ...(flags.version !== undefined ? { version: flags.version } : {}),
+        ...(flags.commit !== undefined ? { commit: flags.commit } : {}),
+      });
       const availableSkills = source.skills;
       if (availableSkills.length === 0) {
         this.error(`No Limrun skills found in ${source.owner}/${source.repo}@${source.commit}.`, {
@@ -215,7 +232,7 @@ export default class SkillsInstall extends Command {
       }
 
       // Phase 2: Apply. Differing targets are updated in place by default so
-      // installs always converge on the latest fetched skills; the previous
+      // installs always converge on the selected skills; the previous
       // content stays reviewable in the user's VCS diff. --keep-existing opts
       // out and leaves differing directories untouched.
       const results: ResultRow[] = [];
@@ -305,6 +322,7 @@ export default class SkillsInstall extends Command {
     // Human summary: one line per skill, with all target folders combined.
     this.log('');
     this.log('  Limrun skills');
+    this.log(`  Source: ${source.owner}/${source.repo}@${source.ref} (${source.commit})`);
     const bySkill = new Map<SkillName, ResultRow[]>();
     for (const r of results) {
       const rows = bySkill.get(r.skill);

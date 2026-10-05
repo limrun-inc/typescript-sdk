@@ -868,11 +868,15 @@ lim xcode build ./MyProject --scheme VisionApp --sdk xros --configuration Releas
 
 ### Skills
 
-Fetch the latest Limrun skills from `limrun-inc/skills@main` and install them into the native skills directory of AI coding agents (Claude Code, Cursor, Codex). After installation, the agent auto-discovers the skill and triggers it when you ask things like "build the iOS app" or "show me a screenshot."
+By default, fetch the latest Limrun skills from `limrun-inc/skills@main` and install them into the native skills directory of AI coding agents (Claude Code, Cursor, Codex). After installation, the agent auto-discovers the skill and triggers it when you ask things like "build the iOS app" or "show me a screenshot."
 
 ```bash
 # Install all skills for all agents (Expo/Bazel skills only when the folder scan finds matching clues)
 lim skills install
+
+# Pin a skills release or an exact commit
+lim skills install --version 0.1.17
+lim skills install --commit <full-commit-sha>
 
 # Narrow the install with flags
 lim skills install --agents claude --agents cursor
@@ -890,12 +894,16 @@ lim skills install --json
 
 | Flag                        | Description                                                                                                                                                          |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--version <version>`       | Install a skills release tag, such as `0.1.17` or `v0.1.17`. Cannot be combined with `--commit`.                                                                     |
+| `--commit <sha>`            | Install an exact full 40-character commit SHA from `limrun-inc/skills`. Cannot be combined with `--version`.                                                         |
 | `--agents <id>`             | Target agent. Repeat to select multiple. One of: `claude`, `cursor`, `codex`. Defaults to agents with an existing skills directory, or all agents when none exists.  |
 | `--skills <name>`           | Limrun skill to install. Repeat to select multiple. Defaults to all skills; in project scope, Bazel/Detox skills are included only when the folder scan finds clues. |
 | `--scope <project\|global>` | `project` (default) writes into the current directory; `global` writes into the user's home directory.                                                               |
 | `--keep-existing`           | Keep existing skill directories that differ from the fetched version instead of updating them.                                                                       |
 | `--json`                    | Emit structured JSON instead of the human summary.                                                                                                                   |
 | `--quiet`                   | Suppress non-result output.                                                                                                                                          |
+
+The human summary and JSON `source.commit` field report the resolved commit. Save it and pass it to `--commit` to install the same source again, even if a release tag moves. Missing versions or commits fail without falling back to `main`. Skill and agent selection still follow the flags and project scan; use explicit `--skills` and `--agents` selections to keep those fixed too. `--keep-existing` can preserve local content that differs from the pinned source.
 
 **Available skills:**
 

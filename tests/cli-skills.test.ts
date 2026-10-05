@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { execFileSync } from 'child_process';
 
 import {
   AGENTS,
@@ -91,6 +92,112 @@ description: ${description}
     } finally {
       fs.rmSync(checkoutDir, { recursive: true, force: true });
     }
+  });
+
+  test('installs release tags and historical commits even after main advances', async () => {
+    const repoDir = makeTempDir();
+    const envKeys = ['GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0'] as const;
+    const previousEnv = envKeys.map((key) => process.env[key]);
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-C', repoDir, ...args], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+    try {
+      git('init', '--initial-branch=main');
+      git('config', 'user.name', 'Skills test');
+      git('config', 'user.email', 'skills@example.test');
+      git('config', 'commit.gpgsign', 'false');
+      git('config', 'tag.gpgsign', 'false');
+      writeCatalog(repoDir, ['limrun-xcode']);
+      writeSkill(repoDir, 'limrun-xcode', 'Released skill.');
+      git('add', '.');
+      git('commit', '-m', 'Release');
+      const releasedCommit = git('rev-parse', 'HEAD');
+      git('tag', '-a', 'v0.1.17', '-m', 'Release 0.1.17');
+      writeSkill(repoDir, 'limrun-xcode', 'Latest skill.');
+      git('commit', '-am', 'Advance main');
+      const latestCommit = git('rev-parse', 'HEAD');
+      git('branch', 'v0.1.17');
+
+      // Exercise the real Git transport against a local remote, without GitHub access.
+      process.env['GIT_CONFIG_COUNT'] = '1';
+      process.env['GIT_CONFIG_KEY_0'] = `url.file://${repoDir}.insteadOf`;
+      process.env['GIT_CONFIG_VALUE_0'] = 'https://github.com/limrun-inc/skills.git';
+
+      for (const options of [
+        { version: '0.1.17' },
+        { version: 'v0.1.17' },
+        { commit: releasedCommit.toUpperCase() },
+      ]) {
+        const source = await loadRemoteSkills(options);
+        try {
+          expect(source.commit).toBe(releasedCommit);
+          expect(source.skills[0]?.description).toBe('Released skill.');
+          expect(source.ref).toBe('version' in options ? 'refs/tags/v0.1.17' : releasedCommit);
+        } finally {
+          source.cleanup();
+        }
+      }
+
+      const latest = await loadRemoteSkills();
+      try {
+        expect(latest.ref).toBe('main');
+        expect(latest.commit).toBe(latestCommit);
+        expect(latest.skills[0]?.description).toBe('Latest skill.');
+      } finally {
+        latest.cleanup();
+      }
+      await expect(loadRemoteSkills({ version: '9.9.9' })).rejects.toThrow('Failed to clone Limrun skills');
+      await expect(loadRemoteSkills({ commit: '0'.repeat(40) })).rejects.toThrow(
+        'Failed to clone Limrun skills',
+      );
+    } finally {
+      envKeys.forEach((key, index) => {
+        if (previousEnv[index] === undefined) delete process.env[key];
+        else process.env[key] = previousEnv[index];
+      });
+      fs.rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  test.each(['main', 'abc123', 'g'.repeat(40), ''])(
+    'rejects invalid commit %j before fetching',
+    async (commit) => {
+      const cloneImpl = jest.fn();
+      await expect(loadRemoteSkills({ commit, cloneImpl })).rejects.toThrow(
+        'full 40-character hexadecimal SHA',
+      );
+      expect(cloneImpl).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(['main', '0.1.*', '0.1.17:refs/heads/main', ''])(
+    'rejects invalid version %j before fetching',
+    async (version) => {
+      const cloneImpl = jest.fn();
+      await expect(loadRemoteSkills({ version, cloneImpl })).rejects.toThrow('must be a release version');
+      expect(cloneImpl).not.toHaveBeenCalled();
+    },
+  );
+
+  test('rejects conflicting revision selectors before fetching', async () => {
+    const cloneImpl = jest.fn();
+    await expect(loadRemoteSkills({ version: '0.1.17', commit: 'a'.repeat(40), cloneImpl })).rejects.toThrow(
+      'Specify only one',
+    );
+    expect(cloneImpl).not.toHaveBeenCalled();
+  });
+
+  test('rejects a mismatched commit and cleans up the checkout', async () => {
+    const rootDir = makeTempDir();
+    await expect(
+      loadRemoteSkills({
+        commit: 'a'.repeat(40),
+        cloneImpl: async () => ({ rootDir, commit: 'b'.repeat(40) }),
+      }),
+    ).rejects.toThrow('but fetched');
+    expect(fs.existsSync(rootDir)).toBe(false);
   });
 
   test('refuses to clean up directories outside the temp directory', () => {
