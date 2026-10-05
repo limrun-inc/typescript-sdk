@@ -11,7 +11,7 @@ import {
   type LaunchAppArgument,
   type LaunchAppFlagValues,
 } from '../../lib/launch-app-runtime';
-import { formatAppExit, type AppExitSummary } from '../../lib/format-app-exit';
+import { formatAppExit } from '../../lib/format-app-exit';
 
 type IosLaunchClient = Awaited<ReturnType<typeof getIosInstanceClient>>['client'];
 
@@ -115,14 +115,14 @@ export default class IosLaunchApp extends BaseCommand {
           this.warn(`App log stream error: ${err.message}`);
         });
 
-        let notifyAppExited: (info?: AppExitSummary) => void = () => {};
-        const appExited = new Promise<AppExitSummary | undefined>((resolve) => {
+        let notifyAppExited: (info: Ios.AppExitInfo) => void = () => {};
+        const appExited = new Promise<Ios.AppExitInfo>((resolve) => {
           notifyAppExited = resolve;
         });
         const launchOptions: Ios.LaunchAppOptions = {
           ...(typeof launchArgument === 'string' ? { mode: launchArgument } : launchArgument),
           // Log lines are already streamed, so only the exit reason and crash are printed.
-          onExit: async (_logs: string[], info?: AppExitSummary) => {
+          onExit: (_logs, info) => {
             notifyAppExited(info);
           },
         };
@@ -149,7 +149,7 @@ export default class IosLaunchApp extends BaseCommand {
           process.on('SIGTERM', finish);
           logStream.on('close', finish);
           void appExited.then((info) => {
-            this.logToStderr(info ? formatAppExit(args.bundleId, info, []) : `${args.bundleId} exited.`);
+            this.logToStderr(formatAppExit(args.bundleId, info, []));
             // Log lines arrive in ~500ms batches; give the tail a moment to flush.
             setTimeout(finish, 1000);
           });
