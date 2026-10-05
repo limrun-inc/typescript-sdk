@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.59.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.58.1...v0.59.0) (2026-10-05)
+
+
+### Features
+
+* **ios:** report app exit reasons, crash details, and watchApp ([d41f660](https://github.com/limrun-inc/typescript-sdk/commit/d41f6604333aea454a43f1a3d007288df8088608))
+
+
+### Chores
+
+* **cli:** bump version to 0.38.1 on @limrun/api 0.58.1 ([47b9228](https://github.com/limrun-inc/typescript-sdk/commit/47b922881917844d6e3051486d85a7b85a300634))
+
 ## [0.58.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.58.0...v0.58.1) (2026-10-02)
 
 
