@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { execFileSync } from 'child_process';
 
 import {
   AGENTS,
@@ -91,6 +92,93 @@ description: ${description}
     } finally {
       fs.rmSync(checkoutDir, { recursive: true, force: true });
     }
+  });
+
+  test('installs release tags and historical commits even after main advances', async () => {
+    const repoDir = makeTempDir();
+    const envKeys = ['GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0'] as const;
+    const previousEnv = envKeys.map((key) => process.env[key]);
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-C', repoDir, ...args], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+    try {
+      git('init', '--initial-branch=main');
+      git('config', 'user.name', 'Skills test');
+      git('config', 'user.email', 'skills@example.test');
+      git('config', 'commit.gpgsign', 'false');
+      git('config', 'tag.gpgsign', 'false');
+      writeCatalog(repoDir, ['limrun-xcode']);
+      writeSkill(repoDir, 'limrun-xcode', 'Released skill.');
+      git('add', '.');
+      git('commit', '-m', 'Release');
+      const releasedCommit = git('rev-parse', 'HEAD');
+      git('tag', '-a', 'v0.1.17', '-m', 'Release 0.1.17');
+      writeSkill(repoDir, 'limrun-xcode', 'Latest skill.');
+      git('commit', '-am', 'Advance main');
+      const latestCommit = git('rev-parse', 'HEAD');
+      git('branch', 'v0.1.17');
+
+      // Exercise the real Git transport against a local remote, without GitHub access.
+      process.env['GIT_CONFIG_COUNT'] = '1';
+      process.env['GIT_CONFIG_KEY_0'] = `url.file://${repoDir}.insteadOf`;
+      process.env['GIT_CONFIG_VALUE_0'] = 'https://github.com/limrun-inc/skills.git';
+
+      for (const options of [{ ref: '0.1.17' }, { ref: 'v0.1.17' }, { ref: releasedCommit.toUpperCase() }]) {
+        const source = await loadRemoteSkills(options);
+        try {
+          expect(source.commit).toBe(releasedCommit);
+          expect(source.skills[0]?.description).toBe('Released skill.');
+          expect(source.ref).toBe(
+            options.ref === releasedCommit.toUpperCase() ? releasedCommit : 'refs/tags/v0.1.17',
+          );
+        } finally {
+          source.cleanup();
+        }
+      }
+
+      const latest = await loadRemoteSkills();
+      try {
+        expect(latest.ref).toBe('main');
+        expect(latest.commit).toBe(latestCommit);
+        expect(latest.skills[0]?.description).toBe('Latest skill.');
+      } finally {
+        latest.cleanup();
+      }
+      await expect(loadRemoteSkills({ ref: '9.9.9' })).rejects.toThrow('Failed to clone Limrun skills');
+      await expect(loadRemoteSkills({ ref: '0'.repeat(40) })).rejects.toThrow(
+        'Failed to clone Limrun skills',
+      );
+    } finally {
+      envKeys.forEach((key, index) => {
+        if (previousEnv[index] === undefined) delete process.env[key];
+        else process.env[key] = previousEnv[index];
+      });
+      fs.rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  test.each(['main', 'abc123', 'g'.repeat(40), '', '0.1.*', '0.1.17:refs/heads/main'])(
+    'rejects invalid ref %j before fetching',
+    async (ref) => {
+      const cloneImpl = jest.fn();
+      await expect(loadRemoteSkills({ ref, cloneImpl })).rejects.toThrow(
+        'Skills ref must be a release version',
+      );
+      expect(cloneImpl).not.toHaveBeenCalled();
+    },
+  );
+
+  test('rejects a mismatched commit and cleans up the checkout', async () => {
+    const rootDir = makeTempDir();
+    await expect(
+      loadRemoteSkills({
+        ref: 'a'.repeat(40),
+        cloneImpl: async () => ({ rootDir, commit: 'b'.repeat(40) }),
+      }),
+    ).rejects.toThrow('but fetched');
+    expect(fs.existsSync(rootDir)).toBe(false);
   });
 
   test('refuses to clean up directories outside the temp directory', () => {
