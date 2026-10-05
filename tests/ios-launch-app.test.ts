@@ -43,6 +43,13 @@ jest.mock('ws', () => {
         process.nextTick(() => {
           this['emit']('message', Buffer.from(JSON.stringify({ type: 'launchAppResult', id: message.id })));
         });
+      } else if (message.type === 'watchApp' || message.type === 'unwatchApp') {
+        process.nextTick(() => {
+          this['emit'](
+            'message',
+            Buffer.from(JSON.stringify({ type: `${message.type}Result`, id: message.id })),
+          );
+        });
       } else if (message.type === 'appLogTail') {
         process.nextTick(() => {
           this['emit'](
@@ -199,8 +206,10 @@ describe('iOS launchApp serialization', () => {
     const exit = new Promise<void>((resolve) => {
       resolveExit = resolve;
     });
-    const onExit = jest.fn(async (logs: string[]) => {
+    const onExit = jest.fn(async (logs: string[], info: { reason: string }) => {
       expect(logs).toEqual(['first log line', 'second log line']);
+      // A server without exit reasons only reports that the app ended.
+      expect(info.reason).toBe('exit');
       resolveExit();
     });
     const client = await createInstanceClient({
@@ -264,6 +273,88 @@ describe('iOS launchApp serialization', () => {
     );
     await new Promise((resolve) => setImmediate(resolve));
     expect(onExit).toHaveBeenCalledTimes(1);
+
+    client.disconnect();
+  });
+
+  it('delivers inline logs, the exit reason, and crash details without fetching logs', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test/v1/ios_123/api',
+      token: 'token',
+      logLevel: 'none',
+    });
+    const exited = new Promise<[string[], unknown]>((resolve) => {
+      void client.launchApp('com.example.app', { onExit: (logs, info) => resolve([logs, info]) });
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    const execId = sentMessages.find((message) => message['type'] === 'launchApp')?.['execId'];
+    const crash = {
+      processName: 'App',
+      pid: 42,
+      shortMsg: 'EXC_BREAKPOINT (SIGTRAP)',
+      longMsg: 'Fatal error: boom',
+      stackTrace: 'Thread Crashed:',
+      timeMillis: 1,
+    };
+    mockSockets[0]!.emit(
+      'message',
+      Buffer.from(
+        JSON.stringify({
+          type: 'appExit',
+          execId,
+          bundleId: 'com.example.app',
+          reason: 'crash',
+          crash,
+          logs: ['before crash'],
+          logLineCount: 1,
+        }),
+      ),
+    );
+
+    await expect(exited).resolves.toEqual([
+      ['before crash'],
+      { bundleId: 'com.example.app', reason: 'crash', crash },
+    ]);
+    expect(sentMessages.some((message) => message['type'] === 'appLogTail')).toBe(false);
+
+    client.disconnect();
+  });
+
+  it('watchApp reports the next exit once and stop() unwatches', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test/v1/ios_123/api',
+      token: 'token',
+      logLevel: 'none',
+    });
+    const onExit = jest.fn();
+    const watch = await client.watchApp('com.example.app', onExit);
+    expect(sentMessages.find((message) => message['type'] === 'watchApp')).toEqual({
+      type: 'watchApp',
+      id: expect.any(String),
+      bundleId: 'com.example.app',
+      execId: watch.execId,
+    });
+
+    const exit = {
+      type: 'appExit',
+      execId: watch.execId,
+      bundleId: 'com.example.app',
+      reason: 'terminated',
+      logs: [],
+    };
+    mockSockets[0]!.emit('message', Buffer.from(JSON.stringify(exit)));
+    mockSockets[0]!.emit('message', Buffer.from(JSON.stringify(exit)));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(onExit).toHaveBeenCalledTimes(1);
+    expect(onExit).toHaveBeenCalledWith([], { bundleId: 'com.example.app', reason: 'terminated' });
+
+    await watch.stop();
+    expect(sentMessages.find((message) => message['type'] === 'unwatchApp')).toMatchObject({
+      type: 'unwatchApp',
+      execId: watch.execId,
+    });
 
     client.disconnect();
   });

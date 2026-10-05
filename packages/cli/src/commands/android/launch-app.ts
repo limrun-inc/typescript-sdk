@@ -62,7 +62,7 @@ export default class AndroidLaunchApp extends BaseCommand {
         await client.launchApp(args.packageName, {
           mode,
           onExit: (logs: string[], info: AppExitInfo) => {
-            this.log(formatAppExit(info, logs));
+            this.log(formatAppExit(info.packageName, info, logs));
             notifyAppExited();
           },
         });
