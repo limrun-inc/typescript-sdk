@@ -78,8 +78,13 @@ app.post(
           });
           await ios.launchApp('host.exp.Exponent', {
             mode: 'RelaunchIfRunning',
-            onExit: async (logs) => {
-              console.log(`START - Expo Go exited`);
+            onExit: async (logs, info) => {
+              // Fires once when the app crashes, exits, or is terminated.
+              console.log(`START - Expo Go exited (reason: ${info.reason})`);
+              if (info.crash) {
+                console.log(info.crash.longMsg);
+                console.log(info.crash.stackTrace);
+              }
               for (const line of logs) {
                 console.log(line);
               }

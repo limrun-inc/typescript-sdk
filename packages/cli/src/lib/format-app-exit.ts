@@ -1,15 +1,22 @@
-import type { AppExitInfo } from '@limrun/api';
+/** The parts of an Android or iOS appExit notification this formatter prints. */
+export type AppExitSummary = {
+  reason: string;
+  crash?: { processName: string; pid: number; shortMsg: string; longMsg?: string; stackTrace?: string };
+  anr?: { processName: string; pid: number; processStats?: string };
+};
 
 /**
- * Renders an Android appExit notification as human-readable text: the exit
- * reason, crash or ANR details when present, and the recent app log tail
- * delivered with the event.
+ * Renders an appExit notification as human-readable text: the exit reason, crash or ANR
+ * details when present, and the recent app log tail delivered with the event.
  */
-export function formatAppExit(info: AppExitInfo, logs: string[]): string {
-  const lines: string[] = [`${info.packageName} exited (reason: ${info.reason})`];
+export function formatAppExit(appId: string, info: AppExitSummary, logs: string[]): string {
+  const lines: string[] = [`${appId} exited (reason: ${info.reason})`];
 
   if (info.crash) {
     lines.push(`Crash in ${info.crash.processName} (pid ${info.crash.pid}): ${info.crash.shortMsg}`);
+    if (info.crash.longMsg && info.crash.longMsg !== info.crash.shortMsg) {
+      lines.push(info.crash.longMsg);
+    }
     if (info.crash.stackTrace) {
       lines.push(info.crash.stackTrace.trimEnd());
     }

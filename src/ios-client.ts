@@ -405,13 +405,53 @@ export type DetoxLaunchRuntime = {
 
 export type LaunchAppRuntime = DetoxLaunchRuntime;
 
-export type LaunchAppExitCallback = (logs: string[]) => Promise<void>;
+/**
+ * Why a launched or watched app shut down.
+ * - `crash`: the process died on a fatal signal; `crash` details are attached.
+ * - `exit`: the process ended without a crash and was not stopped through the SDK.
+ * - `terminated`: the app was stopped via {@link InstanceClient.terminateApp} or a relaunch.
+ */
+export type AppExitReason = 'crash' | 'exit' | 'terminated';
+
+export type AppCrashInfo = {
+  processName: string;
+  pid: number;
+  /** Exception type and signal, for example `EXC_BAD_ACCESS (SIGSEGV) at 0x10`. */
+  shortMsg: string;
+  /** The crash message the app left, such as an uncaught exception's reason, else `shortMsg`. */
+  longMsg: string;
+  /**
+   * The crashed thread's frames, with symbol names for the app's own code, followed by the
+   * binary images they belong to. Symbolicate file and line with your dSYM, for example
+   * `atos -o App.dSYM -l <load address> <frame address>`.
+   */
+  stackTrace: string;
+  timeMillis: number;
+};
+
+export type AppExitInfo = {
+  bundleId: string;
+  reason: AppExitReason;
+  crash?: AppCrashInfo;
+};
+
+/**
+ * Called when the app shuts down. For a launched app the logs array contains one entry per
+ * stdout/stderr line that launch produced; a watched app reports no logs. `info` carries the
+ * exit reason plus crash details when applicable.
+ */
+export type LaunchAppExitCallback = (logs: string[], info: AppExitInfo) => Promise<void> | void;
+
+/** Handle for an app watch registered via {@link InstanceClient.watchApp}. */
+export type AppWatch = {
+  /** Identifier of this watch on the server. */
+  execId: string;
+  /** Cancels the watch; the onExit callback will not be invoked afterwards. */
+  stop: () => Promise<void>;
+};
 
 type LaunchAppExitOptions = {
-  /**
-   * Called when the launched app exits. The logs array contains one entry per
-   * stdout/stderr line produced by that execution, as reported by limulator.
-   */
+  /** Called once when the launched app exits, crashes, or is terminated. */
   onExit?: LaunchAppExitCallback;
 };
 
@@ -721,6 +761,20 @@ export type InstanceClient = {
    * @param bundleId Bundle identifier of the app to terminate
    */
   terminateApp: (bundleId: string) => Promise<void>;
+
+  /**
+   * Watch an app's exit or crash without launching it through {@link launchApp}, for example
+   * an app opened with {@link openUrl} or already running. The callback fires once, with the
+   * exit reason and crash details, the next time any process of the app exits. Watched apps
+   * report no logs.
+   *
+   * The app does not need to be running yet: if it starts later, it is picked up automatically.
+   *
+   * @param bundleId Bundle identifier of the app to watch
+   * @param onExit Called once when the watched app shuts down
+   * @returns A handle whose `stop()` cancels the watch
+   */
+  watchApp: (bundleId: string, onExit: LaunchAppExitCallback) => Promise<AppWatch>;
 
   /**
    * Fetch the last N lines of app logs (combined stdout/stderr)
@@ -1330,6 +1384,17 @@ type SimctlRequest = {
 /**
  * Generic server response with optional error
  */
+/** appExit as the server sends it; its logs field is an array, unlike appLogTailResult's. */
+type AppExitMessage = {
+  type: 'appExit';
+  execId: string;
+  bundleId: string;
+  reason?: AppExitReason;
+  crash?: AppCrashInfo;
+  logs?: string[];
+  logLineCount?: number;
+};
+
 type ServerResponse = {
   state?: FoldState;
   type: string;
@@ -1818,14 +1883,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         return false;
       }
 
-      const { execId, bundleId, logLineCount } = message;
-      if (
-        typeof execId !== 'string' ||
-        typeof bundleId !== 'string' ||
-        typeof logLineCount !== 'number' ||
-        !Number.isInteger(logLineCount) ||
-        logLineCount < 0
-      ) {
+      const { execId, bundleId } = message;
+      if (typeof execId !== 'string' || typeof bundleId !== 'string') {
         logger.warn('Received malformed appExit message:', message);
         return true;
       }
@@ -1865,6 +1924,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       toggleKeyboardResult: () => undefined,
       launchAppResult: () => undefined,
       terminateAppResult: () => undefined,
+      watchAppResult: () => undefined,
+      unwatchAppResult: () => undefined,
       appLogTailResult: (msg) => msg.logs ?? '',
       listAppsResult: (msg) => JSON.parse(msg.apps || '[]') as InstalledApp[],
       listOpenFilesResult: (msg) => msg.files || [],
@@ -2071,6 +2132,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             toggleKeyboard,
             launchApp,
             terminateApp,
+            watchApp,
             appLogTail,
             streamAppLog,
             streamSyslog,
@@ -2310,33 +2372,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       const onExit = launchOptions.onExit;
       const execId = onExit ? generateId() : undefined;
       if (execId && onExit) {
-        registerServerNotification('appExit', execId, async (message) => {
-          const { bundleId, logLineCount } = message;
-          if (
-            typeof bundleId !== 'string' ||
-            typeof logLineCount !== 'number' ||
-            !Number.isInteger(logLineCount) ||
-            logLineCount < 0
-          ) {
-            logger.warn(`Received malformed appExit payload for execId ${execId}:`, message);
-            return;
-          }
-
-          let logs: string[] = [];
-          try {
-            logs = splitAppLogTail(
-              await sendRequest<string>('appLogTail', { bundleId, lines: logLineCount }),
-            );
-          } catch (error) {
-            logger.error(`Failed to fetch app logs for exit execId ${execId}:`, error);
-          }
-
-          try {
-            await onExit(logs);
-          } catch (error) {
-            logger.error(`Error in onExit callback for execId ${execId}:`, error);
-          }
-        });
+        registerServerNotification('appExit', execId, appExitHandler(execId, onExit));
       }
       return sendRequest<void>('launchApp', {
         bundleId,
@@ -2349,6 +2385,57 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
         throw error;
       });
+    };
+
+    /** Delivers one appExit to the callback, fetching the logs from servers that predate inline logs. */
+    const appExitHandler =
+      (execId: string, onExit: LaunchAppExitCallback): ServerNotificationHandler =>
+      async (response) => {
+        const message = response as unknown as AppExitMessage;
+        let logs: string[] = [];
+        if (Array.isArray(message.logs)) {
+          logs = message.logs.map(String);
+        } else if (Number.isInteger(message.logLineCount) && (message.logLineCount ?? 0) > 0) {
+          try {
+            logs = splitAppLogTail(
+              await sendRequest<string>('appLogTail', {
+                bundleId: message.bundleId,
+                lines: message.logLineCount,
+              }),
+            );
+          } catch (error) {
+            logger.error(`Failed to fetch app logs for exit execId ${execId}:`, error);
+          }
+        }
+        const info: AppExitInfo = {
+          bundleId: message.bundleId,
+          // Servers before exit reasons only reported that the app ended.
+          reason: message.reason ?? 'exit',
+          ...(message.crash ? { crash: message.crash } : {}),
+        };
+        try {
+          await onExit(logs, info);
+        } catch (error) {
+          logger.error(`Error in onExit callback for execId ${execId}:`, error);
+        }
+      };
+
+    const watchApp = async (bundleId: string, onExit: LaunchAppExitCallback): Promise<AppWatch> => {
+      const execId = generateId();
+      registerServerNotification('appExit', execId, appExitHandler(execId, onExit));
+      try {
+        await sendRequest<void>('watchApp', { bundleId, execId });
+      } catch (error) {
+        deleteServerNotification('appExit', execId);
+        throw error;
+      }
+      return {
+        execId,
+        stop: async () => {
+          deleteServerNotification('appExit', execId);
+          await sendRequest<void>('unwatchApp', { execId });
+        },
+      };
     };
 
     const terminateApp = (bundleId: string): Promise<void> => {
