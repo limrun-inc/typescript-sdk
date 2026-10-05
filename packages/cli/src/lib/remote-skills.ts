@@ -48,8 +48,6 @@ export interface LoadRemoteSkillsOptions {
   owner?: string;
   repo?: string;
   ref?: string;
-  version?: string;
-  commit?: string;
   cloneImpl?: (owner: string, repo: string, ref: string) => Promise<ClonedSkillsRepo>;
 }
 
@@ -288,26 +286,23 @@ function loadSkillsFromCheckout(params: {
 export async function loadRemoteSkills(options: LoadRemoteSkillsOptions = {}): Promise<LoadedRemoteSkills> {
   const owner = options.owner ?? DEFAULT_SKILLS_OWNER;
   const repo = options.repo ?? DEFAULT_SKILLS_REPO;
-  if ([options.ref, options.version, options.commit].filter((value) => value !== undefined).length > 1) {
-    throw new RemoteSkillsError('Specify only one skills ref, version, or commit');
+  const isCommit = options.ref !== undefined && /^[a-fA-F0-9]{40}$/.test(options.ref);
+  let ref = DEFAULT_SKILLS_REF;
+  if (options.ref !== undefined) {
+    if (isCommit) {
+      ref = options.ref.toLowerCase();
+    } else if (/^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(options.ref)) {
+      ref = `refs/tags/v${options.ref.replace(/^v/, '')}`;
+    } else {
+      throw new RemoteSkillsError(
+        'Skills ref must be a release version such as 0.1.17 or v0.1.17, or a full 40-character hexadecimal commit SHA; branch names are not accepted',
+      );
+    }
   }
-  if (
-    options.version !== undefined &&
-    !/^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(options.version)
-  ) {
-    throw new RemoteSkillsError('Skills version must be a release version such as 0.1.17 or v0.1.17');
-  }
-  if (options.commit !== undefined && !/^[a-fA-F0-9]{40}$/.test(options.commit)) {
-    throw new RemoteSkillsError('Skills commit must be a full 40-character hexadecimal SHA');
-  }
-  const ref =
-    options.commit?.toLowerCase() ??
-    (options.version !== undefined ? `refs/tags/v${options.version.replace(/^v/, '')}` : options.ref) ??
-    DEFAULT_SKILLS_REF;
   const cloneImpl = options.cloneImpl ?? cloneSkillsRepo;
   const cloned = await cloneImpl(owner, repo, ref);
   try {
-    if (options.commit !== undefined && cloned.commit !== ref) {
+    if (isCommit && cloned.commit !== ref) {
       throw new RemoteSkillsError(`Requested skills commit ${ref}, but fetched ${cloned.commit}`);
     }
     return loadSkillsFromCheckout({

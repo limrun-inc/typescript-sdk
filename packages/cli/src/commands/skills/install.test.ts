@@ -8,7 +8,7 @@ import { loadRemoteSkills, type LoadedRemoteSkills } from '../../lib/remote-skil
 jest.mock('../../lib/remote-skills', () => ({ loadRemoteSkills: jest.fn() }));
 jest.mock('../../lib/telemetry', () => ({ captureTelemetry: jest.fn(), telemetryErrorCategory: jest.fn() }));
 
-describe('skills install revision flags', () => {
+describe('skills install --ref', () => {
   let rootDir: string;
   let originalCwd: string;
   let source: LoadedRemoteSkills;
@@ -47,8 +47,9 @@ describe('skills install revision flags', () => {
 
   test.each([
     [[], {}],
-    [['--version', '0.1.17'], { version: '0.1.17' }],
-    [['--commit', 'a'.repeat(40)], { commit: 'a'.repeat(40) }],
+    [['--ref', '0.1.17'], { ref: '0.1.17' }],
+    [['--ref', 'v0.1.17'], { ref: 'v0.1.17' }],
+    [['--ref', 'a'.repeat(40)], { ref: 'a'.repeat(40) }],
   ])('installs the selected source for %j and reports its commit in JSON', async (args, options) => {
     const command = new SkillsInstall([...args, '--agents', 'claude', '--json'], config);
     const log = jest.spyOn(command, 'log').mockImplementation(() => {});
@@ -64,9 +65,9 @@ describe('skills install revision flags', () => {
     expect(source.cleanup).toHaveBeenCalled();
   });
 
-  test('rejects version and commit together before fetching or installing', async () => {
-    const command = new SkillsInstall(['--version', '0.1.17', '--commit', 'a'.repeat(40)], config);
-    await expect(command.run()).rejects.toThrow('cannot also be provided');
+  test('requires a ref value before fetching or installing', async () => {
+    const command = new SkillsInstall(['--ref'], config);
+    await expect(command.run()).rejects.toThrow();
     expect(loadRemoteSkills).not.toHaveBeenCalled();
     expect(fs.existsSync(path.join(rootDir, '.claude'))).toBe(false);
   });
