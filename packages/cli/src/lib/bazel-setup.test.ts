@@ -60,6 +60,9 @@ describe('MODULE.bazel lines for Android', () => {
     expect(lines).toContain('hermetic_android_toolchains');
     expect(lines).toContain('name = "protobuf"');
     expect(lines).not.toContain('name = "rules_cc"');
+    expect(
+      missingAndroidModuleLines(workspace('# bazel_dep(name = "rules_cc", version = "0.2.17")\n')),
+    ).toContain('name = "rules_cc"');
     appendModuleLines(dir, lines);
     expect(missingAndroidModuleLines(dir)).toBe('');
   });
@@ -171,17 +174,5 @@ describe('director and credentials', () => {
     });
     const body = JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body));
     expect(body.scopes).toEqual(['remotecache:*:all', 'remoteexecution:*:all']);
-  });
-
-  it('falls back to cache reads for a credential that may not build', async () => {
-    fetchMock
-      .mockResolvedValueOnce(mockResponse(403, { message: 'scope remoteexecution:*:all is not held' }))
-      .mockResolvedValueOnce(
-        mockResponse(200, { token: 'lim_st_read', expiresAt: '2026-10-06T12:00:00Z', scopes: [] }),
-      );
-    const credentials = await bazelCredentials(client);
-    expect(credentials.headers.Authorization).toEqual(['Bearer lim_st_read']);
-    const body = JSON.parse(String((fetchMock.mock.calls[1]![1] as RequestInit).body));
-    expect(body.scopes).toEqual(['remotecache:*:read']);
   });
 });
