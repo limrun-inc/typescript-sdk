@@ -1,14 +1,23 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Ios } from '@limrun/api';
+import { Ios, Limrun } from '@limrun/api';
 import { startTcpTunnel, type Tunnel } from '@limrun/api/tunnel';
 
-const apiUrl = process.env['LIM_IOS_API_URL'];
-const token = process.env['LIM_IOS_TOKEN'];
-if (!apiUrl || !token) throw new Error('Set LIM_IOS_API_URL and LIM_IOS_TOKEN from the iOS instance status.');
+const apiKey = process.env['LIM_API_KEY'];
+if (!apiKey) throw new Error('Set LIM_API_KEY to your Limrun API key.');
 
-const ios = await Ios.createInstanceClient({ apiUrl, token });
+const stopped = new Promise<void>((resolve) => {
+  process.once('SIGINT', () => resolve());
+  process.once('SIGTERM', () => resolve());
+});
+const limrun = new Limrun({ apiKey });
+const instance = await limrun.iosInstances.create({ wait: true });
+console.log(`Created instance ${instance.metadata.id}`);
+let ios: Ios.InstanceClient | undefined;
 let tunnel: Tunnel | undefined;
 try {
+  const { apiUrl, token } = instance.status;
+  if (!apiUrl || !token) throw new Error('Instance is missing its API URL or token.');
+  ios = await Ios.createInstanceClient({ apiUrl, token });
   await ios.openUrl('https://example.com');
 
   // Safari's inspector socket may appear after openUrl returns.
@@ -29,14 +38,17 @@ try {
   console.log(`Safari Web Inspector transport: ${tunnel.address.address}:${tunnel.address.port}`);
   console.log('Connect a Web Inspector protocol client to this TCP endpoint. Press Ctrl+C to stop.');
 
-  await new Promise<void>((resolve, reject) => {
-    process.once('SIGINT', () => resolve());
-    process.once('SIGTERM', () => resolve());
-    tunnel!.onConnectionStateChange((state) => {
-      if (state === 'disconnected') reject(new Error('Web Inspector tunnel disconnected.'));
-    });
-  });
+  await Promise.race([
+    stopped,
+    new Promise<never>((_, reject) => {
+      tunnel!.onConnectionStateChange((state) => {
+        if (state === 'disconnected') reject(new Error('Web Inspector tunnel disconnected.'));
+      });
+    }),
+  ]);
 } finally {
   tunnel?.close();
-  ios.disconnect();
+  ios?.disconnect();
+  await limrun.iosInstances.delete(instance.metadata.id);
+  console.log(`Deleted instance ${instance.metadata.id}`);
 }
