@@ -20,5 +20,8 @@
   },
   "dependencies": {
     "@limrun/api": "^0.50.0"
+  },
+  "resolutions": {
+    "@limrun/api/undici": "7.29.1"
   }
 }
