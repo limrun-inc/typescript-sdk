@@ -92,5 +92,8 @@
     "dist",
     "bin",
     "README.md"
-  ]
+  ],
+  "resolutions": {
+    "@limrun/api/undici": "7.29.1"
+  }
 }
