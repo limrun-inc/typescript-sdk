@@ -3,7 +3,8 @@
   "version": "0.39.1",
   "description": "Use remote XCode, Gradle, iOS Simulator, Android Emulator and more to build and test apps from Linux, Windows or macOS.",
   "bin": {
-    "lim": "./bin/run.js"
+    "lim": "./bin/run.js",
+    "lim-bazel-credentials": "./bin/lim-bazel-credentials.js"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -82,6 +83,13 @@
       },
       "xcode": {
         "description": "Execute any task on remote XCode sandboxes: create, list, get, delete, sync, build, test, run, use, tools, rbe, attach-simulator, version"
+      },
+      "bazel": {
+        "description": "Build with Bazel on Limrun's build plane: setup"
+      },
+      "bazel:credentials": {
+        "description": "Bazel's credential helper, run by Bazel as lim-bazel-credentials",
+        "hidden": true
       }
     }
   },
