@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import Limrun, { APIError } from '@limrun/api';
+import Limrun from '@limrun/api';
 import {
   LIMRUN_DIR,
   detectBazelMajorVersion,
@@ -49,22 +49,13 @@ export function credentialHelperOnPath(): boolean {
 const TOKEN_TTL_SECONDS = 3600;
 /** What a build needs: read and write the cache, and run actions. */
 const BUILD_SCOPES = ['remotecache:*:all', 'remoteexecution:*:all'];
-/** What a viewer's credential can still mint: cache reads alone. */
-const READ_SCOPES = ['remotecache:*:read'];
 
 /** The credential helper's answer: headers for the plane, and when they expire. */
 export type BazelCredentials = { headers: { Authorization: string[] }; expires: string };
 
-/**
- * Mints a short-lived scoped token for the plane from the caller's own
- * credential. A viewer may only read the cache, so it gets what it may have.
- */
+/** Mints a short-lived scoped token for the plane from the caller's own credential. */
 export async function bazelCredentials(client: Limrun): Promise<BazelCredentials> {
-  const mint = (scopes: string[]) => client.scopedTokens.create({ scopes, ttlSeconds: TOKEN_TTL_SECONDS });
-  const token = await mint(BUILD_SCOPES).catch((err: unknown) => {
-    if (err instanceof APIError && err.status === 403) return mint(READ_SCOPES);
-    throw err;
-  });
+  const token = await client.scopedTokens.create({ scopes: BUILD_SCOPES, ttlSeconds: TOKEN_TTL_SECONDS });
   return { headers: { Authorization: [`Bearer ${token.token}`] }, expires: token.expiresAt };
 }
 
@@ -122,7 +113,7 @@ function readModule(workspaceRoot: string): string {
 }
 
 function hasBazelDep(module: string, name: string): boolean {
-  return new RegExp(`bazel_dep\\(\\s*name\\s*=\\s*"${name}"`).test(module);
+  return new RegExp(`^\\s*bazel_dep\\(\\s*name\\s*=\\s*"${name}"`, 'm').test(module);
 }
 
 /**

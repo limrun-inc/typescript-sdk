@@ -56,6 +56,9 @@ export default class BazelSetup extends BaseCommand {
       createReplacement: false,
     });
 
+    // The gitignored .limrun/ files go first, so a failure there never leaves
+    // the root MODULE.bazel half set up.
+    const files = writePlaneWorkspaceFiles(workspaceRoot, setup, kinds);
     if (kinds.android) {
       const lines = missingAndroidModuleLines(workspaceRoot);
       if (lines && !(await this.confirmModuleLines(lines, flags.yes))) {
@@ -64,7 +67,6 @@ export default class BazelSetup extends BaseCommand {
       if (lines) appendModuleLines(workspaceRoot, lines);
     }
 
-    const files = writePlaneWorkspaceFiles(workspaceRoot, setup, kinds);
     if (flags.json) {
       this.outputJson({ ...setup, workspaceRoot, apple: kinds.apple, android: kinds.android });
       return;
@@ -82,14 +84,18 @@ export default class BazelSetup extends BaseCommand {
     this.info('Build with: bazel build --config=limrun //your:target');
   }
 
-  /** Shows the lines and asks, unless --yes. Without a terminal it never writes unasked. */
+  /**
+   * Shows the lines and asks, unless --yes. It never asks about lines the user
+   * cannot see: without a terminal, or under --json/--quiet, it stops instead.
+   */
   private async confirmModuleLines(lines: string, yes: boolean): Promise<boolean> {
     this.info('Android builds on Linux workers need these lines in MODULE.bazel:');
     this.info(lines);
     if (yes) return true;
-    if (!process.stdin.isTTY) {
-      this.info('Rerun with --yes to add them, or add them yourself and rerun.');
-      return false;
+    if (this.shouldSuppressInfo() || !process.stdin.isTTY) {
+      this.error(
+        'MODULE.bazel lacks lines Android builds on Linux workers need. Rerun with --yes to add them, or without --json/--quiet in a terminal to review them.',
+      );
     }
     const prompt = readline.createInterface({ input: process.stdin, output: process.stderr });
     try {
