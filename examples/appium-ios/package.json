@@ -23,6 +23,7 @@
   },
   "resolutions": {
     "@puppeteer/browsers": "3.0.2",
-    "deepmerge-ts": "^8.0.2"
+    "deepmerge-ts": "^8.0.2",
+    "@limrun/api/undici": "7.29.1"
   }
 }
