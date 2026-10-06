@@ -103,12 +103,57 @@ bundle's provisioning profile and download it again. For cloud signing, pass
 `com.apple.security.application-groups` in the entitlements for both the main app
 and widget using `--entitlements` or the SDK's per-bundle `entitlements` map.
 
+### Developer service keys, agreements, and team access
+
+The following helpers use the same `{ relay, teamId }` session:
+
+| Operation                                    | Helper                       |
+| -------------------------------------------- | ---------------------------- |
+| Read outstanding agreements                  | `listApplePendingAgreements` |
+| List members and their roles                 | `listAppleTeamMembers`       |
+| List pending invitations                     | `listAppleTeamInvites`       |
+| Change one member's role                     | `setAppleTeamMemberRole`     |
+| Remove one member                            | `removeAppleTeamMember`      |
+| Send an invitation                           | `inviteAppleTeamMember`      |
+| Create an APNs, DeviceCheck, or MusicKit key | `createAppleDeveloperKey`    |
+
+The relay selects JSON encoding for these endpoints. Callers use the same
+`provisioning` request type as the other portal helpers. Team writes refresh
+membership CSRF headers first; key creation refreshes key CSRF headers.
+
+```ts
+import { createAppleDeveloperKey, downloadAppleDeveloperKey } from '@limrun/apple-auth';
+
+const key = await createAppleDeveloperKey({
+  relay,
+  teamId,
+  name: 'App notifications',
+  apns: true,
+});
+const privateKey = await downloadAppleDeveloperKey({ relay, teamId, keyId: key.keyId });
+// Decode privateKey.rawBodyBase64 once to obtain the .p8 private key bytes.
+```
+
+`apns: true` requests a team-scoped key for development and production, matching
+Fastlane's default. Add `deviceCheck: true` or `musicId: '<opaque Music ID>'` to
+configure those services. These are Developer Portal service keys, separate
+from App Store Connect API keys and code-signing certificates. Creation returns
+a key record; private bytes are downloaded separately and remain under the
+caller's control.
+
+`listAppleTeamMembers` flattens Apple's `members`, `admins`, and `agent` groups
+and adds a `role` field. Role updates and invitations accept `admin` or `member`.
+Member changes use the opaque `teamMemberId`, not the person's email or `personId`.
+`listAppleTeamInvites` preserves Apple's invitation fields and timestamps.
+`listApplePendingAgreements` returns Apple's full response envelope; its optional
+`language` defaults to `en`. It does not accept agreements.
+
 ### Fastlane coverage and remaining calls
 
 Endpoint inventory checked against Fastlane's
 [PortalClient](https://github.com/fastlane/fastlane/blob/1912c0760355eebb5e90f643e6e77b74cf346e3b/spaceship/lib/spaceship/portal/portal_client.rb)
 and [AppService](https://github.com/fastlane/fastlane/blob/1912c0760355eebb5e90f643e6e77b74cf346e3b/spaceship/lib/spaceship/portal/app_service.rb).
-The relay allows their form POST and query GET calls on
+The relay allows their form POST, JSON POST, and query GET calls on
 `developer.apple.com/services-account/QH65B2`, including both namespaces where
 Fastlane implements them. This covers endpoint access, not every Fastlane CLI
 workflow or option. Apple's private endpoints can change independently.
@@ -117,13 +162,6 @@ The following Fastlane Developer Portal calls remain unsupported:
 
 | Path                                                                                       | Reason                                     |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------ |
-| `/account/listPendingAgreements`                                                           | JSON POST body                             |
-| `/account/getTeamMembers`                                                                  | JSON POST body                             |
-| `/account/getInvites`                                                                      | JSON POST body                             |
-| `/account/setTeamMemberRoles`                                                              | JSON POST body                             |
-| `/account/removeTeamMembers`                                                               | JSON POST body                             |
-| `/account/sendInvites`                                                                     | JSON POST body                             |
-| `/account/auth/key/v2/create`                                                              | JSON POST body                             |
 | `https://developerservices2.apple.com/services/QH65B2/ios/listProvisioningProfiles.action` | Different upstream host and plist response |
 | `https://developerservices2.apple.com/services/QH65B2/mac/listProvisioningProfiles.action` | Different upstream host and plist response |
 
