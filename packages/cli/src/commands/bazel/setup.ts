@@ -43,7 +43,8 @@ export default class BazelSetup extends BaseCommand {
     if (!workspaceRoot) {
       this.error('No Bazel workspace found: run lim bazel setup inside one, next to its MODULE.bazel.');
     }
-    const tooOld = bazelTooOld(detectBazelMajorVersion(workspaceRoot));
+    const bazelMajor = detectBazelMajorVersion(workspaceRoot);
+    const tooOld = bazelTooOld(bazelMajor);
     if (tooOld) this.error(tooOld);
     const kinds = detectWorkspaceKinds(workspaceRoot);
     if (!kinds.apple && !kinds.android) {
@@ -56,17 +57,14 @@ export default class BazelSetup extends BaseCommand {
       createReplacement: false,
     });
 
-    // The gitignored .limrun/ files go first, so a failure there never leaves
-    // the root MODULE.bazel half set up.
-    const files = writePlaneWorkspaceFiles(workspaceRoot, setup, kinds);
-    if (kinds.android) {
-      const lines = missingAndroidModuleLines(workspaceRoot);
-      if (lines && !(await this.confirmModuleLines(lines, flags.yes))) {
-        this.error('Setup stopped: Android builds on Linux workers need these lines in MODULE.bazel.');
-      }
-      if (lines) appendModuleLines(workspaceRoot, lines);
+    // Ask before writing anything, and write MODULE.bazel last, so a refusal or
+    // a failure never leaves the workspace half set up.
+    const lines = kinds.android ? missingAndroidModuleLines(workspaceRoot) : '';
+    if (lines && !(await this.confirmModuleLines(lines, flags.yes))) {
+      this.error('Setup stopped: Android builds on Linux workers need these lines in MODULE.bazel.');
     }
-
+    const files = writePlaneWorkspaceFiles(workspaceRoot, setup, kinds, bazelMajor);
+    if (lines) appendModuleLines(workspaceRoot, lines);
     if (flags.json) {
       this.outputJson({ ...setup, workspaceRoot, apple: kinds.apple, android: kinds.android });
       return;
@@ -92,7 +90,7 @@ export default class BazelSetup extends BaseCommand {
     this.info('Android builds on Linux workers need these lines in MODULE.bazel:');
     this.info(lines);
     if (yes) return true;
-    if (this.shouldSuppressInfo() || !process.stdin.isTTY) {
+    if (this.shouldSuppressInfo() || !process.stdin.isTTY || !process.stderr.isTTY) {
       this.error(
         'MODULE.bazel lacks lines Android builds on Linux workers need. Rerun with --yes to add them, or without --json/--quiet in a terminal to review them.',
       );
