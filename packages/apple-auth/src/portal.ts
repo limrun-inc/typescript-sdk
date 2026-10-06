@@ -6,7 +6,8 @@
  * filters are broken (bundle IDs, device UDIDs).
  */
 import { normalizeUDID, sameUDID } from './internal/udid';
-import type { AppleRelayResponse, AppleRelayWebSocketClient } from './relay';
+import type { AppleRelayWebSocketClient } from './relay';
+import { portalRequest, portalDownload, paged } from './internal/portal';
 
 /**
  * A Developer Portal team, normalized. Apple's raw records identify a team
@@ -136,6 +137,12 @@ export type AppleTeamScopedOptions = AppleRelayClientOptions & {
   teamId?: string;
 };
 
+/** Developer Portal namespace. Existing callers default to iOS. */
+export type ApplePortalPlatform = 'ios' | 'mac';
+export type ApplePlatformScopedOptions = AppleTeamScopedOptions & {
+  platform?: ApplePortalPlatform;
+};
+
 export type AppleCertificateKind = 'development' | 'distribution';
 
 export type AppleProfileKind = 'development' | 'adhoc' | 'appstore';
@@ -150,52 +157,8 @@ const CERTIFICATE_TYPES: Record<AppleCertificateKind, { create: string; list: st
   distribution: { create: 'WXV89964HE', list: 'WXV89964HE,R58UK2EWSO' },
 };
 
-type PortalRequest = {
-  method?: 'GET' | 'POST';
-  path: string;
-  payload?: unknown;
-};
-
-async function portalRequest(
-  relay: AppleRelayWebSocketClient,
-  request: PortalRequest,
-  label: string,
-): Promise<AppleDeveloperPortalResponse> {
-  const response = await relay.request<AppleDeveloperPortalResponse>('provisioning', request);
-  const body = response.body;
-  if (!body) {
-    throw new Error(`${label} returned an empty response.`);
-  }
-  if (body.resultCode !== undefined && body.resultCode !== 0) {
-    throw new Error(`${label} failed: ${body.userString ?? body.resultString ?? body.resultCode}`);
-  }
-  return body;
-}
-
-/** A download endpoint returns raw bytes, not a portal result envelope. */
-async function portalDownload(
-  relay: AppleRelayWebSocketClient,
-  request: PortalRequest,
-): Promise<AppleRelayResponse> {
-  return relay.request('provisioning', request);
-}
-
-function paged(path: string, teamId: string, payload: Record<string, unknown> = {}): PortalRequest {
-  return {
-    method: 'POST',
-    path,
-    payload: {
-      pageNumber: 1,
-      pageSize: 200,
-      sort: 'name=asc',
-      ...(teamId ? { teamId } : {}),
-      ...payload,
-    },
-  };
-}
-
 export async function listAppleTeams({ relay }: AppleRelayClientOptions): Promise<AppleTeam[]> {
-  const body = await portalRequest(
+  const body = await portalRequest<AppleDeveloperPortalResponse>(
     relay,
     { method: 'POST', path: '/account/listTeams.action', payload: {} },
     'Apple Developer team list',
@@ -217,18 +180,19 @@ export async function listAppleTeams({ relay }: AppleRelayClientOptions): Promis
   return teams;
 }
 
-export type ListAppleCertificatesOptions = AppleTeamScopedOptions & {
+export type ListAppleCertificatesOptions = ApplePlatformScopedOptions & {
   certificateKind?: AppleCertificateKind;
 };
 
 export async function listAppleCertificates({
   relay,
   teamId = '',
+  platform = 'ios',
   certificateKind = 'development',
 }: ListAppleCertificatesOptions) {
-  const body = await portalRequest(
+  const body = await portalRequest<AppleDeveloperPortalResponse>(
     relay,
-    paged('/account/ios/certificate/listCertRequests.action', teamId, {
+    paged(`/account/${platform}/certificate/listCertRequests.action`, teamId, {
       types: CERTIFICATE_TYPES[certificateKind].list,
     }),
     'Apple Developer certificate list',
@@ -236,7 +200,7 @@ export async function listAppleCertificates({
   return body.certRequests ?? [];
 }
 
-export type CreateAppleCertificateOptions = AppleTeamScopedOptions & {
+export type CreateAppleCertificateOptions = ApplePlatformScopedOptions & {
   certificateKind?: AppleCertificateKind;
   csrPEM: string;
 };
@@ -244,14 +208,15 @@ export type CreateAppleCertificateOptions = AppleTeamScopedOptions & {
 export async function createAppleCertificate({
   relay,
   teamId = '',
+  platform = 'ios',
   certificateKind = 'development',
   csrPEM,
 }: CreateAppleCertificateOptions) {
-  const body = await portalRequest(
+  const body = await portalRequest<AppleDeveloperPortalResponse>(
     relay,
     {
       method: 'POST',
-      path: '/account/ios/certificate/submitCertificateRequest.action',
+      path: `/account/${platform}/certificate/submitCertificateRequest.action`,
       payload: { teamId, type: CERTIFICATE_TYPES[certificateKind].create, csrContent: csrPEM },
     },
     'Apple certificate creation',
@@ -259,7 +224,7 @@ export async function createAppleCertificate({
   return body.certRequest;
 }
 
-export type DownloadAppleCertificateOptions = AppleTeamScopedOptions & {
+export type DownloadAppleCertificateOptions = ApplePlatformScopedOptions & {
   certificateKind?: AppleCertificateKind;
   certificateId: string;
 };
@@ -268,17 +233,18 @@ export type DownloadAppleCertificateOptions = AppleTeamScopedOptions & {
 export async function downloadAppleCertificate({
   relay,
   teamId = '',
+  platform = 'ios',
   certificateKind = 'development',
   certificateId,
 }: DownloadAppleCertificateOptions) {
   return portalDownload(relay, {
     method: 'GET',
-    path: '/account/ios/certificate/downloadCertificateContent.action',
+    path: `/account/${platform}/certificate/downloadCertificateContent.action`,
     payload: { teamId, certificateId, type: CERTIFICATE_TYPES[certificateKind].create },
   });
 }
 
-export type DeleteAppleCertificateOptions = AppleTeamScopedOptions & {
+export type DeleteAppleCertificateOptions = ApplePlatformScopedOptions & {
   certificateKind?: AppleCertificateKind;
   certificateId: string;
 };
@@ -286,21 +252,22 @@ export type DeleteAppleCertificateOptions = AppleTeamScopedOptions & {
 export async function deleteAppleCertificate({
   relay,
   teamId = '',
+  platform = 'ios',
   certificateKind = 'development',
   certificateId,
 }: DeleteAppleCertificateOptions) {
-  return portalRequest(
+  return portalRequest<AppleDeveloperPortalResponse>(
     relay,
     {
       method: 'POST',
-      path: '/account/ios/certificate/revokeCertificate.action',
+      path: `/account/${platform}/certificate/revokeCertificate.action`,
       payload: { teamId, certificateId, type: CERTIFICATE_TYPES[certificateKind].create },
     },
     'Apple certificate deletion',
   );
 }
 
-export type ListAppleBundleIDsOptions = AppleTeamScopedOptions & {
+export type ListAppleBundleIDsOptions = ApplePlatformScopedOptions & {
   search?: string;
 };
 
@@ -309,11 +276,12 @@ export type ListAppleBundleIDsOptions = AppleTeamScopedOptions & {
 export async function listAppleBundleIDs({
   relay,
   teamId = '',
+  platform = 'ios',
   search = '',
 }: ListAppleBundleIDsOptions): Promise<AppleBundleID[]> {
-  const body = await portalRequest(
+  const body = await portalRequest<AppleDeveloperPortalResponse>(
     relay,
-    paged('/account/ios/identifiers/listAppIds.action', teamId),
+    paged(`/account/${platform}/identifiers/listAppIds.action`, teamId),
     'Apple bundle ID list',
   );
   const appIds = (body.appIds ?? [])
@@ -326,7 +294,7 @@ export async function listAppleBundleIDs({
   );
 }
 
-export type CreateAppleBundleIDOptions = AppleTeamScopedOptions & {
+export type CreateAppleBundleIDOptions = ApplePlatformScopedOptions & {
   bundleId: string;
   name?: string;
 };
@@ -334,14 +302,15 @@ export type CreateAppleBundleIDOptions = AppleTeamScopedOptions & {
 export async function createAppleBundleID({
   relay,
   teamId = '',
+  platform = 'ios',
   bundleId,
   name,
 }: CreateAppleBundleIDOptions): Promise<AppleBundleID> {
-  const body = await portalRequest(
+  const body = await portalRequest<AppleDeveloperPortalResponse>(
     relay,
     {
       method: 'POST',
-      path: '/account/ios/identifiers/addAppId.action',
+      path: `/account/${platform}/identifiers/addAppId.action`,
       payload: { teamId, name: name ?? bundleId, identifier: bundleId, type: 'explicit' },
     },
     'Apple bundle ID creation',
@@ -356,32 +325,49 @@ export async function createAppleBundleID({
   return created;
 }
 
-export type DeleteAppleBundleIDOptions = AppleTeamScopedOptions & {
+export type DeleteAppleBundleIDOptions = ApplePlatformScopedOptions & {
   appIdId: string;
 };
 
-export async function deleteAppleBundleID({ relay, teamId = '', appIdId }: DeleteAppleBundleIDOptions) {
-  return portalRequest(
+export async function deleteAppleBundleID({
+  relay,
+  teamId = '',
+  platform = 'ios',
+  appIdId,
+}: DeleteAppleBundleIDOptions) {
+  return portalRequest<AppleDeveloperPortalResponse>(
     relay,
     {
       method: 'POST',
-      path: '/account/ios/identifiers/deleteAppId.action',
+      path: `/account/${platform}/identifiers/deleteAppId.action`,
       payload: { teamId, appIdId },
     },
     'Apple bundle ID deletion',
   );
 }
 
-export type ListAppleDevicesOptions = AppleTeamScopedOptions & {
+export type ListAppleDevicesOptions = ApplePlatformScopedOptions & {
+  includeDisabled?: boolean;
+  deviceClass?: string;
   deviceUDID?: string;
 };
 
 // Like bundle IDs, the UDID filter is client-side: Apple's listDevices.action
 // does not honor a server-side one.
-export async function listAppleDevices({ relay, teamId = '', deviceUDID = '' }: ListAppleDevicesOptions) {
-  const body = await portalRequest(
+export async function listAppleDevices({
+  relay,
+  teamId = '',
+  platform = 'ios',
+  deviceUDID = '',
+  includeDisabled = false,
+  deviceClass,
+}: ListAppleDevicesOptions) {
+  const body = await portalRequest<AppleDeveloperPortalResponse>(
     relay,
-    paged('/account/ios/device/listDevices.action', teamId, { includeRemovedDevices: false }),
+    paged(`/account/${platform}/device/listDevices.action`, teamId, {
+      includeRemovedDevices: includeDisabled,
+      ...(deviceClass ? { deviceClasses: deviceClass } : {}),
+    }),
     'Apple device list',
   );
   const devices = body.devices ?? [];
@@ -389,7 +375,7 @@ export async function listAppleDevices({ relay, teamId = '', deviceUDID = '' }: 
   return devices.filter((device) => sameUDID(device.deviceNumber, deviceUDID));
 }
 
-export type RegisterAppleDeviceOptions = AppleTeamScopedOptions & {
+export type RegisterAppleDeviceOptions = ApplePlatformScopedOptions & {
   deviceUDID: string;
   name?: string;
 };
@@ -397,44 +383,50 @@ export type RegisterAppleDeviceOptions = AppleTeamScopedOptions & {
 export async function registerAppleDevice({
   relay,
   teamId = '',
+  platform = 'ios',
   deviceUDID,
-  name = 'Limrun iPhone',
+  name = platform === 'mac' ? 'Limrun Mac' : 'Limrun iPhone',
 }: RegisterAppleDeviceOptions) {
-  const body = await portalRequest(
+  const body = await portalRequest<AppleDeveloperPortalResponse>(
     relay,
     {
       method: 'POST',
-      path: '/account/ios/device/addDevices.action',
+      path: `/account/${platform}/device/addDevices.action`,
       payload: {
         teamId,
         deviceNames: name,
-        deviceNumbers: normalizeUDID(deviceUDID),
-        deviceClasses: 'iphone',
+        deviceNumbers: platform === 'mac' ? deviceUDID : normalizeUDID(deviceUDID),
+        deviceClasses: platform === 'mac' ? 'mac' : 'iphone',
         register: 'single',
       },
     },
     'Apple device registration',
   );
-  return body.device;
+  return body.device ?? body.devices?.[0];
 }
 
-export type DeleteAppleDeviceOptions = AppleTeamScopedOptions & {
+export type DeleteAppleDeviceOptions = ApplePlatformScopedOptions & {
   deviceId: string;
 };
 
-export async function deleteAppleDevice({ relay, teamId = '', deviceId }: DeleteAppleDeviceOptions) {
-  return portalRequest(
+export async function deleteAppleDevice({
+  relay,
+  teamId = '',
+  platform = 'ios',
+  deviceId,
+}: DeleteAppleDeviceOptions) {
+  return portalRequest<AppleDeveloperPortalResponse>(
     relay,
     {
       method: 'POST',
-      path: '/account/ios/device/deleteDevice.action',
+      path: `/account/${platform}/device/deleteDevice.action`,
       payload: { teamId, deviceId },
     },
     'Apple device deletion',
   );
 }
 
-export type ListAppleProfilesOptions = AppleTeamScopedOptions & {
+export type ListAppleProfilesOptions = ApplePlatformScopedOptions & {
   profileKind?: AppleProfileKind;
   /**
    * Narrows the result to profiles bound to this bundle ID. Applied
@@ -448,12 +440,13 @@ export type ListAppleProfilesOptions = AppleTeamScopedOptions & {
 export async function listAppleProfiles({
   relay,
   teamId = '',
+  platform = 'ios',
   profileKind = 'development',
   bundleId = '',
 }: ListAppleProfilesOptions): Promise<AppleProfile[]> {
-  const body = await portalRequest(
+  const body = await portalRequest<AppleDeveloperPortalResponse>(
     relay,
-    paged('/account/ios/profile/listProvisioningProfiles.action', teamId, {
+    paged(`/account/${platform}/profile/listProvisioningProfiles.action`, teamId, {
       // The development listing is unfiltered on the portal side and returns
       // profiles of every distribution method.
       ...(profileKind === 'adhoc' ? { distributionType: 'adhoc' }
@@ -479,7 +472,7 @@ function profileBoundBundleId(profile: Record<string, unknown>): string | undefi
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
-export type CreateAppleProfileOptions = AppleTeamScopedOptions & {
+export type CreateAppleProfileOptions = ApplePlatformScopedOptions & {
   profileKind?: AppleProfileKind;
   bundleId: string;
   appIdId: string;
@@ -493,6 +486,7 @@ export type CreateAppleProfileOptions = AppleTeamScopedOptions & {
 export async function createAppleProfile({
   relay,
   teamId = '',
+  platform = 'ios',
   profileKind = 'development',
   bundleId,
   appIdId,
@@ -507,11 +501,11 @@ export async function createAppleProfile({
   if (profileKind === 'appstore' && !name) {
     throw new Error('An explicit name is required to create an App Store provisioning profile.');
   }
-  const body = await portalRequest(
+  const body = await portalRequest<AppleDeveloperPortalResponse>(
     relay,
     {
       method: 'POST',
-      path: '/account/ios/profile/createProvisioningProfile.action',
+      path: `/account/${platform}/profile/createProvisioningProfile.action`,
       payload: {
         teamId,
         provisioningProfileName:
@@ -522,7 +516,7 @@ export async function createAppleProfile({
           profileKind === 'appstore' ? 'store'
           : profileKind === 'adhoc' ? 'adhoc'
           : 'limited',
-        subPlatform: 'ios',
+        ...(platform === 'ios' ? { subPlatform: 'ios' } : {}),
         ...(profileKind === 'appstore' ? {} : { deviceIds }),
       },
     },
@@ -535,29 +529,39 @@ export async function createAppleProfile({
   return created;
 }
 
-export type DownloadAppleProfileOptions = AppleTeamScopedOptions & {
+export type DownloadAppleProfileOptions = ApplePlatformScopedOptions & {
   profileId: string;
 };
 
 /** Returns the relay response; the .mobileprovision bytes are in rawBodyBase64. */
-export async function downloadAppleProfile({ relay, teamId = '', profileId }: DownloadAppleProfileOptions) {
+export async function downloadAppleProfile({
+  relay,
+  teamId = '',
+  platform = 'ios',
+  profileId,
+}: DownloadAppleProfileOptions) {
   return portalDownload(relay, {
     method: 'GET',
-    path: '/account/ios/profile/downloadProfileContent',
+    path: `/account/${platform}/profile/downloadProfileContent`,
     payload: { teamId, provisioningProfileId: profileId },
   });
 }
 
-export type DeleteAppleProfileOptions = AppleTeamScopedOptions & {
+export type DeleteAppleProfileOptions = ApplePlatformScopedOptions & {
   profileId: string;
 };
 
-export async function deleteAppleProfile({ relay, teamId = '', profileId }: DeleteAppleProfileOptions) {
-  return portalRequest(
+export async function deleteAppleProfile({
+  relay,
+  teamId = '',
+  platform = 'ios',
+  profileId,
+}: DeleteAppleProfileOptions) {
+  return portalRequest<AppleDeveloperPortalResponse>(
     relay,
     {
       method: 'POST',
-      path: '/account/ios/profile/deleteProvisioningProfile.action',
+      path: `/account/${platform}/profile/deleteProvisioningProfile.action`,
       payload: { teamId, provisioningProfileId: profileId },
     },
     'Apple provisioning profile deletion',
