@@ -7,3 +7,5 @@ export * from './portal';
 export * from './profiles';
 export * from './relay';
 export * from './secret-store';
+export * from './portal-resources';
+export * from './portal-account';

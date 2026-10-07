@@ -370,7 +370,7 @@ export type CreateAppStoreConnectAppOptions = AppleRelayClientOptions & {
  * Creates the App Store Connect app record for a bundle ID. Only the
  * session-authenticated API can create app records (the key-authenticated
  * public API cannot), which is why this goes through the relay. The body
- * mirrors what the App Store Connect website and fastlane's produce send.
+ * matches the request sent by the App Store Connect website.
  */
 export async function createAppStoreConnectApp({
   relay,
