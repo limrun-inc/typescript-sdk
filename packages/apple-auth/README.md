@@ -102,3 +102,39 @@ After changing capabilities or assignments, create or regenerate each affected
 bundle's provisioning profile and download it again. For cloud signing, pass
 `com.apple.security.application-groups` in the entitlements for both the main app
 and widget using `--entitlements` or the SDK's per-bundle `entitlements` map.
+
+### Developer service keys and agreements
+
+The following helpers use the same `{ relay, teamId }` session:
+
+| Operation                                    | Helper                       |
+| -------------------------------------------- | ---------------------------- |
+| Read outstanding agreements                  | `listApplePendingAgreements` |
+| Create an APNs, DeviceCheck, or MusicKit key | `createAppleDeveloperKey`    |
+
+The relay selects JSON encoding for these endpoints. Callers use the same
+`provisioning` request type as the other portal helpers. Key creation refreshes
+key CSRF headers before the write.
+
+```ts
+import { createAppleDeveloperKey, downloadAppleDeveloperKey } from '@limrun/apple-auth';
+
+const key = await createAppleDeveloperKey({
+  relay,
+  teamId,
+  name: 'App notifications',
+  apns: true,
+});
+const privateKey = await downloadAppleDeveloperKey({ relay, teamId, keyId: key.keyId });
+// Decode privateKey.rawBodyBase64 once to obtain the .p8 private key bytes.
+```
+
+`apns: true` requests a team-scoped key for development and production.
+Add `deviceCheck: true` or `musicId: '<opaque Music ID>'` to
+configure those services. These are Developer Portal service keys, separate
+from App Store Connect API keys and code-signing certificates. Creation returns
+a key record; private bytes are downloaded separately and remain under the
+caller's control.
+
+`listApplePendingAgreements` returns Apple's full response envelope; its optional
+`language` defaults to `en`. It does not accept agreements.
