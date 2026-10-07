@@ -103,23 +103,18 @@ bundle's provisioning profile and download it again. For cloud signing, pass
 `com.apple.security.application-groups` in the entitlements for both the main app
 and widget using `--entitlements` or the SDK's per-bundle `entitlements` map.
 
-### Developer service keys, agreements, and team access
+### Developer service keys and agreements
 
 The following helpers use the same `{ relay, teamId }` session:
 
 | Operation                                    | Helper                       |
 | -------------------------------------------- | ---------------------------- |
 | Read outstanding agreements                  | `listApplePendingAgreements` |
-| List members and their roles                 | `listAppleTeamMembers`       |
-| List pending invitations                     | `listAppleTeamInvites`       |
-| Change one member's role                     | `setAppleTeamMemberRole`     |
-| Remove one member                            | `removeAppleTeamMember`      |
-| Send an invitation                           | `inviteAppleTeamMember`      |
 | Create an APNs, DeviceCheck, or MusicKit key | `createAppleDeveloperKey`    |
 
 The relay selects JSON encoding for these endpoints. Callers use the same
-`provisioning` request type as the other portal helpers. Team writes refresh
-membership CSRF headers first; key creation refreshes key CSRF headers.
+`provisioning` request type as the other portal helpers. Key creation refreshes
+key CSRF headers before the write.
 
 ```ts
 import { createAppleDeveloperKey, downloadAppleDeveloperKey } from '@limrun/apple-auth';
@@ -141,10 +136,6 @@ from App Store Connect API keys and code-signing certificates. Creation returns
 a key record; private bytes are downloaded separately and remain under the
 caller's control.
 
-`listAppleTeamMembers` flattens Apple's `members`, `admins`, and `agent` groups
-and adds a `role` field. Role updates and invitations accept `admin` or `member`.
-Member changes use the opaque `teamMemberId`, not the person's email or `personId`.
-`listAppleTeamInvites` preserves Apple's invitation fields and timestamps.
 `listApplePendingAgreements` returns Apple's full response envelope; its optional
 `language` defaults to `en`. It does not accept agreements.
 
@@ -153,15 +144,20 @@ Member changes use the opaque `teamMemberId`, not the person's email or `personI
 Endpoint inventory checked against Fastlane's
 [PortalClient](https://github.com/fastlane/fastlane/blob/1912c0760355eebb5e90f643e6e77b74cf346e3b/spaceship/lib/spaceship/portal/portal_client.rb)
 and [AppService](https://github.com/fastlane/fastlane/blob/1912c0760355eebb5e90f643e6e77b74cf346e3b/spaceship/lib/spaceship/portal/app_service.rb).
-The relay allows their form POST, JSON POST, and query GET calls on
+The relay supports form POST, JSON POST, and query GET calls on
 `developer.apple.com/services-account/QH65B2`, including both namespaces where
-Fastlane implements them. This covers endpoint access, not every Fastlane CLI
-workflow or option. Apple's private endpoints can change independently.
+Fastlane implements them, except for the calls listed below. This covers endpoint
+access, not every Fastlane CLI workflow or option. Apple's private endpoints can change independently.
 
 The following Fastlane Developer Portal calls remain unsupported:
 
 | Path                                                                                       | Reason                                     |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------ |
+| `/account/getTeamMembers`                                                                  | Apple returns HTTP 404 for this endpoint   |
+| `/account/getInvites`                                                                      | Apple returns HTTP 404 for this endpoint   |
+| `/account/setTeamMemberRoles`                                                              | Requires the unavailable team-members API  |
+| `/account/removeTeamMembers`                                                               | Requires the unavailable team-members API  |
+| `/account/sendInvites`                                                                     | Requires the unavailable team-members API  |
 | `https://developerservices2.apple.com/services/QH65B2/ios/listProvisioningProfiles.action` | Different upstream host and plist response |
 | `https://developerservices2.apple.com/services/QH65B2/mac/listProvisioningProfiles.action` | Different upstream host and plist response |
 
