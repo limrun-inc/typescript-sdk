@@ -1,16 +1,38 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1258" height="882" viewBox="0 0 1258 882">
+<svg xmlns="http://www.w3.org/2000/svg" width="790" height="564" viewBox="0 0 790 564">
+  <!-- Adapted from Devices.css iPad Pro (2021), Copyright (c) 2017 Yan Zhu, MIT.
+       Source: https://github.com/picturepan2/devices.css/blob/11846244977a4905a4fb9ac12bb2121e068d6147/src/_ipad-pro.scss
+       See THIRD_PARTY_NOTICES.md. Screen height adjusted for the 11-inch iPad. -->
+  <g transform="translate(0 564) rotate(-90)">
   <defs>
-    <linearGradient id="edge" x2="1" y2="1">
-      <stop stop-color="#727579"/>
-      <stop offset=".22" stop-color="#343639"/>
-      <stop offset=".55" stop-color="#151719"/>
-      <stop offset="1" stop-color="#65686b"/>
-    </linearGradient>
+    <radialGradient id="camera-blue" cx="20%" cy="20%" r="113%">
+      <stop stop-color="#6074bf"/>
+      <stop offset=".4" stop-color="#6074bf" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="camera-green" cx="80%" cy="80%" r="113%">
+      <stop stop-color="#513785"/>
+      <stop offset=".2" stop-color="#24555e"/>
+      <stop offset=".5" stop-color="#24555e" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <rect x="1" y="1" width="1256" height="880" rx="42" fill="url(#edge)" stroke="#202224" stroke-width="2"/>
-  <rect x="4" y="4" width="1250" height="874" rx="39" fill="#08090b" stroke="#92969c" stroke-opacity=".28"/>
-  <rect x="24" y="24" width="1210" height="834" rx="18" fill="#000"/>
-  <circle cx="629.0" cy="12" r="4.5" fill="#020305" stroke="#1c2028"/>
-  <circle cx="629.0" cy="12" r="2" fill="#172334"/>
-  <circle cx="628.3" cy="11.3" r=".7" fill="#425b78"/>
+  <g transform="translate(2 2)">
+    <g fill="#6a6d70">
+      <rect x="484" y="-2" width="36" height="2"/>
+      <rect x="560" y="63" width="2" height="32"/>
+      <rect x="560" y="100" width="2" height="32"/>
+    </g>
+    <rect width="560" height="786" rx="36" fill="#0d0d0d"/>
+    <rect x="1.5" y="1.5" width="557" height="783" rx="34.5" fill="none" stroke="#83878a" stroke-width="3"/>
+    <rect x=".5" y=".5" width="559" height="785" rx="35.5" fill="none" stroke="#6a6d70"/>
+    <rect x="27" y="27" width="506" height="732" rx="11" fill="#121212"/>
+    <rect x="29" y="29" width="502" height="728" rx="9" fill="#000"/>
+    <g fill="#1a1a1a">
+      <circle cx="235" cy="17" r="5"/>
+      <circle cx="255" cy="17" r="5"/>
+      <circle cx="325" cy="17" r="5"/>
+    </g>
+    <circle cx="280" cy="17" r="3.5" fill="none" stroke="#fff" stroke-opacity=".05"/>
+    <circle cx="280" cy="17" r="3" fill="url(#camera-green)"/>
+    <circle cx="280" cy="17" r="3" fill="url(#camera-blue)"/>
+  </g>
+  </g>
 </svg>

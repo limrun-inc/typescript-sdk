@@ -11,6 +11,9 @@ when WebRTC downscales the video. Pass `deviceModel="ipad"` to show the iPad fra
 before video arrives. Watch streams render frameless. `showFrame={false}` disables
 frames for every device.
 
+The iPad Pro frame is adapted from [Devices.css](https://github.com/picturepan2/devices.css)
+by Yan Zhu, under the MIT license. See [third-party notices](./THIRD_PARTY_NOTICES.md).
+
 ## Frameless embeds
 
 `@limrun/ui` bundles Limrun's device frames and boot logos as inline images, about
