@@ -103,6 +103,12 @@ bundle's provisioning profile and download it again. For cloud signing, pass
 `com.apple.security.application-groups` in the entitlements for both the main app
 and widget using `--entitlements` or the SDK's per-bundle `entitlements` map.
 
+When regenerating development (`limited`) or ad hoc (`adhoc`) profiles, pass a
+nonempty `deviceIds` list containing every device that should remain in the
+profile. `regenerateAppleProfile` rejects missing or empty lists before making
+any requests. Store, enterprise (`inhouse`), and Developer ID (`direct`) profiles
+can omit devices.
+
 ### Developer service keys and agreements
 
 The following helpers use the same `{ relay, teamId }` session:

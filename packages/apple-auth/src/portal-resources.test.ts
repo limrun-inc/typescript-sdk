@@ -169,6 +169,59 @@ describe('portal resource contract', () => {
     });
   });
 
+  describe.each(['ios', 'mac'] as const)('profile regeneration on %s', (platform) => {
+    const options = {
+      ...base,
+      platform,
+      profileId: 'PROFILE',
+      appIdId: 'APP',
+      name: 'App',
+      certificateIds: ['CERT'],
+    };
+
+    test.each(['limited', 'adhoc'] as const)(
+      'rejects missing devices for %s before any request',
+      async (distributionType) => {
+        for (const deviceIds of [undefined, []]) {
+          const relay = relayReturning({ provisioningProfile: profile });
+          await expect(
+            resources.regenerateAppleProfile({ relay, ...options, distributionType, deviceIds }),
+          ).rejects.toThrow('At least one device ID');
+          expect(relay.request).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    test.each(['limited', 'adhoc'] as const)(
+      'preserves the explicit device list for %s',
+      async (distributionType) => {
+        const relay = relayReturning({ provisioningProfile: profile });
+        await expect(
+          resources.regenerateAppleProfile({
+            relay,
+            ...options,
+            distributionType,
+            deviceIds: ['DEVICE1', 'DEVICE2'],
+          }),
+        ).resolves.toEqual(profile);
+        expect(relay.request.mock.calls.at(-1)[1]).toMatchObject({
+          path: `/account/${platform}/profile/regenProvisioningProfile.action`,
+          payload: { distributionType, deviceIds: ['DEVICE1', 'DEVICE2'] },
+        });
+      },
+    );
+
+    test.each(['store', 'inhouse', 'direct'] as const)(
+      'allows %s without devices',
+      async (distributionType) => {
+        const relay = relayReturning({ provisioningProfile: profile });
+        await expect(
+          resources.regenerateAppleProfile({ relay, ...options, distributionType }),
+        ).resolves.toEqual(profile);
+      },
+    );
+  });
+
   test('rejects regeneration without a certificate before making any requests', async () => {
     const relay = relayReturning();
     await expect(

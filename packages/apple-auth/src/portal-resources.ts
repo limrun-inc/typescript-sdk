@@ -459,6 +459,7 @@ export type RegenerateAppleProfileOptions = GetAppleProfileDetailsOptions & {
   appIdId: string;
   distributionType: 'limited' | 'adhoc' | 'store' | 'inhouse' | 'direct';
   certificateIds: string[];
+  /** Required and nonempty for development (limited) and ad hoc profiles. Includes every device to retain. */
   deviceIds?: string[];
   subPlatform?: string;
   template?: string;
@@ -481,6 +482,11 @@ export async function regenerateAppleProfile(
   } = options;
   if (!certificateIds.length)
     throw new Error('At least one certificate ID is required to regenerate an Apple provisioning profile.');
+  if ((distributionType === 'limited' || distributionType === 'adhoc') && !deviceIds.length) {
+    throw new Error(
+      'At least one device ID is required to regenerate a development or ad hoc provisioning profile.',
+    );
+  }
   await primeResource(options, `/account/${platform}/profile/listProvisioningProfiles.action`);
   const body = await portalRequest<ResourceResponse>(
     relay,
