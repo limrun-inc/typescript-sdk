@@ -102,26 +102,3 @@ After changing capabilities or assignments, create or regenerate each affected
 bundle's provisioning profile and download it again. For cloud signing, pass
 `com.apple.security.application-groups` in the entitlements for both the main app
 and widget using `--entitlements` or the SDK's per-bundle `entitlements` map.
-
-### Supported requests and limitations
-
-The relay supports allowlisted form POST and query GET requests to
-`developer.apple.com/services-account/QH65B2`. Apple's private endpoints can
-change independently.
-
-The following Developer Portal calls remain unsupported:
-
-| Path                                                                                       | Reason                                     |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------ |
-| `/account/listPendingAgreements`                                                           | JSON POST body                             |
-| `/account/getTeamMembers`                                                                  | JSON POST body                             |
-| `/account/getInvites`                                                                      | JSON POST body                             |
-| `/account/setTeamMemberRoles`                                                              | JSON POST body                             |
-| `/account/removeTeamMembers`                                                               | JSON POST body                             |
-| `/account/sendInvites`                                                                     | JSON POST body                             |
-| `/account/auth/key/v2/create`                                                              | JSON POST body                             |
-| `https://developerservices2.apple.com/services/QH65B2/ios/listProvisioningProfiles.action` | Different upstream host and plist response |
-| `https://developerservices2.apple.com/services/QH65B2/mac/listProvisioningProfiles.action` | Different upstream host and plist response |
-
-The normal Developer Portal profile list is supported. The separate App Store
-Connect `iris` API and the public JWT API are outside this portal inventory.
