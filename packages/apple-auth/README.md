@@ -103,17 +103,13 @@ bundle's provisioning profile and download it again. For cloud signing, pass
 `com.apple.security.application-groups` in the entitlements for both the main app
 and widget using `--entitlements` or the SDK's per-bundle `entitlements` map.
 
-### Fastlane coverage and remaining calls
+### Supported requests and limitations
 
-Endpoint inventory checked against Fastlane's
-[PortalClient](https://github.com/fastlane/fastlane/blob/1912c0760355eebb5e90f643e6e77b74cf346e3b/spaceship/lib/spaceship/portal/portal_client.rb)
-and [AppService](https://github.com/fastlane/fastlane/blob/1912c0760355eebb5e90f643e6e77b74cf346e3b/spaceship/lib/spaceship/portal/app_service.rb).
-The relay allows their form POST and query GET calls on
-`developer.apple.com/services-account/QH65B2`, including both namespaces where
-Fastlane implements them. This covers endpoint access, not every Fastlane CLI
-workflow or option. Apple's private endpoints can change independently.
+The relay supports allowlisted form POST and query GET requests to
+`developer.apple.com/services-account/QH65B2`. Apple's private endpoints can
+change independently.
 
-The following Fastlane Developer Portal calls remain unsupported:
+The following Developer Portal calls remain unsupported:
 
 | Path                                                                                       | Reason                                     |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------ |
