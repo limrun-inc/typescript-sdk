@@ -129,8 +129,8 @@ const privateKey = await downloadAppleDeveloperKey({ relay, teamId, keyId: key.k
 // Decode privateKey.rawBodyBase64 once to obtain the .p8 private key bytes.
 ```
 
-`apns: true` requests a team-scoped key for development and production, matching
-Fastlane's default. Add `deviceCheck: true` or `musicId: '<opaque Music ID>'` to
+`apns: true` requests a team-scoped key for development and production.
+Add `deviceCheck: true` or `musicId: '<opaque Music ID>'` to
 configure those services. These are Developer Portal service keys, separate
 from App Store Connect API keys and code-signing certificates. Creation returns
 a key record; private bytes are downloaded separately and remain under the
@@ -139,17 +139,13 @@ caller's control.
 `listApplePendingAgreements` returns Apple's full response envelope; its optional
 `language` defaults to `en`. It does not accept agreements.
 
-### Fastlane coverage and remaining calls
+### Supported requests and limitations
 
-Endpoint inventory checked against Fastlane's
-[PortalClient](https://github.com/fastlane/fastlane/blob/1912c0760355eebb5e90f643e6e77b74cf346e3b/spaceship/lib/spaceship/portal/portal_client.rb)
-and [AppService](https://github.com/fastlane/fastlane/blob/1912c0760355eebb5e90f643e6e77b74cf346e3b/spaceship/lib/spaceship/portal/app_service.rb).
-The relay supports form POST, JSON POST, and query GET calls on
-`developer.apple.com/services-account/QH65B2`, including both namespaces where
-Fastlane implements them, except for the calls listed below. This covers endpoint
-access, not every Fastlane CLI workflow or option. Apple's private endpoints can change independently.
+The relay supports allowlisted form POST, JSON POST, and query GET requests to
+`developer.apple.com/services-account/QH65B2`. Apple's private endpoints can
+change independently.
 
-The following Fastlane Developer Portal calls remain unsupported:
+The following Developer Portal calls remain unsupported:
 
 | Path                                                                                       | Reason                                     |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------ |

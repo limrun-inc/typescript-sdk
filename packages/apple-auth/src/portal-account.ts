@@ -23,7 +23,7 @@ export async function listApplePendingAgreements({
 
 export type CreateAppleDeveloperKeyOptions = AppleTeamScopedOptions & {
   name: string;
-  /** Enables team-scoped APNs access in both development and production, matching Fastlane's default. */
+  /** Enables team-scoped APNs access in both development and production. */
   apns?: boolean;
   deviceCheck?: boolean;
   /** Apple's opaque Music ID, not its music.* identifier. */
