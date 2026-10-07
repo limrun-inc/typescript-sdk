@@ -78,26 +78,26 @@ it.each([
 });
 
 it('fits both video dimensions inside the iPad screen opening on rotation', async () => {
-  let width = 467;
-  let height = 647;
+  let width = 465;
+  let height = 653;
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => width);
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(() => height);
   const video = await render();
   await resize(video, 1668, 2420, 'loadedmetadata');
   expect(parseFloat(video.style.width)).toBeCloseTo(417);
-  expect(parseFloat(video.style.height)).toBeCloseTo(597);
-  expect(parseFloat(video.style.borderRadius)).toBeCloseTo(8.5);
-  width = 647;
-  height = 467;
+  expect(parseFloat(video.style.height)).toBeCloseTo(605);
+  expect(parseFloat(video.style.borderRadius)).toBeCloseTo(13);
+  width = 653;
+  height = 465;
   await resize(video, 2420, 1668);
-  expect(parseFloat(video.style.width)).toBeCloseTo(597);
+  expect(parseFloat(video.style.width)).toBeCloseTo(605);
   expect(parseFloat(video.style.height)).toBeCloseTo(417);
-  expect(parseFloat(video.style.borderRadius)).toBeCloseTo(8.5);
+  expect(parseFloat(video.style.borderRadius)).toBeCloseTo(13);
 });
 
 it('switches between phone, tablet and Watch without retaining frame dimensions', async () => {
-  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(467);
-  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(647);
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(465);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(653);
   const video = await render();
   await resize(video, 1206, 2622);
   expect(video.style.width).toBe('auto');

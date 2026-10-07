@@ -3489,9 +3489,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         if (isIPad) {
           // Match the SVG screen opening on both axes so video cannot overflow the bezel.
           setVideoStyle({
-            width: `${frameWidth * (landscape ? 2388 / 2588 : 1668 / 1868)}px`,
-            height: `${frameHeight * (landscape ? 1668 / 1868 : 2388 / 2588)}px`,
-            borderRadius: `${(Math.min(frameWidth, frameHeight) * 34) / 1868}px`,
+            width: `${frameWidth * (landscape ? 1210 / 1306 : 834 / 930)}px`,
+            height: `${frameHeight * (landscape ? 834 / 930 : 1210 / 1306)}px`,
+            borderRadius: `${(Math.min(frameWidth, frameHeight) * 26) / 930}px`,
           });
           recomputeOverlayGeometry();
           return;
