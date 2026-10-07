@@ -6,8 +6,7 @@
   },
   "files": [
     "dist",
-    "README.md",
-    "THIRD_PARTY_NOTICES.md"
+    "README.md"
   ],
   "main": "./dist/index.js",
   "module": "./dist/index.js",
