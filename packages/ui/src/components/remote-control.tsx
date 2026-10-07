@@ -67,11 +67,11 @@ export interface RemoteControlProps {
   openUrl?: string;
 
   // showFrame controls whether to display the device frame
-  // around the video. Defaults to true.
+  // around the video. Defaults to true. Watch streams render frameless.
   showFrame?: boolean;
 
-  /** Enables the official iPhone Duo's native displays and interactive folding frame. */
-  deviceModel?: 'iphone-duo';
+  /** Selects a frame before detection; iphone-duo also enables its native displays and folding controls. */
+  deviceModel?: 'iphone-duo' | 'ipad';
 
   /** Optional prepared Duo GLB, supplied and licensed by the host application. */
   duoModelUrl?: string;
@@ -569,6 +569,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const terminationProbeInFlightRef = useRef(false);
     const [isLandscape, setIsLandscape] = useState(false);
     const [useAndroidTabletFrame, setUseAndroidTabletFrame] = useState(false);
+    const [iosScreenShape, setIOSScreenShape] = useState<'phone' | 'tablet' | 'watch' | null>(null);
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
     const wsRef = useRef<WebSocket | null>(null);
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
@@ -775,10 +776,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     );
 
     const platform = useMemo(() => detectPlatform(url), [url]);
+    const isIPad =
+      platform === 'ios' &&
+      (iosScreenShape === 'tablet' || (iosScreenShape === null && deviceModel === 'ipad'));
     const config = deviceConfig[platform];
     const platformAssets = assets?.[platform];
     const frameImageSrc =
-      platform === 'android' && useAndroidTabletFrame ?
+      (platform === 'android' && useAndroidTabletFrame) || isIPad ?
         isLandscape ? platformAssets?.tabletFrameLandscape
         : platformAssets?.tabletFrame
       : isLandscape ? platformAssets?.frameLandscape
@@ -786,7 +790,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const loadingLogo = platformAssets?.loadingLogo;
     // Without a frame image (the lite entry) the video lays out frameless
     // whatever showFrame says.
-    const frameVisible = !isDuo && showFrame && !!frameImageSrc;
+    const frameVisible =
+      !isDuo && showFrame && !!frameImageSrc && (platform !== 'ios' || iosScreenShape !== 'watch');
 
     const updateStatus = (message: string) => {
       // Use the wrapper for conditional logging
@@ -3454,6 +3459,20 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (!video) return;
 
       const updateVideoPosition = () => {
+        const { videoWidth, videoHeight } = video;
+        const landscape = videoWidth > videoHeight;
+        if (videoWidth > 0 && videoHeight > 0) {
+          setIsLandscape(landscape);
+          setUseAndroidTabletFrame(platform === 'android' && isAndroidTabletVideo(videoWidth, videoHeight));
+          // Proportions distinguish phones, iPads and watches even after downscaling or rotation.
+          const ratio = Math.min(videoWidth, videoHeight) / Math.max(videoWidth, videoHeight);
+          setIOSScreenShape(
+            ratio < 0.6 ? 'phone'
+            : ratio < 0.8 ? 'tablet'
+            : 'watch',
+          );
+        }
+
         // If no frame, just refresh overlay geometry; no inset/letterbox math
         // is needed since the video element is its own size.
         if (!frameVisible || !frame) {
@@ -3467,12 +3486,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
         if (frameWidth === 0 || frameHeight === 0) return;
 
-        // Determine landscape based on video's intrinsic dimensions
-        const landscape = video.videoWidth > video.videoHeight;
-        setIsLandscape(landscape);
-        setUseAndroidTabletFrame(
-          platform === 'android' && isAndroidTabletVideo(video.videoWidth, video.videoHeight),
-        );
+        if (isIPad) {
+          // Match the SVG screen opening on both axes so video cannot overflow the bezel.
+          setVideoStyle({
+            width: `${frameWidth * (landscape ? 1210 / 1258 : 834 / 882)}px`,
+            height: `${frameHeight * (landscape ? 834 / 882 : 1210 / 1258)}px`,
+            borderRadius: `${(Math.min(frameWidth, frameHeight) * 18) / 882}px`,
+          });
+          recomputeOverlayGeometry();
+          return;
+        }
 
         const pos = landscape ? config.videoPosition.landscape : config.videoPosition.portrait;
         let newStyle: React.CSSProperties = {};
@@ -3529,7 +3552,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         video.removeEventListener('resize', bumpOnResize);
         if (frame) frame.removeEventListener('load', updateVideoPosition);
       };
-    }, [config, frameVisible]);
+    }, [config, frameVisible, platform, isIPad, isLandscape]);
 
     // Start/stop the AX poller and reset inspect state when inspect mode
     // toggles. Connection state is independent: the fetcher gets created on
@@ -3814,7 +3837,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             ref={frameRef}
             src={frameImageSrc}
             alt=""
-            className={platform === 'ios' ? clsx('rc-phone-frame', 'rc-phone-frame-ios') : 'rc-phone-frame'}
+            className={clsx(
+              'rc-phone-frame',
+              platform === 'ios' && 'rc-phone-frame-ios',
+              isIPad && 'rc-ipad-frame',
+            )}
             draggable={false}
           />
         )}
