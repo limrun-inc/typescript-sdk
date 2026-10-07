@@ -138,24 +138,3 @@ caller's control.
 
 `listApplePendingAgreements` returns Apple's full response envelope; its optional
 `language` defaults to `en`. It does not accept agreements.
-
-### Supported requests and limitations
-
-The relay supports allowlisted form POST, JSON POST, and query GET requests to
-`developer.apple.com/services-account/QH65B2`. Apple's private endpoints can
-change independently.
-
-The following Developer Portal calls remain unsupported:
-
-| Path                                                                                       | Reason                                     |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------ |
-| `/account/getTeamMembers`                                                                  | Apple returns HTTP 404 for this endpoint   |
-| `/account/getInvites`                                                                      | Apple returns HTTP 404 for this endpoint   |
-| `/account/setTeamMemberRoles`                                                              | Requires the unavailable team-members API  |
-| `/account/removeTeamMembers`                                                               | Requires the unavailable team-members API  |
-| `/account/sendInvites`                                                                     | Requires the unavailable team-members API  |
-| `https://developerservices2.apple.com/services/QH65B2/ios/listProvisioningProfiles.action` | Different upstream host and plist response |
-| `https://developerservices2.apple.com/services/QH65B2/mac/listProvisioningProfiles.action` | Different upstream host and plist response |
-
-The normal Developer Portal profile list is supported. The separate App Store
-Connect `iris` API and the public JWT API are outside this portal inventory.
