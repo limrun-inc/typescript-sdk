@@ -6,6 +6,10 @@ types and helpers for building inspect, search, and agent interfaces.
 
 See [examples](../../examples/) to see how it can be used.
 
+The iPhone frame is automatically hidden for iPad and Watch video streams in either
+orientation. These devices render frameless at their native aspect ratio; no model
+prop is required. `showFrame={false}` disables frames for every device.
+
 ## Frameless embeds
 
 `@limrun/ui` bundles Limrun's device frames and boot logos as inline images, about
