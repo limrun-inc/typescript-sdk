@@ -1,6 +1,8 @@
 // Limrun's bundled device frames and boot logos. Imported only by the default
 // entry so `@limrun/ui/lite` ships without ~600 KB of inlined artwork.
 import type { RemoteControlAssets } from './components/remote-control';
+import ipadFrame from './assets/ipad_pro_portrait.svg';
+import ipadFrameLandscape from './assets/ipad_pro_landscape.svg';
 import iphoneFrame from './assets/iphone16pro_black_bg.webp';
 import iphoneFrameLandscape from './assets/iphone16pro_black_landscape_bg.webp';
 import pixelFrame from './assets/pixel9_black.webp';
@@ -11,7 +13,13 @@ import appleLogo from './assets/Apple_logo_white.svg';
 import androidBootLogo from './assets/android_boot.webp';
 
 export const defaultRemoteControlAssets: RemoteControlAssets = {
-  ios: { frame: iphoneFrame, frameLandscape: iphoneFrameLandscape, loadingLogo: appleLogo },
+  ios: {
+    frame: iphoneFrame,
+    frameLandscape: iphoneFrameLandscape,
+    tabletFrame: ipadFrame,
+    tabletFrameLandscape: ipadFrameLandscape,
+    loadingLogo: appleLogo,
+  },
   android: {
     frame: pixelFrame,
     frameLandscape: pixelFrameLandscape,

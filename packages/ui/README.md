@@ -6,6 +6,11 @@ types and helpers for building inspect, search, and agent interfaces.
 
 See [examples](../../examples/) to see how it can be used.
 
+iPad streams automatically use an iPad Pro frame in portrait and landscape, including
+when WebRTC downscales the video. Pass `deviceModel="ipad"` to show the iPad frame
+before video arrives. Watch streams render frameless. `showFrame={false}` disables
+frames for every device.
+
 ## Frameless embeds
 
 `@limrun/ui` bundles Limrun's device frames and boot logos as inline images, about
