@@ -97,7 +97,7 @@ type ControlClientMessage =
       replace: boolean;
       sessionId?: string;
       attached: string[];
-      client: { hostname: string; cliVersion: string };
+      client: { hostname: string; version: string };
     }
   | { type: 'attached'; instanceId: string; tunnelId: string }
   | { type: 'attachFailed'; instanceId: string; code: string; message: string; terminal: boolean }
@@ -134,7 +134,7 @@ interface InstanceAttachment {
  * with `spec.tunnel` set to it. Instance tunnels stay up while the control
  * channel reconnects, so an API outage never becomes a tunnel outage.
  */
-export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector {
+export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
   const selectors = validateDestinationTunnelSelectors(options.selectors);
   const dialOptions = {
     ...destinationTunnelDialOptions(
@@ -148,7 +148,7 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
   const controlURL = deriveTunnelConnectURL(options.baseURL, options.organizationId, options.name);
   const client = {
     hostname: options.hostname ?? os.hostname(),
-    cliVersion: options.clientVersion ?? VERSION,
+    version: options.clientVersion ?? VERSION,
   };
 
   const instances = new Map<string, InstanceAttachment>();

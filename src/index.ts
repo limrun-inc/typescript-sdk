@@ -14,7 +14,7 @@ export {
   type DestinationTcpTunnelOptions,
 } from './destination-tunnel-dialer';
 export {
-  connectTunnel,
+  runTunnel,
   type TunnelConnector,
   type TunnelConnectorEvent,
   type TunnelConnectorOptions,

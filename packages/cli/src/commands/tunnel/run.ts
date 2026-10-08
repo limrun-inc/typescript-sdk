@@ -1,8 +1,8 @@
 import { Flags } from '@oclif/core';
-import { connectTunnel } from '@limrun/api';
+import { runTunnel } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { whoAmI } from '../../lib/backend';
-import { formatTunnelConnectorEvent } from '../../lib/tunnel-connect';
+import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
 import {
   tunnelInspectionConfig,
   tunnelInspectionContext,
@@ -13,7 +13,7 @@ import { parseTunnelSelectors } from '../../lib/tunnel-process';
 
 const VERSION = require('../../../package.json').version;
 
-export default class TunnelConnect extends BaseCommand {
+export default class TunnelRun extends BaseCommand {
   static summary = 'Serve a persistent tunnel to every instance that names it';
   static description =
     'Hold a tunnel name and open a destination tunnel to every iOS and Android instance created ' +
@@ -23,8 +23,8 @@ export default class TunnelConnect extends BaseCommand {
     'connector holds a name at a time: others wait on standby, and --replace takes the name over. ' +
     'Needs an admin API key.';
   static examples = [
-    '<%= config.bin %> tunnel connect --name staging --selector localhost:3000',
-    '<%= config.bin %> tunnel connect --name corp --selector "*.corp.example" --selector 10.20.30.40:8443',
+    '<%= config.bin %> tunnel run --name staging --selector localhost:3000',
+    '<%= config.bin %> tunnel run --name corp --selector "*.corp.example" --selector 10.20.30.40:8443',
     '<%= config.bin %> ios create --tunnel staging',
   ];
 
@@ -64,7 +64,7 @@ export default class TunnelConnect extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(TunnelConnect);
+    const { flags } = await this.parse(TunnelRun);
     this.setParsedFlags(flags);
     let inspection: TunnelInspectionContext;
     try {
@@ -76,7 +76,7 @@ export default class TunnelConnect extends BaseCommand {
 
     await this.withAuth(async () => {
       const organizationId = await whoAmI(this.client);
-      const connector = connectTunnel({
+      const connector = runTunnel({
         apiKey: this.client.apiKey ?? '',
         baseURL: this.client.baseURL,
         organizationId,
