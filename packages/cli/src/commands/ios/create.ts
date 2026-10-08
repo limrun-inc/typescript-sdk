@@ -28,6 +28,7 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create --install-url https://example.t3.storage.dev/MyApp.ipa?...',
     '<%= config.bin %> ios create --attach <xcode-instance-ID>',
     '<%= config.bin %> ios create --force-bundle-id com.example.myapp',
+    '<%= config.bin %> ios create --tunnel staging',
     '<%= config.bin %> ios create --record --events --app-logs com.example.myapp --persist-ttl 24h',
   ];
 
@@ -62,6 +63,10 @@ export default class IosCreate extends BaseCommand {
     }),
     'force-bundle-id': Flags.string({
       description: 'Lock the simulator to this app after it first enters the foreground',
+    }),
+    tunnel: Flags.string({
+      description:
+        'Name of a persistent tunnel (lim tunnel connect --name) the instance must attach to before it becomes ready.',
     }),
     label: Flags.string({
       description: 'Metadata label in key=value format. Repeat to attach multiple labels.',
@@ -247,6 +252,7 @@ export default class IosCreate extends BaseCommand {
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
       if (flags['force-bundle-id']) params.spec!.forceBundleId = flags['force-bundle-id'];
+      if (flags.tunnel) params.spec!.tunnel = flags.tunnel;
 
       const labels = parseLabels(flags.label);
       if (flags['display-name'] || labels) {

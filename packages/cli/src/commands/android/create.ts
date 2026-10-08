@@ -37,6 +37,7 @@ export default class AndroidCreate extends BaseCommand {
     '<%= config.bin %> android create --install-url https://example.t3.storage.dev/app.apk?...',
     '<%= config.bin %> android create --os-version 15 --model tablet',
     '<%= config.bin %> android create --jurisdiction us --label env=dev',
+    '<%= config.bin %> android create --tunnel staging',
     '<%= config.bin %> android create --no-connect',
     '<%= config.bin %> android create --daemon=false',
     '<%= config.bin %> android create --record --events --app-logs com.example.myapp --persist-ttl 24h',
@@ -85,6 +86,10 @@ export default class AndroidCreate extends BaseCommand {
     'hard-timeout': Flags.string({ description: 'Hard timeout (e.g. 1m, 10m, 3h). Default: no timeout' }),
     'inactivity-timeout': Flags.string({
       description: 'Inactivity timeout (e.g. 1m, 10m, 3h). Default is in organization settings.',
+    }),
+    tunnel: Flags.string({
+      description:
+        'Name of a persistent tunnel (lim tunnel connect --name) the instance must attach to before it becomes ready.',
     }),
     label: Flags.string({
       description: 'Metadata label in key=value format. Repeat to attach multiple labels.',
@@ -203,6 +208,7 @@ export default class AndroidCreate extends BaseCommand {
       );
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
+      if (flags.tunnel) params.spec!.tunnel = flags.tunnel;
 
       const labels = parseLabels(flags.label);
       if (flags['display-name'] || labels) {
