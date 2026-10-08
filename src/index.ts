@@ -14,6 +14,12 @@ export {
   type DestinationTcpTunnelOptions,
 } from './destination-tunnel-dialer';
 export {
+  connectTunnel,
+  type TunnelConnector,
+  type TunnelConnectorEvent,
+  type TunnelConnectorOptions,
+} from './tunnel-connector';
+export {
   decodeDestinationTunnelInspectionSSEEvent,
   deriveDestinationTunnelInspectionURL,
   startDestinationTunnelInspectionStream,
