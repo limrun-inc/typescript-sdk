@@ -262,7 +262,9 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
       return;
     }
     if (attachment.done) return;
-    if (!active || active.tunnelId === attachment.lastTunnelId) {
+    // A stopping tunnel, such as one this connector just reclaimed, refuses
+    // new claims until it is gone; wait it out instead of yielding.
+    if (!active || active.state === 'stopping' || active.tunnelId === attachment.lastTunnelId) {
       retryAfterFailure(instanceId, attachment, 'already_active', 'the previous tunnel is still stopping');
       return;
     }
@@ -325,12 +327,19 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
     attachment.lastTunnelId = tunnel.tunnelId;
     attachment.mayReclaim = false;
     attachment.backoffMs = ATTACH_INITIAL_BACKOFF_MS;
-    tunnel.onConnectionStateChange((state) => {
-      if (state !== 'disconnected' || attachment.tunnel !== tunnel) return;
+    const dropped = (): void => {
       attachment.tunnel = undefined;
       attachment.failingSince = Date.now();
       scheduleAttachRetry(instanceId, attachment, 'the instance tunnel disconnected');
+    };
+    tunnel.onConnectionStateChange((state) => {
+      if (state === 'disconnected' && attachment.tunnel === tunnel) dropped();
     });
+    // A drop between the dial resolving and the listener above fires no event.
+    if (tunnel.getConnectionState() === 'disconnected') {
+      dropped();
+      return;
+    }
     send({ type: 'attached', instanceId, tunnelId: tunnel.tunnelId });
     emit({ type: 'attached', instanceId, tunnelId: tunnel.tunnelId });
   };
@@ -598,8 +607,10 @@ function deriveTunnelConnectURL(baseURL: string, organizationId: string, name: s
     throw new Error(`Unsupported baseURL protocol: ${url.protocol}`);
   }
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  let base = url.pathname;
+  while (base.endsWith('/')) base = base.slice(0, -1);
   url.pathname =
-    `${url.pathname.replace(/\/+$/, '')}/v1/organizations/${encodeURIComponent(organizationId)}` +
+    `${base}/v1/organizations/${encodeURIComponent(organizationId)}` +
     `/tunnels/${encodeURIComponent(name)}/connect`;
   url.search = '';
   url.hash = '';
