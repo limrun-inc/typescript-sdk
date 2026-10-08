@@ -136,6 +136,8 @@ export type DestinationTunnelClientMessage =
       inspection: DestinationTunnelInspectionConfig;
       /** Default per-flow receive window this client grants. */
       window: number;
+      /** Persistent tunnel this session serves. The instance only echoes it in status. */
+      name?: string;
     }
   | {
       type: 'openOk';
@@ -160,6 +162,8 @@ export type DestinationTunnelServerMessage =
       tunnelId: string;
       selectors: DestinationTunnelSelectorReport[];
       configHash: string;
+      /** The persistent tunnel name the client sent in start, echoed back. */
+      name?: string;
     }
   | {
       type: 'open';
@@ -466,6 +470,7 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
         selectors,
         inspection,
         window: readWindow(record),
+        ...readOptionalString(record, 'name'),
       });
     }
     case 'openOk':
@@ -510,6 +515,7 @@ export function decodeDestinationTunnelServerMessage(value: unknown): Destinatio
           readSelectorReport(value, `selector-${index + 1}`),
         ),
         configHash: readString(message, 'configHash'),
+        ...readOptionalString(message, 'name'),
       };
     case 'open':
       return {

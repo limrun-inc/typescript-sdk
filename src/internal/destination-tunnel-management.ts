@@ -1,6 +1,12 @@
 import { nodeProxyTransport } from './proxy-transport';
 import { deriveDestinationTunnelStatusURL, deriveDestinationTunnelStopURL } from './destination-tunnel-url';
-import { readArray, readNonEmptyString, readRecord, readString } from './destination-tunnel-wire-reader';
+import {
+  readArray,
+  readNonEmptyString,
+  readOptionalString,
+  readRecord,
+  readString,
+} from './destination-tunnel-wire-reader';
 import {
   normalizeDestinationTunnelInspection,
   type DestinationTunnelBindReport,
@@ -11,6 +17,8 @@ import {
 export interface DestinationTunnelStatus {
   active?: {
     tunnelId: string;
+    /** Persistent tunnel the session serves, absent for a one-instance tunnel. */
+    name?: string;
     state: 'starting' | 'ready' | 'stopping';
     selectors: DestinationTunnelSelectorReport[];
     inspection: DestinationTunnelInspectionConfig;
@@ -80,6 +88,7 @@ function readActiveTunnel(value: unknown): NonNullable<DestinationTunnelStatus['
   }
   return {
     tunnelId: readNonEmptyString(active, 'tunnelId'),
+    ...readOptionalString(active, 'name'),
     state,
     selectors: readArray(active, 'selectors').map((selector, index) =>
       readSelectorReport(selector, `selector-${index + 1}`),

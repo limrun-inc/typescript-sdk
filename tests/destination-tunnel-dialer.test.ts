@@ -118,6 +118,32 @@ describe('destination tunnel dialer', () => {
     await waitFor(() => localSocket?.destroyed === true);
   });
 
+  test('sends the persistent tunnel name in START outside the config hash', async () => {
+    const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
+      selectors: ['localhost:3000'],
+      name: 'staging',
+      logLevel: 'none',
+    });
+    await waitFor(() => hasControl('start'));
+    expect(controlFor('start')).toEqual({
+      type: 'start',
+      version: DESTINATION_TUNNEL_VERSION,
+      selectors: ['localhost:3000'],
+      inspection: disabledDestinationTunnelInspection(),
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
+      name: 'staging',
+    });
+    sendControl({
+      type: 'ready',
+      version: DESTINATION_TUNNEL_VERSION,
+      tunnelId: 'tunnel-1',
+      selectors: [],
+      configHash: destinationTunnelConfigHash(['localhost:3000'], disabledDestinationTunnelInspection()),
+    });
+    tunnel = await startup;
+    expect(tunnel.getConnectionState()).toBe('connected');
+  });
+
   test('rejects an OPEN destination outside the declared route without dialing it', async () => {
     let acceptedConnections = 0;
     const localPort = await listenLocal(() => {

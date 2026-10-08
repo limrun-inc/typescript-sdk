@@ -70,6 +70,8 @@ export interface DestinationTcpTunnelOptions {
   onInspectionError?: DestinationTunnelInspectionErrorCallback;
   /** Per-flow receive window in bytes. Defaults to 1 MiB. */
   window?: number;
+  /** Persistent tunnel this session serves; the instance reports it in tunnel status. */
+  name?: string;
   logLevel?: LogLevel;
   maxConnections?: number;
   maxPendingBytesPerConnection?: number;
@@ -729,7 +731,9 @@ export async function startDestinationTcpTunnel(
           logger.info(
             `Destination tunnel ready with ${selectors.length} selector(s); relaunch apps that connected before it`,
           );
-          if (inspection.enabled) {
+          // The stream only feeds the callbacks; without one it would be an
+          // idle connection per tunnel.
+          if (inspection.enabled && (options.onInspectionEvent || options.onInspectionError)) {
             try {
               inspectionStream = startDestinationTunnelInspectionStream(remoteURL, message.tunnelId, token, {
                 ...(options.onInspectionEvent ? { onEvent: options.onInspectionEvent } : {}),
@@ -796,6 +800,7 @@ export async function startDestinationTcpTunnel(
         selectors,
         inspection,
         window: creditWindow,
+        ...(options.name === undefined ? {} : { name: options.name }),
       });
       pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {

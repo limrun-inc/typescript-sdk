@@ -71,9 +71,9 @@ describe('destination tunnel wire contract', () => {
   test('pins the canonical limrun protocol source', () => {
     expect(upstream).toEqual({
       repository: 'limrun-inc/limrun',
-      commit: 'b7ec777bf13b78f568f1371d4deb7e5d3a434e05',
+      commit: 'e19f0f2427a1d67d00454aa8e27c6f1475cf1b70',
       path: 'design/destination-tunnel/v1',
-      messagesSha256: '178533f26ac74a4b098ac644b368ea8086d33b8d8bdfbaae2d00fe3f19eb6290',
+      messagesSha256: '9015da62e56696ee120427d8357cdc0b415532c335929f8bc27c46e680b75553',
       binarySha256: 'e6da913a0ff85a3402f09de6cbbb18d4f9b2e76007ca48b85f4d35b66810da7d',
     });
     // The SDK fixture extends the shared vectors with TypeScript-specific
@@ -153,6 +153,27 @@ describe('destination tunnel wire contract', () => {
       return;
     }
     expect(decodeDestinationTunnelServerMessage(input)).toEqual(decoded);
+  });
+
+  test('encodes a persistent tunnel name in START only when set', () => {
+    const start: DestinationTunnelClientMessage = {
+      type: 'start',
+      version: DESTINATION_TUNNEL_VERSION,
+      selectors: ['localhost:3000'],
+      inspection: disabledDestinationTunnelInspection(),
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
+    };
+    expect(JSON.parse(encodeDestinationTunnelClientMessage(start))).not.toHaveProperty('name');
+    expect(JSON.parse(encodeDestinationTunnelClientMessage({ ...start, name: 'staging' }))).toEqual({
+      ...start,
+      name: 'staging',
+    });
+    expect(() =>
+      encodeDestinationTunnelClientMessage({
+        ...start,
+        name: 7,
+      } as unknown as DestinationTunnelClientMessage),
+    ).toThrow('name must be a string');
   });
 
   test('rejects unknown server message types', () => {
