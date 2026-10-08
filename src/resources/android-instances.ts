@@ -88,6 +88,13 @@ export namespace AndroidInstance {
      * 10m, 3h. Default is "0" which means no hard timeout.
      */
     hardTimeout?: string;
+
+    /**
+     * Names a persistent tunnel (`lim tunnel connect --name`) that serves this
+     * instance. Creation fails while that tunnel is offline, and the instance
+     * becomes ready only after the tunnel attaches.
+     */
+    tunnel?: string;
   }
 
   export interface Status {
@@ -241,6 +248,13 @@ export namespace AndroidInstanceCreateParams {
     region?: string;
 
     sandbox?: Spec.Sandbox;
+
+    /**
+     * Names a persistent tunnel (`lim tunnel connect --name`) that serves this
+     * instance. Creation fails while that tunnel is offline, and the instance
+     * becomes ready only after the tunnel attaches.
+     */
+    tunnel?: string;
   }
 
   export namespace Spec {
