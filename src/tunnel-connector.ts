@@ -316,11 +316,10 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
   const attach = async (instanceId: string, attachment: InstanceAttachment): Promise<void> => {
     attachment.retryTimer = undefined;
     // Only the confirmed holder dials, so a connector that lost the name
-    // never pushes the holder's tunnel off. The platform sends the instance
-    // again once this connector holds the name.
+    // never pushes the holder's tunnel off. The instance waits until a
+    // renewal confirms the lease again or the attach deadline passes.
     if (!isConfirmedHolder()) {
-      forget(instanceId, attachment);
-      emit({ type: 'detached', instanceId, reason: 'this connector no longer holds the tunnel' });
+      retryAfterFailure(instanceId, attachment, 'not_holder', 'this connector does not hold the tunnel');
       return;
     }
     let tunnel: DestinationTcpTunnel;
