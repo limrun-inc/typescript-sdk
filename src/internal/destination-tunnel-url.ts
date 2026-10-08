@@ -1,5 +1,5 @@
-/** The endpoint at `path` under an instance URL, without query or fragment. */
-function deriveEndpointURL(apiUrl: string, path: string): URL {
+/** The endpoint at `path` under a base URL, without query or fragment. */
+export function deriveEndpointURL(apiUrl: string, path: string): URL {
   const url = new URL(apiUrl);
   if (
     url.protocol !== 'https:' &&

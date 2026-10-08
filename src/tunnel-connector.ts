@@ -1,7 +1,7 @@
 import os from 'os';
 import { WebSocket, type RawData } from 'ws';
 import { nodeProxyTransport } from './internal/proxy-transport';
-import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
+import { deriveDestinationTunnelURL, deriveEndpointURL } from './internal/destination-tunnel-url';
 import {
   getDestinationTunnelStatus,
   stopDestinationTunnel,
@@ -33,6 +33,7 @@ import type { LogLevel } from './tunnel';
 import { VERSION } from './version';
 
 const CONTROL_PROTOCOL_VERSION = 1;
+const CONTROL_HANDSHAKE_TIMEOUT_MS = 15_000;
 const CONTROL_PING_INTERVAL_MS = 15_000;
 const CONTROL_DEAD_PEER_MS = 45_000;
 const CONTROL_INITIAL_BACKOFF_MS = 500;
@@ -40,6 +41,10 @@ const CONTROL_MAX_BACKOFF_MS = 10_000;
 const BYE_GRACE_MS = 1_000;
 const ATTACH_INITIAL_BACKOFF_MS = 1_000;
 const ATTACH_MAX_BACKOFF_MS = 30_000;
+/** The platform deletes an instance whose tunnel has not attached 30s after assignment. */
+const ATTACH_FIRST_MAX_BACKOFF_MS = 2_000;
+/** Status and stop calls to an instance; a wedged pod must not stall its attachment. */
+const INSTANCE_REQUEST_TIMEOUT_MS = 10_000;
 /** Every tunnel WebSocket counts as instance activity, so retries must end. */
 const ATTACH_GIVE_UP_MS = 5 * 60_000;
 const TAKEN_OVER_MESSAGE = 'another connector for this tunnel took the instance over';
@@ -221,7 +226,8 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
 
   const scheduleAttachRetry = (instanceId: string, attachment: InstanceAttachment, reason: string): void => {
     const delayMs = jittered(attachment.backoffMs);
-    attachment.backoffMs = Math.min(attachment.backoffMs * 2, ATTACH_MAX_BACKOFF_MS);
+    const maxMs = attachment.lastTunnelId === undefined ? ATTACH_FIRST_MAX_BACKOFF_MS : ATTACH_MAX_BACKOFF_MS;
+    attachment.backoffMs = Math.min(attachment.backoffMs * 2, maxMs);
     emit({ type: 'reconnecting', instanceId, delayMs, reason });
     attachment.retryTimer = setTimeout(() => void attach(instanceId, attachment), delayMs);
   };
@@ -242,29 +248,59 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
 
   // A drop with a same-name tunnel of another ID now active means another
   // holder took the instance over. Yielding keeps two connectors from
-  // superseding each other forever.
+  // superseding each other forever. A stopping tunnel is on its way out.
   const takenOver = async (attachment: InstanceAttachment): Promise<boolean> => {
     try {
-      const active = (await getDestinationTunnelStatus(attachment.url, attachment.token)).active;
-      return active?.name === options.name && active.tunnelId !== attachment.lastTunnelId;
+      const active = (
+        await getDestinationTunnelStatus(
+          attachment.url,
+          attachment.token,
+          AbortSignal.timeout(INSTANCE_REQUEST_TIMEOUT_MS),
+        )
+      ).active;
+      return (
+        active?.name === options.name &&
+        active.state !== 'stopping' &&
+        active.tunnelId !== attachment.lastTunnelId
+      );
     } catch {
       // The dial that follows surfaces a real failure.
       return false;
     }
   };
 
+  // A failed stop shows up as the same tunnel on the next attempt.
+  const stopQuietly = async (attachment: InstanceAttachment, tunnelId: string): Promise<void> => {
+    try {
+      await stopDestinationTunnel(
+        attachment.url,
+        attachment.token,
+        tunnelId,
+        AbortSignal.timeout(INSTANCE_REQUEST_TIMEOUT_MS),
+      );
+    } catch {
+      // The next attempt reports a tunnel that is still there.
+    }
+  };
+
   const resolveAlreadyActive = async (instanceId: string, attachment: InstanceAttachment): Promise<void> => {
     let active: DestinationTunnelStatus['active'];
     try {
-      active = (await getDestinationTunnelStatus(attachment.url, attachment.token)).active;
+      active = (
+        await getDestinationTunnelStatus(
+          attachment.url,
+          attachment.token,
+          AbortSignal.timeout(INSTANCE_REQUEST_TIMEOUT_MS),
+        )
+      ).active;
     } catch (error) {
       if (!attachment.done) retryAfterFailure(instanceId, attachment, 'already_active', errorMessage(error));
       return;
     }
     if (attachment.done) return;
-    // A stopping tunnel, such as one this connector just reclaimed, refuses
+    // A stopping tunnel, such as one this connector just stopped, refuses
     // new claims until it is gone; wait it out instead of yielding.
-    if (!active || active.state === 'stopping' || active.tunnelId === attachment.lastTunnelId) {
+    if (!active || active.state === 'stopping') {
       retryAfterFailure(instanceId, attachment, 'already_active', 'the previous tunnel is still stopping');
       return;
     }
@@ -272,15 +308,21 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
       giveUp(instanceId, attachment, 'instance_busy', 'the instance already has another tunnel');
       return;
     }
-    // Only the confirmed holder may stop a same-name tunnel, and only once:
-    // it can then belong to nobody but a dead predecessor.
+    // This connector's own dropped tunnel lingers until the instance notices
+    // the dead socket; stop it instead of waiting. The backoff keeps a failing
+    // stop from spinning.
+    if (active.tunnelId === attachment.lastTunnelId) {
+      await stopQuietly(attachment, active.tunnelId);
+      if (!attachment.done) {
+        retryAfterFailure(instanceId, attachment, 'already_active', 'stopping the dropped tunnel');
+      }
+      return;
+    }
+    // Only the confirmed holder may stop another same-name tunnel, and only
+    // once: it can then belong to nobody but a dead predecessor.
     if (attachment.mayReclaim && isConfirmedHolder()) {
       attachment.mayReclaim = false;
-      try {
-        await stopDestinationTunnel(attachment.url, attachment.token, active.tunnelId);
-      } catch {
-        // The retry below reports a tunnel that is still there.
-      }
+      await stopQuietly(attachment, active.tunnelId);
       if (!attachment.done) void attach(instanceId, attachment);
       return;
     }
@@ -289,6 +331,14 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
 
   const attach = async (instanceId: string, attachment: InstanceAttachment): Promise<void> => {
     attachment.retryTimer = undefined;
+    // Only the confirmed holder dials, so a connector that lost the name
+    // never pushes the holder's tunnel off. The platform sends the instance
+    // again once this connector holds the name.
+    if (!isConfirmedHolder()) {
+      forget(instanceId, attachment);
+      emit({ type: 'detached', instanceId, reason: 'this connector no longer holds the tunnel' });
+      return;
+    }
     let tunnel: DestinationTcpTunnel;
     try {
       if (attachment.lastTunnelId !== undefined && (await takenOver(attachment))) {
@@ -313,6 +363,10 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
         const code = errorMessage(error).slice(DESTINATION_TUNNEL_SERVER_ERROR_PREFIX.length);
         if (code === 'already_active') {
           await resolveAlreadyActive(instanceId, attachment);
+        } else if (code === 'unavailable' || code === 'internal') {
+          // The instance cannot start a tunnel right now, such as while its
+          // inspection helper restarts.
+          retryAfterFailure(instanceId, attachment, code, `the instance could not start the tunnel: ${code}`);
         } else {
           giveUp(instanceId, attachment, code, `the instance rejected the tunnel: ${code}`);
         }
@@ -345,6 +399,8 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
   };
 
   const handleMessage = (message: ControlServerMessage): void => {
+    // close() already let every instance go; a late attach must not dial.
+    if (stopped) return;
     switch (message.type) {
       case 'active':
         claimed = true;
@@ -448,6 +504,9 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
       headers: { Authorization: `Bearer ${options.apiKey}` },
       ...(proxyAgent ? { agent: proxyAgent } : {}),
       perMessageDeflate: false,
+      // A stalled upgrade, such as after a laptop wakes, would otherwise
+      // never reconnect.
+      handshakeTimeout: CONTROL_HANDSHAKE_TIMEOUT_MS,
     });
     ws = socket;
     announcedSession = undefined;
@@ -602,18 +661,11 @@ function decodeControlServerMessage(value: unknown): ControlServerMessage | unde
 }
 
 function deriveTunnelConnectURL(baseURL: string, organizationId: string, name: string): string {
-  const url = new URL(baseURL);
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    throw new Error(`Unsupported baseURL protocol: ${url.protocol}`);
-  }
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  let base = url.pathname;
-  while (base.endsWith('/')) base = base.slice(0, -1);
-  url.pathname =
-    `${base}/v1/organizations/${encodeURIComponent(organizationId)}` +
-    `/tunnels/${encodeURIComponent(name)}/connect`;
-  url.search = '';
-  url.hash = '';
+  const url = deriveEndpointURL(
+    baseURL,
+    `v1/organizations/${encodeURIComponent(organizationId)}/tunnels/${encodeURIComponent(name)}/connect`,
+  );
+  url.protocol = url.protocol === 'https:' || url.protocol === 'wss:' ? 'wss:' : 'ws:';
   return url.toString();
 }
 

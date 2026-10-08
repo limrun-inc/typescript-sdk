@@ -385,17 +385,56 @@ describe('tunnel connector', () => {
     ]);
   });
 
-  test('leaves a same-name tunnel alone without a confirmed lease', async () => {
-    const instance = pod.instance('ios_1');
-    instance.rejectStart = () => 'already_active';
-    instance.status = () => ({ active: activeStatus('tun-old', 'staging') });
+  test('lets a dropped instance go once its lease is no longer confirmed', async () => {
     connect();
     await waitFor(() => backend.of('hello').length === 1);
+    backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 1 });
     attach('ios_1');
-    await waitFor(() => attachFailed('ios_1') !== undefined);
+    await waitFor(() => backend.of('attached').length === 1);
+    const instance = pod.instance('ios_1');
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    instance.live!.socket.close();
 
-    expect(attachFailed('ios_1')).toMatchObject({ code: 'taken_over', terminal: true });
+    await waitFor(() => events.some((event) => event.type === 'detached'));
+    expect(events).toContainEqual({
+      type: 'detached',
+      instanceId: 'ios_1',
+      reason: 'this connector no longer holds the tunnel',
+    });
+    expect(instance.upgrades).toBe(1);
     expect(instance.deletes).toEqual([]);
+  });
+
+  test('retries an instance that cannot start a tunnel yet', async () => {
+    const instance = pod.instance('ios_1');
+    instance.rejectStart = (attempt) => (attempt === 1 ? 'unavailable' : undefined);
+    connect();
+    await activate();
+    attach('ios_1');
+    await waitFor(() => backend.of('attached').length === 1);
+
+    expect(instance.starts).toHaveLength(2);
+    expect(backend.of('attachFailed')).toEqual([
+      expect.objectContaining({ instanceId: 'ios_1', code: 'unavailable', terminal: false }),
+    ]);
+  });
+
+  test('stops its own dropped tunnel when the instance still holds it', async () => {
+    connect();
+    await activate();
+    attach('ios_1');
+    await waitFor(() => backend.of('attached').length === 1);
+    const instance = pod.instance('ios_1');
+    const first = instance.live!.tunnelId;
+    // The instance has not noticed the dead socket yet.
+    instance.status = (call) => (call <= 2 ? { active: activeStatus(first, 'staging') } : {});
+    instance.rejectStart = (attempt) => (attempt === 2 ? 'already_active' : undefined);
+    instance.live!.socket.close();
+
+    // Two backoff steps: the redial after the drop, then the one after the stop.
+    await waitFor(() => backend.of('attached').length === 2, 6_000);
+    expect(instance.deletes).toEqual([first]);
+    expect(attachFailed('ios_1')).toBeUndefined();
   });
 
   test('yields when another holder took over its dropped tunnel', async () => {
@@ -488,6 +527,8 @@ describe('tunnel connector', () => {
 
     for (let step = 0; step < 200 && !attachFailed('ios_1'); step++) {
       await settle(() => instance.upgrades > 0 && backend.of('attachFailed').length === instance.upgrades);
+      // The server renews the lease every 10s, which keeps the connector the holder.
+      backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 30 });
       await jest.advanceTimersByTimeAsync(5_000);
     }
 

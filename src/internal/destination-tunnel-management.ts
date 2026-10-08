@@ -39,9 +39,11 @@ export interface DestinationTunnelStatus {
 export async function getDestinationTunnelStatus(
   apiUrl: string,
   token: string,
+  signal?: AbortSignal,
 ): Promise<DestinationTunnelStatus> {
   const response = await nodeProxyTransport.fetch(deriveDestinationTunnelStatusURL(apiUrl).toString(), {
     headers: { Authorization: `Bearer ${token}` },
+    ...(signal ? { signal } : {}),
   });
   if (!response.ok) {
     throw new Error(`getTunnelStatus failed: ${response.status} ${await response.text()}`);
@@ -49,7 +51,12 @@ export async function getDestinationTunnelStatus(
   return decodeDestinationTunnelStatus(await response.json());
 }
 
-export async function stopDestinationTunnel(apiUrl: string, token: string, tunnelId: string): Promise<void> {
+export async function stopDestinationTunnel(
+  apiUrl: string,
+  token: string,
+  tunnelId: string,
+  signal?: AbortSignal,
+): Promise<void> {
   if (!tunnelId.trim()) {
     throw new Error('tunnelId must not be empty');
   }
@@ -58,6 +65,7 @@ export async function stopDestinationTunnel(apiUrl: string, token: string, tunne
     {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
+      ...(signal ? { signal } : {}),
     },
   );
   if (!response.ok) {
