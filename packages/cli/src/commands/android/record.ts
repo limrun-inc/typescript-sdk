@@ -14,6 +14,8 @@ export default class AndroidRecord extends BaseCommand {
     'Control screen recording on a running Android instance. Start recording first, then stop recording to download the file locally or upload it directly with `--presigned-url`.';
   static examples = [
     '<%= config.bin %> android record start',
+    '<%= config.bin %> android record start --segments',
+    '<%= config.bin %> android record stop --segments -o recording',
     '<%= config.bin %> android record stop',
     '<%= config.bin %> android record stop -o recording.mp4 --id <instance-ID>',
     '<%= config.bin %> android record stop --presigned-url https://example.com/upload --id <instance-ID>',
@@ -34,6 +36,11 @@ export default class AndroidRecord extends BaseCommand {
     id: Flags.string({
       description: 'Android instance ID to record. Defaults to the last created Android instance.',
     }),
+    segments: Flags.boolean({
+      description:
+        'Start a new MP4 part on display rotation. Use on both start and stop; -o names a directory containing the parts and recording.json.',
+      default: false,
+    }),
     quality: Flags.integer({
       description:
         'Recording quality from 5 to 10. Higher values increase quality and file size when starting a recording.',
@@ -42,7 +49,7 @@ export default class AndroidRecord extends BaseCommand {
     output: Flags.string({
       char: 'o',
       description:
-        'Local file path for the finished recording when using the `stop` action. Defaults to a timestamped mp4 in the current directory.',
+        'Output file for `stop`, or output directory with --segments. Defaults to a timestamped path in the current directory.',
     }),
     'presigned-url': Flags.string({
       description:
@@ -77,6 +84,9 @@ export default class AndroidRecord extends BaseCommand {
         this.error('--persist only applies to the `start` action.');
       }
 
+      if (flags.segments && flags['presigned-url']) {
+        this.error('--segments cannot use a single --presigned-url; use --persist or download the parts.');
+      }
       if (args.action === 'start') {
         const persist =
           flags.persist ?
@@ -84,14 +94,17 @@ export default class AndroidRecord extends BaseCommand {
               { ttlSeconds: parseDurationSeconds(flags['persist-ttl']) }
             : true
           : undefined;
-        // A running daemon may predate persist support and would silently
-        // drop it, so persisted starts always go over a direct connection.
-        if (!persist && (await ensureDaemonSession(resolvedInstance))) {
+        // Older daemons may drop new options, so persistence and segments use a direct connection.
+        if (!persist && !flags.segments && (await ensureDaemonSession(resolvedInstance))) {
           await sendSessionCommand(id, 'start-recording', [flags.quality]);
         } else {
           const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
           try {
-            await client.startRecording({ quality: flags.quality, persist });
+            await client.startRecording({
+              quality: flags.quality,
+              persist,
+              segmentOnRotation: flags.segments,
+            });
           } finally {
             disconnect();
           }
@@ -101,6 +114,20 @@ export default class AndroidRecord extends BaseCommand {
             `Recording started; it will be persisted for ${flags['persist-ttl'] ?? '72h'} when it stops.`
           : 'Recording started',
         );
+        return;
+      }
+
+      if (flags.segments) {
+        const directory =
+          flags.output ? path.resolve(flags.output) : this.defaultRecordingPath().replace(/\.mp4$/, '');
+        const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
+        try {
+          const parts = await client.stopRecordingSegments({ localDirectory: directory });
+          if (flags.json) this.outputJson(parts);
+          else this.log(`Saved ${parts.length} recording segments and recording.json to ${directory}`);
+        } finally {
+          disconnect();
+        }
         return;
       }
 
