@@ -382,7 +382,7 @@ describe('tunnel connector', () => {
     ]);
   });
 
-  test('lets a dropped instance go once its lease is no longer confirmed', async () => {
+  test('redials a dropped instance only once a renewal confirms the lease again', async () => {
     connect();
     await waitFor(() => backend.of('hello').length === 1);
     backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 1 });
@@ -392,13 +392,13 @@ describe('tunnel connector', () => {
     await new Promise((resolve) => setTimeout(resolve, 1_100));
     instance.live!.socket.close();
 
-    await waitFor(() => events.some((event) => event.type === 'detached'));
-    expect(events).toContainEqual({
-      type: 'detached',
-      instanceId: 'ios_1',
-      reason: 'this connector no longer holds the tunnel',
-    });
+    await waitFor(() => backend.of('attachFailed').length === 1);
+    expect(backend.of('attachFailed')[0]).toMatchObject({ code: 'not_holder', terminal: false });
     expect(instance.upgrades).toBe(1);
+
+    backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 30 });
+    await waitFor(() => backend.of('attached').length === 2, 6_000);
+    expect(instance.upgrades).toBe(2);
     expect(instance.deletes).toEqual([]);
   });
 
