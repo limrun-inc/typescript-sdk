@@ -159,11 +159,11 @@ class FakePod {
   }
 }
 
-function activeStatus(tunnelId: string, name?: string): unknown {
+function activeStatus(tunnelId: string, name?: string, state = 'ready'): unknown {
   return {
     tunnelId,
     ...(name ? { name } : {}),
-    state: 'ready',
+    state,
     selectors: [],
     inspection: {
       enabled: true,
@@ -364,6 +364,25 @@ describe('tunnel connector', () => {
     expect(instance.deletes).toEqual(['tun-old']);
     expect(instance.starts).toHaveLength(2);
     expect(backend.of('attachFailed')).toEqual([]);
+  });
+
+  test('waits for a reclaimed tunnel that is still stopping', async () => {
+    const instance = pod.instance('ios_1');
+    instance.rejectStart = (attempt) => (attempt <= 2 ? 'already_active' : undefined);
+    instance.status = (call) =>
+      call === 1 ? { active: activeStatus('tun-old', 'staging') }
+      : call === 2 ? { active: activeStatus('tun-old', 'staging', 'stopping') }
+      : undefined;
+    connect();
+    await activate();
+    attach('ios_1');
+    await waitFor(() => backend.of('attached').length === 1);
+
+    expect(instance.deletes).toEqual(['tun-old']);
+    expect(instance.starts).toHaveLength(3);
+    expect(backend.of('attachFailed')).toEqual([
+      expect.objectContaining({ instanceId: 'ios_1', code: 'already_active', terminal: false }),
+    ]);
   });
 
   test('leaves a same-name tunnel alone without a confirmed lease', async () => {
