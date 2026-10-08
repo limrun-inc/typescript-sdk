@@ -1,7 +1,7 @@
 import os from 'os';
 import { WebSocket, type RawData } from 'ws';
 import { nodeProxyTransport } from './internal/proxy-transport';
-import { deriveDestinationTunnelURL, deriveEndpointURL } from './internal/destination-tunnel-url';
+import { deriveDestinationTunnelURL, deriveTunnelConnectURL } from './internal/destination-tunnel-url';
 import {
   getDestinationTunnelStatus,
   stopDestinationTunnel,
@@ -17,9 +17,8 @@ import {
   toBuffer,
 } from './internal/destination-tunnel-wire-reader';
 import {
-  DESTINATION_TUNNEL_SERVER_ERROR_PREFIX,
+  DestinationTunnelSessionError,
   destinationTunnelDialOptions,
-  isTerminalDestinationTunnelError,
   startDestinationTcpTunnel,
   type DestinationTcpTunnel,
 } from './destination-tunnel-dialer';
@@ -29,7 +28,7 @@ import {
   type DestinationTunnelInspectionConfig,
   type DestinationTunnelSelectors,
 } from './destination-tunnel';
-import type { LogLevel } from './tunnel';
+import { upgradeStatus, type LogLevel } from './tunnel';
 import { VERSION } from './version';
 
 const CONTROL_PROTOCOL_VERSION = 1;
@@ -43,8 +42,8 @@ const ATTACH_INITIAL_BACKOFF_MS = 1_000;
 const ATTACH_MAX_BACKOFF_MS = 30_000;
 /** The platform deletes an instance whose tunnel has not attached 30s after assignment. */
 const ATTACH_FIRST_MAX_BACKOFF_MS = 2_000;
-/** Status and stop calls to an instance; a wedged pod must not stall its attachment. */
-const INSTANCE_REQUEST_TIMEOUT_MS = 10_000;
+/** The API explains a refused connection in a short plain-text body. */
+const MAX_REJECTION_REASON_CHARS = 200;
 /** Every tunnel WebSocket counts as instance activity, so retries must end. */
 const ATTACH_GIVE_UP_MS = 5 * 60_000;
 const TAKEN_OVER_MESSAGE = 'another connector for this tunnel took the instance over';
@@ -160,9 +159,9 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
   let sessionId: string | undefined;
   // --replace takes the name over once; afterwards this connector resumes
   // like any holder and never steals the name back.
-  let claimed = false;
-  let lastActiveAt = 0;
-  let leaseMs = 0;
+  let replace = options.replace ?? false;
+  // When the last confirmed lease runs out; zero while on standby.
+  let leaseExpiresAt = 0;
   let announcedSession: string | undefined;
   let announcedHolder: string | undefined;
 
@@ -189,26 +188,28 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
   };
 
-  const isConfirmedHolder = (): boolean => lastActiveAt > 0 && Date.now() - lastActiveAt < leaseMs;
+  const isConfirmedHolder = (): boolean => Date.now() < leaseExpiresAt;
 
   const forget = (instanceId: string, attachment: InstanceAttachment): void => {
     const tunnel = attachment.tunnel;
     attachment.tunnel = undefined;
     attachment.done = true;
-    if (attachment.retryTimer) clearTimeout(attachment.retryTimer);
+    clearTimeout(attachment.retryTimer);
     tunnel?.close();
     if (instances.get(instanceId) === attachment) instances.delete(instanceId);
   };
 
-  const forgetAll = (): void => {
-    for (const [instanceId, attachment] of Array.from(instances)) forget(instanceId, attachment);
+  // Ends the connector once: no more reconnects, and every instance tunnel closes.
+  const shutdown = (): boolean => {
+    if (stopped) return false;
+    stopped = true;
+    clearTimeout(reconnectTimer);
+    for (const [instanceId, attachment] of instances) forget(instanceId, attachment);
+    return true;
   };
 
   const fail = (detail: string): void => {
-    if (stopped) return;
-    stopped = true;
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    forgetAll();
+    if (!shutdown()) return;
     ws?.terminate();
     rejectClosed(new Error(`tunnel ${options.name}: ${detail}`));
   };
@@ -251,13 +252,7 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
   // superseding each other forever. A stopping tunnel is on its way out.
   const takenOver = async (attachment: InstanceAttachment): Promise<boolean> => {
     try {
-      const active = (
-        await getDestinationTunnelStatus(
-          attachment.url,
-          attachment.token,
-          AbortSignal.timeout(INSTANCE_REQUEST_TIMEOUT_MS),
-        )
-      ).active;
+      const active = (await getDestinationTunnelStatus(attachment.url, attachment.token)).active;
       return (
         active?.name === options.name &&
         active.state !== 'stopping' &&
@@ -272,12 +267,7 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
   // A failed stop shows up as the same tunnel on the next attempt.
   const stopQuietly = async (attachment: InstanceAttachment, tunnelId: string): Promise<void> => {
     try {
-      await stopDestinationTunnel(
-        attachment.url,
-        attachment.token,
-        tunnelId,
-        AbortSignal.timeout(INSTANCE_REQUEST_TIMEOUT_MS),
-      );
+      await stopDestinationTunnel(attachment.url, attachment.token, tunnelId);
     } catch {
       // The next attempt reports a tunnel that is still there.
     }
@@ -286,13 +276,7 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
   const resolveAlreadyActive = async (instanceId: string, attachment: InstanceAttachment): Promise<void> => {
     let active: DestinationTunnelStatus['active'];
     try {
-      active = (
-        await getDestinationTunnelStatus(
-          attachment.url,
-          attachment.token,
-          AbortSignal.timeout(INSTANCE_REQUEST_TIMEOUT_MS),
-        )
-      ).active;
+      active = (await getDestinationTunnelStatus(attachment.url, attachment.token)).active;
     } catch (error) {
       if (!attachment.done) retryAfterFailure(instanceId, attachment, 'already_active', errorMessage(error));
       return;
@@ -355,21 +339,23 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
       );
     } catch (error) {
       if (attachment.done) return;
-      if (upgradeStatus(error) === 404) {
+      if (upgradeStatus(errorMessage(error)) === 404) {
         giveUp(instanceId, attachment, 'instance_gone', 'the instance is gone or terminating');
-      } else if (!isTerminalDestinationTunnelError(error)) {
+      } else if (!(error instanceof DestinationTunnelSessionError)) {
         retryAfterFailure(instanceId, attachment, 'connect_failed', errorMessage(error));
+      } else if (error.code === 'already_active') {
+        await resolveAlreadyActive(instanceId, attachment);
+      } else if (error.code === 'unavailable' || error.code === 'internal') {
+        // The instance cannot start a tunnel right now, such as while its
+        // inspection helper restarts.
+        retryAfterFailure(
+          instanceId,
+          attachment,
+          error.code,
+          `the instance could not start the tunnel: ${error.code}`,
+        );
       } else {
-        const code = errorMessage(error).slice(DESTINATION_TUNNEL_SERVER_ERROR_PREFIX.length);
-        if (code === 'already_active') {
-          await resolveAlreadyActive(instanceId, attachment);
-        } else if (code === 'unavailable' || code === 'internal') {
-          // The instance cannot start a tunnel right now, such as while its
-          // inspection helper restarts.
-          retryAfterFailure(instanceId, attachment, code, `the instance could not start the tunnel: ${code}`);
-        } else {
-          giveUp(instanceId, attachment, code, `the instance rejected the tunnel: ${code}`);
-        }
+        giveUp(instanceId, attachment, error.code, `the instance rejected the tunnel: ${error.code}`);
       }
       return;
     }
@@ -403,9 +389,8 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
     if (stopped) return;
     switch (message.type) {
       case 'active':
-        claimed = true;
-        lastActiveAt = Date.now();
-        leaseMs = message.leaseSeconds * 1000;
+        replace = false;
+        leaseExpiresAt = Date.now() + message.leaseSeconds * 1000;
         controlBackoffMs = CONTROL_INITIAL_BACKOFF_MS;
         sessionId = message.sessionId;
         announcedHolder = undefined;
@@ -415,7 +400,7 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
         }
         return;
       case 'standby': {
-        lastActiveAt = 0;
+        leaseExpiresAt = 0;
         controlBackoffMs = CONTROL_INITIAL_BACKOFF_MS;
         sessionId = undefined;
         announcedSession = undefined;
@@ -513,10 +498,11 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
     let pingInterval: NodeJS.Timeout | undefined;
     let livenessTimer: NodeJS.Timeout | undefined;
     let rejectedStatus: number | undefined;
+    let rejectedReason = '';
     let lastError: string | undefined;
 
     const armLiveness = (): void => {
-      if (livenessTimer) clearTimeout(livenessTimer);
+      clearTimeout(livenessTimer);
       livenessTimer = setTimeout(() => {
         lastError = `no frames for ${CONTROL_DEAD_PEER_MS}ms`;
         socket.terminate();
@@ -534,7 +520,7 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
         type: 'hello',
         version: CONTROL_PROTOCOL_VERSION,
         selectors,
-        replace: (options.replace ?? false) && !claimed,
+        replace,
         ...(sessionId === undefined ? {} : { sessionId }),
         attached: Array.from(instances)
           .filter(([, attachment]) => attachment.tunnel)
@@ -559,23 +545,36 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
     socket.on('pong', armLiveness);
     socket.on('unexpected-response', (_request, response) => {
       rejectedStatus = response.statusCode ?? 0;
-      socket.terminate();
+      // Anything but the API's plain-text reason, such as a proxy's HTML
+      // error page, is left out.
+      if (!String(response.headers['content-type'] ?? '').startsWith('text/plain')) {
+        socket.terminate();
+        return;
+      }
+      response.setEncoding('utf8');
+      response.on('data', (chunk: string) => {
+        rejectedReason = (rejectedReason + chunk).slice(0, MAX_REJECTION_REASON_CHARS);
+      });
+      response.once('end', () => socket.terminate());
+      response.once('error', () => socket.terminate());
     });
     socket.on('error', (error: Error) => {
       lastError ??= error.message;
     });
     socket.once('close', (code: number, reason: Buffer) => {
-      if (pingInterval) clearInterval(pingInterval);
-      if (livenessTimer) clearTimeout(livenessTimer);
+      clearInterval(pingInterval);
+      clearTimeout(livenessTimer);
       if (ws === socket) ws = undefined;
       if (stopped) return;
       if (rejectedStatus !== undefined) {
+        const reason = rejectedReason.trim();
+        const detail = reason ? `HTTP ${rejectedStatus}: ${reason}` : `HTTP ${rejectedStatus}`;
         // A refused upgrade with a 4xx status never succeeds on retry, except
         // a rate limit.
         if (rejectedStatus >= 400 && rejectedStatus < 500 && rejectedStatus !== 429) {
-          fail(upgradeRejectionMessage(rejectedStatus, options.organizationId));
+          fail(`the server refused the connection (${detail})`);
         } else {
-          scheduleReconnect(`the server answered HTTP ${rejectedStatus}`, false);
+          scheduleReconnect(`the server answered ${detail}`, false);
         }
         return;
       }
@@ -588,14 +587,11 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
   };
 
   const close = async (): Promise<void> => {
-    if (stopped) return;
-    stopped = true;
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    forgetAll();
+    if (!shutdown()) return;
     const socket = ws;
     if (socket?.readyState === WebSocket.OPEN) {
       // bye releases the name at once instead of after the lease expires.
-      socket.send(JSON.stringify({ type: 'bye' } satisfies ControlClientMessage));
+      send({ type: 'bye' });
       await new Promise<void>((resolve) => {
         const grace = setTimeout(() => socket.terminate(), BYE_GRACE_MS);
         socket.once('close', () => {
@@ -660,28 +656,6 @@ function decodeControlServerMessage(value: unknown): ControlServerMessage | unde
   }
 }
 
-function deriveTunnelConnectURL(baseURL: string, organizationId: string, name: string): string {
-  const url = deriveEndpointURL(
-    baseURL,
-    `v1/organizations/${encodeURIComponent(organizationId)}/tunnels/${encodeURIComponent(name)}/connect`,
-  );
-  url.protocol = url.protocol === 'https:' || url.protocol === 'wss:' ? 'wss:' : 'ws:';
-  return url.toString();
-}
-
-function upgradeRejectionMessage(status: number, organizationId: string): string {
-  switch (status) {
-    case 401:
-      return 'the API key was rejected (HTTP 401)';
-    case 403:
-      return 'connecting a tunnel needs an admin API key with tunnel access (HTTP 403)';
-    case 404:
-      return `organization ${organizationId} has no tunnel endpoint (HTTP 404)`;
-    default:
-      return `the server refused the connection (HTTP ${status})`;
-  }
-}
-
 function revokedMessage(reason: string): string {
   switch (reason) {
     case 'replaced':
@@ -693,12 +667,6 @@ function revokedMessage(reason: string): string {
     default:
       return `the tunnel was revoked (${reason})`;
   }
-}
-
-/** HTTP status of a refused instance tunnel upgrade, as reported by ws. */
-function upgradeStatus(error: unknown): number | undefined {
-  const match = /^Unexpected server response: (\d+)$/.exec(errorMessage(error));
-  return match?.[1] ? Number(match[1]) : undefined;
 }
 
 function errorMessage(error: unknown): string {

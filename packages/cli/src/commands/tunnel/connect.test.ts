@@ -2,7 +2,7 @@ import { Parser } from '@oclif/core';
 import { connectTunnel, type TunnelConnectorOptions } from '@limrun/api';
 import TunnelConnect from './connect';
 import { whoAmI } from '../../lib/backend';
-import { formatTunnelConnectorEvent, parseTunnelName } from '../../lib/tunnel-connect';
+import { formatTunnelConnectorEvent } from '../../lib/tunnel-connect';
 
 jest.mock('@limrun/api', () => ({ ...jest.requireActual('@limrun/api'), connectTunnel: jest.fn() }));
 jest.mock('../../lib/backend', () => ({ whoAmI: jest.fn() }));
@@ -23,20 +23,6 @@ describe('tunnel connect flags', () => {
       persist: false,
     });
     expect(TunnelConnect.flags).not.toHaveProperty('har');
-  });
-
-  test.each(['Staging', '-staging', 'staging-', 'stag_ing', 'a'.repeat(64), ''])(
-    'rejects the invalid name %p',
-    async (name) => {
-      await expect(
-        Parser.parse(['--name', name, '--selector', 'localhost:3000'], { flags: TunnelConnect.flags }),
-      ).rejects.toThrow();
-      expect(() => parseTunnelName(name)).toThrow('Invalid tunnel name');
-    },
-  );
-
-  test.each(['a', '0', 'staging', 'pr-123', 'a'.repeat(63)])('accepts the name %p', (name) => {
-    expect(parseTunnelName(name)).toBe(name);
   });
 });
 

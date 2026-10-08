@@ -1,5 +1,5 @@
 /** The endpoint at `path` under a base URL, without query or fragment. */
-export function deriveEndpointURL(apiUrl: string, path: string): URL {
+function deriveEndpointURL(apiUrl: string, path: string): URL {
   const url = new URL(apiUrl);
   if (
     url.protocol !== 'https:' &&
@@ -26,7 +26,20 @@ export function deriveAdbHttpURL(adbUrl: string, path: string): URL {
 }
 
 export function deriveDestinationTunnelURL(apiUrl: string): string {
-  const url = deriveEndpointURL(apiUrl, 'tunnel');
+  return webSocketURL(deriveEndpointURL(apiUrl, 'tunnel'));
+}
+
+/** The control WebSocket of a persistent tunnel, under the Limrun API base URL. */
+export function deriveTunnelConnectURL(baseURL: string, organizationId: string, name: string): string {
+  return webSocketURL(
+    deriveEndpointURL(
+      baseURL,
+      `v1/organizations/${encodeURIComponent(organizationId)}/tunnels/${encodeURIComponent(name)}/connect`,
+    ),
+  );
+}
+
+function webSocketURL(url: URL): string {
   url.protocol = url.protocol === 'https:' || url.protocol === 'wss:' ? 'wss:' : 'ws:';
   return url.toString();
 }

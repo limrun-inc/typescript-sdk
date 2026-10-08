@@ -2,8 +2,9 @@ import { Flags } from '@oclif/core';
 import { connectTunnel } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { whoAmI } from '../../lib/backend';
-import { formatTunnelConnectorEvent, parseTunnelName } from '../../lib/tunnel-connect';
+import { formatTunnelConnectorEvent } from '../../lib/tunnel-connect';
 import {
+  tunnelInspectionConfig,
   tunnelInspectionContext,
   tunnelInspectionFlags,
   type TunnelInspectionContext,
@@ -33,7 +34,6 @@ export default class TunnelConnect extends BaseCommand {
       description:
         'Tunnel name that instances pass to --tunnel: a lowercase DNS label of up to 63 characters.',
       required: true,
-      parse: async (input) => parseTunnelName(input),
     }),
     selector: Flags.string({
       description:
@@ -82,14 +82,7 @@ export default class TunnelConnect extends BaseCommand {
         organizationId,
         name: flags.name,
         selectors,
-        inspection: {
-          enabled: inspection.inspect,
-          // Bodies are only kept for the persisted network log.
-          captureBodies: inspection.persist ?? false,
-          maxBodyBytes: inspection.harBodyLimit,
-          persist: inspection.persist ?? false,
-          ...(inspection.ttlSeconds === undefined ? {} : { ttlSeconds: inspection.ttlSeconds }),
-        },
+        inspection: tunnelInspectionConfig(inspection),
         replace: flags.replace,
         clientVersion: VERSION,
         logLevel:

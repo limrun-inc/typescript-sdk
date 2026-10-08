@@ -1,18 +1,5 @@
 import type { TunnelConnectorEvent } from '@limrun/api';
 
-/** One lowercase DNS label, the rule the API enforces for tunnel names. */
-const TUNNEL_NAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
-
-export function parseTunnelName(name: string): string {
-  if (name.length > 63 || !TUNNEL_NAME_PATTERN.test(name)) {
-    throw new Error(
-      `Invalid tunnel name "${name}": use 1 to 63 lowercase letters, digits, and hyphens, ` +
-        'starting and ending with a letter or digit.',
-    );
-  }
-  return name;
-}
-
 /** One human-readable log line per connector event. */
 export function formatTunnelConnectorEvent(name: string, event: TunnelConnectorEvent): string {
   switch (event.type) {

@@ -2,8 +2,10 @@ import { Flags } from '@oclif/core';
 import path from 'path';
 import {
   DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+  DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS,
   DESTINATION_TUNNEL_MAX_BODY_BYTES,
   DESTINATION_TUNNEL_MAX_TTL_SECONDS,
+  type DestinationTunnelInspectionConfig,
 } from '@limrun/api';
 
 /** HTTP inspection flags shared by `android tunnel` and `ios tunnel`. */
@@ -80,5 +82,16 @@ export function tunnelInspectionContext(flags: TunnelInspectionFlags): TunnelIns
     ...(flags.ttl === undefined ? {} : { ttlSeconds: flags.ttl }),
     ...(flags.har ? { harPath: path.resolve(flags.har) } : {}),
     harBodyLimit: flags['har-body-limit'],
+  };
+}
+
+/** The inspection a tunnel negotiates; bodies are kept only for a HAR file or the persisted log. */
+export function tunnelInspectionConfig(context: TunnelInspectionContext): DestinationTunnelInspectionConfig {
+  return {
+    enabled: context.inspect,
+    captureBodies: context.inspect && (context.harPath !== undefined || context.persist === true),
+    maxBodyBytes: context.harBodyLimit ?? DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
+    persist: context.persist ?? false,
+    ttlSeconds: context.ttlSeconds ?? DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS,
   };
 }

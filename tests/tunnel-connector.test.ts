@@ -24,7 +24,11 @@ class FakeBackend {
     this.server.on('upgrade', (request, socket: Socket, head) => {
       this.upgrades.push({ url: request.url ?? '', authorization: request.headers.authorization });
       if (this.rejectStatus !== undefined) {
-        socket.end(`HTTP/1.1 ${this.rejectStatus} Refused\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+        const body = `refused with ${this.rejectStatus}\n`;
+        socket.end(
+          `HTTP/1.1 ${this.rejectStatus} Refused\r\nConnection: close\r\n` +
+            `Content-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.length}\r\n\r\n${body}`,
+        );
         return;
       }
       this.wss.handleUpgrade(request, socket, head, (webSocket) => {
@@ -226,6 +230,14 @@ describe('tunnel connector', () => {
     backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 30 });
   }
 
+  /** A connector that holds the name and serves ios_1. */
+  async function connectAttached(): Promise<void> {
+    connect();
+    await activate();
+    attach('ios_1');
+    await waitFor(() => backend.of('attached').length === 1);
+  }
+
   function attach(instanceId: string): void {
     backend.send({ type: 'attach', instanceId, platform: 'ios', url: pod.url(instanceId), token: 'tok' });
   }
@@ -237,10 +249,7 @@ describe('tunnel connector', () => {
   }
 
   test('says hello, attaches with the tunnel name, and confirms the tunnel ID', async () => {
-    connect();
-    await activate();
-    attach('ios_1');
-    await waitFor(() => backend.of('attached').length === 1);
+    await connectAttached();
 
     expect(backend.upgrades).toEqual([
       { url: '/v1/organizations/org_1/tunnels/staging/connect', authorization: 'Bearer lim_key' },
@@ -293,10 +302,7 @@ describe('tunnel connector', () => {
   });
 
   test('confirms a replayed attach without opening another tunnel', async () => {
-    connect();
-    await activate();
-    attach('ios_1');
-    await waitFor(() => backend.of('attached').length === 1);
+    await connectAttached();
     attach('ios_1');
     await waitFor(() => backend.of('attached').length === 2);
 
@@ -308,10 +314,7 @@ describe('tunnel connector', () => {
   });
 
   test('closes the instance tunnel on detach and forgets the instance', async () => {
-    connect();
-    await activate();
-    attach('ios_1');
-    await waitFor(() => backend.of('attached').length === 1);
+    await connectAttached();
 
     backend.send({ type: 'detach', instanceId: 'ios_1', reason: 'terminated' });
     await waitFor(() => pod.instance('ios_1').closedTunnels.length === 1);
@@ -356,10 +359,7 @@ describe('tunnel connector', () => {
     const instance = pod.instance('ios_1');
     instance.rejectStart = (attempt) => (attempt === 1 ? 'already_active' : undefined);
     instance.status = (call) => (call === 1 ? { active: activeStatus('tun-old', 'staging') } : undefined);
-    connect();
-    await activate();
-    attach('ios_1');
-    await waitFor(() => backend.of('attached').length === 1);
+    await connectAttached();
 
     expect(instance.deletes).toEqual(['tun-old']);
     expect(instance.starts).toHaveLength(2);
@@ -373,10 +373,7 @@ describe('tunnel connector', () => {
       call === 1 ? { active: activeStatus('tun-old', 'staging') }
       : call === 2 ? { active: activeStatus('tun-old', 'staging', 'stopping') }
       : undefined;
-    connect();
-    await activate();
-    attach('ios_1');
-    await waitFor(() => backend.of('attached').length === 1);
+    await connectAttached();
 
     expect(instance.deletes).toEqual(['tun-old']);
     expect(instance.starts).toHaveLength(3);
@@ -408,10 +405,7 @@ describe('tunnel connector', () => {
   test('retries an instance that cannot start a tunnel yet', async () => {
     const instance = pod.instance('ios_1');
     instance.rejectStart = (attempt) => (attempt === 1 ? 'unavailable' : undefined);
-    connect();
-    await activate();
-    attach('ios_1');
-    await waitFor(() => backend.of('attached').length === 1);
+    await connectAttached();
 
     expect(instance.starts).toHaveLength(2);
     expect(backend.of('attachFailed')).toEqual([
@@ -420,10 +414,7 @@ describe('tunnel connector', () => {
   });
 
   test('stops its own dropped tunnel when the instance still holds it', async () => {
-    connect();
-    await activate();
-    attach('ios_1');
-    await waitFor(() => backend.of('attached').length === 1);
+    await connectAttached();
     const instance = pod.instance('ios_1');
     const first = instance.live!.tunnelId;
     // The instance has not noticed the dead socket yet.
@@ -438,10 +429,7 @@ describe('tunnel connector', () => {
   });
 
   test('yields when another holder took over its dropped tunnel', async () => {
-    connect();
-    await activate();
-    attach('ios_1');
-    await waitFor(() => backend.of('attached').length === 1);
+    await connectAttached();
     const instance = pod.instance('ios_1');
     instance.status = () => ({ active: activeStatus('tun-other', 'staging') });
     instance.live!.socket.close();
@@ -459,10 +447,7 @@ describe('tunnel connector', () => {
   });
 
   test('yields when a retry after a drop meets another holder', async () => {
-    connect();
-    await activate();
-    attach('ios_1');
-    await waitFor(() => backend.of('attached').length === 1);
+    await connectAttached();
     const instance = pod.instance('ios_1');
     instance.rejectStart = (attempt) => (attempt === 2 ? 'already_active' : undefined);
     instance.status = (call) => (call === 1 ? {} : { active: activeStatus('tun-other', 'staging') });
@@ -543,7 +528,7 @@ describe('tunnel connector', () => {
     const { closed } = connect();
 
     await expect(closed).rejects.toThrow(
-      'tunnel staging: connecting a tunnel needs an admin API key with tunnel access (HTTP 403)',
+      'tunnel staging: the server refused the connection (HTTP 403: refused with 403)',
     );
     await new Promise((resolve) => setTimeout(resolve, 800));
     expect(backend.upgrades).toHaveLength(1);
