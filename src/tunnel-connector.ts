@@ -502,8 +502,9 @@ export function connectTunnel(options: TunnelConnectorOptions): TunnelConnector 
       if (ws === socket) ws = undefined;
       if (stopped) return;
       if (rejectedStatus !== undefined) {
-        // A refused upgrade with a 4xx status never succeeds on retry.
-        if (rejectedStatus >= 400 && rejectedStatus < 500) {
+        // A refused upgrade with a 4xx status never succeeds on retry, except
+        // a rate limit.
+        if (rejectedStatus >= 400 && rejectedStatus < 500 && rejectedStatus !== 429) {
           fail(upgradeRejectionMessage(rejectedStatus, options.organizationId));
         } else {
           scheduleReconnect(`the server answered HTTP ${rejectedStatus}`, false);

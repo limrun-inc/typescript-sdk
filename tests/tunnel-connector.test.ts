@@ -489,6 +489,14 @@ describe('tunnel connector', () => {
     expect(backend.upgrades).toHaveLength(1);
   });
 
+  test.each([429, 503])('retries when the API answers the upgrade with %d', async (status) => {
+    backend.rejectStatus = status;
+    connect();
+    await waitFor(() => backend.upgrades.length >= 2);
+    backend.rejectStatus = undefined;
+    await waitFor(() => backend.of('hello').length === 1);
+  });
+
   test('close says bye, closes normally, and closes instance tunnels', async () => {
     const { closed, close } = connect();
     await activate();
