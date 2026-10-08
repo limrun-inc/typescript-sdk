@@ -116,6 +116,28 @@ describe('destination tunnel management', () => {
     );
   });
 
+  test('decodes the persistent tunnel name of the active tunnel', () => {
+    const active = {
+      tunnelId: 'tunnel-1',
+      state: 'ready',
+      selectors: [{ id: 'selector-1', kind: 'domain', value: 'api.internal' }],
+      inspection: {
+        enabled: true,
+        captureBodies: false,
+        maxBodyBytes: 10 * 1024 * 1024,
+        persist: false,
+        ttlSeconds: 259200,
+      },
+    };
+    expect(decodeDestinationTunnelStatus({ active: { ...active, name: 'staging' } }).active?.name).toBe(
+      'staging',
+    );
+    expect(decodeDestinationTunnelStatus({ active }).active).not.toHaveProperty('name');
+    expect(() => decodeDestinationTunnelStatus({ active: { ...active, name: 7 } })).toThrow(
+      'name must be a string',
+    );
+  });
+
   test.each([
     null,
     { active: null },

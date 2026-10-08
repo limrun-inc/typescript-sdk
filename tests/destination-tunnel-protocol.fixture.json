@@ -561,6 +561,23 @@
       }
     },
     {
+      "name": "start with name",
+      "message": {
+        "type": "start",
+        "version": 1,
+        "selectors": ["10.20.30.40:8000", "localhost:3000"],
+        "inspection": {
+          "enabled": false,
+          "captureBodies": false,
+          "maxBodyBytes": 10485760,
+          "persist": false,
+          "ttlSeconds": 259200
+        },
+        "window": 1048576,
+        "name": "acme-staging"
+      }
+    },
+    {
       "name": "start with selectors and window",
       "message": {
         "type": "start",
@@ -647,6 +664,19 @@
           { "id": "selector-1", "kind": "route", "value": "localhost:3000" }
         ],
         "configHash": "4ee21ba346d8798a4de0e7a96f9f230510c6f73a292b364bcaaac8fb87bcbeeb"
+      }
+    },
+    {
+      "name": "ready with name",
+      "message": {
+        "type": "ready",
+        "version": 1,
+        "tunnelId": "123e4567-e89b-12d3-a456-426614174000",
+        "selectors": [
+          { "id": "selector-1", "kind": "route", "value": "localhost:3000" }
+        ],
+        "configHash": "4ee21ba346d8798a4de0e7a96f9f230510c6f73a292b364bcaaac8fb87bcbeeb",
+        "name": "acme-staging"
       }
     },
     {
