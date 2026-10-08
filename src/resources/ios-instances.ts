@@ -90,7 +90,7 @@ export namespace IosInstance {
     hardTimeout?: string;
 
     /**
-     * Names a persistent tunnel (`lim tunnel connect --name`) that serves this
+     * Names a persistent tunnel (`lim tunnel run --name`) that serves this
      * instance. Creation fails while that tunnel is offline, and the instance
      * becomes ready only after the tunnel attaches.
      */
@@ -239,7 +239,7 @@ export namespace IosInstanceCreateParams {
     region?: string;
 
     /**
-     * Names a persistent tunnel (`lim tunnel connect --name`) that serves this
+     * Names a persistent tunnel (`lim tunnel run --name`) that serves this
      * instance. Creation fails while that tunnel is offline, and the instance
      * becomes ready only after the tunnel attaches.
      */

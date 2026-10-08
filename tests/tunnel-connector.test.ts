@@ -6,7 +6,7 @@ import {
   destinationTunnelConfigHash,
   type DestinationTunnelClientMessage,
 } from '../src/destination-tunnel';
-import { connectTunnel, type TunnelConnector, type TunnelConnectorEvent } from '../src/tunnel-connector';
+import { runTunnel, type TunnelConnector, type TunnelConnectorEvent } from '../src/tunnel-connector';
 
 type Message = Record<string, unknown> & { type: string };
 
@@ -210,7 +210,7 @@ describe('tunnel connector', () => {
   });
 
   function connect(options: { replace?: boolean } = {}): TunnelConnector {
-    connector = connectTunnel({
+    connector = runTunnel({
       apiKey: 'lim_key',
       baseURL,
       organizationId: 'org_1',
@@ -261,7 +261,7 @@ describe('tunnel connector', () => {
         selectors: ['localhost:3000'],
         replace: false,
         attached: [],
-        client: { hostname: 'test-host', cliVersion: '9.9.9' },
+        client: { hostname: 'test-host', version: '9.9.9' },
       },
     ]);
     expect(pod.instance('ios_1').starts).toEqual([
@@ -291,7 +291,7 @@ describe('tunnel connector', () => {
       replace: false,
       sessionId: 'session-1',
       attached: ['ios_1'],
-      client: { hostname: 'test-host', cliVersion: '9.9.9' },
+      client: { hostname: 'test-host', version: '9.9.9' },
     });
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'reconnecting', reason: expect.any(String) }),

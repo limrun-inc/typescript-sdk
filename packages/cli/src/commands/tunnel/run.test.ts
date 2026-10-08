@@ -1,18 +1,18 @@
 import { Parser } from '@oclif/core';
-import { connectTunnel, type TunnelConnectorOptions } from '@limrun/api';
-import TunnelConnect from './connect';
+import { runTunnel, type TunnelConnectorOptions } from '@limrun/api';
+import TunnelRun from './run';
 import { whoAmI } from '../../lib/backend';
-import { formatTunnelConnectorEvent } from '../../lib/tunnel-connect';
+import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
 
-jest.mock('@limrun/api', () => ({ ...jest.requireActual('@limrun/api'), connectTunnel: jest.fn() }));
+jest.mock('@limrun/api', () => ({ ...jest.requireActual('@limrun/api'), runTunnel: jest.fn() }));
 jest.mock('../../lib/backend', () => ({ whoAmI: jest.fn() }));
 
 beforeEach(() => jest.clearAllMocks());
 
-describe('tunnel connect flags', () => {
+describe('tunnel run flags', () => {
   test('parse the name and selectors with inspection on by default', async () => {
     const { flags } = await Parser.parse(['--name', 'staging-2', '--selector', 'localhost:3000'], {
-      flags: TunnelConnect.flags,
+      flags: TunnelRun.flags,
     });
     expect(flags).toMatchObject({
       name: 'staging-2',
@@ -22,17 +22,17 @@ describe('tunnel connect flags', () => {
       inspect: true,
       persist: false,
     });
-    expect(TunnelConnect.flags).not.toHaveProperty('har');
+    expect(TunnelRun.flags).not.toHaveProperty('har');
   });
 });
 
-describe('tunnel connect run', () => {
+describe('tunnel run command', () => {
   function setup(closed: Promise<void>) {
     jest.mocked(whoAmI).mockResolvedValue('org_1');
     const close = jest.fn(async () => {});
-    jest.mocked(connectTunnel).mockReturnValue({ closed, close });
+    jest.mocked(runTunnel).mockReturnValue({ closed, close });
     const info = jest.fn();
-    const command = Object.assign(Object.create(TunnelConnect.prototype), {
+    const command = Object.assign(Object.create(TunnelRun.prototype), {
       parse: async () => ({
         flags: {
           name: 'staging',
@@ -63,7 +63,7 @@ describe('tunnel connect run', () => {
     const { command, info } = setup(Promise.resolve());
     await command.run();
 
-    const options = jest.mocked(connectTunnel).mock.calls[0]![0] as TunnelConnectorOptions;
+    const options = jest.mocked(runTunnel).mock.calls[0]![0] as TunnelConnectorOptions;
     expect(options).toMatchObject({
       apiKey: 'lim_key',
       baseURL: 'https://api.example.test',
@@ -84,7 +84,7 @@ describe('tunnel connect run', () => {
   });
 });
 
-describe('tunnel connect event lines', () => {
+describe('tunnel run event lines', () => {
   test.each([
     [
       { type: 'active', sessionId: 'session-1' },
