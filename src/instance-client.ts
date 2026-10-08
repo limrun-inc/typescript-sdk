@@ -1,3 +1,5 @@
+import { downloadRecordingSegments, type RecordingSegment, type RecordingSegmentMessage } from './recording';
+export type { RecordingSegment } from './recording';
 import { WebSocket, Data } from 'ws';
 import { execFile } from 'node:child_process';
 import fs from 'fs';
@@ -288,11 +290,17 @@ export type InstanceClient = {
    * Start recording device video. Use stopRecording() to finish the recording.
    * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
    * The server default is `5`.
+   * Set segmentOnRotation to preserve orientation and resolution in separate MP4 parts.
+   * Finish that mode with stopRecordingSegments(), including after reconnecting.
    * With `persist`, the completed recording is uploaded to Limrun's bucket
    * when the recording stops or the instance terminates; list it with
    * `androidInstances.listRecordings`.
    */
-  startRecording: (options?: { quality?: RecordingQuality; persist?: PersistOption }) => Promise<void>;
+  startRecording: (options?: {
+    quality?: RecordingQuality;
+    persist?: PersistOption;
+    segmentOnRotation?: boolean;
+  }) => Promise<void>;
   /**
    * Stop the active server-side recording.
    * If `saveTo.presignedUrl` is provided, the server uploads the completed file there before resolving.
@@ -300,6 +308,12 @@ export type InstanceClient = {
    * Returns a download URL for the completed recording.
    */
   stopRecording: (saveTo: { presignedUrl?: string; localPath?: string }) => Promise<string>;
+
+  /** Stop a segmented recording and return every part in timeline order.
+   * With localDirectory, download the MP4 files and a recording.json timeline.
+   * URLs require the instance token and remain valid until the next recording or instance deletion.
+   */
+  stopRecordingSegments: (saveTo?: { localDirectory?: string }) => Promise<RecordingSegment[]>;
   /**
    * Start capturing an app's logcat output (one JSONL object per line) for
    * the given package name. One app log capture runs at a time; the server
@@ -981,8 +995,13 @@ type CommandRequestMap = {
   cameraControl: { action: 'setSource'; source: 'video'; arg: string; loop?: boolean } | { action: 'reset' };
   adbShell: { command: string; timeoutMs?: number };
   setWifiBandwidth: WifiBandwidthOptions;
-  startRecording: { quality?: RecordingQuality; persist?: boolean; ttlSeconds?: number };
-  stopRecording: { upload?: { presignedUrl: string } };
+  startRecording: {
+    quality?: RecordingQuality;
+    persist?: boolean;
+    ttlSeconds?: number;
+    segmentOnRotation?: boolean;
+  };
+  stopRecording: { upload?: { presignedUrl: string }; segments?: boolean };
   startAppLogCapture: { bundleId: string; persist?: boolean; ttlSeconds?: number };
   stopAppLogCapture: {};
   startEventCapture: { persist?: boolean; ttlSeconds?: number };
@@ -1008,8 +1027,8 @@ type CommandResultMap = {
   cameraControl: EmptyCommandResult;
   adbShell: AdbShellResultMessage;
   setWifiBandwidth: EmptyCommandResult;
-  startRecording: EmptyCommandResult;
-  stopRecording: EmptyCommandResult;
+  startRecording: { segmentOnRotation?: boolean };
+  stopRecording: { segments?: RecordingSegmentMessage[] };
   startAppLogCapture: EmptyCommandResult;
   stopAppLogCapture: EmptyCommandResult;
   startEventCapture: EmptyCommandResult;
@@ -1478,6 +1497,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             setWifiBandwidth,
             startRecording,
             stopRecording,
+            stopRecordingSegments,
             startAppLogCapture,
             stopAppLogCapture,
             startEventCapture,
@@ -1754,6 +1774,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const startRecording = async (recordingOptions?: {
       quality?: RecordingQuality;
       persist?: PersistOption;
+      segmentOnRotation?: boolean;
     }): Promise<void> => {
       const request: CommandRequestMap['startRecording'] = {
         ...persistFields(recordingOptions?.persist),
@@ -1768,7 +1789,25 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
         request.quality = recordingOptions.quality;
       }
-      await sendRequest('startRecording', request);
+      if (recordingOptions?.segmentOnRotation !== undefined)
+        request.segmentOnRotation = recordingOptions.segmentOnRotation;
+      const result = await sendRequest('startRecording', request);
+      if (recordingOptions?.segmentOnRotation && result.segmentOnRotation !== true) {
+        await sendRequest('stopRecording', {}).catch(() => {});
+        throw new Error('This instance does not support segmented recording; update its runtime');
+      }
+    };
+
+    const stopRecordingSegments = async (saveTo?: {
+      localDirectory?: string;
+    }): Promise<RecordingSegment[]> => {
+      const result = await sendRequest('stopRecording', { segments: true }, 180_000);
+      return downloadRecordingSegments(
+        result.segments,
+        (file) => `${recordingApiUrl}/files?path=${encodeURIComponent(file)}`,
+        options.token,
+        saveTo?.localDirectory,
+      );
     };
 
     const stopRecording = async (saveTo: { presignedUrl?: string; localPath?: string }): Promise<string> => {
@@ -1776,7 +1815,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       if (saveTo.presignedUrl) {
         request.upload = { presignedUrl: saveTo.presignedUrl };
       }
-      await sendRequest('stopRecording', request);
+      await sendRequest('stopRecording', request, 180_000);
       const downloadUrl = buildDownloadUrl(recordingApiUrl);
       if (saveTo.localPath) {
         await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);

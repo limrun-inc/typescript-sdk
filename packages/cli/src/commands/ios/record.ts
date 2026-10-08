@@ -14,6 +14,8 @@ export default class IosRecord extends BaseCommand {
     'Control screen recording on a running iOS instance. Start recording first, then stop recording to download the file locally or upload it directly with `--presigned-url`.';
   static examples = [
     '<%= config.bin %> ios record start',
+    '<%= config.bin %> ios record start --segments',
+    '<%= config.bin %> ios record stop --segments -o recording',
     '<%= config.bin %> ios record stop',
     '<%= config.bin %> ios record stop -o recording.mp4 --id <instance-ID>',
     '<%= config.bin %> ios record stop --presigned-url https://example.com/upload --id <instance-ID>',
@@ -39,6 +41,11 @@ export default class IosRecord extends BaseCommand {
     id: Flags.string({
       description: 'iOS instance ID to record. Defaults to the last created iOS instance.',
     }),
+    segments: Flags.boolean({
+      description:
+        'Start a new MP4 part on display rotation. Use on both start and stop; -o names a directory containing the parts and recording.json.',
+      default: false,
+    }),
     quality: Flags.integer({
       description:
         'Recording quality from 5 to 10. Higher values increase quality and file size when starting a recording.',
@@ -47,7 +54,7 @@ export default class IosRecord extends BaseCommand {
     output: Flags.string({
       char: 'o',
       description:
-        'Local file path for the finished recording when using the `stop` action. Defaults to a timestamped mp4 in the current directory.',
+        'Output file for `stop`, or output directory with --segments. Defaults to a timestamped path in the current directory.',
     }),
     'presigned-url': Flags.string({
       description:
@@ -85,6 +92,9 @@ export default class IosRecord extends BaseCommand {
         this.error('--persist only applies to the `start` action.');
       }
 
+      if (flags.segments && flags['presigned-url']) {
+        this.error('--segments cannot use a single --presigned-url; use --persist or download the parts.');
+      }
       if (args.action === 'start') {
         const persist =
           flags.persist ?
@@ -93,12 +103,13 @@ export default class IosRecord extends BaseCommand {
             : true
           : undefined;
         // Older daemons drop persistence and display options, so send those starts directly.
-        if (!persist && !flags.display && (await ensureDaemonSession(resolvedInstance))) {
+        if (!persist && !flags.display && !flags.segments && (await ensureDaemonSession(resolvedInstance))) {
           await sendSessionCommand(id, 'start-recording', [flags.quality]);
         } else {
           const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
           try {
             await client.startRecording({
+              segmentOnRotation: flags.segments,
               quality: flags.quality,
               persist,
               display: flags.display as 'inner' | 'outer' | undefined,
@@ -112,6 +123,20 @@ export default class IosRecord extends BaseCommand {
             `Recording started; it will be persisted for ${flags['persist-ttl'] ?? '72h'} when it stops.`
           : 'Recording started',
         );
+        return;
+      }
+
+      if (flags.segments) {
+        const directory =
+          flags.output ? path.resolve(flags.output) : this.defaultRecordingPath().replace(/\.mp4$/, '');
+        const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
+        try {
+          const parts = await client.stopRecordingSegments({ localDirectory: directory });
+          if (flags.json) this.outputJson(parts);
+          else this.log(`Saved ${parts.length} recording segments and recording.json to ${directory}`);
+        } finally {
+          disconnect();
+        }
         return;
       }
 

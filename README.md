@@ -71,6 +71,26 @@ Existing `spec.cache`, `getCache`, `bindCacheKey`, `followCache`, and cache-name
 types remain supported. Snapshot methods expose the saved key as
 `save.snapshotKey`; legacy methods keep `save.cacheKey`.
 
+## Record a rotating screen
+
+Android and iOS instance clients support opt-in MP4 segments for flows that rotate the screen:
+
+```ts
+await device.startRecording({ segmentOnRotation: true });
+// Drive the UI, including orientation changes.
+const parts = await device.stopRecordingSegments({ localDirectory: './recording' });
+```
+
+Here, `device` is the connected Android or iOS instance client. Each part keeps its
+orientation and resolution. The result contains ordered download URLs, playback
+width and height, `startTimeMs`, `durationMs`, and local paths when downloaded.
+The output directory includes `recording.json` with relative filenames and the timeline.
+
+Use `stopRecordingSegments` even after reconnecting. A single-file stop rejects a
+segmented recording and leaves it running. Download the files before starting the
+next recording or deleting the instance. To retain each part after termination,
+start with `persist: true`. Without the opt-in, the existing single-MP4 behavior remains.
+
 ## Handling errors
 
 When the library is unable to connect to the API,
