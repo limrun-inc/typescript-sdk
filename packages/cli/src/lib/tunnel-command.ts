@@ -1,8 +1,6 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import {
-  DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES,
-  DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS,
   defaultSleep,
   type DestinationTunnelInspectionConfig,
   type DestinationTunnelInspectionErrorCallback,
@@ -42,7 +40,7 @@ import {
   type TunnelProduct,
 } from './tunnel-process';
 import { createTunnelHarRecorder, formatInspectionSummary, type TunnelHarRecorder } from './tunnel-har';
-import type { TunnelInspectionContext } from './tunnel-inspection-flags';
+import { tunnelInspectionConfig, type TunnelInspectionContext } from './tunnel-inspection-flags';
 
 /** One live tunnel generation, as exposed by the SDK clients. */
 export interface TunnelGeneration extends TunnelLike {
@@ -152,20 +150,13 @@ interface InspectionSession {
 }
 
 function createInspectionSession(context: TunnelCommandContext): InspectionSession {
-  const maxBodyBytes = context.harBodyLimit ?? DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES;
-  const config = {
-    enabled: context.inspect,
-    captureBodies: context.inspect && (context.harPath !== undefined || context.persist === true),
-    maxBodyBytes,
-    persist: context.persist ?? false,
-    ttlSeconds: context.ttlSeconds ?? DESTINATION_TUNNEL_DEFAULT_TTL_SECONDS,
-  };
+  const config = tunnelInspectionConfig(context);
   if (!context.inspect) {
     return { config, resetPending: () => {}, finalize: async () => {}, close: () => {} };
   }
 
   let recorder: TunnelHarRecorder | undefined =
-    context.harPath ? createTunnelHarRecorder(context.harPath, maxBodyBytes) : undefined;
+    context.harPath ? createTunnelHarRecorder(context.harPath, config.maxBodyBytes) : undefined;
   const reportError = (error: Error): void => {
     context.io.info(`Inspection stream warning: ${error.message}`);
     try {

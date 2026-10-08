@@ -1281,13 +1281,15 @@ async function startMultiplexedTcpTunnel(
   });
 }
 
-export const isNonRetryableError = (errMessage: string): boolean => {
+/** HTTP status of a refused WebSocket upgrade, as ws reports it in the error message. */
+export function upgradeStatus(errMessage: string): number | undefined {
   const match = errMessage.match(/Unexpected server response: (\d+)/);
-  if (match && match[1]) {
-    const statusCode = parseInt(match[1], 10);
-    return statusCode >= 400 && statusCode < 500;
-  }
-  return false;
+  return match?.[1] ? parseInt(match[1], 10) : undefined;
+}
+
+export const isNonRetryableError = (errMessage: string): boolean => {
+  const status = upgradeStatus(errMessage);
+  return status !== undefined && status >= 400 && status < 500;
 };
 
 export function assertPort(port: number, name: string, min: number, max: number): void {

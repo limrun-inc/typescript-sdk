@@ -138,13 +138,23 @@ interface OpenDialConnection extends DialConnection {
 /** Thrown (message prefix) when the server terminates the session with `error`. */
 export const DESTINATION_TUNNEL_SERVER_ERROR_PREFIX = 'destination tunnel failed: ';
 
+/** The server ended the session with an `error` frame carrying `code`. */
+export class DestinationTunnelSessionError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(`${DESTINATION_TUNNEL_SERVER_ERROR_PREFIX}${code}`);
+    this.code = code;
+  }
+}
+
 /**
  * True when the failure is a terminal protocol/policy rejection from the
  * server rather than a transient transport problem. Reconnect supervisors
  * must not retry terminal failures.
  */
 export function isTerminalDestinationTunnelError(error: unknown): boolean {
-  return error instanceof Error && error.message.startsWith(DESTINATION_TUNNEL_SERVER_ERROR_PREFIX);
+  return error instanceof DestinationTunnelSessionError;
 }
 
 export async function startDestinationTcpTunnel(
@@ -760,7 +770,7 @@ export async function startDestinationTcpTunnel(
           return;
         }
         case 'error':
-          throw new Error(`${DESTINATION_TUNNEL_SERVER_ERROR_PREFIX}${message.code}`);
+          throw new DestinationTunnelSessionError(message.code);
         case 'open':
           if (!tunnelReady) throw new DestinationTunnelProtocolError('received OPEN before READY');
           handleOpen(message);
