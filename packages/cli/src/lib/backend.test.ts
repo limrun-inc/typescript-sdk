@@ -40,7 +40,7 @@ describe('backend client', () => {
   describe('tunnels', () => {
     // A signed token's header and signature do not matter here; only the
     // payload's claims are read.
-    function signedToken(claims: object): string {
+    function signedToken(claims: object | null): string {
       return `lim_st_eyJhbGciOiJFZERTQSJ9.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.c2ln`;
     }
 
@@ -58,13 +58,14 @@ describe('backend client', () => {
     });
 
     it.each([
+      ['a payload that is null', null],
       ['an instance token', { sub: 'org_1', scopes: ['ios:ios_euna_x:all'] }],
       ['a token for every tunnel', { sub: 'org_1', scopes: ['tunnel:*:connect'] }],
       [
         'a token with more than its tunnel',
         { sub: 'org_1', scopes: ['tunnel:tunnel_01h455vb4pex5vsknk084sn02q:connect', 'ios:*:read'] },
       ],
-    ])('refuses %s as a tunnel token', async (_, claims) => {
+    ])('refuses %s as a tunnel token', async (_, claims: object | null) => {
       const tokenClient = new Limrun({ apiKey: signedToken(claims), baseURL: apiEndpoint, maxRetries: 0 });
       await expect(whoAmITunnel(tokenClient)).rejects.toThrow('This signed token is not a tunnel token');
     });
@@ -72,6 +73,19 @@ describe('backend client', () => {
     it('asks whoami for the organization of an admin key', async () => {
       fetchMock.mockResolvedValue(mockResponse(200, { organization: { id: 'org_1' }, scopes: ['*:*:all'] }));
       await expect(whoAmITunnel(client)).resolves.toEqual({ organizationId: 'org_1' });
+    });
+
+    it('reads the tunnel of a stored tunnel token from whoami', async () => {
+      fetchMock.mockResolvedValue(
+        mockResponse(200, {
+          organization: { id: 'org_1' },
+          scopes: ['tunnel:tunnel_01h455vb4pex5vsknk084sn02q:connect'],
+        }),
+      );
+      await expect(whoAmITunnel(client)).resolves.toEqual({
+        organizationId: 'org_1',
+        tunnelId: 'tunnel_01h455vb4pex5vsknk084sn02q',
+      });
     });
 
     it('finds a tunnel by name and creates a throwaway one', async () => {
