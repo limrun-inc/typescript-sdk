@@ -124,8 +124,9 @@ type ControlServerMessage =
       url: string;
       selectors: string[];
       token: string;
-      expiresAt: string;
+      expiresInSeconds: number;
     }
+  | { type: 'token'; instanceId: string; token: string; expiresInSeconds: number }
   | { type: 'detach'; instanceId: string; reason: string }
   | { type: 'notice'; code: string; message: string; instanceId?: string }
   | { type: 'revoked'; reason: string };
@@ -465,13 +466,24 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
         }
         return;
       }
+      case 'token': {
+        // A fresh token at half its life, or after a resume. An instance this
+        // connector gave up on stays given up.
+        const attachment = instances.get(message.instanceId);
+        if (attachment) {
+          attachment.token = message.token;
+          attachment.tokenExpiresAt = Date.now() + message.expiresInSeconds * 1000;
+        }
+        return;
+      }
       case 'attach': {
-        const tokenExpiresAt = Date.parse(message.expiresAt);
+        // Expiry is relative, so this host's clock never matters.
+        const tokenExpiresAt = Date.now() + message.expiresInSeconds * 1000;
         const existing = instances.get(message.instanceId);
         if (existing) {
-          // The hub re-sends attach with a fresh token at half its life and
-          // after every resume; a live tunnel only needs confirming. The
-          // instance keeps the selectors it first got.
+          // A new holder session re-attaches every instance, including ones
+          // this connector still serves; a live tunnel only needs confirming.
+          // The instance keeps the selectors it first got.
           existing.url = message.url;
           existing.token = message.token;
           existing.tokenExpiresAt = tokenExpiresAt;
@@ -720,10 +732,6 @@ function decodeControlServerMessage(value: unknown): ControlServerMessage | unde
       if (!Array.isArray(selectors) || selectors.some((selector) => typeof selector !== 'string')) {
         throw new DestinationTunnelProtocolError('selectors must be an array of strings');
       }
-      const expiresAt = readNonEmptyString(message, 'expiresAt');
-      if (Number.isNaN(Date.parse(expiresAt))) {
-        throw new DestinationTunnelProtocolError('expiresAt must be a timestamp');
-      }
       return {
         type,
         instanceId: readNonEmptyString(message, 'instanceId'),
@@ -731,9 +739,16 @@ function decodeControlServerMessage(value: unknown): ControlServerMessage | unde
         url: readNonEmptyString(message, 'url'),
         selectors: selectors as string[],
         token: readNonEmptyString(message, 'token'),
-        expiresAt,
+        expiresInSeconds: readExpiresIn(message),
       };
     }
+    case 'token':
+      return {
+        type,
+        instanceId: readNonEmptyString(message, 'instanceId'),
+        token: readNonEmptyString(message, 'token'),
+        expiresInSeconds: readExpiresIn(message),
+      };
     case 'detach':
       return {
         type,
@@ -753,6 +768,14 @@ function decodeControlServerMessage(value: unknown): ControlServerMessage | unde
       // Newer servers may add message types that this connector does not need.
       return undefined;
   }
+}
+
+function readExpiresIn(message: Record<string, unknown>): number {
+  const expiresInSeconds = readInteger(message, 'expiresInSeconds');
+  if (expiresInSeconds < 1) {
+    throw new DestinationTunnelProtocolError('expiresInSeconds must be positive');
+  }
+  return expiresInSeconds;
 }
 
 function revokedMessage(reason: string): string {

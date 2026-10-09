@@ -251,7 +251,7 @@ describe('tunnel connector', () => {
 
   function attach(
     instanceId: string,
-    overrides: { platform?: string; selectors?: string[]; token?: string; expiresAt?: string } = {},
+    overrides: { platform?: string; selectors?: string[]; token?: string; expiresInSeconds?: number } = {},
   ): void {
     backend.send({
       type: 'attach',
@@ -260,9 +260,13 @@ describe('tunnel connector', () => {
       url: pod.url(instanceId),
       selectors: ['localhost:3000'],
       token: 'tok',
-      expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+      expiresInSeconds: 300,
       ...overrides,
     });
+  }
+
+  function refresh(instanceId: string, token: string): void {
+    backend.send({ type: 'token', instanceId, token, expiresInSeconds: 300 });
   }
 
   function attachFailed(instanceId: string): Message | undefined {
@@ -569,17 +573,29 @@ describe('tunnel connector', () => {
     await waitFor(() => backend.of('hello').length === 1);
   });
 
-  test('opens a dropped tunnel again with the latest token, keeping the first selectors', async () => {
+  test('opens a dropped tunnel again with the latest token', async () => {
     await connectAttached();
     const instance = pod.instance('ios_1');
-    // A refresh at half life, and an edit of the tunnel's selectors since.
-    attach('ios_1', { token: 'tok-2', selectors: ['localhost:4000'] });
+    refresh('ios_1', 'tok-2');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    // A refresh is not an attach: nothing is reported or reopened.
+    expect(backend.of('attached')).toHaveLength(1);
+    expect(instance.upgrades).toBe(1);
+
+    instance.live!.socket.close();
+    await waitFor(() => backend.of('attached').length === 2, 6_000);
+    expect(instance.authorizations).toEqual(['Bearer tok', 'Bearer tok-2']);
+  });
+
+  test('keeps the first selectors when a new holder session attaches again', async () => {
+    await connectAttached();
+    const instance = pod.instance('ios_1');
+    attach('ios_1', { selectors: ['localhost:4000'] });
     await waitFor(() => backend.of('attached').length === 2);
     expect(instance.upgrades).toBe(1);
 
     instance.live!.socket.close();
     await waitFor(() => backend.of('attached').length === 3, 6_000);
-    expect(instance.authorizations).toEqual(['Bearer tok', 'Bearer tok-2']);
     expect(instance.starts).toEqual([
       expect.objectContaining({ selectors: ['localhost:3000'] }),
       expect.objectContaining({ selectors: ['localhost:3000'] }),
@@ -589,14 +605,25 @@ describe('tunnel connector', () => {
   test('waits for a fresh token instead of dialing with an expired one', async () => {
     connect();
     await activate();
-    attach('ios_1', { expiresAt: new Date(Date.now() - 1_000).toISOString() });
+    attach('ios_1', { expiresInSeconds: 1 });
     await waitFor(() => backend.of('attachFailed').length === 1);
     expect(backend.of('attachFailed')[0]).toMatchObject({ code: 'token_expired', terminal: false });
     expect(pod.instance('ios_1').upgrades).toBe(0);
 
-    attach('ios_1', { token: 'tok-fresh' });
+    refresh('ios_1', 'tok-fresh');
     await waitFor(() => backend.of('attached').length === 1, 6_000);
     expect(pod.instance('ios_1').authorizations).toEqual(['Bearer tok-fresh']);
+  });
+
+  test('ignores a token for an instance it gave up on', async () => {
+    connect();
+    await activate();
+    attach('android_1', { platform: 'android', selectors: ['localhost:80'] });
+    await waitFor(() => attachFailed('android_1') !== undefined);
+    refresh('android_1', 'tok-2');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(pod.instance('android_1').upgrades).toBe(0);
+    expect(backend.of('attachFailed')).toHaveLength(1);
   });
 
   test('gives up on selectors an Android instance cannot route', async () => {

@@ -101,15 +101,52 @@ describe('tunnel run command', () => {
     expect(createQuickTunnel).not.toHaveBeenCalled();
   });
 
-  test('creates a throwaway tunnel for --name with --selector and deletes it on exit', async () => {
+  test('creates a throwaway tunnel for --name with --selector and deletes it when stopped', async () => {
     jest.mocked(findTunnel).mockResolvedValue(undefined);
     jest.mocked(createQuickTunnel).mockResolvedValue({ id: 'tunnel_3', name: 'scratch', ephemeral: true });
-    const { command } = setup({ name: 'scratch', selector: ['localhost:3000'] });
-    await command.run();
+    let resolveClosed!: () => void;
+    const { command } = setup(
+      { name: 'scratch', selector: ['localhost:3000'] },
+      { closed: new Promise((resolve) => (resolveClosed = resolve)) },
+    );
+    const running = command.run();
+    await new Promise((resolve) => setImmediate(resolve));
+    process.emit('SIGINT');
+    resolveClosed();
+    await running;
 
     expect(createQuickTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'scratch', ['localhost:3000']);
     expect(options()).toMatchObject({ tunnelId: 'tunnel_3' });
     expect(deleteTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
+  });
+
+  test('leaves a throwaway tunnel it only joined, or lost, to its holder', async () => {
+    jest.mocked(findTunnel).mockResolvedValue({ id: 'tunnel_3', name: 'scratch', ephemeral: true });
+    const joined = setup({ name: 'scratch' });
+    await joined.command.run();
+
+    jest.mocked(findTunnel).mockResolvedValue(undefined);
+    jest.mocked(createQuickTunnel).mockResolvedValue({ id: 'tunnel_4', name: 'scratch2', ephemeral: true });
+    const replaced = setup(
+      { name: 'scratch2', selector: ['localhost:3000'] },
+      { closed: Promise.reject(new Error('tunnel scratch2: another connector replaced this one')) },
+    );
+    await expect(replaced.command.run()).rejects.toThrow('another connector replaced this one');
+    expect(deleteTunnel).not.toHaveBeenCalled();
+  });
+
+  test('stops when a tunnel key runs another tunnel than --name says', async () => {
+    let resolveClosed!: () => void;
+    const { command } = setup(
+      { name: 'b' },
+      { keyTunnelId: 'tunnel_1', closed: new Promise((resolve) => (resolveClosed = resolve)) },
+    );
+    const running = command.run();
+    await new Promise((resolve) => setImmediate(resolve));
+    options().onEvent!({ type: 'active', sessionId: 's1', name: 'a' });
+    resolveClosed();
+    await expect(running).rejects.toThrow('This key runs tunnel a, not b.');
+    expect(findTunnel).not.toHaveBeenCalled();
   });
 
   test.each([
