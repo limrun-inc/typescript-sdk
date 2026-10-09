@@ -99,25 +99,18 @@ describe('tunnel run command', () => {
     );
   });
 
-  test('runs the tunnel an admin names', async () => {
-    jest.mocked(findTunnel).mockResolvedValue({ id: 'tunnel_2', name: 'staging', ephemeral: false });
-    const { command } = setup({ name: 'staging' });
-    await command.run();
-
-    expect(findTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'staging');
-    expect(options()).toMatchObject({ tunnelId: 'tunnel_2' });
-    expect(createQuickTunnel).not.toHaveBeenCalled();
-    expect(deleteQuickTunnel).not.toHaveBeenCalled();
-  });
-
-  test('creates a throwaway tunnel for --name with --selector', async () => {
+  test("creates a throwaway tunnel for --name with --selector and runs it with the tunnel's token", async () => {
     jest.mocked(findTunnel).mockResolvedValue(undefined);
-    jest.mocked(createQuickTunnel).mockResolvedValue({ id: 'tunnel_3', name: 'scratch', ephemeral: true });
+    jest.mocked(createQuickTunnel).mockResolvedValue({
+      tunnel: { id: 'tunnel_3', name: 'scratch', ephemeral: true },
+      token: 'lim_st_quick',
+    });
     const { command, info } = setup({ name: 'scratch', selector: ['localhost:3000'] });
     await command.run();
 
     expect(createQuickTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'scratch', ['localhost:3000']);
-    expect(options()).toMatchObject({ tunnelId: 'tunnel_3' });
+    // Only tunnel tokens connect, so the admin's login never reaches the hub.
+    expect(options()).toMatchObject({ tunnelId: 'tunnel_3', apiKey: 'lim_st_quick' });
     options().onEvent!({ type: 'active', sessionId: 's1', name: 'scratch' });
     expect(info).toHaveBeenCalledWith(expect.stringContaining('goes away when this connector exits'));
     expect(deleteQuickTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
@@ -125,7 +118,10 @@ describe('tunnel run command', () => {
 
   test('deletes its throwaway tunnel when the connector fails', async () => {
     jest.mocked(findTunnel).mockResolvedValue(undefined);
-    jest.mocked(createQuickTunnel).mockResolvedValue({ id: 'tunnel_3', name: 'scratch', ephemeral: true });
+    jest.mocked(createQuickTunnel).mockResolvedValue({
+      tunnel: { id: 'tunnel_3', name: 'scratch', ephemeral: true },
+      token: 'lim_st_quick',
+    });
     const { command } = setup(
       { name: 'scratch', selector: ['localhost:3000'] },
       { closed: Promise.reject(new Error('tunnel scratch: unauthorized')) },
@@ -151,7 +147,7 @@ describe('tunnel run command', () => {
       'no key and no name',
       {},
       undefined,
-      "Run with the tunnel's token (--token), or pass --name with an admin's credential.",
+      "Run with the tunnel's token (--token), or pass --name and --selector for a throwaway tunnel.",
     ],
     [
       'a name that does not exist without selectors',
@@ -167,11 +163,16 @@ describe('tunnel run command', () => {
     expect(runTunnel).not.toHaveBeenCalled();
   });
 
-  test('refuses selectors for a tunnel that has its own', async () => {
-    jest.mocked(findTunnel).mockResolvedValue({ id: 'tunnel_2', name: 'staging', ephemeral: false });
-    const { command } = setup({ name: 'staging', selector: ['localhost:3000'] });
-    await expect(command.run()).rejects.toThrow('Tunnel staging has its own selectors');
-  });
+  test.each([[{ name: 'staging' }], [{ name: 'staging', selector: ['localhost:3000'] }]] as const)(
+    'refuses to run a console-created tunnel without its token (%j)',
+    async (flags) => {
+      jest.mocked(findTunnel).mockResolvedValue({ id: 'tunnel_2', name: 'staging', ephemeral: false });
+      const { command } = setup(flags);
+      await expect(command.run()).rejects.toThrow('Tunnel staging runs with its own token (--token)');
+      expect(runTunnel).not.toHaveBeenCalled();
+      expect(createQuickTunnel).not.toHaveBeenCalled();
+    },
+  );
 
   test.each([[{ name: 'scratch' }], [{ name: 'scratch', selector: ['localhost:3000'] }]] as const)(
     "refuses another connector's throwaway tunnel (%j)",
@@ -203,8 +204,8 @@ describe('tunnel run event lines', () => {
     ],
     [
       { type: 'keyExpiring', expiresAt: '2026-10-20T00:00:00Z' },
-      'The token this connector runs with expires at 2026-10-20T00:00:00Z. Issue a new token for tunnel staging ' +
-        'in the console (Network) and restart the connector with it.',
+      'The token this connector runs with expires at 2026-10-20T00:00:00Z. Rotate the token of tunnel staging ' +
+        'in the console (Network) and restart the connector with the new one.',
     ],
     [
       { type: 'standby', holder: { hostname: 'ci-1', since: '2026-10-08T10:00:00Z' } },

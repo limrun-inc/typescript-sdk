@@ -43,7 +43,6 @@ export async function whoAmI(client: Limrun): Promise<string> {
 interface WhoAmIBody {
   organization?: { id?: string };
   user?: { defaultOrganization?: { id?: string } };
-  scopes?: string[];
 }
 
 async function fetchWhoAmI(client: Limrun): Promise<WhoAmIBody> {
@@ -65,9 +64,8 @@ export interface PersistentTunnel {
  * Resolves the organization and, for a tunnel token, the one tunnel it runs.
  * A tunnel token is signed and names both in its claims, so they are read
  * here: the backend accepts no signed token, and the tunnel hub verifies it.
- * Any other credential asks whoami, whose scopes still name the tunnel of a
- * stored tunnel token from before they were signed. A connector needs an
- * organization key, so a user token's default organization does not count.
+ * Any other credential is an admin's, which only creates throwaway tunnels; it
+ * asks whoami, and a user token's default organization does not count.
  */
 export async function whoAmITunnel(client: Limrun): Promise<{ organizationId: string; tunnelId?: string }> {
   const apiKey = client.apiKey ?? '';
@@ -83,10 +81,11 @@ export async function whoAmITunnel(client: Limrun): Promise<{ organizationId: st
   const body = await fetchWhoAmI(client);
   const organizationId = body.organization?.id;
   if (!organizationId) {
-    throw new Error('Running a tunnel needs a tunnel token from the console, or an admin API key.');
+    throw new Error(
+      "Running a tunnel needs its token from the console, or an admin's login for a throwaway tunnel.",
+    );
   }
-  const tunnelId = onlyTunnelOf(body.scopes);
-  return tunnelId ? { organizationId, tunnelId } : { organizationId };
+  return { organizationId };
 }
 
 /** The tunnel a credential's scopes name, when its only scope connects one. */
@@ -145,21 +144,29 @@ export async function findTunnel(
   return body.tunnels?.find((tunnel) => tunnel.name === name);
 }
 
-/** Creates a throwaway tunnel that goes away when its connector does. */
+/**
+ * Creates a throwaway tunnel that goes away when its connector does, with
+ * the token the connector runs it with: only tunnel tokens connect. The
+ * token goes with the tunnel, so its lifetime is the shortest on offer.
+ */
 export async function createQuickTunnel(
   client: Limrun,
   organizationId: string,
   name: string,
   selectors: string[],
-): Promise<PersistentTunnel> {
+): Promise<{ tunnel: PersistentTunnel; token: string }> {
+  let body: { tunnel: PersistentTunnel; token?: { token?: string } };
   try {
-    const body = await client.post<{ tunnel: PersistentTunnel }>(tunnelsPath(organizationId), {
-      body: { name, selectors, ephemeral: true },
+    body = await client.post(tunnelsPath(organizationId), {
+      body: { name, selectors, ephemeral: true, token: { expirationMonths: 1 } },
     });
-    return body.tunnel;
   } catch (err) {
     rethrow(err, `Failed to create tunnel ${name}`);
   }
+  if (!body.token?.token) {
+    throw new Error(`Limrun created tunnel ${name} but returned no token to run it with.`);
+  }
+  return { tunnel: body.tunnel, token: body.token.token };
 }
 
 /**
