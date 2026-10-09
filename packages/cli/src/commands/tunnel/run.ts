@@ -1,7 +1,7 @@
 import { Flags } from '@oclif/core';
 import { runTunnel } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
-import { createQuickTunnel, findTunnel, whoAmITunnel } from '../../lib/backend';
+import { createQuickTunnel, deleteQuickTunnel, findTunnel, whoAmITunnel } from '../../lib/backend';
 import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
 import {
   tunnelInspectionConfig,
@@ -108,6 +108,16 @@ export default class TunnelRun extends BaseCommand {
       } finally {
         process.off('SIGINT', stop);
         process.off('SIGTERM', stop);
+        // A connector stopped while connecting, refused, or out of retries
+        // never said bye, so its throwaway tunnel would hold the name until
+        // the hub sweeps it.
+        if (tunnel.created) {
+          await deleteQuickTunnel(this.client, organizationId, tunnel.id).catch((error: unknown) =>
+            this.warn(
+              `${error instanceof Error ? error.message : String(error)}; it goes away within ten minutes.`,
+            ),
+          );
+        }
       }
     });
   }

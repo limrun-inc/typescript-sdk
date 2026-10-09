@@ -1,7 +1,7 @@
 import { Parser } from '@oclif/core';
 import { runTunnel, type TunnelConnectorOptions } from '@limrun/api';
 import TunnelRun from './run';
-import { createQuickTunnel, findTunnel, whoAmITunnel } from '../../lib/backend';
+import { createQuickTunnel, deleteQuickTunnel, findTunnel, whoAmITunnel } from '../../lib/backend';
 import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
 
 jest.mock('@limrun/api', () => ({ ...jest.requireActual('@limrun/api'), runTunnel: jest.fn() }));
@@ -9,6 +9,7 @@ jest.mock('../../lib/backend', () => ({
   whoAmITunnel: jest.fn(),
   findTunnel: jest.fn(),
   createQuickTunnel: jest.fn(),
+  deleteQuickTunnel: jest.fn(async () => {}),
 }));
 
 beforeEach(() => jest.clearAllMocks());
@@ -97,6 +98,7 @@ describe('tunnel run command', () => {
     expect(findTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'staging');
     expect(options()).toMatchObject({ tunnelId: 'tunnel_2' });
     expect(createQuickTunnel).not.toHaveBeenCalled();
+    expect(deleteQuickTunnel).not.toHaveBeenCalled();
   });
 
   test('creates a throwaway tunnel for --name with --selector', async () => {
@@ -109,6 +111,18 @@ describe('tunnel run command', () => {
     expect(options()).toMatchObject({ tunnelId: 'tunnel_3' });
     options().onEvent!({ type: 'active', sessionId: 's1', name: 'scratch' });
     expect(info).toHaveBeenCalledWith(expect.stringContaining('goes away when this connector exits'));
+    expect(deleteQuickTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
+  });
+
+  test('deletes its throwaway tunnel when the connector fails', async () => {
+    jest.mocked(findTunnel).mockResolvedValue(undefined);
+    jest.mocked(createQuickTunnel).mockResolvedValue({ id: 'tunnel_3', name: 'scratch', ephemeral: true });
+    const { command } = setup(
+      { name: 'scratch', selector: ['localhost:3000'] },
+      { closed: Promise.reject(new Error('tunnel scratch: unauthorized')) },
+    );
+    await expect(command.run()).rejects.toThrow('tunnel scratch: unauthorized');
+    expect(deleteQuickTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
   });
 
   test.each([

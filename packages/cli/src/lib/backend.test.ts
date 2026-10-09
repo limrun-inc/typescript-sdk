@@ -1,6 +1,14 @@
 import Limrun, { AuthenticationError } from '@limrun/api';
 
-import { createQuickTunnel, findTunnel, getSecret, putSecret, whoAmI, whoAmITunnel } from './backend';
+import {
+  createQuickTunnel,
+  deleteQuickTunnel,
+  findTunnel,
+  getSecret,
+  putSecret,
+  whoAmI,
+  whoAmITunnel,
+} from './backend';
 
 const apiEndpoint = 'https://api.example.test';
 
@@ -77,6 +85,17 @@ describe('backend client', () => {
         selectors: ['localhost:3000'],
         ephemeral: true,
       });
+    });
+
+    it('deletes a throwaway tunnel by ID, and a tunnel the hub already removed is fine', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+      await deleteQuickTunnel(client, 'org_1', 'tunnel_2');
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`${apiEndpoint}/v1/organizations/org_1/tunnels/tunnel_2`);
+      expect(init.method).toBe('DELETE');
+
+      fetchMock.mockResolvedValueOnce(mockResponse(404, { message: 'tunnel not found' }));
+      await expect(deleteQuickTunnel(client, 'org_1', 'tunnel_2')).resolves.toBeUndefined();
     });
   });
 

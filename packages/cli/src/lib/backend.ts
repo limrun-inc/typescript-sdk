@@ -114,6 +114,25 @@ export async function createQuickTunnel(
   }
 }
 
+/**
+ * Deletes a throwaway tunnel this CLI created. The hub deletes it when its
+ * connector says bye, so a missing tunnel is the normal case.
+ */
+export async function deleteQuickTunnel(
+  client: Limrun,
+  organizationId: string,
+  tunnelId: string,
+): Promise<void> {
+  try {
+    await client.delete(`${tunnelsPath(organizationId)}/${encodeURIComponent(tunnelId)}`);
+  } catch (err) {
+    if (err instanceof NotFoundError) {
+      return;
+    }
+    rethrow(err, `Failed to delete tunnel ${tunnelId}`);
+  }
+}
+
 function secretPath(organizationId: string, secretType: string, secretName: string): string {
   return `/v1/organizations/${encodeURIComponent(organizationId)}/secrets/${encodeURIComponent(
     secretType,
