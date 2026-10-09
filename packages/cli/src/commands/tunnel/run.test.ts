@@ -26,7 +26,7 @@ describe('tunnel run flags', () => {
 
 describe('tunnel run command', () => {
   function setup(
-    flags: { name?: string; selector?: readonly string[] },
+    flags: { name?: string; selector?: readonly string[]; token?: string },
     { keyTunnelId, closed = Promise.resolve() }: { keyTunnelId?: string; closed?: Promise<void> } = {},
   ) {
     jest
@@ -90,6 +90,15 @@ describe('tunnel run command', () => {
     );
   });
 
+  test('runs with the key --token passes, over one in the shell', async () => {
+    const { command } = setup({ token: 'lim_tunnel_key' }, { keyTunnelId: 'tunnel_1' });
+    await command.run();
+
+    expect(command.setParsedFlags).toHaveBeenCalledWith(
+      expect.objectContaining({ token: 'lim_tunnel_key', 'api-key': 'lim_tunnel_key' }),
+    );
+  });
+
   test('runs the tunnel an admin names', async () => {
     jest.mocked(findTunnel).mockResolvedValue({ id: 'tunnel_2', name: 'staging', ephemeral: false });
     const { command } = setup({ name: 'staging' });
@@ -137,7 +146,7 @@ describe('tunnel run command', () => {
       'no key and no name',
       {},
       undefined,
-      "Run with the tunnel's key (LIM_API_KEY), or pass --name with an admin's credential.",
+      "Run with the tunnel's key (--token), or pass --name with an admin's credential.",
     ],
     [
       'a name that does not exist without selectors',
