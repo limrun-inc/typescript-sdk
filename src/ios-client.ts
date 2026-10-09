@@ -747,8 +747,8 @@ export type InstanceClient = {
 
   /**
    * Show or hide touch ripples and drag trails across this iOS simulator.
-   * Enabled by default at boot. Applies to all viewers, screenshots, and recordings;
-   * reconnecting or starting a recording does not change the setting.
+   * Disabled at boot; recording start enables them and stop restores the manual setting.
+   * Applies to all viewers, screenshots, and recordings. Reconnecting preserves the setting.
    */
   setTouchIndicators: (enabled: boolean) => Promise<void>;
 
