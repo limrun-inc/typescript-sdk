@@ -9,7 +9,8 @@ import {
 export default class IosTouchIndicators extends BaseCommand {
   static summary = 'Show or hide touch ripples and drag trails on an iOS instance';
   static description =
-    'Touch indicators are enabled by default on iPhone and iPad simulators. ' +
+    'Touch indicators visualize input with translucent circles that expand where you touch ' +
+    'and trails that trace your finger during drags. They are enabled by default on iPhone and iPad simulators. ' +
     'This setting affects all live viewers, screenshots, and recordings. ' +
     'It remains set across client reconnects and recording start/stop; a new simulator boot enables it again.';
   static examples = [
