@@ -229,7 +229,7 @@ describe('iOS launchApp serialization', () => {
     'SWIFT_DEBUG_LIB_PRESPECIALIZED_PATH',
     'LIMRUN_INSERT_LIBRARIES',
     'SIMCTL_CHILD_DYLD_INSERT_LIBRARIES',
-  ])('rejects %s without sending it', async (key) => {
+  ])('passes %s to the server for validation', async (key) => {
     const { createInstanceClient } = await import('../src/ios-client');
     const client = await createInstanceClient({
       apiUrl: 'https://example.test/v1/ios_123/api',
@@ -238,14 +238,10 @@ describe('iOS launchApp serialization', () => {
     });
     try {
       sentMessages.length = 0;
-      await expect(
-        client.launchApp('com.example.app', { env: { [key]: '/tmp/secret.dylib' } }),
-      ).rejects.toThrow('reserved');
-      expect(sentMessages).toEqual([]);
-      await expect(
-        client.launchApp('com.example.app', { env: { FEATURE: '1' }, mode: 'ForegroundIfRunning' }),
-      ).rejects.toThrow('requires RelaunchIfRunning');
-      expect(sentMessages).toEqual([]);
+      await client.launchApp('com.example.app', { env: { [key]: '/tmp/secret.dylib' } });
+      expect(sentMessages.find((message) => message['type'] === 'launchApp')).toMatchObject({
+        env: { [key]: '/tmp/secret.dylib' },
+      });
     } finally {
       client.disconnect();
     }

@@ -53,9 +53,13 @@ test('direct fallback carries the same env and disconnects', async () => {
   expect(sendSessionCommand).not.toHaveBeenCalled();
 });
 
-test('reserved env fails before opening either connection', async () => {
+test('forwards reserved env through the daemon for server validation', async () => {
+  jest.mocked(ensureDaemonSession).mockResolvedValue(true);
   const { command } = setup(['DYLD_LIBRARY_PATH=/tmp']);
-  await expect(command.run()).rejects.toThrow('reserved');
-  expect(ensureDaemonSession).not.toHaveBeenCalled();
+  await command.run();
+  expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'launch-app', [
+    'com.example.app',
+    { mode: 'RelaunchIfRunning', env: { DYLD_LIBRARY_PATH: '/tmp' } },
+  ]);
   expect(getIosInstanceClient).not.toHaveBeenCalled();
 });

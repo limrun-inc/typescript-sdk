@@ -31,25 +31,33 @@ describe('buildLaunchAppArgument', () => {
     });
   });
 
+  test.each(['MISSING', '=empty'])('rejects malformed --env %s', (entry) => {
+    expect(() => buildLaunchAppArgument({ env: [entry] }, { modeExplicitlyProvided: false })).toThrow();
+  });
+
   test.each([
-    'MISSING',
-    '=empty',
     'BAD-KEY=value',
     'KEY=bad\nvalue',
     'DYLD_LIBRARY_PATH=/tmp',
     'LIMRUN_INSERT_LIBRARIES=/tmp',
     'SIMCTL_CHILD_FEATURE=1',
-  ])('rejects invalid --env %s', (entry) => {
-    expect(() => buildLaunchAppArgument({ env: [entry] }, { modeExplicitlyProvided: false })).toThrow();
+  ])('passes --env %s through for server validation', (entry) => {
+    const separator = entry.indexOf('=');
+    expect(buildLaunchAppArgument({ env: [entry] }, { modeExplicitlyProvided: false })).toMatchObject({
+      env: { [entry.slice(0, separator)]: entry.slice(separator + 1) },
+    });
   });
 
-  test('rejects env with explicit foreground and combines safe env with Detox', () => {
-    expect(() =>
+  test('passes explicit foreground mode with env through for server validation', () => {
+    expect(
       buildLaunchAppArgument(
         { env: ['FEATURE=1'], mode: 'ForegroundIfRunning' },
         { modeExplicitlyProvided: true },
       ),
-    ).toThrow('--env requires RelaunchIfRunning');
+    ).toEqual({ mode: 'ForegroundIfRunning', env: { FEATURE: '1' } });
+  });
+
+  test('combines env with Detox', () => {
     expect(
       buildLaunchAppArgument(
         {

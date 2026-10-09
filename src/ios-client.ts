@@ -1,4 +1,3 @@
-import { validateLaunchEnvironment } from './ios-launch-environment';
 import os from 'os';
 import crypto from 'crypto';
 import path from 'path';
@@ -2371,18 +2370,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           new Error('launchApp runtime launches require RelaunchIfRunning so runtime injection is applied.'),
         );
       }
-      try {
-        if (launchOptions.env) validateLaunchEnvironment(launchOptions.env);
-      } catch (error) {
-        return Promise.reject(error);
-      }
       const hasEnvironment = Object.keys(launchOptions.env ?? {}).length > 0;
-      if (hasEnvironment && launchOptions.mode === 'ForegroundIfRunning') {
-        return Promise.reject(
-          new Error('launch environment requires RelaunchIfRunning so environment variables are applied'),
+      const mode =
+        launchOptions.runtime ? 'RelaunchIfRunning' : (
+          launchOptions.mode ?? (hasEnvironment ? 'RelaunchIfRunning' : undefined)
         );
-      }
-      const mode = launchOptions.runtime || hasEnvironment ? 'RelaunchIfRunning' : launchOptions.mode;
       const onExit = launchOptions.onExit;
       const execId = onExit ? generateId() : undefined;
       if (execId && onExit) {
