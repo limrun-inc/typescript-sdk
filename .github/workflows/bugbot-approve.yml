@@ -69,6 +69,9 @@ jobs:
           PR: ${{ steps.pr.outputs.pr }}
           COMMENT_ID: ${{ github.event.comment.id }}
         run: |
-          gh workflow run bugbot-approve.yaml -R limrun-inc/limrun \
-            -f repo="$GITHUB_REPOSITORY" -f pr="$PR" -f comment-id="$COMMENT_ID" \
-            -f require-bugbot=true
+          # The REST dispatch needs only Actions write; gh workflow run would
+          # also read limrun's default branch, which this token cannot.
+          gh api -X POST repos/limrun-inc/limrun/actions/workflows/bugbot-approve.yaml/dispatches \
+            -f ref=main -f "inputs[repo]=$GITHUB_REPOSITORY" -f "inputs[pr]=$PR" \
+            -f "inputs[comment-id]=$COMMENT_ID" \
+            -f "inputs[require-bugbot]=true"
