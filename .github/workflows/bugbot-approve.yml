@@ -4,7 +4,7 @@ name: Bugbot Approve
 # bugbot-approve workflow, which approves a PR as limrun-review-bot once
 # Cursor Bugbot has reviewed its head commit with no unresolved finding
 # above Low. Nothing is evaluated here. After resolving a Medium or higher
-# thread without pushing, comment "limrunbot run" on the PR.
+# thread without pushing, comment "limrun-review-bot run" on the PR.
 on:
   check_run:
     types: [completed]
@@ -29,7 +29,7 @@ jobs:
     if: >-
       (github.event_name == 'check_run' && github.event.check_run.name == 'Cursor Bugbot') ||
       github.event_name == 'pull_request_target' ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'limrunbot run')
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'limrun-review-bot run')
         && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
       github.event_name == 'workflow_dispatch'
     runs-on: blacksmith-2vcpu-ubuntu-2404
