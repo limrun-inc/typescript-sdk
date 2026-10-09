@@ -24,11 +24,13 @@ permissions:
 jobs:
   forward:
     # check_run fires for every check in the repo; only Bugbot's matters.
-    # Comments only matter on PRs and only when they carry the command.
+    # Comments only matter on PRs, only when they carry the command, and
+    # only from people who belong here: on a public repo anyone can comment.
     if: >-
       (github.event_name == 'check_run' && github.event.check_run.name == 'Cursor Bugbot') ||
       github.event_name == 'pull_request_target' ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'limrunbot run')) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'limrunbot run')
+        && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
       github.event_name == 'workflow_dispatch'
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
