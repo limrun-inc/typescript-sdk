@@ -578,10 +578,10 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@limrun/api@0.59.0":
-  version "0.59.0"
-  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.59.0.tgz#18c62db7edb69308fdd5bdd699ee0c9ba1f3a65a"
-  integrity sha512-CipjJnvfLq8cTYP58vUneFyJlGvPmr+PspBuuGST1/krYi0QoVOpdNXGqOexio1N6ltnAG5GoQcU40ViDEUTbQ==
+"@limrun/api@0.60.0":
+  version "0.60.0"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.60.0.tgz#af03cc40cb74ba40c71a38f95b665397e01483eb"
+  integrity sha512-w7A0PiqNF5XHBU6xUzvAsi1BEnJeBhzYKckuVETp/Nkehv5QF28u2q90LgkjifdFEJkULus7IzeCqnqTnynJCA==
   dependencies:
     "@limrun/xdelta3-wasm" "0.2.0"
     "@types/har-format" "^1.2.16"
@@ -589,7 +589,7 @@
     https-proxy-agent "7.0.6"
     ignore "^7.0.5"
     proxy-from-env "^2.1.0"
-    undici "7.29.0"
+    undici "7.29.1"
     ws "^8.21.1"
     yauzl "^3.4.0"
 
@@ -2638,7 +2638,7 @@ undici-types@~8.3.0:
   resolved "https://registry.yarnpkg.com/undici-types/-/undici-types-8.3.0.tgz#44e9fc9f3244648cdea35e4f9bb2d681e9410809"
   integrity sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==
 
-undici@7.29.0, undici@7.29.1:
+undici@7.29.1:
   version "7.29.1"
   resolved "https://registry.yarnpkg.com/undici/-/undici-7.29.1.tgz#7741c6fc8b3e1a48e30323833642bfbe841443ad"
   integrity sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==
