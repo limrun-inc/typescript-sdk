@@ -896,6 +896,7 @@ export type InstanceClient = {
    * canvas without stretching. Pass display to keep recording one panel.
    * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
    * The server default is `5`.
+   * Set `showTouches: true` to draw touch indicators into the MP4. Disabled by default.
    * With `persist`, the completed recording is uploaded to Limrun's bucket
    * when the recording stops or the instance terminates; list it with
    * `iosInstances.listRecordings`.
@@ -904,6 +905,7 @@ export type InstanceClient = {
     quality?: RecordingQuality;
     persist?: PersistOption;
     display?: DuoDisplay;
+    showTouches?: boolean;
   }) => Promise<void>;
 
   /**
@@ -1398,6 +1400,7 @@ type AppExitMessage = {
 };
 
 type ServerResponse = {
+  showTouches?: boolean;
   state?: FoldState;
   type: string;
   id: string;
@@ -1946,7 +1949,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       keychainImportResult: (msg): KeychainRestoreResult => ({
         durationMs: msg.durationMs ?? 0,
       }),
-      startVideoRecordingResult: () => undefined,
+      startVideoRecordingResult: (msg) => ({ showTouches: msg.showTouches }),
       stopVideoRecordingResult: () => undefined,
       startAppLogCaptureResult: () => undefined,
       stopAppLogCaptureResult: () => undefined,
@@ -2563,12 +2566,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       quality?: RecordingQuality;
       persist?: PersistOption;
       display?: DuoDisplay;
+      showTouches?: boolean;
     }): Promise<void> => {
       const request: {
         quality?: RecordingQuality;
         persist?: boolean;
         ttlSeconds?: number;
         display?: DuoDisplay;
+        showTouches?: boolean;
       } = {
         ...persistFields(opts?.persist),
       };
@@ -2579,7 +2584,20 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         request.quality = opts.quality;
       }
       if (opts?.display !== undefined) request.display = opts.display;
-      await sendRequest<void>('startVideoRecording', request);
+      if (opts?.showTouches !== undefined) request.showTouches = opts.showTouches;
+      const result = await sendRequest<{ showTouches?: boolean }>('startVideoRecording', request);
+      if (opts?.showTouches && result.showTouches !== true) {
+        try {
+          await sendRequest<void>('stopVideoRecording', {});
+        } catch (error) {
+          throw new Error(
+            `This simulator does not support recording touch indicators. Could not stop the unmarked recording: ${error}`,
+          );
+        }
+        throw new Error(
+          'This simulator does not support recording touch indicators. The unmarked recording was stopped. Create a simulator with a newer runtime and try again.',
+        );
+      }
     };
 
     const startAppLogCapture = async (opts: { bundleId: string; persist?: PersistOption }): Promise<void> => {

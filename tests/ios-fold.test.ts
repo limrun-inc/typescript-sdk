@@ -1,6 +1,9 @@
 import type { PerformAction } from '../src/ios-client';
 
 const sentMessages: Record<string, unknown>[] = [];
+let mockRecordingSupport = true;
+let mockRecordingError: string | undefined;
+let mockStopError: string | undefined;
 const mockSockets: Array<{ emit: (event: string, ...args: unknown[]) => boolean }> = [];
 
 jest.mock('ws', () => {
@@ -51,6 +54,7 @@ jest.mock('ws', () => {
           : message['type'] === 'performActions' ? 'performActionsResult'
           : message['type'] === 'scroll' ? 'scrollResult'
           : message['type'] === 'startVideoRecording' ? 'startVideoRecordingResult'
+          : message['type'] === 'stopVideoRecording' ? 'stopVideoRecordingResult'
           : 'tapResult';
         process.nextTick(() =>
           this['emit'](
@@ -59,6 +63,13 @@ jest.mock('ws', () => {
               JSON.stringify({
                 type,
                 id: message.id,
+                ...(message.type === 'startVideoRecording' && mockRecordingSupport ?
+                  { showTouches: message.showTouches === true }
+                : {}),
+                error:
+                  message.type === 'startVideoRecording' ? mockRecordingError
+                  : message.type === 'stopVideoRecording' ? mockStopError
+                  : undefined,
                 state:
                   message['type'] === 'getFoldState' ?
                     null
@@ -95,6 +106,9 @@ jest.mock('ws', () => {
 
 describe('native iPhone Duo controls', () => {
   beforeEach(() => {
+    mockRecordingSupport = true;
+    mockRecordingError = undefined;
+    mockStopError = undefined;
     sentMessages.length = 0;
     mockSockets.length = 0;
   });
@@ -164,6 +178,90 @@ describe('native iPhone Duo controls', () => {
       expect(recordings[0]).not.toHaveProperty('display');
       expect(recordings[1]).toMatchObject({ display: 'inner' });
       expect(recordings[2]).toMatchObject({ display: 'outer' });
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it('keeps touch indicators opt-in and forwards them alongside persistence and display options', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test',
+      token: 'test',
+      logLevel: 'none',
+    });
+    try {
+      await client.startRecording();
+      await client.startRecording({ showTouches: false });
+      await client.startRecording({
+        showTouches: true,
+        quality: 10,
+        persist: { ttlSeconds: 3600 },
+        display: 'inner',
+      });
+      const recordings = sentMessages.filter((message) => message['type'] === 'startVideoRecording');
+      expect(recordings[0]).not.toHaveProperty('showTouches');
+      expect(recordings[1]).toMatchObject({ showTouches: false });
+      expect(recordings[2]).toMatchObject({
+        showTouches: true,
+        quality: 10,
+        persist: true,
+        ttlSeconds: 3600,
+        display: 'inner',
+      });
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it('stops an unmarked recording if an older runtime ignores the opt-in', async () => {
+    mockRecordingSupport = false;
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test',
+      token: 'test',
+      logLevel: 'none',
+    });
+    try {
+      await client.startRecording();
+      await expect(client.startRecording({ showTouches: true })).rejects.toThrow(
+        'unmarked recording was stopped',
+      );
+      expect(sentMessages.filter((message) => message['type'] === 'stopVideoRecording')).toHaveLength(1);
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it("does not stop someone else's recording when start is rejected", async () => {
+    mockRecordingError = 'A video recording is already in progress';
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test',
+      token: 'test',
+      logLevel: 'none',
+    });
+    try {
+      await expect(client.startRecording({ showTouches: true })).rejects.toThrow('already in progress');
+      expect(sentMessages.filter((message) => message['type'] === 'stopVideoRecording')).toHaveLength(0);
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it('reports when an unsupported runtime also fails to stop the recording', async () => {
+    mockRecordingSupport = false;
+    mockStopError = 'connection failed';
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test',
+      token: 'test',
+      logLevel: 'none',
+    });
+    try {
+      await expect(client.startRecording({ showTouches: true })).rejects.toThrow(
+        'Could not stop the unmarked recording',
+      );
     } finally {
       client.disconnect();
     }
