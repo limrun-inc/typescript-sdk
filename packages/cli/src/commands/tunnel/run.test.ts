@@ -10,7 +10,14 @@ jest.mock('../../lib/backend', () => ({
   findTunnel: jest.fn(),
   createQuickTunnel: jest.fn(),
   deleteQuickTunnel: jest.fn(async () => {}),
+  tunnelTokenClaims: jest.requireActual('../../lib/backend').tunnelTokenClaims,
 }));
+
+// A tunnel token's header and signature do not matter to the CLI; only the
+// payload's claims are read.
+const tunnelToken = `lim_st_eyJhbGciOiJFZERTQSJ9.${Buffer.from(
+  JSON.stringify({ sub: 'org_1', scopes: ['tunnel:tunnel_01h455vb4pex5vsknk084sn02q:connect'] }),
+).toString('base64url')}.c2ln`;
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -90,16 +97,25 @@ describe('tunnel run command', () => {
     );
   });
 
-  test('runs with the key --token passes, over one in the shell', async () => {
-    const { command } = setup({ token: 'lim_tunnel_token' }, { tokenTunnelId: 'tunnel_1' });
+  test('runs with the token --token passes, over a key in the shell', async () => {
+    const { command } = setup({ token: tunnelToken }, { tokenTunnelId: 'tunnel_1' });
     await command.run();
 
     expect(command.setParsedFlags).toHaveBeenCalledWith(
-      expect.objectContaining({ token: 'lim_tunnel_token', 'api-key': 'lim_tunnel_token' }),
+      expect.objectContaining({ token: tunnelToken, 'api-key': tunnelToken }),
     );
   });
 
-  test("creates a throwaway tunnel for --name with --selector and runs it with the tunnel's token", async () => {
+  test.each([
+    ['an API key', 'lim_' + 'k'.repeat(48)],
+    ['a signed token for an instance', 'lim_st_e30.e30.c2ln'],
+  ])('refuses %s passed as --token', async (_, token) => {
+    const { command } = setup({ token });
+    await expect(command.run()).rejects.toThrow('--token takes a tunnel token');
+    expect(whoAmITunnel).not.toHaveBeenCalled();
+  });
+
+  test("creates a quick tunnel for --name with --selector and runs it with the tunnel's token", async () => {
     jest.mocked(findTunnel).mockResolvedValue(undefined);
     jest.mocked(createQuickTunnel).mockResolvedValue({
       tunnel: { id: 'tunnel_3', name: 'scratch', ephemeral: true },
@@ -116,7 +132,21 @@ describe('tunnel run command', () => {
     expect(deleteQuickTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
   });
 
-  test('deletes its throwaway tunnel when the connector fails', async () => {
+  test('deletes its quick tunnel when the connector cannot start', async () => {
+    jest.mocked(findTunnel).mockResolvedValue(undefined);
+    jest.mocked(createQuickTunnel).mockResolvedValue({
+      tunnel: { id: 'tunnel_3', name: 'scratch', ephemeral: true },
+      token: 'lim_st_quick',
+    });
+    const { command } = setup({ name: 'scratch', selector: ['localhost:3000'] });
+    jest.mocked(runTunnel).mockImplementation(() => {
+      throw new Error('invalid header value');
+    });
+    await expect(command.run()).rejects.toThrow('invalid header value');
+    expect(deleteQuickTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
+  });
+
+  test('deletes its quick tunnel when the connector fails', async () => {
     jest.mocked(findTunnel).mockResolvedValue(undefined);
     jest.mocked(createQuickTunnel).mockResolvedValue({
       tunnel: { id: 'tunnel_3', name: 'scratch', ephemeral: true },
@@ -144,17 +174,17 @@ describe('tunnel run command', () => {
       'A tunnel token runs its own tunnel as created',
     ],
     [
-      'no key and no name',
+      'no token and no name',
       {},
       undefined,
-      "Run with the tunnel's token (--token), or pass --name and --selector for a throwaway tunnel.",
+      "Run with the tunnel's token (--token), or pass --name and --selector for a quick tunnel.",
     ],
     [
       'a name that does not exist without selectors',
       { name: 'missing' },
       undefined,
       'Tunnel missing does not exist. Create it in the console (Network > New tunnel), or pass --selector to ' +
-        'run a throwaway tunnel.',
+        'run a quick tunnel.',
     ],
   ] as const)('refuses %s', async (_, flags, tokenTunnelId, message) => {
     jest.mocked(findTunnel).mockResolvedValue(undefined);
@@ -175,11 +205,11 @@ describe('tunnel run command', () => {
   );
 
   test.each([[{ name: 'scratch' }], [{ name: 'scratch', selector: ['localhost:3000'] }]] as const)(
-    "refuses another connector's throwaway tunnel (%j)",
+    "refuses another connector's quick tunnel (%j)",
     async (flags) => {
       jest.mocked(findTunnel).mockResolvedValue({ id: 'tunnel_3', name: 'scratch', ephemeral: true });
       const { command } = setup(flags);
-      await expect(command.run()).rejects.toThrow("Tunnel scratch is another connector's throwaway tunnel");
+      await expect(command.run()).rejects.toThrow("Tunnel scratch is another connector's quick tunnel");
       expect(runTunnel).not.toHaveBeenCalled();
     },
   );
@@ -239,12 +269,17 @@ describe('tunnel run event lines', () => {
     );
   });
 
-  test('says a throwaway tunnel goes with its connector', () => {
+  test('says a quick tunnel goes with its connector, and restarts for a new token', () => {
     expect(
       formatTunnelConnectorEvent('scratch', { type: 'active', sessionId: 's1', name: 'scratch' }, true),
     ).toBe(
       'Tunnel scratch is active. Instances created with --tunnel scratch attach here; press Ctrl+C to stop. ' +
-        'It is a throwaway tunnel and goes away when this connector exits.',
+        'It is a quick tunnel and goes away when this connector exits.',
+    );
+    expect(
+      formatTunnelConnectorEvent('scratch', { type: 'keyExpiring', expiresAt: '2026-10-20T00:00:00Z' }, true),
+    ).toBe(
+      'The token of quick tunnel scratch expires at 2026-10-20T00:00:00Z. Restart the connector to get a new one.',
     );
   });
 });

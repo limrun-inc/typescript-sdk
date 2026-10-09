@@ -64,7 +64,7 @@ export interface PersistentTunnel {
  * Resolves the organization and, for a tunnel token, the one tunnel it runs.
  * A tunnel token is signed and names both in its claims, so they are read
  * here: the backend accepts no signed token, and the tunnel hub verifies it.
- * Any other credential is an admin's, which only creates throwaway tunnels; it
+ * Any other credential is an admin's, which only creates quick tunnels; it
  * asks whoami, and a user token's default organization does not count.
  */
 export async function whoAmITunnel(client: Limrun): Promise<{ organizationId: string; tunnelId?: string }> {
@@ -82,7 +82,7 @@ export async function whoAmITunnel(client: Limrun): Promise<{ organizationId: st
   const organizationId = body.organization?.id;
   if (!organizationId) {
     throw new Error(
-      "Running a tunnel needs its token from the console, or an admin's login for a throwaway tunnel.",
+      "Running a tunnel needs its token from the console, or an admin's login for a quick tunnel.",
     );
   }
   return { organizationId };
@@ -145,9 +145,9 @@ export async function findTunnel(
 }
 
 /**
- * Creates a throwaway tunnel that goes away when its connector does, with
- * the token the connector runs it with: only tunnel tokens connect. The
- * token goes with the tunnel, so its lifetime is the shortest on offer.
+ * Creates a quick tunnel that goes away when its connector does, with the
+ * token the connector runs it with: only tunnel tokens connect. The token
+ * goes with the tunnel, so it lasts a month, the shortest the API takes.
  */
 export async function createQuickTunnel(
   client: Limrun,
@@ -164,13 +164,15 @@ export async function createQuickTunnel(
     rethrow(err, `Failed to create tunnel ${name}`);
   }
   if (!body.token?.token) {
+    // Nothing can run a tunnel without its token, so it goes at once.
+    await deleteQuickTunnel(client, organizationId, body.tunnel.id).catch(() => {});
     throw new Error(`Limrun created tunnel ${name} but returned no token to run it with.`);
   }
   return { tunnel: body.tunnel, token: body.token.token };
 }
 
 /**
- * Deletes a throwaway tunnel this CLI created. The hub deletes it when its
+ * Deletes a quick tunnel this CLI created. The hub deletes it when its
  * connector says bye, so a missing tunnel is the normal case.
  */
 export async function deleteQuickTunnel(

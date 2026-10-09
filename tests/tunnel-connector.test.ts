@@ -294,7 +294,7 @@ describe('tunnel connector', () => {
     expect(instance.starts).toEqual([
       expect.objectContaining({ type: 'start', selectors: ['localhost:3000'], name: 'staging' }),
     ]);
-    // The instance is opened with the token the API sent for it, never the key.
+    // The instance is opened with the attach token the hub sent for it, never the tunnel token.
     expect(instance.authorizations).toEqual(['Bearer tok']);
     expect(backend.of('attached')).toEqual([{ type: 'attached', instanceId: 'ios_1', tunnelId: 'tun-1' }]);
     expect(events).toEqual([
@@ -636,7 +636,7 @@ describe('tunnel connector', () => {
     expect(pod.instance('android_1').upgrades).toBe(0);
   });
 
-  test('warns once a day while its key expires within two weeks', async () => {
+  test('warns once a day while its token expires within two weeks', async () => {
     connect();
     await waitFor(() => backend.of('hello').length === 1);
     const soon = new Date(Date.now() + 3 * 24 * 60 * 60_000).toISOString();

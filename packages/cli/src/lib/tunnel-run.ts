@@ -15,13 +15,14 @@ export function formatTunnelConnectorEvent(
       return (
         `Tunnel ${event.name} is active. Instances created with --tunnel ${event.name} attach here; ` +
         `press Ctrl+C to stop.` +
-        (ephemeral ? ' It is a throwaway tunnel and goes away when this connector exits.' : '')
+        (ephemeral ? ' It is a quick tunnel and goes away when this connector exits.' : '')
       );
     case 'keyExpiring':
-      return (
-        `The token this connector runs with expires at ${event.expiresAt}. Rotate the token of ${tunnel} ` +
-        'in the console (Network) and restart the connector with the new one.'
-      );
+      // A quick tunnel's token goes with it, so a restart brings a new one.
+      return ephemeral ?
+          `The token of quick ${tunnel} expires at ${event.expiresAt}. Restart the connector to get a new one.`
+        : `The token this connector runs with expires at ${event.expiresAt}. Rotate the token of ${tunnel} ` +
+            'in the console (Network) and restart the connector with the new one.';
     case 'standby':
       return (
         `Standby: ${event.holder.hostname} holds ${tunnel}` +

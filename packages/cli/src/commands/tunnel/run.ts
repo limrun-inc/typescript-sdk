@@ -1,7 +1,13 @@
 import { Flags } from '@oclif/core';
 import { runTunnel } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
-import { createQuickTunnel, deleteQuickTunnel, findTunnel, whoAmITunnel } from '../../lib/backend';
+import {
+  createQuickTunnel,
+  deleteQuickTunnel,
+  findTunnel,
+  tunnelTokenClaims,
+  whoAmITunnel,
+} from '../../lib/backend';
 import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
 import {
   tunnelInspectionConfig,
@@ -20,7 +26,7 @@ export default class TunnelRun extends BaseCommand {
     'a destination tunnel to every iOS and Android instance created with --tunnel <name>, until Ctrl+C. ' +
     'Run it with the tunnel token the console shows (--token); the token names its tunnel, and the ' +
     "tunnel's selectors decide which destinations instances reach through this machine. With an " +
-    "admin's login, --name and --selector run a throwaway tunnel that goes away when this connector " +
+    "admin's login, --name and --selector run a quick tunnel that goes away when this connector " +
     'exits. Instance tunnels stay up while the connection to Limrun reconnects. One connector holds a ' +
     'tunnel at a time: others wait on standby, and --replace takes it over.';
   static examples = [
@@ -33,16 +39,16 @@ export default class TunnelRun extends BaseCommand {
     ...BaseCommand.baseFlags,
     token: Flags.string({
       description:
-        'Tunnel token from the console (Network > New tunnel). Takes precedence over --api-key and LIM_API_KEY.',
+        'Tunnel token from the console (Network) or the API. Takes precedence over --api-key and LIM_API_KEY.',
     }),
     name: Flags.string({
       description:
-        "Name of a throwaway tunnel to run with --selector and an admin's login. A tunnel token runs its own " +
+        "Name of a quick tunnel to run with --selector and an admin's login. A tunnel token runs its own " +
         'tunnel and needs no name.',
     }),
     selector: Flags.string({
       description:
-        'Run a throwaway tunnel with this destination, as localhost:port, IPv4:port, [IPv6]:port, or a ' +
+        'Run a quick tunnel with this destination, as localhost:port, IPv4:port, [IPv6]:port, or a ' +
         'private exact or *. wildcard domain. A tunnel created in the console keeps its own selectors. ' +
         'Repeat for more selectors.',
       multiple: true,
@@ -69,7 +75,10 @@ export default class TunnelRun extends BaseCommand {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(TunnelRun);
-    // A tunnel token authenticates like an API key and wins over one already in the shell.
+    if (flags.token && !tunnelTokenClaims(flags.token)) {
+      this.error('--token takes a tunnel token from the console (Network) or the API; this is not one.');
+    }
+    // A tunnel token goes where the API key would, and wins over one already in the shell.
     this.setParsedFlags(flags.token ? { ...flags, 'api-key': flags.token } : flags);
     let inspection: TunnelInspectionContext;
     try {
@@ -84,37 +93,40 @@ export default class TunnelRun extends BaseCommand {
       const tunnel = await this.resolveTunnel(organizationId, tokenTunnelId, flags.name, selectors);
       // A tunnel token's tunnel learns its name from the first active.
       let name = flags.name;
-      const connector = runTunnel({
-        // Only tunnel tokens connect: a throwaway tunnel runs with its own.
-        apiKey: tunnel.token ?? this.client.apiKey ?? '',
-        baseURL: this.client.baseURL,
-        organizationId,
-        tunnelId: tunnel.id,
-        inspection: tunnelInspectionConfig(inspection),
-        replace: flags.replace,
-        clientVersion: VERSION,
-        logLevel:
-          flags.verbose ? 'debug'
-          : this.shouldSuppressInfo() ? 'none'
-          : 'warn',
-        onEvent: (event) => {
-          if (event.type === 'active') name = event.name;
-          this.info(formatTunnelConnectorEvent(name, event, tunnel.created));
-        },
-      });
-      // close() says bye, which also takes a throwaway tunnel away.
-      const stop = (): void => void connector.close();
-      process.once('SIGINT', stop);
-      process.once('SIGTERM', stop);
+      let stop: (() => void) | undefined;
       try {
+        const connector = runTunnel({
+          // Only tunnel tokens connect: a quick tunnel runs with its own.
+          apiKey: tunnel.token ?? this.client.apiKey ?? '',
+          baseURL: this.client.baseURL,
+          organizationId,
+          tunnelId: tunnel.id,
+          inspection: tunnelInspectionConfig(inspection),
+          replace: flags.replace,
+          clientVersion: VERSION,
+          logLevel:
+            flags.verbose ? 'debug'
+            : this.shouldSuppressInfo() ? 'none'
+            : 'warn',
+          onEvent: (event) => {
+            if (event.type === 'active') name = event.name;
+            this.info(formatTunnelConnectorEvent(name, event, tunnel.created));
+          },
+        });
+        // close() says bye, which also takes a quick tunnel away.
+        stop = (): void => void connector.close();
+        process.once('SIGINT', stop);
+        process.once('SIGTERM', stop);
         await connector.closed;
       } catch (error) {
         this.error(error instanceof Error ? error.message : String(error));
       } finally {
-        process.off('SIGINT', stop);
-        process.off('SIGTERM', stop);
+        if (stop) {
+          process.off('SIGINT', stop);
+          process.off('SIGTERM', stop);
+        }
         // A connector stopped while connecting, refused, or out of retries
-        // never said bye, so its throwaway tunnel would hold the name until
+        // never said bye, so its quick tunnel would hold the name until
         // the hub sweeps it.
         if (tunnel.created) {
           await deleteQuickTunnel(this.client, organizationId, tunnel.id).catch((error: unknown) =>
@@ -128,7 +140,7 @@ export default class TunnelRun extends BaseCommand {
   }
 
   /**
-   * The tunnel to run: the one a tunnel token names, or a throwaway tunnel
+   * The tunnel to run: the one a tunnel token names, or a quick tunnel
    * that --name and --selector create with its own token.
    */
   private async resolveTunnel(
@@ -147,25 +159,23 @@ export default class TunnelRun extends BaseCommand {
       return { id: tokenTunnelId, created: false };
     }
     if (!name) {
-      this.error(
-        "Run with the tunnel's token (--token), or pass --name and --selector for a throwaway tunnel.",
-      );
+      this.error("Run with the tunnel's token (--token), or pass --name and --selector for a quick tunnel.");
     }
     const existing = await findTunnel(this.client, organizationId, name);
     if (existing?.ephemeral) {
-      // A throwaway tunnel is its creator's alone and goes when it stops.
-      this.error(`Tunnel ${name} is another connector's throwaway tunnel; pick another name.`);
+      // A quick tunnel is its creator's alone and goes when it stops.
+      this.error(`Tunnel ${name} is another connector's quick tunnel; pick another name.`);
     }
     if (existing) {
       this.error(
-        `Tunnel ${name} runs with its own token (--token). Rotate it in the console (Network) if you no ` +
-          'longer have it.',
+        `Tunnel ${name} runs with its own token (--token). Rotate or create its token in the console ` +
+          '(Network) if you no longer have it.',
       );
     }
     if (!selectors) {
       this.error(
         `Tunnel ${name} does not exist. Create it in the console (Network > New tunnel), or pass --selector to ` +
-          'run a throwaway tunnel.',
+          'run a quick tunnel.',
       );
     }
     const created = await createQuickTunnel(this.client, organizationId, name, selectors);
