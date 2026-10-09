@@ -88,6 +88,11 @@ export type DestinationTunnelStartOptions = Pick<
   'selectors' | 'inspection' | 'onInspectionEvent' | 'onInspectionError' | 'window' | 'logLevel'
 >;
 
+/** The inspection every instance client starts with: on, without bodies. */
+export function destinationTunnelInspection(inspection: DestinationTunnelStartOptions['inspection']) {
+  return { enabled: true, captureBodies: false, ...(inspection ?? {}) };
+}
+
 /**
  * Applies the defaults both instance clients share, so the platforms cannot
  * drift: inspection on, bodies off, and the client's log level.
@@ -98,11 +103,7 @@ export function destinationTunnelDialOptions(
 ): DestinationTcpTunnelOptions {
   return {
     selectors: options.selectors,
-    inspection: {
-      enabled: true,
-      captureBodies: false,
-      ...(options.inspection ?? {}),
-    },
+    inspection: destinationTunnelInspection(options.inspection),
     ...(options.onInspectionEvent ? { onInspectionEvent: options.onInspectionEvent } : {}),
     ...(options.onInspectionError ? { onInspectionError: options.onInspectionError } : {}),
     ...(options.window === undefined ? {} : { window: options.window }),

@@ -9,7 +9,8 @@ import {
 } from './internal/destination-tunnel-management';
 import {
   DestinationTunnelProtocolError,
-  readInteger,
+  readPositiveInteger,
+  readStringArray,
   readNonEmptyString,
   readOptionalString,
   readRecord,
@@ -19,6 +20,7 @@ import {
 import {
   DestinationTunnelSessionError,
   destinationTunnelDialOptions,
+  destinationTunnelInspection,
   startDestinationTcpTunnel,
   type DestinationTcpTunnel,
 } from './destination-tunnel-dialer';
@@ -49,8 +51,6 @@ const ATTACH_GIVE_UP_MS = 5 * 60_000;
 const TAKEN_OVER_MESSAGE = 'another connector for this tunnel took the instance over';
 /** A token this close to its expiry is not dialed with; the hub refreshes it at half its life. */
 const TOKEN_EXPIRY_MARGIN_MS = 5_000;
-/** Android instances reach exact routes on port 1024 and above. */
-const ANDROID_MIN_ROUTE_PORT = 1024;
 /** How long before its key expires the connector starts warning, and how often. */
 const KEY_WARNING_WINDOW_MS = 14 * 24 * 60 * 60_000;
 const KEY_WARNING_EVERY_MS = 24 * 60 * 60_000;
@@ -81,7 +81,7 @@ export interface TunnelConnectorOptions {
 
 export type TunnelConnectorEvent =
   /** This connector holds the tunnel; emitted once per session and control connection. */
-  | { type: 'active'; sessionId: string; name: string; keyExpiresAt?: string }
+  | { type: 'active'; sessionId: string; name: string }
   /** The connector's key expires within two weeks; emitted once a day until it does. */
   | { type: 'keyExpiring'; expiresAt: string }
   /** Another connector holds the name; emitted once per holder. */
@@ -120,7 +120,6 @@ type ControlServerMessage =
   | {
       type: 'attach';
       instanceId: string;
-      platform: string;
       url: string;
       selectors: string[];
       token: string;
@@ -162,11 +161,7 @@ interface InstanceAttachment {
  */
 export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
   // Reject a bad inspection config now rather than on every attach.
-  normalizeDestinationTunnelInspection({
-    enabled: true,
-    captureBodies: false,
-    ...(options.inspection ?? {}),
-  });
+  normalizeDestinationTunnelInspection(destinationTunnelInspection(options.inspection));
   const controlURL = deriveTunnelConnectURL(options.baseURL, options.organizationId, options.tunnelId);
   const client = {
     hostname: options.hostname ?? os.hostname(),
@@ -250,6 +245,12 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
   const tokenUsable = (attachment: InstanceAttachment): boolean =>
     Date.now() < attachment.tokenExpiresAt - TOKEN_EXPIRY_MARGIN_MS;
 
+  // Tells the platform and the caller that the connector gave up on an instance.
+  const reportGivenUp = (instanceId: string, code: string, message: string): void => {
+    send({ type: 'attachFailed', instanceId, code, message, terminal: true });
+    emit({ type: 'attachFailed', instanceId, code, message });
+  };
+
   const giveUp = (
     instanceId: string,
     attachment: InstanceAttachment,
@@ -257,8 +258,7 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
     message: string,
   ): void => {
     forget(instanceId, attachment);
-    send({ type: 'attachFailed', instanceId, code, message, terminal: true });
-    emit({ type: 'attachFailed', instanceId, code, message });
+    reportGivenUp(instanceId, code, message);
   };
 
   const scheduleAttachRetry = (instanceId: string, attachment: InstanceAttachment, reason: string): void => {
@@ -439,18 +439,16 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
         announcedHolder = undefined;
         if (announcedSession !== message.sessionId) {
           announcedSession = message.sessionId;
-          emit({
-            type: 'active',
-            sessionId: message.sessionId,
-            name: message.name,
-            ...(message.keyExpiresAt === undefined ? {} : { keyExpiresAt: message.keyExpiresAt }),
-          });
+          emit({ type: 'active', sessionId: message.sessionId, name: message.name });
         }
-        const keyExpiresAt = message.keyExpiresAt === undefined ? NaN : Date.parse(message.keyExpiresAt);
         const now = Date.now();
-        if (keyExpiresAt - now < KEY_WARNING_WINDOW_MS && now - lastKeyWarning >= KEY_WARNING_EVERY_MS) {
+        if (
+          message.keyExpiresAt !== undefined &&
+          Date.parse(message.keyExpiresAt) - now < KEY_WARNING_WINDOW_MS &&
+          now - lastKeyWarning >= KEY_WARNING_EVERY_MS
+        ) {
           lastKeyWarning = now;
-          emit({ type: 'keyExpiring', expiresAt: message.keyExpiresAt! });
+          emit({ type: 'keyExpiring', expiresAt: message.keyExpiresAt });
         }
         return;
       }
@@ -492,26 +490,13 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
           }
           return;
         }
+        // The instance itself refuses what its platform cannot route, such
+        // as Android routes below port 1024.
         let selectors: DestinationTunnelSelectors;
         try {
-          selectors = validateDestinationTunnelSelectors(
-            message.selectors,
-            message.platform === 'android' ? { minRoutePort: ANDROID_MIN_ROUTE_PORT } : {},
-          );
+          selectors = validateDestinationTunnelSelectors(message.selectors);
         } catch (error) {
-          send({
-            type: 'attachFailed',
-            instanceId: message.instanceId,
-            code: 'invalid_selectors',
-            message: errorMessage(error),
-            terminal: true,
-          });
-          emit({
-            type: 'attachFailed',
-            instanceId: message.instanceId,
-            code: 'invalid_selectors',
-            message: errorMessage(error),
-          });
+          reportGivenUp(message.instanceId, 'invalid_selectors', errorMessage(error));
           return;
         }
         const attachment: InstanceAttachment = {
@@ -708,14 +693,10 @@ function decodeControlServerMessage(value: unknown): ControlServerMessage | unde
   const type = readString(message, 'type');
   switch (type) {
     case 'active': {
-      const leaseSeconds = readInteger(message, 'leaseSeconds');
-      if (leaseSeconds < 1) {
-        throw new DestinationTunnelProtocolError('leaseSeconds must be positive');
-      }
       return {
         type,
         sessionId: readNonEmptyString(message, 'sessionId'),
-        leaseSeconds,
+        leaseSeconds: readPositiveInteger(message, 'leaseSeconds'),
         name: readNonEmptyString(message, 'name'),
         ...readOptionalString(message, 'keyExpiresAt'),
       };
@@ -727,27 +708,21 @@ function decodeControlServerMessage(value: unknown): ControlServerMessage | unde
         holder: { hostname: readString(holder, 'hostname'), ...readOptionalString(holder, 'since') },
       };
     }
-    case 'attach': {
-      const selectors = message['selectors'];
-      if (!Array.isArray(selectors) || selectors.some((selector) => typeof selector !== 'string')) {
-        throw new DestinationTunnelProtocolError('selectors must be an array of strings');
-      }
+    case 'attach':
       return {
         type,
         instanceId: readNonEmptyString(message, 'instanceId'),
-        platform: readString(message, 'platform'),
         url: readNonEmptyString(message, 'url'),
-        selectors: selectors as string[],
+        selectors: readStringArray(message, 'selectors'),
         token: readNonEmptyString(message, 'token'),
-        expiresInSeconds: readExpiresIn(message),
+        expiresInSeconds: readPositiveInteger(message, 'expiresInSeconds'),
       };
-    }
     case 'token':
       return {
         type,
         instanceId: readNonEmptyString(message, 'instanceId'),
         token: readNonEmptyString(message, 'token'),
-        expiresInSeconds: readExpiresIn(message),
+        expiresInSeconds: readPositiveInteger(message, 'expiresInSeconds'),
       };
     case 'detach':
       return {
@@ -768,14 +743,6 @@ function decodeControlServerMessage(value: unknown): ControlServerMessage | unde
       // Newer servers may add message types that this connector does not need.
       return undefined;
   }
-}
-
-function readExpiresIn(message: Record<string, unknown>): number {
-  const expiresInSeconds = readInteger(message, 'expiresInSeconds');
-  if (expiresInSeconds < 1) {
-    throw new DestinationTunnelProtocolError('expiresInSeconds must be positive');
-  }
-  return expiresInSeconds;
 }
 
 function revokedMessage(reason: string): string {

@@ -32,17 +32,26 @@ function rethrow(err: unknown, context: string): never {
  * /v1/whoami nests inside `user`.
  */
 export async function whoAmI(client: Limrun): Promise<string> {
-  let body: { organization?: { id?: string }; user?: { defaultOrganization?: { id?: string } } };
-  try {
-    body = await client.get('/v1/whoami');
-  } catch (err) {
-    rethrow(err, 'Failed to resolve the organization');
-  }
+  const body = await fetchWhoAmI(client);
   const organizationId = body.organization?.id ?? body.user?.defaultOrganization?.id;
   if (!organizationId) {
     throw new Error('The Limrun API did not report an organization for this API key.');
   }
   return organizationId;
+}
+
+interface WhoAmIBody {
+  organization?: { id?: string };
+  user?: { defaultOrganization?: { id?: string } };
+  scopes?: string[];
+}
+
+async function fetchWhoAmI(client: Limrun): Promise<WhoAmIBody> {
+  try {
+    return await client.get('/v1/whoami');
+  } catch (err) {
+    rethrow(err, 'Failed to resolve the organization');
+  }
 }
 
 /** A persistent tunnel as the backend lists it. */
@@ -54,15 +63,12 @@ export interface PersistentTunnel {
 
 /**
  * Resolves the organization and, when the credential is a tunnel key, the
- * one tunnel it runs: a tunnel key's only scope is tunnel:<id>:connect.
+ * one tunnel it runs: a tunnel key's only scope is tunnel:<id>:connect. A
+ * connector needs an organization key, so a user token's default
+ * organization does not count.
  */
 export async function whoAmITunnel(client: Limrun): Promise<{ organizationId: string; tunnelId?: string }> {
-  let body: { organization?: { id?: string }; scopes?: string[] };
-  try {
-    body = await client.get('/v1/whoami');
-  } catch (err) {
-    rethrow(err, 'Failed to resolve the organization');
-  }
+  const body = await fetchWhoAmI(client);
   const organizationId = body.organization?.id;
   if (!organizationId) {
     throw new Error('Running a tunnel needs an API key: a tunnel key from the console, or an admin key.');
@@ -105,15 +111,6 @@ export async function createQuickTunnel(
     return body.tunnel;
   } catch (err) {
     rethrow(err, `Failed to create tunnel ${name}`);
-  }
-}
-
-export async function deleteTunnel(client: Limrun, organizationId: string, id: string): Promise<void> {
-  try {
-    await client.delete(`${tunnelsPath(organizationId)}/${encodeURIComponent(id)}`);
-  } catch (err) {
-    if (err instanceof NotFoundError) return;
-    rethrow(err, 'Failed to delete the tunnel');
   }
 }
 

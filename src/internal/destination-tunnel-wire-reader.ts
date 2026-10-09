@@ -20,6 +20,15 @@ export function readArray(record: Record<string, unknown>, key: string): unknown
   return value;
 }
 
+export function readStringArray(record: Record<string, unknown>, key: string): string[] {
+  return readArray(record, key).map((value) => {
+    if (typeof value !== 'string') {
+      throw new DestinationTunnelProtocolError(`${key} must hold strings`);
+    }
+    return value;
+  });
+}
+
 export function readString(record: Record<string, unknown>, key: string): string {
   const value = record[key];
   if (typeof value !== 'string') {
@@ -50,6 +59,14 @@ export function readInteger(record: Record<string, unknown>, key: string): numbe
     throw new DestinationTunnelProtocolError(`${key} must be an integer`);
   }
   return value as number;
+}
+
+export function readPositiveInteger(record: Record<string, unknown>, key: string): number {
+  const value = readInteger(record, key);
+  if (value < 1) {
+    throw new DestinationTunnelProtocolError(`${key} must be positive`);
+  }
+  return value;
 }
 
 export function readFiniteNumber(record: Record<string, unknown>, key: string): number {
