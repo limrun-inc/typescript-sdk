@@ -1,9 +1,10 @@
 name: Bugbot Approve
 
-# Approves a PR once Cursor Bugbot has reviewed its head commit with no
-# unresolved finding above Low. The logic lives in limrun-inc/limrun; this
-# file only supplies the triggers. After resolving a Medium or higher thread
-# without pushing, comment "limrunbot run" on the PR.
+# Forwards this repo's pull request events to limrun-inc/limrun's
+# bugbot-approve workflow, which approves a PR as limrun-review-bot once
+# Cursor Bugbot has reviewed its head commit with no unresolved finding
+# above Low. Nothing is evaluated here. After resolving a Medium or higher
+# thread without pushing, comment "limrunbot run" on the PR.
 on:
   check_run:
     types: [completed]
@@ -19,11 +20,55 @@ on:
 
 permissions:
   pull-requests: read
-  checks: read
 
 jobs:
-  bugbot-approve:
-    uses: limrun-inc/limrun/.github/workflows/bugbot-approve.yaml@main
-    with:
-      pr: ${{ inputs.pr }}
-    secrets: inherit
+  forward:
+    # check_run fires for every check in the repo; only Bugbot's matters.
+    # Comments only matter on PRs and only when they carry the command.
+    if: >-
+      (github.event_name == 'check_run' && github.event.check_run.name == 'Cursor Bugbot') ||
+      github.event_name == 'pull_request_target' ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'limrunbot run')) ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          CHECK_SHA: ${{ github.event.check_run.head_sha }}
+          EVENT_PR: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
+        run: |
+          set -euo pipefail
+          # Bugbot's check run carries no pull_requests entry, so map its
+          # commit to the open PR whose head it is.
+          if [ "$EVENT" = check_run ]; then
+            pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$CHECK_SHA/pulls" \
+              --jq "[.[] | select(.state==\"open\" and .head.sha==\"$CHECK_SHA\")][0].number // empty")
+          else
+            pr="$EVENT_PR"
+          fi
+          [ -n "$pr" ] || echo "no open pull request for this event, nothing to do"
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+
+      # The token is scoped to dispatching workflows in limrun and nothing else.
+      - if: steps.pr.outputs.pr != ''
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.LIMRUN_REVIEW_BOT_APP_ID }}
+          private-key: ${{ secrets.LIMRUN_REVIEW_BOT_PRIVATE_KEY }}
+          owner: limrun-inc
+          repositories: limrun
+          permission-actions: write
+
+      - if: steps.pr.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ steps.pr.outputs.pr }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          gh workflow run bugbot-approve.yaml -R limrun-inc/limrun \
+            -f repo="$GITHUB_REPOSITORY" -f pr="$PR" -f comment-id="$COMMENT_ID" \
+            -f require-bugbot=true
