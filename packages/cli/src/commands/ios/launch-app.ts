@@ -34,6 +34,7 @@ export default class IosLaunchApp extends BaseCommand {
   static examples = [
     '<%= config.bin %> ios launch-app com.example.app',
     '<%= config.bin %> ios launch-app com.example.app --detach',
+    '<%= config.bin %> ios launch-app com.example.app --env API_URL=https://example.com --env FEATURE_FLAG=1',
     '<%= config.bin %> ios launch-app com.example.app --mode RelaunchIfRunning --id <instance-ID>',
     '<%= config.bin %> ios launch-app host.exp.Exponent --runtime detox --detox-server-url ws://localhost:8099 --detox-session-id limrun-detox --detox-version 20.51.1 --id <instance-ID>',
   ];
@@ -43,6 +44,12 @@ export default class IosLaunchApp extends BaseCommand {
   };
 
   static flags = {
+    env: Flags.string({
+      description:
+        'App environment variable as KEY=VALUE; repeat for multiple variables. Forces relaunch. Library loader overrides are rejected.',
+      multiple: true,
+      multipleNonGreedy: true,
+    }),
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
@@ -54,7 +61,7 @@ export default class IosLaunchApp extends BaseCommand {
     }),
     mode: Flags.string({
       description:
-        'Launch behavior to use when the app may already be running. Default: ForegroundIfRunning.',
+        'Launch behavior to use when the app may already be running. Default: ForegroundIfRunning, or RelaunchIfRunning with --env.',
       options: ['ForegroundIfRunning', 'RelaunchIfRunning'],
     }),
     runtime: Flags.string({
