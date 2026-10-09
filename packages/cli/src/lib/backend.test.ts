@@ -75,19 +75,6 @@ describe('backend client', () => {
       await expect(whoAmITunnel(client)).resolves.toEqual({ organizationId: 'org_1' });
     });
 
-    it('reads the tunnel of a stored tunnel token from whoami', async () => {
-      fetchMock.mockResolvedValue(
-        mockResponse(200, {
-          organization: { id: 'org_1' },
-          scopes: ['tunnel:tunnel_01h455vb4pex5vsknk084sn02q:connect'],
-        }),
-      );
-      await expect(whoAmITunnel(client)).resolves.toEqual({
-        organizationId: 'org_1',
-        tunnelId: 'tunnel_01h455vb4pex5vsknk084sn02q',
-      });
-    });
-
     it('finds a tunnel by name and creates a throwaway one', async () => {
       fetchMock.mockResolvedValueOnce(
         mockResponse(200, { tunnels: [{ id: 'tunnel_1', name: 'staging', ephemeral: false }] }),
@@ -100,18 +87,30 @@ describe('backend client', () => {
       expect(requestOf(fetchMock.mock.calls[0]).url).toBe(`${apiEndpoint}/v1/organizations/org_1/tunnels`);
 
       fetchMock.mockResolvedValueOnce(
-        mockResponse(201, { tunnel: { id: 'tunnel_2', name: 'scratch', ephemeral: true } }),
+        mockResponse(201, {
+          tunnel: { id: 'tunnel_2', name: 'scratch', ephemeral: true },
+          token: { token: 'lim_st_quick', expiresAt: '2026-11-09T00:00:00Z' },
+        }),
       );
-      await expect(createQuickTunnel(client, 'org_1', 'scratch', ['localhost:3000'])).resolves.toMatchObject({
-        id: 'tunnel_2',
-        ephemeral: true,
+      await expect(createQuickTunnel(client, 'org_1', 'scratch', ['localhost:3000'])).resolves.toEqual({
+        tunnel: { id: 'tunnel_2', name: 'scratch', ephemeral: true },
+        token: 'lim_st_quick',
       });
       const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
       expect(JSON.parse(String(init.body))).toEqual({
         name: 'scratch',
         selectors: ['localhost:3000'],
         ephemeral: true,
+        token: { expirationMonths: 1 },
       });
+
+      // Without its token the tunnel could not run, so the create fails.
+      fetchMock.mockResolvedValueOnce(
+        mockResponse(201, { tunnel: { id: 'tunnel_3', name: 'other', ephemeral: true } }),
+      );
+      await expect(createQuickTunnel(client, 'org_1', 'other', ['localhost:3000'])).rejects.toThrow(
+        'returned no token',
+      );
     });
 
     it('deletes a throwaway tunnel by ID, and a tunnel the hub already removed is fine', async () => {

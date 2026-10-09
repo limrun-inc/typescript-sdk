@@ -19,14 +19,12 @@ export default class TunnelRun extends BaseCommand {
     'Run the connector of a tunnel created in the console (Network > New tunnel) or the API, and open ' +
     'a destination tunnel to every iOS and Android instance created with --tunnel <name>, until Ctrl+C. ' +
     'Run it with the tunnel token the console shows (--token); the token names its tunnel, and the ' +
-    "tunnel's selectors decide which destinations instances reach through this machine. An admin's " +
-    'login runs any tunnel with --name, and --name with --selector runs a throwaway tunnel that goes ' +
-    'away when this connector exits. Instance tunnels stay up while the connection to Limrun ' +
-    'reconnects. One connector holds a tunnel at a time: others wait on standby, and --replace takes ' +
-    'it over.';
+    "tunnel's selectors decide which destinations instances reach through this machine. With an " +
+    "admin's login, --name and --selector run a throwaway tunnel that goes away when this connector " +
+    'exits. Instance tunnels stay up while the connection to Limrun reconnects. One connector holds a ' +
+    'tunnel at a time: others wait on standby, and --replace takes it over.';
   static examples = [
     '<%= config.bin %> tunnel run --token <tunnel token>',
-    '<%= config.bin %> tunnel run --name staging',
     '<%= config.bin %> tunnel run --name scratch --selector localhost:3000',
     '<%= config.bin %> ios create --tunnel staging',
   ];
@@ -39,13 +37,14 @@ export default class TunnelRun extends BaseCommand {
     }),
     name: Flags.string({
       description:
-        "Tunnel to run with an admin's credential. A tunnel token runs its own tunnel and needs no name.",
+        "Name of a throwaway tunnel to run with --selector and an admin's login. A tunnel token runs its own " +
+        'tunnel and needs no name.',
     }),
     selector: Flags.string({
       description:
         'Run a throwaway tunnel with this destination, as localhost:port, IPv4:port, [IPv6]:port, or a ' +
-        'private exact or *. wildcard domain, when --name names no tunnel yet. A tunnel created in the ' +
-        'console keeps its own selectors. Repeat for more selectors.',
+        'private exact or *. wildcard domain. A tunnel created in the console keeps its own selectors. ' +
+        'Repeat for more selectors.',
       multiple: true,
     }),
     replace: Flags.boolean({
@@ -86,7 +85,8 @@ export default class TunnelRun extends BaseCommand {
       // A tunnel token's tunnel learns its name from the first active.
       let name = flags.name;
       const connector = runTunnel({
-        apiKey: this.client.apiKey ?? '',
+        // Only tunnel tokens connect: a throwaway tunnel runs with its own.
+        apiKey: tunnel.token ?? this.client.apiKey ?? '',
         baseURL: this.client.baseURL,
         organizationId,
         tunnelId: tunnel.id,
@@ -128,15 +128,15 @@ export default class TunnelRun extends BaseCommand {
   }
 
   /**
-   * The tunnel to run: the one a tunnel token names, the one --name names, or
-   * a throwaway tunnel that --name and --selector create.
+   * The tunnel to run: the one a tunnel token names, or a throwaway tunnel
+   * that --name and --selector create with its own token.
    */
   private async resolveTunnel(
     organizationId: string,
     tokenTunnelId: string | undefined,
     name: string | undefined,
     selectors: string[] | undefined,
-  ): Promise<{ id: string; created: boolean }> {
+  ): Promise<{ id: string; created: boolean; token?: string }> {
     if (tokenTunnelId) {
       if (name || selectors) {
         this.error(
@@ -147,7 +147,9 @@ export default class TunnelRun extends BaseCommand {
       return { id: tokenTunnelId, created: false };
     }
     if (!name) {
-      this.error("Run with the tunnel's token (--token), or pass --name with an admin's credential.");
+      this.error(
+        "Run with the tunnel's token (--token), or pass --name and --selector for a throwaway tunnel.",
+      );
     }
     const existing = await findTunnel(this.client, organizationId, name);
     if (existing?.ephemeral) {
@@ -155,12 +157,10 @@ export default class TunnelRun extends BaseCommand {
       this.error(`Tunnel ${name} is another connector's throwaway tunnel; pick another name.`);
     }
     if (existing) {
-      if (selectors) {
-        this.error(
-          `Tunnel ${name} has its own selectors; edit them in the console instead of passing --selector.`,
-        );
-      }
-      return { id: existing.id, created: false };
+      this.error(
+        `Tunnel ${name} runs with its own token (--token). Rotate it in the console (Network) if you no ` +
+          'longer have it.',
+      );
     }
     if (!selectors) {
       this.error(
@@ -169,6 +169,6 @@ export default class TunnelRun extends BaseCommand {
       );
     }
     const created = await createQuickTunnel(this.client, organizationId, name, selectors);
-    return { id: created.id, created: true };
+    return { id: created.tunnel.id, created: true, token: created.token };
   }
 }

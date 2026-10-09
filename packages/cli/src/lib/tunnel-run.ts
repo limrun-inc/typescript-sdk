@@ -19,8 +19,8 @@ export function formatTunnelConnectorEvent(
       );
     case 'keyExpiring':
       return (
-        `The token this connector runs with expires at ${event.expiresAt}. Issue a new token for ${tunnel} ` +
-        'in the console (Network) and restart the connector with it.'
+        `The token this connector runs with expires at ${event.expiresAt}. Rotate the token of ${tunnel} ` +
+        'in the console (Network) and restart the connector with the new one.'
       );
     case 'standby':
       return (
