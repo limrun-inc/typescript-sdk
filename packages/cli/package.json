@@ -69,7 +69,7 @@
         "description": "Build Android projects on cloud Gradle sandboxes: create, list, get, delete, sync, build, run, logs, use, tools"
       },
       "ios": {
-        "description": "Execute any task on remote iOS Simulators: create, list, get, delete, attach-xcode, info, fold, list-apps, launch-app, terminate-app, app-log, syslog, sync, screenshot, tap, tap-element, element-tree, type, press-key, toggle-keyboard, scroll, open-url, clipboard, defaults, notify, install-app, keychain, record, camera, microphone, perform, ls, push-file, pull-file, delete-file, simctl, cp, xcrun, xcodebuild, lsof, reverse, tunnel"
+        "description": "Execute any task on remote iOS Simulators: create, list, get, delete, attach-xcode, info, fold, list-apps, launch-app, terminate-app, app-log, syslog, sync, screenshot, tap, tap-element, element-tree, type, press-key, toggle-keyboard, touch-indicators, scroll, open-url, clipboard, defaults, notify, install-app, keychain, record, camera, microphone, perform, ls, push-file, pull-file, delete-file, simctl, cp, xcrun, xcodebuild, lsof, reverse, tunnel"
       },
       "ios:clipboard": {
         "description": "Set or read the clipboard of a running iOS instance: set, get"

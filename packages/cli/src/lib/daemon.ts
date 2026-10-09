@@ -470,6 +470,13 @@ export function startDaemonServer(): void {
           result = { pressed: true, key: args[0] };
           break;
 
+        case 'touch-indicators':
+          if (type !== 'ios') throw new Error('touch-indicators is only supported on iOS instances');
+          if (typeof args[0] !== 'boolean') throw new Error('touch-indicators requires an enabled boolean');
+          await (client as Ios.InstanceClient).setTouchIndicators(args[0]);
+          result = { enabled: args[0] };
+          break;
+
         case 'toggle-keyboard':
           if (type !== 'ios') throw new Error('toggle-keyboard is only supported on iOS instances');
           await (client as any).toggleKeyboard();

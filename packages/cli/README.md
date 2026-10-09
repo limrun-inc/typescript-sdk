@@ -324,6 +324,21 @@ lim ios syslog
 lim ios syslog --json
 ```
 
+#### Touch indicators (iOS only)
+
+Touch ripples and drag trails are enabled by default. Change this independently
+of recording or streaming:
+
+```bash
+lim ios touch-indicators off
+lim ios touch-indicators on --id ios_abc123
+```
+
+The setting applies to every viewer, screenshot, and recording of that simulator.
+It remains set across client reconnects and recording start/stop. A new simulator
+boot enables indicators again. `--json` returns `{ "enabled": false }` or
+`{ "enabled": true }` after the change succeeds.
+
 #### Video Recording
 
 ```bash
