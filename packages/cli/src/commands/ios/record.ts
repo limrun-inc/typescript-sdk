@@ -39,6 +39,10 @@ export default class IosRecord extends BaseCommand {
     id: Flags.string({
       description: 'iOS instance ID to record. Defaults to the last created iOS instance.',
     }),
+    'show-touches': Flags.boolean({
+      description: 'Draw touch indicators into the recorded video. Applies to start. Disabled by default.',
+      default: false,
+    }),
     quality: Flags.integer({
       description:
         'Recording quality from 5 to 10. Higher values increase quality and file size when starting a recording.',
@@ -78,6 +82,9 @@ export default class IosRecord extends BaseCommand {
       if (flags['persist-ttl'] && !flags.persist) {
         this.error('--persist-ttl requires --persist.');
       }
+      if (flags['show-touches'] && args.action !== 'start') {
+        this.error('--show-touches only applies to the `start` action.');
+      }
       if (flags.display && args.action !== 'start') {
         this.error('--display only applies to the `start` action.');
       }
@@ -92,14 +99,20 @@ export default class IosRecord extends BaseCommand {
               { ttlSeconds: parseDurationSeconds(flags['persist-ttl']) }
             : true
           : undefined;
-        // Older daemons drop persistence and display options, so send those starts directly.
-        if (!persist && !flags.display && (await ensureDaemonSession(resolvedInstance))) {
+        // Older daemons drop recording options, so send those starts directly.
+        if (
+          !persist &&
+          !flags.display &&
+          !flags['show-touches'] &&
+          (await ensureDaemonSession(resolvedInstance))
+        ) {
           await sendSessionCommand(id, 'start-recording', [flags.quality]);
         } else {
           const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
           try {
             await client.startRecording({
               quality: flags.quality,
+              ...(flags['show-touches'] ? { showTouches: true } : {}),
               persist,
               display: flags.display as 'inner' | 'outer' | undefined,
             });
