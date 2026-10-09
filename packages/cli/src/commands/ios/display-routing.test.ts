@@ -18,6 +18,7 @@ function setup(
   Command: typeof IosPerform | typeof IosScroll | typeof IosSwipe | typeof IosRecord,
   display?: string,
   daemon = false,
+  showTouches = false,
 ) {
   const client = {
     startRecording: jest.fn().mockResolvedValue(undefined),
@@ -31,6 +32,7 @@ function setup(
   const flags = {
     id: 'ios_test',
     display,
+    'show-touches': showTouches,
     action: ['type=tap,x=10,y=20'],
     amount: 300,
     from: '10,20',
@@ -105,5 +107,33 @@ describe('record display routing', () => {
     await command.run();
     expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'start-recording', [undefined]);
     expect(getIosInstanceClient).not.toHaveBeenCalled();
+  });
+});
+
+describe('record touch indicators', () => {
+  test('explicit opt-in bypasses a daemon that would drop the option', async () => {
+    const { command, client, disconnect } = setup(IosRecord, undefined, true, true);
+    await command.run();
+    expect(client.startRecording).toHaveBeenCalledWith(expect.objectContaining({ showTouches: true }));
+    expect(sendSessionCommand).not.toHaveBeenCalled();
+    expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  test('direct recording does not opt in by default', async () => {
+    const { command, client } = setup(IosRecord);
+    await command.run();
+    expect(client.startRecording.mock.calls[0]![0]).not.toHaveProperty('showTouches');
+  });
+
+  test('rejects the flag on stop', async () => {
+    const { command } = setup(IosRecord, undefined, true, true);
+    const parsed = await command.parse();
+    command.parse = async () => ({ ...parsed, args: { action: 'stop' } });
+    command.error = (message: string) => {
+      throw new Error(message);
+    };
+    await expect(command.run()).rejects.toThrow('--show-touches only applies to the `start` action.');
+    expect(getIosInstanceClient).not.toHaveBeenCalled();
+    expect(sendSessionCommand).not.toHaveBeenCalled();
   });
 });
