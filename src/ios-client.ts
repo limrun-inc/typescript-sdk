@@ -451,7 +451,7 @@ export type AppWatch = {
 };
 
 type LaunchAppCommonOptions = {
-  /** App environment variables. Requires relaunch; library loader overrides are rejected. */
+  /** App environment variables. Requires relaunch; reserved keys and existing launch variables are ignored. */
   env?: Record<string, string>;
   /** Called once when the launched app exits, crashes, or is terminated. */
   onExit?: LaunchAppExitCallback;

@@ -46,7 +46,7 @@ export default class IosLaunchApp extends BaseCommand {
   static flags = {
     env: Flags.string({
       description:
-        'App environment variable as KEY=VALUE; repeat for multiple variables. Forces relaunch. Library loader overrides are rejected.',
+        'App environment variable as KEY=VALUE; repeat for multiple variables. Forces relaunch. Reserved keys and existing launch variables are ignored.',
       multiple: true,
       multipleNonGreedy: true,
     }),
