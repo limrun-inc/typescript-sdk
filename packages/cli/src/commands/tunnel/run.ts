@@ -1,13 +1,7 @@
 import { Flags } from '@oclif/core';
 import { runTunnel } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
-import {
-  createQuickTunnel,
-  deleteTunnel,
-  findTunnel,
-  whoAmITunnel,
-  type PersistentTunnel,
-} from '../../lib/backend';
+import { createQuickTunnel, deleteTunnel, findTunnel, whoAmITunnel } from '../../lib/backend';
 import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
 import {
   tunnelInspectionConfig,
@@ -84,7 +78,11 @@ export default class TunnelRun extends BaseCommand {
     await this.withAuth(async () => {
       const { organizationId, tunnelId: keyTunnelId } = await whoAmITunnel(this.client);
       const tunnel = await this.resolveTunnel(organizationId, keyTunnelId, flags.name, selectors);
-      let name = flags.name;
+      // A tunnel key names its own tunnel, so a --name beside it is only
+      // checked, against the name the platform reports.
+      let name = keyTunnelId ? undefined : flags.name;
+      let mismatch: string | undefined;
+      let stoppedByUser = false;
       const connector = runTunnel({
         apiKey: this.client.apiKey ?? '',
         baseURL: this.client.baseURL,
@@ -98,11 +96,21 @@ export default class TunnelRun extends BaseCommand {
           : this.shouldSuppressInfo() ? 'none'
           : 'warn',
         onEvent: (event) => {
-          if (event.type === 'active') name = event.name;
-          this.info(formatTunnelConnectorEvent(name, event, tunnel.ephemeral));
+          if (event.type === 'active') {
+            name = event.name;
+            if (flags.name && event.name !== flags.name) {
+              mismatch = event.name;
+              void connector.close();
+              return;
+            }
+          }
+          this.info(formatTunnelConnectorEvent(name, event, tunnel.created));
         },
       });
-      const stop = (): void => void connector.close();
+      const stop = (): void => {
+        stoppedByUser = true;
+        void connector.close();
+      };
       process.once('SIGINT', stop);
       process.once('SIGTERM', stop);
       try {
@@ -112,9 +120,15 @@ export default class TunnelRun extends BaseCommand {
       } finally {
         process.off('SIGINT', stop);
         process.off('SIGTERM', stop);
-        // A throwaway tunnel goes with its connector; if this fails, the
-        // platform sweeps it within a minute.
-        if (tunnel.ephemeral) await deleteTunnel(this.client, organizationId, tunnel.id).catch(() => {});
+        // A throwaway tunnel goes with the connector that created it, when its
+        // user stops it. One that was replaced leaves it to its new holder;
+        // the platform sweeps what nobody deletes.
+        if (tunnel.created && stoppedByUser) {
+          await deleteTunnel(this.client, organizationId, tunnel.id).catch(() => {});
+        }
+      }
+      if (mismatch) {
+        this.error(`This key runs tunnel ${mismatch}, not ${flags.name}.`);
       }
     });
   }
@@ -128,12 +142,12 @@ export default class TunnelRun extends BaseCommand {
     keyTunnelId: string | undefined,
     name: string | undefined,
     selectors: string[] | undefined,
-  ): Promise<Pick<PersistentTunnel, 'id' | 'ephemeral'>> {
+  ): Promise<{ id: string; created: boolean }> {
     if (keyTunnelId) {
       if (selectors) {
         this.error("A tunnel key runs its tunnel as created; edit the tunnel's selectors in the console.");
       }
-      return { id: keyTunnelId, ephemeral: false };
+      return { id: keyTunnelId, created: false };
     }
     if (!name) {
       this.error("Run with the tunnel's key (LIM_API_KEY), or pass --name with an admin's credential.");
@@ -145,7 +159,7 @@ export default class TunnelRun extends BaseCommand {
           `Tunnel ${name} has its own selectors; edit them in the console instead of passing --selector.`,
         );
       }
-      return existing;
+      return { id: existing.id, created: false };
     }
     if (!selectors) {
       this.error(
@@ -153,6 +167,7 @@ export default class TunnelRun extends BaseCommand {
           'run a throwaway tunnel.',
       );
     }
-    return createQuickTunnel(this.client, organizationId, name, selectors);
+    const created = await createQuickTunnel(this.client, organizationId, name, selectors);
+    return { id: created.id, created: true };
   }
 }
