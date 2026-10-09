@@ -200,6 +200,53 @@ describe('iOS launchApp serialization', () => {
     client.disconnect();
   });
 
+  it('sends app env and defaults to relaunch', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test/v1/ios_123/api',
+      token: 'token',
+      logLevel: 'none',
+    });
+    try {
+      await client.launchApp('com.example.app', {
+        env: { API_URL: 'https://example.test/?x=a=b', EMPTY: '' },
+      });
+      expect(sentMessages.find((message) => message['type'] === 'launchApp')).toMatchObject({
+        mode: 'RelaunchIfRunning',
+        env: { API_URL: 'https://example.test/?x=a=b', EMPTY: '' },
+      });
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it.each([
+    'DYLD_INSERT_LIBRARIES',
+    'DYLD_LIBRARY_PATH',
+    '__DYLD_TEST_MODE',
+    'LD_PRELOAD',
+    '__XPC_DYLD_INSERT_LIBRARIES',
+    'SWIFT_DEBUG_LIB_PRESPECIALIZED_PATH',
+    'LIMRUN_INSERT_LIBRARIES',
+    'SIMCTL_CHILD_DYLD_INSERT_LIBRARIES',
+  ])('passes %s to the server for validation', async (key) => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test/v1/ios_123/api',
+      token: 'token',
+      logLevel: 'none',
+    });
+    try {
+      sentMessages.length = 0;
+      await client.launchApp('com.example.app', { env: { [key]: '/tmp/secret.dylib' } });
+      expect(sentMessages.find((message) => message['type'] === 'launchApp')).toMatchObject({
+        env: { [key]: '/tmp/secret.dylib' },
+      });
+    } finally {
+      client.disconnect();
+    }
+  });
+
   it('sends execId for onExit and invokes callback with fetched log lines', async () => {
     const { createInstanceClient } = await import('../src/ios-client');
     let resolveExit!: () => void;

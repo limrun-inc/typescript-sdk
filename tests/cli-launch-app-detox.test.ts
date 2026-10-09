@@ -19,6 +19,59 @@ describe('buildLaunchAppArgument', () => {
     ).toBe('ForegroundIfRunning');
   });
 
+  test('parses repeated env flags, empty values, equals signs and last value wins', () => {
+    expect(
+      buildLaunchAppArgument(
+        { env: ['FEATURE=old', 'FEATURE=a=b c', 'EMPTY='] },
+        { modeExplicitlyProvided: false },
+      ),
+    ).toEqual({
+      mode: 'RelaunchIfRunning',
+      env: { FEATURE: 'a=b c', EMPTY: '' },
+    });
+  });
+
+  test.each(['MISSING', '=empty'])('rejects malformed --env %s', (entry) => {
+    expect(() => buildLaunchAppArgument({ env: [entry] }, { modeExplicitlyProvided: false })).toThrow();
+  });
+
+  test.each([
+    'BAD-KEY=value',
+    'KEY=bad\nvalue',
+    'DYLD_LIBRARY_PATH=/tmp',
+    'LIMRUN_INSERT_LIBRARIES=/tmp',
+    'SIMCTL_CHILD_FEATURE=1',
+  ])('passes --env %s through for server validation', (entry) => {
+    const separator = entry.indexOf('=');
+    expect(buildLaunchAppArgument({ env: [entry] }, { modeExplicitlyProvided: false })).toMatchObject({
+      env: { [entry.slice(0, separator)]: entry.slice(separator + 1) },
+    });
+  });
+
+  test('passes explicit foreground mode with env through for server validation', () => {
+    expect(
+      buildLaunchAppArgument(
+        { env: ['FEATURE=1'], mode: 'ForegroundIfRunning' },
+        { modeExplicitlyProvided: true },
+      ),
+    ).toEqual({ mode: 'ForegroundIfRunning', env: { FEATURE: '1' } });
+  });
+
+  test('combines env with Detox', () => {
+    expect(
+      buildLaunchAppArgument(
+        {
+          env: ['FEATURE=1'],
+          runtime: 'detox',
+          'detox-server-url': 'ws://localhost:8099',
+          'detox-session-id': 'session',
+          'detox-version': '20.51.1',
+        },
+        { modeExplicitlyProvided: false },
+      ),
+    ).toMatchObject({ env: { FEATURE: '1' }, runtime: { kind: 'detox' } });
+  });
+
   test('requires --runtime detox when detox flags are present', () => {
     expect(() =>
       buildLaunchAppArgument(

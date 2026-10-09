@@ -450,21 +450,23 @@ export type AppWatch = {
   stop: () => Promise<void>;
 };
 
-type LaunchAppExitOptions = {
+type LaunchAppCommonOptions = {
+  /** App environment variables. Requires relaunch; reserved keys and existing launch variables are ignored. */
+  env?: Record<string, string>;
   /** Called once when the launched app exits, crashes, or is terminated. */
   onExit?: LaunchAppExitCallback;
 };
 
-type StandardLaunchAppOptions = LaunchAppExitOptions & {
+type StandardLaunchAppOptions = LaunchAppCommonOptions & {
   /**
    * Launch behavior when the app may already be running.
-   * Defaults to `ForegroundIfRunning` server-side.
+   * Defaults to `ForegroundIfRunning`, or `RelaunchIfRunning` when env is nonempty.
    */
   mode?: LaunchAppMode;
   runtime?: undefined;
 };
 
-type RuntimeLaunchAppOptions = LaunchAppExitOptions & {
+type RuntimeLaunchAppOptions = LaunchAppCommonOptions & {
   /** Runtime launches must relaunch so runtime injection is applied. */
   mode?: Extract<LaunchAppMode, 'RelaunchIfRunning'>;
   /** Optional app runtime to attach during launch. */
@@ -2368,7 +2370,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           new Error('launchApp runtime launches require RelaunchIfRunning so runtime injection is applied.'),
         );
       }
-      const mode = launchOptions.runtime ? 'RelaunchIfRunning' : launchOptions.mode;
+      const hasEnvironment = Object.keys(launchOptions.env ?? {}).length > 0;
+      const mode =
+        launchOptions.runtime ? 'RelaunchIfRunning' : (
+          launchOptions.mode ?? (hasEnvironment ? 'RelaunchIfRunning' : undefined)
+        );
       const onExit = launchOptions.onExit;
       const execId = onExit ? generateId() : undefined;
       if (execId && onExit) {
@@ -2378,6 +2384,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         bundleId,
         mode,
         runtime: launchOptions.runtime,
+        env: launchOptions.env,
         execId,
       }).catch((error) => {
         if (execId) {
