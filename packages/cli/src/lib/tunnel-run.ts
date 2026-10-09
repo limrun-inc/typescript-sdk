@@ -2,7 +2,7 @@ import type { TunnelConnectorEvent } from '@limrun/api';
 
 /**
  * One human-readable log line per connector event. name is undefined until
- * the first active, for a connector started with a tunnel key alone.
+ * the first active, for a connector started with a tunnel token alone.
  */
 export function formatTunnelConnectorEvent(
   name: string | undefined,
@@ -19,7 +19,7 @@ export function formatTunnelConnectorEvent(
       );
     case 'keyExpiring':
       return (
-        `The key this connector runs with expires at ${event.expiresAt}. Issue a new key for ${tunnel} ` +
+        `The token this connector runs with expires at ${event.expiresAt}. Issue a new token for ${tunnel} ` +
         'in the console (Network) and restart the connector with it.'
       );
     case 'standby':

@@ -56,7 +56,7 @@ const KEY_WARNING_WINDOW_MS = 14 * 24 * 60 * 60_000;
 const KEY_WARNING_EVERY_MS = 24 * 60 * 60_000;
 
 export interface TunnelConnectorOptions {
-  /** The tunnel's own key, or an admin's credential. */
+  /** The tunnel's own token, or an admin's credential. */
   apiKey: string;
   /** Limrun API base URL, such as https://api.limrun.com. */
   baseURL: string;
@@ -752,7 +752,7 @@ function revokedMessage(reason: string): string {
     case 'deleted':
       return 'the tunnel was deleted';
     case 'credential':
-      return 'the API key was revoked';
+      return 'the credential it runs with was revoked';
     default:
       return `the tunnel was revoked (${reason})`;
   }

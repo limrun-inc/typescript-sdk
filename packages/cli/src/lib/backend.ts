@@ -62,8 +62,8 @@ export interface PersistentTunnel {
 }
 
 /**
- * Resolves the organization and, when the credential is a tunnel key, the
- * one tunnel it runs: a tunnel key's only scope is tunnel:<id>:connect. A
+ * Resolves the organization and, when the credential is a tunnel token, the
+ * one tunnel it runs: a tunnel token's only scope is tunnel:<id>:connect. A
  * connector needs an organization key, so a user token's default
  * organization does not count.
  */
@@ -71,7 +71,7 @@ export async function whoAmITunnel(client: Limrun): Promise<{ organizationId: st
   const body = await fetchWhoAmI(client);
   const organizationId = body.organization?.id;
   if (!organizationId) {
-    throw new Error('Running a tunnel needs an API key: a tunnel key from the console, or an admin key.');
+    throw new Error('Running a tunnel needs a tunnel token from the console, or an admin API key.');
   }
   const [scope, ...rest] = body.scopes ?? [];
   const match = rest.length === 0 ? /^tunnel:(tunnel_[0-9a-z]+):connect$/.exec(scope ?? '') : null;
