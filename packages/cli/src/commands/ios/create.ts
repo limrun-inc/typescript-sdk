@@ -66,7 +66,8 @@ export default class IosCreate extends BaseCommand {
     }),
     tunnel: Flags.string({
       description:
-        'Name of a persistent tunnel (lim tunnel run --name) the instance must attach to before it becomes ready.',
+        'Name of a persistent tunnel, created in the console (Network) and run with lim tunnel run, that the ' +
+        'instance must attach to before it becomes ready.',
     }),
     label: Flags.string({
       description: 'Metadata label in key=value format. Repeat to attach multiple labels.',

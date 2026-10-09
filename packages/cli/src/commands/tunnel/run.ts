@@ -1,7 +1,13 @@
 import { Flags } from '@oclif/core';
 import { runTunnel } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
-import { whoAmI } from '../../lib/backend';
+import {
+  createQuickTunnel,
+  deleteTunnel,
+  findTunnel,
+  whoAmITunnel,
+  type PersistentTunnel,
+} from '../../lib/backend';
 import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
 import {
   tunnelInspectionConfig,
@@ -16,15 +22,18 @@ const VERSION = require('../../../package.json').version;
 export default class TunnelRun extends BaseCommand {
   static summary = 'Serve a persistent tunnel to every instance that names it';
   static description =
-    'Hold a tunnel name and open a destination tunnel to every iOS and Android instance created ' +
-    'with --tunnel <name>, until Ctrl+C. Exact --selector destinations (localhost:port or IP:port) ' +
-    'become listeners on each instance; domain selectors are intercepted on the instance and dialed ' +
-    'from this machine. Instance tunnels stay up while the connection to Limrun reconnects. One ' +
-    'connector holds a name at a time: others wait on standby, and --replace takes the name over. ' +
-    'Needs an admin API key.';
+    'Run the connector of a tunnel created in the console (Network > New tunnel) or the API, and open ' +
+    'a destination tunnel to every iOS and Android instance created with --tunnel <name>, until Ctrl+C. ' +
+    'Run it with the tunnel key the console shows (LIM_API_KEY); the key names its tunnel, and the ' +
+    "tunnel's selectors decide which destinations instances reach through this machine. An admin's " +
+    'login runs any tunnel with --name, and --name with --selector runs a throwaway tunnel that goes ' +
+    'away when this connector exits. Instance tunnels stay up while the connection to Limrun ' +
+    'reconnects. One connector holds a tunnel at a time: others wait on standby, and --replace takes ' +
+    'it over.';
   static examples = [
-    '<%= config.bin %> tunnel run --name staging --selector localhost:3000',
-    '<%= config.bin %> tunnel run --name corp --selector "*.corp.example" --selector 10.20.30.40:8443',
+    'LIM_API_KEY=<tunnel key> <%= config.bin %> tunnel run',
+    '<%= config.bin %> tunnel run --name staging',
+    '<%= config.bin %> tunnel run --name scratch --selector localhost:3000',
     '<%= config.bin %> ios create --tunnel staging',
   ];
 
@@ -32,19 +41,17 @@ export default class TunnelRun extends BaseCommand {
     ...BaseCommand.baseFlags,
     name: Flags.string({
       description:
-        'Tunnel name that instances pass to --tunnel: a lowercase DNS label of up to 63 characters.',
-      required: true,
+        "Tunnel to run with an admin's credential. A tunnel key runs its own tunnel and needs no name.",
     }),
     selector: Flags.string({
       description:
-        'Client-side TCP destination as localhost:port, IPv4:port, or [IPv6]:port, or a private exact ' +
-        'or *. wildcard domain. Android instances need port 1024 or higher for exact destinations. ' +
-        'Repeat for more selectors.',
+        'Run a throwaway tunnel with this destination, as localhost:port, IPv4:port, [IPv6]:port, or a ' +
+        'private exact or *. wildcard domain, when --name names no tunnel yet. A tunnel created in the ' +
+        'console keeps its own selectors. Repeat for more selectors.',
       multiple: true,
-      required: true,
     }),
     replace: Flags.boolean({
-      description: 'Take the name over from the connector that holds it now.',
+      description: 'Take the tunnel over from the connector that holds it now.',
       default: false,
     }),
     verbose: Flags.boolean({
@@ -72,16 +79,17 @@ export default class TunnelRun extends BaseCommand {
     } catch (error) {
       this.error(error instanceof Error ? error.message : String(error));
     }
-    const selectors = parseTunnelSelectors(flags.selector);
+    const selectors = flags.selector?.length ? parseTunnelSelectors(flags.selector) : undefined;
 
     await this.withAuth(async () => {
-      const organizationId = await whoAmI(this.client);
+      const { organizationId, tunnelId: keyTunnelId } = await whoAmITunnel(this.client);
+      const tunnel = await this.resolveTunnel(organizationId, keyTunnelId, flags.name, selectors);
+      let name = flags.name;
       const connector = runTunnel({
         apiKey: this.client.apiKey ?? '',
         baseURL: this.client.baseURL,
         organizationId,
-        name: flags.name,
-        selectors,
+        tunnelId: tunnel.id,
         inspection: tunnelInspectionConfig(inspection),
         replace: flags.replace,
         clientVersion: VERSION,
@@ -89,7 +97,10 @@ export default class TunnelRun extends BaseCommand {
           flags.verbose ? 'debug'
           : this.shouldSuppressInfo() ? 'none'
           : 'warn',
-        onEvent: (event) => this.info(formatTunnelConnectorEvent(flags.name, event)),
+        onEvent: (event) => {
+          if (event.type === 'active') name = event.name;
+          this.info(formatTunnelConnectorEvent(name, event, tunnel.ephemeral));
+        },
       });
       const stop = (): void => void connector.close();
       process.once('SIGINT', stop);
@@ -101,7 +112,47 @@ export default class TunnelRun extends BaseCommand {
       } finally {
         process.off('SIGINT', stop);
         process.off('SIGTERM', stop);
+        // A throwaway tunnel goes with its connector; if this fails, the
+        // platform sweeps it within a minute.
+        if (tunnel.ephemeral) await deleteTunnel(this.client, organizationId, tunnel.id).catch(() => {});
       }
     });
+  }
+
+  /**
+   * The tunnel to run: the one a tunnel key names, the one --name names, or
+   * a throwaway tunnel that --name and --selector create.
+   */
+  private async resolveTunnel(
+    organizationId: string,
+    keyTunnelId: string | undefined,
+    name: string | undefined,
+    selectors: string[] | undefined,
+  ): Promise<Pick<PersistentTunnel, 'id' | 'ephemeral'>> {
+    if (keyTunnelId) {
+      if (selectors) {
+        this.error("A tunnel key runs its tunnel as created; edit the tunnel's selectors in the console.");
+      }
+      return { id: keyTunnelId, ephemeral: false };
+    }
+    if (!name) {
+      this.error("Run with the tunnel's key (LIM_API_KEY), or pass --name with an admin's credential.");
+    }
+    const existing = await findTunnel(this.client, organizationId, name);
+    if (existing) {
+      if (selectors) {
+        this.error(
+          `Tunnel ${name} has its own selectors; edit them in the console instead of passing --selector.`,
+        );
+      }
+      return existing;
+    }
+    if (!selectors) {
+      this.error(
+        `Tunnel ${name} does not exist. Create it in the console (Network > New tunnel), or pass --selector to ` +
+          'run a throwaway tunnel.',
+      );
+    }
+    return createQuickTunnel(this.client, organizationId, name, selectors);
   }
 }

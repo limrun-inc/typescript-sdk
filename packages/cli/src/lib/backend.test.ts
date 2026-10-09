@@ -1,6 +1,14 @@
 import Limrun, { AuthenticationError } from '@limrun/api';
 
-import { getSecret, putSecret, whoAmI } from './backend';
+import {
+  createQuickTunnel,
+  deleteTunnel,
+  findTunnel,
+  getSecret,
+  putSecret,
+  whoAmI,
+  whoAmITunnel,
+} from './backend';
 
 const apiEndpoint = 'https://api.example.test';
 
@@ -28,6 +36,68 @@ describe('backend client', () => {
       auth: new Headers(init?.headers).get('authorization'),
     };
   }
+
+  describe('tunnels', () => {
+    it('reads the one tunnel a tunnel key runs from its scopes', async () => {
+      fetchMock.mockResolvedValue(
+        mockResponse(200, {
+          type: 'organization',
+          organization: { id: 'org_1' },
+          scopes: ['tunnel:tunnel_01h455vb4pex5vsknk084sn02q:connect'],
+        }),
+      );
+      await expect(whoAmITunnel(client)).resolves.toEqual({
+        organizationId: 'org_1',
+        tunnelId: 'tunnel_01h455vb4pex5vsknk084sn02q',
+      });
+    });
+
+    it.each([
+      ['an admin key', ['*:*:all']],
+      ['a key that runs every tunnel', ['tunnel:*:connect']],
+      ['a key with more than its tunnel', ['tunnel:tunnel_01h455vb4pex5vsknk084sn02q:connect', 'ios:*:read']],
+    ])('names no tunnel for %s', async (_, scopes) => {
+      fetchMock.mockResolvedValue(mockResponse(200, { organization: { id: 'org_1' }, scopes }));
+      await expect(whoAmITunnel(client)).resolves.toEqual({ organizationId: 'org_1' });
+    });
+
+    it('finds a tunnel by name, creates a throwaway one, and deletes it', async () => {
+      fetchMock.mockResolvedValueOnce(
+        mockResponse(200, { tunnels: [{ id: 'tunnel_1', name: 'staging', ephemeral: false }] }),
+      );
+      await expect(findTunnel(client, 'org_1', 'staging')).resolves.toEqual({
+        id: 'tunnel_1',
+        name: 'staging',
+        ephemeral: false,
+      });
+      expect(requestOf(fetchMock.mock.calls[0]).url).toBe(`${apiEndpoint}/v1/organizations/org_1/tunnels`);
+
+      fetchMock.mockResolvedValueOnce(
+        mockResponse(201, { tunnel: { id: 'tunnel_2', name: 'scratch', ephemeral: true } }),
+      );
+      await expect(createQuickTunnel(client, 'org_1', 'scratch', ['localhost:3000'])).resolves.toMatchObject({
+        id: 'tunnel_2',
+        ephemeral: true,
+      });
+      const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+      expect(JSON.parse(String(init.body))).toEqual({
+        name: 'scratch',
+        selectors: ['localhost:3000'],
+        ephemeral: true,
+      });
+
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+      await deleteTunnel(client, 'org_1', 'tunnel_2');
+      expect(requestOf(fetchMock.mock.calls[2]).url).toBe(
+        `${apiEndpoint}/v1/organizations/org_1/tunnels/tunnel_2`,
+      );
+    });
+
+    it('treats deleting a tunnel that is already gone as done', async () => {
+      fetchMock.mockResolvedValue(mockResponse(404, { message: 'not found' }));
+      await expect(deleteTunnel(client, 'org_1', 'tunnel_2')).resolves.toBeUndefined();
+    });
+  });
 
   describe('whoAmI', () => {
     it('resolves the organization for org tokens with the bearer key', async () => {
