@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.61.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.60.0...v0.61.0) (2026-10-09)
+
+
+### Features
+
+* **cli:** lim tunnel run with a tunnel key, a name, or a throwaway tunnel ([41dfdba](https://github.com/limrun-inc/typescript-sdk/commit/41dfdba61f11a13e736709c8ab294520fe5c6336))
+* **cli:** run a tunnel with --token ([74ce280](https://github.com/limrun-inc/typescript-sdk/commit/74ce280b1c223272da7cb9204b2235d60f513d3a))
+* **tunnel:** run tunnels created up front with hub-pushed tokens ([7f4c5aa](https://github.com/limrun-inc/typescript-sdk/commit/7f4c5aaba007cb54b8fb6948593490aea527a559))
+
+
+### Bug Fixes
+
+* **cli:** delete a throwaway tunnel whose connector never said bye ([ac1e997](https://github.com/limrun-inc/typescript-sdk/commit/ac1e997a92e37edc83abfac58f16f45ad293e448))
+* **cli:** never log in over an explicitly passed API key ([d7c9005](https://github.com/limrun-inc/typescript-sdk/commit/d7c90053a38393b422fcaa63426cfd5b3d47a5e9))
+* **tunnel:** address the review of the v2 connector ([0f8f9d0](https://github.com/limrun-inc/typescript-sdk/commit/0f8f9d0b4b6b6f4d8415de1aed4e7e6a1ae6ecc1))
+
+
+### Chores
+
+* **cli:** release 0.40.0 with API 0.60.0 ([0225c32](https://github.com/limrun-inc/typescript-sdk/commit/0225c326fc4bacf1a4cbf9ca864651da1a10c8b1))
+* **cli:** release 0.40.0 with API 0.60.0 ([858d4b5](https://github.com/limrun-inc/typescript-sdk/commit/858d4b5dd75b5df31110d952bc96c9a940bb1aff))
+
+
+### Refactors
+
+* **tunnel:** simplify the v2 connector and lim tunnel run ([a115e26](https://github.com/limrun-inc/typescript-sdk/commit/a115e26cf9fafbab9f1ca4dd9f3c75f659eec80c))
+
 ## [0.60.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.59.0...v0.60.0) (2026-10-09)
 
 
