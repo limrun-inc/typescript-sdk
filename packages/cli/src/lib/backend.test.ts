@@ -38,26 +38,39 @@ describe('backend client', () => {
   }
 
   describe('tunnels', () => {
-    it('reads the one tunnel a tunnel token runs from its scopes', async () => {
-      fetchMock.mockResolvedValue(
-        mockResponse(200, {
-          type: 'organization',
-          organization: { id: 'org_1' },
-          scopes: ['tunnel:tunnel_01h455vb4pex5vsknk084sn02q:connect'],
-        }),
-      );
-      await expect(whoAmITunnel(client)).resolves.toEqual({
+    // A signed token's header and signature do not matter here; only the
+    // payload's claims are read.
+    function signedToken(claims: object): string {
+      return `lim_st_eyJhbGciOiJFZERTQSJ9.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.c2ln`;
+    }
+
+    it('reads the organization and tunnel a tunnel token names, without a call', async () => {
+      const tunnelToken = signedToken({
+        sub: 'org_1',
+        scopes: ['tunnel:tunnel_01h455vb4pex5vsknk084sn02q:connect'],
+      });
+      const tokenClient = new Limrun({ apiKey: tunnelToken, baseURL: apiEndpoint, maxRetries: 0 });
+      await expect(whoAmITunnel(tokenClient)).resolves.toEqual({
         organizationId: 'org_1',
         tunnelId: 'tunnel_01h455vb4pex5vsknk084sn02q',
       });
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it.each([
-      ['an admin key', ['*:*:all']],
-      ['a key that runs every tunnel', ['tunnel:*:connect']],
-      ['a key with more than its tunnel', ['tunnel:tunnel_01h455vb4pex5vsknk084sn02q:connect', 'ios:*:read']],
-    ])('names no tunnel for %s', async (_, scopes) => {
-      fetchMock.mockResolvedValue(mockResponse(200, { organization: { id: 'org_1' }, scopes }));
+      ['an instance token', { sub: 'org_1', scopes: ['ios:ios_euna_x:all'] }],
+      ['a token for every tunnel', { sub: 'org_1', scopes: ['tunnel:*:connect'] }],
+      [
+        'a token with more than its tunnel',
+        { sub: 'org_1', scopes: ['tunnel:tunnel_01h455vb4pex5vsknk084sn02q:connect', 'ios:*:read'] },
+      ],
+    ])('refuses %s as a tunnel token', async (_, claims) => {
+      const tokenClient = new Limrun({ apiKey: signedToken(claims), baseURL: apiEndpoint, maxRetries: 0 });
+      await expect(whoAmITunnel(tokenClient)).rejects.toThrow('This signed token is not a tunnel token');
+    });
+
+    it('asks whoami for the organization of an admin key', async () => {
+      fetchMock.mockResolvedValue(mockResponse(200, { organization: { id: 'org_1' }, scopes: ['*:*:all'] }));
       await expect(whoAmITunnel(client)).resolves.toEqual({ organizationId: 'org_1' });
     });
 

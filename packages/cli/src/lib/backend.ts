@@ -62,20 +62,56 @@ export interface PersistentTunnel {
 }
 
 /**
- * Resolves the organization and, when the credential is a tunnel token, the
- * one tunnel it runs: a tunnel token's only scope is tunnel:<id>:connect. A
- * connector needs an organization key, so a user token's default
- * organization does not count.
+ * Resolves the organization and, for a tunnel token, the one tunnel it runs.
+ * A tunnel token is signed and names both in its claims, so they are read
+ * here: the backend accepts no signed token, and the tunnel hub verifies it.
+ * Any other credential asks whoami; a connector needs an organization key,
+ * so a user token's default organization does not count.
  */
 export async function whoAmITunnel(client: Limrun): Promise<{ organizationId: string; tunnelId?: string }> {
+  const apiKey = client.apiKey ?? '';
+  if (apiKey.startsWith(SIGNED_TOKEN_PREFIX)) {
+    const claims = tunnelTokenClaims(apiKey);
+    if (!claims) {
+      throw new Error(
+        'This signed token is not a tunnel token; use the token the console shows for the tunnel.',
+      );
+    }
+    return claims;
+  }
   const body = await fetchWhoAmI(client);
   const organizationId = body.organization?.id;
   if (!organizationId) {
     throw new Error('Running a tunnel needs a tunnel token from the console, or an admin API key.');
   }
-  const [scope, ...rest] = body.scopes ?? [];
-  const match = rest.length === 0 ? /^tunnel:(tunnel_[0-9a-z]+):connect$/.exec(scope ?? '') : null;
-  return match ? { organizationId, tunnelId: match[1]! } : { organizationId };
+  return { organizationId };
+}
+
+const SIGNED_TOKEN_PREFIX = 'lim_st_';
+
+/**
+ * Reads the organization and tunnel a tunnel token names, without verifying
+ * it; undefined when the token is no tunnel token. Its only scope is
+ * tunnel:<id>:connect.
+ */
+export function tunnelTokenClaims(token: string): { organizationId: string; tunnelId: string } | undefined {
+  const payload = token.slice(SIGNED_TOKEN_PREFIX.length).split('.')[1];
+  if (!token.startsWith(SIGNED_TOKEN_PREFIX) || !payload) {
+    return undefined;
+  }
+  let claims: { sub?: unknown; scopes?: unknown };
+  try {
+    claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  } catch {
+    return undefined;
+  }
+  const scopes = Array.isArray(claims.scopes) ? claims.scopes : [];
+  const scope = scopes.length === 1 && typeof scopes[0] === 'string' ? scopes[0] : '';
+  const match = /^tunnel:(tunnel_[0-9a-z]+):connect$/.exec(scope);
+  if (!match || typeof claims.sub !== 'string' || claims.sub === '') {
+    return undefined;
+  }
+  return { organizationId: claims.sub, tunnelId: match[1]! };
 }
 
 function tunnelsPath(organizationId: string): string {
