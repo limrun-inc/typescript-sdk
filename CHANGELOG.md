@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.60.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.59.0...v0.60.0) (2026-10-09)
+
+
+### Features
+
+* **apple-auth:** add Developer Portal key and team helpers ([011a842](https://github.com/limrun-inc/typescript-sdk/commit/011a8428b5d93fe5a6504305e13242565fe01e18))
+* **apple-auth:** add Developer Portal resource helpers ([6a55afc](https://github.com/limrun-inc/typescript-sdk/commit/6a55afc254bb18d0cc75f4ea157593c3fcad3539))
+* **apple-auth:** add Developer Portal resource helpers ([63e2c4d](https://github.com/limrun-inc/typescript-sdk/commit/63e2c4d3c18aa1a6d3ae767a7b841c48fd7e64af))
+* **apple-auth:** add Developer Portal service keys and agreements ([291bad3](https://github.com/limrun-inc/typescript-sdk/commit/291bad39125381fcd6d98bc3a45324dfc2045f74))
+* **cli:** add lim tunnel connect and --tunnel on create ([841362d](https://github.com/limrun-inc/typescript-sdk/commit/841362d58c581391c6cb19e8e9da4670c4ee023b))
+* **cli:** pin skills installs by release or commit ([461ab35](https://github.com/limrun-inc/typescript-sdk/commit/461ab3595c19952916dd8c6bb45812f3cf07f9c2))
+* **cli:** pin skills installs with --ref ([f8f9f7b](https://github.com/limrun-inc/typescript-sdk/commit/f8f9f7b9dabe5f5876634e649552eaabba6edbac))
+* **instances:** name a persistent tunnel at create ([fa608e8](https://github.com/limrun-inc/typescript-sdk/commit/fa608e89b5d91979e6759130039be72ef0d7955b))
+* **tunnel:** carry a persistent tunnel name in start and status ([a0ed5e1](https://github.com/limrun-inc/typescript-sdk/commit/a0ed5e113ed0aec23be938c24928ab716027e369))
+* **tunnel:** name the persistent tunnel command lim tunnel run ([6b30614](https://github.com/limrun-inc/typescript-sdk/commit/6b30614da7f0ca6051411f6eccb5c6884f7d20a7))
+* **tunnel:** serve a persistent tunnel with connectTunnel ([f16a6e5](https://github.com/limrun-inc/typescript-sdk/commit/f16a6e550cacfb814232a9f4c963331a648c09f4))
+
+
+### Bug Fixes
+
+* **apple-auth:** remove unavailable team-access helpers ([a05a239](https://github.com/limrun-inc/typescript-sdk/commit/a05a239a91de17c8a5b6f641d6247bbca829fb34))
+* **apple-auth:** require devices for profile regeneration ([e5fab6c](https://github.com/limrun-inc/typescript-sdk/commit/e5fab6c975fbb46778046623e6d005def9c457aa))
+* batch security updates across SDK examples and packages ([#495](https://github.com/limrun-inc/typescript-sdk/issues/495)) ([853b969](https://github.com/limrun-inc/typescript-sdk/commit/853b969f45ba1f06262279cf5ee6f2454ed36a28))
+* **ci:** install root lint dependencies before package publishing ([b58d585](https://github.com/limrun-inc/typescript-sdk/commit/b58d5856df9c171d396601dcf30807c2512b7475))
+* **ci:** install root lint dependencies before package publishing ([e88c685](https://github.com/limrun-inc/typescript-sdk/commit/e88c685dea0e3aad5b1075d37ca8fb3b197d5a08))
+* patch proxy-addr in the device-install backend ([#494](https://github.com/limrun-inc/typescript-sdk/issues/494)) ([68d766c](https://github.com/limrun-inc/typescript-sdk/commit/68d766c094ffa75dd4a996e0fe3dcdbae88f746e))
+* patch Undici in the Android recording example ([#489](https://github.com/limrun-inc/typescript-sdk/issues/489)) ([7530611](https://github.com/limrun-inc/typescript-sdk/commit/753061108c6c1282ad9baa71b1b96e8d64aee50d))
+* patch Undici in the Appium iOS example ([#491](https://github.com/limrun-inc/typescript-sdk/issues/491)) ([e689b06](https://github.com/limrun-inc/typescript-sdk/commit/e689b069e7984aa5c8d9e9637da6e668e1c9ebfb))
+* **tunnel:** hold a dropped instance until the lease is confirmed again ([ff5b686](https://github.com/limrun-inc/typescript-sdk/commit/ff5b6869b2e073a2fc3a9cb4598170dd0e137097))
+* **tunnel:** keep instances attached through transient failures and lost leases ([aeb4701](https://github.com/limrun-inc/typescript-sdk/commit/aeb47016f7d7954094e5d20157a58266387f40a1))
+* **tunnel:** retry a rate-limited or unavailable control connect ([c058cae](https://github.com/limrun-inc/typescript-sdk/commit/c058caed22947d8474b83773cf2e9383bc7c701c))
+* **tunnel:** wait out a stopping tunnel and catch an early drop ([382ff81](https://github.com/limrun-inc/typescript-sdk/commit/382ff81938f3058d2bc534634375f3a5bca3a643))
+
+
+### Chores
+
+* **apple-auth:** bump version to 0.6.0 ([abe2e5c](https://github.com/limrun-inc/typescript-sdk/commit/abe2e5c7d97f4862cc9c6fdb2bd73aa40c2afb06))
+* **cli:** pin published SDK 0.59.0 ([dffd7c2](https://github.com/limrun-inc/typescript-sdk/commit/dffd7c20fccc01999a05b0871a3057acc9d5451e))
+* **cli:** release 0.39.1 ([c7f94b0](https://github.com/limrun-inc/typescript-sdk/commit/c7f94b037cdb4691152b4468fa2ef9bcfb1ae67c))
+* **cli:** release 0.39.1 ([53340ec](https://github.com/limrun-inc/typescript-sdk/commit/53340ec118fc6f8639ed2b25ec8f1aee6bbed936))
+* **deps:** bump brace-expansion from 2.1.4 to 2.1.7 ([#478](https://github.com/limrun-inc/typescript-sdk/issues/478)) ([61524e9](https://github.com/limrun-inc/typescript-sdk/commit/61524e9887e6224668e348d4caaf200df390d929))
+* **deps:** bump ip-address in /examples/ios-with-xcode ([#470](https://github.com/limrun-inc/typescript-sdk/issues/470)) ([94878d4](https://github.com/limrun-inc/typescript-sdk/commit/94878d45781984278fae9b0dd3dc14fe38e56b83))
+* **deps:** bump proxy-addr in /examples/publish-to-stores/backend ([#496](https://github.com/limrun-inc/typescript-sdk/issues/496)) ([7cc5d38](https://github.com/limrun-inc/typescript-sdk/commit/7cc5d383d3ae6e6d7b0d67893c4a3d665ead3494))
+* **deps:** bump smol-toml from 1.8.0 to 1.9.0 in /examples/playwright ([#497](https://github.com/limrun-inc/typescript-sdk/issues/497)) ([e76e285](https://github.com/limrun-inc/typescript-sdk/commit/e76e285ce0f91a734b6775e190633c98ecfd4455))
+* **deps:** bump smol-toml in /examples/websocket-ios ([#492](https://github.com/limrun-inc/typescript-sdk/issues/492)) ([d8e4bf8](https://github.com/limrun-inc/typescript-sdk/commit/d8e4bf8b0bec333dc4484f7c73d21bbb5e3d569a))
+* **deps:** bump source-map-js in /packages/play-auth ([#493](https://github.com/limrun-inc/typescript-sdk/issues/493)) ([0167446](https://github.com/limrun-inc/typescript-sdk/commit/016744627f5cee972cb49445c29d1f56f36ec209))
+* **deps:** bump undici from 7.29.0 to 7.29.1 ([#477](https://github.com/limrun-inc/typescript-sdk/issues/477)) ([0e14de9](https://github.com/limrun-inc/typescript-sdk/commit/0e14de9523fbe6fc66cf8b0b76bdfa2fc1f24fd3))
+* **examples:** update apple-auth to 0.6.0 ([dc9568f](https://github.com/limrun-inc/typescript-sdk/commit/dc9568f90219e941ced041909ee861478184fbdb))
+* **examples:** update apple-auth to 0.6.0 ([0a8f106](https://github.com/limrun-inc/typescript-sdk/commit/0a8f10618285c595cdab565f57d64c54800e087d))
+
+
+### Documentation
+
+* **apple-auth:** describe portal support directly ([3e58b71](https://github.com/limrun-inc/typescript-sdk/commit/3e58b7188cb5e93f3b8fc29795e0adda74105c8e))
+* **apple-auth:** describe supported portal requests ([82bd9aa](https://github.com/limrun-inc/typescript-sdk/commit/82bd9aaa7603ce7e97d5f5d4b214779c047fe28e))
+* **apple-auth:** remove portal limitations section ([ac69512](https://github.com/limrun-inc/typescript-sdk/commit/ac69512671a3592c2b8ffbc51c5472147411724e))
+
+
+### Refactors
+
+* **cli:** use one ref flag for skills installs ([770efa0](https://github.com/limrun-inc/typescript-sdk/commit/770efa01e14e9181ce75d25b42118246ee7e20f5))
+* **tunnel:** type session errors and share the tunnel helpers ([1f4742f](https://github.com/limrun-inc/typescript-sdk/commit/1f4742f9639138e2517100ac9b8166128c4891ff))
+
 ## [0.59.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.58.1...v0.59.0) (2026-10-05)
 
 
