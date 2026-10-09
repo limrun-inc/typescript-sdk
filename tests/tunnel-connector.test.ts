@@ -61,6 +61,8 @@ class FakeBackend {
 
 interface PodInstance {
   upgrades: number;
+  /** The Authorization header of every tunnel upgrade. */
+  authorizations: Array<string | undefined>;
   starts: DestinationTunnelClientMessage[];
   deletes: string[];
   statusCalls: number;
@@ -102,6 +104,7 @@ class FakePod {
     this.server.on('upgrade', (request, socket: Socket, head) => {
       const instance = this.instance((request.url ?? '').split('/')[1]!);
       instance.upgrades++;
+      instance.authorizations.push(request.headers.authorization);
       if (instance.upgradeStatus !== undefined) {
         socket.end(
           `HTTP/1.1 ${instance.upgradeStatus} Refused\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
@@ -142,7 +145,14 @@ class FakePod {
   instance(instanceId: string): PodInstance {
     let instance = this.instances.get(instanceId);
     if (!instance) {
-      instance = { upgrades: 0, starts: [], deletes: [], statusCalls: 0, closedTunnels: [] };
+      instance = {
+        upgrades: 0,
+        authorizations: [],
+        starts: [],
+        deletes: [],
+        statusCalls: 0,
+        closedTunnels: [],
+      };
       this.instances.set(instanceId, instance);
     }
     return instance;
@@ -214,8 +224,7 @@ describe('tunnel connector', () => {
       apiKey: 'lim_key',
       baseURL,
       organizationId: 'org_1',
-      name: 'staging',
-      selectors: ['localhost:3000'],
+      tunnelId: 'tunnel_1',
       hostname: 'test-host',
       clientVersion: '9.9.9',
       logLevel: 'none',
@@ -225,9 +234,11 @@ describe('tunnel connector', () => {
     return connector;
   }
 
+  const keyExpiresAt = '2099-01-01T00:00:00Z';
+
   async function activate(): Promise<void> {
     await waitFor(() => backend.of('hello').length === 1);
-    backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 30 });
+    backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 30, name: 'staging', keyExpiresAt });
   }
 
   /** A connector that holds the name and serves ios_1. */
@@ -238,8 +249,20 @@ describe('tunnel connector', () => {
     await waitFor(() => backend.of('attached').length === 1);
   }
 
-  function attach(instanceId: string): void {
-    backend.send({ type: 'attach', instanceId, platform: 'ios', url: pod.url(instanceId), token: 'tok' });
+  function attach(
+    instanceId: string,
+    overrides: { platform?: string; selectors?: string[]; token?: string; expiresAt?: string } = {},
+  ): void {
+    backend.send({
+      type: 'attach',
+      instanceId,
+      platform: 'ios',
+      url: pod.url(instanceId),
+      selectors: ['localhost:3000'],
+      token: 'tok',
+      expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+      ...overrides,
+    });
   }
 
   function attachFailed(instanceId: string): Message | undefined {
@@ -252,24 +275,26 @@ describe('tunnel connector', () => {
     await connectAttached();
 
     expect(backend.upgrades).toEqual([
-      { url: '/v1/organizations/org_1/tunnels/staging/connect', authorization: 'Bearer lim_key' },
+      { url: '/v1/organizations/org_1/tunnels/tunnel_1/connect', authorization: 'Bearer lim_key' },
     ]);
     expect(backend.of('hello')).toEqual([
       {
         type: 'hello',
-        version: 1,
-        selectors: ['localhost:3000'],
+        version: 2,
         replace: false,
         attached: [],
         client: { hostname: 'test-host', version: '9.9.9' },
       },
     ]);
-    expect(pod.instance('ios_1').starts).toEqual([
+    const instance = pod.instance('ios_1');
+    expect(instance.starts).toEqual([
       expect.objectContaining({ type: 'start', selectors: ['localhost:3000'], name: 'staging' }),
     ]);
+    // The instance is opened with the token the API sent for it, never the key.
+    expect(instance.authorizations).toEqual(['Bearer tok']);
     expect(backend.of('attached')).toEqual([{ type: 'attached', instanceId: 'ios_1', tunnelId: 'tun-1' }]);
     expect(events).toEqual([
-      { type: 'active', sessionId: 'session-1' },
+      { type: 'active', sessionId: 'session-1', name: 'staging', keyExpiresAt },
       { type: 'attached', instanceId: 'ios_1', tunnelId: 'tun-1' },
     ]);
   });
@@ -286,8 +311,7 @@ describe('tunnel connector', () => {
     expect(backend.of('hello')[0]).toMatchObject({ replace: true, attached: [] });
     expect(backend.of('hello')[1]).toEqual({
       type: 'hello',
-      version: 1,
-      selectors: ['localhost:3000'],
+      version: 2,
       replace: false,
       sessionId: 'session-1',
       attached: ['ios_1'],
@@ -385,7 +409,7 @@ describe('tunnel connector', () => {
   test('redials a dropped instance only once a renewal confirms the lease again', async () => {
     connect();
     await waitFor(() => backend.of('hello').length === 1);
-    backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 1 });
+    backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 1, name: 'staging' });
     attach('ios_1');
     await waitFor(() => backend.of('attached').length === 1);
     const instance = pod.instance('ios_1');
@@ -396,7 +420,7 @@ describe('tunnel connector', () => {
     expect(backend.of('attachFailed')[0]).toMatchObject({ code: 'not_holder', terminal: false });
     expect(instance.upgrades).toBe(1);
 
-    backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 30 });
+    backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 30, name: 'staging' });
     await waitFor(() => backend.of('attached').length === 2, 6_000);
     expect(instance.upgrades).toBe(2);
     expect(instance.deletes).toEqual([]);
@@ -506,14 +530,16 @@ describe('tunnel connector', () => {
     };
     connect();
     await settle(() => backend.of('hello').length === 1);
-    backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 30 });
+    backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 30, name: 'staging' });
     attach('ios_1');
     const startedAt = Date.now();
 
     for (let step = 0; step < 200 && !attachFailed('ios_1'); step++) {
       await settle(() => instance.upgrades > 0 && backend.of('attachFailed').length === instance.upgrades);
-      // The server renews the lease every 10s, which keeps the connector the holder.
-      backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 30 });
+      // The server renews the lease every 10s, which keeps the connector the
+      // holder, and refreshes the instance's token.
+      backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 30, name: 'staging' });
+      attach('ios_1');
       await jest.advanceTimersByTimeAsync(5_000);
     }
 
@@ -527,8 +553,9 @@ describe('tunnel connector', () => {
     backend.rejectStatus = 403;
     const { closed } = connect();
 
+    // The name arrives with the first active; until then the ID names the tunnel.
     await expect(closed).rejects.toThrow(
-      'tunnel staging: the server refused the connection (HTTP 403: refused with 403)',
+      'tunnel tunnel_1: the server refused the connection (HTTP 403: refused with 403)',
     );
     await new Promise((resolve) => setTimeout(resolve, 800));
     expect(backend.upgrades).toHaveLength(1);
@@ -540,6 +567,72 @@ describe('tunnel connector', () => {
     await waitFor(() => backend.upgrades.length >= 2);
     backend.rejectStatus = undefined;
     await waitFor(() => backend.of('hello').length === 1);
+  });
+
+  test('opens a dropped tunnel again with the latest token, keeping the first selectors', async () => {
+    await connectAttached();
+    const instance = pod.instance('ios_1');
+    // A refresh at half life, and an edit of the tunnel's selectors since.
+    attach('ios_1', { token: 'tok-2', selectors: ['localhost:4000'] });
+    await waitFor(() => backend.of('attached').length === 2);
+    expect(instance.upgrades).toBe(1);
+
+    instance.live!.socket.close();
+    await waitFor(() => backend.of('attached').length === 3, 6_000);
+    expect(instance.authorizations).toEqual(['Bearer tok', 'Bearer tok-2']);
+    expect(instance.starts).toEqual([
+      expect.objectContaining({ selectors: ['localhost:3000'] }),
+      expect.objectContaining({ selectors: ['localhost:3000'] }),
+    ]);
+  });
+
+  test('waits for a fresh token instead of dialing with an expired one', async () => {
+    connect();
+    await activate();
+    attach('ios_1', { expiresAt: new Date(Date.now() - 1_000).toISOString() });
+    await waitFor(() => backend.of('attachFailed').length === 1);
+    expect(backend.of('attachFailed')[0]).toMatchObject({ code: 'token_expired', terminal: false });
+    expect(pod.instance('ios_1').upgrades).toBe(0);
+
+    attach('ios_1', { token: 'tok-fresh' });
+    await waitFor(() => backend.of('attached').length === 1, 6_000);
+    expect(pod.instance('ios_1').authorizations).toEqual(['Bearer tok-fresh']);
+  });
+
+  test('gives up on selectors an Android instance cannot route', async () => {
+    connect();
+    await activate();
+    attach('android_1', { platform: 'android', selectors: ['localhost:80'] });
+    await waitFor(() => attachFailed('android_1') !== undefined);
+
+    expect(attachFailed('android_1')).toMatchObject({ code: 'invalid_selectors', terminal: true });
+    expect(pod.instance('android_1').upgrades).toBe(0);
+  });
+
+  test('warns once a day while its key expires within two weeks', async () => {
+    connect();
+    await waitFor(() => backend.of('hello').length === 1);
+    const soon = new Date(Date.now() + 3 * 24 * 60 * 60_000).toISOString();
+    backend.send({
+      type: 'active',
+      sessionId: 'session-1',
+      leaseSeconds: 30,
+      name: 'staging',
+      keyExpiresAt: soon,
+    });
+    backend.send({
+      type: 'active',
+      sessionId: 'session-1',
+      leaseSeconds: 30,
+      name: 'staging',
+      keyExpiresAt: soon,
+    });
+    await waitFor(() => events.some((event) => event.type === 'keyExpiring'));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(events.filter((event) => event.type === 'keyExpiring')).toEqual([
+      { type: 'keyExpiring', expiresAt: soon },
+    ]);
   });
 
   test('close says bye, closes normally, and closes instance tunnels', async () => {

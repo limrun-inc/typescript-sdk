@@ -31,7 +31,7 @@ import {
 import { upgradeStatus, type LogLevel } from './tunnel';
 import { VERSION } from './version';
 
-const CONTROL_PROTOCOL_VERSION = 1;
+const CONTROL_PROTOCOL_VERSION = 2;
 const CONTROL_HANDSHAKE_TIMEOUT_MS = 15_000;
 const CONTROL_PING_INTERVAL_MS = 15_000;
 const CONTROL_DEAD_PEER_MS = 45_000;
@@ -47,15 +47,25 @@ const MAX_REJECTION_REASON_CHARS = 200;
 /** Every tunnel WebSocket counts as instance activity, so retries must end. */
 const ATTACH_GIVE_UP_MS = 5 * 60_000;
 const TAKEN_OVER_MESSAGE = 'another connector for this tunnel took the instance over';
+/** A token this close to its expiry is not dialed with; the hub refreshes it at half its life. */
+const TOKEN_EXPIRY_MARGIN_MS = 5_000;
+/** Android instances reach exact routes on port 1024 and above. */
+const ANDROID_MIN_ROUTE_PORT = 1024;
+/** How long before its key expires the connector starts warning, and how often. */
+const KEY_WARNING_WINDOW_MS = 14 * 24 * 60 * 60_000;
+const KEY_WARNING_EVERY_MS = 24 * 60 * 60_000;
 
 export interface TunnelConnectorOptions {
+  /** The tunnel's own key, or an admin's credential. */
   apiKey: string;
   /** Limrun API base URL, such as https://api.limrun.com. */
   baseURL: string;
   organizationId: string;
-  /** The name instances set in `spec.tunnel` to attach to this connector. */
-  name: string;
-  selectors: DestinationTunnelSelectors;
+  /**
+   * The ID of a tunnel created in the console or the API. Its name, which
+   * instances set in `spec.tunnel`, and its selectors come from the platform.
+   */
+  tunnelId: string;
   /** Inspection for every instance tunnel. Defaults to enabled without bodies. */
   inspection?: Partial<DestinationTunnelInspectionConfig>;
   /** Take the name over from the connector that holds it now. */
@@ -70,8 +80,10 @@ export interface TunnelConnectorOptions {
 }
 
 export type TunnelConnectorEvent =
-  /** This connector holds the name; emitted once per session and control connection. */
-  | { type: 'active'; sessionId: string }
+  /** This connector holds the tunnel; emitted once per session and control connection. */
+  | { type: 'active'; sessionId: string; name: string; keyExpiresAt?: string }
+  /** The connector's key expires within two weeks; emitted once a day until it does. */
+  | { type: 'keyExpiring'; expiresAt: string }
   /** Another connector holds the name; emitted once per holder. */
   | { type: 'standby'; holder: { hostname: string; since?: string } }
   | { type: 'attached'; instanceId: string; tunnelId: string }
@@ -93,7 +105,6 @@ type ControlClientMessage =
   | {
       type: 'hello';
       version: number;
-      selectors: DestinationTunnelSelectors;
       replace: boolean;
       sessionId?: string;
       attached: string[];
@@ -104,9 +115,17 @@ type ControlClientMessage =
   | { type: 'bye' };
 
 type ControlServerMessage =
-  | { type: 'active'; sessionId: string; leaseSeconds: number }
+  | { type: 'active'; sessionId: string; leaseSeconds: number; name: string; keyExpiresAt?: string }
   | { type: 'standby'; holder: { hostname: string; since?: string } }
-  | { type: 'attach'; instanceId: string; url: string; token: string }
+  | {
+      type: 'attach';
+      instanceId: string;
+      platform: string;
+      url: string;
+      selectors: string[];
+      token: string;
+      expiresAt: string;
+    }
   | { type: 'detach'; instanceId: string; reason: string }
   | { type: 'notice'; code: string; message: string; instanceId?: string }
   | { type: 'revoked'; reason: string };
@@ -114,7 +133,11 @@ type ControlServerMessage =
 interface InstanceAttachment {
   /** Instance base URL: the iOS API URL or the Android ADB WebSocket URL. */
   url: string;
+  /** Opens this instance's tunnel and nothing else; the hub keeps it fresh. */
   token: string;
+  tokenExpiresAt: number;
+  /** The tunnel's selectors when the instance first attached; later edits apply to later instances. */
+  selectors: DestinationTunnelSelectors;
   tunnel?: DestinationTcpTunnel | undefined;
   /** This connector's latest tunnel on the instance, live or dropped. */
   lastTunnelId?: string;
@@ -129,23 +152,21 @@ interface InstanceAttachment {
 }
 
 /**
- * Serve a persistent tunnel: hold the name through one control WebSocket to
- * the Limrun API and open a destination tunnel to every instance created
- * with `spec.tunnel` set to it. Instance tunnels stay up while the control
- * channel reconnects, so an API outage never becomes a tunnel outage.
+ * Serve a persistent tunnel: hold it through one control WebSocket to the
+ * Limrun API and open a destination tunnel to every instance created with
+ * `spec.tunnel` set to its name, with a short-lived token the API hands out
+ * for each. Instance tunnels stay up while the control channel reconnects,
+ * so an API outage never becomes a tunnel outage; one that drops re-dials
+ * once the API sends a fresh token.
  */
 export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
-  const selectors = validateDestinationTunnelSelectors(options.selectors);
-  const dialOptions = {
-    ...destinationTunnelDialOptions(
-      { selectors, ...(options.inspection ? { inspection: options.inspection } : {}) },
-      options.logLevel ?? 'warn',
-    ),
-    name: options.name,
-  };
   // Reject a bad inspection config now rather than on every attach.
-  normalizeDestinationTunnelInspection(dialOptions.inspection ?? {});
-  const controlURL = deriveTunnelConnectURL(options.baseURL, options.organizationId, options.name);
+  normalizeDestinationTunnelInspection({
+    enabled: true,
+    captureBodies: false,
+    ...(options.inspection ?? {}),
+  });
+  const controlURL = deriveTunnelConnectURL(options.baseURL, options.organizationId, options.tunnelId);
   const client = {
     hostname: options.hostname ?? os.hostname(),
     version: options.clientVersion ?? VERSION,
@@ -162,6 +183,9 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
   let replace = options.replace ?? false;
   // When the last confirmed lease runs out; zero while on standby.
   let leaseExpiresAt = 0;
+  // The tunnel's name, from the first active; instances set it in spec.tunnel.
+  let tunnelName: string | undefined;
+  let lastKeyWarning = 0;
   let announcedSession: string | undefined;
   let announcedHolder: string | undefined;
 
@@ -211,8 +235,19 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
   const fail = (detail: string): void => {
     if (!shutdown()) return;
     ws?.terminate();
-    rejectClosed(new Error(`tunnel ${options.name}: ${detail}`));
+    rejectClosed(new Error(`tunnel ${tunnelName ?? options.tunnelId}: ${detail}`));
   };
+
+  const dialOptions = (attachment: InstanceAttachment) => ({
+    ...destinationTunnelDialOptions(
+      { selectors: attachment.selectors, ...(options.inspection ? { inspection: options.inspection } : {}) },
+      options.logLevel ?? 'warn',
+    ),
+    ...(tunnelName === undefined ? {} : { name: tunnelName }),
+  });
+
+  const tokenUsable = (attachment: InstanceAttachment): boolean =>
+    Date.now() < attachment.tokenExpiresAt - TOKEN_EXPIRY_MARGIN_MS;
 
   const giveUp = (
     instanceId: string,
@@ -254,7 +289,8 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
     try {
       const active = (await getDestinationTunnelStatus(attachment.url, attachment.token)).active;
       return (
-        active?.name === options.name &&
+        active !== undefined &&
+        active.name === tunnelName &&
         active.state !== 'stopping' &&
         active.tunnelId !== attachment.lastTunnelId
       );
@@ -288,7 +324,7 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
       retryAfterFailure(instanceId, attachment, 'already_active', 'the previous tunnel is still stopping');
       return;
     }
-    if (active.name !== options.name) {
+    if (active.name !== tunnelName) {
       giveUp(instanceId, attachment, 'instance_busy', 'the instance already has another tunnel');
       return;
     }
@@ -322,6 +358,12 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
       retryAfterFailure(instanceId, attachment, 'not_holder', 'this connector does not hold the tunnel');
       return;
     }
+    // A token past its life is refused; the API sends a fresh one at half
+    // life, so this only waits while the control channel is down.
+    if (!tokenUsable(attachment)) {
+      retryAfterFailure(instanceId, attachment, 'token_expired', 'waiting for a fresh tunnel token');
+      return;
+    }
     let tunnel: DestinationTcpTunnel;
     try {
       if (attachment.lastTunnelId !== undefined && (await takenOver(attachment))) {
@@ -334,7 +376,7 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
       tunnel = await startDestinationTcpTunnel(
         deriveDestinationTunnelURL(attachment.url),
         attachment.token,
-        dialOptions,
+        dialOptions(attachment),
       );
     } catch (error) {
       if (attachment.done) return;
@@ -387,17 +429,30 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
     // close() already let every instance go; a late attach must not dial.
     if (stopped) return;
     switch (message.type) {
-      case 'active':
+      case 'active': {
         replace = false;
         leaseExpiresAt = Date.now() + message.leaseSeconds * 1000;
         controlBackoffMs = CONTROL_INITIAL_BACKOFF_MS;
         sessionId = message.sessionId;
+        tunnelName = message.name;
         announcedHolder = undefined;
         if (announcedSession !== message.sessionId) {
           announcedSession = message.sessionId;
-          emit({ type: 'active', sessionId: message.sessionId });
+          emit({
+            type: 'active',
+            sessionId: message.sessionId,
+            name: message.name,
+            ...(message.keyExpiresAt === undefined ? {} : { keyExpiresAt: message.keyExpiresAt }),
+          });
+        }
+        const keyExpiresAt = message.keyExpiresAt === undefined ? NaN : Date.parse(message.keyExpiresAt);
+        const now = Date.now();
+        if (keyExpiresAt - now < KEY_WARNING_WINDOW_MS && now - lastKeyWarning >= KEY_WARNING_EVERY_MS) {
+          lastKeyWarning = now;
+          emit({ type: 'keyExpiring', expiresAt: message.keyExpiresAt! });
         }
         return;
+      }
       case 'standby': {
         leaseExpiresAt = 0;
         controlBackoffMs = CONTROL_INITIAL_BACKOFF_MS;
@@ -411,19 +466,47 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
         return;
       }
       case 'attach': {
+        const tokenExpiresAt = Date.parse(message.expiresAt);
         const existing = instances.get(message.instanceId);
         if (existing) {
-          // Resume replays attaches; a live tunnel only needs confirming.
+          // The hub re-sends attach with a fresh token at half its life and
+          // after every resume; a live tunnel only needs confirming. The
+          // instance keeps the selectors it first got.
           existing.url = message.url;
           existing.token = message.token;
+          existing.tokenExpiresAt = tokenExpiresAt;
           if (existing.tunnel) {
             send({ type: 'attached', instanceId: message.instanceId, tunnelId: existing.tunnel.tunnelId });
           }
           return;
         }
+        let selectors: DestinationTunnelSelectors;
+        try {
+          selectors = validateDestinationTunnelSelectors(
+            message.selectors,
+            message.platform === 'android' ? { minRoutePort: ANDROID_MIN_ROUTE_PORT } : {},
+          );
+        } catch (error) {
+          send({
+            type: 'attachFailed',
+            instanceId: message.instanceId,
+            code: 'invalid_selectors',
+            message: errorMessage(error),
+            terminal: true,
+          });
+          emit({
+            type: 'attachFailed',
+            instanceId: message.instanceId,
+            code: 'invalid_selectors',
+            message: errorMessage(error),
+          });
+          return;
+        }
         const attachment: InstanceAttachment = {
           url: message.url,
           token: message.token,
+          tokenExpiresAt,
+          selectors,
           mayReclaim: true,
           failingSince: Date.now(),
           backoffMs: ATTACH_INITIAL_BACKOFF_MS,
@@ -518,7 +601,6 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
       send({
         type: 'hello',
         version: CONTROL_PROTOCOL_VERSION,
-        selectors,
         replace,
         ...(sessionId === undefined ? {} : { sessionId }),
         attached: Array.from(instances)
@@ -618,7 +700,13 @@ function decodeControlServerMessage(value: unknown): ControlServerMessage | unde
       if (leaseSeconds < 1) {
         throw new DestinationTunnelProtocolError('leaseSeconds must be positive');
       }
-      return { type, sessionId: readNonEmptyString(message, 'sessionId'), leaseSeconds };
+      return {
+        type,
+        sessionId: readNonEmptyString(message, 'sessionId'),
+        leaseSeconds,
+        name: readNonEmptyString(message, 'name'),
+        ...readOptionalString(message, 'keyExpiresAt'),
+      };
     }
     case 'standby': {
       const holder = readRecord(message['holder'], 'holder');
@@ -627,13 +715,25 @@ function decodeControlServerMessage(value: unknown): ControlServerMessage | unde
         holder: { hostname: readString(holder, 'hostname'), ...readOptionalString(holder, 'since') },
       };
     }
-    case 'attach':
+    case 'attach': {
+      const selectors = message['selectors'];
+      if (!Array.isArray(selectors) || selectors.some((selector) => typeof selector !== 'string')) {
+        throw new DestinationTunnelProtocolError('selectors must be an array of strings');
+      }
+      const expiresAt = readNonEmptyString(message, 'expiresAt');
+      if (Number.isNaN(Date.parse(expiresAt))) {
+        throw new DestinationTunnelProtocolError('expiresAt must be a timestamp');
+      }
       return {
         type,
         instanceId: readNonEmptyString(message, 'instanceId'),
+        platform: readString(message, 'platform'),
         url: readNonEmptyString(message, 'url'),
+        selectors: selectors as string[],
         token: readNonEmptyString(message, 'token'),
+        expiresAt,
       };
+    }
     case 'detach':
       return {
         type,
