@@ -1,7 +1,7 @@
 import { Flags } from '@oclif/core';
 import { runTunnel } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
-import { createQuickTunnel, deleteTunnel, findTunnel, whoAmITunnel } from '../../lib/backend';
+import { createQuickTunnel, findTunnel, whoAmITunnel } from '../../lib/backend';
 import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
 import {
   tunnelInspectionConfig,
@@ -78,11 +78,8 @@ export default class TunnelRun extends BaseCommand {
     await this.withAuth(async () => {
       const { organizationId, tunnelId: keyTunnelId } = await whoAmITunnel(this.client);
       const tunnel = await this.resolveTunnel(organizationId, keyTunnelId, flags.name, selectors);
-      // A tunnel key names its own tunnel, so a --name beside it is only
-      // checked, against the name the platform reports.
-      let name = keyTunnelId ? undefined : flags.name;
-      let mismatch: string | undefined;
-      let stoppedByUser = false;
+      // A tunnel key's tunnel learns its name from the first active.
+      let name = flags.name;
       const connector = runTunnel({
         apiKey: this.client.apiKey ?? '',
         baseURL: this.client.baseURL,
@@ -96,21 +93,12 @@ export default class TunnelRun extends BaseCommand {
           : this.shouldSuppressInfo() ? 'none'
           : 'warn',
         onEvent: (event) => {
-          if (event.type === 'active') {
-            name = event.name;
-            if (flags.name && event.name !== flags.name) {
-              mismatch = event.name;
-              void connector.close();
-              return;
-            }
-          }
+          if (event.type === 'active') name = event.name;
           this.info(formatTunnelConnectorEvent(name, event, tunnel.created));
         },
       });
-      const stop = (): void => {
-        stoppedByUser = true;
-        void connector.close();
-      };
+      // close() says bye, which also takes a throwaway tunnel away.
+      const stop = (): void => void connector.close();
       process.once('SIGINT', stop);
       process.once('SIGTERM', stop);
       try {
@@ -120,15 +108,6 @@ export default class TunnelRun extends BaseCommand {
       } finally {
         process.off('SIGINT', stop);
         process.off('SIGTERM', stop);
-        // A throwaway tunnel goes with the connector that created it, when its
-        // user stops it. One that was replaced leaves it to its new holder;
-        // the platform sweeps what nobody deletes.
-        if (tunnel.created && stoppedByUser) {
-          await deleteTunnel(this.client, organizationId, tunnel.id).catch(() => {});
-        }
-      }
-      if (mismatch) {
-        this.error(`This key runs tunnel ${mismatch}, not ${flags.name}.`);
       }
     });
   }
@@ -144,8 +123,11 @@ export default class TunnelRun extends BaseCommand {
     selectors: string[] | undefined,
   ): Promise<{ id: string; created: boolean }> {
     if (keyTunnelId) {
-      if (selectors) {
-        this.error("A tunnel key runs its tunnel as created; edit the tunnel's selectors in the console.");
+      if (name || selectors) {
+        this.error(
+          "A tunnel key runs its own tunnel as created; drop --name and --selector, and edit the tunnel's " +
+            'selectors in the console.',
+        );
       }
       return { id: keyTunnelId, created: false };
     }
@@ -153,6 +135,10 @@ export default class TunnelRun extends BaseCommand {
       this.error("Run with the tunnel's key (LIM_API_KEY), or pass --name with an admin's credential.");
     }
     const existing = await findTunnel(this.client, organizationId, name);
+    if (existing?.ephemeral) {
+      // A throwaway tunnel is its creator's alone and goes when it stops.
+      this.error(`Tunnel ${name} is another connector's throwaway tunnel; pick another name.`);
+    }
     if (existing) {
       if (selectors) {
         this.error(

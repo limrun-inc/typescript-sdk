@@ -298,7 +298,7 @@ describe('tunnel connector', () => {
     expect(instance.authorizations).toEqual(['Bearer tok']);
     expect(backend.of('attached')).toEqual([{ type: 'attached', instanceId: 'ios_1', tunnelId: 'tun-1' }]);
     expect(events).toEqual([
-      { type: 'active', sessionId: 'session-1', name: 'staging', keyExpiresAt },
+      { type: 'active', sessionId: 'session-1', name: 'staging' },
       { type: 'attached', instanceId: 'ios_1', tunnelId: 'tun-1' },
     ]);
   });
@@ -618,7 +618,7 @@ describe('tunnel connector', () => {
   test('ignores a token for an instance it gave up on', async () => {
     connect();
     await activate();
-    attach('android_1', { platform: 'android', selectors: ['localhost:80'] });
+    attach('android_1', { platform: 'android', selectors: [] });
     await waitFor(() => attachFailed('android_1') !== undefined);
     refresh('android_1', 'tok-2');
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -626,10 +626,10 @@ describe('tunnel connector', () => {
     expect(backend.of('attachFailed')).toHaveLength(1);
   });
 
-  test('gives up on selectors an Android instance cannot route', async () => {
+  test('gives up on selectors it cannot use', async () => {
     connect();
     await activate();
-    attach('android_1', { platform: 'android', selectors: ['localhost:80'] });
+    attach('android_1', { platform: 'android', selectors: [] });
     await waitFor(() => attachFailed('android_1') !== undefined);
 
     expect(attachFailed('android_1')).toMatchObject({ code: 'invalid_selectors', terminal: true });

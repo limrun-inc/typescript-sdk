@@ -1,14 +1,6 @@
 import Limrun, { AuthenticationError } from '@limrun/api';
 
-import {
-  createQuickTunnel,
-  deleteTunnel,
-  findTunnel,
-  getSecret,
-  putSecret,
-  whoAmI,
-  whoAmITunnel,
-} from './backend';
+import { createQuickTunnel, findTunnel, getSecret, putSecret, whoAmI, whoAmITunnel } from './backend';
 
 const apiEndpoint = 'https://api.example.test';
 
@@ -61,7 +53,7 @@ describe('backend client', () => {
       await expect(whoAmITunnel(client)).resolves.toEqual({ organizationId: 'org_1' });
     });
 
-    it('finds a tunnel by name, creates a throwaway one, and deletes it', async () => {
+    it('finds a tunnel by name and creates a throwaway one', async () => {
       fetchMock.mockResolvedValueOnce(
         mockResponse(200, { tunnels: [{ id: 'tunnel_1', name: 'staging', ephemeral: false }] }),
       );
@@ -85,17 +77,6 @@ describe('backend client', () => {
         selectors: ['localhost:3000'],
         ephemeral: true,
       });
-
-      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
-      await deleteTunnel(client, 'org_1', 'tunnel_2');
-      expect(requestOf(fetchMock.mock.calls[2]).url).toBe(
-        `${apiEndpoint}/v1/organizations/org_1/tunnels/tunnel_2`,
-      );
-    });
-
-    it('treats deleting a tunnel that is already gone as done', async () => {
-      fetchMock.mockResolvedValue(mockResponse(404, { message: 'not found' }));
-      await expect(deleteTunnel(client, 'org_1', 'tunnel_2')).resolves.toBeUndefined();
     });
   });
 
