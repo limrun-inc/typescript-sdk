@@ -103,6 +103,21 @@ describe('withAuth login handling', () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
+  it('fails without a login when an explicit key is rejected', async () => {
+    readConfigMock.mockReturnValue({
+      apiKey: 'lim_stored_key',
+      apiEndpoint: 'https://api.example.test',
+      consoleEndpoint: 'https://console.example.test',
+    });
+    const cmd = makeCommand({ 'api-key': 'lim_revoked_key' });
+    await withTty(async () => {
+      await expect(cmd.runWithAuth(() => Promise.reject(unauthenticated403()))).rejects.toThrow(
+        /The API key was rejected; it may be revoked or expired\./,
+      );
+    });
+    expect(loginMock).not.toHaveBeenCalled();
+  });
+
   it('fails with guidance instead of blocking when not interactive', async () => {
     readConfigMock.mockReturnValue({
       apiKey: 'lim_stale_key',
