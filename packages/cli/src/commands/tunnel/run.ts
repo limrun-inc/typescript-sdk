@@ -18,14 +18,14 @@ export default class TunnelRun extends BaseCommand {
   static description =
     'Run the connector of a tunnel created in the console (Network > New tunnel) or the API, and open ' +
     'a destination tunnel to every iOS and Android instance created with --tunnel <name>, until Ctrl+C. ' +
-    'Run it with the tunnel key the console shows (LIM_API_KEY); the key names its tunnel, and the ' +
+    'Run it with the tunnel key the console shows (--token); the key names its tunnel, and the ' +
     "tunnel's selectors decide which destinations instances reach through this machine. An admin's " +
     'login runs any tunnel with --name, and --name with --selector runs a throwaway tunnel that goes ' +
     'away when this connector exits. Instance tunnels stay up while the connection to Limrun ' +
     'reconnects. One connector holds a tunnel at a time: others wait on standby, and --replace takes ' +
     'it over.';
   static examples = [
-    'LIM_API_KEY=<tunnel key> <%= config.bin %> tunnel run',
+    '<%= config.bin %> tunnel run --token <tunnel key>',
     '<%= config.bin %> tunnel run --name staging',
     '<%= config.bin %> tunnel run --name scratch --selector localhost:3000',
     '<%= config.bin %> ios create --tunnel staging',
@@ -33,6 +33,10 @@ export default class TunnelRun extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    token: Flags.string({
+      description:
+        'Tunnel key from the console (Network > New tunnel). Takes precedence over --api-key and LIM_API_KEY.',
+    }),
     name: Flags.string({
       description:
         "Tunnel to run with an admin's credential. A tunnel key runs its own tunnel and needs no name.",
@@ -66,7 +70,8 @@ export default class TunnelRun extends BaseCommand {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(TunnelRun);
-    this.setParsedFlags(flags);
+    // The tunnel key is an API key; it wins over a key already in the shell.
+    this.setParsedFlags(flags.token ? { ...flags, 'api-key': flags.token } : flags);
     let inspection: TunnelInspectionContext;
     try {
       inspection = tunnelInspectionContext(flags);
@@ -142,7 +147,7 @@ export default class TunnelRun extends BaseCommand {
       return { id: keyTunnelId, created: false };
     }
     if (!name) {
-      this.error("Run with the tunnel's key (LIM_API_KEY), or pass --name with an admin's credential.");
+      this.error("Run with the tunnel's key (--token), or pass --name with an admin's credential.");
     }
     const existing = await findTunnel(this.client, organizationId, name);
     if (existing?.ephemeral) {
