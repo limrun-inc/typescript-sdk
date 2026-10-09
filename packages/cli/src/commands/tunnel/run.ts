@@ -18,14 +18,14 @@ export default class TunnelRun extends BaseCommand {
   static description =
     'Run the connector of a tunnel created in the console (Network > New tunnel) or the API, and open ' +
     'a destination tunnel to every iOS and Android instance created with --tunnel <name>, until Ctrl+C. ' +
-    'Run it with the tunnel key the console shows (--token); the key names its tunnel, and the ' +
+    'Run it with the tunnel token the console shows (--token); the token names its tunnel, and the ' +
     "tunnel's selectors decide which destinations instances reach through this machine. An admin's " +
     'login runs any tunnel with --name, and --name with --selector runs a throwaway tunnel that goes ' +
     'away when this connector exits. Instance tunnels stay up while the connection to Limrun ' +
     'reconnects. One connector holds a tunnel at a time: others wait on standby, and --replace takes ' +
     'it over.';
   static examples = [
-    '<%= config.bin %> tunnel run --token <tunnel key>',
+    '<%= config.bin %> tunnel run --token <tunnel token>',
     '<%= config.bin %> tunnel run --name staging',
     '<%= config.bin %> tunnel run --name scratch --selector localhost:3000',
     '<%= config.bin %> ios create --tunnel staging',
@@ -35,11 +35,11 @@ export default class TunnelRun extends BaseCommand {
     ...BaseCommand.baseFlags,
     token: Flags.string({
       description:
-        'Tunnel key from the console (Network > New tunnel). Takes precedence over --api-key and LIM_API_KEY.',
+        'Tunnel token from the console (Network > New tunnel). Takes precedence over --api-key and LIM_API_KEY.',
     }),
     name: Flags.string({
       description:
-        "Tunnel to run with an admin's credential. A tunnel key runs its own tunnel and needs no name.",
+        "Tunnel to run with an admin's credential. A tunnel token runs its own tunnel and needs no name.",
     }),
     selector: Flags.string({
       description:
@@ -70,7 +70,7 @@ export default class TunnelRun extends BaseCommand {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(TunnelRun);
-    // The tunnel key is an API key; it wins over a key already in the shell.
+    // A tunnel token authenticates like an API key and wins over one already in the shell.
     this.setParsedFlags(flags.token ? { ...flags, 'api-key': flags.token } : flags);
     let inspection: TunnelInspectionContext;
     try {
@@ -81,9 +81,9 @@ export default class TunnelRun extends BaseCommand {
     const selectors = flags.selector?.length ? parseTunnelSelectors(flags.selector) : undefined;
 
     await this.withAuth(async () => {
-      const { organizationId, tunnelId: keyTunnelId } = await whoAmITunnel(this.client);
-      const tunnel = await this.resolveTunnel(organizationId, keyTunnelId, flags.name, selectors);
-      // A tunnel key's tunnel learns its name from the first active.
+      const { organizationId, tunnelId: tokenTunnelId } = await whoAmITunnel(this.client);
+      const tunnel = await this.resolveTunnel(organizationId, tokenTunnelId, flags.name, selectors);
+      // A tunnel token's tunnel learns its name from the first active.
       let name = flags.name;
       const connector = runTunnel({
         apiKey: this.client.apiKey ?? '',
@@ -128,26 +128,26 @@ export default class TunnelRun extends BaseCommand {
   }
 
   /**
-   * The tunnel to run: the one a tunnel key names, the one --name names, or
+   * The tunnel to run: the one a tunnel token names, the one --name names, or
    * a throwaway tunnel that --name and --selector create.
    */
   private async resolveTunnel(
     organizationId: string,
-    keyTunnelId: string | undefined,
+    tokenTunnelId: string | undefined,
     name: string | undefined,
     selectors: string[] | undefined,
   ): Promise<{ id: string; created: boolean }> {
-    if (keyTunnelId) {
+    if (tokenTunnelId) {
       if (name || selectors) {
         this.error(
-          "A tunnel key runs its own tunnel as created; drop --name and --selector, and edit the tunnel's " +
+          "A tunnel token runs its own tunnel as created; drop --name and --selector, and edit the tunnel's " +
             'selectors in the console.',
         );
       }
-      return { id: keyTunnelId, created: false };
+      return { id: tokenTunnelId, created: false };
     }
     if (!name) {
-      this.error("Run with the tunnel's key (--token), or pass --name with an admin's credential.");
+      this.error("Run with the tunnel's token (--token), or pass --name with an admin's credential.");
     }
     const existing = await findTunnel(this.client, organizationId, name);
     if (existing?.ephemeral) {

@@ -38,7 +38,7 @@ describe('backend client', () => {
   }
 
   describe('tunnels', () => {
-    it('reads the one tunnel a tunnel key runs from its scopes', async () => {
+    it('reads the one tunnel a tunnel token runs from its scopes', async () => {
       fetchMock.mockResolvedValue(
         mockResponse(200, {
           type: 'organization',

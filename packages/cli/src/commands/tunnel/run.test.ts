@@ -27,11 +27,11 @@ describe('tunnel run flags', () => {
 describe('tunnel run command', () => {
   function setup(
     flags: { name?: string; selector?: readonly string[]; token?: string },
-    { keyTunnelId, closed = Promise.resolve() }: { keyTunnelId?: string; closed?: Promise<void> } = {},
+    { tokenTunnelId, closed = Promise.resolve() }: { tokenTunnelId?: string; closed?: Promise<void> } = {},
   ) {
     jest
       .mocked(whoAmITunnel)
-      .mockResolvedValue({ organizationId: 'org_1', ...(keyTunnelId ? { tunnelId: keyTunnelId } : {}) });
+      .mockResolvedValue({ organizationId: 'org_1', ...(tokenTunnelId ? { tunnelId: tokenTunnelId } : {}) });
     const close = jest.fn(async () => {});
     jest.mocked(runTunnel).mockReturnValue({ closed, close });
     const info = jest.fn();
@@ -65,8 +65,8 @@ describe('tunnel run command', () => {
     return jest.mocked(runTunnel).mock.calls[0]![0] as TunnelConnectorOptions;
   }
 
-  test('runs the tunnel a tunnel key names, with the mapped options', async () => {
-    const { command, info } = setup({}, { keyTunnelId: 'tunnel_1' });
+  test('runs the tunnel a tunnel token names, with the mapped options', async () => {
+    const { command, info } = setup({}, { tokenTunnelId: 'tunnel_1' });
     await command.run();
 
     expect(findTunnel).not.toHaveBeenCalled();
@@ -91,11 +91,11 @@ describe('tunnel run command', () => {
   });
 
   test('runs with the key --token passes, over one in the shell', async () => {
-    const { command } = setup({ token: 'lim_tunnel_key' }, { keyTunnelId: 'tunnel_1' });
+    const { command } = setup({ token: 'lim_tunnel_token' }, { tokenTunnelId: 'tunnel_1' });
     await command.run();
 
     expect(command.setParsedFlags).toHaveBeenCalledWith(
-      expect.objectContaining({ token: 'lim_tunnel_key', 'api-key': 'lim_tunnel_key' }),
+      expect.objectContaining({ token: 'lim_tunnel_token', 'api-key': 'lim_tunnel_token' }),
     );
   });
 
@@ -136,17 +136,22 @@ describe('tunnel run command', () => {
 
   test.each([
     [
-      'a tunnel key with selectors',
+      'a tunnel token with selectors',
       { selector: ['localhost:3000'] },
       'tunnel_1',
-      'A tunnel key runs its own tunnel as created',
+      'A tunnel token runs its own tunnel as created',
     ],
-    ['a tunnel key with a name', { name: 'b' }, 'tunnel_1', 'A tunnel key runs its own tunnel as created'],
+    [
+      'a tunnel token with a name',
+      { name: 'b' },
+      'tunnel_1',
+      'A tunnel token runs its own tunnel as created',
+    ],
     [
       'no key and no name',
       {},
       undefined,
-      "Run with the tunnel's key (--token), or pass --name with an admin's credential.",
+      "Run with the tunnel's token (--token), or pass --name with an admin's credential.",
     ],
     [
       'a name that does not exist without selectors',
@@ -155,9 +160,9 @@ describe('tunnel run command', () => {
       'Tunnel missing does not exist. Create it in the console (Network > New tunnel), or pass --selector to ' +
         'run a throwaway tunnel.',
     ],
-  ] as const)('refuses %s', async (_, flags, keyTunnelId, message) => {
+  ] as const)('refuses %s', async (_, flags, tokenTunnelId, message) => {
     jest.mocked(findTunnel).mockResolvedValue(undefined);
-    const { command } = setup(flags, keyTunnelId ? { keyTunnelId } : {});
+    const { command } = setup(flags, tokenTunnelId ? { tokenTunnelId } : {});
     await expect(command.run()).rejects.toThrow(message);
     expect(runTunnel).not.toHaveBeenCalled();
   });
@@ -182,7 +187,7 @@ describe('tunnel run command', () => {
     const { command } = setup(
       {},
       {
-        keyTunnelId: 'tunnel_1',
+        tokenTunnelId: 'tunnel_1',
         closed: Promise.reject(new Error('tunnel staging: the tunnel was deleted')),
       },
     );
@@ -198,7 +203,7 @@ describe('tunnel run event lines', () => {
     ],
     [
       { type: 'keyExpiring', expiresAt: '2026-10-20T00:00:00Z' },
-      'The key this connector runs with expires at 2026-10-20T00:00:00Z. Issue a new key for tunnel staging ' +
+      'The token this connector runs with expires at 2026-10-20T00:00:00Z. Issue a new token for tunnel staging ' +
         'in the console (Network) and restart the connector with it.',
     ],
     [
