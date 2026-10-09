@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       pr:
-        description: "Pull request number to evaluate"
+        description: 'Pull request number to evaluate'
         required: true
 
 permissions:
