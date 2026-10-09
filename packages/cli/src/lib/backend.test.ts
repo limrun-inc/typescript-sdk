@@ -75,7 +75,7 @@ describe('backend client', () => {
       await expect(whoAmITunnel(client)).resolves.toEqual({ organizationId: 'org_1' });
     });
 
-    it('finds a tunnel by name and creates a throwaway one', async () => {
+    it('finds a tunnel by name and creates a quick one', async () => {
       fetchMock.mockResolvedValueOnce(
         mockResponse(200, { tunnels: [{ id: 'tunnel_1', name: 'staging', ephemeral: false }] }),
       );
@@ -104,16 +104,21 @@ describe('backend client', () => {
         token: { expirationMonths: 1 },
       });
 
-      // Without its token the tunnel could not run, so the create fails.
+      // Without its token the tunnel could not run, so the create fails and
+      // the tunnel goes at once.
       fetchMock.mockResolvedValueOnce(
         mockResponse(201, { tunnel: { id: 'tunnel_3', name: 'other', ephemeral: true } }),
       );
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
       await expect(createQuickTunnel(client, 'org_1', 'other', ['localhost:3000'])).rejects.toThrow(
         'returned no token',
       );
+      const [deleteURL, deleteInit] = fetchMock.mock.calls[3] as [string, RequestInit];
+      expect(deleteURL).toBe(`${apiEndpoint}/v1/organizations/org_1/tunnels/tunnel_3`);
+      expect(deleteInit.method).toBe('DELETE');
     });
 
-    it('deletes a throwaway tunnel by ID, and a tunnel the hub already removed is fine', async () => {
+    it('deletes a quick tunnel by ID, and a tunnel the hub already removed is fine', async () => {
       fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
       await deleteQuickTunnel(client, 'org_1', 'tunnel_2');
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];

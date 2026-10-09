@@ -51,12 +51,12 @@ const ATTACH_GIVE_UP_MS = 5 * 60_000;
 const TAKEN_OVER_MESSAGE = 'another connector for this tunnel took the instance over';
 /** A token this close to its expiry is not dialed with; the hub refreshes it at half its life. */
 const TOKEN_EXPIRY_MARGIN_MS = 5_000;
-/** How long before its key expires the connector starts warning, and how often. */
+/** How long before its token expires the connector starts warning, and how often. */
 const KEY_WARNING_WINDOW_MS = 14 * 24 * 60 * 60_000;
 const KEY_WARNING_EVERY_MS = 24 * 60 * 60_000;
 
 export interface TunnelConnectorOptions {
-  /** The tunnel's own token, or an admin's credential. */
+  /** The tunnel's token; no other credential connects. */
   apiKey: string;
   /** Limrun API base URL, such as https://api.limrun.com. */
   baseURL: string;
@@ -82,7 +82,7 @@ export interface TunnelConnectorOptions {
 export type TunnelConnectorEvent =
   /** This connector holds the tunnel; emitted once per session and control connection. */
   | { type: 'active'; sessionId: string; name: string }
-  /** The connector's key expires within two weeks; emitted once a day until it does. */
+  /** The connector's tunnel token expires within two weeks; emitted once a day until it does. */
   | { type: 'keyExpiring'; expiresAt: string }
   /** Another connector holds the name; emitted once per holder. */
   | { type: 'standby'; holder: { hostname: string; since?: string } }
@@ -362,7 +362,7 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
     // A token past its life is refused; the API sends a fresh one at half
     // life, so this only waits while the control channel is down.
     if (!tokenUsable(attachment)) {
-      retryAfterFailure(instanceId, attachment, 'token_expired', 'waiting for a fresh tunnel token');
+      retryAfterFailure(instanceId, attachment, 'token_expired', 'waiting for a fresh attach token');
       return;
     }
     let tunnel: DestinationTcpTunnel;
@@ -752,7 +752,7 @@ function revokedMessage(reason: string): string {
     case 'deleted':
       return 'the tunnel was deleted';
     case 'credential':
-      return 'the credential it runs with was revoked';
+      return 'its tunnel token was rotated, revoked or has expired';
     default:
       return `the tunnel was revoked (${reason})`;
   }
