@@ -45,6 +45,78 @@ export async function whoAmI(client: Limrun): Promise<string> {
   return organizationId;
 }
 
+/** A persistent tunnel as the backend lists it. */
+export interface PersistentTunnel {
+  id: string;
+  name: string;
+  ephemeral: boolean;
+}
+
+/**
+ * Resolves the organization and, when the credential is a tunnel key, the
+ * one tunnel it runs: a tunnel key's only scope is tunnel:<id>:connect.
+ */
+export async function whoAmITunnel(client: Limrun): Promise<{ organizationId: string; tunnelId?: string }> {
+  let body: { organization?: { id?: string }; scopes?: string[] };
+  try {
+    body = await client.get('/v1/whoami');
+  } catch (err) {
+    rethrow(err, 'Failed to resolve the organization');
+  }
+  const organizationId = body.organization?.id;
+  if (!organizationId) {
+    throw new Error('Running a tunnel needs an API key: a tunnel key from the console, or an admin key.');
+  }
+  const [scope, ...rest] = body.scopes ?? [];
+  const match = rest.length === 0 ? /^tunnel:(tunnel_[0-9a-z]+):connect$/.exec(scope ?? '') : null;
+  return match ? { organizationId, tunnelId: match[1]! } : { organizationId };
+}
+
+function tunnelsPath(organizationId: string): string {
+  return `/v1/organizations/${encodeURIComponent(organizationId)}/tunnels`;
+}
+
+/** Finds an organization's tunnel by the name instances use. */
+export async function findTunnel(
+  client: Limrun,
+  organizationId: string,
+  name: string,
+): Promise<PersistentTunnel | undefined> {
+  let body: { tunnels?: PersistentTunnel[] };
+  try {
+    body = await client.get(tunnelsPath(organizationId));
+  } catch (err) {
+    rethrow(err, 'Failed to list tunnels');
+  }
+  return body.tunnels?.find((tunnel) => tunnel.name === name);
+}
+
+/** Creates a throwaway tunnel that goes away when its connector does. */
+export async function createQuickTunnel(
+  client: Limrun,
+  organizationId: string,
+  name: string,
+  selectors: string[],
+): Promise<PersistentTunnel> {
+  try {
+    const body = await client.post<{ tunnel: PersistentTunnel }>(tunnelsPath(organizationId), {
+      body: { name, selectors, ephemeral: true },
+    });
+    return body.tunnel;
+  } catch (err) {
+    rethrow(err, `Failed to create tunnel ${name}`);
+  }
+}
+
+export async function deleteTunnel(client: Limrun, organizationId: string, id: string): Promise<void> {
+  try {
+    await client.delete(`${tunnelsPath(organizationId)}/${encodeURIComponent(id)}`);
+  } catch (err) {
+    if (err instanceof NotFoundError) return;
+    rethrow(err, 'Failed to delete the tunnel');
+  }
+}
+
 function secretPath(organizationId: string, secretType: string, secretName: string): string {
   return `/v1/organizations/${encodeURIComponent(organizationId)}/secrets/${encodeURIComponent(
     secretType,
