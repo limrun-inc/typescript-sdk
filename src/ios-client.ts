@@ -563,6 +563,7 @@ export type PerformAction =
       momentum?: number;
     }
   | { type: 'toggleKeyboard' }
+  | { type: 'setTouchIndicators'; enabled: boolean }
   | { type: 'openUrl'; url: string }
   | { type: 'setOrientation'; orientation: 'Portrait' | 'Landscape' }
   | { type: 'wait'; durationMs: number }
@@ -743,6 +744,13 @@ export type InstanceClient = {
    * Equivalent to pressing Cmd+K in the iOS Simulator.
    */
   toggleKeyboard: () => Promise<void>;
+
+  /**
+   * Show or hide touch ripples and drag trails across this iOS simulator.
+   * Enabled by default at boot. Applies to all viewers, screenshots, and recordings;
+   * reconnecting or starting a recording does not change the setting.
+   */
+  setTouchIndicators: (enabled: boolean) => Promise<void>;
 
   /**
    * Launch an installed app by bundle identifier
@@ -1924,6 +1932,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       typeTextResult: () => undefined,
       pressKeyResult: () => undefined,
       toggleKeyboardResult: () => undefined,
+      setTouchIndicatorsResult: () => undefined,
       launchAppResult: () => undefined,
       terminateAppResult: () => undefined,
       watchAppResult: () => undefined,
@@ -2132,6 +2141,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             typeText,
             pressKey,
             toggleKeyboard,
+            setTouchIndicators,
             launchApp,
             terminateApp,
             watchApp,
@@ -2352,6 +2362,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const pressKey = (key: string, modifiers?: string[]): Promise<void> => {
       return sendRequest<void>('pressKey', { key, modifiers });
+    };
+
+    const setTouchIndicators = (enabled: boolean): Promise<void> => {
+      return sendRequest<void>('setTouchIndicators', { enabled });
     };
 
     const toggleKeyboard = (): Promise<void> => {
