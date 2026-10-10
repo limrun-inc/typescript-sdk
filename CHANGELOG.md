@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.63.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.62.0...v0.63.0) (2026-10-10)
+
+
+### Features
+
+* **cli:** manage persistent tunnels from the CLI ([a1d7d97](https://github.com/limrun-inc/typescript-sdk/commit/a1d7d97ae7c9512ce0749e6e67918ec32ca34c32))
+
+
+### Bug Fixes
+
+* **cli:** refuse to rotate a quick tunnel's token ([0b52778](https://github.com/limrun-inc/typescript-sdk/commit/0b52778646e3e688bb2af4ab94786e20837d03dc))
+* **cli:** run the connector with its token option ([ec5bef1](https://github.com/limrun-inc/typescript-sdk/commit/ec5bef1cc6f5f2b6775636bef0c355dd91420741))
+
+
+### Chores
+
+* **cli:** release 0.42.0 with API 0.62.0 ([1bd74d1](https://github.com/limrun-inc/typescript-sdk/commit/1bd74d154e17e67ce8ace08b2a1b0a09c107e2b0))
+* **cli:** release 0.43.0 ([8cd1008](https://github.com/limrun-inc/typescript-sdk/commit/8cd10089ed8d5879981a2cfcce01af57ac13c418))
+
+
+### Styles
+
+* **cli:** format the tunnel management tests ([5ccef69](https://github.com/limrun-inc/typescript-sdk/commit/5ccef69809096935ff0f1d60638fa3fb3065c611))
+
 ## [0.62.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.61.0...v0.62.0) (2026-10-10)
 
 
