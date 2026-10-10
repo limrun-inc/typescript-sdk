@@ -98,7 +98,7 @@ describe('tunnel run command', () => {
     expect(quickTunnelOrganization).not.toHaveBeenCalled();
     expect(findTunnel).not.toHaveBeenCalled();
     expect(options()).toMatchObject({
-      apiKey: tunnelToken,
+      token: tunnelToken,
       baseURL: 'https://api.example.test',
       organizationId: 'org_1',
       tunnelId: 'tunnel_01h455vb4pex5vsknk084sn02q',
@@ -137,7 +137,7 @@ describe('tunnel run command', () => {
 
     expect(createQuickTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'scratch', ['localhost:3000']);
     // Only tunnel tokens connect, so the admin's login never reaches the hub.
-    expect(options()).toMatchObject({ tunnelId: 'tunnel_3', apiKey: 'lim_st_quick' });
+    expect(options()).toMatchObject({ tunnelId: 'tunnel_3', token: 'lim_st_quick' });
     options().onEvent!({ type: 'active', sessionId: 's1', name: 'scratch' });
     expect(info).toHaveBeenCalledWith(expect.stringContaining('goes away when this connector exits'));
     expect(deleteQuickTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
@@ -237,7 +237,7 @@ describe('tunnel run event lines', () => {
       'Tunnel staging is active. Instances created with --tunnel staging attach here; press Ctrl+C to stop.',
     ],
     [
-      { type: 'keyExpiring', expiresAt: '2026-10-20T00:00:00Z' },
+      { type: 'tokenExpiring', expiresAt: '2026-10-20T00:00:00Z' },
       'The token this connector runs with expires at 2026-10-20T00:00:00Z. Rotate the token of tunnel staging ' +
         'in the console (Network) and restart the connector with the new one.',
     ],
@@ -281,7 +281,11 @@ describe('tunnel run event lines', () => {
         'It is a quick tunnel and goes away when this connector exits.',
     );
     expect(
-      formatTunnelConnectorEvent('scratch', { type: 'keyExpiring', expiresAt: '2026-10-20T00:00:00Z' }, true),
+      formatTunnelConnectorEvent(
+        'scratch',
+        { type: 'tokenExpiring', expiresAt: '2026-10-20T00:00:00Z' },
+        true,
+      ),
     ).toBe(
       'The token of quick tunnel scratch expires at 2026-10-20T00:00:00Z. Restart the connector to get a new one.',
     );

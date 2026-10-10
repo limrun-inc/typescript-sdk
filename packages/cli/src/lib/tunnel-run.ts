@@ -17,7 +17,7 @@ export function formatTunnelConnectorEvent(
         `press Ctrl+C to stop.` +
         (ephemeral ? ' It is a quick tunnel and goes away when this connector exits.' : '')
       );
-    case 'keyExpiring':
+    case 'tokenExpiring':
       // A quick tunnel's token goes with it, so a restart brings a new one.
       return ephemeral ?
           `The token of quick ${tunnel} expires at ${event.expiresAt}. Restart the connector to get a new one.`
