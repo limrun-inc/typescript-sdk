@@ -133,7 +133,7 @@ export default class TunnelRun extends BaseCommand {
     let stop: (() => void) | undefined;
     try {
       const connector = runTunnel({
-        apiKey: tunnel.token,
+        token: tunnel.token,
         baseURL: this.client.baseURL,
         organizationId: tunnel.organizationId,
         tunnelId: tunnel.tunnelId,
