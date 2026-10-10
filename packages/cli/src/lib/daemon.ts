@@ -566,7 +566,11 @@ export function startDaemonServer(): void {
           break;
 
         case 'start-recording':
-          await (client as any).startRecording(args[0] ? { quality: args[0] } : undefined);
+          await (client as any).startRecording(
+            type === 'ios' ? args[0]
+            : args[0] ? { quality: args[0] }
+            : undefined,
+          );
           result = { recording: true };
           break;
 
