@@ -2561,30 +2561,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       );
     };
 
-    const startRecording = async (opts?: {
-      quality?: RecordingQuality;
-      persist?: PersistOption;
-      display?: DuoDisplay;
-      touchIndicators?: boolean;
-    }): Promise<void> => {
-      const request: {
-        quality?: RecordingQuality;
-        persist?: boolean;
-        ttlSeconds?: number;
-        display?: DuoDisplay;
-        touchIndicators?: boolean;
-      } = {
-        ...persistFields(opts?.persist),
-        touchIndicators: opts?.touchIndicators ?? true,
-      };
+    const startRecording: InstanceClient['startRecording'] = async (opts) => {
       if (opts?.quality !== undefined) {
         if (!Number.isInteger(opts.quality) || opts.quality < 5 || opts.quality > 10) {
           throw new Error('quality must be one of: 5, 6, 7, 8, 9, 10');
         }
-        request.quality = opts.quality;
       }
-      if (opts?.display !== undefined) request.display = opts.display;
-      await sendRequest<void>('startVideoRecording', request);
+      await sendRequest<void>('startVideoRecording', {
+        ...persistFields(opts?.persist),
+        quality: opts?.quality,
+        display: opts?.display,
+        touchIndicators: opts?.touchIndicators,
+      });
     };
 
     const startAppLogCapture = async (opts: { bundleId: string; persist?: PersistOption }): Promise<void> => {

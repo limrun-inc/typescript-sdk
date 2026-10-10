@@ -78,9 +78,6 @@ export default class IosRecord extends BaseCommand {
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
-      if (false) {
-        this.error('ios record only supports iOS instances');
-      }
 
       if (flags['persist-ttl'] && !flags.persist) {
         this.error('--persist-ttl requires --persist.');

@@ -169,7 +169,7 @@ describe('native iPhone Duo controls', () => {
     }
   });
 
-  it('defaults recording touch indicators on and preserves explicit opt-out', async () => {
+  it('leaves recording defaults to the server and preserves explicit touch indicator options', async () => {
     const { createInstanceClient } = await import('../src/ios-client');
     const client = await createInstanceClient({
       apiUrl: 'https://example.test',
@@ -186,7 +186,7 @@ describe('native iPhone Duo controls', () => {
       });
       await client.startRecording({ touchIndicators: true });
       expect(sentMessages.filter((message) => message['type'] === 'startVideoRecording')).toEqual([
-        { type: 'startVideoRecording', id: expect.any(String), touchIndicators: true },
+        { type: 'startVideoRecording', id: expect.any(String) },
         {
           type: 'startVideoRecording',
           id: expect.any(String),
