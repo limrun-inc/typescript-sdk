@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.62.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.61.0...v0.62.0) (2026-10-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **tunnel:** call the connector's credential its token
+
+### Bug Fixes
+
+* **cli:** parse tunnel token claims safely and keep stored tunnel tokens working ([f68c2fd](https://github.com/limrun-inc/typescript-sdk/commit/f68c2fde1031c3d580386b837ef0a22eba582668))
+* **cli:** read a tunnel token's organization and tunnel from its claims ([db78ccf](https://github.com/limrun-inc/typescript-sdk/commit/db78ccf755efed9ffd1965ea76d1ea67be0210a6))
+* **cli:** read the tunnel token from --token or LIM_TUNNEL_TOKEN only ([7568827](https://github.com/limrun-inc/typescript-sdk/commit/7568827e7f74c95885685b16dfca5d95f969b248))
+* **cli:** run throwaway tunnels with their own token ([b97f622](https://github.com/limrun-inc/typescript-sdk/commit/b97f622af410f67d66aac90ad728ebde34e0e478))
+* **tunnel:** call the connector's credential its token ([fbe1388](https://github.com/limrun-inc/typescript-sdk/commit/fbe1388a7925ec2b9dc6acc664b1c0ffd8eff3dd))
+* **tunnel:** call tunnel credentials tokens in connector and CLI text ([eb73268](https://github.com/limrun-inc/typescript-sdk/commit/eb73268746556d77e09d5f72b908d71bf665965e))
+* **tunnel:** close the gaps the tunnel token review found ([4d5dd59](https://github.com/limrun-inc/typescript-sdk/commit/4d5dd594e37609efe9f87f4350fff8c958548e66))
+
+
+### Chores
+
+* **cli:** release 0.41.0 with API 0.61.0 ([151d8c8](https://github.com/limrun-inc/typescript-sdk/commit/151d8c858aa2862e55a5b52e1608d537f4d6b67f))
+* format the Bugbot approve workflow ([b5ba6f9](https://github.com/limrun-inc/typescript-sdk/commit/b5ba6f9485976a851c67b533f7fc487d0486a518))
+
 ## [0.61.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.60.0...v0.61.0) (2026-10-09)
 
 
