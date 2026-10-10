@@ -104,21 +104,19 @@ describe('tunnel create', () => {
 
 describe('tunnel list', () => {
   test('shows each tunnel with its status, connector, selectors, token expiry and instance count', async () => {
-    jest
-      .mocked(listTunnels)
-      .mockResolvedValue([
-        staging,
-        {
-          ...staging,
-          id: 'tunnel_2',
-          name: 'scratch',
-          ephemeral: true,
-          online: false,
-          hostname: undefined,
-          tokenExpiresAt: undefined,
-          instances: [],
-        },
-      ]);
+    jest.mocked(listTunnels).mockResolvedValue([
+      staging,
+      {
+        ...staging,
+        id: 'tunnel_2',
+        name: 'scratch',
+        ephemeral: true,
+        online: false,
+        hostname: undefined,
+        tokenExpiresAt: undefined,
+        instances: [],
+      },
+    ]);
     const { command, table } = setup(TunnelList, {});
     await command.run();
     expect(table).toHaveBeenCalledWith(
