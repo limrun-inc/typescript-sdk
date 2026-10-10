@@ -81,7 +81,7 @@
         "description": "Install Limrun skills for AI coding agents (Claude Code, Cursor, Codex). Run `lim skills install` to set up."
       },
       "tunnel": {
-        "description": "Run a persistent tunnel that instances can name at create time"
+        "description": "Manage and run persistent tunnels that instances name at create time: create, list, update, rotate, delete, run"
       },
       "xcode": {
         "description": "Execute any task on remote XCode sandboxes: create, list, get, delete, sync, build, test, run, use, tools, rbe, attach-simulator, version"
