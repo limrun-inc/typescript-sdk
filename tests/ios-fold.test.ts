@@ -169,6 +169,40 @@ describe('native iPhone Duo controls', () => {
     }
   });
 
+  it('defaults recording touch indicators on and preserves explicit opt-out', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test',
+      token: 'test',
+      logLevel: 'none',
+    });
+    try {
+      await client.startRecording();
+      await client.startRecording({
+        touchIndicators: false,
+        quality: 8,
+        display: 'inner',
+        persist: { ttlSeconds: 3600 },
+      });
+      await client.startRecording({ touchIndicators: true });
+      expect(sentMessages.filter((message) => message['type'] === 'startVideoRecording')).toEqual([
+        { type: 'startVideoRecording', id: expect.any(String), touchIndicators: true },
+        {
+          type: 'startVideoRecording',
+          id: expect.any(String),
+          touchIndicators: false,
+          quality: 8,
+          display: 'inner',
+          persist: true,
+          ttlSeconds: 3600,
+        },
+        { type: 'startVideoRecording', id: expect.any(String), touchIndicators: true },
+      ]);
+    } finally {
+      client.disconnect();
+    }
+  });
+
   it('supports capability absence and routes explicit displays and hinge controls', async () => {
     const { createInstanceClient } = await import('../src/ios-client');
     const client = await createInstanceClient({

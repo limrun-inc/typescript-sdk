@@ -2,7 +2,6 @@ const sentMessages: Record<string, unknown>[] = [];
 // When > 0, tapElement replies with the server's fail-fast "matched nothing"
 // error and decrements; the client-side scroll search retries against this.
 let tapElementMissesRemaining = 0;
-let touchIndicatorsError: string | undefined;
 let deviceModel = 'iphone';
 let panelActivity: Array<boolean | undefined> = [false, true];
 
@@ -33,19 +32,6 @@ jest.mock('ws', () => {
                 type: 'setElementValueResult',
                 id: message.id,
                 elementLabel: 'Field',
-              }),
-            ),
-          );
-        });
-      } else if (message['type'] === 'setTouchIndicators') {
-        process.nextTick(() => {
-          this['emit'](
-            'message',
-            Buffer.from(
-              JSON.stringify({
-                type: 'setTouchIndicatorsResult',
-                id: message.id,
-                error: touchIndicatorsError,
               }),
             ),
           );
@@ -168,35 +154,9 @@ async function connect() {
 describe('iOS input serialization', () => {
   beforeEach(() => {
     sentMessages.length = 0;
-    touchIndicatorsError = undefined;
     tapElementMissesRemaining = 0;
     deviceModel = 'iphone';
     panelActivity = [false, true];
-  });
-
-  it('changes touch indicators only on request and waits for each reply', async () => {
-    const client = await connect();
-    try {
-      expect(sentMessages.some((message) => message['type'] === 'setTouchIndicators')).toBe(false);
-      await client.setTouchIndicators(false);
-      await client.setTouchIndicators(true);
-      expect(sentMessages.filter((message) => message['type'] === 'setTouchIndicators')).toEqual([
-        { type: 'setTouchIndicators', id: expect.any(String), enabled: false },
-        { type: 'setTouchIndicators', id: expect.any(String), enabled: true },
-      ]);
-    } finally {
-      client.disconnect();
-    }
-  });
-
-  it('surfaces an unavailable touch overlay', async () => {
-    const client = await connect();
-    try {
-      touchIndicatorsError = 'Touch indicators are unavailable on this simulator.';
-      await expect(client.setTouchIndicators(false)).rejects.toThrow(touchIndicatorsError);
-    } finally {
-      client.disconnect();
-    }
   });
 
   it('scroll-searches the active inner display using its upright height', async () => {

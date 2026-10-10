@@ -563,7 +563,6 @@ export type PerformAction =
       momentum?: number;
     }
   | { type: 'toggleKeyboard' }
-  | { type: 'setTouchIndicators'; enabled: boolean }
   | { type: 'openUrl'; url: string }
   | { type: 'setOrientation'; orientation: 'Portrait' | 'Landscape' }
   | { type: 'wait'; durationMs: number }
@@ -746,13 +745,6 @@ export type InstanceClient = {
   toggleKeyboard: () => Promise<void>;
 
   /**
-   * Show or hide touch ripples and drag trails across this iOS simulator.
-   * Disabled at boot; recording start enables them and stop restores the manual setting.
-   * Applies to all viewers, screenshots, and recordings. Reconnecting preserves the setting.
-   */
-  setTouchIndicators: (enabled: boolean) => Promise<void>;
-
-  /**
    * Launch an installed app by bundle identifier
    * @param bundleId Bundle identifier of the app to launch
    * @param mode Optional launch mode:
@@ -903,7 +895,8 @@ export type InstanceClient = {
    * On Duo, follows native display activity and fits each panel into the initial
    * canvas without stretching. Pass display to keep recording one panel.
    * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
-   * The server default is `5`.
+   * The server default is `5`. Touch ripples and drag trails are enabled while
+   * recording by default. Set `touchIndicators: false` to omit them.
    * With `persist`, the completed recording is uploaded to Limrun's bucket
    * when the recording stops or the instance terminates; list it with
    * `iosInstances.listRecordings`.
@@ -912,6 +905,7 @@ export type InstanceClient = {
     quality?: RecordingQuality;
     persist?: PersistOption;
     display?: DuoDisplay;
+    touchIndicators?: boolean;
   }) => Promise<void>;
 
   /**
@@ -1932,7 +1926,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       typeTextResult: () => undefined,
       pressKeyResult: () => undefined,
       toggleKeyboardResult: () => undefined,
-      setTouchIndicatorsResult: () => undefined,
       launchAppResult: () => undefined,
       terminateAppResult: () => undefined,
       watchAppResult: () => undefined,
@@ -2141,7 +2134,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             typeText,
             pressKey,
             toggleKeyboard,
-            setTouchIndicators,
             launchApp,
             terminateApp,
             watchApp,
@@ -2364,10 +2356,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<void>('pressKey', { key, modifiers });
     };
 
-    const setTouchIndicators = (enabled: boolean): Promise<void> => {
-      return sendRequest<void>('setTouchIndicators', { enabled });
-    };
-
     const toggleKeyboard = (): Promise<void> => {
       return sendRequest<void>('toggleKeyboard');
     };
@@ -2577,14 +2565,17 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       quality?: RecordingQuality;
       persist?: PersistOption;
       display?: DuoDisplay;
+      touchIndicators?: boolean;
     }): Promise<void> => {
       const request: {
         quality?: RecordingQuality;
         persist?: boolean;
         ttlSeconds?: number;
         display?: DuoDisplay;
+        touchIndicators?: boolean;
       } = {
         ...persistFields(opts?.persist),
+        touchIndicators: opts?.touchIndicators ?? true,
       };
       if (opts?.quality !== undefined) {
         if (!Number.isInteger(opts.quality) || opts.quality < 5 || opts.quality > 10) {

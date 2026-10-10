@@ -470,13 +470,6 @@ export function startDaemonServer(): void {
           result = { pressed: true, key: args[0] };
           break;
 
-        case 'touch-indicators':
-          if (type !== 'ios') throw new Error('touch-indicators is only supported on iOS instances');
-          if (typeof args[0] !== 'boolean') throw new Error('touch-indicators requires an enabled boolean');
-          await (client as Ios.InstanceClient).setTouchIndicators(args[0]);
-          result = { enabled: args[0] };
-          break;
-
         case 'toggle-keyboard':
           if (type !== 'ios') throw new Error('toggle-keyboard is only supported on iOS instances');
           await (client as any).toggleKeyboard();
@@ -573,7 +566,11 @@ export function startDaemonServer(): void {
           break;
 
         case 'start-recording':
-          await (client as any).startRecording(args[0] ? { quality: args[0] } : undefined);
+          await (client as any).startRecording(
+            type === 'ios' ? args[0]
+            : args[0] ? { quality: args[0] }
+            : undefined,
+          );
           result = { recording: true };
           break;
 
