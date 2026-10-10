@@ -3,9 +3,9 @@ import { runTunnel } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import {
   createQuickTunnel,
-  deleteQuickTunnel,
+  deleteTunnel,
   findTunnel,
-  quickTunnelOrganization,
+  tunnelOrganization,
   tunnelTokenClaims,
 } from '../../lib/backend';
 import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
@@ -22,9 +22,9 @@ const VERSION = require('../../../package.json').version;
 export default class TunnelRun extends BaseCommand {
   static summary = 'Serve a persistent tunnel to every instance that names it';
   static description =
-    'Run the connector of a tunnel created in the console (Network > New tunnel) or the API, and open ' +
+    'Run the connector of a tunnel created with `lim tunnel create` or in the console (Network), and open ' +
     'a destination tunnel to every iOS and Android instance created with --tunnel <name>, until Ctrl+C. ' +
-    'Run it with the tunnel token the console shows (--token or LIM_TUNNEL_TOKEN); the token names its tunnel, and the ' +
+    'Run it with the tunnel token (--token or LIM_TUNNEL_TOKEN); the token names its tunnel, and the ' +
     "tunnel's selectors decide which destinations instances reach through this machine. With an " +
     "admin's login, --name and --selector run a quick tunnel that goes away when this connector " +
     'exits. Instance tunnels stay up while the connection to Limrun reconnects. One connector holds a ' +
@@ -38,7 +38,8 @@ export default class TunnelRun extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     token: Flags.string({
-      description: 'Tunnel token from the console (Network) or the API.',
+      description:
+        'Tunnel token printed by `lim tunnel create` or `lim tunnel rotate`, or shown in the console.',
       env: 'LIM_TUNNEL_TOKEN',
     }),
     name: Flags.string({
@@ -49,7 +50,7 @@ export default class TunnelRun extends BaseCommand {
     selector: Flags.string({
       description:
         'Run a quick tunnel with this destination, as localhost:port, IPv4:port, [IPv6]:port, or a ' +
-        'private exact or *. wildcard domain. A tunnel created in the console keeps its own selectors. ' +
+        'an exact or *. wildcard domain. A created tunnel keeps its own selectors. ' +
         'Repeat for more selectors.',
       multiple: true,
     }),
@@ -90,12 +91,12 @@ export default class TunnelRun extends BaseCommand {
     if (flags.token) {
       const claims = tunnelTokenClaims(flags.token);
       if (!claims) {
-        this.error('--token takes a tunnel token from the console (Network) or the API; this is not one.');
+        this.error('--token takes a tunnel token, as printed by `lim tunnel create`; this is not one.');
       }
       if (flags.name || selectors) {
         this.error(
-          "A tunnel token runs its own tunnel as created; drop --name and --selector, and edit the tunnel's " +
-            'selectors in the console.',
+          "A tunnel token runs its own tunnel as created; drop --name and --selector, and change the tunnel's " +
+            'selectors with `lim tunnel update`.',
         );
       }
       await this.serve({ ...claims, token: flags.token, created: false }, flags, inspection);
@@ -109,7 +110,7 @@ export default class TunnelRun extends BaseCommand {
     }
     const name = flags.name;
     await this.withAuth(async () => {
-      const organizationId = await quickTunnelOrganization(this.client);
+      const organizationId = await tunnelOrganization(this.client);
       const tunnel = await this.createQuick(organizationId, name, selectors);
       await this.serve(
         { organizationId, tunnelId: tunnel.id, token: tunnel.token, created: true },
@@ -165,7 +166,7 @@ export default class TunnelRun extends BaseCommand {
       // never said bye, so its quick tunnel would hold the name until the
       // hub sweeps it.
       if (tunnel.created) {
-        await deleteQuickTunnel(this.client, tunnel.organizationId, tunnel.tunnelId).catch((error: unknown) =>
+        await deleteTunnel(this.client, tunnel.organizationId, tunnel.tunnelId).catch((error: unknown) =>
           this.warn(
             `${error instanceof Error ? error.message : String(error)}; it goes away within ten minutes.`,
           ),
@@ -190,13 +191,13 @@ export default class TunnelRun extends BaseCommand {
     }
     if (existing) {
       this.error(
-        `Tunnel ${name} runs with its own token (--token). Rotate or create its token in the console ` +
-          '(Network) if you no longer have it.',
+        `Tunnel ${name} runs with its own token (--token). If you no longer have it, issue a new one with ` +
+          `lim tunnel rotate ${name}.`,
       );
     }
     if (!selectors) {
       this.error(
-        `Tunnel ${name} does not exist. Create it in the console (Network > New tunnel), or pass --selector to ` +
+        `Tunnel ${name} does not exist. Create it with lim tunnel create ${name} --selector <destination>, or pass --selector to ` +
           'run a quick tunnel.',
       );
     }

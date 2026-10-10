@@ -1,15 +1,21 @@
 import { Parser } from '@oclif/core';
 import { runTunnel, type TunnelConnectorOptions } from '@limrun/api';
 import TunnelRun from './run';
-import { createQuickTunnel, deleteQuickTunnel, findTunnel, quickTunnelOrganization } from '../../lib/backend';
+import {
+  createQuickTunnel,
+  deleteTunnel,
+  findTunnel,
+  tunnelOrganization,
+  type PersistentTunnel,
+} from '../../lib/backend';
 import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
 
 jest.mock('@limrun/api', () => ({ ...jest.requireActual('@limrun/api'), runTunnel: jest.fn() }));
 jest.mock('../../lib/backend', () => ({
-  quickTunnelOrganization: jest.fn(),
+  tunnelOrganization: jest.fn(),
   findTunnel: jest.fn(),
   createQuickTunnel: jest.fn(),
-  deleteQuickTunnel: jest.fn(async () => {}),
+  deleteTunnel: jest.fn(async () => {}),
   tunnelTokenClaims: jest.requireActual('../../lib/backend').tunnelTokenClaims,
 }));
 
@@ -18,6 +24,11 @@ jest.mock('../../lib/backend', () => ({
 const tunnelToken = `lim_st_eyJhbGciOiJFZERTQSJ9.${Buffer.from(
   JSON.stringify({ sub: 'org_1', scopes: ['tunnel:tunnel_01h455vb4pex5vsknk084sn02q:connect'] }),
 ).toString('base64url')}.c2ln`;
+
+/** A tunnel as the backend lists it, with the fields a test cares about. */
+function tunnelFixture(fields: { id: string; name: string; ephemeral: boolean }): PersistentTunnel {
+  return { online: false, selectors: [], instances: [], ...fields };
+}
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -55,7 +66,7 @@ describe('tunnel run command', () => {
     flags: { name?: string; selector?: readonly string[]; token?: string },
     { closed = Promise.resolve() }: { closed?: Promise<void> } = {},
   ) {
-    jest.mocked(quickTunnelOrganization).mockResolvedValue('org_1');
+    jest.mocked(tunnelOrganization).mockResolvedValue('org_1');
     const close = jest.fn(async () => {});
     jest.mocked(runTunnel).mockReturnValue({ closed, close });
     const info = jest.fn();
@@ -95,7 +106,7 @@ describe('tunnel run command', () => {
 
     // The admin's key in the shell is never used: no backend call, and the
     // connector runs with the tunnel token.
-    expect(quickTunnelOrganization).not.toHaveBeenCalled();
+    expect(tunnelOrganization).not.toHaveBeenCalled();
     expect(findTunnel).not.toHaveBeenCalled();
     expect(options()).toMatchObject({
       token: tunnelToken,
@@ -123,13 +134,13 @@ describe('tunnel run command', () => {
   ])('refuses %s passed as --token', async (_, token) => {
     const { command } = setup({ token });
     await expect(command.run()).rejects.toThrow('--token takes a tunnel token');
-    expect(quickTunnelOrganization).not.toHaveBeenCalled();
+    expect(tunnelOrganization).not.toHaveBeenCalled();
   });
 
   test("creates a quick tunnel for --name with --selector and runs it with the tunnel's token", async () => {
     jest.mocked(findTunnel).mockResolvedValue(undefined);
     jest.mocked(createQuickTunnel).mockResolvedValue({
-      tunnel: { id: 'tunnel_3', name: 'scratch', ephemeral: true },
+      tunnel: tunnelFixture({ id: 'tunnel_3', name: 'scratch', ephemeral: true }),
       token: 'lim_st_quick',
     });
     const { command, info } = setup({ name: 'scratch', selector: ['localhost:3000'] });
@@ -140,13 +151,13 @@ describe('tunnel run command', () => {
     expect(options()).toMatchObject({ tunnelId: 'tunnel_3', token: 'lim_st_quick' });
     options().onEvent!({ type: 'active', sessionId: 's1', name: 'scratch' });
     expect(info).toHaveBeenCalledWith(expect.stringContaining('goes away when this connector exits'));
-    expect(deleteQuickTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
+    expect(deleteTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
   });
 
   test('deletes its quick tunnel when the connector cannot start', async () => {
     jest.mocked(findTunnel).mockResolvedValue(undefined);
     jest.mocked(createQuickTunnel).mockResolvedValue({
-      tunnel: { id: 'tunnel_3', name: 'scratch', ephemeral: true },
+      tunnel: tunnelFixture({ id: 'tunnel_3', name: 'scratch', ephemeral: true }),
       token: 'lim_st_quick',
     });
     const { command } = setup({ name: 'scratch', selector: ['localhost:3000'] });
@@ -154,13 +165,13 @@ describe('tunnel run command', () => {
       throw new Error('invalid header value');
     });
     await expect(command.run()).rejects.toThrow('invalid header value');
-    expect(deleteQuickTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
+    expect(deleteTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
   });
 
   test('deletes its quick tunnel when the connector fails', async () => {
     jest.mocked(findTunnel).mockResolvedValue(undefined);
     jest.mocked(createQuickTunnel).mockResolvedValue({
-      tunnel: { id: 'tunnel_3', name: 'scratch', ephemeral: true },
+      tunnel: tunnelFixture({ id: 'tunnel_3', name: 'scratch', ephemeral: true }),
       token: 'lim_st_quick',
     });
     const { command } = setup(
@@ -168,7 +179,7 @@ describe('tunnel run command', () => {
       { closed: Promise.reject(new Error('tunnel scratch: unauthorized')) },
     );
     await expect(command.run()).rejects.toThrow('tunnel scratch: unauthorized');
-    expect(deleteQuickTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
+    expect(deleteTunnel).toHaveBeenCalledWith(expect.anything(), 'org_1', 'tunnel_3');
   });
 
   test.each([
@@ -190,8 +201,8 @@ describe('tunnel run command', () => {
     [
       'a name that does not exist without selectors',
       { name: 'missing' },
-      'Tunnel missing does not exist. Create it in the console (Network > New tunnel), or pass --selector to ' +
-        'run a quick tunnel.',
+      'Tunnel missing does not exist. Create it with lim tunnel create missing --selector <destination>, or ' +
+        'pass --selector to run a quick tunnel.',
     ],
   ] as const)('refuses %s', async (_, flags, message) => {
     jest.mocked(findTunnel).mockResolvedValue(undefined);
@@ -203,7 +214,9 @@ describe('tunnel run command', () => {
   test.each([[{ name: 'staging' }], [{ name: 'staging', selector: ['localhost:3000'] }]] as const)(
     'refuses to run a console-created tunnel without its token (%j)',
     async (flags) => {
-      jest.mocked(findTunnel).mockResolvedValue({ id: 'tunnel_2', name: 'staging', ephemeral: false });
+      jest
+        .mocked(findTunnel)
+        .mockResolvedValue(tunnelFixture({ id: 'tunnel_2', name: 'staging', ephemeral: false }));
       const { command } = setup(flags);
       await expect(command.run()).rejects.toThrow('Tunnel staging runs with its own token (--token)');
       expect(runTunnel).not.toHaveBeenCalled();
@@ -214,7 +227,9 @@ describe('tunnel run command', () => {
   test.each([[{ name: 'scratch' }], [{ name: 'scratch', selector: ['localhost:3000'] }]] as const)(
     "refuses another connector's quick tunnel (%j)",
     async (flags) => {
-      jest.mocked(findTunnel).mockResolvedValue({ id: 'tunnel_3', name: 'scratch', ephemeral: true });
+      jest
+        .mocked(findTunnel)
+        .mockResolvedValue(tunnelFixture({ id: 'tunnel_3', name: 'scratch', ephemeral: true }));
       const { command } = setup(flags);
       await expect(command.run()).rejects.toThrow("Tunnel scratch is another connector's quick tunnel");
       expect(runTunnel).not.toHaveBeenCalled();
@@ -238,8 +253,8 @@ describe('tunnel run event lines', () => {
     ],
     [
       { type: 'tokenExpiring', expiresAt: '2026-10-20T00:00:00Z' },
-      'The token this connector runs with expires at 2026-10-20T00:00:00Z. Rotate the token of tunnel staging ' +
-        'in the console (Network) and restart the connector with the new one.',
+      'The token this connector runs with expires at 2026-10-20T00:00:00Z. Issue a new one with ' +
+        'lim tunnel rotate staging and restart the connector with it.',
     ],
     [
       { type: 'standby', holder: { hostname: 'ci-1', since: '2026-10-08T10:00:00Z' } },

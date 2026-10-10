@@ -58,25 +58,36 @@ export interface PersistentTunnel {
   id: string;
   name: string;
   ephemeral: boolean;
+  online: boolean;
+  selectors: string[];
+  hostname?: string;
+  tokenExpiresAt?: string;
+  instances: { id: string; platform: string; state: string }[];
+}
+
+/** A tunnel token as the backend returns it, once: Limrun never stores it. */
+export interface TunnelToken {
+  token: string;
+  expiresAt: string;
 }
 
 /**
- * Resolves the organization an admin's credential acts for, to create a quick
- * tunnel. It must be an organization key, so a user token's default
- * organization does not count. A tunnel token belongs in --token: the backend
+ * Resolves the organization a credential manages tunnels for. It must be an
+ * organization key or login, so a user token's default organization does not
+ * count. A tunnel token belongs in `lim tunnel run --token`: the backend
  * accepts no signed token.
  */
-export async function quickTunnelOrganization(client: Limrun): Promise<string> {
+export async function tunnelOrganization(client: Limrun): Promise<string> {
   if ((client.apiKey ?? '').startsWith(SIGNED_TOKEN_PREFIX)) {
     throw new Error(
-      'The API key is a signed token. Pass a tunnel token with --token or LIM_TUNNEL_TOKEN; the API key ' +
-        "is an admin's, for quick tunnels.",
+      'The API key is a signed token. Pass a tunnel token to lim tunnel run with --token or ' +
+        'LIM_TUNNEL_TOKEN; managing tunnels needs an organization API key or login.',
     );
   }
   const body = await fetchWhoAmI(client);
   const organizationId = body.organization?.id;
   if (!organizationId) {
-    throw new Error("A quick tunnel needs an admin's organization key or login.");
+    throw new Error('Managing tunnels needs an organization API key or login.');
   }
   return organizationId;
 }
@@ -122,24 +133,58 @@ function tunnelsPath(organizationId: string): string {
   return `/v1/organizations/${encodeURIComponent(organizationId)}/tunnels`;
 }
 
-/** Finds an organization's tunnel by the name instances use. */
-export async function findTunnel(
-  client: Limrun,
-  organizationId: string,
-  name: string,
-): Promise<PersistentTunnel | undefined> {
+function tunnelPath(organizationId: string, tunnelId: string): string {
+  return `${tunnelsPath(organizationId)}/${encodeURIComponent(tunnelId)}`;
+}
+
+/** Lists an organization's tunnels. */
+export async function listTunnels(client: Limrun, organizationId: string): Promise<PersistentTunnel[]> {
   let body: { tunnels?: PersistentTunnel[] };
   try {
     body = await client.get(tunnelsPath(organizationId));
   } catch (err) {
     rethrow(err, 'Failed to list tunnels');
   }
-  return body.tunnels?.find((tunnel) => tunnel.name === name);
+  return body.tunnels ?? [];
+}
+
+/** Finds an organization's tunnel by the name instances use. */
+export async function findTunnel(
+  client: Limrun,
+  organizationId: string,
+  name: string,
+): Promise<PersistentTunnel | undefined> {
+  return (await listTunnels(client, organizationId)).find((tunnel) => tunnel.name === name);
 }
 
 /**
- * Creates a quick tunnel that goes away when its connector does, with the
- * token the connector runs it with: only tunnel tokens connect. The token
+ * Creates a tunnel with the token its connector runs with: only tunnel tokens
+ * connect. The token is returned only here.
+ */
+export async function createTunnel(
+  client: Limrun,
+  organizationId: string,
+  request: { name: string; selectors: string[]; expirationMonths: number; ephemeral?: boolean },
+): Promise<{ tunnel: PersistentTunnel; token: TunnelToken }> {
+  const { name, selectors, expirationMonths, ephemeral } = request;
+  let body: { tunnel: PersistentTunnel; token?: TunnelToken };
+  try {
+    body = await client.post(tunnelsPath(organizationId), {
+      body: { name, selectors, ...(ephemeral && { ephemeral }), token: { expirationMonths } },
+    });
+  } catch (err) {
+    rethrow(err, `Failed to create tunnel ${name}`);
+  }
+  if (!body.token?.token) {
+    // Nothing can run a tunnel without its token, so it goes at once.
+    await deleteTunnel(client, organizationId, body.tunnel.id).catch(() => {});
+    throw new Error(`Limrun created tunnel ${name} but returned no token to run it with.`);
+  }
+  return { tunnel: body.tunnel, token: body.token };
+}
+
+/**
+ * Creates a quick tunnel that goes away when its connector does. Its token
  * goes with the tunnel, so it lasts a month, the shortest the API takes.
  */
 export async function createQuickTunnel(
@@ -148,33 +193,52 @@ export async function createQuickTunnel(
   name: string,
   selectors: string[],
 ): Promise<{ tunnel: PersistentTunnel; token: string }> {
-  let body: { tunnel: PersistentTunnel; token?: { token?: string } };
+  const created = await createTunnel(client, organizationId, {
+    name,
+    selectors,
+    expirationMonths: 1,
+    ephemeral: true,
+  });
+  return { tunnel: created.tunnel, token: created.token.token };
+}
+
+/** Replaces a tunnel's selectors. Instances attached after the change get them. */
+export async function updateTunnelSelectors(
+  client: Limrun,
+  organizationId: string,
+  tunnel: PersistentTunnel,
+  selectors: string[],
+): Promise<PersistentTunnel> {
   try {
-    body = await client.post(tunnelsPath(organizationId), {
-      body: { name, selectors, ephemeral: true, token: { expirationMonths: 1 } },
+    return await client.patch(tunnelPath(organizationId, tunnel.id), { body: { selectors } });
+  } catch (err) {
+    rethrow(err, `Failed to update tunnel ${tunnel.name}`);
+  }
+}
+
+/** Issues a tunnel's token, which revokes the one it had. */
+export async function rotateTunnelToken(
+  client: Limrun,
+  organizationId: string,
+  tunnel: PersistentTunnel,
+  expirationMonths: number,
+): Promise<TunnelToken> {
+  try {
+    return await client.post(`${tunnelPath(organizationId, tunnel.id)}/token`, {
+      body: { expirationMonths },
     });
   } catch (err) {
-    rethrow(err, `Failed to create tunnel ${name}`);
+    rethrow(err, `Failed to rotate the token of tunnel ${tunnel.name}`);
   }
-  if (!body.token?.token) {
-    // Nothing can run a tunnel without its token, so it goes at once.
-    await deleteQuickTunnel(client, organizationId, body.tunnel.id).catch(() => {});
-    throw new Error(`Limrun created tunnel ${name} but returned no token to run it with.`);
-  }
-  return { tunnel: body.tunnel, token: body.token.token };
 }
 
 /**
- * Deletes a quick tunnel this CLI created. The hub deletes it when its
- * connector says bye, so a missing tunnel is the normal case.
+ * Deletes a tunnel, which revokes its token. A tunnel already gone is fine:
+ * the hub deletes a quick tunnel when its connector says bye.
  */
-export async function deleteQuickTunnel(
-  client: Limrun,
-  organizationId: string,
-  tunnelId: string,
-): Promise<void> {
+export async function deleteTunnel(client: Limrun, organizationId: string, tunnelId: string): Promise<void> {
   try {
-    await client.delete(`${tunnelsPath(organizationId)}/${encodeURIComponent(tunnelId)}`);
+    await client.delete(tunnelPath(organizationId, tunnelId));
   } catch (err) {
     if (err instanceof NotFoundError) {
       return;

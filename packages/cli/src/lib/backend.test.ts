@@ -2,11 +2,13 @@ import Limrun, { AuthenticationError } from '@limrun/api';
 
 import {
   createQuickTunnel,
-  deleteQuickTunnel,
+  deleteTunnel,
   findTunnel,
   getSecret,
   putSecret,
-  quickTunnelOrganization,
+  rotateTunnelToken,
+  tunnelOrganization,
+  updateTunnelSelectors,
   tunnelTokenClaims,
   whoAmI,
 } from './backend';
@@ -67,7 +69,7 @@ describe('backend client', () => {
 
     it("asks whoami for the organization of an admin's key", async () => {
       fetchMock.mockResolvedValue(mockResponse(200, { organization: { id: 'org_1' } }));
-      await expect(quickTunnelOrganization(client)).resolves.toBe('org_1');
+      await expect(tunnelOrganization(client)).resolves.toBe('org_1');
     });
 
     it('refuses a signed token as the API key, without a call', async () => {
@@ -76,7 +78,7 @@ describe('backend client', () => {
         baseURL: apiEndpoint,
         maxRetries: 0,
       });
-      await expect(quickTunnelOrganization(tokenClient)).rejects.toThrow('--token or LIM_TUNNEL_TOKEN');
+      await expect(tunnelOrganization(tokenClient)).rejects.toThrow('--token or LIM_TUNNEL_TOKEN');
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -123,15 +125,44 @@ describe('backend client', () => {
       expect(deleteInit.method).toBe('DELETE');
     });
 
+    it('replaces selectors and rotates the token of a tunnel by its ID', async () => {
+      const tunnel = {
+        id: 'tunnel_1',
+        name: 'staging',
+        ephemeral: false,
+        online: true,
+        selectors: [],
+        instances: [],
+      };
+      fetchMock.mockResolvedValueOnce(mockResponse(200, { ...tunnel, selectors: ['localhost:4000'] }));
+      await updateTunnelSelectors(client, 'org_1', tunnel, ['localhost:4000']);
+      const [updateURL, updateInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(updateURL).toBe(`${apiEndpoint}/v1/organizations/org_1/tunnels/tunnel_1`);
+      expect(updateInit.method).toBe('PATCH');
+      expect(JSON.parse(String(updateInit.body))).toEqual({ selectors: ['localhost:4000'] });
+
+      fetchMock.mockResolvedValueOnce(
+        mockResponse(201, { token: 'lim_st_new', expiresAt: '2027-10-10T00:00:00Z' }),
+      );
+      await expect(rotateTunnelToken(client, 'org_1', tunnel, 3)).resolves.toEqual({
+        token: 'lim_st_new',
+        expiresAt: '2027-10-10T00:00:00Z',
+      });
+      const [rotateURL, rotateInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+      expect(rotateURL).toBe(`${apiEndpoint}/v1/organizations/org_1/tunnels/tunnel_1/token`);
+      expect(rotateInit.method).toBe('POST');
+      expect(JSON.parse(String(rotateInit.body))).toEqual({ expirationMonths: 3 });
+    });
+
     it('deletes a quick tunnel by ID, and a tunnel the hub already removed is fine', async () => {
       fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
-      await deleteQuickTunnel(client, 'org_1', 'tunnel_2');
+      await deleteTunnel(client, 'org_1', 'tunnel_2');
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe(`${apiEndpoint}/v1/organizations/org_1/tunnels/tunnel_2`);
       expect(init.method).toBe('DELETE');
 
       fetchMock.mockResolvedValueOnce(mockResponse(404, { message: 'tunnel not found' }));
-      await expect(deleteQuickTunnel(client, 'org_1', 'tunnel_2')).resolves.toBeUndefined();
+      await expect(deleteTunnel(client, 'org_1', 'tunnel_2')).resolves.toBeUndefined();
     });
   });
 
