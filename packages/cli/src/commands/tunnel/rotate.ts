@@ -38,6 +38,11 @@ export default class TunnelRotate extends BaseCommand {
       if (!tunnel) {
         this.error(`Tunnel ${args.name} does not exist.`);
       }
+      // A quick tunnel's token belongs to the connector that created it: rotating it
+      // ends that connector, which then deletes the tunnel and leaves the new token unusable.
+      if (tunnel.ephemeral) {
+        this.error(`Tunnel ${args.name} is a quick tunnel; its token lives only as long as its connector.`);
+      }
       const token = await rotateTunnelToken(this.client, organizationId, tunnel, flags['expiration-months']);
       if (flags.json) {
         this.outputJson(token);

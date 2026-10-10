@@ -158,6 +158,13 @@ describe('tunnel update, rotate and delete', () => {
     expect(output.mock.calls[0]![0]).toContain('  lim tunnel run --token lim_st_issued');
   });
 
+  test('refuse to rotate the token of a quick tunnel', async () => {
+    jest.mocked(findTunnel).mockResolvedValue({ ...staging, ephemeral: true });
+    const { command } = setup(TunnelRotate, { name: 'staging' }, { 'expiration-months': 12 });
+    await expect(command.run()).rejects.toThrow('is a quick tunnel');
+    expect(rotateTunnelToken).not.toHaveBeenCalled();
+  });
+
   test('delete the tunnel by its ID', async () => {
     jest.mocked(findTunnel).mockResolvedValue(staging);
     const { command, output } = setup(TunnelDelete, { name: 'staging' });
