@@ -90,9 +90,9 @@ export namespace AndroidInstance {
     hardTimeout?: string;
 
     /**
-     * Names a persistent tunnel (`lim tunnel run --name`) that serves this
-     * instance. Creation fails while that tunnel is offline, and the instance
-     * becomes ready only after the tunnel attaches.
+     * Names a persistent tunnel, created in the console (Network) or the API, that
+     * serves this instance. Creation fails while no connector (`lim tunnel run`)
+     * holds it, and the instance becomes ready only after the tunnel attaches.
      */
     tunnel?: string;
   }
@@ -250,9 +250,9 @@ export namespace AndroidInstanceCreateParams {
     sandbox?: Spec.Sandbox;
 
     /**
-     * Names a persistent tunnel (`lim tunnel run --name`) that serves this
-     * instance. Creation fails while that tunnel is offline, and the instance
-     * becomes ready only after the tunnel attaches.
+     * Names a persistent tunnel, created in the console (Network) or the API, that
+     * serves this instance. Creation fails while no connector (`lim tunnel run`)
+     * holds it, and the instance becomes ready only after the tunnel attaches.
      */
     tunnel?: string;
   }
