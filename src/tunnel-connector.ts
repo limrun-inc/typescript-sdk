@@ -52,12 +52,12 @@ const TAKEN_OVER_MESSAGE = 'another connector for this tunnel took the instance 
 /** A token this close to its expiry is not dialed with; the hub refreshes it at half its life. */
 const TOKEN_EXPIRY_MARGIN_MS = 5_000;
 /** How long before its token expires the connector starts warning, and how often. */
-const KEY_WARNING_WINDOW_MS = 14 * 24 * 60 * 60_000;
-const KEY_WARNING_EVERY_MS = 24 * 60 * 60_000;
+const TOKEN_WARNING_WINDOW_MS = 14 * 24 * 60 * 60_000;
+const TOKEN_WARNING_EVERY_MS = 24 * 60 * 60_000;
 
 export interface TunnelConnectorOptions {
   /** The tunnel's token; no other credential connects. */
-  apiKey: string;
+  token: string;
   /** Limrun API base URL, such as https://api.limrun.com. */
   baseURL: string;
   organizationId: string;
@@ -83,7 +83,7 @@ export type TunnelConnectorEvent =
   /** This connector holds the tunnel; emitted once per session and control connection. */
   | { type: 'active'; sessionId: string; name: string }
   /** The connector's tunnel token expires within two weeks; emitted once a day until it does. */
-  | { type: 'keyExpiring'; expiresAt: string }
+  | { type: 'tokenExpiring'; expiresAt: string }
   /** Another connector holds the name; emitted once per holder. */
   | { type: 'standby'; holder: { hostname: string; since?: string } }
   | { type: 'attached'; instanceId: string; tunnelId: string }
@@ -115,7 +115,7 @@ type ControlClientMessage =
   | { type: 'bye' };
 
 type ControlServerMessage =
-  | { type: 'active'; sessionId: string; leaseSeconds: number; name: string; keyExpiresAt?: string }
+  | { type: 'active'; sessionId: string; leaseSeconds: number; name: string; tokenExpiresAt?: string }
   | { type: 'standby'; holder: { hostname: string; since?: string } }
   | {
       type: 'attach';
@@ -181,7 +181,7 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
   let leaseExpiresAt = 0;
   // The tunnel's name, from the first active; instances set it in spec.tunnel.
   let tunnelName: string | undefined;
-  let lastKeyWarning = 0;
+  let lastTokenWarning = 0;
   let announcedSession: string | undefined;
   let announcedHolder: string | undefined;
 
@@ -443,12 +443,12 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
         }
         const now = Date.now();
         if (
-          message.keyExpiresAt !== undefined &&
-          Date.parse(message.keyExpiresAt) - now < KEY_WARNING_WINDOW_MS &&
-          now - lastKeyWarning >= KEY_WARNING_EVERY_MS
+          message.tokenExpiresAt !== undefined &&
+          Date.parse(message.tokenExpiresAt) - now < TOKEN_WARNING_WINDOW_MS &&
+          now - lastTokenWarning >= TOKEN_WARNING_EVERY_MS
         ) {
-          lastKeyWarning = now;
-          emit({ type: 'keyExpiring', expiresAt: message.keyExpiresAt });
+          lastTokenWarning = now;
+          emit({ type: 'tokenExpiring', expiresAt: message.tokenExpiresAt });
         }
         return;
       }
@@ -565,7 +565,7 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
     if (stopped) return;
     const proxyAgent = nodeProxyTransport.getWebSocketAgent(controlURL);
     const socket = new WebSocket(controlURL, {
-      headers: { Authorization: `Bearer ${options.apiKey}` },
+      headers: { Authorization: `Bearer ${options.token}` },
       ...(proxyAgent ? { agent: proxyAgent } : {}),
       perMessageDeflate: false,
       // A stalled upgrade, such as after a laptop wakes, would otherwise
@@ -698,7 +698,7 @@ function decodeControlServerMessage(value: unknown): ControlServerMessage | unde
         sessionId: readNonEmptyString(message, 'sessionId'),
         leaseSeconds: readPositiveInteger(message, 'leaseSeconds'),
         name: readNonEmptyString(message, 'name'),
-        ...readOptionalString(message, 'keyExpiresAt'),
+        ...readOptionalString(message, 'tokenExpiresAt'),
       };
     }
     case 'standby': {
