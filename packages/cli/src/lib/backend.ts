@@ -61,31 +61,24 @@ export interface PersistentTunnel {
 }
 
 /**
- * Resolves the organization and, for a tunnel token, the one tunnel it runs.
- * A tunnel token is signed and names both in its claims, so they are read
- * here: the backend accepts no signed token, and the tunnel hub verifies it.
- * Any other credential is an admin's, which only creates quick tunnels; it
- * asks whoami, and a user token's default organization does not count.
+ * Resolves the organization an admin's credential acts for, to create a quick
+ * tunnel. It must be an organization key, so a user token's default
+ * organization does not count. A tunnel token belongs in --token: the backend
+ * accepts no signed token.
  */
-export async function whoAmITunnel(client: Limrun): Promise<{ organizationId: string; tunnelId?: string }> {
-  const apiKey = client.apiKey ?? '';
-  if (apiKey.startsWith(SIGNED_TOKEN_PREFIX)) {
-    const claims = tunnelTokenClaims(apiKey);
-    if (!claims) {
-      throw new Error(
-        'This signed token is not a tunnel token; use the token the console shows for the tunnel.',
-      );
-    }
-    return claims;
+export async function quickTunnelOrganization(client: Limrun): Promise<string> {
+  if ((client.apiKey ?? '').startsWith(SIGNED_TOKEN_PREFIX)) {
+    throw new Error(
+      'The API key is a signed token. Pass a tunnel token with --token or LIM_TUNNEL_TOKEN; the API key ' +
+        "is an admin's, for quick tunnels.",
+    );
   }
   const body = await fetchWhoAmI(client);
   const organizationId = body.organization?.id;
   if (!organizationId) {
-    throw new Error(
-      "Running a tunnel needs its token from the console, or an admin's login for a quick tunnel.",
-    );
+    throw new Error("A quick tunnel needs an admin's organization key or login.");
   }
-  return { organizationId };
+  return organizationId;
 }
 
 /** The tunnel a credential's scopes name, when its only scope connects one. */

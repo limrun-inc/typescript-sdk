@@ -232,8 +232,8 @@ export abstract class BaseCommand extends Command {
         if (!this.parsedFlags?.['api-key'] && !config.apiKey) {
           this.error('Not authenticated. Run `lim login` first, or provide --api-key.');
         }
-        // An explicit key (--api-key, LIM_API_KEY, tunnel run --token) stays in
-        // use after a login, so logging in cannot fix its rejection.
+        // An explicit key (--api-key, LIM_API_KEY) stays in use after a login,
+        // so logging in cannot fix its rejection.
         if (this.parsedFlags?.['api-key']) {
           this.error('The API key was rejected; it may be revoked or expired.');
         }

@@ -1,12 +1,12 @@
 import { Parser } from '@oclif/core';
 import { runTunnel, type TunnelConnectorOptions } from '@limrun/api';
 import TunnelRun from './run';
-import { createQuickTunnel, deleteQuickTunnel, findTunnel, whoAmITunnel } from '../../lib/backend';
+import { createQuickTunnel, deleteQuickTunnel, findTunnel, quickTunnelOrganization } from '../../lib/backend';
 import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
 
 jest.mock('@limrun/api', () => ({ ...jest.requireActual('@limrun/api'), runTunnel: jest.fn() }));
 jest.mock('../../lib/backend', () => ({
-  whoAmITunnel: jest.fn(),
+  quickTunnelOrganization: jest.fn(),
   findTunnel: jest.fn(),
   createQuickTunnel: jest.fn(),
   deleteQuickTunnel: jest.fn(async () => {}),
@@ -29,16 +29,33 @@ describe('tunnel run flags', () => {
     expect(flags.selector).toBeUndefined();
     expect(TunnelRun.flags).not.toHaveProperty('har');
   });
+
+  test('read the tunnel token from LIM_TUNNEL_TOKEN, never from LIM_API_KEY', async () => {
+    const saved = { token: process.env['LIM_TUNNEL_TOKEN'], key: process.env['LIM_API_KEY'] };
+    process.env['LIM_TUNNEL_TOKEN'] = tunnelToken;
+    process.env['LIM_API_KEY'] = 'lim_admin';
+    try {
+      const { flags } = await Parser.parse([], { flags: TunnelRun.flags });
+      expect(flags.token).toBe(tunnelToken);
+      expect(flags['api-key']).toBe('lim_admin');
+    } finally {
+      for (const [name, value] of [
+        ['LIM_TUNNEL_TOKEN', saved.token],
+        ['LIM_API_KEY', saved.key],
+      ] as const) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
 });
 
 describe('tunnel run command', () => {
   function setup(
     flags: { name?: string; selector?: readonly string[]; token?: string },
-    { tokenTunnelId, closed = Promise.resolve() }: { tokenTunnelId?: string; closed?: Promise<void> } = {},
+    { closed = Promise.resolve() }: { closed?: Promise<void> } = {},
   ) {
-    jest
-      .mocked(whoAmITunnel)
-      .mockResolvedValue({ organizationId: 'org_1', ...(tokenTunnelId ? { tunnelId: tokenTunnelId } : {}) });
+    jest.mocked(quickTunnelOrganization).mockResolvedValue('org_1');
     const close = jest.fn(async () => {});
     jest.mocked(runTunnel).mockReturnValue({ closed, close });
     const info = jest.fn();
@@ -72,16 +89,19 @@ describe('tunnel run command', () => {
     return jest.mocked(runTunnel).mock.calls[0]![0] as TunnelConnectorOptions;
   }
 
-  test('runs the tunnel a tunnel token names, with the mapped options', async () => {
-    const { command, info } = setup({}, { tokenTunnelId: 'tunnel_1' });
+  test('runs the tunnel a tunnel token names with that token alone', async () => {
+    const { command, info } = setup({ token: tunnelToken });
     await command.run();
 
+    // The admin's key in the shell is never used: no backend call, and the
+    // connector runs with the tunnel token.
+    expect(quickTunnelOrganization).not.toHaveBeenCalled();
     expect(findTunnel).not.toHaveBeenCalled();
     expect(options()).toMatchObject({
-      apiKey: 'lim_key',
+      apiKey: tunnelToken,
       baseURL: 'https://api.example.test',
       organizationId: 'org_1',
-      tunnelId: 'tunnel_1',
+      tunnelId: 'tunnel_01h455vb4pex5vsknk084sn02q',
       inspection: { enabled: true, captureBodies: true, maxBodyBytes: 1024, persist: true, ttlSeconds: 3600 },
       replace: true,
       logLevel: 'warn',
@@ -97,22 +117,13 @@ describe('tunnel run command', () => {
     );
   });
 
-  test('runs with the token --token passes, over a key in the shell', async () => {
-    const { command } = setup({ token: tunnelToken }, { tokenTunnelId: 'tunnel_1' });
-    await command.run();
-
-    expect(command.setParsedFlags).toHaveBeenCalledWith(
-      expect.objectContaining({ token: tunnelToken, 'api-key': tunnelToken }),
-    );
-  });
-
   test.each([
     ['an API key', 'lim_' + 'k'.repeat(48)],
     ['a signed token for an instance', 'lim_st_e30.e30.c2ln'],
   ])('refuses %s passed as --token', async (_, token) => {
     const { command } = setup({ token });
     await expect(command.run()).rejects.toThrow('--token takes a tunnel token');
-    expect(whoAmITunnel).not.toHaveBeenCalled();
+    expect(quickTunnelOrganization).not.toHaveBeenCalled();
   });
 
   test("creates a quick tunnel for --name with --selector and runs it with the tunnel's token", async () => {
@@ -163,32 +174,28 @@ describe('tunnel run command', () => {
   test.each([
     [
       'a tunnel token with selectors',
-      { selector: ['localhost:3000'] },
-      'tunnel_1',
+      { token: tunnelToken, selector: ['localhost:3000'] },
       'A tunnel token runs its own tunnel as created',
     ],
     [
       'a tunnel token with a name',
-      { name: 'b' },
-      'tunnel_1',
+      { token: tunnelToken, name: 'b' },
       'A tunnel token runs its own tunnel as created',
     ],
     [
       'no token and no name',
       {},
-      undefined,
-      "Run with the tunnel's token (--token), or pass --name and --selector for a quick tunnel.",
+      "Run with the tunnel's token (--token or LIM_TUNNEL_TOKEN), or pass --name and --selector for a quick tunnel.",
     ],
     [
       'a name that does not exist without selectors',
       { name: 'missing' },
-      undefined,
       'Tunnel missing does not exist. Create it in the console (Network > New tunnel), or pass --selector to ' +
         'run a quick tunnel.',
     ],
-  ] as const)('refuses %s', async (_, flags, tokenTunnelId, message) => {
+  ] as const)('refuses %s', async (_, flags, message) => {
     jest.mocked(findTunnel).mockResolvedValue(undefined);
-    const { command } = setup(flags, tokenTunnelId ? { tokenTunnelId } : {});
+    const { command } = setup(flags);
     await expect(command.run()).rejects.toThrow(message);
     expect(runTunnel).not.toHaveBeenCalled();
   });
@@ -216,11 +223,8 @@ describe('tunnel run command', () => {
 
   test('fails with the terminal connector error', async () => {
     const { command } = setup(
-      {},
-      {
-        tokenTunnelId: 'tunnel_1',
-        closed: Promise.reject(new Error('tunnel staging: the tunnel was deleted')),
-      },
+      { token: tunnelToken },
+      { closed: Promise.reject(new Error('tunnel staging: the tunnel was deleted')) },
     );
     await expect(command.run()).rejects.toThrow('tunnel staging: the tunnel was deleted');
   });

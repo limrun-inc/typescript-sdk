@@ -5,8 +5,8 @@ import {
   createQuickTunnel,
   deleteQuickTunnel,
   findTunnel,
+  quickTunnelOrganization,
   tunnelTokenClaims,
-  whoAmITunnel,
 } from '../../lib/backend';
 import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
 import {
@@ -24,7 +24,7 @@ export default class TunnelRun extends BaseCommand {
   static description =
     'Run the connector of a tunnel created in the console (Network > New tunnel) or the API, and open ' +
     'a destination tunnel to every iOS and Android instance created with --tunnel <name>, until Ctrl+C. ' +
-    'Run it with the tunnel token the console shows (--token); the token names its tunnel, and the ' +
+    'Run it with the tunnel token the console shows (--token or LIM_TUNNEL_TOKEN); the token names its tunnel, and the ' +
     "tunnel's selectors decide which destinations instances reach through this machine. With an " +
     "admin's login, --name and --selector run a quick tunnel that goes away when this connector " +
     'exits. Instance tunnels stay up while the connection to Limrun reconnects. One connector holds a ' +
@@ -38,8 +38,8 @@ export default class TunnelRun extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     token: Flags.string({
-      description:
-        'Tunnel token from the console (Network) or the API. Takes precedence over --api-key and LIM_API_KEY.',
+      description: 'Tunnel token from the console (Network) or the API.',
+      env: 'LIM_TUNNEL_TOKEN',
     }),
     name: Flags.string({
       description:
@@ -75,11 +75,7 @@ export default class TunnelRun extends BaseCommand {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(TunnelRun);
-    if (flags.token && !tunnelTokenClaims(flags.token)) {
-      this.error('--token takes a tunnel token from the console (Network) or the API; this is not one.');
-    }
-    // A tunnel token goes where the API key would, and wins over one already in the shell.
-    this.setParsedFlags(flags.token ? { ...flags, 'api-key': flags.token } : flags);
+    this.setParsedFlags(flags);
     let inspection: TunnelInspectionContext;
     try {
       inspection = tunnelInspectionContext(flags);
@@ -88,79 +84,105 @@ export default class TunnelRun extends BaseCommand {
     }
     const selectors = flags.selector?.length ? parseTunnelSelectors(flags.selector) : undefined;
 
-    await this.withAuth(async () => {
-      const { organizationId, tunnelId: tokenTunnelId } = await whoAmITunnel(this.client);
-      const tunnel = await this.resolveTunnel(organizationId, tokenTunnelId, flags.name, selectors);
-      // A tunnel token's tunnel learns its name from the first active.
-      let name = flags.name;
-      let stop: (() => void) | undefined;
-      try {
-        const connector = runTunnel({
-          // Only tunnel tokens connect: a quick tunnel runs with its own.
-          apiKey: tunnel.token ?? this.client.apiKey ?? '',
-          baseURL: this.client.baseURL,
-          organizationId,
-          tunnelId: tunnel.id,
-          inspection: tunnelInspectionConfig(inspection),
-          replace: flags.replace,
-          clientVersion: VERSION,
-          logLevel:
-            flags.verbose ? 'debug'
-            : this.shouldSuppressInfo() ? 'none'
-            : 'warn',
-          onEvent: (event) => {
-            if (event.type === 'active') name = event.name;
-            this.info(formatTunnelConnectorEvent(name, event, tunnel.created));
-          },
-        });
-        // close() says bye, which also takes a quick tunnel away.
-        stop = (): void => void connector.close();
-        process.once('SIGINT', stop);
-        process.once('SIGTERM', stop);
-        await connector.closed;
-      } catch (error) {
-        this.error(error instanceof Error ? error.message : String(error));
-      } finally {
-        if (stop) {
-          process.off('SIGINT', stop);
-          process.off('SIGTERM', stop);
-        }
-        // A connector stopped while connecting, refused, or out of retries
-        // never said bye, so its quick tunnel would hold the name until
-        // the hub sweeps it.
-        if (tunnel.created) {
-          await deleteQuickTunnel(this.client, organizationId, tunnel.id).catch((error: unknown) =>
-            this.warn(
-              `${error instanceof Error ? error.message : String(error)}; it goes away within ten minutes.`,
-            ),
-          );
-        }
+    // A tunnel token names its organization and tunnel and is the only
+    // credential the connector needs. --api-key, LIM_API_KEY and lim login
+    // stay an admin's, which only create quick tunnels.
+    if (flags.token) {
+      const claims = tunnelTokenClaims(flags.token);
+      if (!claims) {
+        this.error('--token takes a tunnel token from the console (Network) or the API; this is not one.');
       }
-    });
-  }
-
-  /**
-   * The tunnel to run: the one a tunnel token names, or a quick tunnel
-   * that --name and --selector create with its own token.
-   */
-  private async resolveTunnel(
-    organizationId: string,
-    tokenTunnelId: string | undefined,
-    name: string | undefined,
-    selectors: string[] | undefined,
-  ): Promise<{ id: string; created: boolean; token?: string }> {
-    if (tokenTunnelId) {
-      if (name || selectors) {
+      if (flags.name || selectors) {
         this.error(
           "A tunnel token runs its own tunnel as created; drop --name and --selector, and edit the tunnel's " +
             'selectors in the console.',
         );
       }
-      return { id: tokenTunnelId, created: false };
+      await this.serve({ ...claims, token: flags.token, created: false }, flags, inspection);
+      return;
     }
-    if (!name) {
-      this.error("Run with the tunnel's token (--token), or pass --name and --selector for a quick tunnel.");
+    if (!flags.name) {
+      this.error(
+        "Run with the tunnel's token (--token or LIM_TUNNEL_TOKEN), or pass --name and --selector for a " +
+          'quick tunnel.',
+      );
     }
+    const name = flags.name;
+    await this.withAuth(async () => {
+      const organizationId = await quickTunnelOrganization(this.client);
+      const tunnel = await this.createQuick(organizationId, name, selectors);
+      await this.serve(
+        { organizationId, tunnelId: tunnel.id, token: tunnel.token, created: true },
+        flags,
+        inspection,
+      );
+    });
+  }
+
+  /**
+   * Runs the connector with the tunnel's token until Ctrl+C or a terminal
+   * error, and deletes a quick tunnel this command created on the way out.
+   */
+  private async serve(
+    tunnel: { organizationId: string; tunnelId: string; token: string; created: boolean },
+    flags: { name?: string; replace: boolean; verbose: boolean },
+    inspection: TunnelInspectionContext,
+  ): Promise<void> {
+    // A tunnel token's tunnel learns its name from the first active.
+    let name = flags.name;
+    let stop: (() => void) | undefined;
+    try {
+      const connector = runTunnel({
+        apiKey: tunnel.token,
+        baseURL: this.client.baseURL,
+        organizationId: tunnel.organizationId,
+        tunnelId: tunnel.tunnelId,
+        inspection: tunnelInspectionConfig(inspection),
+        replace: flags.replace,
+        clientVersion: VERSION,
+        logLevel:
+          flags.verbose ? 'debug'
+          : this.shouldSuppressInfo() ? 'none'
+          : 'warn',
+        onEvent: (event) => {
+          if (event.type === 'active') name = event.name;
+          this.info(formatTunnelConnectorEvent(name, event, tunnel.created));
+        },
+      });
+      // close() says bye, which also takes a quick tunnel away.
+      stop = (): void => void connector.close();
+      process.once('SIGINT', stop);
+      process.once('SIGTERM', stop);
+      await connector.closed;
+    } catch (error) {
+      this.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (stop) {
+        process.off('SIGINT', stop);
+        process.off('SIGTERM', stop);
+      }
+      // A connector stopped while connecting, refused, or out of retries
+      // never said bye, so its quick tunnel would hold the name until the
+      // hub sweeps it.
+      if (tunnel.created) {
+        await deleteQuickTunnel(this.client, tunnel.organizationId, tunnel.tunnelId).catch((error: unknown) =>
+          this.warn(
+            `${error instanceof Error ? error.message : String(error)}; it goes away within ten minutes.`,
+          ),
+        );
+      }
+    }
+  }
+
+  /**
+   * Creates the quick tunnel --name and --selector ask for, with its own
+   * token, using the admin's credential.
+   */
+  private async createQuick(
+    organizationId: string,
+    name: string,
+    selectors: string[] | undefined,
+  ): Promise<{ id: string; token: string }> {
     const existing = await findTunnel(this.client, organizationId, name);
     if (existing?.ephemeral) {
       // A quick tunnel is its creator's alone and goes when it stops.
@@ -179,6 +201,6 @@ export default class TunnelRun extends BaseCommand {
       );
     }
     const created = await createQuickTunnel(this.client, organizationId, name, selectors);
-    return { id: created.tunnel.id, created: true, token: created.token };
+    return { id: created.tunnel.id, token: created.token };
   }
 }
