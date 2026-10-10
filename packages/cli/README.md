@@ -126,6 +126,7 @@ This avoids relying on locally cached "last created" state and keeps the target 
 - [Assets](#assets) — Upload and download files (APKs, IPAs, etc.)
 - [Sessions](#sessions) — Persistent connections for fast, interactive device control
 - [Xcode Build Pipeline](#xcode-build-pipeline) — Sync code and run xcodebuild remotely
+- [Bazel](#bazel): Build a Bazel workspace on Limrun's build plane
 - [Skills](#skills) — Install Limrun skills for AI coding agents (Claude Code, Cursor, Codex)
 
 ---
@@ -865,6 +866,26 @@ lim xcode build ./MyProject --scheme VisionApp --sdk xros --configuration Releas
 ```
 
 ---
+
+### Bazel
+
+`lim bazel setup` points a Bazel workspace at Limrun's build plane. Apple actions run on Limrun's Macs, Android actions on its Linux workers, and every build in your organization shares one cache. Run it in the workspace root, next to `MODULE.bazel`:
+
+```bash
+lim bazel setup
+bazel build --config=limrun //app:target
+```
+
+Setup writes a gitignored `.limrun/` directory and adds `try-import %workspace%/.limrun/bazelrc` to `.bazelrc`. Rerun it after upgrading the CLI or when the workspace starts using Apple or Android rules.
+
+For an Android workspace, setup also adds the modules Linux workers need to the root `MODULE.bazel`. It shows the lines and asks first; `--yes` adds them without asking.
+
+Bazel gets its credentials from `lim-bazel-credentials`, which ships with the npm package and uses your `lim login` or `LIM_API_KEY`. Nothing secret is written to the workspace. Setup needs Bazel 8 or later.
+
+| Flag          | Description                                                   |
+| ------------- | ------------------------------------------------------------- |
+| `--region`    | Use the build plane in this region instead of the closest one |
+| `--yes`, `-y` | Add the Android lines to `MODULE.bazel` without asking        |
 
 ### Skills
 
