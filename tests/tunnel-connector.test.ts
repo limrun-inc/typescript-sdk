@@ -221,7 +221,7 @@ describe('tunnel connector', () => {
 
   function connect(options: { replace?: boolean } = {}): TunnelConnector {
     connector = runTunnel({
-      apiKey: 'lim_key',
+      token: 'lim_tunnel_token',
       baseURL,
       organizationId: 'org_1',
       tunnelId: 'tunnel_1',
@@ -234,11 +234,17 @@ describe('tunnel connector', () => {
     return connector;
   }
 
-  const keyExpiresAt = '2099-01-01T00:00:00Z';
+  const tokenExpiresAt = '2099-01-01T00:00:00Z';
 
   async function activate(): Promise<void> {
     await waitFor(() => backend.of('hello').length === 1);
-    backend.send({ type: 'active', sessionId: 'session-1', leaseSeconds: 30, name: 'staging', keyExpiresAt });
+    backend.send({
+      type: 'active',
+      sessionId: 'session-1',
+      leaseSeconds: 30,
+      name: 'staging',
+      tokenExpiresAt,
+    });
   }
 
   /** A connector that holds the name and serves ios_1. */
@@ -279,7 +285,7 @@ describe('tunnel connector', () => {
     await connectAttached();
 
     expect(backend.upgrades).toEqual([
-      { url: '/v1/organizations/org_1/tunnels/tunnel_1/connect', authorization: 'Bearer lim_key' },
+      { url: '/v1/organizations/org_1/tunnels/tunnel_1/connect', authorization: 'Bearer lim_tunnel_token' },
     ]);
     expect(backend.of('hello')).toEqual([
       {
@@ -645,20 +651,20 @@ describe('tunnel connector', () => {
       sessionId: 'session-1',
       leaseSeconds: 30,
       name: 'staging',
-      keyExpiresAt: soon,
+      tokenExpiresAt: soon,
     });
     backend.send({
       type: 'active',
       sessionId: 'session-1',
       leaseSeconds: 30,
       name: 'staging',
-      keyExpiresAt: soon,
+      tokenExpiresAt: soon,
     });
-    await waitFor(() => events.some((event) => event.type === 'keyExpiring'));
+    await waitFor(() => events.some((event) => event.type === 'tokenExpiring'));
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    expect(events.filter((event) => event.type === 'keyExpiring')).toEqual([
-      { type: 'keyExpiring', expiresAt: soon },
+    expect(events.filter((event) => event.type === 'tokenExpiring')).toEqual([
+      { type: 'tokenExpiring', expiresAt: soon },
     ]);
   });
 
