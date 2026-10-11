@@ -11,10 +11,9 @@ import {
 export default class AndroidRecord extends BaseCommand {
   static summary = 'Start or stop video recording on a running Android instance';
   static description =
-    'Control screen recording on a running Android instance. Touch crosshairs, drag trails, and a coordinate bar are shown by default while recording; use `--no-touch-indicators` to disable them. Start recording first, then stop recording to download the file locally or upload it directly with `--presigned-url`.';
+    'Control screen recording on a running Android instance. Start recording first, then stop recording to download the file locally or upload it directly with `--presigned-url`.';
   static examples = [
     '<%= config.bin %> android record start',
-    '<%= config.bin %> android record start --no-touch-indicators',
     '<%= config.bin %> android record stop',
     '<%= config.bin %> android record stop -o recording.mp4 --id <instance-ID>',
     '<%= config.bin %> android record stop --presigned-url https://example.com/upload --id <instance-ID>',
@@ -34,12 +33,6 @@ export default class AndroidRecord extends BaseCommand {
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description: 'Android instance ID to record. Defaults to the last created Android instance.',
-    }),
-    'touch-indicators': Flags.boolean({
-      description:
-        'Show Android touch crosshairs, drag trails, and coordinates while recording. Enabled by default. Applies to start.',
-      default: true,
-      allowNo: true,
     }),
     quality: Flags.integer({
       description:
@@ -73,6 +66,9 @@ export default class AndroidRecord extends BaseCommand {
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       const id = resolvedInstance.id;
+      if (false) {
+        this.error('android record only supports Android instances');
+      }
 
       if (flags['persist-ttl'] && !flags.persist) {
         this.error('--persist-ttl requires --persist.');
@@ -88,13 +84,14 @@ export default class AndroidRecord extends BaseCommand {
               { ttlSeconds: parseDurationSeconds(flags['persist-ttl']) }
             : true
           : undefined;
-        const options = { quality: flags.quality, persist, touchIndicators: flags['touch-indicators'] };
-        if (await ensureDaemonSession(resolvedInstance)) {
-          await sendSessionCommand(id, 'start-recording', [options]);
+        // A running daemon may predate persist support and would silently
+        // drop it, so persisted starts always go over a direct connection.
+        if (!persist && (await ensureDaemonSession(resolvedInstance))) {
+          await sendSessionCommand(id, 'start-recording', [flags.quality]);
         } else {
           const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
           try {
-            await client.startRecording(options);
+            await client.startRecording({ quality: flags.quality, persist });
           } finally {
             disconnect();
           }
