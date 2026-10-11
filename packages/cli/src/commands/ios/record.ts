@@ -11,13 +11,14 @@ import {
 export default class IosRecord extends BaseCommand {
   static summary = 'Start or stop video recording on a running iOS instance';
   static description =
-    'Control screen recording on a running iOS instance. Start recording first, then stop recording to download the file locally or upload it directly with `--presigned-url`.';
+    'Control screen recording on a running iOS instance. Touch ripples and drag trails show where touches occur and are enabled by default while recording. Use --no-touch-indicators to disable them. Start recording first, then stop recording to download the file locally or upload it directly with `--presigned-url`.';
   static examples = [
     '<%= config.bin %> ios record start',
     '<%= config.bin %> ios record stop',
     '<%= config.bin %> ios record stop -o recording.mp4 --id <instance-ID>',
     '<%= config.bin %> ios record stop --presigned-url https://example.com/upload --id <instance-ID>',
     '<%= config.bin %> ios record start --quality 8',
+    '<%= config.bin %> ios record start --no-touch-indicators',
     '<%= config.bin %> ios record start --persist --persist-ttl 24h',
   ];
 
@@ -38,6 +39,12 @@ export default class IosRecord extends BaseCommand {
     }),
     id: Flags.string({
       description: 'iOS instance ID to record. Defaults to the last created iOS instance.',
+    }),
+    'touch-indicators': Flags.boolean({
+      description:
+        'Show touch ripples and drag trails while recording. Enabled by default. Applies to start.',
+      default: true,
+      allowNo: true,
     }),
     quality: Flags.integer({
       description:
@@ -71,9 +78,6 @@ export default class IosRecord extends BaseCommand {
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
-      if (false) {
-        this.error('ios record only supports iOS instances');
-      }
 
       if (flags['persist-ttl'] && !flags.persist) {
         this.error('--persist-ttl requires --persist.');
@@ -92,17 +96,18 @@ export default class IosRecord extends BaseCommand {
               { ttlSeconds: parseDurationSeconds(flags['persist-ttl']) }
             : true
           : undefined;
-        // Older daemons drop persistence and display options, so send those starts directly.
-        if (!persist && !flags.display && (await ensureDaemonSession(resolvedInstance))) {
-          await sendSessionCommand(id, 'start-recording', [flags.quality]);
+        const options = {
+          quality: flags.quality,
+          persist,
+          display: flags.display as 'inner' | 'outer' | undefined,
+          touchIndicators: flags['touch-indicators'],
+        };
+        if (await ensureDaemonSession(resolvedInstance)) {
+          await sendSessionCommand(id, 'start-recording', [options]);
         } else {
           const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
           try {
-            await client.startRecording({
-              quality: flags.quality,
-              persist,
-              display: flags.display as 'inner' | 'outer' | undefined,
-            });
+            await client.startRecording(options);
           } finally {
             disconnect();
           }

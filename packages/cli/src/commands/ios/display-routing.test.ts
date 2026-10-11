@@ -30,6 +30,7 @@ function setup(
   jest.mocked(sendSessionCommand).mockResolvedValue({ results: [] });
   const flags = {
     id: 'ios_test',
+    'touch-indicators': true,
     display,
     action: ['type=tap,x=10,y=20'],
     amount: 300,
@@ -45,7 +46,7 @@ function setup(
     log: jest.fn(),
   });
   Object.defineProperty(command, 'client', { value: {} });
-  return { command, client, disconnect };
+  return { command, client, disconnect, flags };
 }
 
 beforeEach(() => jest.clearAllMocks());
@@ -92,18 +93,43 @@ test('swipe cleanup preserves an explicit display', async () => {
   expect(client.performActions.mock.calls[1]![1]).toMatchObject({ display: 'inner' });
 });
 
-describe('record display routing', () => {
-  test.each(['inner', 'outer'])('explicit %s bypasses an older daemon', async (display) => {
-    const { command, client, disconnect } = setup(IosRecord, display, true);
+describe('record options', () => {
+  test.each(['inner', 'outer'])('forwards explicit %s through the daemon', async (display) => {
+    const { command } = setup(IosRecord, display, true);
     await command.run();
-    expect(client.startRecording).toHaveBeenCalledWith(expect.objectContaining({ display }));
-    expect(sendSessionCommand).not.toHaveBeenCalled();
-    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'start-recording', [
+      expect.objectContaining({ display, touchIndicators: true }),
+    ]);
+    expect(getIosInstanceClient).not.toHaveBeenCalled();
+  });
+  test.each([false, true])('forwards opt-out with daemon=%s', async (daemon) => {
+    const { command, client, flags } = setup(IosRecord, 'inner', daemon);
+    flags['touch-indicators'] = false;
+    Object.assign(flags, { persist: true, 'persist-ttl': '1h', quality: 8 });
+    await command.run();
+    const options = { display: 'inner', touchIndicators: false, quality: 8, persist: { ttlSeconds: 3600 } };
+    if (daemon) {
+      expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'start-recording', [options]);
+      expect(getIosInstanceClient).not.toHaveBeenCalled();
+    } else {
+      expect(client.startRecording).toHaveBeenCalledWith(options);
+    }
   });
   test('default capture uses the daemon and leaves activity selection to the server', async () => {
     const { command } = setup(IosRecord, undefined, true);
     await command.run();
-    expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'start-recording', [undefined]);
+    expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'start-recording', [
+      expect.objectContaining({ touchIndicators: true, display: undefined }),
+    ]);
     expect(getIosInstanceClient).not.toHaveBeenCalled();
+  });
+  test.each([
+    [['start'], true],
+    [['start', '--no-touch-indicators'], false],
+    [['start', '--touch-indicators'], true],
+  ] as const)('parses %s', async (argv, expected) => {
+    const { Parser } = await import('@oclif/core');
+    const parsed = await Parser.parse([...argv], { flags: IosRecord.flags, args: IosRecord.args });
+    expect(parsed.flags['touch-indicators']).toBe(expected);
   });
 });

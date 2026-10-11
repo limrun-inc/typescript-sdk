@@ -326,6 +326,11 @@ lim ios syslog --json
 
 #### Video Recording
 
+On iOS, recordings include touch ripples and drag trails by default. Use
+`lim ios record start --no-touch-indicators` to omit them. Indicators also
+appear in live views and screenshots while recording, and turn off when
+recording stops or fails.
+
 ```bash
 lim ios record start
 lim ios record start --quality 8

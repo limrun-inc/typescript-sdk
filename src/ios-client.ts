@@ -895,7 +895,8 @@ export type InstanceClient = {
    * On Duo, follows native display activity and fits each panel into the initial
    * canvas without stretching. Pass display to keep recording one panel.
    * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
-   * The server default is `5`.
+   * The server default is `5`. Touch ripples and drag trails are enabled while
+   * recording by default. Set `touchIndicators: false` to omit them.
    * With `persist`, the completed recording is uploaded to Limrun's bucket
    * when the recording stops or the instance terminates; list it with
    * `iosInstances.listRecordings`.
@@ -904,6 +905,7 @@ export type InstanceClient = {
     quality?: RecordingQuality;
     persist?: PersistOption;
     display?: DuoDisplay;
+    touchIndicators?: boolean;
   }) => Promise<void>;
 
   /**
@@ -2559,27 +2561,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       );
     };
 
-    const startRecording = async (opts?: {
-      quality?: RecordingQuality;
-      persist?: PersistOption;
-      display?: DuoDisplay;
-    }): Promise<void> => {
-      const request: {
-        quality?: RecordingQuality;
-        persist?: boolean;
-        ttlSeconds?: number;
-        display?: DuoDisplay;
-      } = {
-        ...persistFields(opts?.persist),
-      };
+    const startRecording: InstanceClient['startRecording'] = async (opts) => {
       if (opts?.quality !== undefined) {
         if (!Number.isInteger(opts.quality) || opts.quality < 5 || opts.quality > 10) {
           throw new Error('quality must be one of: 5, 6, 7, 8, 9, 10');
         }
-        request.quality = opts.quality;
       }
-      if (opts?.display !== undefined) request.display = opts.display;
-      await sendRequest<void>('startVideoRecording', request);
+      await sendRequest<void>('startVideoRecording', {
+        ...persistFields(opts?.persist),
+        quality: opts?.quality,
+        display: opts?.display,
+        touchIndicators: opts?.touchIndicators,
+      });
     };
 
     const startAppLogCapture = async (opts: { bundleId: string; persist?: PersistOption }): Promise<void> => {
