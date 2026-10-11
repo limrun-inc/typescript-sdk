@@ -286,13 +286,19 @@ export type InstanceClient = {
   setWifiBandwidth: (options: WifiBandwidthOptions) => Promise<void>;
   /**
    * Start recording device video. Use stopRecording() to finish the recording.
+   * Android pointer location shows touch crosshairs, drag trails, and coordinates
+   * while recording by default. Set `touchIndicators: false` to omit it.
    * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
    * The server default is `5`.
    * With `persist`, the completed recording is uploaded to Limrun's bucket
    * when the recording stops or the instance terminates; list it with
    * `androidInstances.listRecordings`.
    */
-  startRecording: (options?: { quality?: RecordingQuality; persist?: PersistOption }) => Promise<void>;
+  startRecording: (options?: {
+    quality?: RecordingQuality;
+    persist?: PersistOption;
+    touchIndicators?: boolean;
+  }) => Promise<void>;
   /**
    * Stop the active server-side recording.
    * If `saveTo.presignedUrl` is provided, the server uploads the completed file there before resolving.
@@ -981,7 +987,12 @@ type CommandRequestMap = {
   cameraControl: { action: 'setSource'; source: 'video'; arg: string; loop?: boolean } | { action: 'reset' };
   adbShell: { command: string; timeoutMs?: number };
   setWifiBandwidth: WifiBandwidthOptions;
-  startRecording: { quality?: RecordingQuality; persist?: boolean; ttlSeconds?: number };
+  startRecording: {
+    quality?: RecordingQuality;
+    persist?: boolean;
+    ttlSeconds?: number;
+    touchIndicators?: boolean;
+  };
   stopRecording: { upload?: { presignedUrl: string } };
   startAppLogCapture: { bundleId: string; persist?: boolean; ttlSeconds?: number };
   stopAppLogCapture: {};
@@ -1751,13 +1762,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       await sendRequest('setWifiBandwidth', request);
     };
 
-    const startRecording = async (recordingOptions?: {
-      quality?: RecordingQuality;
-      persist?: PersistOption;
-    }): Promise<void> => {
+    const startRecording: InstanceClient['startRecording'] = async (recordingOptions) => {
       const request: CommandRequestMap['startRecording'] = {
         ...persistFields(recordingOptions?.persist),
       };
+      if (recordingOptions?.touchIndicators !== undefined) {
+        request.touchIndicators = recordingOptions.touchIndicators;
+      }
       if (recordingOptions?.quality !== undefined) {
         if (
           !Number.isInteger(recordingOptions.quality) ||

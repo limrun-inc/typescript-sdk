@@ -63,3 +63,9 @@ export GCS_SA_KEY_PATH=
 gcloud storage sign-url gs://$GCS_BUCKET/$GCS_FILENAME --http-verb=PUT --duration=1h \
   --private-key-file=$GCS_SA_KEY_PATH
 ```
+
+Recordings show Android's built-in pointer location overlay by default: touch
+crosshairs, drag trails, and a coordinate bar. It is also visible in the live
+stream while recording. Use `startRecording({ touchIndicators: false })` to
+omit it. The previous pointer location setting is restored when recording ends.
+The CLI equivalent is `lim android record start --no-touch-indicators`.

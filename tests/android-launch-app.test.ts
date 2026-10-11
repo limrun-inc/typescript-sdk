@@ -26,7 +26,11 @@ jest.mock('ws', () => {
     send(data: string, callback?: (err?: Error) => void): void {
       const message = JSON.parse(data);
       sentMessages.push(message);
-      if (message.type === 'watchApp') {
+      if (message['type'] === 'startRecording') {
+        process.nextTick(() => {
+          this.emitServerMessage({ type: 'startRecordingResult', id: message.id, payload: {} });
+        });
+      } else if (message.type === 'watchApp') {
         process.nextTick(() => {
           this.emitServerMessage({
             type: 'watchAppResult',
@@ -251,5 +255,42 @@ describe('Android launchApp / terminateApp', () => {
       packageName: 'com.example.app',
     });
     client.disconnect();
+  });
+});
+
+describe('Android recording touch indicators', () => {
+  test('preserves omission, explicit opt-out, and explicit enable on the wire', async () => {
+    const { createInstanceClient } = await import('../src/instance-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test/v1/android_123/api',
+      token: 'token',
+      logLevel: 'none',
+    });
+    sentMessages.length = 0;
+    try {
+      await client.startRecording();
+      await client.startRecording({ quality: 8, touchIndicators: false, persist: { ttlSeconds: 3600 } });
+      await client.startRecording({ touchIndicators: true });
+      expect(sentMessages.filter((message) => message['type'] === 'startRecording')).toEqual([
+        { type: 'startRecording', id: expect.any(String) },
+        {
+          type: 'startRecording',
+          id: expect.any(String),
+          quality: 8,
+          touchIndicators: false,
+          payload: { quality: 8, touchIndicators: false, persist: true, ttlSeconds: 3600 },
+          persist: true,
+          ttlSeconds: 3600,
+        },
+        {
+          type: 'startRecording',
+          id: expect.any(String),
+          touchIndicators: true,
+          payload: { touchIndicators: true },
+        },
+      ]);
+    } finally {
+      client.disconnect();
+    }
   });
 });
