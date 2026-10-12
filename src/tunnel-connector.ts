@@ -152,7 +152,7 @@ interface InstanceAttachment {
 }
 
 /**
- * Serve a persistent tunnel: hold it through one control WebSocket to the
+ * Serve a private tunnel: hold it through one control WebSocket to the
  * Limrun API and open a destination tunnel to every instance created with
  * `spec.tunnel` set to its name, with a short-lived token the API hands out
  * for each. Instance tunnels stay up while the control channel reconnects,

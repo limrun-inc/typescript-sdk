@@ -20,7 +20,7 @@ import { parseTunnelSelectors } from '../../lib/tunnel-process';
 const VERSION = require('../../../package.json').version;
 
 export default class TunnelRun extends BaseCommand {
-  static summary = 'Serve a persistent tunnel to every instance that names it';
+  static summary = 'Serve a private tunnel to every instance that names it';
   static description =
     'Run the connector of a tunnel created with `lim tunnel create` or in the console (Network), and open ' +
     'a destination tunnel to every iOS and Android instance created with --tunnel <name>, until Ctrl+C. ' +

@@ -70,7 +70,7 @@ export interface DestinationTcpTunnelOptions {
   onInspectionError?: DestinationTunnelInspectionErrorCallback;
   /** Per-flow receive window in bytes. Defaults to 1 MiB. */
   window?: number;
-  /** Persistent tunnel this session serves; the instance reports it in tunnel status. */
+  /** Private tunnel this session serves; the instance reports it in tunnel status. */
   name?: string;
   logLevel?: LogLevel;
   maxConnections?: number;

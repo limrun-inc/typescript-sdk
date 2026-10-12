@@ -90,7 +90,7 @@ export namespace AndroidInstance {
     hardTimeout?: string;
 
     /**
-     * Names a persistent tunnel, created in the console (Network) or the API, that
+     * Names a private tunnel, created in the console (Network) or the API, that
      * serves this instance. Creation fails while no connector (`lim tunnel run`)
      * holds it, and the instance becomes ready only after the tunnel attaches.
      */
@@ -250,7 +250,7 @@ export namespace AndroidInstanceCreateParams {
     sandbox?: Spec.Sandbox;
 
     /**
-     * Names a persistent tunnel, created in the console (Network) or the API, that
+     * Names a private tunnel, created in the console (Network) or the API, that
      * serves this instance. Creation fails while no connector (`lim tunnel run`)
      * holds it, and the instance becomes ready only after the tunnel attaches.
      */

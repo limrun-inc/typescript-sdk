@@ -136,7 +136,7 @@ export type DestinationTunnelClientMessage =
       inspection: DestinationTunnelInspectionConfig;
       /** Default per-flow receive window this client grants. */
       window: number;
-      /** Persistent tunnel this session serves. The instance only echoes it in status. */
+      /** Private tunnel this session serves. The instance only echoes it in status. */
       name?: string;
     }
   | {
@@ -162,7 +162,7 @@ export type DestinationTunnelServerMessage =
       tunnelId: string;
       selectors: DestinationTunnelSelectorReport[];
       configHash: string;
-      /** The persistent tunnel name the client sent in start, echoed back. */
+      /** The private tunnel name the client sent in start, echoed back. */
       name?: string;
     }
   | {

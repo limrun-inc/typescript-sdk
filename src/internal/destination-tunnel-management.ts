@@ -17,7 +17,7 @@ import {
 export interface DestinationTunnelStatus {
   active?: {
     tunnelId: string;
-    /** Persistent tunnel the session serves, absent for a one-instance tunnel. */
+    /** Private tunnel the session serves, absent for a one-instance tunnel. */
     name?: string;
     state: 'starting' | 'ready' | 'stopping';
     selectors: DestinationTunnelSelectorReport[];

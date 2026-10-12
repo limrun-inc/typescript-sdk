@@ -2,9 +2,9 @@ import { BaseCommand } from '../../base-command';
 import { listTunnels, tunnelOrganization } from '../../lib/backend';
 
 export default class TunnelList extends BaseCommand {
-  static summary = 'List persistent tunnels';
+  static summary = 'List private tunnels';
   static description =
-    "List the organization's persistent tunnels: whether a connector holds each, where it runs, its " +
+    "List the organization's private tunnels: whether a connector holds each, where it runs, its " +
     'selectors, when its token expires, and how many instances name it. --json includes tunnel IDs.';
   static examples = ['<%= config.bin %> tunnel list', '<%= config.bin %> tunnel list --json'];
 

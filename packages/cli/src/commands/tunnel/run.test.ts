@@ -6,7 +6,7 @@ import {
   deleteTunnel,
   findTunnel,
   tunnelOrganization,
-  type PersistentTunnel,
+  type PrivateTunnel,
 } from '../../lib/backend';
 import { formatTunnelConnectorEvent } from '../../lib/tunnel-run';
 
@@ -26,7 +26,7 @@ const tunnelToken = `lim_st_eyJhbGciOiJFZERTQSJ9.${Buffer.from(
 ).toString('base64url')}.c2ln`;
 
 /** A tunnel as the backend lists it, with the fields a test cares about. */
-function tunnelFixture(fields: { id: string; name: string; ephemeral: boolean }): PersistentTunnel {
+function tunnelFixture(fields: { id: string; name: string; ephemeral: boolean }): PrivateTunnel {
   return { online: false, selectors: [], instances: [], ...fields };
 }
 

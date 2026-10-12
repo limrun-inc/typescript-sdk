@@ -116,7 +116,7 @@ describe('destination tunnel management', () => {
     );
   });
 
-  test('decodes the persistent tunnel name of the active tunnel', () => {
+  test('decodes the private tunnel name of the active tunnel', () => {
     const active = {
       tunnelId: 'tunnel-1',
       state: 'ready',
