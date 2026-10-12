@@ -53,8 +53,8 @@ async function fetchWhoAmI(client: Limrun): Promise<WhoAmIBody> {
   }
 }
 
-/** A persistent tunnel as the backend lists it. */
-export interface PersistentTunnel {
+/** A private tunnel as the backend lists it. */
+export interface PrivateTunnel {
   id: string;
   name: string;
   ephemeral: boolean;
@@ -138,8 +138,8 @@ function tunnelPath(organizationId: string, tunnelId: string): string {
 }
 
 /** Lists an organization's tunnels. */
-export async function listTunnels(client: Limrun, organizationId: string): Promise<PersistentTunnel[]> {
-  let body: { tunnels?: PersistentTunnel[] };
+export async function listTunnels(client: Limrun, organizationId: string): Promise<PrivateTunnel[]> {
+  let body: { tunnels?: PrivateTunnel[] };
   try {
     body = await client.get(tunnelsPath(organizationId));
   } catch (err) {
@@ -153,7 +153,7 @@ export async function findTunnel(
   client: Limrun,
   organizationId: string,
   name: string,
-): Promise<PersistentTunnel | undefined> {
+): Promise<PrivateTunnel | undefined> {
   return (await listTunnels(client, organizationId)).find((tunnel) => tunnel.name === name);
 }
 
@@ -165,9 +165,9 @@ export async function createTunnel(
   client: Limrun,
   organizationId: string,
   request: { name: string; selectors: string[]; expirationMonths: number; ephemeral?: boolean },
-): Promise<{ tunnel: PersistentTunnel; token: TunnelToken }> {
+): Promise<{ tunnel: PrivateTunnel; token: TunnelToken }> {
   const { name, selectors, expirationMonths, ephemeral } = request;
-  let body: { tunnel: PersistentTunnel; token?: TunnelToken };
+  let body: { tunnel: PrivateTunnel; token?: TunnelToken };
   try {
     body = await client.post(tunnelsPath(organizationId), {
       body: { name, selectors, ...(ephemeral && { ephemeral }), token: { expirationMonths } },
@@ -192,7 +192,7 @@ export async function createQuickTunnel(
   organizationId: string,
   name: string,
   selectors: string[],
-): Promise<{ tunnel: PersistentTunnel; token: string }> {
+): Promise<{ tunnel: PrivateTunnel; token: string }> {
   const created = await createTunnel(client, organizationId, {
     name,
     selectors,
@@ -206,9 +206,9 @@ export async function createQuickTunnel(
 export async function updateTunnelSelectors(
   client: Limrun,
   organizationId: string,
-  tunnel: PersistentTunnel,
+  tunnel: PrivateTunnel,
   selectors: string[],
-): Promise<PersistentTunnel> {
+): Promise<PrivateTunnel> {
   try {
     return await client.patch(tunnelPath(organizationId, tunnel.id), { body: { selectors } });
   } catch (err) {
@@ -220,7 +220,7 @@ export async function updateTunnelSelectors(
 export async function rotateTunnelToken(
   client: Limrun,
   organizationId: string,
-  tunnel: PersistentTunnel,
+  tunnel: PrivateTunnel,
   expirationMonths: number,
 ): Promise<TunnelToken> {
   try {

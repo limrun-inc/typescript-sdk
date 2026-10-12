@@ -17,7 +17,7 @@ test('Android create exposes supported OS versions and models', () => {
   expect(AndroidCreate.flags.model.options).toEqual(['phone', 'tablet']);
 });
 
-test('--tunnel names the persistent tunnel in the instance spec', async () => {
+test('--tunnel names the private tunnel in the instance spec', async () => {
   const create = jest
     .fn()
     .mockResolvedValue({ metadata: { id: 'android_test' }, status: { state: 'ready' } });

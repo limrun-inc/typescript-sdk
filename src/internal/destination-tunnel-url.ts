@@ -29,7 +29,7 @@ export function deriveDestinationTunnelURL(apiUrl: string): string {
   return webSocketURL(deriveEndpointURL(apiUrl, 'tunnel'));
 }
 
-/** The control WebSocket of a persistent tunnel, under the Limrun API base URL. */
+/** The control WebSocket of a private tunnel, under the Limrun API base URL. */
 export function deriveTunnelConnectURL(baseURL: string, organizationId: string, name: string): string {
   return webSocketURL(
     deriveEndpointURL(

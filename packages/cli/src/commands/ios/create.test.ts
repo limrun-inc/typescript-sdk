@@ -22,7 +22,7 @@ function setup(flags: Record<string, unknown>) {
   return { command, create };
 }
 
-test('--tunnel names the persistent tunnel in the instance spec', async () => {
+test('--tunnel names the private tunnel in the instance spec', async () => {
   const { command, create } = setup({ tunnel: 'staging' });
   await command.run();
   expect(create).toHaveBeenCalledWith(expect.objectContaining({ spec: { tunnel: 'staging' } }));

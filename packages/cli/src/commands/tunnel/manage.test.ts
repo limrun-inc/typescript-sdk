@@ -11,7 +11,7 @@ import {
   rotateTunnelToken,
   tunnelOrganization,
   updateTunnelSelectors,
-  type PersistentTunnel,
+  type PrivateTunnel,
 } from '../../lib/backend';
 
 jest.mock('../../lib/backend', () => ({
@@ -24,7 +24,7 @@ jest.mock('../../lib/backend', () => ({
   deleteTunnel: jest.fn(async () => {}),
 }));
 
-const staging: PersistentTunnel = {
+const staging: PrivateTunnel = {
   id: 'tunnel_1',
   name: 'staging',
   ephemeral: false,

@@ -5,9 +5,9 @@ import { formatIssuedToken } from '../../lib/tunnel-run';
 import { parseTunnelSelectors } from '../../lib/tunnel-process';
 
 export default class TunnelCreate extends BaseCommand {
-  static summary = 'Create a persistent tunnel and print the command that runs it';
+  static summary = 'Create a private tunnel and print the command that runs it';
   static description =
-    'Create a persistent tunnel that serves every iOS and Android instance created with --tunnel <name>, ' +
+    'Create a private tunnel that serves every iOS and Android instance created with --tunnel <name>, ' +
     'and print `lim tunnel run --token <token>` for its connector. The token runs this tunnel and nothing ' +
     "else, and it is shown only once. Needs an admin's API key or login. With --quiet, prints only the token.";
   static examples = [

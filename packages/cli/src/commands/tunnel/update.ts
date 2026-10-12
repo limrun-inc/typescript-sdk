@@ -4,9 +4,9 @@ import { findTunnel, tunnelOrganization, updateTunnelSelectors } from '../../lib
 import { parseTunnelSelectors } from '../../lib/tunnel-process';
 
 export default class TunnelUpdate extends BaseCommand {
-  static summary = "Replace a persistent tunnel's selectors";
+  static summary = "Replace a private tunnel's selectors";
   static description =
-    "Replace a persistent tunnel's selectors. Instances attached after the change get the new ones; " +
+    "Replace a private tunnel's selectors. Instances attached after the change get the new ones; " +
     "restart the connector to apply them to attached instances. Needs an admin's API key or login.";
   static examples = [
     '<%= config.bin %> tunnel update staging --selector localhost:3000 --selector localhost:4000',

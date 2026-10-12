@@ -89,7 +89,7 @@ export default class AndroidCreate extends BaseCommand {
     }),
     tunnel: Flags.string({
       description:
-        'Name of a persistent tunnel, created in the console (Network) and run with lim tunnel run, that the ' +
+        'Name of a private tunnel, created in the console (Network) and run with lim tunnel run, that the ' +
         'instance must attach to before it becomes ready.',
     }),
     label: Flags.string({

@@ -155,7 +155,7 @@ describe('destination tunnel wire contract', () => {
     expect(decodeDestinationTunnelServerMessage(input)).toEqual(decoded);
   });
 
-  test('encodes a persistent tunnel name in START only when set', () => {
+  test('encodes a private tunnel name in START only when set', () => {
     const start: DestinationTunnelClientMessage = {
       type: 'start',
       version: DESTINATION_TUNNEL_VERSION,

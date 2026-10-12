@@ -118,7 +118,7 @@ describe('destination tunnel dialer', () => {
     await waitFor(() => localSocket?.destroyed === true);
   });
 
-  test('sends the persistent tunnel name in START outside the config hash', async () => {
+  test('sends the private tunnel name in START outside the config hash', async () => {
     const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
       selectors: ['localhost:3000'],
       name: 'staging',

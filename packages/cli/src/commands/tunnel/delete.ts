@@ -3,9 +3,9 @@ import { BaseCommand } from '../../base-command';
 import { deleteTunnel, findTunnel, tunnelOrganization } from '../../lib/backend';
 
 export default class TunnelDelete extends BaseCommand {
-  static summary = 'Delete a persistent tunnel';
+  static summary = 'Delete a private tunnel';
   static description =
-    'Delete a persistent tunnel. Its connector exits, its token stops working, and instances that name it ' +
+    'Delete a private tunnel. Its connector exits, its token stops working, and instances that name it ' +
     "lose access to its network. Needs an admin's API key or login.";
   static examples = ['<%= config.bin %> tunnel delete staging'];
 

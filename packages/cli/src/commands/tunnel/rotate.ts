@@ -4,9 +4,9 @@ import { findTunnel, rotateTunnelToken, tunnelOrganization } from '../../lib/bac
 import { formatIssuedToken } from '../../lib/tunnel-run';
 
 export default class TunnelRotate extends BaseCommand {
-  static summary = "Issue a persistent tunnel's token and revoke the old one";
+  static summary = "Issue a private tunnel's token and revoke the old one";
   static description =
-    'Issue a new token for a persistent tunnel and print `lim tunnel run --token <token>`. The old token ' +
+    'Issue a new token for a private tunnel and print `lim tunnel run --token <token>`. The old token ' +
     'stops working at once, and connectors running with it exit within seconds; restart them with the new ' +
     "one. Needs an admin's API key or login. With --quiet, prints only the token.";
   static examples = [
