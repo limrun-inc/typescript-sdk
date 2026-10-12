@@ -44,6 +44,12 @@ describe('workspace kinds', () => {
     expect(
       detectWorkspaceKinds(workspace('bazel_dep(\n    name = "rules_android",\n    version = "0.8.0",\n)')),
     ).toMatchObject({ apple: false, android: true, javaRuntime: false });
+    // apple_support alone serves macOS C++ builds too; it is not an Apple app.
+    expect(
+      detectWorkspaceKinds(workspace('bazel_dep(name = "apple_support", version = "1.21.0")')),
+    ).toMatchObject({
+      apple: false,
+    });
     expect(detectWorkspaceKinds(workspace('# bazel_dep(name = "rules_cc")'))).toMatchObject({
       apple: false,
       android: false,
