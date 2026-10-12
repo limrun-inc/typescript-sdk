@@ -1,5 +1,5 @@
 import { Command } from '@oclif/core';
-import Limrun from '@limrun/api';
+import Limrun, { APIError } from '@limrun/api';
 import { bazelCredentials } from '../../../lib/bazel-setup';
 import { readConfig } from '../../../lib/config';
 import { readStdin } from '../../../lib/stdin';
@@ -22,6 +22,19 @@ export default class BazelCredentialsGet extends Command {
       this.error('Not authenticated: run `lim login`, or set LIM_API_KEY in CI.');
     }
     const client = new Limrun({ apiKey: config.apiKey, baseURL: config.apiEndpoint });
-    process.stdout.write(JSON.stringify(await bazelCredentials(client)));
+    try {
+      process.stdout.write(JSON.stringify(await bazelCredentials(client)));
+    } catch (err) {
+      // Bazel shows this text in its own output, so name the fix.
+      if (err instanceof APIError && err.status === 401) {
+        this.error('Limrun rejected the stored credential: run `lim login`, or set a valid LIM_API_KEY.');
+      }
+      if (err instanceof APIError && err.status === 403) {
+        this.error(
+          "This credential cannot build on Limrun's build plane: use a member's key or `lim login`.",
+        );
+      }
+      throw err;
+    }
   }
 }

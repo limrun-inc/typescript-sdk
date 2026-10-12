@@ -2,9 +2,11 @@ import readline from 'readline/promises';
 import { Flags } from '@oclif/core';
 import { detectBazelMajorVersion, findBazelWorkspaceRoot } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
+import { readConfig } from '../../lib/config';
 import {
   appendModuleLines,
   bazelTooOld,
+  installedBazelMajor,
   CREDENTIAL_HELPER,
   credentialHelperOnPath,
   detectWorkspaceKinds,
@@ -43,7 +45,7 @@ export default class BazelSetup extends BaseCommand {
     if (!workspaceRoot) {
       this.error('No Bazel workspace found: run lim bazel setup inside one, next to its MODULE.bazel.');
     }
-    const bazelMajor = detectBazelMajorVersion(workspaceRoot);
+    const bazelMajor = detectBazelMajorVersion(workspaceRoot) ?? installedBazelMajor(workspaceRoot);
     const tooOld = bazelTooOld(bazelMajor);
     if (tooOld) this.error(tooOld);
     const kinds = detectWorkspaceKinds(workspaceRoot);
@@ -74,6 +76,13 @@ export default class BazelSetup extends BaseCommand {
     this.info(`  ${files.buildFile}`);
     if (files.bazelrcUpdated) this.info('  .bazelrc now imports .limrun/bazelrc');
     this.info('');
+    // Bazel's credential helper reads LIM_API_KEY or the lim login key; a key
+    // passed with --api-key reaches this command alone.
+    if (flags['api-key'] && !readConfig().apiKey) {
+      this.warn(
+        `${CREDENTIAL_HELPER} cannot see --api-key. Run lim login, or set LIM_API_KEY where Bazel runs.`,
+      );
+    }
     if (!credentialHelperOnPath()) {
       this.warn(
         `${CREDENTIAL_HELPER} is not on PATH, so Bazel cannot authenticate. Install the CLI with npm install -g lim.`,

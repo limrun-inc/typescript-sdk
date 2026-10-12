@@ -1,3 +1,4 @@
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import Limrun from '@limrun/api';
@@ -58,6 +59,27 @@ export async function getBazelSetup(client: Limrun, region?: string): Promise<Ba
   return client.get('/v1/bazel_setup', { query: region ? { region } : {} }) as Promise<BazelSetup>;
 }
 
+/**
+ * The major version of the Bazel on PATH, for a workspace that pins none.
+ * Without a pin, bazelisk runs the latest release, but a system Bazel runs
+ * whatever is installed, and the startup flags must suit it. Null when no
+ * Bazel answers in time; bazelisk may first download the latest release.
+ */
+export function installedBazelMajor(workspaceRoot: string): number | null {
+  try {
+    const out = execFileSync('bazel', ['--version'], {
+      cwd: workspaceRoot,
+      encoding: 'utf8',
+      timeout: 20_000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const match = out.match(/bazel (\d+)\./);
+    return match ? Number(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The oldest Bazel the generated configuration works with. */
 const MIN_BAZEL_MAJOR = 8;
 
@@ -79,7 +101,9 @@ export type WorkspaceKinds = { apple: boolean; android: boolean; javaRuntime: bo
 export function detectWorkspaceKinds(workspaceRoot: string): WorkspaceKinds {
   const module = readModule(workspaceRoot);
   return {
-    apple: hasBazelDep(module, 'rules_apple') || hasBazelDep(module, 'apple_support'),
+    // apple_support alone also serves plain macOS C++ builds, so only
+    // rules_apple marks an Apple workspace.
+    apple: hasBazelDep(module, 'rules_apple'),
     android: hasBazelDep(module, 'rules_android'),
     javaRuntime: setsJavaRuntime(workspaceRoot),
   };
