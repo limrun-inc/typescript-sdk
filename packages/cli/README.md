@@ -226,7 +226,6 @@ lim ios info --json
 
 # Screenshots
 lim ios screenshot screenshot.png
-lim ios screenshot app-store.png --format png --size full # Native pixel dimensions, opaque PNG
 
 # Tapping
 lim ios tap 100 200

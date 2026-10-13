@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { Args, Flags } from '@oclif/core';
-import type { ScreenshotOptions } from '@limrun/api/ios-client';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
@@ -16,7 +15,6 @@ export default class IosScreenshot extends BaseCommand {
     '<%= config.bin %> ios screenshot screenshot.png',
     '<%= config.bin %> ios screenshot screenshot.png --id <instance-ID>',
     '<%= config.bin %> ios screenshot screenshot.png --json',
-    '<%= config.bin %> ios screenshot app-store.png --format png --size full',
   ];
 
   static args = {
@@ -28,16 +26,6 @@ export default class IosScreenshot extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    format: Flags.string({
-      options: ['jpeg', 'png'],
-      default: 'jpeg',
-      description: 'Screenshot image format. PNG images have no alpha channel.',
-    }),
-    size: Flags.string({
-      options: ['scaled', 'full'],
-      default: 'scaled',
-      description: 'scaled uses tap-point dimensions; full preserves native pixel resolution.',
-    }),
     display: Flags.string({
       options: ['outer', 'inner'],
       description: 'Capture a specific iPhone Duo display.',
@@ -58,20 +46,16 @@ export default class IosScreenshot extends BaseCommand {
         this.error('ios screenshot only supports iOS instances');
       }
 
-      const options: ScreenshotOptions = {
-        format: flags.format as ScreenshotOptions['format'],
-        size: flags.size as ScreenshotOptions['size'],
-      };
       let screenshot: any;
       if (!flags.display && (await ensureDaemonSession(resolvedInstance))) {
-        screenshot = await sendSessionCommand(id, 'screenshot', [options]);
+        screenshot = await sendSessionCommand(id, 'screenshot');
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
           screenshot =
             flags.display ?
-              await client.screenshotDisplay(flags.display as 'outer' | 'inner', options)
-            : await client.screenshot(options);
+              await client.screenshotDisplay(flags.display as 'outer' | 'inner')
+            : await client.screenshot();
         } finally {
           disconnect();
         }

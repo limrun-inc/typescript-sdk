@@ -424,7 +424,7 @@ export function startDaemonServer(): void {
 
       switch (command) {
         case 'screenshot':
-          result = type === 'ios' ? await (client as any).screenshot(args[0]) : await client.screenshot();
+          result = await client.screenshot();
           break;
 
         case 'tap':
