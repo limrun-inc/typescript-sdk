@@ -287,6 +287,8 @@ export type DeviceInfo = {
   screenHeight: number;
   /** Device model name */
   model: string;
+  /** Simulator OS version, e.g. "26.4" */
+  osVersion?: string;
 };
 
 export type AppInstallationResult = {
@@ -1421,6 +1423,7 @@ type ServerResponse = {
   screenWidth?: number;
   screenHeight?: number;
   model?: string;
+  osVersion?: string;
   // Simctl streaming fields
   stdout?: string;
   stderr?: string;
@@ -1938,6 +1941,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         screenWidth: msg.screenWidth!,
         screenHeight: msg.screenHeight!,
         model: msg.model!,
+        osVersion: msg.osVersion,
       }),
       openUrlResult: () => undefined,
       appInstallationResult: (msg) => ({
