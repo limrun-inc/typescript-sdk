@@ -54,7 +54,6 @@ app.post(
             },
           ];
         }
-        // iOS doesn't support OSVersion clue, only ClientIP
         if (clientIp && clientIp !== '::1' && clientIp !== '127.0.0.1') {
           console.log({ clientIp }, 'Adding client IP as scheduling clue (iOS)');
           spec.clues = [
