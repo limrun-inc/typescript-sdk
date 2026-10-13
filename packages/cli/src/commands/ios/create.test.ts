@@ -1,4 +1,4 @@
-import IosCreate from './create';
+import IosCreate, { iosDeviceSelection } from './create';
 
 jest.mock('../../lib/config', () => ({
   ...jest.requireActual('../../lib/config'),
@@ -40,6 +40,13 @@ test('--os-version asks for the iOS major version with an OSVersion clue', async
   expect(create).toHaveBeenCalledWith(
     expect.objectContaining({ spec: { clues: [{ kind: 'OSVersion', osVersion: '27' }] } }),
   );
+});
+
+test('iOS 27 iPhone Duo selection maps to separate OS and model fields', () => {
+  expect(iosDeviceSelection('27', 'iphone-duo')).toEqual({
+    clues: [{ kind: 'OSVersion', osVersion: '27' }],
+    model: 'iphone-duo',
+  });
 });
 
 test('iOS create exposes the supported iOS versions', () => {

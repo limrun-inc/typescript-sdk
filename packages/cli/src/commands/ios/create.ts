@@ -13,6 +13,19 @@ import { Ios, type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 import { instanceToken } from '@limrun/api/instance-token';
 
+type IosModel = NonNullable<IosInstanceCreateParams.Spec['model']>;
+
+export function iosDeviceSelection(osVersion?: string, model?: IosModel): IosInstanceCreateParams.Spec {
+  const spec: IosInstanceCreateParams.Spec = {};
+  if (osVersion) {
+    spec.clues = [{ kind: 'OSVersion', osVersion }];
+  }
+  if (model) {
+    spec.model = model;
+  }
+  return spec;
+}
+
 export default class IosCreate extends BaseCommand {
   static summary = 'Create a new iOS instance';
   static description =
@@ -255,8 +268,10 @@ export default class IosCreate extends BaseCommand {
 
       if (flags.region) params.spec!.region = flags.region;
       if (flags.jurisdiction) params.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';
-      if (flags.model) params.spec!.model = flags.model as 'iphone' | 'iphone-duo' | 'ipad' | 'watch';
-      if (flags['os-version']) params.spec!.clues = [{ kind: 'OSVersion', osVersion: flags['os-version'] }];
+      Object.assign(
+        params.spec!,
+        iosDeviceSelection(flags['os-version'], flags.model as IosModel | undefined),
+      );
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
       if (flags['force-bundle-id']) params.spec!.forceBundleId = flags['force-bundle-id'];
