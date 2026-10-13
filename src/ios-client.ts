@@ -183,12 +183,19 @@ export function parseElementTreeResultMessage(
 // Result Types
 // ============================================================================
 
+export type ScreenshotOptions = {
+  /** Image encoding. Defaults to jpeg. PNG screenshots have no alpha channel. */
+  format?: 'jpeg' | 'png';
+  /** scaled uses tap-point dimensions; full preserves native pixels. Defaults to scaled. */
+  size?: 'scaled' | 'full';
+};
+
 export type ScreenshotData = {
-  /** Base64-encoded JPEG image data */
+  /** Base64-encoded image data in the requested format. */
   base64: string;
-  /** Width in points (for tap coordinates) */
+  /** Width in points for scaled screenshots, or native pixels for full screenshots. */
   width: number;
-  /** Height in points (for tap coordinates) */
+  /** Height in points for scaled screenshots, or native pixels for full screenshots. */
   height: number;
 };
 
@@ -654,7 +661,7 @@ export type InstanceClient = {
    * Take a screenshot of the active screen
    * @returns A promise that resolves to the screenshot data with base64 image and dimensions
    */
-  screenshot: () => Promise<ScreenshotData>;
+  screenshot: (options?: ScreenshotOptions) => Promise<ScreenshotData>;
 
   /**
    * Get the element tree (accessibility hierarchy) of the current screen
@@ -840,7 +847,7 @@ export type InstanceClient = {
   /** Returns null for a simulator without a hinge. */
   getFoldState: () => Promise<FoldState | null>;
   /** Capture an upright Duo display. A powered-off display returns its native black image. */
-  screenshotDisplay: (display: 'outer' | 'inner') => Promise<ScreenshotData>;
+  screenshotDisplay: (display: 'outer' | 'inner', options?: ScreenshotOptions) => Promise<ScreenshotData>;
   /** Tap in point coordinates returned by screenshotDisplay. */
   tapDisplay: (display: 'outer' | 'inner', x: number, y: number) => Promise<void>;
   setDuoOrientation: (orientation: DuoOrientation) => Promise<FoldState>;
@@ -2204,8 +2211,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     // Client Methods - using centralized sendRequest
     // ========================================================================
 
-    const screenshot = (): Promise<ScreenshotData> => {
-      return sendRequest<ScreenshotData>('screenshot');
+    const screenshot = (options: ScreenshotOptions = {}): Promise<ScreenshotData> => {
+      return sendRequest<ScreenshotData>('screenshot', options);
     };
 
     const elementTree = (point?: AccessibilityPoint): Promise<ElementTree> => {
@@ -2518,8 +2525,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         return Promise.reject(new RangeError('Invalid iPhone Duo orientation'));
       return sendRequest('setDuoOrientation', { orientation });
     };
-    const screenshotDisplay = (display: 'outer' | 'inner'): Promise<ScreenshotData> =>
-      sendRequest('screenshotDisplay', { display });
+    const screenshotDisplay = (
+      display: 'outer' | 'inner',
+      options?: ScreenshotOptions,
+    ): Promise<ScreenshotData> => sendRequest('screenshotDisplay', { display, ...options });
     const tapDisplay = (display: 'outer' | 'inner', x: number, y: number): Promise<void> =>
       sendRequest('tapDisplay', { display, x, y });
     const getFoldState = (): Promise<FoldState | null> => sendRequest('getFoldState');
