@@ -21,6 +21,7 @@ export default class IosCreate extends BaseCommand {
   static examples = [
     '<%= config.bin %> ios create',
     '<%= config.bin %> ios create --rm --model ipad',
+    '<%= config.bin %> ios create --os-version 27',
     '<%= config.bin %> ios create --jurisdiction us --install-asset my-app.ipa',
     '<%= config.bin %> ios create --keychain keychain/login.tar.gz --encryption-key-stdin < keychain.key',
     '<%= config.bin %> ios create --keychain-url https://example.t3.storage.dev/... --encryption-key <key>',
@@ -76,6 +77,11 @@ export default class IosCreate extends BaseCommand {
     model: Flags.string({
       description: 'Device model to create',
       options: ['iphone', 'iphone-duo', 'ipad', 'watch'],
+    }),
+    'os-version': Flags.string({
+      description:
+        'iOS major version to create (26 or 27). iPhone runs both, iPhone Duo 27, iPad and Watch 26.',
+      options: ['26', '27'],
     }),
     'reuse-if-exists': Flags.boolean({
       description: 'Reuse an existing matching instance instead of creating a new one',
@@ -250,6 +256,7 @@ export default class IosCreate extends BaseCommand {
       if (flags.region) params.spec!.region = flags.region;
       if (flags.jurisdiction) params.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';
       if (flags.model) params.spec!.model = flags.model as 'iphone' | 'iphone-duo' | 'ipad' | 'watch';
+      if (flags['os-version']) params.spec!.clues = [{ kind: 'OSVersion', osVersion: flags['os-version'] }];
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
       if (flags['force-bundle-id']) params.spec!.forceBundleId = flags['force-bundle-id'];

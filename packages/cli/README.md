@@ -167,6 +167,9 @@ lim ios create
 # With specific device model
 lim ios create --model ipad --rm
 
+# With a specific iOS version
+lim ios create --os-version 27
+
 # With pre-installed app from asset storage
 lim ios create --install-asset my-app.ipa
 
@@ -186,6 +189,7 @@ lim ios create --jurisdiction us --display-name "CI Test" --label env=ci --rm
 | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `--rm`                                      | Auto-delete the instance on exit (Ctrl+C)                                                                                     |
 | `--model <iphone\|iphone-duo\|ipad\|watch>` | Simulator device model                                                                                                        |
+| `--os-version <26\|27>`                     | iOS major version. iPhone runs both, iPhone Duo `27`, iPad and Watch `26`. Default: `26`, or `27` on iPhone Duo               |
 | `--xcode`                                   | Create an Xcode build sandbox and attach the simulator to it                                                                  |
 | `--jurisdiction <us\|eu\|as>`               | Jurisdiction the instance must be created in (hard constraint: creation fails when no region there has capacity)              |
 | `--region <value>`                          | Deprecated. Region preference (e.g. `us-east1`), tried first and overflowing to other regions when full. Use `--jurisdiction` |
