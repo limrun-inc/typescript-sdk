@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.63.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.62.0...v0.63.0) (2026-10-13)
+
+
+### Features
+
+* **cli:** add lim bazel setup for the build plane ([c5fb1ba](https://github.com/limrun-inc/typescript-sdk/commit/c5fb1ba521e869fa29fbf4e0f897d08e4a14449b))
+* **cli:** add lim ios create --os-version ([d89326a](https://github.com/limrun-inc/typescript-sdk/commit/d89326a99d56cd0941b2d84ae3c07241471dd053))
+* **cli:** manage persistent tunnels from the CLI ([a1d7d97](https://github.com/limrun-inc/typescript-sdk/commit/a1d7d97ae7c9512ce0749e6e67918ec32ca34c32))
+* pick the iOS version of a simulator with the OSVersion clue ([78338cb](https://github.com/limrun-inc/typescript-sdk/commit/78338cb812f2ef1069ddd29b98164d58a77a3b78))
+
+
+### Bug Fixes
+
+* bump @modelcontextprotocol/sdk to 1.32.1 and pin undici 7.29.1 in examples ([#531](https://github.com/limrun-inc/typescript-sdk/issues/531)) ([8f02534](https://github.com/limrun-inc/typescript-sdk/commit/8f0253455a2e6d264b532bde4284607ccd4d98eb))
+* bump handlebars to 4.7.10 and shell-quote to 1.12.0 ([#530](https://github.com/limrun-inc/typescript-sdk/issues/530)) ([743e51c](https://github.com/limrun-inc/typescript-sdk/commit/743e51cd47d77437a7233387653d362cd675be63))
+* **cli:** address review on lim bazel setup ([146c726](https://github.com/limrun-inc/typescript-sdk/commit/146c7262bb58b31f3b681782801b7f01f11fedde))
+* **cli:** address review on lim bazel setup ([a4afbed](https://github.com/limrun-inc/typescript-sdk/commit/a4afbed49cac54cd6286f4a05e9e591bdcd06f81))
+* **cli:** build the iOS device selection like Android's ([ee39e8c](https://github.com/limrun-inc/typescript-sdk/commit/ee39e8c23a1ccdf84002b31166b1bbce4f904fb3))
+* **cli:** refuse to rotate a quick tunnel's token ([0b52778](https://github.com/limrun-inc/typescript-sdk/commit/0b52778646e3e688bb2af4ab94786e20837d03dc))
+* **cli:** run the connector with its token option ([ec5bef1](https://github.com/limrun-inc/typescript-sdk/commit/ec5bef1cc6f5f2b6775636bef0c355dd91420741))
+* test deviceInfo's OS version and drop the note that iOS cannot pick one ([2a43808](https://github.com/limrun-inc/typescript-sdk/commit/2a43808a5942c4b79b168c79a174b68dfed70118))
+
+
+### Chores
+
+* **cli:** release 0.42.0 with API 0.62.0 ([1bd74d1](https://github.com/limrun-inc/typescript-sdk/commit/1bd74d154e17e67ce8ace08b2a1b0a09c107e2b0))
+* **cli:** release 0.43.0 ([8cd1008](https://github.com/limrun-inc/typescript-sdk/commit/8cd10089ed8d5879981a2cfcce01af57ac13c418))
+* **cli:** release 0.44.0 ([a9b6625](https://github.com/limrun-inc/typescript-sdk/commit/a9b662569055f0c450348ab3b351a003c5063836))
+
+
+### Styles
+
+* **cli:** format the tunnel management tests ([5ccef69](https://github.com/limrun-inc/typescript-sdk/commit/5ccef69809096935ff0f1d60638fa3fb3065c611))
+
+
+### Refactors
+
+* **cli:** simplify lim bazel setup ([512cdab](https://github.com/limrun-inc/typescript-sdk/commit/512cdab324a359f9a1213911e6c88dfb8b9824b9))
+
 ## [0.62.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.61.0...v0.62.0) (2026-10-10)
 
 
