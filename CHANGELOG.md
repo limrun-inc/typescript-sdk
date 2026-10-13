@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.63.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.63.0...v0.63.1) (2026-10-13)
+
+
+### Features
+
+* **ios:** add screenshot format and size options ([6da2ce7](https://github.com/limrun-inc/typescript-sdk/commit/6da2ce7a7beaf898dcb80624c82af61a45e16f83))
+* **ios:** separate SDK screenshot options from CLI integration ([b1d5797](https://github.com/limrun-inc/typescript-sdk/commit/b1d579708de735f8324fb535d3f7193dbf3c9a48))
+
 ## [0.63.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.62.0...v0.63.0) (2026-10-13)
 
 
