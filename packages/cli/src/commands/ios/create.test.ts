@@ -33,3 +33,15 @@ test('omits the tunnel without --tunnel', async () => {
   await command.run();
   expect(create).toHaveBeenCalledWith(expect.objectContaining({ spec: {} }));
 });
+
+test('--os-version asks for the iOS major version with an OSVersion clue', async () => {
+  const { command, create } = setup({ 'os-version': '27' });
+  await command.run();
+  expect(create).toHaveBeenCalledWith(
+    expect.objectContaining({ spec: { clues: [{ kind: 'OSVersion', osVersion: '27' }] } }),
+  );
+});
+
+test('iOS create exposes the supported iOS versions', () => {
+  expect(IosCreate.flags['os-version'].options).toEqual(['26', '27']);
+});
