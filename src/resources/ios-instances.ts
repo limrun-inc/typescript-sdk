@@ -248,7 +248,7 @@ export namespace IosInstanceCreateParams {
 
   export namespace Spec {
     export interface Clue {
-      kind: 'ClientIP' | 'ClientLocation';
+      kind: 'ClientIP' | 'ClientLocation' | 'OSVersion';
 
       clientIp?: string;
 
@@ -257,6 +257,12 @@ export namespace IosInstanceCreateParams {
        * ranges. This location takes precedence over ClientIP.
        */
       clientLocation?: Clue.ClientLocation;
+
+      /**
+       * The major version of iOS, "26" or "27". iphone runs both, iphone-duo runs 27,
+       * ipad and watch run 26. Default is 26, or 27 on iphone-duo.
+       */
+      osVersion?: string;
     }
 
     export namespace Clue {
