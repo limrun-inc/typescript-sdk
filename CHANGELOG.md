@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.64.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.63.1...v0.64.0) (2026-10-14)
+
+
+### Features
+
+* **cli:** set and clear the device system proxy ([b03687e](https://github.com/limrun-inc/typescript-sdk/commit/b03687e6662715cc425e019adb2b15d8c6b191ef))
+* **ios:** trust customer CA certificates with lim ios ca add ([5da92d0](https://github.com/limrun-inc/typescript-sdk/commit/5da92d0d139c45d2bf103fa1d9f450a736a11c9f))
+
+
+### Bug Fixes
+
+* **cli:** harden proxy parsing and never replace a missing instance ([922d4a6](https://github.com/limrun-inc/typescript-sdk/commit/922d4a64364aea52a11b4a99e221332e8d2f499f))
+* read every CA error shape and never replace a missing instance ([55f6a1f](https://github.com/limrun-inc/typescript-sdk/commit/55f6a1ffbc794c33b615eef1aa40129bc84196d8))
+
+
+### Refactors
+
+* **cli:** share the proxy plumbing between commands ([3a16bdf](https://github.com/limrun-inc/typescript-sdk/commit/3a16bdfb4a107f9949feffc112558bf4ac80525f))
+* let the CA helper's type flow from its caller ([89e759e](https://github.com/limrun-inc/typescript-sdk/commit/89e759eae534a3fe5d1a3dc837e653bff7329772))
+
 ## [0.63.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.63.0...v0.63.1) (2026-10-13)
 
 
