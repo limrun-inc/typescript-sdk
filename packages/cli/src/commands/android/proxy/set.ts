@@ -12,7 +12,7 @@ export default class AndroidProxySet extends BaseCommand {
     'before you stop that tunnel, or the device loses its network. Same as ' +
     '`lim android adb-shell -- settings put global http_proxy <host:port>`.';
   static examples = [
-    '<%= config.bin %> android tunnel --selector localhost:3128 --no-inspect\n<%= config.bin %> android proxy set localhost:3128',
+    '<%= config.bin %> android tunnel --selector localhost:3128 --no-inspect --detach\n<%= config.bin %> android proxy set localhost:3128',
     '<%= config.bin %> android proxy set proxy.acme.internal:3128 --id <instance-ID>',
   ];
 
@@ -42,26 +42,32 @@ export default class AndroidProxySet extends BaseCommand {
     }
     const address = `${proxy.host}:${proxy.port}`;
 
-    await this.withAuth(async () => {
-      const { client, disconnect } = await getAndroidInstanceClient(
-        this.client,
-        this.resolveAndroidInstance(flags.id),
-      );
-      try {
-        const result = await client.adbShell('settings', ['put', 'global', 'http_proxy', address]);
-        if (result.exitCode !== 0) {
-          this.error(result.stderr.trim() || `settings failed with exit code ${result.exitCode}`, {
-            exit: result.exitCode,
-          });
+    // A replacement instance would have none of the tunnels the proxy relies on.
+    await this.withAuth(
+      async () => {
+        const { client, disconnect } = await getAndroidInstanceClient(
+          this.client,
+          this.resolveAndroidInstance(flags.id),
+        );
+        try {
+          const result = await client.adbShell('settings', ['put', 'global', 'http_proxy', address]);
+          if (result.exitCode !== 0) {
+            this.error(result.stderr.trim() || `settings failed with exit code ${result.exitCode}`, {
+              exit: result.exitCode,
+            });
+          }
+        } finally {
+          disconnect();
         }
-      } finally {
-        disconnect();
-      }
-      if (flags.json) {
-        this.outputJson({ proxy: address });
-      } else {
-        this.output(`System proxy set to ${address}. Relaunch apps that connected before.`);
-      }
-    });
+        if (flags.json) {
+          this.outputJson({ proxy: address });
+        } else {
+          this.output(
+            `System proxy set to ${address}. New connections use it; relaunch apps to close connections opened before.`,
+          );
+        }
+      },
+      { createReplacement: false },
+    );
   }
 }

@@ -25,21 +25,27 @@ export default class IosProxyClear extends BaseCommand {
     const { flags } = await this.parse(IosProxyClear);
     this.setParsedFlags(flags);
 
-    await this.withAuth(async () => {
-      const result = await runIosSimctl(this.client, this.resolveIosInstance(flags.id), [
-        'spawn',
-        'booted',
-        'limproxy',
-        'clear',
-      ]);
-      if (result.code !== 0) {
-        this.error(iosProxyToolError(result), { exit: result.code });
-      }
-      if (flags.json) {
-        this.outputJson({ proxy: null });
-      } else {
-        this.output('System proxy cleared. Relaunch apps that connected before.');
-      }
-    });
+    // A replacement instance would have none of the tunnels the proxy relies on.
+    await this.withAuth(
+      async () => {
+        const result = await runIosSimctl(this.client, this.resolveIosInstance(flags.id), [
+          'spawn',
+          'booted',
+          'limproxy',
+          'clear',
+        ]);
+        if (result.code !== 0) {
+          this.error(iosProxyToolError(result), { exit: result.code });
+        }
+        if (flags.json) {
+          this.outputJson({ proxy: null });
+        } else {
+          this.output(
+            'System proxy cleared. New connections go direct; relaunch apps to close connections opened through the proxy.',
+          );
+        }
+      },
+      { createReplacement: false },
+    );
   }
 }

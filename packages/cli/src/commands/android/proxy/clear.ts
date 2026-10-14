@@ -23,27 +23,33 @@ export default class AndroidProxyClear extends BaseCommand {
     const { flags } = await this.parse(AndroidProxyClear);
     this.setParsedFlags(flags);
 
-    await this.withAuth(async () => {
-      const { client, disconnect } = await getAndroidInstanceClient(
-        this.client,
-        this.resolveAndroidInstance(flags.id),
-      );
-      try {
-        // An empty host with port 0 means no proxy.
-        const result = await client.adbShell('settings', ['put', 'global', 'http_proxy', ':0']);
-        if (result.exitCode !== 0) {
-          this.error(result.stderr.trim() || `settings failed with exit code ${result.exitCode}`, {
-            exit: result.exitCode,
-          });
+    // A replacement instance would have none of the tunnels the proxy relies on.
+    await this.withAuth(
+      async () => {
+        const { client, disconnect } = await getAndroidInstanceClient(
+          this.client,
+          this.resolveAndroidInstance(flags.id),
+        );
+        try {
+          // An empty host with port 0 means no proxy.
+          const result = await client.adbShell('settings', ['put', 'global', 'http_proxy', ':0']);
+          if (result.exitCode !== 0) {
+            this.error(result.stderr.trim() || `settings failed with exit code ${result.exitCode}`, {
+              exit: result.exitCode,
+            });
+          }
+        } finally {
+          disconnect();
         }
-      } finally {
-        disconnect();
-      }
-      if (flags.json) {
-        this.outputJson({ proxy: null });
-      } else {
-        this.output('System proxy cleared. Relaunch apps that connected before.');
-      }
-    });
+        if (flags.json) {
+          this.outputJson({ proxy: null });
+        } else {
+          this.output(
+            'System proxy cleared. New connections go direct; relaunch apps to close connections opened through the proxy.',
+          );
+        }
+      },
+      { createReplacement: false },
+    );
   }
 }
