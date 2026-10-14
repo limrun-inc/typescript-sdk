@@ -1,6 +1,6 @@
 import http from 'http';
 import type { AddressInfo } from 'net';
-import { addTrustedCaCertificate } from '../src/internal/trusted-ca';
+import { addTrustedCaCertificate, postTrustedCaCertificate } from '../src/internal/trusted-ca';
 
 describe('trusted CA certificates', () => {
   let server: http.Server;
@@ -40,6 +40,28 @@ describe('trusted CA certificates', () => {
       authorization: 'Bearer token-1',
       body: pem,
     });
+  });
+
+  test('reads the reason limulator answers as JSON', async () => {
+    responder = (_, __, response) => {
+      response.writeHead(400, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ message: 'the certificate is not a CA certificate' }));
+    };
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/trusted-cas`;
+    await expect(postTrustedCaCertificate(url, 'token-1', 'pem')).rejects.toThrow(
+      'Adding the CA certificate failed (400): the certificate is not a CA certificate',
+    );
+  });
+
+  test('explains a 404 from an instance without the endpoint', async () => {
+    responder = (_, __, response) => {
+      response.writeHead(404, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ error: true, reason: 'Not Found' }));
+    };
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/trusted-cas`;
+    await expect(postTrustedCaCertificate(url, 'token-1', 'pem', 'not supported yet')).rejects.toThrow(
+      'Adding the CA certificate failed (404): not supported yet',
+    );
   });
 
   test('reports the server reason when the instance refuses', async () => {

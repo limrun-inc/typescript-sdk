@@ -17,6 +17,7 @@ import { prepareAppBundlePath, watchAppArchive } from './app-archive';
 import { downloadFileToLocalPath } from './internal/download-file';
 import { sleep } from './internal/utils/sleep';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import { postTrustedCaCertificate } from './internal/trusted-ca';
 import {
   getDestinationTunnelStatus,
   stopDestinationTunnel,
@@ -77,6 +78,12 @@ export type { ReverseTunnel } from './tunnel';
 export type Tunnel = DestinationTcpTunnel;
 export type TunnelOptions = DestinationTunnelStartOptions;
 export type TunnelStatus = DestinationTunnelStatus;
+
+/** A CA certificate the simulator now trusts. */
+export type TrustedCaCertificate = {
+  /** SHA-256 of the certificate's DER encoding, in hex. */
+  sha256: string;
+};
 
 /**
  * Events emitted by a simctl execution
@@ -1026,6 +1033,14 @@ export type InstanceClient = {
    * @param storekit Raw `.storekit` JSON bytes.
    */
   setStoreKitConfig: (bundleId: string, storekit: Buffer | Uint8Array) => Promise<void>;
+
+  /**
+   * Trust a PEM-encoded CA certificate on the simulator, for example the CA of
+   * an intercepting proxy you record traffic with. Safari and apps trust it on
+   * their next connection. It lasts for the life of the instance, and adding a
+   * certificate the simulator already trusts changes nothing.
+   */
+  addCaCertificate: (pem: string) => Promise<TrustedCaCertificate>;
 
   /**
    * Clear the registered StoreKit configuration for `bundleId` and
@@ -2178,6 +2193,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             keepAlive,
             syncApp,
             setStoreKitConfig,
+            addCaCertificate,
             clearStoreKitConfig,
             discoverStoreKitConfig,
             softReset,
@@ -2978,6 +2994,15 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         throw new Error(`setStoreKitConfig failed: ${response.status} ${errorBody}`);
       }
     };
+
+    const addCaCertificate = (pem: string): Promise<TrustedCaCertificate> =>
+      postTrustedCaCertificate<TrustedCaCertificate>(
+        `${options.apiUrl}/trusted-cas`,
+        options.token,
+        pem,
+        // Images from before the endpoint answer 404.
+        'this instance does not support adding CA certificates yet',
+      );
 
     const clearStoreKitConfig = async (bundleId: string): Promise<void> => {
       const url = `${options.apiUrl}/payments/storeKitConfigs/${encodeURIComponent(bundleId)}`;
