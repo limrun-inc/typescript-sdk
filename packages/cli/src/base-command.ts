@@ -712,8 +712,9 @@ export abstract class BaseCommand extends Command {
     }
     // Read-only or lifecycle verbs must never conjure an instance: `lim
     // gradle get <typo>` should fail with not-found, not create-and-show a
-    // brand new sandbox.
-    if (['create', 'delete', 'list', 'get', 'version', 'tools', 'logs'].includes(verb)) {
+    // brand new sandbox. Nor may proxy: a new instance has none of the
+    // tunnels the proxy relies on.
+    if (['create', 'delete', 'list', 'get', 'version', 'tools', 'logs', 'proxy'].includes(verb)) {
       return false;
     }
     return true;
