@@ -11,8 +11,8 @@ function setup(command: typeof IosProxySet | typeof IosProxyClear, args: Record<
     withAuth: async (run: () => Promise<void>) => run(),
     resolveIosInstance: () => 'ios_test',
     outputJson: jest.fn(),
-    error: (message: string): never => {
-      throw new Error(message);
+    error: (message: string, options?: { exit?: number }): never => {
+      throw Object.assign(new Error(message), { exit: options?.exit });
     },
   });
   Object.defineProperty(instance, 'client', { value: {} });
@@ -51,6 +51,14 @@ test('set explains an instance without the proxy tool', async () => {
   });
   const command = setup(IosProxySet, { proxy: 'localhost:3128' });
   await expect(command.run()).rejects.toThrow('This instance does not support lim ios proxy yet.');
+});
+
+test('clear exits with the tool exit code and message', async () => {
+  jest
+    .mocked(runIosSimctl)
+    .mockResolvedValue({ code: 70, stdout: '', stderr: 'limproxy: restore proxy failed\n' });
+  const command = setup(IosProxyClear);
+  await expect(command.run()).rejects.toMatchObject({ message: 'limproxy: restore proxy failed', exit: 70 });
 });
 
 test('clear runs the proxy tool', async () => {

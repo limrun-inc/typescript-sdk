@@ -20,8 +20,8 @@ function setup(
     withAuth: async (run: () => Promise<void>) => run(),
     resolveAndroidInstance: () => 'android_test',
     outputJson: jest.fn(),
-    error: (message: string): never => {
-      throw new Error(message);
+    error: (message: string, options?: { exit?: number }): never => {
+      throw Object.assign(new Error(message), { exit: options?.exit });
     },
   });
   Object.defineProperty(instance, 'client', { value: {} });
@@ -51,13 +51,20 @@ test('set refuses a malformed proxy before connecting', async () => {
 
 test('set reports a failed settings command', async () => {
   const { command, disconnect } = setup(AndroidProxySet, { proxy: 'localhost:3128' }, 255);
-  await expect(command.run()).rejects.toThrow('denied');
+  await expect(command.run()).rejects.toMatchObject({ message: 'denied', exit: 255 });
   expect(disconnect).toHaveBeenCalledTimes(1);
 });
 
 test('clear sets the proxy to :0', async () => {
-  const { command, client } = setup(AndroidProxyClear);
+  const { command, client, disconnect } = setup(AndroidProxyClear);
   await command.run();
   expect(client.adbShell).toHaveBeenCalledWith('settings', ['put', 'global', 'http_proxy', ':0']);
   expect(command.outputJson).toHaveBeenCalledWith({ proxy: null });
+  expect(disconnect).toHaveBeenCalledTimes(1);
+});
+
+test('clear reports a failed settings command', async () => {
+  const { command, disconnect } = setup(AndroidProxyClear, {}, 1);
+  await expect(command.run()).rejects.toMatchObject({ message: 'denied', exit: 1 });
+  expect(disconnect).toHaveBeenCalledTimes(1);
 });

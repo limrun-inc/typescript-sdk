@@ -25,6 +25,10 @@ test.each([
   '1.2.3:3128',
   '010.0.0.1:3128',
   '-proxy.corp:3128',
+  'a--b.corp:3128',
+  'xn--bcher-kva.corp:3128',
+  '\u212Aorp.example:3128',
+  'proxy corp:3128',
   '*.corp:3128',
   `${'a.'.repeat(127)}aa:3128`,
 ])('rejects %s', (value) => {
@@ -36,7 +40,11 @@ test.each([
     'spawn supports only: spawn <device> defaults read|write|delete ..., spawn <device> notifyutil -p|-s|-g ...',
     'This instance does not support lim ios proxy yet. Create a new instance to use it.',
   ],
-  ['limproxy is unavailable on this simulator', 'This simulator has no system proxy to set.'],
+  [
+    'spawn supports only: spawn <device> defaults read|write|delete ..., spawn <device> limproxy set <host> <port> | clear',
+    'spawn supports only: spawn <device> defaults read|write|delete ..., spawn <device> limproxy set <host> <port> | clear',
+  ],
+  ['limproxy is unavailable on this simulator', 'lim ios proxy is unavailable on this simulator.'],
   ['limproxy: set proxy failed: SCError 1001\n', 'limproxy: set proxy failed: SCError 1001'],
   ['', 'limproxy failed with exit code 70'],
 ])('maps tool stderr %j', (stderr, message) => {
