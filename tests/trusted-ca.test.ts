@@ -21,6 +21,7 @@ describe('trusted CA certificates', () => {
 
   const adbUrl = () =>
     `ws://127.0.0.1:${(server.address() as AddressInfo).port}/android_1/adbWebSocket?token=x`;
+  const trustedCasUrl = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}/trusted-cas`;
 
   test('posts the PEM with bearer authentication to the ADB URL', async () => {
     let seen: Record<string, string | undefined> = {};
@@ -47,25 +48,23 @@ describe('trusted CA certificates', () => {
       response.writeHead(400, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ message: 'the certificate is not a CA certificate' }));
     };
-    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/trusted-cas`;
-    await expect(postTrustedCaCertificate(url, 'token-1', 'pem')).rejects.toThrow(
+    await expect(postTrustedCaCertificate(trustedCasUrl(), 'token-1', 'pem')).rejects.toThrow(
       'Adding the CA certificate failed (400): the certificate is not a CA certificate',
     );
   });
 
   test('reads the reason of a framework error and falls back to the status text', async () => {
-    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/trusted-cas`;
     responder = (_, __, response) => {
       response.writeHead(404, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ error: true, reason: 'Not Found' }));
     };
-    await expect(postTrustedCaCertificate(url, 'token-1', 'pem')).rejects.toThrow(
+    await expect(postTrustedCaCertificate(trustedCasUrl(), 'token-1', 'pem')).rejects.toThrow(
       'Adding the CA certificate failed (404): Not Found',
     );
     responder = (_, __, response) => {
       response.writeHead(403).end();
     };
-    await expect(postTrustedCaCertificate(url, 'token-1', 'pem')).rejects.toThrow(
+    await expect(postTrustedCaCertificate(trustedCasUrl(), 'token-1', 'pem')).rejects.toThrow(
       'Adding the CA certificate failed (403): Forbidden',
     );
   });

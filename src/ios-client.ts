@@ -2996,7 +2996,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const addCaCertificate = (pem: string): Promise<TrustedCaCertificate> =>
-      postTrustedCaCertificate<TrustedCaCertificate>(`${options.apiUrl}/trusted-cas`, options.token, pem);
+      postTrustedCaCertificate(`${options.apiUrl}/trusted-cas`, options.token, pem);
 
     const clearStoreKitConfig = async (bundleId: string): Promise<void> => {
       const url = `${options.apiUrl}/payments/storeKitConfigs/${encodeURIComponent(bundleId)}`;
