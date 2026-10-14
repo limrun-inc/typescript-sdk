@@ -6,13 +6,12 @@ import { runAndroidAdbShell } from '../../../lib/instance-client-factory';
 export default class AndroidProxySet extends BaseCommand {
   static summary = 'Set the system proxy of a running Android instance';
   static description =
-    "Point the device's global HTTP proxy at host:port. Chrome, WebViews and apps that use the system " +
-    'proxy send new connections through it. To reach a proxy on your machine or private network, expose ' +
-    'it with a tunnel run with --no-inspect, because inspection breaks proxied traffic. Clear the proxy ' +
-    'before you stop that tunnel, or the device loses its network. Same as ' +
-    '`lim android adb-shell -- settings put global http_proxy <host:port>`.';
+    "Point the device's global HTTP proxy at host:port. Chrome and apps that follow the system proxy " +
+    'settings send new connections through it. To reach a proxy on your machine or private network, ' +
+    'expose it with a tunnel, and clear the proxy before you stop that tunnel: requests fail while the ' +
+    'proxy is unreachable. Same as `lim android adb-shell -- settings put global http_proxy <host:port>`.';
   static examples = [
-    '<%= config.bin %> android tunnel --selector localhost:3128 --no-inspect --detach\n<%= config.bin %> android proxy set localhost:3128',
+    '<%= config.bin %> android tunnel --selector localhost:3128 --detach\n<%= config.bin %> android proxy set localhost:3128',
     '<%= config.bin %> android proxy set proxy.acme.internal:3128 --id <instance-ID>',
   ];
 
