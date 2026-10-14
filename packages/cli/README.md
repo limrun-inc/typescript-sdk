@@ -128,6 +128,7 @@ This avoids relying on locally cached "last created" state and keeps the target 
 - [Xcode Build Pipeline](#xcode-build-pipeline) — Sync code and run xcodebuild remotely
 - [Bazel](#bazel): Build a Bazel workspace on Limrun's build plane
 - [Skills](#skills) — Install Limrun skills for AI coding agents (Claude Code, Cursor, Codex)
+- [Feedback](#feedback) — Send a bug report or feature request to the Limrun team
 
 ---
 
@@ -959,6 +960,18 @@ The human summary and JSON `source.commit` field report the resolved commit. Sav
 - Different content is updated in place by default and reported as `Updated`. The previous content stays reviewable in your VCS diff, so you can inspect the change or ask your agent to reconcile local edits. Pass `--keep-existing` to leave differing skill directories untouched (reported as `Skipped`).
 
 Cursor reads `.agents/skills/` natively, so we prefer installing there rather than `.cursor/skills/` (an existing `.cursor/skills/` directory is adopted instead of creating a second structure). As a bonus, the `.agents/skills/` install reaches OpenCode and any other tool that follows the AGENTS.md convention - no extra menu options needed.
+
+### Feedback
+
+Send a bug report, a missing feature, or anything confusing straight to the Limrun team. Agents can send it without asking: pass the message as an argument or pipe it on stdin.
+
+```bash
+lim feedback "lim ios tap-element cannot find buttons inside a SwiftUI sheet"
+cat notes.md | lim feedback
+lim feedback --email dev@example.com "xcode build hangs at signing"
+```
+
+The CLI version goes with every message. When you are logged in, the organization and your email address go with it too, so the team can follow up. `--email` sets a different reply address.
 
 ---
 
