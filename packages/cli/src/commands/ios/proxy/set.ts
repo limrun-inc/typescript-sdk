@@ -13,11 +13,10 @@ export default class IosProxySet extends BaseCommand {
   static description =
     "Point the simulator's system HTTP and HTTPS proxy at host:port. Safari, apps and the simulator's own " +
     'services send new connections through it, while localhost stays direct. To reach a proxy on your ' +
-    'machine or private network, expose it with a tunnel run with --no-inspect, because inspection ' +
-    'breaks proxied traffic. Clear the proxy before you stop that tunnel, or the device loses its ' +
-    'network. Same as `lim ios simctl -- spawn booted limproxy set <host> <port>`.';
+    'machine or private network, expose it with a tunnel, and clear the proxy before you stop that ' +
+    'tunnel. Same as `lim ios simctl -- spawn booted limproxy set <host> <port>`.';
   static examples = [
-    '<%= config.bin %> ios tunnel --selector localhost:3128 --no-inspect --detach\n<%= config.bin %> ios proxy set localhost:3128',
+    '<%= config.bin %> ios tunnel --selector localhost:3128 --detach\n<%= config.bin %> ios proxy set localhost:3128',
     '<%= config.bin %> ios proxy set proxy.acme.internal:3128 --id <instance-ID>',
   ];
 
