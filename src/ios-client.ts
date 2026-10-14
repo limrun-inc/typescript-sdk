@@ -2996,13 +2996,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const addCaCertificate = (pem: string): Promise<TrustedCaCertificate> =>
-      postTrustedCaCertificate<TrustedCaCertificate>(
-        `${options.apiUrl}/trusted-cas`,
-        options.token,
-        pem,
-        // Images from before the endpoint answer 404.
-        'this instance does not support adding CA certificates yet',
-      );
+      postTrustedCaCertificate<TrustedCaCertificate>(`${options.apiUrl}/trusted-cas`, options.token, pem);
 
     const clearStoreKitConfig = async (bundleId: string): Promise<void> => {
       const url = `${options.apiUrl}/payments/storeKitConfigs/${encodeURIComponent(bundleId)}`;

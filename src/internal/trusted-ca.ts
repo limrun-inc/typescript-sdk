@@ -13,7 +13,7 @@ export interface TrustedCaCertificate {
  * Adds a PEM CA certificate to an Android instance's trust stores
  * through websocket-proxy, which answers on the instance's ADB URL.
  */
-export function addTrustedCaCertificate(
+export async function addTrustedCaCertificate(
   adbUrl: string,
   token: string,
   pem: string,
@@ -25,12 +25,7 @@ export function addTrustedCaCertificate(
  * Posts a PEM CA certificate to an instance's `trusted-cas` endpoint. Both
  * platforms serve one; limulator answers errors as JSON, websocket-proxy as text.
  */
-export async function postTrustedCaCertificate<T>(
-  url: string,
-  token: string,
-  pem: string,
-  missingReason?: string,
-): Promise<T> {
+export async function postTrustedCaCertificate<T>(url: string, token: string, pem: string): Promise<T> {
   const response = await nodeProxyTransport.fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-pem-file', Authorization: `Bearer ${token}` },
@@ -40,14 +35,15 @@ export async function postTrustedCaCertificate<T>(
     const text = (await response.text()).trim();
     let reason = text;
     try {
-      reason = (JSON.parse(text) as { message?: string }).message ?? text;
+      // limulator's errors carry message; its framework's own errors carry reason.
+      const body = JSON.parse(text) as { message?: string; reason?: string };
+      reason = body.message || body.reason || text;
     } catch {
       // Plain text already.
     }
-    if (response.status === 404 && missingReason) {
-      reason = missingReason;
-    }
-    throw new Error(`Adding the CA certificate failed (${response.status}): ${reason}`);
+    throw new Error(
+      `Adding the CA certificate failed (${response.status}): ${reason || response.statusText}`,
+    );
   }
   return (await response.json()) as T;
 }
