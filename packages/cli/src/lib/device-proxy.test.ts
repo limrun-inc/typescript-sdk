@@ -7,7 +7,7 @@ test.each([
   ['Proxy.Acme.Internal:3128', 'proxy.acme.internal', 3128],
   ['proxy-1.corp:65535', 'proxy-1.corp', 65535],
 ])('parses %s', (value, host, port) => {
-  expect(parseProxyAddress(value)).toEqual({ host, port });
+  expect(parseProxyAddress(value)).toEqual({ host, port, address: `${host}:${port}` });
 });
 
 test.each([
@@ -44,7 +44,7 @@ test.each([
     'spawn supports only: spawn <device> defaults read|write|delete ..., spawn <device> limproxy set <host> <port> | clear',
     'spawn supports only: spawn <device> defaults read|write|delete ..., spawn <device> limproxy set <host> <port> | clear',
   ],
-  ['limproxy is unavailable on this simulator', 'lim ios proxy is unavailable on this simulator.'],
+  ['limproxy is unavailable on this simulator', 'limproxy is unavailable on this simulator'],
   ['limproxy: set proxy failed: SCError 1001\n', 'limproxy: set proxy failed: SCError 1001'],
   ['', 'limproxy failed with exit code 70'],
 ])('maps tool stderr %j', (stderr, message) => {

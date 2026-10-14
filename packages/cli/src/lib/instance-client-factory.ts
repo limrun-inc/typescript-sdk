@@ -1,4 +1,4 @@
-import Limrun, { createInstanceClient, Ios, type InstanceClient } from '@limrun/api';
+import Limrun, { createInstanceClient, Ios, type AdbShellResult, type InstanceClient } from '@limrun/api';
 import { instanceToken } from '@limrun/api/instance-token';
 import { isSessionActive, sendCommand } from './daemon-client';
 import { spawnSessionDaemon } from './daemon';
@@ -144,6 +144,21 @@ export async function runIosSimctl(
   const { client, disconnect } = await getIosInstanceClient(lim, target);
   try {
     return await client.simctl(args, opts).wait();
+  } finally {
+    disconnect();
+  }
+}
+
+/** Runs one shell command on an Android instance over a client opened for it. */
+export async function runAndroidAdbShell(
+  lim: Limrun,
+  target: LastAndroidInstance,
+  command: string,
+  args: string[],
+): Promise<AdbShellResult> {
+  const { client, disconnect } = await getAndroidInstanceClient(lim, target);
+  try {
+    return await client.adbShell(command, args);
   } finally {
     disconnect();
   }
