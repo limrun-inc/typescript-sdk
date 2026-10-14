@@ -27,13 +27,18 @@ function setup(pemPath: string) {
 beforeEach(() => jest.clearAllMocks());
 
 test('sends the PEM file to the instance and reports the stored certificate', async () => {
-  const pemPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lim-ca-')), 'ca.pem');
-  fs.writeFileSync(pemPath, '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n');
-  const { command, client, disconnect } = setup(pemPath);
-  await command.run();
-  expect(client.addCaCertificate).toHaveBeenCalledWith(fs.readFileSync(pemPath, 'utf8'));
-  expect(command.outputJson).toHaveBeenCalledWith({ sha256: 'ab' });
-  expect(disconnect).toHaveBeenCalledTimes(1);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lim-ca-'));
+  try {
+    const pemPath = path.join(dir, 'ca.pem');
+    fs.writeFileSync(pemPath, '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n');
+    const { command, client, disconnect } = setup(pemPath);
+    await command.run();
+    expect(client.addCaCertificate).toHaveBeenCalledWith(fs.readFileSync(pemPath, 'utf8'));
+    expect(command.outputJson).toHaveBeenCalledWith({ sha256: 'ab' });
+    expect(disconnect).toHaveBeenCalledTimes(1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('refuses a missing file before connecting', async () => {

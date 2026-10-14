@@ -53,14 +53,20 @@ describe('trusted CA certificates', () => {
     );
   });
 
-  test('explains a 404 from an instance without the endpoint', async () => {
+  test('reads the reason of a framework error and falls back to the status text', async () => {
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/trusted-cas`;
     responder = (_, __, response) => {
       response.writeHead(404, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ error: true, reason: 'Not Found' }));
     };
-    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/trusted-cas`;
-    await expect(postTrustedCaCertificate(url, 'token-1', 'pem', 'not supported yet')).rejects.toThrow(
-      'Adding the CA certificate failed (404): not supported yet',
+    await expect(postTrustedCaCertificate(url, 'token-1', 'pem')).rejects.toThrow(
+      'Adding the CA certificate failed (404): Not Found',
+    );
+    responder = (_, __, response) => {
+      response.writeHead(403).end();
+    };
+    await expect(postTrustedCaCertificate(url, 'token-1', 'pem')).rejects.toThrow(
+      'Adding the CA certificate failed (403): Forbidden',
     );
   });
 
