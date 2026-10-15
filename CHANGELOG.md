@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.65.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.64.0...v0.65.0) (2026-10-15)
+
+
+### Features
+
+* **cli:** add screenshot format and size flags ([02f4f41](https://github.com/limrun-inc/typescript-sdk/commit/02f4f41cab22138dcb0ca3bc4540728270c8bdb4))
+* **cli:** add screenshot format and size flags ([1268299](https://github.com/limrun-inc/typescript-sdk/commit/126829926c938a3779d10688efd05ee563047415))
+
+
+### Bug Fixes
+
+* **cli:** drop --no-inspect from the proxy help ([ecf0af5](https://github.com/limrun-inc/typescript-sdk/commit/ecf0af58f4781752916303bedff4b004f995182c))
+
+
+### Chores
+
+* **cli:** release 0.45.0 with API 0.64.0 ([c6efe19](https://github.com/limrun-inc/typescript-sdk/commit/c6efe19a81434b133c739ca3ec9ecc82cdaa1046))
+* **cli:** release 0.45.1 ([1b7f140](https://github.com/limrun-inc/typescript-sdk/commit/1b7f140c6de829a408cd2bfa5e1b0d75a0ad64d8))
+
 ## [0.64.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.63.1...v0.64.0) (2026-10-14)
 
 
