@@ -914,11 +914,6 @@ export class XcodeInstances extends GeneratedXcodeInstances {
 
     const log = createDaemonLogger('[XcodeInstance]', params.logLevel ?? 'info');
     const client = this._client;
-    let sandboxInfoPromise: Promise<SandboxInfo> | undefined;
-    const getSandboxInfo = () => {
-      sandboxInfoPromise ??= fetchSandboxInfo(apiUrl, token);
-      return sandboxInfoPromise;
-    };
 
     // Shared local closures. The methods below live in an object literal over
     // these closures (not `this`), so anything reused across methods is defined
@@ -977,15 +972,6 @@ export class XcodeInstances extends GeneratedXcodeInstances {
     return {
       async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
         const { cacheKey, basisCacheDir } = deriveBasisCache(localCodePath, opts?.basisCacheDir);
-        const sandboxInfo =
-          opts?.additionalFiles && opts.additionalFiles.length > 0 ? await getSandboxInfo() : undefined;
-        const additionalFiles = opts?.additionalFiles?.map((file) => ({
-          localPath: file.localPath,
-          remotePath:
-            sandboxInfo && file.remotePath.startsWith('~/') ?
-              `${sandboxInfo.homeDir}/${file.remotePath.slice(2)}`
-            : file.remotePath,
-        }));
         const codeSyncOpts: FolderSyncOptions = {
           apiUrl,
           token,
@@ -1006,7 +992,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           // limulator app-install sync (ios-client.ts) does not and keeps
           // the default skip behavior.
           syncSymlinks: true,
-          ...(additionalFiles ? { additionalFiles } : {}),
+          ...(opts?.additionalFiles && { additionalFiles: opts.additionalFiles }),
           ...(opts?.onSyncComplete ? { onSyncComplete: opts.onSyncComplete } : {}),
         };
 

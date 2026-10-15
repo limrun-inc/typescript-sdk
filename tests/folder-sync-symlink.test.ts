@@ -85,39 +85,43 @@ describe('folder-sync symlinks', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test('Gradle sync preserves workspace and home destinations through full retries', async () => {
-    const extra = path.join(tmpDir, 'client-config');
-    fs.writeFileSync(extra, 'registry=https://registry.example.test\n');
-    fs.chmodSync(extra, 0o600);
-    const server = await startStubServer([
-      { ok: false, error: 'needFull', needFull: ['~/.npmrc'] },
-      { ok: true },
-    ]);
-    try {
-      const lim = new Limrun({ apiKey: 'test-key' });
-      const gradle = await lim.gradleInstances.createClient({
-        apiUrl: server.url,
-        token: 'test-token',
-        logLevel: 'none',
-      });
-      await gradle.sync(tree, {
-        basisCacheDir: cache,
-        additionalFiles: [
-          { localPath: extra, remotePath: '.npmrc' },
-          { localPath: extra, remotePath: '~/.npmrc' },
-        ],
-      });
-    } finally {
-      await server.close();
-    }
-    expect(server.requests).toHaveLength(2);
-    expect(server.requests[1]!.files.find((file) => file.path === '~/.npmrc')?.mode).toBe(0o600);
-    expect(server.requests[1]!.payloads).toEqual(
-      expect.arrayContaining([expect.objectContaining({ kind: 'full', path: '~/.npmrc' })]),
-    );
-    expect(server.requests[0]!.files.map((file) => file.path)).toContain('.npmrc');
-    expect(server.requests[0]!.payloads.map((payload) => payload.path)).toContain('.npmrc');
-  });
+  test.each(['gradle', 'xcode'] as const)(
+    '%s sync preserves workspace and home destinations through full retries',
+    async (platform) => {
+      const extra = path.join(tmpDir, 'client-config');
+      fs.writeFileSync(extra, 'registry=https://registry.example.test\n');
+      fs.chmodSync(extra, 0o600);
+      const server = await startStubServer([
+        { ok: false, error: 'needFull', needFull: ['~/.npmrc'] },
+        { ok: true },
+      ]);
+      try {
+        const lim = new Limrun({ apiKey: 'test-key' });
+        const client = await lim[platform === 'gradle' ? 'gradleInstances' : 'xcodeInstances'].createClient({
+          apiUrl: server.url,
+          token: 'test-token',
+          logLevel: 'none',
+        });
+        await client.sync(tree, {
+          watch: false,
+          basisCacheDir: cache,
+          additionalFiles: [
+            { localPath: extra, remotePath: '.npmrc' },
+            { localPath: extra, remotePath: '~/.npmrc' },
+          ],
+        });
+      } finally {
+        await server.close();
+      }
+      expect(server.requests).toHaveLength(2);
+      expect(server.requests[1]!.files.find((file) => file.path === '~/.npmrc')?.mode).toBe(0o600);
+      expect(server.requests[1]!.payloads).toEqual(
+        expect.arrayContaining([expect.objectContaining({ kind: 'full', path: '~/.npmrc' })]),
+      );
+      expect(server.requests[0]!.files.map((file) => file.path)).toContain('.npmrc');
+      expect(server.requests[0]!.payloads.map((payload) => payload.path)).toContain('.npmrc');
+    },
+  );
 
   test('emits link entries with the literal target and no payload', async () => {
     fs.symlinkSync('../shared/real.swift', path.join(tree, 'ios', 'link.swift'));
