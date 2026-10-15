@@ -4,6 +4,8 @@ import { bazelCredentials } from '../../../lib/bazel-setup';
 import { readConfig } from '../../../lib/config';
 import { readStdin } from '../../../lib/stdin';
 
+const VERSION = require('../../../../package.json').version;
+
 /**
  * Bazel's credential helper for the build plane. Bazel runs it as
  * `lim-bazel-credentials get` with the request URI on stdin, and reads the
@@ -21,7 +23,11 @@ export default class BazelCredentialsGet extends Command {
     if (!config.apiKey) {
       this.error('Not authenticated: run `lim login`, or set LIM_API_KEY in CI.');
     }
-    const client = new Limrun({ apiKey: config.apiKey, baseURL: config.apiEndpoint });
+    const client = new Limrun({
+      apiKey: config.apiKey,
+      baseURL: config.apiEndpoint,
+      userAgent: `lim/${VERSION}`,
+    });
     try {
       process.stdout.write(JSON.stringify(await bazelCredentials(client)));
     } catch (err) {
