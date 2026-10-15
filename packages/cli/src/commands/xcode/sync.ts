@@ -6,6 +6,8 @@ import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
+import { snapshotFlags } from '../../lib/cache-flags';
+import { parseSnapshotConfig } from '../../lib/cache';
 
 export default class XcodeSync extends BaseCommand {
   static summary = 'Continuously sync local source code to an Xcode sandbox';
@@ -31,6 +33,7 @@ export default class XcodeSync extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     ...syncFlags,
+    ...snapshotFlags,
     id: Flags.string({
       description:
         'Xcode instance ID to sync to. Defaults to the most recent standalone Xcode target, creating one if needed.',
@@ -50,9 +53,11 @@ export default class XcodeSync extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeSync);
     this.setParsedFlags(flags);
+    this.snapshotProjectPath = args.path ?? process.cwd();
 
     await this.withAuth(async () => {
       const target = await this.resolveXcodeTargetOrCreate(flags.id);
+      await this.applyBuildCacheToTarget(target, parseSnapshotConfig(flags));
       const id = target.id;
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClientForWork(

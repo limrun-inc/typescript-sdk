@@ -259,6 +259,7 @@ export default class XcodeBuild extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeBuild);
     this.setParsedFlags(flags);
+    this.snapshotProjectPath = args.path ?? process.cwd();
     // Validated before any sandbox is created, so a typo never leaves a billed sandbox behind.
     const requestedXcode = resolveRequestedXcodeVersion(flags['xcode-version']);
     if (flags['dev-server-url'] && flags.configuration === 'Release') {

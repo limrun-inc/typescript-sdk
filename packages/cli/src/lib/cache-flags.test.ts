@@ -33,3 +33,14 @@ test('legacy and snapshot spellings can be mixed across distinct options', async
   });
   expect(parseSnapshotConfig(flags)).toEqual({ key: 'myapp-pr51', restoreKeys: ['myapp-main'] });
 });
+
+test('snapshot opt-out rejects explicit snapshot settings, including legacy aliases', async () => {
+  const { flags } = await Parser.parse(['--no-snapshot'], { flags: snapshotFlags });
+  expect(flags['no-snapshot']).toBe(true);
+  expect(parseSnapshotConfig(flags)).toBeUndefined();
+  for (const flag of ['snapshot-key', 'cache-key', 'snapshot-restore-keys', 'snapshot-paths']) {
+    await expect(
+      Parser.parse(['--no-snapshot', `--${flag}`, 'custom'], { flags: snapshotFlags }),
+    ).rejects.toThrow();
+  }
+});

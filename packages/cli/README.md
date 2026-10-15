@@ -498,16 +498,28 @@ lim xcode version list    # Xcode versions the sandbox can build with
 
 ### Disk snapshots
 
-Restore and save build state across Xcode instances with a snapshot key:
+New Xcode instances automatically restore and save a disk snapshot using the
+Git origin host/repository and project subdirectory, for example
+`github.com/acme/monorepo/apps/ios`. SSH and HTTPS origins produce the same key;
+branches and commits share it. The key alone controls both restore and save.
+
+`build`, `test`, and `sync` use their project path; `create` uses the current
+directory. `lim run` uses its detected project, and `lim ios create --xcode`
+uses the current directory. Existing instances keep their original snapshot settings. Without
+a usable Git origin, pass `--snapshot-key` explicitly. Use `--no-snapshot` to
+create an uncached instance.
+
+From the project directory:
 
 ```bash
-XCODE_ID=$(lim xcode create --snapshot-key myapp-main --quiet)
+XCODE_ID=$(lim xcode create --quiet)
 lim xcode build . --id "$XCODE_ID" --scheme MyApp
 lim xcode delete "$XCODE_ID" --wait-snapshot
 ```
 
 The first build starts cold. Termination publishes the workspace, and the next
-instance restores it. Use `--snapshot-restore-keys "myapp-pr51,myapp-main"` at
+instance restores it. Override with `--snapshot-key` when separate branches or
+Xcode versions need independent saved state. Use `--snapshot-restore-keys "myapp-pr51,myapp-main"` at
 creation for ordered exact-key and literal-prefix fallbacks. Leave
 `--snapshot-paths` unset to save the whole workspace. On existing instances,
 restore keys and paths stay fixed; `build --snapshot-key` only binds a publication

@@ -18,6 +18,8 @@ import {
   type SkillInstallResult,
 } from '../lib/onboarding';
 import { captureTelemetry, telemetryErrorCategory, type TelemetryProperties } from '../lib/telemetry';
+import { snapshotFlags } from '../lib/cache-flags';
+import { wantsRestore } from '../lib/cache';
 
 const VERSION = require('../../package.json').version;
 
@@ -58,6 +60,7 @@ export default class Run extends BaseCommand {
     quiet: BaseCommand.baseFlags.quiet,
   } as unknown as typeof BaseCommand.baseFlags;
   static flags = {
+    ...snapshotFlags,
     'ios-id': Flags.string({
       description:
         'Attach this existing iOS simulator before building, so the console can stream build output live.',
@@ -324,6 +327,8 @@ export default class Run extends BaseCommand {
     recoveryPath,
     recoveryFromDir,
   }: BuildAndLaunchOptions): Promise<string> {
+    this.snapshotProjectPath = projectRoot;
+    const cache = this.cacheConfigFromFlags();
     let recoveryPrinted = false;
     try {
       return await this.withAuth(async () => {
@@ -337,6 +342,7 @@ export default class Run extends BaseCommand {
           this.client.xcodeInstances.create({
             wait: true,
             reuseIfExists: true,
+            ...(cache ? { spec: { cache } } : {}),
             metadata: {
               displayName,
               labels,
@@ -344,6 +350,11 @@ export default class Run extends BaseCommand {
           }),
         );
         registerCreatedInstance(sandbox);
+        if (wantsRestore(cache)) {
+          await this.awaitCacheRestore(sandbox.metadata.id, () =>
+            this.client.xcodeInstances.delete(sandbox.metadata.id),
+          );
+        }
 
         const xcode = await this.client.xcodeInstances.createClient({ instance: sandbox });
 
