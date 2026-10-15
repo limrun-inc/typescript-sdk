@@ -3,6 +3,8 @@ import { Args, Flags } from '@oclif/core';
 import { type GradleBuildOptions } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
+import { syncFlags } from '../../lib/sync-flags';
+import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import {
   gradleAndroidABIs,
   gradleBuildOptionsFromFlags,
@@ -30,6 +32,7 @@ export default class GradleBuild extends BaseCommand {
     '<%= config.bin %> gradle build --task bundleRelease',
     '<%= config.bin %> gradle build --id <gradle-instance-ID> --project-path android',
     '<%= config.bin %> gradle build ./my-monorepo --expo-app-dir apps/mobile',
+    '<%= config.bin %> gradle build ./my-app --additional-file "$HOME/.npmrc=.npmrc"',
     '<%= config.bin %> gradle build --sign --upload myapp.aab',
     '<%= config.bin %> gradle build --keystore upload.jks --keystore-password *** --key-alias upload --key-password *** --save-key',
     '<%= config.bin %> gradle build ./my-app --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',
@@ -53,6 +56,7 @@ export default class GradleBuild extends BaseCommand {
       multipleNonGreedy: true,
     }),
     ...BaseCommand.baseFlags,
+    'additional-file': syncFlags['additional-file'],
     id: Flags.string({
       description: 'Gradle instance ID to build on. Defaults to the last used or a newly created one.',
     }),
@@ -197,9 +201,11 @@ export default class GradleBuild extends BaseCommand {
     // auto-create a billed instance, which a doomed flag combination must
     // never reach.
     let options: GradleBuildOptions;
+    let additionalFiles: ReturnType<typeof parseAdditionalFileFlags>;
     let applicationId: string | undefined;
     const syncPath = args.path ?? process.cwd();
     try {
+      additionalFiles = parseAdditionalFileFlags(flags['additional-file']);
       options = gradleBuildOptionsFromFlags(flags);
       if (flags.sign || flags['save-key']) {
         applicationId = resolveApplicationId({
@@ -284,6 +290,7 @@ export default class GradleBuild extends BaseCommand {
       this.info(`Syncing ${syncPath} to instance ${id}...`);
       const syncStart = Date.now();
       const syncResult = await gradleClient.sync(syncPath, {
+        additionalFiles,
         basisCacheDir: flags['basis-cache-dir'],
         ignore: compileIgnorePatterns(flags.ignore),
         include: compileIgnorePatterns(flags.include),
