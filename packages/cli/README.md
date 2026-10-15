@@ -502,6 +502,9 @@ New Xcode instances automatically restore and save a disk snapshot using the
 Git origin host/repository and project subdirectory, for example
 `github.com/acme/monorepo/apps/ios`. SSH and HTTPS origins produce the same key;
 branches and commits share it. The key alone controls both restore and save.
+Discovery reads repository-local Git metadata directly, including worktree and
+submodule pointers, so it does not require the Git executable. Global Git
+settings and URL rewrites are not used; config includes require an explicit key.
 
 `build`, `test`, and `sync` use their project path; `create` uses the current
 directory. `lim run` uses its detected project, and `lim ios create --xcode`
