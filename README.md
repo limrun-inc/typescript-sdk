@@ -297,6 +297,22 @@ To access undocumented response properties, you may access the response object w
 the response object, or cast the response object to the requisite type. Like the request params, we do not
 validate or strip extra properties from the response from the API.
 
+### Identifying your application
+
+Set `userAgent` when creating the client to prepend your application name and version to the SDK's
+default `User-Agent` on API requests:
+
+```ts
+const client = new Limrun({
+  apiKey: process.env['LIM_API_KEY'],
+  userAgent: 'agent-device-cli/0.21.28',
+});
+```
+
+The header becomes `agent-device-cli/0.21.28 Limrun/JS <sdk-version>`. The SDK supplies its own version.
+Omitting `userAgent` or passing a blank string keeps the default header. Explicit `User-Agent` headers
+in `defaultHeaders` or per-request options still replace the full value.
+
 ### Customizing the fetch client
 
 By default, this library expects a global `fetch` function is defined.

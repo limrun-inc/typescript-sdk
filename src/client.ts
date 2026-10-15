@@ -105,6 +105,12 @@ export interface ClientOptions {
   apiKey?: string | null | undefined;
 
   /**
+   * Identify your application before the SDK's default User-Agent, for example "my-app/1.0".
+   * Explicit User-Agent headers in defaultHeaders or request options override this value.
+   */
+  userAgent?: string | undefined;
+
+  /**
    * Override the default base URL for the API, e.g., "https://api.example.com/v2/"
    *
    * Defaults to process.env['LIMRUN_BASE_URL'].
@@ -195,6 +201,7 @@ export class Limrun {
    * API Client for interfacing with the Limrun API.
    *
    * @param {string | null | undefined} [opts.apiKey=process.env['LIM_API_KEY'] ?? null]
+   * @param {string} [opts.userAgent] - Application identifier prepended to the SDK's default User-Agent.
    * @param {string} [opts.baseURL=process.env['LIMRUN_BASE_URL'] ?? https://api.limrun.com] - Override the default base URL for the API.
    * @param {number} [opts.timeout=5 minutes] - The maximum amount of time (in milliseconds) the client will wait for a response before timing out.
    * @param {MergedRequestInit} [opts.fetchOptions] - Additional `RequestInit` options to be passed to `fetch` calls.
@@ -304,7 +311,9 @@ export class Limrun {
   }
 
   private getUserAgent(): string {
-    return `${this.constructor.name}/JS ${VERSION}`;
+    const sdkUserAgent = `${this.constructor.name}/JS ${VERSION}`;
+    const userAgent = this._options.userAgent?.trim();
+    return userAgent ? `${userAgent} ${sdkUserAgent}` : sdkUserAgent;
   }
 
   protected defaultIdempotencyKey(): string {
