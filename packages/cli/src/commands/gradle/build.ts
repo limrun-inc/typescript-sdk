@@ -32,7 +32,7 @@ export default class GradleBuild extends BaseCommand {
     '<%= config.bin %> gradle build --task bundleRelease',
     '<%= config.bin %> gradle build --id <gradle-instance-ID> --project-path android',
     '<%= config.bin %> gradle build ./my-monorepo --expo-app-dir apps/mobile',
-    '<%= config.bin %> gradle build ./my-app --additional-file "$HOME/.npmrc=.npmrc"',
+    '<%= config.bin %> gradle build ./my-app --additional-file "$HOME/.npmrc=~/.npmrc"',
     '<%= config.bin %> gradle build --sign --upload myapp.aab',
     '<%= config.bin %> gradle build --keystore upload.jks --keystore-password *** --key-alias upload --key-password *** --save-key',
     '<%= config.bin %> gradle build ./my-app --webhook-url https://ci.example.com/hooks/limrun --webhook-header Authorization="Bearer $HOOK_SECRET"',

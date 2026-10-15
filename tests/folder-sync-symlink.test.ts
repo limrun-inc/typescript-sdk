@@ -85,10 +85,14 @@ describe('folder-sync symlinks', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test('Gradle sync sends additional files outside the source tree', async () => {
+  test('Gradle sync preserves workspace and home destinations through full retries', async () => {
     const extra = path.join(tmpDir, 'client-config');
     fs.writeFileSync(extra, 'registry=https://registry.example.test\n');
-    const server = await startStubServer({ ok: true });
+    fs.chmodSync(extra, 0o600);
+    const server = await startStubServer([
+      { ok: false, error: 'needFull', needFull: ['~/.npmrc'] },
+      { ok: true },
+    ]);
     try {
       const lim = new Limrun({ apiKey: 'test-key' });
       const gradle = await lim.gradleInstances.createClient({
@@ -98,12 +102,19 @@ describe('folder-sync symlinks', () => {
       });
       await gradle.sync(tree, {
         basisCacheDir: cache,
-        additionalFiles: [{ localPath: extra, remotePath: '.npmrc' }],
+        additionalFiles: [
+          { localPath: extra, remotePath: '.npmrc' },
+          { localPath: extra, remotePath: '~/.npmrc' },
+        ],
       });
     } finally {
       await server.close();
     }
-    expect(server.requests).toHaveLength(1);
+    expect(server.requests).toHaveLength(2);
+    expect(server.requests[1]!.files.find((file) => file.path === '~/.npmrc')?.mode).toBe(0o600);
+    expect(server.requests[1]!.payloads).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'full', path: '~/.npmrc' })]),
+    );
     expect(server.requests[0]!.files.map((file) => file.path)).toContain('.npmrc');
     expect(server.requests[0]!.payloads.map((payload) => payload.path)).toContain('.npmrc');
   });

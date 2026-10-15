@@ -30,24 +30,27 @@ test('parses repeated additional files without consuming the project path', asyn
       '--additional-file',
       '/credentials/npmrc=.npmrc',
       '--additional-file',
-      '/credentials/netrc=.netrc',
+      '/credentials/netrc=~/.netrc',
       './app',
     ],
     { flags: GradleBuild.flags, args: GradleBuild.args },
   );
-  expect(parsed.flags['additional-file']).toEqual(['/credentials/npmrc=.npmrc', '/credentials/netrc=.netrc']);
+  expect(parsed.flags['additional-file']).toEqual([
+    '/credentials/npmrc=.npmrc',
+    '/credentials/netrc=~/.netrc',
+  ]);
   expect(parsed.args.path).toBe('./app');
 });
 
 test('syncs additional credentials before starting the build', async () => {
-  const { command, sync, gradlebuild } = setup(['/credentials/npmrc=.npmrc', '/credentials/netrc=.netrc']);
+  const { command, sync, gradlebuild } = setup(['/credentials/npmrc=.npmrc', '/credentials/netrc=~/.netrc']);
   await command.run();
   expect(sync).toHaveBeenCalledWith(
     '/project',
     expect.objectContaining({
       additionalFiles: [
         { localPath: '/credentials/npmrc', remotePath: '.npmrc' },
-        { localPath: '/credentials/netrc', remotePath: '.netrc' },
+        { localPath: '/credentials/netrc', remotePath: '~/.netrc' },
       ],
     }),
   );
