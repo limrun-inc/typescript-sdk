@@ -47,6 +47,7 @@ import { type IosInstance } from '@limrun/api/resources/ios-instances';
 import { formatXcode, resolveRequestedXcodeVersion, type RequestedXcodeVersion } from './lib/xcode-version';
 import type { TunnelCommandIO } from './lib/tunnel-command';
 import { captureTelemetry, telemetryIntentForCommand } from './lib/telemetry';
+import { projectSnapshotConfig } from './lib/snapshot-project';
 
 const VERSION = require('../package.json').version;
 // Full instance-id shape only: prefix_region_suffix with a long TypeID suffix.
@@ -134,6 +135,7 @@ export abstract class BaseCommand extends Command {
   }
 
   private _parsedFlags?: Record<string, unknown>;
+  protected snapshotProjectPath?: string;
   private _lastResolvedInstanceId?: string;
   private _lastResolvedExpectedType?: 'ios' | 'android' | 'xcode' | 'gradle';
   private _xcodeReplacementIntent?: XcodeReplacementIntent;
@@ -781,17 +783,42 @@ export abstract class BaseCommand extends Command {
     return !!id && this._instancesCreatedThisRun.has(id);
   }
 
-  /** Build cache configuration from this command's flags, if it has any. */
+  /** Defaults apply only at creation; existing targets keep their snapshot configuration. */
   protected cacheConfigFromFlags(): XcodeCacheConfig | undefined {
     const flags = this.parsedFlags;
     if (!flags) return undefined;
     const asString = (name: string) =>
       typeof flags[name] === 'string' ? (flags[name] as string) : undefined;
-    return parseSnapshotConfig({
+    const explicit = {
+      'no-snapshot': flags['no-snapshot'] === true,
       'snapshot-key': asString('snapshot-key'),
       'snapshot-restore-keys': asString('snapshot-restore-keys'),
       'snapshot-paths': asString('snapshot-paths'),
-    });
+    };
+    const config = projectSnapshotConfig(explicit, this.snapshotProjectPath ?? process.cwd());
+    if (!parseSnapshotConfig(explicit) && !explicit['no-snapshot']) {
+      this.info(
+        config?.key ?
+          `Disk snapshot key: ${config.key}`
+        : 'Could not derive a disk snapshot key from Git origin. Use --snapshot-key to enable snapshots.',
+      );
+    }
+    return config;
+  }
+
+  protected async buildSnapshotTip(instanceId: string): Promise<string> {
+    if (this.isJsonEnabled() || this.parsedFlags?.['no-snapshot']) return '';
+    try {
+      const snapshot = await this.client.xcodeInstances.getCache(instanceId, {
+        timeout: 2000,
+        maxRetries: 0,
+      });
+      if (snapshot.config) return '';
+    } catch {
+      // Unknown snapshot state must not change the build result or suggest a redundant key.
+      return '';
+    }
+    return '\nTip: Use --snapshot-key <project-key> for disk snapshots to build under 60 seconds!';
   }
 
   /**

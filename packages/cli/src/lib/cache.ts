@@ -10,6 +10,7 @@ import { formatDurationMs } from './duration';
 // without oclif, which is what lets the root test suite cover it.
 
 export type CacheFlags = {
+  'no-snapshot'?: boolean | undefined;
   'snapshot-key'?: string | undefined;
   'snapshot-restore-keys'?: string | undefined;
   'snapshot-paths'?: string | undefined;
@@ -23,6 +24,9 @@ export function parseSnapshotConfig(flags: CacheFlags): XcodeCacheConfig | undef
   const key = (flags['snapshot-key'] ?? flags['cache-key'])?.trim() || undefined;
   const restoreKeys = splitList(flags['snapshot-restore-keys'] ?? flags['cache-restore-keys']);
   const paths = splitList(flags['snapshot-paths'] ?? flags['cache-paths']);
+  if (flags['no-snapshot'] && (key || restoreKeys || paths)) {
+    throw new Error('--no-snapshot cannot be combined with snapshot keys or paths.');
+  }
   if (!key && !restoreKeys && !paths) {
     return undefined;
   }

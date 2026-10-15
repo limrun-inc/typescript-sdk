@@ -1,4 +1,6 @@
 import path from 'path';
+import { snapshotFlags } from '../../lib/cache-flags';
+import { parseSnapshotConfig, wantsRestore } from '../../lib/cache';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
@@ -54,6 +56,7 @@ export default class IosCreate extends BaseCommand {
   };
 
   static flags = {
+    ...snapshotFlags,
     ...BaseCommand.baseFlags,
     rm: Flags.boolean({
       description: 'Delete the instance automatically when this CLI process exits',
@@ -177,6 +180,10 @@ export default class IosCreate extends BaseCommand {
       );
     }
     this.setParsedFlags(flags);
+    if (!flags.xcode && (parseSnapshotConfig(flags) || flags['no-snapshot'])) {
+      this.error('Snapshot options on ios create require --xcode.');
+    }
+    const cache = flags.xcode ? this.cacheConfigFromFlags() : undefined;
     if (flags.attach && flags.xcode) {
       this.error('Use either --attach or --xcode, not both.');
     }
@@ -368,6 +375,7 @@ export default class IosCreate extends BaseCommand {
             reuseIfExists: flags['reuse-if-exists'] || undefined,
             ...(params.metadata ? { metadata: params.metadata } : {}),
             spec: {
+              ...(cache ? { cache } : {}),
               ...(flags.region ? { region: flags.region } : {}),
               ...(flags.jurisdiction ? { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' } : {}),
               ...(flags['hard-timeout'] ? { hardTimeout: flags['hard-timeout'] } : {}),
@@ -375,6 +383,10 @@ export default class IosCreate extends BaseCommand {
             },
           });
           registerCreatedInstance(createdXcode);
+          if (wantsRestore(cache)) {
+            const xcodeId = createdXcode.metadata.id;
+            await this.awaitCacheRestore(xcodeId, () => this.client.xcodeInstances.delete(xcodeId));
+          }
           const xcodeClient = await this.client.xcodeInstances.createClient({ instance: createdXcode });
           const attachStart = Date.now();
           attachResult = await xcodeClient.attachSimulator(instance);

@@ -2,10 +2,14 @@ import { Flags } from '@oclif/core';
 
 /** Disk snapshot flags shared by commands that can create or bind a snapshot. */
 export const snapshotFlags = {
+  'no-snapshot': Flags.boolean({
+    description: 'Create without a disk snapshot. Existing instances keep their snapshot configuration.',
+    exclusive: ['snapshot-key', 'snapshot-restore-keys', 'snapshot-paths'],
+  }),
   'snapshot-key': Flags.string({
     aliases: ['cache-key'],
     description:
-      'Disk snapshot key this instance publishes its workspace under when it terminates. Reusing a key replaces its archive. Also used as the restore key when --snapshot-restore-keys is omitted.',
+      'Disk snapshot key to restore and publish at termination. Defaults to the Git origin host/repository plus the project subdirectory for new instances. Reusing a key replaces its archive. Also used to restore when --snapshot-restore-keys is omitted.',
   }),
   'snapshot-restore-keys': Flags.string({
     aliases: ['cache-restore-keys'],

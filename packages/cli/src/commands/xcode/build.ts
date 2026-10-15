@@ -259,6 +259,7 @@ export default class XcodeBuild extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeBuild);
     this.setParsedFlags(flags);
+    this.snapshotProjectPath = args.path ?? process.cwd();
     // Validated before any sandbox is created, so a typo never leaves a billed sandbox behind.
     const requestedXcode = resolveRequestedXcodeVersion(flags['xcode-version']);
     if (flags['dev-server-url'] && flags.configuration === 'Release') {
@@ -481,28 +482,33 @@ export default class XcodeBuild extends BaseCommand {
       });
 
       const result = await proc;
+      const snapshotTip = await this.buildSnapshotTip(id);
 
       if (result.exitCode !== 0) {
         if (result.timedOut) {
           // 'timeout' means the stream was alive and the work outlived the
           // budget; a lost or closed stream means the execution may be gone.
           this.error(
-            result.incomplete && result.incomplete.reason !== 'timeout' ?
+            (result.incomplete && result.incomplete.reason !== 'timeout' ?
               `${result.incomplete.message}.`
-            : 'Timed out waiting for the build to finish; the remote build may still be running. Check the instance before retrying.',
+            : 'Timed out waiting for the build to finish; the remote build may still be running. Check the instance before retrying.') +
+              snapshotTip,
             { exit: result.exitCode },
           );
         }
         if (result.appstore?.state === 'failed') {
           this.error(
-            "App Store Connect upload failed; the build and signing succeeded. See Apple's response in the log above.",
+            "App Store Connect upload failed; the build and signing succeeded. See Apple's response in the log above." +
+              snapshotTip,
             { exit: result.exitCode },
           );
         }
-        this.error(`xcodebuild failed with exit code ${result.exitCode}`, { exit: result.exitCode });
+        this.error(`xcodebuild failed with exit code ${result.exitCode}${snapshotTip}`, {
+          exit: result.exitCode,
+        });
       }
 
-      this.output(`\nBuild succeeded (exit code ${result.exitCode})`);
+      this.output(`\nBuild succeeded (exit code ${result.exitCode})${snapshotTip}`);
       if (result.appstore?.state === 'accepted') {
         this.output('App Store Connect: upload accepted.');
       } else if (result.appstore?.state === 'processing') {

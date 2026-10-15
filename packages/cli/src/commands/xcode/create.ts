@@ -4,7 +4,7 @@ import { formatXcode, resolveRequestedXcodeVersion, xcodeVersionFlags } from '..
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
-import { parseSnapshotConfig, wantsRestore } from '../../lib/cache';
+import { wantsRestore } from '../../lib/cache';
 import { snapshotFlags } from '../../lib/cache-flags';
 import { type SimulatorAttachResult, type XcodeInstanceCreateParamsWithCache } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
@@ -91,7 +91,7 @@ export default class XcodeCreate extends BaseCommand {
       this.error('--simulator-id requires --attach.');
     }
 
-    const cache = parseSnapshotConfig(flags);
+    const cache = this.cacheConfigFromFlags();
     if (cache && flags['reuse-if-exists']) {
       this.info('A reused instance keeps the snapshot configuration it was created with.');
     }

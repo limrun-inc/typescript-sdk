@@ -69,6 +69,7 @@ export default class XcodeTest extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeTest);
     this.setParsedFlags(flags);
+    this.snapshotProjectPath = args.path ?? process.cwd();
     const requestedXcode = resolveRequestedXcodeVersion(flags['xcode-version']);
 
     if (flags.id && flags['inactivity-timeout']) {
