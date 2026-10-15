@@ -814,7 +814,7 @@ export abstract class BaseCommand extends Command {
       // Unknown snapshot state must not change the build result or suggest a redundant key.
       return '';
     }
-    return '\nTip: Use --snapshot-key <project-key> when creating your next Xcode sandbox to reuse build state across sessions.';
+    return '\nTip: Use --snapshot-key <project-key> for disk snapshots to build under 60 seconds!';
   }
 
   /**
