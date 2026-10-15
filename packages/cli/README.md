@@ -1228,7 +1228,21 @@ lim gradle run --env APP_ENV=staging -- npm run generate
 lim gradle build . --env APP_ENV=staging
 ```
 
-`--additional-file localPath=remotePath` adds a file outside the source tree; its remote path is relative to the workspace.
+`lim gradle build`, `sync`, and `run` accept `--additional-file localPath=remotePath`
+to add files outside the source tree. Repeat the flag for multiple files. Remote
+paths starting with `~/` target the sandbox home used by builds and tool commands;
+other paths are relative to the workspace.
+For private npm dependencies, copy an existing registry configuration:
+
+```bash
+lim gradle build . \
+  --additional-file "$HOME/.npmrc=~/.npmrc" \
+  --additional-file "$HOME/.netrc=~/.netrc"
+```
+
+Pass the flag on each sync that needs the file; omitting it removes the previously
+synced file. Home files are shared by projects on the instance. If the configuration references
+an environment variable, pass it with `--env` as well.
 
 `run` syncs the current directory first. Add `--no-sync` to use the existing
 remote workspace. Its optional positional directory is relative to that
