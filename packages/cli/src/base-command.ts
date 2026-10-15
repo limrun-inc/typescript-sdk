@@ -802,6 +802,21 @@ export abstract class BaseCommand extends Command {
     return config;
   }
 
+  protected async buildSnapshotTip(instanceId: string): Promise<string> {
+    if (this.isJsonEnabled() || this.parsedFlags?.['no-snapshot']) return '';
+    try {
+      const snapshot = await this.client.xcodeInstances.getCache(instanceId, {
+        timeout: 2000,
+        maxRetries: 0,
+      });
+      if (snapshot.config) return '';
+    } catch {
+      // Unknown snapshot state must not change the build result or suggest a redundant key.
+      return '';
+    }
+    return '\nTip: Use --snapshot-key <project-key> when creating your next Xcode sandbox to reuse build state across sessions.';
+  }
+
   /**
    * Blocks while a freshly created instance restores its cache, printing each phase as it
    * happens. A restore that fell back to a cold workspace just prints and returns, because the

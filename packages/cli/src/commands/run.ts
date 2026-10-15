@@ -385,13 +385,17 @@ export default class Run extends BaseCommand {
           this.reporter.stop('failure');
           throw err;
         }
+        const snapshotTip = await this.buildSnapshotTip(sandbox.metadata.id);
         if (result.exitCode !== 0) {
           this.reporter.stop('failure');
           this.outputProjectRecovery(recoveryPath, recoveryFromDir);
           recoveryPrinted = true;
-          this.error(`${failureLabel} with exit code ${result.exitCode}`, { exit: result.exitCode });
+          this.error(`${failureLabel} with exit code ${result.exitCode}${snapshotTip}`, {
+            exit: result.exitCode,
+          });
         }
         this.reporter.stop('success', `Built in ${formatDurationMs(Date.now() - buildStart)}`);
+        if (snapshotTip) this.info(snapshotTip.trim());
 
         // Attaching the simulator makes the sandbox install and launch the
         // build it just produced.

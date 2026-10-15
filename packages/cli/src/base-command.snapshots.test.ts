@@ -37,11 +37,17 @@ class TestCommand extends BaseCommand {
     cache: { restore: { phase: 'skipped', reason: 'no_match' }, save: { phase: 'idle' } },
   });
   bind = jest.fn();
+  getCache = jest.fn().mockResolvedValue({ restore: { phase: 'disabled' }, save: { phase: 'disabled' } });
   async run(): Promise<void> {}
   protected override info(): void {}
   protected override get client(): BaseCommand['client'] {
     return {
-      xcodeInstances: { create: this.create, followCache: this.follow, bindCacheKey: this.bind },
+      xcodeInstances: {
+        create: this.create,
+        followCache: this.follow,
+        bindCacheKey: this.bind,
+        getCache: this.getCache,
+      },
     } as unknown as BaseCommand['client'];
   }
   configure(flags: Record<string, unknown>, dir: string) {
@@ -54,7 +60,41 @@ class TestCommand extends BaseCommand {
   apply(config?: XcodeCacheConfig) {
     return this.applyBuildCacheToTarget(target, config);
   }
+  snapshotTip() {
+    return this.buildSnapshotTip(target.id);
+  }
 }
+
+test('build outcomes suggest a key for a sandbox without snapshots', async () => {
+  const cmd = new TestCommand([], {} as never);
+  expect(await cmd.snapshotTip()).toContain('--snapshot-key <project-key>');
+  expect(cmd.getCache).toHaveBeenCalledWith(target.id, { timeout: 2000, maxRetries: 0 });
+});
+
+test.each([{ key: 'github.com/acme/app' }, { key: 'custom' }, { restoreKeys: ['main'] }])(
+  'build outcomes omit the tip for existing snapshot config %j',
+  async (config) => {
+    const cmd = new TestCommand([], {} as never);
+    cmd.getCache.mockResolvedValue({ config });
+    expect(await cmd.snapshotTip()).toBe('');
+  },
+);
+
+test('build outcomes respect snapshot opt-out and JSON output', async () => {
+  const cmd = new TestCommand([], {} as never);
+  cmd.configure({ 'no-snapshot': true }, '/repo');
+  expect(await cmd.snapshotTip()).toBe('');
+  cmd.configure({}, '/repo');
+  Object.assign(cmd, { isJsonEnabled: () => true });
+  expect(await cmd.snapshotTip()).toBe('');
+  expect(cmd.getCache).not.toHaveBeenCalled();
+});
+
+test('snapshot status errors do not affect build outcomes', async () => {
+  const cmd = new TestCommand([], {} as never);
+  cmd.getCache.mockRejectedValue(new Error('status unavailable'));
+  expect(await cmd.snapshotTip()).toBe('');
+});
 
 beforeEach(() => {
   jest.clearAllMocks();
