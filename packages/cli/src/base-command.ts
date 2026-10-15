@@ -124,7 +124,11 @@ export abstract class BaseCommand extends Command {
       // A management call with the placeholder gets a 403 marked
       // "unauthenticated:", which withAuth turns into login guidance or a
       // re-login.
-      this._client = new Limrun({ apiKey: (apiKey as string) || 'unauthenticated', baseURL });
+      this._client = new Limrun({
+        apiKey: (apiKey as string) || 'unauthenticated',
+        baseURL,
+        userAgent: `lim/${VERSION}`,
+      });
     }
     return this._client;
   }
