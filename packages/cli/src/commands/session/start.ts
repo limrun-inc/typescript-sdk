@@ -35,7 +35,10 @@ export default class SessionStart extends BaseCommand {
     const id = resolvedInstance.id;
 
     if (isDaemonRunning(id)) {
-      this.log(`Session already running for ${id}.`);
+      this.outputResult(
+        { instanceId: id, running: true, alreadyRunning: true },
+        `Session already running for ${id}.`,
+      );
       return;
     }
 
@@ -98,7 +101,10 @@ export default class SessionStart extends BaseCommand {
       };
       await spawnSessionDaemon(state);
 
-      this.log(`Session started for ${id} (${type})`);
+      this.outputResult(
+        { instanceId: id, running: true, alreadyRunning: false },
+        `Session started for ${id} (${type})`,
+      );
     });
   }
 }

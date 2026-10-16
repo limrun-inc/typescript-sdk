@@ -72,6 +72,10 @@ export default class AssetPush extends BaseCommand {
         bar.stop();
       }
 
+      if (flags.json) {
+        this.outputJson(asset);
+        return;
+      }
       this.output(`ID: ${asset.id}`);
       if (asset.expiresAt) {
         this.output(`Expires At: ${asset.expiresAt}`);

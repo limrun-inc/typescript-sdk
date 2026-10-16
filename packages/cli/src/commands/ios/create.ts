@@ -305,6 +305,7 @@ export default class IosCreate extends BaseCommand {
         const captureClient = await Ios.createInstanceClient({
           apiUrl: instance.status.apiUrl,
           token: instanceToken(instance),
+          logLevel: this.shouldSuppressInfo() ? 'warn' : 'info',
         });
         try {
           const started = await startPersistedCaptures(captureClient, {
@@ -387,7 +388,10 @@ export default class IosCreate extends BaseCommand {
             const xcodeId = createdXcode.metadata.id;
             await this.awaitCacheRestore(xcodeId, () => this.client.xcodeInstances.delete(xcodeId));
           }
-          const xcodeClient = await this.client.xcodeInstances.createClient({ instance: createdXcode });
+          const xcodeClient = await this.client.xcodeInstances.createClient({
+            instance: createdXcode,
+            logLevel: this.shouldSuppressInfo() ? 'warn' : 'info',
+          });
           const attachStart = Date.now();
           attachResult = await xcodeClient.attachSimulator(instance);
           attachDurationMs = Date.now() - attachStart;

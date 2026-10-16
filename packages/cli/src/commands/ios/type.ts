@@ -62,7 +62,16 @@ export default class IosType extends BaseCommand {
           disconnect();
         }
       }
-      this.log('Text typed');
+      this.outputResult(
+        {
+          ok: true,
+          instanceId: resolvedInstance.id,
+          textLength: args.text.length,
+          enter: flags.enter,
+          requireFocus: flags['require-focus'],
+        },
+        'Text typed',
+      );
     });
   }
 }

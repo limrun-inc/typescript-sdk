@@ -1,3 +1,4 @@
+import { Errors } from '@oclif/core';
 import type { GradleClient } from '@limrun/api/resources/gradle-instances-helpers';
 import type { ExecChildProcess } from '@limrun/api/exec-client';
 import { formatDurationMs } from './duration';
@@ -23,10 +24,24 @@ export async function streamBuildCommand(
   proc: ExecChildProcess,
   error: ReportError,
   failure = 'Command failed',
+  outputJson?: (result: Awaited<ExecChildProcess> & { stdout: string; stderr: string }) => void,
 ): Promise<void> {
-  proc.stdout.on('data', (line: string) => process.stdout.write(line + '\n'));
-  proc.stderr.on('data', (line: string) => process.stderr.write(line + '\n'));
+  let stdout = '';
+  let stderr = '';
+  proc.stdout.on('data', (line: string) => {
+    if (outputJson) stdout += line + '\n';
+    else process.stdout.write(line + '\n');
+  });
+  proc.stderr.on('data', (line: string) => {
+    if (outputJson) stderr += line + '\n';
+    else process.stderr.write(line + '\n');
+  });
   const result = await proc;
+  if (outputJson) {
+    outputJson({ ...result, stdout, stderr });
+    if (result.exitCode !== 0) Errors.exit(result.exitCode);
+    return;
+  }
   if (result.exitCode === 0) return;
   if (result.timedOut) {
     error(

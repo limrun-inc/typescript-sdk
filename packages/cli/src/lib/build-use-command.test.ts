@@ -178,3 +178,15 @@ it.each([XcodeUse, GradleUse])(
     expect(client.setXcode).not.toHaveBeenCalled();
   },
 );
+
+test('combined Xcode and mise selection emits a single JSON result', async () => {
+  const { command, outputJson } = setup(XcodeUse, ['xcode@27', 'node@24'], { json: true });
+  await command.run();
+  expect(outputJson).toHaveBeenCalledTimes(1);
+  expect(outputJson).toHaveBeenCalledWith({
+    exitCode: 0,
+    stdout: '',
+    stderr: '',
+    xcode: { instanceId: target.id, preferred: '27', ...selection },
+  });
+});

@@ -87,7 +87,12 @@ export function buildRunCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
           ...(env && { env }),
           ...(flags.timeout !== undefined && { timeoutSeconds: flags.timeout }),
         });
-        await streamBuildCommand(proc, (message, options) => this.error(message, options));
+        await streamBuildCommand(
+          proc,
+          (message, options) => this.error(message, options),
+          'Command failed',
+          this.isJsonEnabled() ? (result) => this.outputJson(result) : undefined,
+        );
       });
     }
   };

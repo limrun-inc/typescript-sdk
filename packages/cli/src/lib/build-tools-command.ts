@@ -49,6 +49,7 @@ export function buildToolsCommand(
           client.run(install ? 'mise install' : 'mise ls --current', { cwd: flags.cwd }),
           (message, options) => this.error(message, options),
           install ? 'Tool installation failed' : 'Tool inspection failed',
+          this.isJsonEnabled() ? (result) => this.outputJson(result) : undefined,
         );
       });
     }

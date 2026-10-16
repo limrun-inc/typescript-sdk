@@ -19,7 +19,7 @@ export default class AssetDelete extends BaseCommand {
 
     await this.withAuth(async () => {
       await this.client.assets.delete(args.id);
-      this.log(`Deleted asset: ${args.id}`);
+      this.outputResult({ ok: true, id: args.id }, `Deleted asset: ${args.id}`);
     });
   }
 }

@@ -231,6 +231,7 @@ export default class AndroidCreate extends BaseCommand {
         const captureClient = await createInstanceClient({
           apiUrl: instance.status.apiUrl,
           token: instanceToken(instance),
+          logLevel: this.shouldSuppressInfo() ? 'warn' : 'info',
         });
         try {
           const started = await startPersistedCaptures(captureClient, {
@@ -294,6 +295,10 @@ export default class AndroidCreate extends BaseCommand {
             stdio: 'ignore',
           });
           child.unref();
+          if (flags.json) {
+            this.outputJson(instance);
+            return;
+          }
           this.output('');
           this.output(`ADB tunnel starting in background (PID ${child.pid}).`);
           this.output('Find the device serial with: adb devices');
@@ -313,12 +318,15 @@ export default class AndroidCreate extends BaseCommand {
           apiUrl: instance.status.apiUrl!,
           adbUrl: instance.status.adbWebSocketUrl,
           token: instanceToken(instance),
+          logLevel: this.shouldSuppressInfo() ? 'warn' : 'info',
         });
 
         const tunnel = await instanceClient.startAdbTunnel();
-        this.output(
-          `ADB tunnel started on ${tunnel.address.address}:${tunnel.address.port}. Press Ctrl+C to stop.`,
-        );
+        if (flags.json) this.outputJson(instance);
+        if (!flags.json)
+          this.output(
+            `ADB tunnel started on ${tunnel.address.address}:${tunnel.address.port}. Press Ctrl+C to stop.`,
+          );
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
           const shutdown = () => {

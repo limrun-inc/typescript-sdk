@@ -1009,7 +1009,7 @@ journey remains continuous. Set `LIM_DISABLE_TELEMETRY=1` to disable collection.
 
 ## JSON Output
 
-All commands support `--json` for machine-readable output, making the CLI suitable for scripting and AI agent automation:
+Commands that advertise `--json` provide a machine-readable CLI contract. Finite commands return one JSON value; streams and watch modes use newline-delimited JSON. Human-readable diagnostics go to stderr. Always check the exit status. See [the JSON output contract](./JSON_OUTPUT.md) for response shapes, stream framing, and errors:
 
 ```bash
 # Get instance details as JSON

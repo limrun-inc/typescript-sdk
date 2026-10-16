@@ -39,7 +39,7 @@ export default class AndroidDelete extends BaseCommand {
 
       stopDaemon(id);
       clearLastInstanceId(id);
-      this.log(`Deleted Android instance: ${id}`);
+      this.outputResult({ ok: true, id }, `Deleted Android instance: ${id}`);
     });
   }
 }

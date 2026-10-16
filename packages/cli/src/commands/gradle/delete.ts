@@ -36,7 +36,7 @@ export default class GradleDelete extends BaseCommand {
       }
 
       clearLastInstanceId(id);
-      this.log(`Deleted gradle instance: ${id}`);
+      this.outputResult({ ok: true, id }, `Deleted gradle instance: ${id}`);
     });
   }
 }

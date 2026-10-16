@@ -56,10 +56,10 @@ export default class XcodeDelete extends BaseCommand {
       // read as one block and because that is the order the two actually finish in: the instance
       // is held open until its workspace has been published.
       const published = following ? await this.renderCachePublication(following) : true;
-      this.log(`Deleted Xcode instance: ${id}`);
       if (!published) {
         this.error('The snapshot was not published.');
       }
+      this.outputResult({ ok: true, id }, `Deleted Xcode instance: ${id}`);
     });
   }
 }

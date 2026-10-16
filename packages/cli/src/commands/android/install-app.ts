@@ -49,6 +49,7 @@ export default class AndroidInstallApp extends BaseCommand {
       }
 
       let downloadUrl: string;
+      let assetId: string | undefined;
       if (args.path_or_url.startsWith('http://') || args.path_or_url.startsWith('https://')) {
         downloadUrl = args.path_or_url;
       } else {
@@ -60,18 +61,25 @@ export default class AndroidInstallApp extends BaseCommand {
         this.info(`Uploading ${name}...`);
         const asset = await this.client.assets.getOrUpload({ path: filePath, name, ttl: flags['asset-ttl'] });
         downloadUrl = asset.signedDownloadUrl;
+        assetId = asset.id;
       }
 
       if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'install-app', [downloadUrl]);
-        this.log('App sent to instance');
+        this.outputResult(
+          { ok: true, instanceId: id, source: args.path_or_url, assetId },
+          'App sent to instance',
+        );
         return;
       }
 
       const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
       try {
         await client.sendAsset(downloadUrl);
-        this.log('App sent to instance');
+        this.outputResult(
+          { ok: true, instanceId: id, source: args.path_or_url, assetId },
+          'App sent to instance',
+        );
       } finally {
         disconnect();
       }

@@ -167,6 +167,7 @@ export default class XcodeRbe extends BaseCommand {
             'Stop it with `lim xcode rbe --stop` and re-run.',
         );
       }
+      if (flags.json) this.outputJson({ ...existing, running: true });
       this.info(running);
       this.info('Stop it with `lim xcode rbe --stop`, then re-run to start fresh.');
       return;
@@ -385,6 +386,7 @@ export default class XcodeRbe extends BaseCommand {
         }
       }
       clearRbePidFile(workspaceRoot);
+      if (this.isJsonEnabled()) this.outputJson({ stopped: false });
       this.info('No background tunnel is running in this workspace.');
       return;
     }
@@ -427,6 +429,9 @@ export default class XcodeRbe extends BaseCommand {
     } else {
       this.reporter.stop('success', `Stopped background tunnel (PID ${info.pid})`);
     }
+
+    if (this.isJsonEnabled())
+      this.outputJson({ stopped: true, forced, instanceId: info.instanceId, pid: info.pid });
 
     // Tear down the simulator `--ios` created (best-effort; needs auth, unlike
     // the local process stop above).

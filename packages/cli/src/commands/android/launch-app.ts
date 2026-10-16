@@ -43,6 +43,12 @@ export default class AndroidLaunchApp extends BaseCommand {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       const mode = flags.mode as LaunchAppMode | undefined;
 
+      const launchResult = {
+        instanceId: resolvedInstance.id,
+        packageName: args.packageName,
+        mode: mode ?? 'ForegroundIfRunning',
+      };
+
       // The appExit notification that ends this command is delivered on the
       // launching client's signaling WebSocket, so both paths use a direct
       // connection rather than a daemon session.
@@ -50,26 +56,28 @@ export default class AndroidLaunchApp extends BaseCommand {
       try {
         if (flags.detach) {
           await client.launchApp(args.packageName, { mode });
-          this.log(`Launched ${args.packageName}`);
+          this.outputResult({ ok: true, ...launchResult }, `Launched ${args.packageName}`);
           return;
         }
 
-        let notifyAppExited: () => void = () => {};
-        const appExited = new Promise<void>((resolve) => {
+        let notifyAppExited: (event: { logs: string[]; info: AppExitInfo }) => void = () => {};
+        const appExited = new Promise<{ logs: string[]; info: AppExitInfo }>((resolve) => {
           notifyAppExited = resolve;
         });
 
         await client.launchApp(args.packageName, {
           mode,
           onExit: (logs: string[], info: AppExitInfo) => {
-            this.log(formatAppExit(info.packageName, info, logs));
-            notifyAppExited();
+            if (!flags.json) this.log(formatAppExit(info.packageName, info, logs));
+            notifyAppExited({ logs, info });
           },
         });
 
-        this.logToStderr(
-          `Launched ${args.packageName}. Watching until the app exits; press Ctrl+C to stop earlier, or pass --detach to skip watching.`,
-        );
+        if (flags.json) this.outputEvent({ type: 'launched', ...launchResult });
+        if (!flags.json)
+          this.logToStderr(
+            `Launched ${args.packageName}. Watching until the app exits; press Ctrl+C to stop earlier, or pass --detach to skip watching.`,
+          );
 
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
@@ -79,7 +87,12 @@ export default class AndroidLaunchApp extends BaseCommand {
           };
           process.on('SIGINT', finish);
           process.on('SIGTERM', finish);
-          void appExited.then(finish);
+          // An app can exit before launchApp resolves. Emit its JSON exit only
+          // after the launch acknowledgement so consumers see lifecycle order.
+          void appExited.then(({ logs, info }) => {
+            if (flags.json) this.outputEvent({ type: 'exit', ...info, logs });
+            finish();
+          });
         });
       } finally {
         disconnect();

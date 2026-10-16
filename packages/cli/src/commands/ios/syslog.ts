@@ -38,7 +38,7 @@ export default class IosSyslog extends BaseCommand {
         const stream = client.streamSyslog();
         stream.on('line', (line: string) => {
           if (flags.json) {
-            this.outputJson({ line });
+            this.outputEvent({ line });
           } else {
             process.stdout.write(line + '\n');
           }

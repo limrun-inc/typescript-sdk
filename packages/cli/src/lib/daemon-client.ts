@@ -16,6 +16,7 @@ export async function sendCommand(
   command: string,
   args: unknown[] = [],
   timeoutMs?: number,
+  silent = false,
 ): Promise<unknown> {
   if (!isDaemonRunning(instanceId)) {
     throw new Error(`No active session for ${instanceId}. Run \`lim session start ${instanceId}\` first.`);
@@ -54,7 +55,7 @@ export async function sendCommand(
             resultData = resp.data;
             break;
           case 'stdout':
-            if (resp.data) process.stdout.write(String(resp.data) + '\n');
+            if (resp.data) (silent ? process.stderr : process.stdout).write(String(resp.data) + '\n');
             break;
           case 'stderr':
             errorMsg = String(resp.data);

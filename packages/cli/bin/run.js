@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+const { handleJsonError } = require('./json-errors.cjs');
+
 const { flush } = require('@oclif/core');
 const { Config } = require('@oclif/core/config');
 const { handle } = require('@oclif/core/errors');
@@ -36,6 +38,7 @@ async function inferCommandArgv(argv) {
 }
 
 async function handleError(error) {
+  if (await handleJsonError(error)) return;
   if (!isUsageError(error)) {
     await handle(error);
     return;

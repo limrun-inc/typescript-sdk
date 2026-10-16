@@ -11,6 +11,6 @@ export default class Logout extends BaseCommand {
     const { flags } = await this.parse(Logout);
     this.setParsedFlags(flags);
     clearApiKey();
-    this.log('Logged out.');
+    this.outputResult({ ok: true }, 'Logged out.');
   }
 }

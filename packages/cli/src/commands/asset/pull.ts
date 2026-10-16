@@ -104,7 +104,7 @@ export default class AssetPull extends BaseCommand {
       } finally {
         bar.stop();
       }
-      this.output(`Saved to ${fullPath}`);
+      this.outputResult({ localPath: fullPath, bytes: fs.statSync(fullPath).size }, `Saved to ${fullPath}`);
     });
   }
 }

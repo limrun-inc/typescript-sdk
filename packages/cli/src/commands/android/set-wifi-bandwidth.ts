@@ -65,7 +65,10 @@ export default class AndroidSetWifiBandwidth extends BaseCommand {
         }
       }
 
-      this.log(this.formatResult(bandwidth));
+      this.outputResult(
+        { ok: true, instanceId: resolvedInstance.id, ...bandwidth },
+        this.formatResult(bandwidth),
+      );
     });
   }
 

@@ -112,7 +112,17 @@ export default class IosRecord extends BaseCommand {
             disconnect();
           }
         }
-        this.log(
+        this.outputResult(
+          {
+            ok: true,
+            instanceId: id,
+            recording: true,
+            quality: flags.quality,
+            persist: Boolean(persist),
+            persistTtlSeconds: typeof persist === 'object' ? persist.ttlSeconds : undefined,
+            display: flags.display,
+            touchIndicators: flags['touch-indicators'],
+          },
           persist ?
             `Recording started; it will be persisted for ${flags['persist-ttl'] ?? '72h'} when it stops.`
           : 'Recording started',
@@ -128,9 +138,18 @@ export default class IosRecord extends BaseCommand {
 
       if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'stop-recording', [saveTo]);
-        this.log(`Recording saved to ${outputPath}`);
+        this.outputResult(
+          {
+            ok: true,
+            instanceId: id,
+            recording: false,
+            localPath: outputPath,
+            uploaded: Boolean(flags['presigned-url']),
+          },
+          `Recording saved to ${outputPath}`,
+        );
         if (flags['presigned-url']) {
-          this.log('Recording uploaded using the provided presigned URL');
+          if (!flags.json) this.log('Recording uploaded using the provided presigned URL');
         }
         return;
       }
@@ -138,9 +157,18 @@ export default class IosRecord extends BaseCommand {
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
         await client.stopRecording(saveTo);
-        this.log(`Recording saved to ${outputPath}`);
+        this.outputResult(
+          {
+            ok: true,
+            instanceId: id,
+            recording: false,
+            localPath: outputPath,
+            uploaded: Boolean(flags['presigned-url']),
+          },
+          `Recording saved to ${outputPath}`,
+        );
         if (flags['presigned-url']) {
-          this.log('Recording uploaded using the provided presigned URL');
+          if (!flags.json) this.log('Recording uploaded using the provided presigned URL');
         }
       } finally {
         disconnect();

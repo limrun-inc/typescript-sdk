@@ -44,7 +44,7 @@ export default class AndroidLogcat extends BaseCommand {
 
         logcat.on('line', (line: string) => {
           if (flags.json) {
-            this.outputJson({ line });
+            this.outputEvent({ line });
           } else {
             process.stdout.write(line + '\n');
           }

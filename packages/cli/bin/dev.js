@@ -9,8 +9,12 @@ require('ts-node').register({ project });
 const oclif = require('@oclif/core');
 
 oclif.settings.debug = true;
+process.env.NODE_ENV = 'development';
+const { handleJsonError } = require('./json-errors.cjs');
 
 oclif
-  .execute({ development: true, dir: __dirname, args: process.argv.slice(2) })
+  .run(process.argv.slice(2), __dirname)
   .then(oclif.flush)
-  .catch(oclif.Errors.handle);
+  .catch(async (error) => {
+    if (!(await handleJsonError(error))) return oclif.Errors.handle(error);
+  });

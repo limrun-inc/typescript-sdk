@@ -40,13 +40,16 @@ export default class SessionStop extends BaseCommand {
     if (flags.all) {
       const sessions = listActiveSessions();
       if (sessions.length === 0) {
-        this.log('No active sessions.');
+        this.outputResult({ stopped: [] }, 'No active sessions.');
         return;
       }
       for (const s of sessions) {
         this.stopSession(s.instanceId, s.pid);
       }
-      this.log(`Stopped ${sessions.length} session(s).`);
+      this.outputResult(
+        { stopped: sessions.map((s) => s.instanceId) },
+        `Stopped ${sessions.length} session(s).`,
+      );
       return;
     }
 
@@ -54,13 +57,15 @@ export default class SessionStop extends BaseCommand {
       // If only one session, stop it. Otherwise ask for specificity.
       const sessions = listActiveSessions();
       if (sessions.length === 0) {
-        this.log('No active sessions.');
+        this.outputResult({ stopped: [] }, 'No active sessions.');
         return;
       }
       if (sessions.length === 1) {
         this.stopSession(sessions[0].instanceId, sessions[0].pid);
+        if (flags.json) this.outputJson({ stopped: [sessions[0].instanceId] });
         return;
       }
+      if (flags.json) this.error('Multiple sessions active. Specify --id or --all.');
       this.log(`Multiple sessions active. Specify which to stop:`);
       for (const s of sessions) {
         this.log(`  ${s.instanceId} (pid ${s.pid})`);
@@ -70,12 +75,13 @@ export default class SessionStop extends BaseCommand {
     }
 
     if (!isDaemonRunning(flags.id)) {
-      this.log(`No active session for ${flags.id}.`);
+      this.outputResult({ stopped: [] }, `No active session for ${flags.id}.`);
       return;
     }
 
     const pid = getDaemonPid(flags.id);
     this.stopSession(flags.id, pid);
+    if (flags.json) this.outputJson({ stopped: [flags.id] });
   }
 
   private stopSession(instanceId: string, pid: number | null): void {
@@ -84,6 +90,6 @@ export default class SessionStop extends BaseCommand {
     } else {
       clearSession(instanceId);
     }
-    this.log(`Session stopped for ${instanceId}.`);
+    if (!this.isJsonEnabled()) this.log(`Session stopped for ${instanceId}.`);
   }
 }

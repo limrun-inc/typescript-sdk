@@ -52,7 +52,10 @@ export default class AndroidPressKey extends BaseCommand {
           disconnect();
         }
       }
-      this.log(`Pressed key: ${args.key}`);
+      this.outputResult(
+        { ok: true, instanceId: resolvedInstance.id, key: args.key, modifiers: flags.modifier ?? [] },
+        `Pressed key: ${args.key}`,
+      );
     });
   }
 }

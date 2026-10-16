@@ -75,15 +75,24 @@ export default class XcodeSync extends BaseCommand {
         include: compileIgnorePatterns(flags.include),
         additionalFiles: parseAdditionalFileFlags(flags['additional-file']),
         onSyncComplete: (event: { bytesSent: number; durationMs: number }) => {
-          this.output(
-            `Sync completed in ${formatDurationMs(event.durationMs)} (${formatBytes(event.bytesSent)} sent).`,
-          );
+          if (flags.json && flags.watch) this.outputEvent(event);
+          if (!flags.json)
+            this.output(
+              `Sync completed in ${formatDurationMs(event.durationMs)} (${formatBytes(
+                event.bytesSent,
+              )} sent).`,
+            );
         },
       };
       const result = await xcodeClient.sync(syncPath, syncOptions as Parameters<typeof xcodeClient.sync>[1]);
 
+      if (flags.json && !flags.watch) {
+        const { stopWatching: _stopWatching, ...data } = result;
+        this.outputJson(data);
+      }
+
       if (flags.watch && result.stopWatching) {
-        this.output('Watching for changes. Press Ctrl+C to stop.');
+        if (!flags.json) this.output('Watching for changes. Press Ctrl+C to stop.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
           let shuttingDown = false;

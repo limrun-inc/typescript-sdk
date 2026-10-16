@@ -59,7 +59,10 @@ export default class IosTap extends BaseCommand {
           disconnect();
         }
       }
-      this.log(`Tapped at (${args.x}, ${args.y})`);
+      this.outputResult(
+        { ok: true, instanceId: resolvedInstance.id, x: args.x, y: args.y, display: flags.display },
+        `Tapped at (${args.x}, ${args.y})`,
+      );
     });
   }
 }

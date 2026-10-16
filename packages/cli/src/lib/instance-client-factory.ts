@@ -89,7 +89,7 @@ export function sendSessionCommand(
   args: unknown[] = [],
   timeoutMs?: number,
 ): Promise<unknown> {
-  return sendCommand(instanceId, command, args, timeoutMs);
+  return sendCommand(instanceId, command, args, timeoutMs, sessionAutoStart.silent);
 }
 
 export async function getAndroidInstanceClient(
@@ -103,6 +103,7 @@ export async function getAndroidInstanceClient(
       adbUrl: target.adbWebSocketUrl,
       token: target.token,
       adbPath: options.adbPath,
+      logLevel: sessionAutoStart.silent ? 'warn' : 'info',
     });
     return { type: 'android', client, disconnect: () => client.disconnect(), isSession: false };
   }
@@ -127,6 +128,7 @@ export async function getAndroidInstanceClient(
     adbUrl: instance.status.adbWebSocketUrl,
     token,
     adbPath: options.adbPath,
+    logLevel: sessionAutoStart.silent ? 'warn' : 'info',
   });
   return { type: 'android', client, disconnect: () => client.disconnect(), isSession: false };
 }
@@ -169,7 +171,11 @@ export async function getIosInstanceClient(
   target: LastIosInstance,
 ): Promise<ResolvedIosInstanceClient> {
   if (target.apiUrl && target.token) {
-    const client = await Ios.createInstanceClient({ apiUrl: target.apiUrl, token: target.token });
+    const client = await Ios.createInstanceClient({
+      apiUrl: target.apiUrl,
+      token: target.token,
+      logLevel: sessionAutoStart.silent ? 'warn' : 'info',
+    });
     return { type: 'ios', client, disconnect: () => client.disconnect(), isSession: false };
   }
 
@@ -187,6 +193,10 @@ export async function getIosInstanceClient(
     signedStreamUrl: instance.status.signedStreamUrl,
     targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix,
   });
-  const client = await Ios.createInstanceClient({ apiUrl, token });
+  const client = await Ios.createInstanceClient({
+    apiUrl,
+    token,
+    logLevel: sessionAutoStart.silent ? 'warn' : 'info',
+  });
   return { type: 'ios', client, disconnect: () => client.disconnect(), isSession: false };
 }

@@ -50,7 +50,10 @@ export default class IosOpenUrl extends BaseCommand {
           disconnect();
         }
       }
-      this.log(`Opened URL: ${args.url}`);
+      this.outputResult(
+        { ok: true, instanceId: resolvedInstance.id, url: args.url },
+        `Opened URL: ${args.url}`,
+      );
     });
   }
 }
