@@ -328,15 +328,17 @@ export default class GradleBuild extends BaseCommand {
       }
 
       proc.stdout.on('data', (line: string) => {
-        (this.isJsonEnabled() ? process.stderr : process.stdout).write(line + '\n');
+        if (this.isJsonEnabled()) this.outputEvent({ type: 'stdout', line });
+        else process.stdout.write(line + '\n');
       });
       proc.stderr.on('data', (line: string) => {
-        process.stderr.write(line + '\n');
+        if (this.isJsonEnabled()) this.outputEvent({ type: 'stderr', line });
+        else process.stderr.write(line + '\n');
       });
 
       const result = await proc;
       if (this.isJsonEnabled()) {
-        this.outputJson({ instanceId: id, ...result });
+        this.outputEvent({ type: 'result', instanceId: id, ...result });
         if (result.exitCode !== 0) this.exit(result.exitCode);
         return;
       }

@@ -404,45 +404,98 @@ test.each([0, 7])('remote commands preserve stdout, stderr and exit code %s', as
   expect(reportError).not.toHaveBeenCalled();
 });
 
-test.each(['xcode', 'gradle'])(
-  '%s foreground build returns the API execution result on success and failure',
-  async (platform) => {
-    for (const exitCode of [0, 65]) {
-      stdout = '';
-      stderr = '';
-      const expected = {
-        execId: 'exec_test',
-        status: exitCode ? 'FAILED' : 'SUCCEEDED',
-        exitCode,
-        ...(exitCode ?
-          { timedOut: true, incomplete: { reason: 'stream-lost', message: 'Connection lost' } }
-        : { signedDownloadUrl: 'https://download.example.test/app' }),
-      };
-      const out = new EventEmitter();
-      const err = new EventEmitter();
-      client.sync = jest.fn().mockResolvedValue({ bytesSent: 100 });
-      client.gradlebuild = client.xcodebuild = jest.fn().mockImplementation(() =>
-        Object.assign(
-          new Promise((resolve) => {
-            setImmediate(() => {
-              out.emit('data', 'compiling');
-              err.emit('data', 'warning');
-              resolve(expected);
-            });
-          }),
-          { stdout: out, stderr: err },
-        ),
-      );
-      const c = command(`${platform}/build`);
-      c.applyBuildCacheToTarget = async () => {};
-      if (exitCode) await expect(c.run()).rejects.toMatchObject({ oclif: { exit: exitCode } });
-      else await c.run();
-      expect(JSON.parse(stdout)).toEqual({ instanceId: target.id, ...expected });
-      expect(stderr).toContain('compiling');
-      expect(stderr).toContain('warning');
-    }
-  },
-);
+describe.each([false, true])('foreground build NDJSON with quiet=%s', (quiet) => {
+  test.each(['xcode', 'gradle'])(
+    '%s streams output before its terminal execution result',
+    async (platform) => {
+      for (const exitCode of [0, 65, 124]) {
+        stdout = '';
+        stderr = '';
+        const expected = {
+          execId: 'exec_test',
+          status:
+            exitCode === 124 ? 'RUNNING'
+            : exitCode ? 'FAILED'
+            : 'SUCCEEDED',
+          exitCode,
+          ...(exitCode === 124 ?
+            { timedOut: true, incomplete: { reason: 'stream-lost', message: 'Connection lost' } }
+          : exitCode ? {}
+          : { signedDownloadUrl: 'https://download.example.test/app' }),
+        };
+        const out = new EventEmitter();
+        const err = new EventEmitter();
+        client.sync = jest.fn().mockResolvedValue({ bytesSent: 100 });
+        client.gradlebuild = client.xcodebuild = jest.fn().mockImplementation(() =>
+          Object.assign(
+            new Promise((resolve) => {
+              setImmediate(() => {
+                out.emit('data', 'compiling');
+                err.emit('data', 'warning\nwith details');
+                out.emit('data', '');
+                // Logs must reach the consumer before the execution completes.
+                expect(
+                  stdout
+                    .trim()
+                    .split('\n')
+                    .map((line) => JSON.parse(line)),
+                ).toEqual([
+                  { type: 'stdout', line: 'compiling' },
+                  { type: 'stderr', line: 'warning\nwith details' },
+                  { type: 'stdout', line: '' },
+                ]);
+                resolve(expected);
+              });
+            }),
+            { stdout: out, stderr: err },
+          ),
+        );
+        const c = command(`${platform}/build`, {}, { quiet });
+        c.applyBuildCacheToTarget = async () => {};
+        if (exitCode)
+          await expect(c.run()).rejects.toMatchObject({ code: 'EEXIT', oclif: { exit: exitCode } });
+        else await c.run();
+        expect(
+          stdout
+            .trim()
+            .split('\n')
+            .map((line) => JSON.parse(line)),
+        ).toEqual([
+          { type: 'stdout', line: 'compiling' },
+          { type: 'stderr', line: 'warning\nwith details' },
+          { type: 'stdout', line: '' },
+          { type: 'result', instanceId: target.id, ...expected },
+        ]);
+        expect(stderr).toBe('');
+      }
+    },
+  );
+});
+
+test.each(['xcode', 'gradle'])('%s build keeps human output on its original streams', async (platform) => {
+  const out = new EventEmitter();
+  const err = new EventEmitter();
+  client.sync = jest.fn().mockResolvedValue({ bytesSent: 100 });
+  client.gradlebuild = client.xcodebuild = jest.fn(() =>
+    Object.assign(
+      new Promise((resolve) => {
+        setImmediate(() => {
+          out.emit('data', 'compiling');
+          err.emit('data', 'warning');
+          resolve({ exitCode: 0 });
+        });
+      }),
+      { stdout: out, stderr: err },
+    ),
+  );
+  const c = command(`${platform}/build`, {}, { json: false });
+  c.applyBuildCacheToTarget = async () => {};
+  c.buildSnapshotTip = async () => '';
+  await c.run();
+  expect(stdout).toContain('compiling\n');
+  expect(stdout).toContain('Build succeeded');
+  expect(stderr).toBe('warning\n');
+});
 
 test.each(['android', 'ios'])('%s detached launch returns an acknowledgement', async (platform) => {
   await command(
