@@ -38,7 +38,7 @@ async function inferCommandArgv(argv) {
 }
 
 async function handleError(error) {
-  if (handleJsonError(error)) return;
+  if (await handleJsonError(error)) return;
   if (!isUsageError(error)) {
     await handle(error);
     return;

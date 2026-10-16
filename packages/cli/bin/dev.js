@@ -15,6 +15,6 @@ const { handleJsonError } = require('./json-errors.cjs');
 oclif
   .run(process.argv.slice(2), __dirname)
   .then(oclif.flush)
-  .catch((error) => {
-    if (!handleJsonError(error)) return oclif.Errors.handle(error);
+  .catch(async (error) => {
+    if (!(await handleJsonError(error))) return oclif.Errors.handle(error);
   });
