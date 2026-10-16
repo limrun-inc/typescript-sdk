@@ -60,17 +60,16 @@ export default class AndroidLaunchApp extends BaseCommand {
           return;
         }
 
-        let notifyAppExited: () => void = () => {};
-        const appExited = new Promise<void>((resolve) => {
+        let notifyAppExited: (event: { logs: string[]; info: AppExitInfo }) => void = () => {};
+        const appExited = new Promise<{ logs: string[]; info: AppExitInfo }>((resolve) => {
           notifyAppExited = resolve;
         });
 
         await client.launchApp(args.packageName, {
           mode,
           onExit: (logs: string[], info: AppExitInfo) => {
-            if (flags.json) this.outputEvent({ type: 'exit', ...info, logs });
-            else this.log(formatAppExit(info.packageName, info, logs));
-            notifyAppExited();
+            if (!flags.json) this.log(formatAppExit(info.packageName, info, logs));
+            notifyAppExited({ logs, info });
           },
         });
 
@@ -88,7 +87,12 @@ export default class AndroidLaunchApp extends BaseCommand {
           };
           process.on('SIGINT', finish);
           process.on('SIGTERM', finish);
-          void appExited.then(finish);
+          // An app can exit before launchApp resolves. Emit its JSON exit only
+          // after the launch acknowledgement so consumers see lifecycle order.
+          void appExited.then(({ logs, info }) => {
+            if (flags.json) this.outputEvent({ type: 'exit', ...info, logs });
+            finish();
+          });
         });
       } finally {
         disconnect();

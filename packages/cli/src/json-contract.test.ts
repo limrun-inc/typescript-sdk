@@ -391,7 +391,7 @@ test.each([0, 7])('remote commands preserve stdout, stderr and exit code %s', as
   });
   const result = jest.fn();
   const run = streamBuildCommand(proc as never, reportError, 'Command failed', result);
-  if (exitCode) await expect(run).rejects.toThrow('exit code 7');
+  if (exitCode) await expect(run).rejects.toMatchObject({ code: 'EEXIT', oclif: { exit: 7 } });
   else await run;
   expect(result).toHaveBeenCalledWith({
     execId: 'exec_test',
@@ -401,6 +401,7 @@ test.each([0, 7])('remote commands preserve stdout, stderr and exit code %s', as
     stderr: 'warning\n',
   });
   expect(stdout).toBe('');
+  expect(reportError).not.toHaveBeenCalled();
 });
 
 test.each(['xcode', 'gradle'])(
@@ -629,4 +630,88 @@ test.each(['ios', 'android'])('%s camera results identify playback and clear act
   stdout = '';
   await command(`${platform}/camera`, { action: 'clear' }).run();
   expect(JSON.parse(stdout)).toEqual({ ok: true, instanceId: target.id, action: 'clear' });
+});
+
+describe.each(['xcode', 'gradle'])('%s execution failures', (platform) => {
+  test.each(['run', 'tools', 'tools/install', 'use'])(
+    '%s emits a result and exits without a duplicate CLI error',
+    async (name) => {
+      for (const timedOut of [false, true]) {
+        stdout = '';
+        stderr = '';
+        const exitCode = timedOut ? 124 : 7;
+        const expected = {
+          execId: 'exec_failed',
+          status: timedOut ? 'RUNNING' : 'FAILED',
+          exitCode,
+          ...(timedOut ?
+            { timedOut: true, incomplete: { reason: 'timeout', message: 'Still running' } }
+          : {}),
+        };
+        client.run = jest.fn(() =>
+          Object.assign(Promise.resolve(expected), {
+            stdout: new EventEmitter(),
+            stderr: new EventEmitter(),
+          }),
+        );
+        const c = command(`${platform}/${name}`, {}, { 'no-sync': true });
+        c.argv = ['--', 'false'];
+        c.parse = async () => ({ args: {}, flags: { json: true, 'no-sync': true }, argv: ['node@24'] });
+        c.resolveBuildToolClient = async () => ({ target, client });
+        await expect(c.run()).rejects.toMatchObject({ code: 'EEXIT', oclif: { exit: exitCode } });
+        expect(JSON.parse(stdout)).toEqual({ ...expected, stdout: '', stderr: '' });
+        expect(stderr).toBe('');
+      }
+    },
+  );
+});
+
+test.each([false, true])('human execution failures retain diagnostics, timedOut=%s', async (timedOut) => {
+  const proc = Object.assign(Promise.resolve({ exitCode: timedOut ? 124 : 7, timedOut }), {
+    stdout: new EventEmitter(),
+    stderr: new EventEmitter(),
+  });
+  const reportError = jest.fn((message: string) => {
+    throw new Error(message);
+  });
+  await expect(streamBuildCommand(proc as never, reportError)).rejects.toThrow(
+    timedOut ? 'Timed out waiting' : 'Command failed with exit code 7',
+  );
+  expect(reportError).toHaveBeenCalledWith(expect.any(String), { exit: timedOut ? 124 : 7 });
+});
+
+describe.each(['android', 'ios'])('%s foreground launch lifecycle', (platform) => {
+  test.each([true, false])('launch precedes exit, exitsDuringLaunch=%s', async (exitsDuringLaunch) => {
+    jest.useFakeTimers();
+    jest.spyOn(process, 'on').mockReturnValue(process);
+    const logStream = Object.assign(new EventEmitter(), { stop: jest.fn() });
+    client.streamAppLog = jest.fn().mockReturnValue(logStream);
+    const info = { [platform === 'ios' ? 'bundleId' : 'packageName']: 'com.example.app', reason: 'crash' };
+    client.launchApp.mockImplementation(async (_app, options) => {
+      if (exitsDuringLaunch) options.onExit(['crashed'], info);
+      else setTimeout(() => options.onExit(['crashed'], info), 10);
+    });
+    const run = command(`${platform}/launch-app`, {
+      bundleId: 'com.example.app',
+      packageName: 'com.example.app',
+    }).run();
+    await jest.advanceTimersByTimeAsync(1500);
+    await run;
+    expect(
+      stdout
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
+    ).toEqual([
+      {
+        type: 'launched',
+        instanceId: target.id,
+        [platform === 'ios' ? 'bundleId' : 'packageName']: 'com.example.app',
+        mode: 'ForegroundIfRunning',
+      },
+      { type: 'exit', ...info, ...(platform === 'android' ? { logs: ['crashed'] } : {}) },
+    ]);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
 });
