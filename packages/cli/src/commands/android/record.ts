@@ -97,7 +97,14 @@ export default class AndroidRecord extends BaseCommand {
           }
         }
         this.outputResult(
-          { ok: true, recording: true, persist: Boolean(persist) },
+          {
+            ok: true,
+            instanceId: id,
+            recording: true,
+            quality: flags.quality,
+            persist: Boolean(persist),
+            persistTtlSeconds: typeof persist === 'object' ? persist.ttlSeconds : undefined,
+          },
           persist ?
             `Recording started; it will be persisted for ${flags['persist-ttl'] ?? '72h'} when it stops.`
           : 'Recording started',
@@ -114,7 +121,13 @@ export default class AndroidRecord extends BaseCommand {
       if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'stop-recording', [saveTo]);
         this.outputResult(
-          { ok: true, recording: false, localPath: outputPath, uploaded: Boolean(flags['presigned-url']) },
+          {
+            ok: true,
+            instanceId: id,
+            recording: false,
+            localPath: outputPath,
+            uploaded: Boolean(flags['presigned-url']),
+          },
           `Recording saved to ${outputPath}`,
         );
         if (flags['presigned-url']) {
@@ -127,7 +140,13 @@ export default class AndroidRecord extends BaseCommand {
       try {
         await client.stopRecording(saveTo);
         this.outputResult(
-          { ok: true, recording: false, localPath: outputPath, uploaded: Boolean(flags['presigned-url']) },
+          {
+            ok: true,
+            instanceId: id,
+            recording: false,
+            localPath: outputPath,
+            uploaded: Boolean(flags['presigned-url']),
+          },
           `Recording saved to ${outputPath}`,
         );
         if (flags['presigned-url']) {

@@ -52,7 +52,10 @@ export default class IosPressKey extends BaseCommand {
           disconnect();
         }
       }
-      this.outputResult({ ok: true }, `Pressed key: ${args.key}`);
+      this.outputResult(
+        { ok: true, instanceId: resolvedInstance.id, key: args.key, modifiers: flags.modifier ?? [] },
+        `Pressed key: ${args.key}`,
+      );
     });
   }
 }

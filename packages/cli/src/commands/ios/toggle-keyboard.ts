@@ -44,7 +44,7 @@ export default class IosToggleKeyboard extends BaseCommand {
         }
       }
 
-      this.outputResult({ ok: true }, 'Software keyboard toggled');
+      this.outputResult({ ok: true, instanceId: id }, 'Software keyboard toggled');
     });
   }
 }

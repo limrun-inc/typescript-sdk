@@ -92,6 +92,13 @@ export default class IosLaunchApp extends BaseCommand {
         modeExplicitlyProvided: flags.mode !== undefined,
       });
 
+      const launchResult = {
+        instanceId: id,
+        bundleId: args.bundleId,
+        mode: typeof launchArgument === 'string' ? launchArgument : launchArgument.mode,
+        runtime: typeof launchArgument === 'string' ? undefined : launchArgument.runtime?.kind,
+      };
+
       if (flags.detach) {
         if (await ensureDaemonSession(resolvedInstance)) {
           await sendSessionCommand(id, 'launch-app', [args.bundleId, launchArgument]);
@@ -103,7 +110,7 @@ export default class IosLaunchApp extends BaseCommand {
             disconnect();
           }
         }
-        this.outputResult({ ok: true }, `Launched ${args.bundleId}`);
+        this.outputResult({ ok: true, ...launchResult }, `Launched ${args.bundleId}`);
         return;
       }
 
@@ -142,7 +149,7 @@ export default class IosLaunchApp extends BaseCommand {
           throw error;
         }
 
-        if (flags.json) this.outputEvent({ type: 'launched', bundleId: args.bundleId });
+        if (flags.json) this.outputEvent({ type: 'launched', ...launchResult });
         if (!flags.json)
           this.logToStderr(
             `Launched ${args.bundleId}. Streaming app logs until the app exits; press Ctrl+C to stop earlier, or pass --detach to skip streaming.`,

@@ -54,7 +54,7 @@ export default class IosCamera extends BaseCommand {
         if (args.action === 'clear') {
           await client.clearCameraVideo();
           if (flags.json) {
-            this.outputJson({ ok: true });
+            this.outputJson({ ok: true, instanceId: resolvedInstance.id, action: 'clear' });
           } else {
             this.output('Camera restored to the default source.');
           }
@@ -71,7 +71,13 @@ export default class IosCamera extends BaseCommand {
 
         await client.setCameraVideo(localPath, { loop: flags.loop });
         if (flags.json) {
-          this.outputJson({ ok: true, loop: flags.loop });
+          this.outputJson({
+            ok: true,
+            instanceId: resolvedInstance.id,
+            action: 'play',
+            localPath,
+            loop: flags.loop,
+          });
         } else {
           this.output(`Playing ${localPath} as the camera${flags.loop ? ' on loop' : ' once'}.`);
         }

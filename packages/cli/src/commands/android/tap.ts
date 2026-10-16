@@ -54,7 +54,10 @@ export default class AndroidTap extends BaseCommand {
           disconnect();
         }
       }
-      this.outputResult({ ok: true }, `Tapped at (${args.x}, ${args.y})`);
+      this.outputResult(
+        { ok: true, instanceId: resolvedInstance.id, x: args.x, y: args.y },
+        `Tapped at (${args.x}, ${args.y})`,
+      );
     });
   }
 }

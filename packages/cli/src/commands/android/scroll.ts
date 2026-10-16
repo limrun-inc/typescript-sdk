@@ -70,7 +70,16 @@ export default class AndroidScroll extends BaseCommand {
           disconnect();
         }
       }
-      this.outputResult({ ok: true }, `Scrolled ${args.direction}`);
+      this.outputResult(
+        {
+          ok: true,
+          instanceId: resolvedInstance.id,
+          direction: args.direction,
+          amount: flags.amount,
+          target,
+        },
+        `Scrolled ${args.direction}`,
+      );
     });
   }
 }

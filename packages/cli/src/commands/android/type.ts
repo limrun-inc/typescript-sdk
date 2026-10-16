@@ -53,7 +53,10 @@ export default class AndroidType extends BaseCommand {
           disconnect();
         }
       }
-      this.outputResult({ ok: true }, 'Text typed');
+      this.outputResult(
+        { ok: true, instanceId: resolvedInstance.id, textLength: args.text.length, target },
+        'Text typed',
+      );
     });
   }
 }

@@ -43,6 +43,12 @@ export default class AndroidLaunchApp extends BaseCommand {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       const mode = flags.mode as LaunchAppMode | undefined;
 
+      const launchResult = {
+        instanceId: resolvedInstance.id,
+        packageName: args.packageName,
+        mode: mode ?? 'ForegroundIfRunning',
+      };
+
       // The appExit notification that ends this command is delivered on the
       // launching client's signaling WebSocket, so both paths use a direct
       // connection rather than a daemon session.
@@ -50,7 +56,7 @@ export default class AndroidLaunchApp extends BaseCommand {
       try {
         if (flags.detach) {
           await client.launchApp(args.packageName, { mode });
-          this.outputResult({ ok: true }, `Launched ${args.packageName}`);
+          this.outputResult({ ok: true, ...launchResult }, `Launched ${args.packageName}`);
           return;
         }
 
@@ -68,7 +74,7 @@ export default class AndroidLaunchApp extends BaseCommand {
           },
         });
 
-        if (flags.json) this.outputEvent({ type: 'launched', packageName: args.packageName });
+        if (flags.json) this.outputEvent({ type: 'launched', ...launchResult });
         if (!flags.json)
           this.logToStderr(
             `Launched ${args.packageName}. Watching until the app exits; press Ctrl+C to stop earlier, or pass --detach to skip watching.`,

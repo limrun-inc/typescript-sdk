@@ -47,7 +47,10 @@ export default class IosTerminateApp extends BaseCommand {
           disconnect();
         }
       }
-      this.outputResult({ ok: true }, `Terminated ${args.bundleId}`);
+      this.outputResult(
+        { ok: true, instanceId: resolvedInstance.id, bundleId: args.bundleId },
+        `Terminated ${args.bundleId}`,
+      );
     });
   }
 }

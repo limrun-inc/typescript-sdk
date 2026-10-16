@@ -76,6 +76,7 @@ beforeEach(() => {
     [
       'setText',
       'scrollScreen',
+      'scrollElement',
       'tap',
       'typeText',
       'pressKey',
@@ -144,29 +145,116 @@ function command(name: string, args: Record<string, unknown> = {}, flags: Record
   return result;
 }
 
-const actions: Array<[string, Record<string, unknown>]> = [
-  ['tap', { x: 100, y: 200 }],
-  ['type', { text: 'hello\nworld' }],
-  ['press-key', { key: 'home' }],
-  ['scroll', { direction: 'down' }],
-  ['open-url', { url: 'https://example.test' }],
-  ['terminate-app', { bundleId: 'com.example.app', packageName: 'com.example.app' }],
+const actions: Array<[string, Record<string, unknown>, Record<string, unknown>, Record<string, unknown>]> = [
+  ['tap', { x: 0, y: 200 }, {}, { x: 0, y: 200 }],
+  ['type', { text: 'hello\nworld' }, { enter: false, 'require-focus': true }, { textLength: 11 }],
+  ['press-key', { key: 'home' }, {}, { key: 'home', modifiers: [] }],
+  ['scroll', { direction: 'down' }, { amount: 300 }, { direction: 'down', amount: 300 }],
+  ['open-url', { url: 'https://example.test' }, {}, { url: 'https://example.test' }],
+  ['terminate-app', { bundleId: 'com.example.app', packageName: 'com.example.app' }, {}, {}],
 ];
 describe.each([false, true])('device actions with daemon=%s', (session) => {
   beforeEach(() => jest.mocked(ensureDaemonSession).mockResolvedValue(session));
   test.each(
     ['android', 'ios'].flatMap((platform) =>
-      actions.map(([name, args]) => [`${platform}/${name}`, args] as const),
+      actions.map(([name, args, flags, expected]) => [`${platform}/${name}`, args, flags, expected] as const),
     ),
-  )('%s emits one acknowledgement', async (name, args) => {
-    await command(name, args).run();
-    expect(JSON.parse(stdout)).toEqual({ ok: true });
+  )('%s emits the resolved target and action parameters', async (name, args, flags, expected) => {
+    await command(name, args, flags).run();
+    expect(JSON.parse(stdout)).toEqual({
+      ok: true,
+      instanceId: target.id,
+      ...expected,
+      ...(name === 'ios/type' ? { enter: false, requireFocus: true } : {}),
+      ...(name === 'ios/terminate-app' ? { bundleId: args.bundleId } : {}),
+      ...(name === 'android/terminate-app' ? { packageName: args.packageName } : {}),
+    });
     if (session && name !== 'android/terminate-app') expect(sendSessionCommand).toHaveBeenCalled();
     else expect(cleanup).toHaveBeenCalledTimes(1);
   });
+  test('iOS gesture results preserve parsed values and zero momentum', async () => {
+    await command(
+      'ios/scroll',
+      { direction: 'up' },
+      { amount: 500, momentum: '0', coordinate: '0,240' },
+    ).run();
+    expect(JSON.parse(stdout)).toEqual({
+      ok: true,
+      instanceId: target.id,
+      direction: 'up',
+      amount: 500,
+      momentum: 0,
+      coordinate: [0, 240],
+    });
+    stdout = '';
+    await command('ios/swipe', {}, { from: '10,20', to: '30,40', duration: 800 }).run();
+    expect(JSON.parse(stdout)).toEqual({
+      ok: true,
+      instanceId: target.id,
+      from: [10, 20],
+      to: [30, 40],
+      durationMs: 800,
+    });
+  });
+  test('keyboard toggle identifies the instance without inventing visibility', async () => {
+    await command('ios/toggle-keyboard').run();
+    expect(JSON.parse(stdout)).toEqual({ ok: true, instanceId: target.id });
+  });
+  test.each(['android', 'ios'])('%s key result includes modifiers', async (platform) => {
+    await command(`${platform}/press-key`, { key: 'a' }, { modifier: ['shift', 'control'] }).run();
+    expect(JSON.parse(stdout)).toEqual({
+      ok: true,
+      instanceId: target.id,
+      key: 'a',
+      modifiers: ['shift', 'control'],
+    });
+  });
+  test('Android actions report the actual selector or coordinate target', async () => {
+    await command(
+      'android/scroll',
+      { direction: 'down' },
+      { amount: 500, 'resource-id': 'com.example:id/list', enabled: false },
+    ).run();
+    expect(JSON.parse(stdout)).toEqual({
+      ok: true,
+      instanceId: target.id,
+      direction: 'down',
+      amount: 500,
+      target: { selector: { resourceId: 'com.example:id/list', enabled: false } },
+    });
+    stdout = '';
+    await command('android/type', { text: 'secret' }, { x: 0, y: 20 }).run();
+    expect(JSON.parse(stdout)).toEqual({
+      ok: true,
+      instanceId: target.id,
+      textLength: 6,
+      target: { x: 0, y: 20 },
+    });
+  });
+  test.each([true, false])('Android install result identifies its source, local=%s', async (local) => {
+    const source = local ? '/tmp/app.apk' : 'https://example.test/app.apk';
+    const c = command('android/install-app', { path_or_url: source });
+    jest.spyOn(require('fs'), 'existsSync').mockReturnValue(true);
+    c.client.assets.getOrUpload = jest
+      .fn()
+      .mockResolvedValue({ id: 'asset_test', signedDownloadUrl: 'https://download.test/signed' });
+    await c.run();
+    expect(JSON.parse(stdout)).toEqual({
+      ok: true,
+      instanceId: target.id,
+      source,
+      ...(local ? { assetId: 'asset_test' } : {}),
+    });
+  });
   test.each(['android', 'ios'])('%s record start and stop have stable responses', async (platform) => {
     await command(`${platform}/record`, { action: 'start' }, { quality: 5 }).run();
-    expect(JSON.parse(stdout)).toEqual({ ok: true, recording: true, persist: false });
+    expect(JSON.parse(stdout)).toEqual({
+      ok: true,
+      instanceId: target.id,
+      recording: true,
+      quality: 5,
+      persist: false,
+    });
     stdout = '';
     await command(
       `${platform}/record`,
@@ -175,6 +263,7 @@ describe.each([false, true])('device actions with daemon=%s', (session) => {
     ).run();
     expect(JSON.parse(stdout)).toEqual({
       ok: true,
+      instanceId: target.id,
       recording: false,
       localPath: '/tmp/contract-recording.mp4',
       uploaded: true,
@@ -182,7 +271,7 @@ describe.each([false, true])('device actions with daemon=%s', (session) => {
   });
   test('bandwidth preserves zero and omits the unchanged direction', async () => {
     await command('android/set-wifi-bandwidth', {}, { 'down-kbps': 0 }).run();
-    expect(JSON.parse(stdout)).toEqual({ ok: true, downKbps: 0 });
+    expect(JSON.parse(stdout)).toEqual({ ok: true, instanceId: target.id, downKbps: 0 });
   });
 });
 
@@ -360,7 +449,12 @@ test.each(['android', 'ios'])('%s detached launch returns an acknowledgement', a
     { packageName: 'com.example.app', bundleId: 'com.example.app' },
     { detach: true },
   ).run();
-  expect(JSON.parse(stdout)).toEqual({ ok: true });
+  expect(JSON.parse(stdout)).toEqual({
+    ok: true,
+    instanceId: target.id,
+    [platform === 'ios' ? 'bundleId' : 'packageName']: 'com.example.app',
+    mode: 'ForegroundIfRunning',
+  });
 });
 
 test('asset push preserves the API response', async () => {
@@ -473,3 +567,66 @@ test.each(['android/logcat', 'ios/syslog', 'ios/app-log'])(
     ).toEqual([{ line: 'first\nsecond' }, { line: 'third' }]);
   },
 );
+
+test('iOS display overrides appear in gesture results', async () => {
+  client.tapDisplay = jest.fn();
+  await command('ios/tap', { x: 0, y: 20 }, { display: 'inner' }).run();
+  expect(JSON.parse(stdout)).toEqual({ ok: true, instanceId: target.id, x: 0, y: 20, display: 'inner' });
+  expect(client.tapDisplay).toHaveBeenCalledWith('inner', 0, 20);
+});
+
+test('iOS launch reports the effective relaunch mode without echoing environment secrets', async () => {
+  await command(
+    'ios/launch-app',
+    { bundleId: 'com.example.app' },
+    { detach: true, env: ['API_TOKEN=secret'] },
+  ).run();
+  expect(JSON.parse(stdout)).toEqual({
+    ok: true,
+    instanceId: target.id,
+    bundleId: 'com.example.app',
+    mode: 'RelaunchIfRunning',
+  });
+});
+
+test.each(['ios', 'android'])(
+  '%s recording reports requested quality and parsed retention',
+  async (platform) => {
+    await command(
+      `${platform}/record`,
+      { action: 'start' },
+      {
+        quality: 8,
+        persist: true,
+        'persist-ttl': '24h',
+        ...(platform === 'ios' ? { display: 'outer', 'touch-indicators': false } : {}),
+      },
+    ).run();
+    expect(JSON.parse(stdout)).toEqual({
+      ok: true,
+      instanceId: target.id,
+      recording: true,
+      quality: 8,
+      persist: true,
+      persistTtlSeconds: 86400,
+      ...(platform === 'ios' ? { display: 'outer', touchIndicators: false } : {}),
+    });
+  },
+);
+
+test.each(['ios', 'android'])('%s camera results identify playback and clear actions', async (platform) => {
+  client.setCameraVideo = jest.fn();
+  client.clearCameraVideo = jest.fn();
+  jest.spyOn(require('fs'), 'existsSync').mockReturnValue(true);
+  await command(`${platform}/camera`, { action: 'play', path: '/tmp/clip.mp4' }, { loop: false }).run();
+  expect(JSON.parse(stdout)).toEqual({
+    ok: true,
+    instanceId: target.id,
+    action: 'play',
+    localPath: '/tmp/clip.mp4',
+    loop: false,
+  });
+  stdout = '';
+  await command(`${platform}/camera`, { action: 'clear' }).run();
+  expect(JSON.parse(stdout)).toEqual({ ok: true, instanceId: target.id, action: 'clear' });
+});
