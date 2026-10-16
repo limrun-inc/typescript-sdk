@@ -74,20 +74,27 @@ export default class AndroidSync extends BaseCommand {
             basisBar.update(downloadedBytes, totalBytes);
           },
           onSyncComplete: (event) => {
+            if (flags.json && flags.watch) this.outputEvent(event);
             basisBar.stop();
-            this.output(
-              `Sync completed in ${formatDurationMs(event.durationMs)} (${formatBytes(
-                event.bytesSent,
-              )} sent).`,
-            );
+            if (!flags.json)
+              this.output(
+                `Sync completed in ${formatDurationMs(event.durationMs)} (${formatBytes(
+                  event.bytesSent,
+                )} sent).`,
+              );
           },
         });
       } finally {
         basisBar.stop();
       }
 
+      if (flags.json && !flags.watch) {
+        const { stopWatching: _stopWatching, ...data } = result;
+        this.outputJson(data);
+      }
+
       if (flags.watch && result.stopWatching) {
-        this.output('Watching for changes. Press Ctrl+C to stop.');
+        if (!flags.json) this.output('Watching for changes. Press Ctrl+C to stop.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
           let shuttingDown = false;

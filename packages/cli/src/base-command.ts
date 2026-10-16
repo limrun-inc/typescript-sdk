@@ -77,7 +77,7 @@ export abstract class BaseCommand extends Command {
     }),
     json: Flags.boolean({
       description:
-        'Output structured JSON instead of human-readable tables or plain text when the command supports it.',
+        'Output JSON for automation. Streams and watch modes emit newline-delimited JSON. Human-readable diagnostics go to stderr.',
       default: false,
     }),
     quiet: Flags.boolean({
@@ -129,6 +129,7 @@ export abstract class BaseCommand extends Command {
         apiKey: (apiKey as string) || 'unauthenticated',
         baseURL,
         userAgent: `lim/${VERSION}`,
+        ...(this.shouldSuppressInfo() ? { logLevel: 'warn' as const } : {}),
       });
     }
     return this._client;
@@ -209,8 +210,24 @@ export abstract class BaseCommand extends Command {
     }
   }
 
+  // Keep stdout machine-readable even if a human message bypasses info().
+  override log(message = '', ...args: any[]): void {
+    if (this.isJsonEnabled()) this.logToStderr(message, ...args);
+    else super.log(message, ...args);
+  }
+
   protected output(message = ''): void {
-    super.log(message);
+    this.log(message);
+  }
+
+  protected outputResult(data: unknown, message: string): void {
+    if (this.isJsonEnabled()) this.outputJson(data);
+    else this.output(message);
+  }
+
+  /** Streams use one complete JSON value per line, including embedded newlines. */
+  protected outputEvent(data: unknown): void {
+    super.log(JSON.stringify(data));
   }
 
   /** Adapter passed to the shared tunnel command flows in lib/tunnel-command. */
@@ -309,14 +326,14 @@ export abstract class BaseCommand extends Command {
         });
         return obj;
       });
-      this.output(JSON.stringify(objects, null, 2));
+      this.outputJson(objects);
     } else {
       this.output(renderTable(headers, rows));
     }
   }
 
   protected outputJson(data: unknown): void {
-    this.output(JSON.stringify(data, null, 2));
+    super.log(JSON.stringify(data, null, 2));
   }
 
   /**
@@ -353,7 +370,11 @@ export abstract class BaseCommand extends Command {
   protected async resolveXcodeClient(target: XcodeTarget) {
     if (target.apiUrl && target.token) {
       try {
-        return await this.client.xcodeInstances.createClient({ apiUrl: target.apiUrl, token: target.token });
+        return await this.client.xcodeInstances.createClient({
+          apiUrl: target.apiUrl,
+          token: target.token,
+          logLevel: this.shouldSuppressInfo() ? 'warn' : 'info',
+        });
       } catch (err) {
         if (this.isCachedXcodeClientNotFound(err)) {
           throw this.notFound(target.id);
@@ -364,7 +385,10 @@ export abstract class BaseCommand extends Command {
 
     const instance = await this.client.xcodeInstances.get(target.id);
     registerCreatedInstance(instance);
-    return this.client.xcodeInstances.createClient({ instance });
+    return this.client.xcodeInstances.createClient({
+      instance,
+      logLevel: this.shouldSuppressInfo() ? 'warn' : 'info',
+    });
   }
 
   private tryResolveAndroidInstance(providedId: string | undefined): LastAndroidInstance | null {
@@ -1024,7 +1048,11 @@ export abstract class BaseCommand extends Command {
   }
 
   /** Save the workspace preference and switch its existing sandbox when available. */
-  protected async setPreferredXcodeVersion(version: string, providedId?: string): Promise<void> {
+  protected async setPreferredXcodeVersion(
+    version: string,
+    providedId?: string,
+    renderJson: (result: unknown) => void = (result) => this.outputJson(result),
+  ): Promise<void> {
     const previous = loadXcodeVersionPreference();
     // Keep the workspace preference on transient failures, but reject versions the node cannot provide.
     const record = () => {
@@ -1063,12 +1091,12 @@ export abstract class BaseCommand extends Command {
         }
         record();
         if (!target || !result) {
-          if (this.isJsonEnabled()) this.outputJson({ preferred: version });
+          if (this.isJsonEnabled()) renderJson({ preferred: version });
           else this.output(`No sandbox instance found${this.scopeSuffix()}; the next one uses it.`);
           return;
         }
         if (this.isJsonEnabled()) {
-          this.outputJson({ instanceId: target.id, preferred: version, ...result });
+          renderJson({ instanceId: target.id, preferred: version, ...result });
           return;
         }
         const verb = result.alreadyBound ? 'already uses' : 'now uses';
@@ -1353,11 +1381,18 @@ export abstract class BaseCommand extends Command {
 
   protected async resolveGradleClient(target: LastGradleInstance) {
     if (target.apiUrl && target.token) {
-      return this.client.gradleInstances.createClient({ apiUrl: target.apiUrl, token: target.token });
+      return this.client.gradleInstances.createClient({
+        apiUrl: target.apiUrl,
+        token: target.token,
+        logLevel: this.shouldSuppressInfo() ? 'warn' : 'info',
+      });
     }
     const instance = await this.client.gradleInstances.get(target.id);
     registerCreatedInstance(instance);
-    return this.client.gradleInstances.createClient({ instance });
+    return this.client.gradleInstances.createClient({
+      instance,
+      logLevel: this.shouldSuppressInfo() ? 'warn' : 'info',
+    });
   }
 
   protected async resolveBuildToolClient(

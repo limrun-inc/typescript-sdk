@@ -77,7 +77,7 @@ export default class IosScroll extends BaseCommand {
           disconnect();
         }
       }
-      this.log(`Scrolled ${args.direction}`);
+      this.outputResult({ ok: true }, `Scrolled ${args.direction}`);
     });
   }
 }

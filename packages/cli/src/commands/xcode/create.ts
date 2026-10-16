@@ -145,7 +145,10 @@ export default class XcodeCreate extends BaseCommand {
       };
       if (requestedXcode) {
         try {
-          const xcodeClient = await this.client.xcodeInstances.createClient({ instance });
+          const xcodeClient = await this.client.xcodeInstances.createClient({
+            instance,
+            logLevel: this.shouldSuppressInfo() ? 'warn' : 'info',
+          });
           const result = await this.selectXcode(xcodeClient, requestedXcode.version);
           if (!result.alreadyBound) {
             this.info(`Sandbox uses Xcode ${formatXcode(result.bound)}`);
@@ -162,7 +165,10 @@ export default class XcodeCreate extends BaseCommand {
       }
       if (flags.ios) {
         try {
-          const xcodeClient = await this.client.xcodeInstances.createClient({ instance });
+          const xcodeClient = await this.client.xcodeInstances.createClient({
+            instance,
+            logLevel: this.shouldSuppressInfo() ? 'warn' : 'info',
+          });
           const simParams: IosInstanceCreateParams = {
             wait: true,
             reuseIfExists: flags['reuse-if-exists'] || undefined,
@@ -201,7 +207,10 @@ export default class XcodeCreate extends BaseCommand {
         }
       } else if (flags.attach && simulator) {
         try {
-          const xcodeClient = await this.client.xcodeInstances.createClient({ instance });
+          const xcodeClient = await this.client.xcodeInstances.createClient({
+            instance,
+            logLevel: this.shouldSuppressInfo() ? 'warn' : 'info',
+          });
           attachResult = await xcodeClient.attachSimulator(simulator);
         } catch (err) {
           this.info(`Created Xcode instance ${instance.metadata.id}, but attach failed.`);

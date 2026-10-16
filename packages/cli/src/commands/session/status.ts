@@ -22,7 +22,7 @@ export default class SessionStatus extends BaseCommand {
         const state = loadState(s.instanceId);
         let connected = false;
         try {
-          const status = (await sendCommand(s.instanceId, 'status')) as any;
+          const status = (await sendCommand(s.instanceId, 'status', [], undefined, flags.json)) as any;
           connected = status.connected;
         } catch {}
         details.push({
@@ -51,7 +51,7 @@ export default class SessionStatus extends BaseCommand {
         this.log(`    Type: ${state.instanceType}`);
       }
       try {
-        const status = (await sendCommand(s.instanceId, 'status')) as any;
+        const status = (await sendCommand(s.instanceId, 'status', [], undefined, flags.json)) as any;
         this.log(`    Connected: ${status.connected}`);
       } catch {}
       this.log('');

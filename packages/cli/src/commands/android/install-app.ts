@@ -64,14 +64,14 @@ export default class AndroidInstallApp extends BaseCommand {
 
       if (await ensureDaemonSession(resolvedInstance)) {
         await sendSessionCommand(id, 'install-app', [downloadUrl]);
-        this.log('App sent to instance');
+        this.outputResult({ ok: true }, 'App sent to instance');
         return;
       }
 
       const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
       try {
         await client.sendAsset(downloadUrl);
-        this.log('App sent to instance');
+        this.outputResult({ ok: true }, 'App sent to instance');
       } finally {
         disconnect();
       }

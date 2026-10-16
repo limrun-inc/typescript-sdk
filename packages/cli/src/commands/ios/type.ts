@@ -62,7 +62,7 @@ export default class IosType extends BaseCommand {
           disconnect();
         }
       }
-      this.log('Text typed');
+      this.outputResult({ ok: true }, 'Text typed');
     });
   }
 }

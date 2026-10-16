@@ -92,3 +92,43 @@ describe('ensureDaemonSession', () => {
     );
   });
 });
+
+jest.mock('@limrun/api', () => ({
+  ...jest.requireActual('@limrun/api'),
+  createInstanceClient: jest.fn().mockResolvedValue({ disconnect: jest.fn() }),
+  Ios: {
+    ...jest.requireActual('@limrun/api').Ios,
+    createInstanceClient: jest.fn().mockResolvedValue({ disconnect: jest.fn() }),
+  },
+}));
+jest.mock('./config', () => ({ ...jest.requireActual('./config'), saveInstanceCache: jest.fn() }));
+
+describe('JSON output keeps SDK logs off stdout', () => {
+  afterEach(() => setSessionAutoStart({ enabled: true, silent: false }));
+  test.each(['ios', 'android'] as const)(
+    '%s clients use stderr-only SDK logging with and without cached credentials',
+    async (platform) => {
+      const { createInstanceClient, Ios } = require('@limrun/api');
+      const { getAndroidInstanceClient, getIosInstanceClient } = require('./instance-client-factory');
+      const create = platform === 'ios' ? Ios.createInstanceClient : createInstanceClient;
+      const get = platform === 'ios' ? getIosInstanceClient : getAndroidInstanceClient;
+      const target = platform === 'ios' ? IOS_TARGET : ANDROID_TARGET;
+      const instance = {
+        metadata: { id: target.id },
+        status: { apiUrl: target.apiUrl, token: target.token },
+      };
+      const lim = {
+        iosInstances: { get: jest.fn().mockResolvedValue(instance) },
+        androidInstances: { get: jest.fn().mockResolvedValue(instance) },
+      };
+      setSessionAutoStart({ enabled: true, silent: true });
+      await get(lim, target);
+      expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ logLevel: 'warn' }));
+      await get(lim, { id: target.id, type: platform });
+      expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ logLevel: 'warn' }));
+      setSessionAutoStart({ enabled: true, silent: false });
+      await get(lim, target);
+      expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ logLevel: 'info' }));
+    },
+  );
+});

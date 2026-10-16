@@ -68,18 +68,27 @@ export default class IosSync extends BaseCommand {
         basisCacheDir: flags['basis-cache-dir'],
         launchMode: flags['launch-mode'] as 'ForegroundIfRunning' | 'RelaunchIfRunning' | undefined,
         onSyncComplete: (event) => {
-          this.output(
-            `Sync completed in ${formatDurationMs(event.durationMs)} (${formatBytes(event.bytesSent)} sent).`,
-          );
+          if (flags.json && flags.watch) this.outputEvent(event);
+          if (!flags.json)
+            this.output(
+              `Sync completed in ${formatDurationMs(event.durationMs)} (${formatBytes(
+                event.bytesSent,
+              )} sent).`,
+            );
         },
       });
 
       if (result.installedBundleId) {
-        this.output(`Installed bundle ID: ${result.installedBundleId}`);
+        if (!flags.json) this.output(`Installed bundle ID: ${result.installedBundleId}`);
+      }
+
+      if (flags.json && !flags.watch) {
+        const { stopWatching: _stopWatching, ...data } = result;
+        this.outputJson(data);
       }
 
       if (flags.watch && result.stopWatching) {
-        this.output('Watching for changes. Press Ctrl+C to stop.');
+        if (!flags.json) this.output('Watching for changes. Press Ctrl+C to stop.');
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
           let shuttingDown = false;

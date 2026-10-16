@@ -50,7 +50,7 @@ export default class AndroidOpenUrl extends BaseCommand {
           disconnect();
         }
       }
-      this.log(`Opened URL: ${args.url}`);
+      this.outputResult({ ok: true }, `Opened URL: ${args.url}`);
     });
   }
 }

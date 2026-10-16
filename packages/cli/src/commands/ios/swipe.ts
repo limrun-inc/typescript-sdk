@@ -90,7 +90,7 @@ export default class IosSwipe extends BaseCommand {
           disconnect();
         }
       }
-      this.log(`Swiped from (${from[0]}, ${from[1]}) to (${to[0]}, ${to[1]})`);
+      this.outputResult({ ok: true }, `Swiped from (${from[0]}, ${from[1]}) to (${to[0]}, ${to[1]})`);
     });
   }
 }

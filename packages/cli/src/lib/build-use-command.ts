@@ -43,7 +43,17 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
         }
       }
       parseToolRequests(requests);
-      if (xcodeVersion) await this.setPreferredXcodeVersion(xcodeVersion, flags.id);
+      let xcode: unknown;
+      if (xcodeVersion)
+        await this.setPreferredXcodeVersion(
+          xcodeVersion,
+          flags.id,
+          requests.length ?
+            (result) => {
+              xcode = result;
+            }
+          : undefined,
+        );
       if (!requests.length) return;
       await this.withAuth(async () => {
         const { client } = await this.resolveBuildToolClient(platform, flags.id, 'existing');
@@ -54,6 +64,9 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
           proc,
           (message, options) => this.error(message, options),
           'Tool selection failed',
+          this.isJsonEnabled() ?
+            (result) => this.outputJson({ ...result, ...(xcode === undefined ? {} : { xcode }) })
+          : undefined,
         );
         this.info(`Selected ${requests.join(', ')} in the ${platform} sandbox.`);
       });

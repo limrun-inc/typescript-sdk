@@ -36,13 +36,16 @@ export default class AndroidConnect extends BaseCommand {
       const { client } = await getAndroidInstanceClient(this.client, resolvedInstance);
 
       const tunnel = await client.startAdbTunnel();
-      this.log(`Tunnel started on ${tunnel.address.address}:${tunnel.address.port}. Press Ctrl+C to stop.`);
+      this.outputResult(
+        { instanceId: id, address: tunnel.address },
+        `Tunnel started on ${tunnel.address.address}:${tunnel.address.port}. Press Ctrl+C to stop.`,
+      );
 
       await new Promise<void>((resolve) => {
         const keepAlive = setInterval(() => {}, 1 << 30);
         const shutdown = () => {
           clearInterval(keepAlive);
-          this.log('Stopping tunnel...');
+          this.info('Stopping tunnel...');
           resolve();
         };
         process.on('SIGINT', shutdown);

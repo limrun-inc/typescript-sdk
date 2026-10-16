@@ -14,6 +14,7 @@ export default class IosKeychainGenerateKey extends BaseCommand {
   async run(): Promise<void> {
     const { flags } = await this.parse(IosKeychainGenerateKey);
     this.setParsedFlags(flags);
-    this.output(generateKeychainEncryptionKey());
+    const key = generateKeychainEncryptionKey();
+    this.outputResult({ key }, key);
   }
 }

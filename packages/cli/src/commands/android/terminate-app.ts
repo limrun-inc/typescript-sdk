@@ -37,7 +37,7 @@ export default class AndroidTerminateApp extends BaseCommand {
       } finally {
         disconnect();
       }
-      this.log(`Terminated ${args.packageName}`);
+      this.outputResult({ ok: true }, `Terminated ${args.packageName}`);
     });
   }
 }

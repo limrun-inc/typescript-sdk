@@ -103,7 +103,7 @@ export default class IosLaunchApp extends BaseCommand {
             disconnect();
           }
         }
-        this.log(`Launched ${args.bundleId}`);
+        this.outputResult({ ok: true }, `Launched ${args.bundleId}`);
         return;
       }
 
@@ -116,7 +116,8 @@ export default class IosLaunchApp extends BaseCommand {
         // Subscribe before launching so early log lines are not missed.
         const logStream = client.streamAppLog(args.bundleId);
         logStream.on('line', (line: string) => {
-          process.stdout.write(line + '\n');
+          if (flags.json) this.outputEvent({ type: 'log', line });
+          else process.stdout.write(line + '\n');
         });
         logStream.on('error', (err: Error) => {
           this.warn(`App log stream error: ${err.message}`);
@@ -141,9 +142,11 @@ export default class IosLaunchApp extends BaseCommand {
           throw error;
         }
 
-        this.logToStderr(
-          `Launched ${args.bundleId}. Streaming app logs until the app exits; press Ctrl+C to stop earlier, or pass --detach to skip streaming.`,
-        );
+        if (flags.json) this.outputEvent({ type: 'launched', bundleId: args.bundleId });
+        if (!flags.json)
+          this.logToStderr(
+            `Launched ${args.bundleId}. Streaming app logs until the app exits; press Ctrl+C to stop earlier, or pass --detach to skip streaming.`,
+          );
 
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
@@ -156,7 +159,8 @@ export default class IosLaunchApp extends BaseCommand {
           process.on('SIGTERM', finish);
           logStream.on('close', finish);
           void appExited.then((info) => {
-            this.logToStderr(formatAppExit(args.bundleId, info, []));
+            if (flags.json) this.outputEvent({ type: 'exit', ...info });
+            else this.logToStderr(formatAppExit(args.bundleId, info, []));
             // Log lines arrive in ~500ms batches; give the tail a moment to flush.
             setTimeout(finish, 1000);
           });

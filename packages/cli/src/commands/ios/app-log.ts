@@ -51,12 +51,12 @@ export default class IosAppLog extends BaseCommand {
       if (!flags.follow) {
         if (await ensureDaemonSession(resolvedInstance)) {
           const output = await sendSessionCommand(id, 'app-log-tail', [args.bundleId, flags.tail]);
-          this.log(String(output));
+          this.outputResult({ stdout: String(output) }, String(output));
         } else {
           const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
           try {
             const output = await client.appLogTail(args.bundleId, flags.tail);
-            this.log(output);
+            this.outputResult({ stdout: output }, output);
           } finally {
             disconnect();
           }
@@ -69,7 +69,8 @@ export default class IosAppLog extends BaseCommand {
       try {
         const logStream = client.streamAppLog(args.bundleId);
         logStream.on('line', (line: string) => {
-          process.stdout.write(line + '\n');
+          if (flags.json) this.outputEvent({ line });
+          else process.stdout.write(line + '\n');
         });
         logStream.on('error', (err: Error) => {
           this.warn(`App log stream error: ${err.message}`);

@@ -53,7 +53,7 @@ export default class AndroidType extends BaseCommand {
           disconnect();
         }
       }
-      this.log('Text typed');
+      this.outputResult({ ok: true }, 'Text typed');
     });
   }
 }

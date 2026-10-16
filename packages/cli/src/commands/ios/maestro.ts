@@ -117,13 +117,15 @@ export default class IosMaestro extends BaseCommand {
           const proc = spawn('maestro', ['test', ...run.args, ...passthroughArgs], {
             ...maestroSpawnOptions,
             env: { ...process.env, ...run.env },
-            stdio: 'inherit',
+            stdio: flags.json ? ['inherit', 'pipe', 'inherit'] : 'inherit',
           });
+          proc.stdout?.on('data', (chunk: Buffer) => process.stderr.write(chunk));
           proc.once('error', reject);
           // Maestro already reported to the inherited stdio; a signal death
           // simply becomes a nonzero exit.
           proc.once('close', (code, signal) => resolve(signal ? 1 : code ?? 1));
         });
+        if (flags.json) this.outputJson({ exitCode });
         if (exitCode !== 0) {
           this.exit(exitCode);
         }

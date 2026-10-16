@@ -142,12 +142,13 @@ export default class TunnelRun extends BaseCommand {
         replace: flags.replace,
         clientVersion: VERSION,
         logLevel:
-          flags.verbose ? 'debug'
-          : this.shouldSuppressInfo() ? 'none'
+          this.shouldSuppressInfo() ? 'warn'
+          : flags.verbose ? 'debug'
           : 'warn',
         onEvent: (event) => {
           if (event.type === 'active') name = event.name;
-          this.info(formatTunnelConnectorEvent(name, event, tunnel.created));
+          if (this.isJsonEnabled()) this.outputEvent(event);
+          else this.info(formatTunnelConnectorEvent(name, event, tunnel.created));
         },
       });
       // close() says bye, which also takes a quick tunnel away.

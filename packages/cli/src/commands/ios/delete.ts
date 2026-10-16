@@ -39,7 +39,7 @@ export default class IosDelete extends BaseCommand {
 
       stopDaemon(id);
       clearLastInstanceId(id);
-      this.log(`Deleted iOS instance: ${id}`);
+      this.outputResult({ ok: true, id }, `Deleted iOS instance: ${id}`);
     });
   }
 }

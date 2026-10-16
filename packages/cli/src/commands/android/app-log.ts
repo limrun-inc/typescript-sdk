@@ -62,6 +62,11 @@ export default class AndroidAppLog extends BaseCommand {
             `pid="$(pidof -s ${args.packageName})" || { echo "${args.packageName} is not running; start it or use --follow." >&2; exit 1; }; ` +
               `logcat -d --pid "$pid" -t ${flags.tail}`,
           ]);
+          if (flags.json) {
+            this.outputJson(result);
+            if (result.exitCode !== 0) this.exit(result.exitCode);
+            return;
+          }
           if (result.stdout) {
             process.stdout.write(result.stdout);
           }
@@ -105,7 +110,8 @@ export default class AndroidAppLog extends BaseCommand {
 
         const closeStream = client.streamAppLogCapture({
           onLine: (line) => {
-            process.stdout.write(line.line + '\n');
+            if (flags.json) this.outputEvent(line);
+            else process.stdout.write(line.line + '\n');
           },
           onError: (err: Error) => {
             this.warn(`App log stream error: ${err.message}`);

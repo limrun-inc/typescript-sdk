@@ -112,8 +112,8 @@ export default class AndroidTunnel extends BaseCommand {
           this.tunnelContext(
             resolvedInstance.id,
             selectors,
-            flags.verbose ? 'debug'
-            : this.shouldSuppressInfo() ? 'none'
+            this.shouldSuppressInfo() ? 'none'
+            : flags.verbose ? 'debug'
             : 'info',
             inspection,
           ),

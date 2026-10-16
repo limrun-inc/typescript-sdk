@@ -474,7 +474,7 @@ export default class XcodeBuild extends BaseCommand {
       }
 
       proc.stdout.on('data', (line: string) => {
-        process.stdout.write(line + '\n');
+        (this.isJsonEnabled() ? process.stderr : process.stdout).write(line + '\n');
       });
 
       proc.stderr.on('data', (line: string) => {
@@ -482,6 +482,11 @@ export default class XcodeBuild extends BaseCommand {
       });
 
       const result = await proc;
+      if (this.isJsonEnabled()) {
+        this.outputJson({ instanceId: id, ...result });
+        if (result.exitCode !== 0) this.exit(result.exitCode);
+        return;
+      }
       const snapshotTip = await this.buildSnapshotTip(id);
 
       if (result.exitCode !== 0) {

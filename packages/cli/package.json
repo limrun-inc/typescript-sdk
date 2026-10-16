@@ -111,7 +111,8 @@
   "files": [
     "dist",
     "bin",
-    "README.md"
+    "README.md",
+    "JSON_OUTPUT.md"
   ],
   "resolutions": {
     "@limrun/api/undici": "7.29.1"

@@ -26,7 +26,10 @@ export default class TunnelDelete extends BaseCommand {
         this.error(`Tunnel ${args.name} does not exist.`);
       }
       await deleteTunnel(this.client, organizationId, tunnel.id);
-      this.output(`Deleted tunnel ${args.name}. Its connector exits and its token stops working.`);
+      this.outputResult(
+        { ok: true, id: tunnel.id },
+        `Deleted tunnel ${args.name}. Its connector exits and its token stops working.`,
+      );
     });
   }
 }

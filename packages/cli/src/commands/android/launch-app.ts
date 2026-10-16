@@ -50,7 +50,7 @@ export default class AndroidLaunchApp extends BaseCommand {
       try {
         if (flags.detach) {
           await client.launchApp(args.packageName, { mode });
-          this.log(`Launched ${args.packageName}`);
+          this.outputResult({ ok: true }, `Launched ${args.packageName}`);
           return;
         }
 
@@ -62,14 +62,17 @@ export default class AndroidLaunchApp extends BaseCommand {
         await client.launchApp(args.packageName, {
           mode,
           onExit: (logs: string[], info: AppExitInfo) => {
-            this.log(formatAppExit(info.packageName, info, logs));
+            if (flags.json) this.outputEvent({ type: 'exit', ...info, logs });
+            else this.log(formatAppExit(info.packageName, info, logs));
             notifyAppExited();
           },
         });
 
-        this.logToStderr(
-          `Launched ${args.packageName}. Watching until the app exits; press Ctrl+C to stop earlier, or pass --detach to skip watching.`,
-        );
+        if (flags.json) this.outputEvent({ type: 'launched', packageName: args.packageName });
+        if (!flags.json)
+          this.logToStderr(
+            `Launched ${args.packageName}. Watching until the app exits; press Ctrl+C to stop earlier, or pass --detach to skip watching.`,
+          );
 
         await new Promise<void>((resolve) => {
           const keepAlive = setInterval(() => {}, 1 << 30);
