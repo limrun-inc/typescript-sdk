@@ -55,7 +55,7 @@
 }
 
 .rc-video-loading {
-  aspect-ratio: 9 / 19.5;
+  aspect-ratio: auto 9 / 19.5;
 }
 
 .rc-touch-indicator {
