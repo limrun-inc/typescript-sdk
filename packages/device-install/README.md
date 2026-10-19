@@ -2,8 +2,9 @@
 
 Install a signed iOS app onto a physical iPhone that's plugged into the user's
 own computer — straight from the browser, no Mac and no Xcode on their machine.
-The browser talks to the iPhone over WebUSB and connects to a separate Limrun
-device session for each pairing or installation.
+The browser talks to the iPhone over WebUSB; Limrun's **registry** runs the
+native pairing and install on its side and relays the USB traffic over a
+WebSocket.
 
 `@limrun/device-install` ships the browser primitives and React hooks; your app owns the UI.
 There is no prebuilt wizard, so you decide how much of the flow to expose and
@@ -58,8 +59,9 @@ The browser side is split across two subpath entry points:
 
 ## The registry
 
-**Limrun's registry** (`https://registry.limrun.com`) authenticates requests
-to create device sessions and connect the Apple relay. Your org API key works, but it must never reach the browser. Instead,
+Pairing, install, and the Apple relay all run on **Limrun's registry**
+(`https://registry.limrun.com`), a shared service that authenticates a Limrun
+token. Your org API key works, but it must never reach the browser. Instead,
 your backend mints a **scoped token** with `@limrun/api` and hands that to
 the browser, which connects to the registry directly:
 
@@ -90,32 +92,6 @@ those assets, and `applerelay:*:connect` opens the Apple relay for the
 their own (they cannot be revoked, so keep TTLs short), and can only install
 from assets — the registry rejects `{ url }` sources for them.
 `examples/device-install/backend` is a complete minting backend you can copy.
-
-## Device session connections
-
-`pairDevice`, `startDeviceInstall`, and the React hook create a session before
-connecting. Each call waits for the returned WebSocket endpoint to accept the
-connection; there is no readiness polling step in your app. Show the hook's busy
-state while this request is pending.
-
-Custom relay clients must replace `GET /ios/device/ws` (now HTTP 410) with
-`POST /ios/device/sessions`. Send a bearer Limrun token, an `Idempotency-Key`
-(8–128 characters), and `{ "operation": "pair" }` or
-`{ "operation": "install", "assetId": "..." }`. Installs also accept `assetName`
-or `url`, with exactly one source. URL sources require a public HTTPS host on
-port 443 and are unavailable to scoped tokens.
-
-The 201 response contains `id`, `webSocketUrl`, `token`, and `expiresAt`.
-Connect to that URL using **only the returned session token**. The
-`createDeviceSession` and `sessionWebSocketUrl` exports implement this exchange.
-The old `deviceRelayWebSocketUrl` helper is deprecated and produces a retired URL.
-
-A session accepts one connection for one operation. Reuse an idempotency key
-only when retrying creation of that same session in the same region; deduplication
-lasts while that session exists. After a disconnect or completion, create a new
-session with a fresh key. The SDK retries a lost creation response once with the
-same key. Grants expire at `expiresAt`, no later than the scoped token used to
-create them. Keep both credentials out of logs.
 
 ## Pair the iPhone
 
