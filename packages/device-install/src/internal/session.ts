@@ -1,13 +1,13 @@
-import type { InstallSource } from './operations';
+import type { InstallSource } from '../operations';
 
-export interface DeviceSession {
+interface DeviceSession {
   id: string;
   webSocketUrl: string;
   token: string;
   expiresAt: string;
 }
 
-export interface CreateDeviceSessionOptions {
+interface CreateDeviceSessionOptions {
   registryApiUrl: string;
   token?: string;
   organizationId?: string;

@@ -1,7 +1,7 @@
 /// <reference path="./webusb-dom.d.ts" />
 
 import type { DeviceHello, DeviceInstallLog, PairRecordPayload } from './types';
-import { createDeviceSession, sessionWebSocketUrl } from './session';
+import { createDeviceSession, sessionWebSocketUrl } from './internal/session';
 import { RelayClient } from './relay-client';
 import { closeUsbmuxSession, createUsbmuxSession, type UsbmuxSession } from './usbmux';
 import { claimUsbmux, findUsbmuxCandidates, requestAppleDevice, type UsbmuxCandidate } from './webusb';
@@ -216,7 +216,7 @@ function orderedUsbmuxCandidates(device: USBDevice) {
   ];
 }
 
-/** @deprecated Create a worker with createDeviceSession and use its webSocketUrl and token. */
+/** @deprecated Use pairDevice or startDeviceInstall to connect through a dedicated session. */
 export function deviceRelayWebSocketUrl(registryApiUrl: string, token?: string, organizationId?: string) {
   const url = new URL(registryApiUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
