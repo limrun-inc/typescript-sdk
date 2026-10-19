@@ -1,6 +1,7 @@
 /// <reference path="./webusb-dom.d.ts" />
 
 import type { DeviceHello, DeviceInstallLog, PairRecordPayload } from './types';
+import { createDeviceSession, sessionWebSocketUrl } from './session';
 import { RelayClient } from './relay-client';
 import { closeUsbmuxSession, createUsbmuxSession, type UsbmuxSession } from './usbmux';
 import { claimUsbmux, findUsbmuxCandidates, requestAppleDevice, type UsbmuxCandidate } from './webusb';
@@ -56,7 +57,9 @@ export async function pairDevice({
   log = noopLog,
   target,
 }: PairDeviceOptions) {
-  const deviceRelayUrl = deviceRelayWebSocketUrl(registryApiUrl, token, organizationId);
+  log('Preparing device session');
+  const session = await createDeviceSession({ registryApiUrl, token, organizationId, operation: 'pair' });
+  const deviceRelayUrl = sessionWebSocketUrl(session);
   let relay: RelayClient | undefined;
   try {
     relay = await connectRelay(deviceRelayUrl, target, log);
@@ -77,7 +80,15 @@ export async function startDeviceInstall({
   pairRecord,
   installSource,
 }: StartDeviceInstallOptions) {
-  const deviceRelayUrl = deviceRelayWebSocketUrl(registryApiUrl, token, organizationId);
+  log('Preparing device session');
+  const session = await createDeviceSession({
+    registryApiUrl,
+    token,
+    organizationId,
+    operation: 'install',
+    installSource,
+  });
+  const deviceRelayUrl = sessionWebSocketUrl(session);
   let relay: RelayClient | undefined;
   try {
     relay = await connectRelay(deviceRelayUrl, target, log);
@@ -205,6 +216,7 @@ function orderedUsbmuxCandidates(device: USBDevice) {
   ];
 }
 
+/** @deprecated Create a worker with createDeviceSession and use its webSocketUrl and token. */
 export function deviceRelayWebSocketUrl(registryApiUrl: string, token?: string, organizationId?: string) {
   const url = new URL(registryApiUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';

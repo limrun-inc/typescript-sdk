@@ -23,3 +23,10 @@ export {
   type OTAInstallState,
   type OTAInstallStatus,
 } from './ota';
+
+export {
+  createDeviceSession,
+  sessionWebSocketUrl,
+  type DeviceSession,
+  type CreateDeviceSessionOptions,
+} from './session';
