@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.65.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.64.1...v0.65.0) (2026-10-20)
+
+
+### Features
+
+* **cli:** enable project snapshots by default for Xcode ([3515651](https://github.com/limrun-inc/typescript-sdk/commit/3515651349ec3828c7fce1387736411faf0cc375))
+* **cli:** enable project snapshots by default for Xcode ([ce8701c](https://github.com/limrun-inc/typescript-sdk/commit/ce8701c2558dbacb5118121b0f5965304a6249b9))
+* **cli:** suggest snapshots after uncached builds ([cb80554](https://github.com/limrun-inc/typescript-sdk/commit/cb80554066a8152d9e6204a0a136d76043aa3f54))
+* **cli:** support additional files in Gradle builds ([c3e55ee](https://github.com/limrun-inc/typescript-sdk/commit/c3e55ee90b7db8273503c8991a11e4cf2ce4b1c6))
+
+
+### Bug Fixes
+
+* **cli:** discover snapshot projects without Git executable ([80838c0](https://github.com/limrun-inc/typescript-sdk/commit/80838c04c4117ce933a959fd25408f7098343118))
+* **cli:** identify API requests with the CLI User-Agent ([590ebb7](https://github.com/limrun-inc/typescript-sdk/commit/590ebb72912f23111367e6566dbe8865a0c4346e))
+* **cli:** prepend CLI identity to API User-Agent ([e87e01d](https://github.com/limrun-inc/typescript-sdk/commit/e87e01dc969e96f4a40cb6d481bc6803ee55b55c))
+
+
+### Chores
+
+* **cli:** bump minor version to 0.46.0 ([a9552e6](https://github.com/limrun-inc/typescript-sdk/commit/a9552e6c8e30353bc4d6f3f20120c133814a9010))
+
+
+### Documentation
+
+* **cli:** update disk snapshot build tip wording ([6232fb3](https://github.com/limrun-inc/typescript-sdk/commit/6232fb3e186aed3d7d54008114e14b1310415978))
+
 ## [0.64.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.64.0...v0.64.1) (2026-10-15)
 
 
