@@ -96,7 +96,7 @@ describe('xcode client build-finish webhook', () => {
       setTimeout(() => {
         onMessage?.({
           event: 'testflight',
-          data: JSON.stringify({ state: 'accepted', uploadId: 'upload-1' }),
+          data: JSON.stringify({ state: 'accepted', appId: '6822100611', uploadId: 'upload-1' }),
         });
         onMessage?.({ event: 'exitCode', data: '0' });
       }, 0);
@@ -112,6 +112,7 @@ describe('xcode client build-finish webhook', () => {
       { scheme: 'Scripty' },
       {
         appstore: {
+          appId: '6822100611',
           apiKeyId: 'KEY123',
           apiPrivateKeyBase64: 'cHJpdmF0ZSBrZXk=',
         },
@@ -122,11 +123,12 @@ describe('xcode client build-finish webhook', () => {
       command: 'xcodebuild',
       xcodebuild: { scheme: 'Scripty' },
       testflight: {
+        appId: '6822100611',
         apiKeyId: 'KEY123',
         apiPrivateKeyBase64: 'cHJpdmF0ZSBrZXk=',
       },
     });
-    expect(result.appstore).toEqual({ state: 'accepted', uploadId: 'upload-1' });
+    expect(result.appstore).toEqual({ state: 'accepted', appId: '6822100611', uploadId: 'upload-1' });
     expect('testflight' in result).toBe(false);
   });
 
