@@ -344,6 +344,8 @@ export type XctestSummaryEvent = {
 export type XctestEvent = XctestCaseEvent | XctestSummaryEvent;
 
 export type AppStoreEvent = {
+  /** Verified target App Store Connect app ID, present once the target is resolved. */
+  appId?: string;
   /** 'unknown' means an App Store upload event arrived but its payload was unreadable. */
   state: 'uploading' | 'processing' | 'accepted' | 'failed' | 'unknown';
   uploadId?: string;
@@ -361,6 +363,12 @@ export type PlaystoreEvent = {
 };
 
 export type AppStoreUploadConfig = {
+  /**
+   * Optional App Store Connect app ID. Its bundle ID must exactly match the
+   * built app. Also used for automatic build-number lookup. Omit to find an
+   * exact bundle-ID match automatically.
+   */
+  appId?: string;
   /** App Store Connect API key ID, e.g. 2X9R4HXF34. */
   apiKeyId: string;
   /** Issuer ID for team API keys. Omit for individual API keys. */
