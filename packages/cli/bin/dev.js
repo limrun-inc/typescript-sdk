@@ -4,7 +4,8 @@
 const path = require('path');
 const project = path.join(__dirname, '..', 'tsconfig.json');
 
-require('ts-node').register({ project });
+// The build checks types; keep command startup independent of type-checking the source tree.
+require('ts-node').register({ project, transpileOnly: true });
 
 const oclif = require('@oclif/core');
 

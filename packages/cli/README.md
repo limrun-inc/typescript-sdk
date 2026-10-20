@@ -890,6 +890,8 @@ lim xcode build ./MyProject --scheme TVApp --sdk appletvos --configuration Relea
 lim xcode build ./MyProject --scheme VisionApp --sdk xros --configuration Release --signing-method app-store-connect --team-id "$TEAM_ID" --asc-key-id "$ASC_KEY_ID" --asc-issuer-id "$ASC_ISSUER_ID" --asc-key ./AuthKey.p8 --upload-to-appstore
 ```
 
+You can override automatic App Store app selection with `--asc-app-id <app-id>` when using `--upload-to-appstore`.
+
 ---
 
 ### Bazel
