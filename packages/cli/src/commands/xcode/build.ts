@@ -41,6 +41,7 @@ const APP_STORE_SDKS = new Set(['iphoneos', 'appletvos', 'xros']);
 const SIMULATOR_SDKS = new Set(['iphonesimulator', 'watchsimulator']);
 type AppStoreFlags = {
   'upload-to-appstore': boolean;
+  'asc-app-id'?: string;
   'asc-key-id'?: string;
   'asc-issuer-id'?: string;
   'asc-key'?: string;
@@ -207,6 +208,14 @@ export default class XcodeBuild extends BaseCommand {
         'Upload the signed IPA to App Store Connect after the build, making it available for TestFlight or App Store distribution. Requires manual or cloud signing plus --asc-key-id and --asc-key.',
       default: false,
     }),
+    'asc-app-id': Flags.string({
+      description:
+        'Override automatic app selection with this App Store Connect app ID. Its bundle ID must match the built app. Requires --upload-to-appstore.',
+      parse: async (value) => {
+        if (!value.trim()) throw new Error('--asc-app-id must not be empty.');
+        return value;
+      },
+    }),
     'asc-key-id': Flags.string({
       description: 'App Store Connect API key ID for cloud signing or --upload-to-appstore, e.g. 2X9R4HXF34.',
     }),
@@ -293,6 +302,9 @@ export default class XcodeBuild extends BaseCommand {
     }
     if (flags.ios && (flags['upload-to-appstore'] || hasAppStoreFlags(flags))) {
       this.error('--ios builds run on a simulator and cannot upload to App Store Connect.');
+    }
+    if (flags['asc-app-id'] !== undefined && !flags['upload-to-appstore']) {
+      this.error('--asc-app-id requires --upload-to-appstore.');
     }
     if (flags.id && flags['inactivity-timeout']) {
       this.error('--inactivity-timeout controls a newly created instance and cannot be combined with --id.');
@@ -616,6 +628,7 @@ export default class XcodeBuild extends BaseCommand {
       this.error('--upload-to-appstore requires both --asc-key-id and --asc-key.');
     }
     return {
+      ...(flags['asc-app-id'] !== undefined && { appId: flags['asc-app-id'] }),
       apiKeyId: flags['asc-key-id'],
       ...(flags['asc-issuer-id'] && { apiIssuerId: flags['asc-issuer-id'] }),
       apiPrivateKeyBase64: await this.readFileBase64(flags['asc-key'], '--asc-key'),
@@ -646,6 +659,7 @@ export default class XcodeBuild extends BaseCommand {
 
 function hasAppStoreFlags(flags: AppStoreFlags): boolean {
   return (
+    flags['asc-app-id'] !== undefined ||
     flags['asc-key-id'] !== undefined ||
     flags['asc-issuer-id'] !== undefined ||
     flags['asc-key'] !== undefined ||
