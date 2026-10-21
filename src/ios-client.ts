@@ -54,9 +54,25 @@ export const REVERSE_TUNNEL_REMOTE_PORT_MAX = 57099;
 /** Default tapElement timeout; see TapElementOptions.timeoutMs. */
 export const TAP_ELEMENT_TIMEOUT_MS = 90_000;
 
-function buildDownloadUrl(apiUrl: string): string {
-  return `${apiUrl}/files?name=${encodeURIComponent(ACTIVE_RECORDING_FILENAME)}`;
+function buildDownloadUrl(apiUrl: string, recordingId?: string): string {
+  const filename = recordingId ? `recording_${recordingId}.mp4` : ACTIVE_RECORDING_FILENAME;
+  return `${apiUrl}/files?name=${encodeURIComponent(filename)}`;
 }
+
+function validateRecordingId(recordingId: string): void {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(recordingId)) {
+    throw new Error('recordingId must be an ID returned by startRecordingSession');
+  }
+}
+
+export type RecordingOptions = {
+  quality?: RecordingQuality;
+  persist?: PersistOption;
+  display?: DuoDisplay;
+  touchIndicators?: boolean;
+};
+
+export type RecordingDestination = { presignedUrl?: string; localPath?: string };
 
 export function deriveReverseTunnelUrl(apiUrl: string, remotePort: number): string {
   const url = new URL(apiUrl);
@@ -917,12 +933,17 @@ export type InstanceClient = {
    * when the recording stops or the instance terminates; list it with
    * `iosInstances.listRecordings`.
    */
-  startRecording: (options?: {
-    quality?: RecordingQuality;
-    persist?: PersistOption;
-    display?: DuoDisplay;
-    touchIndicators?: boolean;
-  }) => Promise<void>;
+  startRecording: (options?: RecordingOptions) => Promise<void>;
+
+  /**
+   * Start an independent recording and return its ID. Concurrent recordings share
+   * one encoder and must use the same quality, display, and touchIndicators.
+   * Up to eight recordings may be active or uploading. Stop them in any order.
+   */
+  startRecordingSession: (options?: RecordingOptions) => Promise<string>;
+
+  /** Finish one recording without interrupting the others. Returns its authenticated download URL. */
+  stopRecordingSession: (recordingId: string, saveTo?: RecordingDestination) => Promise<string>;
 
   /**
    * Stop the active server-side recording.
@@ -932,7 +953,7 @@ export type InstanceClient = {
    * Returns a download URL for the completed recording that can be used to download using the token.
    * Note that the download URL is only valid while the instance is running.
    */
-  stopRecording: (saveTo: { presignedUrl?: string; localPath?: string }) => Promise<string>;
+  stopRecording: (saveTo: RecordingDestination) => Promise<string>;
 
   /**
    * Start capturing an app's logs (one JSONL object per line) for the given
@@ -1424,6 +1445,7 @@ type AppExitMessage = {
 };
 
 type ServerResponse = {
+  recordingId?: string;
   state?: FoldState;
   type: string;
   id: string;
@@ -1975,6 +1997,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         durationMs: msg.durationMs ?? 0,
       }),
       startVideoRecordingResult: () => undefined,
+      startVideoRecordingSessionResult: (msg) => ({ recordingId: msg.recordingId }),
+      stopVideoRecordingSessionResult: () => undefined,
       stopVideoRecordingResult: () => undefined,
       startAppLogCaptureResult: () => undefined,
       stopAppLogCaptureResult: () => undefined,
@@ -2181,6 +2205,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             performActions,
             startRecording,
             stopRecording,
+            startRecordingSession,
+            stopRecordingSession,
             startAppLogCapture,
             stopAppLogCapture,
             startEventCapture,
@@ -2590,18 +2616,50 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       );
     };
 
-    const startRecording: InstanceClient['startRecording'] = async (opts) => {
-      if (opts?.quality !== undefined) {
-        if (!Number.isInteger(opts.quality) || opts.quality < 5 || opts.quality > 10) {
-          throw new Error('quality must be one of: 5, 6, 7, 8, 9, 10');
-        }
+    const recordingRequest = (opts?: RecordingOptions) => {
+      if (
+        opts?.quality !== undefined &&
+        (!Number.isInteger(opts.quality) || opts.quality < 5 || opts.quality > 10)
+      ) {
+        throw new Error('quality must be one of: 5, 6, 7, 8, 9, 10');
       }
-      await sendRequest<void>('startVideoRecording', {
+      return {
         ...persistFields(opts?.persist),
         quality: opts?.quality,
         display: opts?.display,
         touchIndicators: opts?.touchIndicators,
-      });
+      };
+    };
+
+    const startRecording: InstanceClient['startRecording'] = async (opts) => {
+      await sendRequest<void>('startVideoRecording', recordingRequest(opts));
+    };
+
+    const startRecordingSession: InstanceClient['startRecordingSession'] = async (opts) => {
+      const result = await sendRequest<{ recordingId: string }>(
+        'startVideoRecordingSession',
+        recordingRequest(opts),
+      );
+      validateRecordingId(result.recordingId);
+      return result.recordingId;
+    };
+
+    const stopRecordingSession: InstanceClient['stopRecordingSession'] = async (recordingId, saveTo = {}) => {
+      validateRecordingId(recordingId);
+      await sendRequest<void>(
+        'stopVideoRecordingSession',
+        {
+          recordingId,
+          upload: saveTo.presignedUrl ? { presignedUrl: saveTo.presignedUrl } : undefined,
+        },
+        undefined,
+        180_000,
+      );
+      const downloadUrl = buildDownloadUrl(options.apiUrl, recordingId);
+      if (saveTo.localPath) {
+        await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
+      }
+      return downloadUrl;
     };
 
     const startAppLogCapture = async (opts: { bundleId: string; persist?: PersistOption }): Promise<void> => {
