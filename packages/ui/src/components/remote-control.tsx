@@ -2764,7 +2764,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
         const isDuo = deviceModel === 'iphone-duo' || foldSupported;
         setDetectedDuo(isDuo);
-        const peerConnection = new RTCPeerConnection(rtcConfig);
+        // Keep browser LAN and VPN addresses out of signaling and connectivity checks.
+        const peerConnection = new RTCPeerConnection({ ...rtcConfig, iceTransportPolicy: 'relay' });
         peerConnectionRef.current = peerConnection;
         peerConnection.addTransceiver('audio', { direction: 'recvonly' });
         const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
