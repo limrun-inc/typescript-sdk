@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.65.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.65.0...v0.65.1) (2026-10-22)
+
+
+### Chores
+
+* **cli:** release 0.47.0 with concurrent recordings ([#563](https://github.com/limrun-inc/typescript-sdk/issues/563)) ([3d453f4](https://github.com/limrun-inc/typescript-sdk/commit/3d453f48db43ebbadc50e0130d8a22252e681dc4))
+
 ## [0.65.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.64.2...v0.65.0) (2026-10-22)
 
 
