@@ -10,11 +10,8 @@ import { defineConfig } from 'vitest/config';
 //
 // at the top of the test file.
 //
-// The actual <RemoteControl> component is intentionally NOT under unit
-// test here — its WebRTC plumbing is integration-tested via the demo +
-// staging instance. These tests cover the smaller, pure-logic pieces:
-// `core/ax-tree.ts`, `core/ax-fetcher.ts` and the URL helper exported from
-// `components/remote-control.tsx`.
+// RemoteControl connection tests exercise lifecycle decisions with mocked
+// browser transports. Actual media connectivity still needs live validation.
 export default defineConfig({
   test: {
     environment: 'jsdom',
