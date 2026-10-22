@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.65.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.64.2...v0.65.0) (2026-10-22)
+
+
+### Features
+
+* add independent recordings with optional IDs to the SDK and CLI ([#556](https://github.com/limrun-inc/typescript-sdk/issues/556)) ([feea714](https://github.com/limrun-inc/typescript-sdk/commit/feea714f6c15772414282c2ec12d2060cce224c2))
+
+
+### Bug Fixes
+
+* **ui:** allow initial WebRTC negotiation to recover before retrying ([09270fa](https://github.com/limrun-inc/typescript-sdk/commit/09270fa099622ff9cd456bf334440e12faccdc50))
+* **ui:** force relay-only browser ICE ([973beeb](https://github.com/limrun-inc/typescript-sdk/commit/973beeb019c82a06dff4bb26766a9006fbc54cf4))
+* **ui:** force relay-only ICE and prepare 0.17.0 ([7148be9](https://github.com/limrun-inc/typescript-sdk/commit/7148be96ee4c68856e151fa63b0ff3b1ca2e0e13))
+* **ui:** let initial WebRTC negotiation reach its deadline ([976ce89](https://github.com/limrun-inc/typescript-sdk/commit/976ce89b3f4b9d2d500a3570296f98ca30308969))
+
+
+### Chores
+
+* **ui:** bump version to 0.17.1 ([4909927](https://github.com/limrun-inc/typescript-sdk/commit/4909927098a605b03a2e3f6245592e3e3a465b44))
+* **ui:** prepare stable 0.17.0 release ([df518ed](https://github.com/limrun-inc/typescript-sdk/commit/df518ed1fa81b115639b125a34c2d29bf2d9487e))
+* **ui:** remove connection lifecycle tests from fix ([d3a1bb6](https://github.com/limrun-inc/typescript-sdk/commit/d3a1bb6cfcfe80f9f13eb4af827efc3531621919))
+
 ## [0.64.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.64.1...v0.64.2) (2026-10-20)
 
 
