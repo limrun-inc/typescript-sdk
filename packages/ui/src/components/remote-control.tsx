@@ -3014,7 +3014,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             return;
           }
           updateStatus('Connection state: ' + peerConnection.connectionState);
-          if (peerConnection.connectionState === 'failed') {
+          // Later TURN candidates can recover an initial failure.
+          // Let the connection deadline handle startup until the control channel opens.
+          if (peerConnection.connectionState === 'failed' && controlChannelOpenedRef.current) {
             scheduleRetry('WebRTC connection entered failed state', generation);
           }
         };
@@ -3036,11 +3038,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }
           if (iceState === 'failed') {
             clearIceDisconnectedGrace();
-            scheduleRetry('ICE connection entered failed state', generation);
+            if (controlChannelOpenedRef.current) {
+              scheduleRetry('ICE connection entered failed state', generation);
+            }
             return;
           }
           if (
             iceState === 'disconnected' &&
+            controlChannelOpenedRef.current &&
             autoReconnectRef.current &&
             iceDisconnectedGraceRef.current === undefined
           ) {
