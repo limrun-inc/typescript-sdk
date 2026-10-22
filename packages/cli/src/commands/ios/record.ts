@@ -2,19 +2,17 @@ import path from 'path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseDurationSeconds } from '../../lib/duration';
-import {
-  getIosInstanceClient,
-  ensureDaemonSession,
-  sendSessionCommand,
-} from '../../lib/instance-client-factory';
+import { getIosInstanceClient } from '../../lib/instance-client-factory';
 
 export default class IosRecord extends BaseCommand {
   static summary = 'Start or stop video recording on a running iOS instance';
   static description =
-    'Control screen recording on a running iOS instance. Touch ripples and drag trails show where touches occur and are enabled by default while recording. Use --no-touch-indicators to disable them. Start recording first, then stop recording to download the file locally or upload it directly with `--presigned-url`.';
+    'Control screen recording on a running iOS instance. Touch ripples and drag trails show where touches occur and are enabled by default while recording. Use --no-touch-indicators to disable them. Start returns a recording ID. Stop accepts an ID or selects the most recently started recording that is still active. Other recordings continue. Stop recording to download the file locally or upload it directly with `--presigned-url`.';
   static examples = [
     '<%= config.bin %> ios record start',
     '<%= config.bin %> ios record stop',
+    '<%= config.bin %> ios record start run-1',
+    '<%= config.bin %> ios record stop run-1 -o recording.mp4',
     '<%= config.bin %> ios record stop -o recording.mp4 --id <instance-ID>',
     '<%= config.bin %> ios record stop --presigned-url https://example.com/upload --id <instance-ID>',
     '<%= config.bin %> ios record start --quality 8',
@@ -28,6 +26,10 @@ export default class IosRecord extends BaseCommand {
         'Recording action to perform: `start` begins capturing and `stop` finalizes the video file',
       required: true,
       options: ['start', 'stop'],
+    }),
+    recordingId: Args.string({
+      description:
+        'Recording ID. Generated on start when omitted; stop selects the latest active recording when omitted.',
     }),
   };
 
@@ -97,26 +99,25 @@ export default class IosRecord extends BaseCommand {
             : true
           : undefined;
         const options = {
+          recordingId: args.recordingId,
           quality: flags.quality,
           persist,
           display: flags.display as 'inner' | 'outer' | undefined,
           touchIndicators: flags['touch-indicators'],
         };
-        if (await ensureDaemonSession(resolvedInstance)) {
-          await sendSessionCommand(id, 'start-recording', [options]);
-        } else {
-          const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
-          try {
-            await client.startRecording(options);
-          } finally {
-            disconnect();
-          }
+        const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
+        let recordingId: string;
+        try {
+          recordingId = await client.startRecordingSession(options);
+        } finally {
+          disconnect();
         }
         this.outputResult(
           {
             ok: true,
             instanceId: id,
             recording: true,
+            recordingId,
             quality: flags.quality,
             persist: Boolean(persist),
             persistTtlSeconds: typeof persist === 'object' ? persist.ttlSeconds : undefined,
@@ -124,8 +125,10 @@ export default class IosRecord extends BaseCommand {
             touchIndicators: flags['touch-indicators'],
           },
           persist ?
-            `Recording started; it will be persisted for ${flags['persist-ttl'] ?? '72h'} when it stops.`
-          : 'Recording started',
+            `Recording ${recordingId} started; it will be persisted for ${
+              flags['persist-ttl'] ?? '72h'
+            } when it stops.`
+          : `Recording started: ${recordingId}`,
         );
         return;
       }
@@ -136,27 +139,9 @@ export default class IosRecord extends BaseCommand {
         presignedUrl: flags['presigned-url'],
       };
 
-      if (await ensureDaemonSession(resolvedInstance)) {
-        await sendSessionCommand(id, 'stop-recording', [saveTo]);
-        this.outputResult(
-          {
-            ok: true,
-            instanceId: id,
-            recording: false,
-            localPath: outputPath,
-            uploaded: Boolean(flags['presigned-url']),
-          },
-          `Recording saved to ${outputPath}`,
-        );
-        if (flags['presigned-url']) {
-          if (!flags.json) this.log('Recording uploaded using the provided presigned URL');
-        }
-        return;
-      }
-
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        await client.stopRecording(saveTo);
+        await client.stopRecordingSession(args.recordingId, saveTo);
         this.outputResult(
           {
             ok: true,
