@@ -20,7 +20,7 @@ function setup(
   daemon = false,
 ) {
   const client = {
-    startRecording: jest.fn().mockResolvedValue(undefined),
+    startRecordingSession: jest.fn().mockResolvedValue('run-1'),
     scroll: jest.fn().mockResolvedValue(undefined),
     performActions: jest.fn().mockResolvedValue({ results: [] }),
   };
@@ -94,34 +94,19 @@ test('swipe cleanup preserves an explicit display', async () => {
 });
 
 describe('record options', () => {
-  test.each(['inner', 'outer'])('forwards explicit %s through the daemon', async (display) => {
-    const { command } = setup(IosRecord, display, true);
-    await command.run();
-    expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'start-recording', [
-      expect.objectContaining({ display, touchIndicators: true }),
-    ]);
-    expect(getIosInstanceClient).not.toHaveBeenCalled();
-  });
-  test.each([false, true])('forwards opt-out with daemon=%s', async (daemon) => {
+  test.each([false, true])('forwards recording options directly with daemon=%s', async (daemon) => {
     const { command, client, flags } = setup(IosRecord, 'inner', daemon);
     flags['touch-indicators'] = false;
     Object.assign(flags, { persist: true, 'persist-ttl': '1h', quality: 8 });
     await command.run();
-    const options = { display: 'inner', touchIndicators: false, quality: 8, persist: { ttlSeconds: 3600 } };
-    if (daemon) {
-      expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'start-recording', [options]);
-      expect(getIosInstanceClient).not.toHaveBeenCalled();
-    } else {
-      expect(client.startRecording).toHaveBeenCalledWith(options);
-    }
-  });
-  test('default capture uses the daemon and leaves activity selection to the server', async () => {
-    const { command } = setup(IosRecord, undefined, true);
-    await command.run();
-    expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'start-recording', [
-      expect.objectContaining({ touchIndicators: true, display: undefined }),
-    ]);
-    expect(getIosInstanceClient).not.toHaveBeenCalled();
+    expect(client.startRecordingSession).toHaveBeenCalledWith({
+      recordingId: undefined,
+      display: 'inner',
+      touchIndicators: false,
+      quality: 8,
+      persist: { ttlSeconds: 3600 },
+    });
+    expect(sendSessionCommand).not.toHaveBeenCalled();
   });
   test.each([
     [['start'], true],

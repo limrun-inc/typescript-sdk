@@ -91,8 +91,11 @@ beforeEach(() => {
       'setWifiBandwidth',
       'startRecording',
       'stopRecording',
+      'startRecordingSession',
+      'stopRecordingSession',
     ].map((name) => [name, jest.fn().mockResolvedValue(undefined)]),
   );
+  client.startRecordingSession!.mockResolvedValue('run-1');
   jest.mocked(getAndroidInstanceClient).mockResolvedValue({ client, disconnect: cleanup } as never);
   jest.mocked(getIosInstanceClient).mockResolvedValue({ client, disconnect: cleanup } as never);
   jest.mocked(daemon.listActiveSessions).mockReturnValue([]);
@@ -252,6 +255,7 @@ describe.each([false, true])('device actions with daemon=%s', (session) => {
       ok: true,
       instanceId: target.id,
       recording: true,
+      recordingId: 'run-1',
       quality: 5,
       persist: false,
     });
@@ -660,6 +664,7 @@ test.each(['ios', 'android'])(
       ok: true,
       instanceId: target.id,
       recording: true,
+      recordingId: 'run-1',
       quality: 8,
       persist: true,
       persistTtlSeconds: 86400,

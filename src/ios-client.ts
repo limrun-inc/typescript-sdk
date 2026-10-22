@@ -60,8 +60,10 @@ function buildDownloadUrl(apiUrl: string, recordingId?: string): string {
 }
 
 function validateRecordingId(recordingId: string): void {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(recordingId)) {
-    throw new Error('recordingId must be an ID returned by startRecordingSession');
+  if (/^[a-z0-9][a-z0-9_-]{0,63}$/.exec(recordingId)?.[0] !== recordingId) {
+    throw new Error(
+      'recordingId must be 1–64 lowercase letters, digits, underscores or hyphens, start with a letter or digit',
+    );
   }
 }
 
@@ -939,11 +941,12 @@ export type InstanceClient = {
    * Start an independent recording and return its ID. Concurrent recordings share
    * one encoder and must use the same quality, display, and touchIndicators.
    * Up to eight recordings may be active or uploading. Stop them in any order.
+   * Omit recordingId to generate one. IDs cannot be reused during the instance lifetime.
    */
-  startRecordingSession: (options?: RecordingOptions) => Promise<string>;
+  startRecordingSession: (options?: RecordingOptions & { recordingId?: string }) => Promise<string>;
 
-  /** Finish one recording without interrupting the others. Returns its authenticated download URL. */
-  stopRecordingSession: (recordingId: string, saveTo?: RecordingDestination) => Promise<string>;
+  /** Stop the given recording, or the latest active recording when omitted. Returns its authenticated download URL. */
+  stopRecordingSession: (recordingId?: string, saveTo?: RecordingDestination) => Promise<string>;
 
   /**
    * Stop the active server-side recording.
@@ -1998,7 +2001,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }),
       startVideoRecordingResult: () => undefined,
       startVideoRecordingSessionResult: (msg) => ({ recordingId: msg.recordingId }),
-      stopVideoRecordingSessionResult: () => undefined,
+      stopVideoRecordingSessionResult: (msg) => ({ recordingId: msg.recordingId }),
       stopVideoRecordingResult: () => undefined,
       startAppLogCaptureResult: () => undefined,
       stopAppLogCaptureResult: () => undefined,
@@ -2636,17 +2639,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const startRecordingSession: InstanceClient['startRecordingSession'] = async (opts) => {
-      const result = await sendRequest<{ recordingId: string }>(
-        'startVideoRecordingSession',
-        recordingRequest(opts),
-      );
+      if (opts?.recordingId !== undefined) validateRecordingId(opts.recordingId);
+      const result = await sendRequest<{ recordingId: string }>('startVideoRecordingSession', {
+        ...recordingRequest(opts),
+        recordingId: opts?.recordingId,
+      });
       validateRecordingId(result.recordingId);
       return result.recordingId;
     };
 
     const stopRecordingSession: InstanceClient['stopRecordingSession'] = async (recordingId, saveTo = {}) => {
-      validateRecordingId(recordingId);
-      await sendRequest<void>(
+      if (recordingId !== undefined) validateRecordingId(recordingId);
+      const result = await sendRequest<{ recordingId?: string }>(
         'stopVideoRecordingSession',
         {
           recordingId,
@@ -2655,7 +2659,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         undefined,
         180_000,
       );
-      const downloadUrl = buildDownloadUrl(options.apiUrl, recordingId);
+      const stoppedId = result.recordingId ?? recordingId;
+      if (stoppedId === undefined) throw new Error('Runtime did not return the stopped recordingId');
+      const legacy = recordingId === undefined && stoppedId === 'legacy:recording';
+      if (!legacy) validateRecordingId(stoppedId);
+      const downloadUrl = buildDownloadUrl(options.apiUrl, legacy ? undefined : stoppedId);
       if (saveTo.localPath) {
         await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
       }

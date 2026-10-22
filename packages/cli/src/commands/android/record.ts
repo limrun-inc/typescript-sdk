@@ -2,19 +2,17 @@ import path from 'path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseDurationSeconds } from '../../lib/duration';
-import {
-  getAndroidInstanceClient,
-  ensureDaemonSession,
-  sendSessionCommand,
-} from '../../lib/instance-client-factory';
+import { getAndroidInstanceClient } from '../../lib/instance-client-factory';
 
 export default class AndroidRecord extends BaseCommand {
   static summary = 'Start or stop video recording on a running Android instance';
   static description =
-    'Control screen recording on a running Android instance. Start recording first, then stop recording to download the file locally or upload it directly with `--presigned-url`.';
+    'Control screen recording on a running Android instance. Start returns a recording ID. Stop accepts an ID or selects the most recently started recording that is still active. Other recordings continue. Stop recording to download the file locally or upload it directly with `--presigned-url`.';
   static examples = [
     '<%= config.bin %> android record start',
     '<%= config.bin %> android record stop',
+    '<%= config.bin %> android record start run-1',
+    '<%= config.bin %> android record stop run-1 -o recording.mp4',
     '<%= config.bin %> android record stop -o recording.mp4 --id <instance-ID>',
     '<%= config.bin %> android record stop --presigned-url https://example.com/upload --id <instance-ID>',
     '<%= config.bin %> android record start --persist --persist-ttl 24h',
@@ -26,6 +24,10 @@ export default class AndroidRecord extends BaseCommand {
         'Recording action to perform: `start` begins capturing and `stop` finalizes the video file',
       required: true,
       options: ['start', 'stop'],
+    }),
+    recordingId: Args.string({
+      description:
+        'Recording ID. Generated on start when omitted; stop selects the latest active recording when omitted.',
     }),
   };
 
@@ -66,9 +68,6 @@ export default class AndroidRecord extends BaseCommand {
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       const id = resolvedInstance.id;
-      if (false) {
-        this.error('android record only supports Android instances');
-      }
 
       if (flags['persist-ttl'] && !flags.persist) {
         this.error('--persist-ttl requires --persist.');
@@ -84,30 +83,32 @@ export default class AndroidRecord extends BaseCommand {
               { ttlSeconds: parseDurationSeconds(flags['persist-ttl']) }
             : true
           : undefined;
-        // A running daemon may predate persist support and would silently
-        // drop it, so persisted starts always go over a direct connection.
-        if (!persist && (await ensureDaemonSession(resolvedInstance))) {
-          await sendSessionCommand(id, 'start-recording', [flags.quality]);
-        } else {
-          const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
-          try {
-            await client.startRecording({ quality: flags.quality, persist });
-          } finally {
-            disconnect();
-          }
+        const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
+        let recordingId: string;
+        try {
+          recordingId = await client.startRecordingSession({
+            recordingId: args.recordingId,
+            quality: flags.quality,
+            persist,
+          });
+        } finally {
+          disconnect();
         }
         this.outputResult(
           {
             ok: true,
             instanceId: id,
             recording: true,
+            recordingId,
             quality: flags.quality,
             persist: Boolean(persist),
             persistTtlSeconds: typeof persist === 'object' ? persist.ttlSeconds : undefined,
           },
           persist ?
-            `Recording started; it will be persisted for ${flags['persist-ttl'] ?? '72h'} when it stops.`
-          : 'Recording started',
+            `Recording ${recordingId} started; it will be persisted for ${
+              flags['persist-ttl'] ?? '72h'
+            } when it stops.`
+          : `Recording started: ${recordingId}`,
         );
         return;
       }
@@ -118,27 +119,9 @@ export default class AndroidRecord extends BaseCommand {
         presignedUrl: flags['presigned-url'],
       };
 
-      if (await ensureDaemonSession(resolvedInstance)) {
-        await sendSessionCommand(id, 'stop-recording', [saveTo]);
-        this.outputResult(
-          {
-            ok: true,
-            instanceId: id,
-            recording: false,
-            localPath: outputPath,
-            uploaded: Boolean(flags['presigned-url']),
-          },
-          `Recording saved to ${outputPath}`,
-        );
-        if (flags['presigned-url']) {
-          if (!flags.json) this.log('Recording uploaded using the provided presigned URL');
-        }
-        return;
-      }
-
       const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
       try {
-        await client.stopRecording(saveTo);
+        await client.stopRecordingSession(args.recordingId, saveTo);
         this.outputResult(
           {
             ok: true,

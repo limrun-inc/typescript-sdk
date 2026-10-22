@@ -56,7 +56,8 @@ describe('iOS recording sessions', () => {
               { error: commandError }
             : {
                 ...(message.type === 'startVideoRecordingSession' ?
-                  { recordingId: returnedId ?? randomUUID() }
+                  { recordingId: returnedId ?? message.recordingId ?? randomUUID() }
+                : message.type === 'stopVideoRecordingSession' && returnedId ? { recordingId: returnedId }
                 : {}),
               }),
           }),
@@ -119,6 +120,44 @@ describe('iOS recording sessions', () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  test('accepts a caller ID and downloads the server-selected recording when stop omits the ID', async () => {
+    expect(await client.startRecordingSession({ recordingId: 'run-1' })).toBe('run-1');
+    expect(requests[0]).toMatchObject({ recordingId: 'run-1' });
+    returnedId = 'run-2';
+    const directory = await mkdtemp(join(tmpdir(), 'limrun-recording-test-'));
+    try {
+      const localPath = join(directory, 'latest.mp4');
+      expect(await client.stopRecordingSession(undefined, { localPath })).toBe(
+        `${apiUrl}/files?name=recording_run-2.mp4`,
+      );
+      expect(requests[1]).not.toHaveProperty('recordingId');
+      expect(await readFile(localPath)).toEqual(video);
+      expect(downloads[0]?.authorization).toBe('Bearer instance-token');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test.each(['', '../other', 'bad id', 'bad\n', 'bad/id', 'Run-1', 'x'.repeat(65)])(
+    'rejects unsafe custom ID %p',
+    async (recordingId) => {
+      await expect(client.startRecordingSession({ recordingId })).rejects.toThrow('recordingId');
+      await expect(client.stopRecordingSession(recordingId)).rejects.toThrow('recordingId');
+      expect(requests).toHaveLength(0);
+    },
+  );
+
+  test('rejects a missing ID in an implicit-stop response instead of downloading the legacy file', async () => {
+    await expect(client.stopRecordingSession()).rejects.toThrow('stopped recordingId');
+    expect(downloads).toHaveLength(0);
+  });
+
+  test('implicit stop can finish a recording started by an older client', async () => {
+    returnedId = 'legacy:recording';
+    expect(await client.stopRecordingSession()).toBe(`${apiUrl}/files?name=recording.mp4`);
+    expect(requests[0]).not.toHaveProperty('recordingId');
   });
 
   test('keeps the legacy commands and download URL unchanged', async () => {

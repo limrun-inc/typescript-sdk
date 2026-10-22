@@ -69,8 +69,10 @@ function buildDownloadUrl(apiUrl: string, recordingId?: string): string {
 }
 
 function assertRecordingId(recordingId: string): void {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(recordingId)) {
-    throw new Error('recordingId must be an ID returned by startRecordingSession');
+  if (/^[a-z0-9][a-z0-9_-]{0,63}$/.exec(recordingId)?.[0] !== recordingId) {
+    throw new Error(
+      'recordingId must be 1–64 lowercase letters, digits, underscores or hyphens, start with a letter or digit',
+    );
   }
 }
 
@@ -315,15 +317,16 @@ export type InstanceClient = {
    * Start an independent Android recording and return its ID once its first keyframe is written.
    * Concurrent recordings share one encoder and must use the same quality, which defaults to 5.
    * Up to eight recordings can be active or uploading. They can stop in any order.
+   * Omit recordingId to generate one. IDs cannot be reused during the instance lifetime.
    * Requires an Android runtime that supports recording sessions.
    */
-  startRecordingSession: (options?: RecordingOptions) => Promise<string>;
+  startRecordingSession: (options?: RecordingOptions & { recordingId?: string }) => Promise<string>;
   /**
-   * Stop only the recording with this ID. Other recordings continue during finalization and upload.
+   * Stop the given recording, or the most recently started active recording when omitted. Other recordings continue during finalization and upload.
    * Returns a token-protected download URL unique to this recording, valid for the instance's lifetime.
    * Uploads to presignedUrl and downloads to localPath complete before this call resolves.
    */
-  stopRecordingSession: (recordingId: string, saveTo?: RecordingDestination) => Promise<string>;
+  stopRecordingSession: (recordingId?: string, saveTo?: RecordingDestination) => Promise<string>;
   /**
    * Start capturing an app's logcat output (one JSONL object per line) for
    * the given package name. One app log capture runs at a time; the server
@@ -935,7 +938,7 @@ type StartRecordingSessionResultMessage = {
 type StopRecordingSessionResultMessage = {
   type: 'stopRecordingSessionResult';
   id: string;
-  payload?: EmptyCommandResult;
+  payload?: { recordingId?: string };
   error?: CommandError;
 };
 
@@ -1023,8 +1026,13 @@ type CommandRequestMap = {
   setWifiBandwidth: WifiBandwidthOptions;
   startRecording: { quality?: RecordingQuality; persist?: boolean; ttlSeconds?: number };
   stopRecording: { upload?: { presignedUrl: string } };
-  startRecordingSession: { quality?: RecordingQuality; persist?: boolean; ttlSeconds?: number };
-  stopRecordingSession: { recordingId: string; upload?: { presignedUrl: string } };
+  startRecordingSession: {
+    quality?: RecordingQuality;
+    persist?: boolean;
+    ttlSeconds?: number;
+    recordingId?: string;
+  };
+  stopRecordingSession: { recordingId?: string; upload?: { presignedUrl: string } };
   startAppLogCapture: { bundleId: string; persist?: boolean; ttlSeconds?: number };
   stopAppLogCapture: {};
   startEventCapture: { persist?: boolean; ttlSeconds?: number };
@@ -1053,7 +1061,7 @@ type CommandResultMap = {
   startRecording: EmptyCommandResult;
   stopRecording: EmptyCommandResult;
   startRecordingSession: { recordingId: string };
-  stopRecordingSession: EmptyCommandResult;
+  stopRecordingSession: { recordingId?: string };
   startAppLogCapture: EmptyCommandResult;
   stopAppLogCapture: EmptyCommandResult;
   startEventCapture: EmptyCommandResult;
@@ -1820,23 +1828,32 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       await sendRequest('startRecording', recordingRequest(recordingOptions));
     };
 
-    const startRecordingSession = async (recordingOptions?: RecordingOptions): Promise<string> => {
-      const result = await sendRequest('startRecordingSession', recordingRequest(recordingOptions));
+    const startRecordingSession: InstanceClient['startRecordingSession'] = async (recordingOptions) => {
+      if (recordingOptions?.recordingId !== undefined) assertRecordingId(recordingOptions.recordingId);
+      const result = await sendRequest('startRecordingSession', {
+        ...recordingRequest(recordingOptions),
+        ...(recordingOptions?.recordingId !== undefined ? { recordingId: recordingOptions.recordingId } : {}),
+      });
       assertRecordingId(result.recordingId);
       return result.recordingId;
     };
 
     const stopRecordingSession = async (
-      recordingId: string,
+      recordingId?: string,
       saveTo: RecordingDestination = {},
     ): Promise<string> => {
-      assertRecordingId(recordingId);
-      const request: CommandRequestMap['stopRecordingSession'] = { recordingId };
+      if (recordingId !== undefined) assertRecordingId(recordingId);
+      const request: CommandRequestMap['stopRecordingSession'] = {};
+      if (recordingId !== undefined) request.recordingId = recordingId;
       if (saveTo.presignedUrl) {
         request.upload = { presignedUrl: saveTo.presignedUrl };
       }
-      await sendRequest('stopRecordingSession', request, 180_000);
-      const downloadUrl = buildDownloadUrl(recordingApiUrl, recordingId);
+      const result = await sendRequest('stopRecordingSession', request, 180_000);
+      const stoppedId = result.recordingId ?? recordingId;
+      if (stoppedId === undefined) throw new Error('Runtime did not return the stopped recordingId');
+      const legacy = recordingId === undefined && stoppedId === 'legacy:recording';
+      if (!legacy) assertRecordingId(stoppedId);
+      const downloadUrl = buildDownloadUrl(recordingApiUrl, legacy ? undefined : stoppedId);
       if (saveTo.localPath) {
         await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
       }
