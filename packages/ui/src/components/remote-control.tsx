@@ -483,7 +483,7 @@ const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
 
 const ipadConfig: DeviceConfig = {
   ...deviceConfig.ios,
-  screen: { width: 834 / 906, height: 1210 / 1304, radius: 24 / 834, aspectRatio: 834 / 1210 },
+  screen: { width: 834 / 946, height: 1210 / 1320, radius: 32 / 834, aspectRatio: 834 / 1210 },
 };
 const watchConfig: DeviceConfig = {
   ...deviceConfig.ios,

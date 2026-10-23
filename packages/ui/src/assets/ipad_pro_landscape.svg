@@ -1,21 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1304" height="906" viewBox="0 0 1304 906" preserveAspectRatio="none">
-<g transform="translate(1304 0) rotate(90)"><defs>
-  <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#92979b"/><stop offset=".08" stop-color="#42464a"/><stop offset=".32" stop-color="#25282b"/><stop offset=".56" stop-color="#777e83"/><stop offset=".7" stop-color="#282b2f"/><stop offset="1" stop-color="#949a9e"/></linearGradient>
-  <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e0e4e6"/><stop offset=".28" stop-color="#666b70"/><stop offset=".65" stop-color="#181b1e"/><stop offset="1" stop-color="#b3b9bd"/></linearGradient>
-  <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#26292c"/><stop offset=".36" stop-color="#0d1013"/><stop offset="1" stop-color="#1a1d20"/></linearGradient>
-  <radialGradient id="lens"><stop stop-color="#263a53"/><stop offset=".45" stop-color="#111a28"/><stop offset="1" stop-color="#040609"/></radialGradient>
-</defs>
-<rect x="110" y="3" width="68" height="7" rx="3" fill="url(#metal)"/>
-<rect x="895" y="105" width="6" height="55" rx="2" fill="url(#metal)"/>
-<rect x="895" y="181" width="6" height="55" rx="2" fill="url(#metal)"/>
-<rect x="6" y="7" width="894" height="1290" rx="56" fill="url(#metal)" stroke="#191c1f" stroke-width="2"/>
-<rect x="9" y="10" width="888" height="1284" rx="53" fill="url(#edge)"/>
-<rect x="12" y="13" width="882" height="1278" rx="50" fill="#050708"/>
-<rect x="15" y="16" width="876" height="1272" rx="48" fill="url(#glass)" stroke="#3a3f43" stroke-width="1"/>
-<rect x="36" y="47" width="834" height="1210" rx="24" fill="#000"/>
-<circle cx="882" cy="652" r="6" fill="#090c0f" stroke="#30353b" stroke-width="1"/>
-<circle cx="882" cy="652" r="3.7" fill="url(#lens)"/>
-<circle cx="881" cy="651" r="1" fill="#71859e" opacity=".5"/>
-<circle cx="882" cy="674" r="2" fill="#11161b"/>
-<path d="M29 89V62a34 34 0 0 1 34-34h29" fill="none" stroke="#f0f4f7" opacity=".12" stroke-width="1.5"/>
-</g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="946" viewBox="0 0 1320 946" preserveAspectRatio="none">
+<g transform="translate(1320 0) rotate(90)">
+  <!-- Use the Simulator’s 46-point bezel around the 834 × 1210 screen. -->
+  <rect x="799" y="1" width="63" height="16" rx="2" fill="#303030" stroke="#858585" stroke-width="1"/>
+  <rect x="928" y="109" width="16" height="52" rx="2" fill="#303030" stroke="#858585" stroke-width="1"/>
+  <rect x="928" y="172" width="16" height="52" rx="2" fill="#303030" stroke="#858585" stroke-width="1"/>
+  <rect x="10" y="9" width="926" height="1302" rx="75" fill="#a8a8a8"/>
+  <rect x="12" y="11" width="922" height="1298" rx="73" fill="#242424"/>
+  <rect x="16" y="15" width="914" height="1290" rx="69" fill="#000"/>
+</g>
+</svg>
