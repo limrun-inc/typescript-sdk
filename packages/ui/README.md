@@ -19,10 +19,15 @@ logo is omitted. Pass your own images through the `assets` prop if you want fram
 ## Device information
 
 `RemoteControl` reads iOS device information over its existing signaling socket. It shows
-an iPhone frame while device information loads, keeps it for iPhones, hides it for iPad
-and Apple Watch, and detects Duo
-through the runtime's folding capability. Set `showFrame` explicitly to override automatic
-frame selection.
+an iPhone frame while device information loads, then selects the iPhone, iPad, or Apple
+Watch frame from the model. Duo uses the runtime's folding capability. The iPad frame
+rotates with the video; iPad and Watch screen openings fit the video's aspect ratio. Set `showFrame` explicitly to override automatic
+frame visibility. The Watch crown, side button, and band are decorative; interact with
+its screen as usual.
+
+Custom iOS artwork uses `assets.ios.tabletFrame`, `tabletFrameLandscape`, and `watchFrame`.
+Match the bundled SVGs' centered screen openings when replacing them. The lite entry
+still includes no artwork, and missing device-specific artwork renders frameless.
 
 Use `onDeviceInfoChange` for a surrounding title or controls. It receives
 `{ model, name?, foldSupported }` and resets to `null` when the connection parameters change.

@@ -102,7 +102,15 @@ describe('runtime device information', () => {
   const props = {
     url: 'wss://example.test/ios_test/signaling',
     token: 'token',
-    assets: { ios: { frame: 'phone.png' } },
+    assets: {
+      ios: {
+        frame: 'phone.png',
+        frameLandscape: 'phone-landscape.png',
+        tabletFrame: 'ipad.svg',
+        tabletFrameLandscape: 'ipad-landscape.svg',
+        watchFrame: 'watch.svg',
+      },
+    },
   };
   async function connect(extra: Partial<RemoteControlProps> = {}, foldSupported = false) {
     await act(async () => root.render(createElement(RemoteControl, { ...props, ...extra })));
@@ -115,10 +123,10 @@ describe('runtime device information', () => {
     return { socket, request };
   }
   test.each([
-    ['iPhone 17 Pro', true],
-    ['iPad Pro (13-inch) (M4)', false],
-    ['Apple Watch Series 11', false],
-  ])('detects %s and selects its frame on the existing socket', async (model, framed) => {
+    ['iPhone 17 Pro', 'phone.png'],
+    ['iPad Pro (13-inch) (M4)', 'ipad.svg'],
+    ['Apple Watch Series 11', 'watch.svg'],
+  ])('detects %s and selects its frame on the existing socket', async (model, frame) => {
     const onDeviceInfoChange = vi.fn();
     const { socket, request } = await connect({ onDeviceInfoChange });
     expect(Socket.sockets).toHaveLength(1);
@@ -128,7 +136,7 @@ describe('runtime device information', () => {
       socket.receive({ type: 'deviceInfoResult', id: request.id, model, name: 'Simulator' }),
     );
     expect(onDeviceInfoChange).toHaveBeenLastCalledWith({ model, name: 'Simulator', foldSupported: false });
-    expect(!!container.querySelector('.rc-phone-frame')).toBe(framed);
+    expect(container.querySelector('.rc-phone-frame')?.getAttribute('src')).toBe(frame);
     await act(async () => vi.advanceTimersByTime(3000));
     expect(socket.send.mock.calls.filter(([text]) => JSON.parse(text).type === 'deviceInfo')).toHaveLength(1);
   });
@@ -164,6 +172,52 @@ describe('runtime device information', () => {
     await act(async () => socket.receive({ type: 'deviceInfoResult', id: request.id, model: 'iPhone 17' }));
     expect(container.querySelector('.rc-phone-frame')).toBeNull();
   });
+  test.each([
+    ['iPad Pro 11-inch (M4)', 1668, 2420, 'ipad.svg'],
+    ['iPad Pro 13-inch (M4)', 2064, 2752, 'ipad.svg'],
+    ['Apple Watch Series 11', 416, 496, 'watch.svg'],
+    ['Apple Watch Ultra', 422, 514, 'watch.svg'],
+  ])('fits %s without stretching its video', async (model, width, height, asset) => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(900);
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
+    const { socket, request } = await connect();
+    const video = container.querySelector('video')!;
+    Object.defineProperties(video, {
+      videoWidth: { configurable: true, value: width },
+      videoHeight: { configurable: true, value: height },
+    });
+    await act(async () => socket.receive({ type: 'deviceInfoResult', id: request.id, model }));
+    const frame = container.querySelector<HTMLImageElement>('.rc-phone-frame')!;
+    expect(frame.getAttribute('src')).toBe(asset);
+    expect(parseFloat(video.style.width) / parseFloat(video.style.height)).toBeCloseTo(width / height, 6);
+    expect(parseFloat(frame.style.width)).toBeLessThanOrEqual(900);
+    expect(parseFloat(frame.style.height)).toBeLessThanOrEqual(600);
+    expect(parseFloat(video.style.width)).toBeLessThan(parseFloat(frame.style.width));
+    expect(parseFloat(video.style.height)).toBeLessThan(parseFloat(frame.style.height));
+    expect(container.querySelector('video')).toBe(video);
+    expect(Socket.sockets).toHaveLength(1);
+    if (model.startsWith('iPad')) {
+      Object.defineProperties(video, { videoWidth: { value: height }, videoHeight: { value: width } });
+      await act(async () => video.dispatchEvent(new Event('resize')));
+      expect(frame.getAttribute('src')).toBe('ipad-landscape.svg');
+      expect(parseFloat(video.style.width) / parseFloat(video.style.height)).toBeCloseTo(height / width, 6);
+      expect(parseFloat(frame.style.width)).toBeLessThanOrEqual(900);
+      expect(parseFloat(frame.style.height)).toBeLessThanOrEqual(600);
+    }
+  });
+  test.each(['iPad Pro', 'Apple Watch Series 11'])('respects showFrame=false for %s', async (model) => {
+    const { socket, request } = await connect({ showFrame: false });
+    await act(async () => socket.receive({ type: 'deviceInfoResult', id: request.id, model }));
+    expect(container.querySelector('.rc-phone-frame')).toBeNull();
+  });
+  test.each([undefined, { ios: { frame: 'custom-phone.png' } }])(
+    'stays frameless without matching assets',
+    async (assets) => {
+      const { socket, request } = await connect({ assets });
+      await act(async () => socket.receive({ type: 'deviceInfoResult', id: request.id, model: 'iPad Pro' }));
+      expect(container.querySelector('.rc-phone-frame')).toBeNull();
+    },
+  );
   test('retries boot-time failures without opening another socket', async () => {
     const { socket, request } = await connect();
     await act(async () => socket.receive({ type: 'deviceInfoError', id: request.id, error: 'Not booted' }));
