@@ -487,7 +487,7 @@ const ipadConfig: DeviceConfig = {
 };
 const watchConfig: DeviceConfig = {
   ...deviceConfig.ios,
-  screen: { width: 376 / 500, height: 448 / 660, radius: 80 / 376, aspectRatio: 376 / 448 },
+  screen: { width: 416 / 484, height: 496 / 540, radius: 72.5 / 416, aspectRatio: 416 / 496 },
 };
 
 function getAndroidKeycodeAndMeta(event: React.KeyboardEvent): { keycode: number; metaState: number } | null {

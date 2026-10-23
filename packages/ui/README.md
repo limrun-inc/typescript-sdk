@@ -22,8 +22,8 @@ logo is omitted. Pass your own images through the `assets` prop if you want fram
 an iPhone frame while device information loads, then selects the iPhone, iPad, or Apple
 Watch frame from the model. Duo uses the runtime's folding capability. The iPad frame
 rotates with the video; iPad and Watch screen openings fit the video's aspect ratio. Set `showFrame` explicitly to override automatic
-frame visibility. The Watch crown, side button, and band are decorative; interact with
-its screen as usual.
+frame visibility. The Watch uses a dark, bandless case based on Simulator’s appearance. Its crown and
+side button are decorative; interact with its screen as usual.
 
 Custom iOS artwork uses `assets.ios.tabletFrame`, `tabletFrameLandscape`, and `watchFrame`.
 Match the bundled SVGs' centered screen openings when replacing them. The lite entry
