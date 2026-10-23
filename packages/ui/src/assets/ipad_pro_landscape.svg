@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="946" viewBox="0 0 1320 946" preserveAspectRatio="none">
+<g transform="translate(1320 0) rotate(90)">
+  <!-- Use the Simulator’s 46-point bezel around the 834 × 1210 screen. -->
+  <rect x="799" y="1" width="63" height="16" rx="2" fill="#303030" stroke="#858585" stroke-width="1"/>
+  <rect x="928" y="109" width="16" height="52" rx="2" fill="#303030" stroke="#858585" stroke-width="1"/>
+  <rect x="928" y="172" width="16" height="52" rx="2" fill="#303030" stroke="#858585" stroke-width="1"/>
+  <rect x="10" y="9" width="926" height="1302" rx="75" fill="#a8a8a8"/>
+  <rect x="12" y="11" width="922" height="1298" rx="73" fill="#242424"/>
+  <rect x="16" y="15" width="914" height="1290" rx="69" fill="#000"/>
+</g>
+</svg>

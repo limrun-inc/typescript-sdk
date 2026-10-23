@@ -43,6 +43,12 @@ declare global {
   }
 }
 
+export type RemoteControlDeviceInfo = {
+  model: string;
+  name?: string;
+  foldSupported: boolean;
+};
+
 export interface RemoteControlProps {
   // url is the URL of the instance to connect to.
   url: string;
@@ -67,7 +73,7 @@ export interface RemoteControlProps {
   openUrl?: string;
 
   // showFrame controls whether to display the device frame
-  // around the video. Defaults to true.
+  // around the video. iOS starts with an iPhone frame, then uses its runtime model.
   showFrame?: boolean;
 
   /** Enables the official iPhone Duo's native displays and interactive folding frame. */
@@ -101,6 +107,8 @@ export interface RemoteControlProps {
    * Coarse connection lifecycle, for status UI outside the component.
    */
   onConnectionStateChange?: (state: RemoteControlConnectionState) => void;
+  /** iOS runtime information from the existing signaling connection. Null resets a changed connection. */
+  onDeviceInfoChange?: (info: RemoteControlDeviceInfo | null) => void;
 
   /**
    * Enable the inspect overlay. When set, the component starts polling the
@@ -419,12 +427,15 @@ export type RemoteControlPlatformAssets = {
   frameLandscape?: string;
   tabletFrame?: string;
   tabletFrameLandscape?: string;
+  watchFrame?: string;
   loadingLogo?: string;
 };
 
 export type RemoteControlAssets = Partial<Record<DevicePlatform, RemoteControlPlatformAssets>>;
 
 type DeviceConfig = {
+  // Artwork proportions keep the screen centered while fitting the actual video aspect ratio.
+  screen?: { width: number; height: number; radius: number; aspectRatio: number };
   videoBorderRadiusMultiplier: number;
   loadingLogoSize: string;
   videoPosition: {
@@ -470,6 +481,16 @@ const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
   },
 };
 
+const ipadConfig: DeviceConfig = {
+  ...deviceConfig.ios,
+  screen: { width: 834 / 946, height: 1210 / 1320, radius: 32 / 834, aspectRatio: 834 / 1210 },
+};
+const watchConfig: DeviceConfig = {
+  ...deviceConfig.ios,
+  // Simulator chrome uses points; this artwork uses the screen’s 2× pixel scale.
+  screen: { width: 416 / 552, height: 496 / 584, radius: 72.5 / 416, aspectRatio: 416 / 496 },
+};
+
 function getAndroidKeycodeAndMeta(event: React.KeyboardEvent): { keycode: number; metaState: number } | null {
   const code = event.code;
   const keycode = codeMap[code];
@@ -508,13 +529,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       token,
       sessionId: propSessionId,
       openUrl,
-      showFrame = true,
+      showFrame,
       deviceModel,
       duoModelUrl,
       autoReconnect = false,
       onTerminated,
       assets,
       onConnectionStateChange,
+      onDeviceInfoChange,
       inspectMode,
       onAxSnapshotChange,
       onInspectSelectionChange,
@@ -533,6 +555,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
     const [detectedDuo, setDetectedDuo] = useState(false);
+    const [deviceInfo, setDeviceInfo] = useState<RemoteControlDeviceInfo | null>(null);
+    const deviceInfoTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const isDuo = deviceModel === 'iphone-duo' || detectedDuo;
     const innerVideoRef = useRef<HTMLVideoElement>(null);
     const [duoState, setDuoState] = useState<DuoState | null>(null);
@@ -568,6 +592,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // Guards against firing overlapping termination probes.
     const terminationProbeInFlightRef = useRef(false);
     const [isLandscape, setIsLandscape] = useState(false);
+    const [frameStyle, setFrameStyle] = useState<React.CSSProperties>({});
     const [useAndroidTabletFrame, setUseAndroidTabletFrame] = useState(false);
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
     const wsRef = useRef<WebSocket | null>(null);
@@ -755,6 +780,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     onTerminatedRef.current = onTerminated;
     const onConnectionStateChangeRef = useRef(onConnectionStateChange);
     onConnectionStateChangeRef.current = onConnectionStateChange;
+    const onDeviceInfoChangeRef = useRef(onDeviceInfoChange);
+    onDeviceInfoChangeRef.current = onDeviceInfoChange;
     const connectionStateRef = useRef<RemoteControlConnectionState | null>(null);
     // Reports each transition once; callers get status text without tracking
     // the retry machinery below.
@@ -775,10 +802,17 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     );
 
     const platform = useMemo(() => detectPlatform(url), [url]);
-    const config = deviceConfig[platform];
+    const iosModel = platform === 'ios' ? deviceInfo?.model.toLowerCase() : undefined;
+    const isIPad = !!iosModel?.startsWith('ipad');
+    const isWatch = !!iosModel?.includes('watch');
+    const config =
+      isIPad ? ipadConfig
+      : isWatch ? watchConfig
+      : deviceConfig[platform];
     const platformAssets = assets?.[platform];
     const frameImageSrc =
-      platform === 'android' && useAndroidTabletFrame ?
+      isWatch ? platformAssets?.watchFrame
+      : isIPad || (platform === 'android' && useAndroidTabletFrame) ?
         isLandscape ? platformAssets?.tabletFrameLandscape
         : platformAssets?.tabletFrame
       : isLandscape ? platformAssets?.frameLandscape
@@ -786,7 +820,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const loadingLogo = platformAssets?.loadingLogo;
     // Without a frame image (the lite entry) the video lays out frameless
     // whatever showFrame says.
-    const frameVisible = !isDuo && showFrame && !!frameImageSrc;
+    const effectiveShowFrame =
+      showFrame ??
+      (platform !== 'ios' || isDuo || !deviceInfo || isIPad || isWatch || !!iosModel?.startsWith('iphone'));
+    const frameVisible = !isDuo && effectiveShowFrame && !!frameImageSrc;
 
     const updateStatus = (message: string) => {
       // Use the wrapper for conditional logging
@@ -2404,6 +2441,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
 
     const teardownConnection = () => {
+      clearTimeout(deviceInfoTimerRef.current);
       for (const request of duoRequests.current.values()) {
         clearTimeout(request.timer);
         request.reject(new Error('Simulator disconnected'));
@@ -2764,6 +2802,18 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
         const isDuo = deviceModel === 'iphone-duo' || foldSupported;
         setDetectedDuo(isDuo);
+        const deviceInfoRequestId = crypto.randomUUID();
+        let deviceInfoAttempts = 0;
+        const requestDeviceInfo = () => {
+          if (!isCurrentAttempt() || wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) return;
+          if (deviceInfoAttempts++ === 3) {
+            debugWarn('Device information unavailable after three attempts');
+            return;
+          }
+          ws.send(JSON.stringify({ type: 'deviceInfo', id: deviceInfoRequestId }));
+          // The socket can connect before the simulator finishes booting.
+          deviceInfoTimerRef.current = setTimeout(requestDeviceInfo, 3000);
+        };
         // Keep browser LAN and VPN addresses out of signaling and connectivity checks.
         const peerConnection = new RTCPeerConnection({ ...rtcConfig, iceTransportPolicy: 'relay' });
         peerConnectionRef.current = peerConnection;
@@ -3121,6 +3171,26 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }
           updateStatus('Received: ' + message.type);
           switch (message.type) {
+            case 'deviceInfoResult': {
+              if (message.id !== deviceInfoRequestId) break;
+              if (typeof message.model !== 'string' || !message.model.trim()) {
+                debugWarn('Device information response is missing its model');
+                break;
+              }
+              clearTimeout(deviceInfoTimerRef.current);
+              const info: RemoteControlDeviceInfo = {
+                model: message.model.trim(),
+                ...(typeof message.name === 'string' && { name: message.name }),
+                foldSupported,
+              };
+              setDeviceInfo(info);
+              safeInvoke('onDeviceInfoChange', onDeviceInfoChangeRef.current, info);
+              break;
+            }
+            case 'deviceInfoError':
+              if (message.id === deviceInfoRequestId)
+                debugWarn('Device information request failed:', message.error);
+              break;
             case 'performActionsResult':
             case 'foldStateResult':
             case 'foldStateChanged': {
@@ -3325,6 +3395,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }
         };
 
+        if (platform === 'ios') requestDeviceInfo();
+
         // Create and send offer
         if (peerConnectionRef.current === peerConnection) {
           const offer = await peerConnection.createOffer({
@@ -3397,6 +3469,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     useEffect(() => {
       // Reset video loaded state when connection params change
       setVideoLoaded(false);
+      setDeviceInfo(null);
+      setDetectedDuo(false);
+      safeInvoke('onDeviceInfoChange', onDeviceInfoChangeRef.current, null);
 
       // Start connection when component mounts
       start();
@@ -3460,25 +3535,47 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (!video) return;
 
       const updateVideoPosition = () => {
-        // If no frame, just refresh overlay geometry; no inset/letterbox math
-        // is needed since the video element is its own size.
-        if (!frameVisible || !frame) {
-          setVideoStyle({});
-          recomputeOverlayGeometry();
-          return;
-        }
-
-        const frameWidth = frame.clientWidth;
-        const frameHeight = frame.clientHeight;
-
-        if (frameWidth === 0 || frameHeight === 0) return;
-
-        // Determine landscape based on video's intrinsic dimensions
         const landscape = video.videoWidth > video.videoHeight;
         setIsLandscape(landscape);
         setUseAndroidTabletFrame(
           platform === 'android' && isAndroidTabletVideo(video.videoWidth, video.videoHeight),
         );
+        // If no frame, just refresh overlay geometry; no inset/letterbox math
+        // is needed since the video element is its own size.
+        if (!frameVisible || !frame) {
+          setVideoStyle({});
+          setFrameStyle({});
+          recomputeOverlayGeometry();
+          return;
+        }
+
+        if (config.screen && container) {
+          const screen = config.screen;
+          const rotate = isIPad && landscape;
+          const widthFraction = rotate ? screen.height : screen.width;
+          const heightFraction = rotate ? screen.width : screen.height;
+          const videoRatio =
+            video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : screen.aspectRatio;
+          const frameRatio = (videoRatio * heightFraction) / widthFraction;
+          const width = Math.min(container.clientWidth, container.clientHeight * frameRatio);
+          const height = width / frameRatio;
+          if (!width || !height) return;
+          setFrameStyle({ width, height });
+          setVideoStyle({
+            width: width * widthFraction,
+            height: height * heightFraction,
+            borderRadius: `${width * widthFraction * screen.radius * (rotate ? screen.aspectRatio : 1)}px / ${
+              height * heightFraction * screen.radius * (rotate ? 1 : screen.aspectRatio)
+            }px`,
+          });
+          recomputeOverlayGeometry();
+          return;
+        }
+        setFrameStyle({});
+        const frameWidth = frame.clientWidth;
+        const frameHeight = frame.clientHeight;
+
+        if (frameWidth === 0 || frameHeight === 0) return;
 
         const pos = landscape ? config.videoPosition.landscape : config.videoPosition.portrait;
         let newStyle: React.CSSProperties = {};
@@ -3535,7 +3632,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         video.removeEventListener('resize', bumpOnResize);
         if (frame) frame.removeEventListener('load', updateVideoPosition);
       };
-    }, [config, frameVisible]);
+    }, [config, frameVisible, frameImageSrc, isIPad]);
 
     // Start/stop the AX poller and reset inspect state when inspect mode
     // toggles. Connection state is independent: the fetcher gets created on
@@ -3819,6 +3916,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           <img
             ref={frameRef}
             src={frameImageSrc}
+            style={frameStyle}
+            data-device-frame={
+              isIPad ? 'ipad'
+              : isWatch ?
+                'watch'
+              : platform
+            }
             alt=""
             className={platform === 'ios' ? clsx('rc-phone-frame', 'rc-phone-frame-ios') : 'rc-phone-frame'}
             draggable={false}
@@ -3829,7 +3933,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           className={clsx(
             'rc-video',
             !frameVisible && 'rc-video-frameless',
-            !videoLoaded && 'rc-video-loading',
+            !videoLoaded && !config.screen && 'rc-video-loading',
           )}
           style={{
             ...videoStyle,
@@ -3874,7 +3978,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         {isDuo && duoState && (
           <Suspense fallback={<div>Loading iPhone Duo…</div>}>
             <DuoView
-              showFrame={showFrame}
+              showFrame={effectiveShowFrame}
               modelUrl={duoModelUrl}
               outer={videoRef.current}
               inner={innerVideoRef.current}
