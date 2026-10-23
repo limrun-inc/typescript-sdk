@@ -54,6 +54,11 @@ describe('runtime device information', () => {
     }
   }
   class Peer {
+    static peers: Peer[] = [];
+    ontrack: ((event: { track: { kind: string }; streams: object[] }) => void) | null = null;
+    constructor() {
+      Peer.peers.push(this);
+    }
     addTransceiver() {
       return { sender: { replaceTrack: vi.fn() }, setCodecPreferences: vi.fn() };
     }
@@ -69,6 +74,7 @@ describe('runtime device information', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     Socket.sockets = [];
+    Peer.peers = [];
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     vi.stubGlobal('WebSocket', Socket);
     vi.stubGlobal('RTCPeerConnection', Peer);
@@ -124,6 +130,24 @@ describe('runtime device information', () => {
     expect(!!container.querySelector('.rc-phone-frame')).toBe(framed);
     await act(async () => vi.advanceTimersByTime(3000));
     expect(socket.send.mock.calls.filter(([text]) => JSON.parse(text).type === 'deviceInfo')).toHaveLength(1);
+  });
+  test('plays video before device information arrives, even after metadata retries expire', async () => {
+    const onDeviceInfoChange = vi.fn();
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    const { socket } = await connect({ onDeviceInfoChange });
+    expect(socket.send.mock.calls.map(([text]) => JSON.parse(text).type)).toContain('offer');
+    expect(onDeviceInfoChange).toHaveBeenLastCalledWith(null);
+
+    const stream = { id: 'video' };
+    await act(async () => Peer.peers.at(-1)!.ontrack?.({ track: { kind: 'video' }, streams: [stream] }));
+    expect(container.querySelector('video')!.srcObject).toBe(stream);
+    expect(play).toHaveBeenCalledOnce();
+
+    await act(async () => vi.advanceTimersByTime(9000));
+    expect(socket.send.mock.calls.filter(([text]) => JSON.parse(text).type === 'deviceInfo')).toHaveLength(3);
+    expect(container.querySelector('video')!.srcObject).toBe(stream);
+    expect(onDeviceInfoChange).toHaveBeenLastCalledWith(null);
+    expect(Peer.peers.at(-1)!.close).not.toHaveBeenCalled();
   });
   test('reports Duo capabilities without forcing its model through props', async () => {
     const onDeviceInfoChange = vi.fn();
