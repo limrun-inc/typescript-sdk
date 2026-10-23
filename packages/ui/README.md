@@ -19,7 +19,8 @@ logo is omitted. Pass your own images through the `assets` prop if you want fram
 ## Device information
 
 `RemoteControl` reads iOS device information over its existing signaling socket. It shows
-an iPhone frame for iPhones, hides the frame for iPad and Apple Watch, and detects Duo
+an iPhone frame while device information loads, keeps it for iPhones, hides it for iPad
+and Apple Watch, and detects Duo
 through the runtime's folding capability. Set `showFrame` explicitly to override automatic
 frame selection.
 

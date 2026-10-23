@@ -123,6 +123,7 @@ describe('runtime device information', () => {
     const { socket, request } = await connect({ onDeviceInfoChange });
     expect(Socket.sockets).toHaveLength(1);
     expect(request).toBeDefined();
+    expect(container.querySelector('.rc-phone-frame')).not.toBeNull();
     await act(async () =>
       socket.receive({ type: 'deviceInfoResult', id: request.id, model, name: 'Simulator' }),
     );
@@ -148,6 +149,7 @@ describe('runtime device information', () => {
     expect(container.querySelector('video')!.srcObject).toBe(stream);
     expect(onDeviceInfoChange).toHaveBeenLastCalledWith(null);
     expect(Peer.peers.at(-1)!.close).not.toHaveBeenCalled();
+    expect(container.querySelector('.rc-phone-frame')).not.toBeNull();
   });
   test('reports Duo capabilities without forcing its model through props', async () => {
     const onDeviceInfoChange = vi.fn();
@@ -158,6 +160,7 @@ describe('runtime device information', () => {
   });
   test('preserves an explicit frameless preference', async () => {
     const { socket, request } = await connect({ showFrame: false });
+    expect(container.querySelector('.rc-phone-frame')).toBeNull();
     await act(async () => socket.receive({ type: 'deviceInfoResult', id: request.id, model: 'iPhone 17' }));
     expect(container.querySelector('.rc-phone-frame')).toBeNull();
   });

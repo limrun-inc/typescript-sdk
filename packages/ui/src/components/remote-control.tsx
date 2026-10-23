@@ -800,7 +800,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // Without a frame image (the lite entry) the video lays out frameless
     // whatever showFrame says.
     const effectiveShowFrame =
-      showFrame ?? (platform !== 'ios' || isDuo || !!deviceInfo?.model.toLowerCase().startsWith('iphone'));
+      showFrame ??
+      (platform !== 'ios' || isDuo || !deviceInfo || deviceInfo.model.toLowerCase().startsWith('iphone'));
     const frameVisible = !isDuo && effectiveShowFrame && !!frameImageSrc;
 
     const updateStatus = (message: string) => {
