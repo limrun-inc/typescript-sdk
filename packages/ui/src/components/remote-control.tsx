@@ -43,6 +43,12 @@ declare global {
   }
 }
 
+export type RemoteControlDeviceInfo = {
+  model: string;
+  name?: string;
+  foldSupported: boolean;
+};
+
 export interface RemoteControlProps {
   // url is the URL of the instance to connect to.
   url: string;
@@ -67,7 +73,7 @@ export interface RemoteControlProps {
   openUrl?: string;
 
   // showFrame controls whether to display the device frame
-  // around the video. Defaults to true.
+  // around the video. By default iOS uses its runtime model; iPad and Watch have no frame.
   showFrame?: boolean;
 
   /** Enables the official iPhone Duo's native displays and interactive folding frame. */
@@ -101,6 +107,8 @@ export interface RemoteControlProps {
    * Coarse connection lifecycle, for status UI outside the component.
    */
   onConnectionStateChange?: (state: RemoteControlConnectionState) => void;
+  /** iOS runtime information from the existing signaling connection. Null resets a changed connection. */
+  onDeviceInfoChange?: (info: RemoteControlDeviceInfo | null) => void;
 
   /**
    * Enable the inspect overlay. When set, the component starts polling the
@@ -508,13 +516,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       token,
       sessionId: propSessionId,
       openUrl,
-      showFrame = true,
+      showFrame,
       deviceModel,
       duoModelUrl,
       autoReconnect = false,
       onTerminated,
       assets,
       onConnectionStateChange,
+      onDeviceInfoChange,
       inspectMode,
       onAxSnapshotChange,
       onInspectSelectionChange,
@@ -533,6 +542,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
     const [detectedDuo, setDetectedDuo] = useState(false);
+    const [deviceInfo, setDeviceInfo] = useState<RemoteControlDeviceInfo | null>(null);
+    const deviceInfoTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const isDuo = deviceModel === 'iphone-duo' || detectedDuo;
     const innerVideoRef = useRef<HTMLVideoElement>(null);
     const [duoState, setDuoState] = useState<DuoState | null>(null);
@@ -755,6 +766,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     onTerminatedRef.current = onTerminated;
     const onConnectionStateChangeRef = useRef(onConnectionStateChange);
     onConnectionStateChangeRef.current = onConnectionStateChange;
+    const onDeviceInfoChangeRef = useRef(onDeviceInfoChange);
+    onDeviceInfoChangeRef.current = onDeviceInfoChange;
     const connectionStateRef = useRef<RemoteControlConnectionState | null>(null);
     // Reports each transition once; callers get status text without tracking
     // the retry machinery below.
@@ -786,7 +799,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const loadingLogo = platformAssets?.loadingLogo;
     // Without a frame image (the lite entry) the video lays out frameless
     // whatever showFrame says.
-    const frameVisible = !isDuo && showFrame && !!frameImageSrc;
+    const effectiveShowFrame =
+      showFrame ?? (platform !== 'ios' || isDuo || !!deviceInfo?.model.toLowerCase().startsWith('iphone'));
+    const frameVisible = !isDuo && effectiveShowFrame && !!frameImageSrc;
 
     const updateStatus = (message: string) => {
       // Use the wrapper for conditional logging
@@ -2404,6 +2419,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
 
     const teardownConnection = () => {
+      clearTimeout(deviceInfoTimerRef.current);
       for (const request of duoRequests.current.values()) {
         clearTimeout(request.timer);
         request.reject(new Error('Simulator disconnected'));
@@ -2764,6 +2780,18 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
         const isDuo = deviceModel === 'iphone-duo' || foldSupported;
         setDetectedDuo(isDuo);
+        const deviceInfoRequestId = crypto.randomUUID();
+        let deviceInfoAttempts = 0;
+        const requestDeviceInfo = () => {
+          if (!isCurrentAttempt() || wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) return;
+          if (deviceInfoAttempts++ === 3) {
+            debugWarn('Device information unavailable after three attempts');
+            return;
+          }
+          ws.send(JSON.stringify({ type: 'deviceInfo', id: deviceInfoRequestId }));
+          // The socket can connect before the simulator finishes booting.
+          deviceInfoTimerRef.current = setTimeout(requestDeviceInfo, 3000);
+        };
         // Keep browser LAN and VPN addresses out of signaling and connectivity checks.
         const peerConnection = new RTCPeerConnection({ ...rtcConfig, iceTransportPolicy: 'relay' });
         peerConnectionRef.current = peerConnection;
@@ -3121,6 +3149,26 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }
           updateStatus('Received: ' + message.type);
           switch (message.type) {
+            case 'deviceInfoResult': {
+              if (message.id !== deviceInfoRequestId) break;
+              if (typeof message.model !== 'string' || !message.model.trim()) {
+                debugWarn('Device information response is missing its model');
+                break;
+              }
+              clearTimeout(deviceInfoTimerRef.current);
+              const info: RemoteControlDeviceInfo = {
+                model: message.model.trim(),
+                ...(typeof message.name === 'string' && { name: message.name }),
+                foldSupported,
+              };
+              setDeviceInfo(info);
+              safeInvoke('onDeviceInfoChange', onDeviceInfoChangeRef.current, info);
+              break;
+            }
+            case 'deviceInfoError':
+              if (message.id === deviceInfoRequestId)
+                debugWarn('Device information request failed:', message.error);
+              break;
             case 'performActionsResult':
             case 'foldStateResult':
             case 'foldStateChanged': {
@@ -3325,6 +3373,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }
         };
 
+        if (platform === 'ios') requestDeviceInfo();
+
         // Create and send offer
         if (peerConnectionRef.current === peerConnection) {
           const offer = await peerConnection.createOffer({
@@ -3397,6 +3447,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     useEffect(() => {
       // Reset video loaded state when connection params change
       setVideoLoaded(false);
+      setDeviceInfo(null);
+      setDetectedDuo(false);
+      safeInvoke('onDeviceInfoChange', onDeviceInfoChangeRef.current, null);
 
       // Start connection when component mounts
       start();
@@ -3874,7 +3927,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         {isDuo && duoState && (
           <Suspense fallback={<div>Loading iPhone Duo…</div>}>
             <DuoView
-              showFrame={showFrame}
+              showFrame={effectiveShowFrame}
               modelUrl={duoModelUrl}
               outer={videoRef.current}
               inner={innerVideoRef.current}

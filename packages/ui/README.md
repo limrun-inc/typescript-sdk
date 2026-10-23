@@ -16,6 +16,22 @@ logo is omitted. Pass your own images through the `assets` prop if you want fram
 `onConnectionStateChange` reports `connecting`, `connected`, `reconnecting`, `failed`, and
 `terminated` so a host can show status text without tracking the retry logic.
 
+## Device information
+
+`RemoteControl` reads iOS device information over its existing signaling socket. It shows
+an iPhone frame for iPhones, hides the frame for iPad and Apple Watch, and detects Duo
+through the runtime's folding capability. Set `showFrame` explicitly to override automatic
+frame selection.
+
+Use `onDeviceInfoChange` for a surrounding title or controls. It receives
+`{ model, name?, foldSupported }` and resets to `null` when the connection parameters change.
+The metadata request does not open another connection or delay streaming. Android keeps
+its existing frame behavior and does not request iOS device information.
+
+```tsx
+<RemoteControl url={instanceWebsocketUrl} token={instanceToken} onDeviceInfoChange={setDeviceInfo} />
+```
+
 ## Simulated cameras
 
 `RemoteControl` responds automatically when an app in the instance opens,
