@@ -107,14 +107,6 @@ export async function loginWithOptions(options: LoginOptions): Promise<void> {
     log(`\nConfirm this phrase in your browser: ${pending.phrase}`);
     log(`${resumed ? 'Open' : 'Opening'} this URL to log in: ${pending.verificationUrl}\n\n`);
     options.onPending?.(pendingLoginInfo(pending));
-
-    if (!resumed) {
-      try {
-        await (options.opener ?? openLoginUrl)(pending.verificationUrl);
-      } catch {
-        // The URL is already printed above, so a failed opener does not block login.
-      }
-    }
     log('Waiting for you to confirm in browser...');
     await collectLogin(pending, options);
   } catch (err) {
@@ -129,9 +121,12 @@ export async function loginWithOptions(options: LoginOptions): Promise<void> {
 /**
  * Continues the stored login when it is still pending, so a rerun after the
  * command was stopped (Ctrl-C, or an agent shell's time limit) keeps the URL
- * and phrase the user already has. Otherwise starts a new one and stores it.
+ * and phrase the user already has. Otherwise starts a new one, stores it and
+ * opens the browser. Does not wait for approval.
  */
-async function beginLogin(options: LoginOptions): Promise<{ pending: PendingLogin; resumed: boolean }> {
+export async function beginLogin(
+  options: LoginOptions,
+): Promise<{ pending: PendingLogin; resumed: boolean }> {
   const { apiEndpoint, pendingLoginFile = PENDING_LOGIN_FILE } = options;
   const stored = readPendingLogin(pendingLoginFile);
   if (stored && stored.apiEndpoint === apiEndpoint && !isPendingLoginExpired(stored)) {
@@ -151,21 +146,42 @@ async function beginLogin(options: LoginOptions): Promise<{ pending: PendingLogi
   const pending: PendingLogin = { ...session, apiEndpoint };
   fs.mkdirSync(path.dirname(pendingLoginFile), { recursive: true, mode: 0o700 });
   fs.writeFileSync(pendingLoginFile, JSON.stringify(pending), { mode: 0o600 });
+  try {
+    await (options.opener ?? openLoginUrl)(pending.verificationUrl);
+  } catch {
+    // Callers print the URL, so a failed opener does not block login.
+  }
   return { pending, resumed: false };
 }
 
-/** Waits until the user approves or the session expires. Either outcome consumes the stored session. */
-async function collectLogin(pending: PendingLogin, options: LoginOptions): Promise<CollectedToken> {
+/**
+ * Waits until the user approves or the session expires. Either outcome
+ * consumes the stored session. With `once`, checks a single time and returns
+ * null while approval is pending; a network error then keeps the session for
+ * the next check.
+ */
+export async function collectLogin(
+  pending: PendingLogin,
+  options: Pick<LoginOptions, 'configWriter' | 'fetcher' | 'pendingLoginFile'> & { once?: boolean } = {},
+): Promise<CollectedToken | null> {
   const { configWriter = writeConfig, fetcher = fetch, pendingLoginFile = PENDING_LOGIN_FILE } = options;
-  let token: CollectedToken;
+  const deadline = Date.parse(pending.expiresAt);
+  let token: CollectedToken | null;
   try {
-    token = await pollUntilApproved(fetcher, pending.apiEndpoint, pending, Date.parse(pending.expiresAt));
+    token =
+      options.once ?
+        await pollForToken(fetcher, pending.apiEndpoint, pending, deadline)
+      : await pollUntilApproved(fetcher, pending.apiEndpoint, pending, deadline);
   } catch (err) {
-    fs.rmSync(pendingLoginFile, { force: true });
+    if (!(options.once && err instanceof RetryableLoginError)) {
+      fs.rmSync(pendingLoginFile, { force: true });
+    }
     throw err;
   }
-  configWriter({ [CONFIG_KEYS.apiKey]: token.apiKey });
-  fs.rmSync(pendingLoginFile, { force: true });
+  if (token) {
+    configWriter({ [CONFIG_KEYS.apiKey]: token.apiKey });
+    fs.rmSync(pendingLoginFile, { force: true });
+  }
   return token;
 }
 

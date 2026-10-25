@@ -135,6 +135,11 @@ export abstract class BaseCommand extends Command {
     return this._client;
   }
 
+  /** Builds the client again on next use, so it picks up a key that a login just stored. */
+  protected resetClient(): void {
+    this._client = undefined;
+  }
+
   private _parsedFlags?: Record<string, unknown>;
   protected snapshotProjectPath?: string;
   private _lastResolvedInstanceId?: string;
@@ -271,8 +276,7 @@ export abstract class BaseCommand extends Command {
           log: (message) => this.info(message),
         });
         this.info('You are logged in now.');
-        // Reset client so it picks up the new key
-        this._client = undefined;
+        this.resetClient();
         return this.withAuth(fn, options);
       }
       if (err instanceof NotFoundError) {

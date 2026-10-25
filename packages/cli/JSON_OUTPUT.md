@@ -12,11 +12,12 @@ Use `--json` for automation on commands whose help lists that flag. JSON output 
 - CLI, validation, and API errors emit `{"error":{"code":"CLI_ERROR","message":"..."}}` on stderr. A specific error code replaces `CLI_ERROR` when available; HTTP errors also include numeric `status`. stderr may also contain diagnostics, so do not parse the whole stream as one JSON document. Explicit process exits after an execution result preserve the exit status without adding another result.
 - Pass the CLI's `--json` before `--`. Flags after `--` belong to the invoked tool. Interactive commands that do not advertise JSON, including the onboarding `run`, reject it.
 
-## Login
+## Login and setup
 
 | Commands | JSON result                                                                                                                                                                                                                                                                                                                                                                                             |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `login`  | Newline-delimited JSON. First `{status:"pending", verificationUrl, phrase, expiresAt}` as soon as the login starts, then `{status:"signed-in"}` after approval. The command waits until approval or `expiresAt`. The session secret is stored in `~/.lim/pending-login.json` and never printed; running `login` again before `expiresAt` continues the same session and prints the same URL and phrase. |
+| `setup`  | `{ok, auth, skills, mcp, blocked}`. `auth.status` is `signed-in` or `pending` (with the `login` pending fields and `next`, the command that waits for approval). `skills.status` is `done`, `failed` or `skipped`; `done` holds the `npx skills add` results. `mcp` has one `{agent, status, via, reason?}` per agent. `blocked` lists what is left. Exit 0 also when steps are blocked: read `ok`.     |
 | `whoami` | `{signedIn:true, type?, organizationId?, organizationName?, email?}` or `{signedIn:false, pendingLogin?:{verificationUrl, phrase, expiresAt}}`. Exit 0 in both cases. The API key is never printed.                                                                                                                                                                                                     |
 
 ## Instance and asset resources
