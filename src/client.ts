@@ -1,3 +1,4 @@
+import { WorkloadCredentials } from './lib/workload-credentials';
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 import type { RequestInit, RequestInfo, BodyInit } from './internal/builtin-types';
@@ -99,6 +100,8 @@ import {
 import { isEmptyObj } from './internal/utils/values';
 
 export interface ClientOptions {
+  /** Projected workload JWT file. Defaults to LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE. Null disables discovery. */
+  workloadTokenFile?: string | null;
   /**
    * Defaults to process.env['LIM_API_KEY'].
    */
@@ -193,6 +196,7 @@ export class Limrun {
   fetchOptions: MergedRequestInit | undefined;
 
   private fetch: Fetch;
+  private workloadCredentials?: WorkloadCredentials;
   #encoder: Opts.RequestEncoder;
   protected idempotencyHeader?: string;
   private _options: ClientOptions;
@@ -218,7 +222,16 @@ export class Limrun {
     const options: ClientOptions = {
       apiKey,
       ...opts,
-      baseURL: baseURL || `https://api.limrun.com`,
+      baseURL:
+        baseURL ||
+        ((
+          !apiKey &&
+          opts.workloadTokenFile !== null &&
+          (opts.workloadTokenFile ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'))
+        ) ?
+          readEnv('DIRECTOR_URL')
+        : undefined) ||
+        `https://api.limrun.com`,
     };
 
     this.baseURL = options.baseURL!;
@@ -251,6 +264,12 @@ export class Limrun {
     this._options = options;
 
     this.apiKey = apiKey;
+    const tokenFile =
+      opts.workloadTokenFile === null ?
+        undefined
+      : opts.workloadTokenFile ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
+    if (!apiKey && tokenFile)
+      this.workloadCredentials = new WorkloadCredentials(this.baseURL, tokenFile, this.fetch);
   }
 
   /**
@@ -284,7 +303,7 @@ export class Limrun {
   }
 
   protected validateHeaders({ values, nulls }: NullableHeaders) {
-    if (this.apiKey && values.get('authorization')) {
+    if ((this.apiKey || this.workloadCredentials) && values.get('authorization')) {
       return;
     }
     if (nulls.has('authorization')) {
@@ -298,6 +317,10 @@ export class Limrun {
 
   protected async authHeaders(opts: FinalRequestOptions): Promise<NullableHeaders | undefined> {
     if (this.apiKey == null) {
+      const explicit = buildHeaders([this._options.defaultHeaders, opts.headers]);
+      if (explicit.values.has('authorization') || explicit.nulls.has('authorization')) return undefined;
+      if (this.workloadCredentials)
+        return buildHeaders([{ Authorization: `Bearer ${await this.workloadCredentials.get()}` }]);
       return undefined;
     }
     return buildHeaders([{ Authorization: `Bearer ${this.apiKey}` }]);

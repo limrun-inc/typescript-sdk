@@ -1,4 +1,5 @@
 import { pullBuildFile } from '../internal/build-pull-file';
+import type { AssetUpload } from '../lib/asset-permissions';
 import { GradleInstances, type GradleInstance } from './gradle-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
@@ -84,7 +85,8 @@ export type GradleBuildOptions = {
         ttl?: string;
         signedUploadUrl?: never;
       }
-    | { signedUploadUrl: string; assetName?: never; ttl?: never };
+    | { signedUploadUrl: string; assetName?: never; ttl?: never }
+    | AssetUpload;
   /** React Native / Expo tuning. */
   reactNative?: GradleReactNativeConfig;
   /** Release signing config; presence makes bundleRelease the default task. */
@@ -240,6 +242,9 @@ class GradleInstancesHelpers extends GradleInstances {
           return exec(requestPromise, { apiUrl, token, log });
         }
 
+        if (options?.upload && 'target' in options.upload) {
+          request.assetUpload = options.upload;
+        }
         if (options?.upload && 'signedUploadUrl' in options.upload) {
           request.signedUploadUrl = options.upload.signedUploadUrl;
         }

@@ -303,3 +303,18 @@ test('run validates commands and timeout before making an exec request', async (
   }
   expect(nodeProxyTransport.fetch).not.toHaveBeenCalled();
 });
+
+test('workload upload target is authorized by the daemon', async () => {
+  let body: unknown;
+  nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+    if (String(input).endsWith('/exec')) {
+      body = JSON.parse(String(init?.body));
+      return Response.json({ execId: 'scoped-build' });
+    }
+    if (String(input).endsWith('/events')) return sseResponse(['event: exitCode\ndata: 0\n\n']);
+    throw new Error(`unexpected request: ${input}`);
+  });
+  const gradle = await gradleClient();
+  await gradle.gradlebuild({ upload: { target: 'name/app.apk' } });
+  expect(body).toEqual({ command: 'gradlebuild', assetUpload: { target: 'name/app.apk' } });
+});

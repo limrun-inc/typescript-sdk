@@ -1,4 +1,5 @@
 import { pullBuildFile } from '../internal/build-pull-file';
+import type { AssetUpload } from '../lib/asset-permissions';
 import {
   XcodeInstances as GeneratedXcodeInstances,
   type XcodeInstance,
@@ -256,7 +257,8 @@ export type XcodeBuildOptions = {
          */
         uploadOptions?: AssetUploadOptions;
       }
-    | { signedUploadUrl: string };
+    | { signedUploadUrl: string }
+    | AssetUpload;
   signing?: XcodeSigningConfig;
   cloudSigning?: XcodeCloudSigningConfig;
   /**
@@ -1080,6 +1082,9 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           return exec(requestPromise, execOptions);
         }
 
+        if (options?.upload && 'target' in options.upload) {
+          request.assetUpload = options.upload;
+        }
         if (options?.upload && 'signedUploadUrl' in options.upload) {
           request.signedUploadUrl = options.upload.signedUploadUrl;
         }

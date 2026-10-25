@@ -190,6 +190,9 @@ export namespace AndroidInstanceCreateParams {
   }
 
   export interface Spec {
+    /** Delegated asset scopes. [] grants nothing; omission uses the org compatibility default. */
+    workloadScopes?: Array<string>;
+
     /**
      * ClientLocation takes precedence over ClientIP regardless of clue order. Without
      * either clue, routing uses Cloudflare visitor coordinates, then its client IP.
