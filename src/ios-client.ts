@@ -177,6 +177,19 @@ export type ElementTreeNode = {
 
 export type ElementTree = ElementTreeNode[];
 
+/**
+ * Which reader answers an element tree request.
+ * - `accessibility` (default): the accessibility tree VoiceOver sees.
+ * - `xcuitest`: XCTest's own snapshot, the tree XCUITest queries. It includes views that have an
+ *   accessibilityIdentifier but are not accessibility elements, such as React Native views with a
+ *   `testID`. Requires a server version that supports it; older servers ignore the option.
+ */
+export type ElementTreeSource = 'accessibility' | 'xcuitest';
+
+export type ElementTreeOptions = {
+  source?: ElementTreeSource;
+};
+
 export type ElementTreeResultMessage = {
   type: 'elementTreeResult';
   id: string;
@@ -691,16 +704,18 @@ export type InstanceClient = {
   /**
    * Get the element tree (accessibility hierarchy) of the current screen
    * @param point Optional point to get the element at that specific location
+   * @param options Optional reader selection; see {@link ElementTreeSource}
    * @returns A promise that resolves to the parsed accessibility tree
    */
-  elementTree: (point?: AccessibilityPoint) => Promise<ElementTree>;
+  elementTree: (point?: AccessibilityPoint, options?: ElementTreeOptions) => Promise<ElementTree>;
 
   /**
    * Get the raw element tree string returned by the server.
    * @param point Optional point to get the element at that specific location
+   * @param options Optional reader selection; see {@link ElementTreeSource}
    * @returns A promise that resolves to the raw accessibility tree payload
    */
-  elementTreeRaw: (point?: AccessibilityPoint) => Promise<string>;
+  elementTreeRaw: (point?: AccessibilityPoint, options?: ElementTreeOptions) => Promise<string>;
 
   /**
    * Tap at the specified coordinates on the active screen (uses native screen dimensions)
@@ -2260,12 +2275,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<ScreenshotData>('screenshot', options);
     };
 
-    const elementTree = (point?: AccessibilityPoint): Promise<ElementTree> => {
-      return sendRequest<ElementTree>('elementTree', { point });
+    const elementTree = (
+      point?: AccessibilityPoint,
+      options: ElementTreeOptions = {},
+    ): Promise<ElementTree> => {
+      return sendRequest<ElementTree>('elementTree', { point, source: options.source });
     };
 
-    const elementTreeRaw = (point?: AccessibilityPoint): Promise<string> => {
-      return sendRequest<string>('elementTree', { point }, (msg) => msg.json ?? '');
+    const elementTreeRaw = (
+      point?: AccessibilityPoint,
+      options: ElementTreeOptions = {},
+    ): Promise<string> => {
+      return sendRequest<string>('elementTree', { point, source: options.source }, (msg) => msg.json ?? '');
     };
 
     const tap = (x: number, y: number): Promise<void> => {
