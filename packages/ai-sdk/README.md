@@ -30,8 +30,6 @@ const { text } = await generateText({
 console.log(text);
 ```
 
-In a chat app, pass `toolApproval: limrunToolApproval` to `streamText` or `ToolLoopAgent` to ask the user before `delete-instance` runs.
-
 ## Tools
 
 | Tool                                              | What it does                                                                                                                 |

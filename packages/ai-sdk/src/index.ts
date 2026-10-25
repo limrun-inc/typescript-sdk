@@ -5,12 +5,6 @@ import { z } from 'zod';
 // Tool names, input schemas and descriptions mirror the remote MCP server at
 // https://mcp.limrun.com/mcp so prompts written for one work with the other.
 
-/**
- * Pass as `toolApproval` to `generateText`, `streamText` or `ToolLoopAgent` to
- * ask the user before `delete-instance` runs. It is the only destructive tool.
- */
-export const limrunToolApproval = { 'delete-instance': 'user-approval' } as const;
-
 const iosId = z
   .string()
   .describe('ID of the iOS simulator to drive, as returned by create-ios-simulator or list-instances.');
