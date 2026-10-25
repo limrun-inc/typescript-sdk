@@ -4,19 +4,18 @@ import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 
+/** @deprecated Use AccessTokens. */
 export class ScopedTokens extends APIResource {
-  /**
-   * Mint a short-lived scoped token whose scopes limit what the holder can do, e.g.
-   * install a specific asset on a device through the registry. The token is verified
-   * offline by services holding the token signing public key and cannot be revoked,
-   * so keep TTLs short. It is bound to the authenticated caller's organization.
-   */
+  /** @deprecated Use client.accessTokens.create(). This method keeps the legacy URL. */
   create(body: ScopedTokenCreateParams, options?: RequestOptions): APIPromise<ScopedToken> {
     return this._client.post('/v1/scoped_tokens', { body, ...options });
   }
 }
 
+/** @deprecated Use AccessToken. */
 export interface ScopedToken {
+  /** The revocation ID returned by current servers. */
+  id?: string;
   /**
    * The scoped token, to be sent as a Bearer token or the token query parameter.
    */
@@ -27,6 +26,7 @@ export interface ScopedToken {
   scopes: Array<string>;
 }
 
+/** @deprecated Use AccessTokenCreateParams. */
 export interface ScopedTokenCreateParams {
   /**
    * Scopes in the form `<resource>:<id|*>:<action>`, e.g. `device:*:install`,

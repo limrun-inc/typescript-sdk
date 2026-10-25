@@ -48,9 +48,9 @@ const BUILD_SCOPES = ['remotecache:*:all', 'remoteexecution:*:all'];
 /** The credential helper's answer: headers for the plane, and when they expire. */
 export type BazelCredentials = { headers: { Authorization: string[] }; expires: string };
 
-/** Mints a short-lived scoped token for the plane from the caller's own credential. */
+/** Mints a short-lived access token for the plane from the caller's own credential. */
 export async function bazelCredentials(client: Limrun): Promise<BazelCredentials> {
-  const token = await client.scopedTokens.create({ scopes: BUILD_SCOPES, ttlSeconds: TOKEN_TTL_SECONDS });
+  const token = await client.accessTokens.create({ scopes: BUILD_SCOPES, ttlSeconds: TOKEN_TTL_SECONDS });
   return { headers: { Authorization: [`Bearer ${token.token}`] }, expires: token.expiresAt };
 }
 
