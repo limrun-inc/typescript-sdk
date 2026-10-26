@@ -45,7 +45,7 @@ jest.mock('ws', () => {
         });
       } else if (
         message.type === 'watchApp' ||
-        message.type === 'watchHangs' ||
+        message.type === 'monitorApp' ||
         message.type === 'unwatchApp'
       ) {
         process.nextTick(() => {
@@ -410,63 +410,59 @@ describe('iOS launchApp serialization', () => {
     client.disconnect();
   });
 
-  it('watchHangs delivers every hang sample and end across exits until stop()', async () => {
+  it('monitorApp delivers every exit and hang across relaunches until stop()', async () => {
     const { createInstanceClient } = await import('../src/ios-client');
     const client = await createInstanceClient({
       apiUrl: 'https://example.test/v1/ios_123/api',
       token: 'token',
       logLevel: 'none',
     });
+    const onExit = jest.fn();
     const onHang = jest.fn();
-    const watch = await client.watchHangs('com.example.app', onHang);
-    expect(sentMessages.find((message) => message['type'] === 'watchHangs')).toEqual({
-      type: 'watchHangs',
+    const monitor = await client.monitorApp('com.example.app', { onExit, onHang });
+    expect(sentMessages.find((message) => message['type'] === 'monitorApp')).toEqual({
+      type: 'monitorApp',
       id: expect.any(String),
       bundleId: 'com.example.app',
-      execId: watch.execId,
+      execId: monitor.execId,
     });
 
     const send = (message: object) => mockSockets[0]!.emit('message', Buffer.from(JSON.stringify(message)));
-    const hang = (pid: number, ended: boolean, durationMs: number) => ({
+    const hang = (pid: number, ended: boolean) => ({
       type: 'appHang',
-      execId: watch.execId,
+      execId: monitor.execId,
       bundleId: 'com.example.app',
-      hang: {
-        pid,
-        hangId: 1,
-        ended,
-        durationMs,
-        ...(ended ? {} : { mainThreadState: 'waiting', stackTrace: 'Main Thread:' }),
-      },
+      hang: { pid, hangId: 1, ended, durationMs: ended ? 4500 : 1000 },
     });
-    send(hang(10, false, 1000));
-    send(hang(10, true, 4500));
-    // A hang watch is not an exit watch: an exit leaves it running for the next process.
-    send({ type: 'appExit', execId: watch.execId, bundleId: 'com.example.app', reason: 'exit', logs: [] });
-    send(hang(11, false, 1000));
+    const exit = (reason: string) => ({
+      type: 'appExit',
+      execId: monitor.execId,
+      bundleId: 'com.example.app',
+      reason,
+      logs: [],
+    });
+    send(hang(10, false));
+    send(hang(10, true));
+    send(exit('crash'));
+    send(hang(11, false));
+    send(exit('terminated'));
     await new Promise((resolve) => setImmediate(resolve));
-    expect(onHang.mock.calls.map(([info]) => [info.pid, info.ended, info.durationMs])).toEqual([
-      [10, false, 1000],
-      [10, true, 4500],
-      [11, false, 1000],
+    expect(onHang.mock.calls.map(([info]) => [info.pid, info.ended])).toEqual([
+      [10, false],
+      [10, true],
+      [11, false],
     ]);
-    expect(onHang.mock.calls[0]![0]).toEqual({
-      bundleId: 'com.example.app',
-      pid: 10,
-      hangId: 1,
-      ended: false,
-      durationMs: 1000,
-      mainThreadState: 'waiting',
-      stackTrace: 'Main Thread:',
-    });
+    expect(onExit.mock.calls.map(([, info]) => info.reason)).toEqual(['crash', 'terminated']);
 
-    await watch.stop();
+    await monitor.stop();
     expect(sentMessages.find((message) => message['type'] === 'unwatchApp')).toMatchObject({
-      execId: watch.execId,
+      execId: monitor.execId,
     });
-    send(hang(11, true, 2000));
+    send(hang(12, false));
+    send(exit('exit'));
     await new Promise((resolve) => setImmediate(resolve));
     expect(onHang).toHaveBeenCalledTimes(3);
+    expect(onExit).toHaveBeenCalledTimes(2);
 
     client.disconnect();
   });
@@ -483,7 +479,7 @@ describe('iOS launchApp serialization', () => {
 
     const launch = sentMessages.find((message) => message['type'] === 'launchApp')!;
     expect(launch).toMatchObject({ hangs: true, execId: expect.any(String) });
-    expect(sentMessages.some((message) => message['type'] === 'watchHangs')).toBe(false);
+    expect(sentMessages.some((message) => message['type'] === 'monitorApp')).toBe(false);
 
     const send = (message: object) => mockSockets[0]!.emit('message', Buffer.from(JSON.stringify(message)));
     const hang = {
