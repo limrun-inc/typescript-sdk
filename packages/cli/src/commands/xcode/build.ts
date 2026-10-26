@@ -485,6 +485,11 @@ export default class XcodeBuild extends BaseCommand {
         return;
       }
 
+      proc.command.on('data', (line: string) => {
+        if (this.isJsonEnabled()) this.outputEvent({ type: 'command', line });
+        else process.stdout.write(`$ ${line}\n`);
+      });
+
       proc.stdout.on('data', (line: string) => {
         if (this.isJsonEnabled()) this.outputEvent({ type: 'stdout', line });
         else process.stdout.write(line + '\n');
