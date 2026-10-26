@@ -183,6 +183,8 @@ export type ElementTree = ElementTreeNode[];
  * - `xcuitest`: XCTest's own snapshot, the tree XCUITest queries. It includes views that have an
  *   accessibilityIdentifier but are not accessibility elements, such as React Native views with a
  *   `testID`. Requires a server version that supports it; older servers ignore the option.
+ *   Full-tree reads only: omit `point`. Enables simulator automation mode for subsequent reads.
+ *   Web content hosted in another process is not included.
  */
 export type ElementTreeSource = 'accessibility' | 'xcuitest';
 
@@ -2279,6 +2281,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       point?: AccessibilityPoint,
       options: ElementTreeOptions = {},
     ): Promise<ElementTree> => {
+      if (point && options.source === 'xcuitest') {
+        return Promise.reject(
+          new Error(
+            'The xcuitest element tree does not support point queries; omit point to read the full snapshot',
+          ),
+        );
+      }
       return sendRequest<ElementTree>('elementTree', { point, source: options.source });
     };
 
@@ -2286,6 +2295,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       point?: AccessibilityPoint,
       options: ElementTreeOptions = {},
     ): Promise<string> => {
+      if (point && options.source === 'xcuitest') {
+        return Promise.reject(
+          new Error(
+            'The xcuitest element tree does not support point queries; omit point to read the full snapshot',
+          ),
+        );
+      }
       return sendRequest<string>('elementTree', { point, source: options.source }, (msg) => msg.json ?? '');
     };
 
