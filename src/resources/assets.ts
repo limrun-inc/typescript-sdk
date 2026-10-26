@@ -7,9 +7,13 @@ import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
 
 export class Assets extends APIResource {
-  /** Obtain an upload URL without requiring permission to read the asset. */
-  createUploadURL(assetID: string, options?: RequestOptions): APIPromise<{ signedUploadUrl: string }> {
-    return this._client.post(path`/v1/assets/${assetID}/upload_urls`, options);
+  /** Obtain asset and optional icon upload URLs. Icon downloads require read permission. */
+  createUploadURL(
+    assetID: string,
+    query: AssetUploadURLParams = {},
+    options?: RequestOptions,
+  ): APIPromise<AssetUploadURLs> {
+    return this._client.post(path`/v1/assets/${assetID}/upload_urls`, { query, ...options });
   }
 
   /** Update editable metadata. The lookup name cannot be changed. */
@@ -247,6 +251,9 @@ export declare namespace Assets {
     type AssetListParams as AssetListParams,
     type AssetGetParams as AssetGetParams,
     type AssetGetOrCreateParams as AssetGetOrCreateParams,
+    type AssetUpdateParams as AssetUpdateParams,
+    type AssetUploadURLParams as AssetUploadURLParams,
+    type AssetUploadURLs as AssetUploadURLs,
   };
 }
 
@@ -256,5 +263,20 @@ export interface AssetUpdateParams {
   shortVersion?: string;
   buildVersion?: string;
   deeplink?: string;
+  targetSdk?: string;
   ttl?: string;
+}
+
+export interface AssetUploadURLParams {
+  /** Also request an upload URL for the app icon PNG. */
+  icon?: boolean;
+}
+
+export interface AssetUploadURLs {
+  signedUploadUrl: string;
+  iconPutUrl?: string;
+  iconPutMethod?: string;
+  iconPutHeaders?: Record<string, string>;
+  /** Included only when requesting an icon and holding read permission. */
+  iconUrl?: string;
 }
