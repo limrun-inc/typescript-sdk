@@ -57,7 +57,7 @@ test('explicit API key never exchanges or falls back after refusal', async () =>
 
 test('empty workload scopes fail before calling the asset endpoint', async () => {
   const fetcher = jest.fn(async () =>
-    Response.json({ message: 'This instance has no workload asset permissions' }, { status: 403 }),
+    Response.json({ message: 'This instance has no delegated asset permissions' }, { status: 403 }),
   );
   const client = new Limrun({
     apiKey: null,

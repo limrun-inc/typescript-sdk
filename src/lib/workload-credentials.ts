@@ -30,7 +30,7 @@ export class WorkloadCredentials {
     });
     if (!response.ok) throw new Error(`Workload token exchange returned HTTP ${response.status}`);
     const body = (await response.json()) as { token?: string; expiresAt: string };
-    if (!body.token) throw new Error('This instance has no workload asset permissions');
+    if (!body.token) throw new Error('This instance has no delegated asset permissions');
     const expires = Date.parse(body.expiresAt);
     if (!Number.isFinite(expires) || expires <= Date.now())
       throw new Error('Workload token exchange returned an invalid expiration');
