@@ -12,6 +12,7 @@ import {
   type LaunchAppFlagValues,
 } from '../../lib/launch-app-runtime';
 import { formatAppExit } from '../../lib/format-app-exit';
+import { formatAppHang } from '../../lib/format-app-hang';
 
 type IosLaunchClient = Awaited<ReturnType<typeof getIosInstanceClient>>['client'];
 
@@ -139,6 +140,10 @@ export default class IosLaunchApp extends BaseCommand {
           // Log lines are already streamed, so only the exit reason and crash are printed.
           onExit: (_logs, info) => {
             notifyAppExited(info);
+          },
+          onHang: (hang) => {
+            if (flags.json) this.outputEvent({ type: 'hang', ...hang });
+            else this.logToStderr(formatAppHang(args.bundleId, hang));
           },
         };
 

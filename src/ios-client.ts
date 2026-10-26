@@ -476,19 +476,68 @@ export type AppExitInfo = {
  */
 export type LaunchAppExitCallback = (logs: string[], info: AppExitInfo) => Promise<void> | void;
 
-/** Handle for an app watch registered via {@link InstanceClient.watchApp}. */
+/** Handle for a watch registered via {@link InstanceClient.watchApp} or {@link InstanceClient.watchHangs}. */
 export type AppWatch = {
   /** Identifier of this watch on the server. */
   execId: string;
-  /** Cancels the watch; the onExit callback will not be invoked afterwards. */
+  /** Cancels the watch; its callback will not be invoked afterwards. */
   stop: () => Promise<void>;
 };
+
+/**
+ * A sample of an app's main-thread hang, or the hang's end. The main thread is hung once it has
+ * not answered for 1 second. The simulator samples a hang 1, 3, 6 and 10 seconds in, then reports
+ * once more when the main thread answers or the app exits.
+ */
+export type AppHangInfo = {
+  bundleId: string;
+  pid: number;
+  /** Numbers the process's hangs from 1. A hang's samples and its end share it. */
+  hangId: number;
+  /** `false` for a sample while the main thread is still hung, `true` once it answered or the app exited. */
+  ended: boolean;
+  /** The hang's age at this sample, or its whole length at the end. */
+  durationMs: number;
+  /**
+   * The main thread's run state at the sample: `running`, `waiting`, `uninterruptible`, `stopped`
+   * or `halted`. This and the fields below come with samples only, each left out when the app
+   * could not read it.
+   */
+  mainThreadState?: string;
+  /**
+   * CPU time the main thread used during the hang. Close to `durationMs` while `running` means the
+   * app kept its main thread busy; near zero while `waiting` means it waited, and `stackTrace`
+   * shows on what.
+   */
+  mainThreadCpuMs?: number;
+  /** The part of `mainThreadCpuMs` spent in the kernel, for example reading compressed memory back. */
+  mainThreadKernelMs?: number;
+  /** CPU time all of the app's threads used during the hang. */
+  appCpuMs?: number;
+  /** Pages the app read in from disk during the hang. */
+  pageIns?: number;
+  /** The app's memory footprint at the sample. */
+  footprintBytes?: number;
+  /**
+   * The main thread's frames, with symbol names for the app's own code, followed by the binary
+   * images they belong to, laid out like {@link AppCrashInfo.stackTrace}.
+   */
+  stackTrace?: string;
+};
+
+/** Called for each sample of a hang and once at its end. */
+export type AppHangCallback = (info: AppHangInfo) => Promise<void> | void;
 
 type LaunchAppCommonOptions = {
   /** App environment variables. Requires relaunch; reserved keys and existing launch variables are ignored. */
   env?: Record<string, string>;
   /** Called once when the launched app exits, crashes, or is terminated. */
   onExit?: LaunchAppExitCallback;
+  /**
+   * Called for each sample of the app's main-thread hangs and once at each hang's end, from the
+   * launch until this launch's app exits. See {@link InstanceClient.watchHangs}.
+   */
+  onHang?: AppHangCallback;
 };
 
 type StandardLaunchAppOptions = LaunchAppCommonOptions & {
@@ -811,6 +860,18 @@ export type InstanceClient = {
    * @returns A handle whose `stop()` cancels the watch
    */
   watchApp: (bundleId: string, onExit: LaunchAppExitCallback) => Promise<AppWatch>;
+
+  /**
+   * Watch an app's main-thread hangs: every time any process of the app stops answering on its
+   * main thread for 1 second or more, the callback gets the hang's samples, then its end. Unlike
+   * {@link watchApp}, the watch outlives exits and relaunches until you stop it, so it suits test
+   * runners that relaunch the app. A simulator keeps its 8 newest hang watches.
+   *
+   * @param bundleId Bundle identifier of the app to watch
+   * @param onHang Called for each hang sample and each hang's end
+   * @returns A handle whose `stop()` ends the watch
+   */
+  watchHangs: (bundleId: string, onHang: AppHangCallback) => Promise<AppWatch>;
 
   /**
    * Fetch the last N lines of app logs (combined stdout/stderr)
@@ -1447,6 +1508,14 @@ type AppExitMessage = {
   logLineCount?: number;
 };
 
+/** appHang as the server sends it. */
+type AppHangMessage = {
+  type: 'appHang';
+  execId: string;
+  bundleId: string;
+  hang: Omit<AppHangInfo, 'bundleId'>;
+};
+
 type ServerResponse = {
   recordingId?: string;
   state?: FoldState;
@@ -1693,8 +1762,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   const simctlExecutions: Map<string, SimctlExecution> = new Map();
 
   // Server notifications are keyed by notification type and that type's
-  // identifier field. They intentionally survive transient WebSocket reconnects
-  // and are one-shot once a matching notification is processed.
+  // identifier field. They intentionally survive transient WebSocket reconnects.
+  // appExit handlers are one-shot; appHang handlers stay until their watch stops.
   type ServerNotificationHandler = (message: ServerResponse) => Promise<void>;
   const serverNotifications: Map<string, Map<string, ServerNotificationHandler>> = new Map();
 
@@ -1810,6 +1879,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     }
     return handler;
   };
+
+  const getServerNotification = (
+    type: string,
+    notificationId: string,
+  ): ServerNotificationHandler | undefined => serverNotifications.get(type)?.get(notificationId);
 
   const deleteServerNotification = (type: string, notificationId: string): void => {
     const handlers = serverNotifications.get(type);
@@ -1956,6 +2030,26 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return true;
     };
 
+    const handleAppHang = (message: ServerResponse): boolean => {
+      if (message.type !== 'appHang') {
+        return false;
+      }
+      const { execId, bundleId, hang } = message as unknown as AppHangMessage;
+      if (typeof execId !== 'string' || typeof bundleId !== 'string' || typeof hang !== 'object' || !hang) {
+        logger.warn('Received malformed appHang message:', message);
+        return true;
+      }
+      const notification = getServerNotification('appHang', execId);
+      if (!notification) {
+        logger.debug(`Received appHang for unknown or stopped execId: ${execId}`);
+        return true;
+      }
+      void notification(message).catch((error) => {
+        logger.error(`Error processing appHang notification for execId ${execId}:`, error);
+      });
+      return true;
+    };
+
     // Response handlers - transform raw responses to typed results
     const responseHandlers: Record<string, (msg: ServerResponse) => unknown> = {
       screenshotResult: (msg) => ({
@@ -1979,6 +2073,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       launchAppResult: () => undefined,
       terminateAppResult: () => undefined,
       watchAppResult: () => undefined,
+      watchHangsResult: () => undefined,
       unwatchAppResult: () => undefined,
       appLogTailResult: (msg) => msg.logs ?? '',
       listAppsResult: (msg) => JSON.parse(msg.apps || '[]') as InstalledApp[],
@@ -2048,7 +2143,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           return;
         }
 
-        if (handleAppExit(message)) {
+        if (handleAppExit(message) || handleAppHang(message)) {
           return;
         }
 
@@ -2190,6 +2285,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             launchApp,
             terminateApp,
             watchApp,
+            watchHangs,
             appLogTail,
             streamAppLog,
             streamSyslog,
@@ -2416,7 +2512,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<void>('toggleKeyboard');
     };
 
-    const launchApp = (bundleId: string, modeOrOptions?: LaunchAppMode | LaunchAppOptions): Promise<void> => {
+    const launchApp = async (
+      bundleId: string,
+      modeOrOptions?: LaunchAppMode | LaunchAppOptions,
+    ): Promise<void> => {
       const launchOptions: LaunchAppOptions =
         typeof modeOrOptions === 'string' ? { mode: modeOrOptions } : modeOrOptions ?? {};
       const requestedMode =
@@ -2424,8 +2523,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           (modeOrOptions as { mode?: LaunchAppMode }).mode
         : launchOptions.mode;
       if (launchOptions.runtime && requestedMode === 'ForegroundIfRunning') {
-        return Promise.reject(
-          new Error('launchApp runtime launches require RelaunchIfRunning so runtime injection is applied.'),
+        throw new Error(
+          'launchApp runtime launches require RelaunchIfRunning so runtime injection is applied.',
         );
       }
       const hasEnvironment = Object.keys(launchOptions.env ?? {}).length > 0;
@@ -2433,23 +2532,34 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         launchOptions.runtime ? 'RelaunchIfRunning' : (
           launchOptions.mode ?? (hasEnvironment ? 'RelaunchIfRunning' : undefined)
         );
-      const onExit = launchOptions.onExit;
-      const execId = onExit ? generateId() : undefined;
-      if (execId && onExit) {
-        registerServerNotification('appExit', execId, appExitHandler(execId, onExit));
+      const { onExit, onHang } = launchOptions;
+      // Hangs come from a hang watch on the bundle, which this launch's exit stops.
+      const hangWatch = onHang ? await watchHangs(bundleId, onHang) : undefined;
+      const execId = onExit || hangWatch ? generateId() : undefined;
+      if (execId) {
+        const exitHandler = onExit ? appExitHandler(execId, onExit) : undefined;
+        registerServerNotification('appExit', execId, async (message) => {
+          await hangWatch
+            ?.stop()
+            .catch((error) => logger.warn(`Failed to stop the hang watch of ${bundleId}:`, error));
+          await exitHandler?.(message);
+        });
       }
-      return sendRequest<void>('launchApp', {
-        bundleId,
-        mode,
-        runtime: launchOptions.runtime,
-        env: launchOptions.env,
-        execId,
-      }).catch((error) => {
+      try {
+        await sendRequest<void>('launchApp', {
+          bundleId,
+          mode,
+          runtime: launchOptions.runtime,
+          env: launchOptions.env,
+          execId,
+        });
+      } catch (error) {
         if (execId) {
           deleteServerNotification('appExit', execId);
         }
+        await hangWatch?.stop().catch(() => undefined);
         throw error;
-      });
+      }
     };
 
     /** Delivers one appExit to the callback, fetching the logs from servers that predate inline logs. */
@@ -2498,6 +2608,31 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         execId,
         stop: async () => {
           deleteServerNotification('appExit', execId);
+          await sendRequest<void>('unwatchApp', { execId });
+        },
+      };
+    };
+
+    const watchHangs = async (bundleId: string, onHang: AppHangCallback): Promise<AppWatch> => {
+      const execId = generateId();
+      registerServerNotification('appHang', execId, async (response) => {
+        const { hang, bundleId: hangBundleId } = response as unknown as AppHangMessage;
+        try {
+          await onHang({ ...hang, bundleId: hangBundleId });
+        } catch (error) {
+          logger.error(`Error in onHang callback for execId ${execId}:`, error);
+        }
+      });
+      try {
+        await sendRequest<void>('watchHangs', { bundleId, execId });
+      } catch (error) {
+        deleteServerNotification('appHang', execId);
+        throw error;
+      }
+      return {
+        execId,
+        stop: async () => {
+          deleteServerNotification('appHang', execId);
           await sendRequest<void>('unwatchApp', { execId });
         },
       };
