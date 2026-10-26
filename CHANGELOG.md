@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.66.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.65.1...v0.66.0) (2026-10-26)
+
+
+### Features
+
+* **cli:** add build pull-file commands on SDK 0.65.1 ([ce4a6e9](https://github.com/limrun-inc/typescript-sdk/commit/ce4a6e9c97c8538b18af71cf5895af63d53d0dae))
+* **cli:** add build sandbox pull-file commands ([9cc36d3](https://github.com/limrun-inc/typescript-sdk/commit/9cc36d3ff0be1f8efe50c1ee50d05f0190675be6))
+* replace watchHangs with monitorApp and deprecate watchApp ([4d9ad74](https://github.com/limrun-inc/typescript-sdk/commit/4d9ad74b9e8cf6c884e4916b06fe991ad6d34a71))
+* report iOS app main-thread hangs with watchHangs and launchApp onHang ([3701dd5](https://github.com/limrun-inc/typescript-sdk/commit/3701dd5c8b9d4ebc19ed35f4e045b8762980dc20))
+
+
+### Bug Fixes
+
+* ask the launch itself for its hang reports ([094db86](https://github.com/limrun-inc/typescript-sdk/commit/094db862d8ebd8a6889e01105aa0a7de65e0519e))
+* **cli:** show executed commands in build output ([dbc110a](https://github.com/limrun-inc/typescript-sdk/commit/dbc110ae0c512dd46ecad18f32c2b572120371db))
+* **cli:** show executed commands in build output ([5b125cd](https://github.com/limrun-inc/typescript-sdk/commit/5b125cdbd80aabebdae61009b532b2c311b37e40))
+* launch without hang reports on simulators that predate hang watches ([9c3c7c2](https://github.com/limrun-inc/typescript-sdk/commit/9c3c7c217d203bb61e0ca9dfd222c228995fac8c))
+
+
+### Chores
+
+* **cli:** bump patch version to 0.47.1 ([8b5268f](https://github.com/limrun-inc/typescript-sdk/commit/8b5268f1ce1d8164d5f856c3cc275831f28448b1))
+
 ## [0.65.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.65.0...v0.65.1) (2026-10-26)
 
 
