@@ -56,8 +56,8 @@ the reference for correlation; Apple response bodies, headers, and error message
 can contain account information or authentication state.
 
 The ID is optional for compatibility with older relay servers and is unavailable
-if the connection fails before the server announces it. The low-level client's
-getter is populated by that announcement or its first response and remains
+if the connection fails before its first response. The low-level client's
+getter is populated by the first response and remains
 available after `close()`, until the next `connect()` call.
 
 ## Developer Portal resources

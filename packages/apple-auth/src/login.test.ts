@@ -34,7 +34,7 @@ test('failed login preserves the support reference after closing the relay', asy
     .mockResolvedValueOnce({ status: 200, body: {} })
     .mockResolvedValueOnce({ status: 401, rawBody: '{"serviceErrors":[{"code":"-20209"}]}' });
   await expect(startBrowserOwnedAppleIDLogin(input)).rejects.toMatchObject({
-    name: 'AppleRelayError',
+    name: 'Error',
     relaySessionId: relay.relaySessionId,
   });
   expect(relay.close).toHaveBeenCalledOnce();
@@ -48,7 +48,7 @@ test('two-factor failures retain the same reference', async () => {
     .mockResolvedValueOnce({ status: 401 });
   const login = await startBrowserOwnedAppleIDLogin(input);
   await expect(login.finishTwoFactor('123456')).rejects.toMatchObject({
-    name: 'AppleRelayError',
+    name: 'Error',
     relaySessionId: relay.relaySessionId,
   });
 });

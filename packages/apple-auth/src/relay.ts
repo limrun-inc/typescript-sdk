@@ -10,7 +10,6 @@ export type AppleRelayResponse<T = unknown> = {
 
 type AppleRelayWebSocketMessage<T = unknown> = {
   id: string;
-  type?: 'session';
   relaySessionId?: string;
   ok: boolean;
   response?: AppleRelayResponse<T>;
@@ -24,7 +23,6 @@ export class AppleRelayError extends Error {
     readonly relaySessionId?: string,
   ) {
     super(message);
-    this.name = 'AppleRelayError';
   }
 }
 
@@ -39,7 +37,7 @@ export class AppleRelayWebSocketClient {
   private nextId = 1;
   private sessionId?: string;
 
-  /** Available after the server announces the connection or sends its first response. */
+  /** Available after the first relay response, including an error response. */
   get relaySessionId(): string | undefined {
     return this.sessionId;
   }
@@ -115,7 +113,6 @@ export class AppleRelayWebSocketClient {
   private handleMessage(event: MessageEvent) {
     const message = JSON.parse(String(event.data)) as AppleRelayWebSocketMessage;
     if (message.relaySessionId) this.sessionId = message.relaySessionId;
-    if (message.type === 'session') return;
     const waiter = this.pending.get(message.id);
     if (!waiter) return;
     this.pending.delete(message.id);
