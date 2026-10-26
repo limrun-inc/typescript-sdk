@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.65.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.65.0...v0.65.1) (2026-10-26)
+
+
+### Features
+
+* **sdk:** add build sandbox pullFile downloads ([5b8fc1a](https://github.com/limrun-inc/typescript-sdk/commit/5b8fc1ad2bfe358f74d8b0321a513d4431b3faa8))
+* **sdk:** stream build sandbox files to local paths ([376936e](https://github.com/limrun-inc/typescript-sdk/commit/376936ea43a9f4cff118729d8d5d475bb1446cfb))
+
+
+### Chores
+
+* **cli:** release 0.47.0 with concurrent recordings ([#563](https://github.com/limrun-inc/typescript-sdk/issues/563)) ([3d453f4](https://github.com/limrun-inc/typescript-sdk/commit/3d453f48db43ebbadc50e0130d8a22252e681dc4))
+
 ## [0.65.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.64.2...v0.65.0) (2026-10-22)
 
 
