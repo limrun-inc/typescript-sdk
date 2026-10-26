@@ -2534,7 +2534,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         );
       const { onExit, onHang } = launchOptions;
       // Hangs come from a hang watch on the bundle, which this launch's exit stops.
-      const hangWatch = onHang ? await watchHangs(bundleId, onHang) : undefined;
+      // A simulator without hang reports still launches the app; only its hangs go unreported.
+      const hangWatch =
+        onHang ?
+          await watchHangs(bundleId, onHang).catch((error) => {
+            logger.warn(`Launching ${bundleId} without hang reports: ${error.message}`);
+            return undefined;
+          })
+        : undefined;
       const execId = onExit || hangWatch ? generateId() : undefined;
       if (execId) {
         const exitHandler = onExit ? appExitHandler(execId, onExit) : undefined;
@@ -2624,7 +2631,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
       });
       try {
-        await sendRequest<void>('watchHangs', { bundleId, execId });
+        // Simulators that predate hang watches never answer, so the wait stays short.
+        await sendRequest<void>('watchHangs', { bundleId, execId }, undefined, 10_000);
       } catch (error) {
         deleteServerNotification('appHang', execId);
         throw error;
