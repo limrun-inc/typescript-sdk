@@ -1,6 +1,6 @@
 export type AssetAction = 'read' | 'create' | 'upload' | 'update' | 'delete' | 'all';
 
-/** Encode an exact name for a scope or an assetUpload target. */
+/** Encode an exact name for a permission or an assetUpload target. */
 export function assetNameTarget(name: string): string {
   return `name/${encodeURIComponent(name).replace(
     /[!'()*]/g,
@@ -8,7 +8,7 @@ export function assetNameTarget(name: string): string {
   )}`;
 }
 
-export function assetScope(target: string, action: AssetAction): string {
+export function assetPermission(target: string, action: AssetAction): string {
   return `asset:${target}:${action}`;
 }
 
@@ -17,3 +17,6 @@ export interface AssetUpload {
   target: string;
   token?: string;
 }
+
+/** @deprecated Use assetPermission. */
+export const assetScope = assetPermission;

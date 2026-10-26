@@ -58,6 +58,7 @@ import {
 } from './resources/ios-instances';
 import { IosInstances } from './resources/ios-instances-helpers';
 import { SessionArtifact } from './resources/session-artifacts';
+import { AccessToken, AccessTokenCreateParams, AccessTokens } from './resources/access-tokens';
 import { ScopedToken, ScopedTokenCreateParams, ScopedTokens } from './resources/scoped-tokens';
 import {
   XcodeInstance,
@@ -873,6 +874,8 @@ export class Limrun {
   xcodeInstances: API.XcodeInstances = new API.XcodeInstances(this);
   gradleInstances: API.GradleInstances = new API.GradleInstances(this);
   analytics: API.Analytics = new API.Analytics(this);
+  accessTokens: API.AccessTokens = new API.AccessTokens(this);
+  /** @deprecated Use accessTokens. */
   scopedTokens: API.ScopedTokens = new API.ScopedTokens(this);
 }
 
@@ -882,6 +885,7 @@ Limrun.IosInstances = IosInstances;
 Limrun.XcodeInstances = XcodeInstances;
 Limrun.GradleInstances = GradleInstances;
 Limrun.Analytics = Analytics;
+Limrun.AccessTokens = AccessTokens;
 Limrun.ScopedTokens = ScopedTokens;
 
 export declare namespace Limrun {
@@ -962,6 +966,9 @@ export declare namespace Limrun {
   };
 
   export {
+    AccessTokens as AccessTokens,
+    type AccessToken as AccessToken,
+    type AccessTokenCreateParams as AccessTokenCreateParams,
     ScopedTokens as ScopedTokens,
     type ScopedToken as ScopedToken,
     type ScopedTokenCreateParams as ScopedTokenCreateParams,

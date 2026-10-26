@@ -190,8 +190,11 @@ export namespace AndroidInstanceCreateParams {
   }
 
   export interface Spec {
-    /** Delegated asset scopes. [] grants nothing; omission uses the org compatibility default. */
-    workloadScopes?: Array<string>;
+    /** Omit role to use the organization compatibility default. */
+    role?: {
+      /** Delegated asset permissions. An empty array grants nothing. */
+      permissions: Array<string>;
+    };
 
     /**
      * ClientLocation takes precedence over ClientIP regardless of clue order. Without

@@ -1,0 +1,47 @@
+import Limrun, { assetPermission, assetScope } from '../src';
+
+test('access tokens send permissions and preserve the deprecated scopes API', async () => {
+  const calls: { url: string; body: unknown }[] = [];
+  const fetcher = jest.fn(async (url: unknown, init?: RequestInit) => {
+    calls.push({ url: String(url), body: JSON.parse(init?.body as string) });
+    return Response.json({
+      id: 'id',
+      token: 'token',
+      permissions: ['asset:*:read'],
+      scopes: ['asset:*:read'],
+      expiresAt: '2026-10-26T00:00:00Z',
+    });
+  });
+  const client = new Limrun({ apiKey: 'explicit', baseURL: 'https://api.example', fetch: fetcher });
+  const canonical = await client.accessTokens.create({ permissions: ['asset:*:read'] });
+  const legacy = await client.scopedTokens.create({ scopes: ['asset:*:read'] });
+  expect(canonical.permissions).toEqual(legacy.scopes);
+  expect(calls).toEqual([
+    { url: 'https://api.example/v1/access_tokens', body: { permissions: ['asset:*:read'] } },
+    { url: 'https://api.example/v1/scoped_tokens', body: { scopes: ['asset:*:read'] } },
+  ]);
+});
+
+test.each(['android', 'ios', 'xcode', 'gradle'] as const)(
+  '%s creates serialize the instance role',
+  async (platform) => {
+    const fetcher = jest.fn(async (_url: unknown, init?: RequestInit) => {
+      expect(JSON.parse(init?.body as string)).toEqual({ spec: { role: { permissions: [] } } });
+      return Response.json({});
+    });
+    const client = new Limrun({ apiKey: 'explicit', baseURL: 'https://api.example', fetch: fetcher });
+    const resources = {
+      android: client.androidInstances,
+      ios: client.iosInstances,
+      xcode: client.xcodeInstances,
+      gradle: client.gradleInstances,
+    };
+    await resources[platform].create({ spec: { role: { permissions: [] } } });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  },
+);
+
+test('assetScope remains compatible with assetPermission', () => {
+  expect(assetPermission('name/result.apk', 'upload')).toBe('asset:name/result.apk:upload');
+  expect(assetScope('name/result.apk', 'upload')).toBe(assetPermission('name/result.apk', 'upload'));
+});
