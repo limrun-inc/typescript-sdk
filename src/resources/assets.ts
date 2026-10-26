@@ -274,9 +274,8 @@ export interface AssetUploadURLParams {
 
 export interface AssetUploadURLs {
   signedUploadUrl: string;
-  iconPutUrl?: string;
-  iconPutMethod?: string;
-  iconPutHeaders?: Record<string, string>;
+  /** Upload the icon PNG with PUT and Content-Type: image/png. No other headers are required. */
+  signedIconUploadUrl?: string;
   /** Included only when requesting an icon and holding read permission. */
   iconUrl?: string;
 }
