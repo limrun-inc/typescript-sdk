@@ -427,6 +427,8 @@ describe.each([false, true])('foreground build NDJSON with quiet=%s', (quiet) =>
           : exitCode ? {}
           : { signedDownloadUrl: 'https://download.example.test/app' }),
         };
+        const cmd = new EventEmitter();
+        const commandLine = platform === 'xcode' ? 'xcodebuild -scheme App' : './gradlew assembleDebug';
         const out = new EventEmitter();
         const err = new EventEmitter();
         client.sync = jest.fn().mockResolvedValue({ bytesSent: 100 });
@@ -434,6 +436,7 @@ describe.each([false, true])('foreground build NDJSON with quiet=%s', (quiet) =>
           Object.assign(
             new Promise((resolve) => {
               setImmediate(() => {
+                cmd.emit('data', commandLine);
                 out.emit('data', 'compiling');
                 err.emit('data', 'warning\nwith details');
                 out.emit('data', '');
@@ -444,6 +447,7 @@ describe.each([false, true])('foreground build NDJSON with quiet=%s', (quiet) =>
                     .split('\n')
                     .map((line) => JSON.parse(line)),
                 ).toEqual([
+                  { type: 'command', line: commandLine },
                   { type: 'stdout', line: 'compiling' },
                   { type: 'stderr', line: 'warning\nwith details' },
                   { type: 'stdout', line: '' },
@@ -451,7 +455,7 @@ describe.each([false, true])('foreground build NDJSON with quiet=%s', (quiet) =>
                 resolve(expected);
               });
             }),
-            { stdout: out, stderr: err },
+            { command: cmd, stdout: out, stderr: err },
           ),
         );
         const c = command(`${platform}/build`, {}, { quiet });
@@ -465,6 +469,7 @@ describe.each([false, true])('foreground build NDJSON with quiet=%s', (quiet) =>
             .split('\n')
             .map((line) => JSON.parse(line)),
         ).toEqual([
+          { type: 'command', line: commandLine },
           { type: 'stdout', line: 'compiling' },
           { type: 'stderr', line: 'warning\nwith details' },
           { type: 'stdout', line: '' },
@@ -477,6 +482,8 @@ describe.each([false, true])('foreground build NDJSON with quiet=%s', (quiet) =>
 });
 
 test.each(['xcode', 'gradle'])('%s build keeps human output on its original streams', async (platform) => {
+  const cmd = new EventEmitter();
+  const commandLine = platform === 'xcode' ? 'xcodebuild -scheme App' : './gradlew assembleDebug';
   const out = new EventEmitter();
   const err = new EventEmitter();
   client.sync = jest.fn().mockResolvedValue({ bytesSent: 100 });
@@ -484,19 +491,20 @@ test.each(['xcode', 'gradle'])('%s build keeps human output on its original stre
     Object.assign(
       new Promise((resolve) => {
         setImmediate(() => {
+          cmd.emit('data', commandLine);
           out.emit('data', 'compiling');
           err.emit('data', 'warning');
           resolve({ exitCode: 0 });
         });
       }),
-      { stdout: out, stderr: err },
+      { command: cmd, stdout: out, stderr: err },
     ),
   );
   const c = command(`${platform}/build`, {}, { json: false });
   c.applyBuildCacheToTarget = async () => {};
   c.buildSnapshotTip = async () => '';
   await c.run();
-  expect(stdout).toContain('compiling\n');
+  expect(stdout).toContain(`$ ${commandLine}\ncompiling\n`);
   expect(stdout).toContain('Build succeeded');
   expect(stderr).toBe('warning\n');
 });

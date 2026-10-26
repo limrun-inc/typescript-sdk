@@ -90,6 +90,8 @@ Direct WebSocket connections and background session connections have the same co
 | `xcode test`                                                                   | Existing XCTest event records followed by the existing terminal `{exitCode, timedOut?, incomplete?}` record.                                                                                                                               |
 | Xcode/Gradle `logs`                                                            | Existing collected execution-log response.                                                                                                                                                                                                 |
 
+Foreground builds also emit `{type:"command",line}` for each executed command received from the SDK. The `line` contains the command without the `$ ` prefix used in human output.
+
 Foreground build output events preserve the order received from the SDK and identify the original stream. Lines are not buffered until the build ends. Empty lines remain empty strings, and embedded newlines are escaped. Once execution returns, exactly one `result` event ends the stream, including for failed and timed-out executions. A CLI/API failure before an execution result is available emits an error on stderr instead. `--detach` retains its single acknowledgement object.
 
 A `timedOut` execution result means the client stopped waiting. The remote execution may still be running. Inspect `incomplete` and follow its logs instead of assuming that retrying is harmless.

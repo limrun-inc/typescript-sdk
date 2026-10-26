@@ -61,6 +61,7 @@ describe.each(['iphoneos', 'appletvos', 'xros'])('%s App Store upload', (sdk) =>
       ...(appID ? ['--asc-app-id', appID] : []),
     ]);
     const proc = Object.assign(Promise.resolve({ exitCode: 0 }), {
+      command: { on: jest.fn() },
       stdout: { on: jest.fn() },
       stderr: { on: jest.fn() },
     });
