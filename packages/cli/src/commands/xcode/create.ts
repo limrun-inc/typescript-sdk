@@ -101,12 +101,13 @@ export default class XcodeCreate extends BaseCommand {
       const labels = parseLabels(flags.label);
       const simulator = flags.attach ? await this.client.iosInstances.get(flags['simulator-id']!) : undefined;
 
+      const delegatedPermissions = this.creationPermissions();
       const params: XcodeInstanceCreateParamsWithCache = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
           ...(cache ? { cache } : {}),
-          ...(this.creationPermissions() && { delegatedPermissions: this.creationPermissions() }),
+          ...(delegatedPermissions && { role: { permissions: delegatedPermissions } }),
         },
       };
 

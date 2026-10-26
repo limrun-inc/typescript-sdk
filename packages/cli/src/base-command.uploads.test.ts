@@ -58,12 +58,14 @@ test.each(['xcode', 'gradle'])(
     expect(create).toHaveBeenCalledWith({
       wait: true,
       spec: {
-        delegatedPermissions: [
-          'asset:name/input.zip:read',
-          'asset:name/preview%2Fapp.apk:create',
-          'asset:name/preview%2Fapp.apk:upload',
-          'asset:name/preview%2Fapp.apk:update',
-        ],
+        role: {
+          permissions: [
+            'asset:name/input.zip:read',
+            'asset:name/preview%2Fapp.apk:create',
+            'asset:name/preview%2Fapp.apk:upload',
+            'asset:name/preview%2Fapp.apk:update',
+          ],
+        },
       },
     });
   },

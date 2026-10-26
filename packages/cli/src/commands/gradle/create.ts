@@ -58,11 +58,12 @@ export default class GradleCreate extends BaseCommand {
         ...(flags['display-name'] && { displayName: flags['display-name'] }),
         ...(labels && { labels }),
       };
+      const delegatedPermissions = this.creationPermissions();
       const params: GradleInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
-          ...(this.creationPermissions() && { delegatedPermissions: this.creationPermissions() }),
+          ...(delegatedPermissions && { role: { permissions: delegatedPermissions } }),
           ...(flags.region && { region: flags.region }),
           ...(flags.jurisdiction && { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' }),
           ...(flags['hard-timeout'] && { hardTimeout: flags['hard-timeout'] }),

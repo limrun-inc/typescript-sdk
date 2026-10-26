@@ -138,8 +138,11 @@ export namespace XcodeInstanceCreateParams {
   }
 
   export interface Spec {
-    /** Delegated asset permissions. Omit for the organization compatibility default; [] grants nothing. */
-    delegatedPermissions?: Array<string>;
+    /** Inline instance role. Omit for the organization's compatibility default. */
+    role?: {
+      /** Asset permissions delegated by the creator. An empty array grants nothing. */
+      permissions: Array<string>;
+    };
 
     /**
      * ClientLocation takes precedence over ClientIP regardless of clue order. Without

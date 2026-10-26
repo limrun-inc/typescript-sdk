@@ -178,10 +178,11 @@ export default class AndroidCreate extends BaseCommand {
       }
 
       // Build params
+      const delegatedPermissions = this.creationPermissions();
       const params: AndroidInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: { ...(this.creationPermissions() && { delegatedPermissions: this.creationPermissions() }) },
+        spec: { ...(delegatedPermissions && { role: { permissions: delegatedPermissions } }) },
       };
 
       const initialAssets = [

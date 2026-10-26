@@ -233,10 +233,11 @@ export default class IosCreate extends BaseCommand {
         this.info(`Successfully uploaded ${flags.install.length} file(s)`);
       }
 
+      const delegatedPermissions = this.creationPermissions();
       const params: IosInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: { ...(this.creationPermissions() && { delegatedPermissions: this.creationPermissions() }) },
+        spec: { ...(delegatedPermissions && { role: { permissions: delegatedPermissions } }) },
       };
 
       const appAssets = [

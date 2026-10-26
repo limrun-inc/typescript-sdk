@@ -1313,7 +1313,7 @@ export abstract class BaseCommand extends Command {
     const instance = await this.client.xcodeInstances.create({
       wait: true,
       spec: {
-        ...(delegatedPermissions && { delegatedPermissions }),
+        ...(delegatedPermissions && { role: { permissions: delegatedPermissions } }),
         ...(inactivityTimeout && { inactivityTimeout }),
         ...(cache ? { cache } : {}),
       },
@@ -1460,7 +1460,7 @@ export abstract class BaseCommand extends Command {
     const instance = await this.client.gradleInstances.create({
       wait: true,
       spec: {
-        ...(delegatedPermissions && { delegatedPermissions }),
+        ...(delegatedPermissions && { role: { permissions: delegatedPermissions } }),
         ...(inactivityTimeout && { inactivityTimeout }),
       },
     });

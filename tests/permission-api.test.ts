@@ -26,7 +26,7 @@ test.each(['android', 'ios', 'xcode', 'gradle'] as const)(
   '%s creates serialize explicit empty delegated permissions',
   async (platform) => {
     const fetcher = jest.fn(async (_url: unknown, init?: RequestInit) => {
-      expect(JSON.parse(init?.body as string)).toEqual({ spec: { delegatedPermissions: [] } });
+      expect(JSON.parse(init?.body as string)).toEqual({ spec: { role: { permissions: [] } } });
       return Response.json({});
     });
     const client = new Limrun({ apiKey: 'explicit', baseURL: 'https://api.example', fetch: fetcher });
@@ -36,7 +36,7 @@ test.each(['android', 'ios', 'xcode', 'gradle'] as const)(
       xcode: client.xcodeInstances,
       gradle: client.gradleInstances,
     };
-    await resources[platform].create({ spec: { delegatedPermissions: [] } });
+    await resources[platform].create({ spec: { role: { permissions: [] } } });
     expect(fetcher).toHaveBeenCalledTimes(1);
   },
 );
