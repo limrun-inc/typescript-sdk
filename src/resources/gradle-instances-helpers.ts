@@ -1,3 +1,4 @@
+import { pullBuildFile } from '../internal/build-pull-file';
 import { GradleInstances, type GradleInstance } from './gradle-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
@@ -100,6 +101,8 @@ export type GradleBuildOptions = {
 export type GradleRunOptions = BuildRunOptions;
 
 export type GradleClient = {
+  /** Stream a regular file to disk. Paths may be absolute or relative to the synced project root. */
+  pullFile(remotePath: string, localPath: string): Promise<void>;
   sync(localCodePath: string, opts?: GradleSyncOptions): Promise<SyncResult>;
   gradlebuild(options?: GradleBuildOptions): ExecChildProcess;
   run(commandLine: string, options?: GradleRunOptions): ExecChildProcess;
@@ -167,6 +170,9 @@ class GradleInstancesHelpers extends GradleInstances {
     const client = this._client;
 
     return {
+      async pullFile(remotePath: string, localPath: string): Promise<void> {
+        await pullBuildFile(apiUrl, token, remotePath, localPath);
+      },
       async sync(localCodePath: string, opts?: GradleSyncOptions): Promise<SyncResult> {
         const { cacheKey, basisCacheDir } = deriveBasisCache(localCodePath, opts?.basisCacheDir);
         const userIgnore = opts?.ignore;
