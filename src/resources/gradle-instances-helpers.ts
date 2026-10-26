@@ -1,5 +1,5 @@
 import { pullBuildFile } from '../internal/build-pull-file';
-import type { AssetUpload } from '../lib/asset-permissions';
+import { normalizeAssetUpload, type BuildUpload } from '../lib/asset-permissions';
 import { GradleInstances, type GradleInstance } from './gradle-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
@@ -25,7 +25,6 @@ import {
   type BuildRunOptions,
   createDaemonLogger,
   deriveBasisCache,
-  mintAssetUploadUrls,
   type BuildLog,
   type LogLevel,
   type SyncResult,
@@ -73,20 +72,7 @@ export type GradleBuildOptions = {
   /** Relative path to the Gradle root when auto-discovery is ambiguous. */
   projectPath?: string;
   /** Upload the built artifact as a named org asset, or to a presigned URL. */
-  upload?:
-    | {
-        assetName: string;
-        /**
-         * Asset TTL as a Go duration (e.g. "24h", "30m"; "1d" is invalid),
-         * forwarded to assets.getOrCreate. Defaults to 336h (14 days): each
-         * build upload without an explicit ttl pushes the asset's expiry to
-         * 14 days from that upload.
-         */
-        ttl?: string;
-        signedUploadUrl?: never;
-      }
-    | { signedUploadUrl: string; assetName?: never; ttl?: never }
-    | AssetUpload;
+  upload?: BuildUpload;
   /** React Native / Expo tuning. */
   reactNative?: GradleReactNativeConfig;
   /** Release signing config; presence makes bundleRelease the default task. */
@@ -229,24 +215,10 @@ class GradleInstancesHelpers extends GradleInstances {
           ...(options?.playstore && { playstore: options.playstore }),
         };
 
-        if (options?.upload && 'assetName' in options.upload) {
-          const requestPromise = mintAssetUploadUrls(
-            client.assets,
-            options.upload.assetName,
-            options.upload.ttl,
-          ).then((asset) => {
-            request.signedUploadUrl = asset.signedUploadUrl;
-            request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
-            return request;
-          });
-          return exec(requestPromise, { apiUrl, token, log });
-        }
-
-        if (options?.upload && 'target' in options.upload) {
-          request.assetUpload = options.upload;
-        }
-        if (options?.upload && 'signedUploadUrl' in options.upload) {
-          request.signedUploadUrl = options.upload.signedUploadUrl;
+        if (options?.upload) {
+          const upload = normalizeAssetUpload(options.upload);
+          if (upload) request.assetUpload = upload;
+          else request.signedUploadUrl = options.upload.signedUploadUrl!;
         }
 
         return exec(request, { apiUrl, token, log });

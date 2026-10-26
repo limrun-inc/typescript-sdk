@@ -45,6 +45,7 @@ export default class AndroidCreate extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    ...BaseCommand.roleFlags,
     connect: Flags.boolean({
       description: 'Connect to the new instance immediately by starting an ADB tunnel',
       default: true,
@@ -180,7 +181,7 @@ export default class AndroidCreate extends BaseCommand {
       const params: AndroidInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: {},
+        spec: { ...(this.creationRole() && { role: this.creationRole() }) },
       };
 
       const initialAssets = [

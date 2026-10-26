@@ -16,6 +16,7 @@ export default class GradleCreate extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    ...BaseCommand.roleFlags,
     'display-name': Flags.string({
       description: 'Human-friendly display name shown in listings and the console',
     }),
@@ -61,6 +62,7 @@ export default class GradleCreate extends BaseCommand {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
+          ...(this.creationRole() && { role: this.creationRole() }),
           ...(flags.region && { region: flags.region }),
           ...(flags.jurisdiction && { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' }),
           ...(flags['hard-timeout'] && { hardTimeout: flags['hard-timeout'] }),

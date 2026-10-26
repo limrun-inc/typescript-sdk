@@ -1,3 +1,4 @@
+import { workloadRoleFromFlags } from './lib/workload-role';
 import { Command, Flags } from '@oclif/core';
 import Limrun, {
   APIError,
@@ -102,6 +103,18 @@ export abstract class BaseCommand extends Command {
       env: 'LIM_DAEMON',
     }),
   };
+
+  static roleFlags = {
+    permission: Flags.string({
+      description:
+        'Asset permission to add to a newly created instance role, repeatable. Upload destinations add their required permissions automatically.',
+      multiple: true,
+    }),
+  };
+
+  protected creationRole(): { permissions: string[] } | undefined {
+    return workloadRoleFromFlags(this.parsedFlags ?? {});
+  }
 
   static readOnlyFlags = {
     'api-key': BaseCommand.baseFlags['api-key'],
@@ -588,6 +601,10 @@ export abstract class BaseCommand extends Command {
   }
 
   protected async resolveXcodeTargetOrCreate(providedId: string | undefined): Promise<XcodeTarget> {
+    if (this.parsedFlags?.permission && (providedId || envInstanceTarget('xcode'))) {
+      throw new Error('--permission applies at instance creation; an existing instance keeps its role.');
+    }
+
     this._lastResolvedExpectedType = 'xcode';
     this._xcodeReplacementIntent = 'standalone';
     const id = this._overrideInstanceId ?? providedId;
@@ -612,10 +629,9 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = loadLastXcodeInstance();
-    // A requested creation-time timeout cannot be applied to an existing
-    // instance. Skip the cached target so headless one-shot commands get a
-    // fresh instance with the requested lifecycle.
-    if (target && !this.autoCreateInactivityTimeout()) {
+    // A cached instance may not hold the requested role or lifecycle settings.
+    // Explicit instance IDs above keep their existing configuration.
+    if (target && !this.autoCreateInactivityTimeout() && !this.creationRole()) {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
@@ -636,6 +652,10 @@ export abstract class BaseCommand extends Command {
   protected async resolveSimulatorBackedXcodeTargetOrCreate(
     providedId: string | undefined,
   ): Promise<XcodeTarget> {
+    if (this.parsedFlags?.permission && (providedId || envInstanceTarget('xcode'))) {
+      throw new Error('--permission applies at instance creation; an existing instance keeps its role.');
+    }
+
     this._lastResolvedExpectedType = 'xcode';
     this._xcodeReplacementIntent = 'simulator-backed';
     const id = this._overrideInstanceId ?? providedId;
@@ -668,7 +688,7 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = loadLastXcodeInstance();
-    const forceFresh = Boolean(this.autoCreateInactivityTimeout());
+    const forceFresh = Boolean(this.autoCreateInactivityTimeout() || this.creationRole());
     // The recorded Xcode target wins even when it has no simulator yet:
     // attach one instead of abandoning it for a fresh sandbox, so a prior
     // `lim xcode sync` or `lim xcode create` keeps all commands pointed at
@@ -1283,11 +1303,13 @@ export abstract class BaseCommand extends Command {
   }
 
   private async createStandaloneXcodeInstance(): Promise<LastXcodeInstance> {
+    const role = this.creationRole();
     const inactivityTimeout = this.autoCreateInactivityTimeout();
     const cache = this.cacheConfigFromFlags();
     const instance = await this.client.xcodeInstances.create({
       wait: true,
       spec: {
+        ...(role && { role }),
         ...(inactivityTimeout && { inactivityTimeout }),
         ...(cache ? { cache } : {}),
       },
@@ -1360,9 +1382,19 @@ export abstract class BaseCommand extends Command {
   }
 
   protected async resolveGradleTargetOrCreate(providedId: string | undefined): Promise<LastGradleInstance> {
+    if (this.parsedFlags?.permission && (providedId || envInstanceTarget('gradle'))) {
+      throw new Error('--permission applies at instance creation; an existing instance keeps its role.');
+    }
+
     const target = this.tryResolveGradleTarget(providedId);
-    // Creation-time lifecycle settings cannot be applied to a cached target.
-    if (target && !this.autoCreateInactivityTimeout()) {
+    // Explicit targets keep their roles; cached targets cannot be assumed to hold new grants.
+    if (
+      target &&
+      (this._overrideInstanceId ||
+        providedId ||
+        envInstanceTarget('gradle') ||
+        (!this.autoCreateInactivityTimeout() && !this.creationRole()))
+    ) {
       return target;
     }
 
@@ -1417,10 +1449,12 @@ export abstract class BaseCommand extends Command {
   }
 
   private async createStandaloneGradleInstance(): Promise<LastGradleInstance> {
+    const role = this.creationRole();
     const inactivityTimeout = this.autoCreateInactivityTimeout();
     const instance = await this.client.gradleInstances.create({
       wait: true,
       spec: {
+        ...(role && { role }),
         ...(inactivityTimeout && { inactivityTimeout }),
       },
     });

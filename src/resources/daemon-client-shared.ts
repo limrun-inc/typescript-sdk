@@ -71,54 +71,9 @@ export type SyncResult = {
 
 export type AssetUploadUrls = { id: string; signedUploadUrl: string; signedDownloadUrl: string };
 
-/**
- * App metadata recorded on the asset at upload time, for bundles that don't
- * go through limbuild (which extracts and records it automatically). The
- * registry's OTA install flow reads the manifest identity from these fields.
- */
-export type AssetUploadOptions = {
-  /** Human-readable app title users see on iOS. */
-  displayName?: string;
-  /** CFBundleIdentifier of the uploaded app bundle. */
-  bundleIdentifier?: string;
-  /** CFBundleShortVersionString, e.g. 1.2.3. */
-  shortVersion?: string;
-  /** CFBundleVersion, e.g. 42. */
-  buildVersion?: string;
-  /** The app's primary URL scheme, e.g. "myapp" for myapp:// deep links. */
-  deeplink?: string;
-};
-
-/**
- * Default TTL for build-product uploads. Every build upload without an
- * explicit ttl pushes the asset's expiry to 14 days from that upload, so
- * abandoned build artifacts don't accumulate in Asset Storage forever.
- * Assets uploaded through the general asset API keep no expiry by default.
- */
-export const DEFAULT_BUILD_ASSET_TTL = '336h';
-
-/**
- * Mints presigned upload/download URLs for a named asset via assets.getOrCreate,
- * wrapping failures with the asset name (and the original error as cause).
- * All build-product upload paths (xcodebuild, gradlebuild, RBE) go through
- * here, which is what scopes DEFAULT_BUILD_ASSET_TTL to build uploads.
- */
-export function mintAssetUploadUrls(
-  assets: {
-    getOrCreate: (body: { name: string; ttl?: string } & AssetUploadOptions) => Promise<AssetUploadUrls>;
-  },
-  name: string,
-  ttl?: string,
-  uploadOptions?: AssetUploadOptions,
-): Promise<AssetUploadUrls> {
-  return assets.getOrCreate({ name, ttl: ttl || DEFAULT_BUILD_ASSET_TTL, ...uploadOptions }).catch((err) => {
-    const message = `Failed to create upload URL for asset '${name}': ${
-      err instanceof Error ? err.message : err
-    }`;
-    // @ts-ignore - not all envs have native support for cause yet
-    throw new Error(message, { cause: err });
-  });
-}
+// Compatibility exports for callers that imported build-upload metadata here.
+export type { AssetUploadMetadata as AssetUploadOptions } from '../lib/asset-permissions';
+export { DEFAULT_BUILD_ASSET_TTL } from '../lib/asset-permissions';
 
 const logLevels: LogLevel[] = ['none', 'error', 'warn', 'info', 'debug'];
 

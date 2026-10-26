@@ -1,3 +1,4 @@
+import { assetNameTarget } from '@limrun/api';
 import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
@@ -98,6 +99,7 @@ export default class XcodeBuild extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    ...BaseCommand.roleFlags,
     ...xcodeProjectFlags,
     ...syncFlags,
     id: Flags.string({
@@ -428,7 +430,7 @@ export default class XcodeBuild extends BaseCommand {
           this.error(err instanceof Error ? err.message : String(err));
         }
         options.upload = {
-          assetName: flags.upload,
+          target: assetNameTarget(flags.upload),
           ...(flags['upload-ttl'] && { ttl: flags['upload-ttl'] }),
           ...(uploadOptions && { uploadOptions }),
         };

@@ -56,6 +56,7 @@ export default class GradleBuild extends BaseCommand {
       multipleNonGreedy: true,
     }),
     ...BaseCommand.baseFlags,
+    ...BaseCommand.roleFlags,
     'additional-file': syncFlags['additional-file'],
     id: Flags.string({
       description: 'Gradle instance ID to build on. Defaults to the last used or a newly created one.',

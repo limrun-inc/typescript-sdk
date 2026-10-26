@@ -28,6 +28,7 @@ export default class XcodeCreate extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    ...BaseCommand.roleFlags,
     rm: Flags.boolean({
       description: 'Delete the instance automatically when this CLI process exits',
       default: false,
@@ -103,7 +104,7 @@ export default class XcodeCreate extends BaseCommand {
       const params: XcodeInstanceCreateParamsWithCache = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: { ...(cache ? { cache } : {}) },
+        spec: { ...(cache ? { cache } : {}), ...(this.creationRole() && { role: this.creationRole() }) },
       };
 
       if (flags.region) params.spec!.region = flags.region;

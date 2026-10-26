@@ -189,6 +189,7 @@ test('scoped workload upload forwards target and token without presigning as the
     expect(JSON.parse(calls[0]?.init?.body as string).assetUpload).toEqual({
       target: 'name/app.ipa',
       token: 'customer-scoped',
+      ttl: '336h',
     });
   } finally {
     nodeProxyTransport.fetch = saved;

@@ -1,3 +1,4 @@
+import { assetNameTarget } from '@limrun/api';
 import { parseEnvEntries } from './env-entries';
 import type { GradleAndroidABI, GradleBuildOptions } from '@limrun/api';
 import { webhookConfigFromFlags, type WebhookFlagValues } from './webhook-options';
@@ -175,7 +176,7 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
   }
   if (flags.upload) {
     options.upload = {
-      assetName: flags.upload,
+      target: assetNameTarget(flags.upload),
       ...(flags['upload-ttl'] && { ttl: flags['upload-ttl'] }),
     };
   } else if (flags['signed-upload-url']) {

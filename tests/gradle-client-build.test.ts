@@ -180,7 +180,7 @@ test('gradlebuild reports failure exit codes from the stream', async () => {
   expect(result.status).toBe('FAILED');
 });
 
-test('gradlebuild --upload mints asset URLs before posting exec', async () => {
+test('gradlebuild sends target and expiry to the daemon without client presigning', async () => {
   const requests: Array<{ url: string; body?: unknown }> = [];
   nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
     const url = String(input);
@@ -206,19 +206,22 @@ test('gradlebuild --upload mints asset URLs before posting exec', async () => {
 
   const result = await gradle.gradlebuild({ upload: { assetName: 'myapp.apk', ttl: '24h' } });
   expect(result.exitCode).toBe(0);
-  expect(result.signedDownloadUrl).toBe('https://storage.example.com/down');
-  expect(getOrCreate).toHaveBeenCalledWith({ name: 'myapp.apk', ttl: '24h' });
+  expect(result.signedDownloadUrl).toBeUndefined();
+  expect(getOrCreate).not.toHaveBeenCalled();
 
   // An omitted ttl falls back to the build-upload default of 14 days.
   await gradle.gradlebuild({ upload: { assetName: 'myapp.apk' } });
-  expect(getOrCreate).toHaveBeenLastCalledWith({ name: 'myapp.apk', ttl: '336h' });
+  expect(requests.filter((r) => r.url.endsWith('/exec'))[1]?.body).toEqual({
+    command: 'gradlebuild',
+    assetUpload: { target: 'name/myapp.apk', ttl: '336h' },
+  });
 
   const execReq = requests.find((r) => r.url.endsWith('/exec'));
   // Exact match: the client-only additionalMetadata (signedDownloadUrl) must
   // stay OFF the wire; toMatchObject would pass even if it leaked.
   expect(execReq?.body).toEqual({
     command: 'gradlebuild',
-    signedUploadUrl: 'https://storage.example.com/up',
+    assetUpload: { target: 'name/myapp.apk', ttl: '24h' },
   });
 });
 
@@ -316,5 +319,5 @@ test('workload upload target is authorized by the daemon', async () => {
   });
   const gradle = await gradleClient();
   await gradle.gradlebuild({ upload: { target: 'name/app.apk' } });
-  expect(body).toEqual({ command: 'gradlebuild', assetUpload: { target: 'name/app.apk' } });
+  expect(body).toEqual({ command: 'gradlebuild', assetUpload: { target: 'name/app.apk', ttl: '336h' } });
 });

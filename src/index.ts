@@ -229,8 +229,10 @@ export { isDirectInstanceHttpError, type DirectInstanceHttpError } from './inter
 
 export {
   assetNameTarget,
+  assetUploadPermissions,
   assetPermission,
   assetScope,
   type AssetAction,
   type AssetUpload,
+  type BuildUpload,
 } from './lib/asset-permissions';
