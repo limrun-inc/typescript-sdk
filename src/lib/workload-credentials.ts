@@ -21,9 +21,10 @@ export class WorkloadCredentials {
   private async exchange(): Promise<string> {
     const { readFile } = await import('node:fs/promises');
     const jwt = (await readFile(this.tokenFile, 'utf8')).trim();
-    const response = await this.fetcher(`${this.endpoint.replace(/\/$/, '')}/v1/workload_tokens`, {
+    const response = await this.fetcher(`${this.endpoint.replace(/\/$/, '')}/v1/access_tokens`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${jwt}` },
+      headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
       signal: AbortSignal.timeout(30_000),
       redirect: 'error',
     });

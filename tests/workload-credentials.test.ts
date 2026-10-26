@@ -18,7 +18,11 @@ afterEach(async () => {
 
 test('lazy exchange, concurrent requests, and rotated identity refresh', async () => {
   const calls: string[] = [];
-  const fetcher = jest.fn(async (_url: unknown, init?: RequestInit) => {
+  const fetcher = jest.fn(async (url: unknown, init?: RequestInit) => {
+    expect(url).toBe('https://director.example/v1/access_tokens');
+    expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
+    expect(JSON.parse(init?.body as string)).toEqual({});
     calls.push(new Headers(init?.headers).get('Authorization')!);
     return Response.json({ token: 'scoped', expiresAt: new Date(Date.now() + 600000).toISOString() });
   });
@@ -53,7 +57,7 @@ test('explicit API key never exchanges or falls back after refusal', async () =>
 
 test('empty workload scopes fail before calling the asset endpoint', async () => {
   const fetcher = jest.fn(async () =>
-    Response.json({ scopes: [], expiresAt: new Date(Date.now() + 600000).toISOString() }),
+    Response.json({ message: 'This instance has no workload asset permissions' }, { status: 403 }),
   );
   const client = new Limrun({
     apiKey: null,
@@ -63,7 +67,7 @@ test('empty workload scopes fail before calling the asset endpoint', async () =>
     maxRetries: 0,
   });
   await expect(client.assets.createUploadURL('asset_01h455vb4pex5vsknk084sn02q')).rejects.toThrow(
-    'no workload asset permissions',
+    'Workload token exchange returned HTTP 403',
   );
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
