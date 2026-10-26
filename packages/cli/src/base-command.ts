@@ -1,4 +1,4 @@
-import { workloadRoleFromFlags } from './lib/workload-role';
+import { delegatedPermissionsFromFlags } from './lib/delegated-permissions';
 import { Command, Flags } from '@oclif/core';
 import Limrun, {
   APIError,
@@ -104,16 +104,16 @@ export abstract class BaseCommand extends Command {
     }),
   };
 
-  static roleFlags = {
+  static permissionFlags = {
     permission: Flags.string({
       description:
-        'Asset permission to add to a newly created instance role, repeatable. Upload destinations add their required permissions automatically.',
+        'Asset permission to add to a newly created instance, repeatable. Upload destinations add their required permissions automatically.',
       multiple: true,
     }),
   };
 
-  protected creationRole(): { permissions: string[] } | undefined {
-    return workloadRoleFromFlags(this.parsedFlags ?? {});
+  protected creationPermissions(): string[] | undefined {
+    return delegatedPermissionsFromFlags(this.parsedFlags ?? {});
   }
 
   static readOnlyFlags = {
@@ -602,7 +602,9 @@ export abstract class BaseCommand extends Command {
 
   protected async resolveXcodeTargetOrCreate(providedId: string | undefined): Promise<XcodeTarget> {
     if (this.parsedFlags?.permission && (providedId || envInstanceTarget('xcode'))) {
-      throw new Error('--permission applies at instance creation; an existing instance keeps its role.');
+      throw new Error(
+        '--permission applies at instance creation; an existing instance keeps its delegated permissions.',
+      );
     }
 
     this._lastResolvedExpectedType = 'xcode';
@@ -629,9 +631,9 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = loadLastXcodeInstance();
-    // A cached instance may not hold the requested role or lifecycle settings.
+    // A cached instance may not hold the requested permissions or lifecycle settings.
     // Explicit instance IDs above keep their existing configuration.
-    if (target && !this.autoCreateInactivityTimeout() && !this.creationRole()) {
+    if (target && !this.autoCreateInactivityTimeout() && !this.creationPermissions()) {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
@@ -653,7 +655,9 @@ export abstract class BaseCommand extends Command {
     providedId: string | undefined,
   ): Promise<XcodeTarget> {
     if (this.parsedFlags?.permission && (providedId || envInstanceTarget('xcode'))) {
-      throw new Error('--permission applies at instance creation; an existing instance keeps its role.');
+      throw new Error(
+        '--permission applies at instance creation; an existing instance keeps its delegated permissions.',
+      );
     }
 
     this._lastResolvedExpectedType = 'xcode';
@@ -688,7 +692,7 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = loadLastXcodeInstance();
-    const forceFresh = Boolean(this.autoCreateInactivityTimeout() || this.creationRole());
+    const forceFresh = Boolean(this.autoCreateInactivityTimeout() || this.creationPermissions());
     // The recorded Xcode target wins even when it has no simulator yet:
     // attach one instead of abandoning it for a fresh sandbox, so a prior
     // `lim xcode sync` or `lim xcode create` keeps all commands pointed at
@@ -1303,13 +1307,13 @@ export abstract class BaseCommand extends Command {
   }
 
   private async createStandaloneXcodeInstance(): Promise<LastXcodeInstance> {
-    const role = this.creationRole();
+    const delegatedPermissions = this.creationPermissions();
     const inactivityTimeout = this.autoCreateInactivityTimeout();
     const cache = this.cacheConfigFromFlags();
     const instance = await this.client.xcodeInstances.create({
       wait: true,
       spec: {
-        ...(role && { role }),
+        ...(delegatedPermissions && { delegatedPermissions }),
         ...(inactivityTimeout && { inactivityTimeout }),
         ...(cache ? { cache } : {}),
       },
@@ -1383,17 +1387,19 @@ export abstract class BaseCommand extends Command {
 
   protected async resolveGradleTargetOrCreate(providedId: string | undefined): Promise<LastGradleInstance> {
     if (this.parsedFlags?.permission && (providedId || envInstanceTarget('gradle'))) {
-      throw new Error('--permission applies at instance creation; an existing instance keeps its role.');
+      throw new Error(
+        '--permission applies at instance creation; an existing instance keeps its delegated permissions.',
+      );
     }
 
     const target = this.tryResolveGradleTarget(providedId);
-    // Explicit targets keep their roles; cached targets cannot be assumed to hold new grants.
+    // Explicit targets keep their permissions; cached targets cannot be assumed to hold new grants.
     if (
       target &&
       (this._overrideInstanceId ||
         providedId ||
         envInstanceTarget('gradle') ||
-        (!this.autoCreateInactivityTimeout() && !this.creationRole()))
+        (!this.autoCreateInactivityTimeout() && !this.creationPermissions()))
     ) {
       return target;
     }
@@ -1449,12 +1455,12 @@ export abstract class BaseCommand extends Command {
   }
 
   private async createStandaloneGradleInstance(): Promise<LastGradleInstance> {
-    const role = this.creationRole();
+    const delegatedPermissions = this.creationPermissions();
     const inactivityTimeout = this.autoCreateInactivityTimeout();
     const instance = await this.client.gradleInstances.create({
       wait: true,
       spec: {
-        ...(role && { role }),
+        ...(delegatedPermissions && { delegatedPermissions }),
         ...(inactivityTimeout && { inactivityTimeout }),
       },
     });

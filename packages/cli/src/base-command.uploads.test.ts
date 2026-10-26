@@ -1,6 +1,6 @@
 import { BaseCommand } from './base-command';
 import { loadLastXcodeInstance, loadLastGradleInstance, registerCreatedInstance } from './lib/config';
-import { workloadRoleFromFlags } from './lib/workload-role';
+import { delegatedPermissionsFromFlags } from './lib/delegated-permissions';
 
 jest.mock('./lib/config', () => ({
   ...jest.requireActual('./lib/config'),
@@ -58,14 +58,12 @@ test.each(['xcode', 'gradle'])(
     expect(create).toHaveBeenCalledWith({
       wait: true,
       spec: {
-        role: {
-          permissions: [
-            'asset:name/input.zip:read',
-            'asset:name/preview%2Fapp.apk:create',
-            'asset:name/preview%2Fapp.apk:upload',
-            'asset:name/preview%2Fapp.apk:update',
-          ],
-        },
+        delegatedPermissions: [
+          'asset:name/input.zip:read',
+          'asset:name/preview%2Fapp.apk:create',
+          'asset:name/preview%2Fapp.apk:upload',
+          'asset:name/preview%2Fapp.apk:update',
+        ],
       },
     });
   },
@@ -109,8 +107,7 @@ test.each(['xcode', 'gradle'])(
 
 test('RBE auto-upload adds the named target and preserves customer permissions', () => {
   expect(
-    workloadRoleFromFlags({ 'auto-upload': 'result.ipa', permission: ['asset:name/input.zip:read'] })
-      ?.permissions,
+    delegatedPermissionsFromFlags({ 'auto-upload': 'result.ipa', permission: ['asset:name/input.zip:read'] }),
   ).toEqual([
     'asset:name/input.zip:read',
     'asset:name/result.ipa:create',

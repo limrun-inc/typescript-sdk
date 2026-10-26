@@ -58,7 +58,7 @@ export default class IosCreate extends BaseCommand {
   static flags = {
     ...snapshotFlags,
     ...BaseCommand.baseFlags,
-    ...BaseCommand.roleFlags,
+    ...BaseCommand.permissionFlags,
     rm: Flags.boolean({
       description: 'Delete the instance automatically when this CLI process exits',
       default: false,
@@ -236,7 +236,7 @@ export default class IosCreate extends BaseCommand {
       const params: IosInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: { ...(this.creationRole() && { role: this.creationRole() }) },
+        spec: { ...(this.creationPermissions() && { delegatedPermissions: this.creationPermissions() }) },
       };
 
       const appAssets = [

@@ -99,7 +99,7 @@ export default class XcodeBuild extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    ...BaseCommand.roleFlags,
+    ...BaseCommand.permissionFlags,
     ...xcodeProjectFlags,
     ...syncFlags,
     id: Flags.string({

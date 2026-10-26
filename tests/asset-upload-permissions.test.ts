@@ -57,19 +57,17 @@ test.each(['iosInstances', 'androidInstances', 'xcodeInstances', 'gradleInstance
     });
     const upload = { target: assetNameTarget('result.apk') };
     await client[resource].create({
-      spec: { role: { permissions: assetUploadPermissions(upload, ['asset:name/input.zip:read']) } },
+      spec: { delegatedPermissions: assetUploadPermissions(upload, ['asset:name/input.zip:read']) },
     });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.body).toEqual({
       spec: {
-        role: {
-          permissions: [
-            'asset:name/input.zip:read',
-            'asset:name/result.apk:create',
-            'asset:name/result.apk:upload',
-            'asset:name/result.apk:update',
-          ],
-        },
+        delegatedPermissions: [
+          'asset:name/input.zip:read',
+          'asset:name/result.apk:create',
+          'asset:name/result.apk:upload',
+          'asset:name/result.apk:update',
+        ],
       },
     });
     expect(calls[0]!.url).not.toContain('/assets');

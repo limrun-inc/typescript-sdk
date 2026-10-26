@@ -49,7 +49,7 @@ export default class XcodeRbe extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    ...BaseCommand.roleFlags,
+    ...BaseCommand.permissionFlags,
     id: Flags.string({
       description:
         'Xcode instance ID to target. Defaults to the most recent standalone Xcode target, creating one if needed.',
@@ -114,7 +114,9 @@ export default class XcodeRbe extends BaseCommand {
     // tears the stack down on exit. Requires --id (the parent always passes it).
     if (flags.serve) {
       if (flags.permission) {
-        this.error('--permission applies at instance creation; an existing instance keeps its role.');
+        this.error(
+          '--permission applies at instance creation; an existing instance keeps its delegated permissions.',
+        );
       }
       if (!flags.id) {
         this.error('--serve requires --id (it is set automatically by the background launcher).');
