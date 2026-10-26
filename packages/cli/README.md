@@ -58,9 +58,30 @@ lim android list
 
 # Log out (removes stored API key)
 lim logout
+
+# Show the organization the stored or passed key acts for (never prints the key)
+lim whoami
+```
+
+`lim login` prints the verification URL and phrase, then waits until you confirm on any device (a phone works) or the login expires. If the command is stopped, for example by a coding agent's time limit, run it again: it continues the same login with the same phrase. Agents can use `--json`: the first line has the URL and phrase to show the user, the last line is the result.
+
+```bash
+lim login --json   # {"status":"pending","verificationUrl":"...","phrase":"...","expiresAt":"..."}
+                   # ...after approval: {"status":"signed-in"}
+lim whoami --json  # {"signedIn":true,"type":"organization","organizationId":"org_...",...}
 ```
 
 The CLI stores configuration in `~/.lim/config.yaml`. This file is compatible with the Go-based `lim` CLI — if you've already logged in with the Go version, the TypeScript CLI will use the same credentials.
+
+## Set Up Your Coding Agents
+
+```bash
+lim setup --yes
+```
+
+`lim setup` logs in if needed, installs the Limrun skills into the project with `npx skills add limrun-inc/skills` (Node.js 22.20 or newer; update them later with `npx skills update`), and adds the remote MCP server `https://mcp.limrun.com/mcp` to each coding agent it finds: Claude Code and Codex through their own `mcp add` commands, Cursor and Gemini CLI by merging their JSON config. Other MCP servers are kept. Pick agents with `--agents claude --agents cursor`.
+
+Without a terminal (for example, run by an agent with `--json`), setup does not wait for the login. The summary shows `auth.status: "pending"` with the URL and phrase; after the user approves, run `lim login`, which continues the same login, then `lim setup --yes` again to finish the steps that waited for it. The summary's `blocked` list says what is left.
 
 ## Fast First Run
 

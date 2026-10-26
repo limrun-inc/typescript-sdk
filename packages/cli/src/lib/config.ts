@@ -11,6 +11,8 @@ import { getScopeKey, GLOBAL_SCOPE_KEY } from './scope';
 
 const CONFIG_DIR = path.join(os.homedir(), '.lim');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.yaml');
+/** A started `lim login` session, so running `lim login` again continues it. */
+export const PENDING_LOGIN_FILE = path.join(CONFIG_DIR, 'pending-login.json');
 
 export const CONFIG_KEYS = {
   apiKey: 'api-key',
@@ -76,6 +78,8 @@ export function clearApiKey(): void {
   const raw = readRawConfig();
   delete raw[CONFIG_KEYS.apiKey];
   writeRawConfig(raw);
+  // An approved but uncollected login would otherwise sign the user back in on the next `lim login`.
+  fs.rmSync(PENDING_LOGIN_FILE, { force: true });
 }
 
 // ---------- Last used instance per type ----------
