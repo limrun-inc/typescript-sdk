@@ -43,7 +43,11 @@ jest.mock('ws', () => {
         process.nextTick(() => {
           this['emit']('message', Buffer.from(JSON.stringify({ type: 'launchAppResult', id: message.id })));
         });
-      } else if (message.type === 'watchApp' || message.type === 'unwatchApp') {
+      } else if (
+        message.type === 'watchApp' ||
+        message.type === 'watchHangs' ||
+        message.type === 'unwatchApp'
+      ) {
         process.nextTick(() => {
           this['emit'](
             'message',
@@ -403,6 +407,112 @@ describe('iOS launchApp serialization', () => {
       execId: watch.execId,
     });
 
+    client.disconnect();
+  });
+
+  it('watchHangs delivers every hang sample and end across exits until stop()', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test/v1/ios_123/api',
+      token: 'token',
+      logLevel: 'none',
+    });
+    const onHang = jest.fn();
+    const watch = await client.watchHangs('com.example.app', onHang);
+    expect(sentMessages.find((message) => message['type'] === 'watchHangs')).toEqual({
+      type: 'watchHangs',
+      id: expect.any(String),
+      bundleId: 'com.example.app',
+      execId: watch.execId,
+    });
+
+    const send = (message: object) => mockSockets[0]!.emit('message', Buffer.from(JSON.stringify(message)));
+    const hang = (pid: number, ended: boolean, durationMs: number) => ({
+      type: 'appHang',
+      execId: watch.execId,
+      bundleId: 'com.example.app',
+      hang: {
+        pid,
+        hangId: 1,
+        ended,
+        durationMs,
+        ...(ended ? {} : { mainThreadState: 'waiting', stackTrace: 'Main Thread:' }),
+      },
+    });
+    send(hang(10, false, 1000));
+    send(hang(10, true, 4500));
+    // A hang watch is not an exit watch: an exit leaves it running for the next process.
+    send({ type: 'appExit', execId: watch.execId, bundleId: 'com.example.app', reason: 'exit', logs: [] });
+    send(hang(11, false, 1000));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(onHang.mock.calls.map(([info]) => [info.pid, info.ended, info.durationMs])).toEqual([
+      [10, false, 1000],
+      [10, true, 4500],
+      [11, false, 1000],
+    ]);
+    expect(onHang.mock.calls[0]![0]).toEqual({
+      bundleId: 'com.example.app',
+      pid: 10,
+      hangId: 1,
+      ended: false,
+      durationMs: 1000,
+      mainThreadState: 'waiting',
+      stackTrace: 'Main Thread:',
+    });
+
+    await watch.stop();
+    expect(sentMessages.find((message) => message['type'] === 'unwatchApp')).toMatchObject({
+      execId: watch.execId,
+    });
+    send(hang(11, true, 2000));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(onHang).toHaveBeenCalledTimes(3);
+
+    client.disconnect();
+  });
+
+  it('launchApp onHang watches hangs until that launch exits', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test/v1/ios_123/api',
+      token: 'token',
+      logLevel: 'none',
+    });
+    const onHang = jest.fn();
+    await client.launchApp('com.example.app', { onHang });
+
+    const types = sentMessages.map((message) => message['type']);
+    expect(types.indexOf('watchHangs')).toBeLessThan(types.indexOf('launchApp'));
+    const watchExecId = sentMessages.find((message) => message['type'] === 'watchHangs')!['execId'];
+    const launchExecId = sentMessages.find((message) => message['type'] === 'launchApp')!['execId'];
+    expect(launchExecId).toEqual(expect.any(String));
+
+    const send = (message: object) => mockSockets[0]!.emit('message', Buffer.from(JSON.stringify(message)));
+    send({
+      type: 'appHang',
+      execId: watchExecId,
+      bundleId: 'com.example.app',
+      hang: { pid: 10, hangId: 1, ended: true, durationMs: 1200 },
+    });
+    send({ type: 'appExit', execId: launchExecId, bundleId: 'com.example.app', reason: 'exit', logs: [] });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(onHang).toHaveBeenCalledTimes(1);
+    expect(sentMessages.find((message) => message['type'] === 'unwatchApp')).toMatchObject({
+      execId: watchExecId,
+    });
+
+    client.disconnect();
+  });
+
+  it('launchApp without onHang sends no hang watch', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test/v1/ios_123/api',
+      token: 'token',
+      logLevel: 'none',
+    });
+    await client.launchApp('com.example.app', { onExit: jest.fn() });
+    expect(sentMessages.some((message) => message['type'] === 'watchHangs')).toBe(false);
     client.disconnect();
   });
 });
