@@ -1,3 +1,4 @@
+import { DUO_GEOMETRY } from '../core/duo-geometry';
 import React, { useId } from 'react';
 
 function outline(x: number, y: number, w: number, h: number, left: number, right: number) {
@@ -53,8 +54,9 @@ function outline(x: number, y: number, w: number, h: number, left: number, right
 /** Static silver rails and glass seals follow the same front silhouette as the 3D frame. */
 export function DuoFlatFrame({ inner, width, height }: { inner: boolean; width: number; height: number }) {
   const id = useId().replace(/:/g, '');
-  const left = inner ? 8.4 : 1.25;
-  const right = 8.4;
+  const left =
+    (inner ? DUO_GEOMETRY.body.radius : DUO_GEOMETRY.body.foldRadius) + DUO_GEOMETRY.body.edgeExpansion;
+  const right = DUO_GEOMETRY.body.radius + DUO_GEOMETRY.body.edgeExpansion;
   return (
     <svg className="rc-duo-flat-frame" viewBox={'0 0 ' + width + ' ' + height} aria-hidden="true">
       <defs>

@@ -1963,6 +1963,23 @@ pkg-types@^2.3.0:
     exsolve "^1.0.8"
     pathe "^2.0.3"
 
+playwright-core@1.64.1:
+  version "1.64.1"
+  resolved "https://registry.yarnpkg.com/playwright-core/-/playwright-core-1.64.1.tgz#ca9ec82d7da6ced1b2326ec59ef097aaa9a29f94"
+  integrity sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==
+
+playwright@^1.64.1:
+  version "1.64.1"
+  resolved "https://registry.yarnpkg.com/playwright/-/playwright-1.64.1.tgz#c174f48e17f5f3fba71726a9bcdeb8534d5c665d"
+  integrity sha512-HCrVhHr5QQuwYoswEUGTb7gGp522yflbv/ST8nF4sFWGuLjQCt17Q/EubpGGSNKYn1tsTCPZxqHhHCfVURu7UA==
+  dependencies:
+    playwright-core "1.64.1"
+
+pngjs@^7.0.0:
+  version "7.0.0"
+  resolved "https://registry.yarnpkg.com/pngjs/-/pngjs-7.0.0.tgz#a8b7446020ebbc6ac739db6c5415a65d17090e26"
+  integrity sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==
+
 postcss@^8.5.6:
   version "8.5.26"
   resolved "https://registry.yarnpkg.com/postcss/-/postcss-8.5.26.tgz#6e75135780c7e10df3433bf2266c552d35c8c620"

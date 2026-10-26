@@ -14,3 +14,5 @@ packages/xdelta3-wasm/native/build/
 examples/*/artifacts/
 examples/maestro-ios/video.mp4
 examples/maestro-ios/*.png
+
+packages/ui/validation-output/

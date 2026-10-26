@@ -1,16 +1,25 @@
 import * as THREE from 'three';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { DUO_DIMENSIONS, type DuoButton } from '../core/duo';
+import { type DuoButton } from '../core/duo';
+import { DUO_GEOMETRY } from '../core/duo-geometry';
 
 // Body dimensions are published by Apple; radii and hardware details follow its product photographs.
-const { width, height, depth } = DUO_DIMENSIONS;
+const { body, inner, outer } = DUO_GEOMETRY;
+const { width, height, depth } = body;
 const half = width / 2;
-const pivot = (11.3 - depth * 2) / 2;
-const innerWidth = 157.5;
-const innerHeight = 110.8;
-const bendWidth = 1.1;
-const glassZ = 0.14;
+const pivot = (body.closedDepth - depth * 2) / 2;
+const innerWidth = inner.width;
+const innerHeight = inner.height;
+const bendWidth = inner.bendHalfWidth;
+const glassZ = inner.z;
+
+// Edge-on bezel walls can win individual MSAA samples over the continuous display.
+function offsetBezel(material: THREE.Material) {
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = 4;
+  material.polygonOffsetUnits = 4;
+}
 
 // Nearby studio lights vary across a rail even with the parallel camera used for simulator input.
 function polishSilver(material: THREE.MeshStandardMaterial, environment?: THREE.Texture) {
@@ -95,7 +104,11 @@ export function createDuoModel(
   hingeMetal.roughness = 0.085;
   polishSilver(metal, environment);
   polishSilver(hingeMetal, environment);
+  const railMetal = metal.clone();
+  polishSilver(railMetal, environment);
+  offsetBezel(railMetal);
   const gasket = new THREE.MeshBasicMaterial({ color: 0x080a0c });
+  offsetBezel(gasket);
   const antenna = new THREE.MeshStandardMaterial({ color: 0xa4a5a0, roughness: 0.55 });
   const glass = new THREE.MeshPhysicalMaterial({
     color: 0x03060d,
@@ -124,6 +137,7 @@ export function createDuoModel(
     metal,
     ceramic,
     hingeMetal,
+    railMetal,
     gasket,
     antenna,
     glass,
@@ -170,9 +184,9 @@ export function createDuoModel(
     [left, -1],
     [right, 1],
   ] as const) {
-    const lr = side === -1 ? 8.6 : 0.55;
-    const rr = side === 1 ? 8.6 : 0.55;
-    const rail = plate(half - 0.3, height - 0.3, depth - 0.8, lr, rr, metal, 0.35);
+    const lr = side === -1 ? body.radius : body.foldRadius;
+    const rr = side === 1 ? body.radius : body.foldRadius;
+    const rail = plate(half - 0.3, height - 0.3, depth - 0.8, lr, rr, railMetal, 0.35);
     rail.position.set((side * half) / 2, 0, -depth + 0.4);
     part.add(rail);
     const rear = plate(half - 1.25, height - 1.25, 0.2, lr - 0.3, rr - 0.3, ceramic);
@@ -199,8 +213,8 @@ export function createDuoModel(
   ) => {
     const shape =
       display === 'outer' ?
-        outline(w, h, 0.8, 6.6)
-      : outline(w, h, side === 0 ? 5.3 : 0, side === 1 ? 5.3 : 0);
+        outline(w, h, outer.foldRadius, outer.radius)
+      : outline(w, h, side === 0 ? inner.radius : 0, side === 1 ? inner.radius : 0);
     const geometry = new THREE.ShapeGeometry(shape, 24);
     const positions = geometry.getAttribute('position');
     const uv = geometry.getAttribute('uv');
@@ -226,7 +240,7 @@ export function createDuoModel(
   const coverSeal = plate(half - 0.85, height - 0.9, 0.08, 8.1, 0.3, gasket, 0.04);
   coverSeal.position.set(-half / 2, 0, -depth - 0.15);
   left.add(coverSeal);
-  screen(left, -half / 2, 77.1, 112.2, 'outer');
+  screen(left, -half / 2, outer.width, outer.height, 'outer');
 
   // A compact ceramic capsule carries two independently raised, concentric camera rings.
   const cameraY = height / 2 - 15;
@@ -416,6 +430,30 @@ export function createDuoModel(
     device,
     hitObjects,
     setAngle,
+    // Camera framing follows the body, independent of camera bumps and optional GLB artwork.
+    getBodyBounds: (bounds: THREE.Box3) => {
+      bounds.makeEmpty();
+      for (const [part, side] of [
+        [left, -1],
+        [right, 1],
+      ] as const) {
+        bounds.union(
+          new THREE.Box3(
+            new THREE.Vector3(
+              (side === -1 ? -half : 0) - body.edgeExpansion,
+              -height / 2 - body.edgeExpansion,
+              -depth,
+            ),
+            new THREE.Vector3(
+              (side === -1 ? 0 : half) + body.edgeExpansion,
+              height / 2 + body.edgeExpansion,
+              0,
+            ),
+          ).applyMatrix4(part.matrixWorld),
+        );
+      }
+      return bounds;
+    },
     buttonAnchors: () =>
       [...buttonBases].map(([button, base]) => ({
         button,
@@ -454,6 +492,7 @@ export function createDuoModel(
         importedResources.add(object.geometry);
         for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
           importedResources.add(material);
+          if (material.name === 'bezel' || material.name === 'inner-bezel-glass') offsetBezel(material);
           if (
             material instanceof THREE.MeshStandardMaterial &&
             material.userData['finish'] === 'polished-silver'
