@@ -476,12 +476,20 @@ export type AppExitInfo = {
  */
 export type LaunchAppExitCallback = (logs: string[], info: AppExitInfo) => Promise<void> | void;
 
-/** Handle for a watch registered via {@link InstanceClient.watchApp} or {@link InstanceClient.watchHangs}. */
+/** Handle for a watch registered via {@link InstanceClient.monitorApp} or {@link InstanceClient.watchApp}. */
 export type AppWatch = {
   /** Identifier of this watch on the server. */
   execId: string;
-  /** Cancels the watch; its callback will not be invoked afterwards. */
+  /** Cancels the watch; its callbacks will not be invoked afterwards. */
   stop: () => Promise<void>;
+};
+
+/** What {@link InstanceClient.monitorApp} reports. Pass either callback or both. */
+export type AppMonitorCallbacks = {
+  /** Called at every exit of any process of the app. Monitored apps report no logs. */
+  onExit?: LaunchAppExitCallback;
+  /** Called for each sample of a main-thread hang and once at its end. */
+  onHang?: AppHangCallback;
 };
 
 /**
@@ -536,7 +544,7 @@ type LaunchAppCommonOptions = {
   /**
    * Called for each sample of the launched process's main-thread hangs and once at each hang's
    * end, until that process exits. Simulators that predate hang reports launch the app without
-   * them. See {@link InstanceClient.watchHangs}.
+   * them. See {@link InstanceClient.monitorApp}.
    */
   onHang?: AppHangCallback;
 };
@@ -854,6 +862,9 @@ export type InstanceClient = {
    * exit reason and crash details, the next time any process of the app exits. Watched apps
    * report no logs.
    *
+   * @deprecated Use {@link monitorApp}, which reports every exit and hang of the app until you
+   * stop it, including after relaunches. `watchApp` reports only the next exit and will be removed.
+   *
    * The app does not need to be running yet: if it starts later, it is picked up automatically.
    *
    * @param bundleId Bundle identifier of the app to watch
@@ -863,17 +874,21 @@ export type InstanceClient = {
   watchApp: (bundleId: string, onExit: LaunchAppExitCallback) => Promise<AppWatch>;
 
   /**
-   * Watch an app's main-thread hangs: every time any process of the app stops answering on its
-   * main thread for 1 second or more, the callback gets the hang's samples, then its end. Unlike
-   * {@link watchApp}, the watch outlives exits and relaunches until you stop it, so it suits test
-   * runners that relaunch the app. Each app process reports at most 100 hangs. A simulator keeps
-   * its 8 newest hang watches, so starting a ninth silently ends the oldest.
+   * Monitor an app without launching it through {@link launchApp}, for example an app a test
+   * runner relaunches or one opened with {@link openUrl}. `onExit` fires at every exit of any
+   * process of the app, with the reason and crash details. `onHang` fires for each sample of a
+   * main-thread hang (no answer for 1 second or more) and once at its end. The monitor outlives
+   * exits and relaunches until you stop it, and the app does not need to be running yet.
    *
-   * @param bundleId Bundle identifier of the app to watch
-   * @param onHang Called for each hang sample and each hang's end
-   * @returns A handle whose `stop()` ends the watch
+   * Each app process reports at most 100 hangs. A simulator keeps its 8 newest monitors, so
+   * starting a ninth silently ends the oldest. Simulators that predate monitors reject the call
+   * after 10 seconds.
+   *
+   * @param bundleId Bundle identifier of the app to monitor
+   * @param callbacks `onExit`, `onHang`, or both
+   * @returns A handle whose `stop()` ends the monitor
    */
-  watchHangs: (bundleId: string, onHang: AppHangCallback) => Promise<AppWatch>;
+  monitorApp: (bundleId: string, callbacks: AppMonitorCallbacks) => Promise<AppWatch>;
 
   /**
    * Fetch the last N lines of app logs (combined stdout/stderr)
@@ -2019,7 +2034,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         return true;
       }
 
-      const notification = takeServerNotification('appExit', execId);
+      // Launches and watchApp end at the exit; monitors keep their handler until stopped.
+      const notification =
+        takeServerNotification('appExit', execId) ?? getServerNotification('monitorExit', execId);
       if (!notification) {
         logger.debug(`Received appExit for unknown or already handled execId: ${execId}`);
         return true;
@@ -2075,7 +2092,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       launchAppResult: () => undefined,
       terminateAppResult: () => undefined,
       watchAppResult: () => undefined,
-      watchHangsResult: () => undefined,
+      monitorAppResult: () => undefined,
       unwatchAppResult: () => undefined,
       appLogTailResult: (msg) => msg.logs ?? '',
       listAppsResult: (msg) => JSON.parse(msg.apps || '[]') as InstalledApp[],
@@ -2287,7 +2304,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             launchApp,
             terminateApp,
             watchApp,
-            watchHangs,
+            monitorApp,
             appLogTail,
             streamAppLog,
             streamSyslog,
@@ -2627,20 +2644,28 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
       };
 
-    const watchHangs = async (bundleId: string, onHang: AppHangCallback): Promise<AppWatch> => {
+    const monitorApp = async (
+      bundleId: string,
+      { onExit, onHang }: AppMonitorCallbacks,
+    ): Promise<AppWatch> => {
       const execId = generateId();
-      registerServerNotification('appHang', execId, appHangHandler(execId, onHang));
-      try {
-        // Simulators that predate hang watches never answer, so the wait stays short.
-        await sendRequest<void>('watchHangs', { bundleId, execId }, undefined, 10_000);
-      } catch (error) {
+      const forget = () => {
+        deleteServerNotification('monitorExit', execId);
         deleteServerNotification('appHang', execId);
+      };
+      if (onExit) registerServerNotification('monitorExit', execId, appExitHandler(execId, onExit));
+      if (onHang) registerServerNotification('appHang', execId, appHangHandler(execId, onHang));
+      try {
+        // Simulators that predate monitors never answer, so the wait stays short.
+        await sendRequest<void>('monitorApp', { bundleId, execId }, undefined, 10_000);
+      } catch (error) {
+        forget();
         throw error;
       }
       return {
         execId,
         stop: async () => {
-          deleteServerNotification('appHang', execId);
+          forget();
           await sendRequest<void>('unwatchApp', { execId });
         },
       };
