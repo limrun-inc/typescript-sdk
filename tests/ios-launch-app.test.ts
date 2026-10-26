@@ -504,6 +504,33 @@ describe('iOS launchApp serialization', () => {
     client.disconnect();
   });
 
+  it('launchApp onHang still launches when the simulator has no hang watches', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test/v1/ios_123/api',
+      token: 'token',
+      logLevel: 'none',
+    });
+    const socket = mockSockets[0] as unknown as { send: (data: string, callback?: () => void) => void };
+    const send = socket.send.bind(socket);
+    // An older simulator answers watchHangs with an error result.
+    socket.send = (data, callback) => {
+      const message = JSON.parse(data);
+      if (message.type !== 'watchHangs') return send(data, callback);
+      sentMessages.push(message);
+      process.nextTick(() =>
+        mockSockets[0]!.emit(
+          'message',
+          Buffer.from(JSON.stringify({ type: 'watchHangsResult', id: message.id, error: 'unknown type' })),
+        ),
+      );
+      callback?.();
+    };
+    await client.launchApp('com.example.app', { onHang: jest.fn() });
+    expect(sentMessages.some((message) => message['type'] === 'launchApp')).toBe(true);
+    client.disconnect();
+  });
+
   it('launchApp without onHang sends no hang watch', async () => {
     const { createInstanceClient } = await import('../src/ios-client');
     const client = await createInstanceClient({
