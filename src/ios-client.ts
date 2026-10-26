@@ -534,8 +534,9 @@ type LaunchAppCommonOptions = {
   /** Called once when the launched app exits, crashes, or is terminated. */
   onExit?: LaunchAppExitCallback;
   /**
-   * Called for each sample of the app's main-thread hangs and once at each hang's end, from the
-   * launch until this launch's app exits. See {@link InstanceClient.watchHangs}.
+   * Called for each sample of the launched process's main-thread hangs and once at each hang's
+   * end, until that process exits. Simulators that predate hang reports launch the app without
+   * them. See {@link InstanceClient.watchHangs}.
    */
   onHang?: AppHangCallback;
 };
@@ -865,7 +866,8 @@ export type InstanceClient = {
    * Watch an app's main-thread hangs: every time any process of the app stops answering on its
    * main thread for 1 second or more, the callback gets the hang's samples, then its end. Unlike
    * {@link watchApp}, the watch outlives exits and relaunches until you stop it, so it suits test
-   * runners that relaunch the app. A simulator keeps its 8 newest hang watches.
+   * runners that relaunch the app. Each app process reports at most 100 hangs. A simulator keeps
+   * its 8 newest hang watches, so starting a ninth silently ends the oldest.
    *
    * @param bundleId Bundle identifier of the app to watch
    * @param onHang Called for each hang sample and each hang's end
@@ -2533,22 +2535,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           launchOptions.mode ?? (hasEnvironment ? 'RelaunchIfRunning' : undefined)
         );
       const { onExit, onHang } = launchOptions;
-      // Hangs come from a hang watch on the bundle, which this launch's exit stops.
-      // A simulator without hang reports still launches the app; only its hangs go unreported.
-      const hangWatch =
-        onHang ?
-          await watchHangs(bundleId, onHang).catch((error) => {
-            logger.warn(`Launching ${bundleId} without hang reports: ${error.message}`);
-            return undefined;
-          })
-        : undefined;
-      const execId = onExit || hangWatch ? generateId() : undefined;
+      const execId = onExit || onHang ? generateId() : undefined;
       if (execId) {
         const exitHandler = onExit ? appExitHandler(execId, onExit) : undefined;
+        if (onHang) registerServerNotification('appHang', execId, appHangHandler(execId, onHang));
+        // The launch's hang reports end with its exit.
         registerServerNotification('appExit', execId, async (message) => {
-          await hangWatch
-            ?.stop()
-            .catch((error) => logger.warn(`Failed to stop the hang watch of ${bundleId}:`, error));
+          deleteServerNotification('appHang', execId);
           await exitHandler?.(message);
         });
       }
@@ -2559,12 +2552,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           runtime: launchOptions.runtime,
           env: launchOptions.env,
           execId,
+          // Sent only with onHang so other launches stay byte-identical.
+          hangs: onHang ? true : undefined,
         });
       } catch (error) {
         if (execId) {
           deleteServerNotification('appExit', execId);
+          deleteServerNotification('appHang', execId);
         }
-        await hangWatch?.stop().catch(() => undefined);
         throw error;
       }
     };
@@ -2620,16 +2615,21 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       };
     };
 
-    const watchHangs = async (bundleId: string, onHang: AppHangCallback): Promise<AppWatch> => {
-      const execId = generateId();
-      registerServerNotification('appHang', execId, async (response) => {
-        const { hang, bundleId: hangBundleId } = response as unknown as AppHangMessage;
+    /** Delivers each appHang of a launch or hang watch to the callback. */
+    const appHangHandler =
+      (execId: string, onHang: AppHangCallback): ServerNotificationHandler =>
+      async (response) => {
+        const { hang, bundleId } = response as unknown as AppHangMessage;
         try {
-          await onHang({ ...hang, bundleId: hangBundleId });
+          await onHang({ ...hang, bundleId });
         } catch (error) {
           logger.error(`Error in onHang callback for execId ${execId}:`, error);
         }
-      });
+      };
+
+    const watchHangs = async (bundleId: string, onHang: AppHangCallback): Promise<AppWatch> => {
+      const execId = generateId();
+      registerServerNotification('appHang', execId, appHangHandler(execId, onHang));
       try {
         // Simulators that predate hang watches never answer, so the wait stays short.
         await sendRequest<void>('watchHangs', { bundleId, execId }, undefined, 10_000);

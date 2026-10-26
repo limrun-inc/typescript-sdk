@@ -471,7 +471,7 @@ describe('iOS launchApp serialization', () => {
     client.disconnect();
   });
 
-  it('launchApp onHang watches hangs until that launch exits', async () => {
+  it('launchApp onHang asks for the launched process hangs and stops at its exit', async () => {
     const { createInstanceClient } = await import('../src/ios-client');
     const client = await createInstanceClient({
       apiUrl: 'https://example.test/v1/ios_123/api',
@@ -481,57 +481,40 @@ describe('iOS launchApp serialization', () => {
     const onHang = jest.fn();
     await client.launchApp('com.example.app', { onHang });
 
-    const types = sentMessages.map((message) => message['type']);
-    expect(types.indexOf('watchHangs')).toBeLessThan(types.indexOf('launchApp'));
-    const watchExecId = sentMessages.find((message) => message['type'] === 'watchHangs')!['execId'];
-    const launchExecId = sentMessages.find((message) => message['type'] === 'launchApp')!['execId'];
-    expect(launchExecId).toEqual(expect.any(String));
+    const launch = sentMessages.find((message) => message['type'] === 'launchApp')!;
+    expect(launch).toMatchObject({ hangs: true, execId: expect.any(String) });
+    expect(sentMessages.some((message) => message['type'] === 'watchHangs')).toBe(false);
 
     const send = (message: object) => mockSockets[0]!.emit('message', Buffer.from(JSON.stringify(message)));
-    send({
+    const hang = {
       type: 'appHang',
-      execId: watchExecId,
+      execId: launch['execId'],
       bundleId: 'com.example.app',
       hang: { pid: 10, hangId: 1, ended: true, durationMs: 1200 },
+    };
+    send(hang);
+    send({
+      type: 'appExit',
+      execId: launch['execId'],
+      bundleId: 'com.example.app',
+      reason: 'exit',
+      logs: [],
     });
-    send({ type: 'appExit', execId: launchExecId, bundleId: 'com.example.app', reason: 'exit', logs: [] });
+    send(hang);
     await new Promise((resolve) => setImmediate(resolve));
     expect(onHang).toHaveBeenCalledTimes(1);
-    expect(sentMessages.find((message) => message['type'] === 'unwatchApp')).toMatchObject({
-      execId: watchExecId,
+    expect(onHang).toHaveBeenCalledWith({
+      bundleId: 'com.example.app',
+      pid: 10,
+      hangId: 1,
+      ended: true,
+      durationMs: 1200,
     });
 
     client.disconnect();
   });
 
-  it('launchApp onHang still launches when the simulator has no hang watches', async () => {
-    const { createInstanceClient } = await import('../src/ios-client');
-    const client = await createInstanceClient({
-      apiUrl: 'https://example.test/v1/ios_123/api',
-      token: 'token',
-      logLevel: 'none',
-    });
-    const socket = mockSockets[0] as unknown as { send: (data: string, callback?: () => void) => void };
-    const send = socket.send.bind(socket);
-    // An older simulator answers watchHangs with an error result.
-    socket.send = (data, callback) => {
-      const message = JSON.parse(data);
-      if (message.type !== 'watchHangs') return send(data, callback);
-      sentMessages.push(message);
-      process.nextTick(() =>
-        mockSockets[0]!.emit(
-          'message',
-          Buffer.from(JSON.stringify({ type: 'watchHangsResult', id: message.id, error: 'unknown type' })),
-        ),
-      );
-      callback?.();
-    };
-    await client.launchApp('com.example.app', { onHang: jest.fn() });
-    expect(sentMessages.some((message) => message['type'] === 'launchApp')).toBe(true);
-    client.disconnect();
-  });
-
-  it('launchApp without onHang sends no hang watch', async () => {
+  it('launchApp without onHang leaves hangs out of the request', async () => {
     const { createInstanceClient } = await import('../src/ios-client');
     const client = await createInstanceClient({
       apiUrl: 'https://example.test/v1/ios_123/api',
@@ -539,7 +522,7 @@ describe('iOS launchApp serialization', () => {
       logLevel: 'none',
     });
     await client.launchApp('com.example.app', { onExit: jest.fn() });
-    expect(sentMessages.some((message) => message['type'] === 'watchHangs')).toBe(false);
+    expect(sentMessages.find((message) => message['type'] === 'launchApp')).not.toHaveProperty('hangs');
     client.disconnect();
   });
 });
