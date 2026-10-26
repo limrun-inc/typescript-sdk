@@ -1,3 +1,4 @@
+import { pullBuildFile } from '../internal/build-pull-file';
 import {
   XcodeInstances as GeneratedXcodeInstances,
   type XcodeInstance,
@@ -514,9 +515,9 @@ export type RbeBuildSummary = {
 };
 
 export type XcodeClient = {
-  /**
-   * Sync source code to the xcode instance. In watch mode, keeps syncing on changes.
-   */
+  /** Stream a regular file to disk. Paths may be absolute or relative to the synced project root. */
+  pullFile(remotePath: string, localPath: string): Promise<void>;
+  /** Sync source code to the xcode instance. In watch mode, keeps syncing on changes. */
   sync: (localCodePath: string, opts?: SyncOptions) => Promise<SyncResult>;
 
   /**
@@ -970,6 +971,9 @@ export class XcodeInstances extends GeneratedXcodeInstances {
     };
 
     return {
+      async pullFile(remotePath: string, localPath: string): Promise<void> {
+        await pullBuildFile(apiUrl, token, remotePath, localPath);
+      },
       async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
         const { cacheKey, basisCacheDir } = deriveBasisCache(localCodePath, opts?.basisCacheDir);
         const codeSyncOpts: FolderSyncOptions = {
