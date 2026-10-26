@@ -21,9 +21,9 @@ export function formatAppHang(appId: string, hang: Ios.AppHangInfo, frames = 8):
     usage.push(`footprint ${Math.round(hang.footprintBytes / 2 ** 20)} MB`);
 
   const lines = [`${appId} main thread unresponsive for ${hang.durationMs} ms (${usage.join(', ')})`];
-  // The stack opens with a "Main Thread:" title; its top frames say where the thread is stuck.
+  // The stack opens with a "Main Thread:" title and ends its frames at a blank line before the images.
   const stack = (hang.stackTrace ?? '').split('\n').slice(1);
-  const shown = stack.slice(0, Math.min(frames, stack.indexOf('') === -1 ? stack.length : stack.indexOf('')));
-  lines.push(...shown.map((frame) => `  ${frame}`));
+  const end = stack.indexOf('');
+  lines.push(...stack.slice(0, Math.min(frames, end < 0 ? stack.length : end)).map((frame) => `  ${frame}`));
   return lines.join('\n');
 }
