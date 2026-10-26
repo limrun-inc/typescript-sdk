@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="552" height="584" viewBox="0 0 552 584" preserveAspectRatio="none">
+  <!-- Center the 416 × 496 screen at (276, 292), with 44-pixel bezel insets. -->
+  <defs>
+    <linearGradient id="crown" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#080808"/>
+      <stop offset=".55" stop-color="#252525"/>
+      <stop offset="1" stop-color="#161616"/>
+    </linearGradient>
+  </defs>
+  <path d="M186 0h180c106 0 162 56 162 162v260c0 106-56 162-162 162H186C80 584 24 528 24 422V162C24 56 80 0 186 0Z" fill="#b4b4b4"/>
+  <path d="M186 3h180c104 0 159 55 159 159v260c0 104-55 159-159 159H186C82 581 27 526 27 422V162C27 58 82 3 186 3Z" fill="#202020"/>
+  <path d="M186 16h180c96 0 146 50 146 146v260c0 96-50 146-146 146H186C90 568 40 518 40 422V162C40 66 90 16 186 16Z" fill="#000"/>
+  <path d="M530 131h5c10 0 15 6 15 19v52c0 14-5 20-15 20h-5c-11 0-16-7-16-20v-52c0-13 5-19 16-19Z" fill="url(#crown)" stroke="#404040" stroke-width="1"/>
+  <path d="M525 137c-5 4-7 10-7 20v38c0 10 2 17 7 21" fill="none" stroke="#070707" stroke-width="3"/>
+  <path d="M539 141h7m-8 6h9m-9 6h10m-10 6h10m-10 6h10m-10 6h10m-10 6h10m-10 6h10m-10 6h10m-10 6h10m-10 6h10m-10 6h9m-8 6h7" stroke="#747474" stroke-width="1.5"/>
+  <path d="M527 307c4 0 5 4 5 9v104c0 6-2 9-5 9s-7-4-7-10V317c0-6 3-10 7-10Z" fill="#202020" stroke="#727272" stroke-width="1.5"/>
+</svg>

@@ -7,6 +7,7 @@ export type {
   RemoteControlAssets,
   RemoteControlPlatformAssets,
   RemoteControlConnectionState,
+  RemoteControlDeviceInfo,
   MicrophoneState,
   CameraStreamStats,
 } from './components/remote-control';

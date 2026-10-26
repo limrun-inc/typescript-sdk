@@ -3,6 +3,9 @@
 import type { RemoteControlAssets } from './components/remote-control';
 import iphoneFrame from './assets/iphone16pro_black_bg.webp';
 import iphoneFrameLandscape from './assets/iphone16pro_black_landscape_bg.webp';
+import ipadFrame from './assets/ipad_pro_portrait.svg';
+import ipadFrameLandscape from './assets/ipad_pro_landscape.svg';
+import watchFrame from './assets/apple_watch.svg';
 import pixelFrame from './assets/pixel9_black.webp';
 import pixelFrameLandscape from './assets/pixel9_black_landscape.webp';
 import pixelTabletFrame from './assets/pixel_tablet_portrait.webp';
@@ -11,7 +14,14 @@ import appleLogo from './assets/Apple_logo_white.svg';
 import androidBootLogo from './assets/android_boot.webp';
 
 export const defaultRemoteControlAssets: RemoteControlAssets = {
-  ios: { frame: iphoneFrame, frameLandscape: iphoneFrameLandscape, loadingLogo: appleLogo },
+  ios: {
+    frame: iphoneFrame,
+    frameLandscape: iphoneFrameLandscape,
+    tabletFrame: ipadFrame,
+    tabletFrameLandscape: ipadFrameLandscape,
+    watchFrame,
+    loadingLogo: appleLogo,
+  },
   android: {
     frame: pixelFrame,
     frameLandscape: pixelFrameLandscape,
