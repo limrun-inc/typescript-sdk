@@ -9,7 +9,7 @@ import { path } from '../internal/utils/path';
 export class Assets extends APIResource {
   /** Obtain upload URLs and the existing file MD5. Downloads require read permission. */
   createUploadURL(assetID: string, options?: RequestOptions): APIPromise<AssetUploadURLs> {
-    return this._client.post(path`/v1/assets/${assetID}/upload_urls`, options);
+    return this._client.get(path`/v1/assets/${assetID}/upload_urls`, options);
   }
 
   /** Update editable metadata. The lookup name cannot be changed. */

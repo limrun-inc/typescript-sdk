@@ -74,6 +74,6 @@ test('asset metadata uses PATCH and icons use upload URLs', async () => {
       method: 'PATCH',
       body: { bundleIdentifier: 'com.example.app', targetSdk: 'iphoneos' },
     },
-    { url: `https://api.example/v1/assets/${id}/upload_urls`, method: 'POST', body: undefined },
+    { url: `https://api.example/v1/assets/${id}/upload_urls`, method: 'GET', body: undefined },
   ]);
 });
