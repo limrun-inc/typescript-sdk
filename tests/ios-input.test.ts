@@ -23,7 +23,20 @@ jest.mock('ws', () => {
       const message = JSON.parse(data);
       sentMessages.push(message);
 
-      if (message['type'] === 'setElementValue') {
+      if (message['type'] === 'elementTree') {
+        process.nextTick(() =>
+          this['emit'](
+            'message',
+            Buffer.from(
+              JSON.stringify({
+                type: 'elementTreeResult',
+                id: message.id,
+                json: '[{"AXUniqueId":"test-only-view"}]',
+              }),
+            ),
+          ),
+        );
+      } else if (message['type'] === 'setElementValue') {
         process.nextTick(() => {
           this['emit'](
             'message',
@@ -193,6 +206,41 @@ describe('iOS input serialization', () => {
         'exactly one active Duo display',
       );
       expect(sentMessages.some((message) => message['type'] === 'scroll')).toBe(false);
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it('forwards tree source for parsed and raw reads while preserving the default payload', async () => {
+    const client = await connect();
+    try {
+      await client.elementTree();
+      expect(sentMessages.find((m) => m['type'] === 'elementTree')).not.toHaveProperty('source');
+      sentMessages.length = 0;
+      expect(await client.elementTree(undefined, { source: 'xcuitest' })).toEqual([
+        { AXUniqueId: 'test-only-view' },
+      ]);
+      expect(await client.elementTreeRaw(undefined, { source: 'xcuitest' })).toBe(
+        '[{"AXUniqueId":"test-only-view"}]',
+      );
+      expect(sentMessages.filter((m) => m['type'] === 'elementTree').map((m) => m['source'])).toEqual([
+        'xcuitest',
+        'xcuitest',
+      ]);
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it('rejects xcuitest point reads without sending a request', async () => {
+    const client = await connect();
+    try {
+      for (const method of [client.elementTree, client.elementTreeRaw]) {
+        await expect(method({ x: 10, y: 20 }, { source: 'xcuitest' })).rejects.toThrow(
+          'does not support point queries',
+        );
+      }
+      expect(sentMessages.some((m) => m['type'] === 'elementTree')).toBe(false);
     } finally {
       client.disconnect();
     }

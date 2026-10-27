@@ -1,4 +1,5 @@
 import { Flags } from '@oclif/core';
+import type { ElementTreeSource } from '@limrun/api/ios-client';
 import { BaseCommand } from '../../base-command';
 import {
   getIosInstanceClient,
@@ -14,12 +15,18 @@ export default class IosElementTree extends BaseCommand {
     '<%= config.bin %> ios element-tree',
     '<%= config.bin %> ios element-tree --id <instance-ID>',
     '<%= config.bin %> ios element-tree --json',
+    '<%= config.bin %> ios element-tree --source xcuitest --json',
   ];
 
   static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
+    source: Flags.string({
+      description:
+        'Tree reader. xcuitest includes views with testID that are not accessibility elements; requires a supporting server.',
+      options: ['accessibility', 'xcuitest'],
+    }),
     id: Flags.string({
       description: 'iOS instance ID to inspect. Defaults to the last created iOS instance.',
     }),
@@ -37,7 +44,11 @@ export default class IosElementTree extends BaseCommand {
       }
 
       if (await ensureDaemonSession(resolvedInstance)) {
-        const tree = await sendSessionCommand(id, 'element-tree');
+        const tree = await sendSessionCommand(
+          id,
+          'element-tree',
+          flags.source ? [{ source: flags.source }] : [],
+        );
         if (flags.json) {
           this.outputJson(tree);
         } else {
@@ -48,7 +59,9 @@ export default class IosElementTree extends BaseCommand {
 
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        const tree = await client.elementTree();
+        const tree = await client.elementTree(undefined, {
+          source: flags.source as ElementTreeSource | undefined,
+        });
         if (flags.json) {
           this.outputJson(tree);
         } else {
