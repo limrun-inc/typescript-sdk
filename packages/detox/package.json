@@ -43,6 +43,6 @@
     "README.md"
   ],
   "resolutions": {
-    "@limrun/api/undici": "7.29.1"
+    "@limrun/api/undici": "7.30.1"
   }
 }

@@ -65,6 +65,7 @@
     "vitest": "^4.1.11"
   },
   "resolutions": {
-    "vite": "^7.1.4"
+    "vite": "^7.1.4",
+    "@vitest/mocker": "4.1.12"
   }
 }
