@@ -55,7 +55,8 @@ describe('2D Duo frame controls', () => {
   it('uses the 3D body proportions and rotates the inner display from native portrait pixels', () => {
     const folded = flatFrameGeometry(false, 0, 500, 700);
     const unfolded = flatFrameGeometry(true, 1, 700, 500);
-    expect(folded.bodyWidth * 2).toBe(unfolded.bodyWidth);
+    // Both leaves include their own fold-side bevel; those edges overlap when open.
+    expect(folded.bodyWidth * 2 - 0.4).toBeCloseTo(unfolded.bodyWidth);
     expect(folded.bodyHeight).toBe(unfolded.bodyHeight);
     expect(unfolded.turns).toBe(0);
     expect(flatFrameGeometry(true, 0, 500, 700).turns).toBe(3);

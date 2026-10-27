@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { createDuoModel } from './duo-model';
+import { duoFitScale } from '../core/duo-geometry';
 import { duoFoldAngle } from './duo-fold-timing';
 import { hardwareLayout, hardwareHoverEdge } from './duo-hardware';
 import { DuoControls, DuoHardwareIcon } from './duo-controls';
@@ -390,15 +391,14 @@ export default function DuoFrame(props: DuoFrameProps) {
       );
       root.position.set(0, 0, 0);
       root.updateMatrixWorld(true);
-      model.getBounds(bounds).getCenter(center);
+      model.getBodyBounds(bounds).getCenter(center);
       bounds.getSize(extent);
       root.position.copy(center).negate();
       // Parallel projection keeps the far leaf's buttons visible when the device is closed.
       const width = container.clientWidth;
       const height = container.clientHeight;
-      const usableWidth = Math.max(0.4, 1 - 108 / width);
-      const usableHeight = Math.min(0.8, Math.max(0.35, 1 - 108 / height));
-      const halfHeight = Math.max(extent.y / (2 * usableHeight), extent.x / (2 * aspect * usableWidth));
+      const scale = duoFitScale(extent.x, extent.y, width, height);
+      const halfHeight = height / (2 * Math.max(scale, 0.001));
       camera.top = THREE.MathUtils.damp(camera.top, halfHeight, 14, dt);
       if (Math.abs(camera.top - halfHeight) < 0.001) camera.top = halfHeight;
       camera.bottom = -camera.top;

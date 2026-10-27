@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { createDuoModel } from './duo-model';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { panelTouch } from '../core/duo';
+import { duoBodySize } from '../core/duo-geometry';
 
 function rayAt(model: ReturnType<typeof createDuoModel>, name: string) {
   const panel = model.device.getObjectByName(name)!;
@@ -15,6 +16,17 @@ function rayAt(model: ReturnType<typeof createDuoModel>, name: string) {
 }
 
 describe('Duo display geometry', () => {
+  it.each([false, true])('fits the flat frame to the posed body including its bevel (inner=%s)', (inner) => {
+    const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
+    model.setAngle(inner ? 180 : 0);
+    model.device.rotation.y = inner ? 0 : Math.PI / 2;
+    model.device.updateMatrixWorld(true);
+    const size = model.getBodyBounds(new THREE.Box3()).getSize(new THREE.Vector3());
+    const flat = duoBodySize(inner);
+    expect(size.x).toBeCloseTo(flat.width);
+    expect(size.y).toBeCloseTo(flat.height);
+    model.dispose();
+  });
   it.each([110, 180])('preserves native touch UVs on both inner leaves at %s°', (angle) => {
     const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
     model.setAngle(angle);
@@ -127,6 +139,30 @@ describe('Prepared Duo appearance', () => {
     }
     return scene;
   }
+
+  it.each(['bezel', 'inner-bezel-glass'])(
+    'offsets imported %s without altering other materials',
+    async (name) => {
+      const scene = appearance();
+      const bezel = new THREE.MeshBasicMaterial({ color: 0x080a0c });
+      bezel.name = name;
+      const ordinary = new THREE.MeshStandardMaterial();
+      scene
+        .getObjectByName('folding-half')!
+        .add(
+          new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), bezel),
+          new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ordinary),
+        );
+      vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue({ scene } as unknown as GLTF);
+      const model = createDuoModel(new THREE.Texture(), new THREE.Texture());
+      await model.loadAppearance('/appearance.glb');
+      expect(bezel.polygonOffset).toBe(true);
+      expect(bezel.polygonOffsetFactor).toBe(4);
+      expect(bezel.polygonOffsetUnits).toBe(4);
+      expect(ordinary.polygonOffset).toBe(false);
+      model.dispose();
+    },
+  );
 
   it.each([0, 110, 180])('keeps button coordinates local when an appearance loads at %s°', async (angle) => {
     const scene = appearance();
