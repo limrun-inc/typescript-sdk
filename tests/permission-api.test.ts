@@ -57,6 +57,7 @@ test('asset metadata uses PATCH and icons use upload URLs', async () => {
     return Response.json({
       signedUploadUrl: 'https://storage.example/bundle',
       signedIconUploadUrl: 'https://storage.example/icon',
+      md5: 'existing-md5',
     });
   });
   const lim = new Limrun({ apiKey: 'explicit', baseURL: 'https://api.example', fetch: fetcher });
@@ -66,6 +67,7 @@ test('asset metadata uses PATCH and icons use upload URLs', async () => {
   expect(urls.signedUploadUrl).toBe('https://storage.example/bundle');
   expect(urls.signedIconUploadUrl).toBe('https://storage.example/icon');
   expect(urls.iconUrl).toBeUndefined();
+  expect(urls.md5).toBe('existing-md5');
   expect(calls).toEqual([
     {
       url: `https://api.example/v1/assets/${id}`,

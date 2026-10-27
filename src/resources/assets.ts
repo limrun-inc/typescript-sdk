@@ -7,7 +7,7 @@ import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
 
 export class Assets extends APIResource {
-  /** Obtain asset and icon upload URLs. Icon downloads require read permission. */
+  /** Obtain upload URLs and the existing file MD5. Downloads require read permission. */
   createUploadURL(assetID: string, options?: RequestOptions): APIPromise<AssetUploadURLs> {
     return this._client.post(path`/v1/assets/${assetID}/upload_urls`, options);
   }
@@ -263,6 +263,8 @@ export interface AssetUpdateParams {
 }
 
 export interface AssetUploadURLs {
+  /** Existing file MD5. Omitted when no file exists; storage-check failures return an error. */
+  md5?: string;
   signedUploadUrl: string;
   /** Upload the icon PNG with PUT and Content-Type: image/png. No other headers are required. */
   signedIconUploadUrl: string;
