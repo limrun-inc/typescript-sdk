@@ -62,17 +62,16 @@ test('asset metadata uses PATCH and icons use upload URLs', async () => {
   const lim = new Limrun({ apiKey: 'explicit', baseURL: 'https://api.example', fetch: fetcher });
   const id = 'asset_01h455vb4pex5vsknk084sn02q';
   await lim.assets.update(id, { bundleIdentifier: 'com.example.app', targetSdk: 'iphoneos' });
-  const urls = await lim.assets.createUploadURL(id, { icon: true });
+  const urls = await lim.assets.createUploadURL(id);
+  expect(urls.signedUploadUrl).toBe('https://storage.example/bundle');
   expect(urls.signedIconUploadUrl).toBe('https://storage.example/icon');
   expect(urls.iconUrl).toBeUndefined();
-  await lim.assets.createUploadURL(id);
   expect(calls).toEqual([
     {
       url: `https://api.example/v1/assets/${id}`,
       method: 'PATCH',
       body: { bundleIdentifier: 'com.example.app', targetSdk: 'iphoneos' },
     },
-    { url: `https://api.example/v1/assets/${id}/upload_urls?icon=true`, method: 'POST', body: undefined },
     { url: `https://api.example/v1/assets/${id}/upload_urls`, method: 'POST', body: undefined },
   ]);
 });
