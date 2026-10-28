@@ -215,11 +215,7 @@ class GradleInstancesHelpers extends GradleInstances {
           ...(options?.playstore && { playstore: options.playstore }),
         };
 
-        if (options?.upload) {
-          const upload = normalizeAssetUpload(options.upload);
-          if (upload) request.assetUpload = upload;
-          else request.signedUploadUrl = options.upload.signedUploadUrl!;
-        }
+        if (options?.upload) Object.assign(request, normalizeAssetUpload(options.upload));
 
         return exec(request, { apiUrl, token, log });
       },

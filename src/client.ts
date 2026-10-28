@@ -220,19 +220,15 @@ export class Limrun {
     apiKey = readEnv('LIM_API_KEY') ?? null,
     ...opts
   }: ClientOptions = {}) {
+    const tokenFile =
+      opts.workloadTokenFile === null ?
+        undefined
+      : opts.workloadTokenFile ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
     const options: ClientOptions = {
       apiKey,
       ...opts,
       baseURL:
-        baseURL ||
-        ((
-          !apiKey &&
-          opts.workloadTokenFile !== null &&
-          (opts.workloadTokenFile ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'))
-        ) ?
-          readEnv('DIRECTOR_URL')
-        : undefined) ||
-        `https://api.limrun.com`,
+        baseURL || (!apiKey && tokenFile ? readEnv('DIRECTOR_URL') : undefined) || `https://api.limrun.com`,
     };
 
     this.baseURL = options.baseURL!;
@@ -265,10 +261,6 @@ export class Limrun {
     this._options = options;
 
     this.apiKey = apiKey;
-    const tokenFile =
-      opts.workloadTokenFile === null ?
-        undefined
-      : opts.workloadTokenFile ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
     if (!apiKey && tokenFile)
       this.workloadCredentials = new WorkloadCredentials(this.baseURL, tokenFile, this.fetch);
   }

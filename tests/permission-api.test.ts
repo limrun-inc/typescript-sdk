@@ -1,4 +1,4 @@
-import Limrun, { assetPermission, assetScope } from '../src';
+import Limrun from '../src';
 
 test('access tokens send permissions and preserve the deprecated scopes API', async () => {
   const calls: { url: string; body: unknown }[] = [];
@@ -40,11 +40,6 @@ test.each(['android', 'ios', 'xcode', 'gradle'] as const)(
     expect(fetcher).toHaveBeenCalledTimes(1);
   },
 );
-
-test('assetScope remains compatible with assetPermission', () => {
-  expect(assetPermission('name/result.apk', 'upload')).toBe('asset:name/result.apk:upload');
-  expect(assetScope('name/result.apk', 'upload')).toBe(assetPermission('name/result.apk', 'upload'));
-});
 
 test('asset metadata uses PATCH and icons use upload URLs', async () => {
   const calls: { url: string; method: string | undefined; body: unknown }[] = [];

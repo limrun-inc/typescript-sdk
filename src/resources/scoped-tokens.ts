@@ -1,5 +1,6 @@
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
+import type { AccessTokenCreateParams } from './access-tokens';
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
@@ -31,23 +32,8 @@ export interface ScopedToken {
   scopes: Array<string>;
 }
 
-export interface ScopedTokenCreateParams {
-  /**
-   * Permissions in the form `<resource>:<id|*>:<action>`, e.g. `device:*:install`,
-   * `asset:asset_01h455vb4pex5vsknk084sn02q:read` or `applerelay:*:connect`.
-   * Resource IDs are the customer-visible IDs returned by the API.
-   */
-  permissions?: Array<string>;
-
-  /** @deprecated Use permissions. If both are supplied, their permission sets must match. */
-  scopes?: Array<string>;
-
-  /**
-   * How long the token stays valid. Defaults to 3600 (1 hour), maximum is 14400 (4
-   * hours).
-   */
-  ttlSeconds?: number;
-}
+/** @deprecated Use AccessTokenCreateParams. */
+export type ScopedTokenCreateParams = AccessTokenCreateParams;
 
 export declare namespace ScopedTokens {
   export { type ScopedToken as ScopedToken, type ScopedTokenCreateParams as ScopedTokenCreateParams };

@@ -3,7 +3,7 @@ import { normalizeAssetUpload } from '../src/lib/asset-permissions';
 
 test('signed URLs add no grants and do not activate workload authorization', () => {
   const upload = { signedUploadUrl: 'https://storage.example/upload' };
-  expect(normalizeAssetUpload(upload)).toBeUndefined();
+  expect(normalizeAssetUpload(upload)).toEqual(upload);
 });
 
 test.each(['*', 'name/*', 'name/', 'name/a%2fb', 'asset_invalid'])(
@@ -63,10 +63,10 @@ test.each(['iosInstances', 'androidInstances', 'xcodeInstances', 'gradleInstance
 );
 
 test('legacy names retain canonical encoding while literal targets pass through unchanged', () => {
-  expect(normalizeAssetUpload({ assetName: "release/a:b *!'()~.apk" })?.target).toBe(
+  expect(normalizeAssetUpload({ assetName: "release/a:b *!'()~.apk" }).assetUpload?.target).toBe(
     'name/release%2Fa%3Ab%20%2A%21%27%28%29~.apk',
   );
-  expect(normalizeAssetUpload({ target: 'name/release%2Fa%3Ab%20%2A.apk' })?.target).toBe(
+  expect(normalizeAssetUpload({ target: 'name/release%2Fa%3Ab%20%2A.apk' }).assetUpload?.target).toBe(
     'name/release%2Fa%3Ab%20%2A.apk',
   );
 });

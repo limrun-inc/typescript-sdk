@@ -1027,11 +1027,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.onXctestEvent && { onXctestEvent: options.onXctestEvent }),
         };
 
-        if (options?.upload) {
-          const upload = normalizeAssetUpload(options.upload);
-          if (upload) request.assetUpload = upload;
-          else request.signedUploadUrl = options.upload.signedUploadUrl!;
-        }
+        if (options?.upload) Object.assign(request, normalizeAssetUpload(options.upload));
 
         return exec(request, execOptions);
       },
@@ -1125,8 +1121,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       },
 
       async uploadLatestRbeBuild(opts: RbeUploadOptions): Promise<RbeUploadResult> {
-        const upload = normalizeAssetUpload(opts);
-        const body = upload ? { assetUpload: upload } : { signedUploadUrl: opts.signedUploadUrl };
+        const body = normalizeAssetUpload(opts);
 
         const post = async (): Promise<{ appName: string; bundleId?: string }> => {
           // The daemon uploads to asset storage before responding, so this

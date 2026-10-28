@@ -71,3 +71,72 @@ test('empty workload scopes fail before calling the asset endpoint', async () =>
   );
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+test.each([
+  {
+    name: 'discovered workload identity',
+    options: {},
+    endpoint: 'https://director.example',
+    exchanges: true,
+  },
+  {
+    name: 'explicit workload file overrides discovery',
+    options: { workloadTokenFile: 'configured' },
+    endpoint: 'https://director.example',
+    exchanges: true,
+  },
+  {
+    name: 'explicit base URL overrides director discovery',
+    options: { baseURL: 'https://custom.example' },
+    endpoint: 'https://custom.example',
+    exchanges: true,
+  },
+  {
+    name: 'explicit key bypasses workload discovery',
+    options: { apiKey: 'explicit' },
+    endpoint: 'https://api.limrun.com',
+    exchanges: false,
+  },
+])('$name', async ({ options, endpoint, exchanges }) => {
+  jest.replaceProperty(process, 'env', {
+    ...process.env,
+    LIM_API_KEY: '',
+    LIMRUN_BASE_URL: '',
+    DIRECTOR_URL: 'https://director.example',
+    LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE: options.workloadTokenFile ? 'missing-file' : tokenFile,
+  });
+  const fetcher = jest.fn(async (url: unknown, init?: RequestInit) => {
+    if (String(url).endsWith('/v1/access_tokens')) {
+      expect(url).toBe(`${endpoint}/v1/access_tokens`);
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer projected');
+      return Response.json({ token: 'exchanged', expiresAt: new Date(Date.now() + 600000).toISOString() });
+    }
+    expect(url).toBe(`${endpoint}/v1/assets/asset_01h455vb4pex5vsknk084sn02q/upload_urls`);
+    expect(new Headers(init?.headers).get('Authorization')).toBe(
+      exchanges ? 'Bearer exchanged' : 'Bearer explicit',
+    );
+    return Response.json({ signedUploadUrl: 'https://storage.example/upload' });
+  });
+  const client = new Limrun({
+    apiKey: null,
+    ...options,
+    ...(options.workloadTokenFile && { workloadTokenFile: tokenFile }),
+    fetch: fetcher,
+  });
+  await client.assets.createUploadURL('asset_01h455vb4pex5vsknk084sn02q');
+  expect(fetcher).toHaveBeenCalledTimes(exchanges ? 2 : 1);
+});
+
+test('null workload token file disables identity and director discovery', async () => {
+  jest.replaceProperty(process, 'env', {
+    ...process.env,
+    LIMRUN_BASE_URL: '',
+    DIRECTOR_URL: 'https://director.example',
+    LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE: tokenFile,
+  });
+  const fetcher = jest.fn();
+  const client = new Limrun({ apiKey: null, workloadTokenFile: null, fetch: fetcher });
+  expect(client.baseURL).toBe('https://api.limrun.com');
+  await expect(client.assets.createUploadURL('asset_01h455vb4pex5vsknk084sn02q')).rejects.toThrow();
+  expect(fetcher).not.toHaveBeenCalled();
+});

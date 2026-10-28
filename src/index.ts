@@ -227,10 +227,4 @@ export {
 } from './core/error';
 export { isDirectInstanceHttpError, type DirectInstanceHttpError } from './internal/direct-instance-errors';
 
-export {
-  assetPermission,
-  assetScope,
-  type AssetAction,
-  type AssetUpload,
-  type BuildUpload,
-} from './lib/asset-permissions';
+export { type AssetUpload, type BuildUpload } from './lib/asset-permissions';
