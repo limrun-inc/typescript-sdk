@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AppleRelayError,
   startBrowserOwnedAppleIDLogin,
   type AppleIDLoginInput,
   type AppleIDLoginResult,
@@ -22,6 +23,7 @@ export type UseAppleIDLoginResult = {
   completeResponse?: AppleRelayResponse;
   twoFactorChallengeResponse?: AppleRelayResponse;
   error?: string;
+  relaySessionId?: string;
   startLogin: (
     input: Pick<AppleIDLoginInput, 'accountName' | 'password'>,
   ) => Promise<AppleIDLoginResult | undefined>;
@@ -41,6 +43,7 @@ export function useAppleIDLogin({
   const [twoFactorChallengeResponse, setTwoFactorChallengeResponse] = useState<
     AppleRelayResponse | undefined
   >();
+  const [relaySessionId, setRelaySessionId] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
   const sessionRef = useRef<AppleIDLoginResult | undefined>(undefined);
 
@@ -51,6 +54,7 @@ export function useAppleIDLogin({
     setCompleteResponse(undefined);
     setTwoFactorChallengeResponse(undefined);
     setError(undefined);
+    setRelaySessionId(undefined);
     setStatus('idle');
   }, []);
 
@@ -63,6 +67,7 @@ export function useAppleIDLogin({
 
   const startLogin = useCallback(
     async ({ accountName, password }: Pick<AppleIDLoginInput, 'accountName' | 'password'>) => {
+      setRelaySessionId(undefined);
       setStatus('authenticating');
       setError(undefined);
       await sessionRef.current?.close().catch(() => undefined);
@@ -76,6 +81,7 @@ export function useAppleIDLogin({
         });
         sessionRef.current = next;
         setSession(next);
+        setRelaySessionId(next.relay.relaySessionId);
         setCompleteResponse(next.completeResponse);
         setTwoFactorChallengeResponse(next.twoFactorChallengeResponse);
         setStatus(next.requiresTwoFactor ? 'two-factor-required' : 'authenticated');
@@ -83,6 +89,7 @@ export function useAppleIDLogin({
       } catch (caught) {
         setSession(undefined);
         sessionRef.current = undefined;
+        setRelaySessionId(caught instanceof AppleRelayError ? caught.relaySessionId : undefined);
         setError(errorMessage(caught));
         setStatus('error');
         return undefined;
@@ -123,6 +130,7 @@ export function useAppleIDLogin({
     completeResponse,
     twoFactorChallengeResponse,
     error,
+    relaySessionId,
     startLogin,
     submitTwoFactorCode,
     finalize,

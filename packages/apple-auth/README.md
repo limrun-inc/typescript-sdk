@@ -23,6 +23,43 @@ is the included implementation; applications that keep secrets themselves
 implement the interface over their own storage — a database, a KMS,
 anything — like the publish-to-stores example does with its backend.
 
+## Get a support reference for Apple login failures
+
+Read `relay.relaySessionId` or `response.relaySessionId` to identify one relay
+connection. The ID is a random support reference, contains no account information,
+and grants no access to the connection. A new connection gets a new ID.
+
+Login and relay transport failures throw `AppleRelayError`. Save its
+`relaySessionId` before starting another login attempt:
+
+```ts
+import { AppleRelayError, startBrowserOwnedAppleIDLogin } from '@limrun/apple-auth';
+
+try {
+  const login = await startBrowserOwnedAppleIDLogin({ registryApiUrl, token, accountName, password });
+  console.info({ relaySessionId: login.relay.relaySessionId });
+} catch (error) {
+  if (error instanceof AppleRelayError && error.relaySessionId) {
+    console.info({ relaySessionId: error.relaySessionId });
+  }
+  throw error;
+}
+```
+
+For React, `useAppleIDLogin()` returns `relaySessionId` alongside `error`,
+including when login fails before a session is returned. Display that ID as the
+support reference. Starting another login or calling `close()` clears the hook's
+reference.
+
+Share the reference and approximate failure time with Limrun support. Record only
+the reference for correlation; Apple response bodies, headers, and error messages
+can contain account information or authentication state.
+
+The ID is optional for compatibility with older relay servers and is unavailable
+if the connection fails before its first response. The low-level client's
+getter is populated by the first response and remains
+available after `close()`, until the next `connect()` call.
+
 ## Developer Portal resources
 
 All helpers use the existing Apple ID relay session and accept `{ relay, teamId }`.
