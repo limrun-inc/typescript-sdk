@@ -1,4 +1,4 @@
-import { assetNameTarget } from '@limrun/api';
+import { assetNameTarget } from './delegated-permissions';
 import { setTimeout as sleepFor } from 'node:timers/promises';
 import type { RbeBuildSummary, XcodeClient } from '@limrun/api';
 

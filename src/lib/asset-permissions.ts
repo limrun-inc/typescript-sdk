@@ -1,7 +1,7 @@
 export type AssetAction = 'read' | 'create' | 'upload' | 'update' | 'delete' | 'all';
 
 /** Encode an exact name for a permission or an assetUpload target. */
-export function assetNameTarget(name: string): string {
+function encodeAssetNameTarget(name: string): string {
   return `name/${encodeURIComponent(name).replace(
     /[!'()*]/g,
     (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
@@ -44,7 +44,7 @@ export type BuildUpload =
       uploadOptions?: never;
     }
   | {
-      /** @deprecated Use target: assetNameTarget(name). Authorization now happens in the workload. */
+      /** @deprecated Use a literal target such as "name/result.apk". Authorization now happens in the workload. */
       assetName: string;
       ttl?: string;
       uploadOptions?: AssetUploadMetadata;
@@ -64,11 +64,11 @@ export function normalizeAssetUpload(upload: BuildUpload): AssetUpload | undefin
     return undefined;
   }
   if (upload.assetName === '') throw new Error('assetName must not be empty');
-  const target = upload.target ?? assetNameTarget(upload.assetName!);
+  const target = upload.target ?? encodeAssetNameTarget(upload.assetName!);
   if (target.startsWith('name/')) {
     const name = decodeURIComponent(target.slice(5));
-    if (!name || assetNameTarget(name) !== target)
-      throw new Error('Use assetNameTarget(name) for an exact asset name');
+    if (!name || encodeAssetNameTarget(name) !== target)
+      throw new Error('Name targets must use name/ followed by a canonical percent-encoded exact name');
   } else if (!/^asset_[0-7][0-9a-hjkmnp-tv-z]{25}$/.test(target)) {
     throw new Error('Upload target must be an asset ID or an exact name target');
   }
@@ -79,17 +79,4 @@ export function normalizeAssetUpload(upload: BuildUpload): AssetUpload | undefin
     ...(upload.token !== undefined && { token: upload.token }),
     ...(upload.uploadOptions !== undefined && { uploadOptions: upload.uploadOptions }),
   };
-}
-
-/** Add upload grants before instance creation without mutating customer permissions.
- * Signed upload URLs add no grants.
- */
-export function assetUploadPermissions(upload: BuildUpload, permissions: readonly string[] = []): string[] {
-  const normalized = normalizeAssetUpload(upload);
-  if (!normalized) return [...new Set(permissions)];
-  const actions: AssetAction[] = normalized.target.startsWith('name/') ? ['create', 'upload'] : ['upload'];
-  if (normalized.ttl || normalized.uploadOptions) actions.push('update');
-  return [
-    ...new Set([...permissions, ...actions.map((action) => assetPermission(normalized.target, action))]),
-  ];
 }

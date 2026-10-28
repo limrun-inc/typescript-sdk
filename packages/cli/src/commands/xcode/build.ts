@@ -1,4 +1,4 @@
-import { assetNameTarget } from '@limrun/api';
+import { assetNameTarget } from '../../lib/delegated-permissions';
 import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';

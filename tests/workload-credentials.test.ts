@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import Limrun, { assetNameTarget } from '../src';
+import Limrun from '../src';
 import { WorkloadCredentials } from '../src/lib/workload-credentials';
 
 let dir: string;
@@ -70,9 +70,4 @@ test('empty workload scopes fail before calling the asset endpoint', async () =>
     'Workload token exchange returned HTTP 403',
   );
   expect(fetcher).toHaveBeenCalledTimes(1);
-});
-
-test('exact asset names use the same canonical encoding as the API', () => {
-  expect(assetNameTarget('release/a:b *.apk')).toBe('name/release%2Fa%3Ab%20%2A.apk');
-  expect(assetNameTarget("!'()~")).toBe('name/%21%27%28%29~');
 });

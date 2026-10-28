@@ -1,12 +1,27 @@
-import { assetNameTarget, assetUploadPermissions } from '@limrun/api';
+/** Encode CLI asset names using the API's canonical target syntax. */
+export function assetNameTarget(name: string): string {
+  return `name/${encodeURIComponent(name).replace(
+    /[!'()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  )}`;
+}
 
 /** Resolve creation-time grants before sending the instance request. */
 export function delegatedPermissionsFromFlags(flags: Record<string, unknown>): string[] | undefined {
-  const provided = flags.permission as string[] | undefined;
-  const name = flags.upload ?? flags['auto-upload'];
+  const provided = flags['permission'] as string[] | undefined;
+  const name = flags['upload'] ?? flags['auto-upload'];
   if (typeof name === 'string' && name) {
     if (flags['signed-upload-url']) throw new Error('Use either --upload or --signed-upload-url, not both.');
-    return assetUploadPermissions({ target: assetNameTarget(name) }, provided);
+    const target = assetNameTarget(name);
+    // Named builds create the asset if absent and update its default expiry.
+    return [
+      ...new Set([
+        ...(provided ?? []),
+        `asset:${target}:create`,
+        `asset:${target}:upload`,
+        `asset:${target}:update`,
+      ]),
+    ];
   }
   return provided === undefined ? undefined : [...new Set(provided)];
 }

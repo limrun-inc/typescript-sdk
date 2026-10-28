@@ -1,4 +1,4 @@
-import { assetNameTarget } from '@limrun/api';
+import { assetNameTarget } from '../../../lib/delegated-permissions';
 import { Args, Flags } from '@oclif/core';
 import { findBazelWorkspaceRoot } from '@limrun/api';
 import { BaseCommand } from '../../../base-command';

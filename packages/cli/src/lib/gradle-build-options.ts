@@ -1,4 +1,4 @@
-import { assetNameTarget } from '@limrun/api';
+import { assetNameTarget } from './delegated-permissions';
 import { parseEnvEntries } from './env-entries';
 import type { GradleAndroidABI, GradleBuildOptions } from '@limrun/api';
 import { webhookConfigFromFlags, type WebhookFlagValues } from './webhook-options';

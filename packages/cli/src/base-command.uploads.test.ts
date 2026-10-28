@@ -143,3 +143,14 @@ test.each(['xcode', 'gradle'] as const)(
     expect(command.createGradle).not.toHaveBeenCalled();
   },
 );
+
+test('CLI upload grants encode names and deduplicate without changing customer permissions', () => {
+  const permission = ['asset:name/input.zip:read', 'asset:name/release%2Fa%3A%2A.apk:upload'];
+  const before = [...permission];
+  expect(delegatedPermissionsFromFlags({ upload: 'release/a:*.apk', permission })).toEqual([
+    ...permission,
+    'asset:name/release%2Fa%3A%2A.apk:create',
+    'asset:name/release%2Fa%3A%2A.apk:update',
+  ]);
+  expect(permission).toEqual(before);
+});

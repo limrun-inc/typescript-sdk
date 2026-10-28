@@ -228,8 +228,6 @@ export {
 export { isDirectInstanceHttpError, type DirectInstanceHttpError } from './internal/direct-instance-errors';
 
 export {
-  assetNameTarget,
-  assetUploadPermissions,
   assetPermission,
   assetScope,
   type AssetAction,
