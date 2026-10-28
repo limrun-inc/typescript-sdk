@@ -1,3 +1,4 @@
+import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { formatXcode, resolveRequestedXcodeVersion, xcodeVersionFlags } from '../../lib/xcode-version';
@@ -101,7 +102,7 @@ export default class XcodeCreate extends BaseCommand {
       const labels = parseLabels(flags.label);
       const simulator = flags.attach ? await this.client.iosInstances.get(flags['simulator-id']!) : undefined;
 
-      const delegatedPermissions = this.creationPermissions();
+      const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: XcodeInstanceCreateParamsWithCache = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,

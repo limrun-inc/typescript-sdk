@@ -1,3 +1,4 @@
+import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
 import { snapshotFlags } from '../../lib/cache-flags';
 import { parseSnapshotConfig, wantsRestore } from '../../lib/cache';
@@ -233,7 +234,7 @@ export default class IosCreate extends BaseCommand {
         this.info(`Successfully uploaded ${flags.install.length} file(s)`);
       }
 
-      const delegatedPermissions = this.creationPermissions();
+      const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: IosInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,

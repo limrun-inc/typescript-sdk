@@ -1,3 +1,4 @@
+import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
@@ -58,7 +59,7 @@ export default class GradleCreate extends BaseCommand {
         ...(flags['display-name'] && { displayName: flags['display-name'] }),
         ...(labels && { labels }),
       };
-      const delegatedPermissions = this.creationPermissions();
+      const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: GradleInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,

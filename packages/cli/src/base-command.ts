@@ -112,10 +112,6 @@ export abstract class BaseCommand extends Command {
     }),
   };
 
-  protected creationPermissions(): string[] | undefined {
-    return delegatedPermissionsFromFlags(this.parsedFlags ?? {});
-  }
-
   static readOnlyFlags = {
     'api-key': BaseCommand.baseFlags['api-key'],
     json: BaseCommand.baseFlags.json,
@@ -633,7 +629,11 @@ export abstract class BaseCommand extends Command {
     const target = loadLastXcodeInstance();
     // A cached instance may not hold the requested permissions or lifecycle settings.
     // Explicit instance IDs above keep their existing configuration.
-    if (target && !this.autoCreateInactivityTimeout() && !this.creationPermissions()) {
+    if (
+      target &&
+      !this.autoCreateInactivityTimeout() &&
+      !delegatedPermissionsFromFlags(this.parsedFlags ?? {})
+    ) {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
@@ -692,7 +692,9 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = loadLastXcodeInstance();
-    const forceFresh = Boolean(this.autoCreateInactivityTimeout() || this.creationPermissions());
+    const forceFresh = Boolean(
+      this.autoCreateInactivityTimeout() || delegatedPermissionsFromFlags(this.parsedFlags ?? {}),
+    );
     // The recorded Xcode target wins even when it has no simulator yet:
     // attach one instead of abandoning it for a fresh sandbox, so a prior
     // `lim xcode sync` or `lim xcode create` keeps all commands pointed at
@@ -1307,7 +1309,7 @@ export abstract class BaseCommand extends Command {
   }
 
   private async createStandaloneXcodeInstance(): Promise<LastXcodeInstance> {
-    const delegatedPermissions = this.creationPermissions();
+    const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
     const inactivityTimeout = this.autoCreateInactivityTimeout();
     const cache = this.cacheConfigFromFlags();
     const instance = await this.client.xcodeInstances.create({
@@ -1399,7 +1401,7 @@ export abstract class BaseCommand extends Command {
       (this._overrideInstanceId ||
         providedId ||
         envInstanceTarget('gradle') ||
-        (!this.autoCreateInactivityTimeout() && !this.creationPermissions()))
+        (!this.autoCreateInactivityTimeout() && !delegatedPermissionsFromFlags(this.parsedFlags ?? {})))
     ) {
       return target;
     }
@@ -1455,7 +1457,7 @@ export abstract class BaseCommand extends Command {
   }
 
   private async createStandaloneGradleInstance(): Promise<LastGradleInstance> {
-    const delegatedPermissions = this.creationPermissions();
+    const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
     const inactivityTimeout = this.autoCreateInactivityTimeout();
     const instance = await this.client.gradleInstances.create({
       wait: true,

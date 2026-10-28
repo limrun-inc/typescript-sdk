@@ -1,3 +1,4 @@
+import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
 import { spawn } from 'child_process';
 import { Flags } from '@oclif/core';
@@ -178,7 +179,7 @@ export default class AndroidCreate extends BaseCommand {
       }
 
       // Build params
-      const delegatedPermissions = this.creationPermissions();
+      const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: AndroidInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
