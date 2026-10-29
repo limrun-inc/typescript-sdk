@@ -26,6 +26,7 @@ Delegating a pattern requires `asset:*:<verb>` or broader authority for that ver
 
 Repeat `--permission` to add grants at creation. It is available on all four
 `create` commands, `run`, Xcode build/test/sync/RBE, and Gradle build/sync.
+`--permission` forces fresh instances even with `--reuse-if-exists`.
 Permissions cannot be added to an existing instance. When using `--id`, its role
 must already authorize the upload. Existing customer sessions are not changed.
 Auxiliary simulators receive an empty list; `ios create --xcode` gives both newly

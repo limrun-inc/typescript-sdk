@@ -39,7 +39,7 @@ export default class GradleCreate extends BaseCommand {
       multiple: true,
     }),
     'reuse-if-exists': Flags.boolean({
-      description: 'Reuse an existing matching instance instead of creating a new one',
+      description: 'Reuse an existing matching instance unless --permission requests a fresh role',
       default: false,
     }),
   };
@@ -62,7 +62,7 @@ export default class GradleCreate extends BaseCommand {
       const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: GradleInstanceCreateParams = {
         wait: true,
-        reuseIfExists: flags['reuse-if-exists'] || undefined,
+        reuseIfExists: !delegatedPermissions && flags['reuse-if-exists'] ? true : undefined,
         spec: {
           role: { permissions: delegatedPermissions ?? [] },
           ...(flags.region && { region: flags.region }),

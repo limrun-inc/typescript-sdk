@@ -99,7 +99,7 @@ export default class AndroidCreate extends BaseCommand {
       multiple: true,
     }),
     'reuse-if-exists': Flags.boolean({
-      description: 'Reuse an existing matching instance instead of creating a new one',
+      description: 'Reuse an existing matching instance unless --permission requests a fresh role',
       default: false,
     }),
     'install-asset': Flags.string({
@@ -182,7 +182,7 @@ export default class AndroidCreate extends BaseCommand {
       const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: AndroidInstanceCreateParams = {
         wait: true,
-        reuseIfExists: flags['reuse-if-exists'] || undefined,
+        reuseIfExists: !delegatedPermissions && flags['reuse-if-exists'] ? true : undefined,
         spec: { role: { permissions: delegatedPermissions ?? [] } },
       };
 
