@@ -51,6 +51,34 @@ describe('tunnel client facade inspection wiring', () => {
     });
   });
 
+  test('forwards only the inactivity opt-out to the client', async () => {
+    const startTunnel = jest.fn(async () => ({
+      tunnelId: 'tunnel-1',
+      close: () => {},
+      getConnectionState: () => 'connected' as const,
+      onConnectionStateChange: () => () => {},
+    }));
+    const facade = tunnelClientFacade(
+      { startTunnel, getTunnelStatus: async () => ({}), stopTunnel: async () => {} },
+      () => {},
+      'info',
+    );
+    const inspection = {
+      enabled: false,
+      captureBodies: false,
+      maxBodyBytes: 1024,
+      persist: false,
+      ttlSeconds: 3600,
+    };
+
+    await facade.startTunnel({ selectors: ['localhost:8081'], inspection, resetsInactivityTimeout: true });
+    expect(startTunnel).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ resetsInactivityTimeout: true }),
+    );
+    await facade.startTunnel({ selectors: ['localhost:8081'], inspection, resetsInactivityTimeout: false });
+    expect(startTunnel).toHaveBeenLastCalledWith(expect.objectContaining({ resetsInactivityTimeout: false }));
+  });
+
   test('disconnects the client when HAR setup fails', async () => {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'lim-tunnel-command-'));
     const occupiedPath = path.join(temporary, 'file');

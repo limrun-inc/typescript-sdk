@@ -35,7 +35,13 @@ beforeEach(() => jest.clearAllMocks());
 describe('tunnel run flags', () => {
   test('need neither a name nor selectors, with inspection on by default', async () => {
     const { flags } = await Parser.parse([], { flags: TunnelRun.flags });
-    expect(flags).toMatchObject({ replace: false, verbose: false, inspect: true, persist: false });
+    expect(flags).toMatchObject({
+      replace: false,
+      verbose: false,
+      inspect: true,
+      persist: false,
+      'reset-inactivity-timeout': true,
+    });
     expect(flags.name).toBeUndefined();
     expect(flags.selector).toBeUndefined();
     expect(TunnelRun.flags).not.toHaveProperty('har');
@@ -63,7 +69,12 @@ describe('tunnel run flags', () => {
 
 describe('tunnel run command', () => {
   function setup(
-    flags: { name?: string; selector?: readonly string[]; token?: string },
+    flags: {
+      name?: string;
+      selector?: readonly string[];
+      token?: string;
+      'reset-inactivity-timeout'?: boolean;
+    },
     { closed = Promise.resolve() }: { closed?: Promise<void> } = {},
   ) {
     jest.mocked(tunnelOrganization).mockResolvedValue('org_1');
@@ -79,6 +90,7 @@ describe('tunnel run command', () => {
           persist: true,
           ttl: 3600,
           'har-body-limit': 1024,
+          'reset-inactivity-timeout': true,
           ...flags,
         },
       }),
@@ -135,6 +147,15 @@ describe('tunnel run command', () => {
     const { command } = setup({ token });
     await expect(command.run()).rejects.toThrow('--token takes a tunnel token');
     expect(tunnelOrganization).not.toHaveBeenCalled();
+  });
+
+  test('asks the connector not to reset inactivity timeouts only for --no-reset-inactivity-timeout', async () => {
+    await setup({ token: tunnelToken }).command.run();
+    expect(options()).not.toHaveProperty('resetsInactivityTimeout');
+
+    jest.clearAllMocks();
+    await setup({ token: tunnelToken, 'reset-inactivity-timeout': false }).command.run();
+    expect(options()).toMatchObject({ resetsInactivityTimeout: false });
   });
 
   test("creates a quick tunnel for --name with --selector and runs it with the tunnel's token", async () => {
