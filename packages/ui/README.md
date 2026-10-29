@@ -44,6 +44,53 @@ different duration and can adjust gradually. Compare first-frame latency after i
 steady playback, and drops or freezes on your target browsers and networks before
 choosing a value. The example's 50 ms is not a recommended default.
 
+## Playback measurements
+
+Pass `onPlaybackStats` to receive browser measurements for incoming iOS and
+Android streams, including phones, tablets, Apple Watch, and both Duo displays.
+The callback and its types are available from `@limrun/ui` and `@limrun/ui/lite`.
+
+```tsx
+import { useState } from 'react';
+import { RemoteControl, type PlaybackStats } from '@limrun/ui';
+
+function Player({ url, token }: { url: string; token: string }) {
+  const [stats, setStats] = useState<PlaybackStats | null>(null);
+  const primary = stats?.video.find((video) => video.display === 'primary');
+  return (
+    <>
+      <RemoteControl url={url} token={token} onPlaybackStats={setStats} />
+      <output>Buffer delay: {primary?.bufferDelayMs?.toFixed(1) ?? '—'} ms</output>
+    </>
+  );
+}
+```
+
+Collection uses the existing connection about every two seconds while the callback
+is set and the tab is visible. Removing the callback stops collection. A disconnect,
+hidden tab, or collection error emits `null` once after a measurement. Resuming or
+reconnecting starts a fresh baseline. Changing the callback function does not reconnect
+or restart collection. No stats requests run without a subscriber.
+
+`PlaybackStats` contains `video` and `audio` arrays, a Unix-millisecond `timestamp`,
+`requestedTargetMs`, and optional selected-connection `rttMs`. A `null` target means
+automatic buffering. An invalid target prop leaves this field undefined. The requested
+target does not confirm browser support or the duration actually used.
+
+Each track has `id`, `trackId`, `timestamp`, and optional `intervalMs`,
+`bufferDelayMs`, and `bitrateBps`. Video adds `display`, `fps`, `droppedFrames`, and
+`freezes`. Duo's `primary` and `inner` displays stay separate. Audio is empty when
+the connection has no incoming audio stream. Camera and microphone uploads are excluded.
+
+Rates and counts describe the interval since that stream's previous sample.
+Buffer delay divides the change in accumulated jitter-buffer delay by the change
+in emitted frames or audio samples. FPS uses decoded frames; freezes count only
+browser-reported freezes that have completed. Missing browser fields, the first
+sample, and reset counters leave affected measurements undefined. A buffer with
+no emitted frames has no delay measurement; it is not zero. Static screens may
+have low FPS. These measurements do not include tap-to-screen latency or server
+encoding time.
+
 ## Simulated cameras
 
 `RemoteControl` responds automatically when an app in the instance opens,
