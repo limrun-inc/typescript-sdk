@@ -1,3 +1,5 @@
+import PlaybackWorker from './video-playback.worker?worker&inline';
+
 type VideoTrackAPIs = {
   MediaStreamTrackProcessor?: new (options: { track: MediaStreamTrack; maxBufferSize: number }) => {
     readable: ReadableStream<VideoFrame>;
@@ -14,16 +16,21 @@ export function attachVideoStream(
 ): () => void {
   const { MediaStreamTrackProcessor, MediaStreamTrackGenerator } = globalThis as VideoTrackAPIs;
   const track = stream.getVideoTracks()[0];
-  const abort = new AbortController();
   let input: MediaStreamTrack | undefined;
   let output: MediaStreamTrack | undefined;
+  let worker: Worker | undefined;
+  let stopTimer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
 
   const stop = () => {
+    if (stopped) return;
     stopped = true;
-    abort.abort();
     input?.stop();
     output?.stop();
+    if (worker) {
+      worker.postMessage({ type: 'stop' });
+      stopTimer = setTimeout(() => worker?.terminate(), 1000);
+    }
   };
   const play = (source: MediaStream) => {
     video.srcObject = source;
@@ -43,7 +50,19 @@ export function attachVideoStream(
       const processor = new MediaStreamTrackProcessor({ track: input, maxBufferSize: 1 });
       const generator = new MediaStreamTrackGenerator({ kind: 'video' });
       output = generator;
-      void processor.readable.pipeTo(generator.writable, { signal: abort.signal }).catch(fallback);
+      worker = new PlaybackWorker();
+      worker.onmessage = ({ data }) => {
+        if (data.type === 'error') fallback(new Error(data.message));
+        else if (data.type === 'stopped') {
+          clearTimeout(stopTimer);
+          worker?.terminate();
+        }
+      };
+      worker.onerror = (event) => fallback(new Error(event.message));
+      worker.postMessage({ type: 'start', readable: processor.readable, writable: generator.writable }, [
+        processor.readable,
+        generator.writable,
+      ]);
       play(new MediaStream(stream.getTracks().map((item) => (item === track ? generator : item))));
     } else {
       play(stream);
