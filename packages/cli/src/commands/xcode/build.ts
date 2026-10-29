@@ -1,4 +1,3 @@
-import { assetNameTarget } from '../../lib/delegated-permissions';
 import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
@@ -430,7 +429,7 @@ export default class XcodeBuild extends BaseCommand {
           this.error(err instanceof Error ? err.message : String(err));
         }
         options.upload = {
-          target: assetNameTarget(flags.upload),
+          target: `name/${flags.upload}`,
           ...(flags['upload-ttl'] && { ttl: flags['upload-ttl'] }),
           ...(uploadOptions && { uploadOptions }),
         };

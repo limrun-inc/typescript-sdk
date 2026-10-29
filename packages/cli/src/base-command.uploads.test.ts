@@ -61,9 +61,9 @@ test.each(['xcode', 'gradle'])(
         role: {
           permissions: [
             'asset:name/input.zip:read',
-            'asset:name/preview%2Fapp.apk:create',
-            'asset:name/preview%2Fapp.apk:upload',
-            'asset:name/preview%2Fapp.apk:update',
+            'asset:name/preview/app.apk:create',
+            'asset:name/preview/app.apk:upload',
+            'asset:name/preview/app.apk:update',
           ],
         },
       },
@@ -144,13 +144,13 @@ test.each(['xcode', 'gradle'] as const)(
   },
 );
 
-test('CLI upload grants encode names and deduplicate without changing customer permissions', () => {
-  const permission = ['asset:name/input.zip:read', 'asset:name/release%2Fa%3A%2A.apk:upload'];
+test('CLI upload grants preserve literal names and deduplicate without changing customer permissions', () => {
+  const permission = ['asset:name/input.zip:read', 'asset:name/release/a:*.apk:upload'];
   const before = [...permission];
   expect(delegatedPermissionsFromFlags({ upload: 'release/a:*.apk', permission })).toEqual([
     ...permission,
-    'asset:name/release%2Fa%3A%2A.apk:create',
-    'asset:name/release%2Fa%3A%2A.apk:update',
+    'asset:name/release/a:*.apk:create',
+    'asset:name/release/a:*.apk:update',
   ]);
   expect(permission).toEqual(before);
 });

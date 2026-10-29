@@ -257,7 +257,7 @@ describe('uploadLatestRbeBuild', () => {
     nodeProxyTransport.fetchLongRequest = fetchMock;
     const { xcode, getOrCreate } = await uploadClient();
     await expect(
-      xcode.uploadLatestRbeBuild({ target: 'name/preview%2Facme%2Fapp%2Fpr-7-ios', ttl: '168h' }),
+      xcode.uploadLatestRbeBuild({ target: 'name/preview/acme/app/pr-7-ios', ttl: '168h' }),
     ).resolves.toEqual({
       appName: 'MyApp.app',
       bundleId: 'com.example.myapp',
@@ -265,7 +265,7 @@ describe('uploadLatestRbeBuild', () => {
     expect(getOrCreate).not.toHaveBeenCalled();
     const [, init] = fetchMock.mock.calls[0]!;
     expect(JSON.parse(String(init?.body))).toEqual({
-      assetUpload: { target: 'name/preview%2Facme%2Fapp%2Fpr-7-ios', ttl: '168h' },
+      assetUpload: { target: 'name/preview/acme/app/pr-7-ios', ttl: '168h' },
     });
   });
 

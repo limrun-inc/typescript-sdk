@@ -1,4 +1,3 @@
-import { assetNameTarget } from './delegated-permissions';
 import { setTimeout as sleepFor } from 'node:timers/promises';
 import type { RbeBuildSummary, XcodeClient } from '@limrun/api';
 
@@ -66,7 +65,7 @@ export function startAutoUploadWatcher(opts: {
       if (abort.signal.aborted) return;
       try {
         const result = await client.uploadLatestRbeBuild({
-          target: assetNameTarget(assetName),
+          target: `name/${assetName}`,
           ...(ttl && { ttl }),
         });
         log(`auto-upload: uploaded ${result.appName} as "${assetName}"`);

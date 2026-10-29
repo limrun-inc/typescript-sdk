@@ -1,4 +1,3 @@
-import { assetNameTarget } from '../../../lib/delegated-permissions';
 import { Args, Flags } from '@oclif/core';
 import { findBazelWorkspaceRoot } from '@limrun/api';
 import { BaseCommand } from '../../../base-command';
@@ -71,7 +70,7 @@ export default class XcodeRbeUpload extends BaseCommand {
     await this.withAuth(async () => {
       const client = await this.resolveXcodeClient(await this.resolveXcodeTarget(info.instanceId));
       const result = await client.uploadLatestRbeBuild({
-        target: assetNameTarget(args.name),
+        target: `name/${args.name}`,
         ...(flags.ttl && { ttl: flags.ttl }),
       });
       if (this.isJsonEnabled()) {

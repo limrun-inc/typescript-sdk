@@ -6,12 +6,9 @@ test('signed URLs add no grants and do not activate workload authorization', () 
   expect(normalizeAssetUpload(upload)).toEqual(upload);
 });
 
-test.each(['*', 'name/*', 'name/', 'name/a%2fb', 'asset_invalid'])(
-  'rejects ambiguous or noncanonical upload target %s',
-  (target) => {
-    expect(() => normalizeAssetUpload({ target })).toThrow();
-  },
-);
+test.each(['*', 'name/', 'asset_invalid'])('rejects invalid upload target %s', (target) => {
+  expect(() => normalizeAssetUpload({ target })).toThrow();
+});
 
 test('conflicting authorization modes fail before making a request', () => {
   expect(() =>
@@ -38,9 +35,9 @@ test.each(['iosInstances', 'androidInstances', 'xcodeInstances', 'gradleInstance
         role: {
           permissions: [
             'asset:name/input.zip:read',
-            'asset:name/result.apk:create',
-            'asset:name/result.apk:upload',
-            'asset:name/result.apk:update',
+            'asset:name/releases:prod/app%2F.apk:create',
+            'asset:name/releases:prod/app%2F.apk:upload',
+            'asset:name/releases:prod/app%2F.apk:update',
           ],
         },
       },
@@ -51,9 +48,9 @@ test.each(['iosInstances', 'androidInstances', 'xcodeInstances', 'gradleInstance
         role: {
           permissions: [
             'asset:name/input.zip:read',
-            'asset:name/result.apk:create',
-            'asset:name/result.apk:upload',
-            'asset:name/result.apk:update',
+            'asset:name/releases:prod/app%2F.apk:create',
+            'asset:name/releases:prod/app%2F.apk:upload',
+            'asset:name/releases:prod/app%2F.apk:update',
           ],
         },
       },
@@ -62,11 +59,11 @@ test.each(['iosInstances', 'androidInstances', 'xcodeInstances', 'gradleInstance
   },
 );
 
-test('legacy names retain canonical encoding while literal targets pass through unchanged', () => {
-  expect(normalizeAssetUpload({ assetName: "release/a:b *!'()~.apk" }).assetUpload?.target).toBe(
-    'name/release%2Fa%3Ab%20%2A%21%27%28%29~.apk',
-  );
-  expect(normalizeAssetUpload({ target: 'name/release%2Fa%3Ab%20%2A.apk' }).assetUpload?.target).toBe(
-    'name/release%2Fa%3Ab%20%2A.apk',
-  );
-});
+test.each(["release/a:b *!'()~.apk", 'a%2Fb', 'a%2fb', '%', '*', 'name/app.ipa', ':a:', '日本.apk'])(
+  'legacy names and literal targets preserve the exact name %s',
+  (name) => {
+    const target = `name/${name}`;
+    expect(normalizeAssetUpload({ assetName: name }).assetUpload?.target).toBe(target);
+    expect(normalizeAssetUpload({ target }).assetUpload?.target).toBe(target);
+  },
+);

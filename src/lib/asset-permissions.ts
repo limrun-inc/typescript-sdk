@@ -1,11 +1,3 @@
-/** Encode an exact name for a permission or an assetUpload target. */
-function encodeAssetNameTarget(name: string): string {
-  return `name/${encodeURIComponent(name).replace(
-    /[!'()*]/g,
-    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
-  )}`;
-}
-
 /** Uploaded by the daemon after the build, using fresh workload credentials unless token is supplied. */
 export interface AssetUpload {
   target: string;
@@ -57,11 +49,9 @@ export function normalizeAssetUpload(
     return { signedUploadUrl: upload.signedUploadUrl };
   }
   if (upload.assetName === '') throw new Error('assetName must not be empty');
-  const target = upload.target ?? encodeAssetNameTarget(upload.assetName!);
+  const target = upload.target ?? `name/${upload.assetName!}`;
   if (target.startsWith('name/')) {
-    const name = decodeURIComponent(target.slice(5));
-    if (!name || encodeAssetNameTarget(name) !== target)
-      throw new Error('Name targets must use name/ followed by a canonical percent-encoded exact name');
+    if (target === 'name/') throw new Error('Name targets must include an exact name after name/');
   } else if (!/^asset_[0-7][0-9a-hjkmnp-tv-z]{25}$/.test(target)) {
     throw new Error('Upload target must be an asset ID or an exact name target');
   }
