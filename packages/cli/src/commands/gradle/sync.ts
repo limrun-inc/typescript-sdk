@@ -29,7 +29,6 @@ export default class GradleSync extends BaseCommand {
   };
 
   static flags = {
-    ...BaseCommand.permissionFlags,
     ...BaseCommand.baseFlags,
     ...syncFlags,
     id: Flags.string({

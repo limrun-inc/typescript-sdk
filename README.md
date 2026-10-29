@@ -48,12 +48,32 @@ const androidInstance: Limrun.AndroidInstance = await client.androidInstances.cr
 
 Documentation for each method, request param, and response field are available in docstrings and will appear on hover in most modern editors.
 
-## Workload asset permissions
+## Workload permissions
 
-Set `spec.role.permissions` when creating a workload, then pass a concrete
-`upload.target` when building. The SDK sends these literal values; it does not
-add permissions on your behalf. The same role field works on Xcode, Gradle, iOS,
-and Android instances. Use `permissions: []` when no asset access is needed.
+An instance's role controls which resources its workload can access. Set
+`spec.role.permissions` when creating an Xcode, Gradle, iOS, or Android instance:
+
+```ts
+spec: {
+  role: {
+    permissions: ['asset:name/releases/app.apk:upload'],
+  },
+}
+```
+
+Permission strings follow `resource:target:verb`. Assets are the first supported
+resource type. The role is a general workload authorization policy; it is separate
+from build settings and upload destinations.
+
+The creator must have authority to delegate every permission in the list.
+Permissions are fixed at creation and cannot be added by a later build request.
+Use `role: { permissions: [] }` when a workload needs no resource access. Omitting
+`role` retains the organization's compatibility default. The SDK sends the
+permission list as supplied and does not infer grants from later operations.
+
+### Asset upload example
+
+Grant access at creation, then pass a concrete `upload.target` when building:
 
 ```ts
 const instance = await client.gradleInstances.create({

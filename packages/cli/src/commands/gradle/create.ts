@@ -1,4 +1,3 @@
-import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
@@ -17,7 +16,6 @@ export default class GradleCreate extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    ...BaseCommand.permissionFlags,
     'display-name': Flags.string({
       description: 'Human-friendly display name shown in listings and the console',
     }),
@@ -59,12 +57,10 @@ export default class GradleCreate extends BaseCommand {
         ...(flags['display-name'] && { displayName: flags['display-name'] }),
         ...(labels && { labels }),
       };
-      const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: GradleInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
-          role: { permissions: delegatedPermissions ?? [] },
           ...(flags.region && { region: flags.region }),
           ...(flags.jurisdiction && { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' }),
           ...(flags['hard-timeout'] && { hardTimeout: flags['hard-timeout'] }),

@@ -51,13 +51,13 @@ test('tasks, project path, and upload map through', () => {
   ).toEqual({
     tasks: ['assembleDebug'],
     projectPath: 'android',
-    upload: { target: 'name/app.apk' },
+    upload: { assetName: 'app.apk' },
   });
 });
 
 test('upload-ttl maps onto the upload asset', () => {
   expect(gradleBuildOptionsFromFlags({ upload: 'app.apk', 'upload-ttl': '24h' })).toEqual({
-    upload: { target: 'name/app.apk', ttl: '24h' },
+    upload: { assetName: 'app.apk', ttl: '24h' },
   });
 });
 
@@ -129,7 +129,7 @@ test('a short-lived access token is a valid Play credential', () => {
       'playstore-access-token': 'token',
       'playstore-track': 'internal',
     }),
-  ).toEqual({ upload: { target: 'name/app.aab' } });
+  ).toEqual({ upload: { assetName: 'app.aab' } });
 });
 
 test('production track without an explicit release status throws', () => {
@@ -165,5 +165,5 @@ test('a valid playstore combination passes validation without mapping playstore'
       'playstore-service-account': 'sa.json',
       'playstore-track': 'internal',
     }),
-  ).toEqual({ upload: { target: 'name/app.aab' } });
+  ).toEqual({ upload: { assetName: 'app.aab' } });
 });

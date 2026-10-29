@@ -1,4 +1,3 @@
-import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
 import { snapshotFlags } from '../../lib/cache-flags';
 import { parseSnapshotConfig, wantsRestore } from '../../lib/cache';
@@ -59,7 +58,6 @@ export default class IosCreate extends BaseCommand {
   static flags = {
     ...snapshotFlags,
     ...BaseCommand.baseFlags,
-    ...BaseCommand.permissionFlags,
     rm: Flags.boolean({
       description: 'Delete the instance automatically when this CLI process exits',
       default: false,
@@ -234,11 +232,10 @@ export default class IosCreate extends BaseCommand {
         this.info(`Successfully uploaded ${flags.install.length} file(s)`);
       }
 
-      const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: IosInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: { role: { permissions: delegatedPermissions ?? [] } },
+        spec: {},
       };
 
       const appAssets = [
@@ -379,7 +376,6 @@ export default class IosCreate extends BaseCommand {
             reuseIfExists: flags['reuse-if-exists'] || undefined,
             ...(params.metadata ? { metadata: params.metadata } : {}),
             spec: {
-              role: { permissions: delegatedPermissions ?? [] },
               ...(cache ? { cache } : {}),
               ...(flags.region ? { region: flags.region } : {}),
               ...(flags.jurisdiction ? { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' } : {}),

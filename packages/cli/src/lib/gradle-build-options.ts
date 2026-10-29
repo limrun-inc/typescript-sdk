@@ -175,7 +175,7 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
   }
   if (flags.upload) {
     options.upload = {
-      target: `name/${flags.upload}`,
+      assetName: flags.upload,
       ...(flags['upload-ttl'] && { ttl: flags['upload-ttl'] }),
     };
   } else if (flags['signed-upload-url']) {

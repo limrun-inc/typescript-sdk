@@ -1,4 +1,3 @@
-import { delegatedPermissionsFromFlags } from '../lib/delegated-permissions';
 import os from 'os';
 import path from 'path';
 import { Flags } from '@oclif/core';
@@ -61,7 +60,6 @@ export default class Run extends BaseCommand {
     quiet: BaseCommand.baseFlags.quiet,
   } as unknown as typeof BaseCommand.baseFlags;
   static flags = {
-    ...BaseCommand.permissionFlags,
     ...snapshotFlags,
     'ios-id': Flags.string({
       description:
@@ -344,10 +342,7 @@ export default class Run extends BaseCommand {
           this.client.xcodeInstances.create({
             wait: true,
             reuseIfExists: true,
-            spec: {
-              role: { permissions: delegatedPermissionsFromFlags(this.parsedFlags ?? {}) ?? [] },
-              ...(cache ? { cache } : {}),
-            },
+            ...(cache ? { spec: { cache } } : {}),
             metadata: {
               displayName,
               labels,
@@ -410,7 +405,6 @@ export default class Run extends BaseCommand {
         try {
           if (!simulator) {
             simulator = await this.client.iosInstances.create({
-              spec: { role: { permissions: [] } },
               wait: true,
               reuseIfExists: true,
               metadata: {

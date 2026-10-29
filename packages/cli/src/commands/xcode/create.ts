@@ -1,4 +1,3 @@
-import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { formatXcode, resolveRequestedXcodeVersion, xcodeVersionFlags } from '../../lib/xcode-version';
@@ -29,7 +28,6 @@ export default class XcodeCreate extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    ...BaseCommand.permissionFlags,
     rm: Flags.boolean({
       description: 'Delete the instance automatically when this CLI process exits',
       default: false,
@@ -102,14 +100,10 @@ export default class XcodeCreate extends BaseCommand {
       const labels = parseLabels(flags.label);
       const simulator = flags.attach ? await this.client.iosInstances.get(flags['simulator-id']!) : undefined;
 
-      const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: XcodeInstanceCreateParamsWithCache = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: {
-          ...(cache ? { cache } : {}),
-          role: { permissions: delegatedPermissions ?? [] },
-        },
+        spec: { ...(cache ? { cache } : {}) },
       };
 
       if (flags.region) params.spec!.region = flags.region;
@@ -178,7 +172,7 @@ export default class XcodeCreate extends BaseCommand {
           const simParams: IosInstanceCreateParams = {
             wait: true,
             reuseIfExists: flags['reuse-if-exists'] || undefined,
-            spec: { role: { permissions: [] } },
+            spec: {},
           };
           if (flags.region) simParams.spec!.region = flags.region;
           if (flags.jurisdiction) simParams.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';

@@ -14,7 +14,11 @@ export class Assets extends APIResource {
 
   /** Update editable metadata. The lookup name cannot be changed. */
   update(assetID: string, body: AssetUpdateParams, options?: RequestOptions): APIPromise<void> {
-    return this._client.patch(path`/v1/assets/${assetID}`, { body, ...options });
+    return this._client.patch(path`/v1/assets/${assetID}`, {
+      body,
+      ...options,
+      headers: buildHeaders([{ Accept: '*/*' }, options?.headers]),
+    });
   }
 
   /**

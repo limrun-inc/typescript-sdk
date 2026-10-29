@@ -98,7 +98,6 @@ export default class XcodeBuild extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    ...BaseCommand.permissionFlags,
     ...xcodeProjectFlags,
     ...syncFlags,
     id: Flags.string({
@@ -429,7 +428,7 @@ export default class XcodeBuild extends BaseCommand {
           this.error(err instanceof Error ? err.message : String(err));
         }
         options.upload = {
-          target: `name/${flags.upload}`,
+          assetName: flags.upload,
           ...(flags['upload-ttl'] && { ttl: flags['upload-ttl'] }),
           ...(uploadOptions && { uploadOptions }),
         };

@@ -43,7 +43,7 @@ describe('startAutoUploadWatcher', () => {
     await watcher.stop();
     // One upload despite many polls listing the same terminal entry.
     expect(client.uploadLatestRbeBuild).toHaveBeenCalledTimes(1);
-    expect(client.uploadLatestRbeBuild).toHaveBeenCalledWith({ target: 'name/preview/app', ttl: '24h' });
+    expect(client.uploadLatestRbeBuild).toHaveBeenCalledWith({ assetName: 'preview/app', ttl: '24h' });
     expect(log).toHaveBeenCalledWith(expect.stringContaining('uploaded MyApp.app'));
   });
 

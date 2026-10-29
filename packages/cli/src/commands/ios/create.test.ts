@@ -25,24 +25,20 @@ function setup(flags: Record<string, unknown>) {
 test('--tunnel names the private tunnel in the instance spec', async () => {
   const { command, create } = setup({ tunnel: 'staging' });
   await command.run();
-  expect(create).toHaveBeenCalledWith(
-    expect.objectContaining({ spec: { role: { permissions: [] }, tunnel: 'staging' } }),
-  );
+  expect(create).toHaveBeenCalledWith(expect.objectContaining({ spec: { tunnel: 'staging' } }));
 });
 
 test('omits the tunnel without --tunnel', async () => {
   const { command, create } = setup({});
   await command.run();
-  expect(create).toHaveBeenCalledWith(expect.objectContaining({ spec: { role: { permissions: [] } } }));
+  expect(create).toHaveBeenCalledWith(expect.objectContaining({ spec: {} }));
 });
 
 test('--os-version asks for the iOS major version with an OSVersion clue', async () => {
   const { command, create } = setup({ 'os-version': '27' });
   await command.run();
   expect(create).toHaveBeenCalledWith(
-    expect.objectContaining({
-      spec: { role: { permissions: [] }, clues: [{ kind: 'OSVersion', osVersion: '27' }] },
-    }),
+    expect.objectContaining({ spec: { clues: [{ kind: 'OSVersion', osVersion: '27' }] } }),
   );
 });
 

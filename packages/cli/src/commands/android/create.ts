@@ -1,4 +1,3 @@
-import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
 import { spawn } from 'child_process';
 import { Flags } from '@oclif/core';
@@ -46,7 +45,6 @@ export default class AndroidCreate extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    ...BaseCommand.permissionFlags,
     connect: Flags.boolean({
       description: 'Connect to the new instance immediately by starting an ADB tunnel',
       default: true,
@@ -179,11 +177,10 @@ export default class AndroidCreate extends BaseCommand {
       }
 
       // Build params
-      const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: AndroidInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: { role: { permissions: delegatedPermissions ?? [] } },
+        spec: {},
       };
 
       const initialAssets = [

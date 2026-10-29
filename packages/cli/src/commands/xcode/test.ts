@@ -33,7 +33,6 @@ export default class XcodeTest extends BaseCommand {
   };
 
   static flags = {
-    ...BaseCommand.permissionFlags,
     ...BaseCommand.baseFlags,
     id: Flags.string({
       description:

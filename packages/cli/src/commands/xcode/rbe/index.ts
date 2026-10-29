@@ -49,7 +49,6 @@ export default class XcodeRbe extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
-    ...BaseCommand.permissionFlags,
     id: Flags.string({
       description:
         'Xcode instance ID to target. Defaults to the most recent standalone Xcode target, creating one if needed.',
@@ -113,11 +112,6 @@ export default class XcodeRbe extends BaseCommand {
     // generated the workspace config; this process only holds the tunnel and
     // tears the stack down on exit. Requires --id (the parent always passes it).
     if (flags.serve) {
-      if (flags.permission) {
-        this.error(
-          '--permission applies at instance creation; an existing instance keeps its delegated permissions.',
-        );
-      }
       if (!flags.id) {
         this.error('--serve requires --id (it is set automatically by the background launcher).');
       }
@@ -171,12 +165,6 @@ export default class XcodeRbe extends BaseCommand {
         this.error(
           `${running} The requested --auto-upload config was NOT applied. ` +
             'Stop it with `lim xcode rbe --stop` and re-run.',
-        );
-      }
-      if (flags.permission) {
-        this.error(
-          `${running} The requested --permission values were not applied. ` +
-            'Stop it with `lim xcode rbe --stop` and re-run to create an instance with those permissions.',
         );
       }
       if (flags.json) this.outputJson({ ...existing, running: true });

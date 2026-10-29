@@ -49,6 +49,10 @@ test('asset metadata uses PATCH and icons use upload URLs', async () => {
       method: init?.method,
       body: init?.body ? JSON.parse(init.body as string) : undefined,
     });
+    if (init?.method === 'PATCH') {
+      expect(new Headers(init.headers).get('Accept')).toBe('*/*');
+      return new Response(null, { status: 204 });
+    }
     return Response.json({
       signedUploadUrl: 'https://storage.example/bundle',
       signedIconUploadUrl: 'https://storage.example/icon',
