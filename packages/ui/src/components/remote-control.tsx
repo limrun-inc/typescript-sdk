@@ -15,6 +15,7 @@ import { createDisplayTouchMessage, type DuoState, type DuoOrientation } from '.
 const DuoView = lazy(() => import('./duo-view'));
 
 import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
+import { attachVideoStream } from '../core/video-playback';
 
 import {
   createTouchControlMessage,
@@ -531,6 +532,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
+    const videoPlaybackRef = useRef(new Map<HTMLVideoElement, () => void>());
     const frameRef = useRef<HTMLImageElement>(null);
     const [detectedDuo, setDetectedDuo] = useState(false);
     const isDuo = deviceModel === 'iphone-duo' || detectedDuo;
@@ -2404,6 +2406,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
 
     const teardownConnection = () => {
+      for (const stop of videoPlaybackRef.current.values()) stop();
+      videoPlaybackRef.current.clear();
       for (const request of duoRequests.current.values()) {
         clearTimeout(request.timer);
         request.reject(new Error('Simulator disconnected'));
@@ -3074,9 +3078,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               event.track.id === 'duo-inner' || event.streams.some((stream) => stream.id === 'duo-inner');
             const target = inner ? innerVideoRef.current : videoRef.current;
             if (target) {
-              target.srcObject =
+              const stream =
                 isDuo ? new MediaStream([event.track]) : event.streams[0] ?? new MediaStream([event.track]);
-              void target.play().catch(() => undefined);
+              videoPlaybackRef.current.get(target)?.();
+              videoPlaybackRef.current.set(
+                target,
+                attachVideoStream(target, stream, (error) => debugWarn('Video playback fallback:', error)),
+              );
             }
           }
         };
