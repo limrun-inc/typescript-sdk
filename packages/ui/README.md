@@ -40,7 +40,7 @@ Related browser workflow packages are published separately:
 - `@limrun/device-install` handles WebUSB pairing and real-device installation.
 - `@limrun/play-auth` handles Google login and Google Play publishing.
 
-## Tracing
+## Latency diagnostics
 
 Pass `onTrace={(message) => ...}` to receive each parsed diagnostic message
 from supported single-display iOS instances. Omitting the callback leaves tracing off.

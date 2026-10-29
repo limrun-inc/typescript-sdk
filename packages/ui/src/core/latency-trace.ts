@@ -1,6 +1,9 @@
 /** A trace belongs to one connection; older servers keep the ordinary input format. */
-export function createTrace(peer: RTCPeerConnection, onMessage: (message: Record<string, unknown>) => void) {
-  const channel = peer.createDataChannel('trace-v1', {
+export function createLatencyTrace(
+  peer: RTCPeerConnection,
+  onMessage: (message: Record<string, unknown>) => void,
+) {
+  const channel = peer.createDataChannel('latency-trace-v1', {
     ordered: true,
     negotiated: true,
     id: 2,
@@ -14,7 +17,7 @@ export function createTrace(peer: RTCPeerConnection, onMessage: (message: Record
     try {
       message = JSON.parse(event.data);
     } catch (error) {
-      console.warn('Invalid trace message', error);
+      console.warn('Invalid latency trace message', error);
       return;
     }
     if (message && typeof message === 'object' && !Array.isArray(message)) {
