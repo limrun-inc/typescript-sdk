@@ -1,3 +1,4 @@
+import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { formatXcode, resolveRequestedXcodeVersion, xcodeVersionFlags } from '../../lib/xcode-version';
@@ -28,6 +29,7 @@ export default class XcodeCreate extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    ...BaseCommand.permissionFlags,
     rm: Flags.boolean({
       description: 'Delete the instance automatically when this CLI process exits',
       default: false,
@@ -53,7 +55,7 @@ export default class XcodeCreate extends BaseCommand {
       multiple: true,
     }),
     'reuse-if-exists': Flags.boolean({
-      description: 'Reuse an existing matching instance instead of creating a new one',
+      description: 'Reuse an existing matching instance unless --permission requests a fresh role',
       default: false,
     }),
     ios: Flags.boolean({
@@ -92,7 +94,7 @@ export default class XcodeCreate extends BaseCommand {
     }
 
     const cache = this.cacheConfigFromFlags();
-    if (cache && flags['reuse-if-exists']) {
+    if (cache && flags['reuse-if-exists'] && !delegatedPermissionsFromFlags(this.parsedFlags ?? {})) {
       this.info('A reused instance keeps the snapshot configuration it was created with.');
     }
 
@@ -100,10 +102,14 @@ export default class XcodeCreate extends BaseCommand {
       const labels = parseLabels(flags.label);
       const simulator = flags.attach ? await this.client.iosInstances.get(flags['simulator-id']!) : undefined;
 
+      const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: XcodeInstanceCreateParamsWithCache = {
         wait: true,
-        reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: { ...(cache ? { cache } : {}) },
+        reuseIfExists: !delegatedPermissions && flags['reuse-if-exists'] ? true : undefined,
+        spec: {
+          ...(cache ? { cache } : {}),
+          role: { permissions: delegatedPermissions ?? [] },
+        },
       };
 
       if (flags.region) params.spec!.region = flags.region;
@@ -171,8 +177,8 @@ export default class XcodeCreate extends BaseCommand {
           });
           const simParams: IosInstanceCreateParams = {
             wait: true,
-            reuseIfExists: flags['reuse-if-exists'] || undefined,
-            spec: {},
+            reuseIfExists: !delegatedPermissions && flags['reuse-if-exists'] ? true : undefined,
+            spec: { role: { permissions: [] } },
           };
           if (flags.region) simParams.spec!.region = flags.region;
           if (flags.jurisdiction) simParams.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';
