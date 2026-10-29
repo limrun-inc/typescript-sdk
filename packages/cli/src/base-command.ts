@@ -627,13 +627,9 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = loadLastXcodeInstance();
-    // A cached instance may not hold the requested permissions or lifecycle settings.
+    // Creation-only lifecycle settings can require a fresh instance.
     // Explicit instance IDs above keep their existing configuration.
-    if (
-      target &&
-      !this.autoCreateInactivityTimeout() &&
-      !delegatedPermissionsFromFlags(this.parsedFlags ?? {})
-    ) {
+    if (target && !this.autoCreateInactivityTimeout()) {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
@@ -692,9 +688,7 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = loadLastXcodeInstance();
-    const forceFresh = Boolean(
-      this.autoCreateInactivityTimeout() || delegatedPermissionsFromFlags(this.parsedFlags ?? {}),
-    );
+    const forceFresh = Boolean(this.autoCreateInactivityTimeout());
     // The recorded Xcode target wins even when it has no simulator yet:
     // attach one instead of abandoning it for a fresh sandbox, so a prior
     // `lim xcode sync` or `lim xcode create` keeps all commands pointed at
@@ -837,6 +831,18 @@ export abstract class BaseCommand extends Command {
   /** Whether `id` is a server-side instance THIS invocation auto-created. */
   protected wasCreatedThisRun(id: string | undefined): boolean {
     return !!id && this._instancesCreatedThisRun.has(id);
+  }
+
+  /** Authorize one upload on an existing workspace without changing its role. */
+  protected async uploadTokenForTarget(id: string | undefined, name: string): Promise<string | undefined> {
+    const permissions = delegatedPermissionsFromFlags({ upload: name })!;
+    if (this.wasCreatedThisRun(id ?? this._lastResolvedInstanceId)) return undefined;
+    const credential = await this.client.accessTokens.create({
+      permissions,
+      // Existing workspaces need a credential that lasts through the build.
+      ttlSeconds: 14_400,
+    });
+    return credential.token;
   }
 
   /** Defaults apply only at creation; existing targets keep their snapshot configuration. */
@@ -1395,13 +1401,13 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = this.tryResolveGradleTarget(providedId);
-    // Explicit targets keep their permissions; cached targets cannot be assumed to hold new grants.
+    // Uploads keep the selected workspace; permissions do not select an instance.
     if (
       target &&
       (this._overrideInstanceId ||
         providedId ||
         envInstanceTarget('gradle') ||
-        (!this.autoCreateInactivityTimeout() && !delegatedPermissionsFromFlags(this.parsedFlags ?? {})))
+        !this.autoCreateInactivityTimeout())
     ) {
       return target;
     }

@@ -11,12 +11,17 @@ jest.mock('./lib/config', () => ({
 jest.mock('./lib/set-instance', () => ({ envInstanceTarget: () => undefined }));
 
 class TestCommand extends BaseCommand {
+  mintToken = jest.fn().mockResolvedValue({ token: 'scoped-upload-token' });
+  uploadToken(id: string, name: string) {
+    return this.uploadTokenForTarget(id, name);
+  }
   createXcode = jest.fn().mockResolvedValue({ metadata: { id: 'sandbox_euna_test' } });
   createGradle = jest.fn().mockResolvedValue({ metadata: { id: 'gradle_euna_test' } });
   async run(): Promise<void> {}
   protected override info(): void {}
   protected override get client(): BaseCommand['client'] {
     return {
+      accessTokens: { create: this.mintToken },
       xcodeInstances: { create: this.createXcode },
       gradleInstances: { create: this.createGradle },
     } as unknown as BaseCommand['client'];
@@ -103,15 +108,25 @@ test.each(['xcode', 'gradle'])('%s signed URL creates without extra workload gra
 });
 
 test.each(['xcode', 'gradle'] as const)(
-  '%s does not silently reuse a cached instance with unknown grants',
+  '%s keeps the prepared instance when a later build requests upload',
   async (platform) => {
     jest
       .mocked(platform === 'xcode' ? loadLastXcodeInstance : loadLastGradleInstance)
       .mockReturnValue(targets[platform] as never);
     const command = new TestCommand([], {} as never);
     command.configure(platform, { upload: 'result.apk' });
-    await command.resolve(platform);
-    expect(platform === 'xcode' ? command.createXcode : command.createGradle).toHaveBeenCalledTimes(1);
+    const target = await command.resolve(platform);
+    expect(target.id).toBe(targets[platform].id);
+    expect(platform === 'xcode' ? command.createXcode : command.createGradle).not.toHaveBeenCalled();
+    await expect(command.uploadToken(target.id, 'result.apk')).resolves.toBe('scoped-upload-token');
+    expect(command.mintToken).toHaveBeenCalledWith({
+      permissions: [
+        'asset:name/result.apk:create',
+        'asset:name/result.apk:upload',
+        'asset:name/result.apk:update',
+      ],
+      ttlSeconds: 14400,
+    });
   },
 );
 
@@ -152,14 +167,14 @@ test.each(['xcode', 'gradle'] as const)(
 );
 
 test.each(['xcode', 'gradle'] as const)(
-  '%s respects --no-create when a cached role cannot be verified',
+  '%s keeps the prepared upload target with --no-create',
   async (platform) => {
     jest
       .mocked(platform === 'xcode' ? loadLastXcodeInstance : loadLastGradleInstance)
       .mockReturnValue(targets[platform] as never);
     const command = new TestCommand([], {} as never);
     command.configure(platform, { upload: 'result.apk', create: false });
-    await expect(command.resolve(platform)).rejects.toThrow();
+    await expect(command.resolve(platform)).resolves.toEqual(targets[platform]);
     expect(command.createXcode).not.toHaveBeenCalled();
     expect(command.createGradle).not.toHaveBeenCalled();
   },
@@ -181,4 +196,36 @@ test.each(['upload', 'auto-upload'])('%s refuses wildcard characters in automati
   for (const name of ['releases/app-*.apk', 'releases/app-?.apk']) {
     expect(() => delegatedPermissionsFromFlags({ [flag]: name })).toThrow('automatic permissions');
   }
+});
+
+test.each(['xcode', 'gradle'])('%s newly created uploads use their workload role', async (platform) => {
+  const command = new TestCommand([], {} as never);
+  command.configure(platform, { upload: 'result.apk' });
+  const target = await command.resolve(platform);
+  await expect(command.uploadToken(target.id, 'result.apk')).resolves.toBeUndefined();
+  expect(command.mintToken).not.toHaveBeenCalled();
+});
+
+test('refuses an upload when the caller cannot delegate it, without creating another instance', async () => {
+  const command = new TestCommand([], {} as never);
+  command.mintToken.mockRejectedValue(new Error('requested permissions exceed caller authority'));
+  await expect(command.uploadToken(targets.xcode.id, 'result.ipa')).rejects.toThrow(
+    'exceed caller authority',
+  );
+  expect(command.createXcode).not.toHaveBeenCalled();
+  expect(command.createGradle).not.toHaveBeenCalled();
+});
+
+test('per-upload credentials never include unrelated creation permissions', async () => {
+  const command = new TestCommand([], {} as never);
+  command.configure('xcode', { permission: ['asset:*:delete'], upload: 'a:42%.ipa' });
+  await command.uploadToken(targets.xcode.id, 'a:42%.ipa');
+  expect(command.mintToken).toHaveBeenCalledWith({
+    permissions: [
+      'asset:name/a:42%.ipa:create',
+      'asset:name/a:42%.ipa:upload',
+      'asset:name/a:42%.ipa:update',
+    ],
+    ttlSeconds: 14400,
+  });
 });

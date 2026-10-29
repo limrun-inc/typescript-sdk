@@ -430,6 +430,7 @@ export default class XcodeBuild extends BaseCommand {
         }
         options.upload = {
           target: `name/${flags.upload}`,
+          token: await this.uploadTokenForTarget(id, flags.upload),
           ...(flags['upload-ttl'] && { ttl: flags['upload-ttl'] }),
           ...(uploadOptions && { uploadOptions }),
         };

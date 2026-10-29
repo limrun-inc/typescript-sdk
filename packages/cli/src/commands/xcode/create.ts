@@ -55,7 +55,7 @@ export default class XcodeCreate extends BaseCommand {
       multiple: true,
     }),
     'reuse-if-exists': Flags.boolean({
-      description: 'Reuse an existing matching instance unless --permission requests a fresh role',
+      description: 'Reuse an existing instance with matching labels; its permissions remain unchanged',
       default: false,
     }),
     ios: Flags.boolean({
@@ -94,7 +94,7 @@ export default class XcodeCreate extends BaseCommand {
     }
 
     const cache = this.cacheConfigFromFlags();
-    if (cache && flags['reuse-if-exists'] && !delegatedPermissionsFromFlags(this.parsedFlags ?? {})) {
+    if (cache && flags['reuse-if-exists']) {
       this.info('A reused instance keeps the snapshot configuration it was created with.');
     }
 
@@ -105,7 +105,7 @@ export default class XcodeCreate extends BaseCommand {
       const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: XcodeInstanceCreateParamsWithCache = {
         wait: true,
-        reuseIfExists: !delegatedPermissions && flags['reuse-if-exists'] ? true : undefined,
+        reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
           ...(cache ? { cache } : {}),
           role: { permissions: delegatedPermissions ?? [] },
@@ -177,7 +177,7 @@ export default class XcodeCreate extends BaseCommand {
           });
           const simParams: IosInstanceCreateParams = {
             wait: true,
-            reuseIfExists: !delegatedPermissions && flags['reuse-if-exists'] ? true : undefined,
+            reuseIfExists: flags['reuse-if-exists'] || undefined,
             spec: { role: { permissions: [] } },
           };
           if (flags.region) simParams.spec!.region = flags.region;

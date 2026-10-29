@@ -47,6 +47,28 @@ describe('startAutoUploadWatcher', () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining('uploaded MyApp.app'));
   });
 
+  test('obtains a fresh upload token for each completed build', async () => {
+    const client = fakeClient();
+    client.getRecentRbeBuilds
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([{ invocationId: 'new', status: 'SUCCEEDED' }]);
+    const getUploadToken = jest.fn(async () => 'fresh-token');
+    const watcher = startAutoUploadWatcher({
+      client,
+      assetName: 'preview/app',
+      getUploadToken,
+      log: jest.fn(),
+      pollMs: 5,
+    });
+    await settle();
+    await watcher.stop();
+    expect(getUploadToken).toHaveBeenCalledTimes(1);
+    expect(client.uploadLatestRbeBuild).toHaveBeenCalledWith({
+      target: 'name/preview/app',
+      token: 'fresh-token',
+    });
+  });
+
   test('skips the upload for a failed build', async () => {
     const client = fakeClient();
     client.getRecentRbeBuilds

@@ -71,6 +71,7 @@ export default class XcodeRbeUpload extends BaseCommand {
       const client = await this.resolveXcodeClient(await this.resolveXcodeTarget(info.instanceId));
       const result = await client.uploadLatestRbeBuild({
         target: `name/${args.name}`,
+        token: await this.uploadTokenForTarget(info.instanceId, args.name),
         ...(flags.ttl && { ttl: flags.ttl }),
       });
       if (this.isJsonEnabled()) {

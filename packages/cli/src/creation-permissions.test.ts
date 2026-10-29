@@ -46,7 +46,7 @@ describe.each(platforms)('%s create permissions', (Command, resource) => {
     await expect(command.run()).rejects.toThrow(stop);
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        reuseIfExists: !permissions.length && reuse ? true : undefined,
+        reuseIfExists: reuse ? true : undefined,
         spec: expect.objectContaining({ role: { permissions } }),
       }),
     );
@@ -61,7 +61,7 @@ test.each([
   [IosCreate, 'iosInstances', 'xcodeInstances', 'xcode'],
   [XcodeCreate, 'xcodeInstances', 'iosInstances', 'ios'],
 ] as const)(
-  '%s keeps paired creations fresh when permissions are requested',
+  '%s preserves label reuse for paired creations with requested permissions',
   async (Command, primary, secondary, flag) => {
     const permissions = ['asset:name/fixtures/*:read'];
     const stop = new Error('stop after capturing paired create');
@@ -92,10 +92,10 @@ test.each([
       },
     });
     await expect(command.run()).rejects.toThrow(stop);
-    expect(primaryCreate).toHaveBeenCalledWith(expect.objectContaining({ reuseIfExists: undefined }));
+    expect(primaryCreate).toHaveBeenCalledWith(expect.objectContaining({ reuseIfExists: true }));
     expect(secondaryCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        reuseIfExists: undefined,
+        reuseIfExists: true,
         spec: expect.objectContaining({ role: { permissions: flag === 'xcode' ? permissions : [] } }),
       }),
     );

@@ -343,7 +343,7 @@ export default class Run extends BaseCommand {
         const sandbox = await this.reporter.withProgress('Preparing a Limrun Xcode build sandbox', () =>
           this.client.xcodeInstances.create({
             wait: true,
-            reuseIfExists: !delegatedPermissionsFromFlags(this.parsedFlags ?? {}),
+            reuseIfExists: true,
             spec: {
               role: { permissions: delegatedPermissionsFromFlags(this.parsedFlags ?? {}) ?? [] },
               ...(cache ? { cache } : {}),

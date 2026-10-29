@@ -650,6 +650,7 @@ export default class XcodeRbe extends BaseCommand {
           client,
           assetName: autoUpload.assetName,
           ttl: autoUpload.ttl,
+          getUploadToken: () => this.uploadTokenForTarget(undefined, autoUpload.assetName),
           log: (msg) => this.info(msg),
         })
       : undefined;

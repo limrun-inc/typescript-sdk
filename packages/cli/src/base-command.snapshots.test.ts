@@ -180,7 +180,7 @@ test('explicit create derives its default from the current directory before crea
 });
 
 test.each([{ permissions: [] }, { permissions: ['asset:name/fixtures/*:read'] }])(
-  'onboarding preserves permissions %j while restoring the snapshot',
+  'onboarding keeps label reuse and creation permissions %j while restoring the snapshot',
   async ({ permissions }) => {
     const cmd = new Run([], {} as never);
     const stop = new Error('stop before building');
@@ -203,7 +203,7 @@ test.each([{ permissions: [] }, { permissions: ['asset:name/fixtures/*:read'] }]
     await expect(launch.buildAndLaunchProject({ projectRoot: '/repo/apps/ios' })).rejects.toThrow(stop);
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        reuseIfExists: false,
+        reuseIfExists: true,
         spec: { role: { permissions }, cache: { key: 'github.com/acme/monorepo/apps/ios' } },
       }),
     );
