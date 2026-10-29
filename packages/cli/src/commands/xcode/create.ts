@@ -253,7 +253,7 @@ export default class XcodeCreate extends BaseCommand {
       }
 
       if (wantsRestore(cache)) {
-        await this.awaitCacheRestore(instance.metadata.id, cleanup);
+        await this.awaitCacheRestore(instance.metadata.id);
       }
 
       if (flags.json) {

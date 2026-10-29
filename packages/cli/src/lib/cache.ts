@@ -126,7 +126,9 @@ export function restoreOutcome(
       const why = explain(restore.reason);
       const detail = restore.message ? `: ${restore.message}` : '';
       return {
-        line: `Disk snapshot restore failed${why ? ` — ${why}` : ''}${detail}${took}.`,
+        line: `Disk snapshot restore failed${
+          why ? ` — ${why}` : ''
+        }${detail}${took}. Continuing with a cold workspace.`,
         failed: true,
       };
     }

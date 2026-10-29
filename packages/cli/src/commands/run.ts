@@ -356,9 +356,7 @@ export default class Run extends BaseCommand {
         );
         registerCreatedInstance(sandbox);
         if (wantsRestore(cache)) {
-          await this.awaitCacheRestore(sandbox.metadata.id, () =>
-            this.client.xcodeInstances.delete(sandbox.metadata.id),
-          );
+          await this.awaitCacheRestore(sandbox.metadata.id);
         }
 
         const xcode = await this.client.xcodeInstances.createClient({ instance: sandbox });
