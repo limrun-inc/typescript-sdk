@@ -21,6 +21,15 @@ console.log('Creating Xcode instance...');
 const xcodeInstance = await lim.xcodeInstances.create({
   wait: true,
   reuseIfExists: true,
+  spec: {
+    role: {
+      permissions: [
+        'asset:name/xcode-example/*:create',
+        'asset:name/xcode-example/*:upload',
+        'asset:name/xcode-example/*:update',
+      ],
+    },
+  },
   metadata: {
     labels: {
       name: 'xcode-instance-example',
@@ -37,12 +46,12 @@ await xcode.sync(codeFolder);
 // Function to trigger a build with optional artifact upload
 async function runBuild(
   onLine: (line: string) => void,
-  opts?: { sdk?: 'iphonesimulator' | 'iphoneos'; assetName?: string },
+  opts?: { sdk?: 'iphonesimulator' | 'iphoneos'; target?: string },
 ): Promise<number> {
   console.log('Starting xcodebuild...');
   const build = xcode.xcodebuild(
     opts?.sdk ? { sdk: opts.sdk } : undefined,
-    opts?.assetName ? { upload: { assetName: opts.assetName } } : undefined,
+    opts?.target ? { upload: { target: opts.target } } : undefined,
   );
 
   build.command.on('data', (line) => {
@@ -57,8 +66,12 @@ async function runBuild(
 
   const result = await build;
   console.log(`Build finished with exit code: ${result.exitCode}`);
-  if (result.signedDownloadUrl) {
-    console.log(`Build artifact download URL: ${result.signedDownloadUrl}`);
+  if (result.exitCode === 0 && opts?.target) {
+    // Download URLs use the caller's read permission, separate from the workload's upload grants.
+    const name = opts.target.slice('name/'.length);
+    const assets = await lim.assets.list({ nameFilter: name, includeDownloadUrl: true });
+    const asset = assets.find((candidate) => candidate.name === name);
+    if (asset?.signedDownloadUrl) onLine(`Build artifact download URL: ${asset.signedDownloadUrl}`);
   }
   return result.exitCode;
 }
@@ -70,7 +83,12 @@ const httpServer = http.createServer(async (req, res) => {
   if (req.url?.startsWith('/xcodebuild')) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const sdk = url.searchParams.get('sdk') as 'iphonesimulator' | 'iphoneos' | undefined;
-    const assetName = url.searchParams.get('assetName');
+    const target = url.searchParams.get('target');
+    if (target && !target.startsWith('name/xcode-example/')) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.end('Use a concrete target under name/xcode-example/.');
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'text/plain', 'Transfer-Encoding': 'chunked' });
     try {
       await runBuild(
@@ -78,7 +96,7 @@ const httpServer = http.createServer(async (req, res) => {
           res.write(line + '\n');
           console.log(line);
         },
-        { sdk, assetName: assetName ?? undefined },
+        { sdk, target: target ?? undefined },
       );
       res.end();
     } catch (err) {
@@ -101,7 +119,9 @@ httpServer.listen(port, () => {
   console.log(`$ curl http://localhost:${port}/xcodebuild`);
   console.log('--------------------------------');
   console.log('Trigger a real device build and get the IPA file:');
-  console.log(`$ curl http://localhost:${port}/xcodebuild?sdk=iphoneos&assetName=device-build.ipa`);
+  console.log(
+    `$ curl http://localhost:${port}/xcodebuild?sdk=iphoneos&target=name/xcode-example/device-build.ipa`,
+  );
   console.log('--------------------------------');
   console.log('Tip: Use attachSimulator() for hot-reloading builds on a simulator for fast iteration.');
 });

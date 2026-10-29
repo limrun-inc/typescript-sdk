@@ -921,7 +921,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       iosInstanceId: string;
       simulator: IosInstance;
     }> => {
-      const simulator = await client.iosInstances.create({ wait: true });
+      const simulator = await client.iosInstances.create({ wait: true, spec: { role: { permissions: [] } } });
       // The sim exists from here; if attach fails, delete it so we never leak an
       // orphan the caller can't reap.
       try {

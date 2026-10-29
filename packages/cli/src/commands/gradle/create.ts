@@ -64,7 +64,7 @@ export default class GradleCreate extends BaseCommand {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
-          ...(delegatedPermissions && { role: { permissions: delegatedPermissions } }),
+          role: { permissions: delegatedPermissions ?? [] },
           ...(flags.region && { region: flags.region }),
           ...(flags.jurisdiction && { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' }),
           ...(flags['hard-timeout'] && { hardTimeout: flags['hard-timeout'] }),

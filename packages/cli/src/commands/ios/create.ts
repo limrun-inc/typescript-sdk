@@ -238,7 +238,7 @@ export default class IosCreate extends BaseCommand {
       const params: IosInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: { ...(delegatedPermissions && { role: { permissions: delegatedPermissions } }) },
+        spec: { role: { permissions: delegatedPermissions ?? [] } },
       };
 
       const appAssets = [
@@ -379,6 +379,7 @@ export default class IosCreate extends BaseCommand {
             reuseIfExists: flags['reuse-if-exists'] || undefined,
             ...(params.metadata ? { metadata: params.metadata } : {}),
             spec: {
+              role: { permissions: delegatedPermissions ?? [] },
               ...(cache ? { cache } : {}),
               ...(flags.region ? { region: flags.region } : {}),
               ...(flags.jurisdiction ? { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' } : {}),

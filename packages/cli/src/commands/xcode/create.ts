@@ -108,7 +108,7 @@ export default class XcodeCreate extends BaseCommand {
         reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
           ...(cache ? { cache } : {}),
-          ...(delegatedPermissions && { role: { permissions: delegatedPermissions } }),
+          role: { permissions: delegatedPermissions ?? [] },
         },
       };
 
@@ -178,7 +178,7 @@ export default class XcodeCreate extends BaseCommand {
           const simParams: IosInstanceCreateParams = {
             wait: true,
             reuseIfExists: flags['reuse-if-exists'] || undefined,
-            spec: {},
+            spec: { role: { permissions: [] } },
           };
           if (flags.region) simParams.spec!.region = flags.region;
           if (flags.jurisdiction) simParams.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';

@@ -71,13 +71,34 @@ test.each(['xcode', 'gradle'])(
   },
 );
 
+test.each(['xcode', 'gradle'])(
+  '%s --upload alone grants exactly what the new workload needs',
+  async (platform) => {
+    const command = new TestCommand([], {} as never);
+    command.configure(platform, { upload: 'releases/app.ipa' });
+    await command.resolve(platform);
+    expect(platform === 'xcode' ? command.createXcode : command.createGradle).toHaveBeenCalledWith({
+      wait: true,
+      spec: {
+        role: {
+          permissions: [
+            'asset:name/releases/app.ipa:create',
+            'asset:name/releases/app.ipa:upload',
+            'asset:name/releases/app.ipa:update',
+          ],
+        },
+      },
+    });
+  },
+);
+
 test.each(['xcode', 'gradle'])('%s signed URL creates without extra workload grants', async (platform) => {
   const command = new TestCommand([], {} as never);
   command.configure(platform, { 'signed-upload-url': 'https://storage.example/upload' });
   await command.resolve(platform);
   expect(platform === 'xcode' ? command.createXcode : command.createGradle).toHaveBeenCalledWith({
     wait: true,
-    spec: {},
+    spec: { role: { permissions: [] } },
   });
 });
 

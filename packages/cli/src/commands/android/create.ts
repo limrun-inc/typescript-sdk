@@ -183,7 +183,7 @@ export default class AndroidCreate extends BaseCommand {
       const params: AndroidInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: { ...(delegatedPermissions && { role: { permissions: delegatedPermissions } }) },
+        spec: { role: { permissions: delegatedPermissions ?? [] } },
       };
 
       const initialAssets = [

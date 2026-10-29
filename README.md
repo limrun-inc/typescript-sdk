@@ -48,6 +48,50 @@ const androidInstance: Limrun.AndroidInstance = await client.androidInstances.cr
 
 Documentation for each method, request param, and response field are available in docstrings and will appear on hover in most modern editors.
 
+## Workload asset permissions
+
+Set `spec.role.permissions` when creating a workload, then pass a concrete
+`upload.target` when building. The SDK sends these literal values; it does not
+add permissions on your behalf. The same role field works on Xcode, Gradle, iOS,
+and Android instances. Use `permissions: []` when no asset access is needed.
+
+```ts
+const instance = await client.gradleInstances.create({
+  wait: true,
+  spec: {
+    role: {
+      permissions: [
+        'asset:name/releases/app.apk:create',
+        'asset:name/releases/app.apk:upload',
+        'asset:name/releases/app.apk:update',
+      ],
+    },
+  },
+});
+const gradle = await client.gradleInstances.createClient({ instance });
+await gradle.sync('./android-app', { watch: false });
+await gradle.gradlebuild({ upload: { target: 'name/releases/app.apk' } });
+```
+
+Xcode uses the same upload options:
+`xcode.xcodebuild(undefined, { upload: { target: 'name/releases/app.ipa' } })`.
+Grant the corresponding `.ipa` permissions when creating that Xcode instance.
+`create` permits creating a missing named asset, `upload` permits writing its
+contents, and `update` permits applying metadata and the default expiry.
+An existing asset ID can replace `name/...` in both the permissions and target.
+
+Permissions may use `*` and `?` in name patterns, such as
+`asset:name/releases/app-*.apk:upload`. Assigning any pattern requires the caller
+to have `asset:*:<verb>` or broader authority for that verb. Upload targets are
+always concrete names or IDs. Names are literal, including slashes and colons;
+do not percent-encode them.
+
+An existing signed URL still works with
+`upload: { signedUploadUrl: 'https://storage.example/upload' }` and needs no asset
+grants on the workload. Fetch download URLs through `client.assets` with the
+caller's read permission after the upload completes. See the
+[Xcode example](examples/xcode-sandbox) for a complete build and download flow.
+
 ## Disk snapshots
 
 Pass `spec.snapshot` when creating an Xcode instance to restore a saved workspace

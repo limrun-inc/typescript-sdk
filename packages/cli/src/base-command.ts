@@ -817,13 +817,19 @@ export abstract class BaseCommand extends Command {
   }
 
   private async createIosInstance(): Promise<LastIosInstance> {
-    const instance = await this.client.iosInstances.create({ wait: true, spec: {} });
+    const instance = await this.client.iosInstances.create({
+      wait: true,
+      spec: { role: { permissions: [] } },
+    });
     this._instancesCreatedThisRun.add(instance.metadata.id);
     return registerCreatedInstance(instance) as LastIosInstance;
   }
 
   private async createAndroidInstance(): Promise<LastAndroidInstance> {
-    const instance = await this.client.androidInstances.create({ wait: true, spec: {} });
+    const instance = await this.client.androidInstances.create({
+      wait: true,
+      spec: { role: { permissions: [] } },
+    });
     this._instancesCreatedThisRun.add(instance.metadata.id);
     return registerCreatedInstance(instance) as LastAndroidInstance;
   }
@@ -1315,7 +1321,7 @@ export abstract class BaseCommand extends Command {
     const instance = await this.client.xcodeInstances.create({
       wait: true,
       spec: {
-        ...(delegatedPermissions && { role: { permissions: delegatedPermissions } }),
+        role: { permissions: delegatedPermissions ?? [] },
         ...(inactivityTimeout && { inactivityTimeout }),
         ...(cache ? { cache } : {}),
       },
@@ -1462,7 +1468,7 @@ export abstract class BaseCommand extends Command {
     const instance = await this.client.gradleInstances.create({
       wait: true,
       spec: {
-        ...(delegatedPermissions && { role: { permissions: delegatedPermissions } }),
+        role: { permissions: delegatedPermissions ?? [] },
         ...(inactivityTimeout && { inactivityTimeout }),
       },
     });
