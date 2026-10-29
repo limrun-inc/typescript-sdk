@@ -2,9 +2,24 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import type { DestinationTunnelInspectionEvent } from '@limrun/api';
-import { runTunnelForeground, tunnelClientFacade, type TunnelClientFacade } from './tunnel-command';
+import {
+  runTunnelForeground,
+  tunnelClientFacade,
+  type TunnelClientFacade,
+  type TunnelCommandIO,
+} from './tunnel-command';
 
 describe('tunnel client facade inspection wiring', () => {
+  const io: TunnelCommandIO = {
+    error: (message): never => {
+      throw new Error(message);
+    },
+    output: () => {},
+    info: () => {},
+    outputJson: () => {},
+    isJsonEnabled: () => false,
+  };
+
   test('propagates negotiated inspection settings and callbacks', async () => {
     const startTunnel = jest.fn(async () => ({
       tunnelId: 'tunnel-1',
@@ -34,6 +49,7 @@ describe('tunnel client facade inspection wiring', () => {
       },
       onInspectionEvent,
       onInspectionError,
+      resetsInactivityTimeout: false,
     });
 
     expect(startTunnel).toHaveBeenCalledWith({
@@ -48,35 +64,8 @@ describe('tunnel client facade inspection wiring', () => {
       },
       onInspectionEvent,
       onInspectionError,
+      resetsInactivityTimeout: false,
     });
-  });
-
-  test('forwards resetsInactivityTimeout to the client', async () => {
-    const startTunnel = jest.fn(async () => ({
-      tunnelId: 'tunnel-1',
-      close: () => {},
-      getConnectionState: () => 'connected' as const,
-      onConnectionStateChange: () => () => {},
-    }));
-    const facade = tunnelClientFacade(
-      { startTunnel, getTunnelStatus: async () => ({}), stopTunnel: async () => {} },
-      () => {},
-      'info',
-    );
-    const inspection = {
-      enabled: false,
-      captureBodies: false,
-      maxBodyBytes: 1024,
-      persist: false,
-      ttlSeconds: 3600,
-    };
-
-    await facade.startTunnel({ selectors: ['localhost:8081'], inspection });
-    expect(startTunnel).toHaveBeenLastCalledWith(
-      expect.not.objectContaining({ resetsInactivityTimeout: true }),
-    );
-    await facade.startTunnel({ selectors: ['localhost:8081'], inspection, resetsInactivityTimeout: false });
-    expect(startTunnel).toHaveBeenLastCalledWith(expect.objectContaining({ resetsInactivityTimeout: false }));
   });
 
   test('starts the foreground tunnel with the context resetsInactivityTimeout', async () => {
@@ -98,15 +87,7 @@ describe('tunnel client facade inspection wiring', () => {
           stopTunnel: async () => {},
           disconnect: () => {},
         }),
-        io: {
-          error: (message): never => {
-            throw new Error(message);
-          },
-          output: () => {},
-          info: () => {},
-          outputJson: () => {},
-          isJsonEnabled: () => false,
-        },
+        io,
       }),
     ).rejects.toThrow();
     expect(startTunnel).toHaveBeenCalledWith(expect.objectContaining({ resetsInactivityTimeout: false }));
@@ -136,16 +117,9 @@ describe('tunnel client facade inspection wiring', () => {
           inspect: true,
           harBodyLimit: 1024,
           harPath: path.join(occupiedPath, 'capture.har'),
+          resetsInactivityTimeout: true,
           connect: async () => client,
-          io: {
-            error: (message): never => {
-              throw new Error(message);
-            },
-            output: () => {},
-            info: () => {},
-            outputJson: () => {},
-            isJsonEnabled: () => false,
-          },
+          io,
         }),
       ).rejects.toThrow();
       expect(disconnect).toHaveBeenCalledTimes(1);

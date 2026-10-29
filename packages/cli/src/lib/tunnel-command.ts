@@ -98,9 +98,7 @@ export function tunnelClientFacade(
         inspection: options.inspection,
         ...(options.onInspectionEvent ? { onInspectionEvent: options.onInspectionEvent } : {}),
         ...(options.onInspectionError ? { onInspectionError: options.onInspectionError } : {}),
-        ...(options.resetsInactivityTimeout === undefined ?
-          {}
-        : { resetsInactivityTimeout: options.resetsInactivityTimeout }),
+        resetsInactivityTimeout: options.resetsInactivityTimeout,
       }),
     getTunnelStatus: () => client.getTunnelStatus(),
     stopTunnel: (tunnelId) => client.stopTunnel(tunnelId),
@@ -126,7 +124,7 @@ export interface TunnelCommandContext extends TunnelInspectionContext {
   /** Reconnect with backoff after unexpected disconnects (Android behavior). */
   reconnect: boolean;
   /** False asks the instance not to count tunnel traffic as activity. */
-  resetsInactivityTimeout?: boolean;
+  resetsInactivityTimeout: boolean;
   onInspectionEvent?: DestinationTunnelInspectionEventCallback;
   onInspectionError?: DestinationTunnelInspectionErrorCallback;
   connect: () => Promise<TunnelClientFacade>;
@@ -135,10 +133,7 @@ export interface TunnelCommandContext extends TunnelInspectionContext {
 }
 
 /** Per-tunnel settings parsed from the tunnel command's flags. */
-export type TunnelSettings = Pick<
-  TunnelCommandContext,
-  keyof TunnelInspectionContext | 'resetsInactivityTimeout'
->;
+export type TunnelSettings = TunnelInspectionContext & { resetsInactivityTimeout: boolean };
 
 /** Context for status/stop flows, which never start a tunnel. */
 export interface TunnelManagementContext {
@@ -239,9 +234,7 @@ async function runTunnelLoop(
         inspection: inspection.config,
         ...(inspection.onEvent ? { onInspectionEvent: inspection.onEvent } : {}),
         ...(inspection.onError ? { onInspectionError: inspection.onError } : {}),
-        ...(context.resetsInactivityTimeout === undefined ?
-          {}
-        : { resetsInactivityTimeout: context.resetsInactivityTimeout }),
+        resetsInactivityTimeout: context.resetsInactivityTimeout,
       });
       backoffMs = RECONNECT_INITIAL_BACKOFF_MS;
       hooks.onReady(tunnel, reconnected);
@@ -386,9 +379,7 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
         ...(context.harPath ? { harPath: context.harPath } : {}),
         harBodyLimit: context.harBodyLimit,
         ...(context.verbose ? { verbose: true } : {}),
-        ...(context.resetsInactivityTimeout === undefined ?
-          {}
-        : { resetsInactivityTimeout: context.resetsInactivityTimeout }),
+        resetsInactivityTimeout: context.resetsInactivityTimeout,
       }),
       {
         detached: true,

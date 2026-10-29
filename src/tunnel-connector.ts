@@ -241,9 +241,7 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
       {
         selectors: attachment.selectors,
         ...(options.inspection ? { inspection: options.inspection } : {}),
-        ...(options.resetsInactivityTimeout === undefined ?
-          {}
-        : { resetsInactivityTimeout: options.resetsInactivityTimeout }),
+        resetsInactivityTimeout: options.resetsInactivityTimeout ?? true,
       },
       options.logLevel ?? 'warn',
     ),

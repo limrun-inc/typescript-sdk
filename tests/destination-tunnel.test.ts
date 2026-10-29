@@ -176,23 +176,14 @@ describe('destination tunnel wire contract', () => {
     ).toThrow('name must be a string');
   });
 
-  test('encodes resetsInactivityTimeout in START only to opt out', () => {
-    const start: DestinationTunnelClientMessage = {
-      type: 'start',
-      version: DESTINATION_TUNNEL_VERSION,
-      selectors: ['localhost:3000'],
-      inspection: disabledDestinationTunnelInspection(),
-      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
-    };
-    for (const message of [start, { ...start, resetsInactivityTimeout: true }]) {
-      expect(JSON.parse(encodeDestinationTunnelClientMessage(message))).toEqual(start);
-    }
-    expect(
-      JSON.parse(encodeDestinationTunnelClientMessage({ ...start, resetsInactivityTimeout: false })),
-    ).toEqual({ ...start, resetsInactivityTimeout: false });
+  test('rejects a non-boolean resetsInactivityTimeout in START', () => {
     expect(() =>
       encodeDestinationTunnelClientMessage({
-        ...start,
+        type: 'start',
+        version: DESTINATION_TUNNEL_VERSION,
+        selectors: ['localhost:3000'],
+        inspection: disabledDestinationTunnelInspection(),
+        window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
         resetsInactivityTimeout: 'false',
       } as unknown as DestinationTunnelClientMessage),
     ).toThrow('resetsInactivityTimeout must be a boolean');
