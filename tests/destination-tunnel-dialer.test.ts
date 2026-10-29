@@ -144,6 +144,32 @@ describe('destination tunnel dialer', () => {
     expect(tunnel.getConnectionState()).toBe('connected');
   });
 
+  test('sends resetsInactivityTimeout in START only to opt out, outside the config hash', async () => {
+    const startup = startDestinationTcpTunnel(remoteURL(), 'test-token', {
+      selectors: ['localhost:3000'],
+      resetsInactivityTimeout: false,
+      logLevel: 'none',
+    });
+    await waitFor(() => hasControl('start'));
+    expect(controlFor('start')).toEqual({
+      type: 'start',
+      version: DESTINATION_TUNNEL_VERSION,
+      selectors: ['localhost:3000'],
+      inspection: disabledDestinationTunnelInspection(),
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
+      resetsInactivityTimeout: false,
+    });
+    sendControl({
+      type: 'ready',
+      version: DESTINATION_TUNNEL_VERSION,
+      tunnelId: 'tunnel-1',
+      selectors: [],
+      configHash: destinationTunnelConfigHash(['localhost:3000'], disabledDestinationTunnelInspection()),
+    });
+    tunnel = await startup;
+    expect(tunnel.getConnectionState()).toBe('connected');
+  });
+
   test('rejects an OPEN destination outside the declared route without dialing it', async () => {
     let acceptedConnections = 0;
     const localPort = await listenLocal(() => {

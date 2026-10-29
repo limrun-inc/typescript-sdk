@@ -176,6 +176,28 @@ describe('destination tunnel wire contract', () => {
     ).toThrow('name must be a string');
   });
 
+  test('encodes resetsInactivityTimeout in START only when set', () => {
+    const start: DestinationTunnelClientMessage = {
+      type: 'start',
+      version: DESTINATION_TUNNEL_VERSION,
+      selectors: ['localhost:3000'],
+      inspection: disabledDestinationTunnelInspection(),
+      window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
+    };
+    expect(JSON.parse(encodeDestinationTunnelClientMessage(start))).not.toHaveProperty(
+      'resetsInactivityTimeout',
+    );
+    expect(
+      JSON.parse(encodeDestinationTunnelClientMessage({ ...start, resetsInactivityTimeout: false })),
+    ).toEqual({ ...start, resetsInactivityTimeout: false });
+    expect(() =>
+      encodeDestinationTunnelClientMessage({
+        ...start,
+        resetsInactivityTimeout: 'false',
+      } as unknown as DestinationTunnelClientMessage),
+    ).toThrow('resetsInactivityTimeout must be a boolean');
+  });
+
   test('rejects unknown server message types', () => {
     expect(() => decodeDestinationTunnelServerMessage({ type: 'future' })).toThrow(
       'unknown tunnel control message type future',

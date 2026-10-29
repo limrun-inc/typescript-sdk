@@ -219,7 +219,7 @@ describe('tunnel connector', () => {
     await Promise.all([backend.close(), pod.close()]);
   });
 
-  function connect(options: { replace?: boolean } = {}): TunnelConnector {
+  function connect(options: { replace?: boolean; resetsInactivityTimeout?: boolean } = {}): TunnelConnector {
     connector = runTunnel({
       token: 'lim_tunnel_token',
       baseURL,
@@ -280,6 +280,17 @@ describe('tunnel connector', () => {
       .of('attachFailed')
       .find((message) => message['instanceId'] === instanceId && message['terminal']);
   }
+
+  test('asks every instance tunnel not to reset the inactivity timeout when told', async () => {
+    connect({ resetsInactivityTimeout: false });
+    await activate();
+    attach('ios_1');
+    await waitFor(() => backend.of('attached').length === 1);
+
+    expect(pod.instance('ios_1').starts).toEqual([
+      expect.objectContaining({ type: 'start', name: 'staging', resetsInactivityTimeout: false }),
+    ]);
+  });
 
   test('says hello, attaches with the tunnel name, and confirms the tunnel ID', async () => {
     await connectAttached();

@@ -70,6 +70,8 @@ export interface TunnelConnectorOptions {
   inspection?: Partial<DestinationTunnelInspectionConfig>;
   /** Take the name over from the connector that holds it now. */
   replace?: boolean;
+  /** Whether instance tunnel data resets each instance's inactivity timeout. Defaults to true. */
+  resetsInactivityTimeout?: boolean;
   /** Identifies this connector to the platform. Defaults to the OS hostname. */
   hostname?: string;
   /** Reported to the platform. Defaults to the SDK version. */
@@ -236,7 +238,13 @@ export function runTunnel(options: TunnelConnectorOptions): TunnelConnector {
 
   const dialOptions = (attachment: InstanceAttachment) => ({
     ...destinationTunnelDialOptions(
-      { selectors: attachment.selectors, ...(options.inspection ? { inspection: options.inspection } : {}) },
+      {
+        selectors: attachment.selectors,
+        ...(options.inspection ? { inspection: options.inspection } : {}),
+        ...(options.resetsInactivityTimeout === undefined ?
+          {}
+        : { resetsInactivityTimeout: options.resetsInactivityTimeout }),
+      },
       options.logLevel ?? 'warn',
     ),
     ...(tunnelName === undefined ? {} : { name: tunnelName }),
