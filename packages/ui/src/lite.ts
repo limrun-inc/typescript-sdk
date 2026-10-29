@@ -2,6 +2,12 @@
 // to add frames or boot logos.
 export { RemoteControl } from './components/remote-control';
 export type {
+  PlaybackStats,
+  PlaybackTrackStats,
+  PlaybackVideoStats,
+  PlaybackAudioStats,
+} from './core/playback-stats';
+export type {
   RemoteControlProps,
   RemoteControlHandle,
   RemoteControlAssets,
