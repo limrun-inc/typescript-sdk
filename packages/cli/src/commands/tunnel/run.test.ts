@@ -149,9 +149,9 @@ describe('tunnel run command', () => {
     expect(tunnelOrganization).not.toHaveBeenCalled();
   });
 
-  test('asks the connector not to reset inactivity timeouts only for --no-reset-inactivity-timeout', async () => {
+  test('passes --[no-]reset-inactivity-timeout to the connector', async () => {
     await setup({ token: tunnelToken }).command.run();
-    expect(options()).not.toHaveProperty('resetsInactivityTimeout');
+    expect(options()).toMatchObject({ resetsInactivityTimeout: true });
 
     jest.clearAllMocks();
     await setup({ token: tunnelToken, 'reset-inactivity-timeout': false }).command.run();

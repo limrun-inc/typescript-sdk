@@ -467,6 +467,7 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
         }),
       );
       const inspection = readInspectionConfig(record);
+      const { resetsInactivityTimeout } = readOptionalBoolean(record, 'resetsInactivityTimeout');
       return JSON.stringify({
         type,
         version,
@@ -474,7 +475,8 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
         inspection,
         window: readWindow(record),
         ...readOptionalString(record, 'name'),
-        ...readOptionalBoolean(record, 'resetsInactivityTimeout'),
+        // Only the opt-out goes on the wire, so default frames match older servers.
+        ...(resetsInactivityTimeout === false ? { resetsInactivityTimeout } : {}),
       });
     }
     case 'openOk':

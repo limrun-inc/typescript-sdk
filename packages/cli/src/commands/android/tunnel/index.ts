@@ -10,6 +10,7 @@ import {
   type TunnelLogLevel,
   type TunnelClientFacade,
   type TunnelCommandContext,
+  type TunnelSettings,
 } from '../../../lib/tunnel-command';
 import {
   tunnelInspectionContext,
@@ -88,7 +89,10 @@ export default class AndroidTunnel extends BaseCommand {
       this.error(error instanceof Error ? error.message : String(error));
     }
     const selectors = parseTunnelSelectors(flags.selector, { minPort: ANDROID_MIN_ROUTE_PORT });
-    const resetsInactivityTimeout = flags['reset-inactivity-timeout'];
+    const settings: TunnelSettings = {
+      ...inspection,
+      resetsInactivityTimeout: flags['reset-inactivity-timeout'],
+    };
 
     if (flags.serve) {
       const owner = flags['tunnel-owner'];
@@ -96,13 +100,7 @@ export default class AndroidTunnel extends BaseCommand {
       await this.withAuth(async () => {
         const resolvedInstance = this.resolveAndroidInstance(flags.id);
         await serveTunnelDetached(
-          this.tunnelContext(
-            resolvedInstance.id,
-            selectors,
-            flags.verbose ? 'debug' : 'info',
-            inspection,
-            resetsInactivityTimeout,
-          ),
+          this.tunnelContext(resolvedInstance.id, selectors, flags.verbose ? 'debug' : 'info', settings),
           owner,
         );
       });
@@ -113,14 +111,7 @@ export default class AndroidTunnel extends BaseCommand {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       if (flags.detach) {
         await startTunnelDetached({
-          ...this.tunnelContext(
-            resolvedInstance.id,
-            selectors,
-            'info',
-            inspection,
-            resetsInactivityTimeout,
-            flags['api-key'],
-          ),
+          ...this.tunnelContext(resolvedInstance.id, selectors, 'info', settings, flags['api-key']),
           verbose: flags.verbose,
         });
       } else {
@@ -131,8 +122,7 @@ export default class AndroidTunnel extends BaseCommand {
             this.shouldSuppressInfo() ? 'none'
             : flags.verbose ? 'debug'
             : 'info',
-            inspection,
-            resetsInactivityTimeout,
+            settings,
           ),
         );
       }
@@ -143,8 +133,7 @@ export default class AndroidTunnel extends BaseCommand {
     instanceId: string,
     selectors: DestinationTunnelSelectors,
     logLevel: TunnelLogLevel,
-    inspection: TunnelInspectionContext,
-    resetsInactivityTimeout: boolean,
+    settings: TunnelSettings,
     apiKey?: string,
   ): TunnelCommandContext {
     return {
@@ -153,8 +142,7 @@ export default class AndroidTunnel extends BaseCommand {
       selectors,
       apiKey,
       reconnect: true,
-      ...inspection,
-      resetsInactivityTimeout,
+      ...settings,
       connect: async (): Promise<TunnelClientFacade> => {
         const resolvedInstance = this.resolveAndroidInstance(instanceId);
         const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
