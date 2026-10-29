@@ -827,8 +827,9 @@ export async function startDestinationTcpTunnel(
         inspection,
         window: creditWindow,
         ...(options.name === undefined ? {} : { name: options.name }),
-        // Only the opt-out goes on the wire, so default frames match older servers.
-        ...(options.resetsInactivityTimeout === false ? { resetsInactivityTimeout: false } : {}),
+        ...(options.resetsInactivityTimeout === undefined ?
+          {}
+        : { resetsInactivityTimeout: options.resetsInactivityTimeout }),
       });
       pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {

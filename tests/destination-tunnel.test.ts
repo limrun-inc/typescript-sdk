@@ -176,7 +176,7 @@ describe('destination tunnel wire contract', () => {
     ).toThrow('name must be a string');
   });
 
-  test('encodes resetsInactivityTimeout in START only when set', () => {
+  test('encodes resetsInactivityTimeout in START only to opt out', () => {
     const start: DestinationTunnelClientMessage = {
       type: 'start',
       version: DESTINATION_TUNNEL_VERSION,
@@ -184,9 +184,9 @@ describe('destination tunnel wire contract', () => {
       inspection: disabledDestinationTunnelInspection(),
       window: DESTINATION_TUNNEL_DEFAULT_WINDOW,
     };
-    expect(JSON.parse(encodeDestinationTunnelClientMessage(start))).not.toHaveProperty(
-      'resetsInactivityTimeout',
-    );
+    for (const message of [start, { ...start, resetsInactivityTimeout: true }]) {
+      expect(JSON.parse(encodeDestinationTunnelClientMessage(message))).toEqual(start);
+    }
     expect(
       JSON.parse(encodeDestinationTunnelClientMessage({ ...start, resetsInactivityTimeout: false })),
     ).toEqual({ ...start, resetsInactivityTimeout: false });

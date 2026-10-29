@@ -51,7 +51,7 @@ describe('tunnel client facade inspection wiring', () => {
     });
   });
 
-  test('forwards only the inactivity opt-out to the client', async () => {
+  test('forwards resetsInactivityTimeout to the client', async () => {
     const startTunnel = jest.fn(async () => ({
       tunnelId: 'tunnel-1',
       close: () => {},
@@ -71,12 +71,45 @@ describe('tunnel client facade inspection wiring', () => {
       ttlSeconds: 3600,
     };
 
-    await facade.startTunnel({ selectors: ['localhost:8081'], inspection, resetsInactivityTimeout: true });
+    await facade.startTunnel({ selectors: ['localhost:8081'], inspection });
     expect(startTunnel).toHaveBeenLastCalledWith(
       expect.not.objectContaining({ resetsInactivityTimeout: true }),
     );
     await facade.startTunnel({ selectors: ['localhost:8081'], inspection, resetsInactivityTimeout: false });
     expect(startTunnel).toHaveBeenLastCalledWith(expect.objectContaining({ resetsInactivityTimeout: false }));
+  });
+
+  test('starts the foreground tunnel with the context resetsInactivityTimeout', async () => {
+    const startTunnel = jest.fn(async () => {
+      throw new Error('stop after start');
+    });
+    await expect(
+      runTunnelForeground({
+        product: 'ios',
+        instanceId: 'instance-1',
+        selectors: ['localhost:8081'],
+        reconnect: false,
+        inspect: false,
+        harBodyLimit: 1024,
+        resetsInactivityTimeout: false,
+        connect: async () => ({
+          startTunnel,
+          getTunnelStatus: async () => ({}),
+          stopTunnel: async () => {},
+          disconnect: () => {},
+        }),
+        io: {
+          error: (message): never => {
+            throw new Error(message);
+          },
+          output: () => {},
+          info: () => {},
+          outputJson: () => {},
+          isJsonEnabled: () => false,
+        },
+      }),
+    ).rejects.toThrow();
+    expect(startTunnel).toHaveBeenCalledWith(expect.objectContaining({ resetsInactivityTimeout: false }));
   });
 
   test('disconnects the client when HAR setup fails', async () => {

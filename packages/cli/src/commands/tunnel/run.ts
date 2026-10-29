@@ -142,7 +142,7 @@ export default class TunnelRun extends BaseCommand {
         tunnelId: tunnel.tunnelId,
         inspection: tunnelInspectionConfig(inspection),
         replace: flags.replace,
-        ...(flags['reset-inactivity-timeout'] === false ? { resetsInactivityTimeout: false } : {}),
+        resetsInactivityTimeout: flags['reset-inactivity-timeout'],
         clientVersion: VERSION,
         logLevel:
           this.shouldSuppressInfo() ? 'warn'
