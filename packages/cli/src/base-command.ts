@@ -878,15 +878,10 @@ export abstract class BaseCommand extends Command {
   }
 
   /**
-   * Blocks while a freshly created instance restores its cache, printing each phase as it
-   * happens. A restore that fell back to a cold workspace just prints and returns, because the
-   * instance is perfectly usable. A restore that genuinely broke removes the instance, since
-   * the caller asked for a warm workspace and handing back a silently cold one is worse.
+   * Waits for snapshot restore before building. Cache failures leave the instance usable,
+   * so report them and continue with the server's cold workspace fallback.
    */
-  protected async awaitCacheRestore(
-    instanceId: string,
-    removeInstance: () => Promise<unknown>,
-  ): Promise<void> {
+  protected async awaitCacheRestore(instanceId: string): Promise<void> {
     const start = Date.now();
     this.info('Restoring disk snapshot...');
     let result;
@@ -902,13 +897,14 @@ export abstract class BaseCommand extends Command {
         // Not a wait that broke but an instance that ended, so there is nothing to keep or check.
         throw new Error(`Instance ${instanceId} was collected before its disk snapshot restore started.`);
       }
-      // The restore may well still be running, so the instance stays: deleting it over a
-      // client-side wait that broke would throw away a workspace that is probably fine.
-      throw new Error(
+      // Sync and build also wait for the server's restore gate. Losing status updates
+      // must not prevent either operation from reaching that gate.
+      this.warn(
         `Could not follow the disk snapshot restore of ${instanceId}: ${
           err instanceof Error ? err.message : String(err)
-        }\n` + `The instance is still there. Check it with: lim xcode get ${instanceId}`,
+        }. Continuing on the existing instance.`,
       );
+      return;
     }
     if (result.gone) {
       throw new Error(
@@ -917,10 +913,10 @@ export abstract class BaseCommand extends Command {
     }
     const outcome = restoreOutcome(result.cache, Date.now() - start);
     if (outcome.failed) {
-      await removeInstance();
-      throw new Error(`${outcome.line}\nRemoved instance ${instanceId}.`);
+      this.warn(outcome.line);
+    } else {
+      this.info(outcome.line);
     }
-    this.info(outcome.line);
     if (result.cache.restore.phase !== 'restored') {
       for (const line of skippedKeyLines(result.cache)) {
         this.info(line);
@@ -1329,9 +1325,7 @@ export abstract class BaseCommand extends Command {
     this._instancesCreatedThisRun.add(instance.metadata.id);
     registerCreatedInstance(instance);
     if (wantsRestore(cache)) {
-      await this.awaitCacheRestore(instance.metadata.id, () =>
-        this.deleteCreatedInstance(instance.metadata.id),
-      );
+      await this.awaitCacheRestore(instance.metadata.id);
     }
     const target = loadLastXcodeInstance();
     if (!target) {

@@ -532,6 +532,11 @@ lim xcode version list    # Xcode versions the sandbox can build with
 
 ### Disk snapshots
 
+If a snapshot cannot be restored, including a checksum mismatch or download
+failure, the CLI warns and continues with a cold workspace. The instance stays
+available and the build can regenerate its dependencies and outputs. A lost
+snapshot-status connection also leaves the build free to continue.
+
 New Xcode instances automatically restore and save a disk snapshot using the
 Git origin host/repository and project subdirectory, for example
 `github.com/acme/monorepo/apps/ios`. SSH and HTTPS origins produce the same key;

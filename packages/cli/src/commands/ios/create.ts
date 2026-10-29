@@ -389,8 +389,7 @@ export default class IosCreate extends BaseCommand {
           });
           registerCreatedInstance(createdXcode);
           if (wantsRestore(cache)) {
-            const xcodeId = createdXcode.metadata.id;
-            await this.awaitCacheRestore(xcodeId, () => this.client.xcodeInstances.delete(xcodeId));
+            await this.awaitCacheRestore(createdXcode.metadata.id);
           }
           const xcodeClient = await this.client.xcodeInstances.createClient({
             instance: createdXcode,
