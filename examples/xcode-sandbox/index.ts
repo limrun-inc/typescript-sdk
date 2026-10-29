@@ -20,7 +20,6 @@ const lim = new Limrun({ apiKey: process.env['LIM_API_KEY'] });
 console.log('Creating Xcode instance...');
 const xcodeInstance = await lim.xcodeInstances.create({
   wait: true,
-  reuseIfExists: true,
   spec: {
     role: {
       permissions: [

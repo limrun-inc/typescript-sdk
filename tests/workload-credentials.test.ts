@@ -140,3 +140,26 @@ test('null workload token file disables identity and director discovery', async 
   await expect(client.assets.createUploadURL('asset_01h455vb4pex5vsknk084sn02q')).rejects.toThrow();
   expect(fetcher).not.toHaveBeenCalled();
 });
+
+test('workload exchange uses client transport options without allowing credential redirects', async () => {
+  const dispatcher = {} as import('undici').Dispatcher;
+  const fetcher = jest.fn(async (url: unknown, init?: RequestInit) => {
+    expect(init).toEqual(expect.objectContaining({ dispatcher, keepalive: true }));
+    if (String(url).endsWith('/v1/access_tokens')) {
+      expect(init?.redirect).toBe('error');
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer projected');
+      return Response.json({ token: 'exchanged', expiresAt: new Date(Date.now() + 600000).toISOString() });
+    }
+    expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer exchanged');
+    return Response.json({ signedUploadUrl: 'https://storage.example/upload' });
+  });
+  const client = new Limrun({
+    apiKey: null,
+    workloadTokenFile: tokenFile,
+    baseURL: 'https://director.example',
+    fetch: fetcher,
+    fetchOptions: { dispatcher, keepalive: true, redirect: 'follow' },
+  });
+  await client.assets.createUploadURL('asset_01h455vb4pex5vsknk084sn02q');
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
