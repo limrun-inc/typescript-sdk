@@ -6,6 +6,21 @@
       "ruleIds": ["private-key"],
       "pathPatterns": ["/tests/fixtures/tls.ts"],
       "reason": "Synthetic private key used only by localhost TLS tests; it does not protect any system or data."
+    },
+    {
+      "pathPatterns": [
+        "**/test/**",
+        "**/tests/**",
+        "**/__tests__/**",
+        "**/testdata/**",
+        "**/fixtures/**",
+        "**/__fixtures__/**",
+        "**/examples/**",
+        "**/*.test.*",
+        "**/*.spec.*",
+        "**/*_test.go"
+      ],
+      "reason": "Tests, test fixtures, and examples are outside the production Code Security alert scope. Suppress matching current and future findings as requested by the repository owner."
     }
   ]
 }
