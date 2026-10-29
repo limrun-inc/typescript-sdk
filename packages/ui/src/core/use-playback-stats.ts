@@ -13,8 +13,10 @@ export function usePlaybackStats(
   target: number | null | undefined,
 ): void {
   const callbackRef = useRef(callback);
+  const targetRef = useRef(target);
   const inFlight = useRef(new Set<RTCPeerConnection>());
   callbackRef.current = callback;
+  targetRef.current = target;
   const enabled = !!callback;
   useEffect(() => {
     if (!connection || !enabled) return;
@@ -72,7 +74,7 @@ export function usePlaybackStats(
             mid: t.mid,
             display: displays.get(t.receiver),
           }));
-        emit(reader.read(report, receivers, target));
+        emit(reader.read(report, receivers, targetRef.current));
         warned = false;
       } catch (error) {
         if (started !== generation || !active()) return;
@@ -110,5 +112,5 @@ export function usePlaybackStats(
       peer.removeEventListener('connectionstatechange', sync);
       stop();
     };
-  }, [connection, enabled, target]);
+  }, [connection, enabled]);
 }

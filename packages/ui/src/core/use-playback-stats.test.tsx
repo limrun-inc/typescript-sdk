@@ -51,7 +51,7 @@ function View({
   source = connection,
 }: {
   cb?: ((stats: PlaybackStats | null) => void) | null;
-  target?: number;
+  target?: number | null;
   source?: PlaybackConnection | null;
 }) {
   usePlaybackStats(source, cb ?? undefined, target);
@@ -111,6 +111,28 @@ it('uses the latest callback without restarting the baseline or sampling loop', 
   await advance();
   expect(next.mock.lastCall![0].video[0].fps).toBe(50);
   expect(callback).toHaveBeenCalledTimes(1);
+});
+
+it('keeps measurements and cadence when changing or clearing the buffer target', async () => {
+  await render();
+  await advance();
+  await render({ target: 0 });
+  expect(peer.getStats).toHaveBeenCalledTimes(2);
+  expect(callback).toHaveBeenCalledTimes(2);
+  await advance();
+  expect(callback.mock.lastCall![0]).toMatchObject({
+    requestedTargetMs: 0,
+    video: [{ intervalMs: 2000, fps: 50 }],
+  });
+  await render({ target: null });
+  expect(peer.getStats).toHaveBeenCalledTimes(3);
+  expect(callback).toHaveBeenCalledTimes(3);
+  await advance();
+  expect(callback.mock.lastCall![0]).toMatchObject({
+    requestedTargetMs: null,
+    video: [{ intervalMs: 2000, fps: 50 }],
+  });
+  expect(callback.mock.calls.every(([sample]) => sample !== null)).toBe(true);
 });
 
 it('pauses when hidden or disconnected and establishes a fresh baseline on resume', async () => {
