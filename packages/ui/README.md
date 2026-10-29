@@ -42,7 +42,7 @@ Related browser workflow packages are published separately:
 
 ## Latency diagnostics
 
-Pass `onLatencyTrace={(message) => ...}` to receive each parsed diagnostic message
+Pass `onTrace={(message) => ...}` to receive each parsed diagnostic message
 from supported single-display iOS instances. Omitting the callback leaves tracing off.
 Adding or removing it reconnects the stream; replacing the callback does not.
 Older servers keep streaming normally without diagnostics.

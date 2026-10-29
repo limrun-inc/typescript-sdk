@@ -47,7 +47,7 @@ declare global {
 
 export interface RemoteControlProps {
   /** Receives parsed iOS latency messages. Adding or removing the callback reconnects the stream. */
-  onLatencyTrace?: (message: Record<string, unknown>) => void;
+  onTrace?: (message: Record<string, unknown>) => void;
 
   // url is the URL of the instance to connect to.
   url: string;
@@ -529,7 +529,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       androidElementTreeOptions,
       onCameraDemandChange,
       onCameraStats,
-      onLatencyTrace,
+      onTrace,
       microphoneEnabled = false,
       onMicrophoneStateChange,
     }: RemoteControlProps,
@@ -581,9 +581,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
     const dataChannelRef = useRef<RTCDataChannel | null>(null);
     const latencyTraceRef = useRef<ReturnType<typeof createLatencyTrace> | null>(null);
-    const onLatencyTraceRef = useRef(onLatencyTrace);
-    onLatencyTraceRef.current = onLatencyTrace;
-    const latencyTraceRequested = !!onLatencyTrace;
+    const onTraceRef = useRef(onTrace);
+    onTraceRef.current = onTrace;
+    const latencyTraceRequested = !!onTrace;
     const keepAliveIntervalRef = useRef<number | undefined>(undefined);
     const retryTimeoutRef = useRef<number | undefined>(undefined);
     const connectionSuccessTimeoutRef = useRef<number | undefined>(undefined);
@@ -2904,10 +2904,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         });
         dataChannelRef.current = dataChannel;
         const latencyTrace =
-          platform === 'ios' && !isDuo && onLatencyTraceRef.current ?
+          platform === 'ios' && !isDuo && onTraceRef.current ?
             createLatencyTrace(peerConnection, (message) => {
               if (isCurrentAttempt() && peerConnectionRef.current === peerConnection) {
-                safeInvoke('onLatencyTrace', onLatencyTraceRef.current, message);
+                safeInvoke('onTrace', onTraceRef.current, message);
               }
             })
           : null;
