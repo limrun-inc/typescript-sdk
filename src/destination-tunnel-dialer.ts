@@ -827,9 +827,7 @@ export async function startDestinationTcpTunnel(
         inspection,
         window: creditWindow,
         ...(options.name === undefined ? {} : { name: options.name }),
-        ...(options.resetsInactivityTimeout === undefined ?
-          {}
-        : { resetsInactivityTimeout: options.resetsInactivityTimeout }),
+        resetsInactivityTimeout: options.resetsInactivityTimeout ?? true,
       });
       pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
