@@ -578,10 +578,10 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@limrun/api@0.67.0":
-  version "0.67.0"
-  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.67.0.tgz#41194ba9b32e306943d700b7cd1067753f65502f"
-  integrity sha512-tekrK9KuUfWYEdA1MvRrt4xzK1ot5biPF2Xf0yns2T29JWOItg0ODjFwMBnxuNeoT7eJpOEHGKg89dM7VupHQg==
+"@limrun/api@0.67.1":
+  version "0.67.1"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.67.1.tgz#fa51826bdd04379c63175b395aa97fadf47578a7"
+  integrity sha512-WnM71eVSiRn218WQTapxGG4dCZ9HmCihHGeSkusUnlgNv3Z4yOSA8AbxtbHFp4tu4MysItZD8d68Ca7Ds0qKJw==
   dependencies:
     "@limrun/xdelta3-wasm" "0.2.0"
     "@types/har-format" "^1.2.16"
