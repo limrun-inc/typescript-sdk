@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.68.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.67.0...v0.68.0) (2026-10-29)
+## [0.67.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.67.0...v0.67.1) (2026-10-29)
 
 
 ### Features
@@ -9,6 +9,8 @@
 
 
 ### Bug Fixes
+
+* **sdk:** expose the access-token revocation response type and clarify legacy token compatibility ([#571](https://github.com/limrun-inc/typescript-sdk/pull/571)).
 
 * **cli:** prevent create reuse from skipping requested permissions ([7462435](https://github.com/limrun-inc/typescript-sdk/commit/74624357daab6e89f483eb4a1f0ed0453ce1ce5a))
 
