@@ -64,7 +64,10 @@ export function startAutoUploadWatcher(opts: {
     uploadChain = uploadChain.then(async () => {
       if (abort.signal.aborted) return;
       try {
-        const result = await client.uploadLatestRbeBuild({ assetName, ...(ttl && { ttl }) });
+        const result = await client.uploadLatestRbeBuild({
+          target: `name/${assetName}`,
+          ...(ttl && { ttl }),
+        });
         log(`auto-upload: uploaded ${result.appName} as "${assetName}"`);
       } catch (err) {
         // The SDK already retried transient errors internally; ride out a

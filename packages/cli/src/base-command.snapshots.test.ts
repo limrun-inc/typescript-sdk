@@ -112,7 +112,7 @@ test('auto-creation sends only the project key and waits for restore before retu
   await expect(cmd.resolve()).resolves.toEqual(target);
   expect(cmd.create).toHaveBeenCalledWith({
     wait: true,
-    spec: { cache: { key: 'github.com/acme/monorepo/apps/ios' } },
+    spec: { role: { permissions: [] }, cache: { key: 'github.com/acme/monorepo/apps/ios' } },
   });
   expect(projectSnapshotKey).toHaveBeenCalledWith('/repo/apps/ios');
   expect(cmd.follow).toHaveBeenCalledWith(target.id, expect.any(Object));
@@ -124,7 +124,7 @@ test('opt-out creates without snapshots or a restore wait', async () => {
   Object.assign(cmd, { getCommandParts: () => ['xcode', 'build'] });
   cmd.configure({ 'no-snapshot': true }, '/repo');
   await cmd.resolve();
-  expect(cmd.create).toHaveBeenCalledWith({ wait: true, spec: {} });
+  expect(cmd.create).toHaveBeenCalledWith({ wait: true, spec: { role: { permissions: [] } } });
   expect(cmd.follow).not.toHaveBeenCalled();
 });
 
@@ -176,59 +176,68 @@ test('explicit create derives its default from the current directory before crea
   expect(projectSnapshotKey).toHaveBeenCalledWith(process.cwd());
 });
 
-test('onboarding creates with the project key and restores before syncing', async () => {
-  const cmd = new Run([], {} as never);
-  const stop = new Error('stop before building');
-  const create = jest.fn().mockResolvedValue(instance);
-  const followCache = jest.fn().mockResolvedValue({
-    cache: { restore: { phase: 'restored' }, save: { phase: 'idle' } },
-  });
-  const sync = jest.fn().mockRejectedValue(stop);
-  Object.defineProperty(cmd, 'client', {
-    value: { xcodeInstances: { create, followCache, createClient: async () => ({ sync }) } },
-  });
-  Object.assign(cmd, {
-    _parsedFlags: {},
-    withAuth: async (fn: () => Promise<void>) => fn(),
-    reporter: { withProgress: (_label: string, fn: () => Promise<unknown>) => fn() },
-    outputProjectRecovery: jest.fn(),
-    info: jest.fn(),
-  });
-  const launch = cmd as unknown as { buildAndLaunchProject(options: object): Promise<string> };
-  await expect(launch.buildAndLaunchProject({ projectRoot: '/repo/apps/ios' })).rejects.toThrow(stop);
-  expect(create).toHaveBeenCalledWith(
-    expect.objectContaining({
-      spec: { cache: { key: 'github.com/acme/monorepo/apps/ios' } },
-    }),
-  );
-  expect(projectSnapshotKey).toHaveBeenCalledWith('/repo/apps/ios');
-  expect(followCache.mock.invocationCallOrder[0]).toBeLessThan(sync.mock.invocationCallOrder[0]!);
-});
+test.each([{ permissions: [] }, { permissions: ['asset:name/fixtures/*:read'] }])(
+  'onboarding preserves permissions %j while restoring the snapshot',
+  async ({ permissions }) => {
+    const cmd = new Run([], {} as never);
+    const stop = new Error('stop before building');
+    const create = jest.fn().mockResolvedValue(instance);
+    const followCache = jest.fn().mockResolvedValue({
+      cache: { restore: { phase: 'restored' }, save: { phase: 'idle' } },
+    });
+    const sync = jest.fn().mockRejectedValue(stop);
+    Object.defineProperty(cmd, 'client', {
+      value: { xcodeInstances: { create, followCache, createClient: async () => ({ sync }) } },
+    });
+    Object.assign(cmd, {
+      _parsedFlags: { permission: permissions },
+      withAuth: async (fn: () => Promise<void>) => fn(),
+      reporter: { withProgress: (_label: string, fn: () => Promise<unknown>) => fn() },
+      outputProjectRecovery: jest.fn(),
+      info: jest.fn(),
+    });
+    const launch = cmd as unknown as { buildAndLaunchProject(options: object): Promise<string> };
+    await expect(launch.buildAndLaunchProject({ projectRoot: '/repo/apps/ios' })).rejects.toThrow(stop);
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reuseIfExists: false,
+        spec: { role: { permissions }, cache: { key: 'github.com/acme/monorepo/apps/ios' } },
+      }),
+    );
+    expect(projectSnapshotKey).toHaveBeenCalledWith('/repo/apps/ios');
+    expect(followCache.mock.invocationCallOrder[0]).toBeLessThan(sync.mock.invocationCallOrder[0]!);
+  },
+);
 
-test('ios create --xcode also configures and restores the project snapshot', async () => {
-  const cmd = new IosCreate([], {} as never);
-  const stop = new Error('stop before attach');
-  const create = jest.fn().mockResolvedValue(instance);
-  const followCache = jest.fn().mockResolvedValue({
-    cache: { restore: { phase: 'restored' }, save: { phase: 'idle' } },
-  });
-  const createClient = jest.fn().mockRejectedValue(stop);
-  Object.defineProperty(cmd, 'client', {
-    value: {
-      iosInstances: { create: async () => ({ metadata: { id: 'ios_test' }, spec: {}, status: {} }) },
-      xcodeInstances: { create, followCache, createClient, delete: jest.fn().mockResolvedValue(undefined) },
-    },
-  });
-  Object.assign(cmd, {
-    parse: async () => ({ args: {}, flags: { xcode: true } }),
-    withAuth: async (fn: () => Promise<void>) => fn(),
-    info: jest.fn(),
-  });
-  await expect(cmd.run()).rejects.toThrow(stop);
-  expect(create).toHaveBeenCalledWith(
-    expect.objectContaining({
-      spec: { cache: { key: 'github.com/acme/monorepo/apps/ios' } },
-    }),
-  );
-  expect(followCache.mock.invocationCallOrder[0]).toBeLessThan(createClient.mock.invocationCallOrder[0]!);
-});
+test.each([{ permissions: [] }, { permissions: ['asset:name/fixtures/*:read'] }])(
+  'ios create --xcode forwards permissions %j to the builder',
+  async ({ permissions }) => {
+    const cmd = new IosCreate([], {} as never);
+    const stop = new Error('stop before attach');
+    const create = jest.fn().mockResolvedValue(instance);
+    const followCache = jest.fn().mockResolvedValue({
+      cache: { restore: { phase: 'restored' }, save: { phase: 'idle' } },
+    });
+    const createClient = jest.fn().mockRejectedValue(stop);
+    Object.defineProperty(cmd, 'client', {
+      value: {
+        iosInstances: {
+          create: async () => ({ metadata: { id: 'ios_test' }, spec: { role: { permissions } }, status: {} }),
+        },
+        xcodeInstances: { create, followCache, createClient, delete: jest.fn().mockResolvedValue(undefined) },
+      },
+    });
+    Object.assign(cmd, {
+      parse: async () => ({ args: {}, flags: { xcode: true, permission: permissions } }),
+      withAuth: async (fn: () => Promise<void>) => fn(),
+      info: jest.fn(),
+    });
+    await expect(cmd.run()).rejects.toThrow(stop);
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        spec: { role: { permissions }, cache: { key: 'github.com/acme/monorepo/apps/ios' } },
+      }),
+    );
+    expect(followCache.mock.invocationCallOrder[0]).toBeLessThan(createClient.mock.invocationCallOrder[0]!);
+  },
+);
