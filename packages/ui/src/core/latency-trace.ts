@@ -33,7 +33,10 @@ export function createLatencyTrace(
       accepted = !closed && version === 1;
     },
     wrap(data: ArrayBuffer): ArrayBuffer {
-      if (!accepted || data.byteLength !== 32 || new DataView(data).getUint8(0) !== 2) return data;
+      if (!accepted || data.byteLength !== 32) return data;
+      const original = new DataView(data);
+      // v1 traces down/move/up. Keep cancel and Android pointer transitions usable.
+      if (original.getUint8(0) !== 2 || original.getUint8(1) > 2) return data;
       const envelope = new ArrayBuffer(38);
       const view = new DataView(envelope);
       view.setUint8(0, 240);
