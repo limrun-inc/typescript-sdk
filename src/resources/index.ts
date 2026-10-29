@@ -98,4 +98,9 @@ export {
   type GradleBuildLog,
 } from './gradle-instances-helpers';
 
-export { AccessTokens, type AccessToken, type AccessTokenCreateParams } from './access-tokens';
+export {
+  AccessTokens,
+  type AccessToken,
+  type AccessTokenCreateParams,
+  type AccessTokenRevokeResponse,
+} from './access-tokens';

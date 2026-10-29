@@ -9,7 +9,7 @@ export class AccessTokens extends APIResource {
   }
 
   /** Revoke a credential by the ID returned when it was minted. */
-  revoke(id: string, options?: RequestOptions): APIPromise<{ status: string }> {
+  revoke(id: string, options?: RequestOptions): APIPromise<AccessTokenRevokeResponse> {
     return this._client.delete(`/v1/access_tokens/${encodeURIComponent(id)}`, options);
   }
 }
@@ -41,6 +41,14 @@ export interface AccessTokenCreateParams {
   ttlSeconds?: number;
 }
 
+export interface AccessTokenRevokeResponse {
+  status: string;
+}
+
 export declare namespace AccessTokens {
-  export { type AccessToken as AccessToken, type AccessTokenCreateParams as AccessTokenCreateParams };
+  export {
+    type AccessToken as AccessToken,
+    type AccessTokenCreateParams as AccessTokenCreateParams,
+    type AccessTokenRevokeResponse,
+  };
 }

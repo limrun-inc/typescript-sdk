@@ -5,19 +5,24 @@ import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 
+/** @deprecated Use AccessTokens. */
 export class ScopedTokens extends APIResource {
   /**
    * Mint a short-lived scoped token whose permissions limit what the holder can do, e.g.
    * install a specific asset on a device through the registry. The token is verified
    * by services holding the signing public key. It is bound to the caller's organization.
-   * Prefer accessTokens.create for new code.
+   * @deprecated Use client.accessTokens.create(). This method keeps the legacy URL.
    */
   create(body: ScopedTokenCreateParams, options?: RequestOptions): APIPromise<ScopedToken> {
     return this._client.post('/v1/scoped_tokens', { body, ...options });
   }
 }
 
+/** @deprecated Use AccessToken. */
 export interface ScopedToken {
+  /** Credential ID, when returned by the server. */
+  id?: string;
+
   /**
    * The scoped token, to be sent as a Bearer token or the token query parameter.
    */

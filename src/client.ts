@@ -58,7 +58,12 @@ import {
 } from './resources/ios-instances';
 import { IosInstances } from './resources/ios-instances-helpers';
 import { SessionArtifact } from './resources/session-artifacts';
-import { AccessToken, AccessTokenCreateParams, AccessTokens } from './resources/access-tokens';
+import {
+  AccessToken,
+  AccessTokenCreateParams,
+  AccessTokenRevokeResponse,
+  AccessTokens,
+} from './resources/access-tokens';
 import { ScopedToken, ScopedTokenCreateParams, ScopedTokens } from './resources/scoped-tokens';
 import {
   XcodeInstance,
@@ -966,6 +971,7 @@ export declare namespace Limrun {
     AccessTokens as AccessTokens,
     type AccessToken as AccessToken,
     type AccessTokenCreateParams as AccessTokenCreateParams,
+    type AccessTokenRevokeResponse,
     ScopedTokens as ScopedTokens,
     type ScopedToken as ScopedToken,
     type ScopedTokenCreateParams as ScopedTokenCreateParams,

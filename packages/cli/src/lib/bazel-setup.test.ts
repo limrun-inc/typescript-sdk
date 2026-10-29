@@ -210,13 +210,19 @@ describe('director and credentials', () => {
 
   it('answers in the credential helper protocol', async () => {
     fetchMock.mockResolvedValue(
-      mockResponse(200, { token: 'lim_st_abc', expiresAt: '2026-10-06T12:00:00Z', scopes: [] }),
+      mockResponse(200, {
+        id: 'token-id',
+        token: 'lim_st_abc',
+        expiresAt: '2026-10-06T12:00:00Z',
+        permissions: [],
+      }),
     );
     expect(await bazelCredentials(client)).toEqual({
       headers: { Authorization: ['Bearer lim_st_abc'] },
       expires: '2026-10-06T12:00:00Z',
     });
     const body = JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body));
-    expect(body.scopes).toEqual(['remotecache:*:all', 'remoteexecution:*:all']);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('https://api.example.test/v1/access_tokens');
+    expect(body.permissions).toEqual(['remotecache:*:all', 'remoteexecution:*:all']);
   });
 });
