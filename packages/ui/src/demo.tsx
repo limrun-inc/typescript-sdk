@@ -23,6 +23,7 @@ function Demo() {
   const [platform, setPlatform] = useState<'ios' | 'android'>(initialPlatform);
   const [isConnected, setIsConnected] = useState(initialAutoconnect);
   const [key, setKey] = useState(0);
+  const [jitterBufferTarget, setJitterBufferTarget] = useState('');
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [inspectChoice, setInspectChoice] = useState<InspectChoice>(initialInspect);
   const [latestSnapshot, setLatestSnapshot] = useState<AxSnapshot | null>(null);
@@ -148,6 +149,21 @@ function Demo() {
             </select>
           </div>
 
+          <div className="control-group">
+            <label htmlFor="jitter-buffer-target">Jitter buffer target (ms)</label>
+            <input
+              id="jitter-buffer-target"
+              type="number"
+              min="0"
+              max="4000"
+              step="1"
+              placeholder="Browser default"
+              value={jitterBufferTarget}
+              onChange={(event) => setJitterBufferTarget(event.target.value)}
+            />
+            <small>Lower targets can reduce latency but increase drops or freezes. Clear to reset.</small>
+          </div>
+
           <div className="button-group">
             {!isConnected ?
               <button className="primary" onClick={handleConnect} disabled={!url}>
@@ -201,6 +217,7 @@ function Demo() {
                     url={url}
                     token={token}
                     inspectMode={inspectModeProp}
+                    jitterBufferTargetMs={jitterBufferTarget === '' ? undefined : Number(jitterBufferTarget)}
                     onAxSnapshotChange={setLatestSnapshot}
                     onInspectSelectionChange={(sel) =>
                       setLatestSelection(
