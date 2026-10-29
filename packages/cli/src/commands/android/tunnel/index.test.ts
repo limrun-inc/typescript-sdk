@@ -25,9 +25,21 @@ describe('Android tunnel inspection flags', () => {
     expect(() => tunnelInspectionContext({ ...flags, persist: true })).not.toThrow();
   });
 
-  test('exposes the same inspection flags on iOS', () => {
-    for (const flag of ['inspect', 'har', 'har-body-limit', 'persist', 'ttl'] as const) {
+  test('exposes the same inspection and activity flags on iOS', () => {
+    for (const flag of [
+      'inspect',
+      'har',
+      'har-body-limit',
+      'persist',
+      'ttl',
+      'reset-inactivity-timeout',
+    ] as const) {
       expect(IosTunnel.flags[flag]).toBe(AndroidTunnel.flags[flag]);
     }
+  });
+
+  test('counts tunnel traffic as activity unless --no-reset-inactivity-timeout', () => {
+    expect(AndroidTunnel.flags['reset-inactivity-timeout'].default).toBe(true);
+    expect(AndroidTunnel.flags['reset-inactivity-timeout'].allowNo).toBe(true);
   });
 });

@@ -177,6 +177,23 @@ describe('tunnel process state', () => {
     },
   );
 
+  test('replays --no-reset-inactivity-timeout to the detached child only when opted out', () => {
+    const base = {
+      scriptPath: '/lim/run.js',
+      product: 'ios' as const,
+      instanceId: INSTANCE_ID,
+      owner: newTunnelOwner(),
+      selectors: ['localhost:8081'],
+    };
+    expect(buildTunnelServeArgs(base).join(' ')).not.toContain('inactivity');
+    expect(buildTunnelServeArgs({ ...base, resetsInactivityTimeout: true }).join(' ')).not.toContain(
+      'inactivity',
+    );
+    expect(buildTunnelServeArgs({ ...base, resetsInactivityTimeout: false })).toContain(
+      '--no-reset-inactivity-timeout',
+    );
+  });
+
   test('builds an iOS child command with selectors', () => {
     const owner = newTunnelOwner();
     expect(
