@@ -1,3 +1,5 @@
+import { pullBuildFile } from '../internal/build-pull-file';
+import { normalizeAssetUpload, type BuildUpload } from '../lib/asset-permissions';
 import { GradleInstances, type GradleInstance } from './gradle-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
@@ -23,7 +25,6 @@ import {
   type BuildRunOptions,
   createDaemonLogger,
   deriveBasisCache,
-  mintAssetUploadUrls,
   type BuildLog,
   type LogLevel,
   type SyncResult,
@@ -71,19 +72,7 @@ export type GradleBuildOptions = {
   /** Relative path to the Gradle root when auto-discovery is ambiguous. */
   projectPath?: string;
   /** Upload the built artifact as a named org asset, or to a presigned URL. */
-  upload?:
-    | {
-        assetName: string;
-        /**
-         * Asset TTL as a Go duration (e.g. "24h", "30m"; "1d" is invalid),
-         * forwarded to assets.getOrCreate. Defaults to 336h (14 days): each
-         * build upload without an explicit ttl pushes the asset's expiry to
-         * 14 days from that upload.
-         */
-        ttl?: string;
-        signedUploadUrl?: never;
-      }
-    | { signedUploadUrl: string; assetName?: never; ttl?: never };
+  upload?: BuildUpload;
   /** React Native / Expo tuning. */
   reactNative?: GradleReactNativeConfig;
   /** Release signing config; presence makes bundleRelease the default task. */
@@ -100,6 +89,8 @@ export type GradleBuildOptions = {
 export type GradleRunOptions = BuildRunOptions;
 
 export type GradleClient = {
+  /** Stream a regular file to disk. Paths may be absolute or relative to the synced project root. */
+  pullFile(remotePath: string, localPath: string): Promise<void>;
   sync(localCodePath: string, opts?: GradleSyncOptions): Promise<SyncResult>;
   gradlebuild(options?: GradleBuildOptions): ExecChildProcess;
   run(commandLine: string, options?: GradleRunOptions): ExecChildProcess;
@@ -167,6 +158,9 @@ class GradleInstancesHelpers extends GradleInstances {
     const client = this._client;
 
     return {
+      async pullFile(remotePath: string, localPath: string): Promise<void> {
+        await pullBuildFile(apiUrl, token, remotePath, localPath);
+      },
       async sync(localCodePath: string, opts?: GradleSyncOptions): Promise<SyncResult> {
         const { cacheKey, basisCacheDir } = deriveBasisCache(localCodePath, opts?.basisCacheDir);
         const userIgnore = opts?.ignore;
@@ -221,22 +215,7 @@ class GradleInstancesHelpers extends GradleInstances {
           ...(options?.playstore && { playstore: options.playstore }),
         };
 
-        if (options?.upload && 'assetName' in options.upload) {
-          const requestPromise = mintAssetUploadUrls(
-            client.assets,
-            options.upload.assetName,
-            options.upload.ttl,
-          ).then((asset) => {
-            request.signedUploadUrl = asset.signedUploadUrl;
-            request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
-            return request;
-          });
-          return exec(requestPromise, { apiUrl, token, log });
-        }
-
-        if (options?.upload && 'signedUploadUrl' in options.upload) {
-          request.signedUploadUrl = options.upload.signedUploadUrl;
-        }
+        if (options?.upload) Object.assign(request, normalizeAssetUpload(options.upload));
 
         return exec(request, { apiUrl, token, log });
       },

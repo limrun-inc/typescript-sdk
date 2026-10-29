@@ -56,6 +56,7 @@ export default class GradleBuild extends BaseCommand {
       multipleNonGreedy: true,
     }),
     ...BaseCommand.baseFlags,
+    ...BaseCommand.permissionFlags,
     'additional-file': syncFlags['additional-file'],
     id: Flags.string({
       description: 'Gradle instance ID to build on. Defaults to the last used or a newly created one.',
@@ -326,6 +327,11 @@ export default class GradleBuild extends BaseCommand {
         }
         return;
       }
+
+      proc.command.on('data', (line: string) => {
+        if (this.isJsonEnabled()) this.outputEvent({ type: 'command', line });
+        else process.stdout.write(`$ ${line}\n`);
+      });
 
       proc.stdout.on('data', (line: string) => {
         if (this.isJsonEnabled()) this.outputEvent({ type: 'stdout', line });

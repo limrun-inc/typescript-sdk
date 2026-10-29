@@ -104,7 +104,7 @@ import { AccessToken, AccessTokenCreateParams } from '@limrun/api/resources/acce
 
 Methods:
 
-- `client.accessTokens.create({ scopes, ttlSeconds }) -> AccessToken` — `POST /v1/access_tokens`
+- `client.accessTokens.create({ permissions, ttlSeconds }) -> AccessToken` — `POST /v1/access_tokens`
 - `client.accessTokens.revoke(id) -> AccessTokenRevokeResponse` — `DELETE /v1/access_tokens/{id}`
 
 `scopedTokens` remains available for compatibility and continues to call the legacy URL.

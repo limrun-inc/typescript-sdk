@@ -21,7 +21,7 @@ describe('client User-Agent', () => {
       },
     });
 
-    await client.accessTokens.create({ scopes: ['asset:*:read'] });
+    await client.accessTokens.create({ permissions: ['asset:*:read'] });
 
     expect(received?.get('User-Agent')).toBe(expected);
   });

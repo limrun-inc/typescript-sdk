@@ -9,6 +9,18 @@ describe('xcode client simulator helpers', () => {
     nodeProxyTransport.fetch = originalFetch;
   });
 
+  test('new auxiliary simulators have no ambient asset grants', async () => {
+    const client = new Limrun({ apiKey: 'key' });
+    const stop = new Error('stop before attachment');
+    const create = jest.spyOn(client.iosInstances, 'create').mockRejectedValue(stop);
+    const xcode = await client.xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'xcode-token',
+    });
+    await expect(xcode.attachNewSimulator()).rejects.toThrow(stop);
+    expect(create).toHaveBeenCalledWith({ wait: true, spec: { role: { permissions: [] } } });
+  });
+
   test('gets simulator status from limbuild', async () => {
     const calls: Array<{ input: RequestInfo; init: RequestInit | undefined }> = [];
     nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {

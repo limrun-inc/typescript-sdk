@@ -21,6 +21,7 @@ test('canonical and legacy token clients keep their routes and share credential 
         : {
             id: 'token-id',
             token: 'signed-value',
+            permissions: ['asset:*:read'],
             scopes: ['asset:*:read'],
             expiresAt: '2026-10-25T15:00:00Z',
           },
@@ -29,14 +30,15 @@ test('canonical and legacy token clients keep their routes and share credential 
   });
   expect(client.accessTokens).toBeInstanceOf(AccessTokens);
   expect(client.scopedTokens).toBeInstanceOf(ScopedTokens);
-  const body = { scopes: ['asset:*:read'], ttlSeconds: 900 };
+  const body = { permissions: ['asset:*:read'], ttlSeconds: 900 };
+  const legacyBody = { scopes: ['asset:*:read'], ttlSeconds: 900 };
   const current = await client.accessTokens.create(body);
-  const legacy = await client.scopedTokens.create(body);
+  const legacy = await client.scopedTokens.create(legacyBody);
   expect(current.token).toBe(legacy.token);
   await client.accessTokens.revoke(current.id);
   expect(calls).toEqual([
     { path: '/v1/access_tokens', method: 'POST', body },
-    { path: '/v1/scoped_tokens', method: 'POST', body },
+    { path: '/v1/scoped_tokens', method: 'POST', body: legacyBody },
     { path: '/v1/access_tokens/token-id', method: 'DELETE', body: undefined },
   ]);
 });

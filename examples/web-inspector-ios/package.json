@@ -16,6 +16,6 @@
     "typescript": "^5.9.2"
   },
   "resolutions": {
-    "@limrun/api/undici": "7.29.1"
+    "@limrun/api/undici": "7.30.1"
   }
 }

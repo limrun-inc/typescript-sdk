@@ -62,7 +62,7 @@ The browser side is split across two subpath entry points:
 Pairing, install, and the Apple relay all run on **Limrun's registry**
 (`https://registry.limrun.com`), a shared service that authenticates a Limrun
 token. Your org API key works, but it must never reach the browser. Instead,
-your backend mints a **access token** with `@limrun/api` and hands that to
+your backend mints an **access token** with `@limrun/api` and hands that to
 the browser, which connects to the registry directly:
 
 ```ts
@@ -71,7 +71,7 @@ import Limrun from '@limrun/api';
 
 const limrun = new Limrun({ apiKey: process.env['LIM_API_KEY'] });
 const session = await limrun.accessTokens.create({
-  scopes: ['device:*:install', `asset:${assetId}:read`],
+  permissions: ['device:*:install', `asset:${assetId}:read`],
   // ttlSeconds: 3600 is the default; maximum is 14400.
 });
 // Return session.token to the browser.
@@ -292,7 +292,7 @@ npx vite src/device-install/demo
 ```
 
 Open the printed `https://localhost` URL in Chrome or Edge, paste a registry URL
-and token (a access token or, for local experiments, an API key), then pair
+and token (an access token or, for local experiments, an API key), then pair
 and install an asset by name.
 [`examples/device-install`](../../../../examples/device-install) is the same
 flow with a backend that mints access tokens so the API key stays

@@ -31,6 +31,7 @@ export default class XcodeSync extends BaseCommand {
   };
 
   static flags = {
+    ...BaseCommand.permissionFlags,
     ...BaseCommand.baseFlags,
     ...syncFlags,
     ...snapshotFlags,

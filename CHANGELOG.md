@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.67.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.66.0...v0.67.0) (2026-10-29)
+
+
+### Features
+
+* **sdk:** add delegated workload permissions ([d17a020](https://github.com/limrun-inc/typescript-sdk/commit/d17a0206d46b98596590100201b679a3684c7265))
+* **sdk:** separate workload permissions from CLI adoption ([1f70537](https://github.com/limrun-inc/typescript-sdk/commit/1f70537fe34ef3029e8c5a2e22600701f77e5194))
+
+
+### Bug Fixes
+
+* **sdk:** preserve workload exchange transport settings ([ed9bc84](https://github.com/limrun-inc/typescript-sdk/commit/ed9bc84cb8e4114dd5a7bad8f39a26ba54fe63e7))
+* **ui:** forward video frames in a worker ([5df57e1](https://github.com/limrun-inc/typescript-sdk/commit/5df57e1c6945a5112064b13d07bb83b0856c8631))
+* **ui:** improve video playback responsiveness ([0523e25](https://github.com/limrun-inc/typescript-sdk/commit/0523e2564276fce8ad6445fa478a3f13e8d93894))
+* **ui:** improve video playback responsiveness ([#589](https://github.com/limrun-inc/typescript-sdk/issues/589)) ([d02292f](https://github.com/limrun-inc/typescript-sdk/commit/d02292f115b99296207c8fd25d768ef7d0eb5f79))
+
+
+### Chores
+
+* **cli:** release 0.48.0 with iOS hang reports ([1e9069f](https://github.com/limrun-inc/typescript-sdk/commit/1e9069f9370cb6e96c77e4fff70f2e8d8d44fb6e))
+* **deps-dev:** bump vite from 7.3.6 to 7.3.7 in /packages/play-auth ([#559](https://github.com/limrun-inc/typescript-sdk/issues/559)) ([3344d9c](https://github.com/limrun-inc/typescript-sdk/commit/3344d9c9fca7360a902f0fda46fa8f45cce72226))
+* **deps-dev:** bump vite from 7.3.6 to 7.3.7 in /packages/ui ([#560](https://github.com/limrun-inc/typescript-sdk/issues/560)) ([37b42a7](https://github.com/limrun-inc/typescript-sdk/commit/37b42a7f1301edf2cf975bff8a88633c016473d5))
+* **deps:** bump fast-uri from 3.1.7 to 3.1.9 in /packages/ui ([#578](https://github.com/limrun-inc/typescript-sdk/issues/578)) ([3e11b13](https://github.com/limrun-inc/typescript-sdk/commit/3e11b13faac4f1ee1c7b9d889fd88508dac9971a))
+* **deps:** bump hono in /examples/ios-with-xcode ([#555](https://github.com/limrun-inc/typescript-sdk/issues/555)) ([02806a8](https://github.com/limrun-inc/typescript-sdk/commit/02806a8376569aa336e99926d8f81c2fce3511a6))
+* **deps:** bump ip-address in /examples/ios-with-xcode ([#562](https://github.com/limrun-inc/typescript-sdk/issues/562)) ([fd194ec](https://github.com/limrun-inc/typescript-sdk/commit/fd194ec7515eac00871d1b648b2e2d9803216f63))
+* **deps:** bump undici from 7.29.1 to 7.30.1 ([#577](https://github.com/limrun-inc/typescript-sdk/issues/577)) ([44d2ff1](https://github.com/limrun-inc/typescript-sdk/commit/44d2ff1c1347804ca319f904d0b461086fc5610a))
+* **ui:** bump version to 0.18.0 ([6d316b7](https://github.com/limrun-inc/typescript-sdk/commit/6d316b7807e3f13f1f642e32c67243e53f8a3cf7))
+
+## [0.66.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.65.1...v0.66.0) (2026-10-26)
+
+
+### Features
+
+* **cli:** add build pull-file commands on SDK 0.65.1 ([ce4a6e9](https://github.com/limrun-inc/typescript-sdk/commit/ce4a6e9c97c8538b18af71cf5895af63d53d0dae))
+* **cli:** add build sandbox pull-file commands ([9cc36d3](https://github.com/limrun-inc/typescript-sdk/commit/9cc36d3ff0be1f8efe50c1ee50d05f0190675be6))
+* replace watchHangs with monitorApp and deprecate watchApp ([4d9ad74](https://github.com/limrun-inc/typescript-sdk/commit/4d9ad74b9e8cf6c884e4916b06fe991ad6d34a71))
+* report iOS app main-thread hangs with watchHangs and launchApp onHang ([3701dd5](https://github.com/limrun-inc/typescript-sdk/commit/3701dd5c8b9d4ebc19ed35f4e045b8762980dc20))
+
+
+### Bug Fixes
+
+* ask the launch itself for its hang reports ([094db86](https://github.com/limrun-inc/typescript-sdk/commit/094db862d8ebd8a6889e01105aa0a7de65e0519e))
+* **cli:** show executed commands in build output ([dbc110a](https://github.com/limrun-inc/typescript-sdk/commit/dbc110ae0c512dd46ecad18f32c2b572120371db))
+* **cli:** show executed commands in build output ([5b125cd](https://github.com/limrun-inc/typescript-sdk/commit/5b125cdbd80aabebdae61009b532b2c311b37e40))
+* launch without hang reports on simulators that predate hang watches ([9c3c7c2](https://github.com/limrun-inc/typescript-sdk/commit/9c3c7c217d203bb61e0ca9dfd222c228995fac8c))
+
+
+### Chores
+
+* **cli:** bump patch version to 0.47.1 ([8b5268f](https://github.com/limrun-inc/typescript-sdk/commit/8b5268f1ce1d8164d5f856c3cc275831f28448b1))
+
+## [0.65.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.65.0...v0.65.1) (2026-10-26)
+
+
+### Features
+
+* **sdk:** add build sandbox pullFile downloads ([5b8fc1a](https://github.com/limrun-inc/typescript-sdk/commit/5b8fc1ad2bfe358f74d8b0321a513d4431b3faa8))
+* **sdk:** stream build sandbox files to local paths ([376936e](https://github.com/limrun-inc/typescript-sdk/commit/376936ea43a9f4cff118729d8d5d475bb1446cfb))
+
+
+### Chores
+
+* **cli:** release 0.47.0 with concurrent recordings ([#563](https://github.com/limrun-inc/typescript-sdk/issues/563)) ([3d453f4](https://github.com/limrun-inc/typescript-sdk/commit/3d453f48db43ebbadc50e0130d8a22252e681dc4))
+
 ## [0.65.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.64.2...v0.65.0) (2026-10-22)
 
 

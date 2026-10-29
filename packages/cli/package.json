@@ -1,6 +1,6 @@
 {
   "name": "lim",
-  "version": "0.47.0",
+  "version": "0.49.0",
   "description": "Use remote XCode, Gradle, iOS Simulator, Android Emulator and more to build and test apps from Linux, Windows or macOS.",
   "bin": {
     "lim": "./bin/run.js",
@@ -26,7 +26,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@limrun/api": "0.65.0",
+    "@limrun/api": "0.67.0",
     "@oclif/core": "^4",
     "cli-progress": "^3.12.0",
     "cli-table3": "^0.6.5",
@@ -70,7 +70,7 @@
         "description": "Upload, download, list, inspect, and delete files that can be used by iOS & Android as pre-installed apps: push, pull, list, delete"
       },
       "gradle": {
-        "description": "Build Android projects on cloud Gradle sandboxes: create, list, get, delete, sync, build, run, logs, use, tools"
+        "description": "Build Android projects on cloud Gradle sandboxes: create, list, get, delete, sync, build, run, pull-file, logs, use, tools"
       },
       "ios": {
         "description": "Execute any task on remote iOS Simulators: create, list, get, delete, attach-xcode, info, fold, list-apps, launch-app, terminate-app, app-log, syslog, sync, screenshot, tap, tap-element, element-tree, type, press-key, toggle-keyboard, scroll, open-url, clipboard, defaults, notify, proxy, ca, install-app, keychain, record, camera, microphone, perform, ls, push-file, pull-file, delete-file, simctl, cp, xcrun, xcodebuild, lsof, reverse, tunnel"
@@ -94,7 +94,7 @@
         "description": "Manage and run private tunnels that instances name at create time: create, list, update, rotate, delete, run"
       },
       "xcode": {
-        "description": "Execute any task on remote XCode sandboxes: create, list, get, delete, sync, build, test, run, use, tools, rbe, attach-simulator, version"
+        "description": "Execute any task on remote XCode sandboxes: create, list, get, delete, sync, build, test, run, pull-file, use, tools, rbe, attach-simulator, version"
       },
       "bazel": {
         "description": "Build with Bazel on Limrun's build plane: setup"
@@ -115,6 +115,6 @@
     "JSON_OUTPUT.md"
   ],
   "resolutions": {
-    "@limrun/api/undici": "7.29.1"
+    "@limrun/api/undici": "7.30.1"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@limrun/api",
-  "version": "0.65.0",
+  "version": "0.67.0",
   "description": "The official TypeScript library for the Limrun API",
   "author": "Limrun <contact@limrun.com>",
   "types": "dist/index.d.ts",
@@ -37,7 +37,7 @@
     "https-proxy-agent": "7.0.6",
     "ignore": "^7.0.5",
     "proxy-from-env": "^2.1.0",
-    "undici": "7.29.1",
+    "undici": "7.30.1",
     "ws": "^8.21.1",
     "yauzl": "^3.4.0"
   },

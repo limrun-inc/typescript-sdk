@@ -138,6 +138,12 @@ export namespace XcodeInstanceCreateParams {
   }
 
   export interface Spec {
+    /** Inline instance role. Omit for the organization's compatibility default. */
+    role?: {
+      /** Asset permissions delegated by the creator. An empty array grants nothing. */
+      permissions: Array<string>;
+    };
+
     /**
      * ClientLocation takes precedence over ClientIP regardless of clue order. Without
      * either clue, routing uses Cloudflare visitor coordinates, then its client IP.
