@@ -145,12 +145,19 @@ test.each(['xcode', 'gradle'] as const)(
 );
 
 test('CLI upload grants preserve literal names and deduplicate without changing customer permissions', () => {
-  const permission = ['asset:name/input.zip:read', 'asset:name/release/a:*.apk:upload'];
+  const permission = ['asset:name/input.zip:read', 'asset:name/release/a:42%.apk:upload'];
   const before = [...permission];
-  expect(delegatedPermissionsFromFlags({ upload: 'release/a:*.apk', permission })).toEqual([
+  expect(delegatedPermissionsFromFlags({ upload: 'release/a:42%.apk', permission })).toEqual([
     ...permission,
-    'asset:name/release/a:*.apk:create',
-    'asset:name/release/a:*.apk:update',
+    'asset:name/release/a:42%.apk:create',
+    'asset:name/release/a:42%.apk:update',
   ]);
   expect(permission).toEqual(before);
+});
+
+// Automatic grants must not broaden a literal upload name into a pattern.
+test.each(['upload', 'auto-upload'])('%s refuses wildcard characters in automatic grants', (flag) => {
+  for (const name of ['releases/app-*.apk', 'releases/app-?.apk']) {
+    expect(() => delegatedPermissionsFromFlags({ [flag]: name })).toThrow('automatic permissions');
+  }
 });

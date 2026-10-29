@@ -34,6 +34,7 @@ test.each(['iosInstances', 'androidInstances', 'xcodeInstances', 'gradleInstance
       spec: {
         role: {
           permissions: [
+            'asset:name/releases/app-*.apk:upload',
             'asset:name/input.zip:read',
             'asset:name/releases:prod/app%2F.apk:create',
             'asset:name/releases:prod/app%2F.apk:upload',
@@ -47,6 +48,7 @@ test.each(['iosInstances', 'androidInstances', 'xcodeInstances', 'gradleInstance
       spec: {
         role: {
           permissions: [
+            'asset:name/releases/app-*.apk:upload',
             'asset:name/input.zip:read',
             'asset:name/releases:prod/app%2F.apk:create',
             'asset:name/releases:prod/app%2F.apk:upload',

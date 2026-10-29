@@ -3,6 +3,10 @@ export function delegatedPermissionsFromFlags(flags: Record<string, unknown>): s
   const provided = flags['permission'] as string[] | undefined;
   const name = flags['upload'] ?? flags['auto-upload'];
   if (typeof name === 'string' && name) {
+    if (/[*?]/.test(name))
+      throw new Error(
+        'Upload names must not contain * or ? because automatic permissions would grant a pattern.',
+      );
     if (flags['signed-upload-url']) throw new Error('Use either --upload or --signed-upload-url, not both.');
     const target = `name/${name}`;
     // Named builds create the asset if absent and update its default expiry.
