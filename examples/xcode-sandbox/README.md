@@ -26,7 +26,10 @@ Get an API key from [Limrun Console](https://console.limrun.com)
 export LIM_API_KEY=<lim token from Console>
 ```
 
+Build the SDK from this checkout, then install the example dependencies:
+
 ```bash
+(cd ../.. && yarn install --ignore-scripts && yarn build)
 yarn install
 ```
 
@@ -49,8 +52,20 @@ curl http://localhost:3000/xcodebuild
 Trigger a real device build and get a signed download URL for the IPA:
 
 ```bash
-curl "http://localhost:3000/xcodebuild?sdk=iphoneos&assetName=device-build.ipa"
+curl "http://localhost:3000/xcodebuild?sdk=iphoneos&target=name/xcode-example/device-build.ipa"
 ```
+
+The instance receives explicit `spec.role.permissions` for creating, uploading,
+and updating assets under `xcode-example/`. The caller needs `asset:*:create`,
+`asset:*:upload`, and `asset:*:update` (or broader grants) to delegate these name
+patterns. Every build sends a concrete `upload.target`, such as
+`name/xcode-example/device-build.ipa`; the permission pattern does not choose the
+upload destination. Names are literal: do not percent-encode the target passed to
+the SDK. Normal URL query escaping still applies to the HTTP example above.
+
+The example fetches the download URL afterward using the caller's asset read
+permission. The workload itself receives no read or delete permission. For a
+single allowed output, replace each `xcode-example/*` grant with that exact name.
 
 > Tip: Use `attachSimulator()` for hot-reloading builds on a simulator for fast
 > iteration.

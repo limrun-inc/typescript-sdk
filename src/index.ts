@@ -226,3 +226,5 @@ export {
   UnprocessableEntityError,
 } from './core/error';
 export { isDirectInstanceHttpError, type DirectInstanceHttpError } from './internal/direct-instance-errors';
+
+export { type AssetUpload, type BuildUpload } from './lib/asset-permissions';

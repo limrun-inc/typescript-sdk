@@ -250,23 +250,22 @@ describe('uploadLatestRbeBuild', () => {
     });
   });
 
-  test('assetName form mints the URL via assets.getOrCreate and returns its signedDownloadUrl', async () => {
+  test('target form delegates upload authorization to the workload', async () => {
     const fetchMock = jest.fn(
       async (_input: RequestInfo, _init?: RequestInit) => new Response(uploadOk, { status: 200 }),
     );
     nodeProxyTransport.fetchLongRequest = fetchMock;
     const { xcode, getOrCreate } = await uploadClient();
     await expect(
-      xcode.uploadLatestRbeBuild({ assetName: 'preview/acme/app/pr-7-ios', ttl: '7d' }),
+      xcode.uploadLatestRbeBuild({ target: 'name/preview/acme/app/pr-7-ios', ttl: '168h' }),
     ).resolves.toEqual({
       appName: 'MyApp.app',
       bundleId: 'com.example.myapp',
-      signedDownloadUrl: 'https://bucket.t3.storage.dev/get?sig=def',
     });
-    expect(getOrCreate).toHaveBeenCalledWith({ name: 'preview/acme/app/pr-7-ios', ttl: '7d' });
+    expect(getOrCreate).not.toHaveBeenCalled();
     const [, init] = fetchMock.mock.calls[0]!;
     expect(JSON.parse(String(init?.body))).toEqual({
-      signedUploadUrl: 'https://bucket.t3.storage.dev/put?sig=abc',
+      assetUpload: { target: 'name/preview/acme/app/pr-7-ios', ttl: '168h' },
     });
   });
 
