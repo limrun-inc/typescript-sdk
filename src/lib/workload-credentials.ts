@@ -1,3 +1,5 @@
+import type { MergedRequestInit } from '../internal/types';
+
 /** Refreshes workload credentials without retaining the projected JWT. */
 export class WorkloadCredentials {
   private cached?: { token: string; expires: number };
@@ -7,6 +9,7 @@ export class WorkloadCredentials {
     private endpoint: string,
     private tokenFile: string,
     private fetcher: typeof fetch,
+    private fetchOptions?: MergedRequestInit,
   ) {}
 
   async get(): Promise<string> {
@@ -22,6 +25,7 @@ export class WorkloadCredentials {
     const { readFile } = await import('node:fs/promises');
     const jwt = (await readFile(this.tokenFile, 'utf8')).trim();
     const response = await this.fetcher(`${this.endpoint.replace(/\/$/, '')}/v1/access_tokens`, {
+      ...(this.fetchOptions as RequestInit),
       method: 'POST',
       headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({}),

@@ -262,7 +262,12 @@ export class Limrun {
 
     this.apiKey = apiKey;
     if (!apiKey && tokenFile)
-      this.workloadCredentials = new WorkloadCredentials(this.baseURL, tokenFile, this.fetch);
+      this.workloadCredentials = new WorkloadCredentials(
+        this.baseURL,
+        tokenFile,
+        this.fetch,
+        this.fetchOptions,
+      );
   }
 
   /**
