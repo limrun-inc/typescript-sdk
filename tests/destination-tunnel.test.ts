@@ -71,9 +71,9 @@ describe('destination tunnel wire contract', () => {
   test('pins the canonical limrun protocol source', () => {
     expect(upstream).toEqual({
       repository: 'limrun-inc/limrun',
-      commit: '539d5209319162e65c843b935ef637278f384594',
+      commit: '925d3d37abec2829e2cc221779a36d27c7c43eb7',
       path: 'design/destination-tunnel/v1',
-      messagesSha256: '9015da62e56696ee120427d8357cdc0b415532c335929f8bc27c46e680b75553',
+      messagesSha256: 'b9273bab71ac41d22cf154a56f2c6c2742198a621647ad15dbb0c84da9d30c38',
       binarySha256: 'e6da913a0ff85a3402f09de6cbbb18d4f9b2e76007ca48b85f4d35b66810da7d',
     });
     // The SDK fixture extends the shared vectors with TypeScript-specific
