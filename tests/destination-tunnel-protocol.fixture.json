@@ -835,6 +835,37 @@
       }
     },
     {
+      "name": "client start drops the default inactivity reset",
+      "direction": "client",
+      "input": {
+        "type": "start",
+        "version": 1,
+        "window": 1048576,
+        "selectors": ["localhost:3000"],
+        "inspection": {
+          "enabled": false,
+          "captureBodies": false,
+          "maxBodyBytes": 10485760,
+          "persist": false,
+          "ttlSeconds": 259200
+        },
+        "resetsInactivityTimeout": true
+      },
+      "decoded": {
+        "type": "start",
+        "version": 1,
+        "window": 1048576,
+        "selectors": ["localhost:3000"],
+        "inspection": {
+          "enabled": false,
+          "captureBodies": false,
+          "maxBodyBytes": 10485760,
+          "persist": false,
+          "ttlSeconds": 259200
+        }
+      }
+    },
+    {
       "name": "server ready ignores unknown field",
       "direction": "server",
       "input": {
