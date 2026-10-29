@@ -21,6 +21,29 @@ logo is omitted. Pass your own images through the `assets` prop if you want fram
 `onConnectionStateChange` reports `connecting`, `connected`, `reconnecting`, `failed`, and
 `terminated` so a host can show status text without tracking the retry logic.
 
+## Playback buffering
+
+`jitterBufferTargetMs` sets a preferred browser jitter buffer duration for incoming
+audio and video on Android and iOS streams. It accepts finite numbers from 0 to
+4000 milliseconds. For example:
+
+```tsx
+<RemoteControl url={instanceWebsocketUrl} token={instanceToken} jitterBufferTargetMs={50} />
+```
+
+The default is the browser's automatic buffering. Changing the prop updates active
+receivers without reconnecting and applies to new receivers after a reconnect.
+Remove the prop or set it to `null` to restore automatic buffering. Browsers without
+`RTCRtpReceiver.jitterBufferTarget` ignore the prop. Invalid values produce a console
+warning and leave the receiver's previous target unchanged.
+
+The target is a preference, not a maximum buffer size or an end-to-end latency
+guarantee. A lower value can reduce playback delay but increase dropped frames,
+freezes, or audio interruptions on unstable connections. The browser can use a
+different duration and can adjust gradually. Compare first-frame latency after idle,
+steady playback, and drops or freezes on your target browsers and networks before
+choosing a value. The example's 50 ms is not a recommended default.
+
 ## Simulated cameras
 
 `RemoteControl` responds automatically when an app in the instance opens,
