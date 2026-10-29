@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.67.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.67.0...v0.67.1) (2026-10-29)
+
+
+### Features
+
+* **cli:** assign delegated permissions for workload uploads ([6f36ec3](https://github.com/limrun-inc/typescript-sdk/commit/6f36ec31a2e44d84baed9782f8a84bf882f552b3))
+
+
+### Bug Fixes
+
+* **sdk:** expose the access-token revocation response type and clarify legacy token compatibility ([#571](https://github.com/limrun-inc/typescript-sdk/pull/571)).
+
+* **cli:** prevent create reuse from skipping requested permissions ([7462435](https://github.com/limrun-inc/typescript-sdk/commit/74624357daab6e89f483eb4a1f0ed0453ce1ce5a))
+
+
+### Chores
+
+* **cli:** prepare 0.49.0 with published SDK 0.67.0 ([5caec44](https://github.com/limrun-inc/typescript-sdk/commit/5caec449ff14e2aeae5442afcfdfde2c2842a500))
+
 ## [0.67.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.66.0...v0.67.0) (2026-10-29)
 
 
