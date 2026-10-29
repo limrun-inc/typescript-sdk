@@ -73,6 +73,13 @@ describe('Android instance tunnel inspection', () => {
           inspection: { enabled: true, captureBodies: true, maxBodyBytes: 4096 },
         }),
       );
+
+      await client.startTunnel({ selectors: ['localhost:8081'], resetsInactivityTimeout: false });
+      expect(jest.mocked(startDestinationTcpTunnel)).toHaveBeenLastCalledWith(
+        expect.any(String),
+        'instance-token',
+        expect.objectContaining({ resetsInactivityTimeout: false }),
+      );
     } finally {
       client.disconnect();
     }
