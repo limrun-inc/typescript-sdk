@@ -1,10 +1,7 @@
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
-import {
-  DEFAULT_KEYCHAIN_ASSET_NAME,
-  resolveKeychainEncryptionKey,
-} from '../../../lib/keychain-encryption-key';
+import { DEFAULT_KEYCHAIN_ASSET_NAME } from '../../../lib/keychain';
 
 type KeychainAsset = {
   id: string;
@@ -16,13 +13,12 @@ type KeychainAsset = {
 export default class IosKeychainRestore extends BaseCommand {
   static summary = 'Restore iOS keychain state from asset storage';
   static description =
-    'Resolve a Keychain asset by name, then ask the target iOS simulator to download and apply the keychain tar.gz. Use --asset-id to restore by asset ID.';
+    'Resolve a Keychain asset by name, then ask the target iOS simulator to download and apply the unencrypted keychain tar.gz. Use --asset-id to restore by asset ID.';
   static examples = [
     '<%= config.bin %> ios keychain restore keychain/login.tar.gz',
     '<%= config.bin %> ios keychain restore keychain/login.tar.gz --id <instance-ID>',
     '<%= config.bin %> ios keychain restore --asset-id <asset-ID>',
     '<%= config.bin %> ios keychain restore --url https://example.t3.storage.dev/... --json',
-    '<%= config.bin %> ios keychain restore keychain/login.tar.gz --encryption-key-stdin < keychain.key',
   ];
 
   static args = {
@@ -43,28 +39,11 @@ export default class IosKeychainRestore extends BaseCommand {
     'asset-id': Flags.string({
       description: 'Keychain asset ID to restore instead of resolving the positional asset name.',
     }),
-    'encryption-key': Flags.string({
-      description: 'Base64/base64url 32-byte decryption key for the keychain archive.',
-    }),
-    'encryption-key-stdin': Flags.boolean({
-      description: 'Read the base64/base64url 32-byte decryption key from stdin.',
-      default: false,
-    }),
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(IosKeychainRestore);
     this.setParsedFlags(flags);
-
-    let encryptionKey: string;
-    try {
-      encryptionKey = await resolveKeychainEncryptionKey({
-        encryptionKey: flags['encryption-key'],
-        encryptionKeyStdin: flags['encryption-key-stdin'],
-      });
-    } catch (error) {
-      this.error((error as Error).message);
-    }
 
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
@@ -73,7 +52,7 @@ export default class IosKeychainRestore extends BaseCommand {
       const url = flags.url ?? (await this.resolveKeychainAssetDownloadUrl(assetName, flags['asset-id']));
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        const result = await client.restoreKeychain({ url, encryptionKey });
+        const result = await client.restoreKeychain({ url });
         if (flags.json) {
           this.outputJson(result);
           return;

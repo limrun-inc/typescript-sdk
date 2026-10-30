@@ -36,6 +36,25 @@ test('omits the tunnel without --tunnel', async () => {
   expect(create).toHaveBeenCalledWith(expect.objectContaining({ spec: { role: { permissions: [] } } }));
 });
 
+test('restores keychain assets by name and URL without an encryption key', async () => {
+  const { command, create } = setup({
+    keychain: ['keychain/login.tar.gz'],
+    'keychain-url': ['https://assets.example/keychain.tar.gz'],
+  });
+  await command.run();
+  expect(create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      spec: {
+        role: { permissions: [] },
+        initialAssets: [
+          { kind: 'Keychain', source: 'AssetName', assetName: 'keychain/login.tar.gz' },
+          { kind: 'Keychain', source: 'URL', url: 'https://assets.example/keychain.tar.gz' },
+        ],
+      },
+    }),
+  );
+});
+
 test('--os-version asks for the iOS major version with an OSVersion clue', async () => {
   const { command, create } = setup({ 'os-version': '27' });
   await command.run();

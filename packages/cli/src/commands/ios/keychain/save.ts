@@ -2,11 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import prompts from 'prompts';
 import { BaseCommand } from '../../../base-command';
 import { getIosInstanceClient } from '../../../lib/instance-client-factory';
-import {
-  DEFAULT_KEYCHAIN_ASSET_NAME,
-  generateKeychainEncryptionKey,
-  resolveKeychainEncryptionKey,
-} from '../../../lib/keychain-encryption-key';
+import { DEFAULT_KEYCHAIN_ASSET_NAME } from '../../../lib/keychain';
 
 type KeychainAsset = {
   id?: string;
@@ -17,14 +13,12 @@ type KeychainAsset = {
 export default class IosKeychainSave extends BaseCommand {
   static summary = 'Save iOS keychain state to asset storage';
   static description =
-    'Create a Keychain asset or confirm overwriting an existing one, ask the target iOS simulator to upload its keychain tar.gz to asset storage, and print the asset ID.';
+    'Create a Keychain asset or confirm overwriting an existing one, ask the target iOS simulator to upload its unencrypted keychain tar.gz to asset storage, and print the asset ID.';
   static examples = [
     '<%= config.bin %> ios keychain save',
     '<%= config.bin %> ios keychain save keychain/login.tar.gz',
     '<%= config.bin %> ios keychain save keychain/login.tar.gz --ttl 24h --json',
     '<%= config.bin %> ios keychain save keychain/login.tar.gz --yes',
-    '<%= config.bin %> ios keychain generate-key > keychain.key',
-    '<%= config.bin %> ios keychain save keychain/login.tar.gz --encryption-key-stdin < keychain.key',
   ];
 
   static args = {
@@ -45,14 +39,6 @@ export default class IosKeychainSave extends BaseCommand {
     ttl: Flags.string({
       description: 'Time-to-live as a Go duration (e.g. "24h", min 1m). Defaults to no expiry.',
     }),
-    'encryption-key': Flags.string({
-      description:
-        'Base64/base64url 32-byte encryption key for the saved keychain archive. Generated and printed if omitted.',
-    }),
-    'encryption-key-stdin': Flags.boolean({
-      description: 'Read the base64/base64url 32-byte encryption key from stdin.',
-      default: false,
-    }),
     yes: Flags.boolean({
       description: 'Overwrite an existing keychain asset without prompting.',
       default: false,
@@ -64,22 +50,6 @@ export default class IosKeychainSave extends BaseCommand {
     this.setParsedFlags(flags);
 
     const assetName = args.asset_name ?? flags['asset-name'] ?? DEFAULT_KEYCHAIN_ASSET_NAME;
-    let encryptionKey: string;
-    let generatedEncryptionKey = false;
-    try {
-      if (flags['encryption-key'] !== undefined || flags['encryption-key-stdin']) {
-        encryptionKey = await resolveKeychainEncryptionKey({
-          encryptionKey: flags['encryption-key'],
-          encryptionKeyStdin: flags['encryption-key-stdin'],
-        });
-      } else {
-        encryptionKey = generateKeychainEncryptionKey();
-        generatedEncryptionKey = true;
-      }
-    } catch (error) {
-      this.error((error as Error).message);
-    }
-
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const existingAssets = await this.listExistingKeychainAssets(assetName);
@@ -100,13 +70,13 @@ export default class IosKeychainSave extends BaseCommand {
 
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        await client.saveKeychain({ url: asset.signedUploadUrl, encryptionKey });
+        await client.saveKeychain({ url: asset.signedUploadUrl });
       } finally {
         disconnect();
       }
 
       if (flags.json) {
-        this.outputJson(generatedEncryptionKey ? { ...asset, encryptionKey } : asset);
+        this.outputJson(asset);
         return;
       }
       this.output(`ID: ${asset.id}`);
@@ -114,14 +84,7 @@ export default class IosKeychainSave extends BaseCommand {
       if (asset.expiresAt) {
         this.output(`Expires At: ${asset.expiresAt}`);
       }
-      if (generatedEncryptionKey) {
-        this.output(`Auto-generated the encryption key.`);
-      }
-      this.output(
-        `You can restore with the following command: \n\n$ lim ios keychain restore ${
-          asset.name
-        } --encryption-key ${generatedEncryptionKey ? encryptionKey : '<key>'}`,
-      );
+      this.output(`Restore with: lim ios keychain restore ${asset.name}`);
     });
   }
 

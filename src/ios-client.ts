@@ -933,14 +933,14 @@ export type InstanceClient = {
   installApp: (url: string, options?: AppInstallationOptions) => Promise<AppInstallationResult>;
 
   /**
-   * Save the simulator keychain and upload it to a presigned asset-storage URL.
+   * Save the simulator keychain as an unencrypted tar.gz archive at a presigned asset-storage URL.
    */
-  saveKeychain: (options: { url: string; encryptionKey: string }) => Promise<void>;
+  saveKeychain: (options: { url: string }) => Promise<void>;
 
   /**
-   * Download saved keychain state from a presigned asset-storage URL and apply it.
+   * Download an unencrypted keychain tar.gz archive from a presigned asset-storage URL and apply it.
    */
-  restoreKeychain: (options: { url: string; encryptionKey: string }) => Promise<KeychainRestoreResult>;
+  restoreKeychain: (options: { url: string }) => Promise<KeychainRestoreResult>;
 
   /**
    * Set the device orientation
@@ -1964,7 +1964,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const redactRequestForDebug = (request: Record<string, unknown>): Record<string, unknown> => {
       if (request['type'] !== 'launchApp') {
-        return 'encryptionKey' in request ? { ...request, encryptionKey: '[REDACTED]' } : request;
+        return request;
       }
 
       const runtime = request['runtime'] as LaunchAppRuntime | undefined;
@@ -2712,22 +2712,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       );
     };
 
-    const saveKeychain = async (keychainOptions: { url: string; encryptionKey: string }): Promise<void> => {
-      await sendRequest<void>(
-        'exportKeychain',
-        { url: keychainOptions.url, encryptionKey: keychainOptions.encryptionKey },
-        undefined,
-        120_000,
-      );
+    const saveKeychain = async (keychainOptions: { url: string }): Promise<void> => {
+      if ('encryptionKey' in keychainOptions)
+        throw new Error('Keychain encryption is no longer supported. Omit encryptionKey.');
+      await sendRequest<void>('exportKeychain', { url: keychainOptions.url }, undefined, 120_000);
     };
 
-    const restoreKeychain = async (keychainOptions: {
-      url: string;
-      encryptionKey: string;
-    }): Promise<KeychainRestoreResult> => {
+    const restoreKeychain = async (keychainOptions: { url: string }): Promise<KeychainRestoreResult> => {
+      if ('encryptionKey' in keychainOptions)
+        throw new Error('Keychain encryption is no longer supported. Omit encryptionKey.');
       return sendRequest<KeychainRestoreResult>(
         'importKeychain',
-        { url: keychainOptions.url, encryptionKey: keychainOptions.encryptionKey },
+        { url: keychainOptions.url },
         undefined,
         120_000,
       );

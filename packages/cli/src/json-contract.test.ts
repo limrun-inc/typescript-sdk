@@ -533,11 +533,19 @@ test('asset push preserves the API response', async () => {
   expect(JSON.parse(stdout)).toEqual(asset);
 });
 
-test('key generation returns a named base64 key', async () => {
-  await command('ios/keychain/generate-key').run();
-  const value = JSON.parse(stdout);
-  expect(Object.keys(value)).toEqual(['key']);
-  expect(Buffer.from(value.key, 'base64')).toHaveLength(32);
+test('keychain save returns the asset without an encryption key', async () => {
+  const c = command('ios/keychain/save');
+  const asset = {
+    id: 'asset_test',
+    name: 'keychain/login.tar.gz',
+    signedUploadUrl: 'https://assets.example/upload',
+  };
+  c.client.assets.list = jest.fn().mockResolvedValue([]);
+  c.client.assets.getOrCreate = jest.fn().mockResolvedValue(asset);
+  client.saveKeychain = jest.fn().mockResolvedValue(undefined);
+  await c.run();
+  expect(JSON.parse(stdout)).toEqual(asset);
+  expect(client.saveKeychain).toHaveBeenCalledWith({ url: asset.signedUploadUrl });
 });
 
 test('tunnel and asset deletion return their IDs', async () => {
