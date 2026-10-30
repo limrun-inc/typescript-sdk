@@ -322,12 +322,6 @@ export namespace IosInstanceCreateParams {
       assetName?: string;
 
       /**
-       * Base64/base64url-encoded 32-byte key used to decrypt Keychain assets. Required
-       * when kind is Keychain.
-       */
-      encryptionKey?: string;
-
-      /**
        * Launch mode specifies how to launch the app after installation.
        */
       launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
