@@ -836,13 +836,13 @@ export abstract class BaseCommand extends Command {
   /** Preserve the live role while granting the exact target requested by --upload. */
   protected async ensureUploadPermissions(id: string, name: string): Promise<void> {
     const required = delegatedPermissionsFromFlags({ upload: name })!;
-    const instances =
-      id.startsWith('sandbox_') ? this.client.xcodeInstances
-      : id.startsWith('gradle_') ? this.client.gradleInstances
-      : id.startsWith('ios_') ? this.client.iosInstances
-      : id.startsWith('android_') ? this.client.androidInstances
-      : undefined;
-    if (!instances) this.error(`Unsupported instance ID: ${id}`);
+    const resources = {
+      xcode: this.client.xcodeInstances,
+      gradle: this.client.gradleInstances,
+      ios: this.client.iosInstances,
+      android: this.client.androidInstances,
+    } as const;
+    const instances = resources[detectInstanceType(id)];
     for (let attempt = 0; attempt < 3; attempt++) {
       const { data: instance, response } = await instances.get(id).withResponse();
       const etag = response.headers.get('etag');

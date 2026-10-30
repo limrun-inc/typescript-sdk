@@ -299,3 +299,28 @@ test('duplicate stored grants cannot hide a missing upload permission', async ()
     },
   });
 });
+
+test.each(['sandbox_euna_test', 'xcode_euna_test'])(
+  'upload grants use the Xcode resource for %s',
+  async (id) => {
+    const command = new TestCommand([], {} as never);
+    Object.defineProperty(command, 'client', {
+      get: () => ({ xcodeInstances: { get: command.get, update: command.update } }),
+    });
+    await command.authorizeUpload(id, 'result.ipa');
+    expect(command.get).toHaveBeenCalledWith(id);
+    expect(command.update).toHaveBeenCalledWith(id, {
+      ifMatch: '"42"',
+      spec: {
+        role: {
+          permissions: [
+            'asset:name/input.zip:read',
+            'asset:name/result.ipa:create',
+            'asset:name/result.ipa:upload',
+            'asset:name/result.ipa:update',
+          ],
+        },
+      },
+    });
+  },
+);
