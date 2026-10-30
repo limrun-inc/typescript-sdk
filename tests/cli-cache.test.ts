@@ -82,13 +82,14 @@ describe('restore rendering', () => {
     expect(outcome.failed).toBe(false);
   });
 
-  test('a broken restore is the one outcome a caller reacts to', () => {
+  test('a broken restore reports the failure and cold fallback', () => {
     const outcome = restoreOutcome(
       cache({ restore: { phase: 'failed', reason: 'checksum', message: 'digest mismatch' } }),
       2_500,
     );
     expect(outcome.failed).toBe(true);
     expect(outcome.line).toMatch(/checksum did not match: digest mismatch/);
+    expect(outcome.line).toContain('Continuing with a cold workspace.');
   });
 
   test('the keys resolution passed over are listed with why', () => {

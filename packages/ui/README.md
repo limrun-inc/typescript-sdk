@@ -63,6 +63,17 @@ Related browser workflow packages are published separately:
 - `@limrun/device-install` handles WebUSB pairing and real-device installation.
 - `@limrun/play-auth` handles Google login and Google Play publishing.
 
+## Latency diagnostics
+
+Pass `onTrace={(message) => ...}` to receive each parsed diagnostic message
+from supported single-display iOS and Android instances. Omitting the callback leaves tracing off.
+Adding or removing it reconnects the stream; replacing the callback does not.
+Older servers keep streaming normally without diagnostics.
+
+Both platforms use the same versioned messages, input sequences, and frame records.
+See [latency diagnostics](https://docs.limrun.com/platform/embed-simulator#latency-diagnostics)
+for the event fields and measurement limits.
+
 ## Releasing
 
 This package is not part of generated SDK, hence you need to publish it manually in GitHub Actions.

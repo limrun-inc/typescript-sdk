@@ -1,4 +1,4 @@
-import { CONTROL_MSG_TYPE } from './constants';
+import { AMOTION_EVENT, CONTROL_MSG_TYPE } from './constants';
 
 export function createTouchControlMessage(
   action: number,
@@ -18,7 +18,12 @@ export function createTouchControlMessage(
   view.setUint8(offset, CONTROL_MSG_TYPE.INJECT_TOUCH_EVENT);
   offset += 1;
 
-  view.setUint8(offset, action);
+  // The wire protocol carries each pointer separately. Android adds pointer indices.
+  const wireAction =
+    action === AMOTION_EVENT.ACTION_POINTER_DOWN ? AMOTION_EVENT.ACTION_DOWN
+    : action === AMOTION_EVENT.ACTION_POINTER_UP ? AMOTION_EVENT.ACTION_UP
+    : action;
+  view.setUint8(offset, wireAction);
   offset += 1;
 
   view.setBigInt64(offset, BigInt(pointerId), true);

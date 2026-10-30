@@ -166,3 +166,32 @@ function jsonResponse(body: unknown): Response {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+test('scoped workload upload forwards target and token without presigning as the caller', async () => {
+  const calls: Array<{ input: RequestInfo; init: RequestInit | undefined }> = [];
+  const saved = nodeProxyTransport.fetch;
+  nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+    calls.push({ input, init });
+    if (String(input) === 'https://xcode.example.test/exec') return jsonResponse({ execId: 'scoped-build' });
+    throw new Error(`unexpected request: ${input}`);
+  });
+  try {
+    const client = new Limrun({ apiKey: 'caller-key' });
+    const xcode = await client.xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'instance-token',
+    });
+    await xcode.xcodebuild(
+      { scheme: 'App' },
+      { upload: { target: 'name/app.ipa', token: 'customer-scoped' } },
+    );
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0]?.init?.body as string).assetUpload).toEqual({
+      target: 'name/app.ipa',
+      token: 'customer-scoped',
+      ttl: '336h',
+    });
+  } finally {
+    nodeProxyTransport.fetch = saved;
+  }
+});

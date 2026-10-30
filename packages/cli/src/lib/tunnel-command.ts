@@ -62,6 +62,7 @@ export interface TunnelClientFacade extends TunnelManagementFacade {
     inspection: DestinationTunnelInspectionConfig;
     onInspectionEvent?: DestinationTunnelInspectionEventCallback;
     onInspectionError?: DestinationTunnelInspectionErrorCallback;
+    resetsInactivityTimeout?: boolean;
   }) => Promise<TunnelGeneration>;
 }
 
@@ -81,6 +82,7 @@ export function tunnelClientFacade(
       inspection?: Partial<DestinationTunnelInspectionConfig>;
       onInspectionEvent?: DestinationTunnelInspectionEventCallback;
       onInspectionError?: DestinationTunnelInspectionErrorCallback;
+      resetsInactivityTimeout?: boolean;
     }) => Promise<TunnelGeneration>;
     getTunnelStatus: () => Promise<DestinationTunnelStatus>;
     stopTunnel: (tunnelId: string) => Promise<void>;
@@ -96,6 +98,7 @@ export function tunnelClientFacade(
         inspection: options.inspection,
         ...(options.onInspectionEvent ? { onInspectionEvent: options.onInspectionEvent } : {}),
         ...(options.onInspectionError ? { onInspectionError: options.onInspectionError } : {}),
+        resetsInactivityTimeout: options.resetsInactivityTimeout,
       }),
     getTunnelStatus: () => client.getTunnelStatus(),
     stopTunnel: (tunnelId) => client.stopTunnel(tunnelId),
@@ -120,12 +123,17 @@ export interface TunnelCommandContext extends TunnelInspectionContext {
   verbose?: boolean;
   /** Reconnect with backoff after unexpected disconnects (Android behavior). */
   reconnect: boolean;
+  /** False asks the instance not to count tunnel traffic as activity. */
+  resetsInactivityTimeout: boolean;
   onInspectionEvent?: DestinationTunnelInspectionEventCallback;
   onInspectionError?: DestinationTunnelInspectionErrorCallback;
   connect: () => Promise<TunnelClientFacade>;
   io: TunnelCommandIO;
   sleep?: (milliseconds: number) => Promise<void>;
 }
+
+/** Per-tunnel settings parsed from the tunnel command's flags. */
+export type TunnelSettings = TunnelInspectionContext & { resetsInactivityTimeout: boolean };
 
 /** Context for status/stop flows, which never start a tunnel. */
 export interface TunnelManagementContext {
@@ -226,6 +234,7 @@ async function runTunnelLoop(
         inspection: inspection.config,
         ...(inspection.onEvent ? { onInspectionEvent: inspection.onEvent } : {}),
         ...(inspection.onError ? { onInspectionError: inspection.onError } : {}),
+        resetsInactivityTimeout: context.resetsInactivityTimeout,
       });
       backoffMs = RECONNECT_INITIAL_BACKOFF_MS;
       hooks.onReady(tunnel, reconnected);
@@ -370,6 +379,7 @@ export async function startTunnelDetached(context: TunnelCommandContext): Promis
         ...(context.harPath ? { harPath: context.harPath } : {}),
         harBodyLimit: context.harBodyLimit,
         ...(context.verbose ? { verbose: true } : {}),
+        resetsInactivityTimeout: context.resetsInactivityTimeout,
       }),
       {
         detached: true,

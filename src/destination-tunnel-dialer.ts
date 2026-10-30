@@ -72,6 +72,12 @@ export interface DestinationTcpTunnelOptions {
   window?: number;
   /** Private tunnel this session serves; the instance reports it in tunnel status. */
   name?: string;
+  /**
+   * Whether data relayed through the tunnel resets the instance's inactivity
+   * timeout. Defaults to true. Set false when the traffic does not mean anyone
+   * is using the device, such as a dev server that polls the app forever.
+   */
+  resetsInactivityTimeout?: boolean;
   logLevel?: LogLevel;
   maxConnections?: number;
   maxPendingBytesPerConnection?: number;
@@ -85,7 +91,13 @@ export interface DestinationTcpTunnelOptions {
 /** Destination tunnel options the iOS and Android instance clients accept. */
 export type DestinationTunnelStartOptions = Pick<
   DestinationTcpTunnelOptions,
-  'selectors' | 'inspection' | 'onInspectionEvent' | 'onInspectionError' | 'window' | 'logLevel'
+  | 'selectors'
+  | 'inspection'
+  | 'onInspectionEvent'
+  | 'onInspectionError'
+  | 'window'
+  | 'resetsInactivityTimeout'
+  | 'logLevel'
 >;
 
 /** The inspection every instance client starts with: on, without bodies. */
@@ -107,6 +119,9 @@ export function destinationTunnelDialOptions(
     ...(options.onInspectionEvent ? { onInspectionEvent: options.onInspectionEvent } : {}),
     ...(options.onInspectionError ? { onInspectionError: options.onInspectionError } : {}),
     ...(options.window === undefined ? {} : { window: options.window }),
+    ...(options.resetsInactivityTimeout === undefined ?
+      {}
+    : { resetsInactivityTimeout: options.resetsInactivityTimeout }),
     logLevel: options.logLevel ?? logLevel,
   };
 }
@@ -812,6 +827,7 @@ export async function startDestinationTcpTunnel(
         inspection,
         window: creditWindow,
         ...(options.name === undefined ? {} : { name: options.name }),
+        resetsInactivityTimeout: options.resetsInactivityTimeout ?? true,
       });
       pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {

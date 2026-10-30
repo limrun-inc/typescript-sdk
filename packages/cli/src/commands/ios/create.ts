@@ -1,3 +1,4 @@
+import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
 import { snapshotFlags } from '../../lib/cache-flags';
 import { parseSnapshotConfig, wantsRestore } from '../../lib/cache';
@@ -58,6 +59,7 @@ export default class IosCreate extends BaseCommand {
   static flags = {
     ...snapshotFlags,
     ...BaseCommand.baseFlags,
+    ...BaseCommand.permissionFlags,
     rm: Flags.boolean({
       description: 'Delete the instance automatically when this CLI process exits',
       default: false,
@@ -100,7 +102,7 @@ export default class IosCreate extends BaseCommand {
       options: ['26', '27'],
     }),
     'reuse-if-exists': Flags.boolean({
-      description: 'Reuse an existing matching instance instead of creating a new one',
+      description: 'Reuse an existing matching instance unless --permission requests a fresh role',
       default: false,
     }),
     'install-asset': Flags.string({
@@ -232,10 +234,11 @@ export default class IosCreate extends BaseCommand {
         this.info(`Successfully uploaded ${flags.install.length} file(s)`);
       }
 
+      const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: IosInstanceCreateParams = {
         wait: true,
-        reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: {},
+        reuseIfExists: !delegatedPermissions && flags['reuse-if-exists'] ? true : undefined,
+        spec: { role: { permissions: delegatedPermissions ?? [] } },
       };
 
       const appAssets = [
@@ -373,9 +376,10 @@ export default class IosCreate extends BaseCommand {
         try {
           createdXcode = await this.client.xcodeInstances.create({
             wait: true,
-            reuseIfExists: flags['reuse-if-exists'] || undefined,
+            reuseIfExists: !delegatedPermissions && flags['reuse-if-exists'] ? true : undefined,
             ...(params.metadata ? { metadata: params.metadata } : {}),
             spec: {
+              role: { permissions: delegatedPermissions ?? [] },
               ...(cache ? { cache } : {}),
               ...(flags.region ? { region: flags.region } : {}),
               ...(flags.jurisdiction ? { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' } : {}),
@@ -385,8 +389,7 @@ export default class IosCreate extends BaseCommand {
           });
           registerCreatedInstance(createdXcode);
           if (wantsRestore(cache)) {
-            const xcodeId = createdXcode.metadata.id;
-            await this.awaitCacheRestore(xcodeId, () => this.client.xcodeInstances.delete(xcodeId));
+            await this.awaitCacheRestore(createdXcode.metadata.id);
           }
           const xcodeClient = await this.client.xcodeInstances.createClient({
             instance: createdXcode,

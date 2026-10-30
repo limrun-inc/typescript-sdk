@@ -6,6 +6,7 @@ import {
   readArray,
   readBoolean,
   readInteger,
+  readOptionalBoolean,
   readOptionalNonNegativeInteger,
   readOptionalString,
   readRecord,
@@ -138,6 +139,8 @@ export type DestinationTunnelClientMessage =
       window: number;
       /** Private tunnel this session serves. The instance only echoes it in status. */
       name?: string;
+      /** Whether relayed data resets the instance's inactivity timeout. Absent means true. */
+      resetsInactivityTimeout?: boolean;
     }
   | {
       type: 'openOk';
@@ -464,6 +467,7 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
         }),
       );
       const inspection = readInspectionConfig(record);
+      const { resetsInactivityTimeout } = readOptionalBoolean(record, 'resetsInactivityTimeout');
       return JSON.stringify({
         type,
         version,
@@ -471,6 +475,8 @@ export function encodeDestinationTunnelClientMessage(message: DestinationTunnelC
         inspection,
         window: readWindow(record),
         ...readOptionalString(record, 'name'),
+        // Only the opt-out goes on the wire, so default frames match older servers.
+        ...(resetsInactivityTimeout === false ? { resetsInactivityTimeout } : {}),
       });
     }
     case 'openOk':

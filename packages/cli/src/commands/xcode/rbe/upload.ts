@@ -70,7 +70,7 @@ export default class XcodeRbeUpload extends BaseCommand {
     await this.withAuth(async () => {
       const client = await this.resolveXcodeClient(await this.resolveXcodeTarget(info.instanceId));
       const result = await client.uploadLatestRbeBuild({
-        assetName: args.name,
+        target: `name/${args.name}`,
         ...(flags.ttl && { ttl: flags.ttl }),
       });
       if (this.isJsonEnabled()) {

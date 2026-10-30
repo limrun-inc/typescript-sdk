@@ -1,3 +1,4 @@
+import type { AssetUpload } from './lib/asset-permissions';
 /**
  * Client for executing commands on limbuild server with streaming output.
  *
@@ -111,6 +112,7 @@ export type XcodeBuildExecRequest = {
   gitInit?: boolean;
   /** How xcodebuild stdout is processed before streaming. Defaults to 'xcbeautify'. */
   logProcessor?: 'xcbeautify' | 'none';
+  assetUpload?: AssetUpload;
   signedUploadUrl?: string;
   /**
    * ID of the Limrun asset signedUploadUrl targets, when it was minted from
@@ -208,6 +210,7 @@ export type GradleBuildExecRequest = {
   reactNative?: GradleReactNativeConfig;
   signing?: GradleSigningConfig;
   playstore?: GradlePlaystoreConfig;
+  assetUpload?: AssetUpload;
   signedUploadUrl?: string;
   webhook?: WebhookConfig;
   additionalMetadata?: {
