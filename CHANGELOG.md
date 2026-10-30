@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.68.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.68.0...v0.68.1) (2026-10-30)
+
+
+### Features
+
+* **sdk:** allow conditional instance label updates ([041ed31](https://github.com/limrun-inc/typescript-sdk/commit/041ed31a4ad3d4c73f832fb3b153ace9554a3a32))
+* support live instance labels and permissions ([#600](https://github.com/limrun-inc/typescript-sdk/issues/600)) ([49db827](https://github.com/limrun-inc/typescript-sdk/commit/49db8270f46885057cb1674718d86b545503603a))
+* **ui:** add optional playback jitter buffer target ([#587](https://github.com/limrun-inc/typescript-sdk/issues/587)) ([ba6c8bd](https://github.com/limrun-inc/typescript-sdk/commit/ba6c8bda68a9adfd0e9f170812cd045db26bbe17))
+
+
+### Chores
+
+* **cli:** release 0.50.0 on SDK 0.68.0 ([1ba6d65](https://github.com/limrun-inc/typescript-sdk/commit/1ba6d6543711a3bfba9cf0f5facbcd0f1c1342b7))
+
+
+### Documentation
+
+* **sdk:** keep live update guidance in customer docs ([ccdeb4c](https://github.com/limrun-inc/typescript-sdk/commit/ccdeb4c1fc32ed994ac291dbadcd8d8e547c2112))
+
 ## [0.68.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.67.1...v0.68.0) (2026-10-30)
 
 
