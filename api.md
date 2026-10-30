@@ -94,6 +94,22 @@ Methods:
 - <code title="get /v1/analytics">client.analytics.<a href="./src/resources/analytics.ts">get</a>({ ...params }) -> AnalyticsResponse</code>
 - <code title="get /v1/analytics/instances">client.analytics.<a href="./src/resources/analytics.ts">getInstances</a>({ ...params }) -> AnalyticsInstancesResponse</code>
 
+# AccessTokens
+
+Types:
+
+```ts
+import { AccessToken, AccessTokenCreateParams } from '@limrun/api/resources/access-tokens';
+```
+
+Methods:
+
+- `client.accessTokens.create({ permissions, ttlSeconds }) -> AccessToken` — `POST /v1/access_tokens`
+- `client.accessTokens.revoke(id) -> AccessTokenRevokeResponse` — `DELETE /v1/access_tokens/{id}`
+
+`scopedTokens` remains available for compatibility and continues to call the legacy URL.
+API keys (`apiKey`, `LIM_API_KEY`) remain valid. Both are sent using Bearer authentication.
+
 # ScopedTokens
 
 Types:

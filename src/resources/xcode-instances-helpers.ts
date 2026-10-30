@@ -1,4 +1,5 @@
 import { pullBuildFile } from '../internal/build-pull-file';
+import { normalizeAssetUpload, type BuildUpload } from '../lib/asset-permissions';
 import {
   XcodeInstances as GeneratedXcodeInstances,
   type XcodeInstance,
@@ -48,8 +49,6 @@ import {
   type BuildRunOptions,
   createDaemonLogger,
   deriveBasisCache,
-  mintAssetUploadUrls,
-  type AssetUploadOptions,
   type BuildLog,
   type LogLevel,
   type SyncResult,
@@ -238,25 +237,7 @@ export type ReactNativeBuildConfig = {
 };
 
 export type XcodeBuildOptions = {
-  upload?:
-    | {
-        assetName: string;
-        /**
-         * Asset TTL as a Go duration (e.g. "24h", "30m"; "1d" is invalid),
-         * forwarded to assets.getOrCreate. Defaults to 336h (14 days): each
-         * build upload without an explicit ttl pushes the asset's expiry to
-         * 14 days from that upload.
-         */
-        ttl?: string;
-        /**
-         * App metadata to record on the asset up front. limbuild extracts
-         * the same metadata from the built bundle after the build and
-         * overwrites whatever it found; values set here survive only for
-         * fields the bundle doesn't declare (e.g. a deep link scheme).
-         */
-        uploadOptions?: AssetUploadOptions;
-      }
-    | { signedUploadUrl: string };
+  upload?: BuildUpload;
   signing?: XcodeSigningConfig;
   cloudSigning?: XcodeCloudSigningConfig;
   /**
@@ -457,32 +438,14 @@ export type RbeInstallResult = {
   installDurationMs?: number;
 };
 
-export type RbeUploadOptions =
-  | {
-      /** Upload as a named asset: the SDK mints the presigned upload URL via assets.getOrCreate. */
-      assetName: string;
-      /**
-       * Optional asset TTL as a Go duration (e.g. "24h", "30m"; "1d" is
-       * invalid), forwarded to assets.getOrCreate. Defaults to 336h (14
-       * days): each upload without an explicit ttl pushes the asset's
-       * expiry to 14 days from that upload.
-       */
-      ttl?: string;
-      signedUploadUrl?: never;
-    }
-  | {
-      /** Upload to a caller-minted presigned Limrun asset storage URL. */
-      signedUploadUrl: string;
-      assetName?: never;
-      ttl?: never;
-    };
+export type RbeUploadOptions = BuildUpload;
 
 export type RbeUploadResult = {
   /** The .app bundle name of the uploaded build; it is the root directory of the uploaded tar.gz. */
   appName: string;
   /** CFBundleIdentifier of the uploaded app, when known. */
   bundleId?: string;
-  /** Presigned download URL of the asset; present when uploading by assetName. */
+  /** @deprecated Target uploads do not return a download URL. Request one separately with read permission. */
   signedDownloadUrl?: string;
 };
 
@@ -958,7 +921,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       iosInstanceId: string;
       simulator: IosInstance;
     }> => {
-      const simulator = await client.iosInstances.create({ wait: true });
+      const simulator = await client.iosInstances.create({ wait: true, spec: { role: { permissions: [] } } });
       // The sim exists from here; if attach fails, delete it so we never leak an
       // orphan the caller can't reap.
       try {
@@ -1064,25 +1027,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.onXctestEvent && { onXctestEvent: options.onXctestEvent }),
         };
 
-        if (options?.upload && 'assetName' in options.upload) {
-          const requestPromise = mintAssetUploadUrls(
-            client.assets,
-            options.upload.assetName,
-            options.upload.ttl,
-            options.upload.uploadOptions,
-          ).then((asset) => {
-            request.signedUploadUrl = asset.signedUploadUrl;
-            // Lets limbuild record the built app's metadata on the asset.
-            request.assetId = asset.id;
-            request.additionalMetadata = { signedDownloadUrl: asset.signedDownloadUrl };
-            return request;
-          });
-          return exec(requestPromise, execOptions);
-        }
-
-        if (options?.upload && 'signedUploadUrl' in options.upload) {
-          request.signedUploadUrl = options.upload.signedUploadUrl;
-        }
+        if (options?.upload) Object.assign(request, normalizeAssetUpload(options.upload));
 
         return exec(request, execOptions);
       },
@@ -1176,18 +1121,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       },
 
       async uploadLatestRbeBuild(opts: RbeUploadOptions): Promise<RbeUploadResult> {
-        let signedUploadUrl: string;
-        let signedDownloadUrl: string | undefined;
-        if (opts.assetName !== undefined) {
-          if (!opts.assetName) {
-            throw new Error('assetName must not be empty');
-          }
-          const asset = await mintAssetUploadUrls(client.assets, opts.assetName, opts.ttl);
-          signedUploadUrl = asset.signedUploadUrl;
-          signedDownloadUrl = asset.signedDownloadUrl;
-        } else {
-          signedUploadUrl = opts.signedUploadUrl;
-        }
+        const body = normalizeAssetUpload(opts);
 
         const post = async (): Promise<{ appName: string; bundleId?: string }> => {
           // The daemon uploads to asset storage before responding, so this
@@ -1198,7 +1132,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ signedUploadUrl }),
+            body: JSON.stringify(body),
           });
           if (res.status === 404) {
             // A vanished instance and a limbuild that predates the endpoint
@@ -1221,7 +1155,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           isTransientError(err) ||
           (isDirectInstanceHttpError(err, 400) && /no successful RBE app build/i.test(err.body));
         const result = await retryTransient(post, { retryOn });
-        return { ...result, ...(signedDownloadUrl && { signedDownloadUrl }) };
+        return result;
       },
 
       async getActiveRbeBuilds(): Promise<RbeActiveBuild[]> {

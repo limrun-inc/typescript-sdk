@@ -2,9 +2,24 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import type { DestinationTunnelInspectionEvent } from '@limrun/api';
-import { runTunnelForeground, tunnelClientFacade, type TunnelClientFacade } from './tunnel-command';
+import {
+  runTunnelForeground,
+  tunnelClientFacade,
+  type TunnelClientFacade,
+  type TunnelCommandIO,
+} from './tunnel-command';
 
 describe('tunnel client facade inspection wiring', () => {
+  const io: TunnelCommandIO = {
+    error: (message): never => {
+      throw new Error(message);
+    },
+    output: () => {},
+    info: () => {},
+    outputJson: () => {},
+    isJsonEnabled: () => false,
+  };
+
   test('propagates negotiated inspection settings and callbacks', async () => {
     const startTunnel = jest.fn(async () => ({
       tunnelId: 'tunnel-1',
@@ -34,6 +49,7 @@ describe('tunnel client facade inspection wiring', () => {
       },
       onInspectionEvent,
       onInspectionError,
+      resetsInactivityTimeout: false,
     });
 
     expect(startTunnel).toHaveBeenCalledWith({
@@ -48,7 +64,33 @@ describe('tunnel client facade inspection wiring', () => {
       },
       onInspectionEvent,
       onInspectionError,
+      resetsInactivityTimeout: false,
     });
+  });
+
+  test('starts the foreground tunnel with the context resetsInactivityTimeout', async () => {
+    const startTunnel = jest.fn(async () => {
+      throw new Error('stop after start');
+    });
+    await expect(
+      runTunnelForeground({
+        product: 'ios',
+        instanceId: 'instance-1',
+        selectors: ['localhost:8081'],
+        reconnect: false,
+        inspect: false,
+        harBodyLimit: 1024,
+        resetsInactivityTimeout: false,
+        connect: async () => ({
+          startTunnel,
+          getTunnelStatus: async () => ({}),
+          stopTunnel: async () => {},
+          disconnect: () => {},
+        }),
+        io,
+      }),
+    ).rejects.toThrow();
+    expect(startTunnel).toHaveBeenCalledWith(expect.objectContaining({ resetsInactivityTimeout: false }));
   });
 
   test('disconnects the client when HAR setup fails', async () => {
@@ -75,16 +117,9 @@ describe('tunnel client facade inspection wiring', () => {
           inspect: true,
           harBodyLimit: 1024,
           harPath: path.join(occupiedPath, 'capture.har'),
+          resetsInactivityTimeout: true,
           connect: async () => client,
-          io: {
-            error: (message): never => {
-              throw new Error(message);
-            },
-            output: () => {},
-            info: () => {},
-            outputJson: () => {},
-            isJsonEnabled: () => false,
-          },
+          io,
         }),
       ).rejects.toThrow();
       expect(disconnect).toHaveBeenCalledTimes(1);

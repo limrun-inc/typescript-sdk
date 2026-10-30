@@ -2,6 +2,40 @@
 
 The official command-line interface for [Limrun](https://limrun.com) — create and control cloud mobile sandboxes for Android, iOS, and Xcode.
 
+## Workload permissions
+
+Workload permissions control which resources an instance can access. Assets are
+the first supported resource type. Commands that create instances send an explicit
+`spec.role.permissions` list.
+It is empty unless you supply `--permission` or request a named build upload:
+
+```bash
+lim xcode build . --upload releases/app.ipa
+lim gradle build . --upload releases/app.apk
+lim xcode sync . --permission 'asset:name/releases/*:upload'
+lim ios create --permission 'asset:name/fixtures/*:read'
+```
+
+`--upload` and RBE's `--auto-upload` add the target's create, upload, and update
+permissions automatically; no `--permission` is needed for the upload itself.
+If you supply `--permission`, those extra grants are added to the upload grants.
+The daemon uploads to that concrete target
+after building. No client-side upload URL request is needed. Automatic upload
+names cannot contain `*` or `?`; use `--permission` for intentional patterns.
+Delegating a pattern requires `asset:*:<verb>` or broader authority for that verb.
+
+Repeat `--permission` to add grants at creation. It is available on all four
+`create` commands, `run`, Xcode build/test/sync/RBE, and Gradle build/sync.
+`--permission` forces fresh instances even with `--reuse-if-exists`.
+Permissions cannot be added to an existing instance. When using `--id`, its role
+must already authorize the upload. Existing customer sessions are not changed.
+Auxiliary simulators receive an empty list; `ios create --xcode` gives both newly
+created workloads the requested permissions.
+
+`--signed-upload-url` remains supported and adds no workload permissions.
+Direct client uploads (`asset push`) and the keychain signed-URL flow continue to
+use the caller's credentials.
+
 ## Installation
 
 ```bash
@@ -497,6 +531,11 @@ lim xcode version list    # Xcode versions the sandbox can build with
 ```
 
 ### Disk snapshots
+
+If a snapshot cannot be restored, including a checksum mismatch or download
+failure, the CLI warns and continues with a cold workspace. The instance stays
+available and the build can regenerate its dependencies and outputs. A lost
+snapshot-status connection also leaves the build free to continue.
 
 New Xcode instances automatically restore and save a disk snapshot using the
 Git origin host/repository and project subdirectory, for example

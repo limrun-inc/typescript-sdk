@@ -1,3 +1,4 @@
+import { delegatedPermissionsFromFlags } from '../lib/delegated-permissions';
 import os from 'os';
 import path from 'path';
 import { Flags } from '@oclif/core';
@@ -60,6 +61,7 @@ export default class Run extends BaseCommand {
     quiet: BaseCommand.baseFlags.quiet,
   } as unknown as typeof BaseCommand.baseFlags;
   static flags = {
+    ...BaseCommand.permissionFlags,
     ...snapshotFlags,
     'ios-id': Flags.string({
       description:
@@ -341,8 +343,11 @@ export default class Run extends BaseCommand {
         const sandbox = await this.reporter.withProgress('Preparing a Limrun Xcode build sandbox', () =>
           this.client.xcodeInstances.create({
             wait: true,
-            reuseIfExists: true,
-            ...(cache ? { spec: { cache } } : {}),
+            reuseIfExists: !delegatedPermissionsFromFlags(this.parsedFlags ?? {}),
+            spec: {
+              role: { permissions: delegatedPermissionsFromFlags(this.parsedFlags ?? {}) ?? [] },
+              ...(cache ? { cache } : {}),
+            },
             metadata: {
               displayName,
               labels,
@@ -351,9 +356,7 @@ export default class Run extends BaseCommand {
         );
         registerCreatedInstance(sandbox);
         if (wantsRestore(cache)) {
-          await this.awaitCacheRestore(sandbox.metadata.id, () =>
-            this.client.xcodeInstances.delete(sandbox.metadata.id),
-          );
+          await this.awaitCacheRestore(sandbox.metadata.id);
         }
 
         const xcode = await this.client.xcodeInstances.createClient({ instance: sandbox });
@@ -405,6 +408,7 @@ export default class Run extends BaseCommand {
         try {
           if (!simulator) {
             simulator = await this.client.iosInstances.create({
+              spec: { role: { permissions: [] } },
               wait: true,
               reuseIfExists: true,
               metadata: {

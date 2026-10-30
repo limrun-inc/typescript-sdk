@@ -1,3 +1,4 @@
+import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
 import { spawn } from 'child_process';
 import { Flags } from '@oclif/core';
@@ -45,6 +46,7 @@ export default class AndroidCreate extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    ...BaseCommand.permissionFlags,
     connect: Flags.boolean({
       description: 'Connect to the new instance immediately by starting an ADB tunnel',
       default: true,
@@ -97,7 +99,7 @@ export default class AndroidCreate extends BaseCommand {
       multiple: true,
     }),
     'reuse-if-exists': Flags.boolean({
-      description: 'Reuse an existing matching instance instead of creating a new one',
+      description: 'Reuse an existing matching instance unless --permission requests a fresh role',
       default: false,
     }),
     'install-asset': Flags.string({
@@ -177,10 +179,11 @@ export default class AndroidCreate extends BaseCommand {
       }
 
       // Build params
+      const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: AndroidInstanceCreateParams = {
         wait: true,
-        reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: {},
+        reuseIfExists: !delegatedPermissions && flags['reuse-if-exists'] ? true : undefined,
+        spec: { role: { permissions: delegatedPermissions ?? [] } },
       };
 
       const initialAssets = [

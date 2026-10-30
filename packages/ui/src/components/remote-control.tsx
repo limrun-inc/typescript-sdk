@@ -18,6 +18,8 @@ import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
 import { applyJitterBufferTarget } from '../core/jitter-buffer';
 import { usePlaybackStats, type PlaybackConnection } from '../core/use-playback-stats';
 import type { PlaybackStats } from '../core/playback-stats';
+import { attachVideoStream } from '../core/video-playback';
+import { createLatencyTrace } from '../core/latency-trace';
 
 import {
   createTouchControlMessage,
@@ -47,6 +49,9 @@ declare global {
 }
 
 export interface RemoteControlProps {
+  /** Receives latency trace messages from supported iOS and Android instances. Adding or removing the callback reconnects the stream. */
+  onTrace?: (message: Record<string, unknown>) => void;
+
   // url is the URL of the instance to connect to.
   url: string;
 
@@ -548,6 +553,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       androidElementTreeOptions,
       onCameraDemandChange,
       onCameraStats,
+      onTrace,
       microphoneEnabled = false,
       onMicrophoneStateChange,
     }: RemoteControlProps,
@@ -555,6 +561,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
+    const videoPlaybackRef = useRef(new Map<HTMLVideoElement, () => void>());
     const frameRef = useRef<HTMLImageElement>(null);
     const [detectedDuo, setDetectedDuo] = useState(false);
     const isDuo = deviceModel === 'iphone-duo' || detectedDuo;
@@ -599,6 +606,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const [playbackConnection, setPlaybackConnection] = useState<PlaybackConnection | null>(null);
     usePlaybackStats(playbackConnection, onPlaybackStats, jitterBufferTargetMs);
     const dataChannelRef = useRef<RTCDataChannel | null>(null);
+    const latencyTraceRef = useRef<ReturnType<typeof createLatencyTrace> | null>(null);
+    const onTraceRef = useRef(onTrace);
+    onTraceRef.current = onTrace;
+    const latencyTraceRequested = !!onTrace;
     const keepAliveIntervalRef = useRef<number | undefined>(undefined);
     const retryTimeoutRef = useRef<number | undefined>(undefined);
     const connectionSuccessTimeoutRef = useRef<number | undefined>(undefined);
@@ -832,7 +843,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (!dataChannelRef.current || dataChannelRef.current.readyState !== 'open') {
         return;
       }
-      dataChannelRef.current.send(data);
+      dataChannelRef.current.send(latencyTraceRef.current?.wrap(data) ?? data);
       // Any binary control message is an input event. Bump the AX poller so
       // we get a fresh snapshot quickly — the UI almost certainly changed.
       axFetcherRef.current?.bumpActivity();
@@ -2440,6 +2451,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     const teardownConnection = () => {
       setPlaybackConnection(null);
+      for (const stop of videoPlaybackRef.current.values()) stop();
+      videoPlaybackRef.current.clear();
       for (const request of duoRequests.current.values()) {
         clearTimeout(request.timer);
         request.reject(new Error('Simulator disconnected'));
@@ -2492,6 +2505,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         wsRef.current.close();
         wsRef.current = null;
       }
+      latencyTraceRef.current?.close();
+      latencyTraceRef.current = null;
       if (peerConnectionRef.current) {
         peerConnectionRef.current.onconnectionstatechange = null;
         peerConnectionRef.current.oniceconnectionstatechange = null;
@@ -2926,6 +2941,15 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           id: 1,
         });
         dataChannelRef.current = dataChannel;
+        const latencyTrace =
+          !isDuo && onTraceRef.current ?
+            createLatencyTrace(peerConnection, (message) => {
+              if (isCurrentAttempt() && peerConnectionRef.current === peerConnection) {
+                safeInvoke('onTrace', onTraceRef.current, message);
+              }
+            })
+          : null;
+        latencyTraceRef.current = latencyTrace;
 
         dataChannel.onopen = () => {
           if (!isCurrentAttempt() || dataChannelRef.current !== dataChannel || wsRef.current !== ws) {
@@ -3117,9 +3141,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             debugLog(`[${new Date().toISOString()}] Video track received:`, event.track);
             const target = inner ? innerVideoRef.current : videoRef.current;
             if (target) {
-              target.srcObject =
+              const stream =
                 isDuo ? new MediaStream([event.track]) : event.streams[0] ?? new MediaStream([event.track]);
-              void target.play().catch(() => undefined);
+              videoPlaybackRef.current.get(target)?.();
+              videoPlaybackRef.current.set(
+                target,
+                attachVideoStream(target, stream, (error) => debugWarn('Video playback fallback:', error)),
+              );
             }
           }
         };
@@ -3199,6 +3227,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 updateStatus('No peer connection, skipping answer');
                 break;
               }
+              latencyTrace?.accept(message.latencyTraceVersion);
               await peerConnection.setRemoteDescription(
                 new RTCSessionDescription({
                   type: 'answer',
@@ -3387,6 +3416,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               JSON.stringify({
                 type: 'offer',
                 ...(isDuo ? { displayStreams: true } : {}),
+                ...(latencyTrace ? { latencyTraceVersion: 1 } : {}),
                 sdp: offer.sdp,
                 sessionId: sessionId,
               }),
@@ -3463,7 +3493,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // connection effect doesn't need to bounce when the camera
       // turns on/off — no SDP-affecting change.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [url, token, propSessionId, deviceModel]);
+    }, [url, token, propSessionId, deviceModel, latencyTraceRequested]);
 
     // Recompute the inspect-overlay geometry (container-local pixel rect of
     // the actually-rendered video content) from the current mapping context.

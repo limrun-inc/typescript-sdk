@@ -1,5 +1,72 @@
 # Changelog
 
+## [0.68.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.67.1...v0.68.0) (2026-10-30)
+
+
+### Features
+
+* **cli:** add --no-reset-inactivity-timeout to tunnel commands ([f9d723b](https://github.com/limrun-inc/typescript-sdk/commit/f9d723b7b133b3d1f26de49c18e8b1abd2b68159))
+* **tunnel:** let destination tunnels opt out of resetting the inactivity timeout ([cb36fef](https://github.com/limrun-inc/typescript-sdk/commit/cb36fefcd9f1103e39b361afbfdb4d550d99136a))
+
+
+### Chores
+
+* **cli:** release 0.49.2 on SDK 0.67.1 ([367dd8f](https://github.com/limrun-inc/typescript-sdk/commit/367dd8f84586b77411b70049771675621b3956d3))
+* **cli:** release 0.49.2 on SDK 0.67.1 ([e5bdd4b](https://github.com/limrun-inc/typescript-sdk/commit/e5bdd4b1e18f5398c014a54ac403a29cdfb70cd2))
+
+
+### Refactors
+
+* **tunnel:** keep the inactivity opt-out wire rule in the encoder ([8e2ae21](https://github.com/limrun-inc/typescript-sdk/commit/8e2ae211185f795a05528ce3d92e08c74c196f35))
+* **tunnel:** simplify the inactivity opt-out plumbing ([7022513](https://github.com/limrun-inc/typescript-sdk/commit/702251332f5c6a7c941035d15cba497f328e2815))
+
+## [0.67.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.67.0...v0.67.1) (2026-10-29)
+
+
+### Features
+
+* **cli:** assign delegated permissions for workload uploads ([6f36ec3](https://github.com/limrun-inc/typescript-sdk/commit/6f36ec31a2e44d84baed9782f8a84bf882f552b3))
+
+
+### Bug Fixes
+
+* **sdk:** expose the access-token revocation response type and clarify legacy token compatibility ([#571](https://github.com/limrun-inc/typescript-sdk/pull/571)).
+
+* **cli:** prevent create reuse from skipping requested permissions ([7462435](https://github.com/limrun-inc/typescript-sdk/commit/74624357daab6e89f483eb4a1f0ed0453ce1ce5a))
+
+
+### Chores
+
+* **cli:** prepare 0.49.0 with published SDK 0.67.0 ([5caec44](https://github.com/limrun-inc/typescript-sdk/commit/5caec449ff14e2aeae5442afcfdfde2c2842a500))
+
+## [0.67.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.66.0...v0.67.0) (2026-10-29)
+
+
+### Features
+
+* **sdk:** add delegated workload permissions ([d17a020](https://github.com/limrun-inc/typescript-sdk/commit/d17a0206d46b98596590100201b679a3684c7265))
+* **sdk:** separate workload permissions from CLI adoption ([1f70537](https://github.com/limrun-inc/typescript-sdk/commit/1f70537fe34ef3029e8c5a2e22600701f77e5194))
+
+
+### Bug Fixes
+
+* **sdk:** preserve workload exchange transport settings ([ed9bc84](https://github.com/limrun-inc/typescript-sdk/commit/ed9bc84cb8e4114dd5a7bad8f39a26ba54fe63e7))
+* **ui:** forward video frames in a worker ([5df57e1](https://github.com/limrun-inc/typescript-sdk/commit/5df57e1c6945a5112064b13d07bb83b0856c8631))
+* **ui:** improve video playback responsiveness ([0523e25](https://github.com/limrun-inc/typescript-sdk/commit/0523e2564276fce8ad6445fa478a3f13e8d93894))
+* **ui:** improve video playback responsiveness ([#589](https://github.com/limrun-inc/typescript-sdk/issues/589)) ([d02292f](https://github.com/limrun-inc/typescript-sdk/commit/d02292f115b99296207c8fd25d768ef7d0eb5f79))
+
+
+### Chores
+
+* **cli:** release 0.48.0 with iOS hang reports ([1e9069f](https://github.com/limrun-inc/typescript-sdk/commit/1e9069f9370cb6e96c77e4fff70f2e8d8d44fb6e))
+* **deps-dev:** bump vite from 7.3.6 to 7.3.7 in /packages/play-auth ([#559](https://github.com/limrun-inc/typescript-sdk/issues/559)) ([3344d9c](https://github.com/limrun-inc/typescript-sdk/commit/3344d9c9fca7360a902f0fda46fa8f45cce72226))
+* **deps-dev:** bump vite from 7.3.6 to 7.3.7 in /packages/ui ([#560](https://github.com/limrun-inc/typescript-sdk/issues/560)) ([37b42a7](https://github.com/limrun-inc/typescript-sdk/commit/37b42a7f1301edf2cf975bff8a88633c016473d5))
+* **deps:** bump fast-uri from 3.1.7 to 3.1.9 in /packages/ui ([#578](https://github.com/limrun-inc/typescript-sdk/issues/578)) ([3e11b13](https://github.com/limrun-inc/typescript-sdk/commit/3e11b13faac4f1ee1c7b9d889fd88508dac9971a))
+* **deps:** bump hono in /examples/ios-with-xcode ([#555](https://github.com/limrun-inc/typescript-sdk/issues/555)) ([02806a8](https://github.com/limrun-inc/typescript-sdk/commit/02806a8376569aa336e99926d8f81c2fce3511a6))
+* **deps:** bump ip-address in /examples/ios-with-xcode ([#562](https://github.com/limrun-inc/typescript-sdk/issues/562)) ([fd194ec](https://github.com/limrun-inc/typescript-sdk/commit/fd194ec7515eac00871d1b648b2e2d9803216f63))
+* **deps:** bump undici from 7.29.1 to 7.30.1 ([#577](https://github.com/limrun-inc/typescript-sdk/issues/577)) ([44d2ff1](https://github.com/limrun-inc/typescript-sdk/commit/44d2ff1c1347804ca319f904d0b461086fc5610a))
+* **ui:** bump version to 0.18.0 ([6d316b7](https://github.com/limrun-inc/typescript-sdk/commit/6d316b7807e3f13f1f642e32c67243e53f8a3cf7))
+
 ## [0.66.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.65.1...v0.66.0) (2026-10-26)
 
 

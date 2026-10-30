@@ -10,7 +10,7 @@ const VERSION = require('../../../../package.json').version;
  * Bazel's credential helper for the build plane. Bazel runs it as
  * `lim-bazel-credentials get` with the request URI on stdin, and reads the
  * headers to send from stdout, so stdout carries that JSON and nothing else.
- * It mints a short-lived scoped token from `lim login` or LIM_API_KEY.
+ * It mints a short-lived access token from `lim login` or LIM_API_KEY.
  */
 export default class BazelCredentialsGet extends Command {
   static hidden = true;

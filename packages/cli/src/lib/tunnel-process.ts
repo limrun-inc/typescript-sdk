@@ -89,6 +89,7 @@ export function buildTunnelServeArgs(options: {
   harPath?: string;
   harBodyLimit?: number;
   verbose?: boolean;
+  resetsInactivityTimeout?: boolean;
 }): string[] {
   assertOwner(options.owner);
   return [
@@ -106,6 +107,7 @@ export function buildTunnelServeArgs(options: {
     ...(options.ttlSeconds !== undefined ? ['--ttl', String(options.ttlSeconds)] : []),
     ...(options.harPath ? ['--har', options.harPath] : []),
     ...(options.harBodyLimit !== undefined ? ['--har-body-limit', String(options.harBodyLimit)] : []),
+    ...(options.resetsInactivityTimeout === false ? ['--no-reset-inactivity-timeout'] : []),
     ...formatTunnelSelectors(options.selectors).flatMap((selector) => ['--selector', selector]),
   ];
 }

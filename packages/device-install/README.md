@@ -62,7 +62,7 @@ The browser side is split across two subpath entry points:
 Pairing, install, and the Apple relay all run on **Limrun's registry**
 (`https://registry.limrun.com`), a shared service that authenticates a Limrun
 token. Your org API key works, but it must never reach the browser. Instead,
-your backend mints a **scoped token** with `@limrun/api` and hands that to
+your backend mints an **access token** with `@limrun/api` and hands that to
 the browser, which connects to the registry directly:
 
 ```ts
@@ -70,8 +70,8 @@ the browser, which connects to the registry directly:
 import Limrun from '@limrun/api';
 
 const limrun = new Limrun({ apiKey: process.env['LIM_API_KEY'] });
-const session = await limrun.scopedTokens.create({
-  scopes: ['device:*:install', `asset:${assetId}:read`],
+const session = await limrun.accessTokens.create({
+  permissions: ['device:*:install', `asset:${assetId}:read`],
   // ttlSeconds: 3600 is the default; maximum is 14400.
 });
 // Return session.token to the browser.
@@ -245,7 +245,7 @@ so render the log — it's the fastest way to diagnose a signing/profile mismatc
 ## Install over the air with a QR code
 
 OTA uses an ad-hoc distribution profile that covers the target iPhone UDID. The
-backend mints one scoped token containing both `device:*:install` and
+backend mints one access token containing both `device:*:install` and
 `asset:<assetId>:read`; the browser exchanges that token for a short-lived,
 signed install-page capability. WebUSB selection supplies the UDID; OTA itself
 does not require a WebUSB pair record:
@@ -292,10 +292,10 @@ npx vite src/device-install/demo
 ```
 
 Open the printed `https://localhost` URL in Chrome or Edge, paste a registry URL
-and token (a scoped token or, for local experiments, an API key), then pair
+and token (an access token or, for local experiments, an API key), then pair
 and install an asset by name.
 [`examples/device-install`](../../../../examples/device-install) is the same
-flow with a backend that mints scoped tokens so the API key stays
+flow with a backend that mints access tokens so the API key stays
 server-side.
 
 ## Add a device to a profile
@@ -320,8 +320,8 @@ can't be amended locally — regenerate it through the Apple flow.
   browser, or your own backend.
 - The **Apple ID password never reaches Limrun** — only SRP proof material does.
 - The registry authenticates a Limrun token — keep your org API key on your
-  backend and hand the browser a scoped scoped token
-  (`limrun.scopedTokens.create`) instead. Serve the UI over HTTPS in
+  backend and hand the browser a scoped access token
+  (`limrun.accessTokens.create`) instead. Serve the UI over HTTPS in
   production.
 
 ## Troubleshooting

@@ -35,5 +35,7 @@ test('--tunnel names the private tunnel in the instance spec', async () => {
 
   await command.run();
 
-  expect(create).toHaveBeenCalledWith(expect.objectContaining({ spec: { tunnel: 'staging' } }));
+  expect(create).toHaveBeenCalledWith(
+    expect.objectContaining({ spec: { role: { permissions: [] }, tunnel: 'staging' } }),
+  );
 });

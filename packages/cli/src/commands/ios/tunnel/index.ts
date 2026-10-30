@@ -10,12 +10,14 @@ import {
   type TunnelClientFacade,
   type TunnelCommandContext,
   type TunnelLogLevel,
+  type TunnelSettings,
 } from '../../../lib/tunnel-command';
 import {
   tunnelInspectionContext,
   tunnelInspectionFlags,
   type TunnelInspectionContext,
 } from '../../../lib/tunnel-inspection-flags';
+import { tunnelActivityFlags } from '../../../lib/tunnel-activity-flags';
 import { parseTunnelSelectors } from '../../../lib/tunnel-process';
 
 export default class IosTunnel extends BaseCommand {
@@ -62,6 +64,7 @@ export default class IosTunnel extends BaseCommand {
       default: false,
     }),
     ...tunnelInspectionFlags,
+    ...tunnelActivityFlags,
     serve: Flags.boolean({
       description: 'Internal: own the detached tunnel transport.',
       default: false,
@@ -87,6 +90,10 @@ export default class IosTunnel extends BaseCommand {
       this.error(error instanceof Error ? error.message : String(error));
     }
     const selectors = parseTunnelSelectors(flags.selector);
+    const settings: TunnelSettings = {
+      ...inspection,
+      resetsInactivityTimeout: flags['reset-inactivity-timeout'],
+    };
 
     if (flags.serve) {
       const owner = flags['tunnel-owner'];
@@ -94,7 +101,7 @@ export default class IosTunnel extends BaseCommand {
       await this.withAuth(async () => {
         const resolvedInstance = this.resolveIosInstance(flags.id);
         await serveTunnelDetached(
-          this.tunnelContext(resolvedInstance.id, selectors, flags.verbose ? 'debug' : 'info', inspection),
+          this.tunnelContext(resolvedInstance.id, selectors, flags.verbose ? 'debug' : 'info', settings),
           owner,
         );
       });
@@ -105,7 +112,7 @@ export default class IosTunnel extends BaseCommand {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       if (flags.detach) {
         await startTunnelDetached({
-          ...this.tunnelContext(resolvedInstance.id, selectors, 'info', inspection, flags['api-key']),
+          ...this.tunnelContext(resolvedInstance.id, selectors, 'info', settings, flags['api-key']),
           verbose: flags.verbose,
         });
       } else {
@@ -116,7 +123,7 @@ export default class IosTunnel extends BaseCommand {
             this.shouldSuppressInfo() ? 'none'
             : flags.verbose ? 'debug'
             : 'info',
-            inspection,
+            settings,
           ),
         );
       }
@@ -127,7 +134,7 @@ export default class IosTunnel extends BaseCommand {
     instanceId: string,
     selectors: DestinationTunnelSelectors,
     logLevel: TunnelLogLevel,
-    inspection: TunnelInspectionContext,
+    settings: TunnelSettings,
     apiKey?: string,
   ): TunnelCommandContext {
     return {
@@ -136,7 +143,7 @@ export default class IosTunnel extends BaseCommand {
       selectors,
       apiKey,
       reconnect: false,
-      ...inspection,
+      ...settings,
       connect: async (): Promise<TunnelClientFacade> => {
         const resolvedInstance = this.resolveIosInstance(instanceId);
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
