@@ -16,6 +16,8 @@ const DuoView = lazy(() => import('./duo-view'));
 
 import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
 import { applyJitterBufferTarget } from '../core/jitter-buffer';
+import { usePlaybackStats, type PlaybackConnection } from '../core/use-playback-stats';
+import type { PlaybackStats } from '../core/playback-stats';
 import { attachVideoStream } from '../core/video-playback';
 import { createLatencyTrace } from '../core/latency-trace';
 
@@ -95,6 +97,15 @@ export interface RemoteControlProps {
    * with a console warning, leaving the previous target unchanged.
    */
   jitterBufferTargetMs?: number | null;
+
+  /**
+   * Incoming playback stats, sampled every two seconds while subscribed,
+   * connected, and visible. Works with iOS and Android, including Duo displays.
+   * Missing measurements stay undefined; the first sample establishes a baseline.
+   * Emits null when collection pauses, disconnects, or fails after a sample.
+   * Buffer delay measures receiving-side buffering, not tap-to-screen latency.
+   */
+  onPlaybackStats?: (stats: PlaybackStats | null) => void;
 
   /**
    * Fires once when the component concludes the instance is permanently
@@ -529,6 +540,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       duoModelUrl,
       autoReconnect = false,
       jitterBufferTargetMs,
+      onPlaybackStats,
       onTerminated,
       assets,
       onConnectionStateChange,
@@ -591,6 +603,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
     const wsRef = useRef<WebSocket | null>(null);
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+    const [playbackConnection, setPlaybackConnection] = useState<PlaybackConnection | null>(null);
+    usePlaybackStats(playbackConnection, onPlaybackStats, jitterBufferTargetMs);
     const dataChannelRef = useRef<RTCDataChannel | null>(null);
     const latencyTraceRef = useRef<ReturnType<typeof createLatencyTrace> | null>(null);
     const onTraceRef = useRef(onTrace);
@@ -2436,6 +2450,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
 
     const teardownConnection = () => {
+      setPlaybackConnection(null);
       for (const stop of videoPlaybackRef.current.values()) stop();
       videoPlaybackRef.current.clear();
       for (const request of duoRequests.current.values()) {
@@ -2803,6 +2818,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         // Keep browser LAN and VPN addresses out of signaling and connectivity checks.
         const peerConnection = new RTCPeerConnection({ ...rtcConfig, iceTransportPolicy: 'relay' });
         peerConnectionRef.current = peerConnection;
+        const playback = { peer: peerConnection, displays: new Map<RTCRtpReceiver, 'primary' | 'inner'>() };
+        setPlaybackConnection(playback);
         peerConnection.addTransceiver('audio', { direction: 'recvonly' });
         const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
         const duoTransceiver =
@@ -3115,11 +3132,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           // Audio and video share the preference because synchronization can
           // otherwise keep video at the audio receiver's higher target.
           applyJitterBufferTarget(event.receiver, jitterBufferTargetMsRef.current);
+          const inner =
+            event.track.id === 'duo-inner' || event.streams.some((stream) => stream.id === 'duo-inner');
+          if (event.track.kind === 'video')
+            playback.displays.set(event.receiver, inner ? 'inner' : 'primary');
           updateStatus('Received remote track: ' + event.track.kind);
           if (event.track.kind === 'video' && videoRef.current) {
             debugLog(`[${new Date().toISOString()}] Video track received:`, event.track);
-            const inner =
-              event.track.id === 'duo-inner' || event.streams.some((stream) => stream.id === 'duo-inner');
             const target = inner ? innerVideoRef.current : videoRef.current;
             if (target) {
               const stream =

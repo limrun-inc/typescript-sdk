@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RemoteControl } from './components/remote-control-framed';
 import type { RemoteControlHandle } from './components/remote-control';
+import type { PlaybackStats } from './core/playback-stats';
 import { AxSnapshot } from './core/ax-tree';
 
 type InspectChoice = 'off' | 'hover-only' | 'select';
@@ -24,6 +25,8 @@ function Demo() {
   const [isConnected, setIsConnected] = useState(initialAutoconnect);
   const [key, setKey] = useState(0);
   const [jitterBufferTarget, setJitterBufferTarget] = useState('');
+  const [collectPlaybackStats, setCollectPlaybackStats] = useState(false);
+  const [playbackStats, setPlaybackStats] = useState<PlaybackStats | null>(null);
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [inspectChoice, setInspectChoice] = useState<InspectChoice>(initialInspect);
   const [latestSnapshot, setLatestSnapshot] = useState<AxSnapshot | null>(null);
@@ -165,6 +168,17 @@ function Demo() {
           </div>
 
           <div className="button-group">
+            <label>
+              <input
+                type="checkbox"
+                checked={collectPlaybackStats}
+                onChange={(event) => {
+                  setCollectPlaybackStats(event.target.checked);
+                  setPlaybackStats(null);
+                }}
+              />{' '}
+              Playback stats
+            </label>
             {!isConnected ?
               <button className="primary" onClick={handleConnect} disabled={!url}>
                 Connect
@@ -176,10 +190,28 @@ function Demo() {
                 <button className="primary" onClick={handleScreenshot}>
                   Take Screenshot
                 </button>
+                <button className="secondary" onClick={() => remoteControlRef.current?.reconnect()}>
+                  Reconnect
+                </button>
               </>
             }
           </div>
         </div>
+
+        {collectPlaybackStats && (
+          <section aria-label="Playback stats">
+            <h3>Playback stats</h3>
+            <p>
+              Incoming audio and video, sampled every two seconds while visible. Buffer delay is not
+              tap-to-screen latency.
+            </p>
+            <pre data-testid="playback-stats" style={{ overflow: 'auto', maxHeight: 320 }}>
+              {playbackStats ?
+                JSON.stringify(playbackStats, null, 2)
+              : 'Waiting for playback measurements...'}
+            </pre>
+          </section>
+        )}
 
         {showDebugInfo && platform === 'ios' && (
           <div
@@ -218,6 +250,7 @@ function Demo() {
                     token={token}
                     inspectMode={inspectModeProp}
                     jitterBufferTargetMs={jitterBufferTarget === '' ? undefined : Number(jitterBufferTarget)}
+                    onPlaybackStats={collectPlaybackStats ? setPlaybackStats : undefined}
                     onAxSnapshotChange={setLatestSnapshot}
                     onInspectSelectionChange={(sel) =>
                       setLatestSelection(
