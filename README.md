@@ -71,7 +71,44 @@ Use `role: { permissions: [] }` when a workload needs no resource access. Omitti
 `role` retains the organization's compatibility default. The SDK sends the
 permission list as supplied and does not infer grants from later operations.
 
-### Asset upload example
+#### Updating a running workload
+
+Read the live instance and use its ETag to replace `spec.role.permissions` without
+recreating the workspace:
+
+```ts
+const { data: instance, response } = await client.xcodeInstances.get(id).withResponse();
+const etag = response.headers.get('etag');
+if (!etag || !instance.spec.role) throw new Error('Instance is no longer live');
+await client.xcodeInstances.update(id, {
+  ifMatch: etag,
+  spec: {
+    role: {
+      permissions: [
+        ...new Set([
+          ...instance.spec.role.permissions,
+          'asset:name/releases/app.ipa:create',
+          'asset:name/releases/app.ipa:upload',
+          'asset:name/releases/app.ipa:update',
+        ]),
+      ],
+    },
+  },
+});
+```
+
+The same `get` and `update` methods exist for iOS, Android, and Gradle instances.
+On HTTP 412, read the instance again and recompute your changes before retrying.
+You must control the instance and be authorized to delegate every resulting permission.
+An empty array removes all delegated permissions; other instance fields stay unchanged.
+Instance reuse still matches labels and leaves the existing role unchanged.
+
+Build daemons obtain fresh workload credentials for each permission-based upload.
+Explicit customer tokens and signed upload URLs keep their existing behavior.
+Previously issued workload tokens remain valid until expiry, up to ten minutes;
+signed URLs have their own expiry. Updating a role does not revoke them.
+
+## Asset upload example
 
 Grant access at creation, then pass a concrete `upload.target` when building:
 

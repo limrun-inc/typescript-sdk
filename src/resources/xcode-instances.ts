@@ -36,6 +36,16 @@ export class XcodeInstances extends APIResource {
     });
   }
 
+  /** Replace a live instance's role using the ETag returned by get().withResponse(). */
+  update(id: string, params: XcodeInstanceUpdateParams, options?: RequestOptions): APIPromise<void> {
+    const { ifMatch, ...body } = params;
+    return this._client.patch(path`/v1/xcode_instances/${id}`, {
+      ...options,
+      body,
+      headers: buildHeaders([options?.headers, { 'If-Match': ifMatch, Accept: '*/*' }]),
+    });
+  }
+
   /**
    * Get Xcode instance with given ID
    */
@@ -70,6 +80,9 @@ export namespace XcodeInstance {
   }
 
   export interface Spec {
+    /** Current effective permissions. Present on live GETs; historical records may omit it. */
+    role?: { permissions: string[] };
+
     inactivityTimeout: string;
 
     region: string;
@@ -105,6 +118,17 @@ export namespace XcodeInstance {
      */
     terminationReason?: string;
   }
+}
+
+export interface XcodeInstanceUpdateParams {
+  /** Quoted ETag from a live GET. A concurrent change returns HTTP 412. */
+  ifMatch: string;
+  spec: {
+    role: {
+      /** Replaces the complete list. Use [] to remove delegated permissions. */
+      permissions: string[];
+    };
+  };
 }
 
 export interface XcodeInstanceCreateParams {
@@ -245,6 +269,7 @@ export declare namespace XcodeInstances {
   export {
     type XcodeInstance as XcodeInstance,
     type XcodeInstancesItems as XcodeInstancesItems,
+    type XcodeInstanceUpdateParams as XcodeInstanceUpdateParams,
     type XcodeInstanceCreateParams as XcodeInstanceCreateParams,
     type XcodeInstanceListParams as XcodeInstanceListParams,
   };
