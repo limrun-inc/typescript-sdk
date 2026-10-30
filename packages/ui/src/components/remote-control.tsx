@@ -15,6 +15,7 @@ import { createDisplayTouchMessage, type DuoState, type DuoOrientation } from '.
 const DuoView = lazy(() => import('./duo-view'));
 
 import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
+import { applyJitterBufferTarget } from '../core/jitter-buffer';
 import { attachVideoStream } from '../core/video-playback';
 import { createLatencyTrace } from '../core/latency-trace';
 
@@ -46,7 +47,7 @@ declare global {
 }
 
 export interface RemoteControlProps {
-  /** Receives parsed iOS latency messages. Adding or removing the callback reconnects the stream. */
+  /** Receives latency trace messages from supported iOS and Android instances. Adding or removing the callback reconnects the stream. */
   onTrace?: (message: Record<string, unknown>) => void;
 
   // url is the URL of the instance to connect to.
@@ -84,6 +85,16 @@ export interface RemoteControlProps {
   // When true, drops after a working session auto-reconnect instead of
   // surfacing the manual "Retry" button. Defaults to false.
   autoReconnect?: boolean;
+
+  /**
+   * Preferred playback jitter buffer duration in milliseconds (0–4000), for
+   * incoming audio and video. Lower values can reduce latency but increase
+   * dropped frames or freezes. This is a preference, not a latency limit.
+   * Updates apply without reconnecting. Omit or pass null to use the browser
+   * default. Unsupported browsers ignore this prop. Invalid values are ignored
+   * with a console warning, leaving the previous target unchanged.
+   */
+  jitterBufferTargetMs?: number | null;
 
   /**
    * Fires once when the component concludes the instance is permanently
@@ -517,6 +528,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       deviceModel,
       duoModelUrl,
       autoReconnect = false,
+      jitterBufferTargetMs,
       onTerminated,
       assets,
       onConnectionStateChange,
@@ -595,6 +607,15 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // Mirrored to a ref so stale closures in event handlers see the latest value.
     const autoReconnectRef = useRef(autoReconnect);
     autoReconnectRef.current = autoReconnect;
+    const jitterBufferTargetMsRef = useRef(jitterBufferTargetMs);
+    useEffect(() => {
+      jitterBufferTargetMsRef.current = jitterBufferTargetMs;
+      for (const transceiver of peerConnectionRef.current?.getTransceivers() ?? []) {
+        if (transceiver.currentDirection === 'recvonly' || transceiver.currentDirection === 'sendrecv') {
+          applyJitterBufferTarget(transceiver.receiver, jitterBufferTargetMs);
+        }
+      }
+    }, [jitterBufferTargetMs]);
     // Demand-driven outbound camera state.
     //
     // The limulator side broadcasts a `cameraRequest` WS message whenever
@@ -2904,7 +2925,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         });
         dataChannelRef.current = dataChannel;
         const latencyTrace =
-          platform === 'ios' && !isDuo && onTraceRef.current ?
+          !isDuo && onTraceRef.current ?
             createLatencyTrace(peerConnection, (message) => {
               if (isCurrentAttempt() && peerConnectionRef.current === peerConnection) {
                 safeInvoke('onTrace', onTraceRef.current, message);
@@ -3091,6 +3112,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
             return;
           }
+          // Audio and video share the preference because synchronization can
+          // otherwise keep video at the audio receiver's higher target.
+          applyJitterBufferTarget(event.receiver, jitterBufferTargetMsRef.current);
           updateStatus('Received remote track: ' + event.track.kind);
           if (event.track.kind === 'video' && videoRef.current) {
             debugLog(`[${new Date().toISOString()}] Video track received:`, event.track);

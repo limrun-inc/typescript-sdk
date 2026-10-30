@@ -15,6 +15,7 @@ import {
   tunnelInspectionFlags,
   type TunnelInspectionContext,
 } from '../../lib/tunnel-inspection-flags';
+import { tunnelActivityFlags } from '../../lib/tunnel-activity-flags';
 import { parseTunnelSelectors } from '../../lib/tunnel-process';
 
 const VERSION = require('../../../package.json').version;
@@ -72,6 +73,7 @@ export default class TunnelRun extends BaseCommand {
     persist: tunnelInspectionFlags.persist,
     ttl: tunnelInspectionFlags.ttl,
     'har-body-limit': tunnelInspectionFlags['har-body-limit'],
+    ...tunnelActivityFlags,
   };
 
   async run(): Promise<void> {
@@ -126,7 +128,7 @@ export default class TunnelRun extends BaseCommand {
    */
   private async serve(
     tunnel: { organizationId: string; tunnelId: string; token: string; created: boolean },
-    flags: { name?: string; replace: boolean; verbose: boolean },
+    flags: { name?: string; replace: boolean; verbose: boolean; 'reset-inactivity-timeout': boolean },
     inspection: TunnelInspectionContext,
   ): Promise<void> {
     // A tunnel token's tunnel learns its name from the first active.
@@ -140,6 +142,7 @@ export default class TunnelRun extends BaseCommand {
         tunnelId: tunnel.tunnelId,
         inspection: tunnelInspectionConfig(inspection),
         replace: flags.replace,
+        resetsInactivityTimeout: flags['reset-inactivity-timeout'],
         clientVersion: VERSION,
         logLevel:
           this.shouldSuppressInfo() ? 'warn'

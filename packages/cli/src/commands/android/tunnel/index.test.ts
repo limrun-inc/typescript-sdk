@@ -1,3 +1,4 @@
+import { Parser } from '@oclif/core';
 import { DESTINATION_TUNNEL_DEFAULT_MAX_BODY_BYTES, DESTINATION_TUNNEL_MAX_BODY_BYTES } from '@limrun/api';
 import IosTunnel from '../../ios/tunnel';
 import AndroidTunnel from '.';
@@ -25,9 +26,23 @@ describe('Android tunnel inspection flags', () => {
     expect(() => tunnelInspectionContext({ ...flags, persist: true })).not.toThrow();
   });
 
-  test('exposes the same inspection flags on iOS', () => {
-    for (const flag of ['inspect', 'har', 'har-body-limit', 'persist', 'ttl'] as const) {
+  test('exposes the same inspection and activity flags on iOS', () => {
+    for (const flag of [
+      'inspect',
+      'har',
+      'har-body-limit',
+      'persist',
+      'ttl',
+      'reset-inactivity-timeout',
+    ] as const) {
       expect(IosTunnel.flags[flag]).toBe(AndroidTunnel.flags[flag]);
     }
+  });
+
+  test('counts tunnel traffic as activity unless --no-reset-inactivity-timeout', async () => {
+    const parse = (args: string[]) =>
+      Parser.parse(['--selector', 'localhost:8081', ...args], { flags: AndroidTunnel.flags });
+    expect((await parse([])).flags['reset-inactivity-timeout']).toBe(true);
+    expect((await parse(['--no-reset-inactivity-timeout'])).flags['reset-inactivity-timeout']).toBe(false);
   });
 });
