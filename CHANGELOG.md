@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.69.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.68.1...v0.69.0) (2026-10-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ios:** remove keychain archive encryption ([#605](https://github.com/limrun-inc/typescript-sdk/issues/605))
+
+### Features
+
+* **ios:** remove keychain archive encryption ([#605](https://github.com/limrun-inc/typescript-sdk/issues/605)) ([4e1da30](https://github.com/limrun-inc/typescript-sdk/commit/4e1da30c6c06ec9e97de6fa3ebef5c70c90933aa))
+* manage saved snapshots through SDK and CLI ([#606](https://github.com/limrun-inc/typescript-sdk/issues/606)) ([6a4a36b](https://github.com/limrun-inc/typescript-sdk/commit/6a4a36b37814677fbdc4b6d683bc17260077f315))
+
+
+### Bug Fixes
+
+* **cli:** recognize Xcode aliases when granting upload permissions ([3582d71](https://github.com/limrun-inc/typescript-sdk/commit/3582d718cc10dc6780f1b7c5593cdebb20287b14))
+* **cli:** update live workload permissions for named uploads ([738be4a](https://github.com/limrun-inc/typescript-sdk/commit/738be4a8b90e5a97fe9e344b39fc190053540975))
+
+
+### Chores
+
+* **cli:** release 0.50.1 on SDK 0.68.1 ([271d0d9](https://github.com/limrun-inc/typescript-sdk/commit/271d0d99a864ea81875e7be47b87a803e3c66826))
+
 ## [0.68.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.68.0...v0.68.1) (2026-10-30)
 
 
