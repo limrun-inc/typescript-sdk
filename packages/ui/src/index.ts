@@ -1,6 +1,12 @@
 export { RemoteControl } from './components/remote-control-framed';
 export { defaultRemoteControlAssets } from './frame-assets';
 export type {
+  PlaybackStats,
+  PlaybackTrackStats,
+  PlaybackVideoStats,
+  PlaybackAudioStats,
+} from './core/playback-stats';
+export type {
   RemoteControlProps,
   RemoteControlHandle,
   RemoteControlAssets,
