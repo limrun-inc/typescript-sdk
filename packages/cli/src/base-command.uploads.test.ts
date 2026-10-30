@@ -1,3 +1,4 @@
+import { APIError } from '@limrun/api';
 import { BaseCommand } from './base-command';
 import { loadLastXcodeInstance, loadLastGradleInstance, registerCreatedInstance } from './lib/config';
 import { delegatedPermissionsFromFlags } from './lib/delegated-permissions';
@@ -11,9 +12,14 @@ jest.mock('./lib/config', () => ({
 jest.mock('./lib/set-instance', () => ({ envInstanceTarget: () => undefined }));
 
 class TestCommand extends BaseCommand {
-  mintToken = jest.fn().mockResolvedValue({ token: 'scoped-upload-token' });
-  uploadToken(id: string, name: string) {
-    return this.uploadTokenForTarget(id, name);
+  update = jest.fn().mockResolvedValue(undefined);
+  live = jest.fn().mockResolvedValue({
+    data: { spec: { role: { permissions: ['asset:name/input.zip:read'] } }, status: { state: 'ready' } },
+    response: new Response(null, { headers: { etag: '"42"' } }),
+  });
+  get = jest.fn(() => ({ withResponse: this.live }));
+  authorizeUpload(id: string, name: string) {
+    return this.ensureUploadPermissions(id, name);
   }
   createXcode = jest.fn().mockResolvedValue({ metadata: { id: 'sandbox_euna_test' } });
   createGradle = jest.fn().mockResolvedValue({ metadata: { id: 'gradle_euna_test' } });
@@ -21,9 +27,8 @@ class TestCommand extends BaseCommand {
   protected override info(): void {}
   protected override get client(): BaseCommand['client'] {
     return {
-      accessTokens: { create: this.mintToken },
-      xcodeInstances: { create: this.createXcode },
-      gradleInstances: { create: this.createGradle },
+      xcodeInstances: { create: this.createXcode, get: this.get, update: this.update },
+      gradleInstances: { create: this.createGradle, get: this.get, update: this.update },
     } as unknown as BaseCommand['client'];
   }
   configure(platform: string, flags: Record<string, unknown>) {
@@ -118,14 +123,19 @@ test.each(['xcode', 'gradle'] as const)(
     const target = await command.resolve(platform);
     expect(target.id).toBe(targets[platform].id);
     expect(platform === 'xcode' ? command.createXcode : command.createGradle).not.toHaveBeenCalled();
-    await expect(command.uploadToken(target.id, 'result.apk')).resolves.toBe('scoped-upload-token');
-    expect(command.mintToken).toHaveBeenCalledWith({
-      permissions: [
-        'asset:name/result.apk:create',
-        'asset:name/result.apk:upload',
-        'asset:name/result.apk:update',
-      ],
-      ttlSeconds: 14400,
+    await expect(command.authorizeUpload(target.id, 'result.apk')).resolves.toBeUndefined();
+    expect(command.update).toHaveBeenCalledWith(target.id, {
+      ifMatch: '"42"',
+      spec: {
+        role: {
+          permissions: [
+            'asset:name/input.zip:read',
+            'asset:name/result.apk:create',
+            'asset:name/result.apk:upload',
+            'asset:name/result.apk:update',
+          ],
+        },
+      },
     });
   },
 );
@@ -198,34 +208,69 @@ test.each(['upload', 'auto-upload'])('%s refuses wildcard characters in automati
   }
 });
 
-test.each(['xcode', 'gradle'])('%s newly created uploads use their workload role', async (platform) => {
+test('skips PATCH when the live instance already has the required grants', async () => {
   const command = new TestCommand([], {} as never);
-  command.configure(platform, { upload: 'result.apk' });
-  const target = await command.resolve(platform);
-  await expect(command.uploadToken(target.id, 'result.apk')).resolves.toBeUndefined();
-  expect(command.mintToken).not.toHaveBeenCalled();
+  command.live.mockResolvedValue({
+    data: {
+      spec: { role: { permissions: delegatedPermissionsFromFlags({ upload: 'result.apk' })! } },
+      status: { state: 'ready' },
+    },
+    response: new Response(null, { headers: { etag: '"42"' } }),
+  });
+  await command.authorizeUpload(targets.xcode.id, 'result.apk');
+  expect(command.update).not.toHaveBeenCalled();
 });
 
-test('refuses an upload when the caller cannot delegate it, without creating another instance', async () => {
+test('denied delegation fails without creating another instance', async () => {
   const command = new TestCommand([], {} as never);
-  command.mintToken.mockRejectedValue(new Error('requested permissions exceed caller authority'));
-  await expect(command.uploadToken(targets.xcode.id, 'result.ipa')).rejects.toThrow(
+  command.update.mockRejectedValue(new Error('requested permissions exceed caller authority'));
+  await expect(command.authorizeUpload(targets.xcode.id, 'result.ipa')).rejects.toThrow(
     'exceed caller authority',
   );
   expect(command.createXcode).not.toHaveBeenCalled();
-  expect(command.createGradle).not.toHaveBeenCalled();
 });
 
-test('per-upload credentials never include unrelated creation permissions', async () => {
+test('recomputes the union after a concurrent permission update', async () => {
   const command = new TestCommand([], {} as never);
-  command.configure('xcode', { permission: ['asset:*:delete'], upload: 'a:42%.ipa' });
-  await command.uploadToken(targets.xcode.id, 'a:42%.ipa');
-  expect(command.mintToken).toHaveBeenCalledWith({
-    permissions: [
-      'asset:name/a:42%.ipa:create',
-      'asset:name/a:42%.ipa:upload',
-      'asset:name/a:42%.ipa:update',
-    ],
-    ttlSeconds: 14400,
+  command.update.mockRejectedValueOnce(new APIError(412, { message: 'changed' }, 'changed', new Headers()));
+  command.live.mockResolvedValueOnce({
+    data: { spec: { role: { permissions: ['asset:name/old:read'] } }, status: { state: 'ready' } },
+    response: new Response(null, { headers: { etag: '"41"' } }),
   });
+  await command.authorizeUpload(targets.xcode.id, 'result.ipa');
+  expect(command.update).toHaveBeenNthCalledWith(2, targets.xcode.id, {
+    ifMatch: '"42"',
+    spec: {
+      role: {
+        permissions: [
+          'asset:name/input.zip:read',
+          'asset:name/result.ipa:create',
+          'asset:name/result.ipa:upload',
+          'asset:name/result.ipa:update',
+        ],
+      },
+    },
+  });
+  expect(command.update.mock.calls[1][1].spec.role.permissions).not.toContain('asset:name/old:read');
+});
+
+test('conflict retries are bounded', async () => {
+  const command = new TestCommand([], {} as never);
+  command.update.mockRejectedValue(new APIError(412, { message: 'changed' }, 'changed', new Headers()));
+  await expect(command.authorizeUpload(targets.xcode.id, 'result.ipa')).rejects.toMatchObject({
+    status: 412,
+  });
+  expect(command.update).toHaveBeenCalledTimes(3);
+});
+
+test('historical or older server responses fail without changing the role', async () => {
+  const command = new TestCommand([], {} as never);
+  command.live.mockResolvedValue({
+    data: { spec: {}, status: { state: 'terminated' } },
+    response: new Response(null),
+  });
+  await expect(command.authorizeUpload(targets.xcode.id, 'result.ipa')).rejects.toThrow(
+    'no editable live role',
+  );
+  expect(command.update).not.toHaveBeenCalled();
 });

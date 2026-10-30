@@ -288,7 +288,7 @@ export default class GradleBuild extends BaseCommand {
       const id = target.id;
       const gradleClient = await this.resolveGradleClient(target);
       if (options.upload?.target && flags.upload) {
-        options.upload.token = await this.uploadTokenForTarget(id, flags.upload);
+        await this.ensureUploadPermissions(id, flags.upload);
       }
 
       this.info(`Syncing ${syncPath} to instance ${id}...`);

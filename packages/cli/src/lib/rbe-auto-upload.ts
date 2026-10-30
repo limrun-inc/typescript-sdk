@@ -40,7 +40,6 @@ export function startAutoUploadWatcher(opts: {
   client: Pick<XcodeClient, 'getRecentRbeBuilds' | 'uploadLatestRbeBuild'>;
   assetName: string;
   ttl?: string;
-  getUploadToken?: () => Promise<string | undefined>;
   log: (msg: string) => void;
   pollMs?: number;
 }): { stop: () => Promise<void> } {
@@ -65,10 +64,8 @@ export function startAutoUploadWatcher(opts: {
     uploadChain = uploadChain.then(async () => {
       if (abort.signal.aborted) return;
       try {
-        const token = await opts.getUploadToken?.();
         const result = await client.uploadLatestRbeBuild({
           target: `name/${assetName}`,
-          ...(token && { token }),
           ...(ttl && { ttl }),
         });
         log(`auto-upload: uploaded ${result.appName} as "${assetName}"`);

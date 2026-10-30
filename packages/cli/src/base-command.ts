@@ -833,16 +833,32 @@ export abstract class BaseCommand extends Command {
     return !!id && this._instancesCreatedThisRun.has(id);
   }
 
-  /** Authorize one upload on an existing workspace without changing its role. */
-  protected async uploadTokenForTarget(id: string | undefined, name: string): Promise<string | undefined> {
-    const permissions = delegatedPermissionsFromFlags({ upload: name })!;
-    if (this.wasCreatedThisRun(id ?? this._lastResolvedInstanceId)) return undefined;
-    const credential = await this.client.accessTokens.create({
-      permissions,
-      // Existing workspaces need a credential that lasts through the build.
-      ttlSeconds: 14_400,
-    });
-    return credential.token;
+  /** Preserve the live role while granting the exact target requested by --upload. */
+  protected async ensureUploadPermissions(id: string, name: string): Promise<void> {
+    const required = delegatedPermissionsFromFlags({ upload: name })!;
+    const instances =
+      id.startsWith('sandbox_') ? this.client.xcodeInstances
+      : id.startsWith('gradle_') ? this.client.gradleInstances
+      : id.startsWith('ios_') ? this.client.iosInstances
+      : id.startsWith('android_') ? this.client.androidInstances
+      : undefined;
+    if (!instances) this.error(`Unsupported instance ID: ${id}`);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: instance, response } = await instances.get(id).withResponse();
+      const etag = response.headers.get('etag');
+      const existing = instance.spec.role?.permissions;
+      if (!etag || !existing || instance.status.state === 'terminated') {
+        this.error('This instance has no editable live role. Update the server or select a live instance.');
+      }
+      const permissions = [...new Set([...existing, ...required])];
+      if (permissions.length === existing.length) return;
+      try {
+        await instances.update(id, { ifMatch: etag, spec: { role: { permissions } } });
+        return;
+      } catch (err) {
+        if (!(err instanceof APIError) || err.status !== 412 || attempt === 2) throw err;
+      }
+    }
   }
 
   /** Defaults apply only at creation; existing targets keep their snapshot configuration. */

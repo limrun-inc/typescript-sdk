@@ -129,6 +129,7 @@ export default class XcodeRbe extends BaseCommand {
       await this.withAuth(async () => {
         const xcodeTarget = await this.resolveXcodeTarget(flags.id);
         const client = await this.resolveXcodeClient(xcodeTarget);
+        if (autoUpload) await this.ensureUploadPermissions(xcodeTarget.id, autoUpload.assetName);
         await this.runTunnel(client, flags.port, autoUpload);
       });
       return;
@@ -234,6 +235,7 @@ export default class XcodeRbe extends BaseCommand {
         if (!this.wasCreatedThisRun(instanceId)) {
           await this.client.xcodeInstances.get(instanceId);
         }
+        if (autoUpload) await this.ensureUploadPermissions(instanceId, autoUpload.assetName);
         await this.applyXcodeVersionToClient(target, client, requestedXcode);
 
         // Start the stack (retrying transient gateway blips right after instance
@@ -650,7 +652,6 @@ export default class XcodeRbe extends BaseCommand {
           client,
           assetName: autoUpload.assetName,
           ttl: autoUpload.ttl,
-          getUploadToken: () => this.uploadTokenForTarget(undefined, autoUpload.assetName),
           log: (msg) => this.info(msg),
         })
       : undefined;

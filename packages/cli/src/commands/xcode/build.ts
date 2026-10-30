@@ -428,9 +428,9 @@ export default class XcodeBuild extends BaseCommand {
         } catch (err) {
           this.error(err instanceof Error ? err.message : String(err));
         }
+        await this.ensureUploadPermissions(id, flags.upload);
         options.upload = {
           target: `name/${flags.upload}`,
-          token: await this.uploadTokenForTarget(id, flags.upload),
           ...(flags['upload-ttl'] && { ttl: flags['upload-ttl'] }),
           ...(uploadOptions && { uploadOptions }),
         };
