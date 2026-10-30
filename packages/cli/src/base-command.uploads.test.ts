@@ -274,3 +274,28 @@ test('historical or older server responses fail without changing the role', asyn
   );
   expect(command.update).not.toHaveBeenCalled();
 });
+
+test('duplicate stored grants cannot hide a missing upload permission', async () => {
+  const command = new TestCommand([], {} as never);
+  command.live.mockResolvedValue({
+    data: {
+      spec: { role: { permissions: Array(4).fill('asset:name/input:read') } },
+      status: { state: 'ready' },
+    },
+    response: new Response(null, { headers: { etag: '"42"' } }),
+  });
+  await command.authorizeUpload(targets.xcode.id, 'result.ipa');
+  expect(command.update).toHaveBeenCalledWith(targets.xcode.id, {
+    ifMatch: '"42"',
+    spec: {
+      role: {
+        permissions: [
+          'asset:name/input:read',
+          'asset:name/result.ipa:create',
+          'asset:name/result.ipa:upload',
+          'asset:name/result.ipa:update',
+        ],
+      },
+    },
+  });
+});

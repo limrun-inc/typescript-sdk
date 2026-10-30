@@ -850,8 +850,8 @@ export abstract class BaseCommand extends Command {
       if (!etag || !existing || instance.status.state === 'terminated') {
         this.error('This instance has no editable live role. Update the server or select a live instance.');
       }
+      if (required.every((permission) => existing.includes(permission))) return;
       const permissions = [...new Set([...existing, ...required])];
-      if (permissions.length === existing.length) return;
       try {
         await instances.update(id, { ifMatch: etag, spec: { role: { permissions } } });
         return;
