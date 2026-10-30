@@ -30,6 +30,7 @@ import {
 } from './resources/analytics';
 import {
   AndroidInstance,
+  AndroidInstanceUpdateParams,
   AndroidInstanceCreateParams,
   AndroidInstanceListParams,
   AndroidInstancesItems,
@@ -45,6 +46,7 @@ import {
 import { Assets, AssetGetOrUploadParams, AssetGetOrUploadResponse } from './resources/assets-helpers';
 import {
   GradleInstance,
+  GradleInstanceUpdateParams,
   GradleInstanceCreateParams,
   GradleInstanceListParams,
   GradleInstances,
@@ -52,6 +54,7 @@ import {
 } from './resources/gradle-instances';
 import {
   IosInstance,
+  IosInstanceUpdateParams,
   IosInstanceCreateParams,
   IosInstanceListParams,
   IosInstancesItems,
@@ -67,6 +70,7 @@ import {
 import { ScopedToken, ScopedTokenCreateParams, ScopedTokens } from './resources/scoped-tokens';
 import {
   XcodeInstance,
+  XcodeInstanceUpdateParams,
   XcodeInstanceCreateParams,
   XcodeInstanceListParams,
   XcodeInstancesItems,
@@ -900,6 +904,7 @@ export declare namespace Limrun {
     AndroidInstances as AndroidInstances,
     type AndroidInstance as AndroidInstance,
     type AndroidInstancesItems as AndroidInstancesItems,
+    type AndroidInstanceUpdateParams as AndroidInstanceUpdateParams,
     type AndroidInstanceCreateParams as AndroidInstanceCreateParams,
     type AndroidInstanceListParams as AndroidInstanceListParams,
   };
@@ -919,6 +924,7 @@ export declare namespace Limrun {
     IosInstances as IosInstances,
     type IosInstance as IosInstance,
     type IosInstancesItems as IosInstancesItems,
+    type IosInstanceUpdateParams as IosInstanceUpdateParams,
     type IosInstanceCreateParams as IosInstanceCreateParams,
     type IosInstanceListParams as IosInstanceListParams,
     type SessionArtifact as SessionArtifact,
@@ -928,6 +934,7 @@ export declare namespace Limrun {
     XcodeInstances as XcodeInstances,
     type XcodeInstance as XcodeInstance,
     type XcodeInstancesItems as XcodeInstancesItems,
+    type XcodeInstanceUpdateParams as XcodeInstanceUpdateParams,
     type XcodeInstanceCreateParams as XcodeInstanceCreateParams,
     type XcodeInstanceListParams as XcodeInstanceListParams,
     type XcodeCreateClientParams as XcodeCreateClientParams,
@@ -954,6 +961,7 @@ export declare namespace Limrun {
     GradleInstances as GradleInstances,
     type GradleInstance as GradleInstance,
     type GradleInstancesItems as GradleInstancesItems,
+    type GradleInstanceUpdateParams as GradleInstanceUpdateParams,
     type GradleInstanceCreateParams as GradleInstanceCreateParams,
     type GradleInstanceListParams as GradleInstanceListParams,
   };

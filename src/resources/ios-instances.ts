@@ -36,6 +36,16 @@ export class IosInstances extends APIResource {
     });
   }
 
+  /** Replace a live instance's role using the ETag returned by get().withResponse(). */
+  update(id: string, params: IosInstanceUpdateParams, options?: RequestOptions): APIPromise<void> {
+    const { ifMatch, ...body } = params;
+    return this._client.patch(path`/v1/ios_instances/${id}`, {
+      ...options,
+      body,
+      headers: buildHeaders([options?.headers, { 'If-Match': ifMatch, Accept: '*/*' }]),
+    });
+  }
+
   /**
    * Get iOS instance with given ID
    */
@@ -70,6 +80,9 @@ export namespace IosInstance {
   }
 
   export interface Spec {
+    /** Current effective permissions. Present on live GETs; historical records may omit it. */
+    role?: { permissions: string[] };
+
     /**
      * After how many minutes of inactivity should the instance be terminated. The
      * timer starts once the instance becomes ready. Example values 1m, 10m, 3h.
@@ -141,6 +154,17 @@ export namespace IosInstance {
      */
     terminationReason?: string;
   }
+}
+
+export interface IosInstanceUpdateParams {
+  /** Quoted ETag from a live GET. A concurrent change returns HTTP 412. */
+  ifMatch: string;
+  spec: {
+    role: {
+      /** Replaces the complete list. Use [] to remove delegated permissions. */
+      permissions: string[];
+    };
+  };
 }
 
 export interface IosInstanceCreateParams {
@@ -337,6 +361,7 @@ export declare namespace IosInstances {
   export {
     type IosInstance as IosInstance,
     type IosInstancesItems as IosInstancesItems,
+    type IosInstanceUpdateParams as IosInstanceUpdateParams,
     type IosInstanceCreateParams as IosInstanceCreateParams,
     type IosInstanceListParams as IosInstanceListParams,
   };

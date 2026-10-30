@@ -10,6 +10,7 @@ export {
 } from './analytics';
 export {
   type AndroidInstance,
+  type AndroidInstanceUpdateParams,
   type AndroidInstanceCreateParams,
   type AndroidInstanceListParams,
   type AndroidInstancesItems,
@@ -27,12 +28,14 @@ export {
 export {
   GradleInstances,
   type GradleInstance,
+  type GradleInstanceUpdateParams,
   type GradleInstanceCreateParams,
   type GradleInstanceListParams,
   type GradleInstancesItems,
 } from './gradle-instances';
 export {
   type IosInstance,
+  type IosInstanceUpdateParams,
   type IosInstanceCreateParams,
   type IosInstanceListParams,
   type IosInstancesItems,
@@ -40,6 +43,7 @@ export {
 export { ScopedTokens, type ScopedToken, type ScopedTokenCreateParams } from './scoped-tokens';
 export {
   type XcodeInstance,
+  type XcodeInstanceUpdateParams,
   type XcodeInstanceCreateParams,
   type XcodeInstanceListParams,
   type XcodeInstancesItems,
