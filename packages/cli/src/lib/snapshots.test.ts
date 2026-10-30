@@ -29,3 +29,22 @@ test.each(['xcode', 'ios'] as const)(
     expect(requests[2]).toEqual({ url: requests[1]!.url, method: 'DELETE' });
   },
 );
+
+describe.each(['xcode', 'ios'] as const)('%s snapshot path validation', (kind) => {
+  const fetch = jest.fn(async () => Response.json({}));
+  const client = new Limrun({ apiKey: 'lim_test', baseURL: 'https://api.example', fetch });
+
+  beforeEach(() => fetch.mockClear());
+
+  test.each(['', '.', '..'])('rejects unsafe key %j before making a request', (key) => {
+    const snapshots = snapshotResource(client, kind, 'org_test');
+    expect(() => snapshots.get(key)).toThrow();
+    expect(() => snapshots.delete(key)).toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test.each(['', '.', '..'])('rejects unsafe organization %j before making a request', (org) => {
+    expect(() => snapshotResource(client, kind, org)).toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});

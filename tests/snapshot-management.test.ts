@@ -42,4 +42,16 @@ describe.each(['xcode', 'ios'] as const)('%s snapshots', (kind) => {
     fetcher.mockImplementation(async () => Response.json({ message: 'not found' }, { status: 404 }));
     await expect(snapshots.get('org_test', 'app-main')).rejects.toBeInstanceOf(Limrun.NotFoundError);
   });
+
+  test.each(['.', '..'])('rejects dot segment %j before making a request', (segment) => {
+    const fetcher = jest.fn(async () => Response.json({}));
+    const client = new Limrun({ apiKey: 'lim_test', baseURL: 'https://api.example', fetch: fetcher });
+    const snapshots = kind === 'xcode' ? client.xcodeSnapshots : client.iosSnapshots;
+    expect(() => snapshots.get('org_test', segment)).toThrow(Limrun.LimrunError);
+    expect(() => snapshots.delete('org_test', segment)).toThrow(Limrun.LimrunError);
+    expect(() => snapshots.list(segment)).toThrow(Limrun.LimrunError);
+    expect(() => snapshots.get(segment, 'app-main')).toThrow(Limrun.LimrunError);
+    expect(() => snapshots.delete(segment, 'app-main')).toThrow(Limrun.LimrunError);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
 });
