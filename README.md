@@ -66,12 +66,13 @@ resource type. The role is a general workload authorization policy; it is separa
 from build settings and upload destinations.
 
 The creator must have authority to delegate every permission in the list.
-Permissions are fixed at creation and cannot be added by a later build request.
+Permissions can be updated explicitly on a live instance. A build request itself
+does not change its role.
 Use `role: { permissions: [] }` when a workload needs no resource access. Omitting
 `role` retains the organization's compatibility default. The SDK sends the
 permission list as supplied and does not infer grants from later operations.
 
-#### Updating a running workload
+### Updating a running workload
 
 Read the live instance and use its ETag to replace `spec.role.permissions` without
 recreating the workspace:
@@ -108,7 +109,7 @@ Explicit customer tokens and signed upload URLs keep their existing behavior.
 Previously issued workload tokens remain valid until expiry, up to ten minutes;
 signed URLs have their own expiry. Updating a role does not revoke them.
 
-## Asset upload example
+### Asset upload example
 
 Grant access at creation, then pass a concrete `upload.target` when building:
 
