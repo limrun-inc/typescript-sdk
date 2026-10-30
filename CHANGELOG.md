@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.68.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.67.1...v0.68.0) (2026-10-30)
+
+
+### Features
+
+* **cli:** add --no-reset-inactivity-timeout to tunnel commands ([f9d723b](https://github.com/limrun-inc/typescript-sdk/commit/f9d723b7b133b3d1f26de49c18e8b1abd2b68159))
+* **tunnel:** let destination tunnels opt out of resetting the inactivity timeout ([cb36fef](https://github.com/limrun-inc/typescript-sdk/commit/cb36fefcd9f1103e39b361afbfdb4d550d99136a))
+
+
+### Chores
+
+* **cli:** release 0.49.2 on SDK 0.67.1 ([367dd8f](https://github.com/limrun-inc/typescript-sdk/commit/367dd8f84586b77411b70049771675621b3956d3))
+* **cli:** release 0.49.2 on SDK 0.67.1 ([e5bdd4b](https://github.com/limrun-inc/typescript-sdk/commit/e5bdd4b1e18f5398c014a54ac403a29cdfb70cd2))
+
+
+### Refactors
+
+* **tunnel:** keep the inactivity opt-out wire rule in the encoder ([8e2ae21](https://github.com/limrun-inc/typescript-sdk/commit/8e2ae211185f795a05528ce3d92e08c74c196f35))
+* **tunnel:** simplify the inactivity opt-out plumbing ([7022513](https://github.com/limrun-inc/typescript-sdk/commit/702251332f5c6a7c941035d15cba497f328e2815))
+
 ## [0.67.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.67.0...v0.67.1) (2026-10-29)
 
 
