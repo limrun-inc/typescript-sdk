@@ -878,6 +878,8 @@ export class Limrun {
   assets: API.Assets = new API.Assets(this);
   iosInstances: API.IosInstances = new API.IosInstances(this);
   xcodeInstances: API.XcodeInstances = new API.XcodeInstances(this);
+  xcodeSnapshots: API.XcodeSnapshots = new API.XcodeSnapshots(this);
+  iosSnapshots: API.IOSSnapshots = new API.IOSSnapshots(this);
   gradleInstances: API.GradleInstances = new API.GradleInstances(this);
   analytics: API.Analytics = new API.Analytics(this);
   accessTokens: API.AccessTokens = new API.AccessTokens(this);

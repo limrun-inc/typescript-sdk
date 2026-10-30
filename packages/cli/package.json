@@ -102,6 +102,12 @@
       "bazel:credentials": {
         "description": "Bazel's credential helper, run by Bazel as lim-bazel-credentials",
         "hidden": true
+      },
+      "xcode:snapshot": {
+        "description": "Manage saved Xcode workspaces: list, get, delete, flush"
+      },
+      "ios:snapshot": {
+        "description": "Manage saved iOS simulator apps and data: list, get, delete, flush"
       }
     }
   },

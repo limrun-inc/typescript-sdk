@@ -5,6 +5,14 @@ export { Limrun as default } from './client';
 export { type Uploadable, toFile } from './core/uploads';
 export { APIPromise } from './core/api-promise';
 export { Limrun, type ClientOptions } from './client';
+export {
+  XcodeSnapshots,
+  IOSSnapshots,
+  type XcodeSnapshot,
+  type IOSSnapshot,
+  type SnapshotList,
+  type SnapshotListParams,
+} from './resources/snapshots';
 export { PagePromise } from './core/pagination';
 export * from './instance-client';
 export * as Ios from './ios-client';
