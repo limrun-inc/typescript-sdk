@@ -1,6 +1,15 @@
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 export {
+  XcodeSnapshots,
+  IOSSnapshots,
+  type XcodeSnapshot,
+  type IOSSnapshot,
+  type SnapshotList,
+  type SnapshotListParams,
+} from './snapshots';
+
+export {
   Analytics,
   type AnalyticsInstancesResponse,
   type AnalyticsResponse,
