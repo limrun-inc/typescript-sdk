@@ -55,7 +55,7 @@
     "topicSeparator": " ",
     "topics": {
       "android": {
-        "description": "Execute any task on remote Android Emulators: create, list, get, delete, connect, sync, screenshot, tap, tap-element, find-element, element-tree, type, press-key, scroll, open-url, install-app, launch-app, terminate-app, app-log, logcat, record, play-on-microphone, set-wifi-bandwidth, adb-shell, ca, proxy"
+        "description": "Execute any task on remote Android Emulators: create, list, get, delete, connect, sync, screenshot, tap, tap-element, find-element, element-tree, type, press-key, scroll, open-url, install-app, launch-app, terminate-app, app-log, logcat, record, play-on-microphone, set-wifi-bandwidth, adb-shell, ca, proxy, billing"
       },
       "android:ca": {
         "description": "Trust CA certificates on a running Android instance: add"

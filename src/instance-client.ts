@@ -1,3 +1,5 @@
+import { createAndroidBillingSandbox, type AndroidBillingSandbox } from './android-billing-sandbox';
+export * from './android-billing-sandbox';
 import { WebSocket, Data } from 'ws';
 import { execFile } from 'node:child_process';
 import fs from 'fs';
@@ -283,6 +285,8 @@ export type InstanceClient = {
    * @throws If the command times out or the ADB transport is unavailable. A
    *   non-zero `exitCode` is returned in the result, not thrown.
    */
+  /** Configure and control local Play Billing simulation on supported Android images. */
+  billing: AndroidBillingSandbox;
   adbShell: (command: string, args?: string[], options?: AdbShellOptions) => Promise<AdbShellResult>;
   /**
    * Run logcat with the given arguments and stream its output over a
@@ -1528,6 +1532,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             setCameraVideo,
             clearCameraVideo,
             adbShell,
+            billing: createAndroidBillingSandbox(adbShell),
             logcat,
             setWifiBandwidth,
             startRecordingSession,
