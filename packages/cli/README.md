@@ -92,6 +92,17 @@ lim android list
 
 # Log out (removes stored API key)
 lim logout
+
+# Show the organization the stored or passed key acts for (never prints the key)
+lim whoami
+```
+
+`lim login` prints the verification URL and phrase, then waits until you confirm on any device (a phone works) or the login expires. If the command is stopped, for example by a coding agent's time limit, run it again: it continues the same login with the same phrase. Agents can use `--json`: the first line has the URL and phrase to show the user, the last line is the result.
+
+```bash
+lim login --json   # {"status":"pending","verificationUrl":"...","phrase":"...","expiresAt":"..."}
+                   # ...after approval: {"status":"signed-in"}
+lim whoami --json  # {"signedIn":true,"type":"organization","organizationId":"org_...",...}
 ```
 
 The CLI stores configuration in `~/.lim/config.yaml`. This file is compatible with the Go-based `lim` CLI — if you've already logged in with the Go version, the TypeScript CLI will use the same credentials.

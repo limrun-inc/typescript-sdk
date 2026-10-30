@@ -1,8 +1,10 @@
 import { execFileSync } from 'child_process';
+import fs from 'fs';
 import os from 'os';
+import path from 'path';
 import process from 'process';
 import { AuthenticationError, PermissionDeniedError } from '@limrun/api';
-import { writeConfig, CONFIG_KEYS } from './config';
+import { writeConfig, CONFIG_KEYS, PENDING_LOGIN_FILE } from './config';
 import {
   captureTelemetry,
   getTelemetryInstallationId,
@@ -21,9 +23,11 @@ interface LoginOptions {
   opener?: (url: string) => Promise<unknown> | unknown;
   fetcher?: typeof fetch;
   hostname?: string;
-  timeoutMs?: number;
   anonymousId?: string;
   telemetry?: TelemetryCapture;
+  pendingLoginFile?: string;
+  /** Called once the URL and phrase are known, before waiting; `--json` prints them here. */
+  onPending?: (info: PendingLoginInfo) => void;
 }
 
 interface CreateSessionResponse {
@@ -44,6 +48,18 @@ interface CollectTokenResponse {
 interface CollectedToken {
   apiKey: string;
   organizationId?: string;
+}
+
+/** A started login, stored so that running `lim login` again continues it with the same phrase. */
+interface PendingLogin extends CreateSessionResponse {
+  apiEndpoint: string;
+}
+
+/** The pending session without its secret, safe to print. */
+export interface PendingLoginInfo {
+  verificationUrl: string;
+  phrase: string;
+  expiresAt: string;
 }
 
 type LoginRuntimeOptions = Omit<LoginOptions, 'apiEndpoint' | 'consoleEndpoint' | 'version'>;
@@ -80,69 +96,123 @@ export async function login(
 }
 
 export async function loginWithOptions(options: LoginOptions): Promise<void> {
-  const {
-    apiEndpoint,
-    consoleEndpoint,
-    version,
-    configWriter = writeConfig,
-    fetcher = fetch,
-    hostname = computerName(),
-    log = console.log,
-  } = options;
+  const { log = console.log } = options;
   const telemetry = options.telemetry ?? captureTelemetry;
-  const anonymousId = options.anonymousId ?? getTelemetryInstallationId();
 
   try {
-    await emitTelemetry(telemetry, 'cli_auth_started', { auth_method: 'browser' });
-    const deadline = Date.now() + (options.timeoutMs ?? LOGIN_CALLBACK_TIMEOUT_MS);
-    const session = await createSession(
-      fetcher,
-      apiEndpoint,
-      consoleEndpoint,
-      hostname,
-      version,
-      deadline,
-      anonymousId,
-    );
-    log(`\nConfirm this phrase in your browser: ${session.phrase}`);
-    log(`Opening this URL to log in: ${session.verificationUrl}\n\n`);
+    const { pending, resumed } = await beginLogin(options);
+    if (resumed) {
+      log('\nContinuing the login started earlier.');
+    }
+    log(`\nConfirm this phrase in your browser: ${pending.phrase}`);
+    log(`${resumed ? 'Open' : 'Opening'} this URL to log in: ${pending.verificationUrl}\n\n`);
+    options.onPending?.(pendingLoginInfo(pending));
 
-    try {
-      await (options.opener ?? openLoginUrl)(session.verificationUrl);
-    } catch {
-      // The URL is already printed above, so a failed opener does not block login.
+    if (!resumed) {
+      try {
+        await (options.opener ?? openLoginUrl)(pending.verificationUrl);
+      } catch {
+        // The URL is already printed above, so a failed opener does not block login.
+      }
     }
     log('Waiting for you to confirm in browser...');
-
-    const pollIntervalMs = Math.max(1, session.pollIntervalSeconds ?? 2) * 1000;
-    for (;;) {
-      if (Date.now() >= deadline) {
-        throw loginTimeoutError();
-      }
-
-      let token: CollectedToken | null;
-      try {
-        token = await pollForToken(fetcher, apiEndpoint, session, deadline);
-      } catch (err) {
-        if (!(err instanceof RetryableLoginError) || Date.now() >= deadline) {
-          throw err;
-        }
-        await sleep(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
-        continue;
-      }
-      if (token) {
-        configWriter({ [CONFIG_KEYS.apiKey]: token.apiKey });
-        return;
-      }
-
-      await sleep(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
-    }
+    await collectLogin(pending, options);
   } catch (err) {
     await emitTelemetry(telemetry, 'cli_auth_failed', {
       auth_method: 'browser',
       error_category: telemetryErrorCategory(err),
     });
     throw err;
+  }
+}
+
+/**
+ * Continues the stored login when it is still pending, so a rerun after the
+ * command was stopped (Ctrl-C, or an agent shell's time limit) keeps the URL
+ * and phrase the user already has. Otherwise starts a new one and stores it.
+ */
+async function beginLogin(options: LoginOptions): Promise<{ pending: PendingLogin; resumed: boolean }> {
+  const { apiEndpoint, pendingLoginFile = PENDING_LOGIN_FILE } = options;
+  const stored = readPendingLogin(pendingLoginFile);
+  if (stored && stored.apiEndpoint === apiEndpoint && !isPendingLoginExpired(stored)) {
+    return { pending: stored, resumed: true };
+  }
+
+  await emitTelemetry(options.telemetry ?? captureTelemetry, 'cli_auth_started', { auth_method: 'browser' });
+  const session = await createSession(
+    options.fetcher ?? fetch,
+    apiEndpoint,
+    options.consoleEndpoint,
+    options.hostname ?? computerName(),
+    options.version,
+    Date.now() + LOGIN_CALLBACK_TIMEOUT_MS,
+    options.anonymousId ?? getTelemetryInstallationId(),
+  );
+  const pending: PendingLogin = { ...session, apiEndpoint };
+  fs.mkdirSync(path.dirname(pendingLoginFile), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(pendingLoginFile, JSON.stringify(pending), { mode: 0o600 });
+  return { pending, resumed: false };
+}
+
+/** Waits until the user approves or the session expires. Either outcome consumes the stored session. */
+async function collectLogin(pending: PendingLogin, options: LoginOptions): Promise<CollectedToken> {
+  const { configWriter = writeConfig, fetcher = fetch, pendingLoginFile = PENDING_LOGIN_FILE } = options;
+  let token: CollectedToken;
+  try {
+    token = await pollUntilApproved(fetcher, pending.apiEndpoint, pending, Date.parse(pending.expiresAt));
+  } catch (err) {
+    fs.rmSync(pendingLoginFile, { force: true });
+    throw err;
+  }
+  configWriter({ [CONFIG_KEYS.apiKey]: token.apiKey });
+  fs.rmSync(pendingLoginFile, { force: true });
+  return token;
+}
+
+export function readPendingLogin(pendingLoginFile = PENDING_LOGIN_FILE): PendingLogin | null {
+  try {
+    return JSON.parse(fs.readFileSync(pendingLoginFile, 'utf8')) as PendingLogin;
+  } catch {
+    return null;
+  }
+}
+
+export function pendingLoginInfo(pending: PendingLogin): PendingLoginInfo {
+  const { verificationUrl, phrase, expiresAt } = pending;
+  return { verificationUrl, phrase, expiresAt };
+}
+
+export function isPendingLoginExpired(pending: PendingLogin): boolean {
+  return !(Date.parse(pending.expiresAt) > Date.now());
+}
+
+async function pollUntilApproved(
+  fetcher: typeof fetch,
+  apiEndpoint: string,
+  session: CreateSessionResponse,
+  deadline: number,
+): Promise<CollectedToken> {
+  const pollIntervalMs = Math.max(1, session.pollIntervalSeconds ?? 2) * 1000;
+  for (;;) {
+    if (Date.now() >= deadline) {
+      throw loginTimeoutError();
+    }
+
+    let token: CollectedToken | null;
+    try {
+      token = await pollForToken(fetcher, apiEndpoint, session, deadline);
+    } catch (err) {
+      if (!(err instanceof RetryableLoginError) || Date.now() >= deadline) {
+        throw err;
+      }
+      await sleep(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
+      continue;
+    }
+    if (token) {
+      return token;
+    }
+
+    await sleep(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
   }
 }
 
@@ -188,6 +258,9 @@ async function createSession(
   const session = (await response.json()) as CreateSessionResponse;
   if (!session.sessionId || !session.secret || !session.phrase) {
     throw new Error('Backend returned an invalid CLI login session.');
+  }
+  if (!(Date.parse(session.expiresAt) > Date.now())) {
+    session.expiresAt = new Date(Date.now() + LOGIN_CALLBACK_TIMEOUT_MS).toISOString();
   }
   if (!session.verificationUrl) {
     const verificationUrl = new URL('/authn/cli', consoleEndpoint);
