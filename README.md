@@ -101,7 +101,12 @@ await client.xcodeInstances.update(id, {
 The same `get` and `update` methods exist for iOS, Android, and Gradle instances.
 On HTTP 412, read the instance again and recompute your changes before retrying.
 You must control the instance and be authorized to delegate every resulting permission.
-An empty array removes all delegated permissions; other instance fields stay unchanged.
+An empty array removes all delegated permissions. Omitted fields stay unchanged.
+You can also replace customer labels with `metadata: { labels: { branch: 'release' } }`,
+or clear them with `metadata: { labels: {} }`. Send labels, permissions, or both in one
+`update` call with the current ETag. A labels-only update needs instance control but
+does not require authority over the unchanged permissions.
+
 Instance reuse still matches labels and leaves the existing role unchanged.
 
 Build daemons obtain fresh workload credentials for each permission-based upload.

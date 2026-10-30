@@ -39,3 +39,24 @@ test('a stale update surfaces 412 without replaying the stale permissions', asyn
   ).rejects.toMatchObject({ status: 412 });
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+describe.each(['iosInstances', 'androidInstances', 'xcodeInstances', 'gradleInstances'] as const)(
+  '%s label updates',
+  (resource) => {
+    test.each([
+      { metadata: { labels: { session: 'prepared', branch: 'release' } } },
+      { metadata: { labels: {} } },
+      { metadata: { labels: { branch: 'main' } }, spec: { role: { permissions: [] } } },
+    ])('sends only the supplied fields: %j', async (body) => {
+      const fetcher = jest.fn(async (_url: unknown, init?: RequestInit) => {
+        expect(init?.method).toBe('PATCH');
+        expect(new Headers(init?.headers).get('If-Match')).toBe('"42"');
+        expect(JSON.parse(init?.body as string)).toEqual(body);
+        return new Response(null, { status: 204 });
+      });
+      const client = new Limrun({ apiKey: 'key', baseURL: 'https://api.example', fetch: fetcher });
+      await client[resource].update('instance', { ifMatch: '"42"', ...body });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    });
+  },
+);
