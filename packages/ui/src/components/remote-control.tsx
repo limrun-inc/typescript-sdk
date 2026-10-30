@@ -46,7 +46,7 @@ declare global {
 }
 
 export interface RemoteControlProps {
-  /** Receives parsed iOS latency messages. Adding or removing the callback reconnects the stream. */
+  /** Receives latency trace messages from supported iOS and Android instances. Adding or removing the callback reconnects the stream. */
   onTrace?: (message: Record<string, unknown>) => void;
 
   // url is the URL of the instance to connect to.
@@ -2904,7 +2904,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         });
         dataChannelRef.current = dataChannel;
         const latencyTrace =
-          platform === 'ios' && !isDuo && onTraceRef.current ?
+          !isDuo && onTraceRef.current ?
             createLatencyTrace(peerConnection, (message) => {
               if (isCurrentAttempt() && peerConnectionRef.current === peerConnection) {
                 safeInvoke('onTrace', onTraceRef.current, message);
