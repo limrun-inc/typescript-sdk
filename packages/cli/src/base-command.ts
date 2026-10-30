@@ -627,13 +627,9 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = loadLastXcodeInstance();
-    // A cached instance may not hold the requested permissions or lifecycle settings.
+    // Creation-only lifecycle settings can require a fresh instance.
     // Explicit instance IDs above keep their existing configuration.
-    if (
-      target &&
-      !this.autoCreateInactivityTimeout() &&
-      !delegatedPermissionsFromFlags(this.parsedFlags ?? {})
-    ) {
+    if (target && !this.autoCreateInactivityTimeout()) {
       this._lastResolvedInstanceId = target.id;
       return target;
     }
@@ -692,9 +688,7 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = loadLastXcodeInstance();
-    const forceFresh = Boolean(
-      this.autoCreateInactivityTimeout() || delegatedPermissionsFromFlags(this.parsedFlags ?? {}),
-    );
+    const forceFresh = Boolean(this.autoCreateInactivityTimeout());
     // The recorded Xcode target wins even when it has no simulator yet:
     // attach one instead of abandoning it for a fresh sandbox, so a prior
     // `lim xcode sync` or `lim xcode create` keeps all commands pointed at
@@ -837,6 +831,34 @@ export abstract class BaseCommand extends Command {
   /** Whether `id` is a server-side instance THIS invocation auto-created. */
   protected wasCreatedThisRun(id: string | undefined): boolean {
     return !!id && this._instancesCreatedThisRun.has(id);
+  }
+
+  /** Preserve the live role while granting the exact target requested by --upload. */
+  protected async ensureUploadPermissions(id: string, name: string): Promise<void> {
+    const required = delegatedPermissionsFromFlags({ upload: name })!;
+    const resources = {
+      xcode: this.client.xcodeInstances,
+      gradle: this.client.gradleInstances,
+      ios: this.client.iosInstances,
+      android: this.client.androidInstances,
+    } as const;
+    const instances = resources[detectInstanceType(id)];
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: instance, response } = await instances.get(id).withResponse();
+      const etag = response.headers.get('etag');
+      const existing = instance.spec.role?.permissions;
+      if (!etag || !existing || instance.status.state === 'terminated') {
+        this.error('This instance has no editable live role. Update the server or select a live instance.');
+      }
+      if (required.every((permission) => existing.includes(permission))) return;
+      const permissions = [...new Set([...existing, ...required])];
+      try {
+        await instances.update(id, { ifMatch: etag, spec: { role: { permissions } } });
+        return;
+      } catch (err) {
+        if (!(err instanceof APIError) || err.status !== 412 || attempt === 2) throw err;
+      }
+    }
   }
 
   /** Defaults apply only at creation; existing targets keep their snapshot configuration. */
@@ -1395,13 +1417,13 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = this.tryResolveGradleTarget(providedId);
-    // Explicit targets keep their permissions; cached targets cannot be assumed to hold new grants.
+    // Uploads keep the selected workspace; permissions do not select an instance.
     if (
       target &&
       (this._overrideInstanceId ||
         providedId ||
         envInstanceTarget('gradle') ||
-        (!this.autoCreateInactivityTimeout() && !delegatedPermissionsFromFlags(this.parsedFlags ?? {})))
+        !this.autoCreateInactivityTimeout())
     ) {
       return target;
     }

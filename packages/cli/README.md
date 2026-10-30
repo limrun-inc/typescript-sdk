@@ -26,9 +26,19 @@ Delegating a pattern requires `asset:*:<verb>` or broader authority for that ver
 
 Repeat `--permission` to add grants at creation. It is available on all four
 `create` commands, `run`, Xcode build/test/sync/RBE, and Gradle build/sync.
-`--permission` forces fresh instances even with `--reuse-if-exists`.
-Permissions cannot be added to an existing instance. When using `--id`, its role
-must already authorize the upload. Existing customer sessions are not changed.
+`--reuse-if-exists` matches labels, regardless of the requested permissions.
+A reused instance keeps its existing role; `--permission` applies only if a new
+instance is created.
+
+A later `build --upload` keeps your prepared instance. The CLI reads its live
+permissions and adds create/upload/update for the exact asset name using a
+conditional update. It preserves other permissions and retries concurrent changes.
+Your credentials must control the instance and allow delegation of the resulting role.
+RBE `--auto-upload` adds permissions when the tunnel starts; manual RBE uploads add
+them before uploading. Build daemons request fresh workload credentials for every
+permission-based upload. The CLI never passes your credentials to the build daemon.
+Removed grants remain usable by already-issued tokens until expiry, up to ten minutes;
+signed URLs retain their own expiry. Instance selection still uses labels alone.
 Auxiliary simulators receive an empty list; `ios create --xcode` gives both newly
 created workloads the requested permissions.
 

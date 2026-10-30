@@ -102,7 +102,7 @@ export default class IosCreate extends BaseCommand {
       options: ['26', '27'],
     }),
     'reuse-if-exists': Flags.boolean({
-      description: 'Reuse an existing matching instance unless --permission requests a fresh role',
+      description: 'Reuse an existing instance with matching labels; its permissions remain unchanged',
       default: false,
     }),
     'install-asset': Flags.string({
@@ -237,7 +237,7 @@ export default class IosCreate extends BaseCommand {
       const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
       const params: IosInstanceCreateParams = {
         wait: true,
-        reuseIfExists: !delegatedPermissions && flags['reuse-if-exists'] ? true : undefined,
+        reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: { role: { permissions: delegatedPermissions ?? [] } },
       };
 
@@ -376,7 +376,7 @@ export default class IosCreate extends BaseCommand {
         try {
           createdXcode = await this.client.xcodeInstances.create({
             wait: true,
-            reuseIfExists: !delegatedPermissions && flags['reuse-if-exists'] ? true : undefined,
+            reuseIfExists: flags['reuse-if-exists'] || undefined,
             ...(params.metadata ? { metadata: params.metadata } : {}),
             spec: {
               role: { permissions: delegatedPermissions ?? [] },

@@ -69,6 +69,7 @@ export default class XcodeRbeUpload extends BaseCommand {
 
     await this.withAuth(async () => {
       const client = await this.resolveXcodeClient(await this.resolveXcodeTarget(info.instanceId));
+      await this.ensureUploadPermissions(info.instanceId, args.name);
       const result = await client.uploadLatestRbeBuild({
         target: `name/${args.name}`,
         ...(flags.ttl && { ttl: flags.ttl }),
