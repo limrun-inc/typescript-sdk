@@ -36,6 +36,16 @@ export class AndroidInstances extends APIResource {
     });
   }
 
+  /** Update a live instance's labels or role using the ETag returned by get().withResponse(). */
+  update(id: string, params: AndroidInstanceUpdateParams, options?: RequestOptions): APIPromise<void> {
+    const { ifMatch, ...body } = params;
+    return this._client.patch(path`/v1/android_instances/${id}`, {
+      ...options,
+      body,
+      headers: buildHeaders([options?.headers, { 'If-Match': ifMatch, Accept: '*/*' }]),
+    });
+  }
+
   /**
    * Get Android instance with given ID
    */
@@ -70,6 +80,9 @@ export namespace AndroidInstance {
   }
 
   export interface Spec {
+    /** Current effective permissions. Present on live GETs; historical records may omit it. */
+    role?: { permissions: string[] };
+
     /**
      * After how many minutes of inactivity should the instance be terminated. The
      * timer starts once the instance becomes ready. Example values 1m, 10m, 3h.
@@ -157,6 +170,19 @@ export namespace AndroidInstance {
       }
     }
   }
+}
+
+export interface AndroidInstanceUpdateParams {
+  /** Quoted ETag from a live GET. A concurrent change returns HTTP 412. */
+  ifMatch: string;
+  /** Replaces all customer labels. Use {} to clear them. Omission preserves labels. */
+  metadata?: { labels: { [key: string]: string } };
+  spec?: {
+    role: {
+      /** Replaces the complete list. Use [] to remove delegated permissions. */
+      permissions: string[];
+    };
+  };
 }
 
 export interface AndroidInstanceCreateParams {
@@ -361,6 +387,7 @@ export declare namespace AndroidInstances {
   export {
     type AndroidInstance as AndroidInstance,
     type AndroidInstancesItems as AndroidInstancesItems,
+    type AndroidInstanceUpdateParams as AndroidInstanceUpdateParams,
     type AndroidInstanceCreateParams as AndroidInstanceCreateParams,
     type AndroidInstanceListParams as AndroidInstanceListParams,
   };

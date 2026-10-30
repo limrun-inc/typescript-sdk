@@ -37,6 +37,16 @@ export class GradleInstances extends APIResource {
     });
   }
 
+  /** Update a live instance's labels or role using the ETag returned by get().withResponse(). */
+  update(id: string, params: GradleInstanceUpdateParams, options?: RequestOptions): APIPromise<void> {
+    const { ifMatch, ...body } = params;
+    return this._client.patch(path`/v1/gradle_instances/${id}`, {
+      ...options,
+      body,
+      headers: buildHeaders([options?.headers, { 'If-Match': ifMatch, Accept: '*/*' }]),
+    });
+  }
+
   /**
    * Get gradle instance with given ID
    */
@@ -71,6 +81,9 @@ export namespace GradleInstance {
   }
 
   export interface Spec {
+    /** Current effective permissions. Present on live GETs; historical records may omit it. */
+    role?: { permissions: string[] };
+
     inactivityTimeout: string;
 
     region: string;
@@ -106,6 +119,19 @@ export namespace GradleInstance {
      */
     terminationReason?: string;
   }
+}
+
+export interface GradleInstanceUpdateParams {
+  /** Quoted ETag from a live GET. A concurrent change returns HTTP 412. */
+  ifMatch: string;
+  /** Replaces all customer labels. Use {} to clear them. Omission preserves labels. */
+  metadata?: { labels: { [key: string]: string } };
+  spec?: {
+    role: {
+      /** Replaces the complete list. Use [] to remove delegated permissions. */
+      permissions: string[];
+    };
+  };
 }
 
 export interface GradleInstanceCreateParams {
@@ -245,6 +271,7 @@ export declare namespace GradleInstances {
   export {
     type GradleInstance as GradleInstance,
     type GradleInstancesItems as GradleInstancesItems,
+    type GradleInstanceUpdateParams as GradleInstanceUpdateParams,
     type GradleInstanceCreateParams as GradleInstanceCreateParams,
     type GradleInstanceListParams as GradleInstanceListParams,
   };
