@@ -1,19 +1,26 @@
+import type { XcodeClient } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 
-export type IosModel = NonNullable<IosInstanceCreateParams.Spec['model']>;
+/** The spec fields that select a simulator: its model and an OSVersion clue. */
+export type IosDeviceSelection = NonNullable<Parameters<XcodeClient['attachNewSimulator']>[0]>;
 
-/** iOS major versions the --os-version flags accept, and which model runs which. */
+/** iOS models and major versions the --model and --os-version flags accept. */
+export const IOS_MODELS: NonNullable<IosInstanceCreateParams.Spec['model']>[] = [
+  'iphone',
+  'iphone-duo',
+  'ipad',
+  'watch',
+];
 export const IOS_OS_VERSIONS = ['26', '27'];
-export const IOS_OS_VERSION_SUPPORT = 'iPhone and iPad run both, iPhone Duo 27, Watch 26.';
 
-/** Maps the --os-version and --model flags to the create spec fields that select the simulator. */
-export function iosDeviceSelection(osVersion?: string, model?: IosModel): IosInstanceCreateParams.Spec {
-  const spec: IosInstanceCreateParams.Spec = {};
+/** Maps the --os-version and --model flag values to the spec fields that select the simulator. */
+export function iosDeviceSelection(osVersion?: string, model?: string): IosDeviceSelection {
+  const spec: IosDeviceSelection = {};
   if (osVersion) {
     spec.clues = [{ kind: 'OSVersion', osVersion }];
   }
   if (model) {
-    spec.model = model;
+    spec.model = model as NonNullable<IosDeviceSelection['model']>;
   }
   return spec;
 }

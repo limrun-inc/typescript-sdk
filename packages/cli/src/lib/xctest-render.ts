@@ -8,8 +8,10 @@ export function formatCaseLine(event: XctestCaseEvent): string {
     return base;
   }
   // Compiler-style file:line prefix, so terminals and CI log parsers link to the source.
-  const location =
-    event.failureFile ? `${event.failureFile}${event.failureLine ? `:${event.failureLine}` : ''}: ` : '';
+  let location = '';
+  if (event.failureFile) {
+    location = event.failureLine ? `${event.failureFile}:${event.failureLine}: ` : `${event.failureFile}: `;
+  }
   return `${base}\n       ${location}${event.failureMessage}`;
 }
 

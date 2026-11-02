@@ -1,4 +1,5 @@
 import { delegatedPermissionsFromFlags } from './lib/delegated-permissions';
+import { type IosDeviceSelection } from './lib/ios-device-selection';
 import { Command, Flags } from '@oclif/core';
 import Limrun, {
   APIError,
@@ -44,7 +45,7 @@ import {
   wantsRestore,
 } from './lib/cache';
 import type { XcodeCacheConfig, XcodeCacheFollowResult, XcodeClient, XcodeSelectResult } from '@limrun/api';
-import { type IosInstance, type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
+import { type IosInstance } from '@limrun/api/resources/ios-instances';
 import { formatXcode, resolveRequestedXcodeVersion, type RequestedXcodeVersion } from './lib/xcode-version';
 import type { TunnelCommandIO } from './lib/tunnel-command';
 import { captureTelemetry, telemetryIntentForCommand } from './lib/telemetry';
@@ -146,6 +147,11 @@ export abstract class BaseCommand extends Command {
 
   private _parsedFlags?: Record<string, unknown>;
   protected snapshotProjectPath?: string;
+  /**
+   * Model and iOS version for the simulator a simulator-backed target is created with. Set by
+   * commands that let the caller choose it, such as xcode test; the 404 retry reads it too.
+   */
+  protected autoCreateSimulator?: IosDeviceSelection;
   private _lastResolvedInstanceId?: string;
   private _lastResolvedExpectedType?: 'ios' | 'android' | 'xcode' | 'gradle';
   private _xcodeReplacementIntent?: XcodeReplacementIntent;
@@ -781,12 +787,6 @@ export abstract class BaseCommand extends Command {
     const value = this.parsedFlags?.['inactivity-timeout'];
     return typeof value === 'string' && value.trim() ? value.trim() : undefined;
   }
-
-  /**
-   * Model and iOS version for the simulator a simulator-backed target is created with. Set by
-   * commands that let the caller choose it, such as xcode test.
-   */
-  protected autoCreateSimulator?: Pick<IosInstanceCreateParams.Spec, 'model' | 'clues'>;
 
   private async createReplacementInstance(
     instanceId?: string,

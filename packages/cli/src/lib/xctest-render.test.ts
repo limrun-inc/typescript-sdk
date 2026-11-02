@@ -42,6 +42,22 @@ test('a failing case with a location prefixes the message with file:line', () =>
   );
 });
 
+test('a failure location without a line shows just the file', () => {
+  expect(
+    formatCaseLine({
+      type: 'case',
+      testClass: 'AppTests.LoginTests',
+      method: 'testExpired',
+      passed: false,
+      durationMs: 95,
+      failureMessage: 'XCTAssertEqual failed',
+      failureFile: 'AppTests/LoginTests.swift',
+    }),
+  ).toBe(
+    '  FAIL AppTests.LoginTests/testExpired (95ms)\n       AppTests/LoginTests.swift: XCTAssertEqual failed',
+  );
+});
+
 test('the summary line distinguishes finished, unfinished, and absent', () => {
   expect(formatSummaryLine({ type: 'summary', passed: 6, failed: 1, planFinished: true })).toBe(
     '  6 passed, 1 failed',
