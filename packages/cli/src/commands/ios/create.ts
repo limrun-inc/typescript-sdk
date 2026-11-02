@@ -14,19 +14,7 @@ import { startPersistedCaptures } from '../../lib/session-captures';
 import { Ios, type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 import { instanceToken } from '@limrun/api/instance-token';
-
-type IosModel = NonNullable<IosInstanceCreateParams.Spec['model']>;
-
-export function iosDeviceSelection(osVersion?: string, model?: IosModel): IosInstanceCreateParams.Spec {
-  const spec: IosInstanceCreateParams.Spec = {};
-  if (osVersion) {
-    spec.clues = [{ kind: 'OSVersion', osVersion }];
-  }
-  if (model) {
-    spec.model = model;
-  }
-  return spec;
-}
+import { iosDeviceSelection, type IosModel } from '../../lib/ios-device-selection';
 
 export default class IosCreate extends BaseCommand {
   static summary = 'Create a new iOS instance';
@@ -97,7 +85,7 @@ export default class IosCreate extends BaseCommand {
     }),
     'os-version': Flags.string({
       description:
-        'iOS major version to create (26 or 27). iPhone runs both, iPhone Duo 27, iPad and Watch 26.',
+        'iOS major version to create (26 or 27). iPhone and iPad run both, iPhone Duo 27, Watch 26.',
       options: ['26', '27'],
     }),
     'reuse-if-exists': Flags.boolean({

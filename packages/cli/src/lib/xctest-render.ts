@@ -1,13 +1,16 @@
 import type { XctestCaseEvent, XctestSummaryEvent } from '@limrun/api';
 
-/** One console line per finished case: verdict, identifier, duration, message. */
+/** One console line per finished case: verdict, identifier, duration, then the failure. */
 export function formatCaseLine(event: XctestCaseEvent): string {
   const verdict = event.passed ? 'PASS' : 'FAIL';
   const base = `  ${verdict} ${event.testClass}/${event.method} (${event.durationMs}ms)`;
   if (event.passed || !event.failureMessage) {
     return base;
   }
-  return `${base}\n       ${event.failureMessage}`;
+  // Compiler-style file:line prefix, so terminals and CI log parsers link to the source.
+  const location =
+    event.failureFile ? `${event.failureFile}${event.failureLine ? `:${event.failureLine}` : ''}: ` : '';
+  return `${base}\n       ${location}${event.failureMessage}`;
 }
 
 /** The run's closing line; a missing summary means the run died partway. */

@@ -1,4 +1,5 @@
 import { delegatedPermissionsFromFlags } from './lib/delegated-permissions';
+import { iosDeviceSelection, type IosModel } from './lib/ios-device-selection';
 import { Command, Flags } from '@oclif/core';
 import Limrun, {
   APIError,
@@ -678,6 +679,11 @@ export abstract class BaseCommand extends Command {
           '--inactivity-timeout controls a newly created instance and cannot be combined with an instance pinned by LIM_XCODE_INSTANCE_URL.',
         );
       }
+      if (this.autoCreateIosDeviceSelection()) {
+        throw new Error(
+          '--model and --os-version choose a newly created simulator and cannot be combined with an instance pinned by LIM_XCODE_INSTANCE_URL.',
+        );
+      }
       if (!(await this.xcodeTargetHasAttachedSimulator(envTarget))) {
         throw new Error(
           `--ios requires an Xcode instance with an attached simulator, but the one pinned by LIM_XCODE_INSTANCE_URL (${envTarget.id}) has none. Attach one with: lim xcode attach-simulator`,
@@ -688,7 +694,8 @@ export abstract class BaseCommand extends Command {
     }
 
     const target = loadLastXcodeInstance();
-    const forceFresh = Boolean(this.autoCreateInactivityTimeout());
+    // A recorded target's simulator may be any device, so a requested one needs fresh instances.
+    const forceFresh = Boolean(this.autoCreateInactivityTimeout() || this.autoCreateIosDeviceSelection());
     // The recorded Xcode target wins even when it has no simulator yet:
     // attach one instead of abandoning it for a fresh sandbox, so a prior
     // `lim xcode sync` or `lim xcode create` keeps all commands pointed at
@@ -774,6 +781,19 @@ export abstract class BaseCommand extends Command {
   private autoCreateInactivityTimeout(): string | undefined {
     const value = this.parsedFlags?.['inactivity-timeout'];
     return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  /** Simulator model and iOS version requested by commands such as xcode test, if any. */
+  private autoCreateIosDeviceSelection() {
+    const model = this.parsedFlags?.['model'];
+    const osVersion = this.parsedFlags?.['os-version'];
+    if (typeof model !== 'string' && typeof osVersion !== 'string') {
+      return undefined;
+    }
+    return iosDeviceSelection(
+      typeof osVersion === 'string' ? osVersion : undefined,
+      typeof model === 'string' ? (model as IosModel) : undefined,
+    );
   }
 
   private async createReplacementInstance(
@@ -1322,7 +1342,7 @@ export abstract class BaseCommand extends Command {
     try {
       const xcodeClient = await this.resolveXcodeClient(target);
       // attachNewSimulator deletes the simulator itself when the attach fails.
-      ({ simulator } = await xcodeClient.attachNewSimulator());
+      ({ simulator } = await xcodeClient.attachNewSimulator(this.autoCreateIosDeviceSelection()));
     } catch (err) {
       await this.deleteCreatedInstance(target.id);
       throw err;

@@ -1,4 +1,5 @@
-import IosCreate, { iosDeviceSelection } from './create';
+import IosCreate from './create';
+import { iosDeviceSelection } from '../../lib/ios-device-selection';
 
 jest.mock('../../lib/config', () => ({
   ...jest.requireActual('../../lib/config'),

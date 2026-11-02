@@ -332,6 +332,13 @@ export type XctestCaseEvent = {
   durationMs: number;
   /** First failure message of a failed case. */
   failureMessage?: string;
+  /**
+   * Source file of the first failure, relative to the synced project when it is
+   * inside it. Absent when XCTest recorded no location, for example on a crash.
+   */
+  failureFile?: string;
+  /** Line of the first failure in `failureFile`. */
+  failureLine?: number;
 };
 
 export type XctestSummaryEvent = {

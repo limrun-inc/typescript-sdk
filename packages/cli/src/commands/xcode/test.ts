@@ -22,6 +22,8 @@ export default class XcodeTest extends BaseCommand {
     '$ lim xcode test',
     '$ lim xcode test ./MyProject --scheme MyApp',
     '$ lim xcode test . --only-testing MyAppTests/LoginTests/testValidLogin',
+    "$ lim xcode test . --only-testing 'MyAppTests/CartSuite/addsItem()'",
+    '$ lim xcode test . --model ipad --os-version 27',
     '$ lim xcode test . --skip-testing MyAppUITests',
     '$ lim xcode test . --json > results.ndjson',
   ];
@@ -43,6 +45,16 @@ export default class XcodeTest extends BaseCommand {
       description:
         'Inactivity timeout for the instances created by this run (for example 3s, 1m). Forces fresh instances and cannot be combined with --id.',
     }),
+    model: Flags.string({
+      description:
+        'Device model of the simulator this run creates. Forces fresh instances and cannot be combined with --id or --build-only.',
+      options: ['iphone', 'iphone-duo', 'ipad'],
+    }),
+    'os-version': Flags.string({
+      description:
+        'iOS major version of the simulator this run creates. iPhone and iPad run both, iPhone Duo 27. Forces fresh instances and cannot be combined with --id or --build-only.',
+      options: ['26', '27'],
+    }),
     'build-only': Flags.boolean({
       description:
         'Compile the test targets without running them: uses a plain sandbox and skips simulator acquisition. Products stay on the sandbox for a later run. On servers without run suppression, a previously attached simulator still runs the tests.',
@@ -50,14 +62,14 @@ export default class XcodeTest extends BaseCommand {
     }),
     'only-testing': Flags.string({
       description:
-        "Run only these tests, in xcodebuild's -only-testing format: Target[/Class[/method]]. Repeat for multiple. Mutually exclusive with --skip-testing.",
+        "Run only these tests, in xcodebuild's -only-testing format: Target[/Class[/method]] for XCTest, Target/Suite[/test()] for Swift Testing. Repeat for multiple. Mutually exclusive with --skip-testing.",
       multiple: true,
       multipleNonGreedy: true,
       exclusive: ['skip-testing'],
     }),
     'skip-testing': Flags.string({
       description:
-        "Skip these tests, in xcodebuild's -skip-testing format: Target[/Class[/method]]. Repeat for multiple.",
+        "Skip these tests, in xcodebuild's -skip-testing format: Target[/Class[/method]] for XCTest, Target/Suite[/test()] for Swift Testing. Repeat for multiple.",
       multiple: true,
       multipleNonGreedy: true,
     }),
@@ -75,6 +87,11 @@ export default class XcodeTest extends BaseCommand {
 
     if (flags.id && flags['inactivity-timeout']) {
       this.error('--inactivity-timeout controls newly created instances and cannot be combined with --id.');
+    }
+    if ((flags.model || flags['os-version']) && (flags.id || flags['build-only'])) {
+      this.error(
+        '--model and --os-version choose the simulator this run creates and cannot be combined with --id or --build-only.',
+      );
     }
 
     await this.withAuth(async () => {
