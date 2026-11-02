@@ -25,6 +25,23 @@ test('a failing case carries its first failure message indented', () => {
   ).toBe('  FAIL AppTests.LoginTests/testExpired (95ms)\n       XCTAssertEqual failed');
 });
 
+test('a failing case with a location prefixes the message with file:line', () => {
+  expect(
+    formatCaseLine({
+      type: 'case',
+      testClass: 'AppTests.LoginTests',
+      method: 'testExpired',
+      passed: false,
+      durationMs: 95,
+      failureMessage: 'XCTAssertEqual failed',
+      failureFile: 'AppTests/LoginTests.swift',
+      failureLine: 42,
+    }),
+  ).toBe(
+    '  FAIL AppTests.LoginTests/testExpired (95ms)\n       AppTests/LoginTests.swift:42: XCTAssertEqual failed',
+  );
+});
+
 test('the summary line distinguishes finished, unfinished, and absent', () => {
   expect(formatSummaryLine({ type: 'summary', passed: 6, failed: 1, planFinished: true })).toBe(
     '  6 passed, 1 failed',

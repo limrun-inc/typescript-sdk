@@ -5,7 +5,7 @@ import {
   type XcodeInstance,
   type XcodeInstanceCreateParams,
 } from './xcode-instances';
-import { type IosInstance } from './ios-instances';
+import { type IosInstance, type IosInstanceCreateParams } from './ios-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
@@ -596,8 +596,12 @@ export type XcodeClient = {
    * Create a new iOS simulator instance and attach it to this xcode instance.
    * Deletes the simulator if attach fails so it is never leaked. Returns the new
    * simulator's instance id (record it for teardown) and the instance itself.
+   * `spec` selects the simulator, for example `{ model: 'ipad' }` or an
+   * OSVersion clue; the simulator gets no delegated permissions unless it sets a role.
    */
-  attachNewSimulator: () => Promise<{ iosInstanceId: string; simulator: IosInstance }>;
+  attachNewSimulator: (
+    spec?: IosInstanceCreateParams.Spec,
+  ) => Promise<{ iosInstanceId: string; simulator: IosInstance }>;
 
   /** Best-effort delete of a simulator instance. Never throws; returns success. */
   deleteSimulator: (iosInstanceId: string) => Promise<boolean>;
@@ -917,11 +921,16 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       }
     };
 
-    const attachNewSimulatorImpl = async (): Promise<{
+    const attachNewSimulatorImpl = async (
+      spec?: IosInstanceCreateParams.Spec,
+    ): Promise<{
       iosInstanceId: string;
       simulator: IosInstance;
     }> => {
-      const simulator = await client.iosInstances.create({ wait: true, spec: { role: { permissions: [] } } });
+      const simulator = await client.iosInstances.create({
+        wait: true,
+        spec: { role: { permissions: [] }, ...spec },
+      });
       // The sim exists from here; if attach fails, delete it so we never leak an
       // orphan the caller can't reap.
       try {

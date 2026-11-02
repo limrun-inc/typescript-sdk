@@ -21,6 +21,23 @@ describe('xcode client simulator helpers', () => {
     expect(create).toHaveBeenCalledWith({ wait: true, spec: { role: { permissions: [] } } });
   });
 
+  test('new auxiliary simulators take the requested model and iOS version', async () => {
+    const client = new Limrun({ apiKey: 'key' });
+    const stop = new Error('stop before attachment');
+    const create = jest.spyOn(client.iosInstances, 'create').mockRejectedValue(stop);
+    const xcode = await client.xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'xcode-token',
+    });
+    await expect(
+      xcode.attachNewSimulator({ model: 'ipad', clues: [{ kind: 'OSVersion', osVersion: '27' }] }),
+    ).rejects.toThrow(stop);
+    expect(create).toHaveBeenCalledWith({
+      wait: true,
+      spec: { role: { permissions: [] }, model: 'ipad', clues: [{ kind: 'OSVersion', osVersion: '27' }] },
+    });
+  });
+
   test('gets simulator status from limbuild', async () => {
     const calls: Array<{ input: RequestInfo; init: RequestInit | undefined }> = [];
     nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
