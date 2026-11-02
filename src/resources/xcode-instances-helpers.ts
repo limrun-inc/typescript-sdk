@@ -921,12 +921,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       }
     };
 
-    const attachNewSimulatorImpl = async (
-      device?: Pick<IosInstanceCreateParams.Spec, 'model' | 'clues'>,
-    ): Promise<{
-      iosInstanceId: string;
-      simulator: IosInstance;
-    }> => {
+    const attachNewSimulatorImpl: XcodeClient['attachNewSimulator'] = async (device) => {
       const simulator = await client.iosInstances.create({
         wait: true,
         spec: {

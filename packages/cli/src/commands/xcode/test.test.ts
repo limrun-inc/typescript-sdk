@@ -11,14 +11,8 @@ jest.mock('../../lib/set-instance', () => ({ envInstanceTarget: () => undefined 
 
 const parse = (argv: string[]) => Parser.parse(argv, { flags: XcodeTest.flags });
 
-test.each([
-  ['--model', 'ipad', '--id', 'sandbox_euna_test'],
-  ['--os-version', '27', '--build-only'],
-  ['--model', 'ipad', '--no-create'],
-])('rejects device selection for a run that creates no simulator: %j', async (...argv) => {
-  const parsed = await parse(argv);
-  const withAuth = jest.fn();
-  const command = Object.assign(Object.create(XcodeTest.prototype), {
+const commandWith = (parsed: object, withAuth: jest.Mock) =>
+  Object.assign(Object.create(XcodeTest.prototype), {
     parse: async () => ({ ...parsed, args: {} }),
     setParsedFlags: jest.fn(),
     withAuth,
@@ -26,11 +20,32 @@ test.each([
       throw new Error(message);
     },
   });
+
+test.each([
+  { argv: ['--model', 'ipad', '--id', 'sandbox_euna_test'] },
+  { argv: ['--os-version', '27', '--build-only'] },
+  { argv: ['--model', 'ipad', '--no-create'] },
+])('rejects device selection for a run that creates no simulator: $argv', async ({ argv }) => {
+  const withAuth = jest.fn();
+  const command = commandWith(await parse(argv), withAuth);
   await expect(command.run()).rejects.toThrow(/cannot be combined with --id, --build-only or --no-create/);
   expect(withAuth).not.toHaveBeenCalled();
 });
 
-test('device selection skips the recorded target and attaches a simulator of that model and version', async () => {
+test('--model and --os-version become the spec of the simulator the run creates', async () => {
+  const stop = new Error('stop before creating instances');
+  const command = commandWith(
+    await parse(['--model', 'ipad', '--os-version', '27']),
+    jest.fn().mockRejectedValue(stop),
+  );
+  await expect(command.run()).rejects.toThrow(stop);
+  expect(command.autoCreateSimulator).toEqual({
+    model: 'ipad',
+    clues: [{ kind: 'OSVersion', osVersion: '27' }],
+  });
+});
+
+test('a chosen simulator skips the recorded target and attaches a simulator of that model and version', async () => {
   const recorded = { id: 'sandbox_euna_recorded', type: 'xcode' as const };
   const created = { id: 'sandbox_euna_new', type: 'xcode' as const };
   jest.mocked(loadLastXcodeInstance).mockReturnValueOnce(recorded as never);

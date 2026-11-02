@@ -14,12 +14,7 @@ import { startPersistedCaptures } from '../../lib/session-captures';
 import { Ios, type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 import { instanceToken } from '@limrun/api/instance-token';
-import {
-  IOS_OS_VERSION_SUPPORT,
-  IOS_OS_VERSIONS,
-  iosDeviceSelection,
-  type IosModel,
-} from '../../lib/ios-device-selection';
+import { IOS_MODELS, IOS_OS_VERSIONS, iosDeviceSelection } from '../../lib/ios-device-selection';
 
 export default class IosCreate extends BaseCommand {
   static summary = 'Create a new iOS instance';
@@ -86,10 +81,11 @@ export default class IosCreate extends BaseCommand {
     }),
     model: Flags.string({
       description: 'Device model to create',
-      options: ['iphone', 'iphone-duo', 'ipad', 'watch'],
+      options: IOS_MODELS,
     }),
     'os-version': Flags.string({
-      description: `iOS major version to create (26 or 27). ${IOS_OS_VERSION_SUPPORT}`,
+      description:
+        'iOS major version to create (26 or 27). iPhone and iPad run both, iPhone Duo 27, Watch 26.',
       options: IOS_OS_VERSIONS,
     }),
     'reuse-if-exists': Flags.boolean({
@@ -242,10 +238,7 @@ export default class IosCreate extends BaseCommand {
 
       if (flags.region) params.spec!.region = flags.region;
       if (flags.jurisdiction) params.spec!.jurisdiction = flags.jurisdiction as 'us' | 'eu' | 'as';
-      Object.assign(
-        params.spec!,
-        iosDeviceSelection(flags['os-version'], flags.model as IosModel | undefined),
-      );
+      Object.assign(params.spec!, iosDeviceSelection(flags['os-version'], flags.model));
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
       if (flags['force-bundle-id']) params.spec!.forceBundleId = flags['force-bundle-id'];
