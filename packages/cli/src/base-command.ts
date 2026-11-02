@@ -1,5 +1,4 @@
 import { delegatedPermissionsFromFlags } from './lib/delegated-permissions';
-import { iosDeviceSelection, type IosModel } from './lib/ios-device-selection';
 import { Command, Flags } from '@oclif/core';
 import Limrun, {
   APIError,
@@ -45,7 +44,7 @@ import {
   wantsRestore,
 } from './lib/cache';
 import type { XcodeCacheConfig, XcodeCacheFollowResult, XcodeClient, XcodeSelectResult } from '@limrun/api';
-import { type IosInstance } from '@limrun/api/resources/ios-instances';
+import { type IosInstance, type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 import { formatXcode, resolveRequestedXcodeVersion, type RequestedXcodeVersion } from './lib/xcode-version';
 import type { TunnelCommandIO } from './lib/tunnel-command';
 import { captureTelemetry, telemetryIntentForCommand } from './lib/telemetry';
@@ -679,7 +678,7 @@ export abstract class BaseCommand extends Command {
           '--inactivity-timeout controls a newly created instance and cannot be combined with an instance pinned by LIM_XCODE_INSTANCE_URL.',
         );
       }
-      if (this.autoCreateIosDeviceSelection()) {
+      if (this.autoCreateSimulator) {
         throw new Error(
           '--model and --os-version choose a newly created simulator and cannot be combined with an instance pinned by LIM_XCODE_INSTANCE_URL.',
         );
@@ -695,7 +694,7 @@ export abstract class BaseCommand extends Command {
 
     const target = loadLastXcodeInstance();
     // A recorded target's simulator may be any device, so a requested one needs fresh instances.
-    const forceFresh = Boolean(this.autoCreateInactivityTimeout() || this.autoCreateIosDeviceSelection());
+    const forceFresh = Boolean(this.autoCreateInactivityTimeout() || this.autoCreateSimulator);
     // The recorded Xcode target wins even when it has no simulator yet:
     // attach one instead of abandoning it for a fresh sandbox, so a prior
     // `lim xcode sync` or `lim xcode create` keeps all commands pointed at
@@ -783,18 +782,11 @@ export abstract class BaseCommand extends Command {
     return typeof value === 'string' && value.trim() ? value.trim() : undefined;
   }
 
-  /** Simulator model and iOS version requested by commands such as xcode test, if any. */
-  private autoCreateIosDeviceSelection() {
-    const model = this.parsedFlags?.['model'];
-    const osVersion = this.parsedFlags?.['os-version'];
-    if (typeof model !== 'string' && typeof osVersion !== 'string') {
-      return undefined;
-    }
-    return iosDeviceSelection(
-      typeof osVersion === 'string' ? osVersion : undefined,
-      typeof model === 'string' ? (model as IosModel) : undefined,
-    );
-  }
+  /**
+   * Model and iOS version for the simulator a simulator-backed target is created with. Set by
+   * commands that let the caller choose it, such as xcode test.
+   */
+  protected autoCreateSimulator?: Pick<IosInstanceCreateParams.Spec, 'model' | 'clues'>;
 
   private async createReplacementInstance(
     instanceId?: string,
@@ -1342,7 +1334,7 @@ export abstract class BaseCommand extends Command {
     try {
       const xcodeClient = await this.resolveXcodeClient(target);
       // attachNewSimulator deletes the simulator itself when the attach fails.
-      ({ simulator } = await xcodeClient.attachNewSimulator(this.autoCreateIosDeviceSelection()));
+      ({ simulator } = await xcodeClient.attachNewSimulator(this.autoCreateSimulator));
     } catch (err) {
       await this.deleteCreatedInstance(target.id);
       throw err;
