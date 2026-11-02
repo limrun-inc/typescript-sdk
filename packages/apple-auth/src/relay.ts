@@ -34,6 +34,7 @@ export class AppleRelayError extends Error {
  */
 export class AppleRelayWebSocketClient {
   private socket?: WebSocket;
+  private rejectConnect?: (error: AppleRelayError) => void;
   private nextId = 1;
   private sessionId?: string;
 
@@ -65,15 +66,22 @@ export class AppleRelayWebSocketClient {
       if (this.socket === socket) this.handleMessage(event);
     };
     await new Promise<void>((resolve, reject) => {
-      socket.onopen = () => resolve();
+      this.rejectConnect = reject;
+      socket.onopen = () => {
+        if (this.socket !== socket) return;
+        this.rejectConnect = undefined;
+        resolve();
+      };
       socket.onerror = () => {
         if (this.socket !== socket) return;
+        this.rejectConnect = undefined;
         const error = new AppleRelayError('Apple relay WebSocket failed', this.sessionId);
         reject(error);
         this.rejectPending(error);
       };
       socket.onclose = () => {
         if (this.socket !== socket) return;
+        this.rejectConnect = undefined;
         const error = new AppleRelayError('Apple relay WebSocket closed', this.sessionId);
         reject(error);
         this.rejectPending(error);
@@ -105,9 +113,13 @@ export class AppleRelayWebSocketClient {
   }
 
   close() {
-    this.rejectPending(new AppleRelayError('Apple relay WebSocket closed', this.sessionId));
-    this.socket?.close();
+    const error = new AppleRelayError('Apple relay WebSocket closed', this.sessionId);
+    this.rejectConnect?.(error);
+    this.rejectConnect = undefined;
+    this.rejectPending(error);
+    const socket = this.socket;
     this.socket = undefined;
+    socket?.close();
   }
 
   private handleMessage(event: MessageEvent) {

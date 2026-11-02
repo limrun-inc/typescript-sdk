@@ -44,6 +44,46 @@ async function connect(client = new AppleRelayWebSocketClient('https://registry.
 }
 
 describe('relay support references', () => {
+  test('rejects connect when closed before the socket opens', async () => {
+    const client = new AppleRelayWebSocketClient('https://registry.example.com');
+    const connecting = client.connect();
+    const rejected = expect(connecting).rejects.toMatchObject({
+      message: 'Apple relay WebSocket closed',
+      relaySessionId: undefined,
+    });
+    const socket = MockWebSocket.instances.at(-1)!;
+
+    client.close();
+    socket.onerror?.();
+    socket.onclose?.();
+
+    await rejected;
+    expect(socket.close).toHaveBeenCalledOnce();
+  });
+
+  test('rejects an overlapping connect without affecting the replacement socket', async () => {
+    const client = new AppleRelayWebSocketClient('https://registry.example.com');
+    const first = client.connect();
+    const rejected = expect(first).rejects.toMatchObject({
+      message: 'Apple relay WebSocket closed',
+    });
+    const oldSocket = MockWebSocket.instances.at(-1)!;
+
+    const second = client.connect();
+    const socket = MockWebSocket.instances.at(-1)!;
+    oldSocket.onerror?.();
+    oldSocket.onclose?.();
+    socket.open();
+
+    await rejected;
+    await second;
+    const response = client.request('finalize');
+    oldSocket.message({ id: '1', ok: false, relaySessionId: sessionA, error: 'Old connection' });
+    expect(client.relaySessionId).toBeUndefined();
+    socket.message({ id: '1', ok: true, relaySessionId: sessionB, response: { status: 200 } });
+    expect((await response).relaySessionId).toBe(sessionB);
+  });
+
   test('learns the reference from the first response, including an Apple failure', async () => {
     const { client, socket } = await connect();
     expect(client.relaySessionId).toBeUndefined();
