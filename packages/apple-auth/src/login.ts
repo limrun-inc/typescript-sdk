@@ -1,5 +1,6 @@
 import { AppleGsaSrpClient, type AppleSRPInitResponse } from './gsa-srp';
 import {
+  AppleRelayError,
   fetchAppleAccountSession,
   openAppleRelayWebSocket,
   type AppleRelayResponse,
@@ -111,8 +112,9 @@ export async function startBrowserOwnedAppleIDLogin({
             })
           : await relay.request('submitTrustedDevice2FA', { code });
         if (response.status < 200 || response.status >= 300) {
-          throw new Error(
+          throw new AppleRelayError(
             `Apple two-factor code failed: HTTP ${response.status} ${response.rawBody ?? ''}`.trim(),
+            relay.relaySessionId,
           );
         }
         return response;
@@ -122,7 +124,8 @@ export async function startBrowserOwnedAppleIDLogin({
     };
   } catch (error) {
     relay.close();
-    throw error;
+    if (error instanceof AppleRelayError) throw error;
+    throw new AppleRelayError(error instanceof Error ? error.message : String(error), relay.relaySessionId);
   }
 }
 
