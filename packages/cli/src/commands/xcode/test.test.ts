@@ -14,6 +14,7 @@ const parse = (argv: string[]) => Parser.parse(argv, { flags: XcodeTest.flags })
 test.each([
   ['--model', 'ipad', '--id', 'sandbox_euna_test'],
   ['--os-version', '27', '--build-only'],
+  ['--model', 'ipad', '--no-create'],
 ])('rejects device selection for a run that creates no simulator: %j', async (...argv) => {
   const parsed = await parse(argv);
   const withAuth = jest.fn();
@@ -25,19 +26,19 @@ test.each([
       throw new Error(message);
     },
   });
-  await expect(command.run()).rejects.toThrow(/cannot be combined with --id or --build-only/);
+  await expect(command.run()).rejects.toThrow(/cannot be combined with --id, --build-only or --no-create/);
   expect(withAuth).not.toHaveBeenCalled();
 });
 
 test('device selection skips the recorded target and attaches a simulator of that model and version', async () => {
   const recorded = { id: 'sandbox_euna_recorded', type: 'xcode' as const };
   const created = { id: 'sandbox_euna_new', type: 'xcode' as const };
-  jest.mocked(loadLastXcodeInstance).mockReturnValue(recorded as never);
+  jest.mocked(loadLastXcodeInstance).mockReturnValueOnce(recorded as never);
   const getSimulator = jest.fn();
   const attachNewSimulator = jest.fn().mockResolvedValue({ simulator: { metadata: { id: 'ios_euna_new' } } });
   const cmd = new XcodeTest([], {} as never);
   Object.assign(cmd, {
-    _parsedFlags: { model: 'ipad', 'os-version': '27' },
+    autoCreateSimulator: { model: 'ipad', clues: [{ kind: 'OSVersion', osVersion: '27' }] },
     shouldAutoCreateOnNotFound: () => true,
     createStandaloneXcodeInstance: async () => created,
     resolveXcodeClient: async () => ({ getSimulator, attachNewSimulator }),

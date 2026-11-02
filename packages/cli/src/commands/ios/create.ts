@@ -14,7 +14,12 @@ import { startPersistedCaptures } from '../../lib/session-captures';
 import { Ios, type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
 import { instanceToken } from '@limrun/api/instance-token';
-import { iosDeviceSelection, type IosModel } from '../../lib/ios-device-selection';
+import {
+  IOS_OS_VERSION_SUPPORT,
+  IOS_OS_VERSIONS,
+  iosDeviceSelection,
+  type IosModel,
+} from '../../lib/ios-device-selection';
 
 export default class IosCreate extends BaseCommand {
   static summary = 'Create a new iOS instance';
@@ -84,9 +89,8 @@ export default class IosCreate extends BaseCommand {
       options: ['iphone', 'iphone-duo', 'ipad', 'watch'],
     }),
     'os-version': Flags.string({
-      description:
-        'iOS major version to create (26 or 27). iPhone and iPad run both, iPhone Duo 27, Watch 26.',
-      options: ['26', '27'],
+      description: `iOS major version to create (26 or 27). ${IOS_OS_VERSION_SUPPORT}`,
+      options: IOS_OS_VERSIONS,
     }),
     'reuse-if-exists': Flags.boolean({
       description: 'Reuse an existing instance with matching labels; its permissions remain unchanged',

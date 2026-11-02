@@ -13,6 +13,12 @@ import {
   xcodeProjectFlags,
 } from '../../lib/xcode-project-flags';
 import { formatCaseLine, formatSummaryLine } from '../../lib/xctest-render';
+import {
+  IOS_OS_VERSION_SUPPORT,
+  IOS_OS_VERSIONS,
+  iosDeviceSelection,
+  type IosModel,
+} from '../../lib/ios-device-selection';
 
 export default class XcodeTest extends BaseCommand {
   static description =
@@ -51,9 +57,8 @@ export default class XcodeTest extends BaseCommand {
       options: ['iphone', 'iphone-duo', 'ipad'],
     }),
     'os-version': Flags.string({
-      description:
-        'iOS major version of the simulator this run creates. iPhone and iPad run both, iPhone Duo 27. Forces fresh instances and cannot be combined with --id or --build-only.',
-      options: ['26', '27'],
+      description: `iOS major version of the simulator this run creates. ${IOS_OS_VERSION_SUPPORT} Forces fresh instances and cannot be combined with --id or --build-only.`,
+      options: IOS_OS_VERSIONS,
     }),
     'build-only': Flags.boolean({
       description:
@@ -88,10 +93,13 @@ export default class XcodeTest extends BaseCommand {
     if (flags.id && flags['inactivity-timeout']) {
       this.error('--inactivity-timeout controls newly created instances and cannot be combined with --id.');
     }
-    if ((flags.model || flags['os-version']) && (flags.id || flags['build-only'])) {
+    if ((flags.model || flags['os-version']) && (flags.id || flags['build-only'] || flags.create === false)) {
       this.error(
-        '--model and --os-version choose the simulator this run creates and cannot be combined with --id or --build-only.',
+        '--model and --os-version choose the simulator this run creates and cannot be combined with --id, --build-only or --no-create.',
       );
+    }
+    if (flags.model || flags['os-version']) {
+      this.autoCreateSimulator = iosDeviceSelection(flags['os-version'], flags.model as IosModel | undefined);
     }
 
     await this.withAuth(async () => {
