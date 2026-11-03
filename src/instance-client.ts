@@ -419,7 +419,8 @@ export type InstanceClient = {
     opts?: {
       install?: boolean;
       watch?: boolean;
-      launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
+      /** Defaults to `ForegroundIfRunning`. Use `None` to install without launching. */
+      launchMode?: FolderSyncOptions['launchMode'];
       basisCacheDir?: string;
       /**
        * Called while missing basis-seed ranges are downloaded from the instance. Fires

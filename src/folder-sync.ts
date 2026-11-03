@@ -14,6 +14,9 @@ import { directInstanceHttpError } from './internal/direct-instance-errors';
 // Folder Sync (HTTP batch)
 // =============================================================================
 
+/** Controls launching after installation. `None` installs without starting the app. */
+export type SyncLaunchMode = 'None' | 'ForegroundIfRunning' | 'RelaunchIfRunning';
+
 export type FolderSyncOptions = {
   apiUrl: string;
   token: string;
@@ -27,7 +30,7 @@ export type FolderSyncOptions = {
    */
   basisCacheDir: string;
   install: boolean;
-  launchMode: 'ForegroundIfRunning' | 'RelaunchIfRunning';
+  launchMode: SyncLaunchMode;
   /** If true, watch the folder and re-sync on any changes (debounced, single-flight). */
   watch: boolean;
   /** Controls logging verbosity */
@@ -117,7 +120,7 @@ type FolderSyncHttpMeta = {
   id: string;
   rootName: string;
   install?: boolean;
-  launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
+  launchMode?: SyncLaunchMode;
   files: { path: string; size: number; sha256: string; mode?: number; link?: string }[];
   payloads: FolderSyncHttpPayload[];
 };
