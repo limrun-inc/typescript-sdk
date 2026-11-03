@@ -2977,6 +2977,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         basisCacheDir,
         log: syncLog,
         install: opts?.install ?? true,
+        syncSymlinks: 'dereference',
         launchMode: opts?.launchMode ?? 'ForegroundIfRunning',
         watch: preparedApp.isArchive ? false : shouldWatch,
         ...(opts?.onSyncComplete ? { onSyncComplete: opts.onSyncComplete } : {}),
