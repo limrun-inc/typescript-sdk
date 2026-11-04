@@ -8,6 +8,7 @@ export default class AccessTokenCreate extends BaseCommand {
     'With --quiet, print only the token; with --json, include its ID, permissions, and expiry. ' +
     'Permission reference: https://docs.limrun.com/docs/reference/permissions';
   static examples = [
+    '<%= config.bin %> access-token create --permission "ios:<instance-id>:stream" --ttl-seconds 900 --json',
     '<%= config.bin %> access-token create --permission "android:<instance-id>:all" --ttl-seconds 900 --json',
     '<%= config.bin %> access-token create --permission "asset:name/releases/app.ipa:read" --permission "device:*:install"',
   ];
