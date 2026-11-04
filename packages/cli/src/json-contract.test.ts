@@ -840,7 +840,6 @@ describe('xcode test NDJSON', () => {
   function testCommand(flags: Record<string, unknown>) {
     const c = command('xcode/test', {}, flags);
     c.resolveSimulatorBackedXcodeTargetOrCreate = async () => target;
-    c.tryResolveXcodeTarget = async () => target;
     c.applyBuildCacheToTarget = async () => {};
     return c;
   }
