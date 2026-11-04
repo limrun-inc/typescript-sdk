@@ -180,9 +180,10 @@ async function extractEntry(
 }
 
 /**
- * Extracts a ZIP whose entries sit at its root into dir, which must not exist
- * yet. Entries and symlinks that would land outside dir are refused, since the
- * archive comes from a remote machine.
+ * Extracts a ZIP of plain files and folders, entries at its root, into dir,
+ * which must not exist yet. The archive comes from a remote machine, so an entry
+ * outside dir is refused, and so is any symlink: one could point through
+ * another to a place a path check never sees, and result bundles have none.
  */
 export async function extractZipToDirectory(archivePath: string, dir: string): Promise<void> {
   const zip = await openZip(archivePath, 'a valid ZIP archive');
@@ -192,6 +193,9 @@ export async function extractZipToDirectory(archivePath: string, dir: string): P
       const name = toZipPath(entry.fileName);
       if (isUnsafeZipPath(name)) {
         throw new Error(`ZIP entry has an unsafe path: ${entry.fileName}`);
+      }
+      if (isSymlinkEntry(entry)) {
+        throw new Error(`ZIP entry is a symlink: ${entry.fileName}`);
       }
       await extractEntry(zip, entry, path.join(dir, ...name.split('/')), dir);
     }
