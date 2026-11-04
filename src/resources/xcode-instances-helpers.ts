@@ -28,6 +28,7 @@ import {
 } from '../xcode-snapshot';
 import {
   exec,
+  isTestingAction,
   observeExecLogs,
   type AppStoreUploadConfig,
   type ExecChildProcess,
@@ -1018,8 +1019,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         if (settings?.onlyTesting?.length && settings?.skipTesting?.length) {
           throw new Error('onlyTesting and skipTesting are mutually exclusive; pass one');
         }
-        const testing =
-          settings?.action === 'build-for-testing' || settings?.action === 'test-without-building';
+        const testing = isTestingAction(settings?.action);
         if ((settings?.onlyTesting?.length || settings?.skipTesting?.length) && !testing) {
           throw new Error(
             "onlyTesting/skipTesting require action: 'build-for-testing' or 'test-without-building'",

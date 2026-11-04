@@ -44,6 +44,11 @@ export class ExecStreamClosedError extends Error {}
 
 export type ExecRequest = XcodeBuildExecRequest | GradleBuildExecRequest | RunExecRequest;
 
+/** Whether an xcodebuild action runs tests on the attached simulator. */
+export function isTestingAction(action: NonNullable<XcodeBuildExecRequest['xcodebuild']>['action']): boolean {
+  return action === 'build-for-testing' || action === 'test-without-building';
+}
+
 export type XcodeBuildExecRequest = {
   command: 'xcodebuild';
   xcodebuild?: {
@@ -886,11 +891,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     if (request.command === 'xcodebuild' && request.testflight) {
       timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 0) + 900) * 1000;
     }
-    if (
-      request.command === 'xcodebuild' &&
-      (request.xcodebuild?.action === 'build-for-testing' ||
-        request.xcodebuild?.action === 'test-without-building')
-    ) {
+    if (request.command === 'xcodebuild' && isTestingAction(request.xcodebuild?.action)) {
       // The test run happens after the build: products sync plus the suite,
       // which the server caps at an hour per target. Two hours cover the
       // common unit-plus-UI shape; the client cannot know the target count, so
