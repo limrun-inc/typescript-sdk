@@ -156,13 +156,13 @@ export default class XcodeTest extends BaseCommand {
       this.autoCreateSimulator = iosDeviceSelection(flags['os-version'], flags.model);
     }
 
-    await this.withAuth(async () => {
+    if (withoutBuilding) {
       // A new sandbox has built nothing, so a rerun never creates one.
-      if (withoutBuilding && !(await this.tryResolveXcodeTarget(flags.id))) {
-        this.error(
-          '--without-building reruns the tests a sandbox already built, and none is recorded. Pass --id, or run lim xcode test first.',
-        );
-      }
+      this.existingXcodeSandboxOnly =
+        '--without-building reruns the tests a live Xcode sandbox already built, and none is recorded. Pass --id, or run lim xcode test first.';
+    }
+
+    await this.withAuth(async () => {
       const target =
         flags['build-only'] ?
           await this.resolveXcodeTargetOrCreate(flags.id)
