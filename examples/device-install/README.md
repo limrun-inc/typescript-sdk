@@ -52,7 +52,7 @@ by the per-install `X-Install-Token` header alone. The local API and
 signing-secret store stay on port 3000.
 
 The browser initially receives only `device:*:install`. After a successful
-build webhook, it exchanges that build's install ID for a fresh scoped token
+build webhook, it exchanges that build's install ID for a fresh access token
 containing `asset:<exact-uploaded-asset-id>:read`. There is no wildcard asset
 grant and no asset-name-only installation path. That token authorizes
 creating the OTA session in the registry; the session URLs the phone opens

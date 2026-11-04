@@ -23,7 +23,7 @@ still prepare its signing material (see
   project, verifies Play Console access, then calls the backend with a
   short-lived Google access token.
 - `backend/` keeps `LIM_API_KEY` server-side, mints a short-lived
-  `applerelay:*:connect` scoped token, stores signing secrets as files under
+  `applerelay:*:connect` access token, stores signing secrets as files under
   `backend/.secrets/`, runs a detached `lim xcode build` with the selected
   signing mode and `--upload-to-appstore`, and tracks the callback. Android
   follows the same

@@ -27,7 +27,10 @@ export interface AccessTokenCreateParams {
   /**
    * Permissions in the form `<resource>:<id|*>:<action>`, e.g. `device:*:install`,
    * `asset:asset_01h455vb4pex5vsknk084sn02q:read` or `applerelay:*:connect`.
-   * Resource IDs are the customer-visible IDs returned by the API.
+   * Instance control accepts `ios:<id>:all`, `android:<id>:all`, `xcode:<id>:all`,
+   * and `gradle:<id>:all`. Use the returned instance ID, including `sandbox_` for Xcode.
+   * Instance wildcards and other instance actions are not accepted.
+   * See https://docs.limrun.com/docs/reference/permissions for targets and actions.
    */
   permissions?: Array<string>;
 

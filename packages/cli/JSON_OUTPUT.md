@@ -124,3 +124,12 @@ lim xcode sync . --watch --json | jq --unbuffered .bytesSent
 Changes must keep JSON stdout free of human text on success, failure, empty results, daemon and direct connections, and foreground and detached paths. Use `outputJson` for finite results, `outputEvent` for streams, and `outputResult` for data with a human-readable alternative. Do not use plain logging or inherited child stdout for JSON results. Configure SDK clients so their informational logging cannot reach stdout.
 
 The CLI tests exercise response shapes, stream framing, both device transports, default Android creation, foreground and detached behavior, failures, and the executable's error handling. Add a contract test when adding a new JSON branch or changing a response.
+
+## Access tokens
+
+| Command               | JSON result                                                                |
+| --------------------- | -------------------------------------------------------------------------- |
+| `access-token create` | The API response, including `id`, `token`, `permissions`, and `expiresAt`. |
+| `access-token revoke` | `{"ok":true,"id":"..."}` after successful revocation.                      |
+
+`access-token create --quiet` prints only the token. Use `--json` to retain the ID needed for revocation.

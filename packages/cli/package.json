@@ -108,6 +108,9 @@
       },
       "ios:snapshot": {
         "description": "Manage saved iOS simulator apps and data: list, get, delete, flush"
+      },
+      "access-token": {
+        "description": "Create and revoke temporary access tokens: create, revoke"
       }
     }
   },
