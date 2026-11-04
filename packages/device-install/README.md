@@ -27,7 +27,7 @@ your UI calls your backend, and your backend drives the Xcode sandbox with
 `@limrun/api` using the stored signing secrets.
 
 > **Want to see it working first?** A runnable pair-and-install reference with
-> access-token minting lives in
+> scoped-token minting lives in
 > [`examples/device-install`](../../../../examples/device-install); a minimal
 > single-page version lives in [`src/device-install/demo`](./demo). For the
 > Apple sign-in + secret store + backend build flow, see
@@ -85,16 +85,12 @@ const install = useDeviceInstallRelay({
 });
 ```
 
-Permissions have the form `<resource>:<id|*>:<action>` — `device:*:install` opens
+Scopes have the form `<resource>:<id|*>:<action>` — `device:*:install` opens
 the device relay, `asset:<id>:read` (or `asset:*:read`) lets installs read
 those assets, and `applerelay:*:connect` opens the Apple relay for the
-`@limrun/apple-auth` flow. Access tokens expire automatically. Revoke one with
-`lim.accessTokens.revoke(id)` or `lim access-token revoke <id>` using the ID
-returned when it was created. The registry checks revocation on subsequent
-requests after propagation. Tokens can only install from assets; the registry
-rejects `{ url }` sources for them. See the
-[permission reference](https://docs.limrun.com/docs/reference/permissions)
-for supported grants and revocation limits.
+`@limrun/apple-auth` flow. Scoped tokens are verified offline, expire on
+their own (they cannot be revoked, so keep TTLs short), and can only install
+from assets — the registry rejects `{ url }` sources for them.
 `examples/device-install/backend` is a complete minting backend you can copy.
 
 ## Pair the iPhone
@@ -257,7 +253,7 @@ does not require a WebUSB pair record:
 ```tsx
 import { useOTAInstall } from '@limrun/device-install/react';
 
-const ota = useOTAInstall({ registryApiUrl, token: deviceAndAssetAccessToken });
+const ota = useOTAInstall({ registryApiUrl, token: deviceAndAssetScopedToken });
 await ota.start({
   assetId,
   bundleIdentifier: webhook.bundleIdentifier,

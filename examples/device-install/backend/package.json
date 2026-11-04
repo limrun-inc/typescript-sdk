@@ -1,7 +1,7 @@
 {
   "name": "device-install-example-backend",
   "version": "1.0.0",
-  "description": "Stores signing secrets, builds device IPAs, receives webhooks, and mints access tokens for the device-install example.",
+  "description": "Stores signing secrets, builds device IPAs, receives webhooks, and mints scoped tokens for the device-install example.",
   "type": "module",
   "main": "index.ts",
   "scripts": {

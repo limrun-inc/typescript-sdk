@@ -22,7 +22,7 @@ const port = 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(cors());
 
-// The Connect phase's Apple relay session: mints a short-lived access token
+// The Connect phase's Apple relay session: mints a short-lived scoped token
 // so the browser can speak the Apple relay protocol against Limrun's
 // registry directly. The API key never leaves this backend; the token can
 // only open the Apple relay, and it expires on its own. The relay is not

@@ -1,11 +1,11 @@
 // The frontend's channel to the example backend: the registry session and
 // the publish endpoints. (The file-based secret store lives in
 // secret-store.ts, and the Apple relay WebSocket itself goes straight to
-// Limrun's registry, authenticated with the access token from the session.)
+// Limrun's registry, authenticated with the scoped token from the session.)
 import { BACKEND_URL } from '../config';
 
 export type RegistrySession = {
-  /** Short-lived access token; only good for opening the Apple relay. */
+  /** Short-lived scoped token; only good for opening the Apple relay. */
   token: string;
   /** Limrun registry base URL the browser connects to directly. */
   registryUrl: string;

@@ -8,7 +8,7 @@ import { RequestOptions } from '../internal/request-options';
 /** @deprecated Use AccessTokens. */
 export class ScopedTokens extends APIResource {
   /**
-   * Mint a short-lived access token whose permissions limit what the holder can do, e.g.
+   * Mint a short-lived scoped token whose permissions limit what the holder can do, e.g.
    * install a specific asset on a device through the registry. The token is verified
    * by services holding the signing public key. It is bound to the caller's organization.
    * @deprecated Use client.accessTokens.create(). This method keeps the legacy URL.
@@ -24,7 +24,7 @@ export interface ScopedToken {
   id?: string;
 
   /**
-   * The access token, to be sent in the Authorization Bearer header.
+   * The scoped token, to be sent as a Bearer token or the token query parameter.
    */
   token: string;
 

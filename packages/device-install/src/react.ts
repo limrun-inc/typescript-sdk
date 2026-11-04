@@ -277,7 +277,7 @@ export function useOTAInstall({
   const start = useCallback(
     async (input: StartOTAInstallInput) => {
       if (!registryApiUrl || !token) {
-        setError('A registry API URL and access token are required.');
+        setError('A registry API URL and scoped token are required.');
         return undefined;
       }
       stopPolling();
