@@ -112,7 +112,9 @@ export default class XcodeTest extends BaseCommand {
     }
     if (flags.coverage && !resultBundle && !flags['build-only']) {
       this.error(
-        '--coverage is collected into the result bundle; add --result-bundle, or --build-only to build instrumented products for a later run.',
+        withoutBuilding ?
+          '--coverage is collected into the result bundle; add --result-bundle.'
+        : '--coverage is collected into the result bundle; add --result-bundle, or --build-only to build instrumented products for a later run.',
       );
     }
     // Refused before any work, as xcodebuild refuses it after the run.
@@ -128,8 +130,9 @@ export default class XcodeTest extends BaseCommand {
             (flags as Record<string, unknown>)[name] !== flag.default,
         )
         .map(([name]) => `--${name}`);
-      for (const name of ['model', 'os-version', 'inactivity-timeout'] as const) {
-        // These create fresh instances, which have nothing built to rerun.
+      // These create fresh instances, which have nothing built to rerun, or switch the Xcode
+      // the products were built with.
+      for (const name of ['model', 'os-version', 'inactivity-timeout', 'xcode-version'] as const) {
         if (flags[name] !== undefined) buildInputs.push(`--${name}`);
       }
       if (args.path) buildInputs.unshift('the path argument');
@@ -154,6 +157,12 @@ export default class XcodeTest extends BaseCommand {
     }
 
     await this.withAuth(async () => {
+      // A new sandbox has built nothing, so a rerun never creates one.
+      if (withoutBuilding && !(await this.tryResolveXcodeTarget(flags.id))) {
+        this.error(
+          '--without-building reruns the tests a sandbox already built, and none is recorded. Pass --id, or run lim xcode test first.',
+        );
+      }
       const target =
         flags['build-only'] ?
           await this.resolveXcodeTargetOrCreate(flags.id)
@@ -229,15 +238,29 @@ export default class XcodeTest extends BaseCommand {
 
       const result = await proc;
 
-      // Downloaded even when tests failed: the bundle is how a red run is read.
+      // Downloaded even when tests failed: the bundle is how a red run is read. A lost bundle
+      // is reported after the run's own result, which it never replaces.
       let resultBundlePath: string | undefined;
+      let bundleProblem: string | undefined;
       const remoteBundle = result.xctest?.resultBundle;
       if (resultBundle && remoteBundle) {
-        await xcodeClient.pullResultBundle(remoteBundle.path, resultBundle);
-        resultBundlePath = path.resolve(resultBundle);
-        this.info(
-          `Result bundle written to ${resultBundlePath} (${formatBytes(remoteBundle.sizeBytes)} zipped).`,
-        );
+        try {
+          await xcodeClient.pullResultBundle(remoteBundle.path, resultBundle);
+          resultBundlePath = path.resolve(resultBundle);
+          this.info(
+            `Result bundle written to ${resultBundlePath} (${formatBytes(remoteBundle.sizeBytes)} zipped).`,
+          );
+        } catch (err) {
+          bundleProblem = `The result bundle could not be downloaded: ${
+            err instanceof Error ? err.message : String(err)
+          }`;
+        }
+      } else if (resultBundle && !result.timedOut) {
+        bundleProblem =
+          result.exitCode === 0 ?
+            // A sandbox that predates result bundles runs the tests without one.
+            'The Xcode sandbox sent no result bundle; it may predate result bundles. Create a new sandbox and retry.'
+          : 'No result bundle was written.';
       }
 
       if (json) {
@@ -258,11 +281,10 @@ export default class XcodeTest extends BaseCommand {
       if (result.timedOut) {
         this.error(`Test run did not complete: ${result.incomplete?.message ?? 'timed out'}`);
       }
-      if (resultBundle && !remoteBundle && result.exitCode === 0) {
-        // A sandbox that predates result bundles runs the tests without one.
-        this.error(
-          'The Xcode sandbox sent no result bundle; it may predate result bundles. Create a new sandbox and retry.',
-        );
+      if (bundleProblem) {
+        // A green run without the bundle it was asked for still fails.
+        if (result.exitCode === 0) this.error(bundleProblem);
+        this.warn(bundleProblem);
       }
       if (result.exitCode !== 0) {
         this.exit(result.exitCode);

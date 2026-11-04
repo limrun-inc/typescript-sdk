@@ -1041,9 +1041,15 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
             this.log('warn', `SSE playstore event has invalid data: ${data}`);
           }
         } else if (eventType === 'resultBundle') {
+          let parsed: Partial<XctestResultBundle> | undefined;
           try {
-            this.xctestResultBundle = JSON.parse(data) as XctestResultBundle;
+            parsed = JSON.parse(data) as Partial<XctestResultBundle>;
           } catch {
+            // Reported below with the other malformed shapes.
+          }
+          if (typeof parsed?.path === 'string' && typeof parsed.sizeBytes === 'number') {
+            this.xctestResultBundle = { path: parsed.path, sizeBytes: parsed.sizeBytes };
+          } else {
             this.log('warn', `SSE resultBundle event has invalid data: ${data}`);
           }
         } else if (eventType === 'xctest') {
