@@ -1,5 +1,6 @@
 import { DeviceDetachUnavailableError } from '../device-detach';
 import { pullBuildFile } from '../internal/build-pull-file';
+import { pullResultBundle } from '../internal/result-bundle';
 import { normalizeAssetUpload, type BuildUpload } from '../lib/asset-permissions';
 import {
   XcodeInstances as GeneratedXcodeInstances,
@@ -128,14 +129,17 @@ export type XcodeProjectConfig = {
    * test targets and, with a simulator attached, runs them there: per-case
    * results stream through XcodeBuildOptions.onXctestEvent and accumulate on
    * ExecResult.xctest, and the exec exits non-zero when tests fail. Requires
-   * the iphonesimulator sdk. Older limbuild servers reject the field.
+   * the iphonesimulator sdk. 'test-without-building' reruns the products the
+   * sandbox last built for testing, without syncing or building; it takes only
+   * the selection, resultBundle and coverage fields. Older limbuild servers
+   * reject the field.
    */
-  action?: 'build' | 'build-for-testing';
+  action?: 'build' | 'build-for-testing' | 'test-without-building';
   /**
    * Run only these tests, in xcodebuild's -only-testing format:
    * Target[/Class[/method]]. A bare target runs that target unfiltered;
    * targets named by no entry are skipped. Mutually exclusive with
-   * skipTesting; only valid with action 'build-for-testing'.
+   * skipTesting; only valid with a testing action.
    */
   onlyTesting?: string[];
   /**
@@ -149,6 +153,19 @@ export type XcodeProjectConfig = {
    * ignore the field and still run the tests.
    */
   runTests?: boolean;
+  /**
+   * Run the tests through Apple's xcodebuild on the attached simulator and
+   * keep their result bundle, reported as ExecResult.xctest.resultBundle;
+   * fetch it with XcodeClient.pullResultBundle. Needs a testing action and a
+   * test run.
+   */
+  resultBundle?: boolean;
+  /**
+   * Build with code coverage and collect it into the result bundle, so a run
+   * also needs resultBundle. With runTests false the instrumented products
+   * wait for a later 'test-without-building' run.
+   */
+  coverage?: boolean;
 };
 
 export type XcodeGenConfig = {
@@ -487,6 +504,11 @@ export type RbeBuildSummary = {
 export type XcodeClient = {
   /** Stream a regular file to disk. Paths may be absolute or relative to the synced project root. */
   pullFile(remotePath: string, localPath: string): Promise<void>;
+  /**
+   * Download a run's result bundle, ExecResult.xctest.resultBundle.path, and
+   * unpack it as an `.xcresult` directory at localPath, which must not exist.
+   */
+  pullResultBundle(remotePath: string, localPath: string): Promise<void>;
   /** Sync source code to the xcode instance. In watch mode, keeps syncing on changes. */
   sync: (localCodePath: string, opts?: SyncOptions) => Promise<SyncResult>;
 
@@ -955,6 +977,13 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       async pullFile(remotePath: string, localPath: string): Promise<void> {
         await pullBuildFile(apiUrl, token, remotePath, localPath);
       },
+      async pullResultBundle(remotePath: string, localPath: string): Promise<void> {
+        await pullResultBundle(
+          (remote, local) => pullBuildFile(apiUrl, token, remote, local),
+          remotePath,
+          localPath,
+        );
+      },
       async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
         const { cacheKey, basisCacheDir } = deriveBasisCache(localCodePath, opts?.basisCacheDir);
         const codeSyncOpts: FolderSyncOptions = {
@@ -999,14 +1028,29 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         if (settings?.onlyTesting?.length && settings?.skipTesting?.length) {
           throw new Error('onlyTesting and skipTesting are mutually exclusive; pass one');
         }
-        if (
-          (settings?.onlyTesting?.length || settings?.skipTesting?.length) &&
-          settings?.action !== 'build-for-testing'
-        ) {
-          throw new Error("onlyTesting/skipTesting require action: 'build-for-testing'");
+        const testing =
+          settings?.action === 'build-for-testing' || settings?.action === 'test-without-building';
+        if ((settings?.onlyTesting?.length || settings?.skipTesting?.length) && !testing) {
+          throw new Error(
+            "onlyTesting/skipTesting require action: 'build-for-testing' or 'test-without-building'",
+          );
         }
         if (settings?.runTests === false && settings?.action !== 'build-for-testing') {
           throw new Error("runTests: false requires action: 'build-for-testing'");
+        }
+        if ((settings?.resultBundle || settings?.coverage) && !testing) {
+          throw new Error(
+            "resultBundle and coverage require action: 'build-for-testing' or 'test-without-building'",
+          );
+        }
+        if (settings?.resultBundle && settings.runTests === false) {
+          throw new Error('resultBundle needs a test run; it cannot be combined with runTests: false');
+        }
+        // Coverage lands in the result bundle; without a run it builds instrumented products.
+        if (settings?.coverage && settings.runTests !== false && !settings.resultBundle) {
+          throw new Error(
+            'coverage is collected into the result bundle; set resultBundle too, or runTests: false',
+          );
         }
         if (
           settings?.action === 'build-for-testing' &&

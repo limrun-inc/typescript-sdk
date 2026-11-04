@@ -102,6 +102,7 @@ export {
   type WebhookConfig,
   type XctestCaseEvent,
   type XctestEvent,
+  type XctestResultBundle,
   type XctestSummaryEvent,
 } from './exec-client';
 export {
