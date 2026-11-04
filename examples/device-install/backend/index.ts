@@ -189,7 +189,7 @@ app.get('/install/:id', (req: Request<{ id: string }>, res: Response) => {
 });
 
 // Only this token-guarded webhook app is exposed publicly, through the
-// URL entered in the UI. The secret store and scoped-token minting routes
+// URL entered in the UI. The secret store and access-token minting routes
 // remain local.
 const hooks = express();
 const webhookPort = 3001;

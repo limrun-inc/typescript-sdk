@@ -173,7 +173,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
   const [busy, setBusy] = useState<string>();
 
   // The Apple relay connection goes straight to Limrun's registry,
-  // authenticated with a short-lived scoped token minted by the example
+  // authenticated with a short-lived access token minted by the example
   // backend (POST /session) — the API key never reaches the browser, and
   // the token can only open the Apple relay. No Xcode instance is created
   // for Connect; the first one appears when a publish runs the CLI.
@@ -686,7 +686,7 @@ export function useConnect({ secretStore, log, onError }: ConnectContext) {
 
   return {
     busy,
-    // The scoped-token session against Limrun's registry; sign-in waits
+    // The access-token session against Limrun's registry; sign-in waits
     // for it. Exposed so the app can read backend-advertised defaults
     // (e.g. the secrets directory).
     registrySession,
