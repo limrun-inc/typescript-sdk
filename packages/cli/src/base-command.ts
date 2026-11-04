@@ -844,9 +844,6 @@ export abstract class BaseCommand extends Command {
       case 'gradle':
         return this.createStandaloneGradleInstance();
       case 'xcode':
-        if (this.existingXcodeSandboxOnly) {
-          throw new Error(this.existingXcodeSandboxOnly);
-        }
         if (this._xcodeReplacementIntent === 'simulator-backed') {
           return this.createSimulatorBackedXcodeInstance();
         }
