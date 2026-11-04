@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.69.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.0...v0.69.1) (2026-11-04)
+
+
+### Features
+
+* support install-only app sync on iOS and Android ([#610](https://github.com/limrun-inc/typescript-sdk/issues/610)) ([5ea9360](https://github.com/limrun-inc/typescript-sdk/commit/5ea9360487571f79b565fbde41bcc51ca2776a7b))
+
+
+### Chores
+
+* **cli:** release 0.51.0 on SDK 0.69.0 ([684e8ff](https://github.com/limrun-inc/typescript-sdk/commit/684e8ff4e403f97ea7c811227be023f56eea2ff6))
+
 ## [0.69.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.68.1...v0.69.0) (2026-11-02)
 
 
