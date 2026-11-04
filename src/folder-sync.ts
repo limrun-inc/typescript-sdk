@@ -51,11 +51,11 @@ export type FolderSyncOptions = {
    */
   ignoreFn: IgnoreFn;
   /**
-   * `true` preserves relative, in-root symlinks for workspace sync.
-   * `dereference` sends their file contents for iOS app installation.
-   * Omit or pass `false` to skip symlinks.
+   * Sync symlinks as symlinks (relative, in-root targets only). Off by
+   * default: only the limbuild workspace sync understands link entries;
+   * the limulator app-install sync keeps the historical skip behavior.
    */
-  syncSymlinks?: boolean | 'dereference';
+  syncSymlinks?: boolean;
   /**
    * Extra files to sync into limbuild. These are included
    * in every sync pass but are not watched directly.
@@ -326,7 +326,7 @@ function validateSymlinkTarget(rel: string, target: string): void {
 async function walkFiles(
   root: string,
   ignoreFn: IgnoreFn,
-  syncSymlinks: boolean | 'dereference',
+  syncSymlinks: boolean,
   log?: FolderSyncOptions['log'],
 ): Promise<FileEntry[]> {
   const rootResolved = path.resolve(root);
@@ -348,22 +348,23 @@ async function walkFiles(
   }
 
   const out: FileEntry[] = [];
-  const stack: Array<{ dir: string; ancestors?: ReadonlySet<string> }> = [
-    {
-      dir: rootResolved,
-      ...(syncSymlinks === 'dereference' ?
-        { ancestors: new Set([await fs.promises.realpath(rootResolved)]) }
-      : {}),
-    },
-  ];
+  const stack: string[] = [rootResolved];
   while (stack.length) {
-    const { dir, ancestors } = stack.pop()!;
+    const dir = stack.pop()!;
     const entries = await fs.promises.readdir(dir, { withFileTypes: true });
     for (const ent of entries) {
       const abs = path.join(dir, ent.name);
       const rel = path.relative(rootResolved, abs).split(path.sep).join('/');
 
-      if (ent.isSymbolicLink() && syncSymlinks !== 'dereference') {
+      if (ent.isDirectory()) {
+        // For directories, check with trailing slash
+        const relDir = rel + '/';
+        // Check custom ignores (directories have trailing slash)
+        if (ignoreFn(relDir)) continue;
+        stack.push(abs);
+        continue;
+      }
+      if (ent.isSymbolicLink()) {
         if (!syncSymlinks) continue;
         // Symlinks ship as link entries with the literal target: a
         // symlinked directory arrives here too and is sent as a link, not
@@ -393,27 +394,16 @@ async function walkFiles(
         });
         continue;
       }
-      // Skip excluded links before following them, including dangling directory links.
-      if (ent.isSymbolicLink() && (ignoreFn(rel) || ignoreFn(rel + '/'))) continue;
-      const st = ent.isSymbolicLink() ? await fs.promises.stat(abs) : ent;
-      if (st.isDirectory()) {
-        if (ignoreFn(rel + '/')) continue;
-        if (ancestors) {
-          const real = await fs.promises.realpath(abs);
-          if (ancestors.has(real)) throw new Error(`symlink cycle at ${rel}`);
-          stack.push({ dir: abs, ancestors: new Set([...ancestors, real]) });
-        } else {
-          stack.push({ dir: abs });
-        }
-        continue;
-      }
-      if (!st.isFile() || ignoreFn(rel)) continue;
+      if (!ent.isFile()) continue;
 
-      const fileStat = await fs.promises.stat(abs);
+      // Check custom ignores for files
+      if (ignoreFn(rel)) continue;
+
+      const st = await fs.promises.stat(abs);
       const sha256 = await sha256FileHex(abs);
       // Preserve POSIX permission bits (including +x). Mask out file-type bits.
-      const mode = fileStat.mode & 0o7777;
-      out.push({ path: rel, size: fileStat.size, sha256, absPath: abs, mode });
+      const mode = st.mode & 0o7777;
+      out.push({ path: rel, size: st.size, sha256, absPath: abs, mode });
     }
   }
   out.sort((a, b) => a.path.localeCompare(b.path));

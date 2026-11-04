@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -27,11 +27,6 @@ describe.each(['android', 'ios'] as const)('%s sync launch mode', (platform) => 
       if (platform === 'ios') {
         await mkdir(appPath);
         await writeFile(join(appPath, 'Info.plist'), '<plist><dict/></plist>');
-        await writeFile(join(directory, 'executable'), 'linked executable', { mode: 0o755 });
-        await symlink('../executable', join(appPath, 'Demo'));
-        await mkdir(join(directory, 'resources'));
-        await writeFile(join(directory, 'resources', 'icon.txt'), 'linked resource');
-        await symlink('../resources', join(appPath, 'Resources'));
       } else {
         await writeFile(appPath, Buffer.from('PK\x03\x04apk-fixture'));
       }
@@ -90,14 +85,6 @@ describe.each(['android', 'ios'] as const)('%s sync launch mode', (platform) => 
           expect(request.launchMode).toBe(launchMode ?? 'ForegroundIfRunning');
         }
         expect(requests[0]!.payloads.length).toBeGreaterThan(0);
-        if (platform === 'ios') {
-          expect(requests[0]!.files).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({ path: 'Demo', size: 17, mode: 0o755 }),
-              expect.objectContaining({ path: 'Resources/icon.txt', size: 15 }),
-            ]),
-          );
-        }
         expect(requests[1]!.payloads).toHaveLength(0);
         expect(authorizations).toEqual(['Bearer instance-token', 'Bearer instance-token']);
       } finally {

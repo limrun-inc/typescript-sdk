@@ -129,7 +129,7 @@ describe('folder-sync symlinks', () => {
     expect(meta.payloads.map((p) => p.path)).toContain('shared/real.swift');
   });
 
-  test('symlinks are dropped when syncSymlinks is off', async () => {
+  test('symlinks are dropped when syncSymlinks is off (app-install path)', async () => {
     fs.symlinkSync('../shared/real.swift', path.join(tree, 'ios', 'link.swift'));
     const server = await startStubServer({ ok: true });
     try {
@@ -139,34 +139,6 @@ describe('folder-sync symlinks', () => {
     }
     const meta = server.requests[0]!;
     expect(meta.files.map((f) => f.path)).not.toContain('ios/link.swift');
-  });
-
-  test('dereferencing rejects directory cycles before sending any files', async () => {
-    fs.symlinkSync('..', path.join(tree, 'ios', 'parent'));
-    const server = await startStubServer();
-    try {
-      await expect(
-        syncFolder(tree, { ...syncOpts(server, cache), syncSymlinks: 'dereference' }),
-      ).rejects.toThrow(/symlink cycle/);
-      expect(server.requests).toHaveLength(0);
-    } finally {
-      await server.close();
-    }
-  });
-
-  test('dereferencing honors directory excludes before resolving a broken link', async () => {
-    fs.symlinkSync('../missing', path.join(tree, 'Pods'));
-    const server = await startStubServer();
-    try {
-      await syncFolder(tree, {
-        ...syncOpts(server, cache),
-        syncSymlinks: 'dereference',
-        ignoreFn: (p) => p === 'Pods/',
-      });
-      expect(server.requests[0]!.files.map((file) => file.path)).not.toContain('Pods');
-    } finally {
-      await server.close();
-    }
   });
 
   test('rejects a relative escaping target at sync time', async () => {
