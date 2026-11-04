@@ -63,3 +63,13 @@ yarn run start --watch ${APP_DIR}
 
 # Click on the instance link to connect!
 ```
+
+To install a build without opening it, pass `launchMode: 'None'`:
+
+```ts
+await ios.syncApp(appPath, { install: true, watch: false, launchMode: 'None' });
+```
+
+The Android client's `syncApp` accepts the same options for a local APK. Omit
+`launchMode` to launch or foreground the app after installation, or use
+`'RelaunchIfRunning'` to restart it. `install: false` only transfers files.

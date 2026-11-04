@@ -1108,7 +1108,7 @@ export type InstanceClient = {
    * @param opts Optional sync options
    * @param opts.install If true, install the app after syncing. Defaults to true.
    * @param opts.basisCacheDir Directory for the client-side folder-sync cache.
-   * @param opts.launchMode Launch mode after installation: "ForegroundIfRunning" (default): bring to foreground if already running, otherwise launch, "RelaunchIfRunning": kill and relaunch if already running
+   * @param opts.launchMode "None": install without launching. "ForegroundIfRunning" (default): bring to foreground if already running, otherwise launch. "RelaunchIfRunning": kill and relaunch if already running.
    * @param opts.watch If true, watch the folder and re-sync on any changes (debounced, single-flight).
    */
   syncApp: (
@@ -1116,7 +1116,7 @@ export type InstanceClient = {
     opts?: {
       install?: boolean;
       basisCacheDir?: string;
-      launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
+      launchMode?: FolderSyncOptions['launchMode'];
       watch?: boolean;
       /** Called after every successful sync, including watch-triggered re-syncs. */
       onSyncComplete?: FolderSyncOptions['onSyncComplete'];
@@ -2924,12 +2924,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       );
     };
 
-    const syncApp = async (
+    const syncApp: InstanceClient['syncApp'] = async (
       localAppBundlePath: string,
       opts?: {
         install?: boolean;
         basisCacheDir?: string;
-        launchMode?: 'ForegroundIfRunning' | 'RelaunchIfRunning';
+        launchMode?: FolderSyncOptions['launchMode'];
         watch?: boolean;
         onSyncComplete?: FolderSyncOptions['onSyncComplete'];
       },
