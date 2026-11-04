@@ -22,7 +22,7 @@ export default class XcodeCreate extends BaseCommand {
     '<%= config.bin %> xcode create --rm --jurisdiction us',
     '<%= config.bin %> xcode create --label env=dev --display-name ci-builder',
     '<%= config.bin %> xcode create --snapshot-restore-keys "myapp-features,myapp-main"',
-    '<%= config.bin %> xcode create --snapshot-key myapp-pr51 --snapshot-paths "Pods,.build"',
+    '<%= config.bin %> xcode create --snapshot-key myapp-pr51 --snapshot-paths "Pods"',
     '<%= config.bin %> xcode create --xcode-version 27',
     '<%= config.bin %> xcode create --xcode-version 27.1',
   ];
