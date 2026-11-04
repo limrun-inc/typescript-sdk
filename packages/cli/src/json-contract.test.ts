@@ -789,3 +789,74 @@ describe.each(['android', 'ios'])('%s foreground launch lifecycle', (platform) =
     expect(jest.getTimerCount()).toBe(0);
   });
 });
+
+describe('xcode test NDJSON', () => {
+  const caseEvent = {
+    type: 'case',
+    testClass: 'AppTests.LoginTests',
+    method: 'testValid',
+    passed: true,
+    durationMs: 3,
+  };
+  const summary = { type: 'summary', passed: 1, failed: 0, planFinished: true };
+  const remoteBundle = { path: '/state/xctest-result-bundles/exec_test.xcresult.zip', sizeBytes: 10 };
+
+  function mockTestRun() {
+    client.sync = jest.fn().mockResolvedValue({ bytesSent: 100 });
+    client.pullResultBundle = jest.fn().mockResolvedValue(undefined);
+    client.xcodebuild = jest.fn().mockImplementation((_settings, options) =>
+      Object.assign(
+        new Promise((resolve) => {
+          setImmediate(() => {
+            options.onXctestEvent(caseEvent);
+            options.onXctestEvent(summary);
+            resolve({
+              exitCode: 0,
+              execId: 'exec_test',
+              status: 'SUCCEEDED',
+              xctest: { cases: [caseEvent], summary, resultBundle: remoteBundle },
+            });
+          });
+        }),
+        { stdout: new EventEmitter(), stderr: new EventEmitter() },
+      ),
+    );
+  }
+
+  function testCommand(flags: Record<string, unknown>) {
+    const c = command('xcode/test', {}, flags);
+    c.resolveSimulatorBackedXcodeTargetOrCreate = async () => target;
+    c.applyBuildCacheToTarget = async () => {};
+    return c;
+  }
+
+  test('ends with the exit code and the downloaded result bundle', async () => {
+    mockTestRun();
+    await testCommand({ 'result-bundle': 'Tests.xcresult', coverage: true }).run();
+
+    expect(
+      stdout
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
+    ).toEqual([caseEvent, summary, { exitCode: 0, resultBundle: require('path').resolve('Tests.xcresult') }]);
+    expect(client.xcodebuild!.mock.calls[0][0]).toMatchObject({
+      action: 'build-for-testing',
+      resultBundle: true,
+      coverage: true,
+    });
+    expect(client.pullResultBundle).toHaveBeenCalledWith(remoteBundle.path, 'Tests.xcresult');
+  });
+
+  test('--without-building reruns the built tests without syncing', async () => {
+    mockTestRun();
+    await testCommand({ 'without-building': true, 'only-testing': ['AppTests/LoginTests'] }).run();
+
+    expect(client.sync).not.toHaveBeenCalled();
+    expect(client.xcodebuild!.mock.calls[0][0]).toEqual({
+      action: 'test-without-building',
+      onlyTesting: ['AppTests/LoginTests'],
+    });
+    expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual({ exitCode: 0 });
+  });
+});

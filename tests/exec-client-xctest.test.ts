@@ -211,3 +211,23 @@ test('action and test selection reach the wire verbatim', async () => {
     },
   });
 });
+
+test('a result bundle event lands on the result beside the cases', async () => {
+  mockTransport([
+    frame('xctest', passCase),
+    frame('xctest', summary),
+    frame('resultBundle', '{"path":"/state/xctest-result-bundles/run-1.xcresult.zip","sizeBytes":2048}'),
+    frame('exitCode', '1'),
+  ]);
+
+  const result = await exec(
+    { command: 'xcodebuild', xcodebuild: { action: 'test-without-building', resultBundle: true } },
+    { apiUrl: API_URL, token: 't' },
+  );
+
+  expect(result.xctest?.resultBundle).toEqual({
+    path: '/state/xctest-result-bundles/run-1.xcresult.zip',
+    sizeBytes: 2048,
+  });
+  expect(result.xctest?.cases).toHaveLength(1);
+});
