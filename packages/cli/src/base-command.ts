@@ -152,6 +152,11 @@ export abstract class BaseCommand extends Command {
    * commands that let the caller choose it, such as xcode test; the 404 retry reads it too.
    */
   protected autoCreateSimulator?: IosDeviceSelection;
+  /**
+   * Set when only a live recorded Xcode sandbox will do, as for a rerun of tests it already
+   * built: resolveSimulatorBackedXcodeTargetOrCreate then fails instead of creating a new one.
+   */
+  protected existingXcodeSandboxOnly?: string;
   private _lastResolvedInstanceId?: string;
   private _lastResolvedExpectedType?: 'ios' | 'android' | 'xcode' | 'gradle';
   private _xcodeReplacementIntent?: XcodeReplacementIntent;
@@ -733,6 +738,9 @@ export abstract class BaseCommand extends Command {
       }
     }
 
+    if (this.existingXcodeSandboxOnly) {
+      throw new Error(this.existingXcodeSandboxOnly);
+    }
     if (!this.shouldAutoCreateOnNotFound()) {
       throw new Error(
         'No simulator-backed Xcode target found.\n' +
@@ -809,6 +817,9 @@ export abstract class BaseCommand extends Command {
       case 'gradle':
         return this.createStandaloneGradleInstance();
       case 'xcode':
+        if (this.existingXcodeSandboxOnly) {
+          throw new Error(this.existingXcodeSandboxOnly);
+        }
         if (this._xcodeReplacementIntent === 'simulator-backed') {
           return this.createSimulatorBackedXcodeInstance();
         }
