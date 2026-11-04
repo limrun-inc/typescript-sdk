@@ -1,4 +1,5 @@
 import { Parser } from '@oclif/core';
+import { generateKeyPairSync, sign } from 'node:crypto';
 import Limrun from '@limrun/api';
 import Create from './create';
 import Revoke from './revoke';
@@ -10,6 +11,15 @@ const issued = {
   scopes: ['asset:name/releases/app:prod,1.ipa:read', 'device:*:install'],
   expiresAt: '2026-11-04T12:15:00Z',
 };
+
+const { privateKey } = generateKeyPairSync('ed25519');
+
+function accessToken(claims: unknown): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'EdDSA', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify(claims)).toString('base64url');
+  const unsigned = `${header}.${payload}`;
+  return `lim_st_${unsigned}.${sign(null, Buffer.from(unsigned), privateKey).toString('base64url')}`;
+}
 
 function setup(Command: typeof Create | typeof Revoke, argv: string[], status = 200) {
   const calls: Array<{ path: string; method: string; body?: unknown }> = [];
@@ -94,6 +104,54 @@ test('revoke sends the ID to the canonical endpoint', async () => {
   await command.run();
   expect(calls).toEqual([{ path: `/v1/access_tokens/${issued.id}`, method: 'DELETE' }]);
   expect(json).toHaveBeenCalledWith({ ok: true, id: issued.id });
+});
+
+test.each([false, true])('revoke extracts jti from an access token (json=%s)', async (asJson) => {
+  const token = accessToken({
+    iss: 'limrun',
+    sub: 'org_01h455vb4pex5vsknk084sn02z',
+    owner: 'token_01h455vb4pex5vsknk084sn02z',
+    jti: issued.id,
+    exp: 1,
+    scopes: ['device:*:install'],
+  });
+  const { command, calls, json, output } = setup(Revoke, [token, ...(asJson ? ['--json'] : [])]);
+  await command.run();
+  expect(calls).toEqual([{ path: `/v1/access_tokens/${issued.id}`, method: 'DELETE' }]);
+  if (asJson) {
+    expect(json).toHaveBeenCalledWith({ ok: true, id: issued.id });
+    expect(output).not.toHaveBeenCalled();
+  } else {
+    expect(output).toHaveBeenCalledWith(`Revoked access token ${issued.id}.`);
+    expect(json).not.toHaveBeenCalled();
+  }
+  expect(JSON.stringify([calls, json.mock.calls, output.mock.calls])).not.toContain(token);
+});
+
+test.each([
+  ['an API key', 'lim_not_an_access_token', /Expected an access-token ID/],
+  ['a malformed JWT', 'lim_st_invalid', /Malformed access token/],
+  ['a malformed payload', 'lim_st_e30.bm90LWpzb24.c2ln', /Malformed access token/],
+  ['a non-object payload', accessToken(null), /JWT claims object/],
+  ['an array payload', accessToken([]), /JWT claims object/],
+  ['an instance token', accessToken({ scopes: ['ios:ios_euna_01h455vb4pex5vsknk084sn02q:all'] }), /no jti/],
+  ['an empty jti', accessToken({ jti: '' }), /no jti/],
+  ['a numeric jti', accessToken({ jti: 123 }), /invalid jti/],
+  ['a non-UUID jti', accessToken({ jti: '../other-resource' }), /invalid jti/],
+] as const)('revoke rejects %s without sending or printing the credential', async (_name, input, message) => {
+  const { command, calls, json, output } = setup(Revoke, [input, '--json']);
+  let failure: unknown;
+  try {
+    await command.run();
+  } catch (error) {
+    failure = error;
+  }
+  expect(failure).toBeInstanceOf(Error);
+  expect((failure as Error).message).toMatch(message);
+  expect((failure as Error).message).not.toContain(input);
+  expect(calls).toEqual([]);
+  expect(json).not.toHaveBeenCalled();
+  expect(output).not.toHaveBeenCalled();
 });
 
 test('failed revocation prints no success result', async () => {

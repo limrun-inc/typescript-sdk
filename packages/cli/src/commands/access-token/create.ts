@@ -4,7 +4,7 @@ import { BaseCommand } from '../../base-command';
 export default class AccessTokenCreate extends BaseCommand {
   static summary = 'Create a temporary access token';
   static description =
-    'Delegate permissions held by your API key or login. Save the returned ID to revoke the token. ' +
+    'Delegate permissions held by your API key or login. Revoke using the returned ID or token value. ' +
     'With --quiet, print only the token; with --json, include its ID, permissions, and expiry. ' +
     'Permission reference: https://docs.limrun.com/docs/reference/permissions';
   static examples = [
