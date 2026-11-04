@@ -91,7 +91,18 @@ export default class XcodeTest extends BaseCommand {
       description:
         'Rerun the tests the Xcode sandbox last built for testing, without syncing or building. Takes the test selection, --result-bundle and --coverage.',
       default: false,
-      exclusive: ['build-only'],
+      // A rerun builds nothing, creates no instance and keeps the Xcode the products were built
+      // with, so every build input, creation setting and Xcode choice would be ignored.
+      exclusive: [
+        'build-only',
+        'model',
+        'os-version',
+        'inactivity-timeout',
+        'xcode-version',
+        ...Object.keys(xcodeProjectFlags),
+        ...Object.keys(syncFlags),
+        ...Object.keys(snapshotFlags),
+      ],
     }),
     ...xcodeProjectFlags,
     ...xcodeVersionFlags,
@@ -121,28 +132,9 @@ export default class XcodeTest extends BaseCommand {
     if (resultBundle && fs.existsSync(path.resolve(resultBundle))) {
       this.error(`${resultBundle} already exists; choose a new result bundle path.`);
     }
-    if (withoutBuilding) {
-      // A rerun builds nothing, so every build input would be silently ignored.
-      const buildInputs = Object.entries({ ...xcodeProjectFlags, ...syncFlags, ...snapshotFlags })
-        .filter(
-          ([name, flag]) =>
-            (flags as Record<string, unknown>)[name] !== undefined &&
-            (flags as Record<string, unknown>)[name] !== flag.default,
-        )
-        .map(([name]) => `--${name}`);
-      // These create fresh instances, which have nothing built to rerun, or switch the Xcode
-      // the products were built with.
-      for (const name of ['model', 'os-version', 'inactivity-timeout', 'xcode-version'] as const) {
-        if (flags[name] !== undefined) buildInputs.push(`--${name}`);
-      }
-      if (args.path) buildInputs.unshift('the path argument');
-      if (buildInputs.length > 0) {
-        this.error(
-          `--without-building reruns the tests already built and cannot be combined with ${buildInputs.join(
-            ', ',
-          )}.`,
-        );
-      }
+    // Flags are refused through the flag's exclusive list; a path would be ignored the same way.
+    if (withoutBuilding && args.path) {
+      this.error('--without-building reruns the tests already built and takes no project path.');
     }
     if (flags.id && flags['inactivity-timeout']) {
       this.error('--inactivity-timeout controls newly created instances and cannot be combined with --id.');
@@ -162,133 +154,137 @@ export default class XcodeTest extends BaseCommand {
         '--without-building reruns the tests a live Xcode sandbox already built, and none is recorded. Pass --id, or run lim xcode test first.';
     }
 
-    await this.withAuth(async () => {
-      const target =
-        flags['build-only'] ?
-          await this.resolveXcodeTargetOrCreate(flags.id)
-        : await this.resolveSimulatorBackedXcodeTargetOrCreate(flags.id);
-      const id = target.id;
-      if (!withoutBuilding) {
-        await this.applyBuildCacheToTarget(target, parseSnapshotConfig(flags));
-      }
-      const syncPath = args.path ?? process.cwd();
-      const xcodeClient = await this.resolveXcodeClientForWork(target, requestedXcode);
-
-      const runFields: XcodeProjectConfig = {
-        ...(flags['only-testing']?.length && { onlyTesting: flags['only-testing'] }),
-        ...(flags['skip-testing']?.length && { skipTesting: flags['skip-testing'] }),
-        ...(resultBundle && { resultBundle: true }),
-        ...(flags.coverage && { coverage: true }),
-      };
-      const settings: XcodeProjectConfig =
-        withoutBuilding ?
-          { action: 'test-without-building', ...runFields }
-        : {
-            action: 'build-for-testing',
-            sdk: 'iphonesimulator',
-            ...(flags['build-only'] && { runTests: false }),
-            ...projectConfigFromFlags(flags),
-            ...runFields,
-          };
-
-      const options: XcodeBuildOptions = {};
-      const xcodegen = xcodegenConfigFromFlags(flags);
-      if (xcodegen) {
-        options.xcodegen = xcodegen;
-      }
-
-      if (withoutBuilding) {
-        this.info(`Rerunning the tests last built on instance ${id}...`);
-      } else {
-        this.info(`Syncing ${syncPath} to instance ${id}...`);
-        const syncStart = Date.now();
-        const syncResult = await xcodeClient.sync(syncPath, syncOptionsFromFlags(flags));
-        const syncedSize =
-          syncResult.bytesSent !== undefined ? ` (${formatBytes(syncResult.bytesSent)} sent)` : '';
-        this.info(`Sync completed in ${formatDurationMs(Date.now() - syncStart)}${syncedSize}.`);
-        this.info(
-          flags['build-only'] ? 'Building for testing...' : (
-            'Building for testing, then running on the simulator...'
-          ),
-        );
-      }
-
-      let sawCases = false;
-      const json = this.isJsonEnabled();
-      options.onXctestEvent = (event: XctestEvent) => {
-        if (json) {
-          process.stdout.write(JSON.stringify(event) + '\n');
-          return;
+    // A rerun never replaces a missing sandbox: a new one has nothing built.
+    await this.withAuth(
+      async () => {
+        const target =
+          flags['build-only'] ?
+            await this.resolveXcodeTargetOrCreate(flags.id)
+          : await this.resolveSimulatorBackedXcodeTargetOrCreate(flags.id);
+        const id = target.id;
+        if (!withoutBuilding) {
+          await this.applyBuildCacheToTarget(target, parseSnapshotConfig(flags));
         }
-        if (event.type === 'case') {
-          if (!sawCases) {
-            sawCases = true;
-            this.output('');
-          }
-          this.output(formatCaseLine(event));
+        const xcodeClient = await this.resolveXcodeClientForWork(target, requestedXcode);
+
+        const runFields: XcodeProjectConfig = {
+          ...(flags['only-testing']?.length && { onlyTesting: flags['only-testing'] }),
+          ...(flags['skip-testing']?.length && { skipTesting: flags['skip-testing'] }),
+          ...(resultBundle && { resultBundle: true }),
+          ...(flags.coverage && { coverage: true }),
+        };
+        const settings: XcodeProjectConfig =
+          withoutBuilding ?
+            { action: 'test-without-building', ...runFields }
+          : {
+              action: 'build-for-testing',
+              sdk: 'iphonesimulator',
+              ...(flags['build-only'] && { runTests: false }),
+              ...projectConfigFromFlags(flags),
+              ...runFields,
+            };
+
+        const options: XcodeBuildOptions = {};
+        const xcodegen = xcodegenConfigFromFlags(flags);
+        if (xcodegen) {
+          options.xcodegen = xcodegen;
         }
-      };
 
-      const proc = xcodeClient.xcodebuild(settings, options);
-
-      if (!json) {
-        proc.stdout.on('data', (line: string) => process.stdout.write(line + '\n'));
-        proc.stderr.on('data', (line: string) => process.stderr.write(line + '\n'));
-      }
-
-      const result = await proc;
-
-      // Downloaded even when tests failed: the bundle is how a red run is read. A lost bundle
-      // is reported after the run's own result, which it never replaces.
-      let resultBundlePath: string | undefined;
-      let bundleProblem: string | undefined;
-      const remoteBundle = result.xctest?.resultBundle;
-      if (resultBundle && remoteBundle) {
-        try {
-          await xcodeClient.pullResultBundle(remoteBundle.path, resultBundle);
-          resultBundlePath = path.resolve(resultBundle);
+        if (withoutBuilding) {
+          this.info(`Rerunning the tests last built on instance ${id}...`);
+        } else {
+          const syncPath = args.path ?? process.cwd();
+          this.info(`Syncing ${syncPath} to instance ${id}...`);
+          const syncStart = Date.now();
+          const syncResult = await xcodeClient.sync(syncPath, syncOptionsFromFlags(flags));
+          const syncedSize =
+            syncResult.bytesSent !== undefined ? ` (${formatBytes(syncResult.bytesSent)} sent)` : '';
+          this.info(`Sync completed in ${formatDurationMs(Date.now() - syncStart)}${syncedSize}.`);
           this.info(
-            `Result bundle written to ${resultBundlePath} (${formatBytes(remoteBundle.sizeBytes)} zipped).`,
+            flags['build-only'] ? 'Building for testing...' : (
+              'Building for testing, then running on the simulator...'
+            ),
           );
-        } catch (err) {
-          bundleProblem = `The result bundle could not be downloaded: ${
-            err instanceof Error ? err.message : String(err)
-          }`;
         }
-      } else if (resultBundle && !result.timedOut) {
-        bundleProblem =
-          result.exitCode === 0 ?
-            // A sandbox that predates result bundles runs the tests without one.
-            'The Xcode sandbox sent no result bundle; it may predate result bundles. Create a new sandbox and retry.'
-          : 'No result bundle was written.';
-      }
 
-      if (json) {
-        // timedOut marks a fabricated exit code (lost stream); without it a
-        // machine consumer would record a definitive failure for an unknown
-        // outcome.
-        process.stdout.write(
-          JSON.stringify({
-            exitCode: result.exitCode,
-            ...(resultBundlePath ? { resultBundle: resultBundlePath } : {}),
-            ...(result.timedOut ? { timedOut: true, incomplete: result.incomplete } : {}),
-          }) + '\n',
-        );
-      } else if (result.xctest) {
-        this.output('');
-        this.output(formatSummaryLine(result.xctest.summary));
-      }
-      if (result.timedOut) {
-        this.error(`Test run did not complete: ${result.incomplete?.message ?? 'timed out'}`);
-      }
-      if (bundleProblem) {
-        // A green run without the bundle it was asked for still fails.
-        if (result.exitCode === 0) this.error(bundleProblem);
-        this.warn(bundleProblem);
-      }
-      if (result.exitCode !== 0) {
-        this.exit(result.exitCode);
-      }
-    });
+        let sawCases = false;
+        const json = this.isJsonEnabled();
+        options.onXctestEvent = (event: XctestEvent) => {
+          if (json) {
+            process.stdout.write(JSON.stringify(event) + '\n');
+            return;
+          }
+          if (event.type === 'case') {
+            if (!sawCases) {
+              sawCases = true;
+              this.output('');
+            }
+            this.output(formatCaseLine(event));
+          }
+        };
+
+        const proc = xcodeClient.xcodebuild(settings, options);
+
+        if (!json) {
+          proc.stdout.on('data', (line: string) => process.stdout.write(line + '\n'));
+          proc.stderr.on('data', (line: string) => process.stderr.write(line + '\n'));
+        }
+
+        const result = await proc;
+
+        // Downloaded even when tests failed: the bundle is how a red run is read. A lost bundle
+        // is reported after the run's own result, which it never replaces.
+        let resultBundlePath: string | undefined;
+        let bundleProblem: string | undefined;
+        const remoteBundle = result.xctest?.resultBundle;
+        if (resultBundle && remoteBundle) {
+          try {
+            await xcodeClient.pullResultBundle(remoteBundle.path, resultBundle);
+            resultBundlePath = path.resolve(resultBundle);
+            this.info(
+              `Result bundle written to ${resultBundlePath} (${formatBytes(remoteBundle.sizeBytes)} zipped).`,
+            );
+          } catch (err) {
+            bundleProblem = `The result bundle could not be downloaded: ${
+              err instanceof Error ? err.message : String(err)
+            }`;
+          }
+        } else if (resultBundle && !result.timedOut) {
+          bundleProblem =
+            result.exitCode === 0 ?
+              // A sandbox that predates result bundles runs the tests without one.
+              'The Xcode sandbox sent no result bundle; it may predate result bundles. Create a new sandbox and retry.'
+            : 'No result bundle was written.';
+        }
+
+        if (json) {
+          // timedOut marks a fabricated exit code (lost stream); without it a
+          // machine consumer would record a definitive failure for an unknown
+          // outcome.
+          process.stdout.write(
+            JSON.stringify({
+              exitCode: result.exitCode,
+              ...(resultBundlePath ? { resultBundle: resultBundlePath } : {}),
+              ...(result.timedOut ? { timedOut: true, incomplete: result.incomplete } : {}),
+            }) + '\n',
+          );
+        } else if (result.xctest) {
+          this.output('');
+          this.output(formatSummaryLine(result.xctest.summary));
+        }
+        if (result.timedOut) {
+          this.error(`Test run did not complete: ${result.incomplete?.message ?? 'timed out'}`);
+        }
+        if (bundleProblem) {
+          // A green run without the bundle it was asked for still fails.
+          if (result.exitCode === 0) this.error(bundleProblem);
+          this.warn(bundleProblem);
+        }
+        if (result.exitCode !== 0) {
+          this.exit(result.exitCode);
+        }
+      },
+      { createReplacement: !withoutBuilding },
+    );
   }
 }

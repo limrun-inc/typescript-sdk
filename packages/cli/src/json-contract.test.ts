@@ -815,21 +815,22 @@ describe('xcode test NDJSON', () => {
   const summary = { type: 'summary', passed: 1, failed: 0, planFinished: true };
   const remoteBundle = { path: '/state/xctest-result-bundles/exec_test.xcresult.zip', sizeBytes: 10 };
 
-  function mockTestRun() {
+  function mockTestRun(
+    result: { exitCode: number; status: string; xctest: { cases: unknown[]; summary: unknown } } = {
+      exitCode: 0,
+      status: 'SUCCEEDED',
+      xctest: { cases: [caseEvent], summary, resultBundle: remoteBundle } as never,
+    },
+  ) {
     client.sync = jest.fn().mockResolvedValue({ bytesSent: 100 });
     client.pullResultBundle = jest.fn().mockResolvedValue(undefined);
     client.xcodebuild = jest.fn().mockImplementation((_settings, options) =>
       Object.assign(
         new Promise((resolve) => {
           setImmediate(() => {
-            options.onXctestEvent(caseEvent);
-            options.onXctestEvent(summary);
-            resolve({
-              exitCode: 0,
-              execId: 'exec_test',
-              status: 'SUCCEEDED',
-              xctest: { cases: [caseEvent], summary, resultBundle: remoteBundle },
-            });
+            result.xctest.cases.forEach((c) => options.onXctestEvent(c));
+            options.onXctestEvent(result.xctest.summary);
+            resolve({ execId: 'exec_test', ...result });
           });
         }),
         { stdout: new EventEmitter(), stderr: new EventEmitter() },
@@ -863,23 +864,11 @@ describe('xcode test NDJSON', () => {
   });
 
   test("a lost download keeps the terminal record and the tests' exit code", async () => {
-    mockTestRun();
-    client.xcodebuild!.mockImplementation((_settings, options) =>
-      Object.assign(
-        new Promise((resolve) => {
-          setImmediate(() => {
-            options.onXctestEvent(summary);
-            resolve({
-              exitCode: 1,
-              execId: 'exec_test',
-              status: 'FAILED',
-              xctest: { cases: [], summary, resultBundle: remoteBundle },
-            });
-          });
-        }),
-        { stdout: new EventEmitter(), stderr: new EventEmitter() },
-      ),
-    );
+    mockTestRun({
+      exitCode: 1,
+      status: 'FAILED',
+      xctest: { cases: [], summary, resultBundle: remoteBundle } as never,
+    });
     client.pullResultBundle!.mockRejectedValue(new Error('connection reset'));
 
     await expect(testCommand({ 'result-bundle': 'Tests.xcresult' }).run()).rejects.toMatchObject({
