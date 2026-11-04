@@ -19,7 +19,6 @@ function bundleTree(): string {
   fs.mkdirSync(path.join(root, 'Data'), { recursive: true });
   fs.writeFileSync(path.join(root, 'Info.plist'), 'plist');
   fs.writeFileSync(path.join(root, 'Data', 'data.0~abc'), 'payload');
-  fs.symlinkSync('Data/data.0~abc', path.join(root, 'latest'));
   return root;
 }
 
@@ -36,7 +35,7 @@ describe('result bundle download', () => {
     );
 
     expect(fs.readFileSync(path.join(destination, 'Info.plist'), 'utf8')).toBe('plist');
-    expect(fs.readFileSync(path.join(destination, 'latest'), 'utf8')).toBe('payload');
+    expect(fs.readFileSync(path.join(destination, 'Data', 'data.0~abc'), 'utf8')).toBe('payload');
     // Nothing of the staging is left beside the bundle.
     expect(fs.readdirSync(path.dirname(destination))).toEqual(['Tests.xcresult']);
   });
@@ -64,13 +63,18 @@ describe('result bundle download', () => {
     expect(fs.readdirSync(path.dirname(destination))).toEqual([]);
   });
 
-  test('refuses a symlink that escapes the bundle', async () => {
-    const root = bundleTree();
-    fs.symlinkSync('../../etc/passwd', path.join(root, 'escape'));
-    const zip = path.join(tempDir(), 'remote.zip');
-    zipContents(root, zip);
+  test('refuses symlinks, even one that stays inside the bundle', async () => {
+    // A chain of in-bundle links can still reach outside, so none is followed.
+    for (const link of ['../../etc/passwd', 'Data/data.0~abc']) {
+      const root = bundleTree();
+      fs.symlinkSync(link, path.join(root, 'link'));
+      const zip = path.join(tempDir(), 'remote.zip');
+      zipContents(root, zip);
 
-    await expect(extractZipToDirectory(zip, path.join(tempDir(), 'R.xcresult'))).rejects.toThrow('escapes');
+      await expect(extractZipToDirectory(zip, path.join(tempDir(), 'R.xcresult'))).rejects.toThrow(
+        'is a symlink',
+      );
+    }
   });
 
   test('refuses an entry outside the bundle', async () => {

@@ -826,6 +826,7 @@ describe('xcode test NDJSON', () => {
   function testCommand(flags: Record<string, unknown>) {
     const c = command('xcode/test', {}, flags);
     c.resolveSimulatorBackedXcodeTargetOrCreate = async () => target;
+    c.tryResolveXcodeTarget = async () => target;
     c.applyBuildCacheToTarget = async () => {};
     return c;
   }
@@ -846,6 +847,33 @@ describe('xcode test NDJSON', () => {
       coverage: true,
     });
     expect(client.pullResultBundle).toHaveBeenCalledWith(remoteBundle.path, 'Tests.xcresult');
+  });
+
+  test("a lost download keeps the terminal record and the tests' exit code", async () => {
+    mockTestRun();
+    client.xcodebuild!.mockImplementation((_settings, options) =>
+      Object.assign(
+        new Promise((resolve) => {
+          setImmediate(() => {
+            options.onXctestEvent(summary);
+            resolve({
+              exitCode: 1,
+              execId: 'exec_test',
+              status: 'FAILED',
+              xctest: { cases: [], summary, resultBundle: remoteBundle },
+            });
+          });
+        }),
+        { stdout: new EventEmitter(), stderr: new EventEmitter() },
+      ),
+    );
+    client.pullResultBundle!.mockRejectedValue(new Error('connection reset'));
+
+    await expect(testCommand({ 'result-bundle': 'Tests.xcresult' }).run()).rejects.toMatchObject({
+      oclif: { exit: 1 },
+    });
+    expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual({ exitCode: 1 });
+    expect(stderr).toContain('could not be downloaded: connection reset');
   });
 
   test('--without-building reruns the built tests without syncing', async () => {
