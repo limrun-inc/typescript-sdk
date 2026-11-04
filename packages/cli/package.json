@@ -1,6 +1,6 @@
 {
   "name": "lim",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "description": "Use remote XCode, Gradle, iOS Simulator, Android Emulator and more to build and test apps from Linux, Windows or macOS.",
   "bin": {
     "lim": "./bin/run.js",
@@ -108,6 +108,9 @@
       },
       "ios:snapshot": {
         "description": "Manage saved iOS simulator apps and data: list, get, delete, flush"
+      },
+      "access-token": {
+        "description": "Create and revoke temporary access tokens: create, revoke"
       }
     }
   },
