@@ -1,0 +1,28 @@
+name: Publish limrun (Python)
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write # Required for PyPI trusted publishing
+  contents: read
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      - name: Test
+        working-directory: packages/python
+        run: uv run pytest
+
+      - name: Build
+        working-directory: packages/python
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          packages-dir: packages/python/dist
