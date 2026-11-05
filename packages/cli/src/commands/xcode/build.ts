@@ -122,6 +122,12 @@ export default class XcodeBuild extends BaseCommand {
         'Run git init in the synced workspace before project generation, dependency resolution, and xcodebuild.',
       default: false,
     }),
+    'compilation-cache': Flags.boolean({
+      description:
+        "Use Xcode's compilation cache, with paths mapped so a cache restored from a snapshot into another directory still hits. Applies to Xcode 27 and later.",
+      allowNo: true,
+      default: true,
+    }),
     'log-processor': Flags.string({
       description: 'Process xcodebuild output with xcbeautify (default) or stream it unchanged.',
       options: ['xcbeautify', 'none'],
@@ -337,6 +343,7 @@ export default class XcodeBuild extends BaseCommand {
       }
 
       const options: XcodeBuildOptions = {};
+      options.compilationCache = flags['compilation-cache'];
       if (flags['git-init']) {
         options.gitInit = true;
       }

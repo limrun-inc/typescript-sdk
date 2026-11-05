@@ -273,6 +273,13 @@ export type XcodeBuildOptions = {
    * dependency resolution, and xcodebuild.
    */
   gitInit?: boolean;
+  /**
+   * Use Xcode's compilation cache, with the workspace path mapped so a cache restored into
+   * another directory, such as from a template snapshot, still serves hits. Defaults to true.
+   * Applies to Xcode 27 and later; older Xcode and older limbuild servers ignore it. A
+   * COMPILATION_CACHE_ENABLE_CACHING entry in buildSettings takes precedence.
+   */
+  compilationCache?: boolean;
   /** How xcodebuild stdout is processed before streaming. Defaults to 'xcbeautify'. */
   logProcessor?: 'xcbeautify' | 'none';
   /**
@@ -1021,6 +1028,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
           ...(options?.env?.length && { env: options.env }),
           ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
+          compilationCache: options?.compilationCache ?? true,
           ...(options?.logProcessor && { logProcessor: options.logProcessor }),
           ...(options?.webhook && { webhook: options.webhook }),
         };

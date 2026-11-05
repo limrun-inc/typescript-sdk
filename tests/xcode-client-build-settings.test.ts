@@ -49,10 +49,35 @@ describe('xcode client build settings', () => {
       command: 'xcodebuild',
       xcodebuild: { scheme: 'Scripty' },
       gitInit: true,
+      compilationCache: true,
       buildSettings: {
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) LIMRUN',
         APP_CONFIG_DEV_LOGIN_SECRET: 'abc=def',
       },
+    });
+  });
+
+  test('sends compilationCache: false when the caller opts out', async () => {
+    const bodies: unknown[] = [];
+    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+      if (String(input) === 'https://xcode.example.test/exec') {
+        bodies.push(JSON.parse(init?.body as string));
+        return jsonResponse({ execId: 'build-1' });
+      }
+      throw new Error(`unexpected request: ${input}`);
+    });
+
+    const client = new Limrun({ apiKey: 'key' });
+    const xcode = await client.xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'xcode-token',
+    });
+    await xcode.xcodebuild({ scheme: 'Scripty' }, { compilationCache: false });
+
+    expect(bodies[0]).toEqual({
+      command: 'xcodebuild',
+      xcodebuild: { scheme: 'Scripty' },
+      compilationCache: false,
     });
   });
 });

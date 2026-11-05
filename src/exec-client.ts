@@ -110,6 +110,11 @@ export type XcodeBuildExecRequest = {
    */
   env?: string[];
   gitInit?: boolean;
+  /**
+   * Use Xcode's compilation cache with the workspace path mapped, so a cache restored into
+   * another directory still serves hits. Applies to Xcode 27 and later.
+   */
+  compilationCache?: boolean;
   /** How xcodebuild stdout is processed before streaming. Defaults to 'xcbeautify'. */
   logProcessor?: 'xcbeautify' | 'none';
   assetUpload?: AssetUpload;

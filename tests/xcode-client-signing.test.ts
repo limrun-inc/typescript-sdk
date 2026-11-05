@@ -47,6 +47,7 @@ describe('xcode client signing', () => {
     expect(calls[0]?.init?.method).toBe('POST');
     expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
       command: 'xcodebuild',
+      compilationCache: true,
       xcodebuild: { sdk: 'appletvos' },
       signing: {
         certificateP12Base64: 'cert',
@@ -93,6 +94,7 @@ describe('xcode client signing', () => {
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
       command: 'xcodebuild',
+      compilationCache: true,
       xcodebuild: { sdk: 'xros', configuration: 'Release' },
       cloudSigning: {
         method: 'app-store-connect',

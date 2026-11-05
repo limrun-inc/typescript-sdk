@@ -48,6 +48,7 @@ describe('xcode client build-finish webhook', () => {
     expect(calls[0]?.init?.method).toBe('POST');
     expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
       command: 'xcodebuild',
+      compilationCache: true,
       xcodebuild: { scheme: 'Scripty' },
       webhook: {
         url: 'https://ci.example.com/hooks/limrun',
@@ -78,6 +79,7 @@ describe('xcode client build-finish webhook', () => {
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
       command: 'xcodebuild',
+      compilationCache: true,
       xcodebuild: { scheme: 'Scripty' },
     });
   });
@@ -121,6 +123,7 @@ describe('xcode client build-finish webhook', () => {
 
     expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
       command: 'xcodebuild',
+      compilationCache: true,
       xcodebuild: { scheme: 'Scripty' },
       testflight: {
         appId: '6822100611',
