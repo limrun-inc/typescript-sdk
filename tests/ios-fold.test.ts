@@ -47,6 +47,8 @@ jest.mock('ws', () => {
             message['type'] === 'setDuoOrientation'
           ) ?
             'foldStateResult'
+          : message['type'] === 'getCarPlayState' || message['type'] === 'setCarPlayEnabled' ?
+            'carPlayStateResult'
           : message['type'] === 'screenshotDisplay' ? 'screenshotResult'
           : message['type'] === 'performActions' ? 'performActionsResult'
           : message['type'] === 'scroll' ? 'scrollResult'
@@ -60,8 +62,9 @@ jest.mock('ws', () => {
                 type,
                 id: message.id,
                 state:
-                  message['type'] === 'getFoldState' ?
-                    null
+                  message['type'] === 'getCarPlayState' || message['type'] === 'setCarPlayEnabled' ?
+                    { supported: true, enabled: message.enabled ?? false }
+                  : message['type'] === 'getFoldState' ? null
                   : {
                       angleDegrees: message.angleDegrees ?? 180,
                       orientation: message.orientation ?? 'portrait',
@@ -229,6 +232,40 @@ describe('native iPhone Duo controls', () => {
       for (const angle of [NaN, Infinity, -1, 181])
         await expect(client.setHingeAngle(angle)).rejects.toThrow();
       expect(sentMessages).toHaveLength(before);
+    } finally {
+      client.disconnect();
+    }
+  });
+  it('controls CarPlay and routes its screenshots, touches, gestures and recordings explicitly', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test',
+      token: 'test',
+      logLevel: 'none',
+    });
+    try {
+      expect(await client.getCarPlayState()).toEqual({ supported: true, enabled: false });
+      expect(await client.setCarPlayEnabled(true)).toEqual({ supported: true, enabled: true });
+      await client.screenshotDisplay('carplay');
+      await client.startRecording({ display: 'carplay' });
+      await client.tapDisplay('carplay', 100, 50);
+      await client.performActions(
+        [
+          { type: 'touchDown', x: 100, y: 50 },
+          { type: 'touchUp', x: 100, y: 50 },
+        ],
+        { display: 'carplay' },
+      );
+      await client.setCarPlayEnabled(false);
+      expect(sentMessages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'screenshotDisplay', display: 'carplay' }),
+          expect.objectContaining({ type: 'tapDisplay', display: 'carplay', x: 100, y: 50 }),
+          expect.objectContaining({ type: 'performActions', display: 'carplay' }),
+          expect.objectContaining({ type: 'startVideoRecording', display: 'carplay' }),
+          expect.objectContaining({ type: 'setCarPlayEnabled', enabled: false }),
+        ]),
+      );
     } finally {
       client.disconnect();
     }

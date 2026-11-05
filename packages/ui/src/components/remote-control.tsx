@@ -11,7 +11,13 @@ import React, {
 import { clsx } from 'clsx';
 import './remote-control.css';
 
-import { createDisplayTouchMessage, type DuoState, type DuoOrientation } from '../core/duo';
+import {
+  createDisplayTouchMessage,
+  type DuoState,
+  type DuoOrientation,
+  type CarPlayState,
+} from '../core/duo';
+import { CarPlayView } from './carplay-view';
 const DuoView = lazy(() => import('./duo-view'));
 
 import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
@@ -351,7 +357,7 @@ export interface ImperativeKeyboardEvent {
 export interface RemoteControlHandle {
   openUrl: (url: string) => void;
   sendKeyEvent: (event: ImperativeKeyboardEvent) => void;
-  screenshot: (display?: 'outer' | 'inner') => Promise<ScreenshotData>;
+  screenshot: (display?: 'outer' | 'inner' | 'carplay') => Promise<ScreenshotData>;
   terminateApp: (bundleId: string) => Promise<void>;
   reconnect: () => void;
 
@@ -565,16 +571,22 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const frameRef = useRef<HTMLImageElement>(null);
     const [detectedDuo, setDetectedDuo] = useState(false);
     const isDuo = deviceModel === 'iphone-duo' || detectedDuo;
+    const carPlayVideoRef = useRef<HTMLVideoElement>(null);
+    const [carPlaySupported, setCarPlaySupported] = useState(false);
+    const [carPlayState, setCarPlayState] = useState<CarPlayState | null>(null);
+    const [carPlayViewing, setCarPlayViewing] = useState(false);
+    const [carPlayPending, setCarPlayPending] = useState(false);
+    const [carPlayError, setCarPlayError] = useState<string>();
     const innerVideoRef = useRef<HTMLVideoElement>(null);
     const [duoState, setDuoState] = useState<DuoState | null>(null);
     const [duoError, setDuoError] = useState<string>();
-    const duoRequests = useRef(
+    const displayRequests = useRef(
       new Map<
         string,
         { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
       >(),
     );
-    const sendDuoControl = (type: string, parameters: object): Promise<void> =>
+    const sendDisplayControl = (type: string, parameters: object): Promise<void> =>
       new Promise((resolve, reject) => {
         const socket = wsRef.current;
         if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -583,10 +595,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         }
         const id = crypto.randomUUID();
         const timer = setTimeout(() => {
-          duoRequests.current.delete(id);
+          displayRequests.current.delete(id);
           reject(new Error('Device control timed out'));
         }, 5000);
-        duoRequests.current.set(id, { resolve, reject, timer });
+        displayRequests.current.set(id, { resolve, reject, timer });
         socket.send(JSON.stringify({ type, id, ...parameters }));
       });
     const [videoLoaded, setVideoLoaded] = useState(false);
@@ -832,7 +844,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const loadingLogo = platformAssets?.loadingLogo;
     // Without a frame image (the lite entry) the video lays out frameless
     // whatever showFrame says.
-    const frameVisible = !isDuo && showFrame && !!frameImageSrc;
+    const frameVisible = !carPlayViewing && !isDuo && showFrame && !!frameImageSrc;
 
     const updateStatus = (message: string) => {
       // Use the wrapper for conditional logging
@@ -1331,6 +1343,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     // Unified handler for both mouse and touch interactions
     const handleInteraction = (event: React.MouseEvent | React.TouchEvent) => {
+      if (carPlayViewing) return;
       if (isDuo) return;
       event.preventDefault();
       event.stopPropagation();
@@ -2453,12 +2466,17 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       setPlaybackConnection(null);
       for (const stop of videoPlaybackRef.current.values()) stop();
       videoPlaybackRef.current.clear();
-      for (const request of duoRequests.current.values()) {
+      for (const request of displayRequests.current.values()) {
         clearTimeout(request.timer);
         request.reject(new Error('Simulator disconnected'));
       }
-      duoRequests.current.clear();
+      displayRequests.current.clear();
       setDuoState(null);
+      setCarPlayState(null);
+      setCarPlaySupported(false);
+      setCarPlayViewing(false);
+      setCarPlayError(undefined);
+      if (carPlayVideoRef.current) carPlayVideoRef.current.srcObject = null;
       if (innerVideoRef.current) innerVideoRef.current.srcObject = null;
       clearConnectionSuccessTimeout();
       clearIceDisconnectedGrace();
@@ -2753,6 +2771,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           rtcConfiguration: RTCConfiguration;
           cameraSupported: boolean;
           foldSupported: boolean;
+          carPlaySupported: boolean;
         }>((resolve, reject) => {
           const settle = (callback: () => void) => {
             window.clearTimeout(timeoutId);
@@ -2786,6 +2805,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                     rtcConfiguration: message.rtcConfiguration,
                     cameraSupported: message.cameraSupported === true,
                     foldSupported: message.foldSupported === true,
+                    carPlaySupported: message.carPlaySupported === true,
                   }),
                 );
               }
@@ -2808,6 +2828,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           rtcConfiguration: rtcConfig,
           cameraSupported: serverCameraSupported,
           foldSupported,
+          carPlaySupported,
         } = await rtcConfigPromise;
         if (!isCurrentAttempt() || wsRef.current !== ws) {
           return;
@@ -2815,15 +2836,21 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
         const isDuo = deviceModel === 'iphone-duo' || foldSupported;
         setDetectedDuo(isDuo);
+        setCarPlaySupported(carPlaySupported);
         // Keep browser LAN and VPN addresses out of signaling and connectivity checks.
         const peerConnection = new RTCPeerConnection({ ...rtcConfig, iceTransportPolicy: 'relay' });
         peerConnectionRef.current = peerConnection;
-        const playback = { peer: peerConnection, displays: new Map<RTCRtpReceiver, 'primary' | 'inner'>() };
+        const playback = {
+          peer: peerConnection,
+          displays: new Map<RTCRtpReceiver, 'primary' | 'inner' | 'carplay'>(),
+        };
         setPlaybackConnection(playback);
         peerConnection.addTransceiver('audio', { direction: 'recvonly' });
         const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
         const duoTransceiver =
-          isDuo ? peerConnection.addTransceiver('video', { direction: 'recvonly' }) : null;
+          isDuo || carPlaySupported ?
+            peerConnection.addTransceiver('video', { direction: 'recvonly' })
+          : null;
 
         // iOS always supports camera/mic injection; Android servers
         // advertise it through `cameraSupported` (Android 15 and newer).
@@ -2959,6 +2986,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           clearConnectionSuccessTimeout();
           updateStatus('Control channel opened');
           if (isDuo) ws.send(JSON.stringify({ type: 'getFoldState', id: 'duo-capabilities' }));
+          if (carPlaySupported)
+            ws.send(JSON.stringify({ type: 'getCarPlayState', id: 'carplay-capabilities' }));
 
           // Spin up the AX fetcher now that we have a stable WS + control
           // channel. The fetcher's send function reuses this WS; it stops
@@ -3132,17 +3161,29 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           // Audio and video share the preference because synchronization can
           // otherwise keep video at the audio receiver's higher target.
           applyJitterBufferTarget(event.receiver, jitterBufferTargetMsRef.current);
+          const carPlay =
+            event.track.id === 'carplay' || event.streams.some((stream) => stream.id === 'carplay');
           const inner =
             event.track.id === 'duo-inner' || event.streams.some((stream) => stream.id === 'duo-inner');
           if (event.track.kind === 'video')
-            playback.displays.set(event.receiver, inner ? 'inner' : 'primary');
+            playback.displays.set(
+              event.receiver,
+              carPlay ? 'carplay'
+              : inner ? 'inner'
+              : 'primary',
+            );
           updateStatus('Received remote track: ' + event.track.kind);
           if (event.track.kind === 'video' && videoRef.current) {
             debugLog(`[${new Date().toISOString()}] Video track received:`, event.track);
-            const target = inner ? innerVideoRef.current : videoRef.current;
+            const target =
+              carPlay ? carPlayVideoRef.current
+              : inner ? innerVideoRef.current
+              : videoRef.current;
             if (target) {
               const stream =
-                isDuo ? new MediaStream([event.track]) : event.streams[0] ?? new MediaStream([event.track]);
+                isDuo || carPlaySupported ?
+                  new MediaStream([event.track])
+                : event.streams[0] ?? new MediaStream([event.track]);
               videoPlaybackRef.current.get(target)?.();
               videoPlaybackRef.current.set(
                 target,
@@ -3192,6 +3233,21 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           }
           updateStatus('Received: ' + message.type);
           switch (message.type) {
+            case 'carPlayStateResult':
+            case 'carPlayStateChanged': {
+              if (message.state) {
+                setCarPlayState(message.state);
+                if (!message.state.enabled) setCarPlayViewing(false);
+              }
+              const request = displayRequests.current.get(message.id);
+              if (request) {
+                clearTimeout(request.timer);
+                displayRequests.current.delete(message.id);
+                if (message.error) request.reject(new Error(message.error));
+                else request.resolve();
+              } else if (message.error) setCarPlayError(message.error);
+              break;
+            }
             case 'performActionsResult':
             case 'foldStateResult':
             case 'foldStateChanged': {
@@ -3201,10 +3257,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 setDuoError(undefined);
               } else if (message.id === 'duo-capabilities')
                 setDuoError(message.error || 'This instance does not support native iPhone Duo displays.');
-              const request = duoRequests.current.get(message.id);
+              const request = displayRequests.current.get(message.id);
               if (request) {
                 clearTimeout(request.timer);
-                duoRequests.current.delete(message.id);
+                displayRequests.current.delete(message.id);
                 if (message.error) request.reject(new Error(message.error));
                 else request.resolve();
               }
@@ -3415,7 +3471,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             ws.send(
               JSON.stringify({
                 type: 'offer',
-                ...(isDuo ? { displayStreams: true } : {}),
+                ...(isDuo || carPlaySupported ? { displayStreams: true } : {}),
                 ...(latencyTrace ? { latencyTraceVersion: 1 } : {}),
                 sdp: offer.sdp,
                 sessionId: sessionId,
@@ -3729,7 +3785,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           sendBinaryControlMessage(message);
         }
       },
-      screenshot: (display?: 'outer' | 'inner'): Promise<ScreenshotData> => {
+      screenshot: (display?: 'outer' | 'inner' | 'carplay'): Promise<ScreenshotData> => {
         return new Promise<ScreenshotData>((resolve, reject) => {
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
             debugWarn('WebSocket not open, cannot send screenshot command.');
@@ -3906,7 +3962,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           )}
           style={{
             ...videoStyle,
-            ...(isDuo ? { opacity: 0, width: 1, height: 1, pointerEvents: 'none' as const } : {}),
+            ...(isDuo || carPlayViewing ?
+              { opacity: 0, width: 1, height: 1, pointerEvents: 'none' as const }
+            : {}),
             ...(loadingLogo ?
               {
                 backgroundImage: `url("${loadingLogo}")`,
@@ -3952,12 +4010,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               outer={videoRef.current}
               inner={innerVideoRef.current}
               state={duoState}
-              setAngle={(angleDegrees) => sendDuoControl('setHingeAngle', { angleDegrees })}
+              setAngle={(angleDegrees) => sendDisplayControl('setHingeAngle', { angleDegrees })}
               setOrientation={(orientation: DuoOrientation) =>
-                sendDuoControl('setDuoOrientation', { orientation })
+                sendDisplayControl('setDuoOrientation', { orientation })
               }
               button={(button, down) =>
-                sendDuoControl('performActions', {
+                sendDisplayControl('performActions', {
                   actions: [{ type: down ? 'buttonDown' : 'buttonUp', button }],
                 })
               }
@@ -3971,12 +4029,37 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             />
           </Suspense>
         )}
+        {carPlaySupported && (
+          <CarPlayView
+            video={carPlayVideoRef}
+            state={carPlayState}
+            viewing={carPlayViewing}
+            pending={carPlayPending}
+            error={carPlayError}
+            setViewing={setCarPlayViewing}
+            setEnabled={(enabled) => {
+              setCarPlayPending(true);
+              setCarPlayError(undefined);
+              void sendDisplayControl('setCarPlayEnabled', { enabled })
+                .then(() => setCarPlayViewing(enabled))
+                .catch((error: unknown) =>
+                  setCarPlayError(error instanceof Error ? error.message : String(error)),
+                )
+                .finally(() => setCarPlayPending(false));
+            }}
+            touch={(action, screenId, x, y) => {
+              const channel = dataChannelRef.current;
+              if (channel?.readyState === 'open')
+                channel.send(createDisplayTouchMessage(action, screenId, x, y));
+            }}
+          />
+        )}
         {isDuo && duoError && (
           <div role="alert" className="rc-duo-error">
             {duoError}
           </div>
         )}
-        {!isDuo && inspectActive && (
+        {!isDuo && !carPlayViewing && inspectActive && (
           <InspectOverlay
             snapshot={axSnapshot}
             geometry={overlayGeometry}

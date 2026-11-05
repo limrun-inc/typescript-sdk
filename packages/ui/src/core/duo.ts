@@ -154,3 +154,9 @@ export class DuoButtonSender {
     this.tail = this.tail.then(() => this.send(button, down)).catch(this.failed);
   }
 }
+
+export interface CarPlayState {
+  supported: boolean;
+  enabled: boolean;
+  display?: (Omit<DuoDisplay, 'id'> & { id: 'carplay' }) | null;
+}
