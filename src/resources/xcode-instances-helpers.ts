@@ -276,8 +276,9 @@ export type XcodeBuildOptions = {
   /**
    * Use Xcode's compilation cache, with the workspace path mapped so a cache restored into
    * another directory, such as from a template snapshot, still serves hits. Defaults to true.
-   * Applies to Xcode 27 and later; older Xcode and older limbuild servers ignore it. A
-   * COMPILATION_CACHE_ENABLE_CACHING entry in buildSettings takes precedence.
+   * With it, #filePath and debug info in the built app carry /^ws instead of the workspace
+   * path. Applies to Xcode 27 and later; older Xcode, test builds and older limbuild servers
+   * ignore it. A COMPILATION_CACHE_ENABLE_CACHING entry in buildSettings takes precedence.
    */
   compilationCache?: boolean;
   /** How xcodebuild stdout is processed before streaming. Defaults to 'xcbeautify'. */

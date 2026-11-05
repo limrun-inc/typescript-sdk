@@ -124,7 +124,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     'compilation-cache': Flags.boolean({
       description:
-        "Use Xcode's compilation cache, with paths mapped so a cache restored from a snapshot into another directory still hits. Applies to Xcode 27 and later.",
+        "Use Xcode's compilation cache, with paths mapped so a cache restored from a snapshot into another directory still hits. #filePath and debug info then show /^ws instead of the workspace path. Applies to Xcode 27 and later, except test builds.",
       allowNo: true,
       default: true,
     }),
