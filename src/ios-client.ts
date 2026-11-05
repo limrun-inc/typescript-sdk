@@ -70,7 +70,7 @@ function validateRecordingId(recordingId: string): void {
 export type RecordingOptions = {
   quality?: RecordingQuality;
   persist?: PersistOption;
-  display?: DuoDisplay;
+  display?: SimulatorDisplay;
   touchIndicators?: boolean;
 };
 
@@ -286,6 +286,13 @@ export type LsofEntry = {
 };
 
 export type DuoDisplay = 'outer' | 'inner';
+export type SimulatorDisplay = DuoDisplay | 'carplay';
+
+export type CarPlayState = {
+  supported: boolean;
+  enabled: boolean;
+  display?: (Omit<FoldDisplay, 'id'> & { id: 'carplay' }) | null;
+};
 
 export type FoldDisplay = {
   id: DuoDisplay;
@@ -949,10 +956,13 @@ export type InstanceClient = {
   setOrientation: (orientation: 'Portrait' | 'Landscape') => Promise<void>;
   /** Returns null for a simulator without a hinge. */
   getFoldState: () => Promise<FoldState | null>;
-  /** Capture an upright Duo display. A powered-off display returns its native black image. */
-  screenshotDisplay: (display: 'outer' | 'inner', options?: ScreenshotOptions) => Promise<ScreenshotData>;
+  getCarPlayState: () => Promise<CarPlayState>;
+  /** Connect or disconnect the CarPlay screen on a supported simulator. */
+  setCarPlayEnabled: (enabled: boolean) => Promise<CarPlayState>;
+  /** Capture an upright simulator display. A powered-off display returns its native black image. */
+  screenshotDisplay: (display: SimulatorDisplay, options?: ScreenshotOptions) => Promise<ScreenshotData>;
   /** Tap in point coordinates returned by screenshotDisplay. */
-  tapDisplay: (display: 'outer' | 'inner', x: number, y: number) => Promise<void>;
+  tapDisplay: (display: SimulatorDisplay, x: number, y: number) => Promise<void>;
   setDuoOrientation: (orientation: DuoOrientation) => Promise<FoldState>;
   /** Sets the native Duo hinge: 0 closed, 180 flat. */
   setHingeAngle: (angleDegrees: number) => Promise<FoldState>;
@@ -962,14 +972,14 @@ export type InstanceClient = {
    * @param direction Direction content moves: "up", "down", "left", "right"
    * @param pixels Total pixels to scroll (finger movement distance)
    * @param options Optional scroll options
-   * @param options.display Duo display to scroll, in upright screenshotDisplay points. Omit to use the active display.
+   * @param options.display Display to scroll, in upright screenshotDisplay points. Omit to use the active display.
    * @param options.coordinate Starting coordinate [x, y]. Defaults to screen center.
    * @param options.momentum 0.0-1.0 controlling scroll speed and inertia. 0 (default) = slow scroll, no momentum. 1 = fastest with max inertia.
    */
   scroll: (
     direction: 'up' | 'down' | 'left' | 'right',
     pixels: number,
-    options?: { coordinate?: [number, number]; momentum?: number; display?: DuoDisplay },
+    options?: { coordinate?: [number, number]; momentum?: number; display?: SimulatorDisplay },
   ) => Promise<void>;
 
   /**
@@ -992,14 +1002,14 @@ export type InstanceClient = {
    * `options.timeoutMs` to override.
    *
    * @param actions The actions to run in order.
-   * @param options.display Duo display for coordinate taps, scrolls, and raw touches.
+   * @param options.display Display for coordinate taps, scrolls, and raw touches.
    * Uses upright screenshotDisplay points. Omit to use the active display. Element actions follow the active display.
    * @param options.timeoutMs Custom client-side timeout in milliseconds.
    * @throws If any action fails — subsequent actions are not executed.
    */
   performActions: (
     actions: PerformAction[],
-    options?: { timeoutMs?: number; display?: DuoDisplay },
+    options?: { timeoutMs?: number; display?: SimulatorDisplay },
   ) => Promise<PerformActionsResult>;
 
   /**
@@ -2130,6 +2140,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       microphoneStatusResult: (msg): IosMicrophoneStatus => msg.status ?? { source: 'silence' },
       setOrientationResult: () => undefined,
       foldStateResult: (msg) => msg.state ?? null,
+      carPlayStateResult: (msg) => msg.state,
       scrollResult: () => undefined,
       performActionsResult: (msg): PerformActionsResult => ({
         results: msg.results ?? [],
@@ -2315,6 +2326,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             restoreKeychain,
             setOrientation,
             getFoldState,
+            getCarPlayState,
+            setCarPlayEnabled,
             screenshotDisplay,
             tapDisplay,
             setDuoOrientation,
@@ -2735,11 +2748,16 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest('setDuoOrientation', { orientation });
     };
     const screenshotDisplay = (
-      display: 'outer' | 'inner',
+      display: SimulatorDisplay,
       options?: ScreenshotOptions,
     ): Promise<ScreenshotData> => sendRequest('screenshotDisplay', { display, ...options });
-    const tapDisplay = (display: 'outer' | 'inner', x: number, y: number): Promise<void> =>
+    const tapDisplay = (display: SimulatorDisplay, x: number, y: number): Promise<void> =>
       sendRequest('tapDisplay', { display, x, y });
+    const getCarPlayState = (): Promise<CarPlayState> => sendRequest('getCarPlayState');
+    const setCarPlayEnabled = (enabled: boolean): Promise<CarPlayState> => {
+      if (typeof enabled !== 'boolean') throw new TypeError('enabled must be a boolean');
+      return sendRequest('setCarPlayEnabled', { enabled });
+    };
     const getFoldState = (): Promise<FoldState | null> => sendRequest('getFoldState');
     const setHingeAngle = (angleDegrees: number): Promise<FoldState> => {
       if (!Number.isFinite(angleDegrees) || angleDegrees < 0 || angleDegrees > 180) {
@@ -2755,7 +2773,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const scroll = (
       direction: 'up' | 'down' | 'left' | 'right',
       pixels: number,
-      options?: { coordinate?: [number, number]; momentum?: number; display?: DuoDisplay },
+      options?: { coordinate?: [number, number]; momentum?: number; display?: SimulatorDisplay },
     ): Promise<void> => {
       return sendRequest<void>('scroll', {
         direction,
@@ -2768,7 +2786,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const performActions = (
       actions: PerformAction[],
-      options?: { timeoutMs?: number; display?: DuoDisplay },
+      options?: { timeoutMs?: number; display?: SimulatorDisplay },
     ): Promise<PerformActionsResult> => {
       // Batch duration is unbounded (user-supplied `wait` durations, plus
       // per-action server work), so we grow the timeout with the batch

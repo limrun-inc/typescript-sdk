@@ -125,6 +125,24 @@ for the event fields and measurement limits.
 
 This package is not part of generated SDK, hence you need to publish it manually in GitHub Actions.
 
+## CarPlay
+
+On supported iPhone simulators, `RemoteControl` shows **Connect CarPlay** and
+receives a separate CarPlay video track. **Show phone** and **Show CarPlay**
+switch the visible screen without disconnecting either stream.
+**Disconnect CarPlay** disconnects the secondary display for every viewer.
+
+CarPlay supports single-finger touch and drag. Controls are hidden when the
+server does not advertise support, including on iPhone Duo and iPad. The
+supported configuration is an 800 × 480 display on iOS 26.4. Playback statistics
+identify the secondary track as `carplay`.
+
+For automation, use `getCarPlayState()` and `setCarPlayEnabled(boolean)` on an
+`@limrun/api` iOS device client. Pass `'carplay'` to `screenshotDisplay` and
+`tapDisplay`, or `{ display: 'carplay' }` to recording and gesture methods.
+Screenshots and touches use 400 × 240 points at scale 2. The phone remains the
+default target for input and screenshots.
+
 ## iPhone Duo
 
 `RemoteControl` discovers native Duo support and starts in 2D with native video

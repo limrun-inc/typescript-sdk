@@ -15,7 +15,7 @@ export interface PlaybackTrackStats {
 
 export interface PlaybackVideoStats extends PlaybackTrackStats {
   /** The main display, or the independently streamed inner display on iPhone Duo. */
-  display: 'primary' | 'inner';
+  display: 'primary' | 'inner' | 'carplay';
   /** Decoded frames per second over the interval. Static screens may send few frames. */
   fps?: number;
   /** Frames dropped during the interval, as reported by the browser. */
