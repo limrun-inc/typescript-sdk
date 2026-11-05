@@ -1,11 +1,13 @@
+import { DUO_GEOMETRY } from '../core/duo-geometry';
 /** A small WebGL model used only while the otherwise-flat device folds. */
 import type { FoldMotion } from './duo-fold-motion';
 
 export const FOLD_DURATION = 1200;
-const HALF = 82.3;
-const HEIGHT = 117.8;
-const DEPTH = 5.2;
-const PIVOT = 0.6;
+const { body, inner, outer } = DUO_GEOMETRY;
+const HALF = body.width / 2;
+const HEIGHT = body.height;
+const DEPTH = body.depth;
+const PIVOT = (body.closedDepth - 2 * DEPTH) / 2;
 type Kind = 'metal' | 'seal' | 'inner' | 'outer' | 'back';
 export type FoldMesh = { side: -1 | 0 | 1; kind: Kind; vertices: Float32Array };
 type Point = { x: number; y: number; nx: number; ny: number };
@@ -103,8 +105,8 @@ export function foldMeshes(): FoldMesh[] {
       let u = 0,
         v = 0;
       if (kind === 'inner') {
-        u = 0.5 - y / 110.8;
-        v = 0.5 + px / 157.5;
+        u = 0.5 - y / inner.height;
+        v = 0.5 + px / inner.width;
       }
       if (kind === 'outer') {
         u = 0.5 - x / w;
@@ -120,9 +122,20 @@ export function foldMeshes(): FoldMesh[] {
     add(side, kind, vertices);
   };
   for (const side of [-1, 1] as const) {
-    const left = side === -1 ? 8.4 : 1.25;
-    const right = side === 1 ? 8.4 : 1.25;
-    plate(side, 'metal', (side * HALF) / 2, 0, HALF, HEIGHT, 0, DEPTH, left, right);
+    const left = (side === -1 ? body.radius : body.foldRadius) + body.edgeExpansion;
+    const right = (side === 1 ? body.radius : body.foldRadius) + body.edgeExpansion;
+    plate(
+      side,
+      'metal',
+      (side * HALF) / 2,
+      0,
+      HALF + 2 * body.edgeExpansion,
+      HEIGHT + 2 * body.edgeExpansion,
+      0,
+      DEPTH,
+      left,
+      right,
+    );
     face(
       side,
       'seal',
@@ -136,24 +149,25 @@ export function foldMeshes(): FoldMesh[] {
     face(
       side,
       'inner',
-      side * (157.5 / 4 + 0.55),
-      157.5 / 2 - 1.1,
-      110.8,
+      side * (inner.width / 4 + inner.bendHalfWidth / 2),
+      inner.width / 2 - inner.bendHalfWidth,
+      inner.height,
       0.24,
-      side === -1 ? 5.3 : 0,
-      side === 1 ? 5.3 : 0,
+      side === -1 ? inner.radius : 0,
+      side === 1 ? inner.radius : 0,
     );
   }
   for (const [kind, h, z] of [
     ['metal', HEIGHT, -0.12],
     ['seal', HEIGHT - 2.24, 0.12],
-    ['inner', 110.8, 0.24],
+    ['inner', inner.height, 0.24],
   ] as const) {
     const hinge: number[] = [];
-    const point = (x: number, y: number) => hinge.push(x, y, z, 0, 0, 1, 0.5 - y / 110.8, 0.5 + x / 157.5);
+    const point = (x: number, y: number) =>
+      hinge.push(x, y, z, 0, 0, 1, 0.5 - y / inner.height, 0.5 + x / inner.width);
     for (let i = 0; i < 6; i++) {
-      const a = -1.1 + (i * 2.2) / 6,
-        b = a + 2.2 / 6;
+      const a = -inner.bendHalfWidth + (i * 2 * inner.bendHalfWidth) / 6,
+        b = a + (2 * inner.bendHalfWidth) / 6;
       for (const [x, y] of [
         [a, -h / 2],
         [b, -h / 2],
@@ -167,7 +181,7 @@ export function foldMeshes(): FoldMesh[] {
     add(0, kind, hinge);
   }
   face(-1, 'seal', -HALF / 2, HALF - 2.24, HEIGHT - 2.24, -DEPTH - 0.12, 7.15, 0.65);
-  face(-1, 'outer', -HALF / 2, 77.1, 112.2, -DEPTH - 0.24, 6.6, 0.8);
+  face(-1, 'outer', -HALF / 2, outer.width, outer.height, -DEPTH - 0.24, outer.radius, outer.foldRadius);
   face(1, 'back', HALF / 2, HALF - 1, HEIGHT - 1, -DEPTH - 0.12, 0.8, 8);
   for (const x of [HALF - 37, HALF - 25])
     plate(1, 'metal', x, HEIGHT / 2 + 0.4, 9.5, 0.8, -1.4, 2, 0.35, 0.35);
@@ -215,9 +229,13 @@ void main() {
   vec3 p = position - vec3(0.,0.,${PIVOT});
   p = vec3(leaf.x*p.x + leaf.y*p.z, p.y, -leaf.y*p.x + leaf.x*p.z);
   if (bend==1) {
-    vec2 a=vec2(-1.1*hinge.x+(position.z-${PIVOT})*hinge.y,1.1*hinge.y+(position.z-${PIVOT})*hinge.x);
-    vec2 b=vec2(1.1*hinge.z+(position.z-${PIVOT})*hinge.w,-1.1*hinge.w+(position.z-${PIVOT})*hinge.z);
-    p.xz=mix(a,b,(position.x+1.1)/2.2);
+    vec2 a=vec2(-${inner.bendHalfWidth}*hinge.x+(position.z-${PIVOT})*hinge.y,${
+      inner.bendHalfWidth
+    }*hinge.y+(position.z-${PIVOT})*hinge.x);
+    vec2 b=vec2(${inner.bendHalfWidth}*hinge.z+(position.z-${PIVOT})*hinge.w,-${
+      inner.bendHalfWidth
+    }*hinge.w+(position.z-${PIVOT})*hinge.z);
+    p.xz=mix(a,b,(position.x+${inner.bendHalfWidth})/${2 * inner.bendHalfWidth});
   }
   p += vec3(shift,0.,${PIVOT});
   vec3 n = vec3(leaf.x*normal.x + leaf.y*normal.z, normal.y, -leaf.y*normal.x + leaf.x*normal.z);

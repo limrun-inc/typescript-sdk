@@ -1,20 +1,18 @@
-import { DUO_DIMENSIONS, type DuoButton } from '../core/duo';
+import { type DuoButton } from '../core/duo';
+import { DUO_GEOMETRY, duoBodySize, duoFitScale } from '../core/duo-geometry';
 
 type Edge = 'top' | 'right' | 'bottom' | 'left';
 
 /** A front projection of the 3D body's dimensions, with room for its edge controls. */
 export function flatFrameGeometry(inner: boolean, displayTurns: number, width: number, height: number) {
-  const bodyWidth = DUO_DIMENSIONS.width / (inner ? 1 : 2);
-  const bodyHeight = DUO_DIMENSIONS.height;
-  const screenWidth = inner ? 157.5 : 77.1;
-  const screenHeight = inner ? 110.8 : 112.2;
+  const { width: bodyWidth, height: bodyHeight } = duoBodySize(inner);
+  const { width: screenWidth, height: screenHeight } = inner ? DUO_GEOMETRY.inner : DUO_GEOMETRY.outer;
   const turns = (displayTurns + (inner ? 3 : 0)) % 4;
-  const scale = Math.max(
-    0,
-    Math.min(
-      (width - 120) / (turns % 2 ? bodyHeight : bodyWidth),
-      (height - 120) / (turns % 2 ? bodyWidth : bodyHeight),
-    ),
+  const scale = duoFitScale(
+    turns % 2 ? bodyHeight : bodyWidth,
+    turns % 2 ? bodyWidth : bodyHeight,
+    width,
+    height,
   );
   const project = (x: number, y: number) => {
     x = (x - bodyWidth / 2) * scale;

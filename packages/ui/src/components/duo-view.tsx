@@ -1,3 +1,4 @@
+import { duoScreenRadii } from '../core/duo-geometry';
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { DUO_BUTTONS, DuoButtonSender, flatDisplayTouch, type DuoButton } from '../core/duo';
 import type { DuoFrameProps } from './duo-frame';
@@ -232,10 +233,7 @@ function DuoFlat(props: DuoViewProps) {
               height,
               left: ((bodyWidth - screenWidth) / 2) * scale,
               top: ((bodyHeight - screenHeight) / 2) * scale,
-              borderRadius:
-                !showFrame ? 0
-                : inner ? 5.3 * scale
-                : [0.8, 6.6, 6.6, 0.8].map((r) => r * scale + 'px').join(' '),
+              borderRadius: !showFrame ? 0 : duoScreenRadii(inner, scale),
             }}
             onKeyDown={motion ? undefined : props.onKeyDown}
             onKeyUp={props.onKeyUp}

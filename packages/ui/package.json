@@ -31,7 +31,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:visual": "node validation/run.mjs",
+    "test:stream-ratio": "node validation/stream.mjs"
   },
   "repository": {
     "type": "git",
@@ -51,6 +53,8 @@
     "eslint": "^9.39.1",
     "jsdom": "^26.0.0",
     "path": "^0.12.7",
+    "playwright": "^1.64.1",
+    "pngjs": "^7.0.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "typescript": "5.8.3",

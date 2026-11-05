@@ -1,3 +1,4 @@
+import { duoScreenRadii } from '../core/duo-geometry';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DuoFlatFrame } from './duo-flat-frame';
 import { captureDuoFrame, waitForDuoFrame } from './duo-screen-handoff';
@@ -112,8 +113,7 @@ function Still({ pose, image, scale }: { pose: Pose; image?: HTMLCanvasElement; 
           height,
           left: ((bodyWidth - screenWidth) * scale) / 2,
           top: ((bodyHeight - screenHeight) * scale) / 2,
-          borderRadius:
-            pose.inner ? 5.3 * scale : [0.8, 6.6, 6.6, 0.8].map((r) => r * scale + 'px').join(' '),
+          borderRadius: duoScreenRadii(pose.inner, scale),
         }}
       >
         {image && (
