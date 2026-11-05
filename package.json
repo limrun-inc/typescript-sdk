@@ -71,15 +71,15 @@
     "typescript-eslint": "8.31.1"
   },
   "overrides": {
-    "minimatch": "^9.0.5"
+    "minimatch@>=7.0.0 <11.0.1": "11.0.1"
   },
   "pnpm": {
     "overrides": {
-      "minimatch": "^9.0.5"
+      "minimatch@>=7.0.0 <11.0.1": "11.0.1"
     }
   },
   "resolutions": {
-    "minimatch": "^9.0.5"
+    "**/@typescript-eslint/typescript-estree/minimatch": "11.0.1"
   },
   "exports": {
     ".": {
