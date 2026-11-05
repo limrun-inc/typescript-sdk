@@ -19,7 +19,7 @@ export const snapshotFlags = {
   'snapshot-paths': Flags.string({
     aliases: ['cache-paths'],
     description:
-      'Comma-separated project-root-relative paths to include in the disk snapshot, such as "Pods". Defaults to the whole workspace. A restore can land at a different absolute path, so include only content that works anywhere: path-keyed state such as DerivedData or SwiftPM .build rebuilds from scratch. The first publication under a key fixes its path set.',
+      'Comma-separated project-root-relative paths to include in the disk snapshot, such as "Pods". Defaults to the whole workspace. A restore can land at a different absolute path, so include only content that works anywhere: Xcode's compilation cache (.limbuild-sandbox/derived-data/CompilationCache.noindex) does, while the rest of DerivedData and SwiftPM .build rebuild from scratch. The first publication under a key fixes its path set.',
   }),
 };
 
