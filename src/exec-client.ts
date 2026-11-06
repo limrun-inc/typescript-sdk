@@ -85,6 +85,7 @@ export type XcodeBuildExecRequest = {
     expoAppDir?: string;
     devServerURL?: string;
     expoForcePrebuild?: boolean;
+    expoNoClean?: boolean;
   };
   signing?: {
     certificateP12Base64?: string;
@@ -171,6 +172,12 @@ export type GradleAndroidABI = 'armeabi-v7a' | 'arm64-v8a' | 'x86' | 'x86_64' | 
  * Expo app.
  */
 export type GradleReactNativeConfig = {
+  /**
+   * Pass `--no-clean` to Expo prebuild to preserve the existing native directory.
+   * Omit or set false to use the installed Expo CLI's default. Does not force
+   * prebuild to run when it would otherwise be skipped.
+   */
+  expoNoClean?: boolean;
   /** Relative path to the Expo app directory in a monorepo. Omit to auto-detect. */
   expoAppDir?: string;
   /**

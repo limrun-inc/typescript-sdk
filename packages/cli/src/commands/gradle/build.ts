@@ -73,6 +73,11 @@ export default class GradleBuild extends BaseCommand {
       description:
         'Relative path to the Gradle root inside the synced project, for when auto-discovery is ambiguous.',
     }),
+    'expo-no-clean': Flags.boolean({
+      description:
+        "Pass --no-clean to Expo prebuild to preserve the existing native directory. Omit to use the installed Expo CLI's default. Does not force prebuild to run.",
+      default: false,
+    }),
     'expo-app-dir': Flags.string({
       description:
         'Relative path from the synced workspace root to the Expo app directory. Use for monorepos or ambiguous workspaces. Setting this (or --abi) opts the whole build into the Expo pipeline (dependency install, expo prebuild), which requires a detected Expo app.',

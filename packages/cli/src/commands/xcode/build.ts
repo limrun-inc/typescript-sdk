@@ -130,6 +130,11 @@ export default class XcodeBuild extends BaseCommand {
       description:
         'Launch URL for Debug React Native / Expo builds. If the build is installed on an attached iOS simulator, the app opens this URL unchanged after build; otherwise this option has no launch effect. For Expo dev-client builds, pass the exact dev-client URL or development server URL you want opened.',
     }),
+    'expo-no-clean': Flags.boolean({
+      description:
+        "Pass --no-clean to Expo prebuild to preserve the existing native directory. Omit to use the installed Expo CLI's default. Does not force prebuild to run.",
+      default: false,
+    }),
     'expo-app-dir': Flags.string({
       description:
         'Relative path from the synced workspace root to the Expo app directory. Use for monorepos or ambiguous React Native workspaces.',
@@ -282,7 +287,10 @@ export default class XcodeBuild extends BaseCommand {
     }
     if (
       (flags['xcodegen-spec'] || flags['xcodegen-project'] || flags['xcodegen-project-root']) &&
-      (flags['dev-server-url'] || flags['expo-app-dir'] || flags['expo-force-prebuild'])
+      (flags['dev-server-url'] ||
+        flags['expo-app-dir'] ||
+        flags['expo-force-prebuild'] ||
+        flags['expo-no-clean'])
     ) {
       this.error(
         '--xcodegen-spec/--xcodegen-project apply to native XcodeGen projects and cannot be combined with Expo / React Native flags.',
@@ -347,11 +355,17 @@ export default class XcodeBuild extends BaseCommand {
       if (xcodegen) {
         options.xcodegen = xcodegen;
       }
-      if (flags['dev-server-url'] || flags['expo-app-dir'] || flags['expo-force-prebuild']) {
+      if (
+        flags['dev-server-url'] ||
+        flags['expo-app-dir'] ||
+        flags['expo-force-prebuild'] ||
+        flags['expo-no-clean']
+      ) {
         options.reactNative = {
           ...(flags['expo-app-dir'] && { expoAppDir: flags['expo-app-dir'] }),
           ...(flags['dev-server-url'] && { devServerURL: flags['dev-server-url'] }),
           ...(flags['expo-force-prebuild'] && { expoForcePrebuild: true }),
+          ...(flags['expo-no-clean'] && { expoNoClean: true }),
         };
       }
       const env = parseEnvEntries(flags.env ?? [], (message) => this.error(message)) ?? [];

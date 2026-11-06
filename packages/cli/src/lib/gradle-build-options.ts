@@ -20,6 +20,7 @@ export interface GradleBuildFlagValues extends WebhookFlagValues {
   env?: string[];
   'project-path'?: string;
   'expo-app-dir'?: string;
+  'expo-no-clean'?: boolean;
   abi?: string[];
   upload?: string;
   'upload-ttl'?: string;
@@ -167,9 +168,10 @@ export function gradleBuildOptionsFromFlags(flags: GradleBuildFlagValues): Gradl
       "--abi all keeps the project's own ABI configuration and cannot be combined with specific ABIs.",
     );
   }
-  if (expoAppDir || abis) {
+  if (expoAppDir || abis || flags['expo-no-clean']) {
     options.reactNative = {
       ...(expoAppDir && { expoAppDir }),
+      ...(flags['expo-no-clean'] && { expoNoClean: true }),
       ...(abis && { architectures: abis }),
     };
   }
