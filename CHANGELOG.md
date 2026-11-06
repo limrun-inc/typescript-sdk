@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.69.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.1...v0.69.2) (2026-11-06)
+
+
+### Features
+
+* **cli:** add access-token create and revoke commands ([#611](https://github.com/limrun-inc/typescript-sdk/issues/611)) ([319078e](https://github.com/limrun-inc/typescript-sdk/commit/319078ef75a7f8a4e1abf36b73570ff11064453d))
+
+
+### Bug Fixes
+
+* **cli:** allow preserving Expo native directories during prebuild ([05e5ea1](https://github.com/limrun-inc/typescript-sdk/commit/05e5ea1b8bad31ad10d047828db42d261cfbe62c))
+* **cli:** keep the compilation cache out of the --snapshot-paths help ([1649988](https://github.com/limrun-inc/typescript-sdk/commit/16499881b3eb7e59477428c55b1f441a475a3c0a))
+* **cli:** name the compilation cache as the DerivedData part that works anywhere ([66a805e](https://github.com/limrun-inc/typescript-sdk/commit/66a805ed3e5b26ea6beccec6ed2c69fccd76106f))
+* **cli:** steer --snapshot-paths away from path-keyed folders ([9d09ddb](https://github.com/limrun-inc/typescript-sdk/commit/9d09ddb76ba1bf6ffd0b073a15c340e51ce55cd0))
+* **deps:** resolve patched minimatch with compatible glob consumers ([#617](https://github.com/limrun-inc/typescript-sdk/issues/617)) ([a22f4b9](https://github.com/limrun-inc/typescript-sdk/commit/a22f4b98438f9bed85a57423e532c19a16a21cca))
+* **sdk:** document access-token permissions and terminology ([#612](https://github.com/limrun-inc/typescript-sdk/issues/612)) ([2a8fdfa](https://github.com/limrun-inc/typescript-sdk/commit/2a8fdfa88869178c815df6f7dcfcf1184bebde90))
+
 ## [0.69.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.0...v0.69.1) (2026-11-04)
 
 
