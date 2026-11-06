@@ -106,14 +106,14 @@ test('gradlebuild threads reactNative to the wire when set', async () => {
 
   const gradle = await gradleClient();
   const result = await gradle.gradlebuild({
-    reactNative: { expoAppDir: 'apps/mobile', architectures: ['x86_64'] },
+    reactNative: { expoAppDir: 'apps/mobile', architectures: ['x86_64'], expoNoClean: true },
   });
 
   expect(result.exitCode).toBe(0);
   const execReq = requests.find((r) => r.url.endsWith('/exec'));
   expect(execReq?.body).toEqual({
     command: 'gradlebuild',
-    reactNative: { expoAppDir: 'apps/mobile', architectures: ['x86_64'] },
+    reactNative: { expoAppDir: 'apps/mobile', architectures: ['x86_64'], expoNoClean: true },
   });
 });
 

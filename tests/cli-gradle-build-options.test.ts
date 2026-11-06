@@ -17,6 +17,16 @@ test('expo-app-dir alone opts in without architectures', () => {
   });
 });
 
+test('expo-no-clean alone opts into Expo without forcing prebuild', () => {
+  expect(gradleBuildOptionsFromFlags({ 'expo-no-clean': true })).toEqual({
+    reactNative: { expoNoClean: true },
+  });
+});
+
+test('expo-no-clean false leaves native build auto-detection intact', () => {
+  expect(gradleBuildOptionsFromFlags({ 'expo-no-clean': false })).toEqual({});
+});
+
 test('repeated abi values are deduplicated', () => {
   expect(gradleBuildOptionsFromFlags({ abi: ['x86_64', 'x86_64', 'arm64-v8a'] })).toEqual({
     reactNative: { architectures: ['x86_64', 'arm64-v8a'] },

@@ -234,6 +234,12 @@ export type ReactNativeBuildConfig = {
    * limbuild servers silently ignore this option.
    */
   expoForcePrebuild?: boolean;
+  /**
+   * Pass `--no-clean` to Expo prebuild to preserve the existing native directory.
+   * Omit or set false to use the installed Expo CLI's default. Does not force
+   * prebuild to run when it would otherwise be skipped.
+   */
+  expoNoClean?: boolean;
 };
 
 export type XcodeBuildOptions = {
