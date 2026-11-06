@@ -22,6 +22,6 @@
     "typescript": "^5.9.2"
   },
   "resolutions": {
-    "undici": "7.29.1"
+    "undici": "7.30.1"
   }
 }

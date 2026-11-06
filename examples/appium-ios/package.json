@@ -24,6 +24,8 @@
   "resolutions": {
     "@puppeteer/browsers": "3.0.2",
     "deepmerge-ts": "^8.0.2",
-    "@limrun/api/undici": "7.30.1"
+    "@limrun/api/undici": "7.30.1",
+    "glob": "14.0.2",
+    "glob/minimatch": "11.0.1"
   }
 }
