@@ -12,6 +12,7 @@ export default defineConfig({
       entry: {
         index: resolve(__dirname, 'src/index.ts'),
         lite: resolve(__dirname, 'src/lite.ts'),
+        core: resolve(__dirname, 'src/core.ts'),
       },
       name: 'LimrunUI',
       formats: ['es', 'cjs'],
