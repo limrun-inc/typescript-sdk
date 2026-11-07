@@ -1,3 +1,14 @@
+import { createDeviceStream, type DeviceStream } from '../core/device-stream';
+import { detectPlatform, debugLog, debugWarn, safeInvoke, type DevicePlatform } from '../core/stream-utils';
+import type {
+  ScreenshotData,
+  ImperativeKeyboardEvent,
+  RemoteControlConnectionState,
+  MicrophoneState,
+  CameraStreamStats,
+} from '../core/stream-types';
+export type { RemoteControlConnectionState, MicrophoneState, CameraStreamStats } from '../core/stream-types';
+export { withAuthenticationToken } from '../core/stream-utils';
 import React, {
   useEffect,
   useRef,
@@ -11,15 +22,11 @@ import React, {
 import { clsx } from 'clsx';
 import './remote-control.css';
 
-import { createDisplayTouchMessage, type DuoState, type DuoOrientation } from '../core/duo';
+import { type DuoState, type DuoOrientation } from '../core/duo';
 const DuoView = lazy(() => import('./duo-view'));
 
 import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
-import { applyJitterBufferTarget } from '../core/jitter-buffer';
-import { usePlaybackStats, type PlaybackConnection } from '../core/use-playback-stats';
 import type { PlaybackStats } from '../core/playback-stats';
-import { attachVideoStream } from '../core/video-playback';
-import { createLatencyTrace } from '../core/latency-trace';
 
 import {
   createTouchControlMessage,
@@ -27,17 +34,9 @@ import {
   createSetClipboardMessage,
   createTwoFingerTouchControlMessage,
 } from '../core/webrtc-messages';
-import { AxFetcher, AxStatus, type AndroidElementTreeOptions } from '../core/ax-fetcher';
+import { type AxStatus, type AndroidElementTreeOptions } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
-import {
-  CameraOperationCoordinator,
-  cameraCaptureConstraints,
-  createGrantedCameraResult,
-  parseCameraRequest,
-  shouldReacquireCamera,
-  type CameraCaptureInfo,
-  type CameraRequest,
-} from '../core/camera';
+import type { CameraCaptureInfo } from '../core/camera';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
 
 export type { CameraCaptureInfo, CameraFacingMode, CameraRequest, CameraResult } from '../core/camera';
@@ -279,75 +278,6 @@ export interface RemoteControlProps {
   onMicrophoneStateChange?: (state: MicrophoneState) => void;
 }
 
-/**
- * Snapshot of the live-microphone pipeline, reported through
- * `onMicrophoneStateChange`.
- */
-export interface MicrophoneState {
-  /** True while the browser mic is captured and streaming to the sim. */
-  active: boolean;
-  /**
-   * Human-readable failure from the last attempt, if any (permission
-   * denied, no device, host rejection, ...).
-   */
-  error?: string;
-  /** Device label of the captured microphone, when available. */
-  label?: string;
-}
-
-/**
- * Live outbound-camera quality snapshot. Derived from
- * `RTCPeerConnection.getStats()` and rate-derived deltas, sampled
- * once per second while the camera is sending. All fields optional:
- * some browsers omit fields (Safari rarely reports
- * `encoderImplementation`), and the first sample after camera start
- * has no delta-derived numbers yet.
- */
-export interface CameraStreamStats {
-  /** "H264", "HEVC"/"H265", "VP9", "VP8", "AV1", etc. (uppercased). */
-  codec?: string;
-  /** e.g. "VideoToolbox" (hw), "OpenH264" (sw), "ExternalEncoder". */
-  encoderImplementation?: string;
-  /**
-   * Browser-reported hardware-acceleration hint. Some Chromium
-   * versions expose this via `powerEfficientEncoder`; we mirror it
-   * here so consumers don't have to know the spec quirk.
-   */
-  hardwareAccelerated?: boolean;
-  /** Outbound encoded fps over the last sample window. */
-  framesPerSecond?: number;
-  /** Cumulative encoded frame count. */
-  framesEncoded?: number;
-  /** Outbound encoded bitrate (bits/s) over the last window. */
-  bitrateBps?: number;
-  /** Width/height the encoder is currently producing. */
-  width?: number;
-  height?: number;
-  /**
-   * One of `'none' | 'cpu' | 'bandwidth' | 'other'`. Mirrors
-   * Meet/Zoom's "limited by …" banners. Anything other than
-   * `'none'` means the encoder dropped resolution to keep up.
-   */
-  qualityLimitationReason?: string;
-  /** Round-trip time in milliseconds, from the matching RTCP. */
-  rttMs?: number;
-  /** Packet-loss percentage over the last sample window (0..100). */
-  packetsLostPct?: number;
-}
-
-interface ScreenshotData {
-  dataUri: string;
-}
-
-export interface ImperativeKeyboardEvent {
-  type: 'keydown' | 'keyup';
-  code: string; // e.g., "KeyA", "Enter", "ShiftLeft"
-  shiftKey?: boolean;
-  altKey?: boolean;
-  ctrlKey?: boolean;
-  metaKey?: boolean;
-}
-
 export interface RemoteControlHandle {
   openUrl: (url: string) => void;
   sendKeyEvent: (event: ImperativeKeyboardEvent) => void;
@@ -377,38 +307,6 @@ export interface RemoteControlHandle {
   getAxStatus: () => AxStatus;
 }
 
-const debugLog = (...args: any[]) => {
-  if (window.debugRemoteControl) {
-    console.log(...args);
-  }
-};
-
-const debugWarn = (...args: any[]) => {
-  if (window.debugRemoteControl) {
-    console.warn(...args);
-  }
-};
-
-// Invokes a customer-provided callback in isolation. A throw from the
-// customer's code must NOT propagate back into our state-update flow — that
-// would risk corrupting React reconciliation. We log the error to the
-// console so the customer can still debug, but otherwise swallow.
-const safeInvoke = <Args extends unknown[]>(
-  label: string,
-  fn: ((...args: Args) => unknown) | undefined,
-  ...args: Args
-): void => {
-  if (!fn) return;
-  try {
-    fn(...args);
-  } catch (err) {
-    // Surface to the developer regardless of debug flag — this is a bug
-    // in the customer's handler and they'll want to see it.
-    // eslint-disable-next-line no-console
-    console.error(`[RemoteControl] customer callback "${label}" threw:`, err);
-  }
-};
-
 const motionActionToString = (action: number): string => {
   // AMOTION_EVENT is a constants object; find the matching ACTION_* key if present
   const match = Object.entries(AMOTION_EVENT).find(
@@ -416,30 +314,6 @@ const motionActionToString = (action: number): string => {
   );
   return match?.[0] ?? String(action);
 };
-
-type DevicePlatform = 'ios' | 'android';
-
-const detectPlatform = (url: string): DevicePlatform => {
-  if (url.includes('/android_')) {
-    return 'android';
-  }
-  // Default to iOS if no Android pattern is found
-  return 'ios';
-};
-
-// The endpoint may already carry query parameters, and the token may contain URL syntax.
-export const withAuthenticationToken = (url: string, token: string): string => {
-  const endpoint = new URL(url);
-  endpoint.searchParams.set('token', token);
-  return endpoint.toString();
-};
-
-export type RemoteControlConnectionState =
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'failed'
-  | 'terminated';
 
 export type RemoteControlPlatformAssets = {
   frame?: string;
@@ -462,13 +336,8 @@ type DeviceConfig = {
 
 const ANDROID_TABLET_VIDEO_WIDTH = 1920;
 const ANDROID_TABLET_VIDEO_HEIGHT = 1200;
-const MAX_CONNECTION_ATTEMPTS = 3;
-const CONNECTION_RETRY_DELAY_MS = 1000;
-const CONNECTION_SUCCESS_TIMEOUT_MS = 15000;
-const ICE_DISCONNECTED_GRACE_MS = 3000;
 // Upper bound for the one-shot HTTP probe that disambiguates a terminated
 // instance (endpoint 404s) from a transient connection drop.
-const TERMINATION_PROBE_TIMEOUT_MS = 4000;
 
 const isAndroidTabletVideo = (width: number, height: number): boolean =>
   (width === ANDROID_TABLET_VIDEO_WIDTH && height === ANDROID_TABLET_VIDEO_HEIGHT) ||
@@ -561,142 +430,22 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
-    const videoPlaybackRef = useRef(new Map<HTMLVideoElement, () => void>());
     const frameRef = useRef<HTMLImageElement>(null);
     const [detectedDuo, setDetectedDuo] = useState(false);
     const isDuo = deviceModel === 'iphone-duo' || detectedDuo;
     const innerVideoRef = useRef<HTMLVideoElement>(null);
     const [duoState, setDuoState] = useState<DuoState | null>(null);
     const [duoError, setDuoError] = useState<string>();
-    const duoRequests = useRef(
-      new Map<
-        string,
-        { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
-      >(),
-    );
-    const sendDuoControl = (type: string, parameters: object): Promise<void> =>
-      new Promise((resolve, reject) => {
-        const socket = wsRef.current;
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-          reject(new Error('Simulator disconnected'));
-          return;
-        }
-        const id = crypto.randomUUID();
-        const timer = setTimeout(() => {
-          duoRequests.current.delete(id);
-          reject(new Error('Device control timed out'));
-        }, 5000);
-        duoRequests.current.set(id, { resolve, reject, timer });
-        socket.send(JSON.stringify({ type, id, ...parameters }));
-      });
     const [videoLoaded, setVideoLoaded] = useState(false);
     const [retryExhausted, setRetryExhausted] = useState(false);
     // Set once we've concluded the instance is permanently gone (its
     // endpoint 404s after a drop), as opposed to a recoverable blip. When
     // set, reconnection stops and a terminated message replaces "Retry".
     const [terminated, setTerminated] = useState(false);
-    const terminatedRef = useRef(false);
-    // Guards against firing overlapping termination probes.
-    const terminationProbeInFlightRef = useRef(false);
     const [isLandscape, setIsLandscape] = useState(false);
     const [useAndroidTabletFrame, setUseAndroidTabletFrame] = useState(false);
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
-    const wsRef = useRef<WebSocket | null>(null);
-    const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-    const [playbackConnection, setPlaybackConnection] = useState<PlaybackConnection | null>(null);
-    usePlaybackStats(playbackConnection, onPlaybackStats, jitterBufferTargetMs);
-    const dataChannelRef = useRef<RTCDataChannel | null>(null);
-    const latencyTraceRef = useRef<ReturnType<typeof createLatencyTrace> | null>(null);
-    const onTraceRef = useRef(onTrace);
-    onTraceRef.current = onTrace;
-    const latencyTraceRequested = !!onTrace;
-    const keepAliveIntervalRef = useRef<number | undefined>(undefined);
-    const retryTimeoutRef = useRef<number | undefined>(undefined);
-    const connectionSuccessTimeoutRef = useRef<number | undefined>(undefined);
-    const requestFrameIntervalRef = useRef<number | undefined>(undefined);
-    const iceDisconnectedGraceRef = useRef<number | undefined>(undefined);
-    const connectionGenerationRef = useRef(0);
-    const connectionAttemptRef = useRef(0);
-    const controlChannelOpenedRef = useRef(false);
-    // Mirrored to a ref so stale closures in event handlers see the latest value.
-    const autoReconnectRef = useRef(autoReconnect);
-    autoReconnectRef.current = autoReconnect;
-    const jitterBufferTargetMsRef = useRef(jitterBufferTargetMs);
-    useEffect(() => {
-      jitterBufferTargetMsRef.current = jitterBufferTargetMs;
-      for (const transceiver of peerConnectionRef.current?.getTransceivers() ?? []) {
-        if (transceiver.currentDirection === 'recvonly' || transceiver.currentDirection === 'sendrecv') {
-          applyJitterBufferTarget(transceiver.receiver, jitterBufferTargetMs);
-        }
-      }
-    }, [jitterBufferTargetMs]);
-    // Demand-driven outbound camera state.
-    //
-    // The limulator side broadcasts a `cameraRequest` WS message whenever
-    // an app inside the simulator opens/closes an `AVCaptureSession`.
-    // We respond by calling `navigator.mediaDevices.getUserMedia(...)`
-    // and `replaceTrack`ing the result onto a pre-allocated sendonly
-    // video transceiver. Pre-allocating the transceiver lets us
-    // attach/detach the local camera without renegotiating the SDP
-    // (the slot is already in the answer's a=video block, just with
-    // `inactive`/empty until we install the track).
-    //
-    // Refs (not state) because all callers live inside event-handler
-    // closures and the ref read happens during message processing, not
-    // during render. We keep both the sender and the active local
-    // stream so teardown can stop tracks without leaking the camera
-    // green light.
-    const outboundCameraSenderRef = useRef<RTCRtpSender | null>(null);
-    const outboundLocalStreamRef = useRef<MediaStream | null>(null);
-    const outboundCameraRequestRef = useRef<CameraRequest | undefined>(undefined);
-    const cameraOperations = useMemo(() => new CameraOperationCoordinator(), []);
-    // Mirror the demand-change callback into a ref so the WS message
-    // handler always sees the freshest customer callback even when the
-    // parent re-renders mid-session.
-    const onCameraDemandChangeRef = useRef(onCameraDemandChange);
-    onCameraDemandChangeRef.current = onCameraDemandChange;
-    const onCameraStatsRef = useRef(onCameraStats);
-    onCameraStatsRef.current = onCameraStats;
-    // Active outbound-camera stats poller. While the camera is
-    // sending we sample `RTCPeerConnection.getStats()` once per
-    // second, derive deltas (bitrate, fps, packet loss) from the
-    // previous sample, and push the result through `onCameraStats`.
-    // Cleared on teardown so we never leak the timer.
-    const cameraStatsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const cameraStatsPrevRef = useRef<{
-      timestamp: number;
-      framesEncoded?: number;
-      bytesSent?: number;
-      packetsSent?: number;
-      packetsLost?: number;
-    } | null>(null);
-    // Outbound microphone state (iOS only). The manual prop and guest-driven
-    // microphoneRequest signals share one pre-allocated audio transceiver.
-    const microphoneEnabledRef = useRef(microphoneEnabled);
-    microphoneEnabledRef.current = microphoneEnabled;
-    const microphoneDemandActiveRef = useRef(false);
-    const onMicrophoneStateChangeRef = useRef(onMicrophoneStateChange);
-    onMicrophoneStateChangeRef.current = onMicrophoneStateChange;
-    const outboundMicSenderRef = useRef<RTCRtpSender | null>(null);
-    const outboundMicStreamRef = useRef<MediaStream | null>(null);
-    // Bumped by detach and teardown so an attach suspended on an await
-    // (the getUserMedia prompt) detects it was superseded and bails.
-    const micGenerationRef = useRef(0);
-    // Serializes attach/detach work so their awaits (replaceTrack on the
-    // shared sender) can never interleave and undo each other's effects.
-    const micOpQueueRef = useRef<Promise<void>>(Promise.resolve());
-    // Correlates the in-flight `microphoneStart` with its result so a
-    // host-side rejection (e.g. no loopback device on the node) can
-    // tear the capture back down and surface the error.
-    const micStartPendingIdRef = useRef<string | null>(null);
-    const firstFrameShownRef = useRef(false);
-    const pendingScreenshotResolversRef = useRef<
-      Map<string, (value: ScreenshotData | PromiseLike<ScreenshotData>) => void>
-    >(new Map());
-    const pendingScreenshotRejectersRef = useRef<Map<string, (reason?: any) => void>>(new Map());
-    const pendingTerminateAppResolversRef = useRef<Map<string, () => void>>(new Map());
-    const pendingTerminateAppRejectersRef = useRef<Map<string, (reason?: any) => void>>(new Map());
-
+    const lastVideoSize = useRef<{ width: number; height: number } | null>(null);
     // Map to track active pointers for real touch/mouse single-finger events.
     // Key: pointerId (-1 for mouse, touch.identifier for touch), Value: { x: number, y: number }
     const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
@@ -745,21 +494,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
     const [hoverPoint, setHoverPoint] = useState<HoverPoint | null>(null);
 
-    // Inspect-mode state.
-    //
-    // Lifecycle of `axFetcherRef`:
-    //   - Created in dataChannel.onopen (last step of WebRTC handshake)
-    //     so we know the signaling WS is healthy and the device is
-    //     responsive to control messages.
-    //   - Started immediately if `inspectMode` is already enabled, or
-    //     started later via the sibling useEffect when inspectMode flips on.
-    //   - Stopped + nulled in teardownConnection (WS close / unmount).
-    //
-    // Customers can observe readiness via the `onAxStatusChange` callback:
-    // `starting` fires when start() runs but no snapshot has landed yet;
-    // `ready` once the first snapshot arrives. Status falls back to
-    // `unavailable` / `error` if the server can't satisfy AX requests.
-    const axFetcherRef = useRef<AxFetcher | null>(null);
     const [axSnapshot, setAxSnapshot] = useState<AxSnapshot | null>(null);
     const [axHighlightedId, setAxHighlightedId] = useState<string | null>(null);
     const [axSelectedId, setAxSelectedId] = useState<string | null>(null);
@@ -787,40 +521,20 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       y: number;
     } | null>(null);
     // Mirrors for synchronous access from event handlers without stale closures.
-    const inspectModeRef = useRef<boolean | 'hover-only' | undefined>(inspectMode);
-    inspectModeRef.current = inspectMode;
     const axSnapshotRef = useRef<AxSnapshot | null>(null);
     axSnapshotRef.current = axSnapshot;
-    const onAxSnapshotChangeRef = useRef(onAxSnapshotChange);
-    onAxSnapshotChangeRef.current = onAxSnapshotChange;
     const onInspectSelectionChangeRef = useRef(onInspectSelectionChange);
     onInspectSelectionChangeRef.current = onInspectSelectionChange;
-    const onAxStatusChangeRef = useRef(onAxStatusChange);
-    onAxStatusChangeRef.current = onAxStatusChange;
-    const onTerminatedRef = useRef(onTerminated);
-    onTerminatedRef.current = onTerminated;
-    const onConnectionStateChangeRef = useRef(onConnectionStateChange);
-    onConnectionStateChangeRef.current = onConnectionStateChange;
-    const connectionStateRef = useRef<RemoteControlConnectionState | null>(null);
-    // Reports each transition once; callers get status text without tracking
-    // the retry machinery below.
-    const reportConnectionState = (next: RemoteControlConnectionState) => {
-      if (connectionStateRef.current === next) return;
-      connectionStateRef.current = next;
-      safeInvoke('onConnectionStateChange', onConnectionStateChangeRef.current, next);
-    };
-
     const inspectActive = inspectMode === true || inspectMode === 'hover-only';
     const inspectModeResolved: InspectMode = inspectMode === 'hover-only' ? 'hover-only' : 'select';
 
+    const platform = useMemo(() => detectPlatform(url), [url]);
     const sessionId = useMemo(
       () =>
         propSessionId ||
-        Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+        Array.from(crypto.getRandomValues(new Uint32Array(4)), (part) => part.toString(36)).join(''),
       [propSessionId],
     );
-
-    const platform = useMemo(() => detectPlatform(url), [url]);
     const config = deviceConfig[platform];
     const platformAssets = assets?.[platform];
     const frameImageSrc =
@@ -834,21 +548,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // whatever showFrame says.
     const frameVisible = !isDuo && showFrame && !!frameImageSrc;
 
-    const updateStatus = (message: string) => {
-      // Use the wrapper for conditional logging
-      debugLog(message);
-    };
-
-    const sendBinaryControlMessage = (data: ArrayBuffer) => {
-      if (!dataChannelRef.current || dataChannelRef.current.readyState !== 'open') {
-        return;
-      }
-      dataChannelRef.current.send(latencyTraceRef.current?.wrap(data) ?? data);
-      // Any binary control message is an input event. Bump the AX poller so
-      // we get a fresh snapshot quickly — the UI almost certainly changed.
-      axFetcherRef.current?.bumpActivity();
-    };
-
+    const clientRef = useRef<DeviceStream | null>(null);
+    const sendBinaryControlMessage = (data: ArrayBuffer) => clientRef.current?.sendControl(data);
+    const sendDuoControl = (type: string, parameters: object) =>
+      clientRef.current?.sendDuoControl(type, parameters) ??
+      Promise.reject(new Error('Simulator disconnected'));
     // Pointer ID used by inspect-driven taps. Distinct from human pointers
     // (-1 mouse, -2 alt-mirror), the synthesized wheel finger (-3), and our
     // touch identifiers so they never interfere with an in-progress drag.
@@ -1080,7 +784,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // active on the Indigo HID side. Send Alt key down/up immediately on toggle so the
       // sequence matches Simulator.app (Alt down -> mouse down/drag -> mouse up -> Alt up).
       // This is iOS-specific; Android doesn't use this modifier injection.
-      if (platform === 'ios' && dataChannelRef.current && dataChannelRef.current.readyState === 'open') {
+      if (platform === 'ios' && clientRef.current?.getState().controlReady) {
         const action = nextHeld ? ANDROID_KEYS.ACTION_DOWN : ANDROID_KEYS.ACTION_UP;
         const message = createInjectKeycodeMessage(
           action,
@@ -1349,7 +1053,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       //
       // Cursor position is tracked in both modes so the cursor-anchored
       // InfoCard can follow the pointer.
-      const isInspecting = inspectModeRef.current === true || inspectModeRef.current === 'hover-only';
+      const isInspecting = inspectMode === true || inspectMode === 'hover-only';
       if (isInspecting && !('touches' in event)) {
         if (event.type === 'mousemove') {
           scheduleCursorFlush({ x: event.clientX, y: event.clientY });
@@ -1364,7 +1068,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
       // Select mode blocks device input — clicks/drags don't reach the
       // simulator. Hover-only mode falls through to the regular path.
-      if (inspectModeRef.current === true) {
+      if (inspectMode === true) {
         return;
       }
 
@@ -1379,12 +1083,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         // to ensure consistent behavior across focus transitions.
       }
 
-      if (
-        !dataChannelRef.current ||
-        dataChannelRef.current.readyState !== 'open' ||
-        !videoRef.current ||
-        !ctx
-      ) {
+      if (!clientRef.current?.getState().controlReady || !videoRef.current || !ctx) {
         return;
       }
 
@@ -1800,9 +1499,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         return;
       }
 
-      if (!dataChannelRef.current || dataChannelRef.current.readyState !== 'open') {
+      if (!clientRef.current?.getState().controlReady) {
         // Use the wrapper for conditional warning
-        debugWarn('Data channel not ready for keyboard event:', dataChannelRef.current?.readyState);
+        debugWarn('Data channel not ready for keyboard event:', clientRef.current?.getState().connection);
         return;
       }
 
@@ -1871,1629 +1570,133 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       }
     };
 
-    const sendKeepAlive = () => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(
-          JSON.stringify({
-            type: 'keepAlive',
-            sessionId: sessionId,
-          }),
-        );
-      }
-    };
-
-    const startKeepAlive = () => {
-      if (keepAliveIntervalRef.current) {
-        window.clearInterval(keepAliveIntervalRef.current);
-      }
-      keepAliveIntervalRef.current = window.setInterval(sendKeepAlive, 10000);
-    };
-
-    const stopKeepAlive = () => {
-      if (keepAliveIntervalRef.current) {
-        window.clearInterval(keepAliveIntervalRef.current);
-        keepAliveIntervalRef.current = undefined;
-      }
-    };
-
-    const clearScheduledRetry = () => {
-      if (retryTimeoutRef.current) {
-        window.clearTimeout(retryTimeoutRef.current);
-        retryTimeoutRef.current = undefined;
-      }
-    };
-
-    const clearConnectionSuccessTimeout = () => {
-      if (connectionSuccessTimeoutRef.current) {
-        window.clearTimeout(connectionSuccessTimeoutRef.current);
-        connectionSuccessTimeoutRef.current = undefined;
-      }
-    };
-
-    const stopRequestFrameLoop = () => {
-      if (requestFrameIntervalRef.current) {
-        window.clearInterval(requestFrameIntervalRef.current);
-        requestFrameIntervalRef.current = undefined;
-      }
-    };
-
-    const clearIceDisconnectedGrace = () => {
-      if (iceDisconnectedGraceRef.current !== undefined) {
-        window.clearTimeout(iceDisconnectedGraceRef.current);
-        iceDisconnectedGraceRef.current = undefined;
-      }
-    };
-
-    const markFirstFrameShown = () => {
-      if (firstFrameShownRef.current) {
-        return;
-      }
-      firstFrameShownRef.current = true;
-      stopRequestFrameLoop();
-      setVideoLoaded(true);
-      reportConnectionState('connected');
-    };
-
-    // Stop every track on a MediaStream and release the device handle.
-    // The browser keeps the camera "on" indicator lit until at least
-    // one track on the underlying source is stopped, so we have to
-    // call stop() explicitly — closing the peer connection alone
-    // won't do it.
-    const stopMediaStream = (stream: MediaStream) => {
-      for (const track of stream.getTracks()) {
-        try {
-          track.stop();
-        } catch (err) {
-          debugWarn('track.stop() failed:', err);
-        }
-      }
-    };
-
-    // Stop and forget any currently-attached outbound camera stream.
-    // Safe to call when nothing is attached. Does not touch the
-    // sender — the caller is responsible for `replaceTrack(null)`
-    // separately when it wants the SDP slot itself empty.
-    const stopOutboundLocalStream = () => {
-      const stream = outboundLocalStreamRef.current;
-      if (!stream) return;
-      outboundLocalStreamRef.current = null;
-      stopMediaStream(stream);
-    };
-
-    // Runs one attach/detach operation after all previously queued ones,
-    // so two operations' awaits never interleave on the shared sender (a
-    // stale detach could otherwise clear a fresh attach's track, or send
-    // `microphoneStop` after its `microphoneStart`).
-    const runMicOp = (op: () => Promise<void>): Promise<void> => {
-      const next = micOpQueueRef.current.then(op).catch((err) => {
-        debugWarn('microphone operation failed:', err);
-      });
-      micOpQueueRef.current = next;
-      return next;
-    };
-
-    const isMicrophoneWanted = () => microphoneEnabledRef.current || microphoneDemandActiveRef.current;
-
-    const sendMicrophoneStart = (ws: WebSocket) => {
-      const id = `ui-mic-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-      micStartPendingIdRef.current = id;
-      ws.send(JSON.stringify({ type: 'microphoneStart', id }));
-    };
-
-    // Capture the user's microphone and stream it to the simulator's
-    // mock microphone. Safe to call redundantly: bails when already
-    // attached, when the connection isn't up yet (the ICE-connected
-    // handler re-invokes it), or when the prop flipped off mid-prompt.
-    // Does NOT bump the generation: a redundant call (e.g. the ICE
-    // handler firing on both `connected` and `completed`) must not
-    // cancel an attach already in flight; only detach/teardown cancel.
-    const attachMicrophone = (): Promise<void> => {
-      // No platform gate: attachMicrophoneOp bails when the session never
-      // allocated a sendonly mic transceiver (non-capable servers).
-      return runMicOp(() => attachMicrophoneOp());
-    };
-
-    const attachMicrophoneOp = async () => {
-      const generation = micGenerationRef.current;
-      const isCurrent = () => generation === micGenerationRef.current && isMicrophoneWanted();
-      const reportMicError = (error: string) => {
-        safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
-          active: false,
-          error,
-        });
-      };
-      if (!isCurrent()) return;
-      const ws = wsRef.current;
-      const sender = outboundMicSenderRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN || !sender) {
-        // Not connected yet — the post-connect hook retries while the
-        // prop is still on.
-        return;
-      }
-      if (outboundMicStreamRef.current) return;
-      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
-        // eslint-disable-next-line no-console
-        console.warn(
-          '[RemoteControl] navigator.mediaDevices.getUserMedia unavailable. ' +
-            'getUserMedia requires a secure context (https or http://localhost).',
-        );
-        reportMicError('Microphone capture requires a secure context (https)');
-        return;
-      }
-      let stream: MediaStream | null = null;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn('[RemoteControl] microphone getUserMedia denied/failed:', err);
-      }
-      if (!isCurrent()) {
-        if (stream) stopMediaStream(stream);
-        return;
-      }
-      if (!stream) {
-        reportMicError('Microphone permission denied or no device available');
-        return;
-      }
-      const audioTrack = stream.getAudioTracks()[0] ?? null;
-      if (!audioTrack) {
-        stopMediaStream(stream);
-        reportMicError('Captured stream has no audio track');
-        return;
-      }
-      try {
-        await sender.replaceTrack(audioTrack);
-      } catch (err) {
-        debugWarn('replaceTrack(audioTrack) failed:', err);
-        stopMediaStream(stream);
-        reportMicError('Failed to attach the microphone track to the connection');
-        return;
-      }
-      if (!isCurrent()) {
-        try {
-          await sender.replaceTrack(null);
-        } catch (err) {
-          debugWarn('replaceTrack(null) on stale mic attach failed:', err);
-        }
-        stopMediaStream(stream);
-        return;
-      }
-      outboundMicStreamRef.current = stream;
-      // If the browser revokes the track later (user clicks Stop in
-      // the tab's mic indicator, device unplugged, ...) tear down and
-      // tell the host, so the sim's mic goes back to silence instead
-      // of freezing on the last buffer.
-      audioTrack.onended = () => {
-        if (outboundMicStreamRef.current !== stream) return;
-        void detachMicrophone('microphone capture ended by the browser');
-      };
-      sendMicrophoneStart(ws);
-      safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
-        active: true,
-        label: audioTrack.label || undefined,
-      });
-    };
-
-    // Stop the live microphone: drop the track from the sender, stop
-    // the capture (turning the browser's mic indicator off) and tell
-    // the host to switch its audio source back to silence. Safe to
-    // call when nothing is attached.
-    const detachMicrophone = (error?: string): Promise<void> => {
-      // Bump synchronously (not on the queue) so an attach that is
-      // suspended on an await bails at its next checkpoint even while
-      // it still owns the queue.
-      ++micGenerationRef.current;
-      micStartPendingIdRef.current = null;
-      return runMicOp(async () => {
-        const sender = outboundMicSenderRef.current;
-        const stream = outboundMicStreamRef.current;
-        outboundMicStreamRef.current = null;
-        if (sender && stream) {
-          try {
-            await sender.replaceTrack(null);
-          } catch (err) {
-            debugWarn('replaceTrack(null) on mic detach failed:', err);
-          }
-        }
-        if (stream) stopMediaStream(stream);
-        const ws = wsRef.current;
-        if (stream && ws && ws.readyState === WebSocket.OPEN) {
-          const id = `ui-mic-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-          ws.send(JSON.stringify({ type: 'microphoneStop', id }));
-        }
-        if (stream || error) {
-          safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
-            active: false,
-            ...(error !== undefined && { error }),
-          });
-        }
-      });
-    };
-
-    // Publish a fresh settings snapshot after every successful capture
-    // change. This is status metadata; host output sizing is frame-derived.
-    const sendGrantedCameraResult = (ws: WebSocket, videoTrack: MediaStreamTrack) => {
-      let result;
-      try {
-        result = createGrantedCameraResult(videoTrack);
-        // eslint-disable-next-line no-console
-        console.info(
-          `[RemoteControl] camera capture: ${result.camera?.width}x${result.camera?.height}` +
-            ` @ ${result.camera?.frameRate ?? '?'}fps` +
-            (result.camera?.label ? ` — ${result.camera.label}` : ''),
-        );
-      } catch (err) {
-        debugWarn('getSettings() on outbound camera track failed:', err);
-        result = {
-          type: 'cameraResult' as const,
-          granted: true,
-          camera: {
-            label: videoTrack.label || undefined,
-          },
-        };
-      }
-      ws.send(JSON.stringify(result));
-      safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, true, result.camera);
-    };
-
-    // Convert the codec mime type (e.g. "video/H264" or "video/HEVC")
-    // into a short uppercase label suitable for a status badge.
-    const shortenCodecMime = (mime: string | undefined): string | undefined => {
-      if (!mime) return undefined;
-      const slash = mime.indexOf('/');
-      const tail = slash >= 0 ? mime.slice(slash + 1) : mime;
-      const upper = tail.toUpperCase();
-      if (upper === 'HEVC') return 'H265';
-      return upper;
-    };
-
-    // Sample outbound-camera stats once and push a normalised
-    // snapshot through `onCameraStats`. Skips silently if the sender
-    // has been torn down between intervals.
-    const sampleOutboundCameraStats = async () => {
-      const sender = outboundCameraSenderRef.current;
-      const handler = onCameraStatsRef.current;
-      if (!sender || !handler) return;
-      let report: RTCStatsReport;
-      try {
-        report = await sender.getStats();
-      } catch {
-        return;
-      }
-      let outbound: any | undefined;
-      let codecMime: string | undefined;
-      let remoteInbound: any | undefined;
-      report.forEach((entry: any) => {
-        if (entry.type === 'outbound-rtp' && entry.kind === 'video') {
-          outbound = entry;
-        } else if (entry.type === 'remote-inbound-rtp' && entry.kind === 'video') {
-          remoteInbound = entry;
-        }
-      });
-      if (outbound?.codecId) {
-        const codec = report.get(outbound.codecId);
-        if (codec) codecMime = (codec as any).mimeType;
-      }
-      if (!outbound) return;
-      const now = (outbound.timestamp as number) ?? Date.now();
-      const prev = cameraStatsPrevRef.current;
-      let fps: number | undefined;
-      let bitrate: number | undefined;
-      let lossPct: number | undefined;
-      if (prev && now > prev.timestamp) {
-        const dt = (now - prev.timestamp) / 1000;
-        if (typeof outbound.framesEncoded === 'number' && typeof prev.framesEncoded === 'number') {
-          fps = Math.max(0, (outbound.framesEncoded - prev.framesEncoded) / dt);
-        }
-        if (typeof outbound.bytesSent === 'number' && typeof prev.bytesSent === 'number') {
-          bitrate = Math.max(0, ((outbound.bytesSent - prev.bytesSent) * 8) / dt);
-        }
-        if (
-          typeof outbound.packetsSent === 'number' &&
-          typeof prev.packetsSent === 'number' &&
-          remoteInbound &&
-          typeof remoteInbound.packetsLost === 'number' &&
-          typeof prev.packetsLost === 'number'
-        ) {
-          const sent = outbound.packetsSent - prev.packetsSent;
-          const lost = remoteInbound.packetsLost - prev.packetsLost;
-          if (sent > 0) lossPct = Math.max(0, Math.min(100, (lost / sent) * 100));
-        }
-      }
-      cameraStatsPrevRef.current = {
-        timestamp: now,
-        framesEncoded: outbound.framesEncoded,
-        bytesSent: outbound.bytesSent,
-        packetsSent: outbound.packetsSent,
-        packetsLost: remoteInbound?.packetsLost,
-      };
-      const stats: CameraStreamStats = {
-        codec: shortenCodecMime(codecMime),
-        encoderImplementation: outbound.encoderImplementation,
-        hardwareAccelerated:
-          typeof outbound.powerEfficientEncoder === 'boolean' ? outbound.powerEfficientEncoder : undefined,
-        framesPerSecond: fps,
-        framesEncoded: outbound.framesEncoded,
-        bitrateBps: bitrate,
-        width: outbound.frameWidth,
-        height: outbound.frameHeight,
-        qualityLimitationReason: outbound.qualityLimitationReason,
-        rttMs:
-          typeof remoteInbound?.roundTripTime === 'number' ? remoteInbound.roundTripTime * 1000 : undefined,
-        packetsLostPct: lossPct,
-      };
-      safeInvoke('onCameraStats', onCameraStatsRef.current, stats);
-    };
-
-    const startCameraStatsPoller = () => {
-      if (cameraStatsTimerRef.current !== null) return;
-      cameraStatsPrevRef.current = null;
-      // First sample fires after one interval — the very first
-      // sample has no deltas to compare against, which is fine: the
-      // codec/encoder identity is still useful on its own.
-      cameraStatsTimerRef.current = setInterval(() => {
-        void sampleOutboundCameraStats();
-      }, 1000);
-    };
-
-    const stopCameraStatsPoller = () => {
-      if (cameraStatsTimerRef.current !== null) {
-        clearInterval(cameraStatsTimerRef.current);
-        cameraStatsTimerRef.current = null;
-      }
-      cameraStatsPrevRef.current = null;
-      safeInvoke('onCameraStats', onCameraStatsRef.current, null);
-    };
-
-    const handleCameraRequest = (
-      request: CameraRequest,
-      ws: WebSocket,
-      sender: RTCRtpSender,
-      isCurrentAttempt: () => boolean,
-    ): Promise<void> => {
-      // `enqueue` increments its generation synchronously, so suspended
-      // permission work becomes stale before the newer operation starts.
-      return cameraOperations.enqueue(async ({ isCurrent }) => {
-        const isCurrentCameraRequest = () =>
-          isCurrent() &&
-          isCurrentAttempt() &&
-          wsRef.current === ws &&
-          outboundCameraSenderRef.current === sender;
-        if (!isCurrentCameraRequest()) return;
-
-        if (!request.active) {
-          const stream = outboundLocalStreamRef.current;
-          try {
-            await sender.replaceTrack(null);
-          } catch (err) {
-            debugWarn('replaceTrack(null) on camera detach failed:', err);
-          }
-          if (outboundLocalStreamRef.current === stream) {
-            outboundLocalStreamRef.current = null;
-            outboundCameraRequestRef.current = undefined;
-            if (stream) stopMediaStream(stream);
-          }
-          stopCameraStatsPoller();
-          if (!isCurrentCameraRequest()) return;
-          safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, false);
-          return;
-        }
-
-        safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true);
-        const currentStream = outboundLocalStreamRef.current;
-        const currentTrack = currentStream?.getVideoTracks()[0];
-        const currentRequest = outboundCameraRequestRef.current;
-
-        if (
-          currentTrack?.readyState === 'live' &&
-          currentRequest &&
-          !shouldReacquireCamera(currentRequest, request)
-        ) {
-          outboundCameraRequestRef.current = request;
-          sendGrantedCameraResult(ws, currentTrack);
-          startCameraStatsPoller();
-          return;
-        }
-
-        // A facing change always restarts browser capture. Releasing first
-        // lets mobile browsers open the opposite camera; one-camera laptops
-        // naturally return the same available input for the new ideal.
-        if (currentStream) {
-          try {
-            await sender.replaceTrack(null);
-          } catch (err) {
-            debugWarn('replaceTrack(null) before camera switch failed:', err);
-          }
-          if (outboundLocalStreamRef.current === currentStream) {
-            outboundLocalStreamRef.current = null;
-            outboundCameraRequestRef.current = undefined;
-            stopMediaStream(currentStream);
-          }
-          stopCameraStatsPoller();
-          if (!isCurrentCameraRequest()) return;
-        }
-
-        if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
-          // eslint-disable-next-line no-console
-          console.warn(
-            '[RemoteControl] navigator.mediaDevices.getUserMedia unavailable. ' +
-              'getUserMedia requires a secure context (https or http://localhost). ' +
-              'Replying cameraResult granted=false so limulator falls back to black frames.',
-          );
-          if (!isCurrentCameraRequest()) return;
-          ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
-          safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
-          return;
-        }
-
-        let stream: MediaStream | null = null;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: cameraCaptureConstraints(request),
-            audio: false,
-          });
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.warn('[RemoteControl] getUserMedia denied/failed:', err);
-        }
-        if (!isCurrentCameraRequest()) {
-          if (stream) stopMediaStream(stream);
-          return;
-        }
-        if (!stream) {
-          ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
-          safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
-          return;
-        }
-
-        const videoTrack = stream.getVideoTracks()[0] ?? null;
-        if (!videoTrack) {
-          stopMediaStream(stream);
-          if (!isCurrentCameraRequest()) return;
-          ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
-          safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
-          return;
-        }
-
-        try {
-          videoTrack.contentHint = 'motion';
-        } catch {
-          /* older browsers don't support contentHint; ignore */
-        }
-
-        try {
-          await sender.replaceTrack(videoTrack);
-        } catch (err) {
-          debugWarn('replaceTrack(videoTrack) failed:', err);
-          stopMediaStream(stream);
-          if (!isCurrentCameraRequest()) return;
-          ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
-          safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
-          return;
-        }
-        if (!isCurrentCameraRequest()) {
-          try {
-            await sender.replaceTrack(null);
-          } catch (err) {
-            debugWarn('replaceTrack(null) for stale camera attach failed:', err);
-          }
-          stopMediaStream(stream);
-          return;
-        }
-
-        try {
-          const params = sender.getParameters();
-          if (!params.encodings || params.encodings.length === 0) {
-            params.encodings = [{}];
-          }
-          params.encodings[0].maxBitrate = 8_000_000;
-          params.encodings[0].maxFramerate = 30;
-          params.degradationPreference = 'maintain-framerate';
-          await sender.setParameters(params);
-        } catch (err) {
-          debugWarn('setParameters on outbound camera failed:', err);
-        }
-        if (!isCurrentCameraRequest()) {
-          try {
-            await sender.replaceTrack(null);
-          } catch (err) {
-            debugWarn('replaceTrack(null) for stale camera finalize failed:', err);
-          }
-          stopMediaStream(stream);
-          return;
-        }
-
-        outboundLocalStreamRef.current = stream;
-        outboundCameraRequestRef.current = request;
-
-        videoTrack.onended = () => {
-          if (outboundLocalStreamRef.current !== stream) return;
-          void cameraOperations
-            .enqueueCurrent(async ({ isCurrent: isCurrentEndedCleanup }) => {
-              if (
-                !isCurrentEndedCleanup() ||
-                outboundLocalStreamRef.current !== stream ||
-                !isCurrentAttempt() ||
-                wsRef.current !== ws ||
-                outboundCameraSenderRef.current !== sender
-              ) {
-                return;
-              }
-              try {
-                await sender.replaceTrack(null);
-              } catch (err) {
-                debugWarn('replaceTrack(null) after camera ended failed:', err);
-              }
-              if (
-                !isCurrentEndedCleanup() ||
-                outboundLocalStreamRef.current !== stream ||
-                !isCurrentAttempt() ||
-                wsRef.current !== ws ||
-                outboundCameraSenderRef.current !== sender
-              ) {
-                return;
-              }
-              outboundLocalStreamRef.current = null;
-              outboundCameraRequestRef.current = undefined;
-              stopMediaStream(stream);
-              stopCameraStatsPoller();
-              ws.send(JSON.stringify({ type: 'cameraResult', granted: false }));
-              safeInvoke('onCameraDemandChange', onCameraDemandChangeRef.current, true, false);
-            })
-            .catch((err) => debugWarn('camera ended cleanup failed:', err));
-        };
-
-        if (!isCurrentCameraRequest()) return;
-        sendGrantedCameraResult(ws, videoTrack);
-        startCameraStatsPoller();
-      });
-    };
-
-    const teardownConnection = () => {
-      setPlaybackConnection(null);
-      for (const stop of videoPlaybackRef.current.values()) stop();
-      videoPlaybackRef.current.clear();
-      for (const request of duoRequests.current.values()) {
-        clearTimeout(request.timer);
-        request.reject(new Error('Simulator disconnected'));
-      }
-      duoRequests.current.clear();
-      setDuoState(null);
-      if (innerVideoRef.current) innerVideoRef.current.srcObject = null;
-      clearConnectionSuccessTimeout();
-      clearIceDisconnectedGrace();
-      stopRequestFrameLoop();
-      if (axFetcherRef.current) {
-        axFetcherRef.current.stop();
-        axFetcherRef.current = null;
-      }
-      // Drop any active outbound camera before the PC dies so the
-      // browser doesn't leave the camera indicator lit between
-      // reconnects.
-      cameraOperations.invalidate();
-      stopCameraStatsPoller();
-      stopOutboundLocalStream();
-      outboundCameraRequestRef.current = undefined;
-      outboundCameraSenderRef.current = null;
-      // Same for the live microphone. Manual enablement survives reconnect;
-      // guest demand is replayed by the host after it assigns the new session.
-      ++micGenerationRef.current;
-      microphoneDemandActiveRef.current = false;
-      micStartPendingIdRef.current = null;
-      if (outboundMicStreamRef.current) {
-        stopMediaStream(outboundMicStreamRef.current);
-        outboundMicStreamRef.current = null;
-        // The capture is gone; report it so consumers don't keep a stale
-        // `active: true` across drops (a re-attach after reconnect
-        // reports again).
-        safeInvoke('onMicrophoneStateChange', onMicrophoneStateChangeRef.current, {
-          active: false,
-        });
-      }
-      outboundMicSenderRef.current = null;
-      // A scheduled cursor flush would otherwise call setState on a
-      // teardown component once the next frame runs.
-      if (cursorRafIdRef.current !== undefined) {
-        window.cancelAnimationFrame(cursorRafIdRef.current);
-        cursorRafIdRef.current = undefined;
-      }
-      if (wsRef.current) {
-        wsRef.current.onopen = null;
-        wsRef.current.onmessage = null;
-        wsRef.current.onerror = null;
-        wsRef.current.onclose = null;
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      latencyTraceRef.current?.close();
-      latencyTraceRef.current = null;
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.onconnectionstatechange = null;
-        peerConnectionRef.current.oniceconnectionstatechange = null;
-        peerConnectionRef.current.ontrack = null;
-        peerConnectionRef.current.onicecandidate = null;
-        peerConnectionRef.current.close();
-        peerConnectionRef.current = null;
-      }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
-      if (dataChannelRef.current) {
-        dataChannelRef.current.onopen = null;
-        dataChannelRef.current.onclose = null;
-        dataChannelRef.current.onerror = null;
-        dataChannelRef.current.close();
-        dataChannelRef.current = null;
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        stopKeepAlive();
-      } else {
-        startKeepAlive();
-      }
-    };
-
-    // Probe the instance endpoint over HTTP to tell a permanent termination
-    // apart from a recoverable connection drop. The router serves the same
-    // path the WebSocket uses and returns 404 once the instance is gone
-    // (deleted / terminated), while a live instance returns something else.
-    //
-    // Only an authoritative, freshly-fetched 404 counts as terminated. A
-    // network outage, a non-404 status, or a CORS-blocked (unreadable)
-    // response all resolve to `false` so we keep the normal retry/reconnect
-    // behavior and never mistake a connectivity problem for a termination.
-    const probeTerminated = async (): Promise<boolean> => {
-      // The browser knows it has no network — this is a connectivity drop,
-      // not a termination. Don't probe (and don't risk a cached 404).
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        return false;
-      }
-      let probeUrl: string;
-      try {
-        const parsed = new URL(url);
-        parsed.protocol =
-          parsed.protocol === 'wss:' ? 'https:'
-          : parsed.protocol === 'ws:' ? 'http:'
-          : parsed.protocol;
-        probeUrl = withAuthenticationToken(parsed.toString(), token);
-      } catch {
-        return false;
-      }
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), TERMINATION_PROBE_TIMEOUT_MS);
-      try {
-        // `no-store` so a prior response can't be served from the HTTP cache
-        // (e.g. a stale 404 returned while offline would look like a
-        // termination); the probe must always reach the live router.
-        const res = await fetch(probeUrl, { method: 'GET', cache: 'no-store', signal: controller.signal });
-        return res.status === 404;
-      } catch {
-        return false;
-      } finally {
-        window.clearTimeout(timeoutId);
-      }
-    };
-
-    const markTerminated = () => {
-      if (terminatedRef.current) return;
-      terminatedRef.current = true;
-      setTerminated(true);
-      setRetryExhausted(false);
-      // Invalidate any in-flight/scheduled attempt and stop all activity so
-      // we don't keep hammering an endpoint that will never come back.
-      connectionGenerationRef.current += 1;
-      clearScheduledRetry();
-      clearConnectionSuccessTimeout();
-      clearIceDisconnectedGrace();
-      teardownConnection();
-      updateStatus('Instance terminated');
-      reportConnectionState('terminated');
-      safeInvoke('onTerminated', onTerminatedRef.current);
-    };
-
-    // Run a one-shot termination check in reaction to a drop. Event-driven
-    // (no polling), deduped while one is already in flight, and a no-op once
-    // we've concluded the instance is gone.
-    const checkTerminated = () => {
-      if (terminatedRef.current || terminationProbeInFlightRef.current) return;
-      terminationProbeInFlightRef.current = true;
-      void probeTerminated().then((isTerminated) => {
-        terminationProbeInFlightRef.current = false;
-        if (isTerminated) {
-          markTerminated();
-        }
-      });
-    };
-
-    const scheduleRetry = (reason: string, generation: number) => {
-      if (terminatedRef.current) {
-        return;
-      }
-      if (generation !== connectionGenerationRef.current) {
-        return;
-      }
-
-      // A drop just happened. Find out whether the instance is gone for good
-      // (404) rather than a recoverable blip; if so the probe stops retries
-      // and surfaces the terminated message. Meanwhile the normal retry path
-      // below proceeds and is short-circuited once the verdict lands.
-      checkTerminated();
-
-      if (controlChannelOpenedRef.current) {
-        if (!autoReconnectRef.current) {
-          updateStatus(`Connection failed after it was established: ${reason}`);
-          setRetryExhausted(true);
-          reportConnectionState('failed');
-          teardownConnection();
-          return;
-        }
-        // Reset so the upcoming retry gets a fresh MAX_CONNECTION_ATTEMPTS budget.
-        updateStatus(`Reconnecting after established session dropped: ${reason}`);
-        controlChannelOpenedRef.current = false;
-        connectionAttemptRef.current = -1;
-      }
-
-      clearScheduledRetry();
-
-      const nextAttempt = connectionAttemptRef.current + 1;
-      if (nextAttempt >= MAX_CONNECTION_ATTEMPTS) {
-        updateStatus(`Connection failed after ${MAX_CONNECTION_ATTEMPTS} attempts: ${reason}`);
-        setRetryExhausted(true);
-        reportConnectionState('failed');
-        teardownConnection();
-        return;
-      }
-
-      updateStatus(`Retrying connection (${nextAttempt + 1}/${MAX_CONNECTION_ATTEMPTS})`);
-      reportConnectionState('reconnecting');
-      teardownConnection();
-      retryTimeoutRef.current = window.setTimeout(() => {
-        retryTimeoutRef.current = undefined;
-        if (generation !== connectionGenerationRef.current) {
-          return;
-        }
-        void startAttempt(nextAttempt);
-      }, CONNECTION_RETRY_DELAY_MS);
-    };
-
-    const startAttempt = async (attemptNumber = 0) => {
-      // Never reconnect to an instance we've concluded is gone. `start()`
-      // clears this when a deliberate fresh connection is requested.
-      if (terminatedRef.current) return;
-      const generation = connectionGenerationRef.current + 1;
-      connectionGenerationRef.current = generation;
-      connectionAttemptRef.current = attemptNumber;
-      controlChannelOpenedRef.current = false;
-      setRetryExhausted(false);
-      // A drop after an established session restarts the attempt budget at 0
-      // while staying 'reconnecting'; only a fresh start reports 'connecting'.
-      if (attemptNumber === 0 && connectionStateRef.current !== 'reconnecting')
-        reportConnectionState('connecting');
-      clearScheduledRetry();
-      clearConnectionSuccessTimeout();
-      stopRequestFrameLoop();
-      firstFrameShownRef.current = false;
-      setVideoLoaded(false);
-      teardownConnection();
-
-      const isCurrentAttempt = () => generation === connectionGenerationRef.current;
-
-      connectionSuccessTimeoutRef.current = window.setTimeout(() => {
-        connectionSuccessTimeoutRef.current = undefined;
-        if (!isCurrentAttempt() || controlChannelOpenedRef.current) {
-          return;
-        }
-        scheduleRetry('Connection did not succeed within 15 seconds', generation);
-      }, CONNECTION_SUCCESS_TIMEOUT_MS);
-
-      try {
-        const ws = new WebSocket(withAuthenticationToken(url, token));
-        wsRef.current = ws;
-
-        // Wait for WebSocket to connect
-        await new Promise<void>((resolve, reject) => {
-          let settled = false;
-          const timeoutId = window.setTimeout(() => reject(new Error('WebSocket connection timeout')), 30000);
-          const settle = (callback: () => void) => {
-            if (settled) {
-              return;
-            }
-            settled = true;
-            window.clearTimeout(timeoutId);
-            callback();
-          };
-
-          ws.onopen = () => {
-            if (!isCurrentAttempt() || wsRef.current !== ws) {
-              return;
-            }
-            settle(resolve);
-          };
-
-          ws.onerror = (error) => {
-            if (!isCurrentAttempt() || wsRef.current !== ws) {
-              return;
-            }
-            updateStatus('WebSocket error: ' + error);
-            settle(() => reject(new Error('WebSocket connection failed')));
-          };
-
-          ws.onclose = () => {
-            if (!isCurrentAttempt() || wsRef.current !== ws) {
-              return;
-            }
-            updateStatus('WebSocket closed');
-            settle(() => reject(new Error('WebSocket closed before connection was established')));
-          };
-        });
-        if (!isCurrentAttempt() || wsRef.current !== ws) {
-          return;
-        }
-
-        ws.onerror = (error) => {
-          if (!isCurrentAttempt() || wsRef.current !== ws) {
-            return;
-          }
-          updateStatus('WebSocket error: ' + error);
-        };
-
-        ws.onclose = () => {
-          if (!isCurrentAttempt() || wsRef.current !== ws) {
-            return;
-          }
-          updateStatus('WebSocket closed');
-        };
-
-        // Request RTCConfiguration. The reply doubles as the capability
-        // handshake: camera-capable Android servers advertise
-        // `cameraSupported: true` alongside the configuration.
-        const rtcConfigPromise = new Promise<{
-          rtcConfiguration: RTCConfiguration;
-          cameraSupported: boolean;
-          foldSupported: boolean;
-        }>((resolve, reject) => {
-          const settle = (callback: () => void) => {
-            window.clearTimeout(timeoutId);
-            ws.removeEventListener('message', messageHandler);
-            callback();
-          };
-          const timeoutId = window.setTimeout(
-            () => settle(() => reject(new Error('RTCConfiguration timeout'))),
-            30000,
-          );
-
-          const messageHandler = (event: MessageEvent) => {
-            if (!isCurrentAttempt() || wsRef.current !== ws) {
-              return;
-            }
-            try {
-              const message = JSON.parse(event.data);
-              if (
-                message.type === 'signalingError' &&
-                message.requestType === 'requestRtcConfiguration' &&
-                message.sessionId === sessionId
-              ) {
-                const reason =
-                  typeof message.error === 'string' ?
-                    message.error
-                  : 'Unable to load streaming configuration';
-                settle(() => reject(new Error(reason)));
-              } else if (message.type === 'rtcConfiguration') {
-                settle(() =>
-                  resolve({
-                    rtcConfiguration: message.rtcConfiguration,
-                    cameraSupported: message.cameraSupported === true,
-                    foldSupported: message.foldSupported === true,
-                  }),
-                );
-              }
-            } catch (e) {
-              console.error('Error handling RTC configuration:', e);
-              settle(() => reject(e));
-            }
-          };
-
-          ws.addEventListener('message', messageHandler);
-          ws.send(
-            JSON.stringify({
-              type: 'requestRtcConfiguration',
-              sessionId: sessionId,
-            }),
-          );
-        });
-
-        const {
-          rtcConfiguration: rtcConfig,
-          cameraSupported: serverCameraSupported,
-          foldSupported,
-        } = await rtcConfigPromise;
-        if (!isCurrentAttempt() || wsRef.current !== ws) {
-          return;
-        }
-
-        const isDuo = deviceModel === 'iphone-duo' || foldSupported;
-        setDetectedDuo(isDuo);
-        // Keep browser LAN and VPN addresses out of signaling and connectivity checks.
-        const peerConnection = new RTCPeerConnection({ ...rtcConfig, iceTransportPolicy: 'relay' });
-        peerConnectionRef.current = peerConnection;
-        const playback = { peer: peerConnection, displays: new Map<RTCRtpReceiver, 'primary' | 'inner'>() };
-        setPlaybackConnection(playback);
-        peerConnection.addTransceiver('audio', { direction: 'recvonly' });
-        const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
-        const duoTransceiver =
-          isDuo ? peerConnection.addTransceiver('video', { direction: 'recvonly' }) : null;
-
-        // iOS always supports camera/mic injection; Android servers
-        // advertise it through `cameraSupported` (Android 15 and newer).
-        // Never offer the extra sendonly m-lines to non-capable Android
-        // servers — older servers cannot negotiate them safely.
-        const canSendMedia = platform === 'ios' || serverCameraSupported;
-
-        // Pre-allocate a sendonly slot for the user's camera so the
-        // device can pull frames later without renegotiating SDP.
-        // Allocating up-front means we don't have to renegotiate the
-        // SDP when the device app actually opens its camera session —
-        // the codec/SSRC negotiation happens once, here, and turning
-        // the camera on/off later is just a `replaceTrack`.
-        const outboundCameraTransceiver =
-          canSendMedia ?
-            peerConnection.addTransceiver('video', {
-              direction: 'sendonly',
-            })
-          : null;
-        outboundCameraSenderRef.current = outboundCameraTransceiver?.sender ?? null;
-
-        // Same pre-allocation for the live microphone: a sendonly audio
-        // slot negotiated once at connection setup, so toggling the mic
-        // later is just `replaceTrack` — no SDP renegotiation.
-        const outboundMicTransceiver =
-          canSendMedia ?
-            peerConnection.addTransceiver('audio', {
-              direction: 'sendonly',
-            })
-          : null;
-        outboundMicSenderRef.current = outboundMicTransceiver?.sender ?? null;
-
-        // As hardware encoder, we use H265 for iOS and VP9 for Android.
-        // We make sure these two are the first ones in the list.
-        // If not, the fallback is H264 which is also hardware accelerated, although not as good,
-        // available on all platforms.
-        //
-        // The rest is not important.
-        if (RTCRtpReceiver.getCapabilities) {
-          const capabilities = RTCRtpReceiver.getCapabilities('video');
-          if (capabilities && capabilities.codecs) {
-            const codecs = capabilities.codecs;
-            const sortedCodecs = codecs.sort((a, b) => {
-              const getCodecPriority = (codec: { mimeType: string }): number => {
-                const mimeType = codec.mimeType.toLowerCase();
-                if (mimeType.includes('vp9')) return 1;
-                if (mimeType.includes('h265') || mimeType.includes('hevc')) return 2;
-                if (mimeType.includes('h264') || mimeType.includes('avc')) return 3;
-                return 4; // Everything else
-              };
-              return getCodecPriority(a) - getCodecPriority(b);
-            });
-            videoTransceiver.setCodecPreferences(sortedCodecs);
-            duoTransceiver?.setCodecPreferences(sortedCodecs);
-            debugLog('Set codec preferences:', sortedCodecs.map((c) => c.mimeType).join(', '));
-          }
-        }
-
-        // Pin the outbound camera transceiver's codec order with
-        // negotiation-time fallback. Preference order:
-        //   1. H.265 / HEVC  — VideoToolbox HW on M-series + recent
-        //      Chrome. ~30% less bitrate at equal quality. If the
-        //      answerer (limulator) supports HEVC, this wins.
-        //   2. H.264 with VideoToolbox-friendly profile-level-ids
-        //      (42e01f / 42e028 / 640c1f). Universally HW-accelerated
-        //      on every Mac since 2009. SDP-time fallback when HEVC
-        //      isn't in the answer.
-        //   3. Any other H.264 profile. Often resolves to OpenH264
-        //      (software) so we keep it explicitly last among H.264
-        //      to avoid Chrome's default pick.
-        //   4. VP9 / VP8 (libvpx software on Mac). Last resort.
-        //
-        // Caveat: this is *negotiation* fallback. If HEVC HW encoder
-        // init fails at session start or gets demoted mid-stream,
-        // Chrome falls back to *software* HEVC, not H.264 — no spec
-        // hook for runtime re-negotiation. The host-side stats
-        // logger will surface this as decoder=ffmpeg / hw=false.
-        if (outboundCameraTransceiver && RTCRtpSender.getCapabilities) {
-          const senderCaps = RTCRtpSender.getCapabilities('video');
-          if (senderCaps && senderCaps.codecs) {
-            const vtH264Profiles = new Set(['42e01f', '42e028', '640c1f']);
-            const score = (c: { mimeType: string; sdpFmtpLine?: string }): number => {
-              const mime = c.mimeType.toLowerCase();
-              const fmtp = (c.sdpFmtpLine || '').toLowerCase();
-              const profileMatch = fmtp.match(/profile-level-id=([0-9a-f]{6})/);
-              const profile = profileMatch ? profileMatch[1] : '';
-              if (mime === 'video/h265' || mime === 'video/hevc') return 1;
-              if (mime === 'video/h264' && vtH264Profiles.has(profile)) return 2;
-              if (mime === 'video/h264') return 3;
-              if (mime === 'video/vp9') return 4;
-              if (mime === 'video/vp8') return 5;
-              if (mime === 'video/rtx' || mime === 'video/red' || mime === 'video/ulpfec') {
-                return 0; // Keep RTX/FEC available alongside everything else.
-              }
-              return 6;
-            };
-            const sortedSendCodecs = [...senderCaps.codecs].sort((a, b) => score(a) - score(b));
-            try {
-              outboundCameraTransceiver.setCodecPreferences(sortedSendCodecs);
-              debugLog(
-                'Outbound camera codec preferences:',
-                sortedSendCodecs
-                  .map((c) => `${c.mimeType}${c.sdpFmtpLine ? `[${c.sdpFmtpLine}]` : ''}`)
-                  .join(', '),
-              );
-            } catch (err) {
-              debugWarn('Failed to set outbound camera codec preferences:', err);
-            }
-          }
-        }
-
-        const dataChannel = peerConnection.createDataChannel('control', {
-          ordered: true,
-          negotiated: true,
-          id: 1,
-        });
-        dataChannelRef.current = dataChannel;
-        const latencyTrace =
-          !isDuo && onTraceRef.current ?
-            createLatencyTrace(peerConnection, (message) => {
-              if (isCurrentAttempt() && peerConnectionRef.current === peerConnection) {
-                safeInvoke('onTrace', onTraceRef.current, message);
-              }
-            })
-          : null;
-        latencyTraceRef.current = latencyTrace;
-
-        dataChannel.onopen = () => {
-          if (!isCurrentAttempt() || dataChannelRef.current !== dataChannel || wsRef.current !== ws) {
-            return;
-          }
-          controlChannelOpenedRef.current = true;
-          clearConnectionSuccessTimeout();
-          updateStatus('Control channel opened');
-          if (isDuo) ws.send(JSON.stringify({ type: 'getFoldState', id: 'duo-capabilities' }));
-
-          // Spin up the AX fetcher now that we have a stable WS + control
-          // channel. The fetcher's send function reuses this WS; it stops
-          // sending if the WS dies. start() is called lazily based on the
-          // inspectMode prop via a sibling useEffect.
-          if (!axFetcherRef.current) {
-            axFetcherRef.current = new AxFetcher({
-              platform,
-              baseIntervalMs: axPollIntervalMs,
-              maxBackoffMs: axMaxBackoffMs,
-              androidElementTreeOptions,
-              send: (payload) => {
-                if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return false;
-                try {
-                  wsRef.current.send(JSON.stringify(payload));
-                  return true;
-                } catch {
-                  return false;
-                }
-              },
-              onSnapshot: (snapshot) => {
-                setAxSnapshot((prev) => (axSnapshotsEqual(prev, snapshot) ? prev : snapshot));
-                // Defer to a microtask so customer code (which may DOM-write,
-                // start expensive work, or itself call back into ref
-                // methods) doesn't run synchronously inside our state-setter
-                // path. React then has a chance to schedule its render before
-                // the customer handler kicks off side-effects.
-                queueMicrotask(() => {
-                  safeInvoke('onAxSnapshotChange', onAxSnapshotChangeRef.current, snapshot);
-                });
-              },
-              onStatusChange: (status, error) => {
-                safeInvoke('onAxStatusChange', onAxStatusChangeRef.current, status, error);
-              },
-            });
-            if (inspectModeRef.current === true || inspectModeRef.current === 'hover-only') {
-              axFetcherRef.current.start();
-            }
-          }
-          const sendRequestFrame = () => {
-            if (
-              !isCurrentAttempt() ||
-              firstFrameShownRef.current ||
-              dataChannelRef.current !== dataChannel ||
-              wsRef.current !== ws ||
-              ws.readyState !== WebSocket.OPEN
-            ) {
-              return;
-            }
-            ws.send(JSON.stringify({ type: 'requestFrame', sessionId: sessionId }));
-          };
-
-          sendRequestFrame();
-          stopRequestFrameLoop();
-          requestFrameIntervalRef.current = window.setInterval(() => {
-            if (
-              !isCurrentAttempt() ||
-              firstFrameShownRef.current ||
-              dataChannelRef.current !== dataChannel ||
-              wsRef.current !== ws ||
-              ws.readyState !== WebSocket.OPEN
-            ) {
-              stopRequestFrameLoop();
-              return;
-            }
-            sendRequestFrame();
-          }, 250);
-
-          // Send openUrl message if the prop is provided
-          if (openUrl) {
-            try {
-              const decodedUrl = decodeURIComponent(openUrl);
-              updateStatus('Opening URL');
-              ws.send(
-                JSON.stringify({
-                  type: 'openUrl',
-                  url: decodedUrl,
-                  sessionId: sessionId,
-                }),
-              );
-            } catch (error) {
-              console.error({ error }, 'Error decoding URL, falling back to the original URL');
-              ws.send(
-                JSON.stringify({
-                  type: 'openUrl',
-                  url: openUrl,
-                  sessionId: sessionId,
-                }),
-              );
-            }
-            // openUrl can take a moment to load the destination — boost
-            // AX polling so the overlay refreshes through the transition.
-            axFetcherRef.current?.bumpActivity();
-          }
-        };
-
-        dataChannel.onclose = () => {
-          if (!isCurrentAttempt() || dataChannelRef.current !== dataChannel) {
-            return;
-          }
-          updateStatus('Control channel closed');
-        };
-
-        dataChannel.onerror = (error) => {
-          if (!isCurrentAttempt() || dataChannelRef.current !== dataChannel) {
-            return;
-          }
-          console.error('Control channel error:', error);
-          updateStatus('Control channel error: ' + error);
-        };
-
-        // Set up connection state monitoring
-        peerConnection.onconnectionstatechange = () => {
-          if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
-            return;
-          }
-          updateStatus('Connection state: ' + peerConnection.connectionState);
-          // Later TURN candidates can recover an initial failure.
-          // Let the connection deadline handle startup until the control channel opens.
-          if (peerConnection.connectionState === 'failed' && controlChannelOpenedRef.current) {
-            scheduleRetry('WebRTC connection entered failed state', generation);
-          }
-        };
-
-        peerConnection.oniceconnectionstatechange = () => {
-          if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
-            return;
-          }
-          const iceState = peerConnection.iceConnectionState;
-          updateStatus('ICE state: ' + iceState);
-          if (iceState === 'connected' || iceState === 'completed') {
-            clearIceDisconnectedGrace();
-            // Re-attach the live microphone across reconnects (or apply a
-            // prop that was flipped on before the connection was up).
-            if (isMicrophoneWanted() && !outboundMicStreamRef.current) {
-              void attachMicrophone();
-            }
-            return;
-          }
-          if (iceState === 'failed') {
-            clearIceDisconnectedGrace();
-            if (controlChannelOpenedRef.current) {
-              scheduleRetry('ICE connection entered failed state', generation);
-            }
-            return;
-          }
-          if (
-            iceState === 'disconnected' &&
-            controlChannelOpenedRef.current &&
-            autoReconnectRef.current &&
-            iceDisconnectedGraceRef.current === undefined
-          ) {
-            // Cap the browser's natural disconnected→failed escalation to recover faster.
-            iceDisconnectedGraceRef.current = window.setTimeout(() => {
-              iceDisconnectedGraceRef.current = undefined;
-              if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
-                return;
-              }
-              if (peerConnection.iceConnectionState === 'disconnected') {
-                scheduleRetry('ICE stayed disconnected past grace period', generation);
-              }
-            }, ICE_DISCONNECTED_GRACE_MS);
-          }
-        };
-
-        // Set up video handling
-        peerConnection.ontrack = (event) => {
-          if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
-            return;
-          }
-          // Audio and video share the preference because synchronization can
-          // otherwise keep video at the audio receiver's higher target.
-          applyJitterBufferTarget(event.receiver, jitterBufferTargetMsRef.current);
-          const inner =
-            event.track.id === 'duo-inner' || event.streams.some((stream) => stream.id === 'duo-inner');
-          if (event.track.kind === 'video')
-            playback.displays.set(event.receiver, inner ? 'inner' : 'primary');
-          updateStatus('Received remote track: ' + event.track.kind);
-          if (event.track.kind === 'video' && videoRef.current) {
-            debugLog(`[${new Date().toISOString()}] Video track received:`, event.track);
-            const target = inner ? innerVideoRef.current : videoRef.current;
-            if (target) {
-              const stream =
-                isDuo ? new MediaStream([event.track]) : event.streams[0] ?? new MediaStream([event.track]);
-              videoPlaybackRef.current.get(target)?.();
-              videoPlaybackRef.current.set(
-                target,
-                attachVideoStream(target, stream, (error) => debugWarn('Video playback fallback:', error)),
-              );
-            }
-          }
-        };
-
-        // Handle ICE candidates
-        peerConnection.onicecandidate = (event) => {
-          if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection || wsRef.current !== ws) {
-            return;
-          }
-          if (event.candidate && ws.readyState === WebSocket.OPEN) {
-            const message = {
-              type: 'candidate',
-              candidate: event.candidate.candidate,
-              sdpMid: event.candidate.sdpMid,
-              sdpMLineIndex: event.candidate.sdpMLineIndex,
-              sessionId: sessionId,
-            };
-            ws.send(JSON.stringify(message));
-            updateStatus('Sent ICE candidate');
-          } else {
-            updateStatus('ICE candidate gathering completed');
-          }
-        };
-
-        // Handle incoming messages
-        ws.onmessage = async (event) => {
-          if (!isCurrentAttempt() || wsRef.current !== ws) {
-            return;
-          }
-          let message;
-          try {
-            message = JSON.parse(event.data);
-          } catch (e) {
-            debugWarn('Error parsing message:', e);
-            return;
-          }
-          // Inspect-mode responses are routed to the fetcher first so it
-          // can resolve in-flight requests regardless of which platform's
-          // protocol is in use.
-          if (axFetcherRef.current?.handleMessage(message)) {
-            return;
-          }
-          updateStatus('Received: ' + message.type);
-          switch (message.type) {
-            case 'performActionsResult':
-            case 'foldStateResult':
-            case 'foldStateChanged': {
-              if (!isDuo) break;
-              if (message.state) {
-                setDuoState(message.state);
-                setDuoError(undefined);
-              } else if (message.id === 'duo-capabilities')
-                setDuoError(message.error || 'This instance does not support native iPhone Duo displays.');
-              const request = duoRequests.current.get(message.id);
-              if (request) {
-                clearTimeout(request.timer);
-                duoRequests.current.delete(message.id);
-                if (message.error) request.reject(new Error(message.error));
-                else request.resolve();
-              }
-              break;
-            }
-            case 'signalingError': {
-              if (message.requestType !== 'offer' || message.sessionId !== sessionId) {
-                break;
-              }
-              const reason =
-                typeof message.error === 'string' ?
-                  message.error
-                : 'Unable to establish the streaming connection';
-              updateStatus('Error: ' + reason);
-              scheduleRetry(reason, generation);
-              break;
-            }
-            case 'answer':
-              if (!peerConnectionRef.current || peerConnectionRef.current !== peerConnection) {
-                updateStatus('No peer connection, skipping answer');
-                break;
-              }
-              latencyTrace?.accept(message.latencyTraceVersion);
-              await peerConnection.setRemoteDescription(
-                new RTCSessionDescription({
-                  type: 'answer',
-                  sdp: message.sdp,
-                }),
-              );
-              if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
-                return;
-              }
-              updateStatus('Set remote description');
-              break;
-            case 'candidate':
-              if (!peerConnectionRef.current || peerConnectionRef.current !== peerConnection) {
-                updateStatus('No peer connection, skipping candidate');
-                break;
-              }
-              await peerConnection.addIceCandidate(
-                new RTCIceCandidate({
-                  candidate: message.candidate,
-                  sdpMid: message.sdpMid,
-                  sdpMLineIndex: message.sdpMLineIndex,
-                }),
-              );
-              if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
-                return;
-              }
-              updateStatus('Added ICE candidate');
-              break;
-            case 'screenshot':
-            case 'screenshotResult': {
-              if (typeof message.id !== 'string') {
-                debugWarn('Received invalid screenshot success message:', message);
-                break;
-              }
-              const screenshotError = getScreenshotError(message);
-              if (screenshotError) {
-                const rejecter = pendingScreenshotRejectersRef.current.get(message.id);
-                if (!rejecter) {
-                  debugWarn(`Received screenshot error for unknown or handled id: ${message.id}`);
-                  break;
-                }
-                debugWarn(`Received screenshot error for id ${message.id}: ${screenshotError}`);
-                rejecter(new Error(screenshotError));
-                pendingScreenshotResolversRef.current.delete(message.id);
-                pendingScreenshotRejectersRef.current.delete(message.id);
-                break;
-              }
-              const screenshotData = toScreenshotData(message);
-              if (!screenshotData) {
-                debugWarn('Received screenshot message without image data:', message);
-                break;
-              }
-              const resolver = pendingScreenshotResolversRef.current.get(message.id);
-              if (!resolver) {
-                debugWarn(`Received screenshot data for unknown or handled id: ${message.id}`);
-                break;
-              }
-              debugLog(`Received screenshot data for id ${message.id}`);
-              resolver(screenshotData);
-              pendingScreenshotResolversRef.current.delete(message.id);
-              pendingScreenshotRejectersRef.current.delete(message.id);
-              break;
-            }
-            case 'screenshotError':
-              if (typeof message.id !== 'string' || typeof message.message !== 'string') {
-                debugWarn('Received invalid screenshot error message:', message);
-                break;
-              }
-              const rejecter = pendingScreenshotRejectersRef.current.get(message.id);
-              if (!rejecter) {
-                debugWarn(`Received screenshot error for unknown or handled id: ${message.id}`);
-                break;
-              }
-              debugWarn(`Received screenshot error for id ${message.id}: ${message.message}`);
-              rejecter(new Error(message.message));
-              pendingScreenshotResolversRef.current.delete(message.id);
-              pendingScreenshotRejectersRef.current.delete(message.id);
-              break;
-            case 'cameraRequest': {
-              // Only camera-capable sessions allocate the sendonly
-              // outbound-camera transceiver; without it there is nothing to
-              // feed the device, so ignore camera requests entirely — no
-              // getUserMedia prompt and no onCameraDemandChange callbacks.
-              const sender = outboundCameraSenderRef.current;
-              if (!sender) {
-                break;
-              }
-              const request = parseCameraRequest(message);
-              if (!request) {
-                debugWarn('Received invalid cameraRequest:', message);
-                break;
-              }
-              // eslint-disable-next-line no-console
-              console.info('[RemoteControl] cameraRequest received:', request.active, request.facingMode);
-              await handleCameraRequest(request, ws, sender, isCurrentAttempt);
-              break;
-            }
-            case 'microphoneRequest': {
-              if (!outboundMicSenderRef.current) {
-                break;
-              }
-              const active = message.active === true;
-              microphoneDemandActiveRef.current = active;
-              // eslint-disable-next-line no-console
-              console.info('[RemoteControl] microphoneRequest received, active=', active);
-              if (!active) {
-                if (!microphoneEnabledRef.current) {
-                  await detachMicrophone();
-                }
-                break;
-              }
-              if (outboundMicStreamRef.current) {
-                // A manual stream may already be attached. Re-select it on the
-                // host because file playback can have replaced its source.
-                sendMicrophoneStart(ws);
-                break;
-              }
-              await attachMicrophone();
-              break;
-            }
-            case 'microphoneStartResult': {
-              if (micStartPendingIdRef.current === null || message.id !== micStartPendingIdRef.current) {
-                break;
-              }
-              micStartPendingIdRef.current = null;
-              if (typeof message.error === 'string') {
-                // Host rejected the stream (e.g. no loopback device
-                // assigned on the node). Tear the capture back down so
-                // the browser's mic indicator doesn't stay lit for a
-                // stream nobody hears.
-                // eslint-disable-next-line no-console
-                console.warn('[RemoteControl] microphoneStart rejected by host:', message.error);
-                void detachMicrophone(message.error);
-              }
-              break;
-            }
-            case 'terminateAppResult':
-              if (typeof message.id !== 'string') {
-                debugWarn('Received invalid terminateApp result message:', message);
-                break;
-              }
-              if (typeof message.error === 'string') {
-                const terminateRejecter = pendingTerminateAppRejectersRef.current.get(message.id);
-                if (!terminateRejecter) {
-                  debugWarn(`Received terminateApp error for unknown or handled id: ${message.id}`);
-                  break;
-                }
-                debugWarn(`Received terminateApp error for id ${message.id}: ${message.error}`);
-                terminateRejecter(new Error(message.error));
-                pendingTerminateAppResolversRef.current.delete(message.id);
-                pendingTerminateAppRejectersRef.current.delete(message.id);
-                break;
-              }
-              const terminateResolver = pendingTerminateAppResolversRef.current.get(message.id);
-              if (!terminateResolver) {
-                debugWarn(`Received terminateApp result for unknown or handled id: ${message.id}`);
-                break;
-              }
-              debugLog(`Received terminateApp success for id ${message.id}`);
-              terminateResolver();
-              pendingTerminateAppResolversRef.current.delete(message.id);
-              pendingTerminateAppRejectersRef.current.delete(message.id);
-              break;
-            default:
-              debugWarn(`Received unhandled message type: ${message.type}`, message);
-              break;
-          }
-        };
-
-        // Create and send offer
-        if (peerConnectionRef.current === peerConnection) {
-          const offer = await peerConnection.createOffer({
-            offerToReceiveVideo: true,
-            offerToReceiveAudio: false,
-          });
-          if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
-            return;
-          }
-          await peerConnection.setLocalDescription(offer);
-          if (!isCurrentAttempt() || peerConnectionRef.current !== peerConnection) {
-            return;
-          }
-
-          if (isCurrentAttempt() && wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(
-              JSON.stringify({
-                type: 'offer',
-                ...(isDuo ? { displayStreams: true } : {}),
-                ...(latencyTrace ? { latencyTraceVersion: 1 } : {}),
-                sdp: offer.sdp,
-                sessionId: sessionId,
-              }),
-            );
-          }
-          updateStatus('Sent offer');
-        }
-      } catch (e) {
-        if (!isCurrentAttempt()) {
-          return;
-        }
-        const reason = e instanceof Error ? e.message : String(e);
-        updateStatus('Error: ' + reason);
-        scheduleRetry(reason, generation);
-      }
-    };
-
-    const start = () => {
-      // A fresh connection (mount, prop change, manual retry, reconnect())
-      // clears any prior terminated verdict so we re-evaluate from scratch.
-      terminatedRef.current = false;
-      setTerminated(false);
-      void startAttempt(0);
-    };
-
-    const stop = () => {
-      connectionGenerationRef.current += 1;
-      connectionAttemptRef.current = 0;
-      controlChannelOpenedRef.current = false;
-      clearScheduledRetry();
-      clearIceDisconnectedGrace();
-      teardownConnection();
-      updateStatus('Stopped');
-    };
-
     const handleManualRetry = (event: React.MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
-      start();
+      clientRef.current?.reconnect();
     };
-
-    // Drive the manual override without interrupting guest-driven demand.
+    const callbacksRef = useRef({
+      onAxSnapshotChange,
+      onAxStatusChange,
+      onCameraDemandChange,
+      onCameraStats,
+      onMicrophoneStateChange,
+      onTrace,
+      onTerminated,
+      onConnectionStateChange,
+      onPlaybackStats,
+    });
+    callbacksRef.current = {
+      onAxSnapshotChange,
+      onAxStatusChange,
+      onCameraDemandChange,
+      onCameraStats,
+      onMicrophoneStateChange,
+      onTrace,
+      onTerminated,
+      onConnectionStateChange,
+      onPlaybackStats,
+    };
+    const latencyTraceRequested = !!onTrace;
     useEffect(() => {
-      if (isMicrophoneWanted()) {
-        void attachMicrophone();
-      } else {
-        void detachMicrophone();
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [microphoneEnabled]);
+      lastVideoSize.current = null;
+      setIsLandscape(false);
+      setUseAndroidTabletFrame(false);
+      setVideoStyle({});
+    }, [url, deviceModel]);
 
     useEffect(() => {
-      // Reset video loaded state when connection params change
-      setVideoLoaded(false);
-
-      // Start connection when component mounts
-      start();
-
-      // Only start keepAlive if page is visible
-      if (!document.hidden) {
-        startKeepAlive();
+      let active = true;
+      if (axSnapshotRef.current !== null) {
+        axSnapshotRef.current = null;
+        setAxSnapshot(null);
+        safeInvoke('onAxSnapshotChange', callbacksRef.current.onAxSnapshotChange, null);
       }
-
-      // Add visibility change listener
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-
-      // Clean up
+      const client = createDeviceStream({
+        url,
+        token,
+        sessionId,
+        deviceModel,
+        autoReconnect,
+        jitterBufferTargetMs,
+        openUrl,
+        inspectMode,
+        axPollIntervalMs,
+        axMaxBackoffMs,
+        androidElementTreeOptions,
+        microphoneEnabled,
+        onStateChange: (state) => {
+          // Preserve the loaded layout behind errors; the placeholder returns when a new attempt starts.
+          if (
+            state.videoReady ||
+            state.connection === 'idle' ||
+            state.connection === 'connecting' ||
+            state.connection === 'reconnecting'
+          )
+            setVideoLoaded(state.videoReady);
+          setRetryExhausted(state.connection === 'failed');
+          setTerminated(state.connection === 'terminated');
+          setDetectedDuo(state.duo);
+          setDuoState(state.duoState);
+          setDuoError(state.duoError);
+        },
+        onAxSnapshotChange: (snapshot) => {
+          if (!active) return;
+          setAxSnapshot((prev) => (axSnapshotsEqual(prev, snapshot) ? prev : snapshot));
+          callbacksRef.current.onAxSnapshotChange?.(snapshot);
+        },
+        onAxStatusChange: (...args) => callbacksRef.current.onAxStatusChange?.(...args),
+        onCameraDemandChange: (...args) => callbacksRef.current.onCameraDemandChange?.(...args),
+        onCameraStats: onCameraStats ? (...args) => callbacksRef.current.onCameraStats?.(...args) : undefined,
+        onMicrophoneStateChange: (...args) => callbacksRef.current.onMicrophoneStateChange?.(...args),
+        onTrace: latencyTraceRequested ? (...args) => callbacksRef.current.onTrace?.(...args) : undefined,
+        onTerminated: () => callbacksRef.current.onTerminated?.(),
+        onConnectionStateChange: (...args) => callbacksRef.current.onConnectionStateChange?.(...args),
+        onPlaybackStats:
+          onPlaybackStats ? (...args) => callbacksRef.current.onPlaybackStats?.(...args) : undefined,
+      });
+      clientRef.current = client;
+      const detach = videoRef.current ? client.attachVideo(videoRef.current) : undefined;
+      client.start();
       return () => {
-        stopKeepAlive();
-        stop();
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        active = false;
+        client.dispose();
+        detach?.();
+        clientRef.current = null;
       };
-      // Camera attach/detach happens entirely inside the WS message
-      // loop now (sendonly transceiver + `replaceTrack`), so the
-      // connection effect doesn't need to bounce when the camera
-      // turns on/off — no SDP-affecting change.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [url, token, propSessionId, deviceModel, latencyTraceRequested]);
+
+    useEffect(() => {
+      if (isDuo && innerVideoRef.current)
+        return clientRef.current?.attachVideo(innerVideoRef.current, 'inner');
+    }, [isDuo, url, token, propSessionId, deviceModel, latencyTraceRequested]);
+
+    useEffect(() => {
+      clientRef.current?.updateOptions({
+        openUrl,
+        axPollIntervalMs,
+        axMaxBackoffMs,
+        androidElementTreeOptions,
+        autoReconnect,
+        jitterBufferTargetMs,
+        microphoneEnabled,
+        inspectMode,
+        onPlaybackStats:
+          onPlaybackStats ? (...args) => callbacksRef.current.onPlaybackStats?.(...args) : undefined,
+        onCameraStats: onCameraStats ? (...args) => callbacksRef.current.onCameraStats?.(...args) : undefined,
+      });
+    }, [
+      autoReconnect,
+      jitterBufferTargetMs,
+      microphoneEnabled,
+      inspectMode,
+      !!onPlaybackStats,
+      !!onCameraStats,
+      openUrl,
+      axPollIntervalMs,
+      axMaxBackoffMs,
+      androidElementTreeOptions,
+    ]);
 
     // Recompute the inspect-overlay geometry (container-local pixel rect of
     // the actually-rendered video content) from the current mapping context.
@@ -3533,10 +1736,23 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (!video) return;
 
       const updateVideoPosition = () => {
+        const hasVideoSize = video.videoWidth > 0 && video.videoHeight > 0;
+        if (hasVideoSize) lastVideoSize.current = { width: video.videoWidth, height: video.videoHeight };
+        const size = lastVideoSize.current;
+        const aspectRatio = size ? `${size.width} / ${size.height}` : undefined;
         // If no frame, just refresh overlay geometry; no inset/letterbox math
         // is needed since the video element is its own size.
         if (!frameVisible || !frame) {
-          setVideoStyle({});
+          // Preserve intrinsic sizing after teardown releases the stream, including max-size constraints.
+          setVideoStyle(
+            !hasVideoSize && size ?
+              {
+                aspectRatio,
+                contain: 'size',
+                containIntrinsicSize: `${size.width}px ${size.height}px`,
+              }
+            : {},
+          );
           recomputeOverlayGeometry();
           return;
         }
@@ -3547,14 +1763,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         if (frameWidth === 0 || frameHeight === 0) return;
 
         // Determine landscape based on video's intrinsic dimensions
-        const landscape = video.videoWidth > video.videoHeight;
+        const landscape = size ? size.width > size.height : false;
         setIsLandscape(landscape);
         setUseAndroidTabletFrame(
-          platform === 'android' && isAndroidTabletVideo(video.videoWidth, video.videoHeight),
+          platform === 'android' && !!size && isAndroidTabletVideo(size.width, size.height),
         );
 
         const pos = landscape ? config.videoPosition.landscape : config.videoPosition.portrait;
-        let newStyle: React.CSSProperties = {};
+        let newStyle: React.CSSProperties = { aspectRatio };
         if (pos.heightMultiplier) {
           newStyle.height = `${frameHeight * pos.heightMultiplier}px`;
           // Let the other dimension follow the video stream's intrinsic aspect ratio.
@@ -3595,7 +1811,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // (portrait↔landscape rotates the layout). Bump so the overlay
       // refreshes immediately rather than waiting out the current poll
       // cycle in a layout that no longer matches the boxes.
-      const bumpOnResize = () => axFetcherRef.current?.bumpActivity();
+      const bumpOnResize = () => clientRef.current?.bumpActivity();
       video.addEventListener('resize', bumpOnResize);
 
       // Initial calculation
@@ -3608,17 +1824,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         video.removeEventListener('resize', bumpOnResize);
         if (frame) frame.removeEventListener('load', updateVideoPosition);
       };
-    }, [config, frameVisible]);
+    }, [config, frameVisible, url, deviceModel]);
 
-    // Start/stop the AX poller and reset inspect state when inspect mode
-    // toggles. Connection state is independent: the fetcher gets created on
-    // dataChannel.onopen and destroyed on teardown.
+    // Reset overlay selection when inspection is disabled.
     useEffect(() => {
-      const fetcher = axFetcherRef.current;
-      if (inspectActive) {
-        fetcher?.start();
-      } else {
-        fetcher?.stop();
+      if (!inspectActive) {
         setAxSnapshot(null);
         setAxHighlightedId(null);
         setAxSelectedId(null);
@@ -3629,7 +1839,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           window.cancelAnimationFrame(cursorRafIdRef.current);
           cursorRafIdRef.current = undefined;
         }
-        safeInvoke('onAxSnapshotChange', onAxSnapshotChangeRef.current, null);
       }
     }, [inspectActive]);
 
@@ -3667,163 +1876,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     // Expose sendOpenUrlCommand via ref
     useImperativeHandle(ref, () => ({
-      openUrl: (newUrl: string) => {
-        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-          debugWarn('WebSocket not open, cannot send open_url command via ref.');
-          return;
-        }
-        try {
-          const decodedUrl = decodeURIComponent(newUrl);
-          updateStatus('Opening URL');
-          wsRef.current.send(
-            JSON.stringify({
-              type: 'openUrl',
-              url: decodedUrl,
-              sessionId: sessionId,
-            }),
-          );
-        } catch (error) {
-          debugWarn('Error decoding or sending URL via ref:', { error, url: newUrl });
-          wsRef.current.send(
-            JSON.stringify({
-              type: 'openUrl',
-              url: newUrl,
-              sessionId: sessionId,
-            }),
-          );
-        }
-        axFetcherRef.current?.bumpActivity();
-      },
-
-      sendKeyEvent: (event: ImperativeKeyboardEvent) => {
-        if (!dataChannelRef.current || dataChannelRef.current.readyState !== 'open') {
-          debugWarn('Data channel not ready for imperative key command:', dataChannelRef.current?.readyState);
-          return;
-        }
-
-        const keycode = codeMap[event.code];
-        if (!keycode) {
-          debugWarn(`Unknown event.code for imperative command: ${event.code}`);
-          return;
-        }
-
-        let metaState = ANDROID_KEYS.META_NONE;
-        if (event.shiftKey) metaState |= ANDROID_KEYS.META_SHIFT_ON;
-        if (event.altKey) metaState |= ANDROID_KEYS.META_ALT_ON;
-        if (event.ctrlKey) metaState |= ANDROID_KEYS.META_CTRL_ON;
-        if (event.metaKey) metaState |= ANDROID_KEYS.META_META_ON;
-
-        const action = event.type === 'keydown' ? ANDROID_KEYS.ACTION_DOWN : ANDROID_KEYS.ACTION_UP;
-
-        debugLog(
-          `Sending Imperative Key Command: code=${event.code}, keycode=${keycode}, action=${action}, meta=${metaState}`,
-        );
-
-        const message = createInjectKeycodeMessage(
-          action,
-          keycode,
-          0, // repeat count, typically 0 for single presses
-          metaState,
-        );
-        if (message) {
-          sendBinaryControlMessage(message);
-        }
-      },
-      screenshot: (display?: 'outer' | 'inner'): Promise<ScreenshotData> => {
-        return new Promise<ScreenshotData>((resolve, reject) => {
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-            debugWarn('WebSocket not open, cannot send screenshot command.');
-            return reject(new Error('WebSocket is not connected or connection is not open.'));
-          }
-
-          const id = `ui-ss-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-          const request = {
-            type: display ? 'screenshotDisplay' : 'screenshot',
-            ...(display ? { display } : {}),
-            id: id,
-          };
-
-          pendingScreenshotResolversRef.current.set(id, resolve);
-          pendingScreenshotRejectersRef.current.set(id, reject);
-
-          debugLog('Sending screenshot request:', request);
-          try {
-            wsRef.current.send(JSON.stringify(request));
-          } catch (err) {
-            debugWarn('Failed to send screenshot request immediately:', err);
-            pendingScreenshotResolversRef.current.delete(id);
-            pendingScreenshotRejectersRef.current.delete(id);
-            reject(err);
-            return; // Important to return here if send failed synchronously
-          }
-
-          setTimeout(() => {
-            if (pendingScreenshotResolversRef.current.has(id)) {
-              debugWarn(`Screenshot request timed out for id ${id}`);
-              pendingScreenshotRejectersRef.current.get(id)?.(new Error('Screenshot request timed out'));
-              pendingScreenshotResolversRef.current.delete(id);
-              pendingScreenshotRejectersRef.current.delete(id);
-            }
-          }, 30000); // 30-second timeout
-        });
-      },
-      terminateApp: (bundleId: string): Promise<void> => {
-        return new Promise<void>((resolve, reject) => {
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-            debugWarn('WebSocket not open, cannot send terminateApp command.');
-            return reject(new Error('WebSocket is not connected or connection is not open.'));
-          }
-          const id = `ui-term-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-          const request = {
-            type: 'terminateApp',
-            id,
-            bundleId,
-          };
-
-          pendingTerminateAppResolversRef.current.set(id, resolve);
-          pendingTerminateAppRejectersRef.current.set(id, reject);
-
-          debugLog('Sending terminateApp request:', request);
-          try {
-            wsRef.current.send(JSON.stringify(request));
-          } catch (err) {
-            debugWarn('Failed to send terminateApp request immediately:', err);
-            pendingTerminateAppResolversRef.current.delete(id);
-            pendingTerminateAppRejectersRef.current.delete(id);
-            reject(err);
-            return;
-          }
-          // Terminating the foreground app drops the user back to the home
-          // screen — bump so the overlay reflects the post-terminate state
-          // through the SpringBoard transition.
-          axFetcherRef.current?.bumpActivity();
-
-          setTimeout(() => {
-            if (pendingTerminateAppResolversRef.current.has(id)) {
-              debugWarn(`terminateApp request timed out for id ${id}`);
-              pendingTerminateAppRejectersRef.current.get(id)?.(new Error('terminateApp request timed out'));
-              pendingTerminateAppResolversRef.current.delete(id);
-              pendingTerminateAppRejectersRef.current.delete(id);
-            }
-          }, 30000);
-        });
-      },
-      reconnect: () => start(),
-
-      refreshAxTree: async (): Promise<AxSnapshot> => {
-        const fetcher = axFetcherRef.current;
-        if (!fetcher) {
-          throw new Error('Inspect mode is not active');
-        }
-        // The fetcher's refresh() runs the result through the same
-        // change-detect path as the poll loop (via deliver()), which calls
-        // back into onSnapshot — already wired to setAxSnapshot +
-        // onAxSnapshotChange (with safe-invoke). We just return the fetched
-        // payload for callers that want it.
-        return fetcher.refresh();
-      },
-
-      getAxSnapshot: () => axSnapshotRef.current,
+      openUrl: (url) => clientRef.current?.openUrl(url),
+      sendKeyEvent: (event) => clientRef.current?.sendKeyEvent(event),
+      screenshot: (display) =>
+        clientRef.current?.screenshot(display) ?? Promise.reject(new Error('Simulator disconnected')),
+      terminateApp: (bundleId) =>
+        clientRef.current?.terminateApp(bundleId) ?? Promise.reject(new Error('Simulator disconnected')),
+      reconnect: () => clientRef.current?.reconnect(),
+      refreshAxTree: () =>
+        clientRef.current?.refreshAxTree() ?? Promise.reject(new Error('Simulator disconnected')),
+      getAxSnapshot: () => clientRef.current?.getAxSnapshot() ?? null,
 
       setInspectHighlight: (element: AxElement | null) => {
         setAxHighlightedId(element?.id ?? null);
@@ -3848,7 +1910,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         }
       },
 
-      getAxStatus: () => axFetcherRef.current?.getStatus() ?? 'idle',
+      getAxStatus: () => clientRef.current?.getAxStatus() ?? 'idle',
     }));
 
     // Show indicators when Alt is held and we have a valid hover point (null when outside)
@@ -3923,7 +1985,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           onKeyDown={handleKeyboard}
           onKeyUp={handleKeyboard}
           onClick={handleVideoClick}
-          onLoadedData={markFirstFrameShown}
           onFocus={() => {
             if (videoRef.current) {
               videoRef.current.style.outline = 'none';
@@ -3962,9 +2023,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 })
               }
               touch={(action, screenId, x, y) => {
-                const channel = dataChannelRef.current;
-                if (channel?.readyState === 'open')
-                  channel.send(createDisplayTouchMessage(action, screenId, x, y));
+                clientRef.current?.sendDisplayTouch(action, screenId, x, y);
               }}
               onKeyDown={handleKeyboard}
               onKeyUp={handleKeyboard}
@@ -4038,32 +2097,3 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     );
   },
 );
-
-const getScreenshotError = (message: any): string | null => {
-  if (typeof message.message === 'string') {
-    return message.message;
-  }
-
-  if (typeof message.error === 'string') {
-    return message.error;
-  }
-
-  return null;
-};
-
-const toScreenshotData = (message: any): ScreenshotData | null => {
-  if (typeof message.dataUri === 'string') {
-    return { dataUri: message.dataUri };
-  }
-
-  if (typeof message.base64 === 'string') {
-    if (message.base64.startsWith('data:')) {
-      return { dataUri: message.base64 };
-    }
-
-    const mimeType = message.base64.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
-    return { dataUri: `data:${mimeType};base64,${message.base64}` };
-  }
-
-  return null;
-};

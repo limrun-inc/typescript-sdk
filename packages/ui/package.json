@@ -1,6 +1,6 @@
 {
   "name": "@limrun/ui",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "publishConfig": {
     "access": "public"
   },
@@ -22,7 +22,12 @@
       "import": "./dist/lite.js",
       "require": "./dist/lite.cjs"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js",
+      "require": "./dist/core.cjs"
+    }
   },
   "scripts": {
     "dev": "vite",
@@ -31,7 +36,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepare": "npm run build"
   },
   "repository": {
     "type": "git",
@@ -70,5 +76,6 @@
     "**/@microsoft/api-extractor/minimatch": "11.0.1",
     "**/@typescript-eslint/typescript-estree/minimatch": "11.0.1",
     "**/@vue/language-core/minimatch": "11.0.1"
-  }
+  },
+  "packageManager": "yarn@1.22.22"
 }

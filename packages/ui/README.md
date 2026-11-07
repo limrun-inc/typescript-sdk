@@ -188,3 +188,106 @@ Hardware meshes under `stationary-half` must carry `extras.button` with
 `side`, `volumeUp`, or `volumeDown`. All three are required. This is a prepared Duo
 appearance contract, not a general-purpose GLB viewer. Serve the file on the same
 origin or with suitable CORS headers.
+
+## Build a custom device viewer
+
+Import `createDeviceStream` from `@limrun/ui/core` when you supply your own UI.
+This browser entry has no React, CSS, or device-artwork imports. It uses the same
+connection, input, playback, camera, microphone, and accessibility implementation
+as `RemoteControl`. A browser WebView can use it too; it is not a Node.js WebRTC client.
+
+Attach your video element before starting the session. Use the instance WebSocket
+URL and instance token returned by the Limrun API, not your organization API key.
+
+```ts
+import { createDeviceStream } from '@limrun/ui/core';
+
+function mountDevice(video: HTMLVideoElement, url: string, token: string) {
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = true;
+
+  const stream = createDeviceStream({
+    url,
+    token,
+    autoReconnect: true,
+    onStateChange: (state) => console.log(state.connection, state.controlReady),
+    onPlaybackStats: (stats) => console.log(stats),
+  });
+  stream.attachVideo(video);
+  stream.start();
+
+  return {
+    home: () => stream.pressButton('home'),
+    screenshot: () => stream.screenshot(),
+    unmount: () => stream.dispose(),
+  };
+}
+```
+
+For a canvas or texture renderer, replace `attachVideo` with `attachFrameSink`.
+The core owns the video element and playback workaround, then delivers decoded
+frames. The frame is borrowed: draw or copy it before `present` returns.
+
+```ts
+stream.attachFrameSink({
+  present(source, width, height) {
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    canvas.getContext('2d')?.drawImage(source, 0, 0, width, height);
+  },
+});
+```
+
+Both attachment methods return a detach function. `stop()` closes the connection
+and releases capture devices while retaining renderer attachments for `start()`.
+`dispose()` also detaches every renderer and permanently closes the client.
+Neither method terminates the Limrun instance.
+
+Map your pointer events to frame pixels and call
+`sendTouch(phase, x, y, width, height, pointerId)`. The phases are `begin`, `move`,
+and `end`. Use `sendKeyEvent`, `sendText`, `pressButton`, and `rotate` for other
+input. `sendControl` accepts messages built by the exported protocol helpers.
+
+For Duo devices, attach a second renderer with display `'inner'`. The core
+negotiates both tracks and reports the native display geometry through
+`getState().duoState` and `onStateChange`. Use `sendDisplayTouch` with the native
+`screenId` for panel input, or `sendDuoControl` for hinge and orientation commands.
+
+Enable accessibility polling with `inspectMode: true`, receive snapshots with
+`onAxSnapshotChange`, and request a fresh tree with `refreshAxTree()`. Camera and
+microphone demand use the same browser permission prompts and callbacks as
+`RemoteControl`. Your application remains responsible for instance creation and
+termination, UI gestures, and any accessibility overlay.
+
+### Connect through your own proxy
+
+Supply a transport when your backend authenticates the upstream WebSocket.
+Return a fresh socket on each call, since reconnects call `connect()` again.
+The client owns and closes that socket. Supply `platform` explicitly because a
+proxy URL does not identify the device kind.
+
+```ts
+const stream = createDeviceStream({
+  platform: 'ios',
+  autoReconnect: true,
+  transport: {
+    connect: () => new WebSocket(authenticatedProxyUrl),
+  },
+});
+```
+
+The proxy forwards Limrun's signaling messages unchanged. Video and control data
+still travel over WebRTC. The core does not append a Limrun token to a custom
+transport URL. You can fetch a fresh proxy ticket inside an asynchronous
+`connect()` implementation.
+
+If your backend can authoritatively report instance termination, implement
+`transport.isTerminated(): Promise<boolean>`. Without it, proxy failures use the
+normal retry policy. The core does not infer termination from a proxy's HTTP status.
+
+Call `updateOptions` to change callbacks, accessibility polling, microphone
+capture, reconnect policy, or the jitter buffer preference without replacing the
+connection. A newly enabled `onTrace` callback takes effect on the next reconnect,
+because tracing requires negotiation. Create a new client when changing the
+instance, transport, platform, or session ID.
