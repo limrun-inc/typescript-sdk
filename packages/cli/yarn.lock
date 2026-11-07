@@ -586,10 +586,10 @@
     ws "^8.21.1"
     yauzl "^3.4.0"
 
-"@limrun/apple-auth@^0.6.1":
-  version "0.6.1"
-  resolved "https://registry.npmjs.org/@limrun/apple-auth/-/apple-auth-0.6.1.tgz#ba1458a939ba5ece4890834aab5d388a8e7cd404"
-  integrity sha512-r0h0jNzuRY/esvhpzrY0ynGWA0bzPsXYu1sVT0Jy90cm3P14/N5wPI3H8Zxtshc+o1xC7U0AVQ5EigqgNRxs0Q==
+"@limrun/apple-auth@^0.6.2":
+  version "0.6.2"
+  resolved "https://registry.npmjs.org/@limrun/apple-auth/-/apple-auth-0.6.2.tgz#780077cb0ac6c61b4bec42bcddfae7cd7e8227b1"
+  integrity sha512-O+YFG4WxYUz9Rq7ddICQzogBTKDAf4HqtiEzlyPTvw70apzTRsPgPbKMn+gTDWpZWm2ESTUfCo00KPSyx8QIvA==
   dependencies:
     node-forge "^1.4.0"
     ws "^8.21.1"

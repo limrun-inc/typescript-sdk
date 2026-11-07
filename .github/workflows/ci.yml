@@ -97,6 +97,10 @@ jobs:
         working-directory: packages/cli
         run: yarn test
 
+      - name: Test local store commands end to end
+        working-directory: packages/cli
+        run: yarn test:store-e2e
+
       - name: Smoke test lim run help
         working-directory: packages/cli
         run: node bin/run.js run --help
