@@ -6,6 +6,9 @@ import path from 'path';
 import { encodeApkDelta } from '../src/internal/apk-delta';
 import { encodeXdelta3Patch, syncFolder } from '../src/folder-sync';
 
+// Encoding and HTTP retry share this budget on loaded CI workers.
+jest.setTimeout(30_000);
+
 const fixtures = path.join(__dirname, 'fixtures/apk-delta');
 let dir: string;
 beforeEach(() => {
