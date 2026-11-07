@@ -1598,7 +1598,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const latencyTraceRequested = !!onTrace;
     useEffect(() => {
       let active = true;
-      setAxSnapshot(null);
+      if (axSnapshotRef.current !== null) {
+        axSnapshotRef.current = null;
+        setAxSnapshot(null);
+        safeInvoke('onAxSnapshotChange', callbacksRef.current.onAxSnapshotChange, null);
+      }
       const client = createDeviceStream({
         url,
         token,
@@ -1613,7 +1617,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         androidElementTreeOptions,
         microphoneEnabled,
         onStateChange: (state) => {
-          setVideoLoaded(state.videoReady);
+          // Preserve the loaded layout behind errors; the placeholder returns when a new attempt starts.
+          if (
+            state.videoReady ||
+            state.connection === 'idle' ||
+            state.connection === 'connecting' ||
+            state.connection === 'reconnecting'
+          )
+            setVideoLoaded(state.videoReady);
           setRetryExhausted(state.connection === 'failed');
           setTerminated(state.connection === 'terminated');
           setDetectedDuo(state.duo);

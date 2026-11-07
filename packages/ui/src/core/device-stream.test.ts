@@ -75,7 +75,7 @@ class Peer extends EventTarget {
   channel = {
     readyState: 'connecting',
     onopen: null as (() => void) | null,
-    onclose: null,
+    onclose: null as (() => void) | null,
     onerror: null,
     close: vi.fn(),
     send: vi.fn(),
@@ -235,6 +235,77 @@ function respondWithTree(socket: Socket) {
 }
 
 describe('headless device stream', () => {
+  it('does not notify empty accessibility snapshots on mount, disable, or repeated cleanup', async () => {
+    const onAxSnapshotChange = vi.fn();
+    const client = create({
+      url: 'wss://host/ios_test',
+      token: 'secret',
+      inspectMode: true,
+      onAxSnapshotChange,
+    });
+    const { peer } = await handshake(client);
+    peer.connected();
+    await flush();
+    expect(onAxSnapshotChange).not.toHaveBeenCalled();
+    client.updateOptions({ inspectMode: false });
+    client.reconnect();
+    client.stop();
+    client.stop();
+    await flush();
+    expect(onAxSnapshotChange).not.toHaveBeenCalled();
+  });
+
+  it('preserves the reconnecting transition when manually restarting an automatic retry', async () => {
+    const onConnectionStateChange = vi.fn();
+    const client = create({
+      platform: 'ios',
+      autoReconnect: true,
+      onConnectionStateChange,
+      transport: { connect: () => new Socket('wss://proxy') as unknown as WebSocket },
+    });
+    const { peer } = await handshake(client);
+    peer.connected();
+    peer.fail();
+    expect(client.getState().connection).toBe('reconnecting');
+    onConnectionStateChange.mockClear();
+    client.reconnect();
+    await flush();
+    expect(client.getState().connection).toBe('reconnecting');
+    expect(onConnectionStateChange).not.toHaveBeenCalled();
+    const replacement = Socket.sockets.at(-1)!;
+    replacement.open();
+    await flush();
+    replacement.message({ type: 'rtcConfiguration', rtcConfiguration: { iceServers: [] } });
+    await flush();
+    const nextPeer = Peer.peers.at(-1)!;
+    nextPeer.connected();
+    const video = document.createElement('video');
+    client.attachVideo(video);
+    nextPeer.track();
+    video.dispatchEvent(new Event('loadeddata'));
+    expect(onConnectionStateChange.mock.calls).toEqual([['connected']]);
+    client.stop();
+    client.start();
+    expect(client.getState().connection).toBe('connecting');
+  });
+
+  it('clears control readiness when the data channel closes and ignores an old channel after reconnect', async () => {
+    const client = create();
+    const { peer } = await handshake(client);
+    peer.connected();
+    const close = peer.channel.onclose!;
+    peer.channel.readyState = 'closed';
+    close();
+    expect(client.getState().controlReady).toBe(false);
+    client.sendText('ignored');
+    expect(peer.channel.send).not.toHaveBeenCalled();
+    const next = await handshake(client);
+    next.peer.connected();
+    close();
+    expect(client.getState().controlReady).toBe(true);
+    client.sendText('new connection');
+    expect(next.peer.channel.send).toHaveBeenCalledOnce();
+  });
   it.each(['retry gap', 'pending transport'])(
     'keeps a visible session alive after visibility changes during %s',
     async (phase) => {
@@ -397,6 +468,10 @@ describe('headless device stream', () => {
       await flush();
       vi.runAllTicks();
       expect(client.getAxSnapshot()).toBeNull();
+      expect(onAxSnapshotChange.mock.calls).toEqual([[null]]);
+      client.stop();
+      client.stop();
+      await flush();
       expect(onAxSnapshotChange.mock.calls).toEqual([[null]]);
     },
   );
@@ -743,6 +818,80 @@ describe('RemoteControl compatibility', () => {
     });
     return connection;
   };
+
+  it.each(['failed', 'terminated'] as const)(
+    'preserves the video layout after an established stream becomes %s',
+    async (state) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({ status: state === 'terminated' ? 404 : 200 })),
+      );
+      await render();
+      const { peer } = await connect();
+      const video = host.querySelector('video')!;
+      expect(video.classList.contains('rc-video-loading')).toBe(false);
+      await act(async () => {
+        peer.fail();
+        await flush();
+      });
+      expect(host.querySelector(state === 'failed' ? '.rc-retry-button' : '.rc-terminated')).not.toBeNull();
+      expect(video.classList.contains('rc-video-loading')).toBe(false);
+      await act(async () => handle.current!.reconnect());
+      expect(video.classList.contains('rc-video-loading')).toBe(true);
+      await connect();
+      expect(video.classList.contains('rc-video-loading')).toBe(false);
+    },
+  );
+
+  it('keeps the initial loading placeholder if failure occurs before any video frame', async () => {
+    await render();
+    await act(async () => {
+      const { peer } = await handshake();
+      peer.connected();
+      peer.fail();
+      await flush();
+    });
+    expect(host.querySelector('.rc-retry-button')).not.toBeNull();
+    expect(host.querySelector('video')!.classList.contains('rc-video-loading')).toBe(true);
+  });
+
+  it('clears an existing inspector once when replacing the device, but emits no initial empty snapshot', async () => {
+    const onAxSnapshotChange = vi.fn();
+    await render({ inspectMode: true, onAxSnapshotChange });
+    expect(onAxSnapshotChange).not.toHaveBeenCalled();
+    const { socket } = await connect();
+    await act(async () => {
+      respondWithTree(socket);
+      await flush();
+    });
+    expect(host.querySelector('[data-ax-id]')).not.toBeNull();
+    onAxSnapshotChange.mockClear();
+    await render({ url: 'wss://host/ios_replacement', inspectMode: true, onAxSnapshotChange });
+    expect(onAxSnapshotChange.mock.calls).toEqual([[null]]);
+    expect(host.querySelector('[data-ax-id]')).toBeNull();
+    await connect();
+    await render({ url: 'wss://host/ios_replacement', inspectMode: false, onAxSnapshotChange });
+    expect(onAxSnapshotChange.mock.calls).toEqual([[null]]);
+  });
+
+  it('does not read the clipboard after the control channel closes', async () => {
+    const readText = vi.fn(async () => 'hello');
+    vi.stubGlobal('navigator', { onLine: true, clipboard: { readText } });
+    await render();
+    const { peer } = await connect();
+    await act(async () => {
+      peer.channel.readyState = 'closed';
+      peer.channel.onclose!();
+      const video = host.querySelector('video')!;
+      video.focus();
+      video.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', ctrlKey: true, bubbles: true }),
+      );
+      await flush();
+    });
+    expect(readText).not.toHaveBeenCalled();
+    expect(peer.channel.send).not.toHaveBeenCalled();
+  });
 
   it('clears rendered inspector boxes and callbacks when the connection drops', async () => {
     const onAxSnapshotChange = vi.fn();

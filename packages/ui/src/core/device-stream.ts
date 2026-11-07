@@ -180,6 +180,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   let currentAxSnapshot: AxSnapshot | null = null;
   let axSnapshotRevision = 0;
   const publishAxSnapshot = (snapshot: AxSnapshot | null) => {
+    if (snapshot === null && currentAxSnapshot === null) return;
     currentAxSnapshot = snapshot;
     const revision = ++axSnapshotRevision;
     // Defer customer code until cleanup completes. A newer snapshot supersedes queued delivery.
@@ -1430,6 +1431,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         if (!isCurrentAttempt() || currentDataChannel !== dataChannel) {
           return;
         }
+        updateState({ controlReady: false });
         updateStatus('Control channel closed');
       };
 
@@ -1812,7 +1814,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     lifecycleGeneration++;
     currentTerminationProbeInFlight = false;
     publishAxSnapshot(null);
-    currentConnectionState = null;
+    if (currentConnectionState !== 'reconnecting') currentConnectionState = null;
     document.addEventListener('visibilitychange', handleVisibilityChange);
     if (!document.hidden) startKeepAlive();
     // An explicit start or reconnect
