@@ -1,14 +1,15 @@
 {
   "name": "@limrun/apple-auth",
-  "version": "0.6.0",
-  "description": "Browser primitives for Apple authentication, signing credentials, and App Store Connect.",
+  "version": "0.6.1",
+  "description": "Apple authentication, signing credentials, and App Store Connect for browsers, CLIs, and desktop apps.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "THIRD_PARTY_NOTICES"
   ],
   "publishConfig": {
     "access": "public",
@@ -40,8 +41,8 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@foxt/js-srp": "^0.0.3-patch2",
-    "node-forge": "^1.4.0"
+    "node-forge": "^1.4.0",
+    "ws": "^8.21.1"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0"
@@ -54,6 +55,7 @@
   "devDependencies": {
     "@types/node-forge": "^1.3.14",
     "@types/react": "^19.1.12",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react-swc": "^4.0.1",
     "eslint": "^9.39.1",
     "jsdom": "^29.1.1",

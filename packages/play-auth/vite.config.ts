@@ -16,8 +16,9 @@ export default defineConfig({
       fileName: (format, entryName) => `${entryName}.${format === 'es' ? 'js' : 'cjs'}`,
     },
     rollupOptions: {
-      external: ['react', 'react/jsx-runtime'],
+      external: ['react', 'react/jsx-runtime', 'node-forge', 'ws', /^node:/],
       output: {
+        dynamicImportInCjs: false,
         globals: {
           react: 'React',
           'react/jsx-runtime': 'jsxRuntime',

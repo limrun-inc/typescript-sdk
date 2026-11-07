@@ -1,7 +1,7 @@
 # @limrun/play-auth
 
 Headless building blocks for publishing an AAB asset from the Limrun
-registry to Google Play, with a browser-owned Google sign-in. No UI ships
+registry to Google Play, with browser and Desktop OAuth sign-in. No UI ships
 here; embedders render their own buttons and dialogs around the hook,
 same as `device-install`.
 
@@ -9,13 +9,60 @@ The Google access token is minted in the browser via Google Identity
 Services (token model, no client secret) and sent to the registry once
 per publish. Limrun never stores it.
 
-## Requirements
+## Browser requirements
 
 - A Google OAuth **Web application** client ID whose authorized
   JavaScript origins include your app's origin.
 - The signed-in Google account needs release permission for the target
   app in Play Console, and the app listing must already exist.
 - The asset must be an AAB signed with the app's Play upload key.
+
+## Sign in from a CLI or desktop app
+
+Use the same `@limrun/play-auth` import in Node.js 18 or later or the Node
+process of a desktop app. Browser code continues to use
+`requestGoogleAccessToken`; the Desktop flow opens the system browser and
+receives the authorization code on a temporary `127.0.0.1` listener.
+
+Create a Google OAuth client with application type **Desktop app**, enable the
+Google Play Android Developer API in its project, and download the client JSON.
+Configure the consent screen and any required test users. A Web application
+client cannot be substituted for the Desktop client.
+
+```ts
+import { readFile } from 'node:fs/promises';
+import open from 'open';
+import {
+  authenticateGoogleDesktop,
+  parseGoogleDesktopClient,
+  refreshGoogleAccessToken,
+} from '@limrun/play-auth';
+
+const client = parseGoogleDesktopClient(JSON.parse(await readFile('client_secret.json', 'utf8')));
+const tokens = await authenticateGoogleDesktop({ ...client, openBrowser: open });
+// Store the client configuration and tokens.refreshToken in your credential store.
+// tokens.accessToken can be passed to publishToPlaystore.
+
+const refreshed = await refreshGoogleAccessToken({
+  ...client,
+  refreshToken: tokens.refreshToken,
+});
+// Save a replacement refreshToken if Google returns one; otherwise keep the old one.
+```
+
+For experimental Console operations, pass `consoleScope: PLAY_CONSOLE_SCOPE`
+or `consoleScope: PLAY_DEVELOPER_APP_SCOPE` only after Google approves that scope
+for the client. The Desktop flow requests it alongside `ANDROID_PUBLISHER_SCOPE`.
+
+`authenticateGoogleDesktop` uses PKCE and a random state value, requests offline
+access to the Android Publisher scope, and requires a refresh token in the
+response. Pass `signal` to cancel or `timeoutMs` to change the five-minute
+browser callback deadline. Both token helpers return `expiresAt` as Unix time
+in milliseconds. They do not write files or store credentials in Limrun.
+
+Run the process on the same computer as the browser. In Electron, call the
+Desktop flow from the main process and pass a system-browser opener. For the
+Limrun CLI, use `lim android play auth --client-config client_secret.json`.
 
 ## React
 

@@ -24,3 +24,5 @@ export {
   type PlayConsoleApp,
   type PlayConsoleAuth,
 } from './console';
+
+export * from './google-desktop';

@@ -7,6 +7,7 @@ const sessionB = 'fedcba9876543210fedcba9876543210';
 
 class MockWebSocket {
   static OPEN = 1;
+  readonly OPEN = MockWebSocket.OPEN;
   static instances: MockWebSocket[] = [];
   readyState = 0;
   onopen?: () => void;

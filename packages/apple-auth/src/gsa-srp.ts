@@ -1,4 +1,5 @@
-import { Hash, Mode, Srp, util } from '@foxt/js-srp';
+import { runtimeCrypto } from './internal/runtime';
+import { Hash, Mode, Srp, util } from './vendor/js-srp';
 
 export type AppleSRPProtocol = 's2k' | 's2k_fo';
 
@@ -75,6 +76,7 @@ async function deriveApplePassword(
   salt: Uint8Array,
   iterations: number,
 ) {
+  const crypto = await runtimeCrypto();
   let passHash = new Uint8Array(await util.hash(srp.h, toArrayBuffer(stringToBytes(password))));
   if (protocol === 's2k_fo') {
     passHash = stringToBytes(util.toHex(passHash));

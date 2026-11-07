@@ -1,3 +1,4 @@
+import { runtimeCrypto } from './internal/runtime';
 // Browser-side Android upload keystore generation, the Play twin of the
 // Apple certificate flow: the private key is born in the browser and goes
 // only into the caller's SigningSecretStore; Limrun never sees it. The
@@ -24,7 +25,7 @@ const KEY_ALIAS = 'upload';
 // reads as ISO-8859-1, and must survive any shell quoting users apply.
 const PASSWORD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
-function generatePassword(length = 24): string {
+function generatePassword(crypto: Crypto, length = 24): string {
   // Rejection sampling: 2^32 is not a multiple of 62, so a plain modulo
   // would overweight the first four alphabet characters (immeasurably,
   // but unbiased is three lines and matches the CLI twin's randomInt).
@@ -50,7 +51,8 @@ function generatePassword(length = 24): string {
  * and the PKCS12, mirroring the Apple crypto in this package.
  */
 export async function generateAndroidUploadKeystore(applicationId: string): Promise<AndroidUploadKeystore> {
-  const password = generatePassword();
+  const crypto = await runtimeCrypto();
+  const password = generatePassword(crypto);
   const keyPair = await generateRsaSigningKeyPair();
   const pkcs8 = new Uint8Array(await crypto.subtle.exportKey('pkcs8', keyPair.privateKey));
   const privateKey = forge.pki.privateKeyFromAsn1(
