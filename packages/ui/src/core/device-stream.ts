@@ -52,10 +52,9 @@ function requestId(): string {
 /** A browser session shared by RemoteControl and custom renderers. No React or CSS required. */
 export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   let options = { ...initialOptions };
-  const { url, token, deviceModel, axPollIntervalMs, axMaxBackoffMs, androidElementTreeOptions } = options;
+  const { url, token, deviceModel } = options;
   const sessionId = options.sessionId ?? requestId();
   const platform = options.platform ?? detectPlatform(url ?? '');
-  const openUrl = options.openUrl;
   let state: DeviceStreamState = {
     connection: 'idle',
     videoReady: false,
@@ -108,6 +107,8 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   let currentTerminated = false;
   // Guards against firing overlapping termination probes.
   let currentTerminationProbeInFlight = false;
+  // Retries belong to one lifecycle; explicit start/stop invalidates its outstanding probes.
+  let lifecycleGeneration = 0;
   let currentWs: WebSocket | null = null;
   let currentPeerConnection: RTCPeerConnection | null = null;
   let currentDataChannel: RTCDataChannel | null = null;
@@ -879,7 +880,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   };
 
   const handleVisibilityChange = () => {
-    if (document.hidden || !currentWs) {
+    if (document.hidden) {
       stopKeepAlive();
     } else {
       startKeepAlive();
@@ -951,12 +952,13 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   const checkTerminated = () => {
     if (currentTerminated || currentTerminationProbeInFlight) return;
     currentTerminationProbeInFlight = true;
-    const generation = currentConnectionGeneration;
+    const generation = lifecycleGeneration;
     void probeTerminated()
       .catch(() => false)
       .then((isTerminated) => {
+        if (generation !== lifecycleGeneration) return;
         currentTerminationProbeInFlight = false;
-        if (isTerminated && generation === currentConnectionGeneration) {
+        if (isTerminated) {
           markTerminated();
         }
       });
@@ -1016,6 +1018,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   };
 
   const startAttempt = async (attemptNumber = 0) => {
+    const { openUrl, axPollIntervalMs, axMaxBackoffMs, androidElementTreeOptions } = options;
     // Never reconnect to an instance we've concluded is gone. `start()`
     // clears this when a deliberate fresh connection is requested.
     if (currentTerminated) return;
@@ -1116,7 +1119,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
           return;
         }
         updateStatus('WebSocket closed');
-        scheduleRetry('Signaling socket closed', generation);
+        // Signaling can close while WebRTC still plays. Its own failure handlers govern retries.
       };
 
       // Request RTCConfiguration. The reply doubles as the capability
@@ -1806,6 +1809,8 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
 
   const start = () => {
     if (disposed) throw new Error('Device stream is disposed');
+    lifecycleGeneration++;
+    currentTerminationProbeInFlight = false;
     publishAxSnapshot(null);
     currentConnectionState = null;
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -1818,6 +1823,8 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   };
 
   const stop = () => {
+    lifecycleGeneration++;
+    currentTerminationProbeInFlight = false;
     stopKeepAlive();
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     currentConnectionGeneration += 1;

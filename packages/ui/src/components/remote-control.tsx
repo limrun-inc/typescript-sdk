@@ -528,6 +528,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const inspectModeResolved: InspectMode = inspectMode === 'hover-only' ? 'hover-only' : 'select';
 
     const platform = useMemo(() => detectPlatform(url), [url]);
+    const sessionId = useMemo(
+      () =>
+        propSessionId ||
+        Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+      [propSessionId],
+    );
     const config = deviceConfig[platform];
     const platformAssets = assets?.[platform];
     const frameImageSrc =
@@ -1596,7 +1602,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const client = createDeviceStream({
         url,
         token,
-        sessionId: propSessionId,
+        sessionId,
         deviceModel,
         autoReconnect,
         jitterBufferTargetMs,
@@ -1621,7 +1627,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         },
         onAxStatusChange: (...args) => callbacksRef.current.onAxStatusChange?.(...args),
         onCameraDemandChange: (...args) => callbacksRef.current.onCameraDemandChange?.(...args),
-        onCameraStats: (...args) => callbacksRef.current.onCameraStats?.(...args),
+        onCameraStats: onCameraStats ? (...args) => callbacksRef.current.onCameraStats?.(...args) : undefined,
         onMicrophoneStateChange: (...args) => callbacksRef.current.onMicrophoneStateChange?.(...args),
         onTrace: latencyTraceRequested ? (...args) => callbacksRef.current.onTrace?.(...args) : undefined,
         onTerminated: () => callbacksRef.current.onTerminated?.(),
@@ -1648,14 +1654,30 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     useEffect(() => {
       clientRef.current?.updateOptions({
+        openUrl,
+        axPollIntervalMs,
+        axMaxBackoffMs,
+        androidElementTreeOptions,
         autoReconnect,
         jitterBufferTargetMs,
         microphoneEnabled,
         inspectMode,
         onPlaybackStats:
           onPlaybackStats ? (...args) => callbacksRef.current.onPlaybackStats?.(...args) : undefined,
+        onCameraStats: onCameraStats ? (...args) => callbacksRef.current.onCameraStats?.(...args) : undefined,
       });
-    }, [autoReconnect, jitterBufferTargetMs, microphoneEnabled, inspectMode, !!onPlaybackStats]);
+    }, [
+      autoReconnect,
+      jitterBufferTargetMs,
+      microphoneEnabled,
+      inspectMode,
+      !!onPlaybackStats,
+      !!onCameraStats,
+      openUrl,
+      axPollIntervalMs,
+      axMaxBackoffMs,
+      androidElementTreeOptions,
+    ]);
 
     // Recompute the inspect-overlay geometry (container-local pixel rect of
     // the actually-rendered video content) from the current mapping context.

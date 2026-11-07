@@ -30,6 +30,11 @@ export interface DeviceStreamTransport {
 
 /** Options that can change without replacing the connection. */
 export interface DeviceStreamLiveOptions {
+  /** Applied on the next connection attempt. */
+  openUrl?: string;
+  axPollIntervalMs?: number;
+  axMaxBackoffMs?: number;
+  androidElementTreeOptions?: AndroidElementTreeOptions;
   autoReconnect?: boolean;
   jitterBufferTargetMs?: number | null;
   microphoneEnabled?: boolean;
@@ -51,10 +56,6 @@ export type DeviceStreamOptions = DeviceStreamLiveOptions & {
   /** Required with proxy transports; direct instance URLs can supply the platform implicitly. */
   platform?: 'ios' | 'android';
   deviceModel?: 'iphone-duo';
-  openUrl?: string;
-  axPollIntervalMs?: number;
-  axMaxBackoffMs?: number;
-  androidElementTreeOptions?: AndroidElementTreeOptions;
 } & (
     | { url: string; token: string; transport?: never }
     | { transport: DeviceStreamTransport; platform: 'ios' | 'android'; url?: never; token?: never }

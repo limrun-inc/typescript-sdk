@@ -127,6 +127,10 @@ class Peer extends EventTarget {
     this.transceivers.push(transceiver);
     return transceiver;
   }
+  fail() {
+    this.connectionState = 'failed';
+    this.onconnectionstatechange?.();
+  }
   connected() {
     this.channel.readyState = 'open';
     this.channel.onopen?.();
@@ -231,6 +235,146 @@ function respondWithTree(socket: Socket) {
 }
 
 describe('headless device stream', () => {
+  it.each(['retry gap', 'pending transport'])(
+    'keeps a visible session alive after visibility changes during %s',
+    async (phase) => {
+      let finishConnect!: (socket: WebSocket) => void;
+      const connect = vi.fn<() => WebSocket | Promise<WebSocket>>(
+        () => new Socket('wss://proxy') as unknown as WebSocket,
+      );
+      const client = create({ platform: 'ios', autoReconnect: true, transport: { connect } });
+      const { peer } = await handshake(client);
+      peer.connected();
+      vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+      document.dispatchEvent(new Event('visibilitychange'));
+      peer.fail();
+      if (phase === 'pending transport') {
+        connect.mockImplementationOnce(
+          () =>
+            new Promise<WebSocket>((resolve) => {
+              finishConnect = resolve;
+            }),
+        );
+        await vi.advanceTimersByTimeAsync(1000);
+      }
+      vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+      document.dispatchEvent(new Event('visibilitychange'));
+      if (phase === 'pending transport') {
+        finishConnect(new Socket('wss://proxy') as unknown as WebSocket);
+        await flush();
+      } else await vi.advanceTimersByTimeAsync(1000);
+      const replacement = Socket.sockets.at(-1)!;
+      replacement.open();
+      await flush();
+      replacement.message({ type: 'rtcConfiguration', rtcConfiguration: { iceServers: [] } });
+      await flush();
+      Peer.peers.at(-1)!.connected();
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(replacement.sent.filter((message) => message.type === 'keepAlive')).toHaveLength(2);
+      vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(replacement.sent.filter((message) => message.type === 'keepAlive')).toHaveLength(2);
+    },
+  );
+
+  it('honors a slow termination verdict after retries exhaust', async () => {
+    let finishProbe!: (result: boolean) => void;
+    const isTerminated = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finishProbe = resolve;
+        }),
+    );
+    const onTerminated = vi.fn();
+    const client = create({
+      platform: 'ios',
+      autoReconnect: true,
+      onTerminated,
+      transport: {
+        connect: () => new Socket('wss://proxy') as unknown as WebSocket,
+        isTerminated,
+      },
+    });
+    const { peer } = await handshake(client);
+    peer.connected();
+    peer.fail();
+    // Open each retry socket, then fail its RTC configuration request before the probe returns.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await vi.advanceTimersByTimeAsync(1000);
+      const socket = Socket.sockets.at(-1)!;
+      socket.open();
+      await flush();
+      const request = socket.sent.find((message) => message.type === 'requestRtcConfiguration')!;
+      socket.message({
+        type: 'signalingError',
+        requestType: 'requestRtcConfiguration',
+        sessionId: request.sessionId,
+        error: 'gone',
+      });
+      await flush();
+    }
+    expect(client.getState().connection).toBe('failed');
+    expect(isTerminated).toHaveBeenCalledOnce();
+    finishProbe(true);
+    await flush();
+    expect(client.getState().connection).toBe('terminated');
+    expect(onTerminated).toHaveBeenCalledOnce();
+  });
+
+  it('isolates termination probes across an explicit restart', async () => {
+    const probes: ((value: boolean) => void)[] = [];
+    const isTerminated = vi.fn(() => new Promise<boolean>((resolve) => probes.push(resolve)));
+    const client = create({
+      platform: 'ios',
+      autoReconnect: true,
+      transport: { connect: () => new Socket('wss://proxy') as unknown as WebSocket, isTerminated },
+    });
+    const first = await handshake(client);
+    first.peer.connected();
+    first.peer.fail();
+    client.stop();
+    const second = await handshake(client);
+    second.peer.connected();
+    second.peer.fail();
+    expect(isTerminated).toHaveBeenCalledTimes(2);
+    probes[0](true);
+    await flush();
+    expect(client.getState().connection).toBe('reconnecting');
+    await vi.advanceTimersByTimeAsync(1000);
+    const third = Socket.sockets.at(-1)!;
+    third.drop();
+    await flush();
+    expect(isTerminated).toHaveBeenCalledTimes(2);
+    probes[1](true);
+    await flush();
+    expect(client.getState().connection).toBe('terminated');
+  });
+
+  it.each([false, true])(
+    'preserves playing WebRTC after signaling closes with autoReconnect=%s',
+    async (autoReconnect) => {
+      const client = create({ url: 'wss://host/ios_test', token: 'secret', autoReconnect });
+      const video = document.createElement('video');
+      client.attachVideo(video);
+      const { socket, peer } = await handshake(client);
+      peer.connected();
+      const stream = peer.track();
+      video.dispatchEvent(new Event('loadeddata'));
+      socket.drop();
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(client.getState()).toMatchObject({
+        connection: 'connected',
+        videoReady: true,
+        controlReady: true,
+      });
+      expect(video.srcObject).toBe(stream);
+      expect(peer.close).not.toHaveBeenCalled();
+      expect(Socket.sockets).toHaveLength(1);
+      client.pressButton('home');
+      expect(peer.channel.send).toHaveBeenCalledTimes(2);
+    },
+  );
   it.each(['stop', 'reconnect', 'drop', 'dispose'] as const)(
     'clears the accessibility snapshot on %s',
     async (action) => {
@@ -248,7 +392,7 @@ describe('headless device stream', () => {
       vi.runAllTicks();
       expect(onAxSnapshotChange.mock.lastCall![0].elements).toHaveLength(1);
       onAxSnapshotChange.mockClear();
-      if (action === 'drop') socket.drop();
+      if (action === 'drop') peer.fail();
       else client[action]();
       await flush();
       vi.runAllTicks();
@@ -385,7 +529,7 @@ describe('headless device stream', () => {
     expect(peer.transceivers.map((t) => t.direction)).toEqual(['recvonly', 'recvonly']);
     const pending = client.screenshot();
     const rejected = expect(pending).rejects.toThrow('disconnected');
-    socket.drop();
+    peer.fail();
     await rejected;
     expect(client.getState().connection).toBe('reconnecting');
     expect(socket.url).toBe('wss://t3/device?ticket=host-ticket');
@@ -463,9 +607,9 @@ describe('headless device stream', () => {
           }),
       },
     });
-    const { socket, peer } = await handshake(client);
+    const { peer } = await handshake(client);
     peer.connected();
-    socket.drop();
+    peer.fail();
     client.stop();
     resolve(true);
     await flush();
@@ -499,7 +643,7 @@ describe('headless device stream', () => {
     const client = create({ platform: 'android', autoReconnect: true, transport: { connect } });
     const { socket, peer } = await handshake(client);
     peer.connected();
-    socket.drop();
+    peer.fail();
     await vi.advanceTimersByTimeAsync(1000);
     await flush();
     const replacement = Socket.sockets.at(-1)!;
@@ -603,7 +747,7 @@ describe('RemoteControl compatibility', () => {
   it('clears rendered inspector boxes and callbacks when the connection drops', async () => {
     const onAxSnapshotChange = vi.fn();
     await render({ inspectMode: true, onAxSnapshotChange });
-    const { socket } = await connect();
+    const { socket, peer } = await connect();
     await act(async () => {
       respondWithTree(socket);
       await flush();
@@ -616,7 +760,7 @@ describe('RemoteControl compatibility', () => {
     });
     expect(host.querySelector('[data-selected="true"]')).not.toBeNull();
     await act(async () => {
-      socket.drop();
+      peer.fail();
       await flush();
       vi.runAllTicks();
     });
@@ -624,6 +768,41 @@ describe('RemoteControl compatibility', () => {
     expect(handle.current!.getAxSnapshot()).toBeNull();
     expect(onAxSnapshotChange).toHaveBeenLastCalledWith(null);
     expect(host.querySelector('.rc-retry-button')).not.toBeNull();
+  });
+
+  it('keeps the session ID across credential changes', async () => {
+    await render({ openUrl: 'myapp://first' });
+    const first = await connect();
+    const sessionId = first.socket.sent.find(
+      (message) => message.type === 'requestRtcConfiguration',
+    )!.sessionId;
+    await render({ token: 'new-token', openUrl: 'myapp://second' });
+    const second = await connect();
+    expect(second.socket.sent.find((message) => message.type === 'requestRtcConfiguration')!.sessionId).toBe(
+      sessionId,
+    );
+  });
+
+  it('uses updated URL and accessibility polling options on manual retry', async () => {
+    await render({ token: 'new-token', openUrl: 'myapp://second' });
+    const first = await connect();
+    const sessionId = first.socket.sent.find(
+      (message) => message.type === 'requestRtcConfiguration',
+    )!.sessionId;
+    await render({ token: 'new-token', openUrl: 'myapp://third', inspectMode: true, axPollIntervalMs: 500 });
+    expect(Socket.sockets).toHaveLength(1);
+    await act(async () => handle.current!.reconnect());
+    const third = await connect();
+    expect(third.socket.sent.find((message) => message.type === 'openUrl')).toMatchObject({
+      url: 'myapp://third',
+      sessionId,
+    });
+    await act(async () => {
+      respondWithTree(third.socket);
+      await flush();
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(third.socket.sent.filter((message) => message.type === 'elementTree')).toHaveLength(2);
   });
 
   it('preserves playback measurements and the connection across prop and callback changes', async () => {
@@ -760,13 +939,23 @@ describe('RemoteControl compatibility', () => {
       true,
       expect.objectContaining({ width: 1280, height: 720 }),
     );
+    const cameraSender = peer.transceivers.find(
+      (t) => t.direction === 'sendonly' && t.receiver.track.kind === 'video',
+    ).sender;
+    cameraSender.getStats = vi.fn(async () => new Map());
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(cameraSender.getStats).not.toHaveBeenCalled();
+    const onCameraStats = vi.fn();
     await render({
       microphoneEnabled: true,
       inspectMode: 'hover-only',
       jitterBufferTargetMs: 20,
       onMicrophoneStateChange,
       onCameraDemandChange,
+      onCameraStats,
     });
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(cameraSender.getStats).toHaveBeenCalledOnce();
     expect(getUserMedia).toHaveBeenCalledTimes(2);
     expect(
       peer.transceivers
@@ -774,7 +963,7 @@ describe('RemoteControl compatibility', () => {
         .map((t) => t.sender.replaceTrack.mock.lastCall[0]),
     ).toEqual([camera, mic]);
     await act(async () => {
-      socket.drop();
+      peer.fail();
       await flush();
     });
     expect(mic.stop).toHaveBeenCalledOnce();
