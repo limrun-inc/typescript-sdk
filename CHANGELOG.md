@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.69.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.3...v0.69.4) (2026-11-07)
+
+
+### Bug Fixes
+
+* **ui:** fetch Duo orientation before its first rotation ([55a83cf](https://github.com/limrun-inc/typescript-sdk/commit/55a83cfdbdcf7e99184fcd2a607cc114c53677d6))
+* **ui:** preserve Duo startup error handling across reconnects ([a09cd3f](https://github.com/limrun-inc/typescript-sdk/commit/a09cd3f51eb9bc2840ea11dd3c7f0a49c6faae8a))
+* **ui:** route iOS hardware controls through native actions ([c11866a](https://github.com/limrun-inc/typescript-sdk/commit/c11866a63082fd55a98d70b9f5c945f986f8022e))
+* **ui:** send native iOS hardware controls from core ([686eb7c](https://github.com/limrun-inc/typescript-sdk/commit/686eb7cba327b642a756f738f8cb49c3cbbf5a6f))
+* **ui:** share the initial Duo state request with rotation ([48529b6](https://github.com/limrun-inc/typescript-sdk/commit/48529b610804fd3129f8b3bd26d4fe1981c64aff))
+
+
+### Chores
+
+* **cli:** release 0.52.2 with SDK 0.69.3 ([9b0aab4](https://github.com/limrun-inc/typescript-sdk/commit/9b0aab46837ff51755bc95358cc04f3455b8dabf))
+* **cli:** release 0.52.2 with SDK 0.69.3 ([3d6b7ed](https://github.com/limrun-inc/typescript-sdk/commit/3d6b7ed10127c9ea261b7f002d2aec8dfe6d7544))
+
 ## [0.69.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.2...v0.69.3) (2026-11-07)
 
 
