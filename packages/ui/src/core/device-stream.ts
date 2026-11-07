@@ -190,11 +190,11 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     });
   };
   let currentConnectionState: RemoteControlConnectionState | null = null;
-  let currentDuoRequests = new Map<
+  let currentControlRequests = new Map<
     string,
     { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
   >();
-  const sendDuoControl = (type: string, parameters: object): Promise<void> =>
+  const sendDeviceControl = (type: string, parameters: object): Promise<void> =>
     new Promise((resolve, reject) => {
       const socket = currentWs;
       if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -203,11 +203,18 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       }
       const id = requestId();
       const timer = setTimeout(() => {
-        currentDuoRequests.delete(id);
+        currentControlRequests.delete(id);
         reject(new Error('Device control timed out'));
       }, 5000);
-      currentDuoRequests.set(id, { resolve, reject, timer });
-      socket.send(JSON.stringify({ type, id, ...parameters }));
+      currentControlRequests.set(id, { resolve, reject, timer });
+      try {
+        socket.send(JSON.stringify({ type, id, ...parameters }));
+        currentAxFetcher?.bumpActivity();
+      } catch (error) {
+        clearTimeout(timer);
+        currentControlRequests.delete(id);
+        reject(error);
+      }
     });
   const reportConnectionState = (next: RemoteControlConnectionState) => {
     if (currentConnectionState === next) return;
@@ -813,11 +820,11 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     stopPlaybackStats = undefined;
     clearPlayback();
     playbackConnection = null;
-    for (const request of currentDuoRequests.values()) {
+    for (const request of currentControlRequests.values()) {
       clearTimeout(request.timer);
       request.reject(new Error('Simulator disconnected'));
     }
-    currentDuoRequests.clear();
+    currentControlRequests.clear();
     setDuoState(null);
     updateState({ controlReady: false, videoReady: false });
 
@@ -1563,16 +1570,15 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
           case 'performActionsResult':
           case 'foldStateResult':
           case 'foldStateChanged': {
-            if (!isDuo) break;
-            if (message.state) {
+            if (isDuo && message.state) {
               setDuoState(message.state);
               setDuoError(undefined);
-            } else if (message.id === 'duo-capabilities')
+            } else if (isDuo && message.id === 'duo-capabilities')
               setDuoError(message.error || 'This instance does not support native iPhone Duo displays.');
-            const request = currentDuoRequests.get(message.id);
+            const request = currentControlRequests.get(message.id);
             if (request) {
               clearTimeout(request.timer);
-              currentDuoRequests.delete(message.id);
+              currentControlRequests.delete(message.id);
               if (message.error) request.reject(new Error(message.error));
               else request.resolve();
             }
@@ -1975,13 +1981,52 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     sendText: (text: string) => sendBinaryControlMessage(createSetClipboardMessage(text)),
     sendDisplayTouch: (action: number, display: number, x: number, y: number) =>
       sendBinaryControlMessage(createDisplayTouchMessage(action, display, x, y)),
-    sendDuoControl,
+    sendDuoControl: sendDeviceControl,
     pressButton: (button: 'home' | 'back' | 'recents' | 'power') => {
+      if (platform === 'ios') {
+        if (!state.controlReady || button === 'back') return;
+        // iOS maps Android keycodes to keyboard usages, not hardware buttons.
+        const name = button === 'power' ? 'lock' : 'home';
+        const press = [
+          { type: 'buttonDown', button: name },
+          { type: 'buttonUp', button: name },
+        ];
+        const actions =
+          button === 'recents' ? [...press, { type: 'wait', durationMs: 100 }, ...press] : press;
+        void sendDeviceControl('performActions', { actions }).catch((error) =>
+          console.warn('[DeviceStream] Button command failed:', error),
+        );
+        return;
+      }
       const code = { home: 3, back: 4, recents: 187, power: 26 }[button];
       sendBinaryControlMessage(createInjectKeycodeMessage(0, code, 0, 0));
       sendBinaryControlMessage(createInjectKeycodeMessage(1, code, 0, 0));
     },
-    rotate: () => sendBinaryControlMessage(new Uint8Array([11]).buffer),
+    rotate: () => {
+      if (platform === 'android') {
+        sendBinaryControlMessage(new Uint8Array([11]).buffer);
+        return;
+      }
+      if (!state.controlReady) return;
+      if (state.duoState) {
+        const cycle = ['portrait', 'landscape-left', 'pud', 'landscape-right'] as const;
+        const index = cycle.indexOf(state.duoState.orientation);
+        void sendDeviceControl('setDuoOrientation', { orientation: cycle[(index + 1) % cycle.length] }).catch(
+          (error) => console.warn('[DeviceStream] Rotation command failed:', error),
+        );
+        return;
+      }
+      const video = [...videos].find(
+        ([element, entry]) => entry.display === 'primary' && element.videoWidth > 0,
+      )?.[0];
+      const size = streams.get('primary')?.getVideoTracks()[0]?.getSettings();
+      const width = video?.videoWidth ?? size?.width ?? 0;
+      const height = video?.videoHeight ?? size?.height ?? 0;
+      const orientation = width > height ? 'Portrait' : 'Landscape';
+      void sendDeviceControl('performActions', { actions: [{ type: 'setOrientation', orientation }] }).catch(
+        (error) => console.warn('[DeviceStream] Rotation command failed:', error),
+      );
+    },
     bumpActivity: () => currentAxFetcher?.bumpActivity(),
     getAxStatus: () => currentAxFetcher?.getStatus() ?? 'idle',
     openUrl: (newUrl: string) => {
