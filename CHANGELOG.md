@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.70.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.2...v0.70.0) (2026-11-07)
+## [0.69.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.2...v0.69.3) (2026-11-07)
 
 
 ### Features
