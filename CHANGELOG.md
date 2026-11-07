@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.69.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.3...v0.69.4) (2026-11-07)
+
+
+### Chores
+
+* **cli:** release 0.52.2 with SDK 0.69.3 ([9b0aab4](https://github.com/limrun-inc/typescript-sdk/commit/9b0aab46837ff51755bc95358cc04f3455b8dabf))
+* **cli:** release 0.52.2 with SDK 0.69.3 ([3d6b7ed](https://github.com/limrun-inc/typescript-sdk/commit/3d6b7ed10127c9ea261b7f002d2aec8dfe6d7544))
+
 ## [0.69.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.2...v0.69.3) (2026-11-07)
 
 
