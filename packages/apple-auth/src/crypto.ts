@@ -74,7 +74,7 @@ export function exportAppleCertificateP12(input: ExportP12Input) {
       );
   const p12 = forge.pkcs12.toPkcs12Asn1(privateKey, [certificate], input.password, {
     algorithm: '3des',
-    friendlyName: input.friendlyName,
+    ...(input.friendlyName !== undefined && { friendlyName: input.friendlyName }),
   });
   const der = forge.asn1.toDer(p12).getBytes();
   return binaryToBase64(der);

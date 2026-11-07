@@ -1,6 +1,6 @@
 {
   "name": "@limrun/apple-auth",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Apple authentication, signing credentials, and App Store Connect for browsers, CLIs, and desktop apps.",
   "type": "module",
   "main": "./dist/index.cjs",
