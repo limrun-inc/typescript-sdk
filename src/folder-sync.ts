@@ -838,7 +838,7 @@ async function syncFolderOnce(
     })),
     payloads: encodedPayloads.map((p) => p.payload),
   };
-  const hasDelta = encodedPayloads.some((p) => p.payload.kind !== 'full');
+  const hasDelta = encodedPayloads.some((p) => p.payload.kind === 'delta');
   const compression: 'zstd' | 'gzip' | 'identity' =
     opts.compression ?? (hasDelta ? 'identity' : preferredCompression);
   slog(

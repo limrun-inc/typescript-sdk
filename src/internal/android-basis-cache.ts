@@ -62,7 +62,7 @@ export async function bootstrapAndroidBasisCache(
   token: string,
   log: SyncLog,
   onBasisDownloadProgress?: (downloadedBytes: number, totalBytes: number) => void,
-): Promise<AndroidSyncState | undefined> {
+): Promise<void> {
   const remotePath = path.basename(apkPath);
   const basisPath = path.join(basisCacheDir, remotePath);
   const state = await fetchAndroidSyncState(apiUrl, token).catch((err) => {
@@ -71,7 +71,7 @@ export async function bootstrapAndroidBasisCache(
   });
   if (!state) {
     // Without state we cannot verify anything; keep whatever local basis exists.
-    return state;
+    return;
   }
 
   // Every sha the daemon can resolve as a delta basis: the currently synced
@@ -98,7 +98,7 @@ export async function bootstrapAndroidBasisCache(
   if (fs.existsSync(basisPath)) {
     const basisSha = (await sha256FileHex(basisPath)).toLowerCase();
     if (serverShas.has(basisSha)) {
-      return state;
+      return;
     }
     // Keep the stale basis temporarily: even though the instance cannot use it
     // directly, many of its blocks may be reusable while reconstructing a seed.
@@ -113,14 +113,14 @@ export async function bootstrapAndroidBasisCache(
     await fs.promises.mkdir(path.dirname(basisPath), { recursive: true });
     await fs.promises.copyFile(apkPath, basisPath);
     log('debug', `seeded Android basis cache from local APK already known to instance: ${localSha}`);
-    return state;
+    return;
   }
   const seed = seeds[0];
   if (!seed) {
     if (staleBasisPath) {
       await fs.promises.rm(staleBasisPath, { force: true });
     }
-    return state;
+    return;
   }
   const seedUrl = buildSyncSeedUrl(apiUrl, seed.sha256);
   try {
@@ -150,5 +150,4 @@ export async function bootstrapAndroidBasisCache(
     await downloadFileToLocalPath(seedUrl, token, basisPath, onBasisDownloadProgress);
     log('debug', `seeded Android basis cache from full instance seed: ${seed.sha256}`);
   }
-  return state;
 }
