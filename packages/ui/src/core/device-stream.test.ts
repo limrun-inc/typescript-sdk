@@ -691,7 +691,11 @@ describe('headless device stream', () => {
     const client = create();
     const { socket, peer } = await handshake(client, { foldSupported: true });
     peer.connected();
-    socket.message({ type: 'foldStateResult', state: { orientation: 'landscape-left', angleDegrees: 180 } });
+    socket.message({
+      type: 'foldStateResult',
+      id: socket.sent.find((message) => message.type === 'getFoldState')!.id,
+      state: { orientation: 'landscape-left', angleDegrees: 180 },
+    });
     client.rotate();
     const request = socket.sent.at(-1)!;
     expect(request).toMatchObject({ type: 'setDuoOrientation', orientation: 'pud' });
@@ -712,8 +716,8 @@ describe('headless device stream', () => {
     peer.connected();
     expect(client.getState().duoState).toBeNull();
     client.rotate();
-    const query = socket.sent.at(-1)!;
-    expect(query).toMatchObject({ type: 'getFoldState' });
+    expect(socket.sent.filter((message) => message.type === 'getFoldState')).toHaveLength(1);
+    const query = socket.sent.find((message) => message.type === 'getFoldState')!;
     expect(peer.channel.send).not.toHaveBeenCalled();
     socket.message({
       type: 'foldStateResult',

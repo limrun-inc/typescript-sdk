@@ -216,6 +216,15 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         reject(error);
       }
     });
+  let currentFoldStateRequest: Promise<void> | undefined;
+  const readDuoState = () => {
+    if (currentFoldStateRequest) return currentFoldStateRequest;
+    const request = sendDeviceControl('getFoldState', {}).finally(() => {
+      if (currentFoldStateRequest === request) currentFoldStateRequest = undefined;
+    });
+    currentFoldStateRequest = request;
+    return request;
+  };
   const reportConnectionState = (next: RemoteControlConnectionState) => {
     if (currentConnectionState === next) return;
     currentConnectionState = next;
@@ -825,6 +834,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       request.reject(new Error('Simulator disconnected'));
     }
     currentControlRequests.clear();
+    currentFoldStateRequest = undefined;
     setDuoState(null);
     updateState({ controlReady: false, videoReady: false });
 
@@ -1344,10 +1354,14 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
           return;
         }
         currentControlChannelOpened = true;
+        if (isDuo) {
+          void readDuoState().catch((error) => {
+            if (isCurrentAttempt()) setDuoError(error instanceof Error ? error.message : String(error));
+          });
+        }
         updateState({ controlReady: true });
         clearConnectionSuccessTimeout();
         updateStatus('Control channel opened');
-        if (isDuo) ws.send(JSON.stringify({ type: 'getFoldState', id: 'duo-capabilities' }));
 
         // Spin up the AX fetcher now that we have a stable WS + control
         // channel. The fetcher's send function reuses this WS; it stops
@@ -1573,8 +1587,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
             if (isDuo && message.state) {
               setDuoState(message.state);
               setDuoError(undefined);
-            } else if (isDuo && message.id === 'duo-capabilities')
-              setDuoError(message.error || 'This instance does not support native iPhone Duo displays.');
+            }
             const request = currentControlRequests.get(message.id);
             if (request) {
               clearTimeout(request.timer);
@@ -2010,7 +2023,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       if (!state.controlReady) return;
       if (state.duo) {
         const rotateDuo = async () => {
-          if (!state.duoState) await sendDeviceControl('getFoldState', {});
+          if (!state.duoState) await readDuoState();
           const orientation = state.duoState?.orientation;
           if (!orientation) throw new Error('Duo orientation unavailable');
           const cycle = ['portrait', 'landscape-left', 'pud', 'landscape-right'] as const;
