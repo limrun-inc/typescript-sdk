@@ -442,8 +442,7 @@ describe('headless device stream', () => {
       expect(video.srcObject).toBe(stream);
       expect(peer.close).not.toHaveBeenCalled();
       expect(Socket.sockets).toHaveLength(1);
-      client.sendTouch('begin', 10, 20, 390, 844);
-      client.sendTouch('end', 10, 20, 390, 844);
+      client.pressButton('home');
       expect(peer.channel.send).toHaveBeenCalledTimes(2);
     },
   );
@@ -548,7 +547,7 @@ describe('headless device stream', () => {
     expect(axElementSelectorExpression(element, 'ios')).toContain('continue');
   });
   it('negotiates the same codecs, uses shared playback, and sends input and screenshot commands', async () => {
-    const client = create({ url: 'wss://host/android_test', token: 'secret', platform: 'android' });
+    const client = create();
     const video = document.createElement('video');
     const detach = client.attachVideo(video);
     const { socket, peer } = await handshake(client);
@@ -586,189 +585,6 @@ describe('headless device stream', () => {
     await flush();
     expect(vi.getTimerCount()).toBe(0);
   });
-  it.each([
-    [
-      'home',
-      [
-        { type: 'buttonDown', button: 'home' },
-        { type: 'buttonUp', button: 'home' },
-      ],
-    ],
-    [
-      'power',
-      [
-        { type: 'buttonDown', button: 'lock' },
-        { type: 'buttonUp', button: 'lock' },
-      ],
-    ],
-    [
-      'recents',
-      [
-        { type: 'buttonDown', button: 'home' },
-        { type: 'buttonUp', button: 'home' },
-        { type: 'wait', durationMs: 100 },
-        { type: 'buttonDown', button: 'home' },
-        { type: 'buttonUp', button: 'home' },
-      ],
-    ],
-  ] as const)('sends iOS %s as hardware buttons rather than keyboard keys', async (button, actions) => {
-    const client = create({ url: 'wss://host/ios_test', token: 'secret', platform: 'ios' });
-    const { socket, peer } = await handshake(client);
-    peer.connected();
-    client.pressButton(button);
-    expect(peer.channel.send).not.toHaveBeenCalled();
-    const request = socket.sent.at(-1)!;
-    expect(request).toMatchObject({ type: 'performActions', actions });
-    socket.message({ type: 'performActionsResult', id: request.id, results: [], error: null });
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(warn).not.toHaveBeenCalled();
-  });
-
-  it('reports an iOS button failure and does not time out a handled reply', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const client = create();
-    const { socket, peer } = await handshake(client);
-    peer.connected();
-    client.pressButton('home');
-    socket.message({ type: 'performActionsResult', id: socket.sent.at(-1)!.id, error: 'HID unavailable' });
-    await flush();
-    expect(warn).toHaveBeenCalledWith(
-      '[DeviceStream] Button command failed:',
-      expect.objectContaining({ message: 'HID unavailable' }),
-    );
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(warn).toHaveBeenCalledOnce();
-    client.stop();
-    const count = socket.sent.length;
-    client.pressButton('home');
-    client.rotate();
-    expect(socket.sent).toHaveLength(count);
-  });
-
-  it.each([
-    ['home', 3],
-    ['back', 4],
-    ['recents', 187],
-    ['power', 26],
-  ] as const)('keeps Android %s on the data channel', async (button, keycode) => {
-    const client = create({ url: 'wss://host/android_test', token: 'secret', platform: 'android' });
-    const { peer } = await handshake(client);
-    peer.connected();
-    client.pressButton(button);
-    expect(peer.channel.send).toHaveBeenCalledTimes(2);
-    for (const [action, [bytes]] of peer.channel.send.mock.calls.entries()) {
-      const packet = new DataView(bytes);
-      expect(packet.getUint8(0)).toBe(CONTROL_MSG_TYPE.INJECT_KEYCODE);
-      expect(packet.getUint8(1)).toBe(action);
-      expect(packet.getInt32(2, true)).toBe(keycode);
-    }
-    client.rotate();
-    expect([...new Uint8Array(peer.channel.send.mock.calls.at(-1)![0])]).toEqual([11]);
-  });
-
-  it.each([
-    [390, 844, 'Landscape'],
-    [844, 390, 'Portrait'],
-  ] as const)('rotates iOS from %sx%s using its signaling protocol', async (width, height, orientation) => {
-    const client = create({ url: 'wss://host/ios_test', token: 'secret', platform: 'ios' });
-    const video = document.createElement('video');
-    Object.defineProperties(video, { videoWidth: { value: width }, videoHeight: { value: height } });
-    client.attachVideo(video);
-    const { socket, peer } = await handshake(client);
-    peer.connected();
-    client.rotate();
-    expect(peer.channel.send).not.toHaveBeenCalled();
-    const request = socket.sent.at(-1)!;
-    expect(request).toMatchObject({
-      type: 'performActions',
-      actions: [{ type: 'setOrientation', orientation }],
-    });
-    socket.message({ type: 'performActionsResult', id: request.id, results: [], error: null });
-  });
-
-  it('rotates Duo using native orientation state and settles its reply', async () => {
-    const client = create();
-    const { socket, peer } = await handshake(client, { foldSupported: true });
-    peer.connected();
-    socket.message({
-      type: 'foldStateResult',
-      id: socket.sent.find((message) => message.type === 'getFoldState')!.id,
-      state: { orientation: 'landscape-left', angleDegrees: 180 },
-    });
-    client.rotate();
-    const request = socket.sent.at(-1)!;
-    expect(request).toMatchObject({ type: 'setDuoOrientation', orientation: 'pud' });
-    socket.message({
-      type: 'foldStateResult',
-      id: request.id,
-      state: { orientation: 'pud', angleDegrees: 180 },
-    });
-    expect(client.getState().duoState?.orientation).toBe('pud');
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(warn).not.toHaveBeenCalled();
-  });
-
-  it('fetches missing Duo orientation before rotating a newly connected stream', async () => {
-    const client = create();
-    const { socket, peer } = await handshake(client, { foldSupported: true });
-    peer.connected();
-    expect(client.getState().duoState).toBeNull();
-    client.rotate();
-    expect(socket.sent.filter((message) => message.type === 'getFoldState')).toHaveLength(1);
-    const query = socket.sent.find((message) => message.type === 'getFoldState')!;
-    expect(peer.channel.send).not.toHaveBeenCalled();
-    socket.message({
-      type: 'foldStateResult',
-      id: query.id,
-      state: { orientation: 'landscape-right', angleDegrees: 180 },
-    });
-    await flush();
-    const rotation = socket.sent.at(-1)!;
-    expect(rotation).toMatchObject({ type: 'setDuoOrientation', orientation: 'portrait' });
-    socket.message({
-      type: 'foldStateResult',
-      id: rotation.id,
-      state: { orientation: 'portrait', angleDegrees: 180 },
-    });
-  });
-
-  it('reports an advertised Duo instance without native fold state', async () => {
-    const client = create();
-    const { socket, peer } = await handshake(client, { foldSupported: true });
-    peer.connected();
-    const query = socket.sent.find((message) => message.type === 'getFoldState')!;
-    socket.message({ type: 'foldStateResult', id: query.id, state: null, error: null });
-    await flush();
-    expect(client.getState().duoError).toBe('This instance does not support native iPhone Duo displays.');
-  });
-
-  it('does not turn a pending Duo state query into an error banner during retry teardown', async () => {
-    const client = create({ url: 'wss://host/ios_test', token: 'secret', autoReconnect: true });
-    const { peer } = await handshake(client, { foldSupported: true });
-    peer.connected();
-    peer.fail();
-    await flush();
-    expect(client.getState().connection).toBe('reconnecting');
-    expect(client.getState().duoError).toBeUndefined();
-  });
-
-  it('rejects pending iOS hardware commands when stopped and clears their timeout', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const client = create();
-    const { peer } = await handshake(client);
-    peer.connected();
-    client.pressButton('home');
-    client.stop();
-    await flush();
-    expect(warn).toHaveBeenCalledWith(
-      '[DeviceStream] Button command failed:',
-      expect.objectContaining({ message: 'Simulator disconnected' }),
-    );
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
   it('supports an authenticated proxy socket on an HTTP origin without adding credentials or probing its URL', async () => {
     vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) });
     const socket = new Socket('wss://t3/device?ticket=host-ticket');
