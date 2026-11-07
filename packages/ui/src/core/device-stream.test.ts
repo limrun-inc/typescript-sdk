@@ -706,6 +706,30 @@ describe('headless device stream', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it('fetches missing Duo orientation before rotating a newly connected stream', async () => {
+    const client = create();
+    const { socket, peer } = await handshake(client, { foldSupported: true });
+    peer.connected();
+    expect(client.getState().duoState).toBeNull();
+    client.rotate();
+    const query = socket.sent.at(-1)!;
+    expect(query).toMatchObject({ type: 'getFoldState' });
+    expect(peer.channel.send).not.toHaveBeenCalled();
+    socket.message({
+      type: 'foldStateResult',
+      id: query.id,
+      state: { orientation: 'landscape-right', angleDegrees: 180 },
+    });
+    await flush();
+    const rotation = socket.sent.at(-1)!;
+    expect(rotation).toMatchObject({ type: 'setDuoOrientation', orientation: 'portrait' });
+    socket.message({
+      type: 'foldStateResult',
+      id: rotation.id,
+      state: { orientation: 'portrait', angleDegrees: 180 },
+    });
+  });
+
   it('rejects pending iOS hardware commands when stopped and clears their timeout', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const client = create();

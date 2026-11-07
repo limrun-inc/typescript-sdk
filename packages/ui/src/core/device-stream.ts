@@ -2008,12 +2008,16 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         return;
       }
       if (!state.controlReady) return;
-      if (state.duoState) {
-        const cycle = ['portrait', 'landscape-left', 'pud', 'landscape-right'] as const;
-        const index = cycle.indexOf(state.duoState.orientation);
-        void sendDeviceControl('setDuoOrientation', { orientation: cycle[(index + 1) % cycle.length] }).catch(
-          (error) => console.warn('[DeviceStream] Rotation command failed:', error),
-        );
+      if (state.duo) {
+        const rotateDuo = async () => {
+          if (!state.duoState) await sendDeviceControl('getFoldState', {});
+          const orientation = state.duoState?.orientation;
+          if (!orientation) throw new Error('Duo orientation unavailable');
+          const cycle = ['portrait', 'landscape-left', 'pud', 'landscape-right'] as const;
+          const index = cycle.indexOf(orientation);
+          await sendDeviceControl('setDuoOrientation', { orientation: cycle[(index + 1) % cycle.length] });
+        };
+        void rotateDuo().catch((error) => console.warn('[DeviceStream] Rotation command failed:', error));
         return;
       }
       const video = [...videos].find(
