@@ -1,4 +1,3 @@
-import { encodeApkDelta } from './internal/apk-delta';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -19,7 +18,6 @@ import { directInstanceHttpError } from './internal/direct-instance-errors';
 export type SyncLaunchMode = 'None' | 'ForegroundIfRunning' | 'RelaunchIfRunning';
 
 export type FolderSyncOptions = {
-  apkDelta?: boolean;
   apiUrl: string;
   token: string;
   udid: string; // used only for local cache scoping
@@ -109,7 +107,7 @@ type FileEntry = {
 };
 
 type FolderSyncHttpPayload = {
-  kind: 'delta' | 'full' | 'apk-delta-v1';
+  kind: 'delta' | 'full';
   path: string;
   /** Required for delta. Must match server's current sha for this path. */
   basisSha256?: string;
@@ -777,20 +775,12 @@ async function syncFolderOnce(
       const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limulator-xdelta3-'));
       const patchPath = path.join(tmpDir, 'patch.xdelta3');
       const encodeStart = nowMs();
-      let kind: FolderSyncHttpPayload['kind'] = 'delta';
-      let patchSize =
-        opts.apkDelta && f.path.toLowerCase().endsWith('.apk') ?
-          await encodeApkDelta(
-            basisPath,
-            f.absPath,
-            patchPath,
-            defaultMaxPatchBytes(f.size),
-            encodeXdelta3Patch,
-          )
-        : -1;
-      if (patchSize >= 0) kind = 'apk-delta-v1';
-      else
-        patchSize = await encodeXdelta3Patch(basisPath, f.absPath, patchPath, defaultMaxPatchBytes(f.size));
+      const patchSize = await encodeXdelta3Patch(
+        basisPath,
+        f.absPath,
+        patchPath,
+        defaultMaxPatchBytes(f.size),
+      );
       const encodeMs = nowMs() - encodeStart;
       deltaEncodeMsTotal += encodeMs;
       if (patchSize >= 0) {
@@ -801,7 +791,7 @@ async function syncFolderOnce(
         bytesSentDelta += patchSize;
         return {
           payload: {
-            kind,
+            kind: 'delta',
             path: f.path,
             basisSha256: basisSha.toLowerCase(),
             targetSha256: f.sha256.toLowerCase(),

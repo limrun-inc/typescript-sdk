@@ -2091,7 +2091,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
       };
       await fs.promises.mkdir(basisCacheDir, { recursive: true });
-      const syncState = await bootstrapAndroidBasisCache(
+      await bootstrapAndroidBasisCache(
         resolvedPath,
         basisCacheDir,
         options.apiUrl,
@@ -2110,7 +2110,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         ignoreFn: () => false,
         log: syncLog,
         compression: 'identity',
-        apkDelta: syncState?.patchFormats?.includes('apk-delta-v1') ?? false,
         ...(syncOpts?.onSyncComplete ? { onSyncComplete: syncOpts.onSyncComplete } : {}),
       });
     };

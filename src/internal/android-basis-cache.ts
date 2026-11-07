@@ -7,7 +7,6 @@ import { nodeProxyTransport } from './proxy-transport';
 import { reconstructSeedFromLocalFiles } from './seed-reconstruct';
 
 export type AndroidSyncState = {
-  patchFormats?: string[];
   roots?: Array<{
     rootName?: string;
     files?: Array<{ path?: string; sha256?: string; size?: number; mode?: number }>;
