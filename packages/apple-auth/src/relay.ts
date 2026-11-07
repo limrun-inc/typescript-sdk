@@ -57,10 +57,11 @@ export class AppleRelayWebSocketClient {
   ) {}
 
   async connect() {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) return;
+    if (this.socket && this.socket.readyState === this.socket.OPEN) return;
     this.close();
     this.sessionId = undefined;
-    const socket = new WebSocket(appleRelayWebSocketURL(this.apiUrl, this.token, this.organizationId));
+    const Socket = globalThis.WebSocket ?? ((await import('ws')).default as unknown as typeof WebSocket);
+    const socket = new Socket(appleRelayWebSocketURL(this.apiUrl, this.token, this.organizationId));
     this.socket = socket;
     socket.onmessage = (event) => {
       if (this.socket === socket) this.handleMessage(event);
@@ -91,7 +92,7 @@ export class AppleRelayWebSocketClient {
 
   request<T = unknown>(type: string, payload?: unknown) {
     const socket = this.socket;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+    if (!socket || socket.readyState !== socket.OPEN) {
       throw new AppleRelayError('Apple relay WebSocket is not connected.', this.sessionId);
     }
     const id = String(this.nextId++);

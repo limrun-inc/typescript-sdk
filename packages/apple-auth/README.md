@@ -1,7 +1,10 @@
 # @limrun/apple-auth
 
-Browser primitives for signing in with an Apple ID and managing Apple
-Developer and App Store Connect resources through Limrun's Apple relay.
+Primitives for signing in with an Apple Account and managing Apple Developer
+and App Store Connect resources through Limrun's Apple relay. Use the same
+package import in secure browser contexts, Node.js 18 or later, and the Node
+process of a desktop app. Crypto and WebSocket implementations are selected
+automatically; you do not need to install browser globals.
 
 The package exports Apple login, teams, bundle IDs, certificates,
 provisioning profiles, App Store Connect API keys and app records, signing
@@ -22,6 +25,44 @@ Signing secrets remain under the caller's control through
 is the included implementation; applications that keep secrets themselves
 implement the interface over their own storage — a database, a KMS,
 anything — like the publish-to-stores example does with its backend.
+
+## Sign in from a CLI or desktop app
+
+Use `startAppleIDLogin` for the same SRP and two-factor flow used in browsers.
+`startBrowserOwnedAppleIDLogin` remains an alias for existing integrations.
+Your application supplies the password and verification-code prompts. The
+password stays in the calling process; the relay handles SRP proofs, verification
+codes, and Apple session credentials.
+
+```ts
+import { startAppleIDLogin, listAppleTeams, ensureAppStoreConnectApiKeySecret } from '@limrun/apple-auth';
+
+const session = await startAppleIDLogin({ registryApiUrl, token, accountName, password });
+try {
+  if (session.requiresTwoFactor) {
+    await session.finishTwoFactor(await promptForVerificationCode());
+  }
+  await session.finalize();
+  const teams = await listAppleTeams({ relay: session.relay });
+  // Let the user select a team when the account belongs to more than one.
+  const team = await selectTeam(teams);
+  await ensureAppStoreConnectApiKeySecret({
+    relay: session.relay,
+    teamId: team.teamId,
+    providerId: team.providerId,
+    nickname: 'My desktop app',
+    roles: ['ADMIN'],
+    secretStore,
+  });
+} finally {
+  await session.close();
+}
+```
+
+The `secretStore` implements `SigningSecretStore`. A CLI can store the key in
+user-owned files; a desktop app can use its operating system's credential store.
+The package does not persist credentials on its own. `lim ios apple auth` uses
+this flow and saves its key under `~/.lim/secrets`.
 
 ## Get a support reference for Apple login failures
 

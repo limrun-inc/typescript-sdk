@@ -1,3 +1,4 @@
+import { runtimeCrypto } from './internal/runtime';
 import forge from 'node-forge';
 
 const rsaSigningAlgorithm: RsaHashedKeyGenParams = {
@@ -8,9 +9,7 @@ const rsaSigningAlgorithm: RsaHashedKeyGenParams = {
 };
 
 export async function generateRsaSigningKeyPair(): Promise<CryptoKeyPair> {
-  if (!crypto.subtle) {
-    throw new Error('WebCrypto is not available in this browser.');
-  }
+  const crypto = await runtimeCrypto();
   return crypto.subtle.generateKey(rsaSigningAlgorithm, true, ['sign', 'verify']);
 }
 

@@ -1,3 +1,4 @@
+import { runtimeCrypto } from './internal/runtime';
 import forge from 'node-forge';
 
 export type AppleSigningKeyMaterial = {
@@ -29,9 +30,7 @@ const rsaAlgorithm: RsaHashedKeyGenParams = {
 };
 
 export async function generateAppleSigningKeyAndCSR(input: AppleCSRInput): Promise<AppleSigningKeyMaterial> {
-  if (!crypto.subtle) {
-    throw new Error('WebCrypto is not available in this browser.');
-  }
+  const crypto = await runtimeCrypto();
   const keyPair = await crypto.subtle.generateKey(rsaAlgorithm, true, ['sign', 'verify']);
   const publicKeySPKI = new Uint8Array(await crypto.subtle.exportKey('spki', keyPair.publicKey));
   const certificationRequestInfo = derSequence(

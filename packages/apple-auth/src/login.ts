@@ -29,10 +29,10 @@ type TwoFactorMethod = { type: 'trustedDevice' } | { type: 'phone'; phoneNumberI
 
 /**
  * Signs into an Apple ID through the relay using SRP, so the password never
- * leaves the browser in a recoverable form. Returns the connected relay plus
+ * leaves the calling process in a recoverable form. Returns the connected relay plus
  * a two-factor continuation when Apple requires one.
  */
-export async function startBrowserOwnedAppleIDLogin({
+export async function startAppleIDLogin({
   registryApiUrl,
   accountName,
   password,
@@ -157,3 +157,6 @@ function recordValue(value: unknown) {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
+/** Compatibility name for the browser login API. */
+export const startBrowserOwnedAppleIDLogin = startAppleIDLogin;

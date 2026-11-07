@@ -1,7 +1,7 @@
 {
   "name": "@limrun/play-auth",
-  "version": "0.3.1",
-  "description": "Browser Google authentication and Google Play publishing primitives for Limrun.",
+  "version": "0.4.0",
+  "description": "Google authentication and Google Play publishing for browsers, CLIs, and desktop apps.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
