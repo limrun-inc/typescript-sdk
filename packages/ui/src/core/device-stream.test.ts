@@ -734,6 +734,26 @@ describe('headless device stream', () => {
     });
   });
 
+  it('reports an advertised Duo instance without native fold state', async () => {
+    const client = create();
+    const { socket, peer } = await handshake(client, { foldSupported: true });
+    peer.connected();
+    const query = socket.sent.find((message) => message.type === 'getFoldState')!;
+    socket.message({ type: 'foldStateResult', id: query.id, state: null, error: null });
+    await flush();
+    expect(client.getState().duoError).toBe('This instance does not support native iPhone Duo displays.');
+  });
+
+  it('does not turn a pending Duo state query into an error banner during retry teardown', async () => {
+    const client = create({ url: 'wss://host/ios_test', token: 'secret', autoReconnect: true });
+    const { peer } = await handshake(client, { foldSupported: true });
+    peer.connected();
+    peer.fail();
+    await flush();
+    expect(client.getState().connection).toBe('reconnecting');
+    expect(client.getState().duoError).toBeUndefined();
+  });
+
   it('rejects pending iOS hardware commands when stopped and clears their timeout', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const client = create();

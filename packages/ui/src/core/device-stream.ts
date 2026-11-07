@@ -219,9 +219,13 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   let currentFoldStateRequest: Promise<void> | undefined;
   const readDuoState = () => {
     if (currentFoldStateRequest) return currentFoldStateRequest;
-    const request = sendDeviceControl('getFoldState', {}).finally(() => {
-      if (currentFoldStateRequest === request) currentFoldStateRequest = undefined;
-    });
+    const request = sendDeviceControl('getFoldState', {})
+      .then(() => {
+        if (!state.duoState) throw new Error('This instance does not support native iPhone Duo displays.');
+      })
+      .finally(() => {
+        if (currentFoldStateRequest === request) currentFoldStateRequest = undefined;
+      });
     currentFoldStateRequest = request;
     return request;
   };
@@ -1356,7 +1360,8 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         currentControlChannelOpened = true;
         if (isDuo) {
           void readDuoState().catch((error) => {
-            if (isCurrentAttempt()) setDuoError(error instanceof Error ? error.message : String(error));
+            if (isCurrentAttempt() && currentWs === ws && ws.readyState === WebSocket.OPEN)
+              setDuoError(error instanceof Error ? error.message : String(error));
           });
         }
         updateState({ controlReady: true });
