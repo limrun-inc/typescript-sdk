@@ -21,7 +21,18 @@ export type {
   PlaybackTrackStats,
 } from './core/playback-stats';
 export type { CameraCaptureInfo, CameraFacingMode, CameraRequest, CameraResult } from './core/camera';
-export type { AxSnapshot, AxElement } from './core/ax-tree';
+export type { AxSnapshot, AxElement, AxRect, AxSelectors, AxPlatform } from './core/ax-tree';
+export {
+  axElementAtPoint,
+  axElementSelectorExpression,
+  axElementSummary,
+  axElementsEqual,
+  axSnapshotsEqual,
+  clampAxFrameForScreen,
+  normalizeAndroidTree,
+  normalizeIosTree,
+  AX_UNAVAILABLE_ERROR,
+} from './core/ax-tree';
 export type { AndroidElementTreeOptions, AxStatus } from './core/ax-fetcher';
 export type { DuoState, DuoOrientation } from './core/duo';
 export {

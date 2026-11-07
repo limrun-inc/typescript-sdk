@@ -522,8 +522,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // Mirrors for synchronous access from event handlers without stale closures.
     const axSnapshotRef = useRef<AxSnapshot | null>(null);
     axSnapshotRef.current = axSnapshot;
-    const onAxSnapshotChangeRef = useRef(onAxSnapshotChange);
-    onAxSnapshotChangeRef.current = onAxSnapshotChange;
     const onInspectSelectionChangeRef = useRef(onInspectSelectionChange);
     onInspectSelectionChangeRef.current = onInspectSelectionChange;
     const inspectActive = inspectMode === true || inspectMode === 'hover-only';
@@ -1593,6 +1591,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
     const latencyTraceRequested = !!onTrace;
     useEffect(() => {
+      let active = true;
+      setAxSnapshot(null);
       const client = createDeviceStream({
         url,
         token,
@@ -1615,6 +1615,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           setDuoError(state.duoError);
         },
         onAxSnapshotChange: (snapshot) => {
+          if (!active) return;
           setAxSnapshot((prev) => (axSnapshotsEqual(prev, snapshot) ? prev : snapshot));
           callbacksRef.current.onAxSnapshotChange?.(snapshot);
         },
@@ -1632,6 +1633,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const detach = videoRef.current ? client.attachVideo(videoRef.current) : undefined;
       client.start();
       return () => {
+        active = false;
         client.dispose();
         detach?.();
         clientRef.current = null;
@@ -1783,7 +1785,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           window.cancelAnimationFrame(cursorRafIdRef.current);
           cursorRafIdRef.current = undefined;
         }
-        safeInvoke('onAxSnapshotChange', onAxSnapshotChangeRef.current, null);
       }
     }, [inspectActive]);
 

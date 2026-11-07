@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDeviceStream, type DeviceStream } from './device-stream';
 import { attachVideoStream } from './video-playback';
+import { act, createElement, createRef } from 'react';
+import { createRoot } from 'react-dom/client';
+import {
+  RemoteControl,
+  type RemoteControlHandle,
+  type RemoteControlProps,
+} from '../components/remote-control';
+import { CONTROL_MSG_TYPE, axElementAtPoint, axElementSelectorExpression, normalizeIosTree } from '../core';
 
 vi.mock('./video-playback', () => ({
   attachVideoStream: vi.fn((video, stream) => {
@@ -74,6 +82,21 @@ class Peer extends EventTarget {
   };
   remoteDescription: unknown;
   close = vi.fn();
+  getStats = vi.fn(
+    async () =>
+      new Map([
+        [
+          'video',
+          {
+            id: 'video',
+            type: 'inbound-rtp',
+            kind: 'video',
+            timestamp: Date.now(),
+            framesDecoded: Date.now() / 20,
+          },
+        ],
+      ]) as unknown as RTCStatsReport,
+  );
   createOffer = vi.fn(async () => ({ type: 'offer', sdp: 'offer-sdp' }));
   setLocalDescription = vi.fn(async () => {});
   setRemoteDescription = vi.fn(async (value) => {
@@ -90,7 +113,10 @@ class Peer extends EventTarget {
     const transceiver = {
       direction: options.direction,
       currentDirection: options.direction,
-      receiver: { track: { kind, readyState: 'live' }, jitterBufferTarget: 0 },
+      receiver: {
+        track: { kind, id: `${kind}${this.transceivers.length}`, readyState: 'live' },
+        jitterBufferTarget: 0,
+      },
       sender: {
         replaceTrack: vi.fn(async () => {}),
         getParameters: () => ({ encodings: [{}] }),
@@ -117,6 +143,7 @@ class Peer extends EventTarget {
   }
 }
 const clients: DeviceStream[] = [];
+let mountedRoot: ReturnType<typeof createRoot> | undefined;
 function create(
   options: Parameters<typeof createDeviceStream>[0] = { url: 'wss://host/ios_test', token: 'secret' },
 ) {
@@ -127,8 +154,8 @@ function create(
 const flush = async () => {
   for (let i = 0; i < 15; i++) await Promise.resolve();
 };
-async function handshake(client: DeviceStream, config: object = {}) {
-  client.start();
+async function handshake(client?: DeviceStream, config: object = {}) {
+  client?.start();
   await flush();
   const socket = Socket.sockets.at(-1)!;
   socket.open();
@@ -166,17 +193,140 @@ beforeEach(() => {
     }),
   });
   vi.stubGlobal('RTCRtpSender', { getCapabilities: () => ({ codecs: [] }) });
+  vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
 });
 afterEach(async () => {
+  if (mountedRoot) await act(async () => mountedRoot!.unmount());
+  mountedRoot = undefined;
+  document.body.replaceChildren();
   clients.splice(0).forEach((client) => client.dispose());
   await flush();
   vi.clearAllTimers();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
+function respondWithTree(socket: Socket) {
+  const request = socket.sent.filter((message) => message.type === 'elementTree').at(-1)!;
+  socket.message({
+    type: 'elementTreeResult',
+    id: request.id,
+    json: JSON.stringify([
+      {
+        frame: { x: 0, y: 0, width: 100, height: 200 },
+        type: 'Application',
+        children: [
+          {
+            frame: { x: 10, y: 10, width: 50, height: 50 },
+            type: 'Button',
+            AXLabel: 'Continue',
+            AXUniqueId: 'continue',
+          },
+        ],
+      },
+    ]),
+  });
+}
+
 describe('headless device stream', () => {
+  it.each(['stop', 'reconnect', 'drop', 'dispose'] as const)(
+    'clears the accessibility snapshot on %s',
+    async (action) => {
+      const onAxSnapshotChange = vi.fn();
+      const client = create({
+        url: 'wss://host/ios_test',
+        token: 'secret',
+        inspectMode: true,
+        onAxSnapshotChange,
+      });
+      const { socket, peer } = await handshake(client);
+      peer.connected();
+      respondWithTree(socket);
+      await flush();
+      vi.runAllTicks();
+      expect(onAxSnapshotChange.mock.lastCall![0].elements).toHaveLength(1);
+      onAxSnapshotChange.mockClear();
+      if (action === 'drop') socket.drop();
+      else client[action]();
+      await flush();
+      vi.runAllTicks();
+      expect(client.getAxSnapshot()).toBeNull();
+      expect(onAxSnapshotChange.mock.calls).toEqual([[null]]);
+    },
+  );
+
+  it('discards a queued snapshot when inspection stops and emits one clear notification', async () => {
+    const queued: VoidFunction[] = [];
+    vi.spyOn(globalThis, 'queueMicrotask').mockImplementation((callback) => queued.push(callback));
+    const onAxSnapshotChange = vi.fn();
+    const client = create({
+      url: 'wss://host/ios_test',
+      token: 'secret',
+      inspectMode: true,
+      onAxSnapshotChange,
+    });
+    const { socket, peer } = await handshake(client);
+    peer.connected();
+    respondWithTree(socket);
+    await flush();
+    expect(client.getAxSnapshot()?.elements).toHaveLength(1);
+    client.updateOptions({ inspectMode: false });
+    client.updateOptions({ inspectMode: false, autoReconnect: true });
+    queued.forEach((callback) => callback());
+    expect(onAxSnapshotChange.mock.calls).toEqual([[null]]);
+  });
+
+  it('keeps stats cadence and deltas across callback and live option updates', async () => {
+    const first = vi.fn();
+    const next = vi.fn();
+    const client = create({ url: 'wss://host/ios_test', token: 'secret', onPlaybackStats: first });
+    const { peer } = await handshake(client);
+    peer.connectionState = 'connected';
+    peer.dispatchEvent(new Event('connectionstatechange'));
+    await flush();
+    expect(first.mock.lastCall![0].video[0].fps).toBeUndefined();
+    client.updateOptions({
+      onPlaybackStats: next,
+      jitterBufferTargetMs: 10,
+      autoReconnect: true,
+      microphoneEnabled: false,
+      inspectMode: false,
+    });
+    await flush();
+    expect(peer.getStats).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(next.mock.lastCall![0]).toMatchObject({
+      requestedTargetMs: 10,
+      video: [{ intervalMs: 2000, fps: 50 }],
+    });
+    expect(first).toHaveBeenCalledTimes(1);
+    client.updateOptions({ onPlaybackStats: undefined });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(peer.getStats).toHaveBeenCalledTimes(2);
+  });
+
+  it('exports accessibility helpers for custom inspectors', () => {
+    const snapshot = normalizeIosTree([
+      {
+        frame: { x: 0, y: 0, width: 100, height: 200 },
+        type: 'Application',
+        children: [
+          {
+            frame: { x: 10, y: 10, width: 50, height: 50 },
+            type: 'Button',
+            AXLabel: 'Continue',
+            AXUniqueId: 'continue',
+          },
+        ],
+      },
+    ]);
+    const element = axElementAtPoint(snapshot, 20, 20)!;
+    expect(element.label).toBe('Continue');
+    expect(axElementSelectorExpression(element, 'ios')).toContain('continue');
+  });
   it('negotiates the same codecs, uses shared playback, and sends input and screenshot commands', async () => {
     const client = create();
     const video = document.createElement('video');
@@ -397,5 +547,253 @@ describe('headless device stream', () => {
         .every((t) => t.sender.replaceTrack.mock.calls.length === 0),
     ).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+// Exercise the React adapter with the real core. Only browser media and the server are faked.
+describe('RemoteControl compatibility', () => {
+  let host: HTMLDivElement;
+  let handle: ReturnType<typeof createRef<RemoteControlHandle>>;
+  beforeEach(() => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 100,
+      bottom: 200,
+      width: 100,
+      height: 200,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(100);
+    vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(200);
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    mountedRoot = createRoot(host);
+    handle = createRef<RemoteControlHandle>();
+  });
+  const render = async (props: Partial<RemoteControlProps> = {}) => {
+    await act(async () =>
+      mountedRoot!.render(
+        createElement(RemoteControl, { url: 'wss://host/ios_test', token: 'secret', ref: handle, ...props }),
+      ),
+    );
+  };
+  const connect = async () => {
+    let connection!: Awaited<ReturnType<typeof handshake>>;
+    await act(async () => {
+      connection = await handshake();
+      connection.peer.connected();
+      connection.peer.track();
+      host.querySelector('video')!.dispatchEvent(new Event('loadedmetadata'));
+      host.querySelector('video')!.dispatchEvent(new Event('loadeddata'));
+    });
+    return connection;
+  };
+
+  it('clears rendered inspector boxes and callbacks when the connection drops', async () => {
+    const onAxSnapshotChange = vi.fn();
+    await render({ inspectMode: true, onAxSnapshotChange });
+    const { socket } = await connect();
+    await act(async () => {
+      respondWithTree(socket);
+      await flush();
+      vi.runAllTicks();
+    });
+    expect(host.querySelector('[data-ax-id="continue"]')).not.toBeNull();
+    await act(async () => {
+      handle.current!.setInspectHighlight(handle.current!.getAxSnapshot()!.elements[0]);
+      handle.current!.setInspectSelection(handle.current!.getAxSnapshot()!.elements[0]);
+    });
+    expect(host.querySelector('[data-selected="true"]')).not.toBeNull();
+    await act(async () => {
+      socket.drop();
+      await flush();
+      vi.runAllTicks();
+    });
+    expect(host.querySelector('[data-ax-id]')).toBeNull();
+    expect(handle.current!.getAxSnapshot()).toBeNull();
+    expect(onAxSnapshotChange).toHaveBeenLastCalledWith(null);
+    expect(host.querySelector('.rc-retry-button')).not.toBeNull();
+  });
+
+  it('preserves playback measurements and the connection across prop and callback changes', async () => {
+    const onPlaybackStats = vi.fn();
+    await render({ onPlaybackStats });
+    const { peer } = await connect();
+    await act(async () => {
+      peer.connectionState = 'connected';
+      peer.dispatchEvent(new Event('connectionstatechange'));
+    });
+    const next = vi.fn();
+    await render({
+      onPlaybackStats: next,
+      jitterBufferTargetMs: 0,
+      microphoneEnabled: true,
+      inspectMode: 'hover-only',
+      autoReconnect: true,
+    });
+    expect(Peer.peers).toHaveLength(1);
+    expect(peer.getStats).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    expect(next.mock.lastCall![0]).toMatchObject({
+      requestedTargetMs: 0,
+      video: [{ fps: 50, intervalMs: 2000 }],
+    });
+    expect(onPlaybackStats).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['ios', 'android'])(
+    'retains %s keyboard shortcuts, paste, touch, and wheel input',
+    async (platform) => {
+      vi.stubGlobal('navigator', { onLine: true, clipboard: { readText: vi.fn(async () => 'hello') } });
+      await render({ url: `wss://host/${platform}_test` });
+      const { peer } = await connect();
+      const video = host.querySelector('video')!;
+      const container = host.querySelector('.rc-container')!;
+      await act(async () => {
+        video.focus();
+        video.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'm', code: 'KeyM', ctrlKey: true, bubbles: true }),
+        );
+        video.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', ctrlKey: true, bubbles: true }),
+        );
+        await flush();
+      });
+      let messages = peer.channel.send.mock.calls.map(([buffer]) => new DataView(buffer));
+      expect(messages.map((message) => message.getUint8(0))).toEqual([
+        CONTROL_MSG_TYPE.INJECT_KEYCODE,
+        CONTROL_MSG_TYPE.INJECT_KEYCODE,
+        CONTROL_MSG_TYPE.SET_CLIPBOARD,
+      ]);
+      expect(new TextDecoder().decode(peer.channel.send.mock.calls[2][0].slice(14))).toBe('hello');
+      peer.channel.send.mockClear();
+      await act(async () => {
+        container.dispatchEvent(
+          new MouseEvent('mousedown', { clientX: 25, clientY: 50, bubbles: true, buttons: 1 }),
+        );
+        container.dispatchEvent(new MouseEvent('mouseup', { clientX: 25, clientY: 50, bubbles: true }));
+      });
+      messages = peer.channel.send.mock.calls.map(([buffer]) => new DataView(buffer));
+      expect(messages.map((message) => message.getUint8(1))).toEqual([0, 1]);
+      expect(messages[0].getInt32(10, true)).toBe(25);
+      expect(messages[0].getInt32(14, true)).toBe(50);
+      peer.channel.send.mockClear();
+      await act(async () => {
+        container.dispatchEvent(
+          new WheelEvent('wheel', { clientX: 50, clientY: 100, deltaY: 20, bubbles: true, cancelable: true }),
+        );
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      messages = peer.channel.send.mock.calls.map(([buffer]) => new DataView(buffer));
+      expect(messages.every((message) => message.getUint8(0) === CONTROL_MSG_TYPE.INJECT_TOUCH_EVENT)).toBe(
+        true,
+      );
+      expect(messages.map((message) => message.getUint8(1))).toEqual([0, 2, 1]);
+    },
+  );
+
+  it.each(['ios', 'android'])('retains %s Alt-drag pinch gestures', async (platform) => {
+    await render({ url: `wss://host/${platform}_test` });
+    const { peer } = await connect();
+    const container = host.querySelector('.rc-container')!;
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', code: 'AltLeft', altKey: true }));
+      container.dispatchEvent(
+        new MouseEvent('mousedown', { clientX: 25, clientY: 50, buttons: 1, altKey: true, bubbles: true }),
+      );
+      container.dispatchEvent(
+        new MouseEvent('mousemove', { clientX: 20, clientY: 40, buttons: 1, altKey: true, bubbles: true }),
+      );
+      container.dispatchEvent(
+        new MouseEvent('mouseup', { clientX: 20, clientY: 40, altKey: true, bubbles: true }),
+      );
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', code: 'AltLeft' }));
+    });
+    const messages = peer.channel.send.mock.calls.map(([buffer]) => new DataView(buffer));
+    const touchType =
+      platform === 'ios' ?
+        CONTROL_MSG_TYPE.INJECT_TWO_FINGER_TOUCH_EVENT
+      : CONTROL_MSG_TYPE.INJECT_TOUCH_EVENT;
+    const touches = messages.filter((message) => message.getUint8(0) === touchType);
+    expect(touches.map((message) => message.getUint8(1))).toEqual(
+      platform === 'ios' ? [0, 2, 1] : [0, 0, 2, 2, 1, 1],
+    );
+  });
+
+  it('retains camera demand and manual microphone forwarding without recapturing on unrelated prop changes', async () => {
+    const mic = { kind: 'audio', label: 'Microphone', stop: vi.fn() };
+    const camera = {
+      kind: 'video',
+      label: 'Camera',
+      readyState: 'live',
+      stop: vi.fn(),
+      getSettings: () => ({ width: 1280, height: 720, frameRate: 30 }),
+    };
+    const getUserMedia = vi.fn(
+      async (constraints: MediaStreamConstraints) =>
+        new Stream([constraints.audio ? mic : camera] as MediaStreamTrack[]),
+    );
+    vi.stubGlobal('navigator', { onLine: true, mediaDevices: { getUserMedia } });
+    const onMicrophoneStateChange = vi.fn();
+    const onCameraDemandChange = vi.fn();
+    await render({ onMicrophoneStateChange, onCameraDemandChange });
+    const { socket, peer } = await connect();
+    await render({ microphoneEnabled: true, onMicrophoneStateChange, onCameraDemandChange });
+    expect(onMicrophoneStateChange).toHaveBeenLastCalledWith({ active: true, label: 'Microphone' });
+    await act(async () => {
+      socket.message({ type: 'cameraRequest', active: true, facingMode: 'user' });
+      await flush();
+    });
+    expect(onCameraDemandChange).toHaveBeenLastCalledWith(
+      true,
+      true,
+      expect.objectContaining({ width: 1280, height: 720 }),
+    );
+    await render({
+      microphoneEnabled: true,
+      inspectMode: 'hover-only',
+      jitterBufferTargetMs: 20,
+      onMicrophoneStateChange,
+      onCameraDemandChange,
+    });
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(
+      peer.transceivers
+        .filter((t) => t.direction === 'sendonly')
+        .map((t) => t.sender.replaceTrack.mock.lastCall[0]),
+    ).toEqual([camera, mic]);
+    await act(async () => {
+      socket.drop();
+      await flush();
+    });
+    expect(mic.stop).toHaveBeenCalledOnce();
+    expect(camera.stop).toHaveBeenCalledOnce();
+    expect(onMicrophoneStateChange).toHaveBeenLastCalledWith({ active: false });
+  });
+
+  it('keeps screenshot, app termination, URL, and keyboard commands available through the ref', async () => {
+    await render();
+    const { socket, peer } = await connect();
+    handle.current!.openUrl('myapp://home');
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'openUrl', url: 'myapp://home' });
+    handle.current!.sendKeyEvent({ type: 'keydown', code: 'Enter' });
+    expect(peer.channel.send).toHaveBeenCalledOnce();
+    const screenshot = handle.current!.screenshot();
+    socket.message({ type: 'screenshotResult', id: socket.sent.at(-1)!.id, base64: 'cG5n' });
+    await expect(screenshot).resolves.toEqual({ dataUri: 'data:image/png;base64,cG5n' });
+    const terminate = handle.current!.terminateApp('com.example.app');
+    socket.message({ type: 'terminateAppResult', id: socket.sent.at(-1)!.id });
+    await expect(terminate).resolves.toBeUndefined();
   });
 });

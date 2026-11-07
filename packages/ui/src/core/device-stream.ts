@@ -177,6 +177,16 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
 
   let currentAxFetcher: AxFetcher | null = null;
   let currentAxSnapshot: AxSnapshot | null = null;
+  let axSnapshotRevision = 0;
+  const publishAxSnapshot = (snapshot: AxSnapshot | null) => {
+    currentAxSnapshot = snapshot;
+    const revision = ++axSnapshotRevision;
+    // Defer customer code until cleanup completes. A newer snapshot supersedes queued delivery.
+    queueMicrotask(() => {
+      if (revision === axSnapshotRevision)
+        safeInvoke('onAxSnapshotChange', options.onAxSnapshotChange, snapshot);
+    });
+  };
   let currentConnectionState: RemoteControlConnectionState | null = null;
   let currentDuoRequests = new Map<
     string,
@@ -816,10 +826,10 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       currentAxFetcher.stop();
       currentAxFetcher = null;
     }
+    if (currentAxSnapshot !== null) publishAxSnapshot(null);
     // Drop any active outbound camera before the PC dies so the
     // browser doesn't leave the camera indicator lit between
     // reconnects.
-    currentAxSnapshot = null;
     cameraOperations.invalidate();
     stopCameraStatsPoller();
     stopOutboundLocalStream();
@@ -1347,14 +1357,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
                 return false;
               }
             },
-            onSnapshot: (snapshot) => {
-              currentAxSnapshot = snapshot;
-              // A caller may synchronously change subscriptions from its callback.
-              queueMicrotask(() => {
-                if (isCurrentAttempt() && currentAxFetcher)
-                  safeInvoke('onAxSnapshotChange', options.onAxSnapshotChange, snapshot);
-              });
-            },
+            onSnapshot: publishAxSnapshot,
             onStatusChange: (status, error) => {
               safeInvoke('onAxStatusChange', options.onAxStatusChange, status, error);
             },
@@ -1803,6 +1806,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
 
   const start = () => {
     if (disposed) throw new Error('Device stream is disposed');
+    publishAxSnapshot(null);
     currentConnectionState = null;
     document.addEventListener('visibilitychange', handleVisibilityChange);
     if (!document.hidden) startKeepAlive();
@@ -1915,23 +1919,25 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     getState: () => state,
     updateOptions: (patch: Partial<DeviceStreamLiveOptions>) => {
       if (disposed) throw new Error('Device stream is disposed');
+      const previous = options;
       options = { ...options, ...patch };
-      for (const transceiver of currentPeerConnection?.getTransceivers() ?? []) {
-        if (transceiver.currentDirection === 'recvonly' || transceiver.currentDirection === 'sendrecv')
-          applyJitterBufferTarget(transceiver.receiver, options.jitterBufferTargetMs);
+      if (previous.jitterBufferTargetMs !== options.jitterBufferTargetMs) {
+        for (const transceiver of currentPeerConnection?.getTransceivers() ?? []) {
+          if (transceiver.currentDirection === 'recvonly' || transceiver.currentDirection === 'sendrecv')
+            applyJitterBufferTarget(transceiver.receiver, options.jitterBufferTargetMs);
+        }
       }
-      if ('onPlaybackStats' in patch) refreshPlaybackStats();
-      if ('microphoneEnabled' in patch) {
+      if (!!previous.onPlaybackStats !== !!options.onPlaybackStats) refreshPlaybackStats();
+      if (!!previous.microphoneEnabled !== !!options.microphoneEnabled) {
         currentMicrophoneEnabled = options.microphoneEnabled ?? false;
         if (isMicrophoneWanted()) void attachMicrophone();
         else void detachMicrophone();
       }
-      if ('inspectMode' in patch) {
+      if (!!previous.inspectMode !== !!options.inspectMode) {
         if (options.inspectMode) currentAxFetcher?.start();
         else {
           currentAxFetcher?.stop();
-          currentAxSnapshot = null;
-          safeInvoke('onAxSnapshotChange', options.onAxSnapshotChange, null);
+          if (currentAxSnapshot !== null) publishAxSnapshot(null);
         }
       }
     },
