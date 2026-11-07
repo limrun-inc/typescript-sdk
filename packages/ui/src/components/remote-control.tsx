@@ -532,7 +532,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const sessionId = useMemo(
       () =>
         propSessionId ||
-        Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+        Array.from(crypto.getRandomValues(new Uint32Array(4)), (part) => part.toString(36)).join(''),
       [propSessionId],
     );
     const config = deviceConfig[platform];
