@@ -1,3 +1,4 @@
+import { resolveAppleCredentials, type AppleCredentials } from '../../lib/apple-auth-credentials';
 import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
@@ -201,7 +202,7 @@ export default class XcodeBuild extends BaseCommand {
       options: ['app-store-connect', 'release-testing', 'debugging'],
     }),
     'team-id': Flags.string({
-      description: 'Apple Developer team ID for --signing-method, e.g. VMBY3VYW4U.',
+      description: 'Apple Developer team ID for cloud signing or selecting saved apple-auth credentials.',
     }),
     entitlements: Flags.string({
       description:
@@ -211,7 +212,7 @@ export default class XcodeBuild extends BaseCommand {
     }),
     'upload-to-appstore': Flags.boolean({
       description:
-        'Upload the signed IPA to App Store Connect after the build, making it available for TestFlight or App Store distribution. Requires manual or cloud signing plus --asc-key-id and --asc-key.',
+        'Upload the signed IPA to App Store Connect after the build, making it available for TestFlight or App Store distribution. Requires manual or cloud signing and saved apple-auth credentials or explicit --asc-key-id and --asc-key.',
       default: false,
     }),
     'asc-app-id': Flags.string({
@@ -271,6 +272,8 @@ export default class XcodeBuild extends BaseCommand {
     ...snapshotFlags,
   };
 
+  private appleCredentials?: AppleCredentials;
+
   async run(): Promise<void> {
     const { args, flags } = await this.parse(XcodeBuild);
     this.setParsedFlags(flags);
@@ -305,7 +308,13 @@ export default class XcodeBuild extends BaseCommand {
       // not leave a billed instance behind.
       this.error(signingProblem);
     }
-    const cloudSigningProblem = cloudSigningFlagsProblem(flags);
+    if (flags['signing-method'] || flags['upload-to-appstore']) {
+      this.appleCredentials = await resolveAppleCredentials(flags);
+    }
+    const cloudSigningProblem = cloudSigningFlagsProblem(
+      flags['upload-to-appstore'] && !flags['signing-method'] ? { ...flags, 'team-id': undefined } : flags,
+      this.appleCredentials,
+    );
     if (cloudSigningProblem) {
       this.error(cloudSigningProblem);
     }
@@ -628,10 +637,10 @@ export default class XcodeBuild extends BaseCommand {
     );
     return {
       method: flags['signing-method'] as XcodeCloudSigningMethod,
-      teamId: flags['team-id']!,
-      apiKeyId: flags['asc-key-id']!,
-      apiIssuerId: flags['asc-issuer-id']!,
-      apiPrivateKeyBase64: await this.readFileBase64(flags['asc-key']!, '--asc-key'),
+      teamId: flags['team-id'] ?? this.appleCredentials!.teamID!,
+      apiKeyId: this.appleCredentials!.keyId,
+      apiIssuerId: this.appleCredentials!.issuerId!,
+      apiPrivateKeyBase64: this.appleCredentials!.privateKeyP8Base64,
       ...(entries?.length && { entitlements }),
     };
   }
@@ -645,14 +654,16 @@ export default class XcodeBuild extends BaseCommand {
   }
 
   private async buildAppStoreOptions(flags: AppStoreFlags): Promise<AppStoreUploadConfig> {
-    if (!flags['asc-key-id'] || !flags['asc-key']) {
-      this.error('--upload-to-appstore requires both --asc-key-id and --asc-key.');
+    if (!this.appleCredentials) {
+      this.error(
+        'Run lim ios apple auth first, or provide --asc-key-id and --asc-key for --upload-to-appstore.',
+      );
     }
     return {
       ...(flags['asc-app-id'] !== undefined && { appId: flags['asc-app-id'] }),
-      apiKeyId: flags['asc-key-id'],
-      ...(flags['asc-issuer-id'] && { apiIssuerId: flags['asc-issuer-id'] }),
-      apiPrivateKeyBase64: await this.readFileBase64(flags['asc-key'], '--asc-key'),
+      apiKeyId: this.appleCredentials.keyId,
+      ...(this.appleCredentials.issuerId && { apiIssuerId: this.appleCredentials.issuerId }),
+      apiPrivateKeyBase64: this.appleCredentials.privateKeyP8Base64,
       ...(flags['asc-wait-timeout'] !== undefined && { waitTimeoutSeconds: flags['asc-wait-timeout'] }),
       ...(flags['auto-build-number'] && { autoIncrementBuildNumber: true }),
     };

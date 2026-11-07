@@ -108,6 +108,60 @@ lim logout
 
 The CLI stores configuration in `~/.lim/config.yaml`. This file is compatible with the Go-based `lim` CLI — if you've already logged in with the Go version, the TypeScript CLI will use the same credentials.
 
+## Store authentication
+
+Connect your store accounts once on your own computer:
+
+```bash
+lim ios apple auth
+lim android play auth --client-config client_secret.json
+```
+
+Apple sign-in prompts for your Apple Account password and verification code in
+the terminal. It creates or reuses an App Store Connect API key with the `ADMIN`
+role for signing and uploads. You must be an administrator of the Apple team.
+Use `--team-id` to select a team, or choose one at the prompt. The Apple password
+is never saved.
+
+For Google, download an OAuth client JSON file with application type **Desktop
+app** from Google Cloud. Enable the Google Play Android Developer API and
+configure the consent screen. Run the command on the same computer as your
+browser. The signed-in account needs publishing access to the app in Play Console.
+
+The commands save credentials in `~/.lim/secrets`. On Unix, the directory has
+mode `0700` and secret files have mode `0600`. The Google refresh token stays
+local; the CLI obtains an access token when publishing. The files are not
+encrypted. `lim logout` removes the Limrun login only, so delete the relevant
+secret file to remove a local store login. To revoke it everywhere, revoke the
+Apple API key or Google OAuth grant with the provider.
+
+Builds use saved credentials when explicit credentials are absent:
+
+```bash
+lim xcode build . --sdk iphoneos --signing-method app-store-connect --upload-to-appstore
+lim gradle build . --sign --upload-to-playstore
+```
+
+For multiple saved Apple teams, pass `--team-id` on the build. Explicit
+`--asc-key-id` and `--asc-key` credentials take precedence as a group. Google
+service-account and access-token flags take precedence over the saved login.
+Store app records and signing prerequisites still apply. Authentication itself
+does not create an app listing, an Android upload keystore, or a build instance.
+
+Manage resources through the same command groups:
+
+```bash
+lim ios apple list-bundle-ids --team-id YOUR_TEAM_ID
+lim ios apple create-app --bundle-id com.example.app --name "Example app"
+lim android play publish --asset-name app-release.aab --package-name com.example.app
+```
+
+Use `lim ios apple --help` and `lim android play --help` for all actions. Apple
+portal actions use a fresh interactive login; private downloads require an output
+file. Play signing enrollment requires a Google-approved Console
+OAuth scope. See the [store account guide](https://docs.limrun.com/docs/guides/store-authentication)
+for resource actions, local signing files, and scope requirements.
+
 ## Fast First Run
 
 ```bash
