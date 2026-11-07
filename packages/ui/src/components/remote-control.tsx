@@ -445,6 +445,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const [isLandscape, setIsLandscape] = useState(false);
     const [useAndroidTabletFrame, setUseAndroidTabletFrame] = useState(false);
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
+    const lastVideoSize = useRef<{ width: number; height: number } | null>(null);
     // Map to track active pointers for real touch/mouse single-finger events.
     // Key: pointerId (-1 for mouse, touch.identifier for touch), Value: { x: number, y: number }
     const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
@@ -1728,10 +1729,23 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (!video) return;
 
       const updateVideoPosition = () => {
+        const hasVideoSize = video.videoWidth > 0 && video.videoHeight > 0;
+        if (hasVideoSize) lastVideoSize.current = { width: video.videoWidth, height: video.videoHeight };
+        const size = lastVideoSize.current;
+        const aspectRatio = size ? `${size.width} / ${size.height}` : undefined;
         // If no frame, just refresh overlay geometry; no inset/letterbox math
         // is needed since the video element is its own size.
         if (!frameVisible || !frame) {
-          setVideoStyle({});
+          // Preserve intrinsic sizing after teardown releases the stream, including max-size constraints.
+          setVideoStyle(
+            !hasVideoSize && size ?
+              {
+                aspectRatio,
+                contain: 'size',
+                containIntrinsicSize: `${size.width}px ${size.height}px`,
+              }
+            : {},
+          );
           recomputeOverlayGeometry();
           return;
         }
@@ -1742,14 +1756,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         if (frameWidth === 0 || frameHeight === 0) return;
 
         // Determine landscape based on video's intrinsic dimensions
-        const landscape = video.videoWidth > video.videoHeight;
+        const landscape = size ? size.width > size.height : false;
         setIsLandscape(landscape);
         setUseAndroidTabletFrame(
-          platform === 'android' && isAndroidTabletVideo(video.videoWidth, video.videoHeight),
+          platform === 'android' && !!size && isAndroidTabletVideo(size.width, size.height),
         );
 
         const pos = landscape ? config.videoPosition.landscape : config.videoPosition.portrait;
-        let newStyle: React.CSSProperties = {};
+        let newStyle: React.CSSProperties = { aspectRatio };
         if (pos.heightMultiplier) {
           newStyle.height = `${frameHeight * pos.heightMultiplier}px`;
           // Let the other dimension follow the video stream's intrinsic aspect ratio.

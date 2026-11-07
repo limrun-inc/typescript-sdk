@@ -855,6 +855,64 @@ describe('RemoteControl compatibility', () => {
     expect(host.querySelector('video')!.classList.contains('rc-video-loading')).toBe(true);
   });
 
+  it.each(['ios-framed', 'android-tablet', 'frameless'] as const)(
+    'preserves %s geometry when clearing the stream resets its intrinsic dimensions',
+    async (viewer) => {
+      let width = viewer === 'android-tablet' ? 1920 : 800;
+      let height = viewer === 'android-tablet' ? 1200 : 400;
+      vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockImplementation(() => width);
+      vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockImplementation(() => height);
+      vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(400);
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(250);
+      const assets = {
+        frame: '/portrait.svg',
+        frameLandscape: '/landscape.svg',
+        tabletFrame: '/tablet.svg',
+        tabletFrameLandscape: '/tablet-landscape.svg',
+      };
+      await render({
+        url: `wss://host/${viewer === 'android-tablet' ? 'android' : 'ios'}_test`,
+        assets: viewer === 'frameless' ? undefined : { ios: assets, android: assets },
+      });
+      const { peer } = await connect();
+      const video = host.querySelector('video')!;
+      const image = host.querySelector('img');
+      const aspectRatio = `${width} / ${height}`;
+      const intrinsicSize = `${width}px ${height}px`;
+      if (image)
+        expect(image.getAttribute('src')).toBe(
+          viewer === 'android-tablet' ? '/tablet-landscape.svg' : '/landscape.svg',
+        );
+      const styleBefore = video.getAttribute('style');
+      await act(async () => {
+        peer.fail();
+        width = height = 0;
+        video.dispatchEvent(new Event('resize'));
+        await flush();
+      });
+      expect(video.srcObject).toBeNull();
+      expect(video.classList.contains('rc-video-loading')).toBe(false);
+      expect(video.style.aspectRatio).toBe(aspectRatio);
+      if (image) {
+        expect(image.getAttribute('src')).toBe(
+          viewer === 'android-tablet' ? '/tablet-landscape.svg' : '/landscape.svg',
+        );
+        expect(video.getAttribute('style')).toBe(styleBefore);
+      } else {
+        expect(video.style.contain).toBe('size');
+        expect(video.style.containIntrinsicSize).toBe(intrinsicSize);
+      }
+      await act(async () => handle.current!.reconnect());
+      width = 400;
+      height = 800;
+      await connect();
+      if (image) {
+        expect(image.getAttribute('src')).toBe('/portrait.svg');
+        expect(video.style.aspectRatio).toBe('400 / 800');
+      } else expect(video.style.contain).toBe('');
+    },
+  );
+
   it('clears an existing inspector once when replacing the device, but emits no initial empty snapshot', async () => {
     const onAxSnapshotChange = vi.fn();
     await render({ inspectMode: true, onAxSnapshotChange });
