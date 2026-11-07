@@ -1633,7 +1633,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
             const screenshotError = getScreenshotError(message);
             if (screenshotError) {
               const rejecter = currentPendingScreenshotRejecters.get(message.id);
-              if (!rejecter) {
+              if (typeof rejecter !== 'function') {
                 debugWarn(`Received screenshot error for unknown or handled id: ${message.id}`);
                 break;
               }
@@ -1651,7 +1651,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
               break;
             }
             const resolver = currentPendingScreenshotResolvers.get(message.id);
-            if (!resolver) {
+            if (typeof resolver !== 'function') {
               debugWarn(`Received screenshot data for unknown or handled id: ${message.id}`);
               break;
             }
@@ -1669,7 +1669,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
               break;
             }
             const rejecter = currentPendingScreenshotRejecters.get(message.id);
-            if (!rejecter) {
+            if (typeof rejecter !== 'function') {
               debugWarn(`Received screenshot error for unknown or handled id: ${message.id}`);
               break;
             }
@@ -1742,7 +1742,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
             }
             if (typeof message.error === 'string') {
               const terminateRejecter = currentPendingTerminateAppRejecters.get(message.id);
-              if (!terminateRejecter) {
+              if (typeof terminateRejecter !== 'function') {
                 debugWarn(`Received terminateApp error for unknown or handled id: ${message.id}`);
                 break;
               }
@@ -1755,7 +1755,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
               break;
             }
             const terminateResolver = currentPendingTerminateAppResolvers.get(message.id);
-            if (!terminateResolver) {
+            if (typeof terminateResolver !== 'function') {
               debugWarn(`Received terminateApp result for unknown or handled id: ${message.id}`);
               break;
             }

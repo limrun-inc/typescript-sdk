@@ -1598,6 +1598,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
     const latencyTraceRequested = !!onTrace;
     useEffect(() => {
+      lastVideoSize.current = null;
+      setIsLandscape(false);
+      setUseAndroidTabletFrame(false);
+      setVideoStyle({});
+    }, [url, deviceModel]);
+
+    useEffect(() => {
       let active = true;
       if (axSnapshotRef.current !== null) {
         axSnapshotRef.current = null;
@@ -1817,7 +1824,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         video.removeEventListener('resize', bumpOnResize);
         if (frame) frame.removeEventListener('load', updateVideoPosition);
       };
-    }, [config, frameVisible]);
+    }, [config, frameVisible, url, deviceModel]);
 
     // Reset overlay selection when inspection is disabled.
     useEffect(() => {

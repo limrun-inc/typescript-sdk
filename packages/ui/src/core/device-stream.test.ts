@@ -855,6 +855,47 @@ describe('RemoteControl compatibility', () => {
     expect(host.querySelector('video')!.classList.contains('rc-video-loading')).toBe(true);
   });
 
+  it.each([true, false])(
+    'clears cached dimensions when switching instances with frames=%s',
+    async (framed) => {
+      let width = 1920;
+      let height = 1200;
+      vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockImplementation(() => width);
+      vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockImplementation(() => height);
+      vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(400);
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(250);
+      const assets =
+        framed ?
+          {
+            android: {
+              frame: '/phone.svg',
+              frameLandscape: '/phone-landscape.svg',
+              tabletFrame: '/tablet.svg',
+              tabletFrameLandscape: '/tablet-landscape.svg',
+            },
+          }
+        : undefined;
+      await render({ url: 'wss://host/android_tablet', assets });
+      const { peer } = await connect();
+      const video = host.querySelector('video')!;
+      await act(async () => {
+        peer.fail();
+        width = height = 0;
+        video.dispatchEvent(new Event('resize'));
+      });
+      expect(video.style.aspectRatio).toBe('1920 / 1200');
+      await render({ url: 'wss://host/android_phone', assets });
+      expect(video.style.aspectRatio).toBe('');
+      expect(video.style.containIntrinsicSize).toBe('');
+      expect(video.classList.contains('rc-video-loading')).toBe(true);
+      if (framed) expect(host.querySelector('img')!.getAttribute('src')).toBe('/phone.svg');
+      width = 400;
+      height = 800;
+      await connect();
+      if (framed) expect(video.style.aspectRatio).toBe('400 / 800');
+    },
+  );
+
   it.each(['ios-framed', 'android-tablet', 'frameless'] as const)(
     'preserves %s geometry when clearing the stream resets its intrinsic dimensions',
     async (viewer) => {
