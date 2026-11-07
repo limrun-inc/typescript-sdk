@@ -139,7 +139,7 @@ export default class IosCreate extends BaseCommand {
     }),
     'app-logs': Flags.string({
       description:
-        'Start a persisted app log capture for this bundle ID as soon as the instance is ready, and launch the app so its output is captured. List results with `lim ios app-logs`.',
+        'Start a persisted app log capture for this bundle ID as soon as the instance is ready, and launch the app. List results with `lim ios app-logs`.',
     }),
     events: Flags.boolean({
       description:
@@ -278,17 +278,15 @@ export default class IosCreate extends BaseCommand {
             this.info(`Started persisted ${capture} (kept for ${flags['persist-ttl']}).`);
           }
           if (flags['app-logs']) {
-            // On iOS only apps launched through limulator's own launch path
-            // feed the app log capture, so launch the bundle like the console
-            // app picker does. Apps opened by tapping in the stream produce
-            // no captured lines.
+            // Any launch of an installed app feeds the capture. Launching it
+            // here starts the capture with the app's first lines.
             try {
               await captureClient.launchApp(flags['app-logs'], { mode: 'RelaunchIfRunning' });
               this.info(`Launched ${flags['app-logs']} to feed the app log capture.`);
             } catch (e) {
               this.warn(
                 `Could not launch ${flags['app-logs']}: ${e instanceof Error ? e.message : e}. ` +
-                  'The app log capture stays empty until the app is launched with `lim ios launch-app`.',
+                  'The app log capture records the app once it runs.',
               );
             }
           }
