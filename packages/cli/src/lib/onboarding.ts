@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
-import { parse as parseDotenv } from 'dotenv';
+import { parseEnv } from 'node:util';
 
 import { readConfig } from './config';
 import {
@@ -213,7 +213,7 @@ function readEnvFileApiKey(envPath: string): string | undefined {
   if (!stat || stat.isSymbolicLink() || !stat.isFile()) {
     return undefined;
   }
-  const parsed = parseDotenv(fs.readFileSync(envPath));
+  const parsed = parseEnv(fs.readFileSync(envPath, 'utf8'));
   return parsed['LIM_API_KEY'];
 }
 

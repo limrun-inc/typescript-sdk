@@ -1,3 +1,5 @@
+import { nodeProxyTransport } from '../internal/proxy-transport';
+import type { AndroidInstance } from './android-instances';
 import { pullBuildFile } from '../internal/build-pull-file';
 import { normalizeAssetUpload, type BuildUpload } from '../lib/asset-permissions';
 import { GradleInstances, type GradleInstance } from './gradle-instances';
@@ -88,7 +90,18 @@ export type GradleBuildOptions = {
 
 export type GradleRunOptions = BuildRunOptions;
 
+export type EmulatorStatus = {
+  attached: boolean;
+  apiUrl?: string;
+  latestBuildId?: string;
+  installedLastBuild: boolean;
+  installError?: string;
+};
+
 export type GradleClient = {
+  /** Attach an emulator, install the latest retained APK, and auto-install future builds. */
+  attachEmulator(emulator: AndroidInstance | { apiUrl: string; token: string }): Promise<EmulatorStatus>;
+  getEmulator(): Promise<EmulatorStatus>;
   /** Stream a regular file to disk. Paths may be absolute or relative to the synced project root. */
   pullFile(remotePath: string, localPath: string): Promise<void>;
   sync(localCodePath: string, opts?: GradleSyncOptions): Promise<SyncResult>;
@@ -157,7 +170,26 @@ class GradleInstancesHelpers extends GradleInstances {
     const log = createDaemonLogger('[GradleInstance]', params.logLevel ?? 'info');
     const client = this._client;
 
+    async function emulatorRequest(body?: { apiUrl: string; token: string }): Promise<EmulatorStatus> {
+      const response = await nodeProxyTransport.fetch(`${apiUrl}/emulator`, {
+        method: body ? 'POST' : 'GET',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      if (!response.ok)
+        throw new Error(`Emulator attachment returned HTTP ${response.status}: ${await response.text()}`);
+      return (await response.json()) as EmulatorStatus;
+    }
+
     return {
+      getEmulator: () => emulatorRequest(),
+      async attachEmulator(emulator) {
+        if ('status' in emulator) {
+          if (!emulator.status.apiUrl) throw new Error('Emulator is not ready: apiUrl is unavailable');
+          return emulatorRequest({ apiUrl: emulator.status.apiUrl, token: instanceToken(emulator) });
+        }
+        return emulatorRequest(emulator);
+      },
       async pullFile(remotePath: string, localPath: string): Promise<void> {
         await pullBuildFile(apiUrl, token, remotePath, localPath);
       },

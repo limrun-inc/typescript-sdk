@@ -146,6 +146,7 @@ export {
 export {
   type GradleCreateClientParams,
   type GradleClient,
+  type EmulatorStatus,
   type GradleSyncOptions,
   type GradleBuildOptions,
   type GradleRunOptions,
