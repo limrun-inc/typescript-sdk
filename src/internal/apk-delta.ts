@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
-import { deflateRawSync, inflateRawSync } from 'zlib';
+import { inflateRawSync } from 'zlib';
+import { deflateRaw } from 'pako';
 import yauzl from 'yauzl';
 
 type Span = { offset: number; size: number; expandedSize: number; level: number };
@@ -77,8 +78,10 @@ async function expand(input: string, output: string, target: boolean): Promise<S
       if (expanded.length !== entry.uncompressedSize) throw new Error('Invalid ZIP entry size');
       let level = 0;
       if (target) {
+        // Node's patched zlib can emit different bytes from Android's zlib.
+        // Use the canonical zlib hash on every Node version and platform.
         const match = [6, 9, 1, 2, 3, 4, 5, 7, 8].find((candidate) =>
-          deflateRawSync(expanded, { level: candidate }).equals(raw),
+          Buffer.from(deflateRaw(expanded, { level: candidate, legacyHash: true })).equals(raw),
         );
         if (match === undefined) continue;
         level = match;
