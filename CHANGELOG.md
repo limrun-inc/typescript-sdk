@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.69.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.2...v0.69.3) (2026-11-07)
+
+
+### Features
+
+* **ui:** extract shared headless device streaming core ([ec9e624](https://github.com/limrun-inc/typescript-sdk/commit/ec9e624b5d7a1a9f4aeb60eef2ac8ad50b1a00c1))
+* **ui:** share device streaming through a headless core ([f206040](https://github.com/limrun-inc/typescript-sdk/commit/f206040fb701f9cc588b3ef16ccbcaf062d94cb3))
+
+
+### Bug Fixes
+
+* **cli:** say iOS app log captures record an app however it starts ([3492613](https://github.com/limrun-inc/typescript-sdk/commit/3492613da112df9ead7d4e416dd2334a30062698))
+* **ui:** build core exports for Git installs ([2f86aae](https://github.com/limrun-inc/typescript-sdk/commit/2f86aae474e2383ff957fcb7e795749169794f31))
+* **ui:** preserve RemoteControl behavior through the stream core ([bf666c5](https://github.com/limrun-inc/typescript-sdk/commit/bf666c5a238006c4b6c19ce0618c9ae1a7c60f94))
+* **ui:** preserve RemoteControl callbacks and error layout ([41f63b6](https://github.com/limrun-inc/typescript-sdk/commit/41f63b6bf65d1fab3fbed4753d5d8cb4659e4135))
+* **ui:** preserve stream lifecycle across retries and visibility changes ([a2e443d](https://github.com/limrun-inc/typescript-sdk/commit/a2e443dabed663a6e096a81a56765d5c4b9ef0b5))
+* **ui:** reset geometry across devices and prepare 0.20.0 ([05ebdd6](https://github.com/limrun-inc/typescript-sdk/commit/05ebdd634d9dd5ac280e250a40ac68aed840a59f))
+* **ui:** retain video geometry when releasing the stream ([2d29525](https://github.com/limrun-inc/typescript-sdk/commit/2d29525a81d3ccad10670a5a83d1e589e026b1f2))
+* **ui:** support stream IDs on HTTP origins ([2a27cb8](https://github.com/limrun-inc/typescript-sdk/commit/2a27cb8744ebe145cf1bc0a3c52d717dc9d9b349))
+* **ui:** use secure randomness for viewer session IDs ([10b2981](https://github.com/limrun-inc/typescript-sdk/commit/10b29813928aba764316ec4f3c0afa47aa3a102a))
+
+
+### Chores
+
+* **cli:** release 0.52.1 with SDK 0.69.2 ([#621](https://github.com/limrun-inc/typescript-sdk/issues/621)) ([ffbdb2d](https://github.com/limrun-inc/typescript-sdk/commit/ffbdb2d4682917c3c2f180fab232b86276a3591d))
+
 ## [0.69.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.1...v0.69.2) (2026-11-06)
 
 
