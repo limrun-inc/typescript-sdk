@@ -28,7 +28,7 @@
   "dependencies": {
     "@limrun/api": "0.69.3",
     "@limrun/apple-auth": "^0.6.1",
-    "@limrun/play-auth": "^0.3.2",
+    "@limrun/play-auth": "^0.4.0",
     "@oclif/core": "^4",
     "cli-progress": "^3.12.0",
     "cli-table3": "^0.6.5",
