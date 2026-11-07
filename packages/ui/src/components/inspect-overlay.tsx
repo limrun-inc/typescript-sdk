@@ -1,6 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { clsx } from 'clsx';
 import './inspect-overlay.css';
 
 import {
@@ -101,7 +100,7 @@ const InspectBox = memo(
     return (
       <button
         type="button"
-        className={clsx('rc-inspect-box', !element.enabled && 'rc-inspect-box-disabled')}
+        className={element.enabled ? 'rc-inspect-box' : 'rc-inspect-box rc-inspect-box-disabled'}
         data-ax-id={element.id}
         data-ax-path={element.path}
         data-ax-label={element.label || undefined}
@@ -307,7 +306,9 @@ const InfoCard = memo(function InfoCard({
           </button>
           <button
             type="button"
-            className={clsx('rc-inspect-card-btn', copied === 'selector' && 'rc-inspect-card-btn-copied')}
+            className={
+              copied === 'selector' ? 'rc-inspect-card-btn rc-inspect-card-btn-copied' : 'rc-inspect-card-btn'
+            }
             disabled={!selectorExpr}
             title={selectorExpr ?? 'No usable selector for this element'}
             onClick={() => handleCopy(selectorExpr ?? undefined, 'selector')}
@@ -316,7 +317,9 @@ const InfoCard = memo(function InfoCard({
           </button>
           <button
             type="button"
-            className={clsx('rc-inspect-card-btn', copied === 'id' && 'rc-inspect-card-btn-copied')}
+            className={
+              copied === 'id' ? 'rc-inspect-card-btn rc-inspect-card-btn-copied' : 'rc-inspect-card-btn'
+            }
             disabled={!primaryIdField}
             title={primaryIdField ?? `No ${primaryIdLabel}`}
             onClick={() => handleCopy(primaryIdField, 'id')}
@@ -401,7 +404,7 @@ export const InspectOverlay = memo(function InspectOverlay({
   return (
     <>
       <div
-        className={clsx('rc-inspect-overlay', selectable && 'rc-inspect-overlay-select')}
+        className={selectable ? 'rc-inspect-overlay rc-inspect-overlay-select' : 'rc-inspect-overlay'}
         style={{
           left: `${geometry!.left}px`,
           top: `${geometry!.top}px`,

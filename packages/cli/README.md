@@ -48,6 +48,8 @@ use the caller's credentials.
 
 ## Installation
 
+Installing through npm or npx requires Node.js 20.18.1 or later.
+
 ```bash
 # npm
 npm install -g lim

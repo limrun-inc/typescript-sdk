@@ -19,7 +19,6 @@ import React, {
   lazy,
   Suspense,
 } from 'react';
-import { clsx } from 'clsx';
 import './remote-control.css';
 
 import { type DuoState, type DuoOrientation } from '../core/duo';
@@ -1919,7 +1918,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     return (
       <div
         ref={containerRef}
-        className={clsx('rc-container', className)}
+        className={['rc-container', className].filter(Boolean).join(' ')}
         style={{ touchAction: 'none' }} // Keep touchAction none for the container
         // Attach unified handler to all interaction events on the container
         // This helps capture mouseleave correctly even if the video element itself isn't hovered
@@ -1955,17 +1954,15 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             ref={frameRef}
             src={frameImageSrc}
             alt=""
-            className={platform === 'ios' ? clsx('rc-phone-frame', 'rc-phone-frame-ios') : 'rc-phone-frame'}
+            className={platform === 'ios' ? 'rc-phone-frame rc-phone-frame-ios' : 'rc-phone-frame'}
             draggable={false}
           />
         )}
         <video
           ref={videoRef}
-          className={clsx(
-            'rc-video',
-            !frameVisible && 'rc-video-frameless',
-            !videoLoaded && 'rc-video-loading',
-          )}
+          className={['rc-video', !frameVisible && 'rc-video-frameless', !videoLoaded && 'rc-video-loading']
+            .filter(Boolean)
+            .join(' ')}
           style={{
             ...videoStyle,
             ...(isDuo ? { opacity: 0, width: 1, height: 1, pointerEvents: 'none' as const } : {}),

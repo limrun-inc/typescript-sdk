@@ -189,12 +189,16 @@ describe('lim run project env setup', () => {
     }
   });
 
-  test('loads LIM_API_KEY from project .env.local before login', () => {
+  test.each([
+    'LIM_API_KEY=lim_local_key\n',
+    'export LIM_API_KEY="lim_local_key" # project key\r\n',
+    "LIM_API_KEY='lim_local_key'\n",
+  ])('loads LIM_API_KEY from project .env.local before login: %j', (contents) => {
     const projectRoot = makeTempDir();
     try {
       delete process.env['LIM_API_KEY'];
       writeFile(path.join(projectRoot, '.env'), 'LIM_API_KEY=lim_env_key\n');
-      writeFile(path.join(projectRoot, '.env.local'), 'LIM_API_KEY=lim_local_key\n');
+      writeFile(path.join(projectRoot, '.env.local'), contents);
 
       expect(applyProjectEnvApiKey(projectRoot)).toEqual({
         apiKey: 'lim_local_key',
@@ -219,7 +223,7 @@ describe('lim run project env setup', () => {
     }
   });
 
-  test('lets .env.local override a .env value loaded by dotenv/config', () => {
+  test('lets .env.local override a value loaded from .env', () => {
     const projectRoot = makeTempDir();
     try {
       process.env['LIM_API_KEY'] = 'lim_env_key';
