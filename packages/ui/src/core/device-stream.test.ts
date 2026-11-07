@@ -216,7 +216,8 @@ describe('headless device stream', () => {
     await flush();
     expect(vi.getTimerCount()).toBe(0);
   });
-  it('supports an authenticated proxy socket without adding credentials or probing its URL', async () => {
+  it('supports an authenticated proxy socket on an HTTP origin without adding credentials or probing its URL', async () => {
+    vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) });
     const socket = new Socket('wss://t3/device?ticket=host-ticket');
     socket.open();
     const connect = vi.fn(() => socket as unknown as WebSocket);
@@ -224,6 +225,9 @@ describe('headless device stream', () => {
     client.start();
     await flush();
     expect(socket.sent[0]?.type).toBe('requestRtcConfiguration');
+    expect(socket.sent[0]?.sessionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
     socket.message({ type: 'rtcConfiguration', rtcConfiguration: { iceServers: [] } });
     await flush();
     const peer = Peer.peers[0]!;

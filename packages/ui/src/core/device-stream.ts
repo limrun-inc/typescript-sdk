@@ -40,11 +40,20 @@ const CONNECTION_SUCCESS_TIMEOUT_MS = 15000;
 const ICE_DISCONNECTED_GRACE_MS = 3000;
 const TERMINATION_PROBE_TIMEOUT_MS = 4000;
 
+// Hosts such as T3 serve LAN clients over HTTP, where randomUUID is unavailable.
+function requestId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /** A browser session shared by RemoteControl and custom renderers. No React or CSS required. */
 export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   let options = { ...initialOptions };
   const { url, token, deviceModel, axPollIntervalMs, axMaxBackoffMs, androidElementTreeOptions } = options;
-  const sessionId = options.sessionId ?? crypto.randomUUID();
+  const sessionId = options.sessionId ?? requestId();
   const platform = options.platform ?? detectPlatform(url ?? '');
   const openUrl = options.openUrl;
   let state: DeviceStreamState = {
@@ -180,7 +189,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         reject(new Error('Simulator disconnected'));
         return;
       }
-      const id = crypto.randomUUID();
+      const id = requestId();
       const timer = setTimeout(() => {
         currentDuoRequests.delete(id);
         reject(new Error('Device control timed out'));
