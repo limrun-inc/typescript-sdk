@@ -2,15 +2,16 @@ import { PLAY_CONSOLE_SCOPE, PLAY_DEVELOPER_APP_SCOPE } from '@limrun/play-auth'
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../base-command';
 import { authenticateGoogle, readGoogleDesktopClient } from '../../../lib/google-auth';
+import { LIMRUN_GOOGLE_DESKTOP_CLIENT } from '../../../lib/google-desktop-client';
 import { LocalSecretStore } from '../../../lib/local-secret-store';
 
 export default class PlayAuth extends BaseCommand {
   static summary = 'Sign in to Google Play and save a refresh token on this computer';
   static description =
-    'Open your browser using a Google Desktop OAuth client JSON file. Stores credentials in ~/.lim/secrets ' +
+    'Open your browser to authorize Limrun for Google Play. Stores credentials in ~/.lim/secrets ' +
     'for future gradle builds with --upload-to-playstore. Run on the same computer as your browser. ' +
     'Your Google account must have access to the app in Play Console.';
-  static examples = ['<%= config.bin %> android play auth --client-config client_secret.json'];
+  static examples = ['<%= config.bin %> android play auth'];
   static flags = {
     ...BaseCommand.baseFlags,
     'console-scope': Flags.string({
@@ -19,15 +20,17 @@ export default class PlayAuth extends BaseCommand {
       options: [PLAY_CONSOLE_SCOPE, PLAY_DEVELOPER_APP_SCOPE],
     }),
     'client-config': Flags.string({
-      description: 'Downloaded Google OAuth client JSON for application type Desktop app.',
-      required: true,
+      description: 'Use your own Desktop app OAuth client JSON instead of the bundled Limrun client.',
     }),
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(PlayAuth);
     this.setParsedFlags(flags);
-    const client = await readGoogleDesktopClient(flags['client-config']);
+    const client =
+      flags['client-config'] ?
+        await readGoogleDesktopClient(flags['client-config'])
+      : LIMRUN_GOOGLE_DESKTOP_CLIENT;
     const store = new LocalSecretStore();
     await authenticateGoogle(
       client,

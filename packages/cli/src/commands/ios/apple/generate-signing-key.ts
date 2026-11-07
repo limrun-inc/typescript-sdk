@@ -1,7 +1,7 @@
 import { Flags } from '@oclif/core';
 import { generateAppleSigningKeyAndCSR } from '@limrun/apple-auth';
 import { BaseCommand } from '../../../base-command';
-import { savePrivateFile } from '../../../lib/store-output';
+import { savePrivateFiles } from '../../../lib/store-output';
 
 export default class GenerateAppleSigningKey extends BaseCommand {
   static summary = 'Generate a local signing key and certificate signing request';
@@ -18,17 +18,12 @@ export default class GenerateAppleSigningKey extends BaseCommand {
   async run(): Promise<void> {
     const { flags } = await this.parse(GenerateAppleSigningKey);
     this.setParsedFlags(flags);
-    await savePrivateFile(flags['private-key-output'], async () => {
-      let privateKey: Buffer;
-      await savePrivateFile(flags['csr-output'], async () => {
-        const material = await generateAppleSigningKeyAndCSR({
-          commonName: flags['common-name'],
-          emailAddress: flags.email,
-        });
-        privateKey = Buffer.from(material.privateKeyPKCS8Base64, 'base64');
-        return material.csrPEM;
+    await savePrivateFiles([flags['private-key-output'], flags['csr-output']], async () => {
+      const material = await generateAppleSigningKeyAndCSR({
+        commonName: flags['common-name'],
+        emailAddress: flags.email,
       });
-      return privateKey!;
+      return [Buffer.from(material.privateKeyPKCS8Base64, 'base64'), material.csrPEM];
     });
     this.outputJson({ privateKeyOutput: flags['private-key-output'], csrOutput: flags['csr-output'] });
   }

@@ -114,7 +114,7 @@ Connect your store accounts once on your own computer:
 
 ```bash
 lim ios apple auth
-lim android play auth --client-config client_secret.json
+lim android play auth
 ```
 
 Apple sign-in prompts for your Apple Account password and verification code in
@@ -123,10 +123,10 @@ role for signing and uploads. You must be an administrator of the Apple team.
 Use `--team-id` to select a team, or choose one at the prompt. The Apple password
 is never saved.
 
-For Google, download an OAuth client JSON file with application type **Desktop
-app** from Google Cloud. Enable the Google Play Android Developer API and
-configure the consent screen. Run the command on the same computer as your
-browser. The signed-in account needs publishing access to the app in Play Console.
+Google sign-in uses the bundled Limrun Desktop OAuth client. Run the command on
+the same computer as your browser. The signed-in account needs publishing access
+to the app in Play Console. To use your own Desktop app client, pass
+`--client-config /path/to/client_secret.json`.
 
 The commands save credentials in `~/.lim/secrets`. On Unix, the directory has
 mode `0700` and secret files have mode `0600`. The Google refresh token stays

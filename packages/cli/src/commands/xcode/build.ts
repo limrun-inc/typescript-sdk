@@ -324,6 +324,7 @@ export default class XcodeBuild extends BaseCommand {
     if (flags['asc-app-id'] !== undefined && !flags['upload-to-appstore']) {
       this.error('--asc-app-id requires --upload-to-appstore.');
     }
+    const appstore = flags['upload-to-appstore'] ? this.buildAppStoreOptions(flags) : undefined;
     if (flags.id && flags['inactivity-timeout']) {
       this.error('--inactivity-timeout controls a newly created instance and cannot be combined with --id.');
     }
@@ -439,7 +440,7 @@ export default class XcodeBuild extends BaseCommand {
         if (!APP_STORE_SDKS.has(settings.sdk ?? '')) {
           this.error('--upload-to-appstore requires --sdk iphoneos, --sdk appletvos, or --sdk xros.');
         }
-        options.appstore = await this.buildAppStoreOptions(flags);
+        options.appstore = appstore!;
       }
       if (flags.upload && flags['signed-upload-url']) {
         this.error('Use either --upload or --signed-upload-url, not both.');
@@ -637,7 +638,7 @@ export default class XcodeBuild extends BaseCommand {
     );
     return {
       method: flags['signing-method'] as XcodeCloudSigningMethod,
-      teamId: flags['team-id'] ?? this.appleCredentials!.teamID!,
+      teamId: flags['team-id'] || this.appleCredentials!.teamID!,
       apiKeyId: this.appleCredentials!.keyId,
       apiIssuerId: this.appleCredentials!.issuerId!,
       apiPrivateKeyBase64: this.appleCredentials!.privateKeyP8Base64,
@@ -653,7 +654,7 @@ export default class XcodeBuild extends BaseCommand {
     }
   }
 
-  private async buildAppStoreOptions(flags: AppStoreFlags): Promise<AppStoreUploadConfig> {
+  private buildAppStoreOptions(flags: AppStoreFlags): AppStoreUploadConfig {
     if (!this.appleCredentials) {
       this.error(
         'Run lim ios apple auth first, or provide --asc-key-id and --asc-key for --upload-to-appstore.',
