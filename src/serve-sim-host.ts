@@ -8,6 +8,13 @@ import { createInstanceClient as createAndroidClient } from './instance-client';
 export type DeviceHostTarget =
   | { platform: 'ios'; model: 'iphone' | 'ipad' | 'iphone-duo' }
   | { platform: 'android'; model: 'phone' | 'tablet' };
+export const deviceHostCatalog: ReadonlyArray<DeviceHostTarget & { name: string }> = [
+  { platform: 'ios', model: 'iphone', name: 'iPhone' },
+  { platform: 'ios', model: 'ipad', name: 'iPad' },
+  { platform: 'android', model: 'phone', name: 'Android phone' },
+  { platform: 'android', model: 'tablet', name: 'Android tablet' },
+  { platform: 'ios', model: 'iphone-duo', name: 'iPhone Duo' },
+];
 export type DeviceHostInstance = Limrun.IosInstance | Limrun.AndroidInstance;
 export type DeviceHostSession = DeviceHostTarget & {
   id: string;
@@ -267,15 +274,27 @@ export async function createServeSimHost(options: ServeSimHostOptions) {
         } else base64 = (await connected.client.screenshot({ format: 'png' })).base64;
         return new Uint8Array(Buffer.from(base64, 'base64'));
       }),
-    run: (id: string, command: string, args: readonly string[], input?: { stdin?: string }) =>
+    run: (command: string, args: readonly string[], input?: { stdin?: string }) =>
       serial(async () => {
-        const connected = await runtime(owned(id));
-        if (command === 'xcrun' && args[0] === 'simctl' && args[2] === id && connected.platform === 'ios') {
+        const platform =
+          command === 'xcrun' && args[0] === 'simctl' && args[1] ? 'ios'
+          : command === 'adb' && args[0] === '-s' ? 'android'
+          : undefined;
+        const id =
+          platform === 'ios' ? args[2]
+          : platform === 'android' ? args[1]
+          : undefined;
+        const unsupported = { stdout: '', stderr: 'This command is unavailable on Limrun.', code: 127 };
+        if (!id || !platform) return unsupported;
+        const item = owned(id);
+        if (item.session.platform !== platform) return unsupported;
+        const connected = await runtime(item);
+        if (connected.platform === 'ios') {
           const execution = connected.client.simctl([args[1]!, 'booted', ...args.slice(3)], input ?? {});
           const result = await execution.wait();
           return { stdout: result.stdout.toString(), stderr: result.stderr.toString(), code: result.code };
         }
-        if (command === 'adb' && args[0] === '-s' && args[1] === id && connected.platform === 'android') {
+        if (connected.platform === 'android') {
           if (args[2] === 'shell') {
             const result = await connected.client.adbShell('sh', ['-c', args.slice(3).join(' ')]);
             return { stdout: result.stdout, stderr: result.stderr, code: result.exitCode };
@@ -328,7 +347,7 @@ export async function createServeSimHost(options: ServeSimHostOptions) {
             return { stdout: '', stderr: '', code: 0 };
           }
         }
-        return { stdout: '', stderr: 'This command is unavailable on Limrun.', code: 127 };
+        return unsupported;
       }),
     stop: () => serial(stop),
     close: () =>
