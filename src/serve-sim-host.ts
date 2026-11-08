@@ -275,15 +275,58 @@ export async function createServeSimHost(options: ServeSimHostOptions) {
           const result = await execution.wait();
           return { stdout: result.stdout.toString(), stderr: result.stderr.toString(), code: result.code };
         }
-        if (
-          command === 'adb' &&
-          args[0] === '-s' &&
-          args[1] === id &&
-          args[2] === 'shell' &&
-          connected.platform === 'android'
-        ) {
-          const result = await connected.client.adbShell('sh', ['-c', args.slice(3).join(' ')]);
-          return { stdout: result.stdout, stderr: result.stderr, code: result.exitCode };
+        if (command === 'adb' && args[0] === '-s' && args[1] === id && connected.platform === 'android') {
+          if (args[2] === 'shell') {
+            const result = await connected.client.adbShell('sh', ['-c', args.slice(3).join(' ')]);
+            return { stdout: result.stdout, stderr: result.stderr, code: result.exitCode };
+          }
+          if (args[2] === 'emu' && args[3] === 'geo' && args[4] === 'fix') {
+            const longitude = Number(args[5]);
+            const latitude = Number(args[6]);
+            if (
+              args.length !== 7 ||
+              !args[5]?.trim() ||
+              !args[6]?.trim() ||
+              !Number.isFinite(longitude) ||
+              Math.abs(longitude) > 180 ||
+              !Number.isFinite(latitude) ||
+              Math.abs(latitude) > 90
+            )
+              return { stdout: '', stderr: 'Invalid location coordinates.', code: 1 };
+            // Cloud Android has ADB shell access, but no local emulator console for `adb emu`.
+            const commands = [
+              ['appops', 'set', 'com.android.shell', 'android:mock_location', 'allow'],
+              [
+                'cmd',
+                'location',
+                'providers',
+                'add-test-provider',
+                'gps',
+                '--requiresSatellite',
+                '--supportsAltitude',
+                '--supportsSpeed',
+                '--supportsBearing',
+              ],
+              ['cmd', 'location', 'providers', 'set-test-provider-enabled', 'gps', 'true'],
+              [
+                'cmd',
+                'location',
+                'providers',
+                'set-test-provider-location',
+                'gps',
+                '--location',
+                `${latitude},${longitude}`,
+                '--accuracy',
+                '1',
+              ],
+            ];
+            for (const [command, ...parameters] of commands) {
+              const result = await connected.client.adbShell(command!, parameters);
+              if (result.exitCode !== 0)
+                return { stdout: result.stdout, stderr: result.stderr, code: result.exitCode };
+            }
+            return { stdout: '', stderr: '', code: 0 };
+          }
         }
         return { stdout: '', stderr: 'This command is unavailable on Limrun.', code: 127 };
       }),
