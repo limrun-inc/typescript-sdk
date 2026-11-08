@@ -1018,7 +1018,7 @@ describe('RemoteControl compatibility', () => {
     expect(host.querySelector('.rc-retry-button')).not.toBeNull();
   });
 
-  it('keeps the session ID across credential changes', async () => {
+  it('generates a new session ID across credential changes', async () => {
     await render({ openUrl: 'myapp://first' });
     const first = await connect();
     const sessionId = first.socket.sent.find(
@@ -1026,8 +1026,43 @@ describe('RemoteControl compatibility', () => {
     )!.sessionId;
     await render({ token: 'new-token', openUrl: 'myapp://second' });
     const second = await connect();
+    expect(
+      second.socket.sent.find((message) => message.type === 'requestRtcConfiguration')!.sessionId,
+    ).not.toBe(sessionId);
+  });
+
+  it('preserves the session ID across client recreation without a token change', async () => {
+    await render();
+    const first = await connect();
+    const sessionId = first.socket.sent.find(
+      (message) => message.type === 'requestRtcConfiguration',
+    )!.sessionId;
+    const onTrace = vi.fn();
+    const changes: Partial<RemoteControlProps>[] = [
+      { onTrace },
+      { onTrace, deviceModel: 'iphone-16-pro' },
+      { onTrace, deviceModel: 'iphone-16-pro', url: 'wss://host/ios_other' },
+    ];
+    for (const props of changes) {
+      await render(props);
+      const next = await connect();
+      expect(next.socket.sent.find((message) => message.type === 'requestRtcConfiguration')!.sessionId).toBe(
+        sessionId,
+      );
+    }
+    expect(Socket.sockets).toHaveLength(4);
+  });
+
+  it('uses the caller session ID and replaces it with the credentials', async () => {
+    await render({ sessionId: 'first-session' });
+    const first = await connect();
+    expect(first.socket.sent.find((message) => message.type === 'requestRtcConfiguration')!.sessionId).toBe(
+      'first-session',
+    );
+    await render({ token: 'new-token', sessionId: 'second-session' });
+    const second = await connect();
     expect(second.socket.sent.find((message) => message.type === 'requestRtcConfiguration')!.sessionId).toBe(
-      sessionId,
+      'second-session',
     );
   });
 
