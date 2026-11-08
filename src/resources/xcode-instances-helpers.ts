@@ -524,6 +524,9 @@ export type XcodeClient = {
    */
   getSimulator: () => Promise<SimulatorStatus>;
 
+  /** Disconnect the simulator, keeping both instances and installed apps. */
+  detachSimulator: () => Promise<SimulatorStatus>;
+
   /**
    * Return the Xcode this sandbox builds with and the Xcodes installed on its node.
    * Throws XcodeSelectionUnsupportedError on a sandbox whose daemon predates selection.
@@ -1059,6 +1062,14 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           },
         });
         return readJsonResponse<SimulatorStatus>(res, 'GET /simulator');
+      },
+
+      async detachSimulator(): Promise<SimulatorStatus> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        return readJsonResponse<SimulatorStatus>(res, 'DELETE /simulator');
       },
 
       attachSimulator: attachSimulatorImpl,

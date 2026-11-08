@@ -19,7 +19,9 @@ test('Gradle attachment sends emulator credentials only to the build daemon', as
       body: Buffer.concat(chunks).toString(),
     });
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ attached: true, installedLastBuild: true }));
+    res.end(
+      JSON.stringify({ attached: req.method !== 'DELETE', installedLastBuild: req.method !== 'DELETE' }),
+    );
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
@@ -31,6 +33,7 @@ test('Gradle attachment sends emulator credentials only to the build daemon', as
     const result = await client.attachEmulator({ apiUrl: 'https://android.example', token: 'android-token' });
     expect(result.installedLastBuild).toBe(true);
     await client.getEmulator();
+    expect(await client.detachEmulator()).toEqual({ attached: false, installedLastBuild: false });
     expect(calls).toEqual([
       {
         method: 'POST',
@@ -39,6 +42,7 @@ test('Gradle attachment sends emulator credentials only to the build daemon', as
         body: JSON.stringify({ apiUrl: 'https://android.example', token: 'android-token' }),
       },
       { method: 'GET', path: '/emulator', auth: 'Bearer gradle-token', body: '' },
+      { method: 'DELETE', path: '/emulator', auth: 'Bearer gradle-token', body: '' },
     ]);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));

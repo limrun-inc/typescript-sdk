@@ -102,6 +102,8 @@ export type GradleClient = {
   /** Attach an emulator, install the latest retained APK, and auto-install future builds. */
   attachEmulator(emulator: AndroidInstance | { apiUrl: string; token: string }): Promise<EmulatorStatus>;
   getEmulator(): Promise<EmulatorStatus>;
+  /** Disconnect the emulator, keeping both instances and installed apps. */
+  detachEmulator(): Promise<EmulatorStatus>;
   /** Stream a regular file to disk. Paths may be absolute or relative to the synced project root. */
   pullFile(remotePath: string, localPath: string): Promise<void>;
   sync(localCodePath: string, opts?: GradleSyncOptions): Promise<SyncResult>;
@@ -170,9 +172,12 @@ class GradleInstancesHelpers extends GradleInstances {
     const log = createDaemonLogger('[GradleInstance]', params.logLevel ?? 'info');
     const client = this._client;
 
-    async function emulatorRequest(body?: { apiUrl: string; token: string }): Promise<EmulatorStatus> {
+    async function emulatorRequest(
+      body?: { apiUrl: string; token: string },
+      method = body ? 'POST' : 'GET',
+    ): Promise<EmulatorStatus> {
       const response = await nodeProxyTransport.fetch(`${apiUrl}/emulator`, {
-        method: body ? 'POST' : 'GET',
+        method,
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
@@ -183,6 +188,7 @@ class GradleInstancesHelpers extends GradleInstances {
 
     return {
       getEmulator: () => emulatorRequest(),
+      detachEmulator: () => emulatorRequest(undefined, 'DELETE'),
       async attachEmulator(emulator) {
         if ('status' in emulator) {
           if (!emulator.status.apiUrl) throw new Error('Emulator is not ready: apiUrl is unavailable');
