@@ -348,3 +348,106 @@ it('keeps instances alive and stops heartbeats when released', async () => {
     await f.host.close();
   }
 });
+
+it('translates emulator GPS fixes to Android mock-provider commands without swapping coordinates', async () => {
+  const f = await fixture();
+  try {
+    const session = await f.host.open({ platform: 'android', model: 'phone' });
+    expect(
+      await f.host.run(session.id, 'adb', ['-s', session.id, 'emu', 'geo', 'fix', '-122.4194', '37.7749']),
+    ).toEqual({ stdout: '', stderr: '', code: 0 });
+    expect(f.runtime.adbShell.mock.calls).toEqual([
+      ['appops', ['set', 'com.android.shell', 'android:mock_location', 'allow']],
+      [
+        'cmd',
+        [
+          'location',
+          'providers',
+          'add-test-provider',
+          'gps',
+          '--requiresSatellite',
+          '--supportsAltitude',
+          '--supportsSpeed',
+          '--supportsBearing',
+        ],
+      ],
+      ['cmd', ['location', 'providers', 'set-test-provider-enabled', 'gps', 'true']],
+      [
+        'cmd',
+        [
+          'location',
+          'providers',
+          'set-test-provider-location',
+          'gps',
+          '--location',
+          '37.7749,-122.4194',
+          '--accuracy',
+          '1',
+        ],
+      ],
+    ]);
+    f.runtime.adbShell.mockClear();
+    for (const coordinates of [
+      ['181', '0'],
+      ['0', '-91'],
+      ['NaN', '0'],
+      ['', '0'],
+      ['0', '1; reboot'],
+      ['0'],
+    ]) {
+      expect(
+        (await f.host.run(session.id, 'adb', ['-s', session.id, 'emu', 'geo', 'fix', ...coordinates])).code,
+      ).toBe(1);
+    }
+    expect(f.runtime.adbShell).not.toHaveBeenCalled();
+  } finally {
+    await f.host.close();
+  }
+});
+
+it.each([0, 1, 2, 3])(
+  'stops location setup when step %i fails and reports the command failure',
+  async (step) => {
+    const f = await fixture();
+    try {
+      const session = await f.host.open({ platform: 'android', model: 'phone' });
+      for (let i = 0; i < step; i++)
+        f.runtime.adbShell.mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0 });
+      f.runtime.adbShell.mockResolvedValueOnce({ stdout: '', stderr: 'Permission denied', exitCode: 1 });
+      expect(await f.host.run(session.id, 'adb', ['-s', session.id, 'emu', 'geo', 'fix', '0', '0'])).toEqual({
+        stdout: '',
+        stderr: 'Permission denied',
+        code: 1,
+      });
+      expect(f.runtime.adbShell).toHaveBeenCalledTimes(step + 1);
+    } finally {
+      await f.host.close();
+    }
+  },
+);
+
+it.each([0, 1, 2, 3])(
+  'forwards Android absolute rotation %i through the existing ADB shell API',
+  async (rotation) => {
+    const f = await fixture();
+    try {
+      const session = await f.host.open({ platform: 'android', model: 'phone' });
+      await f.host.run(session.id, 'adb', [
+        '-s',
+        session.id,
+        'shell',
+        'cmd',
+        'window',
+        'user-rotation',
+        'lock',
+        String(rotation),
+      ]);
+      expect(f.runtime.adbShell).toHaveBeenCalledWith('sh', [
+        '-c',
+        `cmd window user-rotation lock ${rotation}`,
+      ]);
+    } finally {
+      await f.host.close();
+    }
+  },
+);
