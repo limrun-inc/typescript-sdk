@@ -9,6 +9,30 @@ describe('xcode client simulator helpers', () => {
     nodeProxyTransport.fetch = originalFetch;
   });
 
+  test('detaches through the sandbox using only its token', async () => {
+    nodeProxyTransport.fetch = jest.fn(async () => jsonResponse({ attached: false }));
+    const xcode = await new Limrun({ apiKey: 'management-key' }).xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'xcode-token',
+    });
+    expect(await xcode.detachSimulator()).toEqual({ attached: false });
+    expect(nodeProxyTransport.fetch).toHaveBeenCalledWith('https://xcode.example.test/simulator', {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer xcode-token' },
+    });
+  });
+
+  test('detach does not hide an unsupported endpoint', async () => {
+    nodeProxyTransport.fetch = jest.fn(async () => new Response('not found', { status: 404 }));
+    const xcode = await new Limrun({ apiKey: 'key' }).xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'xcode-token',
+    });
+    const failure = xcode.detachSimulator();
+    await expect(failure).rejects.toThrow('this sandbox may predate detach support');
+    await expect(failure).rejects.not.toBeInstanceOf(Limrun.NotFoundError);
+  });
+
   test('new auxiliary simulators have no ambient asset grants', async () => {
     const client = new Limrun({ apiKey: 'key' });
     const stop = new Error('stop before attachment');

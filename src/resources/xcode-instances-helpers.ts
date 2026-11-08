@@ -1,3 +1,4 @@
+import { DeviceDetachUnavailableError } from '../device-detach';
 import { pullBuildFile } from '../internal/build-pull-file';
 import { normalizeAssetUpload, type BuildUpload } from '../lib/asset-permissions';
 import {
@@ -523,6 +524,9 @@ export type XcodeClient = {
    * Return the currently attached simulator and latest installable build state.
    */
   getSimulator: () => Promise<SimulatorStatus>;
+
+  /** Disconnect the simulator, keeping both instances and installed apps. */
+  detachSimulator: () => Promise<SimulatorStatus>;
 
   /**
    * Return the Xcode this sandbox builds with and the Xcodes installed on its node.
@@ -1059,6 +1063,18 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           },
         });
         return readJsonResponse<SimulatorStatus>(res, 'GET /simulator');
+      },
+
+      async detachSimulator(): Promise<SimulatorStatus> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        return readOrUnsupported<SimulatorStatus>(
+          res,
+          'DELETE /simulator',
+          (op) => new DeviceDetachUnavailableError(op),
+        );
       },
 
       attachSimulator: attachSimulatorImpl,

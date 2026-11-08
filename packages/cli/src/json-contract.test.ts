@@ -127,6 +127,7 @@ function command(name: string, args: Record<string, unknown> = {}, flags: Record
     resolveXcodeTargetOrCreate: async () => target,
     resolveGradleTargetOrCreate: async () => target,
     resolveXcodeClientForWork: async () => client,
+    resolveXcodeClient: async () => client,
     resolveGradleClient: async () => client,
     consoleStreamUrl: () => 'https://console.example.test',
     signedStreamUrl: () => undefined,
@@ -788,4 +789,17 @@ describe.each(['android', 'ios'])('%s foreground launch lifecycle', (platform) =
     expect(cleanup).toHaveBeenCalledTimes(1);
     expect(jest.getTimerCount()).toBe(0);
   });
+});
+
+test.each([
+  ['xcode/detach-simulator', 'detachSimulator'],
+  ['gradle/detach-emulator', 'detachEmulator'],
+])('%s returns detached status without deleting instances', async (name, method) => {
+  client[method!] = jest.fn().mockResolvedValue({ attached: false });
+  const cmd = command(name!);
+  await cmd.run();
+  expect(client[method!]).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(stdout)).toEqual({ attached: false });
+  expect(cmd.client.xcodeInstances.delete).not.toHaveBeenCalled();
+  expect(cmd.client.gradleInstances.delete).not.toHaveBeenCalled();
 });
