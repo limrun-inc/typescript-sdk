@@ -31,28 +31,13 @@ const turns = (value: number) =>
   : 0;
 const tagged = (tag: number, value?: unknown) =>
   Buffer.concat([Buffer.from([tag]), ...(value === undefined ? [] : [Buffer.from(JSON.stringify(value))])]);
-const key = (code: number, action: number) => {
-  const b = Buffer.alloc(14);
-  b[1] = action;
-  b.writeInt32LE(code, 2);
-  return b;
-};
 const point = (value: unknown) => {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)
     throw new Error('Invalid normalized coordinate');
   return value;
 };
 
-function touch(action: number, x: number, y: number, display?: FoldDisplay): Buffer {
-  if (display) {
-    const b = Buffer.alloc(12);
-    b[0] = 19;
-    b[1] = action;
-    b[2] = display.screenId;
-    b.writeFloatLE(x, 4);
-    b.writeFloatLE(y, 8);
-    return b;
-  }
+function androidTouch(action: number, x: number, y: number): Buffer {
   const b = Buffer.alloc(32);
   b[0] = 2;
   b[1] = action;
@@ -159,6 +144,7 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
       }
     }
   };
+  const inputTasks = new Set<Promise<void>>();
   const inputs = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
   const authorized = (request: IncomingMessage) => {
     const actual = Buffer.from(request.headers.authorization ?? '');
@@ -313,10 +299,13 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
           return;
         }
         inputs.handleUpgrade(request, socket, head, (client) => {
-          void attachInput(client, signal, device.platform).catch(() => {
-            client.close(1011, 'Input unavailable');
-            signal.close();
-          });
+          const task = attachInput(client, signal, device.platform)
+            .catch(() => {
+              client.close(1011, 'Input unavailable');
+              signal.close();
+            })
+            .finally(() => inputTasks.delete(task));
+          inputTasks.add(task);
         });
       } catch (error) {
         signal.close();
@@ -338,6 +327,7 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
       if (closed) return;
       closed = true;
       for (const client of inputs.clients) client.terminate();
+      await Promise.allSettled(inputTasks);
       for (const signal of connections.keys()) signal.close();
       peers.clear();
       inputs.close();
@@ -357,18 +347,54 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
 }
 
 async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios' | 'android'): Promise<void> {
+  let ended!: () => void;
+  const inputClosed = new Promise<void>((resolve) => {
+    ended = resolve;
+  });
   let fold: FoldState | undefined;
   let orientation: Orientation = 'portrait';
   const heldKeys = new Set<number>();
   let width = 10000;
   let height = 10000;
-  let held: { x: number; y: number; display?: FoldDisplay } | undefined;
-  const release = () => {
-    if (held) {
-      signal.send(touch(1, held.x, held.y, held.display));
-      held = undefined;
+  let held: { x: number; y: number; orientation: Orientation; display?: FoldDisplay } | undefined;
+  const sendTouch = async (action: number, contact: NonNullable<typeof held>) => {
+    if (platform === 'android') {
+      signal.send(androidTouch(action, contact.x, contact.y));
+      return;
     }
+    // serve-sim sends native framebuffer points; performActions takes upright display points.
+    let { x, y } = contact;
+    const rotation =
+      contact.display ?
+        turns(contact.display.orientation)
+      : ({ portrait: 0, landscape_left: 3, portrait_upside_down: 2, landscape_right: 1 } as const)[
+          contact.orientation
+        ];
+    if (rotation === 1) [x, y] = [1 - y, x];
+    else if (rotation === 2) [x, y] = [1 - x, 1 - y];
+    else if (rotation === 3) [x, y] = [y, 1 - x];
+    await signal.request('performActions', {
+      ...(contact.display ? { display: contact.display.id } : {}),
+      actions: [
+        {
+          type:
+            action === 0 ? 'touchDown'
+            : action === 1 ? 'touchUp'
+            : 'touchMove',
+          x,
+          y,
+          screenWidth: 1,
+          screenHeight: 1,
+        },
+      ],
+    });
   };
+  const release = async () => {
+    const contact = held;
+    held = undefined;
+    if (contact) await sendTouch(1, contact);
+  };
+  let queue = Promise.resolve();
   const display = () =>
     fold?.displays.find((item) => item.id === (fold!.angleDegrees < 90 ? 'outer' : 'inner'));
   const configure = () => {
@@ -398,21 +424,30 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
     );
   };
   client.once('close', () => {
-    release();
-    if (heldKeys.size)
-      signal.send({
-        type: 'performActions',
-        id: randomUUID(),
-        actions: [...heldKeys].map((keyCode) => ({ type: 'keyUp', keyCode })),
+    void queue
+      .then(async () => {
+        await release();
+        if (heldKeys.size)
+          await signal.request('performActions', {
+            actions: [...heldKeys].map((keyCode) => ({ type: 'keyUp', keyCode })),
+          });
+      })
+      .catch(() => {})
+      .finally(() => {
+        signal.close();
+        ended();
       });
-    signal.close();
   });
   signal.ws.once('close', () => client.close(1011, 'Simulator disconnected'));
   signal.subscribe((message) => {
     if (message['type'] === 'foldStateChanged') {
-      release();
-      fold = message['state'];
-      configure();
+      queue = queue
+        .then(async () => {
+          await release();
+          fold = message['state'];
+          if (client.readyState === WebSocket.OPEN) configure();
+        })
+        .catch(() => client.close(1011, 'Device state unavailable'));
     }
   });
   if (platform === 'ios') {
@@ -427,9 +462,26 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
     configure();
     client.send(tagged(0x83));
   }
-  let queue = Promise.resolve();
   let queued = 0;
+  let pendingMove: { data: Buffer; binary: boolean } | undefined;
   client.on('message', (data, binary) => {
+    const bytes = Buffer.from(data as Buffer);
+    let moving = false;
+    try {
+      const value = JSON.parse(binary ? bytes.subarray(1).toString() : bytes.toString());
+      moving =
+        (binary && bytes[0] === 3 && value.type === 'move') ||
+        (!binary && value.type === 'touch' && value.action === 'move');
+    } catch {
+      client.close(1008, 'Invalid input');
+      return;
+    }
+    if (moving && pendingMove) {
+      pendingMove.data = bytes;
+      return;
+    }
+    const input = { data: bytes, binary };
+    pendingMove = moving ? input : undefined;
     if (++queued > 256) {
       client.close(1008, 'Input queue exceeded');
       return;
@@ -437,9 +489,10 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
     queue = queue
       .then(async () => {
         if (client.readyState !== WebSocket.OPEN) return;
-        const bytes = Buffer.from(data as Buffer);
-        const tag = binary ? bytes[0] : undefined;
-        const value: Message = JSON.parse(binary ? bytes.subarray(1).toString() : bytes.toString());
+        if (pendingMove === input) pendingMove = undefined;
+        const bytes = input.data;
+        const tag = input.binary ? bytes[0] : undefined;
+        const value: Message = JSON.parse(input.binary ? bytes.subarray(1).toString() : bytes.toString());
         if (tag === 3 || value['type'] === 'touch') {
           const phase = value['type'] === 'touch' ? value['action'] : value['type'];
           const action =
@@ -451,13 +504,13 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
           const x = point(value['x']);
           const y = point(value['y']);
           if (action === 0) {
-            release();
-            held = { x, y, ...(display() ? { display: display()! } : {}) };
+            await release();
+            held = { x, y, orientation, ...(display() ? { display: display()! } : {}) };
           }
           if (!held) return;
           held.x = x;
           held.y = y;
-          signal.send(touch(action, x, y, held.display));
+          await sendTouch(action, held);
           if (action === 1) held = undefined;
         } else if (tag === 6) {
           if (!Number.isInteger(value['usage']) || !['down', 'up'].includes(value['type']))
@@ -468,7 +521,7 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
             actions: [{ type: value['type'] === 'down' ? 'keyDown' : 'keyUp', keyCode: value['usage'] }],
           });
         } else if (tag === 7 || tag === 16) {
-          release();
+          await release();
           try {
             const command = value['command'];
             if (tag === 16 && command?.control === 'angle') {
@@ -493,23 +546,37 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
           }
         } else if (value['type'] === 'text') {
           if (typeof value['text'] !== 'string') throw new Error('Invalid text');
-          const text = Buffer.from(value['text']);
-          const message = Buffer.alloc(5 + text.length);
-          message[0] = 1;
-          message.writeUInt32BE(text.length, 1);
-          text.copy(message, 5);
-          signal.send(message);
+          await signal.request(
+            'typeText',
+            platform === 'android' ? { payload: { text: value['text'] } } : { text: value['text'] },
+          );
         } else {
-          const code =
-            tag === 4 ? ({ home: 3, app_switcher: 187, lock: 26 } as Record<string, number>)[value['button']]
-            : value['type'] === 'key' ? value['keycode']
-            : ({ home: 3, back: 4, recents: 187, power: 26 } as Record<string, number>)[value['type']];
-          if (!Number.isInteger(code)) throw new Error('Unsupported input');
-          signal.send(key(code, 0));
-          signal.send(key(code, 1));
+          if (platform === 'ios') {
+            if (tag !== 4 || !['home', 'app_switcher', 'lock'].includes(value['button']))
+              throw new Error('Unsupported button');
+            const button = value['button'] === 'lock' ? 'lock' : 'home';
+            const press = [
+              { type: 'buttonDown', button },
+              { type: 'buttonUp', button },
+            ];
+            await signal.request('performActions', {
+              actions:
+                value['button'] === 'app_switcher' ?
+                  [...press, { type: 'wait', durationMs: 100 }, ...press]
+                : press,
+            });
+          } else {
+            const code =
+              value['type'] === 'key' ?
+                value['keycode']
+              : ({ home: 3, back: 4, recents: 187, power: 26 } as Record<string, number>)[value['type']];
+            if (!Number.isInteger(code)) throw new Error('Unsupported input');
+            await signal.request('pressKey', { payload: { keyName: String(code) } });
+          }
         }
       })
       .catch(() => client.close(1008, 'Invalid input'))
       .finally(() => queued--);
   });
+  await inputClosed;
 }
