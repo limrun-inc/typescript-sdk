@@ -1,5 +1,5 @@
 import Limrun from '../src';
-import { createServeSimHost, type DeviceHostInstance } from '../src/serve-sim-host';
+import { createServeSimHost, deviceHostCatalog, type DeviceHostInstance } from '../src/serve-sim-host';
 import { createInstanceClient as createIosClient } from '../src/ios-client';
 import { createInstanceClient as createAndroidClient } from '../src/instance-client';
 
@@ -271,11 +271,16 @@ it.each(['ios', 'android'] as const)('runs %s commands only for the selected ins
       platform === 'ios' ?
         ['simctl', 'pbcopy', session.id]
       : ['-s', session.id, 'shell', 'settings', 'get', 'system', 'font_scale'];
-    expect((await f.host.run(session.id, command, args, { stdin: 'text' })).stdout).toBe(platform);
+    expect((await f.host.run(command, args, { stdin: 'text' })).stdout).toBe(platform);
     if (platform === 'ios')
       expect(f.runtime.simctl).toHaveBeenCalledWith(['pbcopy', 'booted'], { stdin: 'text' });
     else expect(f.runtime.adbShell).toHaveBeenCalledWith('sh', ['-c', 'settings get system font_scale']);
-    await expect(f.host.run('unowned', command, args)).rejects.toThrow('ended');
+    await expect(
+      f.host.run(
+        command,
+        args.map((arg) => (arg === session.id ? 'unowned' : arg)),
+      ),
+    ).rejects.toThrow('ended');
     expect(Buffer.from(await f.host.screenshot(session.id)).toString()).toBe('image');
   } finally {
     await f.host.close();
@@ -353,9 +358,11 @@ it('translates emulator GPS fixes to Android mock-provider commands without swap
   const f = await fixture();
   try {
     const session = await f.host.open({ platform: 'android', model: 'phone' });
-    expect(
-      await f.host.run(session.id, 'adb', ['-s', session.id, 'emu', 'geo', 'fix', '-122.4194', '37.7749']),
-    ).toEqual({ stdout: '', stderr: '', code: 0 });
+    expect(await f.host.run('adb', ['-s', session.id, 'emu', 'geo', 'fix', '-122.4194', '37.7749'])).toEqual({
+      stdout: '',
+      stderr: '',
+      code: 0,
+    });
     expect(f.runtime.adbShell.mock.calls).toEqual([
       ['appops', ['set', 'com.android.shell', 'android:mock_location', 'allow']],
       [
@@ -395,9 +402,7 @@ it('translates emulator GPS fixes to Android mock-provider commands without swap
       ['0', '1; reboot'],
       ['0'],
     ]) {
-      expect(
-        (await f.host.run(session.id, 'adb', ['-s', session.id, 'emu', 'geo', 'fix', ...coordinates])).code,
-      ).toBe(1);
+      expect((await f.host.run('adb', ['-s', session.id, 'emu', 'geo', 'fix', ...coordinates])).code).toBe(1);
     }
     expect(f.runtime.adbShell).not.toHaveBeenCalled();
   } finally {
@@ -414,7 +419,7 @@ it.each([0, 1, 2, 3])(
       for (let i = 0; i < step; i++)
         f.runtime.adbShell.mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0 });
       f.runtime.adbShell.mockResolvedValueOnce({ stdout: '', stderr: 'Permission denied', exitCode: 1 });
-      expect(await f.host.run(session.id, 'adb', ['-s', session.id, 'emu', 'geo', 'fix', '0', '0'])).toEqual({
+      expect(await f.host.run('adb', ['-s', session.id, 'emu', 'geo', 'fix', '0', '0'])).toEqual({
         stdout: '',
         stderr: 'Permission denied',
         code: 1,
@@ -432,7 +437,7 @@ it.each([0, 1, 2, 3])(
     const f = await fixture();
     try {
       const session = await f.host.open({ platform: 'android', model: 'phone' });
-      await f.host.run(session.id, 'adb', [
+      await f.host.run('adb', [
         '-s',
         session.id,
         'shell',
@@ -451,3 +456,38 @@ it.each([0, 1, 2, 3])(
     }
   },
 );
+
+it.each(deviceHostCatalog)('opens the catalog target $name through its platform API', async (target) => {
+  const f = await fixture();
+  try {
+    const session = await f.host.open(target);
+    const request = f.requests.find((request) => request.method === 'POST')!;
+    expect(request.url.pathname).toBe(`/v1/${target.platform}_instances`);
+    expect(request.body.spec.model).toBe(target.model);
+    expect(session.platform).toBe(target.platform);
+    expect(session.model).toBe(target.model);
+  } finally {
+    await f.host.close();
+  }
+});
+
+it('rejects malformed commands and platform mismatches without executing device commands', async () => {
+  const f = await fixture();
+  try {
+    const session = await f.host.open({ platform: 'ios', model: 'iphone' });
+    const commands: Array<[string, string[]]> = [
+      ['xcrun', ['simctl', 'pbcopy']],
+      ['xcrun', ['simctl', '', session.id]],
+      ['xcrun', ['other-tool', 'pbcopy', session.id]],
+      ['adb', ['-s']],
+      ['adb', ['-s', session.id, 'shell', 'reboot']],
+      ['adb', ['shell', session.id, 'reboot']],
+      ['sh', ['-c', session.id]],
+    ];
+    for (const [command, args] of commands) expect((await f.host.run(command, args)).code).toBe(127);
+    expect(f.runtime.simctl).not.toHaveBeenCalled();
+    expect(f.runtime.adbShell).not.toHaveBeenCalled();
+  } finally {
+    await f.host.close();
+  }
+});
