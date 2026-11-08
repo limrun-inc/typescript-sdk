@@ -319,23 +319,23 @@ instance, transport, platform, or session ID.
 
 ### Watch-only access
 
-Mint `ios:<instance-id>:view` or `android:<instance-id>:view` through
+Mint `ios:<instance-id>:watch` or `android:<instance-id>:watch` through
 `lim.accessTokens.create({ permissions: [...], ttlSeconds: 900 })` on your backend.
 Supply the instance's streaming URL and the resulting token to the viewer:
 
 ```tsx
-<RemoteControl url={streamingUrl} token={viewToken} readOnly />
+<RemoteControl url={streamingUrl} token={watchToken} watchOnly />
 ```
 
-Custom renderers use `createDeviceStream({ url: streamingUrl, token: viewToken,
-readOnly: true })`. Proxy transports also accept `readOnly: true`.
+Custom renderers use `createDeviceStream({ url: streamingUrl, token: watchToken,
+watchOnly: true })`. Proxy transports also accept `watchOnly: true`.
 
 Video, screenshots, and accessibility reads remain available. Input and outbound
 camera/microphone media are disabled; `controlReady` stays false. Mutating promise
-methods reject with `Device is read-only`; fire-and-forget input methods send
-nothing. Changing `readOnly` on `RemoteControl` reconnects the stream. For core,
+methods reject with `Device is watch-only`; fire-and-forget input methods send
+nothing. Changing `watchOnly` on `RemoteControl` reconnects the stream. For core,
 create a new client to change this creation-time option.
 
-Use the option with a `view` token: only the token enforces access on the server.
+Use the option with a `watch` token: only the token enforces access on the server.
 Existing `stream` tokens remain interactive, and `read` grants metadata access,
 not screen access.

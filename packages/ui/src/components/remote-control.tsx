@@ -47,8 +47,8 @@ declare global {
 }
 
 export interface RemoteControlProps {
-  /** Disable input and media forwarding. Use a view token for server-enforced watch-only access. */
-  readOnly?: boolean;
+  /** Disable input and media forwarding. Use a watch token for server-enforced watch-only access. */
+  watchOnly?: boolean;
   /** Receives latency trace messages from supported iOS and Android instances. Adding or removing the callback reconnects the stream. */
   onTrace?: (message: Record<string, unknown>) => void;
 
@@ -405,7 +405,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       token,
       sessionId: propSessionId,
       openUrl,
-      readOnly = false,
+      watchOnly = false,
       showFrame = true,
       deviceModel,
       duoModelUrl,
@@ -1618,7 +1618,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         url,
         token,
         sessionId,
-        readOnly,
+        watchOnly,
         deviceModel,
         autoReconnect,
         jitterBufferTargetMs,
@@ -1668,12 +1668,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         clientRef.current = null;
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [url, token, propSessionId, deviceModel, latencyTraceRequested, readOnly]);
+    }, [url, token, propSessionId, deviceModel, latencyTraceRequested, watchOnly]);
 
     useEffect(() => {
       if (isDuo && innerVideoRef.current)
         return clientRef.current?.attachVideo(innerVideoRef.current, 'inner');
-    }, [isDuo, url, token, propSessionId, deviceModel, latencyTraceRequested, readOnly]);
+    }, [isDuo, url, token, propSessionId, deviceModel, latencyTraceRequested, watchOnly]);
 
     useEffect(() => {
       clientRef.current?.updateOptions({
@@ -2010,7 +2010,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         {isDuo && duoState && (
           <Suspense fallback={<div>Loading iPhone Duo…</div>}>
             <DuoView
-              readOnly={readOnly}
+              watchOnly={watchOnly}
               showFrame={showFrame}
               modelUrl={duoModelUrl}
               outer={videoRef.current}
@@ -2065,7 +2065,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               }
             }}
             onTapElement={
-              readOnly ? undefined : (
+              watchOnly ? undefined : (
                 (element, tapAt) => {
                   // Use the viewport-space position the user originally aimed at
                   // (the frozen click position). For containers whose children

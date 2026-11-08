@@ -16,7 +16,7 @@ import {
 } from '../core/duo';
 
 export interface DuoFrameProps {
-  readOnly?: boolean;
+  watchOnly?: boolean;
   modelUrl?: string;
   outer: HTMLVideoElement | null;
   inner: HTMLVideoElement | null;
@@ -180,7 +180,7 @@ export default function DuoFrame(props: DuoFrameProps) {
       }
     };
     const pick = (event: PointerEvent) => {
-      if (latest.current.readOnly) return undefined;
+      if (latest.current.watchOnly) return undefined;
       const icon = iconButton(event.target);
       if (icon) return { button: icon.dataset.duoButton as DuoButton };
       const rect = renderer.domElement.getBoundingClientRect();
@@ -276,7 +276,7 @@ export default function DuoFrame(props: DuoFrameProps) {
     const keyDown = (event: KeyboardEvent) => {
       invalidate();
       const icon = iconButton(event.target);
-      if (!icon || latest.current.readOnly) return;
+      if (!icon || latest.current.watchOnly) return;
       event.stopPropagation();
       if (event.code !== 'Space' && event.code !== 'Enter') return;
       event.preventDefault();
@@ -289,7 +289,7 @@ export default function DuoFrame(props: DuoFrameProps) {
     const keyUp = (event: KeyboardEvent) => {
       invalidate();
       const icon = iconButton(event.target);
-      if (!icon || latest.current.readOnly) return;
+      if (!icon || latest.current.watchOnly) return;
       event.stopPropagation();
       if (event.code !== 'Space' && event.code !== 'Enter') return;
       event.preventDefault();
@@ -495,7 +495,7 @@ export default function DuoFrame(props: DuoFrameProps) {
         {(Object.keys(DUO_BUTTONS) as DuoButton[]).map((button) => (
           <button
             key={button}
-            disabled={props.readOnly}
+            disabled={props.watchOnly}
             ref={(element) => {
               if (element) hardwareNodes.current.set(button, element);
               else hardwareNodes.current.delete(button);
@@ -512,7 +512,7 @@ export default function DuoFrame(props: DuoFrameProps) {
         ))}
       </div>
       <DuoControls
-        readOnly={props.readOnly}
+        watchOnly={props.watchOnly}
         angle={angle}
         onFold={fold}
         foldTarget={target}
@@ -528,7 +528,7 @@ export default function DuoFrame(props: DuoFrameProps) {
         {(['front', 'book', 'table', 'back'] as const).map((value) => (
           <button
             key={value}
-            disabled={props.readOnly && (value === 'book' || value === 'table')}
+            disabled={props.watchOnly && (value === 'book' || value === 'table')}
             aria-pressed={view === value}
             onClick={() => {
               viewRevision.current++;

@@ -547,14 +547,14 @@ describe('headless device stream', () => {
     expect(axElementSelectorExpression(element, 'ios')).toContain('continue');
   });
   it.each(['ios', 'android'] as const)(
-    'keeps %s read-only streams live without input or media capture',
+    'keeps %s watch-only streams live without input or media capture',
     async (platform) => {
       const getUserMedia = vi.fn();
       vi.stubGlobal('navigator', { onLine: true, mediaDevices: { getUserMedia } });
       const client = create({
         url: `wss://host/${platform}_test`,
         token: 'view-token',
-        readOnly: true,
+        watchOnly: true,
         microphoneEnabled: true,
         openUrl: 'myapp://home',
       });
@@ -569,8 +569,10 @@ describe('headless device stream', () => {
       client.rotate();
       client.sendDisplayTouch(0, 1, 0.5, 0.5);
       client.openUrl('myapp://other');
-      await expect(client.sendDuoControl('setHingeAngle', { angleDegrees: 90 })).rejects.toThrow('read-only');
-      await expect(client.terminateApp('com.example.app')).rejects.toThrow('read-only');
+      await expect(client.sendDuoControl('setHingeAngle', { angleDegrees: 90 })).rejects.toThrow(
+        'watch-only',
+      );
+      await expect(client.terminateApp('com.example.app')).rejects.toThrow('watch-only');
       socket.message({ type: 'cameraRequest', active: true });
       socket.message({ type: 'microphoneRequest', active: true });
       client.updateOptions({ microphoneEnabled: false });
@@ -863,7 +865,7 @@ describe('RemoteControl compatibility', () => {
   };
 
   it.each(['ios', 'android'])('lets the page scroll over a %s watch-only stream', async (platform) => {
-    await render({ url: `wss://host/${platform}_test`, readOnly: true });
+    await render({ url: `wss://host/${platform}_test`, watchOnly: true });
     const { peer } = await connect();
     const event = new WheelEvent('wheel', {
       clientX: 50,
@@ -880,8 +882,8 @@ describe('RemoteControl compatibility', () => {
     expect(peer.channel.send).not.toHaveBeenCalled();
   });
 
-  it('applies readOnly through RemoteControl and reconnects when it changes', async () => {
-    await render({ readOnly: true, openUrl: 'myapp://ignored' });
+  it('applies watchOnly through RemoteControl and reconnects when it changes', async () => {
+    await render({ watchOnly: true, openUrl: 'myapp://ignored' });
     const first = await connect();
     handle.current!.sendKeyEvent({ type: 'keydown', code: 'Enter' });
     handle.current!.openUrl('myapp://ignored');
@@ -890,7 +892,7 @@ describe('RemoteControl compatibility', () => {
     const screenshot = handle.current!.screenshot();
     first.socket.message({ type: 'screenshotResult', id: first.socket.sent.at(-1)!.id, base64: 'cG5n' });
     await expect(screenshot).resolves.toEqual({ dataUri: 'data:image/png;base64,cG5n' });
-    await render({ readOnly: false });
+    await render({ watchOnly: false });
     expect(first.peer.close).toHaveBeenCalled();
     const second = await connect();
     handle.current!.sendKeyEvent({ type: 'keydown', code: 'Enter' });
