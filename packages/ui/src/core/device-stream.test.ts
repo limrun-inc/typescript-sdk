@@ -1031,6 +1031,28 @@ describe('RemoteControl compatibility', () => {
     ).not.toBe(sessionId);
   });
 
+  it('preserves the session ID across client recreation without a token change', async () => {
+    await render();
+    const first = await connect();
+    const sessionId = first.socket.sent.find(
+      (message) => message.type === 'requestRtcConfiguration',
+    )!.sessionId;
+    const onTrace = vi.fn();
+    const changes: Partial<RemoteControlProps>[] = [
+      { onTrace },
+      { onTrace, deviceModel: 'iphone-16-pro' },
+      { onTrace, deviceModel: 'iphone-16-pro', url: 'wss://host/ios_other' },
+    ];
+    for (const props of changes) {
+      await render(props);
+      const next = await connect();
+      expect(next.socket.sent.find((message) => message.type === 'requestRtcConfiguration')!.sessionId).toBe(
+        sessionId,
+      );
+    }
+    expect(Socket.sockets).toHaveLength(4);
+  });
+
   it('uses the caller session ID and replaces it with the credentials', async () => {
     await render({ sessionId: 'first-session' });
     const first = await connect();

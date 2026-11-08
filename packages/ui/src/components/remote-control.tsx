@@ -63,7 +63,7 @@ export interface RemoteControlProps {
   // sessionId is a unique identifier for the WebRTC session
   // with the source to prevent conflicts between other
   // users connected to the same source.
-  // If empty, each stream client generates a random one, including after token changes.
+  // If empty, the component generates a random one on mount and when the token changes.
   // If supplied, change it whenever the token changes.
   sessionId?: string;
 
@@ -529,6 +529,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const inspectModeResolved: InspectMode = inspectMode === 'hover-only' ? 'hover-only' : 'select';
 
     const platform = useMemo(() => detectPlatform(url), [url]);
+    const sessionId = useMemo(
+      () =>
+        propSessionId ||
+        Array.from(crypto.getRandomValues(new Uint32Array(4)), (part) => part.toString(36)).join(''),
+      [propSessionId, token],
+    );
     const config = deviceConfig[platform];
     const platformAssets = assets?.[platform];
     const frameImageSrc =
@@ -1608,7 +1614,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       const client = createDeviceStream({
         url,
         token,
-        sessionId: propSessionId || undefined,
+        sessionId,
         deviceModel,
         autoReconnect,
         jitterBufferTargetMs,
