@@ -25,6 +25,7 @@
     "build": "./scripts/build",
     "prepublishOnly": "echo 'to publish, run yarn build && (cd dist; yarn publish)' && exit 1",
     "format": "./scripts/format",
+    "prepack": "./scripts/build",
     "prepare": "if ./scripts/utils/check-is-in-git-install.sh; then ./scripts/build && ./scripts/utils/git-swap.sh; fi",
     "tsn": "ts-node -r tsconfig-paths/register",
     "lint": "./scripts/lint",
