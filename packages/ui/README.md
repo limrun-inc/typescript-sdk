@@ -16,6 +16,15 @@ logo is omitted. Pass your own images through the `assets` prop if you want fram
 `onConnectionStateChange` reports `connecting`, `connected`, `reconnecting`, `failed`, and
 `terminated` so a host can show status text without tracking the retry logic.
 
+## Reconnecting
+
+`RemoteControl` and `createDeviceStream` automatically retry a dropped session by
+default. Recovery gets up to three connection attempts and stops if the instance
+has terminated. If retries fail, `RemoteControl` shows a Retry button.
+
+Set `autoReconnect` to `false` to require a manual reconnect after an established
+session drops. Initial connection attempts still retry with this option disabled.
+
 ## Playback buffering
 
 `jitterBufferTargetMs` sets a preferred browser jitter buffer duration for incoming

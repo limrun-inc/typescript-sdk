@@ -35,6 +35,7 @@ export interface DeviceStreamLiveOptions {
   axPollIntervalMs?: number;
   axMaxBackoffMs?: number;
   androidElementTreeOptions?: AndroidElementTreeOptions;
+  /** Retry dropped sessions automatically. Defaults to true; false requires a manual reconnect. */
   autoReconnect?: boolean;
   jitterBufferTargetMs?: number | null;
   microphoneEnabled?: boolean;

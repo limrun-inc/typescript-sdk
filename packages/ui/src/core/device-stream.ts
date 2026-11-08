@@ -986,7 +986,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     checkTerminated();
 
     if (currentControlChannelOpened) {
-      if (!options.autoReconnect) {
+      if (options.autoReconnect === false) {
         updateStatus(`Connection failed after it was established: ${reason}`);
 
         stopKeepAlive();
@@ -1487,7 +1487,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         if (
           iceState === 'disconnected' &&
           currentControlChannelOpened &&
-          options.autoReconnect &&
+          options.autoReconnect !== false &&
           currentIceDisconnectedGrace === undefined
         ) {
           // Cap the browser's natural disconnected→failed escalation to recover faster.

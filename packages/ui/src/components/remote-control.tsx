@@ -87,7 +87,7 @@ export interface RemoteControlProps {
   duoModelUrl?: string;
 
   // When true, drops after a working session auto-reconnect instead of
-  // surfacing the manual "Retry" button. Defaults to false.
+  // surfacing the manual "Retry" button. Defaults to true.
   autoReconnect?: boolean;
 
   /**
@@ -411,7 +411,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       showFrame = true,
       deviceModel,
       duoModelUrl,
-      autoReconnect = false,
+      autoReconnect,
       jitterBufferTargetMs,
       onPlaybackStats,
       onTerminated,
