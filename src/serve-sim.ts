@@ -9,7 +9,7 @@ export interface ServeSimDevice {
   endpoint: string;
   apiUrl: string;
   /** Mint a watch token for viewing. Never return the interactive token for this grant. */
-  token: (grant: 'watch' | 'stream') => Promise<string>;
+  token: (grant: 'watch' | 'stream' | 'all') => Promise<string>;
 }
 
 export interface ServeSimAdapterOptions {
@@ -107,7 +107,7 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
       pending = (async () => {
         const client = await createInstanceClient({
           apiUrl: device.apiUrl,
-          token: await device.token('stream'),
+          token: await device.token('all'),
           logLevel: 'none',
         });
         try {
@@ -150,7 +150,7 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
     const expected = Buffer.from(`Bearer ${secret}`);
     return actual.length === expected.length && timingSafeEqual(actual, expected);
   };
-  const connect = async (device: ServeSimDevice, grant: 'watch' | 'stream') => {
+  const connect = async (device: ServeSimDevice, grant: 'watch' | 'stream' | 'all') => {
     const signal = new Signaling(device.endpoint, await device.token(grant));
     connections.add(signal);
     signal.ws.once('close', () => connections.delete(signal));
