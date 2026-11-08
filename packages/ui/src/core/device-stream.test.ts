@@ -862,6 +862,24 @@ describe('RemoteControl compatibility', () => {
     return connection;
   };
 
+  it.each(['ios', 'android'])('lets the page scroll over a %s watch-only stream', async (platform) => {
+    await render({ url: `wss://host/${platform}_test`, readOnly: true });
+    const { peer } = await connect();
+    const event = new WheelEvent('wheel', {
+      clientX: 50,
+      clientY: 100,
+      deltaY: 20,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      host.querySelector('.rc-container')!.dispatchEvent(event);
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(event.defaultPrevented).toBe(false);
+    expect(peer.channel.send).not.toHaveBeenCalled();
+  });
+
   it('applies readOnly through RemoteControl and reconnects when it changes', async () => {
     await render({ readOnly: true, openUrl: 'myapp://ignored' });
     const first = await connect();

@@ -180,6 +180,7 @@ export default function DuoFrame(props: DuoFrameProps) {
       }
     };
     const pick = (event: PointerEvent) => {
+      if (latest.current.readOnly) return undefined;
       const icon = iconButton(event.target);
       if (icon) return { button: icon.dataset.duoButton as DuoButton };
       const rect = renderer.domElement.getBoundingClientRect();
@@ -201,7 +202,7 @@ export default function DuoFrame(props: DuoFrameProps) {
     };
     const down = (event: PointerEvent) => {
       invalidate();
-      if (latest.current.readOnly || drag || event.button !== 0) return;
+      if (drag || event.button !== 0) return;
       if (!iconButton(event.target)) container.focus({ preventScroll: true });
       const picked = pick(event);
       const hardware = picked && 'button' in picked ? picked.button : undefined;
@@ -275,7 +276,7 @@ export default function DuoFrame(props: DuoFrameProps) {
     const keyDown = (event: KeyboardEvent) => {
       invalidate();
       const icon = iconButton(event.target);
-      if (!icon) return;
+      if (!icon || latest.current.readOnly) return;
       event.stopPropagation();
       if (event.code !== 'Space' && event.code !== 'Enter') return;
       event.preventDefault();
@@ -288,7 +289,7 @@ export default function DuoFrame(props: DuoFrameProps) {
     const keyUp = (event: KeyboardEvent) => {
       invalidate();
       const icon = iconButton(event.target);
-      if (!icon) return;
+      if (!icon || latest.current.readOnly) return;
       event.stopPropagation();
       if (event.code !== 'Space' && event.code !== 'Enter') return;
       event.preventDefault();
@@ -527,7 +528,7 @@ export default function DuoFrame(props: DuoFrameProps) {
         {(['front', 'book', 'table', 'back'] as const).map((value) => (
           <button
             key={value}
-            disabled={props.readOnly}
+            disabled={props.readOnly && (value === 'book' || value === 'table')}
             aria-pressed={view === value}
             onClick={() => {
               viewRevision.current++;

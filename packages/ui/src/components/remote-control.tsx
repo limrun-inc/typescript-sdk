@@ -1344,6 +1344,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       wheelStateRef.current = null;
     };
     const handleWheel = (event: WheelEvent) => {
+      if (!clientRef.current?.getState().controlReady) return;
       // Trackpad pinches arrive as ctrl+wheel; don't turn them into scrolls.
       if (event.ctrlKey) return;
       // If the user is already touching/dragging (or holding Alt for the
