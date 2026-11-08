@@ -235,6 +235,32 @@ function respondWithTree(socket: Socket) {
 }
 
 describe('headless device stream', () => {
+  it.each([undefined, true, false])(
+    'handles a dropped session with autoReconnect=%s',
+    async (autoReconnect) => {
+      const client = create({ url: 'wss://host/ios_test', token: 'secret', autoReconnect });
+      const { peer } = await handshake(client);
+      peer.connected();
+      peer.fail();
+      expect(client.getState().connection).toBe(autoReconnect === false ? 'failed' : 'reconnecting');
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(Socket.sockets).toHaveLength(autoReconnect === false ? 1 : 2);
+    },
+  );
+
+  it.each([undefined, false])(
+    'handles prolonged ICE disconnection with autoReconnect=%s',
+    async (autoReconnect) => {
+      const client = create({ url: 'wss://host/ios_test', token: 'secret', autoReconnect });
+      const { peer } = await handshake(client);
+      peer.connected();
+      peer.iceConnectionState = 'disconnected';
+      peer.oniceconnectionstatechange?.();
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(Socket.sockets).toHaveLength(autoReconnect === false ? 1 : 2);
+    },
+  );
+
   it('does not notify empty accessibility snapshots on mount, disable, or repeated cleanup', async () => {
     const onAxSnapshotChange = vi.fn();
     const client = create({
@@ -874,6 +900,20 @@ describe('RemoteControl compatibility', () => {
     return connection;
   };
 
+  it.each([undefined, false])(
+    'preserves the reconnect default and opt-out with autoReconnect=%s',
+    async (autoReconnect) => {
+      await render(autoReconnect === undefined ? {} : { autoReconnect });
+      const { peer } = await connect();
+      await act(async () => {
+        peer.fail();
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(Socket.sockets).toHaveLength(autoReconnect === false ? 1 : 2);
+      expect(host.querySelector('.rc-retry-button') !== null).toBe(autoReconnect === false);
+    },
+  );
+
   it.each(['ios', 'android'])('lets the page scroll over a %s watch-only stream', async (platform) => {
     await render({ url: `wss://host/${platform}_test`, watchOnly: true });
     const { peer } = await connect();
@@ -961,7 +1001,7 @@ describe('RemoteControl compatibility', () => {
         'fetch',
         vi.fn(async () => ({ status: state === 'terminated' ? 404 : 200 })),
       );
-      await render();
+      await render({ autoReconnect: false });
       const { peer } = await connect();
       const video = host.querySelector('video')!;
       expect(video.classList.contains('rc-video-loading')).toBe(false);
@@ -979,7 +1019,7 @@ describe('RemoteControl compatibility', () => {
   );
 
   it('keeps the initial loading placeholder if failure occurs before any video frame', async () => {
-    await render();
+    await render({ autoReconnect: false });
     await act(async () => {
       const { peer } = await handshake();
       peer.connected();
@@ -1047,6 +1087,7 @@ describe('RemoteControl compatibility', () => {
         tabletFrameLandscape: '/tablet-landscape.svg',
       };
       await render({
+        autoReconnect: false,
         url: `wss://host/${viewer === 'android-tablet' ? 'android' : 'ios'}_test`,
         assets: viewer === 'frameless' ? undefined : { ios: assets, android: assets },
       });
@@ -1129,7 +1170,7 @@ describe('RemoteControl compatibility', () => {
 
   it('clears rendered inspector boxes and callbacks when the connection drops', async () => {
     const onAxSnapshotChange = vi.fn();
-    await render({ inspectMode: true, onAxSnapshotChange });
+    await render({ autoReconnect: false, inspectMode: true, onAxSnapshotChange });
     const { socket, peer } = await connect();
     await act(async () => {
       respondWithTree(socket);
