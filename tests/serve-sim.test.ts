@@ -1,4 +1,4 @@
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createServeSimAdapter } from '../src/serve-sim';
 import { gatherAnswer } from '../src/internal/serve-sim/signaling';
@@ -15,9 +15,15 @@ const fold = {
   ],
 };
 
-async function fixture(platform: 'ios' | 'android' = 'ios', compatibilityVersion = 1) {
+async function fixture(
+  platform: 'ios' | 'android' = 'ios',
+  state: typeof fold | null = fold,
+  orientation = 1,
+) {
   const runtime = new WebSocketServer({ port: 0, host: '127.0.0.1' });
   await once(runtime, 'listening');
+  const received = new EventEmitter();
+  let onActions: ((message: any, reply: () => void) => void) | undefined;
   const messages: Array<{ token: string; message: any }> = [];
   let refuseWatch = false;
   runtime.on('connection', (socket, request) => {
@@ -29,12 +35,12 @@ async function fixture(platform: 'ios' | 'android' = 'ios', compatibilityVersion
       }
       const message = JSON.parse(data.toString());
       messages.push({ token, message });
+      received.emit('message', message);
       const send = (value: any) => socket.send(JSON.stringify(value));
       switch (message.type) {
         case 'requestRtcConfiguration':
           send({
             type: 'rtcConfiguration',
-            compatibilityVersion,
             rtcConfiguration: { iceServers: [{ urls: 'turn:test', username: 'test', credential: 'test' }] },
             foldSupported: true,
           });
@@ -50,10 +56,16 @@ async function fixture(platform: 'ios' | 'android' = 'ios', compatibilityVersion
           send({ type: 'candidate', candidate: '' });
           break;
         case 'deviceInfo':
-          send({ type: 'deviceInfoResult', id: message.id, screenWidth: 400, screenHeight: 800 });
+          send({
+            type: 'deviceInfoResult',
+            id: message.id,
+            screenWidth: 400,
+            screenHeight: 800,
+            orientation,
+          });
           break;
         case 'getFoldState':
-          send({ type: 'foldStateResult', id: message.id, state: fold });
+          send({ type: 'foldStateResult', id: message.id, state });
           break;
         case 'setHingeAngle':
           send({ type: 'foldStateChanged', state: { ...fold, angleDegrees: message.angleDegrees } });
@@ -71,8 +83,14 @@ async function fixture(platform: 'ios' | 'android' = 'ios', compatibilityVersion
         case 'screenshotDisplay':
           send({ id: message.id, base64: 'aW1hZ2U=' });
           break;
-        case 'performActions':
+        case 'typeText':
+        case 'pressKey':
+        case 'setOrientation':
           send({ id: message.id, results: [] });
+          break;
+        case 'performActions':
+          if (onActions) onActions(message, () => send({ id: message.id, results: [] }));
+          else send({ id: message.id, results: [] });
           break;
       }
     });
@@ -97,6 +115,21 @@ async function fixture(platform: 'ios' | 'android' = 'ios', compatibilityVersion
     hub,
     runtime,
     messages,
+    interceptActions: (handler: typeof onActions) => {
+      onActions = handler;
+    },
+    waitMessage: (predicate: (message: any) => boolean) =>
+      new Promise<any>((resolve) => {
+        const found = messages.find((item) => predicate(item.message));
+        if (found) return resolve(found.message);
+        const listener = (message: any) => {
+          if (predicate(message)) {
+            received.off('message', listener);
+            resolve(message);
+          }
+        };
+        received.on('message', listener);
+      }),
     refuseWatch: () => {
       refuseWatch = true;
     },
@@ -151,7 +184,7 @@ it('keeps simultaneous viewers isolated and aggregates candidates without exposi
   }
 });
 
-it('routes Duo touches to native display IDs and releases a held gesture before folding', async () => {
+it('uses existing display-targeted touch actions and releases a held gesture before folding', async () => {
   const f = await fixture();
   try {
     const socket = new WebSocket(
@@ -175,11 +208,18 @@ it('routes Duo touches to native display IDs and releases a held gesture before 
     );
     send(16, { requestId: 1, command: { control: 'angle', value: 0 } });
     expect(await ack).toEqual({ requestId: 1, ok: true });
-    const inputs = f.messages.filter((item) => Buffer.isBuffer(item.message));
-    expect(inputs.map((item) => [item.message[0], item.message[1], item.message[2]])).toEqual([
-      [19, 0, 17],
-      [19, 1, 17],
+    const inputs = f.messages.filter((item) => item.message.type === 'performActions');
+    expect(inputs.map((item) => ({ display: item.message.display, actions: item.message.actions }))).toEqual([
+      {
+        display: 'inner',
+        actions: [{ type: 'touchDown', x: 0.25, y: 0.75, screenWidth: 1, screenHeight: 1 }],
+      },
+      { display: 'inner', actions: [{ type: 'touchUp', x: 0.25, y: 0.75, screenWidth: 1, screenHeight: 1 }] },
     ]);
+    expect(f.messages.findIndex((item) => item.message.type === 'setHingeAngle')).toBeGreaterThan(
+      f.messages.indexOf(inputs[1]!),
+    );
+    expect(f.messages.some((item) => Buffer.isBuffer(item.message))).toBe(false);
     expect(inputs.every((item) => item.token === 'Bearer stream')).toBe(true);
     socket.close();
     await once(socket, 'close');
@@ -230,7 +270,7 @@ it('serves Android watch reads and translates its independent input socket', asy
     const received = new Promise<void>((resolve) => {
       f.runtime.on('connection', (socket) =>
         socket.on('message', (_data, binary) => {
-          if (binary && f.messages.filter((item) => Buffer.isBuffer(item.message)).length === 5) resolve();
+          if (!binary && JSON.parse(_data.toString()).type === 'pressKey') resolve();
         }),
       );
     });
@@ -248,11 +288,15 @@ it('serves Android watch reads and translates its independent input socket', asy
       socket.send(JSON.stringify(value));
     await received;
     const controls = f.messages.filter((item) => Buffer.isBuffer(item.message));
-    expect(controls.map((item) => item.message[0])).toEqual([2, 2, 1, 0, 0]);
+    expect(controls.map((item) => item.message[0])).toEqual([2, 2]);
     expect(controls[0]!.message.readInt32LE(10)).toBe(2000);
     expect(controls[0]!.message.readInt32LE(14)).toBe(8000);
-    expect(controls[2]!.message.subarray(5).toString()).toBe('Hello');
-    expect(controls[3]!.message.readInt32LE(2)).toBe(3);
+    expect(f.messages.find((item) => item.message.type === 'typeText')?.message.payload).toEqual({
+      text: 'Hello',
+    });
+    expect(f.messages.find((item) => item.message.type === 'pressKey')?.message.payload).toEqual({
+      keyName: '3',
+    });
     expect(controls.every((item) => item.token === 'Bearer stream')).toBe(true);
     socket.close();
     await once(socket, 'close');
@@ -261,11 +305,11 @@ it('serves Android watch reads and translates its independent input socket', asy
   }
 });
 
-it('rejects runtimes without compatibility support and invalid panel IDs', async () => {
-  const f = await fixture('ios', 0);
+it('uses existing configuration responses without requiring a compatibility version and rejects invalid panels', async () => {
+  const f = await fixture();
   try {
     const old = await fetch(`${f.hub.origin}/vendor/serve-sim/api?device=owned`, { headers: f.hub.headers });
-    expect(old.status).toBe(502);
+    expect(old.status).toBe(200);
     const panel = await fetch(`${f.hub.origin}/vendor/serve-sim/helper/owned/webrtc/offer?panel=2`, {
       method: 'POST',
       headers: f.hub.headers,
@@ -296,6 +340,122 @@ it('reserves a viewer ID during negotiation and closes it explicitly', async () 
     });
     expect(close.status).toBe(200);
     expect((await request()).status).toBe(200);
+  } finally {
+    await f.close();
+  }
+});
+
+async function openIosInput(f: Awaited<ReturnType<typeof fixture>>) {
+  const socket = new WebSocket(
+    `${f.hub.origin.replace('http:', 'ws:')}/vendor/serve-sim/helper/ws?device=owned`,
+    { headers: f.hub.headers },
+  );
+  await new Promise<void>((resolve) =>
+    socket.on('message', (data) => {
+      if (Buffer.from(data as Buffer)[0] === 0x83) resolve();
+    }),
+  );
+  return {
+    socket,
+    send: (tag: number, value: any) =>
+      socket.send(Buffer.concat([Buffer.from([tag]), Buffer.from(JSON.stringify(value))])),
+  };
+}
+
+it.each([
+  ['phone', 1, 0.2, 0.3],
+  ['phone', 2, 0.8, 0.7],
+  ['phone', 3, 0.3, 0.8],
+  ['phone', 4, 0.7, 0.2],
+  ['duo', 1, 0.2, 0.3],
+  ['duo', 2, 0.8, 0.7],
+  ['duo', 3, 0.7, 0.2],
+  ['duo', 4, 0.3, 0.8],
+])(
+  'converts native %s coordinates at orientation %s to the existing API space',
+  async (kind, orientation, x, y) => {
+    const state =
+      kind === 'duo' ?
+        {
+          ...fold,
+          displays: fold.displays.map((display) => ({ ...display, orientation: Number(orientation) })),
+        }
+      : null;
+    const f = await fixture('ios', state, Number(orientation));
+    try {
+      const input = await openIosInput(f);
+      input.send(3, { type: 'begin', x: 0.2, y: 0.3 });
+      const request = await f.waitMessage((message) => message.type === 'performActions');
+      expect(request.display).toBe(kind === 'duo' ? 'inner' : undefined);
+      expect(request.actions).toEqual([{ type: 'touchDown', x, y, screenWidth: 1, screenHeight: 1 }]);
+      await f.hub.close();
+      const release = f.messages.filter((item) => item.message.type === 'performActions').at(-1)!.message;
+      expect(release.actions[0]).toEqual({ type: 'touchUp', x, y, screenWidth: 1, screenHeight: 1 });
+      expect(release.display).toBe(request.display);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+it('uses existing iOS button actions and releases held keys when the adapter closes', async () => {
+  const f = await fixture();
+  try {
+    const input = await openIosInput(f);
+    input.send(4, { button: 'home' });
+    input.send(4, { button: 'lock' });
+    input.send(4, { button: 'app_switcher' });
+    input.send(6, { type: 'down', usage: 225 });
+    await f.waitMessage((message) => message.actions?.[0]?.type === 'keyDown');
+    await f.hub.close();
+    const batches = f.messages
+      .filter((item) => item.message.type === 'performActions')
+      .map((item) => item.message.actions);
+    const home = [
+      { type: 'buttonDown', button: 'home' },
+      { type: 'buttonUp', button: 'home' },
+    ];
+    expect(batches).toEqual([
+      home,
+      [
+        { type: 'buttonDown', button: 'lock' },
+        { type: 'buttonUp', button: 'lock' },
+      ],
+      [...home, { type: 'wait', durationMs: 100 }, ...home],
+      [{ type: 'keyDown', keyCode: 225 }],
+      [{ type: 'keyUp', keyCode: 225 }],
+    ]);
+    expect(f.messages.some((item) => Buffer.isBuffer(item.message))).toBe(false);
+  } finally {
+    await f.close();
+  }
+});
+
+it('coalesces waiting moves without losing the touch boundaries or reordering API calls', async () => {
+  const f = await fixture();
+  try {
+    let acknowledgeDown!: () => void;
+    f.interceptActions((message, reply) => {
+      if (message.actions[0].type === 'touchDown') acknowledgeDown = reply;
+      else reply();
+    });
+    const input = await openIosInput(f);
+    input.send(3, { type: 'begin', x: 0, y: 0 });
+    await f.waitMessage((message) => message.actions?.[0]?.type === 'touchDown');
+    for (let i = 1; i <= 300; i++) input.send(3, { type: 'move', x: i / 300, y: 0.5 });
+    input.send(3, { type: 'end', x: 1, y: 0.5 });
+    // A ping response proves that the adapter has consumed the preceding input frames.
+    const pong = once(input.socket, 'pong');
+    input.socket.ping();
+    await pong;
+    expect(f.messages.filter((item) => item.message.type === 'performActions')).toHaveLength(1);
+    acknowledgeDown();
+    await f.waitMessage((message) => message.actions?.[0]?.type === 'touchUp');
+    const actions = f.messages
+      .filter((item) => item.message.type === 'performActions')
+      .map((item) => item.message.actions[0]);
+    expect(actions.map((action) => action.type)).toEqual(['touchDown', 'touchMove', 'touchUp']);
+    expect(actions[1]).toMatchObject({ x: 1, y: 0.5 });
   } finally {
     await f.close();
   }

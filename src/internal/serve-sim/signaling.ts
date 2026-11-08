@@ -102,10 +102,7 @@ export class Signaling {
   async configuration(): Promise<Message> {
     const response = this.wait((message) => message['type'] === 'rtcConfiguration');
     this.send({ type: 'requestRtcConfiguration', sessionId: this.sessionId });
-    const config = await response;
-    if (config['compatibilityVersion'] !== 1)
-      throw new Error('This simulator runtime needs serve-sim compatibility support');
-    return config;
+    return response;
   }
 
   async offer(sdp: string, display: 'active' | 'outer' | 'inner'): Promise<string> {
