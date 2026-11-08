@@ -1,3 +1,4 @@
+import { savedGoogleAccessToken } from '../../lib/google-auth';
 import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { type GradleBuildOptions } from '@limrun/api';
@@ -152,7 +153,7 @@ export default class GradleBuild extends BaseCommand {
     }),
     'upload-to-playstore': Flags.boolean({
       description:
-        'Publish the signed AAB to a Google Play track after a successful build. Requires signing plus either --playstore-service-account or --playstore-access-token; the app listing must already exist in Play Console.',
+        'Publish the signed AAB to a Google Play track after a successful build. Requires signing and saved Play login credentials, --playstore-service-account, or --playstore-access-token; the app listing must already exist in Play Console.',
       default: false,
     }),
     'playstore-service-account': Flags.string({
@@ -212,6 +213,13 @@ export default class GradleBuild extends BaseCommand {
     const syncPath = args.path ?? process.cwd();
     try {
       additionalFiles = parseAdditionalFileFlags(flags['additional-file']);
+      if (
+        flags['upload-to-playstore'] &&
+        !flags['playstore-service-account'] &&
+        !flags['playstore-access-token']
+      ) {
+        flags['playstore-access-token'] = await savedGoogleAccessToken();
+      }
       options = gradleBuildOptionsFromFlags(flags);
       if (flags.sign || flags['save-key']) {
         applicationId = resolveApplicationId({

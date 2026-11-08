@@ -115,7 +115,7 @@ test('upload-to-playstore without signing throws before any instance work', () =
 
 test('upload-to-playstore without a Google credential throws', () => {
   expect(() => gradleBuildOptionsFromFlags({ sign: true, 'upload-to-playstore': true })).toThrow(
-    'requires --playstore-service-account or --playstore-access-token',
+    'Run lim android play auth first, or provide --playstore-service-account or --playstore-access-token',
   );
 });
 

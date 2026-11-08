@@ -23,10 +23,13 @@
     "dev": "node bin/dev.js",
     "prepublishOnly": "tsc --noEmit -p tsconfig.publish.json && npm run build",
     "lint": "eslint src/",
-    "test": "jest"
+    "test": "jest",
+    "test:store-e2e": "node --test test/store-actions.e2e.cjs"
   },
   "dependencies": {
     "@limrun/api": "0.69.3",
+    "@limrun/apple-auth": "^0.6.2",
+    "@limrun/play-auth": "^0.4.0",
     "@oclif/core": "^4",
     "cli-progress": "^3.12.0",
     "cli-table3": "^0.6.5",
@@ -110,6 +113,12 @@
       },
       "access-token": {
         "description": "Create and revoke temporary access tokens: create, revoke"
+      },
+      "ios:apple": {
+        "description": "Manage Apple Developer and App Store Connect resources"
+      },
+      "android:play": {
+        "description": "Manage Google Play authentication, apps, signing, and publishing"
       }
     }
   },

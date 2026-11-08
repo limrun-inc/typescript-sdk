@@ -1,3 +1,5 @@
+import type { AppleCredentials } from './apple-auth-credentials';
+
 export interface XcodeSigningFlagValues {
   'certificate-p12'?: string;
   'certificate-password'?: string;
@@ -91,7 +93,10 @@ export function hasCloudSigningFlags(flags: XcodeCloudSigningFlagValues): boolea
   return flags['signing-method'] !== undefined || flags['team-id'] !== undefined;
 }
 
-export function cloudSigningFlagsProblem(flags: XcodeCloudSigningFlagValues): string | undefined {
+export function cloudSigningFlagsProblem(
+  flags: XcodeCloudSigningFlagValues,
+  saved?: AppleCredentials,
+): string | undefined {
   if (flags.entitlements !== undefined && flags['signing-method'] === undefined) {
     return '--entitlements requires --signing-method.';
   }
@@ -109,10 +114,10 @@ export function cloudSigningFlagsProblem(flags: XcodeCloudSigningFlagValues): st
     return 'Cloud signing flags cannot be combined with --certificate-p12, --certificate-password, or --provisioning-profile.';
   }
   const missing: string[] = [];
-  if (flags['team-id'] === undefined) missing.push('--team-id');
-  if (flags['asc-key-id'] === undefined) missing.push('--asc-key-id');
-  if (flags['asc-issuer-id'] === undefined) missing.push('--asc-issuer-id');
-  if (flags['asc-key'] === undefined) missing.push('--asc-key');
+  if (!flags['team-id'] && !saved?.teamID) missing.push('--team-id');
+  if (!flags['asc-key-id'] && !saved?.keyId) missing.push('--asc-key-id');
+  if (!flags['asc-issuer-id'] && !saved?.issuerId) missing.push('--asc-issuer-id');
+  if (!flags['asc-key'] && !saved?.privateKeyP8Base64) missing.push('--asc-key');
   if (missing.length > 0) {
     return `--signing-method requires ${missing.join(', ')}.`;
   }

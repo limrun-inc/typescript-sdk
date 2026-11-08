@@ -121,7 +121,7 @@ export function validatePlaystoreFlags(flags: GradleBuildFlagValues): void {
   }
   if (!flags['playstore-service-account'] && !flags['playstore-access-token']) {
     throw new Error(
-      '--upload-to-playstore requires --playstore-service-account or --playstore-access-token.',
+      'Run lim android play auth first, or provide --playstore-service-account or --playstore-access-token for --upload-to-playstore.',
     );
   }
   if (flags['playstore-track'] === 'production' && !flags['playstore-release-status']) {

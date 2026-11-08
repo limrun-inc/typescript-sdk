@@ -586,6 +586,21 @@
     ws "^8.21.1"
     yauzl "^3.4.0"
 
+"@limrun/apple-auth@^0.6.2":
+  version "0.6.2"
+  resolved "https://registry.npmjs.org/@limrun/apple-auth/-/apple-auth-0.6.2.tgz#780077cb0ac6c61b4bec42bcddfae7cd7e8227b1"
+  integrity sha512-O+YFG4WxYUz9Rq7ddICQzogBTKDAf4HqtiEzlyPTvw70apzTRsPgPbKMn+gTDWpZWm2ESTUfCo00KPSyx8QIvA==
+  dependencies:
+    node-forge "^1.4.0"
+    ws "^8.21.1"
+
+"@limrun/play-auth@^0.4.0":
+  version "0.4.0"
+  resolved "https://registry.npmjs.org/@limrun/play-auth/-/play-auth-0.4.0.tgz#a126ac906549b47c24e4b91b28e645ac35922be6"
+  integrity sha512-ib7f4yElFh5NSHj/CGf3ZFf8Q1TmMxUAdelUCgGq/ngqsTtGV0VfddqWJ/AkGxZ0u0UCr7i3CQlxG6OrTVDjOA==
+  dependencies:
+    node-forge "^1.4.0"
+
 "@limrun/xdelta3-wasm@0.2.0":
   version "0.2.0"
   resolved "https://registry.yarnpkg.com/@limrun/xdelta3-wasm/-/xdelta3-wasm-0.2.0.tgz#f74444ba7eb2be90e86e0c24edf55e9505127354"

@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import XcodeBuild from './build';
+import os from 'node:os';
+import { LocalSecretStore } from '../../lib/local-secret-store';
 
 const directory = mkdtempSync(join(tmpdir(), 'lim-appstore-test-'));
 const keyPath = join(directory, 'AuthKey.p8');
@@ -128,4 +130,76 @@ test('rejects expo-no-clean with XcodeGen before authenticating', async () => {
   });
   await expect(command.run()).rejects.toThrow(/cannot be combined with Expo/);
   expect(withAuth).not.toHaveBeenCalled();
+});
+
+// A missing upload login must fail before creating a billed Xcode instance.
+test.each([undefined, 'MISSING'])(
+  'rejects missing Apple credentials for team %j before instance work',
+  async (teamID) => {
+    const home = jest.spyOn(os, 'homedir').mockReturnValue(directory);
+    try {
+      const store = new LocalSecretStore();
+      if (teamID)
+        await store.put('appStoreConnectApiKey', 'TEAM/APP_STORE_CONNECT_API_KEY', {
+          keyId: 'KEY',
+          privateKeyP8Base64: 'private',
+          teamID: 'TEAM',
+        });
+      const parsed = await parse(['--upload-to-appstore', ...(teamID ? ['--team-id', teamID] : [])]);
+      const withAuth = jest.fn();
+      const command = Object.assign(Object.create(XcodeBuild.prototype), {
+        parse: async () => ({ ...parsed, args: {} }),
+        setParsedFlags: jest.fn(),
+        withAuth,
+        error: (message: string) => {
+          throw new Error(message);
+        },
+      });
+      await expect(command.run()).rejects.toThrow('Run lim ios apple auth first');
+      expect(withAuth).not.toHaveBeenCalled();
+    } finally {
+      rmSync(join(directory, '.lim'), { recursive: true, force: true });
+      home.mockRestore();
+    }
+  },
+);
+
+test('an empty team flag uses the saved team in the cloud signing request', async () => {
+  const home = jest.spyOn(os, 'homedir').mockReturnValue(directory);
+  try {
+    await new LocalSecretStore().put('appStoreConnectApiKey', 'TEAM/APP_STORE_CONNECT_API_KEY', {
+      keyId: 'KEY',
+      issuerId: 'ISSUER',
+      privateKeyP8Base64: 'private',
+      teamID: 'TEAM',
+    });
+    const { flags } = await parse(['--signing-method', 'app-store-connect', '--team-id', '']);
+    const proc = Object.assign(Promise.resolve({ exitCode: 0 }), {
+      command: { on: jest.fn() },
+      stdout: { on: jest.fn() },
+      stderr: { on: jest.fn() },
+    });
+    const xcodebuild = jest.fn(() => proc);
+    const command = Object.assign(Object.create(XcodeBuild.prototype), {
+      parse: async () => ({ args: { path: directory }, flags }),
+      setParsedFlags: jest.fn(),
+      withAuth: async (run: () => Promise<void>) => run(),
+      resolveXcodeTargetOrCreate: async () => ({ type: 'xcode', id: 'sandbox_test' }),
+      applyBuildCacheToTarget: jest.fn(),
+      resolveXcodeClientForWork: async () => ({ sync: async () => ({ bytesSent: 0 }), xcodebuild }),
+      info: jest.fn(),
+      isJsonEnabled: () => true,
+      outputEvent: jest.fn(),
+    });
+    await command.run();
+    expect(xcodebuild).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        cloudSigning: expect.objectContaining({ teamId: 'TEAM', apiKeyId: 'KEY' }),
+      }),
+    );
+  } finally {
+    rmSync(join(directory, '.lim'), { recursive: true, force: true });
+    home.mockRestore();
+  }
 });
