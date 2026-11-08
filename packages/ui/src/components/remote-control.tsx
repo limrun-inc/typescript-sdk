@@ -37,6 +37,7 @@ import { type AxStatus, type AndroidElementTreeOptions } from '../core/ax-fetche
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
 import type { CameraCaptureInfo } from '../core/camera';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
+import { tokenRequiresWatchOnly } from './remote-control-permissions';
 
 export type { CameraCaptureInfo, CameraFacingMode, CameraRequest, CameraResult } from '../core/camera';
 
@@ -47,7 +48,7 @@ declare global {
 }
 
 export interface RemoteControlProps {
-  /** Disable input and media forwarding. Use a watch token for server-enforced watch-only access. */
+  /** Disable input and media forwarding. Also enabled automatically for a watch-only token; false cannot override its restriction. */
   watchOnly?: boolean;
   /** Receives latency trace messages from supported iOS and Android instances. Adding or removing the callback reconnects the stream. */
   onTrace?: (message: Record<string, unknown>) => void;
@@ -405,7 +406,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       token,
       sessionId: propSessionId,
       openUrl,
-      watchOnly = false,
+      watchOnly: requestedWatchOnly = false,
       showFrame = true,
       deviceModel,
       duoModelUrl,
@@ -430,6 +431,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     }: RemoteControlProps,
     ref,
   ) => {
+    const tokenWatchOnly = useMemo(() => tokenRequiresWatchOnly(url, token), [url, token]);
+    const watchOnly = requestedWatchOnly || tokenWatchOnly;
     const containerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);

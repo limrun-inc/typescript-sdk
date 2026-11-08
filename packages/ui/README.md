@@ -324,10 +324,17 @@ Mint `ios:<instance-id>:watch` or `android:<instance-id>:watch` through
 Supply the instance's streaming URL and the resulting token to the viewer:
 
 ```tsx
-<RemoteControl url={streamingUrl} token={watchToken} watchOnly />
+<RemoteControl url={streamingUrl} token={watchToken} />
 ```
 
-Custom renderers use `createDeviceStream({ url: streamingUrl, token: watchToken,
+`RemoteControl` derives watch-only mode from a signed `lim_st_` token's scopes for
+the device ID in the streaming URL. A matching `stream` or `all` grant keeps it
+interactive. Set `watchOnly` to restrict an interactive token too; `false` cannot
+override a watch-only token. Opaque or malformed tokens, and URLs without a device
+ID in their path, use the explicit prop instead. Token decoding controls the UI;
+the server verifies and enforces the token.
+
+Core does not inspect tokens. Custom renderers use `createDeviceStream({ url: streamingUrl, token: watchToken,
 watchOnly: true })`. Proxy transports also accept `watchOnly: true`.
 
 Video, screenshots, and accessibility reads remain available. Input and outbound
