@@ -181,6 +181,10 @@ class GradleInstancesHelpers extends GradleInstances {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
+      if (method === 'DELETE' && response.status === 404) {
+        await response.text().catch(() => undefined);
+        throw new Error('DELETE /emulator is unavailable; this sandbox may predate detach support.');
+      }
       if (!response.ok)
         throw new Error(`Emulator attachment returned HTTP ${response.status}: ${await response.text()}`);
       return (await response.json()) as EmulatorStatus;

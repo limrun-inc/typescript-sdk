@@ -28,7 +28,9 @@ describe('xcode client simulator helpers', () => {
       apiUrl: 'https://xcode.example.test',
       token: 'xcode-token',
     });
-    await expect(xcode.detachSimulator()).rejects.toBeInstanceOf(Limrun.NotFoundError);
+    const failure = xcode.detachSimulator();
+    await expect(failure).rejects.toThrow('this sandbox may predate detach support');
+    await expect(failure).rejects.not.toBeInstanceOf(Limrun.NotFoundError);
   });
 
   test('new auxiliary simulators have no ambient asset grants', async () => {

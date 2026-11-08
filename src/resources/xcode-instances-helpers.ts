@@ -1069,7 +1069,11 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
-        return readJsonResponse<SimulatorStatus>(res, 'DELETE /simulator');
+        return readOrUnsupported<SimulatorStatus>(
+          res,
+          'DELETE /simulator',
+          (op) => new LimrunError(`${op} is unavailable; this sandbox may predate detach support.`),
+        );
       },
 
       attachSimulator: attachSimulatorImpl,
