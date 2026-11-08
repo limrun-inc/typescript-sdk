@@ -1,3 +1,4 @@
+import { DeviceDetachUnavailableError } from '../device-detach';
 import { pullBuildFile } from '../internal/build-pull-file';
 import { normalizeAssetUpload, type BuildUpload } from '../lib/asset-permissions';
 import {
@@ -1072,7 +1073,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         return readOrUnsupported<SimulatorStatus>(
           res,
           'DELETE /simulator',
-          (op) => new LimrunError(`${op} is unavailable; this sandbox may predate detach support.`),
+          (op) => new DeviceDetachUnavailableError(op),
         );
       },
 

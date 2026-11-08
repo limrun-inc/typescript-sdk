@@ -20,7 +20,7 @@ export default class GradleDetachEmulator extends BaseCommand {
     await this.withAuth(async () => {
       const target = this.resolveGradleTarget(flags.id);
       const client = await this.resolveGradleClient(target);
-      const result = await client.detachEmulator();
+      const result = await this.detachDevice(target, () => client.detachEmulator());
       this.outputResult(result, `Detached emulator from ${target.id}.`);
     });
   }

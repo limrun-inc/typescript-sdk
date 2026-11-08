@@ -20,7 +20,7 @@ export default class XcodeDetachSimulator extends BaseCommand {
     await this.withAuth(async () => {
       const target = await this.resolveXcodeTarget(flags.id);
       const client = await this.resolveXcodeClient(target);
-      const result = await client.detachSimulator();
+      const result = await this.detachDevice(target, () => client.detachSimulator());
       this.outputResult(result, `Detached simulator from ${target.id}.`);
     });
   }

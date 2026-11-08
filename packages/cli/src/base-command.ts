@@ -3,6 +3,7 @@ import { type IosDeviceSelection } from './lib/ios-device-selection';
 import { Command, Flags } from '@oclif/core';
 import Limrun, {
   APIError,
+  DeviceDetachUnavailableError,
   NotFoundError,
   XcodeCacheGoneError,
   XcodeSelectionUnsupportedError,
@@ -254,6 +255,25 @@ export abstract class BaseCommand extends Command {
       outputJson: (value) => this.outputJson(value),
       isJsonEnabled: () => this.isJsonEnabled(),
     };
+  }
+
+  protected async detachDevice<T>(
+    target: LastXcodeInstance | LastGradleInstance,
+    detach: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await detach();
+    } catch (err) {
+      if (!(err instanceof DeviceDetachUnavailableError)) throw err;
+      // Only management-plane confirmation can distinguish an old daemon from a vanished sandbox.
+      try {
+        if (target.type === 'xcode') await this.client.xcodeInstances.get(target.id);
+        else await this.client.gradleInstances.get(target.id);
+      } catch (probeError) {
+        if (probeError instanceof NotFoundError) throw this.notFound(target.id);
+      }
+      throw err;
+    }
   }
 
   protected async withAuth<T>(

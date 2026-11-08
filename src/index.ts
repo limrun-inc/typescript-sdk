@@ -3,6 +3,7 @@
 export { Limrun as default } from './client';
 
 export { type Uploadable, toFile } from './core/uploads';
+export { DeviceDetachUnavailableError } from './device-detach';
 export { APIPromise } from './core/api-promise';
 export { Limrun, type ClientOptions } from './client';
 export {

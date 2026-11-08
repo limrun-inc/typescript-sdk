@@ -1,3 +1,4 @@
+import { DeviceDetachUnavailableError } from '../device-detach';
 import { nodeProxyTransport } from '../internal/proxy-transport';
 import type { AndroidInstance } from './android-instances';
 import { pullBuildFile } from '../internal/build-pull-file';
@@ -183,7 +184,7 @@ class GradleInstancesHelpers extends GradleInstances {
       });
       if (method === 'DELETE' && response.status === 404) {
         await response.text().catch(() => undefined);
-        throw new Error('DELETE /emulator is unavailable; this sandbox may predate detach support.');
+        throw new DeviceDetachUnavailableError('DELETE /emulator');
       }
       if (!response.ok)
         throw new Error(`Emulator attachment returned HTTP ${response.status}: ${await response.text()}`);
