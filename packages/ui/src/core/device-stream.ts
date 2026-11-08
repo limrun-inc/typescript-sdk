@@ -53,6 +53,7 @@ function requestId(): string {
 export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   let options = { ...initialOptions };
   const { url, token, deviceModel } = options;
+  const readOnly = options.readOnly ?? false;
   const sessionId = options.sessionId ?? requestId();
   const platform = options.platform ?? detectPlatform(url ?? '');
   let state: DeviceStreamState = {
@@ -153,7 +154,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   } | null = null;
   // Outbound microphone state (iOS only). The manual option and guest-driven
   // microphoneRequest signals share one pre-allocated audio transceiver.
-  let currentMicrophoneEnabled = options.microphoneEnabled ?? false;
+  let currentMicrophoneEnabled = !readOnly && (options.microphoneEnabled ?? false);
   let currentMicrophoneDemandActive = false;
   let currentOutboundMicSender: RTCRtpSender | null = null;
   let currentOutboundMicStream: MediaStream | null = null;
@@ -196,6 +197,10 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   >();
   const sendDuoControl = (type: string, parameters: object): Promise<void> =>
     new Promise((resolve, reject) => {
+      if (readOnly) {
+        reject(new Error('Device is read-only'));
+        return;
+      }
       const socket = currentWs;
       if (!socket || socket.readyState !== WebSocket.OPEN) {
         reject(new Error('Simulator disconnected'));
@@ -217,6 +222,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   };
 
   const sendBinaryControlMessage = (data: ArrayBuffer) => {
+    if (readOnly) return;
     if (!currentDataChannel || currentDataChannel.readyState !== 'open') {
       return;
     }
@@ -1210,7 +1216,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       // advertise it through `cameraSupported` (Android 15 and newer).
       // Never offer the extra sendonly m-lines to non-capable Android
       // servers — older servers cannot negotiate them safely.
-      const canSendMedia = platform === 'ios' || serverCameraSupported;
+      const canSendMedia = !readOnly && (platform === 'ios' || serverCameraSupported);
 
       // Pre-allocate a sendonly slot for the user's camera so the
       // device can pull frames later without renegotiating SDP.
@@ -1323,7 +1329,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       });
       currentDataChannel = dataChannel;
       const latencyTrace =
-        !isDuo && options.onTrace ?
+        !readOnly && !isDuo && options.onTrace ?
           createLatencyTrace(peerConnection, (message) => {
             if (isCurrentAttempt() && currentPeerConnection === peerConnection) {
               safeInvoke('onTrace', options.onTrace, message);
@@ -1337,7 +1343,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
           return;
         }
         currentControlChannelOpened = true;
-        updateState({ controlReady: true });
+        updateState({ controlReady: !readOnly });
         clearConnectionSuccessTimeout();
         updateStatus('Control channel opened');
         if (isDuo) ws.send(JSON.stringify({ type: 'getFoldState', id: 'duo-capabilities' }));
@@ -1400,7 +1406,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         }, 250);
 
         // Open the requested URL once input is ready
-        if (openUrl) {
+        if (!readOnly && openUrl) {
           try {
             const decodedUrl = decodeURIComponent(openUrl);
             updateStatus('Opening URL');
@@ -1938,7 +1944,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       }
       if (!!previous.onPlaybackStats !== !!options.onPlaybackStats) refreshPlaybackStats();
       if (!!previous.microphoneEnabled !== !!options.microphoneEnabled) {
-        currentMicrophoneEnabled = options.microphoneEnabled ?? false;
+        currentMicrophoneEnabled = !readOnly && (options.microphoneEnabled ?? false);
         if (isMicrophoneWanted()) void attachMicrophone();
         else void detachMicrophone();
       }
@@ -1985,6 +1991,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     bumpActivity: () => currentAxFetcher?.bumpActivity(),
     getAxStatus: () => currentAxFetcher?.getStatus() ?? 'idle',
     openUrl: (newUrl: string) => {
+      if (readOnly) return;
       if (!currentWs || currentWs.readyState !== WebSocket.OPEN) {
         debugWarn('WebSocket not open, cannot send open_url command.');
         return;
@@ -2089,6 +2096,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       });
     },
     terminateApp: (bundleId: string): Promise<void> => {
+      if (readOnly) return Promise.reject(new Error('Device is read-only'));
       return new Promise<void>((resolve, reject) => {
         if (!currentWs || currentWs.readyState !== WebSocket.OPEN) {
           debugWarn('WebSocket not open, cannot send terminateApp command.');

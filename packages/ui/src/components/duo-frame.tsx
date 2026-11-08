@@ -16,6 +16,7 @@ import {
 } from '../core/duo';
 
 export interface DuoFrameProps {
+  readOnly?: boolean;
   modelUrl?: string;
   outer: HTMLVideoElement | null;
   inner: HTMLVideoElement | null;
@@ -200,7 +201,7 @@ export default function DuoFrame(props: DuoFrameProps) {
     };
     const down = (event: PointerEvent) => {
       invalidate();
-      if (drag || event.button !== 0) return;
+      if (latest.current.readOnly || drag || event.button !== 0) return;
       if (!iconButton(event.target)) container.focus({ preventScroll: true });
       const picked = pick(event);
       const hardware = picked && 'button' in picked ? picked.button : undefined;
@@ -493,6 +494,7 @@ export default function DuoFrame(props: DuoFrameProps) {
         {(Object.keys(DUO_BUTTONS) as DuoButton[]).map((button) => (
           <button
             key={button}
+            disabled={props.readOnly}
             ref={(element) => {
               if (element) hardwareNodes.current.set(button, element);
               else hardwareNodes.current.delete(button);
@@ -509,6 +511,7 @@ export default function DuoFrame(props: DuoFrameProps) {
         ))}
       </div>
       <DuoControls
+        readOnly={props.readOnly}
         angle={angle}
         onFold={fold}
         foldTarget={target}
@@ -524,6 +527,7 @@ export default function DuoFrame(props: DuoFrameProps) {
         {(['front', 'book', 'table', 'back'] as const).map((value) => (
           <button
             key={value}
+            disabled={props.readOnly}
             aria-pressed={view === value}
             onClick={() => {
               viewRevision.current++;

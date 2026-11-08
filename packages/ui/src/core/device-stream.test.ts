@@ -546,6 +546,49 @@ describe('headless device stream', () => {
     expect(element.label).toBe('Continue');
     expect(axElementSelectorExpression(element, 'ios')).toContain('continue');
   });
+  it.each(['ios', 'android'] as const)(
+    'keeps %s read-only streams live without input or media capture',
+    async (platform) => {
+      const getUserMedia = vi.fn();
+      vi.stubGlobal('navigator', { onLine: true, mediaDevices: { getUserMedia } });
+      const client = create({
+        url: `wss://host/${platform}_test`,
+        token: 'view-token',
+        readOnly: true,
+        microphoneEnabled: true,
+        openUrl: 'myapp://home',
+      });
+      const { socket, peer } = await handshake(client, { cameraSupported: true });
+      peer.connected();
+      peer.track();
+      expect(client.getState().controlReady).toBe(false);
+      expect(peer.transceivers.every((t) => t.direction === 'recvonly')).toBe(true);
+      client.sendTouch('begin', 10, 10, 390, 844);
+      client.sendText('ignored');
+      client.pressButton('home');
+      client.rotate();
+      client.sendDisplayTouch(0, 1, 0.5, 0.5);
+      client.openUrl('myapp://other');
+      await expect(client.sendDuoControl('setHingeAngle', { angleDegrees: 90 })).rejects.toThrow('read-only');
+      await expect(client.terminateApp('com.example.app')).rejects.toThrow('read-only');
+      socket.message({ type: 'cameraRequest', active: true });
+      socket.message({ type: 'microphoneRequest', active: true });
+      client.updateOptions({ microphoneEnabled: false });
+      client.updateOptions({ microphoneEnabled: true });
+      await flush();
+      expect(getUserMedia).not.toHaveBeenCalled();
+      expect(peer.channel.send).not.toHaveBeenCalled();
+      expect(socket.sent.some((m) => ['openUrl', 'microphoneStart', 'cameraResult'].includes(m.type))).toBe(
+        false,
+      );
+      const screenshot = client.screenshot();
+      socket.message({ type: 'screenshotResult', id: socket.sent.at(-1)!.id, base64: 'cG5n' });
+      await expect(screenshot).resolves.toEqual({ dataUri: 'data:image/png;base64,cG5n' });
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(socket.sent.some((m) => m.type === 'keepAlive')).toBe(true);
+    },
+  );
+
   it('negotiates the same codecs, uses shared playback, and sends input and screenshot commands', async () => {
     const client = create();
     const video = document.createElement('video');
@@ -818,6 +861,23 @@ describe('RemoteControl compatibility', () => {
     });
     return connection;
   };
+
+  it('applies readOnly through RemoteControl and reconnects when it changes', async () => {
+    await render({ readOnly: true, openUrl: 'myapp://ignored' });
+    const first = await connect();
+    handle.current!.sendKeyEvent({ type: 'keydown', code: 'Enter' });
+    handle.current!.openUrl('myapp://ignored');
+    expect(first.peer.channel.send).not.toHaveBeenCalled();
+    expect(first.socket.sent.some((m) => m.type === 'openUrl')).toBe(false);
+    const screenshot = handle.current!.screenshot();
+    first.socket.message({ type: 'screenshotResult', id: first.socket.sent.at(-1)!.id, base64: 'cG5n' });
+    await expect(screenshot).resolves.toEqual({ dataUri: 'data:image/png;base64,cG5n' });
+    await render({ readOnly: false });
+    expect(first.peer.close).toHaveBeenCalled();
+    const second = await connect();
+    handle.current!.sendKeyEvent({ type: 'keydown', code: 'Enter' });
+    expect(second.peer.channel.send).toHaveBeenCalledOnce();
+  });
 
   it.each(['failed', 'terminated'] as const)(
     'preserves the video layout after an established stream becomes %s',

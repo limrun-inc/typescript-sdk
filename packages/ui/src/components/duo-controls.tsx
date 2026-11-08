@@ -41,6 +41,7 @@ export function useDuoHinge(
 /** Both renderers use the same native fold and rotation controls. */
 export function DuoControls({
   angle,
+  readOnly = false,
   changeAngle,
   interacting,
   rotate,
@@ -50,6 +51,7 @@ export function DuoControls({
   children,
 }: {
   angle: number;
+  readOnly?: boolean;
   changeAngle: (value: number) => void;
   interacting: React.MutableRefObject<boolean>;
   rotate: () => void;
@@ -62,13 +64,18 @@ export function DuoControls({
   return (
     <div className="rc-duo-controls" onPointerDown={(event) => event.stopPropagation()}>
       <div className="rc-duo-hinge">
-        <button className="rc-duo-fold" onClick={onFold ?? (() => changeAngle(angle < 90 ? 180 : 0))}>
+        <button
+          disabled={readOnly}
+          className="rc-duo-fold"
+          onClick={onFold ?? (() => changeAngle(angle < 90 ? 180 : 0))}
+        >
           {(foldTarget ?? angle) < 90 ? 'Unfold' : 'Fold'}
         </button>
         <label htmlFor={id}>Hinge</label>
         <input
           id={id}
           type="range"
+          disabled={readOnly}
           min={0}
           max={180}
           step={1}
@@ -90,7 +97,13 @@ export function DuoControls({
           onChange={(event) => changeAngle(Number(event.target.value))}
         />
         <output>{Math.round(angle)}°</output>
-        <button className="rc-duo-rotate" aria-label="Rotate device" title="Rotate device" onClick={rotate}>
+        <button
+          disabled={readOnly}
+          className="rc-duo-rotate"
+          aria-label="Rotate device"
+          title="Rotate device"
+          onClick={rotate}
+        >
           <svg
             viewBox="0 0 24 24"
             width="18"

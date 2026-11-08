@@ -159,8 +159,9 @@ function DuoFlat(props: DuoViewProps) {
     setPressed(undefined);
   };
   const buttonEvents = (button: DuoButton): React.ButtonHTMLAttributes<HTMLButtonElement> => ({
+    disabled: props.readOnly,
     onPointerDown: (event) => {
-      if (motion || event.button !== 0) return;
+      if (props.readOnly || motion || event.button !== 0) return;
       event.currentTarget.setPointerCapture(event.pointerId);
       hardware.current?.press(button);
       setPressed(button);
@@ -238,7 +239,8 @@ function DuoFlat(props: DuoViewProps) {
             onKeyDown={motion ? undefined : props.onKeyDown}
             onKeyUp={props.onKeyUp}
             onPointerDown={(event) => {
-              if (motion || pointer.current !== undefined || event.button !== 0 || !display) return;
+              if (props.readOnly || motion || pointer.current !== undefined || event.button !== 0 || !display)
+                return;
               event.currentTarget.focus({ preventScroll: true });
               event.currentTarget.setPointerCapture(event.pointerId);
               const p = point(event);
@@ -323,6 +325,7 @@ function DuoFlat(props: DuoViewProps) {
       </div>
       {showFrame && (
         <DuoControls
+          readOnly={props.readOnly}
           angle={angle}
           changeAngle={changeAngle}
           interacting={interacting}

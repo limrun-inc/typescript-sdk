@@ -47,6 +47,8 @@ declare global {
 }
 
 export interface RemoteControlProps {
+  /** Disable input and media forwarding. Use a view token for server-enforced watch-only access. */
+  readOnly?: boolean;
   /** Receives latency trace messages from supported iOS and Android instances. Adding or removing the callback reconnects the stream. */
   onTrace?: (message: Record<string, unknown>) => void;
 
@@ -403,6 +405,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       token,
       sessionId: propSessionId,
       openUrl,
+      readOnly = false,
       showFrame = true,
       deviceModel,
       duoModelUrl,
@@ -1614,6 +1617,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         url,
         token,
         sessionId,
+        readOnly,
         deviceModel,
         autoReconnect,
         jitterBufferTargetMs,
@@ -1663,12 +1667,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         clientRef.current = null;
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [url, token, propSessionId, deviceModel, latencyTraceRequested]);
+    }, [url, token, propSessionId, deviceModel, latencyTraceRequested, readOnly]);
 
     useEffect(() => {
       if (isDuo && innerVideoRef.current)
         return clientRef.current?.attachVideo(innerVideoRef.current, 'inner');
-    }, [isDuo, url, token, propSessionId, deviceModel, latencyTraceRequested]);
+    }, [isDuo, url, token, propSessionId, deviceModel, latencyTraceRequested, readOnly]);
 
     useEffect(() => {
       clientRef.current?.updateOptions({
@@ -2005,6 +2009,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         {isDuo && duoState && (
           <Suspense fallback={<div>Loading iPhone Duo…</div>}>
             <DuoView
+              readOnly={readOnly}
               showFrame={showFrame}
               modelUrl={duoModelUrl}
               outer={videoRef.current}
@@ -2058,23 +2063,27 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 safeInvoke('onInspectSelectionChange', onInspectSelectionChangeRef.current, null);
               }
             }}
-            onTapElement={(element, tapAt) => {
-              // Use the viewport-space position the user originally aimed at
-              // (the frozen click position). For containers whose children
-              // are absent from the accessibility tree — e.g. iOS UITabBar's
-              // home/diagnostics/settings buttons — this taps the specific
-              // button the user pointed at instead of the container's
-              // averaged center.
-              if (tapAt) {
-                sendTapAtClient(tapAt.x, tapAt.y);
-                return;
-              }
-              // Fallback (defensive): center of element. Should be
-              // unreachable from the InfoCard since it always passes anchor.
-              const snapshot = axSnapshotRef.current;
-              if (!snapshot) return;
-              sendTapAtElementCenter(element, snapshot);
-            }}
+            onTapElement={
+              readOnly ? undefined : (
+                (element, tapAt) => {
+                  // Use the viewport-space position the user originally aimed at
+                  // (the frozen click position). For containers whose children
+                  // are absent from the accessibility tree — e.g. iOS UITabBar's
+                  // home/diagnostics/settings buttons — this taps the specific
+                  // button the user pointed at instead of the container's
+                  // averaged center.
+                  if (tapAt) {
+                    sendTapAtClient(tapAt.x, tapAt.y);
+                    return;
+                  }
+                  // Fallback (defensive): center of element. Should be
+                  // unreachable from the InfoCard since it always passes anchor.
+                  const snapshot = axSnapshotRef.current;
+                  if (!snapshot) return;
+                  sendTapAtElementCenter(element, snapshot);
+                }
+              )
+            }
           />
         )}
         {terminated ?
