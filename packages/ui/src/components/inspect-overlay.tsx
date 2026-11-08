@@ -51,7 +51,7 @@ export interface InspectOverlayProps {
   // viewport-space pointer position the user originally aimed at (i.e. the
   // frozen click position) so we can tap that exact spot instead of an
   // averaged center.
-  onTapElement: (element: AxElement, tapAt: { x: number; y: number }) => void;
+  onTapElement?: (element: AxElement, tapAt: { x: number; y: number }) => void;
 }
 
 const copyToClipboard = async (text: string): Promise<boolean> => {
@@ -155,7 +155,7 @@ interface InfoCardProps {
   // the element's frame center — preserves the user's aim when the
   // selected element is a container whose children are not exposed by the
   // accessibility tree (e.g. iOS UITabBar's button children).
-  onTap: (element: AxElement, tapAt: { x: number; y: number }) => void;
+  onTap?: (element: AxElement, tapAt: { x: number; y: number }) => void;
 }
 
 // Upper bounds used only for "does the card fit on this side?" decisions.
@@ -300,7 +300,8 @@ const InfoCard = memo(function InfoCard({
           <button
             type="button"
             className="rc-inspect-card-btn rc-inspect-card-btn-primary"
-            onClick={() => onTap(element, anchor)}
+            disabled={!onTap}
+            onClick={() => onTap?.(element, anchor)}
           >
             Tap
           </button>

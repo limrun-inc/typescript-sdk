@@ -34,12 +34,20 @@ export {
   AX_UNAVAILABLE_ERROR,
 } from './core/ax-tree';
 export type { AndroidElementTreeOptions, AxStatus } from './core/ax-fetcher';
-export type { DuoState, DuoOrientation } from './core/duo';
+export type { DuoState, DuoOrientation, DuoDisplay } from './core/duo';
 export {
   createTouchControlMessage,
   createTwoFingerTouchControlMessage,
   createInjectKeycodeMessage,
   createSetClipboardMessage,
 } from './core/webrtc-messages';
-export { createDisplayTouchMessage } from './core/duo';
+export {
+  createDisplayTouchMessage,
+  getDuoDisplay,
+  duoDisplayTurns,
+  flatDisplayTouch,
+  panelTouch,
+  DuoTouchController,
+  HingeSender,
+} from './core/duo';
 export { ANDROID_KEYS, AMOTION_EVENT, CONTROL_MSG_TYPE } from './core/constants';

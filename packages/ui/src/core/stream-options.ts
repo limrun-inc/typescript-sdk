@@ -52,6 +52,8 @@ export interface DeviceStreamLiveOptions {
 }
 
 export type DeviceStreamOptions = DeviceStreamLiveOptions & {
+  /** Disable device input and outbound media. Enforce access with a server-issued watch token. */
+  watchOnly?: boolean;
   sessionId?: string;
   /** Required with proxy transports; direct instance URLs can supply the platform implicitly. */
   platform?: 'ios' | 'android';

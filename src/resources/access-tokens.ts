@@ -29,7 +29,8 @@ export interface AccessTokenCreateParams {
    * `asset:asset_01h455vb4pex5vsknk084sn02q:read` or `applerelay:*:connect`.
    * Instance control accepts `ios:<id>:all`, `android:<id>:all`, `xcode:<id>:all`,
    * and `gradle:<id>:all`. Use the returned instance ID, including `sandbox_` for Xcode.
-   * iOS and Android also accept `ios:<id>:stream` and `android:<id>:stream` for
+   * iOS and Android accept `ios:<id>:watch` and `android:<id>:watch` for watch-only
+   * streaming, or `ios:<id>:stream` and `android:<id>:stream` for
    * interactive streaming without device API or app-management access.
    * Instance wildcards and other instance actions are not accepted.
    * See https://docs.limrun.com/docs/reference/permissions for targets and actions.

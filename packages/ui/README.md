@@ -254,6 +254,31 @@ negotiates both tracks and reports the native display geometry through
 `getState().duoState` and `onStateChange`. Use `sendDisplayTouch` with the native
 `screenId` for panel input, or `sendDuoControl` for hinge and orientation commands.
 
+For a single-panel viewer, `getDuoDisplay(state)` selects the outer or inner
+panel using the same hinge threshold as `RemoteControl`. `DuoTouchController`
+converts normalized viewer coordinates into native panel coordinates and
+releases a held touch before changing displays or rotation:
+
+```ts
+import { DuoTouchController, getDuoDisplay } from '@limrun/ui/core';
+
+const touch = new DuoTouchController((...args) => stream.sendDisplayTouch(...args));
+// Update whenever the selected display or its orientation changes.
+touch.setDisplay(getDuoDisplay(stream.getState().duoState));
+touch.touch('begin', 0.25, 0.5);
+touch.touch('move', 0.5, 0.5);
+touch.touch('end', 0.5, 0.5);
+// Also release on lost pointer capture, blur, disconnect, or viewer disposal.
+touch.release();
+```
+
+`setDisplay` defaults to the native display orientation. Pass a second argument
+in clockwise quarter turns when your frame uses a different visual rotation.
+Pass `true` as the fourth argument to `touch` for coordinates already mapped to
+the native panel. `flatDisplayTouch` and `panelTouch` are available separately
+for flat-view coordinates and 3D mesh UVs. `HingeSender` coalesces slider updates
+while a hinge command is in flight; call `stop()` when disposing the viewer.
+
 Enable accessibility polling with `inspectMode: true`, receive snapshots with
 `onAxSnapshotChange`, and request a fresh tree with `refreshAxTree()`. Camera and
 microphone demand use the same browser permission prompts and callbacks as
@@ -291,3 +316,33 @@ capture, reconnect policy, or the jitter buffer preference without replacing the
 connection. A newly enabled `onTrace` callback takes effect on the next reconnect,
 because tracing requires negotiation. Create a new client when changing the
 instance, transport, platform, or session ID.
+
+### Watch-only access
+
+Mint `ios:<instance-id>:watch` or `android:<instance-id>:watch` through
+`lim.accessTokens.create({ permissions: [...], ttlSeconds: 900 })` on your backend.
+Supply the instance's streaming URL and the resulting token to the viewer:
+
+```tsx
+<RemoteControl url={streamingUrl} token={watchToken} />
+```
+
+`RemoteControl` derives watch-only mode from a signed `lim_st_` token's scopes for
+the device ID in the streaming URL. A matching `stream` or `all` grant keeps it
+interactive. Set `watchOnly` to restrict an interactive token too; `false` cannot
+override a watch-only token. Opaque or malformed tokens, and URLs without a device
+ID in their path, use the explicit prop instead. Token decoding controls the UI;
+the server verifies and enforces the token.
+
+Core does not inspect tokens. Custom renderers use `createDeviceStream({ url: streamingUrl, token: watchToken,
+watchOnly: true })`. Proxy transports also accept `watchOnly: true`.
+
+Video, screenshots, and accessibility reads remain available. Input and outbound
+camera/microphone media are disabled; `controlReady` stays false. Mutating promise
+methods reject with `Device is watch-only`; fire-and-forget input methods send
+nothing. Changing `watchOnly` on `RemoteControl` reconnects the stream. For core,
+create a new client to change this creation-time option.
+
+Use the option with a `watch` token: only the token enforces access on the server.
+Existing `stream` tokens remain interactive, and `read` grants metadata access,
+not screen access.

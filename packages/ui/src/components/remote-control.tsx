@@ -37,6 +37,7 @@ import { type AxStatus, type AndroidElementTreeOptions } from '../core/ax-fetche
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
 import type { CameraCaptureInfo } from '../core/camera';
 import { InspectOverlay, InspectOverlayGeometry, InspectMode } from './inspect-overlay';
+import { tokenRequiresWatchOnly } from './remote-control-permissions';
 
 export type { CameraCaptureInfo, CameraFacingMode, CameraRequest, CameraResult } from '../core/camera';
 
@@ -47,6 +48,8 @@ declare global {
 }
 
 export interface RemoteControlProps {
+  /** Disable input and media forwarding. Also enabled automatically for a watch-only token; false cannot override its restriction. */
+  watchOnly?: boolean;
   /** Receives latency trace messages from supported iOS and Android instances. Adding or removing the callback reconnects the stream. */
   onTrace?: (message: Record<string, unknown>) => void;
 
@@ -404,6 +407,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       token,
       sessionId: propSessionId,
       openUrl,
+      watchOnly: requestedWatchOnly = false,
       showFrame = true,
       deviceModel,
       duoModelUrl,
@@ -428,6 +432,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     }: RemoteControlProps,
     ref,
   ) => {
+    const tokenWatchOnly = useMemo(() => tokenRequiresWatchOnly(url, token), [url, token]);
+    const watchOnly = requestedWatchOnly || tokenWatchOnly;
     const containerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const frameRef = useRef<HTMLImageElement>(null);
@@ -1342,6 +1348,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       wheelStateRef.current = null;
     };
     const handleWheel = (event: WheelEvent) => {
+      if (!clientRef.current?.getState().controlReady) return;
       // Trackpad pinches arrive as ctrl+wheel; don't turn them into scrolls.
       if (event.ctrlKey) return;
       // If the user is already touching/dragging (or holding Alt for the
@@ -1615,6 +1622,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         url,
         token,
         sessionId,
+        watchOnly,
         deviceModel,
         autoReconnect,
         jitterBufferTargetMs,
@@ -1664,12 +1672,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         clientRef.current = null;
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [url, token, propSessionId, deviceModel, latencyTraceRequested]);
+    }, [url, token, propSessionId, deviceModel, latencyTraceRequested, watchOnly]);
 
     useEffect(() => {
       if (isDuo && innerVideoRef.current)
         return clientRef.current?.attachVideo(innerVideoRef.current, 'inner');
-    }, [isDuo, url, token, propSessionId, deviceModel, latencyTraceRequested]);
+    }, [isDuo, url, token, propSessionId, deviceModel, latencyTraceRequested, watchOnly]);
 
     useEffect(() => {
       clientRef.current?.updateOptions({
@@ -2006,6 +2014,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         {isDuo && duoState && (
           <Suspense fallback={<div>Loading iPhone Duo…</div>}>
             <DuoView
+              watchOnly={watchOnly}
               showFrame={showFrame}
               modelUrl={duoModelUrl}
               outer={videoRef.current}
@@ -2059,23 +2068,27 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
                 safeInvoke('onInspectSelectionChange', onInspectSelectionChangeRef.current, null);
               }
             }}
-            onTapElement={(element, tapAt) => {
-              // Use the viewport-space position the user originally aimed at
-              // (the frozen click position). For containers whose children
-              // are absent from the accessibility tree — e.g. iOS UITabBar's
-              // home/diagnostics/settings buttons — this taps the specific
-              // button the user pointed at instead of the container's
-              // averaged center.
-              if (tapAt) {
-                sendTapAtClient(tapAt.x, tapAt.y);
-                return;
-              }
-              // Fallback (defensive): center of element. Should be
-              // unreachable from the InfoCard since it always passes anchor.
-              const snapshot = axSnapshotRef.current;
-              if (!snapshot) return;
-              sendTapAtElementCenter(element, snapshot);
-            }}
+            onTapElement={
+              watchOnly ? undefined : (
+                (element, tapAt) => {
+                  // Use the viewport-space position the user originally aimed at
+                  // (the frozen click position). For containers whose children
+                  // are absent from the accessibility tree — e.g. iOS UITabBar's
+                  // home/diagnostics/settings buttons — this taps the specific
+                  // button the user pointed at instead of the container's
+                  // averaged center.
+                  if (tapAt) {
+                    sendTapAtClient(tapAt.x, tapAt.y);
+                    return;
+                  }
+                  // Fallback (defensive): center of element. Should be
+                  // unreachable from the InfoCard since it always passes anchor.
+                  const snapshot = axSnapshotRef.current;
+                  if (!snapshot) return;
+                  sendTapAtElementCenter(element, snapshot);
+                }
+              )
+            }
           />
         )}
         {terminated ?

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { DuoTouchController, getDuoDisplay, type DuoState } from '../core';
 import {
   createDisplayTouchMessage,
   flatDisplayTouch,
@@ -138,5 +139,64 @@ describe('Duo hardware input', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('Duo viewer input', () => {
+  const state: DuoState = {
+    orientation: 'portrait',
+    angleDegrees: 180,
+    minAngleDegrees: 0,
+    maxAngleDegrees: 180,
+    displays: [
+      { id: 'outer', screenId: 1, trackId: 'video0', width: 1398, height: 2034, scale: 3, orientation: 1 },
+      { id: 'inner', screenId: 2, trackId: 'duo-inner', width: 2007, height: 2853, scale: 3, orientation: 3 },
+    ],
+  };
+
+  it('releases the captured native panel before a fold, rotation, or disconnect', () => {
+    const send = vi.fn();
+    const input = new DuoTouchController(send);
+    input.setDisplay(getDuoDisplay(state));
+    input.touch('begin', 0.25, 0.5);
+    expect(send).toHaveBeenLastCalledWith(0, 2, 0.5, 0.75);
+    input.setDisplay(getDuoDisplay({ ...state, angleDegrees: 90 }));
+    expect(send).toHaveBeenCalledTimes(1);
+    input.touch('move', -1, 2);
+    input.setDisplay(getDuoDisplay({ ...state, angleDegrees: 89 }));
+    expect(send).toHaveBeenLastCalledWith(1, 2, 1, 1);
+    input.touch('move', 0.2, 0.3);
+    expect(send).toHaveBeenCalledTimes(3);
+    input.touch('begin', 0.25, 0.5);
+    input.setDisplay({ screenId: 1, orientation: 4 });
+    expect(send).toHaveBeenLastCalledWith(1, 1, 0.25, 0.5);
+    input.touch('begin', 0.25, 0.5);
+    expect(send).toHaveBeenLastCalledWith(0, 1, 0.5, 0.25);
+    input.setDisplay(undefined);
+    expect(send).toHaveBeenLastCalledWith(1, 1, 0.5, 0.25);
+    const count = send.mock.calls.length;
+    input.release();
+    input.touch('begin', 0, 0);
+    expect(send).toHaveBeenCalledTimes(count);
+    expect(input.active).toBe(false);
+  });
+
+  it('supports framed and native coordinates while keeping release edges ordered', () => {
+    const send = vi.fn();
+    const input = new DuoTouchController(send);
+    input.setDisplay(getDuoDisplay(state), 2);
+    input.touch('begin', 0.25, 0.5);
+    expect(send).toHaveBeenLastCalledWith(0, 2, 0.75, 0.5);
+    input.touch('begin', 0.25, 0.5, true);
+    expect(send.mock.calls.slice(-2)).toEqual([
+      [1, 2, 0.75, 0.5],
+      [0, 2, 0.25, 0.5],
+    ]);
+    input.touch('end', 0.5, 0.75, true);
+    expect(send).toHaveBeenLastCalledWith(1, 2, 0.5, 0.75);
+    expect(input.active).toBe(false);
+    input.touch('begin', 0.25, 0.5);
+    input.release();
+    expect(send).toHaveBeenLastCalledWith(1, 2, 0.75, 0.5);
   });
 });
