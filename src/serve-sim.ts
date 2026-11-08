@@ -37,10 +37,11 @@ const point = (value: unknown) => {
   return value;
 };
 
-function androidTouch(action: number, x: number, y: number): Buffer {
+function androidTouch(action: number, x: number, y: number, pointerId = 0): Buffer {
   const b = Buffer.alloc(32);
   b[0] = 2;
   b[1] = action;
+  b.writeBigInt64LE(BigInt(pointerId), 2);
   b.writeInt32LE(Math.round(x * 10000), 10);
   b.writeInt32LE(Math.round(y * 10000), 14);
   b.writeUInt16LE(10000, 18);
@@ -356,23 +357,38 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
   const heldKeys = new Set<number>();
   let width = 10000;
   let height = 10000;
-  let held: { x: number; y: number; orientation: Orientation; display?: FoldDisplay } | undefined;
+  let held:
+    | {
+        x: number;
+        y: number;
+        second?: { x: number; y: number } | undefined;
+        orientation: Orientation;
+        display?: FoldDisplay;
+      }
+    | undefined;
+  let wheel: NonNullable<typeof held> | undefined;
+  let wheelTimer: ReturnType<typeof setTimeout> | undefined;
   const sendTouch = async (action: number, contact: NonNullable<typeof held>) => {
     if (platform === 'android') {
       signal.send(androidTouch(action, contact.x, contact.y));
+      if (contact.second) signal.send(androidTouch(action, contact.second.x, contact.second.y, 1));
       return;
     }
     // serve-sim sends native framebuffer points; performActions takes upright display points.
-    let { x, y } = contact;
     const rotation =
       contact.display ?
         turns(contact.display.orientation)
       : ({ portrait: 0, landscape_left: 3, portrait_upside_down: 2, landscape_right: 1 } as const)[
           contact.orientation
         ];
-    if (rotation === 1) [x, y] = [1 - y, x];
-    else if (rotation === 2) [x, y] = [1 - x, 1 - y];
-    else if (rotation === 3) [x, y] = [y, 1 - x];
+    const upright = ({ x, y }: { x: number; y: number }) => {
+      if (rotation === 1) return { x: 1 - y, y: x };
+      if (rotation === 2) return { x: 1 - x, y: 1 - y };
+      if (rotation === 3) return { x: y, y: 1 - x };
+      return { x, y };
+    };
+    const { x, y } = upright(contact);
+    const second = contact.second && upright(contact.second);
     await signal.request('performActions', {
       ...(contact.display ? { display: contact.display.id } : {}),
       actions: [
@@ -383,6 +399,7 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
             : 'touchMove',
           x,
           y,
+          ...(second ? { x2: second.x, y2: second.y } : {}),
           screenWidth: 1,
           screenHeight: 1,
         },
@@ -390,6 +407,8 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
     });
   };
   const release = async () => {
+    clearTimeout(wheelTimer);
+    wheel = undefined;
     const contact = held;
     held = undefined;
     if (contact) await sendTouch(1, contact);
@@ -468,15 +487,20 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
     const bytes = Buffer.from(data as Buffer);
     let moving = false;
     try {
-      const value = JSON.parse(binary ? bytes.subarray(1).toString() : bytes.toString());
+      const value = JSON.parse((binary ? bytes.subarray(1).toString() : bytes.toString()) || '{}');
       moving =
-        (binary && bytes[0] === 3 && value.type === 'move') ||
+        (binary && (bytes[0] === 3 || bytes[0] === 5) && value.type === 'move') ||
         (!binary && value.type === 'touch' && value.action === 'move');
     } catch {
       client.close(1008, 'Invalid input');
       return;
     }
-    if (moving && pendingMove) {
+    if (
+      moving &&
+      pendingMove &&
+      pendingMove.binary === binary &&
+      (!binary || pendingMove.data[0] === bytes[0])
+    ) {
       pendingMove.data = bytes;
       return;
     }
@@ -492,8 +516,10 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
         if (pendingMove === input) pendingMove = undefined;
         const bytes = input.data;
         const tag = input.binary ? bytes[0] : undefined;
-        const value: Message = JSON.parse(input.binary ? bytes.subarray(1).toString() : bytes.toString());
-        if (tag === 3 || value['type'] === 'touch') {
+        const value: Message = JSON.parse(
+          (input.binary ? bytes.subarray(1).toString() : bytes.toString()) || '{}',
+        );
+        if (tag === 3 || tag === 5 || value['type'] === 'touch') {
           const phase = value['type'] === 'touch' ? value['action'] : value['type'];
           const action =
             phase === 'begin' || phase === 'down' ? 0
@@ -501,17 +527,62 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
             : phase === 'end' || phase === 'up' ? 1
             : -1;
           if (action < 0) throw new Error('Invalid touch phase');
-          const x = point(value['x']);
-          const y = point(value['y']);
+          const x = point(value[tag === 5 ? 'x1' : 'x']);
+          const y = point(value[tag === 5 ? 'y1' : 'y']);
+          const second =
+            tag === 5 || value['x2'] !== undefined || value['y2'] !== undefined ?
+              { x: point(value['x2']), y: point(value['y2']) }
+            : undefined;
           if (action === 0) {
             await release();
-            held = { x, y, orientation, ...(display() ? { display: display()! } : {}) };
+            held = { x, y, second, orientation, ...(display() ? { display: display()! } : {}) };
           }
           if (!held) return;
+          if (wheel || !!held.second !== !!second) throw new Error('Touch contact count changed');
           held.x = x;
           held.y = y;
+          held.second = second;
           await sendTouch(action, held);
           if (action === 1) held = undefined;
+        } else if (tag === 0x0b) {
+          if (!Number.isFinite(value['dx']) || !Number.isFinite(value['dy']))
+            throw new Error('Invalid scroll delta');
+          const dx = Math.max(-1, Math.min(1, value['dx']));
+          const dy = Math.max(-1, Math.min(1, value['dy']));
+          const x = point(value['x'] ?? 0.5);
+          const y = point(value['y'] ?? 0.5);
+          // A real touch wins over wheel input. Wheel deltas have the opposite sign to finger movement.
+          if ((held && held !== wheel) || (dx === 0 && dy === 0)) return;
+          clearTimeout(wheelTimer);
+          const start = async () => {
+            const inset = (value: number) => Math.max(0.2, Math.min(0.8, value));
+            held = wheel = {
+              x: dx ? inset(x) : x,
+              y: dy ? inset(y) : y,
+              orientation,
+              ...(display() ? { display: display()! } : {}),
+            };
+            await sendTouch(0, held);
+          };
+          if (wheel && (wheel.x - dx < 0 || wheel.x - dx > 1 || wheel.y - dy < 0 || wheel.y - dy > 1)) {
+            await release();
+          }
+          if (!wheel) await start();
+          wheel!.x = Math.max(0, Math.min(1, wheel!.x - dx));
+          wheel!.y = Math.max(0, Math.min(1, wheel!.y - dy));
+          await sendTouch(2, wheel!);
+          const contact = wheel;
+          const timer = setTimeout(() => {
+            queue = queue
+              .then(async () => {
+                if (wheelTimer === timer && held === contact) await release();
+              })
+              .catch(() => client.close(1011, 'Could not release scroll'));
+          }, 150);
+          wheelTimer = timer;
+          wheelTimer.unref();
+        } else if (platform === 'ios' && tag === 0x0c) {
+          await signal.request('toggleKeyboard');
         } else if (tag === 6) {
           if (!Number.isInteger(value['usage']) || !['down', 'up'].includes(value['type']))
             throw new Error('Invalid key');
@@ -552,9 +623,12 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
           );
         } else {
           if (platform === 'ios') {
-            if (tag !== 4 || !['home', 'app_switcher', 'lock'].includes(value['button']))
+            if (tag !== 4 || !['home', 'app_switcher', 'lock', 'side_button'].includes(value['button']))
               throw new Error('Unsupported button');
-            const button = value['button'] === 'lock' ? 'lock' : 'home';
+            const button =
+              value['button'] === 'lock' ? 'lock'
+              : value['button'] === 'side_button' ? 'side'
+              : 'home';
             const press = [
               { type: 'buttonDown', button },
               { type: 'buttonUp', button },

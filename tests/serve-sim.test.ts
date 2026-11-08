@@ -30,7 +30,9 @@ async function fixture(
     const token = request.headers.authorization!;
     socket.on('message', (data, binary) => {
       if (binary) {
-        messages.push({ token, message: Buffer.from(data as Buffer) });
+        const message = Buffer.from(data as Buffer);
+        messages.push({ token, message });
+        received.emit('message', message);
         return;
       }
       const message = JSON.parse(data.toString());
@@ -86,6 +88,7 @@ async function fixture(
         case 'typeText':
         case 'pressKey':
         case 'setOrientation':
+        case 'toggleKeyboard':
           send({ id: message.id, results: [] });
           break;
         case 'performActions':
@@ -456,6 +459,217 @@ it('coalesces waiting moves without losing the touch boundaries or reordering AP
       .map((item) => item.message.actions[0]);
     expect(actions.map((action) => action.type)).toEqual(['touchDown', 'touchMove', 'touchUp']);
     expect(actions[1]).toMatchObject({ x: 1, y: 0.5 });
+  } finally {
+    await f.close();
+  }
+});
+
+it.each([1, 2, 3, 4])(
+  'rotates both fingers on Duo and releases them on disconnect (orientation %i)',
+  async (orientation) => {
+    const f = await fixture('ios', {
+      ...fold,
+      displays: fold.displays.map((display) => ({ ...display, orientation })),
+    });
+    try {
+      const input = await openIosInput(f);
+      input.send(5, { type: 'begin', x1: 0.2, y1: 0.3, x2: 0.8, y2: 0.7 });
+      await f.waitMessage((message) => message.actions?.[0]?.type === 'touchDown');
+      input.send(5, { type: 'move', x1: 0.1, y1: 0.2, x2: 0.9, y2: 0.8 });
+      await f.waitMessage((message) => message.actions?.[0]?.type === 'touchMove');
+      await f.hub.close();
+      const actions = f.messages.filter(({ message }) => message.type === 'performActions');
+      expect(actions.map(({ message }) => message.actions[0].type)).toEqual([
+        'touchDown',
+        'touchMove',
+        'touchUp',
+      ]);
+      const expected = [
+        [0.1, 0.2, 0.9, 0.8],
+        [0.9, 0.8, 0.1, 0.2],
+        [0.8, 0.1, 0.2, 0.9],
+        [0.2, 0.9, 0.8, 0.1],
+      ][orientation - 1]!;
+      for (const { message, token } of actions.slice(1)) {
+        expect(message.display).toBe('inner');
+        expect(token).toBe('Bearer stream');
+        for (const [index, key] of ['x', 'y', 'x2', 'y2'].entries()) {
+          expect(message.actions[0][key]).toBeCloseTo(expected[index]!);
+        }
+      }
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+it('keeps Android fingers distinct through down, move and disconnect cleanup', async () => {
+  const f = await fixture('android');
+  try {
+    const socket = new WebSocket(`${f.hub.origin.replace('http:', 'ws:')}/vendor/serve-emu/ws?device=owned`, {
+      headers: f.hub.headers,
+    });
+    await once(socket, 'open');
+    socket.send(JSON.stringify({ type: 'touch', action: 'down', x: 0.2, y: 0.3, x2: 0.8, y2: 0.7 }));
+    await f.waitMessage((message) => Buffer.isBuffer(message) && message.readBigInt64LE(2) === 1n);
+    socket.send(JSON.stringify({ type: 'touch', action: 'move', x: 0.1, y: 0.2, x2: 0.9, y2: 0.8 }));
+    await f.waitMessage(
+      (message) => Buffer.isBuffer(message) && message[1] === 2 && message.readBigInt64LE(2) === 1n,
+    );
+    const released = f.waitMessage(
+      (message) => Buffer.isBuffer(message) && message[1] === 1 && message.readBigInt64LE(2) === 1n,
+    );
+    await f.hub.close();
+    await released;
+    const touches = f.messages.map(({ message }) => message).filter(Buffer.isBuffer);
+    expect(touches.map((message) => [message[1], Number(message.readBigInt64LE(2))])).toEqual([
+      [0, 0],
+      [0, 1],
+      [2, 0],
+      [2, 1],
+      [1, 0],
+      [1, 1],
+    ]);
+    expect(touches[4]!.readInt32LE(10)).toBe(1000);
+    expect(touches[5]!.readInt32LE(10)).toBe(9000);
+  } finally {
+    await f.close();
+  }
+});
+
+it.each([
+  { type: 'move', x1: 0.2, y1: 0.3, x2: 0.7 },
+  { type: 'move', x1: 0.2, y1: 0.3, x2: 2, y2: 0.7 },
+])('rejects malformed multi-touch and releases the original contacts', async (invalid) => {
+  const f = await fixture();
+  try {
+    const input = await openIosInput(f);
+    input.send(5, { type: 'begin', x1: 0.2, y1: 0.3, x2: 0.8, y2: 0.7 });
+    await f.waitMessage((message) => message.actions?.[0]?.type === 'touchDown');
+    const closed = once(input.socket, 'close');
+    input.send(5, invalid);
+    expect((await closed)[0]).toBe(1008);
+    const release = await f.waitMessage((message) => message.actions?.[0]?.type === 'touchUp');
+    expect(release.actions[0]).toMatchObject({ x: 0.2, y: 0.3, x2: 0.8, y2: 0.7 });
+  } finally {
+    await f.close();
+  }
+});
+
+it('scrolls in native display coordinates and releases after the wheel becomes quiet', async () => {
+  const f = await fixture('ios', {
+    ...fold,
+    displays: fold.displays.map((display) => ({ ...display, orientation: 3 })),
+  });
+  try {
+    const input = await openIosInput(f);
+    input.send(0x0b, { dx: 0.1, dy: -0.2, x: 0.4, y: 0.5 });
+    await f.waitMessage((message) => message.actions?.[0]?.type === 'touchUp');
+    const actions = f.messages
+      .filter(({ message }) => message.type === 'performActions')
+      .map(({ message }) => message.actions[0]);
+    expect(actions.map((action) => action.type)).toEqual(['touchDown', 'touchMove', 'touchUp']);
+    expect(actions[0]).toMatchObject({ x: 0.5, y: 0.4 });
+    expect(actions[1].x).toBeCloseTo(0.3);
+    expect(actions[1].y).toBeCloseTo(0.3);
+    expect(actions[2]).toEqual({ ...actions[1], type: 'touchUp' });
+  } finally {
+    await f.close();
+  }
+});
+
+it('restarts a wheel gesture at the edge and gives an actual touch precedence', async () => {
+  const f = await fixture();
+  try {
+    const input = await openIosInput(f);
+    input.send(0x0b, { dx: 0, dy: 0.4 });
+    await f.waitMessage((message) => message.actions?.[0]?.type === 'touchMove');
+    input.send(0x0b, { dx: 0, dy: 0.4 });
+    input.send(3, { type: 'begin', x: 0.25, y: 0.75 });
+    input.send(0x0b, { dx: 0, dy: 0.1 });
+    input.send(3, { type: 'end', x: 0.25, y: 0.75 });
+    await f.waitMessage(
+      (message) => message.actions?.[0]?.type === 'touchUp' && message.actions[0].x === 0.25,
+    );
+    const actions = f.messages
+      .filter(({ message }) => message.type === 'performActions')
+      .map(({ message }) => message.actions[0]);
+    expect(actions.map((action) => action.type)).toEqual([
+      'touchDown',
+      'touchMove',
+      'touchUp',
+      'touchDown',
+      'touchMove',
+      'touchUp',
+      'touchDown',
+      'touchUp',
+    ]);
+    expect(actions.at(-1)).toMatchObject({ x: 0.25, y: 0.75 });
+  } finally {
+    await f.close();
+  }
+});
+
+it('accepts the payload-free keyboard toggle and translates the side button', async () => {
+  const f = await fixture();
+  try {
+    const input = await openIosInput(f);
+    input.socket.send(Buffer.from([0x0c]));
+    await f.waitMessage((message) => message.type === 'toggleKeyboard');
+    input.send(4, { button: 'side_button' });
+    const press = await f.waitMessage((message) => message.actions?.[0]?.button === 'side');
+    expect(press.actions).toEqual([
+      { type: 'buttonDown', button: 'side' },
+      { type: 'buttonUp', button: 'side' },
+    ]);
+  } finally {
+    await f.close();
+  }
+});
+
+it('releases both fingers before folding and rejects a change in contact count', async () => {
+  const f = await fixture();
+  try {
+    const input = await openIosInput(f);
+    input.send(5, { type: 'begin', x1: 0.2, y1: 0.3, x2: 0.8, y2: 0.7 });
+    input.send(16, { requestId: 1, command: { control: 'angle', value: 0 } });
+    await f.waitMessage((message) => message.type === 'setHingeAngle');
+    const released = f.messages.find(({ message }) => message.actions?.[0]?.type === 'touchUp')!.message;
+    expect(released.display).toBe('inner');
+    expect(released.actions[0]).toMatchObject({ x2: 0.8, y2: 0.7 });
+    input.send(5, { type: 'begin', x1: 0.1, y1: 0.2, x2: 0.9, y2: 0.8 });
+    await f.waitMessage(
+      (message) => message.actions?.[0]?.type === 'touchDown' && message.display === 'outer',
+    );
+    const closed = once(input.socket, 'close');
+    input.send(3, { type: 'move', x: 0.5, y: 0.5 });
+    expect((await closed)[0]).toBe(1008);
+    const cleanup = await f.waitMessage(
+      (message) => message.actions?.[0]?.type === 'touchUp' && message.display === 'outer',
+    );
+    expect(cleanup.actions[0]).toMatchObject({ x: 0.1, y: 0.2, x2: 0.9, y2: 0.8 });
+  } finally {
+    await f.close();
+  }
+});
+
+it('maps wheel deltas to Android touches and releases on disconnect', async () => {
+  const f = await fixture('android');
+  try {
+    const socket = new WebSocket(`${f.hub.origin.replace('http:', 'ws:')}/vendor/serve-emu/ws?device=owned`, {
+      headers: f.hub.headers,
+    });
+    await once(socket, 'open');
+    socket.send(Buffer.concat([Buffer.from([0x0b]), Buffer.from(JSON.stringify({ dx: 0.1, dy: 0.2 }))]));
+    await f.waitMessage((message) => Buffer.isBuffer(message) && message[1] === 2);
+    const released = f.waitMessage((message) => Buffer.isBuffer(message) && message[1] === 1);
+    socket.close();
+    const up = await released;
+    expect(up.readInt32LE(10)).toBe(4000);
+    expect(up.readInt32LE(14)).toBe(3000);
+    expect(
+      f.messages.filter(({ message }) => Buffer.isBuffer(message)).map(({ message }) => message[1]),
+    ).toEqual([0, 2, 1]);
   } finally {
     await f.close();
   }
