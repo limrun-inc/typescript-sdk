@@ -254,6 +254,31 @@ negotiates both tracks and reports the native display geometry through
 `getState().duoState` and `onStateChange`. Use `sendDisplayTouch` with the native
 `screenId` for panel input, or `sendDuoControl` for hinge and orientation commands.
 
+For a single-panel viewer, `getDuoDisplay(state)` selects the outer or inner
+panel using the same hinge threshold as `RemoteControl`. `DuoTouchController`
+converts normalized viewer coordinates into native panel coordinates and
+releases a held touch before changing displays or rotation:
+
+```ts
+import { DuoTouchController, getDuoDisplay } from '@limrun/ui/core';
+
+const touch = new DuoTouchController((...args) => stream.sendDisplayTouch(...args));
+// Update whenever the selected display or its orientation changes.
+touch.setDisplay(getDuoDisplay(stream.getState().duoState));
+touch.touch('begin', 0.25, 0.5);
+touch.touch('move', 0.5, 0.5);
+touch.touch('end', 0.5, 0.5);
+// Also release on lost pointer capture, blur, disconnect, or viewer disposal.
+touch.release();
+```
+
+`setDisplay` defaults to the native display orientation. Pass a second argument
+in clockwise quarter turns when your frame uses a different visual rotation.
+Pass `true` as the fourth argument to `touch` for coordinates already mapped to
+the native panel. `flatDisplayTouch` and `panelTouch` are available separately
+for flat-view coordinates and 3D mesh UVs. `HingeSender` coalesces slider updates
+while a hinge command is in flight; call `stop()` when disposing the viewer.
+
 Enable accessibility polling with `inspectMode: true`, receive snapshots with
 `onAxSnapshotChange`, and request a fresh tree with `refreshAxTree()`. Camera and
 microphone demand use the same browser permission prompts and callbacks as

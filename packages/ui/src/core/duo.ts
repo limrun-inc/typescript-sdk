@@ -19,6 +19,65 @@ export interface DuoState {
   displays: DuoDisplay[];
 }
 
+/** Select the panel used by a single-display viewer at the current hinge angle. */
+export function getDuoDisplay(state: DuoState | null | undefined): DuoDisplay | undefined {
+  return state?.displays.find((display) => display.id === (state.angleDegrees < 90 ? 'outer' : 'inner'));
+}
+
+/** Quarter turns of a native display, independent of the surrounding device frame. */
+export function duoDisplayTurns(orientation: number | undefined): 0 | 1 | 2 | 3 {
+  return (
+    orientation === 2 ? 2
+    : orientation === 3 ? 1
+    : orientation === 4 ? 3
+    : 0
+  );
+}
+
+/** Keep a gesture on its starting panel and release it before the view changes. */
+export class DuoTouchController {
+  private screenId: number | undefined;
+  private turns = 0;
+  private held: { screenId: number; x: number; y: number } | undefined;
+
+  constructor(private send: (action: number, screenId: number, x: number, y: number) => void) {}
+
+  get active(): boolean {
+    return this.held !== undefined;
+  }
+
+  setDisplay(
+    display: Pick<DuoDisplay, 'screenId' | 'orientation'> | undefined,
+    turns: number = duoDisplayTurns(display?.orientation),
+  ): void {
+    if (this.screenId !== display?.screenId || this.turns !== turns) this.release();
+    this.screenId = display?.screenId;
+    this.turns = turns;
+  }
+
+  /** Coordinates are normalized; native input already accounts for the viewer's rotation. */
+  touch(phase: 'begin' | 'move' | 'end', x: number, y: number, native = false): void {
+    if (this.screenId === undefined) return;
+    const point = flatDisplayTouch(x, y, native ? 0 : this.turns);
+    if (phase === 'begin') {
+      this.release();
+      this.held = { screenId: this.screenId, ...point };
+    }
+    if (!this.held) return;
+    Object.assign(this.held, point);
+    if (phase === 'end') this.release();
+    else this.send(phase === 'begin' ? 0 : 2, this.held.screenId, point.x, point.y);
+  }
+
+  /** Call on pointer cancellation, lost capture, disconnect, and viewer disposal. */
+  release(): void {
+    if (!this.held) return;
+    const { screenId, x, y } = this.held;
+    this.held = undefined;
+    this.send(1, screenId, x, y);
+  }
+}
+
 export const DUO_DIMENSIONS = { width: 164.6, height: 117.8, depth: 5.2 } as const;
 
 /** Invert the CSS display rotation before sending native panel coordinates. */

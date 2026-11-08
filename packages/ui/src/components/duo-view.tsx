@@ -1,5 +1,12 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { DUO_BUTTONS, DuoButtonSender, flatDisplayTouch, type DuoButton } from '../core/duo';
+import {
+  DUO_BUTTONS,
+  DuoButtonSender,
+  DuoTouchController,
+  getDuoDisplay,
+  duoDisplayTurns,
+  type DuoButton,
+} from '../core/duo';
 import type { DuoFrameProps } from './duo-frame';
 import { DuoControls, DuoHardwareIcon, useDuoHinge } from './duo-controls';
 import { DuoFlatFrame } from './duo-flat-frame';
@@ -45,17 +52,13 @@ function DuoFlat(props: DuoViewProps) {
   const [edge, setEdge] = useState<ReturnType<typeof flatHoverEdge>>();
   const [hovered, setHovered] = useState<DuoButton>();
   const [pressed, setPressed] = useState<DuoButton>();
-  const held = useRef<{ pointer: number; screenId: number; x: number; y: number } | undefined>(undefined);
+  const pointer = useRef<number | undefined>(undefined);
+  const touch = useRef<DuoTouchController | null>(null);
+  if (!touch.current) touch.current = new DuoTouchController((...args) => latest.current.touch(...args));
   const hardware = useRef<DuoButtonSender | null>(null);
-  const display = props.state.displays.find(
-    (d) => d.id === (props.state.angleDegrees < 90 ? 'outer' : 'inner'),
-  );
+  const display = getDuoDisplay(props.state);
   const source = display?.id === 'inner' ? props.inner : props.outer;
-  const displayTurns =
-    display?.orientation === 2 ? 2
-    : display?.orientation === 3 ? 1
-    : display?.orientation === 4 ? 3
-    : 0;
+  const displayTurns = duoDisplayTurns(display?.orientation);
   const inner = display?.id === 'inner';
   // The body follows the device even when the app keeps its display portrait-locked.
   const deviceTurns = { portrait: 0, pud: 2, 'landscape-left': 3, 'landscape-right': 1 }[
@@ -127,10 +130,8 @@ function DuoFlat(props: DuoViewProps) {
   );
 
   const releaseTouch = () => {
-    if (!held.current) return;
-    const { screenId, x, y } = held.current;
-    latest.current.touch(1, screenId, x, y);
-    held.current = undefined;
+    touch.current?.release();
+    pointer.current = undefined;
   };
   useEffect(() => {
     hardware.current = new DuoButtonSender(
@@ -149,8 +150,9 @@ function DuoFlat(props: DuoViewProps) {
     };
   }, []);
   useEffect(() => {
-    releaseTouch();
-  }, [display?.screenId, turns]);
+    touch.current?.setDisplay(display, turns);
+    if (!touch.current?.active) pointer.current = undefined;
+  }, [display, turns]);
 
   const releaseButton = () => {
     hardware.current?.release();
@@ -189,11 +191,7 @@ function DuoFlat(props: DuoViewProps) {
   });
   const point = (event: React.PointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    return flatDisplayTouch(
-      (event.clientX - rect.left) / rect.width,
-      (event.clientY - rect.top) / rect.height,
-      turns,
-    );
+    return { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height };
   };
   return (
     <div className={showFrame ? 'rc-duo' : 'rc-duo rc-duo-frameless'}>
@@ -240,21 +238,20 @@ function DuoFlat(props: DuoViewProps) {
             onKeyDown={motion ? undefined : props.onKeyDown}
             onKeyUp={props.onKeyUp}
             onPointerDown={(event) => {
-              if (motion || held.current || event.button !== 0 || !display) return;
+              if (motion || pointer.current !== undefined || event.button !== 0 || !display) return;
               event.currentTarget.focus({ preventScroll: true });
               event.currentTarget.setPointerCapture(event.pointerId);
               const p = point(event);
-              held.current = { pointer: event.pointerId, screenId: display.screenId, ...p };
-              props.touch(0, display.screenId, p.x, p.y);
+              pointer.current = event.pointerId;
+              touch.current?.touch('begin', p.x, p.y);
             }}
             onPointerMove={(event) => {
-              if (held.current?.pointer !== event.pointerId) return;
+              if (pointer.current !== event.pointerId) return;
               const p = point(event);
-              Object.assign(held.current, p);
-              props.touch(2, held.current.screenId, p.x, p.y);
+              touch.current?.touch('move', p.x, p.y);
             }}
             onPointerUp={(event) => {
-              if (held.current?.pointer === event.pointerId) releaseTouch();
+              if (pointer.current === event.pointerId) releaseTouch();
             }}
             onPointerCancel={releaseTouch}
             onLostPointerCapture={releaseTouch}
