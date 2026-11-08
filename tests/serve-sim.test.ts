@@ -15,7 +15,7 @@ const fold = {
   ],
 };
 
-async function fixture() {
+async function fixture(platform: 'ios' | 'android' = 'ios', compatibilityVersion = 1) {
   const runtime = new WebSocketServer({ port: 0, host: '127.0.0.1' });
   await once(runtime, 'listening');
   const messages: Array<{ token: string; message: any }> = [];
@@ -34,7 +34,7 @@ async function fixture() {
         case 'requestRtcConfiguration':
           send({
             type: 'rtcConfiguration',
-            compatibilityVersion: 1,
+            compatibilityVersion,
             rtcConfiguration: { iceServers: [{ urls: 'turn:test', username: 'test', credential: 'test' }] },
             foldSupported: true,
           });
@@ -59,6 +59,12 @@ async function fixture() {
           send({ type: 'foldStateChanged', state: { ...fold, angleDegrees: message.angleDegrees } });
           send({ id: message.id, state: { ...fold, angleDegrees: message.angleDegrees } });
           break;
+        case 'getElementTree':
+          send({ id: message.id, payload: { xml: '<hierarchy/>' } });
+          break;
+        case 'screenshot':
+          send({ id: message.id, payload: { dataUri: 'data:image/png;base64,aW1hZ2U=' } });
+          break;
         case 'elementTree':
           send({ id: message.id, json: '{"children":[]}' });
           break;
@@ -77,7 +83,7 @@ async function fixture() {
     resolveDevice: async (id) =>
       id === 'owned' ?
         {
-          platform: 'ios',
+          platform,
           endpoint: `ws://127.0.0.1:${address.port}`,
           apiUrl: 'http://unused',
           token: async (grant) => {
@@ -124,6 +130,10 @@ it('keeps simultaneous viewers isolated and aggregates candidates without exposi
     expect(offers.map((item) => item.message.display).sort()).toEqual(['inner', 'outer']);
     expect(new Set(offers.map((item) => item.message.sessionId)).size).toBe(2);
     expect(f.messages.every((item) => item.token === 'Bearer watch')).toBe(true);
+    const disconnected = [...f.runtime.clients].map((socket) => once(socket, 'close'));
+    await f.hub.releaseDevice('owned');
+    await Promise.all(disconnected);
+    expect(f.runtime.clients.size).toBe(0);
     const denied = await fetch(`${f.hub.origin}/vendor/serve-sim/api?device=owned`);
     expect(denied.status).toBe(401);
     const missing = await fetch(`${f.hub.origin}/vendor/serve-sim/api?device=other`, {
@@ -203,4 +213,90 @@ it('places candidates in their matching media section', () => {
   ]);
   expect(answer.indexOf('m=audio')).toBeLessThan(answer.indexOf('a=candidate:audio'));
   expect(answer.match(/a=candidate:audio/g)).toHaveLength(1);
+});
+
+it('serves Android watch reads and translates its independent input socket', async () => {
+  const f = await fixture('android');
+  try {
+    const ax = await fetch(`${f.hub.origin}/vendor/serve-emu/api/accessibility?device=owned`, {
+      headers: f.hub.headers,
+    });
+    expect(await ax.json()).toEqual({ xml: '<hierarchy/>' });
+    const shot = await fetch(`${f.hub.origin}/vendor/serve-emu/api/screenshot?device=owned`, {
+      headers: f.hub.headers,
+    });
+    expect(await shot.text()).toBe('image');
+    expect(f.messages.every((item) => item.token === 'Bearer watch')).toBe(true);
+    const received = new Promise<void>((resolve) => {
+      f.runtime.on('connection', (socket) =>
+        socket.on('message', (_data, binary) => {
+          if (binary && f.messages.filter((item) => Buffer.isBuffer(item.message)).length === 5) resolve();
+        }),
+      );
+    });
+    const socket = new WebSocket(
+      `${f.hub.origin.replace('http:', 'ws:')}/vendor/serve-emu/ws?device=owned&video=0`,
+      { headers: f.hub.headers },
+    );
+    await once(socket, 'open');
+    for (const value of [
+      { type: 'touch', action: 'down', x: 0.2, y: 0.8 },
+      { type: 'touch', action: 'up', x: 0.2, y: 0.8 },
+      { type: 'text', text: 'Hello' },
+      { type: 'home' },
+    ])
+      socket.send(JSON.stringify(value));
+    await received;
+    const controls = f.messages.filter((item) => Buffer.isBuffer(item.message));
+    expect(controls.map((item) => item.message[0])).toEqual([2, 2, 1, 0, 0]);
+    expect(controls[0]!.message.readInt32LE(10)).toBe(2000);
+    expect(controls[0]!.message.readInt32LE(14)).toBe(8000);
+    expect(controls[2]!.message.subarray(5).toString()).toBe('Hello');
+    expect(controls[3]!.message.readInt32LE(2)).toBe(3);
+    expect(controls.every((item) => item.token === 'Bearer stream')).toBe(true);
+    socket.close();
+    await once(socket, 'close');
+  } finally {
+    await f.close();
+  }
+});
+
+it('rejects runtimes without compatibility support and invalid panel IDs', async () => {
+  const f = await fixture('ios', 0);
+  try {
+    const old = await fetch(`${f.hub.origin}/vendor/serve-sim/api?device=owned`, { headers: f.hub.headers });
+    expect(old.status).toBe(502);
+    const panel = await fetch(`${f.hub.origin}/vendor/serve-sim/helper/owned/webrtc/offer?panel=2`, {
+      method: 'POST',
+      headers: f.hub.headers,
+    });
+    expect(panel.status).toBe(404);
+    expect(f.messages.some((item) => item.message.type === 'offer')).toBe(false);
+  } finally {
+    await f.close();
+  }
+});
+
+it('reserves a viewer ID during negotiation and closes it explicitly', async () => {
+  const f = await fixture();
+  try {
+    const request = () =>
+      fetch(`${f.hub.origin}/vendor/serve-sim/helper/owned/webrtc/offer`, {
+        method: 'POST',
+        headers: f.hub.headers,
+        body: JSON.stringify({ type: 'offer', sdp, sessionId: 'same' }),
+      });
+    const replies = await Promise.all([request(), request()]);
+    expect(replies.map((reply) => reply.status).sort()).toEqual([200, 409]);
+    expect(f.messages.filter((item) => item.message.type === 'offer')).toHaveLength(1);
+    const close = await fetch(`${f.hub.origin}/vendor/serve-sim/helper/owned/webrtc/close`, {
+      method: 'POST',
+      headers: f.hub.headers,
+      body: JSON.stringify({ sessionId: 'same' }),
+    });
+    expect(close.status).toBe(200);
+    expect((await request()).status).toBe(200);
+  } finally {
+    await f.close();
+  }
 });

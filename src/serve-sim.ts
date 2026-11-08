@@ -78,6 +78,7 @@ async function body(request: IncomingMessage): Promise<Message> {
 function route(url: URL): { id: string; path: string; panel?: 'outer' | 'inner' } | undefined {
   const helper = /^\/vendor\/serve-sim\/helper\/([^/]+)(?:\/panel\/(1|3))?\/(.+)$/.exec(url.pathname);
   const panel = helper?.[2] ?? url.searchParams.get('panel');
+  if (panel && panel !== '1' && panel !== '3') return undefined;
   if (helper)
     return {
       id: decodeURIComponent(helper[1]!),
@@ -98,8 +99,9 @@ function route(url: URL): { id: string; path: string; panel?: 'outer' | 'inner' 
 /** A loopback provider hub. Media flows directly between the browser and Limrun. */
 export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
   const secret = randomUUID();
+  let closed = false;
   const peers = new Map<string, Signaling>();
-  const connections = new Set<Signaling>();
+  const connections = new Map<Signaling, string>();
   const logs = new Map<string, Promise<{ events: Message[]; close: () => void }>>();
   const eventLog = (id: string, device: ServeSimDevice) => {
     let pending = logs.get(id);
@@ -111,6 +113,7 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
           logLevel: 'none',
         });
         try {
+          if (closed) throw new Error('Adapter closed');
           await client.startEventCapture();
           const events: Message[] = [];
           let sequence = 0;
@@ -144,15 +147,29 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
     }
     return pending;
   };
+  const releaseDevice = async (id: string) => {
+    for (const [signal, deviceId] of connections) if (deviceId === id) signal.close();
+    const log = logs.get(id);
+    logs.delete(id);
+    if (log) {
+      try {
+        (await log).close();
+      } catch {
+        /* Failed initialization already disconnects. */
+      }
+    }
+  };
   const inputs = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
   const authorized = (request: IncomingMessage) => {
     const actual = Buffer.from(request.headers.authorization ?? '');
     const expected = Buffer.from(`Bearer ${secret}`);
     return actual.length === expected.length && timingSafeEqual(actual, expected);
   };
-  const connect = async (device: ServeSimDevice, grant: 'watch' | 'stream' | 'all') => {
-    const signal = new Signaling(device.endpoint, await device.token(grant));
-    connections.add(signal);
+  const connect = async (id: string, device: ServeSimDevice, grant: 'watch' | 'stream' | 'all') => {
+    const token = await device.token(grant);
+    if (closed) throw new Error('Adapter closed');
+    const signal = new Signaling(device.endpoint, token);
+    connections.set(signal, id);
     signal.ws.once('close', () => connections.delete(signal));
     try {
       await signal.open();
@@ -196,7 +213,7 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
         !(request.method === 'POST' && ['webrtc/offer', 'api/screenshot'].includes(target.path))
       )
         return json(response, 405, { error: 'Method not allowed' });
-      const signal = await connect(device, 'watch');
+      const signal = await connect(target.id, device, 'watch');
       let retained = false;
       const abort = () => {
         if (!response.writableEnded) signal.close();
@@ -224,14 +241,14 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
             return json(response, 400, { error: 'Invalid offer' });
           const id = `${target.id}:${input['sessionId']}`;
           if (peers.has(id)) return json(response, 409, { error: 'Session already exists' });
-          await signal.configuration();
-          const sdp = await signal.offer(input['sdp'], target.panel ?? 'active');
-          if (response.destroyed) return;
           peers.set(id, signal);
-          retained = true;
           signal.ws.once('close', () => {
             if (peers.get(id) === signal) peers.delete(id);
           });
+          await signal.configuration();
+          const sdp = await signal.offer(input['sdp'], target.panel ?? 'active');
+          if (response.destroyed) return;
+          retained = true;
           return json(response, 200, { type: 'answer', sdp });
         }
         if (target.path === 'api/screenshot') {
@@ -252,7 +269,7 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
           return;
         }
         if (target.path === 'ax' || target.path === 'api/accessibility') {
-          const result = await signal.request('elementTree');
+          const result = await signal.request(device.platform === 'ios' ? 'elementTree' : 'getElementTree');
           return json(
             response,
             200,
@@ -288,7 +305,7 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
         socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
         return;
       }
-      const signal = await connect(device, 'stream');
+      const signal = await connect(target.id, device, 'stream');
       try {
         await signal.configuration();
         if (socket.destroyed) {
@@ -316,9 +333,12 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
   return {
     origin: `http://127.0.0.1:${address.port}`,
     headers: { authorization: `Bearer ${secret}` },
+    releaseDevice,
     async close(): Promise<void> {
+      if (closed) return;
+      closed = true;
       for (const client of inputs.clients) client.terminate();
-      for (const signal of connections) signal.close();
+      for (const signal of connections.keys()) signal.close();
       peers.clear();
       inputs.close();
       for (const log of logs.values()) {
@@ -339,6 +359,7 @@ export async function createServeSimAdapter(options: ServeSimAdapterOptions) {
 async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios' | 'android'): Promise<void> {
   let fold: FoldState | undefined;
   let orientation: Orientation = 'portrait';
+  const heldKeys = new Set<number>();
   let width = 10000;
   let height = 10000;
   let held: { x: number; y: number; display?: FoldDisplay } | undefined;
@@ -378,6 +399,12 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
   };
   client.once('close', () => {
     release();
+    if (heldKeys.size)
+      signal.send({
+        type: 'performActions',
+        id: randomUUID(),
+        actions: [...heldKeys].map((keyCode) => ({ type: 'keyUp', keyCode })),
+      });
     signal.close();
   });
   signal.ws.once('close', () => client.close(1011, 'Simulator disconnected'));
@@ -392,6 +419,9 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
     const info = await signal.request('deviceInfo');
     width = info['screenWidth'];
     height = info['screenHeight'];
+    orientation = (['portrait', 'landscape_left', 'portrait_upside_down', 'landscape_right'] as const)[
+      turns(info['orientation'])
+    ]!;
     fold = (await signal.request('getFoldState'))['state'];
     if (client.readyState !== WebSocket.OPEN) return;
     configure();
@@ -432,6 +462,8 @@ async function attachInput(client: WebSocket, signal: Signaling, platform: 'ios'
         } else if (tag === 6) {
           if (!Number.isInteger(value['usage']) || !['down', 'up'].includes(value['type']))
             throw new Error('Invalid key');
+          if (value['type'] === 'down') heldKeys.add(value['usage']);
+          else heldKeys.delete(value['usage']);
           await signal.request('performActions', {
             actions: [{ type: value['type'] === 'down' ? 'keyDown' : 'keyUp', keyCode: value['usage'] }],
           });
