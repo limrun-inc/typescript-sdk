@@ -265,12 +265,19 @@ export abstract class BaseCommand extends Command {
       return await detach();
     } catch (err) {
       if (!(err instanceof DeviceDetachUnavailableError)) throw err;
+      if (
+        this.wasCreatedThisRun(target.id) ||
+        envInstanceTarget(target.type)?.id === target.id ||
+        target.id.startsWith(`${target.type}_local_`)
+      )
+        throw err;
       // Only management-plane confirmation can distinguish an old daemon from a vanished sandbox.
       try {
         if (target.type === 'xcode') await this.client.xcodeInstances.get(target.id);
         else await this.client.gradleInstances.get(target.id);
       } catch (probeError) {
         if (probeError instanceof NotFoundError) throw this.notFound(target.id);
+        throw probeError;
       }
       throw err;
     }
