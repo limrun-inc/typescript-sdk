@@ -541,7 +541,6 @@ type LaunchAppCommonOptions = {
   env?: Record<string, string>;
   /** Secret references resolved on the simulator before launching the app. */
   envFromSecret?: Record<string, string>;
-  fileFromSecret?: Record<string, string>;
   /** Called once when the launched app exits, crashes, or is terminated. */
   onExit?: LaunchAppExitCallback;
   /**
@@ -1500,7 +1499,6 @@ type PendingRequest<T> = {
  */
 export type SimctlOptions = {
   envFromSecret?: Record<string, string>;
-  fileFromSecret?: Record<string, string>;
   /** Disconnect from the instance when the command completes */
   disconnectOnExit?: boolean;
   /** Data written to the command's standard input, which is then closed */
@@ -1510,7 +1508,6 @@ export type SimctlOptions = {
 // Simctl uses streaming, so it's handled separately
 type SimctlRequest = {
   envFromSecret?: Record<string, string>;
-  fileFromSecret?: Record<string, string>;
   type: 'simctl';
   id: string;
   args: string[];
@@ -2578,7 +2575,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             runtime: launchOptions.runtime,
             env: launchOptions.env,
             envFromSecret: launchOptions.envFromSecret,
-            fileFromSecret: launchOptions.fileFromSecret,
             execId,
             // Sent only with onHang so other launches stay byte-identical.
             hangs: onHang ? true : undefined,
@@ -3087,7 +3083,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       const simctlRequest: SimctlRequest = {
         type: 'simctl',
         ...(opts.envFromSecret && { envFromSecret: opts.envFromSecret }),
-        ...(opts.fileFromSecret && { fileFromSecret: opts.fileFromSecret }),
         id,
         args,
         ...(opts.stdin !== undefined && { stdin: Buffer.from(opts.stdin).toString('base64') }),
