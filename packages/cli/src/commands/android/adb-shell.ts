@@ -1,5 +1,5 @@
 import { secretEnvFlags } from '../../lib/secret-env-flags';
-import { parseSecretEnv } from '../../lib/secret-env';
+import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getAndroidInstanceClient } from '../../lib/instance-client-factory';
@@ -47,10 +47,15 @@ export default class AndroidAdbShell extends BaseCommand {
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       const envFromSecret = parseSecretEnv(flags['env-from-secret']);
-      await this.ensureSecretPermissions(resolvedInstance.id, envFromSecret);
+      const fileFromSecret = parseSecretFiles(flags['file-from-secret']);
+      await this.ensureSecretPermissions(resolvedInstance.id, envFromSecret, fileFromSecret);
       const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
       try {
-        const result = await client.adbShell(command, args, { timeoutMs: flags.timeout, envFromSecret });
+        const result = await client.adbShell(command, args, {
+          timeoutMs: flags.timeout,
+          envFromSecret,
+          fileFromSecret,
+        });
         if (flags.json) {
           this.outputJson(result);
         } else {

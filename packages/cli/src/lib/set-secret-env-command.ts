@@ -1,23 +1,37 @@
 import { Flags } from '@oclif/core';
 import { APIError } from '@limrun/api';
 import { BaseCommand } from '../base-command';
-import { parseSecretEnv, permissionCovers, secretReadPermissions } from './secret-env';
+import { parseSecretEnv, parseSecretFiles, permissionCovers, secretReadPermissions } from './secret-env';
 
-export function setSecretEnvCommand(platform: 'xcode' | 'gradle' | 'ios' | 'android'): typeof BaseCommand {
+export function setSecretEnvCommand(
+  platform: 'xcode' | 'gradle' | 'ios' | 'android',
+  kind: 'env' | 'file' = 'env',
+): typeof BaseCommand {
+  const field = kind === 'file' ? 'fileFromSecret' : 'envFromSecret';
+  const parse = kind === 'file' ? parseSecretFiles : parseSecretEnv;
   return class SetSecretEnv extends BaseCommand {
-    static summary = `Save secret-backed environment variables on a ${platform} instance`;
+    static summary = `Save secret-backed ${
+      kind === 'file' ? 'files' : 'environment variables'
+    } on the ${platform} instance`;
     static description =
-      'Bindings apply to subsequent commands. Values are fetched by the workload using its delegated secret read permissions. Repeat NAME=secret/name to merge bindings; use --unset NAME to remove one, or --clear to remove all. Removing a binding preserves delegated permissions.';
+      (kind === 'file' ?
+        'Use quoted remote paths, for example "~/.npmrc=packages/npmrc" or "~/.netrc=github/netrc", for private packages and Git repositories. Files are refreshed on the next command and kept for future commands; unset files are removed when the next command starts. '
+      : 'Environment bindings apply to subsequent commands. ') +
+      'The workload fetches values using its delegated secret read permissions. Repeated bindings are merged; --unset removes one and --clear removes all. Removing a binding preserves delegated permissions.';
     static strict = false;
     static examples = [
-      `<%= config.bin %> ${platform} set env-from-secret NPM_TOKEN=my/secret`,
-      `<%= config.bin %> ${platform} set env-from-secret --unset NPM_TOKEN`,
+      `<%= config.bin %> ${platform} set ${kind}-from-secret ${
+        kind === 'file' ? "'~/.npmrc=packages/npmrc'" : 'NPM_TOKEN=my/secret'
+      }`,
+      `<%= config.bin %> ${platform} set ${kind}-from-secret --unset ${
+        kind === 'file' ? "'~/.npmrc'" : 'NPM_TOKEN'
+      }`,
     ];
     static flags = {
       ...BaseCommand.baseFlags,
       id: Flags.string({ description: 'Instance ID. Defaults to the current target.' }),
       unset: Flags.string({
-        description: 'Remove a saved environment binding.',
+        description: 'Remove a saved binding by variable name or quoted remote file path.',
         multiple: true,
         multipleNonGreedy: true,
       }),
@@ -26,12 +40,16 @@ export function setSecretEnvCommand(platform: 'xcode' | 'gradle' | 'ios' | 'andr
     async run(): Promise<void> {
       const { argv, flags } = await this.parse(SetSecretEnv);
       this.setParsedFlags(flags);
-      const additions = parseSecretEnv(argv as string[]) ?? {};
+      const additions = parse(argv as string[]) ?? {};
       const remove = flags.unset ?? [];
       if (!Object.keys(additions).length && !remove.length && !flags.clear)
         this.error('Provide NAME=secret/name, --unset NAME, or --clear.');
       for (const key of remove)
-        if (!/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(key))
+        if (
+          kind === 'file' ?
+            !parseSecretFiles([key + '=validation'])
+          : !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(key)
+        )
           this.error('Invalid --unset environment variable name.');
       await this.withAuth(async () => {
         const target =
@@ -52,12 +70,12 @@ export function setSecretEnvCommand(platform: 'xcode' | 'gradle' | 'ios' | 'andr
           const role = instance.spec.role;
           if (!etag || !role || instance.status.state === 'terminated')
             this.error('Select a live instance with an editable role.');
-          const envFromSecret: Record<string, string> = {
-            ...(flags.clear ? {} : instance.spec.envFromSecret),
+          const bindings: Record<string, string> = {
+            ...(flags.clear ? {} : instance.spec[field]),
             ...additions,
           };
-          for (const key of remove) delete envFromSecret[key];
-          if (Object.keys(envFromSecret).length > 64) this.error('At most 64 secret bindings are supported.');
+          for (const key of remove) delete bindings[key];
+          if (Object.keys(bindings).length > 64) this.error('At most 64 secret bindings are supported.');
           const required = secretReadPermissions(additions).filter(
             (permission) => !role.permissions.some((granted) => permissionCovers(granted, permission)),
           );
@@ -65,15 +83,15 @@ export function setSecretEnvCommand(platform: 'xcode' | 'gradle' | 'ios' | 'andr
             await instances.update(target.id, {
               ifMatch: etag,
               spec: {
-                envFromSecret,
+                [field]: bindings,
                 ...(required.length && {
                   role: { permissions: [...new Set([...role.permissions, ...required])] },
                 }),
               },
             });
             this.outputResult(
-              { instanceId: target.id, envFromSecret },
-              `Updated secret environment bindings on ${target.id}.`,
+              { instanceId: target.id, [field]: bindings },
+              `Updated secret ${kind} bindings on ${target.id}.`,
             );
             return;
           } catch (error) {

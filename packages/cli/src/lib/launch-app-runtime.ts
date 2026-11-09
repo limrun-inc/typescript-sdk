@@ -1,4 +1,4 @@
-import { parseSecretEnv } from './secret-env';
+import { parseSecretEnv, parseSecretFiles } from './secret-env';
 import { parseLaunchEnvironment } from '@limrun/api/ios-launch-environment';
 import { resolveLocalDetoxVersion } from './detox-version';
 
@@ -16,17 +16,20 @@ export type LaunchAppArgument =
       runtime?: undefined;
       env?: Record<string, string>;
       envFromSecret?: Record<string, string>;
+      fileFromSecret?: Record<string, string>;
     }
   | {
       mode: 'RelaunchIfRunning';
       runtime: LaunchAppRuntime;
       env?: Record<string, string>;
       envFromSecret?: Record<string, string>;
+      fileFromSecret?: Record<string, string>;
     };
 
 export type LaunchAppFlagValues = {
   env?: string[];
   'env-from-secret'?: string[];
+  'file-from-secret'?: string[];
   mode?: LaunchAppMode;
   runtime?: string;
   'detox-server-url'?: string;
@@ -59,6 +62,7 @@ export function buildLaunchAppArgument(
 ): LaunchAppArgument {
   const env = flags.env?.length ? parseLaunchEnvironment(flags.env) : undefined;
   const envFromSecret = parseSecretEnv(flags['env-from-secret']);
+  const fileFromSecret = parseSecretFiles(flags['file-from-secret']);
   const hasDetoxFlag =
     flags['detox-server-url'] !== undefined ||
     flags['detox-session-id'] !== undefined ||
@@ -68,11 +72,12 @@ export function buildLaunchAppArgument(
     if (hasDetoxFlag) {
       throw new Error(`${DETOX_FLAG_NAMES.join(', ')} require --runtime detox.`);
     }
-    return env || envFromSecret ?
+    return env || envFromSecret || fileFromSecret ?
         {
           mode: options.modeExplicitlyProvided && flags.mode ? flags.mode : 'RelaunchIfRunning',
           ...(env && { env }),
           ...(envFromSecret && { envFromSecret }),
+          ...(fileFromSecret && { fileFromSecret }),
         }
       : flags.mode ?? 'ForegroundIfRunning';
   }
@@ -102,6 +107,7 @@ export function buildLaunchAppArgument(
     mode: 'RelaunchIfRunning',
     ...(env ? { env } : {}),
     ...(envFromSecret && { envFromSecret }),
+    ...(fileFromSecret && { fileFromSecret }),
     runtime: {
       kind: 'detox',
       serverUrl,

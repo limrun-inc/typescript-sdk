@@ -882,8 +882,9 @@ export abstract class BaseCommand extends Command {
   protected async ensureSecretPermissions(
     id: string,
     bindings: Record<string, string> | undefined,
+    files?: Record<string, string>,
   ): Promise<void> {
-    const required = secretReadPermissions(bindings);
+    const required = [...secretReadPermissions(bindings), ...secretReadPermissions(files)];
     if (required.length) await this.ensureInstancePermissions(id, required);
   }
 

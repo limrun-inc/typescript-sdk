@@ -1,5 +1,5 @@
 import { secretEnvFlags } from '../../lib/secret-env-flags';
-import { parseSecretEnv } from '../../lib/secret-env';
+import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
@@ -57,6 +57,7 @@ export default class XcodeBuild extends BaseCommand {
     'Sync a local project path once (or the current working directory if omitted), then trigger a remote xcodebuild with streaming output. Use `--detach` for headless builds that should return as soon as the build starts, optionally with a webhook for the terminal result. Use `--ios` to build and run on an iOS simulator-backed Xcode target.';
 
   static examples = [
+    "<%= config.bin %> xcode build --file-from-secret '~/.npmrc=packages/npmrc'",
     '<%= config.bin %> xcode build',
     '<%= config.bin %> xcode build ./MyProject',
     '<%= config.bin %> xcode build ./MyProject --ios',
@@ -347,8 +348,11 @@ export default class XcodeBuild extends BaseCommand {
         settings.artifactName = artifactName;
       }
 
-      const options: XcodeBuildOptions = { envFromSecret: parseSecretEnv(flags['env-from-secret']) };
-      await this.ensureSecretPermissions(id, options.envFromSecret);
+      const options: XcodeBuildOptions = {
+        envFromSecret: parseSecretEnv(flags['env-from-secret']),
+        fileFromSecret: parseSecretFiles(flags['file-from-secret']),
+      };
+      await this.ensureSecretPermissions(id, options.envFromSecret, options.fileFromSecret);
       if (flags['git-init']) {
         options.gitInit = true;
       }

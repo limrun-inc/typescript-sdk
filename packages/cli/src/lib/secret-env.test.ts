@@ -1,4 +1,4 @@
-import { parseSecretEnv, permissionCovers, secretReadPermissions } from './secret-env';
+import { parseSecretEnv, parseSecretFiles, permissionCovers, secretReadPermissions } from './secret-env';
 import { delegatedPermissionsFromFlags } from './delegated-permissions';
 
 test('literal names preserve slashes and colons, with exact read grants', () => {
@@ -49,3 +49,19 @@ test('already-delegated wildcard permissions avoid unnecessary role updates', ()
   expect(permissionCovers('secret:name/team/a.b:read', 'secret:name/team/a+b:read')).toBe(false);
   expect(permissionCovers('secret:name/team/npm:read', 'secret:name/team/npm:production:read')).toBe(false);
 });
+
+test('file bindings keep remote home paths and delegate exact secret names', () => {
+  expect(parseSecretFiles(['~/.npmrc=packages/npm:prod', 'config/token=team/service'])).toEqual({
+    '~/.npmrc': 'name/packages/npm:prod',
+    'config/token': 'name/team/service',
+  });
+  expect(delegatedPermissionsFromFlags({ 'file-from-secret': ['~/.npmrc=packages/npm'] })).toEqual([
+    'secret:name/packages/npm:read',
+  ]);
+});
+test.each(['/tmp/token=key', '../token=key', '~/.config/../token=key', '~/=key', 'a//b=key', '~/.npmrc=*'])(
+  'rejects unsafe secret file %s',
+  (entry) => {
+    expect(() => parseSecretFiles([entry])).toThrow();
+  },
+);

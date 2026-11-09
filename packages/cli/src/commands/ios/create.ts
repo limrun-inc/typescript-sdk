@@ -1,5 +1,5 @@
 import { secretEnvFlags } from '../../lib/secret-env-flags';
-import { parseSecretEnv } from '../../lib/secret-env';
+import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
 import { snapshotFlags } from '../../lib/cache-flags';
@@ -206,6 +206,7 @@ export default class IosCreate extends BaseCommand {
         reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
           envFromSecret: parseSecretEnv(flags['env-from-secret']),
+          fileFromSecret: parseSecretFiles(flags['file-from-secret']),
           role: { permissions: delegatedPermissions ?? [] },
         },
       };
@@ -341,6 +342,7 @@ export default class IosCreate extends BaseCommand {
             ...(params.metadata ? { metadata: params.metadata } : {}),
             spec: {
               envFromSecret: parseSecretEnv(flags['env-from-secret']),
+              fileFromSecret: parseSecretFiles(flags['file-from-secret']),
               role: { permissions: delegatedPermissions ?? [] },
               ...(cache ? { cache } : {}),
               ...(flags.region ? { region: flags.region } : {}),

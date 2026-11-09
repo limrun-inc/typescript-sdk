@@ -57,3 +57,62 @@ test.each(['xcode', 'gradle', 'ios', 'android'] as const)(
     });
   },
 );
+
+test.each(['xcode', 'gradle', 'ios', 'android'] as const)(
+  '%s saves file bindings and permissions atomically, retrying ETag conflicts',
+  async (platform) => {
+    const Command = setSecretEnvCommand(platform, 'file') as unknown as new (
+      ...args: ConstructorParameters<typeof BaseCommand>
+    ) => BaseCommand;
+    const command = new Command([], {} as never);
+    const id = 'instance';
+    const live = jest
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          spec: {
+            fileFromSecret: { '~/old': 'name/old' },
+            role: { permissions: ['asset:name/source:read'] },
+          },
+          status: { state: 'ready' },
+        },
+        response: new Response(null, { headers: { etag: '"1"' } }),
+      })
+      .mockResolvedValueOnce({
+        data: {
+          spec: {
+            fileFromSecret: { '~/old': 'name/old', '~/concurrent': 'name/concurrent' },
+            role: { permissions: ['asset:name/source:read', 'secret:name/concurrent:read'] },
+          },
+          status: { state: 'ready' },
+        },
+        response: new Response(null, { headers: { etag: '"2"' } }),
+      });
+    const update = jest
+      .fn()
+      .mockRejectedValueOnce(APIError.generate(412, {}, 'changed', new Headers()))
+      .mockResolvedValue(undefined);
+    Object.assign(command, {
+      parse: async () => ({ argv: ['~/.npmrc=team/npm'], flags: { unset: ['~/old'] } }),
+      withAuth: async (fn: () => Promise<void>) => fn(),
+      resolveXcodeTarget: async () => ({ id }),
+      resolveGradleTarget: () => ({ id }),
+      resolveIosInstance: () => ({ id }),
+      resolveAndroidInstance: () => ({ id }),
+      outputResult: jest.fn(),
+    });
+    Object.defineProperty(command, 'client', {
+      value: { [`${platform}Instances`]: { get: () => ({ withResponse: live }), update } },
+    });
+    await command.run();
+    expect(update).toHaveBeenLastCalledWith(id, {
+      ifMatch: '"2"',
+      spec: {
+        fileFromSecret: { '~/concurrent': 'name/concurrent', '~/.npmrc': 'name/team/npm' },
+        role: {
+          permissions: ['asset:name/source:read', 'secret:name/concurrent:read', 'secret:name/team/npm:read'],
+        },
+      },
+    });
+  },
+);

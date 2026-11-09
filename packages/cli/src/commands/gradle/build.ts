@@ -1,5 +1,5 @@
 import { secretEnvFlags } from '../../lib/secret-env-flags';
-import { parseSecretEnv } from '../../lib/secret-env';
+import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { type GradleBuildOptions } from '@limrun/api';
@@ -29,6 +29,7 @@ export default class GradleBuild extends BaseCommand {
     'Use `--upload` to store the artifact, or `--detach` for a headless build that returns as soon as the build starts, optionally with a webhook for the terminal result.';
 
   static examples = [
+    "<%= config.bin %> gradle build --file-from-secret '~/.npmrc=packages/npmrc'",
     '<%= config.bin %> gradle build',
     '<%= config.bin %> gradle build ./my-app --upload myapp.apk',
     '<%= config.bin %> gradle build --task bundleRelease',
@@ -295,7 +296,8 @@ export default class GradleBuild extends BaseCommand {
       const target = await this.resolveGradleTargetOrCreate(flags.id);
       const id = target.id;
       options.envFromSecret = parseSecretEnv(flags['env-from-secret']);
-      await this.ensureSecretPermissions(id, options.envFromSecret);
+      options.fileFromSecret = parseSecretFiles(flags['file-from-secret']);
+      await this.ensureSecretPermissions(id, options.envFromSecret, options.fileFromSecret);
       const gradleClient = await this.resolveGradleClient(target);
       if (options.upload?.target && flags.upload) {
         await this.ensureUploadPermissions(id, flags.upload);

@@ -1,5 +1,5 @@
 import { secretEnvFlags } from './secret-env-flags';
-import { parseSecretEnv } from './secret-env';
+import { parseSecretEnv, parseSecretFiles } from './secret-env';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../base-command';
 import { syncFlags, syncOptionsFromFlags } from './sync-flags';
@@ -69,7 +69,8 @@ export function buildRunCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
       await this.withAuth(async () => {
         const { target, client } = await this.resolveBuildToolClient(platform, flags.id);
         const envFromSecret = parseSecretEnv(flags['env-from-secret']);
-        await this.ensureSecretPermissions(target.id, envFromSecret);
+        const fileFromSecret = parseSecretFiles(flags['file-from-secret']);
+        await this.ensureSecretPermissions(target.id, envFromSecret, fileFromSecret);
 
         // The build sandbox hosts no simulators, so simctl install/boot/launch
         // is denied there. Steer to the attach flow before the command runs.
@@ -90,6 +91,7 @@ export function buildRunCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
         const proc = client.run(commandLine, {
           cwd: args.cwd ?? '.',
           envFromSecret,
+          fileFromSecret,
           ...(env && { env }),
           ...(flags.timeout !== undefined && { timeoutSeconds: flags.timeout }),
         });

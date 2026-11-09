@@ -64,3 +64,30 @@ export function permissionCovers(existing: string, requested: string): boolean {
     .join('');
   return new RegExp(`^${pattern}$`, 's').test(wantedTarget);
 }
+
+/** Keep ~/ literal so it resolves against the remote workload home. */
+export function parseSecretFiles(entries: string[] | undefined): Record<string, string> | undefined {
+  if (!entries?.length) return undefined;
+  const result: Record<string, string> = Object.create(null);
+  for (const entry of entries) {
+    const i = entry.indexOf('=');
+    const destination = entry.slice(0, i);
+    const relative = destination.startsWith('~/') ? destination.slice(2) : destination;
+    if (
+      i < 1 ||
+      destination.length > 1024 ||
+      relative.startsWith('/') ||
+      relative.startsWith('~') ||
+      /[\\\0\r\n]/.test(relative) ||
+      relative.split('/').some((p) => !p || p === '.' || p === '..')
+    )
+      throw new Error(
+        "Use --file-from-secret '~/path=secret/name' or 'relative/path=secret/name'; quote ~/ to keep it remote.",
+      );
+    if (Object.prototype.hasOwnProperty.call(result, destination))
+      throw new Error('Duplicate secret file destination.');
+    result[destination] = parseSecretEnv(['SECRET_FILE=' + entry.slice(i + 1)])!['SECRET_FILE']!;
+  }
+  if (Object.keys(result).length > 64) throw new Error('At most 64 secret files are supported.');
+  return result;
+}

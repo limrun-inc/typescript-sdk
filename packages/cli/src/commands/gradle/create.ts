@@ -1,5 +1,5 @@
 import { secretEnvFlags } from '../../lib/secret-env-flags';
-import { parseSecretEnv } from '../../lib/secret-env';
+import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
@@ -68,6 +68,7 @@ export default class GradleCreate extends BaseCommand {
         reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
           envFromSecret: parseSecretEnv(flags['env-from-secret']),
+          fileFromSecret: parseSecretFiles(flags['file-from-secret']),
           role: { permissions: delegatedPermissions ?? [] },
           ...(flags.region && { region: flags.region }),
           ...(flags.jurisdiction && { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' }),
