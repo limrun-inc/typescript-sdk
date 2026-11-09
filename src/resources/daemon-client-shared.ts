@@ -95,6 +95,8 @@ export type BuildRunOptions = {
   cwd?: string;
   /** Extra KEY=VALUE entries. Sandbox paths remain managed; the last repeated user entry wins. */
   env?: string[];
+  /** Secret references resolved by the workload; overrides saved bindings for this operation. */
+  envFromSecret?: Record<string, string>;
   /** Command timeout in seconds, from 1 to 21600. Defaults to 3600. */
   timeoutSeconds?: number;
 };
@@ -116,6 +118,7 @@ export function createBuildRun(execOptions: ExecOptions) {
       commandLine,
       cwd: options?.cwd ?? '.',
       ...(options?.env?.length && { env: options.env }),
+      ...(options?.envFromSecret && { envFromSecret: options.envFromSecret }),
       ...(options?.timeoutSeconds !== undefined && { timeoutSeconds: options.timeoutSeconds }),
     };
     return exec(request, execOptions);
