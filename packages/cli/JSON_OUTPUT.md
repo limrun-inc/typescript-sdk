@@ -121,6 +121,10 @@ lim xcode sync . --watch --json | jq --unbuffered .bytesSent
 | `xcode rbe --stop`                                                        | `{"stopped":false}` if none is running; otherwise `{stopped:true, forced, instanceId, pid}`.                                                      |
 | `xcode rbe upload`, version selection, set-instance, and `skills install` | Existing structured results are unchanged.                                                                                                        |
 
+## Saved secret bindings
+
+`lim <product> set env-from-secret --json` returns `{instanceId, envFromSecret}`. `set file-from-secret --json` returns `{instanceId, fileFromSecret}`. Both maps contain the resulting complete saved bindings, with secret names normalized to `name/<name>` or retained as TIDs. `--unset` and `--clear` return the remaining map, including `{}` when empty. Values and file contents are never included.
+
 ## Maintaining the contract
 
 Changes must keep JSON stdout free of human text on success, failure, empty results, daemon and direct connections, and foreground and detached paths. Use `outputJson` for finite results, `outputEvent` for streams, and `outputResult` for data with a human-readable alternative. Do not use plain logging or inherited child stdout for JSON results. Configure SDK clients so their informational logging cannot reach stdout.
