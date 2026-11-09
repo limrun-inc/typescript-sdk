@@ -17,6 +17,7 @@ import { prepareAppBundlePath, watchAppArchive } from './app-archive';
 import { downloadFileToLocalPath } from './internal/download-file';
 import { sleep } from './internal/utils/sleep';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import { requestBlockedDomains } from './internal/blocked-domains';
 import { postTrustedCaCertificate } from './internal/trusted-ca';
 import {
   getDestinationTunnelStatus,
@@ -1143,6 +1144,19 @@ export type InstanceClient = {
    * certificate the simulator already trusts changes nothing.
    */
   addCaCertificate: (pem: string) => Promise<TrustedCaCertificate>;
+
+  /**
+   * Replace the names the simulator cannot resolve, so its apps and browser never
+   * reach them, and return the list in force. Each entry is an exact name, or a
+   * `*.` wildcard that covers every subdomain but not the name itself: blocking a
+   * whole site takes both `example.com` and `*.example.com`. An empty list
+   * unblocks everything. Connections an app already holds stay open until it
+   * reconnects, so relaunch the app after blocking a site it has open.
+   */
+  setBlockedDomains: (domains: string[]) => Promise<string[]>;
+
+  /** The names the simulator cannot resolve. */
+  getBlockedDomains: () => Promise<string[]>;
 
   /**
    * Clear the registered StoreKit configuration for `bundleId` and
@@ -2338,6 +2352,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             syncApp,
             setStoreKitConfig,
             addCaCertificate,
+            setBlockedDomains,
+            getBlockedDomains,
             clearStoreKitConfig,
             discoverStoreKitConfig,
             softReset,
@@ -3227,6 +3243,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const addCaCertificate = (pem: string): Promise<TrustedCaCertificate> =>
       postTrustedCaCertificate(`${options.apiUrl}/trusted-cas`, options.token, pem);
+
+    const setBlockedDomains = (domains: string[]): Promise<string[]> =>
+      requestBlockedDomains(`${options.apiUrl}/blocked-domains`, options.token, domains);
+
+    const getBlockedDomains = (): Promise<string[]> =>
+      requestBlockedDomains(`${options.apiUrl}/blocked-domains`, options.token);
 
     const clearStoreKitConfig = async (bundleId: string): Promise<void> => {
       const url = `${options.apiUrl}/payments/storeKitConfigs/${encodeURIComponent(bundleId)}`;

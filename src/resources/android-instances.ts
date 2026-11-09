@@ -282,6 +282,15 @@ export namespace AndroidInstanceCreateParams {
     sandbox?: Spec.Sandbox;
 
     /**
+     * Names the device cannot resolve, so its apps and browser never reach them.
+     * Each entry is an exact name, or a `*.` wildcard that covers every subdomain
+     * but not the name itself: blocking a whole site takes both `example.com` and
+     * `*.example.com`. The list is in force before the instance becomes ready;
+     * change it later with the instance client's `setBlockedDomains`.
+     */
+    blockedDomains?: Array<string>;
+
+    /**
      * Names a private tunnel, created in the console (Network) or the API, that
      * serves this instance. Creation fails while no connector (`lim tunnel run`)
      * holds it, and the instance becomes ready only after the tunnel attaches.

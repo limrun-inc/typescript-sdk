@@ -18,6 +18,20 @@ export function directInstanceHttpError(
   return Object.assign(new Error(message), { status, body: text });
 }
 
+/**
+ * The reason in a direct-instance error body: limulator answers JSON with
+ * `message` (its framework's own errors carry `reason`), websocket-proxy plain text.
+ */
+export function directInstanceErrorReason(text: string): string {
+  const trimmed = text.trim();
+  try {
+    const body = JSON.parse(trimmed) as { message?: string; reason?: string };
+    return body.message || body.reason || trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
 /** Narrow an unknown error to a direct-instance HTTP error with the given status. */
 export function isDirectInstanceHttpError(err: unknown, status: number): err is DirectInstanceHttpError {
   return err instanceof Error && (err as Partial<DirectInstanceHttpError>).status === status;
