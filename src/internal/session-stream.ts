@@ -1,9 +1,10 @@
 /**
- * Long-lived tail of a runtime session SSE stream (live app logs or the
- * coalesced event log). The runtime replays its buffer on first connect and
- * tags every entry with a monotonic SSE id; eventsource-client sends
- * Last-Event-ID on reconnect, so the runtime resumes exactly where the
- * stream broke and each entry is delivered exactly once.
+ * Long-lived tail of a runtime session SSE stream (live app logs, the
+ * coalesced event log, or iOS app performance samples). The runtime replays
+ * its buffer on first connect and tags every entry with a monotonic SSE id;
+ * eventsource-client sends Last-Event-ID on reconnect, so the runtime resumes
+ * exactly where the stream broke and each entry is delivered exactly once,
+ * as long as the entries are still in the runtime's buffer.
  *
  * Stream health follows the exec client's model (and reuses its policy): the
  * EventSource reconnects forever on its own, so a dead stream (deleted

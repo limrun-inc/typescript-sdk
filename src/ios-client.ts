@@ -1088,12 +1088,12 @@ export type InstanceClient = {
   }) => () => void;
 
   /**
-   * Start saving the running apps' performance samples. The instance samples
-   * every app it installed once a second whether or not anything listens, so
-   * this capture always persists: it is uploaded to Limrun's bucket when it
-   * stops or the instance terminates, kept for `ttlSeconds` (server default
-   * 72h); list it with `iosInstances.listPerformanceCaptures`. One
-   * performance capture runs at a time; the server rejects a second start.
+   * Start saving the running apps' {@link PerformanceSample}s. The instance
+   * samples whether or not anything listens, so this capture always persists:
+   * it is uploaded to Limrun's bucket when it stops or the instance
+   * terminates, kept for `ttlSeconds` (server default 72h); list it with
+   * `iosInstances.listPerformanceCaptures`. One performance capture runs at a
+   * time; the server rejects a second start.
    */
   startPerformanceCapture: (options?: { ttlSeconds?: number }) => Promise<void>;
 
@@ -1101,10 +1101,11 @@ export type InstanceClient = {
   stopPerformanceCapture: () => Promise<void>;
 
   /**
-   * Tail the running apps' performance samples: one {@link PerformanceSample}
-   * per app per second. On connect the instance replays the last ten minutes,
-   * so a late subscriber still sees recent history; no capture is needed.
-   * Same reconnect and lifecycle semantics as {@link streamAppLogCapture}.
+   * Tail the running apps' {@link PerformanceSample}s; no capture is needed.
+   * On connect the instance replays its recent samples, so a late subscriber
+   * still sees history. Same reconnect and lifecycle semantics as
+   * {@link streamAppLogCapture}, except that a gap longer than the replay
+   * window loses the samples in between.
    */
   streamPerformance: (handlers: {
     onSample: (sample: PerformanceSample) => void;
@@ -2901,8 +2902,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
     };
 
+    // A stop answers once its persisted capture is uploaded, which grows with the capture's length.
+    const captureStopTimeoutMs = 300_000;
+
     const stopAppLogCapture = async (): Promise<void> => {
-      await sendRequest<void>('stopAppLogCapture');
+      await sendRequest<void>('stopAppLogCapture', {}, undefined, captureStopTimeoutMs);
     };
 
     const startEventCapture = async (opts?: { persist?: PersistOption }): Promise<void> => {
@@ -2910,7 +2914,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const stopEventCapture = async (): Promise<void> => {
-      await sendRequest<void>('stopEventCapture');
+      await sendRequest<void>('stopEventCapture', {}, undefined, captureStopTimeoutMs);
     };
 
     const startPerformanceCapture = async (opts?: { ttlSeconds?: number }): Promise<void> => {
@@ -2918,41 +2922,35 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const stopPerformanceCapture = async (): Promise<void> => {
-      await sendRequest<void>('stopPerformanceCapture');
+      await sendRequest<void>('stopPerformanceCapture', {}, undefined, captureStopTimeoutMs);
     };
+
+    const tailSession = <T extends { ts: number }>(
+      stream: 'applogs' | 'events' | 'performance',
+      onEntry: (entry: T) => void,
+      onError?: (error: Error) => void,
+    ): (() => void) =>
+      streamSessionEntries<T>({
+        url: `${options.apiUrl}/session/${stream}/events`,
+        token: options.token,
+        onEntry,
+        onError,
+      });
 
     const streamAppLogCapture = (handlers: {
       onLine: (line: SessionLogLine) => void;
       onError?: (error: Error) => void;
-    }): (() => void) =>
-      streamSessionEntries<SessionLogLine>({
-        url: `${options.apiUrl}/session/applogs/events`,
-        token: options.token,
-        onEntry: handlers.onLine,
-        onError: handlers.onError,
-      });
+    }): (() => void) => tailSession('applogs', handlers.onLine, handlers.onError);
 
     const streamEventCapture = (handlers: {
       onEvent: (event: SessionEvent) => void;
       onError?: (error: Error) => void;
-    }): (() => void) =>
-      streamSessionEntries<SessionEvent>({
-        url: `${options.apiUrl}/session/events/events`,
-        token: options.token,
-        onEntry: handlers.onEvent,
-        onError: handlers.onError,
-      });
+    }): (() => void) => tailSession('events', handlers.onEvent, handlers.onError);
 
     const streamPerformance = (handlers: {
       onSample: (sample: PerformanceSample) => void;
       onError?: (error: Error) => void;
-    }): (() => void) =>
-      streamSessionEntries<PerformanceSample>({
-        url: `${options.apiUrl}/session/performance/events`,
-        token: options.token,
-        onEntry: handlers.onSample,
-        onError: handlers.onError,
-      });
+    }): (() => void) => tailSession('performance', handlers.onSample, handlers.onError);
 
     const stopRecording = async (saveTo: { presignedUrl?: string; localPath?: string }): Promise<string> => {
       await sendRequest<void>('stopVideoRecording', {
