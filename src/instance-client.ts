@@ -23,6 +23,7 @@ import {
   type DestinationTunnelStatus,
 } from './internal/destination-tunnel-management';
 import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
+import { androidBlockedDomainsUrl, requestBlockedDomains } from './internal/blocked-domains';
 import { addTrustedCaCertificate, type TrustedCaCertificate } from './internal/trusted-ca';
 import { persistFields, type PersistOption } from './internal/persist-option';
 import { streamSessionEntries } from './internal/session-stream';
@@ -404,6 +405,19 @@ export type InstanceClient = {
    * their next connection. It lasts for the life of the instance.
    */
   addCaCertificate: (pem: string) => Promise<TrustedCaCertificate>;
+
+  /**
+   * Replace the names the emulator cannot resolve, so its apps and browser never
+   * reach them, and return the list in force. Each entry is an exact name, or a
+   * `*.` wildcard that covers every subdomain but not the name itself: blocking a
+   * whole site takes both `example.com` and `*.example.com`. An empty list
+   * unblocks everything. Connections an app already holds stay open until it
+   * reconnects, so relaunch the app after blocking a site it has open.
+   */
+  setBlockedDomains: (domains: string[]) => Promise<string[]>;
+
+  /** The names the emulator cannot resolve. */
+  getBlockedDomains: () => Promise<string[]>;
   /**
    * Send an asset URL to the instance. The instance will download the asset
    * and process it (currently APK install is supported). Resolves on success,
@@ -1548,6 +1562,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             getTunnelStatus,
             stopTunnel,
             addCaCertificate,
+            setBlockedDomains,
+            getBlockedDomains,
             sendAsset,
             syncApp,
             getConnectionState,
@@ -2010,6 +2026,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const addCaCertificate = (pem: string): Promise<TrustedCaCertificate> =>
       addTrustedCaCertificate(requireAdbUrl('add a CA certificate'), options.token, pem);
+
+    const setBlockedDomains = (domains: string[]): Promise<string[]> =>
+      requestBlockedDomains(androidBlockedDomainsUrl(requireAdbUrl('block domains')), options.token, domains);
+
+    const getBlockedDomains = (): Promise<string[]> =>
+      requestBlockedDomains(androidBlockedDomainsUrl(requireAdbUrl('read blocked domains')), options.token);
 
     const sendAsset = async (url: string, timeoutMs?: number): Promise<void> => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
