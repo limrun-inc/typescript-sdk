@@ -69,6 +69,7 @@ export type GradleBuildOptions = {
   env?: string[];
   /** Secret references resolved by the workload; overrides saved bindings for this operation. */
   envFromSecret?: Record<string, string>;
+  fileFromSecret?: Record<string, string>;
   /**
    * Gradle tasks to run. Omit for the server default (assembleDebug, or
    * bundleRelease when signing is set).
@@ -253,6 +254,7 @@ class GradleInstancesHelpers extends GradleInstances {
           command: 'gradlebuild',
           ...(options?.env?.length && { env: options.env }),
           ...(options?.envFromSecret && { envFromSecret: options.envFromSecret }),
+          ...(options?.fileFromSecret && { fileFromSecret: options.fileFromSecret }),
           ...(options?.tasks?.length && { tasks: options.tasks }),
           ...(options?.projectPath && { projectPath: options.projectPath }),
           ...(options?.reactNative && { reactNative: options.reactNative }),

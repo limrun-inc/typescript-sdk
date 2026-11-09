@@ -97,6 +97,7 @@ export type BuildRunOptions = {
   env?: string[];
   /** Secret references resolved by the workload; overrides saved bindings for this operation. */
   envFromSecret?: Record<string, string>;
+  fileFromSecret?: Record<string, string>;
   /** Command timeout in seconds, from 1 to 21600. Defaults to 3600. */
   timeoutSeconds?: number;
 };
@@ -119,6 +120,7 @@ export function createBuildRun(execOptions: ExecOptions) {
       cwd: options?.cwd ?? '.',
       ...(options?.env?.length && { env: options.env }),
       ...(options?.envFromSecret && { envFromSecret: options.envFromSecret }),
+      ...(options?.fileFromSecret && { fileFromSecret: options.fileFromSecret }),
       ...(options?.timeoutSeconds !== undefined && { timeoutSeconds: options.timeoutSeconds }),
     };
     return exec(request, execOptions);

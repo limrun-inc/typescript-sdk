@@ -38,6 +38,7 @@ describe('xcode client run', () => {
       cwd: 'apps/api',
       env: ['API_ENV=development'],
       envFromSecret: { NPM_TOKEN: 'name/packages/npm' },
+      fileFromSecret: { '~/.npmrc': 'name/packages/npmrc' },
       timeoutSeconds: 120,
     });
 
@@ -48,6 +49,7 @@ describe('xcode client run', () => {
       cwd: 'apps/api',
       env: ['API_ENV=development'],
       envFromSecret: { NPM_TOKEN: 'name/packages/npm' },
+      fileFromSecret: { '~/.npmrc': 'name/packages/npmrc' },
       timeoutSeconds: 120,
     });
   });

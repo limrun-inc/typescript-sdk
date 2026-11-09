@@ -112,6 +112,7 @@ export type XcodeBuildExecRequest = {
   env?: string[];
   /** Secret references resolved by the workload; overrides saved bindings for this operation. */
   envFromSecret?: Record<string, string>;
+  fileFromSecret?: Record<string, string>;
   gitInit?: boolean;
   /** How xcodebuild stdout is processed before streaming. Defaults to 'xcbeautify'. */
   logProcessor?: 'xcbeautify' | 'none';
@@ -211,6 +212,7 @@ export type GradleBuildExecRequest = {
   env?: string[];
   /** Secret references resolved by the workload; overrides saved bindings for this operation. */
   envFromSecret?: Record<string, string>;
+  fileFromSecret?: Record<string, string>;
   /**
    * Gradle tasks to run. Omit for the server default (assembleDebug, or
    * bundleRelease when signing is set).
@@ -279,6 +281,7 @@ export type RunExecRequest = {
   env?: string[];
   /** Secret references resolved by the workload; overrides saved bindings for this operation. */
   envFromSecret?: Record<string, string>;
+  fileFromSecret?: Record<string, string>;
   timeoutSeconds?: number;
 };
 
