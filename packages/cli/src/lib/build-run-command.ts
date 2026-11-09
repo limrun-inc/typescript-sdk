@@ -1,4 +1,5 @@
-import { secretEnvFlags, parseSecretEnv } from './secret-env';
+import { secretEnvFlags } from './secret-env-flags';
+import { parseSecretEnv } from './secret-env';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../base-command';
 import { syncFlags, syncOptionsFromFlags } from './sync-flags';

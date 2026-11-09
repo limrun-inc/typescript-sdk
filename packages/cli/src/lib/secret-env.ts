@@ -1,14 +1,3 @@
-import { Flags } from '@oclif/core';
-
-export const secretEnvFlags = {
-  'env-from-secret': Flags.string({
-    description:
-      'Set an environment variable from a stored secret: NAME=secret/name or NAME=secret_TID. Repeat for multiple variables.',
-    multiple: true,
-    multipleNonGreedy: true,
-  }),
-};
-
 /** Parse names literally, including slashes and colons; never accept wildcard delegation here. */
 export function parseSecretEnv(entries: string[] | undefined): Record<string, string> | undefined {
   if (!entries?.length) return undefined;

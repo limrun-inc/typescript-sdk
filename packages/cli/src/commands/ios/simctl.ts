@@ -1,4 +1,5 @@
-import { secretEnvFlags, parseSecretEnv } from '../../lib/secret-env';
+import { secretEnvFlags } from '../../lib/secret-env-flags';
+import { parseSecretEnv } from '../../lib/secret-env';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';

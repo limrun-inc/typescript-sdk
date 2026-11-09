@@ -1,4 +1,5 @@
-import { secretEnvFlags, parseSecretEnv } from '../../lib/secret-env';
+import { secretEnvFlags } from '../../lib/secret-env-flags';
+import { parseSecretEnv } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
 import { spawn } from 'child_process';

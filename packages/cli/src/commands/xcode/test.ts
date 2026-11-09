@@ -1,4 +1,5 @@
-import { secretEnvFlags, parseSecretEnv } from '../../lib/secret-env';
+import { secretEnvFlags } from '../../lib/secret-env-flags';
+import { parseSecretEnv } from '../../lib/secret-env';
 import { Args, Flags } from '@oclif/core';
 import type { XcodeBuildOptions, XcodeProjectConfig, XctestEvent } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
