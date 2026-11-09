@@ -42,4 +42,11 @@ export class IosInstances extends GeneratedIosInstances {
   listEvents(id: string, options?: RequestOptions): APIPromise<SessionArtifact[]> {
     return this.listSessionArtifacts(id, 'eventLog', options);
   }
+
+  /**
+   * List the instance's persisted performance captures.
+   */
+  listPerformanceCaptures(id: string, options?: RequestOptions): APIPromise<SessionArtifact[]> {
+    return this.listSessionArtifacts(id, 'performance', options);
+  }
 }
