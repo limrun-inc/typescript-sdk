@@ -52,6 +52,7 @@ Methods:
 - <code title="get /v1/ios_instances/{id}/session_artifacts?kind=recording">client.iosInstances.<a href="./src/resources/ios-instances-helpers.ts">listRecordings</a>(id) -> SessionArtifact[]</code>
 - <code title="get /v1/ios_instances/{id}/session_artifacts?kind=appLog">client.iosInstances.<a href="./src/resources/ios-instances-helpers.ts">listAppLogs</a>(id) -> SessionArtifact[]</code>
 - <code title="get /v1/ios_instances/{id}/session_artifacts?kind=eventLog">client.iosInstances.<a href="./src/resources/ios-instances-helpers.ts">listEvents</a>(id) -> SessionArtifact[]</code>
+- <code title="get /v1/ios_instances/{id}/session_artifacts?kind=performance">client.iosInstances.<a href="./src/resources/ios-instances-helpers.ts">listPerformanceCaptures</a>(id) -> SessionArtifact[]</code>
 
 # XcodeInstances
 

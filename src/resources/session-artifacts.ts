@@ -9,9 +9,10 @@ export type SessionArtifactKind = 'recording' | 'appLog' | 'eventLog' | 'network
 
 /**
  * One persisted session capture of an instance: a video recording, an app log
- * capture, a coalesced event log, or a HAR network log. Returned by the
- * director's GET /v1/{ios,android}_instances/{id}/session_artifacts endpoint,
- * optionally narrowed with its kind query parameter.
+ * capture, a coalesced event log, a HAR network log, or iOS app performance
+ * samples. Returned by the director's
+ * GET /v1/{ios,android}_instances/{id}/session_artifacts endpoint, optionally
+ * narrowed with its kind query parameter.
  */
 export interface SessionArtifact {
   id: string;
