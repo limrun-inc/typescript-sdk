@@ -36,13 +36,11 @@ describe('blocked domains', () => {
   });
 
   test('a refusal carries the pod reason', async () => {
-    jest
-      .spyOn(nodeProxyTransport, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify({ message: 'blocked domains take no port, so use facebook.com' }), {
-          status: 400,
-        }),
-      );
+    jest.spyOn(nodeProxyTransport, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ message: 'blocked domains take no port, so use facebook.com' }), {
+        status: 400,
+      }),
+    );
     await expect(
       requestBlockedDomains('https://pod/blocked-domains', 'tok', ['facebook.com:443']),
     ).rejects.toThrow(
