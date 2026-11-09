@@ -33,6 +33,7 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create --attach <xcode-instance-ID>',
     '<%= config.bin %> ios create --force-bundle-id com.example.myapp',
     '<%= config.bin %> ios create --tunnel staging',
+    "<%= config.bin %> ios create --blocked-domain facebook.com --blocked-domain '*.facebook.com'",
     '<%= config.bin %> ios create --record --events --app-logs com.example.myapp --persist-ttl 24h',
   ];
 
@@ -74,6 +75,12 @@ export default class IosCreate extends BaseCommand {
       description:
         'Name of a private tunnel, created in the console (Network) and run with lim tunnel run, that the ' +
         'instance must attach to before it becomes ready.',
+    }),
+    'blocked-domain': Flags.string({
+      description:
+        'Domain the simulator cannot resolve, set before the instance becomes ready: an exact name, or a quoted ' +
+        '"*." wildcard that covers subdomains but not the name itself. Repeat to block more.',
+      multiple: true,
     }),
     label: Flags.string({
       description: 'Metadata label in key=value format. Repeat to attach multiple labels.',
@@ -243,6 +250,7 @@ export default class IosCreate extends BaseCommand {
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
       if (flags['force-bundle-id']) params.spec!.forceBundleId = flags['force-bundle-id'];
       if (flags.tunnel) params.spec!.tunnel = flags.tunnel;
+      if (flags['blocked-domain']) params.spec!.blockedDomains = flags['blocked-domain'];
 
       const labels = parseLabels(flags.label);
       if (flags['display-name'] || labels) {
