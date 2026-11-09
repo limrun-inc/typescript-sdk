@@ -161,6 +161,8 @@ export {
   type SessionLogLine,
   type SessionEvent,
   type SessionEventType,
+  type PerformanceSample,
+  type PerformanceThread,
 } from './resources/session-artifacts';
 export { SessionStreamLostError } from './internal/session-stream';
 export {

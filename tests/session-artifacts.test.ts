@@ -38,3 +38,27 @@ describe('session artifact resources', () => {
     });
   });
 });
+
+test('lists iOS performance captures as their own kind', async () => {
+  let requestedURL: URL | undefined;
+  const client = new Limrun({
+    apiKey: 'test-key',
+    baseURL: 'https://api.example.test',
+    maxRetries: 0,
+    fetch: async (input) => {
+      requestedURL = new URL(String(input));
+      return new Response(
+        JSON.stringify([
+          { id: 'perf-1', kind: 'performance', downloadUrl: 'https://download.example.test/perf-1.jsonl' },
+        ]),
+        { headers: { 'content-type': 'application/json' } },
+      );
+    },
+  });
+
+  const captures = await client.iosInstances.listPerformanceCaptures('ios_123');
+
+  expect(requestedURL?.pathname).toBe('/v1/ios_instances/ios_123/session_artifacts');
+  expect(requestedURL?.searchParams.get('kind')).toBe('performance');
+  expect(captures[0]).toMatchObject({ id: 'perf-1', kind: 'performance' });
+});

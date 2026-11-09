@@ -31,9 +31,9 @@ import {
   type StartForwardHttpProxyOptions,
 } from './http-proxy';
 import { startXcrunShim as startClientXcrunShim } from './ios-shim';
-import { persistFields, type PersistOption } from './internal/persist-option';
+import { persistFields, ttlFields, type PersistOption } from './internal/persist-option';
 import { streamSessionEntries } from './internal/session-stream';
-import type { SessionLogLine, SessionEvent } from './resources/session-artifacts';
+import type { SessionLogLine, SessionEvent, PerformanceSample } from './resources/session-artifacts';
 import { LogStream } from './log-stream';
 
 export { type PersistOption } from './internal/persist-option';
@@ -1084,6 +1084,30 @@ export type InstanceClient = {
    */
   streamEventCapture: (handlers: {
     onEvent: (event: SessionEvent) => void;
+    onError?: (error: Error) => void;
+  }) => () => void;
+
+  /**
+   * Start saving the running apps' performance samples. The instance samples
+   * every app it installed once a second whether or not anything listens, so
+   * this capture always persists: it is uploaded to Limrun's bucket when it
+   * stops or the instance terminates, kept for `ttlSeconds` (server default
+   * 72h); list it with `iosInstances.listPerformanceCaptures`. One
+   * performance capture runs at a time; the server rejects a second start.
+   */
+  startPerformanceCapture: (options?: { ttlSeconds?: number }) => Promise<void>;
+
+  /** Stop the active performance capture and upload it. */
+  stopPerformanceCapture: () => Promise<void>;
+
+  /**
+   * Tail the running apps' performance samples: one {@link PerformanceSample}
+   * per app per second. On connect the instance replays the last ten minutes,
+   * so a late subscriber still sees recent history; no capture is needed.
+   * Same reconnect and lifecycle semantics as {@link streamAppLogCapture}.
+   */
+  streamPerformance: (handlers: {
+    onSample: (sample: PerformanceSample) => void;
     onError?: (error: Error) => void;
   }) => () => void;
 
@@ -2139,6 +2163,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       stopAppLogCaptureResult: () => undefined,
       startEventCaptureResult: () => undefined,
       stopEventCaptureResult: () => undefined,
+      startPerformanceCaptureResult: () => undefined,
+      stopPerformanceCaptureResult: () => undefined,
       cameraControlResult: () => undefined,
       playOnMicrophoneResult: (msg): IosPlayOnMicrophoneResult => ({
         duration: msg.duration ?? 0,
@@ -2349,6 +2375,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             stopEventCapture,
             streamAppLogCapture,
             streamEventCapture,
+            startPerformanceCapture,
+            stopPerformanceCapture,
+            streamPerformance,
             playOnMicrophone,
             stopMicrophonePlayback,
             microphoneStatus,
@@ -2884,6 +2913,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       await sendRequest<void>('stopEventCapture');
     };
 
+    const startPerformanceCapture = async (opts?: { ttlSeconds?: number }): Promise<void> => {
+      await sendRequest<void>('startPerformanceCapture', ttlFields(opts?.ttlSeconds));
+    };
+
+    const stopPerformanceCapture = async (): Promise<void> => {
+      await sendRequest<void>('stopPerformanceCapture');
+    };
+
     const streamAppLogCapture = (handlers: {
       onLine: (line: SessionLogLine) => void;
       onError?: (error: Error) => void;
@@ -2903,6 +2940,17 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         url: `${options.apiUrl}/session/events/events`,
         token: options.token,
         onEntry: handlers.onEvent,
+        onError: handlers.onError,
+      });
+
+    const streamPerformance = (handlers: {
+      onSample: (sample: PerformanceSample) => void;
+      onError?: (error: Error) => void;
+    }): (() => void) =>
+      streamSessionEntries<PerformanceSample>({
+        url: `${options.apiUrl}/session/performance/events`,
+        token: options.token,
+        onEntry: handlers.onSample,
         onError: handlers.onError,
       });
 

@@ -66,6 +66,8 @@ export {
   type SessionLogLine,
   type SessionEvent,
   type SessionEventType,
+  type PerformanceSample,
+  type PerformanceThread,
 } from './session-artifacts';
 export {
   XcodeInstances,

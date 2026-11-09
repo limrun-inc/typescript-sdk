@@ -16,11 +16,16 @@ export function persistFields(persist: PersistOption | undefined): {
   if (persist === true) {
     return { persist: true };
   }
-  if (
-    persist.ttlSeconds !== undefined &&
-    (!Number.isInteger(persist.ttlSeconds) || persist.ttlSeconds <= 0)
-  ) {
+  return { persist: true, ...ttlFields(persist.ttlSeconds) };
+}
+
+/** The ttlSeconds wire field of a persisted capture, checked before it is sent. */
+export function ttlFields(ttlSeconds: number | undefined): { ttlSeconds?: number } {
+  if (ttlSeconds === undefined) {
+    return {};
+  }
+  if (!Number.isInteger(ttlSeconds) || ttlSeconds <= 0) {
     throw new Error('ttlSeconds must be a positive integer');
   }
-  return { persist: true, ...(persist.ttlSeconds !== undefined && { ttlSeconds: persist.ttlSeconds }) };
+  return { ttlSeconds };
 }
