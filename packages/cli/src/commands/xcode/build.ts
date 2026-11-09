@@ -1,3 +1,4 @@
+import { secretEnvFlags, parseSecretEnv } from '../../lib/secret-env';
 import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
@@ -98,6 +99,7 @@ export default class XcodeBuild extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    ...secretEnvFlags,
     ...BaseCommand.permissionFlags,
     ...xcodeProjectFlags,
     ...syncFlags,
@@ -344,7 +346,8 @@ export default class XcodeBuild extends BaseCommand {
         settings.artifactName = artifactName;
       }
 
-      const options: XcodeBuildOptions = {};
+      const options: XcodeBuildOptions = { envFromSecret: parseSecretEnv(flags['env-from-secret']) };
+      await this.ensureSecretPermissions(id, options.envFromSecret);
       if (flags['git-init']) {
         options.gitInit = true;
       }

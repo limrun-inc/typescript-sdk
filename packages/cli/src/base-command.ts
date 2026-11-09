@@ -1,3 +1,4 @@
+import { secretReadPermissions, permissionCovers } from './lib/secret-env';
 import { delegatedPermissionsFromFlags } from './lib/delegated-permissions';
 import { type IosDeviceSelection } from './lib/ios-device-selection';
 import { Command, Flags } from '@oclif/core';
@@ -875,6 +876,18 @@ export abstract class BaseCommand extends Command {
   /** Preserve the live role while granting the exact target requested by --upload. */
   protected async ensureUploadPermissions(id: string, name: string): Promise<void> {
     const required = delegatedPermissionsFromFlags({ upload: name })!;
+    await this.ensureInstancePermissions(id, required);
+  }
+
+  protected async ensureSecretPermissions(
+    id: string,
+    bindings: Record<string, string> | undefined,
+  ): Promise<void> {
+    const required = secretReadPermissions(bindings);
+    if (required.length) await this.ensureInstancePermissions(id, required);
+  }
+
+  protected async ensureInstancePermissions(id: string, required: string[]): Promise<void> {
     const resources = {
       xcode: this.client.xcodeInstances,
       gradle: this.client.gradleInstances,
@@ -889,7 +902,8 @@ export abstract class BaseCommand extends Command {
       if (!etag || !existing || instance.status.state === 'terminated') {
         this.error('This instance has no editable live role. Update the server or select a live instance.');
       }
-      if (required.every((permission) => existing.includes(permission))) return;
+      if (required.every((permission) => existing.some((granted) => permissionCovers(granted, permission))))
+        return;
       const permissions = [...new Set([...existing, ...required])];
       try {
         await instances.update(id, { ifMatch: etag, spec: { role: { permissions } } });

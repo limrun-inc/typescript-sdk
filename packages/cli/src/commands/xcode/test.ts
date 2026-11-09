@@ -1,3 +1,4 @@
+import { secretEnvFlags, parseSecretEnv } from '../../lib/secret-env';
 import { Args, Flags } from '@oclif/core';
 import type { XcodeBuildOptions, XcodeProjectConfig, XctestEvent } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
@@ -38,6 +39,7 @@ export default class XcodeTest extends BaseCommand {
   static flags = {
     ...BaseCommand.permissionFlags,
     ...BaseCommand.baseFlags,
+    ...secretEnvFlags,
     id: Flags.string({
       description:
         'Xcode instance ID to test on. Defaults to a simulator-backed target, reused or created with its simulator.',
@@ -117,7 +119,8 @@ export default class XcodeTest extends BaseCommand {
         ...(flags['skip-testing']?.length && { skipTesting: flags['skip-testing'] }),
       };
 
-      const options: XcodeBuildOptions = {};
+      const options: XcodeBuildOptions = { envFromSecret: parseSecretEnv(flags['env-from-secret']) };
+      await this.ensureSecretPermissions(id, options.envFromSecret);
       const xcodegen = xcodegenConfigFromFlags(flags);
       if (xcodegen) {
         options.xcodegen = xcodegen;

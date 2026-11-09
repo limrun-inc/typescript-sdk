@@ -1,3 +1,4 @@
+import { secretEnvFlags, parseSecretEnv } from '../../lib/secret-env';
 import { Args, Flags } from '@oclif/core';
 import type { Ios } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
@@ -52,6 +53,7 @@ export default class IosLaunchApp extends BaseCommand {
       multipleNonGreedy: true,
     }),
     ...BaseCommand.baseFlags,
+    ...secretEnvFlags,
     id: Flags.string({
       description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
     }),
@@ -89,6 +91,8 @@ export default class IosLaunchApp extends BaseCommand {
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
+      const envFromSecret = parseSecretEnv(flags['env-from-secret']);
+      await this.ensureSecretPermissions(id, envFromSecret);
       const launchArgument = buildLaunchAppArgument(flags as LaunchAppFlagValues, {
         modeExplicitlyProvided: flags.mode !== undefined,
       });

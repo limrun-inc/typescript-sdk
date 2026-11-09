@@ -1,3 +1,4 @@
+import { secretEnvFlags, parseSecretEnv } from '../../lib/secret-env';
 import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
 import { type GradleBuildOptions } from '@limrun/api';
@@ -56,6 +57,7 @@ export default class GradleBuild extends BaseCommand {
       multipleNonGreedy: true,
     }),
     ...BaseCommand.baseFlags,
+    ...secretEnvFlags,
     ...BaseCommand.permissionFlags,
     'additional-file': syncFlags['additional-file'],
     id: Flags.string({
@@ -291,6 +293,8 @@ export default class GradleBuild extends BaseCommand {
 
       const target = await this.resolveGradleTargetOrCreate(flags.id);
       const id = target.id;
+      options.envFromSecret = parseSecretEnv(flags['env-from-secret']);
+      await this.ensureSecretPermissions(id, options.envFromSecret);
       const gradleClient = await this.resolveGradleClient(target);
       if (options.upload?.target && flags.upload) {
         await this.ensureUploadPermissions(id, flags.upload);

@@ -1,3 +1,4 @@
+import { secretEnvFlags, parseSecretEnv } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
@@ -18,6 +19,7 @@ export default class GradleCreate extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     ...BaseCommand.permissionFlags,
+    ...secretEnvFlags,
     'display-name': Flags.string({
       description: 'Human-friendly display name shown in listings and the console',
     }),
@@ -64,6 +66,7 @@ export default class GradleCreate extends BaseCommand {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
+          envFromSecret: parseSecretEnv(flags['env-from-secret']),
           role: { permissions: delegatedPermissions ?? [] },
           ...(flags.region && { region: flags.region }),
           ...(flags.jurisdiction && { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' }),

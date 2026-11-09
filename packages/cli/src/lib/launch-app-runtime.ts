@@ -1,3 +1,4 @@
+import { parseSecretEnv } from './secret-env';
 import { parseLaunchEnvironment } from '@limrun/api/ios-launch-environment';
 import { resolveLocalDetoxVersion } from './detox-version';
 
@@ -13,16 +14,19 @@ export type LaunchAppArgument =
   | {
       mode: LaunchAppMode;
       runtime?: undefined;
-      env: Record<string, string>;
+      env?: Record<string, string>;
+      envFromSecret?: Record<string, string>;
     }
   | {
       mode: 'RelaunchIfRunning';
       runtime: LaunchAppRuntime;
       env?: Record<string, string>;
+      envFromSecret?: Record<string, string>;
     };
 
 export type LaunchAppFlagValues = {
   env?: string[];
+  'env-from-secret'?: string[];
   mode?: LaunchAppMode;
   runtime?: string;
   'detox-server-url'?: string;
@@ -54,6 +58,7 @@ export function buildLaunchAppArgument(
   options: { modeExplicitlyProvided: boolean; cwd?: string },
 ): LaunchAppArgument {
   const env = flags.env?.length ? parseLaunchEnvironment(flags.env) : undefined;
+  const envFromSecret = parseSecretEnv(flags['env-from-secret']);
   const hasDetoxFlag =
     flags['detox-server-url'] !== undefined ||
     flags['detox-session-id'] !== undefined ||
@@ -63,8 +68,12 @@ export function buildLaunchAppArgument(
     if (hasDetoxFlag) {
       throw new Error(`${DETOX_FLAG_NAMES.join(', ')} require --runtime detox.`);
     }
-    return env ?
-        { mode: options.modeExplicitlyProvided && flags.mode ? flags.mode : 'RelaunchIfRunning', env }
+    return env || envFromSecret ?
+        {
+          mode: options.modeExplicitlyProvided && flags.mode ? flags.mode : 'RelaunchIfRunning',
+          ...(env && { env }),
+          ...(envFromSecret && { envFromSecret }),
+        }
       : flags.mode ?? 'ForegroundIfRunning';
   }
 
@@ -92,6 +101,7 @@ export function buildLaunchAppArgument(
   return {
     mode: 'RelaunchIfRunning',
     ...(env ? { env } : {}),
+    ...(envFromSecret && { envFromSecret }),
     runtime: {
       kind: 'detox',
       serverUrl,
