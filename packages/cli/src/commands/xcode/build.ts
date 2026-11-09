@@ -1,4 +1,4 @@
-import { secretEnvFlags } from '../../lib/secret-env-flags';
+import { secretEnvFlags, secretFileFlags } from '../../lib/secret-env-flags';
 import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { readFile } from 'node:fs/promises';
 import { Args, Flags } from '@oclif/core';
@@ -102,6 +102,7 @@ export default class XcodeBuild extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     ...secretEnvFlags,
+    ...secretFileFlags,
     ...BaseCommand.permissionFlags,
     ...xcodeProjectFlags,
     ...syncFlags,

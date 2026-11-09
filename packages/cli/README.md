@@ -1300,8 +1300,6 @@ The same flags and `set` commands work with `lim xcode`. Store complete `.npmrc`
 
 Command files are removed after remote execution finishes, fails, or is cancelled. Detached commands keep files until remote execution ends. Saved files refresh on the next command and remain for future commands. `set file-from-secret --clear` clears all saved bindings; removing bindings removes files on the next command. Existing ordinary files are not overwritten. A temporary override of a saved file restores it afterward. Values can contain up to 64 KiB, and files use mode `0600`. Keep them out of logs and artifacts. If using an environment binding instead, configure `.npmrc` to read `${NPM_TOKEN}`.
 
-Android shell commands and newly started sandbox tools support the same bindings. iOS simulator command files use the workload home, not an app container. A file attached to an app launch is temporary until the launch operation returns; use a saved binding for future operations.
-
 To copy a credential file that already exists locally instead:
 
 ```bash

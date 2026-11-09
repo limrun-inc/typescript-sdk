@@ -58,7 +58,7 @@ test.each(['xcode', 'gradle', 'ios', 'android'] as const)(
   },
 );
 
-test.each(['xcode', 'gradle', 'ios', 'android'] as const)(
+test.each(['xcode', 'gradle'] as const)(
   '%s saves file bindings and permissions atomically, retrying ETag conflicts',
   async (platform) => {
     const Command = setSecretEnvCommand(platform, 'file') as unknown as new (

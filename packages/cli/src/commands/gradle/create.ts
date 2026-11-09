@@ -1,4 +1,4 @@
-import { secretEnvFlags } from '../../lib/secret-env-flags';
+import { secretEnvFlags, secretFileFlags } from '../../lib/secret-env-flags';
 import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import { Flags } from '@oclif/core';
@@ -21,6 +21,7 @@ export default class GradleCreate extends BaseCommand {
     ...BaseCommand.baseFlags,
     ...BaseCommand.permissionFlags,
     ...secretEnvFlags,
+    ...secretFileFlags,
     'display-name': Flags.string({
       description: 'Human-friendly display name shown in listings and the console',
     }),

@@ -1,4 +1,4 @@
-import { secretEnvFlags } from './secret-env-flags';
+import { secretEnvFlags, secretFileFlags } from './secret-env-flags';
 import { parseSecretEnv, parseSecretFiles } from './secret-env';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../base-command';
@@ -30,6 +30,7 @@ export function buildRunCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
     static flags = {
       ...BaseCommand.baseFlags,
       ...secretEnvFlags,
+      ...secretFileFlags,
       ...syncFlags,
       id: Flags.string({
         description: `${platform} instance ID to run on. Defaults to the most recent standalone ${platform} target.`,

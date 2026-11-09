@@ -1,5 +1,5 @@
 import { secretEnvFlags } from '../../lib/secret-env-flags';
-import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
+import { parseSecretEnv } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -188,7 +188,6 @@ export default class AndroidCreate extends BaseCommand {
         reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
           envFromSecret: parseSecretEnv(flags['env-from-secret']),
-          fileFromSecret: parseSecretFiles(flags['file-from-secret']),
           role: { permissions: delegatedPermissions ?? [] },
         },
       };

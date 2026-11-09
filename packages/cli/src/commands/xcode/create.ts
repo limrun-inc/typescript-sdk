@@ -1,4 +1,4 @@
-import { secretEnvFlags } from '../../lib/secret-env-flags';
+import { secretEnvFlags, secretFileFlags } from '../../lib/secret-env-flags';
 import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import { Flags } from '@oclif/core';
@@ -33,6 +33,7 @@ export default class XcodeCreate extends BaseCommand {
     ...BaseCommand.baseFlags,
     ...BaseCommand.permissionFlags,
     ...secretEnvFlags,
+    ...secretFileFlags,
     rm: Flags.boolean({
       description: 'Delete the instance automatically when this CLI process exits',
       default: false,

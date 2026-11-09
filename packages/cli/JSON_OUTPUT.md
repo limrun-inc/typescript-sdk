@@ -123,7 +123,7 @@ lim xcode sync . --watch --json | jq --unbuffered .bytesSent
 
 ## Saved secret bindings
 
-`lim <product> set env-from-secret --json` returns `{instanceId, envFromSecret}`. `set file-from-secret --json` returns `{instanceId, fileFromSecret}`. Both maps contain the resulting complete saved bindings, with secret names normalized to `name/<name>` or retained as TIDs. `--unset` and `--clear` return the remaining map, including `{}` when empty. Values and file contents are never included.
+`lim <product> set env-from-secret --json` returns `{instanceId, envFromSecret}`. For Xcode and Gradle, `set file-from-secret --json` returns `{instanceId, fileFromSecret}`. Both maps contain the resulting complete saved bindings, with secret names normalized to `name/<name>` or retained as TIDs. `--unset` and `--clear` return the remaining map, including `{}` when empty. Values and file contents are never included.
 
 ## Maintaining the contract
 

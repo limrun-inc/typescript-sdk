@@ -72,7 +72,9 @@ export function setSecretEnvCommand(
             ...(flags.clear ? {}
             : kind === 'file' ?
               parseSecretFiles(
-                Object.entries(instance.spec.fileFromSecret ?? {}).map(([key, target]) => `${key}=${target}`),
+                Object.entries(
+                  ('fileFromSecret' in instance.spec ? instance.spec.fileFromSecret : undefined) ?? {},
+                ).map(([key, target]) => `${key}=${target}`),
               )
             : instance.spec.envFromSecret),
             ...additions,

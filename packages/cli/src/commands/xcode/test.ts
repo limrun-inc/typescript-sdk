@@ -1,4 +1,4 @@
-import { secretEnvFlags } from '../../lib/secret-env-flags';
+import { secretEnvFlags, secretFileFlags } from '../../lib/secret-env-flags';
 import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { Args, Flags } from '@oclif/core';
 import type { XcodeBuildOptions, XcodeProjectConfig, XctestEvent } from '@limrun/api';
@@ -41,6 +41,7 @@ export default class XcodeTest extends BaseCommand {
     ...BaseCommand.permissionFlags,
     ...BaseCommand.baseFlags,
     ...secretEnvFlags,
+    ...secretFileFlags,
     id: Flags.string({
       description:
         'Xcode instance ID to test on. Defaults to a simulator-backed target, reused or created with its simulator.',
