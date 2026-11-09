@@ -59,9 +59,23 @@ test('file bindings keep remote home paths and delegate exact secret names', () 
     'secret:name/packages/npm:read',
   ]);
 });
-test.each(['/tmp/token=key', '../token=key', '~/.config/../token=key', '~/=key', 'a//b=key', '~/.npmrc=*'])(
-  'rejects unsafe secret file %s',
-  (entry) => {
-    expect(() => parseSecretFiles([entry])).toThrow();
-  },
-);
+test.each([
+  '/=key',
+  '/~/token=key',
+  '/../../token=key',
+  '../token=key',
+  '~/.config/../token=key',
+  '~/=key',
+  'a//b=key',
+  '~/.npmrc=*',
+])('rejects unsafe secret file %s', (entry) => {
+  expect(() => parseSecretFiles([entry])).toThrow();
+});
+
+test('secret files normalize leading slashes and reject duplicate aliases', () => {
+  expect(parseSecretFiles(['/etc/var=one', '~/.npmrc=two'])).toEqual({
+    'etc/var': 'name/one',
+    '~/.npmrc': 'name/two',
+  });
+  expect(() => parseSecretFiles(['/etc/var=one', 'etc/var=two'])).toThrow('Duplicate');
+});

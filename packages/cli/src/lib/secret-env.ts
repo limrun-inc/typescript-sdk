@@ -71,18 +71,19 @@ export function parseSecretFiles(entries: string[] | undefined): Record<string, 
   const result: Record<string, string> = Object.create(null);
   for (const entry of entries) {
     const i = entry.indexOf('=');
-    const destination = entry.slice(0, i);
-    const relative = destination.startsWith('~/') ? destination.slice(2) : destination;
+    const rawDestination = entry.slice(0, i);
+    const destination = rawDestination.replace(/^\/+/, '');
+    const relative = rawDestination.startsWith('~/') ? destination.slice(2) : destination;
     if (
       i < 1 ||
-      destination.length > 1024 ||
+      rawDestination.length > 1024 ||
       relative.startsWith('/') ||
       relative.startsWith('~') ||
       /[\\\0\r\n]/.test(relative) ||
       relative.split('/').some((p) => !p || p === '.' || p === '..')
     )
       throw new Error(
-        "Use --file-from-secret '~/path=secret/name' or 'relative/path=secret/name'; quote ~/ to keep it remote.",
+        "Use --file-from-secret '~/path=secret/name' or 'path=secret/name'; other paths are command-relative, ignoring leading /; quote ~/ to keep it remote.",
       );
     if (Object.prototype.hasOwnProperty.call(result, destination))
       throw new Error('Duplicate secret file destination.');

@@ -1296,11 +1296,11 @@ lim gradle set file-from-secret --unset '~/.npmrc'
 lim gradle build --env-from-secret NPM_TOKEN=packages/npm
 ```
 
-The same flags and `set` commands work with `lim xcode`. Store complete `.npmrc`, `.netrc`, or other credential files as generic secrets. Quote the entire file binding so `~/` expands on the workload. The workload fetches the bytes with its own identity; the CLI delegates exact secret read permissions when authorized and sends references only.
+The same flags and `set` commands work with `lim xcode`. Store complete `.npmrc`, `.netrc`, or other credential files as generic secrets. Quote the entire file binding so `~/` resolves to the sandbox user's home. Other secret file paths resolve relative to the command's working directory: `/etc/var` and `etc/var` both target `<working-directory>/etc/var`. For `run apps/mobile`, that is the `apps/mobile` directory, not the workspace root. The workload fetches the bytes with its own identity; the CLI delegates exact secret read permissions when authorized and sends references only.
 
 Command files are removed after remote execution finishes, fails, or is cancelled. Detached commands keep files until remote execution ends. Saved files refresh on the next command and remain for future commands. `set file-from-secret --clear` clears all saved bindings; removing bindings removes files on the next command. Existing ordinary files are not overwritten. A temporary override of a saved file restores it afterward. Values can contain up to 64 KiB, and files use mode `0600`. Keep them out of logs and artifacts. If using an environment binding instead, configure `.npmrc` to read `${NPM_TOKEN}`.
 
-Android shell commands and newly started sandbox tools support the same bindings, using quoted `~/` destinations. iOS simulator command files use the workload home, not an app container. A file attached to an app launch is temporary until the launch operation returns; use a saved binding for future operations.
+Android shell commands and newly started sandbox tools support the same bindings. iOS simulator command files use the workload home, not an app container. A file attached to an app launch is temporary until the launch operation returns; use a saved binding for future operations.
 
 To copy a credential file that already exists locally instead:
 

@@ -71,7 +71,7 @@ test.each(['xcode', 'gradle', 'ios', 'android'] as const)(
       .mockResolvedValueOnce({
         data: {
           spec: {
-            fileFromSecret: { '~/old': 'name/old' },
+            fileFromSecret: { '/etc/old': 'name/old', 'config/token': 'name/previous' },
             role: { permissions: ['asset:name/source:read'] },
           },
           status: { state: 'ready' },
@@ -81,7 +81,11 @@ test.each(['xcode', 'gradle', 'ios', 'android'] as const)(
       .mockResolvedValueOnce({
         data: {
           spec: {
-            fileFromSecret: { '~/old': 'name/old', '~/concurrent': 'name/concurrent' },
+            fileFromSecret: {
+              '/etc/old': 'name/old',
+              'config/token': 'name/previous',
+              '~/concurrent': 'name/concurrent',
+            },
             role: { permissions: ['asset:name/source:read', 'secret:name/concurrent:read'] },
           },
           status: { state: 'ready' },
@@ -93,7 +97,7 @@ test.each(['xcode', 'gradle', 'ios', 'android'] as const)(
       .mockRejectedValueOnce(APIError.generate(412, {}, 'changed', new Headers()))
       .mockResolvedValue(undefined);
     Object.assign(command, {
-      parse: async () => ({ argv: ['~/.npmrc=team/npm'], flags: { unset: ['~/old'] } }),
+      parse: async () => ({ argv: ['/config/token=team/npm'], flags: { unset: ['etc/old'] } }),
       withAuth: async (fn: () => Promise<void>) => fn(),
       resolveXcodeTarget: async () => ({ id }),
       resolveGradleTarget: () => ({ id }),
@@ -108,7 +112,7 @@ test.each(['xcode', 'gradle', 'ios', 'android'] as const)(
     expect(update).toHaveBeenLastCalledWith(id, {
       ifMatch: '"2"',
       spec: {
-        fileFromSecret: { '~/concurrent': 'name/concurrent', '~/.npmrc': 'name/team/npm' },
+        fileFromSecret: { '~/concurrent': 'name/concurrent', 'config/token': 'name/team/npm' },
         role: {
           permissions: ['asset:name/source:read', 'secret:name/concurrent:read', 'secret:name/team/npm:read'],
         },

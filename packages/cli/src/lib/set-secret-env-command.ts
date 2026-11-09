@@ -15,7 +15,7 @@ export function setSecretEnvCommand(
     } on the ${platform} instance`;
     static description =
       (kind === 'file' ?
-        'Use quoted remote paths, for example "~/.npmrc=packages/npmrc" or "~/.netrc=github/netrc", for private packages and Git repositories. Files are refreshed on the next command and kept for future commands; unset files are removed when the next command starts. '
+        'Use quoted remote paths, for example "~/.npmrc=packages/npmrc" or "~/.netrc=github/netrc", for private packages and Git repositories. Other paths, including those starting with /, resolve relative to the command working directory. Files are refreshed on the next command and kept for future commands; unset files are removed when the next command starts. '
       : 'Environment bindings apply to subsequent commands. ') +
       'The workload fetches values using its delegated secret read permissions. Repeated bindings are merged; --unset removes one and --clear removes all. Removing a binding preserves delegated permissions.';
     static strict = false;
@@ -41,15 +41,13 @@ export function setSecretEnvCommand(
       const { argv, flags } = await this.parse(SetSecretEnv);
       this.setParsedFlags(flags);
       const additions = parse(argv as string[]) ?? {};
-      const remove = flags.unset ?? [];
+      const remove = (flags.unset ?? []).map((key) =>
+        kind === 'file' ? Object.keys(parseSecretFiles([key + '=validation'])!)[0]! : key,
+      );
       if (!Object.keys(additions).length && !remove.length && !flags.clear)
         this.error('Provide NAME=secret/name, --unset NAME, or --clear.');
       for (const key of remove)
-        if (
-          kind === 'file' ?
-            !parseSecretFiles([key + '=validation'])
-          : !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(key)
-        )
+        if (kind === 'env' && !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(key))
           this.error('Invalid --unset environment variable name.');
       await this.withAuth(async () => {
         const target =
@@ -71,7 +69,12 @@ export function setSecretEnvCommand(
           if (!etag || !role || instance.status.state === 'terminated')
             this.error('Select a live instance with an editable role.');
           const bindings: Record<string, string> = {
-            ...(flags.clear ? {} : instance.spec[field]),
+            ...(flags.clear ? {}
+            : kind === 'file' ?
+              parseSecretFiles(
+                Object.entries(instance.spec.fileFromSecret ?? {}).map(([key, target]) => `${key}=${target}`),
+              )
+            : instance.spec.envFromSecret),
             ...additions,
           };
           for (const key of remove) delete bindings[key];

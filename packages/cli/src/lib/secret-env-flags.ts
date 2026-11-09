@@ -3,7 +3,7 @@ import { Flags } from '@oclif/core';
 export const secretEnvFlags = {
   'file-from-secret': Flags.string({
     description:
-      "Use a stored credential file, for example '~/.npmrc=packages/npmrc' or '~/.netrc=github/netrc'. Quote ~/ for the remote home. Command bindings are removed on completion or failure; create saves defaults. Existing files are not overwritten.",
+      "Use a stored credential file, for example '~/.npmrc=packages/npmrc' or '~/.netrc=github/netrc'. Quote ~/ for the remote home. Other paths resolve relative to the command working directory; leading / is ignored. Command bindings are removed on completion or failure; create saves defaults. Existing files are not overwritten.",
     multiple: true,
     multipleNonGreedy: true,
   }),
