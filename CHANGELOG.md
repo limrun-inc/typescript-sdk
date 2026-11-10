@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.71.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.70.0...v0.71.0) (2026-11-10)
+
+
+### Features
+
+* **xcode:** result bundles, coverage and reruns without building for lim xcode test ([6dcda03](https://github.com/limrun-inc/typescript-sdk/commit/6dcda03932fcbba39cd224ee7e297c678ba9c243))
+
+
+### Bug Fixes
+
+* **cli:** keep the sandbox Xcode on test reruns ([2b5b3d3](https://github.com/limrun-inc/typescript-sdk/commit/2b5b3d3bbb93451f97fa8a223072742a9f110be0))
+* **cli:** never create a sandbox for a rerun of tests already built ([cf20fb6](https://github.com/limrun-inc/typescript-sdk/commit/cf20fb64e1911127a578a4ea9b37ed7e72839d89))
+* **xcode:** keep the test result when the result bundle download fails ([f3b8368](https://github.com/limrun-inc/typescript-sdk/commit/f3b8368799bed5a7ef7fa82bbb4143c7979758b7))
+
+
+### Refactors
+
+* **xcode:** lean on oclif and withAuth for reruns, share the testing-action check ([66bb9bb](https://github.com/limrun-inc/typescript-sdk/commit/66bb9bb4da73b3c12e06aa67509dd9d89aba778c))
+
 ## [0.70.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.4...v0.70.0) (2026-11-10)
 
 
