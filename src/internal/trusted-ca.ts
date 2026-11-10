@@ -1,3 +1,4 @@
+import { directInstanceErrorReason } from './direct-instance-errors';
 import { deriveAdbHttpURL } from './destination-tunnel-url';
 import { nodeProxyTransport } from './proxy-transport';
 
@@ -32,15 +33,7 @@ export async function postTrustedCaCertificate<T>(url: string, token: string, pe
     body: pem,
   });
   if (!response.ok) {
-    const text = (await response.text()).trim();
-    let reason = text;
-    try {
-      // limulator's errors carry message; its framework's own errors carry reason.
-      const body = JSON.parse(text) as { message?: string; reason?: string };
-      reason = body.message || body.reason || text;
-    } catch {
-      // Plain text already.
-    }
+    const reason = directInstanceErrorReason(await response.text());
     throw new Error(
       `Adding the CA certificate failed (${response.status}): ${reason || response.statusText}`,
     );

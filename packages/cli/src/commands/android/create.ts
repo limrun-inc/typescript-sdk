@@ -41,6 +41,7 @@ export default class AndroidCreate extends BaseCommand {
     '<%= config.bin %> android create --os-version 15 --model tablet',
     '<%= config.bin %> android create --jurisdiction us --label env=dev',
     '<%= config.bin %> android create --tunnel staging',
+    "<%= config.bin %> android create --blocked-domain facebook.com --blocked-domain '*.facebook.com'",
     '<%= config.bin %> android create --no-connect',
     '<%= config.bin %> android create --daemon=false',
     '<%= config.bin %> android create --record --events --app-logs com.example.myapp --persist-ttl 24h',
@@ -96,6 +97,12 @@ export default class AndroidCreate extends BaseCommand {
       description:
         'Name of a private tunnel, created in the console (Network) and run with lim tunnel run, that the ' +
         'instance must attach to before it becomes ready.',
+    }),
+    'blocked-domain': Flags.string({
+      description:
+        'Domain the emulator cannot resolve, set before the instance becomes ready: an exact name, or a quoted ' +
+        '"*." wildcard that covers subdomains but not the name itself. Repeat to block more.',
+      multiple: true,
     }),
     label: Flags.string({
       description: 'Metadata label in key=value format. Repeat to attach multiple labels.',
@@ -219,6 +226,7 @@ export default class AndroidCreate extends BaseCommand {
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
       if (flags.tunnel) params.spec!.tunnel = flags.tunnel;
+      if (flags['blocked-domain']) params.spec!.blockedDomains = flags['blocked-domain'];
 
       const labels = parseLabels(flags.label);
       if (flags['display-name'] || labels) {

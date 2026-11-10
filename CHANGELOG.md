@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.70.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.4...v0.70.0) (2026-11-10)
+
+
+### Features
+
+* block domains on iOS and Android instances ([456525f](https://github.com/limrun-inc/typescript-sdk/commit/456525f714f7839deea1a65706cadf8edaa5ad3f))
+* **cli:** block domains with --blocked-domain and blocked-domains set|list ([116a857](https://github.com/limrun-inc/typescript-sdk/commit/116a85793d7509e6de56a258893b2b051f4fd9e2))
+* **cli:** edit the blocklist with lim ios|android blocklist add|remove|list|clear ([206cc53](https://github.com/limrun-inc/typescript-sdk/commit/206cc5338215ff1933cd1f1b731075876b9a4b89))
+
+
+### Bug Fixes
+
+* **ui:** reconnect dropped sessions by default ([#640](https://github.com/limrun-inc/typescript-sdk/issues/640)) ([fa2a5de](https://github.com/limrun-inc/typescript-sdk/commit/fa2a5de570e3e637551cbfcfb4a9418b353b8f74))
+* **ui:** regenerate stream session IDs when credentials change ([#636](https://github.com/limrun-inc/typescript-sdk/issues/636)) ([49d6bd0](https://github.com/limrun-inc/typescript-sdk/commit/49d6bd030a8d9bd055cc73aa0ff42887f7b0b9f0))
+
+
+### Chores
+
+* **cli:** release 0.52.3 with SDK 0.69.4 ([#637](https://github.com/limrun-inc/typescript-sdk/issues/637)) ([28a3a49](https://github.com/limrun-inc/typescript-sdk/commit/28a3a4941625991a787bbe8c65661367e99af74f))
+* **ui:** release 0.20.3 ([#639](https://github.com/limrun-inc/typescript-sdk/issues/639)) ([431c610](https://github.com/limrun-inc/typescript-sdk/commit/431c610c16f51f60777278fbbe917d9d307eb73c))
+* **ui:** release 0.20.4 ([#641](https://github.com/limrun-inc/typescript-sdk/issues/641)) ([1130a4b](https://github.com/limrun-inc/typescript-sdk/commit/1130a4ba8281d794e93459662fced9659b6c0bef))
+
 ## [0.69.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.69.3...v0.69.4) (2026-11-08)
 
 
