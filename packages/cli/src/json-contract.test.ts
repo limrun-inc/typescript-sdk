@@ -7,6 +7,7 @@ import {
   sendSessionCommand,
 } from './lib/instance-client-factory';
 import * as daemon from './lib/daemon';
+import { loadXcodeVersionPreference } from './lib/config';
 import { streamBuildCommand } from './lib/build-command-helpers';
 
 jest.mock('@limrun/api', () => ({ ...jest.requireActual('@limrun/api'), createInstanceClient: jest.fn() }));
@@ -15,6 +16,7 @@ jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), spaw
 jest.mock('./lib/config', () => ({
   ...jest.requireActual('./lib/config'),
   registerCreatedInstance: jest.fn(),
+  loadXcodeVersionPreference: jest.fn().mockReturnValue(null),
   clearLastInstanceId: jest.fn(),
   writeConfig: jest.fn(),
   clearConfig: jest.fn(),
@@ -888,5 +890,16 @@ describe('xcode test NDJSON', () => {
       onlyTesting: ['AppTests/LoginTests'],
     });
     expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual({ exitCode: 0 });
+  });
+
+  test('--without-building keeps the sandbox Xcode over the workspace preference', async () => {
+    jest.mocked(loadXcodeVersionPreference).mockReturnValueOnce('27');
+    mockTestRun();
+    const cmd = testCommand({ 'without-building': true });
+    cmd.resolveXcodeClientForWork = jest.fn(async () => client);
+    await cmd.run();
+
+    expect(cmd.resolveXcodeClientForWork).toHaveBeenCalledWith(target, undefined);
+    expect(client.xcodebuild!.mock.calls[0][0]).toEqual({ action: 'test-without-building' });
   });
 });
