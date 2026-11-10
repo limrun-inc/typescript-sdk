@@ -224,6 +224,26 @@ describe('iOS launchApp serialization', () => {
     }
   });
 
+  it('defaults secret-only app environments to relaunch', async () => {
+    const { createInstanceClient } = await import('../src/ios-client');
+    const client = await createInstanceClient({
+      apiUrl: 'https://example.test/v1/ios_123/api',
+      token: 'token',
+      logLevel: 'none',
+    });
+    try {
+      await client.launchApp('com.example.app', {
+        envFromSecret: { NPM_TOKEN: 'name/npm/token' },
+      });
+      expect(sentMessages.find((message) => message['type'] === 'launchApp')).toMatchObject({
+        mode: 'RelaunchIfRunning',
+        envFromSecret: { NPM_TOKEN: 'name/npm/token' },
+      });
+    } finally {
+      client.disconnect();
+    }
+  });
+
   it.each([
     'DYLD_INSERT_LIBRARIES',
     'DYLD_LIBRARY_PATH',

@@ -2550,7 +2550,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           'launchApp runtime launches require RelaunchIfRunning so runtime injection is applied.',
         );
       }
-      const hasEnvironment = Object.keys(launchOptions.env ?? {}).length > 0;
+      const hasEnvironment =
+        Object.keys(launchOptions.env ?? {}).length > 0 ||
+        Object.keys(launchOptions.envFromSecret ?? {}).length > 0;
       const mode =
         launchOptions.runtime ? 'RelaunchIfRunning' : (
           launchOptions.mode ?? (hasEnvironment ? 'RelaunchIfRunning' : undefined)
