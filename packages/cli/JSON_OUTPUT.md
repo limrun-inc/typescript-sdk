@@ -142,3 +142,16 @@ The CLI tests exercise response shapes, stream framing, both device transports, 
 
 `access-token create --quiet` prints only the token. `access-token revoke` accepts either the ID or the
 `lim_st_` token value, extracting its `jti`. Its JSON result always contains the resolved ID, never the token.
+
+## Secret store
+
+`secret create`, `secret get NAME`, and `secret update` return metadata with
+`id`, `name`, `type`, `organizationId`, `metadata`, `state`, `storageLocation`, and
+`createdAt`. They never include a value. `secret get` without a target, also available
+as `secret list`, returns `{secrets: [...]}` for the requested page.
+
+`secret write` and `secret delete` return `{ok: true, target}`. `secret read --json`
+returns `{encoding: "base64", data: "..."}`, preserving binary values. With
+`--output PATH`, it returns `{ok: true, target, path}` after creating the file instead
+of including the value. `secret read` without `--json` writes raw bytes with no
+added newline.

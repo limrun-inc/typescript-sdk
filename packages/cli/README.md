@@ -1285,6 +1285,38 @@ lim gradle build . --env APP_ENV=staging
 to add files outside the source tree. Repeat the flag for multiple files. Remote
 paths starting with `~/` target the sandbox home used by builds and tool commands;
 other paths are relative to the workspace.
+Create a secret container, then save its value:
+
+```bash
+lim secret create packages/npm --type generic --metadata '{"registry":"npm"}'
+lim secret write packages/npm "$NPM_TOKEN"
+lim secret create packages/npmrc
+lim secret write packages/npmrc --file .npmrc
+printf %s "$NPM_TOKEN" | lim secret write packages/npm --stdin
+lim secret get packages/npm
+lim secret update packages/npm --metadata '{"registry":"npm","purpose":"builds"}'
+lim secret read packages/npm
+lim secret delete packages/npm
+```
+
+`create` creates metadata only and returns a conflict if the name already exists.
+`get` returns metadata; without a name, it lists visible secrets using `--limit` and
+`--offset`. `update` replaces the metadata object without reading or writing the
+value. Names and types cannot be changed. Metadata is stored by Limrun and must not
+contain credentials.
+
+`write NAME VALUE` saves the value argument by default. Use exactly one source:
+VALUE, `--file PATH`, or `--stdin`. File and stdin input preserve all bytes, including
+trailing newlines. `read` writes exact bytes to stdout; `--output PATH` creates a
+file with mode `0600` and refuses to overwrite an existing file. Values must contain
+1 byte to 64 KiB. Reads and writes request a short-lived grant, then transfer values
+directly between this computer and Google Secret Manager.
+
+Commands accept a secret TID, a name such as `packages/npm`, or `name/packages/npm`.
+`create` always takes the literal name. Creation, metadata updates, deletion, reads,
+and writes use their corresponding secret permissions. Read-only and write-only
+credentials do not need permission to fetch metadata before accessing a value.
+
 For private dependencies, bind secrets that the workload can read:
 
 ```bash
