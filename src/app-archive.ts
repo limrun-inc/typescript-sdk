@@ -65,7 +65,10 @@ function entryPerm(entry: yauzl.Entry, fallback: number): number {
   return entryMode(entry) & 0o7777 || fallback;
 }
 
-async function openZip(archivePath: string): Promise<yauzl.ZipFile> {
+async function openZip(
+  archivePath: string,
+  expected = 'a valid app bundle directory or ZIP/IPA archive',
+): Promise<yauzl.ZipFile> {
   try {
     return await yauzl.openPromise(archivePath, {
       autoClose: false,
@@ -75,9 +78,7 @@ async function openZip(archivePath: string): Promise<yauzl.ZipFile> {
     });
   } catch (err) {
     const message = err instanceof Error ? `: ${err.message}` : '';
-    throw new Error(
-      `The path is not a valid app bundle directory or ZIP/IPA archive: ${archivePath}${message}`,
-    );
+    throw new Error(`The path is not ${expected}: ${archivePath}${message}`);
   }
 }
 
@@ -176,6 +177,31 @@ async function extractEntry(
   const stream = await zip.openReadStreamPromise(entry);
   await pipeline(stream, fs.createWriteStream(target, { mode: entryPerm(entry, 0o644) }));
   await fs.promises.chmod(target, entryPerm(entry, 0o644));
+}
+
+/**
+ * Extracts a ZIP of plain files and folders, entries at its root, into dir,
+ * which must not exist yet. The archive comes from a remote machine, so an entry
+ * outside dir is refused, and so is any symlink: one could point through
+ * another to a place a path check never sees, and result bundles have none.
+ */
+export async function extractZipToDirectory(archivePath: string, dir: string): Promise<void> {
+  const zip = await openZip(archivePath, 'a valid ZIP archive');
+  try {
+    await fs.promises.mkdir(dir);
+    for (const entry of await readEntries(zip)) {
+      const name = toZipPath(entry.fileName);
+      if (isUnsafeZipPath(name)) {
+        throw new Error(`ZIP entry has an unsafe path: ${entry.fileName}`);
+      }
+      if (isSymlinkEntry(entry)) {
+        throw new Error(`ZIP entry is a symlink: ${entry.fileName}`);
+      }
+      await extractEntry(zip, entry, path.join(dir, ...name.split('/')), dir);
+    }
+  } finally {
+    zip.close();
+  }
 }
 
 export async function extractAppArchiveToStablePath(archivePath: string): Promise<PreparedAppBundle> {

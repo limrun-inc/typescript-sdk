@@ -44,6 +44,11 @@ export class ExecStreamClosedError extends Error {}
 
 export type ExecRequest = XcodeBuildExecRequest | GradleBuildExecRequest | RunExecRequest;
 
+/** Whether an xcodebuild action runs tests on the attached simulator. */
+export function isTestingAction(action: NonNullable<XcodeBuildExecRequest['xcodebuild']>['action']): boolean {
+  return action === 'build-for-testing' || action === 'test-without-building';
+}
+
 export type XcodeBuildExecRequest = {
   command: 'xcodebuild';
   xcodebuild?: {
@@ -59,12 +64,14 @@ export type XcodeBuildExecRequest = {
      * the scheme's test targets and, with a simulator attached, runs them
      * there, streaming per-case results as 'xctest' events; the exec exits
      * non-zero when tests fail. Requires the iphonesimulator sdk.
+     * 'test-without-building' reruns the products the sandbox last built for
+     * testing, without syncing or building.
      */
-    action?: 'build' | 'build-for-testing';
+    action?: 'build' | 'build-for-testing' | 'test-without-building';
     /**
      * Run only these tests, in xcodebuild's -only-testing format:
      * Target[/Class[/method]]. Mutually exclusive with skipTesting; only
-     * valid with action 'build-for-testing'.
+     * valid with a testing action.
      */
     onlyTesting?: string[];
     /** Skip these tests, in xcodebuild's -skip-testing format. */
@@ -75,6 +82,18 @@ export type XcodeBuildExecRequest = {
      * ignore the field and still run the tests.
      */
     runTests?: boolean;
+    /**
+     * Run the tests through Apple's xcodebuild and keep their result bundle;
+     * the exec reports it as ExecResult.xctest.resultBundle. Needs a testing
+     * action and an attached simulator.
+     */
+    resultBundle?: boolean;
+    /**
+     * Build with code coverage and collect it into the result bundle, so a
+     * run also needs resultBundle; with runTests false the instrumented
+     * products wait for a later run.
+     */
+    coverage?: boolean;
   };
   xcodegen?: {
     spec?: string;
@@ -319,7 +338,7 @@ export type ExecResult = {
    * predate the feature. A missing summary means the run died partway; the
    * cases already streamed still stand.
    */
-  xctest?: { cases: XctestCaseEvent[]; summary?: XctestSummaryEvent };
+  xctest?: { cases: XctestCaseEvent[]; summary?: XctestSummaryEvent; resultBundle?: XctestResultBundle };
   /**
    * True when the client gave up waiting for the build's event stream. The
    * exit code is fabricated in that case; the remote build may still be
@@ -368,6 +387,16 @@ export type XctestSummaryEvent = {
 };
 
 export type XctestEvent = XctestCaseEvent | XctestSummaryEvent;
+
+/**
+ * The zipped `.xcresult` a run asked for, on the sandbox. Fetch it with
+ * XcodeClient.pullResultBundle, which unpacks it.
+ */
+export type XctestResultBundle = {
+  /** Absolute path on the sandbox. */
+  path: string;
+  sizeBytes: number;
+};
 
 export type AppStoreEvent = {
   /** Verified target App Store Connect app ID, present once the target is resolved. */
@@ -710,6 +739,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
   private playstoreEvent: PlaystoreEvent | null = null;
   private xctestCases: XctestCaseEvent[] = [];
   private xctestSummary: XctestSummaryEvent | null = null;
+  private xctestResultBundle: XctestResultBundle | null = null;
   private readonly options: ExecOptions;
   private readonly log: (level: 'debug' | 'info' | 'warn' | 'error', msg: string) => void;
 
@@ -877,7 +907,7 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
     if (request.command === 'xcodebuild' && request.testflight) {
       timeoutMs += (Math.max(0, request.testflight.waitTimeoutSeconds ?? 0) + 900) * 1000;
     }
-    if (request.command === 'xcodebuild' && request.xcodebuild?.action === 'build-for-testing') {
+    if (request.command === 'xcodebuild' && isTestingAction(request.xcodebuild?.action)) {
       // The test run happens after the build: products sync plus the suite,
       // which the server caps at an hour per target. Two hours cover the
       // common unit-plus-UI shape; the client cannot know the target count, so
@@ -961,11 +991,12 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
       ...('additionalMetadata' in request ? request.additionalMetadata ?? {} : {}),
       ...(this.appStoreEvent ? { appstore: this.appStoreEvent } : {}),
       ...(this.playstoreEvent ? { playstore: this.playstoreEvent } : {}),
-      ...(this.xctestCases.length > 0 || this.xctestSummary ?
+      ...(this.xctestCases.length > 0 || this.xctestSummary || this.xctestResultBundle ?
         {
           xctest: {
             cases: this.xctestCases,
             ...(this.xctestSummary ? { summary: this.xctestSummary } : {}),
+            ...(this.xctestResultBundle ? { resultBundle: this.xctestResultBundle } : {}),
           },
         }
       : {}),
@@ -1018,6 +1049,18 @@ export class ExecChildProcess implements PromiseLike<ExecResult> {
             // read as a missing feature.
             this.playstoreEvent = { state: 'unknown' };
             this.log('warn', `SSE playstore event has invalid data: ${data}`);
+          }
+        } else if (eventType === 'resultBundle') {
+          let parsed: Partial<XctestResultBundle> | undefined;
+          try {
+            parsed = JSON.parse(data) as Partial<XctestResultBundle>;
+          } catch {
+            // Reported below with the other malformed shapes.
+          }
+          if (typeof parsed?.path === 'string' && typeof parsed.sizeBytes === 'number') {
+            this.xctestResultBundle = { path: parsed.path, sizeBytes: parsed.sizeBytes };
+          } else {
+            this.log('warn', `SSE resultBundle event has invalid data: ${data}`);
           }
         } else if (eventType === 'xctest') {
           let event: XctestEvent | undefined;

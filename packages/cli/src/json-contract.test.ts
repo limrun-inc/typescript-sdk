@@ -7,6 +7,7 @@ import {
   sendSessionCommand,
 } from './lib/instance-client-factory';
 import * as daemon from './lib/daemon';
+import { loadXcodeVersionPreference } from './lib/config';
 import { streamBuildCommand } from './lib/build-command-helpers';
 
 jest.mock('@limrun/api', () => ({ ...jest.requireActual('@limrun/api'), createInstanceClient: jest.fn() }));
@@ -15,6 +16,7 @@ jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), spaw
 jest.mock('./lib/config', () => ({
   ...jest.requireActual('./lib/config'),
   registerCreatedInstance: jest.fn(),
+  loadXcodeVersionPreference: jest.fn().mockReturnValue(null),
   clearLastInstanceId: jest.fn(),
   writeConfig: jest.fn(),
   clearConfig: jest.fn(),
@@ -802,4 +804,102 @@ test.each([
   expect(JSON.parse(stdout)).toEqual({ attached: false });
   expect(cmd.client.xcodeInstances.delete).not.toHaveBeenCalled();
   expect(cmd.client.gradleInstances.delete).not.toHaveBeenCalled();
+});
+
+describe('xcode test NDJSON', () => {
+  const caseEvent = {
+    type: 'case',
+    testClass: 'AppTests.LoginTests',
+    method: 'testValid',
+    passed: true,
+    durationMs: 3,
+  };
+  const summary = { type: 'summary', passed: 1, failed: 0, planFinished: true };
+  const remoteBundle = { path: '/state/xctest-result-bundles/exec_test.xcresult.zip', sizeBytes: 10 };
+
+  function mockTestRun(
+    result: { exitCode: number; status: string; xctest: { cases: unknown[]; summary: unknown } } = {
+      exitCode: 0,
+      status: 'SUCCEEDED',
+      xctest: { cases: [caseEvent], summary, resultBundle: remoteBundle } as never,
+    },
+  ) {
+    client.sync = jest.fn().mockResolvedValue({ bytesSent: 100 });
+    client.pullResultBundle = jest.fn().mockResolvedValue(undefined);
+    client.xcodebuild = jest.fn().mockImplementation((_settings, options) =>
+      Object.assign(
+        new Promise((resolve) => {
+          setImmediate(() => {
+            result.xctest.cases.forEach((c) => options.onXctestEvent(c));
+            options.onXctestEvent(result.xctest.summary);
+            resolve({ execId: 'exec_test', ...result });
+          });
+        }),
+        { stdout: new EventEmitter(), stderr: new EventEmitter() },
+      ),
+    );
+  }
+
+  function testCommand(flags: Record<string, unknown>) {
+    const c = command('xcode/test', {}, flags);
+    c.resolveSimulatorBackedXcodeTargetOrCreate = async () => target;
+    c.applyBuildCacheToTarget = async () => {};
+    return c;
+  }
+
+  test('ends with the exit code and the downloaded result bundle', async () => {
+    mockTestRun();
+    await testCommand({ 'result-bundle': 'Tests.xcresult', coverage: true }).run();
+
+    expect(
+      stdout
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
+    ).toEqual([caseEvent, summary, { exitCode: 0, resultBundle: require('path').resolve('Tests.xcresult') }]);
+    expect(client.xcodebuild!.mock.calls[0][0]).toMatchObject({
+      action: 'build-for-testing',
+      resultBundle: true,
+      coverage: true,
+    });
+    expect(client.pullResultBundle).toHaveBeenCalledWith(remoteBundle.path, 'Tests.xcresult');
+  });
+
+  test("a lost download keeps the terminal record and the tests' exit code", async () => {
+    mockTestRun({
+      exitCode: 1,
+      status: 'FAILED',
+      xctest: { cases: [], summary, resultBundle: remoteBundle } as never,
+    });
+    client.pullResultBundle!.mockRejectedValue(new Error('connection reset'));
+
+    await expect(testCommand({ 'result-bundle': 'Tests.xcresult' }).run()).rejects.toMatchObject({
+      oclif: { exit: 1 },
+    });
+    expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual({ exitCode: 1 });
+    expect(stderr).toContain('could not be downloaded: connection reset');
+  });
+
+  test('--without-building reruns the built tests without syncing', async () => {
+    mockTestRun();
+    await testCommand({ 'without-building': true, 'only-testing': ['AppTests/LoginTests'] }).run();
+
+    expect(client.sync).not.toHaveBeenCalled();
+    expect(client.xcodebuild!.mock.calls[0][0]).toEqual({
+      action: 'test-without-building',
+      onlyTesting: ['AppTests/LoginTests'],
+    });
+    expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual({ exitCode: 0 });
+  });
+
+  test('--without-building keeps the sandbox Xcode over the workspace preference', async () => {
+    jest.mocked(loadXcodeVersionPreference).mockReturnValueOnce('27');
+    mockTestRun();
+    const cmd = testCommand({ 'without-building': true });
+    cmd.resolveXcodeClientForWork = jest.fn(async () => client);
+    await cmd.run();
+
+    expect(cmd.resolveXcodeClientForWork).toHaveBeenCalledWith(target, undefined);
+    expect(client.xcodebuild!.mock.calls[0][0]).toEqual({ action: 'test-without-building' });
+  });
 });
