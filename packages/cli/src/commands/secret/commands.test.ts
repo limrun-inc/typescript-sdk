@@ -1,3 +1,4 @@
+import { Parser } from '@oclif/core';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -134,5 +135,24 @@ test.each(['', 'x'.repeat(65537)])(
     await expect(instance.run()).rejects.toThrow('64 KiB');
     expect(instance.withAuth).not.toHaveBeenCalled();
     expect(secrets.write).not.toHaveBeenCalled();
+  },
+);
+
+test.each([['--stdin'], ['--file', '-']])(
+  'parser leaves piped values for the explicit input handler: %s',
+  async (...inputFlags) => {
+    const globals = globalThis as typeof globalThis & { oclif?: { stdinCache?: string } };
+    const original = globals.oclif;
+    globals.oclif = { ...original, stdinCache: '  private-value\n' };
+    try {
+      const parsed = await Parser.parse(['npm/token', ...inputFlags], {
+        args: SecretWrite.args,
+        flags: SecretWrite.flags,
+      });
+      expect(parsed.args.target).toBe('npm/token');
+      expect(parsed.args.value).toBeUndefined();
+    } finally {
+      globals.oclif = original;
+    }
   },
 );

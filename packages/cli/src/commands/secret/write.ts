@@ -7,8 +7,11 @@ export default class SecretWrite extends BaseCommand {
   static description =
     'Adds a new version to an existing secret. Takes VALUE as an argument by default. Use --file PATH or --stdin to read exact bytes without trimming newlines. Values never pass through Limrun APIs. Requires secret write permission.';
   static args = {
-    target: Args.string({ required: true, description: 'Secret ID or exact name' }),
-    value: Args.string({ description: 'Value to save; alternatively use --file or --stdin' }),
+    target: Args.string({ ignoreStdin: true, required: true, description: 'Secret ID or exact name' }),
+    value: Args.string({
+      ignoreStdin: true,
+      description: 'Value to save; alternatively use --file or --stdin',
+    }),
   };
   static flags = {
     ...BaseCommand.readOnlyFlags,
