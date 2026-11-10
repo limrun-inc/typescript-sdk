@@ -123,6 +123,10 @@ lim xcode sync . --watch --json | jq --unbuffered .bytesSent
 | `xcode rbe --stop`                                                        | `{"stopped":false}` if none is running; otherwise `{stopped:true, forced, instanceId, pid}`.                                                      |
 | `xcode rbe upload`, version selection, set-instance, and `skills install` | Existing structured results are unchanged.                                                                                                        |
 
+## Saved secret bindings
+
+`lim <product> set env-from-secret --json` returns `{instanceId, envFromSecret}`. For Xcode and Gradle, `set file-from-secret --json` returns `{instanceId, fileFromSecret}`. Both maps contain the resulting complete saved bindings, with secret names normalized to `name/<name>` or retained as TIDs. `--unset` and `--clear` return the remaining map, including `{}` when empty. Values and file contents are never included.
+
 ## Maintaining the contract
 
 Changes must keep JSON stdout free of human text on success, failure, empty results, daemon and direct connections, and foreground and detached paths. Use `outputJson` for finite results, `outputEvent` for streams, and `outputResult` for data with a human-readable alternative. Do not use plain logging or inherited child stdout for JSON results. Configure SDK clients so their informational logging cannot reach stdout.
@@ -138,3 +142,16 @@ The CLI tests exercise response shapes, stream framing, both device transports, 
 
 `access-token create --quiet` prints only the token. `access-token revoke` accepts either the ID or the
 `lim_st_` token value, extracting its `jti`. Its JSON result always contains the resolved ID, never the token.
+
+## Secret store
+
+`secret create`, `secret get NAME`, and `secret update` return metadata with
+`id`, `name`, `type`, `organizationId`, `metadata`, `state`, `storageLocation`, and
+`createdAt`. They never include a value. `secret get` without a target, also available
+as `secret list`, returns `{secrets: [...]}` for the requested page.
+
+`secret write` and `secret delete` return `{ok: true, target}`. `secret read --json`
+returns `{encoding: "base64", data: "..."}`, preserving binary values. With
+`--output PATH`, it returns `{ok: true, target, path}` after creating the file instead
+of including the value. `secret read` without `--json` writes raw bytes with no
+added newline.

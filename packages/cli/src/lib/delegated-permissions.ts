@@ -1,6 +1,13 @@
+import { parseSecretEnv, parseSecretFiles, secretReadPermissions } from './secret-env';
 /** Resolve creation-time grants before sending the instance request. */
 export function delegatedPermissionsFromFlags(flags: Record<string, unknown>): string[] | undefined {
-  const provided = flags['permission'] as string[] | undefined;
+  const explicit = flags['permission'] as string[] | undefined;
+  const secrets = [
+    ...secretReadPermissions(parseSecretEnv(flags['env-from-secret'] as string[] | undefined)),
+    ...secretReadPermissions(parseSecretFiles(flags['file-from-secret'] as string[] | undefined)),
+  ];
+  const provided =
+    explicit === undefined && secrets.length === 0 ? undefined : [...(explicit ?? []), ...secrets];
   const name = flags['upload'] ?? flags['auto-upload'];
   if (typeof name === 'string' && name) {
     if (/[*?]/.test(name))

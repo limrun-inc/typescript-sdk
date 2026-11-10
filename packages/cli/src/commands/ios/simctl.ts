@@ -1,3 +1,5 @@
+import { secretEnvFlags } from '../../lib/secret-env-flags';
+import { parseSecretEnv } from '../../lib/secret-env';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';
@@ -27,6 +29,7 @@ export default class IosSimctl extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    ...secretEnvFlags,
     id: Flags.string({
       description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
     }),
@@ -49,6 +52,8 @@ export default class IosSimctl extends BaseCommand {
 
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
+      const envFromSecret = parseSecretEnv(flags['env-from-secret']);
+      await this.ensureSecretPermissions(id, envFromSecret);
       if (false) {
         this.error('ios simctl only supports iOS instances');
       }
@@ -56,7 +61,10 @@ export default class IosSimctl extends BaseCommand {
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
 
       try {
-        const execution = client.simctl(rawArgs, stdin === undefined ? {} : { stdin });
+        const execution = client.simctl(rawArgs, {
+          envFromSecret,
+          ...(stdin === undefined ? {} : { stdin }),
+        });
 
         if (flags.json) {
           const result = (await execution.wait()) as SimctlResult;

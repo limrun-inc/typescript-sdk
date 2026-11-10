@@ -1,3 +1,5 @@
+import { secretEnvFlags } from '../../lib/secret-env-flags';
+import { parseSecretEnv } from '../../lib/secret-env';
 import { Args, Flags } from '@oclif/core';
 import type { Ios } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
@@ -36,6 +38,7 @@ export default class IosLaunchApp extends BaseCommand {
     '<%= config.bin %> ios launch-app com.example.app',
     '<%= config.bin %> ios launch-app com.example.app --detach',
     '<%= config.bin %> ios launch-app com.example.app --env API_URL=https://example.com --env FEATURE_FLAG=1',
+    '<%= config.bin %> ios launch-app com.example.app --env API_URL=https://example.com --env-from-secret API_TOKEN=testing/api-token',
     '<%= config.bin %> ios launch-app com.example.app --mode RelaunchIfRunning --id <instance-ID>',
     '<%= config.bin %> ios launch-app host.exp.Exponent --runtime detox --detox-server-url ws://localhost:8099 --detox-session-id limrun-detox --detox-version 20.51.1 --id <instance-ID>',
   ];
@@ -52,6 +55,7 @@ export default class IosLaunchApp extends BaseCommand {
       multipleNonGreedy: true,
     }),
     ...BaseCommand.baseFlags,
+    ...secretEnvFlags,
     id: Flags.string({
       description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
     }),
@@ -62,7 +66,7 @@ export default class IosLaunchApp extends BaseCommand {
     }),
     mode: Flags.string({
       description:
-        'Launch behavior to use when the app may already be running. Default: ForegroundIfRunning, or RelaunchIfRunning with --env.',
+        'Launch behavior to use when the app may already be running. Default: ForegroundIfRunning, or RelaunchIfRunning with --env or --env-from-secret.',
       options: ['ForegroundIfRunning', 'RelaunchIfRunning'],
     }),
     runtime: Flags.string({
@@ -89,6 +93,8 @@ export default class IosLaunchApp extends BaseCommand {
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
+      const envFromSecret = parseSecretEnv(flags['env-from-secret']);
+      await this.ensureSecretPermissions(id, envFromSecret);
       const launchArgument = buildLaunchAppArgument(flags as LaunchAppFlagValues, {
         modeExplicitlyProvided: flags.mode !== undefined,
       });

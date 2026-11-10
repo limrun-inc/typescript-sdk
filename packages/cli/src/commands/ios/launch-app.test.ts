@@ -11,13 +11,17 @@ jest.mock('../../lib/instance-client-factory', () => ({
   sendSessionCommand: jest.fn(),
 }));
 
-function setup(env = ['FEATURE=a=b', 'EMPTY=']) {
+function setup(env = ['FEATURE=a=b', 'EMPTY='], secretFlags: Record<string, unknown> = {}) {
   const target = { id: 'ios_test', type: 'ios' };
   const client = { launchApp: jest.fn().mockResolvedValue(undefined) };
   const disconnect = jest.fn();
   jest.mocked(getIosInstanceClient).mockResolvedValue({ client, disconnect } as never);
   const command = Object.assign(Object.create(IosLaunchApp.prototype), {
-    parse: async () => ({ args: { bundleId: 'com.example.app' }, flags: { detach: true, env } }),
+    parse: async () => ({
+      args: { bundleId: 'com.example.app' },
+      flags: { detach: true, env, ...secretFlags },
+    }),
+    ensureSecretPermissions: jest.fn().mockResolvedValue(undefined),
     setParsedFlags: jest.fn(),
     withAuth: async (run: () => Promise<void>) => run(),
     resolveIosInstance: () => target,
@@ -28,6 +32,23 @@ function setup(env = ['FEATURE=a=b', 'EMPTY=']) {
 }
 
 beforeEach(() => jest.clearAllMocks());
+
+test.each([true, false])('launch carries plain env and secret references with daemon=%s', async (daemon) => {
+  jest.mocked(ensureDaemonSession).mockResolvedValue(daemon);
+  const { command, client } = setup(['FEATURE=enabled'], { 'env-from-secret': ['API_TOKEN=app/token'] });
+  await command.run();
+  expect(command.ensureSecretPermissions).toHaveBeenCalledWith('ios_test', { API_TOKEN: 'name/app/token' });
+  const args = [
+    'com.example.app',
+    {
+      mode: 'RelaunchIfRunning',
+      env: { FEATURE: 'enabled' },
+      envFromSecret: { API_TOKEN: 'name/app/token' },
+    },
+  ];
+  if (daemon) expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'launch-app', args);
+  else expect(client.launchApp).toHaveBeenCalledWith(...args);
+});
 
 test('detached env launches use the normal daemon machinery', async () => {
   jest.mocked(ensureDaemonSession).mockResolvedValue(true);

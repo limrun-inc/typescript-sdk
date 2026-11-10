@@ -1,3 +1,5 @@
+import { secretEnvFlags, secretFileFlags } from '../../lib/secret-env-flags';
+import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
@@ -30,6 +32,8 @@ export default class XcodeCreate extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     ...BaseCommand.permissionFlags,
+    ...secretEnvFlags,
+    ...secretFileFlags,
     rm: Flags.boolean({
       description: 'Delete the instance automatically when this CLI process exits',
       default: false,
@@ -108,6 +112,8 @@ export default class XcodeCreate extends BaseCommand {
         reuseIfExists: flags['reuse-if-exists'] || undefined,
         spec: {
           ...(cache ? { cache } : {}),
+          envFromSecret: parseSecretEnv(flags['env-from-secret']),
+          fileFromSecret: parseSecretFiles(flags['file-from-secret']),
           role: { permissions: delegatedPermissions ?? [] },
         },
       };

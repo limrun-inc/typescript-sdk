@@ -1,3 +1,5 @@
+import { secretEnvFlags } from '../../lib/secret-env-flags';
+import { parseSecretEnv } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -48,6 +50,7 @@ export default class AndroidCreate extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     ...BaseCommand.permissionFlags,
+    ...secretEnvFlags,
     connect: Flags.boolean({
       description: 'Connect to the new instance immediately by starting an ADB tunnel',
       default: true,
@@ -190,7 +193,10 @@ export default class AndroidCreate extends BaseCommand {
       const params: AndroidInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: { role: { permissions: delegatedPermissions ?? [] } },
+        spec: {
+          envFromSecret: parseSecretEnv(flags['env-from-secret']),
+          role: { permissions: delegatedPermissions ?? [] },
+        },
       };
 
       const initialAssets = [

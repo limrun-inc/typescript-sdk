@@ -1,3 +1,5 @@
+import { secretEnvFlags } from '../../lib/secret-env-flags';
+import { parseSecretEnv } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
 import { snapshotFlags } from '../../lib/cache-flags';
@@ -48,6 +50,7 @@ export default class IosCreate extends BaseCommand {
     ...snapshotFlags,
     ...BaseCommand.baseFlags,
     ...BaseCommand.permissionFlags,
+    ...secretEnvFlags,
     rm: Flags.boolean({
       description: 'Delete the instance automatically when this CLI process exits',
       default: false,
@@ -208,7 +211,10 @@ export default class IosCreate extends BaseCommand {
       const params: IosInstanceCreateParams = {
         wait: true,
         reuseIfExists: flags['reuse-if-exists'] || undefined,
-        spec: { role: { permissions: delegatedPermissions ?? [] } },
+        spec: {
+          envFromSecret: parseSecretEnv(flags['env-from-secret']),
+          role: { permissions: delegatedPermissions ?? [] },
+        },
       };
 
       const appAssets = [
@@ -342,6 +348,7 @@ export default class IosCreate extends BaseCommand {
             reuseIfExists: flags['reuse-if-exists'] || undefined,
             ...(params.metadata ? { metadata: params.metadata } : {}),
             spec: {
+              envFromSecret: parseSecretEnv(flags['env-from-secret']),
               role: { permissions: delegatedPermissions ?? [] },
               ...(cache ? { cache } : {}),
               ...(flags.region ? { region: flags.region } : {}),

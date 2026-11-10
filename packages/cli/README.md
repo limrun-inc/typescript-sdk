@@ -1285,7 +1285,54 @@ lim gradle build . --env APP_ENV=staging
 to add files outside the source tree. Repeat the flag for multiple files. Remote
 paths starting with `~/` target the sandbox home used by builds and tool commands;
 other paths are relative to the workspace.
-For private npm dependencies, copy an existing registry configuration:
+Create a secret container, then save its value:
+
+```bash
+lim secret create packages/npm --type generic --metadata '{"registry":"npm"}'
+lim secret write packages/npm "$NPM_TOKEN"
+lim secret create packages/npmrc
+lim secret write packages/npmrc --file .npmrc
+printf %s "$NPM_TOKEN" | lim secret write packages/npm --stdin
+lim secret get packages/npm
+lim secret update packages/npm --metadata '{"registry":"npm","purpose":"builds"}'
+lim secret read packages/npm
+lim secret delete packages/npm
+```
+
+`create` creates metadata only and returns a conflict if the name already exists.
+`get` returns metadata; without a name, it lists visible secrets using `--limit` and
+`--offset`. `update` replaces the metadata object without reading or writing the
+value. Names and types cannot be changed. Metadata is stored by Limrun and must not
+contain credentials.
+
+`write NAME VALUE` saves the value argument by default. Use exactly one source:
+VALUE, `--file PATH`, or `--stdin`. File and stdin input preserve all bytes, including
+trailing newlines. `read` writes exact bytes to stdout; `--output PATH` creates a
+file with mode `0600` and refuses to overwrite an existing file. Values must contain
+1 byte to 64 KiB. Reads and writes request a short-lived grant, then transfer values
+directly between this computer and Google Secret Manager.
+
+Commands accept a secret TID, a name such as `packages/npm`, or `name/packages/npm`.
+`create` always takes the literal name. Creation, metadata updates, deletion, reads,
+and writes use their corresponding secret permissions. Read-only and write-only
+credentials do not need permission to fetch metadata before accessing a value.
+
+For private dependencies, bind secrets that the workload can read:
+
+```bash
+lim gradle build --file-from-secret '~/.npmrc=packages/npmrc'
+lim gradle run --file-from-secret '~/.netrc=github/netrc' -- \
+  git -c credential.helper= clone https://github.com/OWNER/REPOSITORY.git vendor/private-library
+lim gradle set file-from-secret '~/.npmrc=packages/npmrc'
+lim gradle set file-from-secret --unset '~/.npmrc'
+lim gradle build --env-from-secret NPM_TOKEN=packages/npm
+```
+
+The same flags and `set` commands work with `lim xcode`. Store complete `.npmrc`, `.netrc`, or other credential files as generic secrets. Quote the entire file binding so `~/` resolves to the sandbox user's home. Other secret file paths resolve relative to the command's working directory: `/etc/var` and `etc/var` both target `<working-directory>/etc/var`. For `run apps/mobile`, that is the `apps/mobile` directory, not the workspace root. The workload fetches the bytes with its own identity; the CLI delegates exact secret read permissions when authorized and sends references only.
+
+Command files are removed after remote execution finishes, fails, or is cancelled. Detached commands keep files until remote execution ends. Saved files refresh on the next command and remain for future commands. `set file-from-secret --clear` clears all saved bindings; removing bindings removes files on the next command. Existing ordinary files are not overwritten. A temporary override of a saved file restores it afterward. Values can contain up to 64 KiB, and files use mode `0600`. Keep them out of logs and artifacts. If using an environment binding instead, configure `.npmrc` to read `${NPM_TOKEN}`.
+
+To copy a credential file that already exists locally instead:
 
 ```bash
 lim gradle build . \
