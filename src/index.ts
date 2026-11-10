@@ -238,3 +238,5 @@ export {
 export { isDirectInstanceHttpError, type DirectInstanceHttpError } from './internal/direct-instance-errors';
 
 export { type AssetUpload, type BuildUpload } from './lib/asset-permissions';
+
+export * from './resources/secrets';
