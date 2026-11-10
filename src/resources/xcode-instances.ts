@@ -81,6 +81,9 @@ export namespace XcodeInstance {
 
   export interface Spec {
     /** Current effective permissions. Present on live GETs; historical records may omit it. */
+    /** Environment variable names mapped to secret TIDs or name/<exact-name> targets. */
+    envFromSecret?: Record<string, string>;
+    fileFromSecret?: Record<string, string>;
     role?: { permissions: string[] };
 
     inactivityTimeout: string;
@@ -126,7 +129,10 @@ export interface XcodeInstanceUpdateParams {
   /** Replaces all customer labels. Use {} to clear them. Omission preserves labels. */
   metadata?: { labels: { [key: string]: string } };
   spec?: {
-    role: {
+    /** Replaces saved bindings. Use {} to clear them. */
+    envFromSecret?: Record<string, string>;
+    fileFromSecret?: Record<string, string>;
+    role?: {
       /** Replaces the complete list. Use [] to remove delegated permissions. */
       permissions: string[];
     };
@@ -165,6 +171,9 @@ export namespace XcodeInstanceCreateParams {
 
   export interface Spec {
     /** Inline instance role. Omit for the organization's compatibility default. */
+    /** Environment variable names mapped to secret TIDs or name/<exact-name> targets. */
+    envFromSecret?: Record<string, string>;
+    fileFromSecret?: Record<string, string>;
     role?: {
       /** Asset permissions delegated by the creator. An empty array grants nothing. */
       permissions: Array<string>;

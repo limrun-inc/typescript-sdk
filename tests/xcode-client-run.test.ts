@@ -37,6 +37,8 @@ describe('xcode client run', () => {
     const result = await xcode.run('make api', {
       cwd: 'apps/api',
       env: ['API_ENV=development'],
+      envFromSecret: { NPM_TOKEN: 'name/packages/npm' },
+      fileFromSecret: { '~/.npmrc': 'name/packages/npmrc' },
       timeoutSeconds: 120,
     });
 
@@ -46,6 +48,8 @@ describe('xcode client run', () => {
       commandLine: 'make api',
       cwd: 'apps/api',
       env: ['API_ENV=development'],
+      envFromSecret: { NPM_TOKEN: 'name/packages/npm' },
+      fileFromSecret: { '~/.npmrc': 'name/packages/npmrc' },
       timeoutSeconds: 120,
     });
   });

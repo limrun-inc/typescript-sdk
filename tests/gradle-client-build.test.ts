@@ -64,6 +64,8 @@ test('gradlebuild posts the exec envelope and resolves on exitCode 0', async () 
   const gradle = await gradleClient();
   const proc = gradle.gradlebuild({
     tasks: ['bundleRelease'],
+    envFromSecret: { NPM_TOKEN: 'name/packages/npm' },
+    fileFromSecret: { '~/.npmrc': 'name/packages/npmrc' },
     projectPath: 'android',
     upload: { signedUploadUrl: 'https://storage.example.com/presigned' },
   });
@@ -78,6 +80,8 @@ test('gradlebuild posts the exec envelope and resolves on exitCode 0', async () 
   const execReq = requests.find((r) => r.url.endsWith('/exec'));
   expect(execReq?.body).toEqual({
     command: 'gradlebuild',
+    envFromSecret: { NPM_TOKEN: 'name/packages/npm' },
+    fileFromSecret: { '~/.npmrc': 'name/packages/npmrc' },
     tasks: ['bundleRelease'],
     projectPath: 'android',
     signedUploadUrl: 'https://storage.example.com/presigned',

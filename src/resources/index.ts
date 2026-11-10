@@ -117,3 +117,5 @@ export {
   type AccessTokenCreateParams,
   type AccessTokenRevokeResponse,
 } from './access-tokens';
+
+export * from './secrets';

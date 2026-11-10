@@ -733,6 +733,8 @@ function quoteShellArgs(tokens: string[]): string {
  * Options for {@link InstanceClient.adbShell}.
  */
 export type AdbShellOptions = {
+  /** Secret references resolved by Android before running the shell command. */
+  envFromSecret?: Record<string, string>;
   /**
    * Maximum time to wait for the command to finish, in milliseconds.
    * @default 30000
@@ -1037,7 +1039,7 @@ type CommandRequestMap = {
   listApps: {};
   playOnMicrophone: { path: string; once?: boolean };
   cameraControl: { action: 'setSource'; source: 'video'; arg: string; loop?: boolean } | { action: 'reset' };
-  adbShell: { command: string; timeoutMs?: number };
+  adbShell: { command: string; timeoutMs?: number; envFromSecret?: Record<string, string> };
   setWifiBandwidth: WifiBandwidthOptions;
   startRecording: { quality?: RecordingQuality; persist?: boolean; ttlSeconds?: number };
   stopRecording: { upload?: { presignedUrl: string } };
@@ -1789,10 +1791,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       const timeoutMs = adbOptions?.timeoutMs;
       // Wait a little longer than the device-side timeout so the server's own
       // error surfaces instead of a generic client timeout.
-      const requestTimeoutMs = (timeoutMs ?? 30000) + 15000;
+      const requestTimeoutMs = (timeoutMs ?? 30000) + 75000;
       const result = await sendRequest(
         'adbShell',
-        { command: commandLine, ...(timeoutMs === undefined ? {} : { timeoutMs }) },
+        {
+          command: commandLine,
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
+          ...(adbOptions?.envFromSecret && { envFromSecret: adbOptions.envFromSecret }),
+        },
         requestTimeoutMs,
       );
       const encoding = adbOptions?.encoding ?? 'utf8';

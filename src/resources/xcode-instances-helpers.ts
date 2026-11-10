@@ -293,6 +293,9 @@ export type XcodeBuildOptions = {
    * silently ignore this option.
    */
   env?: string[];
+  /** Secret references resolved by the workload; overrides saved bindings for this operation. */
+  envFromSecret?: Record<string, string>;
+  fileFromSecret?: Record<string, string>;
   /**
    * Run `git init` in the synced workspace before project generation,
    * dependency resolution, and xcodebuild.
@@ -1074,6 +1077,8 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.appstore && { testflight: options.appstore }),
           ...(options?.buildSettings && { buildSettings: options.buildSettings }),
           ...(options?.env?.length && { env: options.env }),
+          ...(options?.envFromSecret && { envFromSecret: options.envFromSecret }),
+          ...(options?.fileFromSecret && { fileFromSecret: options.fileFromSecret }),
           ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
           ...(options?.logProcessor && { logProcessor: options.logProcessor }),
           ...(options?.webhook && { webhook: options.webhook }),

@@ -540,6 +540,8 @@ export type AppHangCallback = (info: AppHangInfo) => Promise<void> | void;
 type LaunchAppCommonOptions = {
   /** App environment variables. Requires relaunch; reserved keys and existing launch variables are ignored. */
   env?: Record<string, string>;
+  /** Secret references resolved on the simulator before launching the app. */
+  envFromSecret?: Record<string, string>;
   /** Called once when the launched app exits, crashes, or is terminated. */
   onExit?: LaunchAppExitCallback;
   /**
@@ -1510,6 +1512,7 @@ type PendingRequest<T> = {
  * Options for a simctl execution
  */
 export type SimctlOptions = {
+  envFromSecret?: Record<string, string>;
   /** Disconnect from the instance when the command completes */
   disconnectOnExit?: boolean;
   /** Data written to the command's standard input, which is then closed */
@@ -1518,6 +1521,7 @@ export type SimctlOptions = {
 
 // Simctl uses streaming, so it's handled separately
 type SimctlRequest = {
+  envFromSecret?: Record<string, string>;
   type: 'simctl';
   id: string;
   args: string[];
@@ -2562,7 +2566,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           'launchApp runtime launches require RelaunchIfRunning so runtime injection is applied.',
         );
       }
-      const hasEnvironment = Object.keys(launchOptions.env ?? {}).length > 0;
+      const hasEnvironment =
+        Object.keys(launchOptions.env ?? {}).length > 0 ||
+        Object.keys(launchOptions.envFromSecret ?? {}).length > 0;
       const mode =
         launchOptions.runtime ? 'RelaunchIfRunning' : (
           launchOptions.mode ?? (hasEnvironment ? 'RelaunchIfRunning' : undefined)
@@ -2579,15 +2585,21 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         });
       }
       try {
-        await sendRequest<void>('launchApp', {
-          bundleId,
-          mode,
-          runtime: launchOptions.runtime,
-          env: launchOptions.env,
-          execId,
-          // Sent only with onHang so other launches stay byte-identical.
-          hangs: onHang ? true : undefined,
-        });
+        await sendRequest<void>(
+          'launchApp',
+          {
+            bundleId,
+            mode,
+            runtime: launchOptions.runtime,
+            env: launchOptions.env,
+            envFromSecret: launchOptions.envFromSecret,
+            execId,
+            // Sent only with onHang so other launches stay byte-identical.
+            hangs: onHang ? true : undefined,
+          },
+          undefined,
+          90000,
+        );
       } catch (error) {
         if (execId) {
           deleteServerNotification('appExit', execId);
@@ -3088,6 +3100,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
       const simctlRequest: SimctlRequest = {
         type: 'simctl',
+        ...(opts.envFromSecret && { envFromSecret: opts.envFromSecret }),
         id,
         args,
         ...(opts.stdin !== undefined && { stdin: Buffer.from(opts.stdin).toString('base64') }),
