@@ -876,6 +876,7 @@ export class Limrun {
 
   androidInstances: API.AndroidInstances = new API.AndroidInstances(this);
   assets: API.Assets = new API.Assets(this);
+  secrets: API.Secrets = new API.Secrets(this);
   iosInstances: API.IosInstances = new API.IosInstances(this);
   xcodeInstances: API.XcodeInstances = new API.XcodeInstances(this);
   xcodeSnapshots: API.XcodeSnapshots = new API.XcodeSnapshots(this);
