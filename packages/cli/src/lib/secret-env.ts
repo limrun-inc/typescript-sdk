@@ -1,3 +1,5 @@
+import { secretTarget } from './secret-input';
+
 /** Parse names literally, including slashes and colons; never accept wildcard delegation here. */
 export function parseSecretEnv(entries: string[] | undefined): Record<string, string> | undefined {
   if (!entries?.length) return undefined;
@@ -87,7 +89,11 @@ export function parseSecretFiles(entries: string[] | undefined): Record<string, 
       );
     if (Object.prototype.hasOwnProperty.call(result, destination))
       throw new Error('Duplicate secret file destination.');
-    result[destination] = parseSecretEnv(['SECRET_FILE=' + entry.slice(i + 1)])!['SECRET_FILE']!;
+    try {
+      result[destination] = secretTarget(entry.slice(i + 1));
+    } catch {
+      throw new Error('--file-from-secret requires an exact secret ID or name without wildcards.');
+    }
   }
   if (Object.keys(result).length > 64) throw new Error('At most 64 secret files are supported.');
   return result;

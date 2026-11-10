@@ -79,3 +79,7 @@ test('secret files normalize leading slashes and reject duplicate aliases', () =
   });
   expect(() => parseSecretFiles(['/etc/var=one', 'etc/var=two'])).toThrow('Duplicate');
 });
+
+test.each(['*', '', 'name/'])('file binding errors name the file flag for target %s', (target) => {
+  expect(() => parseSecretFiles([`~/.npmrc=${target}`])).toThrow('--file-from-secret');
+});
