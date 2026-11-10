@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.70.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.70.1...v0.70.2) (2026-11-10)
+
+
+### Features
+
+* add secret store and workload binding clients ([bfb36f6](https://github.com/limrun-inc/typescript-sdk/commit/bfb36f694f42608ad0e06efe3da533955748b4cc))
+
+
+### Chores
+
+* **cli:** release 0.53.0 with SDK 0.70.1 ([ae2c884](https://github.com/limrun-inc/typescript-sdk/commit/ae2c884c9ef31c641571e82ad9858e6ff2ac40fd))
+
 ## [0.70.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.70.0...v0.70.1) (2026-11-10)
 
 
