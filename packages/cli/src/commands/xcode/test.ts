@@ -114,10 +114,11 @@ export default class XcodeTest extends BaseCommand {
     const { args, flags } = await this.parse(XcodeTest);
     this.setParsedFlags(flags);
     this.snapshotProjectPath = args.path ?? process.cwd();
-    const requestedXcode = resolveRequestedXcodeVersion(flags['xcode-version']);
 
     const resultBundle = flags['result-bundle'];
     const withoutBuilding = flags['without-building'];
+    // A rerun keeps the Xcode that built the products; switching to the workspace preference drops them.
+    const requestedXcode = withoutBuilding ? undefined : resolveRequestedXcodeVersion(flags['xcode-version']);
     if (resultBundle && flags['build-only']) {
       this.error('--result-bundle needs a test run and cannot be combined with --build-only.');
     }
