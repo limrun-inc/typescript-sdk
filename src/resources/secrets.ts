@@ -2,6 +2,7 @@ import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 import { buildHeaders } from '../internal/headers';
+import { getDefaultFetch } from '../internal/shims';
 
 /** Descriptive data stored by Limrun. Never put credentials in metadata. */
 export interface SecretMetadata {
@@ -73,9 +74,15 @@ export class Secrets extends APIResource {
     options: SecretRequestOptions = {},
   ): Promise<{ path: string; options: RequestOptions }> {
     const { organizationId, ...request } = options;
-    const org =
-      organizationId ??
-      (await this._client.get<{ organization: { id: string } }>('/v1/whoami', request)).organization.id;
+    let org = organizationId;
+    if (!org) {
+      const identity = await this._client.get<{
+        organization?: { id?: string };
+        user?: { defaultOrganization?: { id?: string } };
+      }>('/v1/whoami', request);
+      org = identity.organization?.id ?? identity.user?.defaultOrganization?.id;
+    }
+    if (!org) throw new Error('No organization found. Provide organizationId explicitly.');
     return { path: `/v1/organizations/${encodeURIComponent(org)}/secrets`, options: request };
   }
 
@@ -125,7 +132,7 @@ export class Secrets extends APIResource {
     bytes: Uint8Array | undefined,
     options: SecretValueOptions = {},
   ): Promise<Response> {
-    const { storageFetch = globalThis.fetch, ...request } = options;
+    const { storageFetch = getDefaultFetch(), ...request } = options;
     const timeout = AbortSignal.timeout(options.timeout ?? this._client.timeout);
     const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
     const grant = await this.createAccessToken(target, action, { ...request, signal });

@@ -1,3 +1,4 @@
+import { nodeProxyTransport } from '../src/internal/proxy-transport';
 import Limrun from '../src';
 
 const id = 'secret_01m7071h5qfavacqmm4mg23x1k';
@@ -111,4 +112,31 @@ test('rejects empty and oversized writes before requesting grants', async () => 
   await expect(c.secrets.write(id, '')).rejects.toThrow('64 KiB');
   await expect(c.secrets.write(id, new Uint8Array(65537))).rejects.toThrow('64 KiB');
   expect(calls).toHaveLength(0);
+});
+
+test('metadata resolves the default organization for user credentials', async () => {
+  const fetch = jest.fn(async (input) => {
+    return Response.json(
+      String(input).endsWith('/whoami') ?
+        { user: { defaultOrganization: { id: 'org_user' } } }
+      : { secrets: [] },
+    );
+  });
+  const c = new Limrun({ apiKey: 'user-key', fetch });
+  await c.secrets.list();
+  expect(String(fetch.mock.calls[1]?.[0])).toContain('/organizations/org_user/secrets');
+});
+
+test('default storage requests use proxy-aware transport without Limrun headers', async () => {
+  const fetch = jest.spyOn(nodeProxyTransport, 'fetch').mockResolvedValue(Response.json({}));
+  try {
+    await setup({ resource, action: 'write', accessToken: 'google-token' }).secrets.write(id, 'value');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(String(url)).toContain('https://secretmanager.googleapis.com/');
+    expect(new Headers(init?.headers).get('authorization')).toBe('Bearer google-token');
+    expect(JSON.stringify(init)).not.toContain('limrun-key');
+  } finally {
+    fetch.mockRestore();
+  }
 });
