@@ -77,6 +77,12 @@ export namespace XcodeInstance {
     labels?: { [key: string]: string };
 
     terminatedAt?: string;
+
+    /**
+     * Billing cutoff for a deletion requested while the region is unavailable.
+     * Absent for normal regional deletions.
+     */
+    terminatingAt?: string;
   }
 
   export interface Spec {
@@ -101,20 +107,22 @@ export namespace XcodeInstance {
      */
     token?: string;
 
-    state: 'unknown' | 'creating' | 'assigned' | 'ready' | 'terminated';
+    state: 'unknown' | 'creating' | 'assigned' | 'ready' | 'terminating' | 'terminated';
 
     apiUrl?: string;
 
     errorMessage?: string;
 
     /**
-     * Machine-readable reason the instance was terminated. Always present once state
-     * is "terminated", never present before that. New values may be added over time,
-     * so treat any unrecognized value as "Unknown". Known values:
+     * Machine-readable reason for instance termination. Present when state is
+     * "terminating" or "terminated". New values may be added over time, so treat any
+     * unrecognized value as "Unknown". Known values:
      *
      * - "UserRequested": terminated by a delete request to the API.
      * - "InactivityTimeout": the timeout given in spec.inactivityTimeout elapsed.
      * - "HardTimeout": the timeout given in spec.hardTimeout elapsed.
+     * - "CapacityTimeout": no instance was free when it was created, and none freed
+     *   up before its wait for capacity ended.
      * - "Unknown": terminated for a cause the platform did not attribute, including
      *   instances that failed to get ready during creation. See errorMessage for
      *   details when available.
