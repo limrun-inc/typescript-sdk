@@ -34,7 +34,7 @@ test.each(['xcode', 'gradle', 'ios', 'android'] as const)(
       .mockRejectedValueOnce(APIError.generate(412, {}, 'changed', new Headers()))
       .mockResolvedValue(undefined);
     Object.assign(command, {
-      parse: async () => ({ argv: ['NPM_TOKEN=team/npm'], flags: { unset: ['OLD'] } }),
+      parse: async () => ({ argv: ['NPM_TOKEN=team/npm'], flags: { unset: ['OLD', 'NPM_TOKEN'] } }),
       withAuth: async (fn: () => Promise<void>) => fn(),
       resolveXcodeTarget: async () => ({ id }),
       resolveGradleTarget: () => ({ id }),
@@ -97,7 +97,10 @@ test.each(['xcode', 'gradle'] as const)(
       .mockRejectedValueOnce(APIError.generate(412, {}, 'changed', new Headers()))
       .mockResolvedValue(undefined);
     Object.assign(command, {
-      parse: async () => ({ argv: ['/config/token=team/npm'], flags: { unset: ['etc/old'] } }),
+      parse: async () => ({
+        argv: ['/config/token=team/npm'],
+        flags: { unset: ['etc/old', 'config/token'] },
+      }),
       withAuth: async (fn: () => Promise<void>) => fn(),
       resolveXcodeTarget: async () => ({ id }),
       resolveGradleTarget: () => ({ id }),

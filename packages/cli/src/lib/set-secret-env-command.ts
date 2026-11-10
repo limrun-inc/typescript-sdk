@@ -17,7 +17,7 @@ export function setSecretEnvCommand(
       (kind === 'file' ?
         'Use quoted remote paths, for example "~/.npmrc=packages/npmrc" or "~/.netrc=github/netrc", for private packages and Git repositories. Other paths, including those starting with /, resolve relative to the command working directory. Files are refreshed on the next command and kept for future commands; unset files are removed when the next command starts. '
       : 'Environment bindings apply to subsequent commands. ') +
-      'The workload fetches values using its delegated secret read permissions. Repeated bindings are merged; --unset removes one and --clear removes all. Removing a binding preserves delegated permissions.';
+      'The workload fetches values using its delegated secret read permissions. Repeated bindings are merged; --unset removes one and --clear removes all before applying new bindings. Removing a binding preserves delegated permissions.';
     static strict = false;
     static examples = [
       `<%= config.bin %> ${platform} set ${kind}-from-secret ${
@@ -77,9 +77,9 @@ export function setSecretEnvCommand(
                 ).map(([key, target]) => `${key}=${target}`),
               )
             : instance.spec.envFromSecret),
-            ...additions,
           };
           for (const key of remove) delete bindings[key];
+          Object.assign(bindings, additions);
           if (Object.keys(bindings).length > 64) this.error('At most 64 secret bindings are supported.');
           const required = secretReadPermissions(additions).filter(
             (permission) => !role.permissions.some((granted) => permissionCovers(granted, permission)),
