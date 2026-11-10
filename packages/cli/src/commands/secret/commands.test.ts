@@ -125,3 +125,14 @@ test('names are literal and metadata must be a bounded object', () => {
   for (const value of ['[]', 'null', 'invalid', JSON.stringify({ text: 'x'.repeat(16384) })])
     expect(() => secretMetadata(value)).toThrow();
 });
+
+test.each(['', 'x'.repeat(65537)])(
+  'write rejects invalid argument sizes before authentication',
+  async (value) => {
+    const { instance, secrets } = setup(SecretWrite, { target: 'npm/token', value });
+    instance.withAuth = jest.fn();
+    await expect(instance.run()).rejects.toThrow('64 KiB');
+    expect(instance.withAuth).not.toHaveBeenCalled();
+    expect(secrets.write).not.toHaveBeenCalled();
+  },
+);

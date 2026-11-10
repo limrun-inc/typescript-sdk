@@ -32,6 +32,8 @@ export default class SecretWrite extends BaseCommand {
         Buffer.from(args.value, 'utf8')
       : await secretBytes(flags.stdin ? '-' : flags.file);
     try {
+      if (!bytes.length || bytes.length > 65536)
+        this.error('Secret values must contain between 1 byte and 64 KiB.');
       await this.withAuth(async () => {
         await this.client.secrets.write(target, bytes);
         this.outputResult({ ok: true, target }, `Saved secret ${target}.`);
