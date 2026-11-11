@@ -68,6 +68,7 @@ Existing JSON-enabled device commands keep their existing response shapes. In pa
 | iOS/Android `record stop`                      | `{ok:true, instanceId, recording:false, localPath, uploaded}`. `uploaded` is true after a requested presigned upload completes.                                                                          |
 | `ios keychain save`                            | The asset record returned by the API after the archive uploads.                                                                                                                                          |
 | `ios keychain restore`                         | `{durationMs:42}` after the keychain restores.                                                                                                                                                           |
+| `ios forward`                                  | `{"instanceId":"...","localHost":"127.0.0.1","localPort":8100,"remotePort":8100}` after the listener and remote connection are ready. The command stays running until interrupted.                       |
 | `android connect`                              | `{"instanceId":"...","address":{"address":"127.0.0.1","port":12345}}` from the local tunnel. The command stays running.                                                                                  |
 
 Camera `play` on both platforms returns `{ok:true, instanceId, action:"play", localPath, loop}`. Camera `clear` returns `{ok:true, instanceId, action:"clear"}`. Existing `ok` and `loop` fields are retained.
