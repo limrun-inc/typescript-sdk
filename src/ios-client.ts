@@ -1107,10 +1107,7 @@ export type InstanceClient = {
    * {@link streamAppLogCapture}, except that a gap longer than the replay
    * window loses the samples in between.
    */
-  streamPerformance: (handlers: {
-    onSample: (sample: PerformanceSample) => void;
-    onError?: (error: Error) => void;
-  }) => () => void;
+  streamPerformance: (handlers: Omit<PerformanceStreamOptions, 'apiUrl' | 'token'>) => () => void;
 
   /**
    * Play an audio file as the simulator's microphone input. Stage the file on
@@ -1800,6 +1797,40 @@ export class SimctlExecution extends EventEmitter {
  * @param options Configuration options including webrtcUrl, token and log level
  * @returns An InstanceClient for controlling the instance
  */
+export type PerformanceStreamOptions = {
+  /** The instance's status.apiUrl. */
+  apiUrl: string;
+  /** The instance token. */
+  token: string;
+  onSample: (sample: PerformanceSample) => void;
+  /**
+   * Called once the instance has replayed its recent samples, so later samples are live.
+   * Runtimes that predate the signal never call it.
+   */
+  onReplayed?: () => void;
+  /**
+   * Called at most once, when the stream closes for good: at once with a
+   * SessionStreamNotFoundError when the instance is gone or its runtime predates
+   * performance, or after the give-up window when it stays unreachable.
+   */
+  onError?: (error: Error) => void;
+};
+
+/**
+ * Tails the running apps' {@link PerformanceSample}s with only the instance's apiUrl and token,
+ * without the WebSocket an {@link InstanceClient} opens. On connect the instance replays its
+ * recent samples, then sends new ones; call the returned function to stop.
+ */
+export function streamPerformance(options: PerformanceStreamOptions): () => void {
+  return streamSessionEntries<PerformanceSample>({
+    url: `${options.apiUrl}/session/performance/events`,
+    token: options.token,
+    onEntry: options.onSample,
+    onReplayed: options.onReplayed,
+    onError: options.onError,
+  });
+}
+
 export async function createInstanceClient(options: InstanceClientOptions): Promise<InstanceClient> {
   const endpointWebSocketUrl = `${options.apiUrl
     .replace('https://', 'wss://')
@@ -2378,7 +2409,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             streamEventCapture,
             startPerformanceCapture,
             stopPerformanceCapture,
-            streamPerformance,
+            streamPerformance: streamClientPerformance,
             playOnMicrophone,
             stopMicrophonePlayback,
             microphoneStatus,
@@ -2926,7 +2957,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const tailSession = <T extends { ts: number }>(
-      stream: 'applogs' | 'events' | 'performance',
+      stream: 'applogs' | 'events',
       onEntry: (entry: T) => void,
       onError?: (error: Error) => void,
     ): (() => void) =>
@@ -2947,10 +2978,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       onError?: (error: Error) => void;
     }): (() => void) => tailSession('events', handlers.onEvent, handlers.onError);
 
-    const streamPerformance = (handlers: {
-      onSample: (sample: PerformanceSample) => void;
-      onError?: (error: Error) => void;
-    }): (() => void) => tailSession('performance', handlers.onSample, handlers.onError);
+    const streamClientPerformance = (
+      handlers: Omit<PerformanceStreamOptions, 'apiUrl' | 'token'>,
+    ): (() => void) => streamPerformance({ ...handlers, apiUrl: options.apiUrl, token: options.token });
 
     const stopRecording = async (saveTo: { presignedUrl?: string; localPath?: string }): Promise<string> => {
       await sendRequest<void>('stopVideoRecording', {

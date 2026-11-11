@@ -1,4 +1,8 @@
-import { streamSessionEntries, SessionStreamLostError } from '../src/internal/session-stream';
+import {
+  streamSessionEntries,
+  SessionStreamLostError,
+  SessionStreamNotFoundError,
+} from '../src/internal/session-stream';
 import { sseStreamPolicy } from '../src/exec-client';
 import { nodeProxyTransport } from '@limrun/api/internal/proxy-transport';
 import type { RequestInfo } from '../src/internal/builtin-types';
@@ -133,7 +137,7 @@ test('a stream that never delivers entries gives up and closes', async () => {
 test('a held-open error response leads to give-up naming the status', async () => {
   sseStreamPolicy.healthyConnectionMs = 30;
   sseStreamPolicy.giveUpAfterMs = 100;
-  nodeProxyTransport.fetch = jest.fn(async () => heldSseResponse([], 50, 404));
+  nodeProxyTransport.fetch = jest.fn(async () => heldSseResponse([], 50, 503));
 
   const errors: Error[] = [];
   let failed: () => void;
@@ -149,5 +153,61 @@ test('a held-open error response leads to give-up naming the status', async () =
   });
   await done;
 
-  expect(errors[0]!.message).toContain('HTTP 404');
+  expect(errors[0]!.message).toContain('HTTP 503');
+});
+
+// The router answers 404 for a missing or terminating instance so clients stop
+// reconnecting, and a runtime answers it for a stream it does not serve.
+test('a 404 closes the stream at once', async () => {
+  let attempts = 0;
+  nodeProxyTransport.fetch = jest.fn(async () => {
+    attempts++;
+    return new Response('not found', { status: 404 });
+  });
+
+  const error = await new Promise<Error>((resolve) => {
+    streamSessionEntries<SessionLogLine>({
+      url: STREAM_URL,
+      token: 'test-token',
+      onEntry: () => {},
+      onError: resolve,
+    });
+  });
+
+  expect(error).toBeInstanceOf(SessionStreamNotFoundError);
+  expect(error).toBeInstanceOf(SessionStreamLostError);
+  expect(attempts).toBe(1);
+});
+
+// The iOS runtime marks the end of its replay with a named event that carries
+// no entry, so clients can tell history from live entries.
+test('reports the end of the replay without delivering it as an entry', async () => {
+  nodeProxyTransport.fetch = jest.fn(async () =>
+    heldSseResponse(
+      [
+        'id: 1\ndata: {"ts":1,"line":"old"}\n\n',
+        'event: replayed\ndata: {}\n\n',
+        'id: 2\ndata: {"ts":2,"line":"new"}\n\n',
+      ],
+      250,
+    ),
+  );
+
+  const order: string[] = [];
+  await new Promise<void>((resolve) => {
+    const stop = streamSessionEntries<SessionLogLine>({
+      url: STREAM_URL,
+      token: 'test-token',
+      onEntry: (entry) => {
+        order.push(entry.line);
+        if (entry.line === 'new') {
+          stop();
+          resolve();
+        }
+      },
+      onReplayed: () => order.push('replayed'),
+    });
+  });
+
+  expect(order).toEqual(['old', 'replayed', 'new']);
 });

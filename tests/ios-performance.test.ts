@@ -115,3 +115,45 @@ test('streamPerformance tails the performance endpoint with the instance token',
     client.disconnect();
   }
 });
+
+// Ios.streamPerformance needs no WebSocket, so callers that only read samples skip its handshake.
+test('Ios.streamPerformance tails the endpoint with only the apiUrl and token', async () => {
+  let requested: string | undefined;
+  nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) => {
+    requested = String(input);
+    const sample = {
+      ts: 5,
+      bundleId: 'com.example.app',
+      pid: 7,
+      startedAt: 1,
+      footprintBytes: 10,
+      peakFootprintBytes: 12,
+      threadCount: 3,
+    };
+    return new Response(
+      `retry: 1\n\nid: 1\ndata: ${JSON.stringify(sample)}\n\nevent: replayed\ndata: {}\n\n`,
+      {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      },
+    );
+  });
+  const { streamPerformance } = await import('../src/ios-client');
+
+  const events: string[] = [];
+  await new Promise<void>((resolve) => {
+    const stop = streamPerformance({
+      apiUrl: 'https://ios.example.test',
+      token: 'test-token',
+      onSample: (sample) => events.push(sample.bundleId),
+      onReplayed: () => {
+        events.push('replayed');
+        stop();
+        resolve();
+      },
+    });
+  });
+
+  expect(requested).toBe('https://ios.example.test/session/performance/events');
+  expect(events).toEqual(['com.example.app', 'replayed']);
+});
