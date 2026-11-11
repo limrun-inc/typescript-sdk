@@ -2,7 +2,6 @@ import * as crypto from 'crypto';
 import * as net from 'net';
 import { WebSocket } from 'ws';
 import { nodeProxyTransport } from './internal/proxy-transport';
-import { MultiplexedTunnel, MUX_VERSION_HEADER } from './internal/multiplexed-tunnel';
 
 /**
  * Controls the verbosity of logging in the tunnel
@@ -940,7 +939,7 @@ async function startMultiplexedTcpTunnel(
   };
 
   return new Promise((resolve, reject) => {
-    const server = net.createServer({ allowHalfOpen: true });
+    const server = net.createServer();
 
     // Map of connection ID to TCP socket
     const connections: Map<number, net.Socket> = new Map();
@@ -948,7 +947,6 @@ async function startMultiplexedTcpTunnel(
     let nextConnId = 1;
 
     let ws: WebSocket | undefined;
-    let flowControl: MultiplexedTunnel | undefined;
     let pingInterval: NodeJS.Timeout | undefined;
     let intentionalDisconnect = false;
     // True once the initial connect has succeeded. Initial-connect failures
@@ -969,7 +967,7 @@ async function startMultiplexedTcpTunnel(
     const updateConnectionState = (newState: TunnelConnectionState): void => {
       if (connectionState !== newState) {
         connectionState = newState;
-        if (logLevel === 'debug') logger.debug(`Connection state changed to: ${newState}`);
+        logger.debug(`Connection state changed to: ${newState}`);
         stateChangeCallbacks.forEach((callback) => {
           try {
             callback(newState);
@@ -995,10 +993,8 @@ async function startMultiplexedTcpTunnel(
     };
 
     const closeAllConnections = () => {
-      flowControl?.close();
-      flowControl = undefined;
       for (const [connId, socket] of connections) {
-        if (logLevel === 'debug') logger.debug(`Closing TCP connection ${connId}`);
+        logger.debug(`Closing TCP connection ${connId}`);
         if (!socket.destroyed) {
           socket.destroy();
         }
@@ -1042,8 +1038,7 @@ async function startMultiplexedTcpTunnel(
       const currentDelay = Math.min(reconnectDelay * Math.pow(2, reconnectAttempts), maxReconnectDelay);
       reconnectAttempts++;
       updateConnectionState('reconnecting');
-      if (logLevel === 'debug')
-        logger.debug(`Scheduling reconnection attempt ${reconnectAttempts} in ${currentDelay}ms...`);
+      logger.debug(`Scheduling reconnection attempt ${reconnectAttempts} in ${currentDelay}ms...`);
       reconnectTimeout = setTimeout(() => {
         reconnectTimeout = undefined;
         // On failure the new ws's own 'close' handler schedules the next
@@ -1057,7 +1052,7 @@ async function startMultiplexedTcpTunnel(
       if (ws && ws.readyState === WebSocket.OPEN) {
         const header = encodeConnectionHeader(connId);
         ws.send(header);
-        if (logLevel === 'debug') logger.debug(`Sent close signal for connection ${connId}`);
+        logger.debug(`Sent close signal for connection ${connId}`);
       }
     };
 
@@ -1069,7 +1064,7 @@ async function startMultiplexedTcpTunnel(
           socket.destroy();
         }
         connections.delete(connId);
-        if (logLevel === 'debug') logger.debug(`Removed connection ${connId}`);
+        logger.debug(`Removed connection ${connId}`);
       }
     };
 
@@ -1082,21 +1077,13 @@ async function startMultiplexedTcpTunnel(
         const url = new URL(remoteURL);
         url.searchParams.set('mode', 'multiplexed');
 
-        if (logLevel === 'debug') logger.debug(`Connecting WebSocket to: ${url.toString()}`);
+        logger.debug(`Connecting WebSocket to: ${url.toString()}`);
 
         const proxyAgent = nodeProxyTransport.getWebSocketAgent(url.toString());
         ws = new WebSocket(url.toString(), {
-          headers: { Authorization: `Bearer ${token}`, [MUX_VERSION_HEADER]: '2' },
+          headers: { Authorization: `Bearer ${token}` },
           ...(proxyAgent ? { agent: proxyAgent } : {}),
           perMessageDeflate: false,
-        });
-
-        let version2 = false;
-        let unsupportedVersion = false;
-        ws.on('upgrade', (response) => {
-          const selected = response.headers[MUX_VERSION_HEADER];
-          version2 = selected === '2';
-          unsupportedVersion = selected !== undefined && !version2;
         });
 
         ws.on('error', (err: any) => {
@@ -1111,8 +1098,7 @@ async function startMultiplexedTcpTunnel(
             clearInterval(pingInterval);
             pingInterval = undefined;
           }
-          if (logLevel === 'debug')
-            logger.debug(`WebSocket disconnected (code=${code}, reason=${reason.toString()})`);
+          logger.debug(`WebSocket disconnected (code=${code}, reason=${reason.toString()})`);
 
           // Per-connection streams cannot survive a WS drop (their remote peers
           // are gone), so tear them down; bazel's own gRPC retries re-establish
@@ -1131,19 +1117,7 @@ async function startMultiplexedTcpTunnel(
 
         ws.on('open', () => {
           const socket = ws as WebSocket;
-          if (unsupportedVersion) {
-            close();
-            rejectWs(new Error('Server selected an unsupported multiplexed tunnel version'));
-            return;
-          }
-          if (version2) {
-            flowControl = new MultiplexedTunnel(socket, (error, protocolError) => {
-              logger.error(error.message);
-              if (protocolError) close();
-              else socket.terminate(); // The existing close handler reconnects transport failures.
-            });
-          }
-          if (logLevel === 'debug') logger.debug('WebSocket connected');
+          logger.debug('WebSocket connected');
           reconnectAttempts = 0;
           lastError = undefined;
           updateConnectionState('connected');
@@ -1155,13 +1129,9 @@ async function startMultiplexedTcpTunnel(
           }, 30_000);
 
           // WS → TCP: Demultiplex incoming data
-          socket.on('message', (data: any, binary: boolean) => {
-            if (flowControl) {
-              flowControl.receive(data as Buffer, binary);
-              return;
-            }
+          socket.on('message', (data: any) => {
             const buffer = data as Buffer;
-            if (logLevel === 'debug') logger.debug(`WS→TCP raw message: ${buffer.length} bytes`);
+            logger.debug(`WS→TCP raw message: ${buffer.length} bytes`);
             if (buffer.length < 4) {
               logger.error('Received binary frame shorter than 4 bytes; dropping');
               return;
@@ -1172,24 +1142,23 @@ async function startMultiplexedTcpTunnel(
 
             // Close signal (header only, no payload)
             if (payload.length === 0) {
-              if (logLevel === 'debug') logger.debug(`Received close signal for connection ${connId}`);
+              logger.debug(`Received close signal for connection ${connId}`);
               removeConnection(connId);
               return;
             }
 
-            if (logLevel === 'debug')
-              logger.debug(
-                `WS→TCP [conn=${connId}] ${payload.length} bytes: ${payload
-                  .subarray(0, Math.min(200, payload.length))
-                  .toString('utf8')
-                  .replace(/[\x00-\x1f]/g, '.')}`,
-              );
+            logger.debug(
+              `WS→TCP [conn=${connId}] ${payload.length} bytes: ${payload
+                .subarray(0, Math.min(200, payload.length))
+                .toString('utf8')
+                .replace(/[\x00-\x1f]/g, '.')}`,
+            );
 
             const tcpSocket = connections.get(connId);
             if (tcpSocket && !tcpSocket.destroyed) {
               tcpSocket.write(payload);
             } else {
-              if (logLevel === 'debug') logger.debug(`Received data for unknown/closed connection ${connId}`);
+              logger.debug(`Received data for unknown/closed connection ${connId}`);
             }
           });
 
@@ -1224,14 +1193,13 @@ async function startMultiplexedTcpTunnel(
         return reject(new Error('Failed to obtain listening address'));
       }
 
-      if (logLevel === 'debug')
-        logger.debug(`Multiplexed tunnel listening on ${address.address}:${address.port}`);
+      logger.debug(`Multiplexed tunnel listening on ${address.address}:${address.port}`);
 
       // Start WebSocket connection and wait for it to be ready
       try {
         await setupWebSocket();
         established = true;
-        if (logLevel === 'debug') logger.debug('WebSocket ready, tunnel fully initialized');
+        logger.debug('WebSocket ready, tunnel fully initialized');
         resolve({
           address,
           close,
@@ -1257,12 +1225,6 @@ async function startMultiplexedTcpTunnel(
         socket.destroy();
         return;
       }
-      if (flowControl) {
-        flowControl.attach(socket);
-        return;
-      }
-      // Preserve the legacy TCP end behavior when the server did not negotiate v2.
-      socket.allowHalfOpen = false;
       // Assign a unique connection ID
       const connId = nextConnId++;
       // Wrap around at 32-bit max to stay within uint32 range
@@ -1271,23 +1233,21 @@ async function startMultiplexedTcpTunnel(
       }
 
       connections.set(connId, socket);
-      if (logLevel === 'debug')
-        logger.debug(
-          `New TCP connection ${connId} from ${socket.remoteAddress}:${socket.remotePort}, WS state=${ws?.readyState}, total connections=${connections.size}`,
-        );
+      logger.debug(
+        `New TCP connection ${connId} from ${socket.remoteAddress}:${socket.remotePort}, WS state=${ws?.readyState}, total connections=${connections.size}`,
+      );
 
       // TCP → WS: Forward data with connection ID header
       socket.on('data', (chunk: Buffer) => {
         if (ws && ws.readyState === WebSocket.OPEN) {
           const header = encodeConnectionHeader(connId);
           const framed = Buffer.concat([header, chunk]);
-          if (logLevel === 'debug')
-            logger.debug(
-              `TCP→WS [conn=${connId}] ${chunk.length} bytes: ${chunk
-                .subarray(0, Math.min(200, chunk.length))
-                .toString('utf8')
-                .replace(/[\x00-\x1f]/g, '.')}`,
-            );
+          logger.debug(
+            `TCP→WS [conn=${connId}] ${chunk.length} bytes: ${chunk
+              .subarray(0, Math.min(200, chunk.length))
+              .toString('utf8')
+              .replace(/[\x00-\x1f]/g, '.')}`,
+          );
           ws.send(framed, (err) => {
             if (err) {
               logger.error(`TCP→WS [conn=${connId}] send error: ${err.message}`);
@@ -1298,14 +1258,13 @@ async function startMultiplexedTcpTunnel(
           // silently buffering bytes that can never be delivered (the remote gRPC
           // peer is gone), so bazel sees a retryable disconnect rather than stalled
           // backpressure that eventually resets with an opaque error.
-          if (logLevel === 'debug')
-            logger.debug(`TCP→WS [conn=${connId}] WS not open (state=${ws?.readyState}), closing connection`);
+          logger.debug(`TCP→WS [conn=${connId}] WS not open (state=${ws?.readyState}), closing connection`);
           socket.destroy();
         }
       });
 
       socket.on('close', () => {
-        if (logLevel === 'debug') logger.debug(`TCP connection ${connId} closed by client`);
+        logger.debug(`TCP connection ${connId} closed by client`);
         sendCloseSignal(connId);
         connections.delete(connId);
       });
