@@ -399,6 +399,11 @@ function getAndroidKeycodeAndMeta(event: React.KeyboardEvent): { keycode: number
   return { keycode, metaState };
 }
 
+function sameStyle(a: React.CSSProperties, b: React.CSSProperties): boolean {
+  const keys = Object.keys(a) as (keyof React.CSSProperties)[];
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+}
+
 export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>(
   (
     {
@@ -1743,6 +1748,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       if (!video) return;
 
+      // A resize that leaves the style unchanged, such as a host panel widening around a
+      // portrait stream, must not re-render the whole control.
+      const updateVideoStyle = (next: React.CSSProperties) =>
+        setVideoStyle((current) => (sameStyle(current, next) ? current : next));
+
       const updateVideoPosition = () => {
         const hasVideoSize = video.videoWidth > 0 && video.videoHeight > 0;
         if (hasVideoSize) lastVideoSize.current = { width: video.videoWidth, height: video.videoHeight };
@@ -1752,7 +1762,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         // is needed since the video element is its own size.
         if (!frameVisible || !frame) {
           // Preserve intrinsic sizing after teardown releases the stream, including max-size constraints.
-          setVideoStyle(
+          updateVideoStyle(
             !hasVideoSize && size ?
               {
                 aspectRatio,
@@ -1793,7 +1803,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             frameHeight * config.videoBorderRadiusMultiplier
           : frameWidth * config.videoBorderRadiusMultiplier
         }px`;
-        setVideoStyle(newStyle);
+        updateVideoStyle(newStyle);
         recomputeOverlayGeometry();
       };
 
