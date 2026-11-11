@@ -162,6 +162,8 @@ export type ElementTreeNode = {
   AXUniqueId?: string | null;
   AXValue?: string | null;
   children?: ElementTreeNode[];
+  /** True when visibleOnly omitted offscreen descendants of this container. */
+  has_offscreen_children?: boolean;
   content_required: boolean;
   custom_actions: string[];
   enabled: boolean;
@@ -177,6 +179,11 @@ export type ElementTreeNode = {
 };
 
 export type ElementTree = ElementTreeNode[];
+
+export type ElementTreeOptions = {
+  /** Skip branches whose nonempty frames fall outside the display. Full-tree reads only. Defaults to false. */
+  visibleOnly?: boolean;
+};
 
 export type ElementTreeResultMessage = {
   type: 'elementTreeResult';
@@ -320,6 +327,12 @@ export type DeviceInfo = {
   screenHeight: number;
   /** Device model name */
   model: string;
+  /** Current interface orientation, when the simulator can report it. */
+  orientation?: 'portrait' | 'portraitUpsideDown' | 'landscapeLeft' | 'landscapeRight';
+  /** Current display width in points, accounting for orientation. */
+  displayWidth?: number;
+  /** Current display height in points, accounting for orientation. */
+  displayHeight?: number;
   /** Simulator OS version, e.g. "26.4" */
   osVersion?: string;
 };
@@ -754,14 +767,14 @@ export type InstanceClient = {
    * @param point Optional point to get the element at that specific location
    * @returns A promise that resolves to the parsed accessibility tree
    */
-  elementTree: (point?: AccessibilityPoint) => Promise<ElementTree>;
+  elementTree: (point?: AccessibilityPoint, options?: ElementTreeOptions) => Promise<ElementTree>;
 
   /**
    * Get the raw element tree string returned by the server.
    * @param point Optional point to get the element at that specific location
    * @returns A promise that resolves to the raw accessibility tree payload
    */
-  elementTreeRaw: (point?: AccessibilityPoint) => Promise<string>;
+  elementTreeRaw: (point?: AccessibilityPoint, options?: ElementTreeOptions) => Promise<string>;
 
   /**
    * Tap at the specified coordinates on the active screen (uses native screen dimensions)
@@ -1465,10 +1478,12 @@ export type InstanceClient = {
   lsof: () => Promise<LsofEntry[]>;
 
   /**
-   * Device information fetched during client initialization.
+   * Device information fetched during client initialization and refreshed by getDeviceInfo().
    * Contains id, udid, screen dimensions, and model.
    */
   deviceInfo: DeviceInfo;
+  /** Fetch current device info without reading the accessibility tree; refreshes deviceInfo. */
+  getDeviceInfo: () => Promise<DeviceInfo>;
 };
 
 /**
@@ -1600,6 +1615,9 @@ type ServerResponse = {
   screenHeight?: number;
   model?: string;
   osVersion?: string;
+  orientation?: DeviceInfo['orientation'];
+  displayWidth?: number;
+  displayHeight?: number;
   // Simctl streaming fields
   stdout?: string;
   stderr?: string;
@@ -2146,6 +2164,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         screenHeight: msg.screenHeight!,
         model: msg.model!,
         osVersion: msg.osVersion,
+        orientation: msg.orientation,
+        displayWidth: msg.displayWidth,
+        displayHeight: msg.displayHeight,
       }),
       openUrlResult: () => undefined,
       appInstallationResult: (msg) => ({
@@ -2412,6 +2433,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             clearCameraVideo,
             lsof,
             deviceInfo: cachedDeviceInfo,
+            getDeviceInfo,
           });
         }
       });
@@ -2425,12 +2447,18 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<ScreenshotData>('screenshot', options);
     };
 
-    const elementTree = (point?: AccessibilityPoint): Promise<ElementTree> => {
-      return sendRequest<ElementTree>('elementTree', { point });
+    const elementTree = (
+      point?: AccessibilityPoint,
+      options: ElementTreeOptions = {},
+    ): Promise<ElementTree> => {
+      return sendRequest<ElementTree>('elementTree', { point, ...options });
     };
 
-    const elementTreeRaw = (point?: AccessibilityPoint): Promise<string> => {
-      return sendRequest<string>('elementTree', { point }, (msg) => msg.json ?? '');
+    const elementTreeRaw = (
+      point?: AccessibilityPoint,
+      options: ElementTreeOptions = {},
+    ): Promise<string> => {
+      return sendRequest<string>('elementTree', { point, ...options }, (msg) => msg.json ?? '');
     };
 
     const tap = (x: number, y: number): Promise<void> => {
@@ -3101,6 +3129,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const fetchDeviceInfo = (): Promise<DeviceInfo> => {
       return sendRequest<DeviceInfo>('deviceInfo');
+    };
+
+    const getDeviceInfo = async (): Promise<DeviceInfo> => {
+      return Object.assign(cachedDeviceInfo, await fetchDeviceInfo());
     };
 
     // Cached device info, populated during connection
