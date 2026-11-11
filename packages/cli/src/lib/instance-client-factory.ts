@@ -166,19 +166,12 @@ export async function runAndroidAdbShell(
   }
 }
 
-export async function getIosInstanceClient(
+/** The instance's apiUrl and token, from the cache or, failing that, the API (which refills the cache). */
+async function resolveIosConnection(
   lim: Limrun,
   target: LastIosInstance,
-): Promise<ResolvedIosInstanceClient> {
-  if (target.apiUrl && target.token) {
-    const client = await Ios.createInstanceClient({
-      apiUrl: target.apiUrl,
-      token: target.token,
-      logLevel: sessionAutoStart.silent ? 'warn' : 'info',
-    });
-    return { type: 'ios', client, disconnect: () => client.disconnect(), isSession: false };
-  }
-
+): Promise<{ apiUrl: string; token: string }> {
+  if (target.apiUrl && target.token) return { apiUrl: target.apiUrl, token: target.token };
   const instance = await lim.iosInstances.get(target.id);
   const apiUrl = instance.status.apiUrl;
   const token = instanceToken(instance);
@@ -193,10 +186,25 @@ export async function getIosInstanceClient(
     signedStreamUrl: instance.status.signedStreamUrl,
     targetHttpPortUrlPrefix: instance.status.targetHttpPortUrlPrefix,
   });
+  return { apiUrl, token };
+}
+
+export async function getIosInstanceClient(
+  lim: Limrun,
+  target: LastIosInstance,
+): Promise<ResolvedIosInstanceClient> {
   const client = await Ios.createInstanceClient({
-    apiUrl,
-    token,
+    ...(await resolveIosConnection(lim, target)),
     logLevel: sessionAutoStart.silent ? 'warn' : 'info',
   });
   return { type: 'ios', client, disconnect: () => client.disconnect(), isSession: false };
+}
+
+/** Tails an iOS instance's performance samples over SSE alone; reading them needs no control WebSocket. */
+export async function streamIosPerformance(
+  lim: Limrun,
+  target: LastIosInstance,
+  handlers: Ios.PerformanceStreamHandlers,
+): Promise<() => void> {
+  return Ios.streamPerformance({ ...(await resolveIosConnection(lim, target)), ...handlers });
 }

@@ -1,9 +1,9 @@
 import { Flags } from '@oclif/core';
-import type { Ios, PerformanceSample } from '@limrun/api';
+import { SessionStreamRejectedError, type Ios, type PerformanceSample } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { formatBinaryBytes } from '../../lib/bytes';
 import { formatDurationMs, parseDurationSeconds } from '../../lib/duration';
-import { getIosInstanceClient } from '../../lib/instance-client-factory';
+import { streamIosPerformance } from '../../lib/instance-client-factory';
 import {
   formatPercent,
   formatThreads,
@@ -12,8 +12,9 @@ import {
   summarize,
 } from '../../lib/performance';
 
-// The instance replays its history in one burst when the stream opens, then sends each app's
-// sample once a second. A pause this long ends the burst.
+// The instance replays its history in one burst when the stream opens, says when the replay
+// ends, then sends each app's sample once a second. Runtimes that predate that signal end the
+// burst with a pause instead; one this long ends it.
 const REPLAY_GAP_MS = 700;
 // With no sample by then, no app reports: none is running, or the instance predates performance.
 const NO_SAMPLES_MS = 5_000;
@@ -27,6 +28,8 @@ const HISTORY = `${HISTORY_SECONDS / 60}m`;
 function formatRate(bytesPerSecond: number | undefined): string {
   return bytesPerSecond === undefined ? '-' : `${formatBinaryBytes(bytesPerSecond)}/s`;
 }
+
+type OpenPerformanceStream = (handlers: Ios.PerformanceStreamHandlers) => Promise<() => void>;
 
 /** The bundle ID, noting a test runner and an app that stopped reporting `ageMs` ago. */
 function appLabel(app: { bundleId: string; testRunner?: boolean }, ageMs = 0): string {
@@ -82,14 +85,15 @@ export default class IosPerf extends BaseCommand {
 
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
-      const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
+      const open: OpenPerformanceStream = (handlers) =>
+        streamIosPerformance(this.client, resolvedInstance, handlers);
       try {
         if (flags.follow) {
-          await this.follow(client, flags.app, flags.json);
+          await this.follow(open, flags.app, flags.json);
           return;
         }
         const window = samplesInWindow(
-          await this.readHistory(client),
+          await this.readHistory(open),
           (windowSeconds ?? HISTORY_SECONDS) * 1000,
           flags.app,
         );
@@ -98,7 +102,7 @@ export default class IosPerf extends BaseCommand {
           this.info(
             flags.app ?
               `${flags.app} reported no performance in the last ${span}. Only apps you install are measured.`
-            : `No app reported performance in the last ${span}. Only apps you install are measured, and older instances report nothing.`,
+            : `No app reported performance in the last ${span}. Only apps you install are measured.`,
           );
           return;
         }
@@ -107,33 +111,45 @@ export default class IosPerf extends BaseCommand {
         } else {
           this.printSummary(window, flags.json);
         }
-      } finally {
-        disconnect();
+      } catch (err) {
+        if (err instanceof SessionStreamRejectedError && err.status === 404) {
+          this.error(
+            'This instance does not report performance: it no longer exists, or its runtime predates app performance.',
+          );
+        }
+        throw err;
       }
     });
   }
 
   /** Reads the history the instance replays on connect, then closes the stream. */
-  private readHistory(client: Ios.InstanceClient): Promise<PerformanceSample[]> {
+  private async readHistory(open: OpenPerformanceStream): Promise<PerformanceSample[]> {
     const samples: PerformanceSample[] = [];
-    return new Promise((resolve, reject) => {
-      const finish = () => {
-        stop();
-        resolve(samples);
-      };
-      let timer = setTimeout(finish, NO_SAMPLES_MS);
-      const stop = client.streamPerformance({
-        onSample: (sample) => {
-          samples.push(sample);
-          clearTimeout(timer);
-          timer = setTimeout(finish, REPLAY_GAP_MS);
-        },
-        onError: (err) => {
-          clearTimeout(timer);
-          reject(err);
-        },
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    let stop = () => {};
+    try {
+      return await new Promise((resolve, reject) => {
+        const finish = () => resolve(samples);
+        timer = setTimeout(finish, NO_SAMPLES_MS);
+        open({
+          onSample: (sample) => {
+            samples.push(sample);
+            clearTimeout(timer);
+            timer = setTimeout(finish, REPLAY_GAP_MS);
+          },
+          onReplayed: finish,
+          onError: reject,
+        }).then((close) => {
+          stop = close;
+          if (settled) close();
+        }, reject);
       });
-    });
+    } finally {
+      settled = true;
+      clearTimeout(timer);
+      stop();
+    }
   }
 
   private printLatest(latest: PerformanceSample[], json: boolean): void {
@@ -181,7 +197,7 @@ export default class IosPerf extends BaseCommand {
    * Prints each new sample until interrupted. The replayed history is skipped, except samples
    * current enough to show the apps' present state.
    */
-  private async follow(client: Ios.InstanceClient, app: string | undefined, json: boolean): Promise<void> {
+  private async follow(open: OpenPerformanceStream, app: string | undefined, json: boolean): Promise<void> {
     let replayed = false;
     let gap: ReturnType<typeof setTimeout> | undefined;
     let stop = () => {};
@@ -189,7 +205,9 @@ export default class IosPerf extends BaseCommand {
     const keepAlive = setInterval(() => {}, 1 << 30);
     try {
       await new Promise<void>((resolve, reject) => {
-        stop = client.streamPerformance({
+        process.once('SIGINT', () => resolve());
+        process.once('SIGTERM', () => resolve());
+        open({
           onSample: (sample) => {
             if (!replayed) {
               clearTimeout(gap);
@@ -199,10 +217,12 @@ export default class IosPerf extends BaseCommand {
             if (app && sample.bundleId !== app) return;
             this.printSample(sample, json);
           },
+          onReplayed: () => {
+            replayed = true;
+            clearTimeout(gap);
+          },
           onError: reject,
-        });
-        process.once('SIGINT', () => resolve());
-        process.once('SIGTERM', () => resolve());
+        }).then((close) => (stop = close), reject);
       });
     } finally {
       clearTimeout(gap);

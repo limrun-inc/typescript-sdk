@@ -5,7 +5,9 @@ import {
   getAndroidInstanceClient,
   getIosInstanceClient,
   sendSessionCommand,
+  streamIosPerformance,
 } from './lib/instance-client-factory';
+import { SessionStreamRejectedError } from '@limrun/api';
 import * as daemon from './lib/daemon';
 import { loadXcodeVersionPreference } from './lib/config';
 import { streamBuildCommand } from './lib/build-command-helpers';
@@ -27,6 +29,7 @@ jest.mock('./lib/instance-client-factory', () => ({
   getAndroidInstanceClient: jest.fn(),
   getIosInstanceClient: jest.fn(),
   sendSessionCommand: jest.fn(),
+  streamIosPerformance: jest.fn(),
 }));
 jest.mock('./lib/daemon', () => ({
   ...jest.requireActual('./lib/daemon'),
@@ -917,14 +920,16 @@ describe('ios perf', () => {
     threadCount: 3,
   });
   let emit: (sample: unknown) => void;
+  let replayed: () => void;
   let fail: (error: Error) => void;
   let stop: jest.Mock;
   beforeEach(() => {
     jest.useFakeTimers({ now: NOW });
     stop = jest.fn();
-    client.streamPerformance = jest.fn(({ onSample, onError }) => {
-      emit = onSample;
-      fail = onError;
+    jest.mocked(streamIosPerformance).mockImplementation(async (_lim, _target, handlers) => {
+      emit = handlers.onSample as (sample: unknown) => void;
+      replayed = handlers.onReplayed!;
+      fail = handlers.onError!;
       return stop;
     });
   });
@@ -949,7 +954,26 @@ describe('ios perf', () => {
       sample(NOW - 2000, 'com.example.other', 5),
     ]);
     expect(stop).toHaveBeenCalled();
-    expect(cleanup).toHaveBeenCalled();
+    // Reading samples needs no control WebSocket.
+    expect(getIosInstanceClient).not.toHaveBeenCalled();
+  });
+
+  test('ends the history read when the instance says its replay is done', async () => {
+    const run = command('ios/perf').run();
+    await jest.advanceTimersByTimeAsync(0);
+    emit(sample(NOW - 1000, 'com.example.app', 10));
+    replayed();
+    await jest.advanceTimersByTimeAsync(0);
+    await run;
+    expect(JSON.parse(stdout)).toEqual([sample(NOW - 1000, 'com.example.app', 10)]);
+  });
+
+  test('explains a 404 instead of waiting for samples', async () => {
+    const run = command('ios/perf').run();
+    await jest.advanceTimersByTimeAsync(0);
+    fail(new SessionStreamRejectedError('session stream answered HTTP 404', 404));
+    await expect(run).rejects.toThrow('This instance does not report performance');
+    expect(stdout).toBe('');
   });
 
   test('prints an empty array when no app reports', async () => {
