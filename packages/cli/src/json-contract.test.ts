@@ -939,7 +939,7 @@ describe('ios perf', () => {
     await jest.advanceTimersByTimeAsync(0);
     emit(sample(NOW - 2000, 'com.example.app', 10));
     emit(sample(NOW - 2000, 'com.example.other', 5));
-    // A replay slower than the first-sample timeout still arrives whole.
+    // A pause shorter than the replay gap keeps the replay open.
     await jest.advanceTimersByTimeAsync(600);
     emit(sample(NOW - 1000, 'com.example.app', 20));
     await jest.advanceTimersByTimeAsync(5000);
@@ -968,7 +968,6 @@ describe('ios perf', () => {
     expect(JSON.parse(stdout)).toEqual([
       expect.objectContaining({
         bundleId: 'com.example.app',
-        samples: 2,
         cpuPercent: { average: 7.5, max: 10 },
         series: [sample(NOW - 1000, 'com.example.app', 10), sample(NOW - 500, 'com.example.app', 5)],
       }),

@@ -292,9 +292,12 @@ export default class IosCreate extends BaseCommand {
             record: flags.record,
             appLogsBundleId: flags['app-logs'],
             events: flags.events,
-            performance: flags.perf,
             ttlSeconds: captureTtlSeconds,
           });
+          if (flags.perf) {
+            await captureClient.startPerformanceCapture({ ttlSeconds: captureTtlSeconds });
+            started.push('performance capture');
+          }
           for (const capture of started) {
             this.info(`Started persisted ${capture} (kept for ${flags['persist-ttl']}).`);
           }
