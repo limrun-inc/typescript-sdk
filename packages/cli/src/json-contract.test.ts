@@ -4,6 +4,7 @@ import {
   ensureDaemonSession,
   getAndroidInstanceClient,
   getIosInstanceClient,
+  resolveIosConnection,
   sendSessionCommand,
   streamIosPerformance,
 } from './lib/instance-client-factory';
@@ -28,6 +29,7 @@ jest.mock('./lib/instance-client-factory', () => ({
   ensureDaemonSession: jest.fn(),
   getAndroidInstanceClient: jest.fn(),
   getIosInstanceClient: jest.fn(),
+  resolveIosConnection: jest.fn(),
   sendSessionCommand: jest.fn(),
   streamIosPerformance: jest.fn(),
 }));
@@ -926,7 +928,10 @@ describe('ios perf', () => {
   beforeEach(() => {
     jest.useFakeTimers({ now: NOW });
     stop = jest.fn();
-    jest.mocked(streamIosPerformance).mockImplementation(async (_lim, _target, handlers) => {
+    jest
+      .mocked(resolveIosConnection)
+      .mockResolvedValue({ apiUrl: 'https://instance.example.test', token: 'test-token' });
+    jest.mocked(streamIosPerformance).mockImplementation((_connection, handlers) => {
       emit = handlers.onSample as (sample: unknown) => void;
       replayed = handlers.onReplayed!;
       fail = handlers.onError!;
@@ -966,14 +971,25 @@ describe('ios perf', () => {
     await jest.advanceTimersByTimeAsync(0);
     await run;
     expect(JSON.parse(stdout)).toEqual([sample(NOW - 1000, 'com.example.app', 10)]);
+    expect(stop).toHaveBeenCalled();
   });
 
-  test('explains a 404 instead of waiting for samples', async () => {
+  test('explains a 404 from an instance whose runtime predates performance', async () => {
     const run = command('ios/perf').run();
     await jest.advanceTimersByTimeAsync(0);
     fail(new SessionStreamRejectedError('session stream answered HTTP 404', 404));
-    await expect(run).rejects.toThrow('This instance does not report performance');
+    await expect(run).rejects.toThrow('runtime from before app performance');
     expect(stdout).toBe('');
+  });
+
+  test('reports a 404 from a deleted instance as the API does', async () => {
+    const gone = new Error('instance not found');
+    const c = command('ios/perf');
+    jest.mocked(c.client.iosInstances.get).mockRejectedValueOnce(gone);
+    const run = c.run();
+    await jest.advanceTimersByTimeAsync(0);
+    fail(new SessionStreamRejectedError('session stream answered HTTP 404', 404));
+    await expect(run).rejects.toBe(gone);
   });
 
   test('prints an empty array when no app reports', async () => {
@@ -984,10 +1000,10 @@ describe('ios perf', () => {
   });
 
   test('--since prints each summary with the samples of its window', async () => {
-    const run = command('ios/perf', {}, { since: '2s' }).run();
+    const run = command('ios/perf', {}, { since: '4s' }).run();
     await jest.advanceTimersByTimeAsync(0);
     for (const age of [3000, 1000, 500]) emit(sample(NOW - age, 'com.example.app', age / 100));
-    await jest.advanceTimersByTimeAsync(700);
+    await jest.advanceTimersByTimeAsync(2000);
     await run;
     expect(JSON.parse(stdout)).toEqual([
       expect.objectContaining({
@@ -1013,7 +1029,7 @@ describe('ios perf', () => {
       await jest.advanceTimersByTimeAsync(0);
       emit(sample(NOW - 60_000, 'com.example.app', 10));
       emit(sample(NOW - 1000, 'com.example.app', 20));
-      await jest.advanceTimersByTimeAsync(700);
+      await jest.advanceTimersByTimeAsync(2000);
       emit(sample(NOW + 1000, 'com.example.app', 30));
       signals[0]!();
       await run;
@@ -1021,6 +1037,18 @@ describe('ios perf', () => {
         sample(NOW - 1000, 'com.example.app', 20),
         sample(NOW + 1000, 'com.example.app', 30),
       ]);
+      expect(stop).toHaveBeenCalled();
+    });
+
+    test('prints every sample after the replayed event', async () => {
+      const run = command('ios/perf', {}, { follow: true }).run();
+      await jest.advanceTimersByTimeAsync(0);
+      emit(sample(NOW - 60_000, 'com.example.app', 10));
+      replayed();
+      emit(sample(NOW - 30_000, 'com.example.app', 20));
+      signals[0]!();
+      await run;
+      expect(lines()).toEqual([sample(NOW - 30_000, 'com.example.app', 20)]);
       expect(stop).toHaveBeenCalled();
     });
 

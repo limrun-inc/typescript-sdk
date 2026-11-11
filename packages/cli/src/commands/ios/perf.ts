@@ -3,7 +3,7 @@ import { SessionStreamRejectedError, type Ios, type PerformanceSample } from '@l
 import { BaseCommand } from '../../base-command';
 import { formatBinaryBytes } from '../../lib/bytes';
 import { formatDurationMs, parseDurationSeconds } from '../../lib/duration';
-import { streamIosPerformance } from '../../lib/instance-client-factory';
+import { resolveIosConnection, streamIosPerformance } from '../../lib/instance-client-factory';
 import {
   formatPercent,
   formatThreads,
@@ -14,9 +14,9 @@ import {
 
 // The instance replays its history in one burst when the stream opens, says when the replay
 // ends, then sends each app's sample once a second. Runtimes that predate that signal end the
-// burst with a pause instead; one this long ends it.
-const REPLAY_GAP_MS = 700;
-// With no sample by then, no app reports: none is running, or the instance predates performance.
+// burst with a pause instead; one this long ends it, and a brief network stall does not.
+const REPLAY_GAP_MS = 2_000;
+// With no sample by then, no app is running.
 const NO_SAMPLES_MS = 5_000;
 // A sample at most this old is current: --follow prints it even inside the replay, and an app
 // whose newest sample is older has stopped.
@@ -29,7 +29,7 @@ function formatRate(bytesPerSecond: number | undefined): string {
   return bytesPerSecond === undefined ? '-' : `${formatBinaryBytes(bytesPerSecond)}/s`;
 }
 
-type OpenPerformanceStream = (handlers: Ios.PerformanceStreamHandlers) => Promise<() => void>;
+type OpenPerformanceStream = (handlers: Ios.PerformanceStreamHandlers) => () => void;
 
 /** The bundle ID, noting a test runner and an app that stopped reporting `ageMs` ago. */
 function appLabel(app: { bundleId: string; testRunner?: boolean }, ageMs = 0): string {
@@ -83,73 +83,73 @@ export default class IosPerf extends BaseCommand {
       this.error(`--since can reach back at most ${HISTORY}; the instance keeps no more history.`);
     }
 
-    await this.withAuth(async () => {
-      const resolvedInstance = this.resolveIosInstance(flags.id);
-      const open: OpenPerformanceStream = (handlers) =>
-        streamIosPerformance(this.client, resolvedInstance, handlers);
-      try {
-        if (flags.follow) {
-          await this.follow(open, flags.app, flags.json);
-          return;
-        }
-        const window = samplesInWindow(
-          await this.readHistory(open),
-          (windowSeconds ?? HISTORY_SECONDS) * 1000,
-          flags.app,
-        );
-        if (window.length === 0 && !flags.json) {
-          const span = flags.since ?? HISTORY;
-          this.info(
-            flags.app ?
-              `${flags.app} reported no performance in the last ${span}. Only apps you install are measured.`
-            : `No app reported performance in the last ${span}. Only apps you install are measured.`,
+    // Reading performance must not create a replacement for a deleted instance.
+    await this.withAuth(
+      async () => {
+        const resolvedInstance = this.resolveIosInstance(flags.id);
+        const connection = await resolveIosConnection(this.client, resolvedInstance);
+        const open: OpenPerformanceStream = (handlers) => streamIosPerformance(connection, handlers);
+        try {
+          if (flags.follow) {
+            await this.follow(open, flags.app, flags.json);
+            return;
+          }
+          const window = samplesInWindow(
+            await this.readHistory(open),
+            (windowSeconds ?? HISTORY_SECONDS) * 1000,
+            flags.app,
           );
-          return;
+          if (window.length === 0 && !flags.json) {
+            const span = flags.since ?? HISTORY;
+            this.info(
+              flags.app ?
+                `${flags.app} reported no performance in the last ${span}. Only apps you install are measured.`
+              : `No app reported performance in the last ${span}. Only apps you install are measured.`,
+            );
+            return;
+          }
+          if (windowSeconds === undefined) {
+            this.printLatest(latestPerApp(window), flags.json);
+          } else {
+            this.printSummary(window, flags.json);
+          }
+        } catch (err) {
+          if (err instanceof SessionStreamRejectedError && err.status === 404) {
+            // The router answers 404 for a deleted instance, and a runtime for a stream it lacks. The
+            // API tells which: a deleted instance throws NotFoundError here, which withAuth reports.
+            await this.client.iosInstances.get(resolvedInstance.id);
+            this.error(
+              'This instance runs a runtime from before app performance. Create a new instance to measure its apps.',
+            );
+          }
+          throw err;
         }
-        if (windowSeconds === undefined) {
-          this.printLatest(latestPerApp(window), flags.json);
-        } else {
-          this.printSummary(window, flags.json);
-        }
-      } catch (err) {
-        if (err instanceof SessionStreamRejectedError && err.status === 404) {
-          this.error(
-            'This instance does not report performance: it no longer exists, or its runtime predates app performance.',
-          );
-        }
-        throw err;
-      }
-    });
+      },
+      { createReplacement: false },
+    );
   }
 
   /** Reads the history the instance replays on connect, then closes the stream. */
-  private async readHistory(open: OpenPerformanceStream): Promise<PerformanceSample[]> {
+  private readHistory(open: OpenPerformanceStream): Promise<PerformanceSample[]> {
     const samples: PerformanceSample[] = [];
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let settled = false;
     let stop = () => {};
-    try {
-      return await new Promise((resolve, reject) => {
-        const finish = () => resolve(samples);
-        timer = setTimeout(finish, NO_SAMPLES_MS);
-        open({
-          onSample: (sample) => {
-            samples.push(sample);
-            clearTimeout(timer);
-            timer = setTimeout(finish, REPLAY_GAP_MS);
-          },
-          onReplayed: finish,
-          onError: reject,
-        }).then((close) => {
-          stop = close;
-          if (settled) close();
-        }, reject);
+    return new Promise<PerformanceSample[]>((resolve, reject) => {
+      const finish = () => resolve(samples);
+      timer = setTimeout(finish, NO_SAMPLES_MS);
+      stop = open({
+        onSample: (sample) => {
+          samples.push(sample);
+          clearTimeout(timer);
+          timer = setTimeout(finish, REPLAY_GAP_MS);
+        },
+        onReplayed: finish,
+        onError: reject,
       });
-    } finally {
-      settled = true;
+    }).finally(() => {
       clearTimeout(timer);
       stop();
-    }
+    });
   }
 
   private printLatest(latest: PerformanceSample[], json: boolean): void {
@@ -200,14 +200,16 @@ export default class IosPerf extends BaseCommand {
   private async follow(open: OpenPerformanceStream, app: string | undefined, json: boolean): Promise<void> {
     let replayed = false;
     let gap: ReturnType<typeof setTimeout> | undefined;
+    let interrupted = () => {};
     let stop = () => {};
     // Keeps the process waiting for Ctrl+C while the stream reconnects.
     const keepAlive = setInterval(() => {}, 1 << 30);
     try {
       await new Promise<void>((resolve, reject) => {
-        process.once('SIGINT', () => resolve());
-        process.once('SIGTERM', () => resolve());
-        open({
+        interrupted = () => resolve();
+        process.once('SIGINT', interrupted);
+        process.once('SIGTERM', interrupted);
+        stop = open({
           onSample: (sample) => {
             if (!replayed) {
               clearTimeout(gap);
@@ -222,9 +224,11 @@ export default class IosPerf extends BaseCommand {
             clearTimeout(gap);
           },
           onError: reject,
-        }).then((close) => (stop = close), reject);
+        });
       });
     } finally {
+      process.off('SIGINT', interrupted);
+      process.off('SIGTERM', interrupted);
       clearTimeout(gap);
       clearInterval(keepAlive);
       stop();
