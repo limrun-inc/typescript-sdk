@@ -166,11 +166,11 @@ export async function runAndroidAdbShell(
   }
 }
 
+/** Where an iOS instance's daemon answers, and the token it accepts. */
+export type IosConnection = Pick<Ios.PerformanceStreamOptions, 'apiUrl' | 'token'>;
+
 /** The instance's apiUrl and token, from the cache or, failing that, the API (which refills the cache). */
-export async function resolveIosConnection(
-  lim: Limrun,
-  target: LastIosInstance,
-): Promise<{ apiUrl: string; token: string }> {
+export async function resolveIosConnection(lim: Limrun, target: LastIosInstance): Promise<IosConnection> {
   if (target.apiUrl && target.token) return { apiUrl: target.apiUrl, token: target.token };
   const instance = await lim.iosInstances.get(target.id);
   const apiUrl = instance.status.apiUrl;
@@ -202,7 +202,7 @@ export async function getIosInstanceClient(
 
 /** Tails an iOS instance's performance samples over SSE alone; reading them needs no control WebSocket. */
 export function streamIosPerformance(
-  connection: { apiUrl: string; token: string },
+  connection: IosConnection,
   handlers: Ios.PerformanceStreamHandlers,
 ): () => void {
   return Ios.streamPerformance({ ...connection, ...handlers });

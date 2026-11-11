@@ -4,7 +4,6 @@ import {
   ensureDaemonSession,
   getAndroidInstanceClient,
   getIosInstanceClient,
-  resolveIosConnection,
   sendSessionCommand,
   streamIosPerformance,
 } from './lib/instance-client-factory';
@@ -29,7 +28,6 @@ jest.mock('./lib/instance-client-factory', () => ({
   ensureDaemonSession: jest.fn(),
   getAndroidInstanceClient: jest.fn(),
   getIosInstanceClient: jest.fn(),
-  resolveIosConnection: jest.fn(),
   sendSessionCommand: jest.fn(),
   streamIosPerformance: jest.fn(),
 }));
@@ -928,9 +926,6 @@ describe('ios perf', () => {
   beforeEach(() => {
     jest.useFakeTimers({ now: NOW });
     stop = jest.fn();
-    jest
-      .mocked(resolveIosConnection)
-      .mockResolvedValue({ apiUrl: 'https://instance.example.test', token: 'test-token' });
     jest.mocked(streamIosPerformance).mockImplementation((_connection, handlers) => {
       emit = handlers.onSample as (sample: unknown) => void;
       replayed = handlers.onReplayed!;
