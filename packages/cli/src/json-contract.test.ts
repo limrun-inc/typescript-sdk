@@ -987,6 +987,20 @@ describe('ios perf', () => {
     await expect(run).rejects.toBe(gone);
   });
 
+  // Runtimes without the replayed event keep streaming once a second, so the pause that ends the
+  // replay must be shorter than that or the read never ends while an app runs.
+  test('ends the history read on a pause even while an app reports every second', async () => {
+    const run = command('ios/perf').run();
+    await jest.advanceTimersByTimeAsync(0);
+    emit(sample(NOW - 1000, 'com.example.app', 10));
+    for (let tick = 0; tick < 3; tick++) {
+      await jest.advanceTimersByTimeAsync(1000);
+      emit(sample(NOW + tick * 1000, 'com.example.app', 20));
+    }
+    await run;
+    expect(JSON.parse(stdout)).toEqual([sample(NOW - 1000, 'com.example.app', 10)]);
+  });
+
   test('prints an empty array when no app reports', async () => {
     const run = command('ios/perf').run();
     await jest.advanceTimersByTimeAsync(5000);
@@ -995,10 +1009,10 @@ describe('ios perf', () => {
   });
 
   test('--since prints each summary with the samples of its window', async () => {
-    const run = command('ios/perf', {}, { since: '4s' }).run();
+    const run = command('ios/perf', {}, { since: '2s' }).run();
     await jest.advanceTimersByTimeAsync(0);
     for (const age of [3000, 1000, 500]) emit(sample(NOW - age, 'com.example.app', age / 100));
-    await jest.advanceTimersByTimeAsync(2000);
+    await jest.advanceTimersByTimeAsync(700);
     await run;
     expect(JSON.parse(stdout)).toEqual([
       expect.objectContaining({
@@ -1024,7 +1038,7 @@ describe('ios perf', () => {
       await jest.advanceTimersByTimeAsync(0);
       emit(sample(NOW - 60_000, 'com.example.app', 10));
       emit(sample(NOW - 1000, 'com.example.app', 20));
-      await jest.advanceTimersByTimeAsync(2000);
+      await jest.advanceTimersByTimeAsync(700);
       emit(sample(NOW + 1000, 'com.example.app', 30));
       signals[0]!();
       await run;

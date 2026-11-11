@@ -18,8 +18,9 @@ import {
 
 // The instance replays its history in one burst when the stream opens, says when the replay
 // ends, then sends each app's sample once a second. Runtimes that predate that signal end the
-// burst with a pause instead; one this long ends it, and a brief network stall does not.
-const REPLAY_GAP_MS = 2_000;
+// burst with a pause instead. Live samples arrive once a second, so the pause must stay shorter
+// than that, or a running app would keep the history read open forever.
+const REPLAY_GAP_MS = 700;
 // With no sample by then, no app is running.
 const NO_SAMPLES_MS = 5_000;
 // A sample at most this old is current: --follow prints it even inside the replay, and an app
