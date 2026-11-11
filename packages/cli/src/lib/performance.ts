@@ -6,14 +6,18 @@ export type AppPerformanceSummary = {
   /** The latest process; it changes when the app relaunches inside the window. */
   pid: number;
   testRunner?: boolean;
-  samples: number;
   /** Average and highest CPU over the window; one busy core is 100. */
   cpuPercent?: { average: number; max: number };
   /** The footprint at the latest sample. */
   footprintBytes: number;
-  /** The highest footprint sampled in the window. */
-  peakFootprintBytes: number;
+  /**
+   * The highest footprint sampled in the window. Each sample's peakFootprintBytes covers its
+   * whole process lifetime, which can predate the window.
+   */
+  maxFootprintBytes: number;
   threadCount: number;
+  /** The app's samples in the window, oldest first. */
+  series: PerformanceSample[];
 };
 
 /** Each app's newest sample, newest launch first. */
@@ -49,7 +53,6 @@ export function summarize(samples: PerformanceSample[]): AppPerformanceSummary[]
       bundleId: latest.bundleId,
       pid: latest.pid,
       ...(latest.testRunner && { testRunner: true }),
-      samples: own.length,
       ...(cpu.length > 0 && {
         cpuPercent: {
           average: Math.round((cpu.reduce((sum, value) => sum + value, 0) / cpu.length) * 10) / 10,
@@ -57,9 +60,9 @@ export function summarize(samples: PerformanceSample[]): AppPerformanceSummary[]
         },
       }),
       footprintBytes: latest.footprintBytes,
-      // A sample's own peak covers the whole process lifetime, which can predate the window.
-      peakFootprintBytes: Math.max(...own.map((sample) => sample.footprintBytes)),
+      maxFootprintBytes: Math.max(...own.map((sample) => sample.footprintBytes)),
       threadCount: latest.threadCount,
+      series: own,
     };
   });
 }

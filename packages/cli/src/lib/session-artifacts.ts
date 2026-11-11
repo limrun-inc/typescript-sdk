@@ -1,4 +1,5 @@
 import type { SessionArtifact } from '@limrun/api';
+import { formatBinaryBytes } from './bytes';
 
 /**
  * Table rows for persisted session artifacts, shared by the recordings,
@@ -15,15 +16,8 @@ export function sessionArtifactTable(artifacts: SessionArtifact[]): {
     a.bundleId ?? '',
     a.startedAt ?? '',
     a.stoppedAt ?? '',
-    a.sizeBytes !== undefined ? formatSize(a.sizeBytes) : '',
+    a.sizeBytes !== undefined ? formatBinaryBytes(a.sizeBytes) : '',
     a.expiresAt ?? '',
   ]);
   return { headers, rows };
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}GB`;
 }

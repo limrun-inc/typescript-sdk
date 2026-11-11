@@ -1,7 +1,7 @@
 import { Flags } from '@oclif/core';
 import type { Ios, PerformanceSample } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
-import { formatBytes } from '../../lib/bytes';
+import { formatBinaryBytes } from '../../lib/bytes';
 import { formatDurationMs, parseDurationSeconds } from '../../lib/duration';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';
 import {
@@ -22,14 +22,10 @@ const NO_SAMPLES_MS = 5_000;
 const CURRENT_MS = 5_000;
 // The instance keeps this much history.
 const HISTORY_SECONDS = 600;
-
-/** Megabytes the way Xcode's memory gauge and the console count them. */
-function formatMegabytes(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
+const HISTORY = `${HISTORY_SECONDS / 60}m`;
 
 function formatRate(bytesPerSecond: number | undefined): string {
-  return bytesPerSecond === undefined ? '-' : `${formatBytes(bytesPerSecond)}/s`;
+  return bytesPerSecond === undefined ? '-' : `${formatBinaryBytes(bytesPerSecond)}/s`;
 }
 
 /** The bundle ID, noting a test runner and an app that stopped reporting `ageMs` ago. */
@@ -67,9 +63,7 @@ export default class IosPerf extends BaseCommand {
       description: 'Only report this bundle ID.',
     }),
     since: Flags.string({
-      description: `Summarize this much recent history, as a duration like 2m or 30s (at most ${
-        HISTORY_SECONDS / 60
-      }m).`,
+      description: `Summarize this much recent history, as a duration like 2m or 30s (at most ${HISTORY}).`,
       exclusive: ['follow'],
     }),
     follow: Flags.boolean({
@@ -83,9 +77,7 @@ export default class IosPerf extends BaseCommand {
     this.setParsedFlags(flags);
     const windowSeconds = flags.since ? parseDurationSeconds(flags.since) : undefined;
     if (windowSeconds !== undefined && windowSeconds > HISTORY_SECONDS) {
-      this.error(
-        `--since can reach back at most ${HISTORY_SECONDS / 60}m; the instance keeps no more history.`,
-      );
+      this.error(`--since can reach back at most ${HISTORY}; the instance keeps no more history.`);
     }
 
     await this.withAuth(async () => {
@@ -101,12 +93,8 @@ export default class IosPerf extends BaseCommand {
           (windowSeconds ?? HISTORY_SECONDS) * 1000,
           flags.app,
         );
-        if (window.length === 0) {
-          if (flags.json) {
-            this.outputJson([]);
-            return;
-          }
-          const span = flags.since ?? `${HISTORY_SECONDS / 60}m`;
+        if (window.length === 0 && !flags.json) {
+          const span = flags.since ?? HISTORY;
           this.info(
             flags.app ?
               `${flags.app} reported no performance in the last ${span}. Only apps you install are measured.`
@@ -159,8 +147,8 @@ export default class IosPerf extends BaseCommand {
       latest.map((sample) => [
         appLabel(sample, now - sample.ts),
         formatPercent(sample.cpuPercent),
-        formatMegabytes(sample.footprintBytes),
-        formatMegabytes(sample.peakFootprintBytes),
+        formatBinaryBytes(sample.footprintBytes),
+        formatBinaryBytes(sample.peakFootprintBytes),
         String(sample.threadCount),
         formatRate(sample.diskReadBytesPerSecond),
         formatRate(sample.diskWriteBytesPerSecond),
@@ -172,23 +160,18 @@ export default class IosPerf extends BaseCommand {
   private printSummary(window: PerformanceSample[], json: boolean): void {
     const summaries = summarize(window);
     if (json) {
-      this.outputJson(
-        summaries.map((summary) => ({
-          ...summary,
-          series: window.filter((sample) => sample.bundleId === summary.bundleId),
-        })),
-      );
+      this.outputJson(summaries);
       return;
     }
     this.outputTable(
-      ['App', 'Samples', 'Avg CPU', 'Max CPU', 'Memory', 'Peak', 'Threads'],
+      ['App', 'Samples', 'Avg CPU', 'Max CPU', 'Memory', 'Max memory', 'Threads'],
       summaries.map((summary) => [
         appLabel(summary),
-        String(summary.samples),
+        String(summary.series.length),
         formatPercent(summary.cpuPercent?.average),
         formatPercent(summary.cpuPercent?.max),
-        formatMegabytes(summary.footprintBytes),
-        formatMegabytes(summary.peakFootprintBytes),
+        formatBinaryBytes(summary.footprintBytes),
+        formatBinaryBytes(summary.maxFootprintBytes),
         String(summary.threadCount),
       ]),
     );
@@ -236,7 +219,9 @@ export default class IosPerf extends BaseCommand {
     const time = new Date(sample.ts).toTimeString().slice(0, 8);
     process.stdout.write(
       `${time} ${sample.bundleId} cpu ${formatPercent(sample.cpuPercent)} ` +
-        `mem ${formatMegabytes(sample.footprintBytes)} peak ${formatMegabytes(sample.peakFootprintBytes)} ` +
+        `mem ${formatBinaryBytes(sample.footprintBytes)} peak ${formatBinaryBytes(
+          sample.peakFootprintBytes,
+        )} ` +
         `threads ${sample.threadCount} busiest ${formatThreads(sample.topThreads, 2)}\n`,
     );
   }

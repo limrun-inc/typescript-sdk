@@ -1,6 +1,5 @@
 import type { PerformanceSample } from '@limrun/api';
 import { formatThreads, latestPerApp, samplesInWindow, summarize } from './performance';
-import { startPersistedCaptures } from './session-captures';
 
 const MB = 1024 * 1024;
 
@@ -39,21 +38,21 @@ describe('performance samples', () => {
   });
 
   it('summarizes CPU and the highest memory in the window across a relaunch', () => {
-    const [summary] = summarize([
+    const series = [
       // The process peaked at 500 MB before the window, so its lifetime peak is not the window's.
       sample(0, { peakFootprintBytes: 500 * MB }),
       sample(1000, { cpuPercent: 100, footprintBytes: 300 * MB, peakFootprintBytes: 500 * MB }),
       sample(2000, { cpuPercent: 300, peakFootprintBytes: 500 * MB }),
       sample(3000, { pid: 101, cpuPercent: 20, footprintBytes: 60 * MB, peakFootprintBytes: 60 * MB }),
-    ]);
-    expect(summary).toEqual({
+    ];
+    expect(summarize([...series, sample(3000, { bundleId: 'com.example.other' })])[0]).toEqual({
       bundleId: 'com.example.app',
       pid: 101,
-      samples: 4,
       cpuPercent: { average: 140, max: 300 },
       footprintBytes: 60 * MB,
-      peakFootprintBytes: 300 * MB,
+      maxFootprintBytes: 300 * MB,
       threadCount: 12,
+      series,
     });
   });
 
@@ -67,29 +66,5 @@ describe('performance samples', () => {
       ]),
     ).toBe('main 52.1%, unnamed 20.4%, a 3.0%');
     expect(formatThreads(undefined)).toBe('-');
-  });
-});
-
-describe('startPersistedCaptures --perf', () => {
-  const base = {
-    startRecording: jest.fn(),
-    startAppLogCapture: jest.fn(),
-    startEventCapture: jest.fn(),
-  };
-
-  it('starts a performance capture with the requested TTL', async () => {
-    const startPerformanceCapture = jest.fn();
-    const started = await startPersistedCaptures(
-      { ...base, startPerformanceCapture },
-      { record: false, events: false, performance: true, ttlSeconds: 3600 },
-    );
-    expect(startPerformanceCapture).toHaveBeenCalledWith({ ttlSeconds: 3600 });
-    expect(started).toEqual(['performance capture']);
-  });
-
-  it('refuses on a client that cannot save performance', async () => {
-    await expect(
-      startPersistedCaptures(base, { record: false, events: false, performance: true, ttlSeconds: 3600 }),
-    ).rejects.toThrow('Only iOS instances save performance captures.');
   });
 });

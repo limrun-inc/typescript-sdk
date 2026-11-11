@@ -9,8 +9,6 @@ type CaptureClient = {
   startRecording: (options?: { persist?: PersistOption }) => Promise<void>;
   startAppLogCapture: (options: { bundleId: string; persist?: PersistOption }) => Promise<void>;
   startEventCapture: (options?: { persist?: PersistOption }) => Promise<void>;
-  /** iOS only: performance samples flow without a capture, so this one always persists. */
-  startPerformanceCapture?: (options?: { ttlSeconds?: number }) => Promise<void>;
 };
 
 export type CaptureRequest = {
@@ -18,8 +16,6 @@ export type CaptureRequest = {
   /** Bundle id (iOS) or package name (Android) to capture app logs for. */
   appLogsBundleId?: string;
   events: boolean;
-  /** iOS only. */
-  performance?: boolean;
   ttlSeconds: number;
 };
 
@@ -76,13 +72,6 @@ export async function startPersistedCaptures(
   if (request.events) {
     await client.startEventCapture({ persist });
     started.push('event log capture');
-  }
-  if (request.performance) {
-    if (!client.startPerformanceCapture) {
-      throw new Error('Only iOS instances save performance captures.');
-    }
-    await client.startPerformanceCapture({ ttlSeconds: request.ttlSeconds });
-    started.push('performance capture');
   }
   return started;
 }
