@@ -1,9 +1,13 @@
 import { Flags } from '@oclif/core';
-import { SessionStreamRejectedError, type Ios, type PerformanceSample } from '@limrun/api';
+import { SessionStreamRejectedError, type PerformanceSample } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { formatBinaryBytes } from '../../lib/bytes';
 import { formatDurationMs, parseDurationSeconds } from '../../lib/duration';
-import { resolveIosConnection, streamIosPerformance } from '../../lib/instance-client-factory';
+import {
+  type IosConnection,
+  resolveIosConnection,
+  streamIosPerformance,
+} from '../../lib/instance-client-factory';
 import {
   formatPercent,
   formatThreads,
@@ -28,8 +32,6 @@ const HISTORY = `${HISTORY_SECONDS / 60}m`;
 function formatRate(bytesPerSecond: number | undefined): string {
   return bytesPerSecond === undefined ? '-' : `${formatBinaryBytes(bytesPerSecond)}/s`;
 }
-
-type OpenPerformanceStream = (handlers: Ios.PerformanceStreamHandlers) => () => void;
 
 /** The bundle ID, noting a test runner and an app that stopped reporting `ageMs` ago. */
 function appLabel(app: { bundleId: string; testRunner?: boolean }, ageMs = 0): string {
@@ -83,19 +85,18 @@ export default class IosPerf extends BaseCommand {
       this.error(`--since can reach back at most ${HISTORY}; the instance keeps no more history.`);
     }
 
-    // Reading performance must not create a replacement for a deleted instance.
+    // A replacement has no apps to measure, so a deleted instance is reported, not replaced.
     await this.withAuth(
       async () => {
         const resolvedInstance = this.resolveIosInstance(flags.id);
         const connection = await resolveIosConnection(this.client, resolvedInstance);
-        const open: OpenPerformanceStream = (handlers) => streamIosPerformance(connection, handlers);
         try {
           if (flags.follow) {
-            await this.follow(open, flags.app, flags.json);
+            await this.follow(connection, flags.app, flags.json);
             return;
           }
           const window = samplesInWindow(
-            await this.readHistory(open),
+            await this.readHistory(connection),
             (windowSeconds ?? HISTORY_SECONDS) * 1000,
             flags.app,
           );
@@ -130,14 +131,14 @@ export default class IosPerf extends BaseCommand {
   }
 
   /** Reads the history the instance replays on connect, then closes the stream. */
-  private readHistory(open: OpenPerformanceStream): Promise<PerformanceSample[]> {
+  private readHistory(connection: IosConnection): Promise<PerformanceSample[]> {
     const samples: PerformanceSample[] = [];
     let timer: ReturnType<typeof setTimeout> | undefined;
     let stop = () => {};
     return new Promise<PerformanceSample[]>((resolve, reject) => {
       const finish = () => resolve(samples);
       timer = setTimeout(finish, NO_SAMPLES_MS);
-      stop = open({
+      stop = streamIosPerformance(connection, {
         onSample: (sample) => {
           samples.push(sample);
           clearTimeout(timer);
@@ -197,7 +198,7 @@ export default class IosPerf extends BaseCommand {
    * Prints each new sample until interrupted. The replayed history is skipped, except samples
    * current enough to show the apps' present state.
    */
-  private async follow(open: OpenPerformanceStream, app: string | undefined, json: boolean): Promise<void> {
+  private async follow(connection: IosConnection, app: string | undefined, json: boolean): Promise<void> {
     let replayed = false;
     let gap: ReturnType<typeof setTimeout> | undefined;
     let interrupted = () => {};
@@ -209,7 +210,7 @@ export default class IosPerf extends BaseCommand {
         interrupted = () => resolve();
         process.once('SIGINT', interrupted);
         process.once('SIGTERM', interrupted);
-        stop = open({
+        stop = streamIosPerformance(connection, {
           onSample: (sample) => {
             if (!replayed) {
               clearTimeout(gap);
