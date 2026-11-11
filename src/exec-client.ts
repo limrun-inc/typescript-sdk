@@ -8,7 +8,7 @@ import type { AssetUpload } from './lib/asset-permissions';
 
 import { createEventSource, type EventSourceClient, type EventSourceMessage } from 'eventsource-client';
 import { nodeProxyTransport } from './internal/proxy-transport';
-import { sseFetch } from './internal/sse-fetch';
+import { refusesStream, sseFetch } from './internal/sse-fetch';
 import { directInstanceHttpError } from './internal/direct-instance-errors';
 import type { Fetch } from './internal/builtin-types';
 
@@ -569,13 +569,7 @@ function followExecEventStream(options: FollowExecEventStreamOptions): {
       const response = await nodeProxyTransport.fetch(input, init);
       if (response.status === 204) {
         fail(new ExecStreamClosedError(`event stream to ${eventsUrl} was closed by the server (HTTP 204)`));
-      } else if (
-        options.failOnClientError &&
-        response.status >= 400 &&
-        response.status < 500 &&
-        response.status !== 408 &&
-        response.status !== 429
-      ) {
+      } else if (options.failOnClientError && refusesStream(response.status)) {
         fail(
           directInstanceHttpError('GET exec logs', response.status, await response.text(), response.headers),
         );

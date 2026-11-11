@@ -21,7 +21,7 @@
 import { createEventSource, type EventSourceMessage } from 'eventsource-client';
 import { sseStreamPolicy } from '../exec-client';
 import { nodeProxyTransport } from './proxy-transport';
-import { sseFetch } from './sse-fetch';
+import { refusesStream, sseFetch } from './sse-fetch';
 import type { Fetch } from './builtin-types';
 
 /** The session stream failed for good and has been closed. */
@@ -97,7 +97,7 @@ export function streamSessionEntries<T extends { ts: number }>(options: SessionS
   const fetchWithStreamPolicy: Fetch = async (input, init) => {
     const response = await nodeProxyTransport.fetch(input, init);
     const status = response.status;
-    if (status === 204 || (status >= 400 && status < 500 && status !== 408 && status !== 429)) {
+    if (refusesStream(status)) {
       const reason =
         status === 404 ? ': the instance no longer exists, or its runtime does not serve this stream' : '';
       fail(

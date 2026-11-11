@@ -18,3 +18,11 @@ export function sseFetch(fetchImpl: Fetch, onRejected: (err: unknown) => void): 
     }
   };
 }
+
+/**
+ * Whether an SSE response refuses the stream for good: a 204, which makes the EventSource close
+ * without reporting it, or a client error other than 408 and 429, which retrying cannot fix.
+ */
+export function refusesStream(status: number): boolean {
+  return status === 204 || (status >= 400 && status < 500 && status !== 408 && status !== 429);
+}
