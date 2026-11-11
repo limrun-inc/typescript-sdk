@@ -1,7 +1,7 @@
 import {
   streamSessionEntries,
   SessionStreamLostError,
-  SessionStreamNotFoundError,
+  SessionStreamRejectedError,
 } from '../src/internal/session-stream';
 import { sseStreamPolicy } from '../src/exec-client';
 import { nodeProxyTransport } from '@limrun/api/internal/proxy-transport';
@@ -174,8 +174,12 @@ test('a 404 closes the stream at once', async () => {
     });
   });
 
-  expect(error).toBeInstanceOf(SessionStreamNotFoundError);
+  expect(error).toBeInstanceOf(SessionStreamRejectedError);
   expect(error).toBeInstanceOf(SessionStreamLostError);
+  expect((error as SessionStreamRejectedError).status).toBe(404);
+  expect(error.name).toBe('SessionStreamRejectedError');
+  // The stream must stay closed, not keep reconnecting behind the error.
+  await new Promise((resolve) => setTimeout(resolve, 50));
   expect(attempts).toBe(1);
 });
 

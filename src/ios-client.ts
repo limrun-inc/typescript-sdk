@@ -1069,9 +1069,10 @@ export type InstanceClient = {
    * delivers lines as they are captured; a dropped connection reconnects
    * and resumes exactly where it left off, so every line is delivered once.
    * The stream is independent of this client's websocket and survives
-   * {@link disconnect}; `onError` fires at most once, after the stream has
-   * kept failing for several minutes (e.g. the instance was deleted), and
-   * the stream is closed. Returns a function that closes the stream.
+   * {@link disconnect}; `onError` fires at most once and the stream is
+   * closed: at once with a `SessionStreamRejectedError` when the
+   * instance refuses it (404 once the instance is gone), or after it has
+   * kept failing for several minutes. Returns a function that closes it.
    */
   streamAppLogCapture: (handlers: {
     onLine: (line: SessionLogLine) => void;
@@ -1792,11 +1793,6 @@ export class SimctlExecution extends EventEmitter {
   }
 }
 
-/**
- * Creates a client for interacting with a Limrun iOS instance
- * @param options Configuration options including webrtcUrl, token and log level
- * @returns An InstanceClient for controlling the instance
- */
 export type PerformanceStreamOptions = {
   /** The instance's status.apiUrl. */
   apiUrl: string;
@@ -1804,16 +1800,16 @@ export type PerformanceStreamOptions = {
   token: string;
   onSample: (sample: PerformanceSample) => void;
   /**
-   * Called once the instance has replayed its recent samples, so later samples are live.
-   * Runtimes that predate the signal never call it.
+   * Called after each connection's replay of recent samples, the first and every reconnect, so
+   * later samples are live. Runtimes that predate the signal never call it.
    */
-  onReplayed?: () => void;
+  onReplayed?: (() => void) | undefined;
   /**
    * Called at most once, when the stream closes for good: at once with a
-   * SessionStreamNotFoundError when the instance is gone or its runtime predates
-   * performance, or after the give-up window when it stays unreachable.
+   * SessionStreamRejectedError (status 404 when the instance is gone or its runtime
+   * predates performance), or after the give-up window when it stays unreachable.
    */
-  onError?: (error: Error) => void;
+  onError?: ((error: Error) => void) | undefined;
 };
 
 /**
@@ -1831,6 +1827,11 @@ export function streamPerformance(options: PerformanceStreamOptions): () => void
   });
 }
 
+/**
+ * Creates a client for interacting with a Limrun iOS instance
+ * @param options Configuration options including webrtcUrl, token and log level
+ * @returns An InstanceClient for controlling the instance
+ */
 export async function createInstanceClient(options: InstanceClientOptions): Promise<InstanceClient> {
   const endpointWebSocketUrl = `${options.apiUrl
     .replace('https://', 'wss://')
