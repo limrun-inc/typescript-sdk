@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.72.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.71.0...v0.72.0) (2026-11-11)
+
+
+### Features
+
+* **cli:** show iOS app performance with lim ios perf ([8b4d2d9](https://github.com/limrun-inc/typescript-sdk/commit/8b4d2d9f5a4fb1e7f091b9b63c7c3bf3a71ee934))
+* report the end of session replays, close streams on 404, stream performance without a WebSocket ([31b8142](https://github.com/limrun-inc/typescript-sdk/commit/31b81427cc3fbbaa76c93c94081576844683ed14))
+
+
+### Bug Fixes
+
+* **cli:** end the perf replay on its pause and window on the local clock ([2a5b34f](https://github.com/limrun-inc/typescript-sdk/commit/2a5b34faea16e2ff4e2799781c208ed4fc8dd447))
+* refuse session streams on client errors like the exec client ([6fe19a4](https://github.com/limrun-inc/typescript-sdk/commit/6fe19a462a80a81fc0c2091e32c89028f0a67543))
+* **ui:** skip RemoteControl re-renders when a resize leaves the video style unchanged ([8f6f9e0](https://github.com/limrun-inc/typescript-sdk/commit/8f6f9e0e6d59215638172191adb8dffdcac615a7))
+
+
+### Chores
+
+* **cli:** release 0.54.0 with SDK 0.71.0 ([87c9076](https://github.com/limrun-inc/typescript-sdk/commit/87c907668cf2cb2a0ff87df76eb7a2554092490a))
+
+
+### Refactors
+
+* **cli:** keep perf captures out of the shared helper and share byte formatting ([4f2353a](https://github.com/limrun-inc/typescript-sdk/commit/4f2353ab0e3cdd61eaa60b8de30fc97f34523721))
+* share the stream refusal rule and skip overlay geometry outside inspection ([c27cce3](https://github.com/limrun-inc/typescript-sdk/commit/c27cce333a2b824487d5cdd51a7b0b4880110d5f))
+
 ## [0.71.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.70.2...v0.71.0) (2026-11-11)
 
 
