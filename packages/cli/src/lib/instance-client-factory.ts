@@ -167,7 +167,7 @@ export async function runAndroidAdbShell(
 }
 
 /** The instance's apiUrl and token, from the cache or, failing that, the API (which refills the cache). */
-async function resolveIosConnection(
+export async function resolveIosConnection(
   lim: Limrun,
   target: LastIosInstance,
 ): Promise<{ apiUrl: string; token: string }> {
@@ -201,10 +201,9 @@ export async function getIosInstanceClient(
 }
 
 /** Tails an iOS instance's performance samples over SSE alone; reading them needs no control WebSocket. */
-export async function streamIosPerformance(
-  lim: Limrun,
-  target: LastIosInstance,
+export function streamIosPerformance(
+  connection: { apiUrl: string; token: string },
   handlers: Ios.PerformanceStreamHandlers,
-): Promise<() => void> {
-  return Ios.streamPerformance({ ...(await resolveIosConnection(lim, target)), ...handlers });
+): () => void {
+  return Ios.streamPerformance({ ...connection, ...handlers });
 }
