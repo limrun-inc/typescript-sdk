@@ -11,34 +11,30 @@ export type AppPerformanceSummary = {
   cpuPercent?: { average: number; max: number };
   /** The footprint at the latest sample. */
   footprintBytes: number;
-  /** The highest footprint any process of the app reached in the window. */
+  /** The highest footprint sampled in the window. */
   peakFootprintBytes: number;
   threadCount: number;
 };
 
-/** Each app's newest sample, newest launch first, optionally only one bundle ID. */
-export function latestPerApp(samples: PerformanceSample[], bundleId?: string): PerformanceSample[] {
+/** Each app's newest sample, newest launch first. */
+export function latestPerApp(samples: PerformanceSample[]): PerformanceSample[] {
   const latest = new Map<string, PerformanceSample>();
   for (const sample of samples) {
-    if (bundleId && sample.bundleId !== bundleId) continue;
     const previous = latest.get(sample.bundleId);
     if (!previous || sample.ts >= previous.ts) latest.set(sample.bundleId, sample);
   }
   return [...latest.values()].sort((a, b) => b.startedAt - a.startedAt);
 }
 
-/**
- * The samples in the last `windowMs` before the newest one. The window is measured on the
- * instance's clock, which every sample's ts uses, so the caller's clock never matters.
- */
+/** The samples taken in the last `windowMs` before `now`, optionally only one bundle ID. */
 export function samplesInWindow(
   samples: PerformanceSample[],
   windowMs: number,
   bundleId?: string,
+  now = Date.now(),
 ): PerformanceSample[] {
-  const newest = samples.reduce((max, sample) => Math.max(max, sample.ts), Number.NEGATIVE_INFINITY);
   return samples.filter(
-    (sample) => sample.ts >= newest - windowMs && (!bundleId || sample.bundleId === bundleId),
+    (sample) => sample.ts > now - windowMs && (!bundleId || sample.bundleId === bundleId),
   );
 }
 
@@ -61,7 +57,8 @@ export function summarize(samples: PerformanceSample[]): AppPerformanceSummary[]
         },
       }),
       footprintBytes: latest.footprintBytes,
-      peakFootprintBytes: Math.max(...own.map((sample) => sample.peakFootprintBytes)),
+      // A sample's own peak covers the whole process lifetime, which can predate the window.
+      peakFootprintBytes: Math.max(...own.map((sample) => sample.footprintBytes)),
       threadCount: latest.threadCount,
     };
   });

@@ -2,7 +2,7 @@ import { Flags } from '@oclif/core';
 import type { Ios, PerformanceSample } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { formatBytes } from '../../lib/bytes';
-import { parseDurationSeconds } from '../../lib/duration';
+import { formatDurationMs, parseDurationSeconds } from '../../lib/duration';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';
 import {
   formatPercent,
@@ -12,31 +12,43 @@ import {
   summarize,
 } from '../../lib/performance';
 
-// The instance replays its history in one burst right after the stream opens; this long after
-// the first sample the burst has arrived.
-const REPLAY_SETTLE_MS = 1_500;
+// The instance replays its history in one burst when the stream opens, then sends each app's
+// sample once a second. A pause this long ends the burst.
+const REPLAY_GAP_MS = 700;
 // With no sample by then, no app reports: none is running, or the instance predates performance.
 const NO_SAMPLES_MS = 5_000;
+// A sample at most this old is current: --follow prints it even inside the replay, and an app
+// whose newest sample is older has stopped.
+const CURRENT_MS = 5_000;
 // The instance keeps this much history.
 const HISTORY_SECONDS = 600;
 
 /** Megabytes the way Xcode's memory gauge and the console count them. */
 function formatMegabytes(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 function formatRate(bytesPerSecond: number | undefined): string {
   return bytesPerSecond === undefined ? '-' : `${formatBytes(bytesPerSecond)}/s`;
 }
 
+/** The bundle ID, noting a test runner and an app that stopped reporting `ageMs` ago. */
+function appLabel(app: { bundleId: string; testRunner?: boolean }, ageMs = 0): string {
+  const notes = [
+    app.testRunner && 'test runner',
+    ageMs > CURRENT_MS && `stopped ${formatDurationMs(Math.round(ageMs / 1000) * 1000)} ago`,
+  ].filter(Boolean);
+  return notes.length > 0 ? `${app.bundleId} (${notes.join(', ')})` : app.bundleId;
+}
+
 export default class IosPerf extends BaseCommand {
   static summary = 'Show the CPU and memory of apps running on an iOS instance';
   static description =
-    "Print each running app's CPU, memory footprint and its peak, thread count, disk rates and busiest " +
+    "Print each app's CPU, memory footprint and its peak, thread count, disk rates and busiest " +
     "threads: the figures Xcode's debug gauges show. The instance samples every app you installed once a " +
-    'second and keeps the last ten minutes, so the command answers at once and exits. System apps are not ' +
-    'measured, and CPU counts one busy core as 100%.\n\n' +
-    'Use --since to summarize part of that history (average and highest CPU, peak memory), and --follow to ' +
+    'second and keeps the last ten minutes, so the command answers at once and exits. Apps that stopped ' +
+    'in that time are listed as stopped. System apps are not measured, and CPU counts one busy core as 100%.\n\n' +
+    'Use --since to summarize part of that history (average and highest CPU, highest memory), and --follow to ' +
     'stream new samples until interrupted. Saved captures come from `lim ios create --perf`; list them with ' +
     '`lim ios perf-captures`.';
   static examples = [
@@ -84,25 +96,28 @@ export default class IosPerf extends BaseCommand {
           await this.follow(client, flags.app, flags.json);
           return;
         }
-        const history = await this.readHistory(client);
-        if (latestPerApp(history, flags.app).length === 0) {
+        const window = samplesInWindow(
+          await this.readHistory(client),
+          (windowSeconds ?? HISTORY_SECONDS) * 1000,
+          flags.app,
+        );
+        if (window.length === 0) {
           if (flags.json) {
             this.outputJson([]);
             return;
           }
+          const span = flags.since ?? `${HISTORY_SECONDS / 60}m`;
           this.info(
             flags.app ?
-              `${flags.app} reported no performance in the last ${
-                HISTORY_SECONDS / 60
-              } minutes. Only apps you install are measured.`
-            : 'No app is reporting performance. Only apps you install are measured, and older instances report nothing.',
+              `${flags.app} reported no performance in the last ${span}. Only apps you install are measured.`
+            : `No app reported performance in the last ${span}. Only apps you install are measured, and older instances report nothing.`,
           );
           return;
         }
         if (windowSeconds === undefined) {
-          this.printLatest(latestPerApp(history, flags.app), flags.json);
+          this.printLatest(latestPerApp(window), flags.json);
         } else {
-          this.printSummary(samplesInWindow(history, windowSeconds * 1000, flags.app), flags.json);
+          this.printSummary(window, flags.json);
         }
       } finally {
         disconnect();
@@ -113,23 +128,21 @@ export default class IosPerf extends BaseCommand {
   /** Reads the history the instance replays on connect, then closes the stream. */
   private readHistory(client: Ios.InstanceClient): Promise<PerformanceSample[]> {
     const samples: PerformanceSample[] = [];
-    return new Promise((resolve) => {
-      let settle: ReturnType<typeof setTimeout> | undefined;
+    return new Promise((resolve, reject) => {
       const finish = () => {
-        clearTimeout(settle);
-        clearTimeout(idle);
         stop();
         resolve(samples);
       };
-      const idle = setTimeout(finish, NO_SAMPLES_MS);
+      let timer = setTimeout(finish, NO_SAMPLES_MS);
       const stop = client.streamPerformance({
         onSample: (sample) => {
           samples.push(sample);
-          settle ??= setTimeout(finish, REPLAY_SETTLE_MS);
+          clearTimeout(timer);
+          timer = setTimeout(finish, REPLAY_GAP_MS);
         },
         onError: (err) => {
-          this.warn(`Performance stream error: ${err.message}`);
-          finish();
+          clearTimeout(timer);
+          reject(err);
         },
       });
     });
@@ -140,10 +153,11 @@ export default class IosPerf extends BaseCommand {
       this.outputJson(latest);
       return;
     }
+    const now = Date.now();
     this.outputTable(
       ['App', 'CPU', 'Memory', 'Peak', 'Threads', 'Disk read', 'Disk write', 'Busiest threads'],
       latest.map((sample) => [
-        sample.testRunner ? `${sample.bundleId} (test runner)` : sample.bundleId,
+        appLabel(sample, now - sample.ts),
         formatPercent(sample.cpuPercent),
         formatMegabytes(sample.footprintBytes),
         formatMegabytes(sample.peakFootprintBytes),
@@ -169,7 +183,7 @@ export default class IosPerf extends BaseCommand {
     this.outputTable(
       ['App', 'Samples', 'Avg CPU', 'Max CPU', 'Memory', 'Peak', 'Threads'],
       summaries.map((summary) => [
-        summary.testRunner ? `${summary.bundleId} (test runner)` : summary.bundleId,
+        appLabel(summary),
         String(summary.samples),
         formatPercent(summary.cpuPercent?.average),
         formatPercent(summary.cpuPercent?.max),
@@ -180,40 +194,50 @@ export default class IosPerf extends BaseCommand {
     );
   }
 
-  /** Prints each new sample until interrupted, skipping the history replayed on connect. */
+  /**
+   * Prints each new sample until interrupted. The replayed history is skipped, except samples
+   * current enough to show the apps' present state.
+   */
   private async follow(client: Ios.InstanceClient, app: string | undefined, json: boolean): Promise<void> {
-    let liveAfter: number | undefined;
-    const stop = client.streamPerformance({
-      onSample: (sample) => {
-        const now = Date.now();
-        liveAfter ??= now + REPLAY_SETTLE_MS;
-        if (now < liveAfter || (app && sample.bundleId !== app)) return;
-        if (json) {
-          this.outputEvent(sample);
-          return;
-        }
-        const time = new Date(sample.ts).toISOString().slice(11, 19);
-        process.stdout.write(
-          `${time} ${sample.bundleId} cpu ${formatPercent(sample.cpuPercent)} ` +
-            `mem ${formatMegabytes(sample.footprintBytes)} peak ${formatMegabytes(
-              sample.peakFootprintBytes,
-            )} ` +
-            `threads ${sample.threadCount} busiest ${formatThreads(sample.topThreads, 2)}\n`,
-        );
-      },
-      onError: (err) => {
-        this.warn(`Performance stream error: ${err.message}`);
-      },
-    });
-    await new Promise<void>((resolve) => {
-      const keepAlive = setInterval(() => {}, 1 << 30);
-      const shutdown = () => {
-        clearInterval(keepAlive);
-        resolve();
-      };
-      process.on('SIGINT', shutdown);
-      process.on('SIGTERM', shutdown);
-    });
-    stop();
+    let replayed = false;
+    let gap: ReturnType<typeof setTimeout> | undefined;
+    let stop = () => {};
+    // Keeps the process waiting for Ctrl+C while the stream reconnects.
+    const keepAlive = setInterval(() => {}, 1 << 30);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        stop = client.streamPerformance({
+          onSample: (sample) => {
+            if (!replayed) {
+              clearTimeout(gap);
+              gap = setTimeout(() => (replayed = true), REPLAY_GAP_MS);
+              if (Date.now() - sample.ts > CURRENT_MS) return;
+            }
+            if (app && sample.bundleId !== app) return;
+            this.printSample(sample, json);
+          },
+          onError: reject,
+        });
+        process.once('SIGINT', () => resolve());
+        process.once('SIGTERM', () => resolve());
+      });
+    } finally {
+      clearTimeout(gap);
+      clearInterval(keepAlive);
+      stop();
+    }
+  }
+
+  private printSample(sample: PerformanceSample, json: boolean): void {
+    if (json) {
+      this.outputEvent(sample);
+      return;
+    }
+    const time = new Date(sample.ts).toTimeString().slice(0, 8);
+    process.stdout.write(
+      `${time} ${sample.bundleId} cpu ${formatPercent(sample.cpuPercent)} ` +
+        `mem ${formatMegabytes(sample.footprintBytes)} peak ${formatMegabytes(sample.peakFootprintBytes)} ` +
+        `threads ${sample.threadCount} busiest ${formatThreads(sample.topThreads, 2)}\n`,
+    );
   }
 }

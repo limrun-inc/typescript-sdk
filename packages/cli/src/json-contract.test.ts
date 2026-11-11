@@ -905,6 +905,7 @@ describe('xcode test NDJSON', () => {
 });
 
 describe('ios perf', () => {
+  const NOW = 600_000;
   const sample = (ts: number, bundleId: string, cpuPercent: number) => ({
     ts,
     bundleId,
@@ -916,27 +917,36 @@ describe('ios perf', () => {
     threadCount: 3,
   });
   let emit: (sample: unknown) => void;
+  let fail: (error: Error) => void;
   let stop: jest.Mock;
   beforeEach(() => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ now: NOW });
     stop = jest.fn();
-    client.streamPerformance = jest.fn(({ onSample }) => {
+    client.streamPerformance = jest.fn(({ onSample, onError }) => {
       emit = onSample;
+      fail = onError;
       return stop;
     });
   });
+  const lines = () =>
+    stdout
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
 
-  test('prints the newest sample of each app from the replayed history', async () => {
+  test('prints the newest sample of each app once the replay burst ends', async () => {
     const run = command('ios/perf').run();
     await jest.advanceTimersByTimeAsync(0);
-    emit(sample(1000, 'com.example.app', 10));
-    emit(sample(1000, 'com.example.other', 5));
-    emit(sample(2000, 'com.example.app', 20));
-    await jest.advanceTimersByTimeAsync(1500);
+    emit(sample(NOW - 2000, 'com.example.app', 10));
+    emit(sample(NOW - 2000, 'com.example.other', 5));
+    // A replay slower than the first-sample timeout still arrives whole.
+    await jest.advanceTimersByTimeAsync(600);
+    emit(sample(NOW - 1000, 'com.example.app', 20));
+    await jest.advanceTimersByTimeAsync(5000);
     await run;
     expect(JSON.parse(stdout)).toEqual([
-      sample(2000, 'com.example.app', 20),
-      sample(1000, 'com.example.other', 5),
+      sample(NOW - 1000, 'com.example.app', 20),
+      sample(NOW - 2000, 'com.example.other', 5),
     ]);
     expect(stop).toHaveBeenCalled();
     expect(cleanup).toHaveBeenCalled();
@@ -949,42 +959,54 @@ describe('ios perf', () => {
     expect(JSON.parse(stdout)).toEqual([]);
   });
 
-  test('--since prints each summary with its samples', async () => {
-    const run = command('ios/perf', {}, { since: '1s' }).run();
+  test('--since prints each summary with the samples of its window', async () => {
+    const run = command('ios/perf', {}, { since: '2s' }).run();
     await jest.advanceTimersByTimeAsync(0);
-    for (const ts of [0, 1000, 2000]) emit(sample(ts, 'com.example.app', ts / 100));
-    await jest.advanceTimersByTimeAsync(1500);
+    for (const age of [3000, 1000, 500]) emit(sample(NOW - age, 'com.example.app', age / 100));
+    await jest.advanceTimersByTimeAsync(700);
     await run;
     expect(JSON.parse(stdout)).toEqual([
       expect.objectContaining({
         bundleId: 'com.example.app',
         samples: 2,
-        cpuPercent: { average: 15, max: 20 },
-        series: [sample(1000, 'com.example.app', 10), sample(2000, 'com.example.app', 20)],
+        cpuPercent: { average: 7.5, max: 10 },
+        series: [sample(NOW - 1000, 'com.example.app', 10), sample(NOW - 500, 'com.example.app', 5)],
       }),
     ]);
   });
 
-  test('--follow frames live samples as NDJSON and skips the replay', async () => {
-    const signals: Array<() => void> = [];
-    jest.spyOn(process, 'on').mockImplementation(((event: string, listener: () => void) => {
-      if (event === 'SIGINT') signals.push(listener);
-      return process;
-    }) as typeof process.on);
-    const run = command('ios/perf', {}, { follow: true }).run();
-    await jest.advanceTimersByTimeAsync(0);
-    emit(sample(1000, 'com.example.app', 10));
-    await jest.advanceTimersByTimeAsync(1500);
-    emit(sample(2000, 'com.example.app', 20));
-    emit(sample(3000, 'com.example.app', 30));
-    signals[0]!();
-    await run;
-    expect(
-      stdout
-        .trim()
-        .split('\n')
-        .map((line) => JSON.parse(line)),
-    ).toEqual([sample(2000, 'com.example.app', 20), sample(3000, 'com.example.app', 30)]);
-    expect(stop).toHaveBeenCalled();
+  describe('--follow', () => {
+    let signals: Array<() => void>;
+    beforeEach(() => {
+      signals = [];
+      jest.spyOn(process, 'once').mockImplementation(((event: string, listener: () => void) => {
+        if (event === 'SIGINT') signals.push(listener);
+        return process;
+      }) as typeof process.once);
+    });
+
+    test('frames current samples as NDJSON and skips older history', async () => {
+      const run = command('ios/perf', {}, { follow: true }).run();
+      await jest.advanceTimersByTimeAsync(0);
+      emit(sample(NOW - 60_000, 'com.example.app', 10));
+      emit(sample(NOW - 1000, 'com.example.app', 20));
+      await jest.advanceTimersByTimeAsync(700);
+      emit(sample(NOW + 1000, 'com.example.app', 30));
+      signals[0]!();
+      await run;
+      expect(lines()).toEqual([
+        sample(NOW - 1000, 'com.example.app', 20),
+        sample(NOW + 1000, 'com.example.app', 30),
+      ]);
+      expect(stop).toHaveBeenCalled();
+    });
+
+    test('fails when the stream is given up on', async () => {
+      const run = command('ios/perf', {}, { follow: true }).run();
+      await jest.advanceTimersByTimeAsync(0);
+      fail(new Error('stream lost'));
+      await expect(run).rejects.toThrow('stream lost');
+      expect(stdout).toBe('');
+    });
   });
 });
