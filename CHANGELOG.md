@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.71.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.70.2...v0.71.0) (2026-11-11)
+
+
+### Features
+
+* **cli:** add secret management and workload bindings ([9cdd99b](https://github.com/limrun-inc/typescript-sdk/commit/9cdd99b7f3ee2c75e16225653f39fb9ad3b63dc4))
+* **sdk:** add the terminating instance state ([199b7a0](https://github.com/limrun-inc/typescript-sdk/commit/199b7a0ad1a28dad2551f04d5b1fb99947b67f02))
+* **sdk:** add the terminating instance state ([29bc1e5](https://github.com/limrun-inc/typescript-sdk/commit/29bc1e594e52ab8929c3e1549d485b36442d9ea6))
+* stream and save iOS app performance samples ([6fdf91f](https://github.com/limrun-inc/typescript-sdk/commit/6fdf91fad1a7a9fd6c31d23182801609c90393e7))
+
+
+### Bug Fixes
+
+* **cli:** apply new secret bindings after removals ([d92806c](https://github.com/limrun-inc/typescript-sdk/commit/d92806cc989540ff5c9387a88eb28f0b14f268e2))
+* **cli:** keep stdin values out of positional argument parsing ([a9bdfc5](https://github.com/limrun-inc/typescript-sdk/commit/a9bdfc5cd6ef8a47520d072cf29fb4e26eeddddd))
+* give capture stops time to upload and tidy performance docs ([ee9fd29](https://github.com/limrun-inc/typescript-sdk/commit/ee9fd292d66afccd855f0300581b2363c3c54604))
+
+
+### Chores
+
+* **cli:** release 0.53.1 with SDK 0.70.2 ([d54dc6e](https://github.com/limrun-inc/typescript-sdk/commit/d54dc6ed1ed01f1a41b9d8d241451e17e824d332))
+
 ## [0.70.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.70.1...v0.70.2) (2026-11-10)
 
 
