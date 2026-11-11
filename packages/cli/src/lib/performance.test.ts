@@ -28,20 +28,22 @@ describe('performance samples', () => {
       ['com.example.app', 2000],
       ['com.example.old', 3000],
     ]);
-    expect(latestPerApp(latest, 'com.example.old')).toHaveLength(1);
   });
 
-  it('measures the window on the instance clock, back from the newest sample', () => {
+  it('keeps the samples taken within the window before now', () => {
     const samples = [0, 30_000, 60_000, 90_000, 120_000].map((ts) => sample(ts));
-    expect(samplesInWindow(samples, 60_000).map((s) => s.ts)).toEqual([60_000, 90_000, 120_000]);
+    expect(samplesInWindow(samples, 60_000, undefined, 120_000).map((s) => s.ts)).toEqual([90_000, 120_000]);
+    // Samples stay in the instance's buffer after every app stops; they are not recent.
+    expect(samplesInWindow(samples, 60_000, undefined, 600_000)).toEqual([]);
+    expect(samplesInWindow(samples, 60_000, 'com.example.other', 120_000)).toEqual([]);
   });
 
-  it('summarizes CPU and the peak across a relaunch', () => {
+  it('summarizes CPU and the highest memory in the window across a relaunch', () => {
     const [summary] = summarize([
-      sample(0),
-      sample(1000, { cpuPercent: 100 }),
+      // The process peaked at 500 MB before the window, so its lifetime peak is not the window's.
+      sample(0, { peakFootprintBytes: 500 * MB }),
+      sample(1000, { cpuPercent: 100, footprintBytes: 300 * MB, peakFootprintBytes: 500 * MB }),
       sample(2000, { cpuPercent: 300, peakFootprintBytes: 500 * MB }),
-      // A relaunch starts its own peak, so the window keeps the highest.
       sample(3000, { pid: 101, cpuPercent: 20, footprintBytes: 60 * MB, peakFootprintBytes: 60 * MB }),
     ]);
     expect(summary).toEqual({
@@ -50,7 +52,7 @@ describe('performance samples', () => {
       samples: 4,
       cpuPercent: { average: 140, max: 300 },
       footprintBytes: 60 * MB,
-      peakFootprintBytes: 500 * MB,
+      peakFootprintBytes: 300 * MB,
       threadCount: 12,
     });
   });

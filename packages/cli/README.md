@@ -385,7 +385,7 @@ and keeps the last ten minutes, so `lim ios perf` answers at once.
 # CPU, memory and its peak, threads, disk rates and busiest threads of each app
 lim ios perf
 
-# Average and highest CPU and peak memory over the last 2 minutes
+# Average and highest CPU and the highest memory over the last 2 minutes
 lim ios perf --app com.example.myapp --since 2m
 
 # Stream one line per app per second (Ctrl+C to stop)
