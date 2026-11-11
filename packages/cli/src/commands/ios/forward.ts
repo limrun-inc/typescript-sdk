@@ -26,7 +26,7 @@ export default class IosForward extends BaseCommand {
     'Use it for HTTP servers, WebDriverAgent, or WebSockets. The listener binds to 127.0.0.1 ' +
     'and stays running until Ctrl+C. Start the server in the simulator separately. ' +
     "The server must accept connections on the simulator's assigned IP, for example by binding to 0.0.0.0. " +
-    'Protocols where the server sends data first and UDP are not supported.';
+    'Older CLI or simulator versions require the client to send data first. UDP is not supported.';
   static examples = [
     '<%= config.bin %> ios forward 8100 --id <instance-ID>',
     '<%= config.bin %> ios forward 8080:3000 --id <instance-ID>',

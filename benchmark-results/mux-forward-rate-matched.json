@@ -1,0 +1,248 @@
+{
+  "timestamp": "2026-11-11T21:39:15.351Z",
+  "node": "v26.5.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "sdkCommit": "c6529835996fde326cb55033239ece283a6f8e41",
+  "description": "Loopback, no TLS or network delay; actual SDK and production Go RBE relay. guard-debug only disables construction of disabled debug arguments.",
+  "cases": [
+    {
+      "trial": 1,
+      "name": "mixed-100mibps",
+      "variant": "direct",
+      "count": 250,
+      "medianMs": 0.19733399999995527,
+      "p95Ms": 0.5596249999999827,
+      "p99Ms": 1.8091249999999945,
+      "bulkMiBps": 100.54250271171927,
+      "backend": {
+        "initialRssMiB": 49.359375,
+        "peakRssMiB": 51.875,
+        "rssIncreaseMiB": 2.515625,
+        "cpuMs": 102.806,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      }
+    },
+    {
+      "trial": 1,
+      "name": "mixed-100mibps",
+      "variant": "mux",
+      "count": 250,
+      "medianMs": 0.39587500000016007,
+      "p95Ms": 1.7120419999996557,
+      "p99Ms": 2.3397500000000946,
+      "bulkMiBps": 100.52776555428214,
+      "backend": {
+        "initialRssMiB": 49.515625,
+        "peakRssMiB": 51.75,
+        "rssIncreaseMiB": 2.234375,
+        "cpuMs": 89.592,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.5,
+        "peakRssMiB": 174.5625,
+        "rssIncreaseMiB": 104.0625,
+        "cpuMs": 265.742,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 1,
+      "name": "mixed-100mibps",
+      "variant": "guard-debug",
+      "count": 250,
+      "medianMs": 0.4043329999999514,
+      "p95Ms": 1.8025000000006912,
+      "p99Ms": 3.7751250000001164,
+      "bulkMiBps": 100.45115381864882,
+      "backend": {
+        "initialRssMiB": 49.59375,
+        "peakRssMiB": 51.953125,
+        "rssIncreaseMiB": 2.359375,
+        "cpuMs": 99.453,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.03125,
+        "peakRssMiB": 197.71875,
+        "rssIncreaseMiB": 127.6875,
+        "cpuMs": 277.567,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "mixed-100mibps",
+      "variant": "guard-debug",
+      "count": 250,
+      "medianMs": 0.4498750000002474,
+      "p95Ms": 1.534375000000182,
+      "p99Ms": 2.761333000000377,
+      "bulkMiBps": 100.6454861771986,
+      "backend": {
+        "initialRssMiB": 49.609375,
+        "peakRssMiB": 51.859375,
+        "rssIncreaseMiB": 2.25,
+        "cpuMs": 102.399,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.0625,
+        "peakRssMiB": 162.375,
+        "rssIncreaseMiB": 92.3125,
+        "cpuMs": 275.709,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "mixed-100mibps",
+      "variant": "mux",
+      "count": 250,
+      "medianMs": 0.4552499999990687,
+      "p95Ms": 1.503791999999521,
+      "p99Ms": 2.2669999999998254,
+      "bulkMiBps": 100.6038615374994,
+      "backend": {
+        "initialRssMiB": 49.421875,
+        "peakRssMiB": 51.859375,
+        "rssIncreaseMiB": 2.4375,
+        "cpuMs": 102.5,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.578125,
+        "peakRssMiB": 190.921875,
+        "rssIncreaseMiB": 120.34375,
+        "cpuMs": 287.054,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "mixed-100mibps",
+      "variant": "direct",
+      "count": 250,
+      "medianMs": 0.18570899999940593,
+      "p95Ms": 0.4943750000002183,
+      "p99Ms": 1.4782909999994445,
+      "bulkMiBps": 100.62467954795521,
+      "backend": {
+        "initialRssMiB": 49.4375,
+        "peakRssMiB": 51.84375,
+        "rssIncreaseMiB": 2.40625,
+        "cpuMs": 98.408,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 144.29296875
+      }
+    },
+    {
+      "trial": 3,
+      "name": "mixed-100mibps",
+      "variant": "direct",
+      "count": 250,
+      "medianMs": 0.17945900000086112,
+      "p95Ms": 0.36300000000119326,
+      "p99Ms": 1.3922079999993002,
+      "bulkMiBps": 100.94642535603698,
+      "backend": {
+        "initialRssMiB": 49.453125,
+        "peakRssMiB": 51.765625,
+        "rssIncreaseMiB": 2.3125,
+        "cpuMs": 97.152,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      }
+    },
+    {
+      "trial": 3,
+      "name": "mixed-100mibps",
+      "variant": "mux",
+      "count": 250,
+      "medianMs": 0.4093329999996058,
+      "p95Ms": 1.7373329999991256,
+      "p99Ms": 2.6797499999993306,
+      "bulkMiBps": 100.68245139249,
+      "backend": {
+        "initialRssMiB": 49.4375,
+        "peakRssMiB": 51.75,
+        "rssIncreaseMiB": 2.3125,
+        "cpuMs": 95.394,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.546875,
+        "peakRssMiB": 176.59375,
+        "rssIncreaseMiB": 106.046875,
+        "cpuMs": 290.329,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "mixed-100mibps",
+      "variant": "guard-debug",
+      "count": 250,
+      "medianMs": 0.42108399999960966,
+      "p95Ms": 1.613666999999623,
+      "p99Ms": 2.3116659999996045,
+      "bulkMiBps": 100.33246623779429,
+      "backend": {
+        "initialRssMiB": 49.859375,
+        "peakRssMiB": 51.984375,
+        "rssIncreaseMiB": 2.125,
+        "cpuMs": 99.559,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.4375,
+        "peakRssMiB": 167.46875,
+        "rssIncreaseMiB": 97.03125,
+        "cpuMs": 262.793,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    }
+  ],
+  "serverCommit": "0955e200a22ae56a50ec7520f5c29542cf0e227e",
+  "compiledTransportSha256": "796c08a56672ae4856925e0f3d1203d488a22901de59c3c5044f227b44ca2a69",
+  "methodology": {
+    "trials": 3,
+    "latency": "2000 sequential 1 KiB responses on an established connection after 50 warmups",
+    "bulk": "256 MiB per transfer; application checks complete byte count",
+    "mixed": "250 sequential 1 KiB requests, 5 ms pause between requests, concurrent 16 MiB downloads",
+    "mixed-100mibps": "same mixed workload, producer paced to 100 MiB/s in 1 MiB bursts",
+    "stalled-download": "128 MiB requested on a paused client socket; wait 1500 ms, probe a second flow",
+    "stalled-upload": "up to 128 MiB sent to a paused server socket; after 1000 ms probe a second flow with 1500 ms timeout",
+    "memory": "separate forwarder process, RSS and queued socket/WS bytes sampled every 10 ms; fresh process per case",
+    "limitations": "loopback, no TLS, no network delay, raw TCP workload not an actual Appium/Bazel session; RBE server only, Swift relay not benchmarked; debug guard is a benchmark-only loaded-module transform"
+  }
+}

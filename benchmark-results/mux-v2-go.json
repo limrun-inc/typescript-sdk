@@ -1,0 +1,979 @@
+{
+  "timestamp": "2026-11-11T22:20:42.421Z",
+  "node": "v26.5.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "sdkCommit": "c6529835996fde326cb55033239ece283a6f8e41",
+  "description": "Loopback without TLS or network delay. baseline is SDK c6529835; mux is the working-tree SDK. Both use the same production relay binary, negotiating v2 only for the new client.",
+  "serverKind": "go",
+  "simulatedRttMs": 0,
+  "simulatedLinkMiBps": 0,
+  "cases": [
+    {
+      "trial": 1,
+      "name": "latency",
+      "variant": "baseline",
+      "count": 2000,
+      "medianMs": 0.074416000000042,
+      "p95Ms": 0.15108300000002828,
+      "p99Ms": 0.19283300000000736,
+      "backend": {
+        "initialRssMiB": 49.703125,
+        "peakRssMiB": 54.234375,
+        "rssIncreaseMiB": 4.53125,
+        "cpuMs": 46.773,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 2.001953125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.40625,
+        "peakRssMiB": 74.8125,
+        "rssIncreaseMiB": 4.40625,
+        "cpuMs": 84.331,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 1,
+      "name": "latency",
+      "variant": "mux",
+      "count": 2000,
+      "medianMs": 0.08199999999999363,
+      "p95Ms": 0.11829199999999673,
+      "p99Ms": 0.1775000000000091,
+      "backend": {
+        "initialRssMiB": 49.578125,
+        "peakRssMiB": 54.171875,
+        "rssIncreaseMiB": 4.59375,
+        "cpuMs": 47.412,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 2.001953125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.546875,
+        "peakRssMiB": 75.921875,
+        "rssIncreaseMiB": 5.375,
+        "cpuMs": 87.387,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 1,
+      "name": "download",
+      "variant": "baseline",
+      "bytes": 268435456,
+      "elapsedMs": 116.86420800000019,
+      "MiBps": 2190.57660494306,
+      "backend": {
+        "initialRssMiB": 49.59375,
+        "peakRssMiB": 51.953125,
+        "rssIncreaseMiB": 2.359375,
+        "cpuMs": 46.015,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 256.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.671875,
+        "peakRssMiB": 152.75,
+        "rssIncreaseMiB": 82.078125,
+        "cpuMs": 226.306,
+        "peakSocketQueueMiB": 0.21875,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 1,
+      "name": "download",
+      "variant": "mux",
+      "bytes": 268435456,
+      "elapsedMs": 87.2545419999999,
+      "MiBps": 2933.944687945302,
+      "backend": {
+        "initialRssMiB": 49.59375,
+        "peakRssMiB": 51.828125,
+        "rssIncreaseMiB": 2.234375,
+        "cpuMs": 39.594,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 256.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 69.9375,
+        "peakRssMiB": 143.46875,
+        "rssIncreaseMiB": 73.53125,
+        "cpuMs": 206.202,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 1,
+      "name": "upload",
+      "variant": "baseline",
+      "bytes": 268435456,
+      "elapsedMs": 351.943583,
+      "MiBps": 727.3893100076781,
+      "backend": {
+        "initialRssMiB": 49.484375,
+        "peakRssMiB": 120.203125,
+        "rssIncreaseMiB": 70.71875,
+        "cpuMs": 83.379,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.203125,
+        "peakRssMiB": 179.3125,
+        "rssIncreaseMiB": 109.109375,
+        "cpuMs": 475.543,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 1,
+      "name": "upload",
+      "variant": "mux",
+      "bytes": 268435456,
+      "elapsedMs": 389.4669170000002,
+      "MiBps": 657.3087182139269,
+      "backend": {
+        "initialRssMiB": 49.703125,
+        "peakRssMiB": 123.953125,
+        "rssIncreaseMiB": 74.25,
+        "cpuMs": 92.545,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.546875,
+        "peakRssMiB": 154.5625,
+        "rssIncreaseMiB": 84.015625,
+        "cpuMs": 588.684,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0.06251811981201172,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 1,
+      "name": "mixed-100mibps",
+      "variant": "baseline",
+      "count": 250,
+      "medianMs": 0.3558330000000751,
+      "p95Ms": 1.079584000000068,
+      "p99Ms": 4.379625000000033,
+      "bulkMiBps": 100.38336249287025,
+      "backend": {
+        "initialRssMiB": 49.953125,
+        "peakRssMiB": 52.109375,
+        "rssIncreaseMiB": 2.15625,
+        "cpuMs": 86.83,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.609375,
+        "peakRssMiB": 186.59375,
+        "rssIncreaseMiB": 115.984375,
+        "cpuMs": 279.645,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 1,
+      "name": "mixed-100mibps",
+      "variant": "mux",
+      "count": 250,
+      "medianMs": 0.3605829999996786,
+      "p95Ms": 0.8432910000001357,
+      "p99Ms": 2.53637499999968,
+      "bulkMiBps": 100.45921893042673,
+      "backend": {
+        "initialRssMiB": 49.578125,
+        "peakRssMiB": 51.90625,
+        "rssIncreaseMiB": 2.328125,
+        "cpuMs": 84.006,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.234375,
+        "peakRssMiB": 107.0625,
+        "rssIncreaseMiB": 36.828125,
+        "cpuMs": 435.43,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 1,
+      "name": "stalled-download",
+      "variant": "baseline",
+      "count": 30,
+      "medianMs": 0.12716600000021572,
+      "p95Ms": 0.18891699999949196,
+      "p99Ms": 0.5230830000000424,
+      "requestedMiB": 128,
+      "backend": {
+        "initialRssMiB": 49.578125,
+        "peakRssMiB": 51.71875,
+        "rssIncreaseMiB": 2.140625,
+        "cpuMs": 34.388,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 128.078125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.921875,
+        "peakRssMiB": 293.109375,
+        "rssIncreaseMiB": 222.1875,
+        "cpuMs": 122.95,
+        "peakSocketQueueMiB": 126.57837295532227,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 1,
+      "name": "stalled-download",
+      "variant": "mux",
+      "count": 30,
+      "medianMs": 0.22154199999931734,
+      "p95Ms": 0.9215409999997064,
+      "p99Ms": 1.0167920000003505,
+      "requestedMiB": 128,
+      "backend": {
+        "initialRssMiB": 49.96875,
+        "peakRssMiB": 50.328125,
+        "rssIncreaseMiB": 0.359375,
+        "cpuMs": 17.36,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 3.703125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.625,
+        "peakRssMiB": 76.09375,
+        "rssIncreaseMiB": 5.46875,
+        "cpuMs": 28.131,
+        "peakSocketQueueMiB": 1.75,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 1,
+      "name": "stalled-upload",
+      "variant": "baseline",
+      "timedOut": true,
+      "error": "read timed out with 1024/1024 bytes remaining",
+      "acceptedMiB": 128,
+      "backend": {
+        "initialRssMiB": 50,
+        "peakRssMiB": 50.265625,
+        "rssIncreaseMiB": 0.265625,
+        "cpuMs": 20.835,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.625,
+        "peakRssMiB": 291.5,
+        "rssIncreaseMiB": 220.875,
+        "cpuMs": 242.482,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 126.53478240966797,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 1,
+      "name": "stalled-upload",
+      "variant": "mux",
+      "latencyMs": 1.0467919999991864,
+      "timedOut": false,
+      "acceptedMiB": 4.5,
+      "backend": {
+        "initialRssMiB": 49.6875,
+        "peakRssMiB": 50,
+        "rssIncreaseMiB": 0.3125,
+        "cpuMs": 11.741,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0.0498046875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.375,
+        "peakRssMiB": 79.203125,
+        "rssIncreaseMiB": 8.828125,
+        "cpuMs": 30.385,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "latency",
+      "variant": "mux",
+      "count": 2000,
+      "medianMs": 0.07970899999963876,
+      "p95Ms": 0.1419580000001588,
+      "p99Ms": 0.1665420000008453,
+      "backend": {
+        "initialRssMiB": 49.578125,
+        "peakRssMiB": 54.046875,
+        "rssIncreaseMiB": 4.46875,
+        "cpuMs": 44.467,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 2.001953125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.0625,
+        "peakRssMiB": 75.84375,
+        "rssIncreaseMiB": 5.78125,
+        "cpuMs": 84.772,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "latency",
+      "variant": "baseline",
+      "count": 2000,
+      "medianMs": 0.07058300000062445,
+      "p95Ms": 0.0930000000007567,
+      "p99Ms": 0.12008299999979499,
+      "backend": {
+        "initialRssMiB": 49.625,
+        "peakRssMiB": 54.109375,
+        "rssIncreaseMiB": 4.484375,
+        "cpuMs": 41.603,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 2.001953125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.875,
+        "peakRssMiB": 74.578125,
+        "rssIncreaseMiB": 3.703125,
+        "cpuMs": 76.896,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "download",
+      "variant": "mux",
+      "bytes": 268435456,
+      "elapsedMs": 132.03787499999999,
+      "MiBps": 1938.8376251889847,
+      "backend": {
+        "initialRssMiB": 49.71875,
+        "peakRssMiB": 51.875,
+        "rssIncreaseMiB": 2.15625,
+        "cpuMs": 46.114,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 256.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.25,
+        "peakRssMiB": 198.265625,
+        "rssIncreaseMiB": 128.015625,
+        "cpuMs": 266.769,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "download",
+      "variant": "baseline",
+      "bytes": 268435456,
+      "elapsedMs": 92.75749999999971,
+      "MiBps": 2759.8846454464683,
+      "backend": {
+        "initialRssMiB": 49.703125,
+        "peakRssMiB": 51.9375,
+        "rssIncreaseMiB": 2.234375,
+        "cpuMs": 37.656,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 256.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 69.984375,
+        "peakRssMiB": 139.09375,
+        "rssIncreaseMiB": 69.109375,
+        "cpuMs": 207.335,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "upload",
+      "variant": "mux",
+      "bytes": 268435456,
+      "elapsedMs": 354.66879100000006,
+      "MiBps": 721.8001879392878,
+      "backend": {
+        "initialRssMiB": 49.359375,
+        "peakRssMiB": 123.5625,
+        "rssIncreaseMiB": 74.203125,
+        "cpuMs": 85.012,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.53125,
+        "peakRssMiB": 139.5625,
+        "rssIncreaseMiB": 69.03125,
+        "cpuMs": 542.966,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "upload",
+      "variant": "baseline",
+      "bytes": 268435456,
+      "elapsedMs": 368.22491699999955,
+      "MiBps": 695.2272597022551,
+      "backend": {
+        "initialRssMiB": 49.65625,
+        "peakRssMiB": 119.609375,
+        "rssIncreaseMiB": 69.953125,
+        "cpuMs": 85.821,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.375,
+        "peakRssMiB": 175.5625,
+        "rssIncreaseMiB": 105.1875,
+        "cpuMs": 489.809,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "mixed-100mibps",
+      "variant": "mux",
+      "count": 250,
+      "medianMs": 0.39654200000040873,
+      "p95Ms": 1.022333000000799,
+      "p99Ms": 2.7912079999987327,
+      "bulkMiBps": 100.37365397549878,
+      "backend": {
+        "initialRssMiB": 49.59375,
+        "peakRssMiB": 51.84375,
+        "rssIncreaseMiB": 2.25,
+        "cpuMs": 91.349,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.5,
+        "peakRssMiB": 105.28125,
+        "rssIncreaseMiB": 34.78125,
+        "cpuMs": 504.573,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "mixed-100mibps",
+      "variant": "baseline",
+      "count": 250,
+      "medianMs": 0.32154200000150013,
+      "p95Ms": 0.867207999999664,
+      "p99Ms": 1.6112500000017462,
+      "bulkMiBps": 100.7115242753277,
+      "backend": {
+        "initialRssMiB": 49.640625,
+        "peakRssMiB": 52,
+        "rssIncreaseMiB": 2.359375,
+        "cpuMs": 86.923,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.421875,
+        "peakRssMiB": 161.390625,
+        "rssIncreaseMiB": 90.96875,
+        "cpuMs": 264.883,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "stalled-download",
+      "variant": "mux",
+      "count": 30,
+      "medianMs": 0.1850830000003043,
+      "p95Ms": 0.3085419999988517,
+      "p99Ms": 0.5449999999982538,
+      "requestedMiB": 128,
+      "backend": {
+        "initialRssMiB": 49.734375,
+        "peakRssMiB": 50.109375,
+        "rssIncreaseMiB": 0.375,
+        "cpuMs": 18.103,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 8.890625
+      },
+      "forwarder": {
+        "initialRssMiB": 70.140625,
+        "peakRssMiB": 82.1875,
+        "rssIncreaseMiB": 12.046875,
+        "cpuMs": 34.03,
+        "peakSocketQueueMiB": 3.7967262268066406,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "stalled-download",
+      "variant": "baseline",
+      "count": 30,
+      "medianMs": 0.14574999999967986,
+      "p95Ms": 0.47104200000103447,
+      "p99Ms": 2.9689159999979893,
+      "requestedMiB": 128,
+      "backend": {
+        "initialRssMiB": 49.59375,
+        "peakRssMiB": 51.828125,
+        "rssIncreaseMiB": 2.234375,
+        "cpuMs": 33.094,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 128.078125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.4375,
+        "peakRssMiB": 292.84375,
+        "rssIncreaseMiB": 222.40625,
+        "cpuMs": 124.099,
+        "peakSocketQueueMiB": 126.71875,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "stalled-upload",
+      "variant": "mux",
+      "latencyMs": 0.5712080000012065,
+      "timedOut": false,
+      "acceptedMiB": 3.3125,
+      "backend": {
+        "initialRssMiB": 49.515625,
+        "peakRssMiB": 49.953125,
+        "rssIncreaseMiB": 0.4375,
+        "cpuMs": 10.35,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0.0498046875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.5625,
+        "peakRssMiB": 79.328125,
+        "rssIncreaseMiB": 8.765625,
+        "cpuMs": 28.108,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 2,
+      "name": "stalled-upload",
+      "variant": "baseline",
+      "timedOut": true,
+      "error": "read timed out with 1024/1024 bytes remaining",
+      "acceptedMiB": 128,
+      "backend": {
+        "initialRssMiB": 49.921875,
+        "peakRssMiB": 50.234375,
+        "rssIncreaseMiB": 0.3125,
+        "cpuMs": 22.566,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 71.1875,
+        "peakRssMiB": 291.46875,
+        "rssIncreaseMiB": 220.28125,
+        "cpuMs": 255.936,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 126.53478240966797,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "latency",
+      "variant": "baseline",
+      "count": 2000,
+      "medianMs": 0.06820900000093388,
+      "p95Ms": 0.13858299999992596,
+      "p99Ms": 0.1565840000002936,
+      "backend": {
+        "initialRssMiB": 49.484375,
+        "peakRssMiB": 53.90625,
+        "rssIncreaseMiB": 4.421875,
+        "cpuMs": 40.977,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 2.001953125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.53125,
+        "peakRssMiB": 74.640625,
+        "rssIncreaseMiB": 4.109375,
+        "cpuMs": 76.024,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "latency",
+      "variant": "mux",
+      "count": 2000,
+      "medianMs": 0.08141599999726168,
+      "p95Ms": 0.1060829999987618,
+      "p99Ms": 0.13249999999970896,
+      "backend": {
+        "initialRssMiB": 49.671875,
+        "peakRssMiB": 54.125,
+        "rssIncreaseMiB": 4.453125,
+        "cpuMs": 45.553,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 2.001953125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.03125,
+        "peakRssMiB": 75.984375,
+        "rssIncreaseMiB": 5.953125,
+        "cpuMs": 85.445,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "download",
+      "variant": "baseline",
+      "bytes": 268435456,
+      "elapsedMs": 90.45170800000051,
+      "MiBps": 2830.239535111914,
+      "backend": {
+        "initialRssMiB": 49.578125,
+        "peakRssMiB": 51.8125,
+        "rssIncreaseMiB": 2.234375,
+        "cpuMs": 36.835,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 256.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.984375,
+        "peakRssMiB": 167.28125,
+        "rssIncreaseMiB": 96.296875,
+        "cpuMs": 186.679,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "download",
+      "variant": "mux",
+      "bytes": 268435456,
+      "elapsedMs": 89.36137500000041,
+      "MiBps": 2864.7723918751117,
+      "backend": {
+        "initialRssMiB": 49.515625,
+        "peakRssMiB": 51.84375,
+        "rssIncreaseMiB": 2.328125,
+        "cpuMs": 41.1,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 256.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.5625,
+        "peakRssMiB": 146.8125,
+        "rssIncreaseMiB": 76.25,
+        "cpuMs": 223.908,
+        "peakSocketQueueMiB": 9.8125,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "upload",
+      "variant": "baseline",
+      "bytes": 268435456,
+      "elapsedMs": 331.1936249999999,
+      "MiBps": 772.9617380165457,
+      "backend": {
+        "initialRssMiB": 49.59375,
+        "peakRssMiB": 123.359375,
+        "rssIncreaseMiB": 73.765625,
+        "cpuMs": 89.117,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.15625,
+        "peakRssMiB": 175.53125,
+        "rssIncreaseMiB": 105.375,
+        "cpuMs": 457.702,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "upload",
+      "variant": "mux",
+      "bytes": 268435456,
+      "elapsedMs": 334.0909589999974,
+      "MiBps": 766.258388931746,
+      "backend": {
+        "initialRssMiB": 49.515625,
+        "peakRssMiB": 118.734375,
+        "rssIncreaseMiB": 69.21875,
+        "cpuMs": 78.031,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.34375,
+        "peakRssMiB": 115.34375,
+        "rssIncreaseMiB": 45,
+        "cpuMs": 528.664,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "mixed-100mibps",
+      "variant": "baseline",
+      "count": 250,
+      "medianMs": 0.41554099999848404,
+      "p95Ms": 1.2571250000000873,
+      "p99Ms": 2.677124999998341,
+      "bulkMiBps": 100.52463385461834,
+      "backend": {
+        "initialRssMiB": 49.65625,
+        "peakRssMiB": 51.96875,
+        "rssIncreaseMiB": 2.3125,
+        "cpuMs": 102.485,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      },
+      "forwarder": {
+        "initialRssMiB": 71.140625,
+        "peakRssMiB": 152.15625,
+        "rssIncreaseMiB": 81.015625,
+        "cpuMs": 325.588,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "mixed-100mibps",
+      "variant": "mux",
+      "count": 250,
+      "medianMs": 0.4012079999993148,
+      "p95Ms": 0.9273749999993015,
+      "p99Ms": 2.867833000000246,
+      "bulkMiBps": 100.24428014877529,
+      "backend": {
+        "initialRssMiB": 49.609375,
+        "peakRssMiB": 51.875,
+        "rssIncreaseMiB": 2.265625,
+        "cpuMs": 94.377,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 160.29296875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.21875,
+        "peakRssMiB": 104.28125,
+        "rssIncreaseMiB": 34.0625,
+        "cpuMs": 559.48,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "stalled-download",
+      "variant": "baseline",
+      "count": 30,
+      "medianMs": 0.13916700000117999,
+      "p95Ms": 0.33416700000088895,
+      "p99Ms": 2.600750000005064,
+      "requestedMiB": 128,
+      "backend": {
+        "initialRssMiB": 49.609375,
+        "peakRssMiB": 51.71875,
+        "rssIncreaseMiB": 2.109375,
+        "cpuMs": 34.649,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 128.078125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.8125,
+        "peakRssMiB": 292.875,
+        "rssIncreaseMiB": 222.0625,
+        "cpuMs": 134.346,
+        "peakSocketQueueMiB": 126.5938491821289,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "stalled-download",
+      "variant": "mux",
+      "count": 30,
+      "medianMs": 0.2835419999973965,
+      "p95Ms": 0.49041700000088895,
+      "p99Ms": 0.8077080000002752,
+      "requestedMiB": 128,
+      "backend": {
+        "initialRssMiB": 49.71875,
+        "peakRssMiB": 50.203125,
+        "rssIncreaseMiB": 0.484375,
+        "cpuMs": 17.243,
+        "peakSocketQueueMiB": 0.0625,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 13.578125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.234375,
+        "peakRssMiB": 82.5,
+        "rssIncreaseMiB": 12.265625,
+        "cpuMs": 32.821,
+        "peakSocketQueueMiB": 4,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "stalled-upload",
+      "variant": "baseline",
+      "timedOut": true,
+      "error": "read timed out with 1024/1024 bytes remaining",
+      "acceptedMiB": 128,
+      "backend": {
+        "initialRssMiB": 49.59375,
+        "peakRssMiB": 49.921875,
+        "rssIncreaseMiB": 0.328125,
+        "cpuMs": 23.514,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0.048828125
+      },
+      "forwarder": {
+        "initialRssMiB": 70.609375,
+        "peakRssMiB": 290.953125,
+        "rssIncreaseMiB": 220.34375,
+        "cpuMs": 244.098,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 126.53478240966797,
+        "totalEnqueuedMiB": 0
+      }
+    },
+    {
+      "trial": 3,
+      "name": "stalled-upload",
+      "variant": "mux",
+      "latencyMs": 1.5004160000025877,
+      "timedOut": false,
+      "acceptedMiB": 4.75,
+      "backend": {
+        "initialRssMiB": 49.53125,
+        "peakRssMiB": 49.921875,
+        "rssIncreaseMiB": 0.390625,
+        "cpuMs": 11.65,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0.0498046875
+      },
+      "forwarder": {
+        "initialRssMiB": 70.015625,
+        "peakRssMiB": 79,
+        "rssIncreaseMiB": 8.984375,
+        "cpuMs": 22.399,
+        "peakSocketQueueMiB": 0,
+        "peakWsQueueMiB": 0,
+        "totalEnqueuedMiB": 0
+      }
+    }
+  ]
+}
