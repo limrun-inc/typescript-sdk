@@ -37,6 +37,7 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create --tunnel staging',
     "<%= config.bin %> ios create --blocked-domain facebook.com --blocked-domain '*.facebook.com'",
     '<%= config.bin %> ios create --record --events --app-logs com.example.myapp --persist-ttl 24h',
+    '<%= config.bin %> ios create --perf --persist-ttl 24h',
   ];
 
   static args = {
@@ -156,9 +157,14 @@ export default class IosCreate extends BaseCommand {
         'Start a persisted event log capture (taps, scrolls, commands) as soon as the instance is ready. List results with `lim ios events`.',
       default: false,
     }),
+    perf: Flags.boolean({
+      description:
+        'Save the CPU and memory of the apps you install, sampled once a second, from the moment the instance is ready. List results with `lim ios perf-captures`; read live figures any time with `lim ios perf`.',
+      default: false,
+    }),
     'persist-ttl': Flags.string({
       description:
-        'How long captures started by --record, --app-logs, and --events are kept, as a duration like 72h or 90m.',
+        'How long captures started by --record, --app-logs, --events, and --perf are kept, as a duration like 72h or 90m.',
       default: '72h',
     }),
   };
@@ -181,7 +187,7 @@ export default class IosCreate extends BaseCommand {
     if (args.xcodeId && !flags.attach) {
       this.error('Xcode target argument requires --attach.');
     }
-    const wantsCaptures = flags.record || Boolean(flags['app-logs']) || flags.events;
+    const wantsCaptures = flags.record || Boolean(flags['app-logs']) || flags.events || flags.perf;
     // Parsed before the instance is created so a bad TTL fails before billing.
     const captureTtlSeconds = wantsCaptures ? parseDurationSeconds(flags['persist-ttl']) : 0;
     const hasKeychainInitialAssets = Boolean(flags.keychain?.length || flags['keychain-url']?.length);
@@ -286,6 +292,7 @@ export default class IosCreate extends BaseCommand {
             record: flags.record,
             appLogsBundleId: flags['app-logs'],
             events: flags.events,
+            performance: flags.perf,
             ttlSeconds: captureTtlSeconds,
           });
           for (const capture of started) {
