@@ -424,6 +424,33 @@ lim ios sync ./MyApp.app --watch --launch-mode RelaunchIfRunning
 lim ios sync ./MyApp.app --basis-cache-dir ./.limsync-cache
 ```
 
+#### Forward a simulator port
+
+Reach a server running inside the simulator through a local TCP port:
+
+```bash
+lim ios forward 8100 --id <instance-ID>
+# In another terminal, while WebDriverAgent is running in the simulator:
+curl http://127.0.0.1:8100/status
+
+# Local port 8080 forwards to simulator port 3000.
+lim ios forward 8080:3000 --id <instance-ID>
+
+# Choose an available local port and print it as JSON.
+lim ios forward 0:8100 --id <instance-ID> --json
+```
+
+A single port uses that port on both sides. The local listener binds to `127.0.0.1`.
+The command stays running until Ctrl+C, including with `--json`, and closes its
+connections when it exits. Start the server inside the simulator separately and
+bind it to the simulator's assigned IP or `0.0.0.0`. A server bound only to
+`127.0.0.1` inside the simulator is not reachable through this forward.
+
+HTTP and WebSocket clients connect without adding a Limrun authorization header.
+The forward carries TCP protocols where the client sends data first; UDP and
+protocols where the server sends first are not supported. `lim ios tunnel` and
+`lim ios reverse` expose services on your machine to the simulator instead.
+
 #### Maestro (iOS only)
 
 Run the locally installed [Maestro](https://docs.maestro.dev) CLI against a remote
