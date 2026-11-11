@@ -376,6 +376,26 @@ lim ios syslog
 lim ios syslog --json
 ```
 
+#### App Performance (iOS only)
+
+The instance samples the CPU and memory of every app you install once a second
+and keeps the last ten minutes, so `lim ios perf` answers at once.
+
+```bash
+# CPU, memory and its peak, threads, disk rates and busiest threads of each app
+lim ios perf
+
+# Average and highest CPU and peak memory over the last 2 minutes
+lim ios perf --app com.example.myapp --since 2m
+
+# Stream one line per app per second (Ctrl+C to stop)
+lim ios perf --follow
+
+# Save the samples of a whole session, then list the saved files
+lim ios create --perf --persist-ttl 24h
+lim ios perf-captures
+```
+
 #### Video Recording
 
 On iOS, recordings include touch ripples and drag trails by default. Use
