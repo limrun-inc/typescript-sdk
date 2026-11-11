@@ -11,6 +11,9 @@ type DeviceInfo = {
   screenWidth: number;
   screenHeight: number;
   model: string;
+  orientation?: string;
+  displayWidth?: number;
+  displayHeight?: number;
 };
 
 export default class IosInfo extends BaseCommand {
@@ -52,7 +55,7 @@ export default class IosInfo extends BaseCommand {
       } else {
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         try {
-          info = (client as unknown as { deviceInfo: DeviceInfo }).deviceInfo;
+          info = await client.getDeviceInfo();
         } finally {
           disconnect();
         }
@@ -68,6 +71,9 @@ export default class IosInfo extends BaseCommand {
             ['Model', info.model],
             ['Screen Width', String(info.screenWidth)],
             ['Screen Height', String(info.screenHeight)],
+            ...(info.orientation ? [['Orientation', info.orientation]] : []),
+            ...(info.displayWidth !== undefined ? [['Display Width', String(info.displayWidth)]] : []),
+            ...(info.displayHeight !== undefined ? [['Display Height', String(info.displayHeight)]] : []),
           ],
         );
       }

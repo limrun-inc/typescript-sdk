@@ -20,6 +20,10 @@ export default class IosElementTree extends BaseCommand {
 
   static flags = {
     ...BaseCommand.baseFlags,
+    'visible-only': Flags.boolean({
+      description: 'Skip offscreen branches while reading the tree. The default reads the full tree.',
+      default: false,
+    }),
     id: Flags.string({
       description: 'iOS instance ID to inspect. Defaults to the last created iOS instance.',
     }),
@@ -37,7 +41,7 @@ export default class IosElementTree extends BaseCommand {
       }
 
       if (await ensureDaemonSession(resolvedInstance)) {
-        const tree = await sendSessionCommand(id, 'element-tree');
+        const tree = await sendSessionCommand(id, 'element-tree', [{ visibleOnly: flags['visible-only'] }]);
         if (flags.json) {
           this.outputJson(tree);
         } else {
@@ -48,7 +52,7 @@ export default class IosElementTree extends BaseCommand {
 
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        const tree = await client.elementTree();
+        const tree = await client.elementTree(undefined, { visibleOnly: flags['visible-only'] });
         if (flags.json) {
           this.outputJson(tree);
         } else {

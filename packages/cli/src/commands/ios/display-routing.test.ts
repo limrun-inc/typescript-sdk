@@ -1,4 +1,6 @@
 import IosPerform from './perform';
+import IosElementTree from './element-tree';
+import IosInfo from './info';
 import IosScroll from './scroll';
 import IosSwipe from './swipe';
 import IosRecord from './record';
@@ -15,11 +17,19 @@ jest.mock('../../lib/instance-client-factory', () => ({
 }));
 
 function setup(
-  Command: typeof IosPerform | typeof IosScroll | typeof IosSwipe | typeof IosRecord,
+  Command:
+    | typeof IosPerform
+    | typeof IosScroll
+    | typeof IosSwipe
+    | typeof IosRecord
+    | typeof IosElementTree
+    | typeof IosInfo,
   display?: string,
   daemon = false,
 ) {
   const client = {
+    elementTree: jest.fn().mockResolvedValue([]),
+    getDeviceInfo: jest.fn().mockResolvedValue({ orientation: 'landscapeRight' }),
     startRecordingSession: jest.fn().mockResolvedValue('run-1'),
     scroll: jest.fn().mockResolvedValue(undefined),
     performActions: jest.fn().mockResolvedValue({ results: [] }),
@@ -44,6 +54,7 @@ function setup(
     withAuth: async (run: () => Promise<void>) => run(),
     resolveIosInstance: () => ({ id: 'ios_test' }),
     log: jest.fn(),
+    outputJson: jest.fn(),
   });
   Object.defineProperty(command, 'client', { value: {} });
   return { command, client, disconnect, flags };
@@ -116,5 +127,37 @@ describe('record options', () => {
     const { Parser } = await import('@oclif/core');
     const parsed = await Parser.parse([...argv], { flags: IosRecord.flags, args: IosRecord.args });
     expect(parsed.flags['touch-indicators']).toBe(expected);
+  });
+});
+
+describe('accessibility and device info', () => {
+  test.each([false, true])('forwards visible-only with daemon=%s', async (daemon) => {
+    const { command, client, flags } = setup(IosElementTree, undefined, daemon);
+    Object.assign(flags, { 'visible-only': true });
+    await command.run();
+    if (daemon) {
+      expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'element-tree', [{ visibleOnly: true }]);
+    } else {
+      expect(client.elementTree).toHaveBeenCalledWith(undefined, { visibleOnly: true });
+    }
+  });
+
+  test('tree pruning is disabled unless requested', async () => {
+    const { Parser } = await import('@oclif/core');
+    const parsed = await Parser.parse([], { flags: IosElementTree.flags, args: IosElementTree.args });
+    expect(parsed.flags['visible-only']).toBe(false);
+  });
+
+  test.each([false, true])('fetches current device info with daemon=%s', async (daemon) => {
+    const { command, client, flags } = setup(IosInfo, undefined, daemon);
+    Object.assign(flags, { json: true });
+    await command.run();
+    if (daemon) {
+      expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'device-info');
+    } else {
+      expect(client.getDeviceInfo).toHaveBeenCalledTimes(1);
+      expect(command.outputJson).toHaveBeenCalledWith({ orientation: 'landscapeRight' });
+    }
+    expect(client.elementTree).not.toHaveBeenCalled();
   });
 });
