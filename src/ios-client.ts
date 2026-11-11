@@ -1108,7 +1108,7 @@ export type InstanceClient = {
    * {@link streamAppLogCapture}, except that a gap longer than the replay
    * window loses the samples in between.
    */
-  streamPerformance: (handlers: Omit<PerformanceStreamOptions, 'apiUrl' | 'token'>) => () => void;
+  streamPerformance: (handlers: PerformanceStreamHandlers) => () => void;
 
   /**
    * Play an audio file as the simulator's microphone input. Stage the file on
@@ -1811,6 +1811,9 @@ export type PerformanceStreamOptions = {
    */
   onError?: ((error: Error) => void) | undefined;
 };
+
+/** What a performance stream reports to, without the instance's address. */
+export type PerformanceStreamHandlers = Omit<PerformanceStreamOptions, 'apiUrl' | 'token'>;
 
 /**
  * Tails the running apps' {@link PerformanceSample}s with only the instance's apiUrl and token,
@@ -2979,9 +2982,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       onError?: (error: Error) => void;
     }): (() => void) => tailSession('events', handlers.onEvent, handlers.onError);
 
-    const streamClientPerformance = (
-      handlers: Omit<PerformanceStreamOptions, 'apiUrl' | 'token'>,
-    ): (() => void) => streamPerformance({ ...handlers, apiUrl: options.apiUrl, token: options.token });
+    const streamClientPerformance = (handlers: PerformanceStreamHandlers): (() => void) =>
+      streamPerformance({ ...handlers, apiUrl: options.apiUrl, token: options.token });
 
     const stopRecording = async (saveTo: { presignedUrl?: string; localPath?: string }): Promise<string> => {
       await sendRequest<void>('stopVideoRecording', {

@@ -537,6 +537,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const onInspectSelectionChangeRef = useRef(onInspectSelectionChange);
     onInspectSelectionChangeRef.current = onInspectSelectionChange;
     const inspectActive = inspectMode === true || inspectMode === 'hover-only';
+    const inspectActiveRef = useRef(inspectActive);
+    inspectActiveRef.current = inspectActive;
     const inspectModeResolved: InspectMode = inspectMode === 'hover-only' ? 'hover-only' : 'select';
 
     const platform = useMemo(() => detectPlatform(url), [url]);
@@ -1716,6 +1718,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // The InfoCard places itself in viewport coordinates from pointer events
     // directly, so no viewport-space origin is needed in the geometry.
     const recomputeOverlayGeometry = () => {
+      // Only the inspect overlay draws it, so resizes skip it until inspection starts.
+      if (!inspectActiveRef.current) return;
       const ctx = computeVideoMappingContext();
       if (!ctx) {
         setOverlayGeometry(null);
@@ -1844,9 +1848,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       };
     }, [config, frameVisible, url, deviceModel]);
 
-    // Reset overlay selection when inspection is disabled.
+    // Reset overlay selection when inspection is disabled; place the overlay when it starts.
     useEffect(() => {
-      if (!inspectActive) {
+      if (inspectActive) {
+        recomputeOverlayGeometry();
+      } else {
         setAxSnapshot(null);
         setAxHighlightedId(null);
         setAxSelectedId(null);
