@@ -11,7 +11,9 @@
  * instance) would otherwise retry silently for good. Proof of life — a
  * delivered entry, a keepalive comment, or a clean connection that stays
  * open healthyConnectionMs — resets the give-up clock; once the stream stays
- * broken past giveUpAfterMs, onError fires once and the stream closes.
+ * broken past giveUpAfterMs, onError fires once and the stream closes. A
+ * 404 closes it at once: the router answers it for a missing or terminating
+ * instance, and a runtime answers it for a stream it does not serve.
  */
 
 import { createEventSource, type EventSourceMessage } from 'eventsource-client';
@@ -23,6 +25,15 @@ import type { Fetch } from './builtin-types';
 /** The session stream kept failing past the give-up window; it has been closed. */
 export class SessionStreamLostError extends Error {}
 
+/**
+ * The session stream answered 404 and has been closed: the instance is gone or terminating,
+ * or its runtime predates the stream.
+ */
+export class SessionStreamNotFoundError extends SessionStreamLostError {}
+
+/** The SSE event the iOS runtime sends after replaying its buffer. */
+const REPLAYED_EVENT = 'replayed';
+
 export interface SessionStreamOptions<T extends { ts: number }> {
   /** Full URL of the runtime SSE endpoint, without credentials. */
   url: string;
@@ -30,6 +41,11 @@ export interface SessionStreamOptions<T extends { ts: number }> {
   token: string;
   /** Called once per delivered entry, in stream order. */
   onEntry: (entry: T) => void;
+  /**
+   * Called when the runtime has replayed its buffer, so later entries are live. Android and
+   * older iOS runtimes never call it.
+   */
+  onReplayed?: (() => void) | undefined;
   /** Called at most once, when the stream is given up on and closed. */
   onError?: ((error: Error) => void) | undefined;
 }
@@ -49,6 +65,7 @@ export function streamSessionEntries<T extends { ts: number }>(options: SessionS
   let proofOfLifeThisCycle = false;
   let cleanResponseThisCycle = false;
   let lastStreamError: Error | undefined;
+  let notFound = false;
 
   const fail = (error: Error) => {
     if (closed) return;
@@ -68,6 +85,7 @@ export function streamSessionEntries<T extends { ts: number }>(options: SessionS
     if (!response.ok) {
       lastStreamError = new Error(`server answered HTTP ${response.status}`);
     }
+    notFound = response.status === 404;
     cleanResponseThisCycle = response.ok;
     return response;
   };
@@ -90,6 +108,15 @@ export function streamSessionEntries<T extends { ts: number }>(options: SessionS
     // give-up clock runs.
     onScheduleReconnect: () => {
       if (closed) return;
+      if (notFound) {
+        fail(
+          new SessionStreamNotFoundError(
+            `session stream to ${options.url} answered HTTP 404: the instance no longer exists, ` +
+              'or its runtime does not serve this stream',
+          ),
+        );
+        return;
+      }
       const now = Date.now();
       const mono = performance.now();
       const livedMs = connectedAt > 0 ? now - connectedAt : 0;
@@ -136,6 +163,10 @@ export function streamSessionEntries<T extends { ts: number }>(options: SessionS
       deadSince = 0;
       proofOfLifeThisCycle = true;
       lastStreamError = undefined;
+      if (message.event === REPLAYED_EVENT) {
+        options.onReplayed?.();
+        return;
+      }
       const data = typeof message.data === 'string' ? message.data : String(message.data ?? '');
       let parsed: unknown;
       try {
