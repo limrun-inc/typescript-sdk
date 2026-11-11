@@ -11,9 +11,11 @@
  * instance) would otherwise retry silently for good. Proof of life — a
  * delivered entry, a keepalive comment, or a clean connection that stays
  * open healthyConnectionMs — resets the give-up clock; once the stream stays
- * broken past giveUpAfterMs, onError fires once and the stream closes. A
- * 404 closes it at once: the router answers it for a missing or terminating
- * instance, and a runtime answers it for a stream it does not serve.
+ * broken past giveUpAfterMs, onError fires once and the stream closes. Like
+ * the exec client, a client error other than 408 and 429, or a 204, closes it
+ * at once: the router answers 404 for a missing or terminating instance and
+ * 403 for a token that does not match, and a runtime answers 404 for a stream
+ * it does not serve.
  */
 
 import { createEventSource, type EventSourceMessage } from 'eventsource-client';
@@ -22,14 +24,24 @@ import { nodeProxyTransport } from './proxy-transport';
 import { sseFetch } from './sse-fetch';
 import type { Fetch } from './builtin-types';
 
-/** The session stream kept failing past the give-up window; it has been closed. */
-export class SessionStreamLostError extends Error {}
+/** The session stream failed for good and has been closed. */
+export class SessionStreamLostError extends Error {
+  override name = 'SessionStreamLostError';
+}
 
 /**
- * The session stream answered 404 and has been closed: the instance is gone or terminating,
- * or its runtime predates the stream.
+ * The session stream was refused with `status` and has been closed. A 404 means the instance is
+ * gone or terminating, or its runtime predates the stream.
  */
-export class SessionStreamNotFoundError extends SessionStreamLostError {}
+export class SessionStreamRejectedError extends SessionStreamLostError {
+  override name = 'SessionStreamRejectedError';
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
 
 /** The SSE event the iOS runtime sends after replaying its buffer. */
 const REPLAYED_EVENT = 'replayed';
@@ -42,11 +54,14 @@ export interface SessionStreamOptions<T extends { ts: number }> {
   /** Called once per delivered entry, in stream order. */
   onEntry: (entry: T) => void;
   /**
-   * Called when the runtime has replayed its buffer, so later entries are live. Android and
-   * older iOS runtimes never call it.
+   * Called after each connection's replay, the first and every reconnect, so later entries are
+   * live. Android and older iOS runtimes never call it.
    */
   onReplayed?: (() => void) | undefined;
-  /** Called at most once, when the stream is given up on and closed. */
+  /**
+   * Called at most once, when the stream closes for good: at once on a refusal, or after the
+   * give-up window when it stays unreachable.
+   */
   onError?: ((error: Error) => void) | undefined;
 }
 
@@ -65,7 +80,6 @@ export function streamSessionEntries<T extends { ts: number }>(options: SessionS
   let proofOfLifeThisCycle = false;
   let cleanResponseThisCycle = false;
   let lastStreamError: Error | undefined;
-  let notFound = false;
 
   const fail = (error: Error) => {
     if (closed) return;
@@ -82,10 +96,19 @@ export function streamSessionEntries<T extends { ts: number }>(options: SessionS
   // transient refusal does not kill a live stream.
   const fetchWithStreamPolicy: Fetch = async (input, init) => {
     const response = await nodeProxyTransport.fetch(input, init);
-    if (!response.ok) {
-      lastStreamError = new Error(`server answered HTTP ${response.status}`);
+    const status = response.status;
+    if (status === 204 || (status >= 400 && status < 500 && status !== 408 && status !== 429)) {
+      const reason =
+        status === 404 ? ': the instance no longer exists, or its runtime does not serve this stream' : '';
+      fail(
+        new SessionStreamRejectedError(
+          `session stream to ${options.url} answered HTTP ${status}${reason}`,
+          status,
+        ),
+      );
+    } else if (!response.ok) {
+      lastStreamError = new Error(`server answered HTTP ${status}`);
     }
-    notFound = response.status === 404;
     cleanResponseThisCycle = response.ok;
     return response;
   };
@@ -108,15 +131,6 @@ export function streamSessionEntries<T extends { ts: number }>(options: SessionS
     // give-up clock runs.
     onScheduleReconnect: () => {
       if (closed) return;
-      if (notFound) {
-        fail(
-          new SessionStreamNotFoundError(
-            `session stream to ${options.url} answered HTTP 404: the instance no longer exists, ` +
-              'or its runtime does not serve this stream',
-          ),
-        );
-        return;
-      }
       const now = Date.now();
       const mono = performance.now();
       const livedMs = connectedAt > 0 ? now - connectedAt : 0;
@@ -160,6 +174,8 @@ export function streamSessionEntries<T extends { ts: number }>(options: SessionS
       }
     },
     onMessage: (message: EventSourceMessage) => {
+      // A closed stream can still hand over the rest of the chunk it was parsing.
+      if (closed) return;
       deadSince = 0;
       proofOfLifeThisCycle = true;
       lastStreamError = undefined;

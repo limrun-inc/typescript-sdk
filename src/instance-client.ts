@@ -354,9 +354,10 @@ export type InstanceClient = {
    * delivers lines as they are captured; a dropped connection reconnects
    * and resumes exactly where it left off, so every line is delivered once.
    * The stream is independent of this client's websocket and survives
-   * {@link disconnect}; `onError` fires at most once, after the stream has
-   * kept failing for several minutes (e.g. the instance was deleted), and
-   * the stream is closed. Returns a function that closes the stream.
+   * {@link disconnect}; `onError` fires at most once and the stream is
+   * closed: at once with a `SessionStreamRejectedError` when the
+   * instance refuses it (404 once the instance is gone), or after it has
+   * kept failing for several minutes. Returns a function that closes it.
    */
   streamAppLogCapture: (handlers: {
     onLine: (line: SessionLogLine) => void;

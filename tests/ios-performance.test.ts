@@ -77,22 +77,23 @@ test('performance capture messages carry only the optional TTL', async () => {
   }
 });
 
+const SAMPLE = {
+  ts: 5,
+  bundleId: 'com.example.app',
+  pid: 7,
+  startedAt: 1,
+  footprintBytes: 10,
+  peakFootprintBytes: 12,
+  threadCount: 3,
+};
+
 test('streamPerformance tails the performance endpoint with the instance token', async () => {
   let requested: string | undefined;
   let authorization: string | null = null;
   nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
     requested = String(input);
     authorization = new Headers(init?.headers).get('Authorization');
-    const sample = {
-      ts: 5,
-      bundleId: 'com.example.app',
-      pid: 7,
-      startedAt: 1,
-      footprintBytes: 10,
-      peakFootprintBytes: 12,
-      threadCount: 3,
-    };
-    return new Response(`retry: 1\n\nid: 1\ndata: ${JSON.stringify(sample)}\n\n`, {
+    return new Response(`retry: 1\n\nid: 1\ndata: ${JSON.stringify(SAMPLE)}\n\n`, {
       status: 200,
       headers: { 'Content-Type': 'text/event-stream' },
     });
@@ -119,19 +120,12 @@ test('streamPerformance tails the performance endpoint with the instance token',
 // Ios.streamPerformance needs no WebSocket, so callers that only read samples skip its handshake.
 test('Ios.streamPerformance tails the endpoint with only the apiUrl and token', async () => {
   let requested: string | undefined;
-  nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) => {
+  let authorization: string | null = null;
+  nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
     requested = String(input);
-    const sample = {
-      ts: 5,
-      bundleId: 'com.example.app',
-      pid: 7,
-      startedAt: 1,
-      footprintBytes: 10,
-      peakFootprintBytes: 12,
-      threadCount: 3,
-    };
+    authorization = new Headers(init?.headers).get('Authorization');
     return new Response(
-      `retry: 1\n\nid: 1\ndata: ${JSON.stringify(sample)}\n\nevent: replayed\ndata: {}\n\n`,
+      `retry: 1\n\nid: 1\ndata: ${JSON.stringify(SAMPLE)}\n\nevent: replayed\ndata: {}\n\n`,
       {
         status: 200,
         headers: { 'Content-Type': 'text/event-stream' },
@@ -155,5 +149,6 @@ test('Ios.streamPerformance tails the endpoint with only the apiUrl and token', 
   });
 
   expect(requested).toBe('https://ios.example.test/session/performance/events');
+  expect(authorization).toBe('Bearer test-token');
   expect(events).toEqual(['com.example.app', 'replayed']);
 });

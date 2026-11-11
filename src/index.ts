@@ -164,7 +164,7 @@ export {
   type PerformanceSample,
   type PerformanceThread,
 } from './resources/session-artifacts';
-export { SessionStreamLostError, SessionStreamNotFoundError } from './internal/session-stream';
+export { SessionStreamLostError, SessionStreamRejectedError } from './internal/session-stream';
 export {
   LIMRUN_DIR,
   TRY_IMPORT_LINE,
