@@ -65,22 +65,75 @@ describe.each(['android', 'ios'] as const)('%s asset name installation', (platfo
   });
 });
 
-test('Android correlates concurrent installs of the same name by request ID', async () => {
+test.each([{ assetName: 'same.apk' }, 'https://storage.example/same.apk'])(
+  'Android correlates concurrent installs of %p by request ID',
+  async (source) => {
+    const server = createServer();
+    const signaling = new WebSocketServer({ server, path: '/api/ws' });
+    signaling.on('connection', (socket) => {
+      const installs: Array<{ id: string; assetName: string }> = [];
+      socket.on('message', (data) => {
+        const message = JSON.parse(data.toString());
+        if (message.type !== 'asset') return;
+        installs.push(message);
+        if (installs.length !== 2) return;
+        socket.send(JSON.stringify({ ...installs[1], type: 'assetResult', result: 'success' }));
+        socket.send(
+          JSON.stringify({ ...installs[0], type: 'assetResult', result: 'failure', message: 'first failed' }),
+        );
+      });
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const client = await createAndroidClient({
+      apiUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`,
+      token: 'instance-token',
+      logLevel: 'none',
+    });
+    try {
+      const first = client.sendAsset(source, 1000);
+      const second = client.sendAsset(source, 1000);
+      const results = await Promise.allSettled([first, second]);
+      expect(results[0]).toMatchObject({ status: 'rejected', reason: new Error('first failed') });
+      expect(results[1]).toMatchObject({ status: 'fulfilled' });
+    } finally {
+      client.disconnect();
+      for (const socket of signaling.clients) socket.terminate();
+      await new Promise<void>((resolve) => signaling.close(() => resolve()));
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+);
+
+test.each(['legacy', 'stale-id'] as const)('Android handles %s URL replies', async (mode) => {
   const server = createServer();
   const signaling = new WebSocketServer({ server, path: '/api/ws' });
-  signaling.on('connection', (socket) => {
-    const installs: Array<{ id: string; assetName: string }> = [];
+  const installs: Array<{ id: string; url: string }> = [];
+  signaling.on('connection', (socket) =>
     socket.on('message', (data) => {
       const message = JSON.parse(data.toString());
       if (message.type !== 'asset') return;
       installs.push(message);
       if (installs.length !== 2) return;
-      socket.send(JSON.stringify({ ...installs[1], type: 'assetResult', result: 'success' }));
-      socket.send(
-        JSON.stringify({ ...installs[0], type: 'assetResult', result: 'failure', message: 'first failed' }),
-      );
-    });
-  });
+      if (mode === 'legacy') {
+        socket.send(
+          JSON.stringify({
+            type: 'assetResult',
+            url: message.url,
+            result: 'failure',
+            message: 'first failed',
+          }),
+        );
+        socket.send(JSON.stringify({ type: 'assetResult', url: message.url, result: 'success' }));
+      } else {
+        // A late ID-bearing reply must never fall back to the retry's identical URL.
+        socket.send(JSON.stringify({ ...installs[0], type: 'assetResult', result: 'success' }));
+        socket.send(
+          JSON.stringify({ ...installs[1], type: 'assetResult', result: 'failure', message: 'retry failed' }),
+        );
+      }
+    }),
+  );
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const client = await createAndroidClient({
@@ -89,11 +142,17 @@ test('Android correlates concurrent installs of the same name by request ID', as
     logLevel: 'none',
   });
   try {
-    const first = client.sendAsset({ assetName: 'same.apk' }, 1000);
-    const second = client.sendAsset({ assetName: 'same.apk' }, 1000);
-    const results = await Promise.allSettled([first, second]);
-    expect(results[0]).toMatchObject({ status: 'rejected', reason: new Error('first failed') });
-    expect(results[1]).toMatchObject({ status: 'fulfilled' });
+    const url = 'https://storage.example/same.apk';
+    if (mode === 'legacy') {
+      const results = await Promise.allSettled([client.sendAsset(url, 1000), client.sendAsset(url, 1000)]);
+      expect(results[0]).toMatchObject({ status: 'rejected', reason: new Error('first failed') });
+      expect(results[1]).toMatchObject({ status: 'fulfilled' });
+    } else {
+      await expect(client.sendAsset(url, 30)).rejects.toThrow('timed out');
+      await expect(client.sendAsset(url, 1000)).rejects.toThrow('retry failed');
+    }
+    expect(installs.every((request) => typeof request.id === 'string' && request.id.length > 0)).toBe(true);
+    expect(installs[0]!.id).not.toBe(installs[1]!.id);
   } finally {
     client.disconnect();
     for (const socket of signaling.clients) socket.terminate();

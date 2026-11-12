@@ -773,7 +773,7 @@ type ScreenshotErrorResponse = {
   id: string;
 };
 
-type AssetRequest = { type: 'asset'; id?: string } & ({ url: string } | { assetName: string });
+type AssetRequest = { type: 'asset'; id: string } & ({ url: string } | { assetName: string });
 
 type AssetResultResponse = {
   type: 'assetResult';
@@ -1115,7 +1115,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   let intentionalDisconnect = false;
   let lastError: string | undefined;
   const pendingRequests: Map<string, PendingRequest<unknown>> = new Map();
-  const pendingAssetRequests: Map<string, Array<PendingRequest<void>>> = new Map();
+  const pendingAssetRequests: Map<string, PendingRequest<void> & { url?: string }> = new Map();
   // App exit callbacks are keyed by execId. They intentionally survive transient
   // WebSocket reconnects and are one-shot once a matching appExit is processed.
   const appExitCallbacks: Map<string, LaunchAppExitCallback> = new Map();
@@ -1158,11 +1158,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       request.reject(new Error(reason));
     });
     pendingRequests.clear();
-    pendingAssetRequests.forEach((requests) => {
-      requests.forEach((request) => {
-        clearTimeout(request.timeout);
-        request.reject(new Error(reason));
-      });
+    pendingAssetRequests.forEach((request) => {
+      clearTimeout(request.timeout);
+      request.reject(new Error(reason));
     });
     pendingAssetRequests.clear();
   };
@@ -1436,18 +1434,17 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           }
           case 'assetResult': {
             logger.debug('Received assetResult:', message);
-            const key = typeof message.id === 'string' ? `id:${message.id}` : `url:${message.url}`;
-            const queue = pendingAssetRequests.get(key);
-            if (!queue || queue.length === 0) {
-              logger.warn(`Received assetResult for unknown or already handled url: ${message.url}`);
+            let id = message.id;
+            // Old servers omit id. Only those replies may fall back to the oldest matching URL.
+            if (id === undefined && typeof message.url === 'string') {
+              id = [...pendingAssetRequests].find(([, request]) => request.url === message.url)?.[0];
+            }
+            const request = typeof id === 'string' ? pendingAssetRequests.get(id) : undefined;
+            if (!request || typeof id !== 'string') {
+              logger.warn('Received assetResult for an unknown or completed request');
               break;
             }
-            const request = queue.shift()!;
-            if (queue.length === 0) {
-              pendingAssetRequests.delete(key);
-            } else {
-              pendingAssetRequests.set(key, queue);
-            }
+            pendingAssetRequests.delete(id);
             clearTimeout(request.timeout);
             if (message.result === 'success') {
               logger.debug('Asset result is success');
@@ -2047,49 +2044,24 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         return Promise.reject(new Error('WebSocket is not connected or connection is not open.'));
       }
       const fields = assetSourceFields(source);
-      // Old servers correlate URL installs by URL. Named installs use IDs to isolate late replies.
-      const id = 'assetName' in fields ? crypto.randomUUID() : undefined;
-      const key = id ? `id:${id}` : `url:${'url' in fields ? fields.url : ''}`;
-      const assetRequest: AssetRequest = { type: 'asset', ...fields, ...(id && { id }) };
+      const id = crypto.randomUUID();
+      const assetRequest: AssetRequest = { type: 'asset', ...fields, id };
       return new Promise<void>((resolve, reject) => {
-        let request: PendingRequest<void>;
         const timeout = setTimeout(() => {
-          const queue = pendingAssetRequests.get(key);
-          if (!queue) {
-            return;
-          }
-          const idx = queue.indexOf(request);
-          if (idx >= 0) {
-            queue.splice(idx, 1);
-            reject(new Error(`Request asset timed out for ${key}`));
-          }
-          if (queue.length === 0) {
-            pendingAssetRequests.delete(key);
-          } else {
-            pendingAssetRequests.set(key, queue);
+          if (pendingAssetRequests.delete(id)) {
+            reject(new Error(`Request asset timed out for id: ${id}`));
           }
         }, timeoutMs ?? 120_000);
-        request = {
+        pendingAssetRequests.set(id, {
           resolve,
-          reject: (reason: Error) => reject(reason),
+          reject,
           timeout,
-        };
-        const queue = pendingAssetRequests.get(key) ?? [];
-        queue.push(request);
-        pendingAssetRequests.set(key, queue);
+          ...('url' in fields && { url: fields.url }),
+        });
         ws!.send(JSON.stringify(assetRequest), (err?: Error) => {
           if (err) {
             clearTimeout(timeout);
-            const queued = pendingAssetRequests.get(key) ?? [];
-            const idx = queued.indexOf(request);
-            if (idx >= 0) {
-              queued.splice(idx, 1);
-            }
-            if (queued.length === 0) {
-              pendingAssetRequests.delete(key);
-            } else {
-              pendingAssetRequests.set(key, queued);
-            }
+            pendingAssetRequests.delete(id);
             logger.error('Failed to send asset request:', err);
             reject(err);
           }
