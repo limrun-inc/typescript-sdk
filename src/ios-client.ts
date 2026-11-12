@@ -1857,11 +1857,15 @@ export class SimctlExecution extends EventEmitter {
  * ```
  */
 export class LldbExecution extends SimctlExecution {
-  private sendInput: (data: Buffer | undefined, close: boolean) => void;
+  private sendInput: (data: Buffer | undefined, close: boolean, sequence: number) => void;
   private started = false;
-  private held: Array<[Buffer | undefined, boolean]> = [];
+  private held: Array<[Buffer | undefined, boolean, number]> = [];
+  private sequence = 0;
 
-  constructor(stopCallback: () => void, sendInput: (data: Buffer | undefined, close: boolean) => void) {
+  constructor(
+    stopCallback: () => void,
+    sendInput: (data: Buffer | undefined, close: boolean, sequence: number) => void,
+  ) {
     super(stopCallback);
     this.sendInput = sendInput;
   }
@@ -1877,12 +1881,14 @@ export class LldbExecution extends SimctlExecution {
   }
 
   // The instance drops input for a session it has not started yet, so input waits for the
-  // session's first frame.
+  // session's first frame. Each write is numbered: the instance handles the messages of a
+  // connection concurrently and uses the number to apply them in order.
   private input(data: Buffer | undefined, close: boolean): void {
+    const sequence = this.sequence++;
     if (this.started) {
-      this.sendInput(data, close);
+      this.sendInput(data, close, sequence);
     } else {
-      this.held.push([data, close]);
+      this.held.push([data, close, sequence]);
     }
   }
 
@@ -1890,8 +1896,8 @@ export class LldbExecution extends SimctlExecution {
   _handleStarted(): void {
     if (this.started) return;
     this.started = true;
-    for (const [data, close] of this.held.splice(0)) {
-      this.sendInput(data, close);
+    for (const [data, close, sequence] of this.held.splice(0)) {
+      this.sendInput(data, close, sequence);
     }
   }
 }
@@ -3319,12 +3325,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const lldb = (args: string[], opts: LldbOptions = {}): LldbExecution => {
       const id = generateId();
-      const sendInput = (data: Buffer | undefined, close: boolean) => {
+      const sendInput = (data: Buffer | undefined, close: boolean, sequence: number) => {
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
         ws.send(
           JSON.stringify({
             type: 'lldbInput',
             id,
+            sequence,
             ...(data && { data: data.toString('base64') }),
             ...(close && { close }),
           }),

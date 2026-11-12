@@ -110,9 +110,10 @@ describe('iOS lldb', () => {
     expect(input[0]).toEqual({
       type: 'lldbInput',
       id: input[1]!['id'],
+      sequence: 0,
       data: Buffer.from('frame variable\n').toString('base64'),
     });
-    expect(input[1]).toEqual({ type: 'lldbInput', id: input[0]!['id'], close: true });
+    expect(input[1]).toEqual({ type: 'lldbInput', id: input[0]!['id'], sequence: 1, close: true });
     client.disconnect();
   });
 
