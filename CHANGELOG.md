@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.72.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.71.1...v0.72.0) (2026-11-12)
+
+
+### Features
+
+* **cli:** add ios forward and release 0.55.0 ([#663](https://github.com/limrun-inc/typescript-sdk/issues/663)) ([a2260db](https://github.com/limrun-inc/typescript-sdk/commit/a2260db10f94fa1c22efd1c59bacaac0935d5146))
+* **ios:** add visible trees and fresh display info to SDK and CLI ([#653](https://github.com/limrun-inc/typescript-sdk/issues/653)) ([d3042ad](https://github.com/limrun-inc/typescript-sdk/commit/d3042ad183c7dd4893177bbc1583c9067e71726f))
+
+
+### Bug Fixes
+
+* **cli:** keep the replay pause under the one-second sample interval ([2e4be44](https://github.com/limrun-inc/typescript-sdk/commit/2e4be44ba16bd1ae6449ae1e23cefc27c38b30f7))
+* **cli:** open the perf stream once connected and tell a deleted instance from an old runtime ([86d2ffc](https://github.com/limrun-inc/typescript-sdk/commit/86d2ffcc48580378c9d10914202aab0a9daa6406))
+* **cli:** read performance over SSE alone, end the replay on its signal, explain a 404 ([4c22ac9](https://github.com/limrun-inc/typescript-sdk/commit/4c22ac9cc1abe505cf92cc3e1f06deca305f4089))
+
+
+### Chores
+
+* **cli:** release 0.54.1 with SDK 0.71.1 ([d84fdf7](https://github.com/limrun-inc/typescript-sdk/commit/d84fdf7d04a38e6e37a24c2e44fc93df9981da13))
+* **cli:** use SDK 0.71.1 ([68b1801](https://github.com/limrun-inc/typescript-sdk/commit/68b1801d98b7cf889eaa2bf8471f38af11b79911))
+
+
+### Refactors
+
+* **cli:** pass the perf connection straight to the stream and name its type once ([2efb16a](https://github.com/limrun-inc/typescript-sdk/commit/2efb16ad146a2d668084c047e992d75567f3eb5b))
+
 ## [0.71.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.71.0...v0.71.1) (2026-11-11)
 
 
