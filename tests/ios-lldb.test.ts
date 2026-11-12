@@ -130,4 +130,20 @@ describe('iOS lldb', () => {
     expect(sentMessages).toContainEqual({ type: 'simctlTerminate', id: request!['id'] });
     client.disconnect();
   });
+
+  it('ignores a stop after the connection failed the session', async () => {
+    const client = await connect();
+
+    const session = client.lldb([], { bundleId: 'com.example.app', keepStdinOpen: true });
+    await new Promise((resolve) => setImmediate(resolve));
+    const waiting = session.wait();
+    client.disconnect();
+    // The disconnect already failed the session. A stop after it must neither throw nor
+    // report a second outcome.
+    session.stop();
+    session.stop();
+
+    await expect(waiting).rejects.toThrow('Intentional disconnect');
+    expect(session.isRunning).toBe(false);
+  });
 });

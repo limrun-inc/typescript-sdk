@@ -3372,11 +3372,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       const execution: LldbExecution = new LldbExecution(() => {
         // The session stays tracked: the instance answers with the exit of LLDB, which is what
         // ends `wait()`. A session dropped without `end` would otherwise keep the app stopped.
+        if (!execution.isRunning) return;
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'simctlTerminate', id }));
         } else {
+          // Without a connection the instance has already ended the session and cannot say so.
           simctlExecutions.delete(id);
-          execution._handleError(new Error('WebSocket is not connected or connection is not open.'));
+          execution._handleExit(143);
         }
       }, sendInput);
       const request: LldbRequest = {
