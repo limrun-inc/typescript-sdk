@@ -516,7 +516,7 @@ export function startDaemonServer(): void {
 
         case 'element-tree':
           if (type === 'ios') {
-            result = await (client as any).elementTree();
+            result = await (client as any).elementTree(undefined, args[0]);
           } else {
             result = await (client as any).getElementTree(args[0]);
           }
@@ -524,7 +524,7 @@ export function startDaemonServer(): void {
 
         case 'device-info':
           if (type !== 'ios') throw new Error('info is only supported on iOS instances');
-          result = (client as any).deviceInfo;
+          result = await (client as any).getDeviceInfo();
           break;
 
         case 'open-url':
