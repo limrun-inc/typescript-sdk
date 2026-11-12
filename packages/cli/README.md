@@ -346,6 +346,8 @@ lim ios lldb --bundle-id com.example.app
 
 Arguments after `--` go to `lldb` unchanged. Without `--batch` the session reads standard input until it ends, so pass `--batch` when nothing will close it. The app keeps running after LLDB detaches.
 
+A simulator runs one LLDB session at a time. Backtraces, breakpoints, stepping, `frame variable`, Objective-C expressions and Python scripting work. Swift expression evaluation (`expr`, and `po` on Swift values) is not available yet.
+
 #### Xcode Attachment
 
 Attach an existing Xcode target so future simulator builds are installed automatically:
