@@ -2,6 +2,7 @@ import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { dwarfFiles, remoteDwarfName } from '../../lib/dsym';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';
+import { LldbOutputLines, startLldbTerminal } from '../../lib/lldb-terminal';
 
 type LldbResult = {
   code: number;
@@ -84,19 +85,30 @@ export default class IosLldb extends BaseCommand {
           keepStdinOpen: interactive,
         });
 
+        // At a terminal the session gets a prompt. Otherwise standard input is a script or a
+        // stream from another program and is forwarded as it comes.
+        const terminal = interactive && process.stdin.isTTY ? startLldbTerminal(session) : undefined;
+        const piped = interactive && !terminal;
         const forwardInput = (chunk: Buffer) => session.write(chunk);
         const endInput = () => session.end();
         const interrupt = () => session.stop();
-        if (interactive) {
+        if (piped) {
           process.stdin.on('data', forwardInput);
           process.stdin.once('end', endInput);
           process.once('SIGINT', interrupt);
         }
 
         try {
-          if (!flags.json) {
+          if (terminal) {
+            session.on('stdout', terminal.stdout);
+            session.on('stderr', terminal.stderr);
+          } else if (!flags.json) {
+            const noise = new LldbOutputLines();
             session.on('stdout', (chunk: Buffer) => process.stdout.write(chunk));
-            session.on('stderr', (chunk: Buffer) => process.stderr.write(chunk));
+            // Standard error is small and line-shaped, so LLDB's start-up noise is cut from it.
+            session.on('stderr', (chunk: Buffer) => {
+              for (const line of noise.push(chunk)) process.stderr.write(line + '\n');
+            });
           }
           const result = (await session.wait()) as LldbResult;
           if (flags.json) {
@@ -104,7 +116,8 @@ export default class IosLldb extends BaseCommand {
           }
           if (result.code !== 0) this.exit(result.code);
         } finally {
-          if (interactive) {
+          terminal?.close();
+          if (piped) {
             process.stdin.off('data', forwardInput);
             process.stdin.off('end', endInput);
             process.off('SIGINT', interrupt);
