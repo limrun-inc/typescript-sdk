@@ -325,6 +325,27 @@ lim ios delete-file Documents/photo.jpeg --bundle-id com.example.app --container
 lim ios lsof
 ```
 
+#### Debugging with LLDB
+
+Attach LLDB to a running app. LLDB runs next to the simulator, so this works from any machine, including Linux. The app must be a debug build: Xcode adds the `get-task-allow` entitlement LLDB needs to those.
+
+```bash
+# One-shot: run commands and exit
+lim ios lldb --bundle-id com.example.app -- --batch -o "bt all"
+
+# Load symbols from a separate .dSYM, then break and inspect
+lim ios lldb --bundle-id com.example.app --dsym ./MyApp.app.dSYM -- --batch \
+  -o "breakpoint set -f ContentView.swift -l 42" -o "continue" -o "frame variable"
+
+# Script from standard input
+printf 'bt\nframe variable\n' | lim ios lldb --bundle-id com.example.app
+
+# Live session: type LLDB commands, `quit` or Ctrl-D to detach
+lim ios lldb --bundle-id com.example.app
+```
+
+Arguments after `--` go to `lldb` unchanged. Without `--batch` the session reads standard input until it ends, so pass `--batch` when nothing will close it. The app keeps running after LLDB detaches.
+
 #### Xcode Attachment
 
 Attach an existing Xcode target so future simulator builds are installed automatically:
