@@ -70,6 +70,11 @@ export function startLldbTerminal(session: Session): {
     if (!closed) rl.prompt(true);
   };
 
+  // LLDB asks for confirmation before it quits with a process attached. Its question has no
+  // line end and its answer would be read from the next command, so it is switched off.
+  out.sent('settings set auto-confirm true');
+  session.write('settings set auto-confirm true\n');
+
   rl.on('line', (line) => {
     out.sent(line);
     session.write(line + '\n');
@@ -82,11 +87,28 @@ export function startLldbTerminal(session: Session): {
   rl.on('SIGINT', () => session.stop());
   rl.prompt();
 
+  // Text without a line end, such as a question, is shown once LLDB has gone quiet.
+  let quiet: NodeJS.Timeout | undefined;
+  const showWhenQuiet = () => {
+    clearTimeout(quiet);
+    quiet = setTimeout(() => {
+      show(process.stdout, out.flush());
+      show(process.stderr, err.flush());
+    }, 200);
+  };
+
   return {
-    stdout: (chunk) => show(process.stdout, out.push(chunk)),
-    stderr: (chunk) => show(process.stderr, err.push(chunk)),
+    stdout: (chunk) => {
+      show(process.stdout, out.push(chunk));
+      showWhenQuiet();
+    },
+    stderr: (chunk) => {
+      show(process.stderr, err.push(chunk));
+      showWhenQuiet();
+    },
     close: () => {
       closed = true;
+      clearTimeout(quiet);
       show(process.stdout, out.flush());
       show(process.stderr, err.flush());
       readline.clearLine(process.stdout, 0);
