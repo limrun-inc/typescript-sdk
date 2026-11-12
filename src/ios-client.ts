@@ -1858,6 +1858,8 @@ export class SimctlExecution extends EventEmitter {
  */
 export class LldbExecution extends SimctlExecution {
   private sendInput: (data: Buffer | undefined, close: boolean) => void;
+  private started = false;
+  private held: Array<[Buffer | undefined, boolean]> = [];
 
   constructor(stopCallback: () => void, sendInput: (data: Buffer | undefined, close: boolean) => void) {
     super(stopCallback);
@@ -1866,12 +1868,31 @@ export class LldbExecution extends SimctlExecution {
 
   /** Write to LLDB's standard input. End each command with a newline. */
   write(data: string | Buffer): void {
-    this.sendInput(Buffer.from(data), false);
+    this.input(Buffer.from(data), false);
   }
 
   /** Close LLDB's standard input. LLDB detaches from the process and exits. */
   end(): void {
-    this.sendInput(undefined, true);
+    this.input(undefined, true);
+  }
+
+  // The instance drops input for a session it has not started yet, so input waits for the
+  // session's first frame.
+  private input(data: Buffer | undefined, close: boolean): void {
+    if (this.started) {
+      this.sendInput(data, close);
+    } else {
+      this.held.push([data, close]);
+    }
+  }
+
+  /** @internal - The instance sent the session's first frame, so LLDB is reading its input */
+  _handleStarted(): void {
+    if (this.started) return;
+    this.started = true;
+    for (const [data, close] of this.held.splice(0)) {
+      this.sendInput(data, close);
+    }
   }
 }
 
@@ -2334,6 +2355,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           if (!execution) {
             logger.debug(`Received simctl stream for unknown execution: ${message.id}`);
             return;
+          }
+          if (execution instanceof LldbExecution) {
+            execution._handleStarted();
           }
 
           if (message.stdout) {

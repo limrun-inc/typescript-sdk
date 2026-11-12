@@ -95,6 +95,8 @@ describe('iOS lldb', () => {
     const session = client.lldb([], { pid: 4321, stdin: 'bt\n', keepStdinOpen: true });
     session.write('frame variable\n');
     session.end();
+    // Input waits for the session's first frame: the instance drops what arrives before it.
+    expect(sentMessages.some((m) => m['type'] === 'lldbInput')).toBe(false);
     const result = await session.wait();
 
     expect(result.code).toBe(0);
