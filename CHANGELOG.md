@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.73.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.72.0...v0.73.0) (2026-11-12)
+
+
+### Features
+
+* **ios:** run LLDB sessions inside the simulator ([721bd62](https://github.com/limrun-inc/typescript-sdk/commit/721bd623f3226a9299fbee25d5fb4db9e19d06df))
+
+
+### Bug Fixes
+
+* **ios:** hold LLDB input until the session has started ([6d41107](https://github.com/limrun-inc/typescript-sdk/commit/6d41107809a0a0a11ee99f2dffa0b9eec955c0af))
+* **ios:** ignore a stop for an LLDB session that already ended ([ade5370](https://github.com/limrun-inc/typescript-sdk/commit/ade5370a571d619ecc4d31916a87e29ca20b365f))
+* **ios:** number LLDB input so the instance applies it in order ([6380985](https://github.com/limrun-inc/typescript-sdk/commit/63809858ff8f641db6ace387bbdece41f02c10f9))
+* **ios:** report the exit of an LLDB session that was stopped ([dc89e72](https://github.com/limrun-inc/typescript-sdk/commit/dc89e72f0fbed2ba62a824a5002aae335fb8dff2))
+
+
+### Chores
+
+* **cli:** release 0.56.0 with SDK 0.72.0 ([#664](https://github.com/limrun-inc/typescript-sdk/issues/664)) ([3854c4f](https://github.com/limrun-inc/typescript-sdk/commit/3854c4f9778b89210beaf4aa96855a5807e1de0c))
+
 ## [0.72.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.71.1...v0.72.0) (2026-11-12)
 
 
