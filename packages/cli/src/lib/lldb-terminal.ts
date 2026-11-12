@@ -14,7 +14,7 @@ export class LldbOutputLines {
 
   /** Remember a command just sent, so its echo is not shown again. */
   sent(command: string): void {
-    this.echoes.push(`(lldb) ${command}`);
+    this.echoes.push(`(lldb) ${command}`.trimEnd());
   }
 
   /** Feed a chunk of output and get its complete lines back, without echoes and start-up noise. */
@@ -33,11 +33,12 @@ export class LldbOutputLines {
 
   private dropped(line: string): boolean {
     if (TERMINAL_NOISE.test(line)) return true;
-    if (this.echoes[0] === line.trimEnd()) {
-      this.echoes.shift();
-      return true;
-    }
-    return false;
+    // LLDB does not echo every line it reads, such as the body of a breakpoint command. An echo
+    // that matches a later command means the ones before it will never come.
+    const echo = this.echoes.indexOf(line.trimEnd());
+    if (echo === -1) return false;
+    this.echoes.splice(0, echo + 1);
+    return true;
   }
 }
 
@@ -60,6 +61,8 @@ export function startLldbTerminal(session: Session): {
   const out = new LldbOutputLines();
   const err = new LldbOutputLines();
   let closed = false;
+  // Readline rejects a prompt once its input has ended, which Ctrl-D does before LLDB exits.
+  let inputEnded = false;
 
   const show = (stream: NodeJS.WriteStream, lines: string[]) => {
     if (lines.length === 0) return;
@@ -67,7 +70,7 @@ export function startLldbTerminal(session: Session): {
     readline.clearLine(process.stdout, 0);
     readline.cursorTo(process.stdout, 0);
     stream.write(lines.join('\n') + '\n');
-    if (!closed) rl.prompt(true);
+    if (!inputEnded) rl.prompt(true);
   };
 
   // LLDB asks for confirmation before it quits with a process attached. Its question has no
@@ -82,6 +85,7 @@ export function startLldbTerminal(session: Session): {
   });
   // Ctrl-D ends the input, which makes LLDB detach and exit. Ctrl-C ends the session at once.
   rl.on('close', () => {
+    inputEnded = true;
     if (!closed) session.end();
   });
   // A second Ctrl-C leaves at once, for a session whose instance no longer answers.

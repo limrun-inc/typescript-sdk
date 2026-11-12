@@ -20,4 +20,16 @@ describe('LldbOutputLines', () => {
     expect(lines.push('no newline')).toEqual([]);
     expect(lines.flush()).toEqual(['no newline']);
   });
+
+  it('gives up on echoes that never came once a later one arrives', () => {
+    const lines = new LldbOutputLines();
+    lines.sent('');
+    lines.sent('script print(1)');
+    lines.sent('bt 1 ');
+    expect(lines.push('(lldb)\n')).toEqual([]);
+    lines.sent('not echoed');
+    lines.sent('bt 2');
+    expect(lines.push('(lldb) bt 1\n(lldb) bt 2\nframe\n')).toEqual(['frame']);
+    expect(lines.push('(lldb) not echoed\n')).toEqual(['(lldb) not echoed']);
+  });
 });
