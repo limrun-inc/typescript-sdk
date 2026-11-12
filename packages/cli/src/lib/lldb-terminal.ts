@@ -84,7 +84,13 @@ export function startLldbTerminal(session: Session): {
   rl.on('close', () => {
     if (!closed) session.end();
   });
-  rl.on('SIGINT', () => session.stop());
+  // A second Ctrl-C leaves at once, for a session whose instance no longer answers.
+  let stopping = false;
+  rl.on('SIGINT', () => {
+    if (stopping) process.exit(130);
+    stopping = true;
+    session.stop();
+  });
   rl.prompt();
 
   // Text without a line end, such as a question, is shown once LLDB has gone quiet.
