@@ -3369,13 +3369,15 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           }),
         );
       };
-      const stop = stopExecution(id, opts.disconnectOnExit);
-      const execution = new LldbExecution(() => {
-        // A session that is dropped without `end` would otherwise keep the app stopped.
+      const execution: LldbExecution = new LldbExecution(() => {
+        // The session stays tracked: the instance answers with the exit of LLDB, which is what
+        // ends `wait()`. A session dropped without `end` would otherwise keep the app stopped.
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'simctlTerminate', id }));
+        } else {
+          simctlExecutions.delete(id);
+          execution._handleError(new Error('WebSocket is not connected or connection is not open.'));
         }
-        stop();
       }, sendInput);
       const request: LldbRequest = {
         type: 'lldb',

@@ -117,15 +117,17 @@ describe('iOS lldb', () => {
     client.disconnect();
   });
 
-  it('terminates the session on stop, so a dropped session does not leave the app stopped', async () => {
+  it('terminates the session on stop and still reports its exit', async () => {
     const client = await connect();
 
     const session = client.lldb([], { bundleId: 'com.example.app', keepStdinOpen: true });
-    const request = () => sentMessages.find((m) => m['type'] === 'lldb');
     await new Promise((resolve) => setImmediate(resolve));
     session.stop();
 
-    expect(sentMessages).toContainEqual({ type: 'simctlTerminate', id: request()!['id'] });
+    // The exit the instance sends after the stop must end wait(), or a caller hangs on it.
+    expect((await session.wait()).code).toBe(143);
+    const request = sentMessages.find((m) => m['type'] === 'lldb');
+    expect(sentMessages).toContainEqual({ type: 'simctlTerminate', id: request!['id'] });
     client.disconnect();
   });
 });
