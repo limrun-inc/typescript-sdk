@@ -55,7 +55,13 @@ export default class IosLldb extends BaseCommand {
     // pairs, so LLDB's arguments are taken as typed after `--`.
     const separator = this.argv.indexOf('--');
     const rawArgs = separator === -1 ? [] : this.argv.slice(separator + 1);
+    if (separator === -1 && parsed.argv.length > 0) {
+      this.error(`Pass LLDB arguments after \`--\`, for example: -- --batch -o "bt"`);
+    }
     this.setParsedFlags(flags);
+    if (flags.dsym && flags['bundle-id'] === undefined && flags.pid === undefined) {
+      this.error('--dsym needs an app to load symbols for: pass --bundle-id or --pid');
+    }
 
     const symbolFiles = ((flags.dsym as string[] | undefined) ?? []).flatMap((entry) => {
       try {
@@ -78,7 +84,9 @@ export default class IosLldb extends BaseCommand {
         }
 
         // A batch run ends by itself. Anything else is a session that reads standard input.
-        const interactive = !flags.json && !rawArgs.includes('--batch') && !rawArgs.includes('-b');
+        // With --json a terminal has nowhere to show a prompt, so only piped input is read.
+        const batch = rawArgs.includes('--batch') || rawArgs.includes('-b');
+        const interactive = !batch && !(flags.json && process.stdin.isTTY);
         const session = client.lldb([...symbolArgs, ...rawArgs], {
           ...(flags['bundle-id'] !== undefined && { bundleId: flags['bundle-id'] }),
           ...(flags.pid !== undefined && { pid: flags.pid }),
@@ -86,8 +94,10 @@ export default class IosLldb extends BaseCommand {
         });
 
         // At a terminal the session gets a prompt. Otherwise standard input is a script or a
-        // stream from another program and is forwarded as it comes.
-        const terminal = interactive && process.stdin.isTTY ? startLldbTerminal(session) : undefined;
+        // stream from another program and is forwarded as it comes. The prompt needs the output
+        // to be a terminal too, or its control codes would land in a file or a pipe.
+        const atTerminal = process.stdin.isTTY && process.stdout.isTTY && !flags.json;
+        const terminal = interactive && atTerminal ? startLldbTerminal(session) : undefined;
         const piped = interactive && !terminal;
         const forwardInput = (chunk: Buffer) => session.write(chunk);
         const endInput = () => session.end();
@@ -98,12 +108,12 @@ export default class IosLldb extends BaseCommand {
           process.once('SIGINT', interrupt);
         }
 
+        const noise = new LldbOutputLines();
         try {
           if (terminal) {
             session.on('stdout', terminal.stdout);
             session.on('stderr', terminal.stderr);
           } else if (!flags.json) {
-            const noise = new LldbOutputLines();
             session.on('stdout', (chunk: Buffer) => process.stdout.write(chunk));
             // Standard error is small and line-shaped, so LLDB's start-up noise is cut from it.
             session.on('stderr', (chunk: Buffer) => {
@@ -111,6 +121,7 @@ export default class IosLldb extends BaseCommand {
             });
           }
           const result = (await session.wait()) as LldbResult;
+          for (const line of noise.flush()) process.stderr.write(line + '\n');
           if (flags.json) {
             this.outputJson(result);
           }
