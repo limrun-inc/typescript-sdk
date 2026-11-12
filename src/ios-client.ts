@@ -1323,6 +1323,26 @@ export type InstanceClient = {
   simctl: (args: string[], opts?: SimctlOptions) => SimctlExecution;
 
   /**
+   * Run Xcode's LLDB inside the simulator, attached to an app when `bundleId` or `pid` is given.
+   * LLDB can debug the simulator's apps built with the `get-task-allow` entitlement, which
+   * Xcode adds to debug builds.
+   *
+   * @param args Arguments passed to `lldb`, such as `['--batch', '-o', 'bt']`
+   * @param opts Which process to attach to and how standard input is fed
+   * @returns An LldbExecution handle for output and, with `keepStdinOpen`, live input
+   *
+   * @example
+   * ```typescript
+   * // One-shot: print a backtrace and detach
+   * const result = await client
+   *   .lldb(['--batch', '-o', 'bt', '-o', 'detach'], { bundleId: 'com.example.app' })
+   *   .wait();
+   * console.log(result.stdout);
+   * ```
+   */
+  lldb: (args: string[], opts?: LldbOptions) => LldbExecution;
+
+  /**
    * Push a local file to the simulator. Returns the path of the file on the simulator host
    * that can be used in simctl commands.
    *
@@ -1550,6 +1570,36 @@ type SimctlRequest = {
   args: string[];
   /** Base64 of the command's standard input */
   stdin?: string;
+};
+
+/**
+ * Options for an LLDB session
+ */
+export type LldbOptions = {
+  /** Attach to the running app with this bundle ID. */
+  bundleId?: string;
+  /** Attach to this process of the simulator. */
+  pid?: number;
+  /** Commands written to LLDB's standard input before anything sent with `write`. */
+  stdin?: string | Buffer;
+  /**
+   * Keep standard input open for `write` and `end`. Without it LLDB runs its arguments and
+   * `stdin`, then exits.
+   */
+  keepStdinOpen?: boolean;
+  /** Disconnect from the instance when LLDB exits */
+  disconnectOnExit?: boolean;
+};
+
+type LldbRequest = {
+  type: 'lldb';
+  id: string;
+  args: string[];
+  bundleId?: string;
+  pid?: number;
+  /** Base64 of LLDB's initial standard input */
+  stdin?: string;
+  keepStdinOpen?: boolean;
 };
 
 /**
@@ -1790,6 +1840,38 @@ export class SimctlExecution extends EventEmitter {
   _handleError(error: Error): void {
     this.completed = true;
     this.emit('error', error);
+  }
+}
+
+/**
+ * Handle for a running LLDB session. It streams output like a simctl execution, and takes
+ * commands on standard input when the session was started with `keepStdinOpen`.
+ *
+ * @example
+ * ```typescript
+ * const session = client.lldb([], { bundleId: 'com.example.app', keepStdinOpen: true });
+ * session.on('stdout', (data) => process.stdout.write(data));
+ * session.write('bt\n');
+ * session.end(); // LLDB detaches and exits once it has read everything
+ * await session.wait();
+ * ```
+ */
+export class LldbExecution extends SimctlExecution {
+  private sendInput: (data: Buffer | undefined, close: boolean) => void;
+
+  constructor(stopCallback: () => void, sendInput: (data: Buffer | undefined, close: boolean) => void) {
+    super(stopCallback);
+    this.sendInput = sendInput;
+  }
+
+  /** Write to LLDB's standard input. End each command with a newline. */
+  write(data: string | Buffer): void {
+    this.sendInput(Buffer.from(data), false);
+  }
+
+  /** Close LLDB's standard input. LLDB detaches from the process and exits. */
+  end(): void {
+    this.sendInput(undefined, true);
   }
 }
 
@@ -2436,6 +2518,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             getConnectionState,
             onConnectionStateChange,
             simctl,
+            lldb,
             xcrun,
             startXcrunShim,
             xcodebuild,
@@ -3139,30 +3222,23 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     // Cached device info, populated during connection
     let cachedDeviceInfo: DeviceInfo;
 
-    const simctl = (args: string[], opts: SimctlOptions = {}): SimctlExecution => {
-      const id = generateId();
-
-      const cancelCallback = () => {
-        // Clean up execution tracking
-        simctlExecutions.delete(id);
-        if (opts.disconnectOnExit) {
-          logger.debug(`Simctl execution ${id} cancelled, disconnecting due to disconnectOnExit`);
-          disconnect();
-        }
-        logger.debug(`Simctl execution ${id} cancelled`);
-      };
-
-      const execution = new SimctlExecution(cancelCallback);
+    /** Tracks a streamed command, sends its request, and returns the handle. */
+    const startExecution = <E extends SimctlExecution>(
+      id: string,
+      execution: E,
+      request: SimctlRequest | LldbRequest,
+      disconnectOnExit: boolean | undefined,
+    ): E => {
       simctlExecutions.set(id, execution);
 
       // If disconnectOnExit is enabled, register listeners before any async operations
-      if (opts.disconnectOnExit) {
+      if (disconnectOnExit) {
         execution.once('exit', () => {
-          logger.debug(`Simctl execution ${id} finished, disconnecting due to disconnectOnExit`);
+          logger.debug(`Execution ${id} finished, disconnecting due to disconnectOnExit`);
           disconnect();
         });
         execution.once('error', () => {
-          logger.debug(`Simctl execution ${id} errored, disconnecting due to disconnectOnExit`);
+          logger.debug(`Execution ${id} errored, disconnecting due to disconnectOnExit`);
           disconnect();
         });
       }
@@ -3177,25 +3253,77 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         return execution;
       }
 
-      const simctlRequest: SimctlRequest = {
-        type: 'simctl',
-        ...(opts.envFromSecret && { envFromSecret: opts.envFromSecret }),
-        id,
-        args,
-        ...(opts.stdin !== undefined && { stdin: Buffer.from(opts.stdin).toString('base64') }),
-      };
-
       // stdin can carry secrets such as one-time codes, so it stays out of the log.
-      logger.debug('Sending simctl request:', { ...simctlRequest, stdin: undefined });
-      ws.send(JSON.stringify(simctlRequest), (err?: Error) => {
+      logger.debug(`Sending ${request.type} request:`, { ...request, stdin: undefined });
+      ws.send(JSON.stringify(request), (err?: Error) => {
         if (err) {
-          logger.error('Failed to send simctl request:', err);
+          logger.error(`Failed to send ${request.type} request:`, err);
           execution._handleError(err);
           simctlExecutions.delete(id);
         }
       });
 
       return execution;
+    };
+
+    /** Forgets a stopped command, and disconnects when its caller asked for that. */
+    const stopExecution = (id: string, disconnectOnExit: boolean | undefined) => () => {
+      simctlExecutions.delete(id);
+      if (disconnectOnExit) {
+        logger.debug(`Execution ${id} cancelled, disconnecting due to disconnectOnExit`);
+        disconnect();
+      }
+      logger.debug(`Execution ${id} cancelled`);
+    };
+
+    const simctl = (args: string[], opts: SimctlOptions = {}): SimctlExecution => {
+      const id = generateId();
+      const request: SimctlRequest = {
+        type: 'simctl',
+        ...(opts.envFromSecret && { envFromSecret: opts.envFromSecret }),
+        id,
+        args,
+        ...(opts.stdin !== undefined && { stdin: Buffer.from(opts.stdin).toString('base64') }),
+      };
+      return startExecution(
+        id,
+        new SimctlExecution(stopExecution(id, opts.disconnectOnExit)),
+        request,
+        opts.disconnectOnExit,
+      );
+    };
+
+    const lldb = (args: string[], opts: LldbOptions = {}): LldbExecution => {
+      const id = generateId();
+      const sendInput = (data: Buffer | undefined, close: boolean) => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(
+          JSON.stringify({
+            type: 'lldbInput',
+            id,
+            ...(data && { data: data.toString('base64') }),
+            ...(close && { close }),
+          }),
+        );
+      };
+      const stop = stopExecution(id, opts.disconnectOnExit);
+      const execution = new LldbExecution(() => {
+        // A session that is dropped without `end` would otherwise keep the app stopped.
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'simctlTerminate', id }));
+        }
+        stop();
+      }, sendInput);
+      const request: LldbRequest = {
+        type: 'lldb',
+        id,
+        args,
+        ...(opts.bundleId !== undefined && { bundleId: opts.bundleId }),
+        ...(opts.pid !== undefined && { pid: opts.pid }),
+        ...(opts.stdin !== undefined && { stdin: Buffer.from(opts.stdin).toString('base64') }),
+        ...(opts.keepStdinOpen && { keepStdinOpen: true }),
+      };
+      return startExecution(id, execution, request, opts.disconnectOnExit);
     };
 
     const buildFilesUrl = (name: string, opts?: ContainerTargetOptions): string => {
