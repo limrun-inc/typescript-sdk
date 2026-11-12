@@ -15,7 +15,7 @@ export default class IosLldb extends BaseCommand {
     'Run LLDB next to the simulator, attached to an app by bundle ID or pid, and pass it the arguments after `--`. ' +
     'Without `--batch`, the session stays open and reads LLDB commands from standard input until the input ends or you `quit`. ' +
     'The app must be running and built for debugging: Xcode debug builds carry the `get-task-allow` entitlement LLDB needs. ' +
-    'Use --dsym when the debug symbols live in a separate .dSYM.';
+    'Use --dsym when the debug symbols live in a separate .dSYM. A simulator runs one LLDB session at a time.';
   static examples = [
     '<%= config.bin %> ios lldb --bundle-id com.example.app -- --batch -o "bt all"',
     '<%= config.bin %> ios lldb --bundle-id com.example.app --dsym ./MyApp.app.dSYM -- --batch -o "breakpoint set -f ContentView.swift -l 42" -o "continue" -o "frame variable"',
