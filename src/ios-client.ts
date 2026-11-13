@@ -1,3 +1,5 @@
+import { assetSourceFields, type AssetSource } from './internal/asset-source';
+export type { AssetSource } from './internal/asset-source';
 import os from 'os';
 import crypto from 'crypto';
 import path from 'path';
@@ -338,7 +340,9 @@ export type DeviceInfo = {
 };
 
 export type AppInstallationResult = {
-  /** The URL the app was installed from */
+  /** The asset name supplied to installApp, when used. */
+  assetName?: string;
+  /** The supplied URL, or an empty string for a named asset. */
   url: string;
   /** Bundle ID of the installed app */
   bundleId: string;
@@ -940,13 +944,13 @@ export type InstanceClient = {
   openUrl: (url: string) => Promise<void>;
 
   /**
-   * Install an app from a URL (supports .ipa or .app files, optionally zipped)
-   * @param url The URL to download the app from
+   * Install an app from a URL or asset name (supports .ipa or .app files, optionally zipped)
+   * @param source A URL, or { assetName } resolved using the instance role's asset read permission
    * @param options Optional installation options (md5 for caching, launchMode)
    * @returns The installation result with bundle ID on success
    * @throws Error if installation fails (e.g., invalid app, download failure)
    */
-  installApp: (url: string, options?: AppInstallationOptions) => Promise<AppInstallationResult>;
+  installApp: (source: AssetSource, options?: AppInstallationOptions) => Promise<AppInstallationResult>;
 
   /**
    * Save the simulator keychain as an unencrypted tar.gz archive at a presigned asset-storage URL.
@@ -1654,6 +1658,7 @@ type ServerResponse = {
   elementType?: string;
   apps?: string;
   url?: string;
+  assetName?: string;
   filename?: string;
   bundleId?: string;
   files?: LsofEntry[];
@@ -2314,6 +2319,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }),
       openUrlResult: () => undefined,
       appInstallationResult: (msg) => ({
+        ...(msg.assetName !== undefined && { assetName: msg.assetName }),
         url: msg.url || '',
         bundleId: msg.bundleId || '',
       }),
@@ -2933,11 +2939,14 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<void>('openUrl', { url });
     };
 
-    const installApp = (url: string, options?: AppInstallationOptions): Promise<AppInstallationResult> => {
+    const installApp = (
+      source: AssetSource,
+      options?: AppInstallationOptions,
+    ): Promise<AppInstallationResult> => {
       return sendRequest<AppInstallationResult>(
         'appInstallation',
         {
-          url,
+          ...assetSourceFields(source),
           md5: options?.md5,
           launchMode: options?.launchMode,
         },

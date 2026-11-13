@@ -1,3 +1,5 @@
+import { assetSourceFields, type AssetSource } from './internal/asset-source';
+export type { AssetSource } from './internal/asset-source';
 import { WebSocket, Data } from 'ws';
 import { execFile } from 'node:child_process';
 import fs from 'fs';
@@ -420,11 +422,12 @@ export type InstanceClient = {
   /** The names the emulator cannot resolve. */
   getBlockedDomains: () => Promise<string[]>;
   /**
-   * Send an asset URL to the instance. The instance will download the asset
+   * Send a URL or { assetName } to the instance. Names require delegated asset read permission.
+   * The instance will download the asset
    * and process it (currently APK install is supported). Resolves on success,
    * rejects with an Error on failure.
    */
-  sendAsset: (url: string, timeoutMs?: number) => Promise<void>;
+  sendAsset: (source: AssetSource, timeoutMs?: number) => Promise<void>;
 
   /**
    * Delta-sync a local APK to the instance and install it.
@@ -770,15 +773,14 @@ type ScreenshotErrorResponse = {
   id: string;
 };
 
-type AssetRequest = {
-  type: 'asset';
-  url: string;
-};
+type AssetRequest = { type: 'asset'; id: string } & ({ url: string } | { assetName: string });
 
 type AssetResultResponse = {
   type: 'assetResult';
   result: 'success' | 'failure' | string;
-  url: string;
+  url?: string;
+  assetName?: string;
+  id?: string;
   message?: string;
 };
 
@@ -1113,7 +1115,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   let intentionalDisconnect = false;
   let lastError: string | undefined;
   const pendingRequests: Map<string, PendingRequest<unknown>> = new Map();
-  const pendingAssetRequestsByUrl: Map<string, Array<PendingRequest<void>>> = new Map();
+  const pendingAssetRequests: Map<string, PendingRequest<void> & { url?: string }> = new Map();
   // App exit callbacks are keyed by execId. They intentionally survive transient
   // WebSocket reconnects and are one-shot once a matching appExit is processed.
   const appExitCallbacks: Map<string, LaunchAppExitCallback> = new Map();
@@ -1156,13 +1158,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       request.reject(new Error(reason));
     });
     pendingRequests.clear();
-    pendingAssetRequestsByUrl.forEach((requests) => {
-      requests.forEach((request) => {
-        clearTimeout(request.timeout);
-        request.reject(new Error(reason));
-      });
+    pendingAssetRequests.forEach((request) => {
+      clearTimeout(request.timeout);
+      request.reject(new Error(reason));
     });
-    pendingAssetRequestsByUrl.clear();
+    pendingAssetRequests.clear();
   };
 
   const cleanup = (): void => {
@@ -1434,18 +1434,17 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
           }
           case 'assetResult': {
             logger.debug('Received assetResult:', message);
-            const url = message.url as string;
-            const queue = pendingAssetRequestsByUrl.get(url);
-            if (!queue || queue.length === 0) {
-              logger.warn(`Received assetResult for unknown or already handled url: ${message.url}`);
+            let id = message.id;
+            // Old servers omit id. Only those replies may fall back to the oldest matching URL.
+            if (id === undefined && typeof message.url === 'string') {
+              id = [...pendingAssetRequests].find(([, request]) => request.url === message.url)?.[0];
+            }
+            const request = typeof id === 'string' ? pendingAssetRequests.get(id) : undefined;
+            if (!request || typeof id !== 'string') {
+              logger.warn('Received assetResult for an unknown or completed request');
               break;
             }
-            const request = queue.shift()!;
-            if (queue.length === 0) {
-              pendingAssetRequestsByUrl.delete(url);
-            } else {
-              pendingAssetRequestsByUrl.set(url, queue);
-            }
+            pendingAssetRequests.delete(id);
             clearTimeout(request.timeout);
             if (message.result === 'success') {
               logger.debug('Asset result is success');
@@ -2040,53 +2039,29 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const getBlockedDomains = (): Promise<string[]> =>
       requestBlockedDomains(androidBlockedDomainsUrl(requireAdbUrl('read blocked domains')), options.token);
 
-    const sendAsset = async (url: string, timeoutMs?: number): Promise<void> => {
+    const sendAsset = async (source: AssetSource, timeoutMs?: number): Promise<void> => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         return Promise.reject(new Error('WebSocket is not connected or connection is not open.'));
       }
-      const assetRequest: AssetRequest = {
-        type: 'asset',
-        url,
-      };
+      const fields = assetSourceFields(source);
+      const id = crypto.randomUUID();
+      const assetRequest: AssetRequest = { type: 'asset', ...fields, id };
       return new Promise<void>((resolve, reject) => {
-        let request: PendingRequest<void>;
         const timeout = setTimeout(() => {
-          const queue = pendingAssetRequestsByUrl.get(url);
-          if (!queue) {
-            return;
-          }
-          const idx = queue.indexOf(request);
-          if (idx >= 0) {
-            queue.splice(idx, 1);
-            reject(new Error(`Request asset timed out for url: ${url}`));
-          }
-          if (queue.length === 0) {
-            pendingAssetRequestsByUrl.delete(url);
-          } else {
-            pendingAssetRequestsByUrl.set(url, queue);
+          if (pendingAssetRequests.delete(id)) {
+            reject(new Error(`Request asset timed out for id: ${id}`));
           }
         }, timeoutMs ?? 120_000);
-        request = {
+        pendingAssetRequests.set(id, {
           resolve,
-          reject: (reason: Error) => reject(reason),
+          reject,
           timeout,
-        };
-        const queue = pendingAssetRequestsByUrl.get(url) ?? [];
-        queue.push(request);
-        pendingAssetRequestsByUrl.set(url, queue);
+          ...('url' in fields && { url: fields.url }),
+        });
         ws!.send(JSON.stringify(assetRequest), (err?: Error) => {
           if (err) {
             clearTimeout(timeout);
-            const queued = pendingAssetRequestsByUrl.get(url) ?? [];
-            const idx = queued.indexOf(request);
-            if (idx >= 0) {
-              queued.splice(idx, 1);
-            }
-            if (queued.length === 0) {
-              pendingAssetRequestsByUrl.delete(url);
-            } else {
-              pendingAssetRequestsByUrl.set(url, queued);
-            }
+            pendingAssetRequests.delete(id);
             logger.error('Failed to send asset request:', err);
             reject(err);
           }
