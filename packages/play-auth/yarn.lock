@@ -1600,9 +1600,9 @@ natural-compare@^1.4.0:
   integrity sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==
 
 node-forge@^1.4.0:
-  version "1.4.1"
-  resolved "https://registry.yarnpkg.com/node-forge/-/node-forge-1.4.1.tgz#696367cbe60d1bf92cd2d926eaef18897e885cba"
-  integrity sha512-w5/MfWaeMrpR/5ba6fZyAUTLSuE6aYz7H/3cYrqwZEmf5eQS3IaaLgJt4MBv7HglGFWmV22K8h4U18RJQmw/ow==
+  version "1.4.3"
+  resolved "https://registry.yarnpkg.com/node-forge/-/node-forge-1.4.3.tgz#5dc578529ac8e162f58038c6673337cabfab3277"
+  integrity sha512-P6wzfh6t70avmV8FrVEAd/36sOPJQ+hkaJVX1Laap9J/77m7M0eyozDvc8SwnDf4P7MP94gwbAAo0rg3YVXT+g==
 
 obug@^2.1.1:
   version "2.2.1"
