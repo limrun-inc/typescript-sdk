@@ -369,6 +369,17 @@ const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
   },
 };
 
+// The tablet artwork has a 1600 × 2560 screen opening in an 1837 × 2798 frame.
+// Phone insets enlarge the video behind its wider bezel and hide the screen edges.
+const androidTabletConfig: DeviceConfig = {
+  videoBorderRadiusMultiplier: 32 / 1837,
+  loadingLogoSize: '40%',
+  videoPosition: {
+    portrait: { heightMultiplier: 2560 / 2798 },
+    landscape: { widthMultiplier: 2560 / 2798 },
+  },
+};
+
 function getAndroidKeycodeAndMeta(event: React.KeyboardEvent): { keycode: number; metaState: number } | null {
   const code = event.code;
   const keycode = codeMap[code];
@@ -548,7 +559,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         Array.from(crypto.getRandomValues(new Uint32Array(4)), (part) => part.toString(36)).join(''),
       [propSessionId, token],
     );
-    const config = deviceConfig[platform];
+    const config =
+      platform === 'android' && useAndroidTabletFrame ? androidTabletConfig : deviceConfig[platform];
     const platformAssets = assets?.[platform];
     const frameImageSrc =
       platform === 'android' && useAndroidTabletFrame ?
