@@ -357,6 +357,16 @@ export type SimulatorStatus = {
   latestBuild?: SimulatorBuildStatus;
 };
 
+export type SimulatorDebugSymbols = {
+  buildId: string;
+  bundleId?: string;
+  /**
+   * Symbol files on the simulator, one per binary of the app that carries debug info. Empty
+   * when the build has none the Xcode instance can read, such as a remote Bazel build.
+   */
+  paths: string[];
+};
+
 export type SimulatorAttachResult = {
   attached: boolean;
   alreadyAttached: boolean;
@@ -550,6 +560,15 @@ export type XcodeClient = {
    * Return the currently attached simulator and latest installable build state.
    */
   getSimulator: () => Promise<SimulatorStatus>;
+
+  /**
+   * Upload the debug symbols of the latest build installed on the attached simulator to it,
+   * so a debugger there resolves source lines and variables: load each returned path with
+   * LLDB's `target symbols add`. Simulator builds keep their debug info on the Xcode instance,
+   * out of the simulator's reach. Throws when no simulator is attached or it has no build
+   * from this instance.
+   */
+  syncSimulatorDebugSymbols: () => Promise<SimulatorDebugSymbols>;
 
   /** Disconnect the simulator, keeping both instances and installed apps. */
   detachSimulator: () => Promise<SimulatorStatus>;
@@ -1112,6 +1131,14 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           },
         });
         return readJsonResponse<SimulatorStatus>(res, 'GET /simulator');
+      },
+
+      async syncSimulatorDebugSymbols(): Promise<SimulatorDebugSymbols> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator/debug-symbols`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        return readJsonResponse<SimulatorDebugSymbols>(res, 'POST /simulator/debug-symbols');
       },
 
       async detachSimulator(): Promise<SimulatorStatus> {

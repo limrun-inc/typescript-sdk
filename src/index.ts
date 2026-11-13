@@ -135,6 +135,7 @@ export {
   type XcodeCloudSigningMethod,
   type ReactNativeBuildConfig,
   type SimulatorAttachResult,
+  type SimulatorDebugSymbols,
   type SimulatorStatus,
   type SimulatorBuildStatus,
   type SimulatorAttachment,
