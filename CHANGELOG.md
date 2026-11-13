@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.73.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.73.0...v0.73.1) (2026-11-13)
+
+
+### Features
+
+* **cli:** add ios lldb ([3f9e892](https://github.com/limrun-inc/typescript-sdk/commit/3f9e892922041a52b0416b1d99a561ea54b3b7f5))
+* **cli:** give a live ios lldb session a prompt ([e60b1e2](https://github.com/limrun-inc/typescript-sdk/commit/e60b1e248f5289d99166ad61ce557349765c0e16))
+* **cli:** load the symbols of an Xcode build in ios lldb ([e629b92](https://github.com/limrun-inc/typescript-sdk/commit/e629b92ad1912e2a8f0bc38da5ed57647b419d46))
+* **xcode:** upload a simulator build's debug symbols to the simulator ([31a9727](https://github.com/limrun-inc/typescript-sdk/commit/31a9727900b68c8d0f3e44a5337f26e779413c6d))
+
+
+### Bug Fixes
+
+* **cli:** leave a live ios lldb session on a second Ctrl-C ([65aa1e0](https://github.com/limrun-inc/typescript-sdk/commit/65aa1e09888713de2466eb900b3dbfa4582be0e1))
+* **cli:** let quit end a live ios lldb session ([4a58100](https://github.com/limrun-inc/typescript-sdk/commit/4a581006f37e6419d581884866f62674bd5d7b77))
+* **cli:** tighten ios lldb input handling and echo filtering ([02a15a2](https://github.com/limrun-inc/typescript-sdk/commit/02a15a28ac4db602d5251a92b3e2d086a9fbc05d))
+* **xcode:** tell an instance without debug symbol support from a missing one ([974316e](https://github.com/limrun-inc/typescript-sdk/commit/974316e4488f04af5d575dc1142e4eee9406685b))
+
+
+### Chores
+
+* **cli:** release 0.57.0 with SDK 0.73.0 ([6897842](https://github.com/limrun-inc/typescript-sdk/commit/6897842f5d1303020128afcb4f1165252796ba72))
+
+
+### Documentation
+
+* **cli:** state the limits of ios lldb ([1b01b2f](https://github.com/limrun-inc/typescript-sdk/commit/1b01b2f9b14f731fb68e4a4e31c9be8a036119d1))
+
 ## [0.73.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.72.0...v0.73.0) (2026-11-12)
 
 
