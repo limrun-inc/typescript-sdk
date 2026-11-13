@@ -1,0 +1,50 @@
+{
+  "name": "@limrun/ai-sdk",
+  "version": "0.1.0",
+  "description": "Limrun iOS simulator and Android emulator tools for the Vercel AI SDK.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "lint": "eslint .",
+    "prepublishOnly": "yarn build",
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/limrun-inc/typescript-sdk.git",
+    "directory": "packages/ai-sdk"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@limrun/api": "^0.65.0"
+  },
+  "peerDependencies": {
+    "ai": "^7.0.0",
+    "zod": "^3.25.76 || ^4.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "ai": "^7.0.0",
+    "eslint": "^9.39.1",
+    "typescript": "5.8.3",
+    "typescript-eslint": "8.31.1",
+    "vitest": "^4.1.11",
+    "zod": "^4.1.8"
+  }
+}
