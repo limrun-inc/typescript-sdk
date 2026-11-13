@@ -1,12 +1,14 @@
-import Limrun from '@limrun/api';
+import Limrun, { SimulatorDebugSymbolsUnavailableError } from '@limrun/api';
 import { nodeProxyTransport } from '@limrun/api/internal/proxy-transport';
 import type { RequestInfo } from '../src/internal/builtin-types';
 
 const originalFetch = nodeProxyTransport.fetch;
+const originalFetchLongRequest = nodeProxyTransport.fetchLongRequest;
 
 describe('xcode client simulator helpers', () => {
   afterEach(() => {
     nodeProxyTransport.fetch = originalFetch;
+    nodeProxyTransport.fetchLongRequest = originalFetchLongRequest;
   });
 
   test('detaches through the sandbox using only its token', async () => {
@@ -35,25 +37,27 @@ describe('xcode client simulator helpers', () => {
 
   test('asks the sandbox to upload the debug symbols of its latest build', async () => {
     const symbols = { buildId: 'build-1', bundleId: 'com.example.app', paths: ['/sim/app.dwarf'] };
-    nodeProxyTransport.fetch = jest.fn(async () => jsonResponse(symbols));
+    nodeProxyTransport.fetchLongRequest = jest.fn(async () => jsonResponse(symbols));
     const xcode = await new Limrun({ apiKey: 'management-key' }).xcodeInstances.createClient({
       apiUrl: 'https://xcode.example.test',
       token: 'xcode-token',
     });
     expect(await xcode.syncSimulatorDebugSymbols()).toEqual(symbols);
-    expect(nodeProxyTransport.fetch).toHaveBeenCalledWith(
+    expect(nodeProxyTransport.fetchLongRequest).toHaveBeenCalledWith(
       'https://xcode.example.test/simulator/debug-symbols',
       { method: 'POST', headers: { Authorization: 'Bearer xcode-token' } },
     );
   });
 
-  test('a sandbox without debug symbol support answers not found', async () => {
-    nodeProxyTransport.fetch = jest.fn(async () => new Response('not found', { status: 404 }));
+  test('a sandbox without debug symbol support is not mistaken for a missing one', async () => {
+    nodeProxyTransport.fetchLongRequest = jest.fn(async () => new Response('not found', { status: 404 }));
     const xcode = await new Limrun({ apiKey: 'key' }).xcodeInstances.createClient({
       apiUrl: 'https://xcode.example.test',
       token: 'xcode-token',
     });
-    await expect(xcode.syncSimulatorDebugSymbols()).rejects.toBeInstanceOf(Limrun.NotFoundError);
+    const failure = xcode.syncSimulatorDebugSymbols();
+    await expect(failure).rejects.toBeInstanceOf(SimulatorDebugSymbolsUnavailableError);
+    await expect(failure).rejects.not.toBeInstanceOf(Limrun.NotFoundError);
   });
 
   test('new auxiliary simulators have no ambient asset grants', async () => {

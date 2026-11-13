@@ -1,4 +1,5 @@
 import { DeviceDetachUnavailableError } from '../device-detach';
+import { SimulatorDebugSymbolsUnavailableError } from '../simulator-debug-symbols';
 import { pullBuildFile } from '../internal/build-pull-file';
 import { pullResultBundle } from '../internal/result-bundle';
 import { normalizeAssetUpload, type BuildUpload } from '../lib/asset-permissions';
@@ -566,7 +567,8 @@ export type XcodeClient = {
    * so a debugger there resolves source lines and variables: load each returned path with
    * LLDB's `target symbols add`. Simulator builds keep their debug info on the Xcode instance,
    * out of the simulator's reach. Throws when no simulator is attached or it has no build
-   * from this instance.
+   * from this instance, and `SimulatorDebugSymbolsUnavailableError` when the instance predates
+   * this feature.
    */
   syncSimulatorDebugSymbols: () => Promise<SimulatorDebugSymbols>;
 
@@ -1134,11 +1136,17 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       },
 
       async syncSimulatorDebugSymbols(): Promise<SimulatorDebugSymbols> {
-        const res = await nodeProxyTransport.fetch(`${apiUrl}/simulator/debug-symbols`, {
+        // The instance links and uploads the symbols before it answers, which takes minutes
+        // for a large app.
+        const res = await nodeProxyTransport.fetchLongRequest(`${apiUrl}/simulator/debug-symbols`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
         });
-        return readJsonResponse<SimulatorDebugSymbols>(res, 'POST /simulator/debug-symbols');
+        return readOrUnsupported<SimulatorDebugSymbols>(
+          res,
+          'POST /simulator/debug-symbols',
+          (op) => new SimulatorDebugSymbolsUnavailableError(op),
+        );
       },
 
       async detachSimulator(): Promise<SimulatorStatus> {
