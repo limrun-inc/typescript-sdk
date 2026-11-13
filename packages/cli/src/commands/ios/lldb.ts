@@ -1,7 +1,10 @@
+import { SimulatorDebugSymbolsUnavailableError } from '@limrun/api';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
-import { dwarfFiles, remoteDwarfName } from '../../lib/dsym';
-import { getIosInstanceClient } from '../../lib/instance-client-factory';
+import { loadLastXcodeInstance } from '../../lib/config';
+import { buildRunsOnSimulator, dwarfFiles, remoteDwarfName } from '../../lib/dsym';
+import { envInstanceTarget } from '../../lib/set-instance';
+import { getIosInstanceClient, resolveIosConnection } from '../../lib/instance-client-factory';
 import { LldbOutputLines, startLldbTerminal } from '../../lib/lldb-terminal';
 
 type LldbResult = {
@@ -16,7 +19,8 @@ export default class IosLldb extends BaseCommand {
     'Run LLDB next to the simulator, attached to an app by bundle ID or pid, and pass it the arguments after `--`. ' +
     'Without `--batch`, the session stays open and reads LLDB commands from standard input until the input ends or you `quit`. ' +
     'The app must be running and built for debugging: Xcode debug builds carry the `get-task-allow` entitlement LLDB needs. ' +
-    'Use --dsym when the debug symbols live in a separate .dSYM. A simulator runs one LLDB session at a time.';
+    'An app that `lim xcode build` installed gets its debug symbols automatically. For an app built elsewhere, use --dsym when the symbols live in a separate .dSYM. ' +
+    'A simulator runs one LLDB session at a time.';
   static examples = [
     '<%= config.bin %> ios lldb --bundle-id com.example.app -- --batch -o "bt all"',
     '<%= config.bin %> ios lldb --bundle-id com.example.app --dsym ./MyApp.app.dSYM -- --batch -o "breakpoint set -f ContentView.swift -l 42" -o "continue" -o "frame variable"',
@@ -48,6 +52,39 @@ export default class IosLldb extends BaseCommand {
     }),
   };
 
+  /**
+   * The debug symbols of an app that `lim xcode build` installed on this simulator. Such a build
+   * keeps its debug info on the Xcode instance, so the instance uploads it to the simulator.
+   * Returns nothing for an app that came from anywhere else. Debugging goes on without symbols
+   * when this fails.
+   */
+  private async xcodeBuildSymbols(
+    simulator: { id: string; apiUrl?: string },
+    bundleId: string,
+  ): Promise<string[]> {
+    const target = envInstanceTarget('xcode') ?? loadLastXcodeInstance();
+    if (!target) return [];
+    let xcode;
+    try {
+      xcode = await this.resolveXcodeClient(target);
+      if (!buildRunsOnSimulator(await xcode.getSimulator(), simulator, bundleId)) return [];
+    } catch (err) {
+      // The remembered Xcode instance is gone or unreachable, so it has no say in this session.
+      this.debug(`skipping Xcode build symbols: ${(err as Error).message}`);
+      return [];
+    }
+    try {
+      this.logToStderr('Loading debug symbols from the Xcode build...');
+      return (await xcode.syncSimulatorDebugSymbols()).paths;
+    } catch (err) {
+      // An Xcode instance from before this feature has nothing to offer, which is no news.
+      if (!(err instanceof SimulatorDebugSymbolsUnavailableError)) {
+        this.warn(`Debugging without symbols from the Xcode build: ${(err as Error).message}`);
+      }
+      return [];
+    }
+  }
+
   async run(): Promise<void> {
     const parsed = await this.parse(IosLldb as any);
     const flags = parsed.flags as Record<string, any>;
@@ -77,11 +114,17 @@ export default class IosLldb extends BaseCommand {
 
       try {
         // Symbols load right after LLDB attaches, ahead of the caller's own commands.
-        const symbolArgs: string[] = [];
+        const symbolPaths: string[] = [];
         for (const [index, file] of symbolFiles.entries()) {
-          const remotePath = await client.pushFile(file, remoteDwarfName(file, index));
-          symbolArgs.push('-o', `target symbols add "${remotePath}"`);
+          symbolPaths.push(await client.pushFile(file, remoteDwarfName(file, index)));
         }
+        if (symbolFiles.length === 0 && flags['bundle-id'] !== undefined) {
+          // The live URL, since the remembered instance may not carry one yet.
+          const { apiUrl } = await resolveIosConnection(this.client, resolvedInstance);
+          const simulator = { id: resolvedInstance.id, apiUrl };
+          symbolPaths.push(...(await this.xcodeBuildSymbols(simulator, flags['bundle-id'])));
+        }
+        const symbolArgs = symbolPaths.flatMap((remotePath) => ['-o', `target symbols add "${remotePath}"`]);
 
         // A batch run ends by itself. Anything else is a session that reads standard input.
         // With --json a terminal has nowhere to show a prompt, so only piped input is read.

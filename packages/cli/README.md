@@ -346,6 +346,8 @@ lim ios lldb --bundle-id com.example.app
 
 Arguments after `--` go to `lldb` unchanged. Without `--batch` the session reads standard input until it ends, so pass `--batch` when nothing will close it. The app keeps running after LLDB detaches.
 
+An app that `lim xcode build` installed on the simulator gets its debug symbols automatically: the Xcode instance sends them to the simulator when the session starts, so file and line breakpoints and `frame variable` work with no flag. Use `--dsym` for an app built anywhere else.
+
 A simulator runs one LLDB session at a time. Backtraces, breakpoints, stepping, `frame variable`, Objective-C expressions and Python scripting work. Swift expression evaluation (`expr`, and `po` on Swift values) is not available yet.
 
 #### Xcode Attachment

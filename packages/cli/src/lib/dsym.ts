@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import type { SimulatorStatus } from '@limrun/api';
 
 /**
  * The DWARF files LLDB loads symbols from: every file under Contents/Resources/DWARF of a
@@ -37,4 +38,25 @@ export function remoteDwarfName(localFile: string, index: number): string {
     .replace(/[^A-Za-z0-9._-]/g, '_')
     .slice(0, 100);
   return `lldb-symbols-${index}-${safe}.dwarf`;
+}
+
+/**
+ * Whether the Xcode instance's latest build is the app about to be debugged on this simulator.
+ * Only then do its debug symbols describe the code that is running. A simulator targeted by
+ * URL has no instance ID the Xcode instance would know, so its URL identifies it.
+ */
+export function buildRunsOnSimulator(
+  status: SimulatorStatus,
+  simulator: { id: string; apiUrl?: string },
+  bundleId: string,
+): boolean {
+  const sameUrl = (a?: string, b?: string) => !!a && !!b && a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
+  const attached = status.simulator;
+  return (
+    status.attached &&
+    !!attached &&
+    (attached.iosInstanceId === simulator.id || sameUrl(attached.apiUrl, simulator.apiUrl)) &&
+    status.latestBuild?.bundleId === bundleId &&
+    status.latestBuild.installState === 'installedOnAttachedSimulator'
+  );
 }
