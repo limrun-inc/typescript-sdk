@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.73.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.73.1...v0.73.2) (2026-11-14)
+
+
+### Features
+
+* **ios:** expose running app PIDs in list-apps ([#678](https://github.com/limrun-inc/typescript-sdk/issues/678)) ([37b036d](https://github.com/limrun-inc/typescript-sdk/commit/37b036d1f39ffa0ff154236d4e9314daa5ee75d2))
+
+
+### Bug Fixes
+
+* **ui:** fit Android tablet video inside its frame ([#676](https://github.com/limrun-inc/typescript-sdk/issues/676)) ([43b7944](https://github.com/limrun-inc/typescript-sdk/commit/43b7944c602a548aea63e3437b416ec450c9c74b))
+
+
+### Chores
+
+* **cli:** release 0.57.1 with SDK 0.73.1 ([56958e9](https://github.com/limrun-inc/typescript-sdk/commit/56958e9a1e991a7854a414ff664efdfece245f6d))
+
 ## [0.73.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.73.0...v0.73.1) (2026-11-13)
 
 
