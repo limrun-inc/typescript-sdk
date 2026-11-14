@@ -223,6 +223,9 @@ export function renderPlaneBazelrc(
     'build:limrun --strategy=Genrule=remote',
     'build:limrun --modify_execution_info=.*=-no-remote,.*=-no-remote-exec',
     'build:limrun --remote_download_outputs=toplevel',
+    // Blobs cross the client's link zstd-compressed. Dependency files and
+    // debug info shrink 4 to 100 times, and a full link delays every cache check.
+    'build:limrun --remote_cache_compression',
   ];
   if (kinds.apple) {
     const xcode = pinnedXcode(setup);
