@@ -282,6 +282,8 @@ export type InstalledApp = {
   bundleId: string;
   name: string;
   installType: string;
+  /** Process ID at query time; absent when the app is not running. */
+  pid?: number;
   /** App icon as a base64-encoded 64px PNG; absent when the runtime could not extract one. */
   icon?: string;
   /** Install time as epoch milliseconds; absent when the runtime cannot tell (e.g. iOS system apps). */
@@ -928,8 +930,8 @@ export type InstanceClient = {
 
   /**
    * List installed apps on the simulator
-   * @returns Array of installed apps with bundleId, name, installType, and,
-   *   when available, a small base64 PNG icon
+   * @returns Array of installed apps with bundleId, name, installType, a pid for
+   *   running apps, and, when available, a small base64 PNG icon
    */
   listApps: () => Promise<InstalledApp[]>;
 
