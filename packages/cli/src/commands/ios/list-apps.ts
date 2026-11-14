@@ -9,7 +9,7 @@ import {
 export default class IosListApps extends BaseCommand {
   static summary = 'List installed apps on a running iOS instance';
   static description =
-    'List the apps currently installed on a running iOS instance, including bundle identifiers, display names, and install types. Use this before `launch-app` if you need to discover the correct bundle ID.';
+    'List the apps currently installed on a running iOS instance, including bundle identifiers, display names, install types, and PIDs for running apps. The JSON output omits pid for apps that are not running. Use this before `launch-app` if you need to discover the correct bundle ID.';
   static examples = [
     '<%= config.bin %> ios list-apps',
     '<%= config.bin %> ios list-apps --id <instance-ID>',
@@ -48,8 +48,8 @@ export default class IosListApps extends BaseCommand {
       if (flags.json) {
         this.outputJson(apps);
       } else {
-        const rows = apps.map((a: any) => [a.bundleId, a.name, a.installType]);
-        this.outputTable(['Bundle ID', 'Name', 'Install Type'], rows);
+        const rows = apps.map((a: any) => [a.bundleId, a.name, a.installType, a.pid ?? '']);
+        this.outputTable(['Bundle ID', 'Name', 'Install Type', 'PID'], rows);
       }
     });
   }
