@@ -231,6 +231,12 @@ export function renderPlaneBazelrc(
       'build:limrun --xcode_version_config=//.limrun:remote_xcode_config',
       `build:limrun --xcode_version=${shortXcode(xcode)}`,
       'build:limrun --ios_multi_cpus=sim_arm64',
+      // Workers already run each action in a sandbox, and swiftc cannot start
+      // its own nested one for macro plugins. Xcode builds on Limrun pass the
+      // same flag. rules_swift reads Swift flags from these settings, named
+      // canonically because the plane requires Bazel 8 or later with Bzlmod.
+      'build:limrun --@@rules_swift+//swift:copt=-disable-sandbox',
+      'build:limrun --@@rules_swift+//swift:exec_copt=-disable-sandbox',
       'build:limrun --action_env=PATH=/usr/bin:/bin:/usr/sbin:/sbin',
     );
   }
