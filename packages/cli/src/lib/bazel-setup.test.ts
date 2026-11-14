@@ -85,6 +85,9 @@ describe('plane bazelrc', () => {
     expect(rc).toContain('build:limrun --remote_default_exec_properties=OSFamily=macos');
     expect(rc).toContain('build:limrun --xcode_version=26.4');
     expect(rc).toContain('build:limrun --remote_cache_compression');
+    // swiftc cannot nest its plugin sandbox inside the worker's.
+    expect(rc).toContain('build:limrun --@@rules_swift+//swift:copt=-disable-sandbox');
+    expect(rc).toContain('build:limrun --@@rules_swift+//swift:exec_copt=-disable-sandbox');
     expect(rc).not.toMatch(/lim_st_|Authorization|remote_header/);
   });
 
@@ -95,6 +98,7 @@ describe('plane bazelrc', () => {
     );
     expect(rc).toContain('bootstrap_impl=script');
     expect(rc).not.toContain('xcode_version');
+    expect(rc).not.toContain('rules_swift');
     expect(rc).not.toContain('remote_default_exec_properties');
   });
 
