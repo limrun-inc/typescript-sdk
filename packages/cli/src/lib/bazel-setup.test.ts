@@ -84,6 +84,7 @@ describe('plane bazelrc', () => {
     );
     expect(rc).toContain('build:limrun --remote_default_exec_properties=OSFamily=macos');
     expect(rc).toContain('build:limrun --xcode_version=26.4');
+    expect(rc).toContain('build:limrun --remote_cache_compression');
     expect(rc).not.toMatch(/lim_st_|Authorization|remote_header/);
   });
 
