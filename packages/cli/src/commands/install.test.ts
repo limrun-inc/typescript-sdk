@@ -2,8 +2,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { APIError } from '@limrun/api';
-import IosInstallApp from './ios/install-app';
-import AndroidInstallApp from './android/install-app';
+import IosInstall from './ios/install';
+import AndroidInstall from './android/install';
 import {
   ensureDaemonSession,
   getIosInstanceClient,
@@ -59,23 +59,20 @@ function setup(
     list: jest.fn(),
     get: jest.fn(),
   };
-  const command = Object.assign(
-    Object.create((platform === 'ios' ? IosInstallApp : AndroidInstallApp).prototype),
-    {
-      parse: async () => ({ args: { path_or_url: source }, flags }),
-      setParsedFlags: jest.fn(),
-      withAuth: async (run: () => Promise<void>) => run(),
-      resolveIosInstance: () => target,
-      resolveAndroidInstance: () => target,
-      log: jest.fn(),
-      info: jest.fn(),
-      outputResult: jest.fn(),
-      outputJson: jest.fn(),
-      error: (message: string) => {
-        throw new Error(message);
-      },
+  const command = Object.assign(Object.create((platform === 'ios' ? IosInstall : AndroidInstall).prototype), {
+    parse: async () => ({ args: { path_or_url: source }, flags }),
+    setParsedFlags: jest.fn(),
+    withAuth: async (run: () => Promise<void>) => run(),
+    resolveIosInstance: () => target,
+    resolveAndroidInstance: () => target,
+    log: jest.fn(),
+    info: jest.fn(),
+    outputResult: jest.fn(),
+    outputJson: jest.fn(),
+    error: (message: string) => {
+      throw new Error(message);
     },
-  );
+  });
   Object.defineProperty(command, 'client', {
     value: { assets, iosInstances: { get, update }, androidInstances: { get, update } },
   });

@@ -343,10 +343,10 @@ This is the iOS-oriented equivalent of `lim xcode attach-simulator ios_abc123 --
 
 ```bash
 # Install an app (local file auto-uploads, or use URL)
-lim ios install-app ./MyApp.ipa
-lim ios install-app https://example.com/app.ipa
-lim ios install-app https://example.com/app.ipa --md5 <hex-digest>
-lim ios install-app ./MyApp.ipa --launch-mode RelaunchIfRunning
+lim ios install ./MyApp.ipa
+lim ios install https://example.com/app.ipa
+lim ios install https://example.com/app.ipa --md5 <hex-digest>
+lim ios install ./MyApp.ipa --launch-mode RelaunchIfRunning
 
 # Launch — streams the app's logs until the app exits or Ctrl+C
 lim ios launch-app com.example.myapp
@@ -537,7 +537,7 @@ lim android scroll down --resource-id com.example:id/list --amount 500
 lim android element-tree
 
 # Install app
-lim android install-app ./app.apk
+lim android install ./app.apk
 
 # Open URL
 lim android open-url https://example.com

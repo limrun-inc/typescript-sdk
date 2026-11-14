@@ -8,15 +8,17 @@ import {
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
-export default class AndroidInstallApp extends BaseCommand {
+export default class AndroidInstall extends BaseCommand {
+  static aliases = ['android:install-app'];
+
   static summary = 'Install an app on a running Android instance';
   static description =
     'Install an app from a local file path, asset name, or remote URL onto a running Android instance. Local files are uploaded to Limrun asset storage automatically before installation. Named installs add a missing asset read grant to the instance role.';
 
   static examples = [
-    '<%= config.bin %> android install-app --asset-name releases/app.apk',
-    '<%= config.bin %> android install-app ./app.apk',
-    '<%= config.bin %> android install-app https://example.com/app.apk --id <instance-ID>',
+    '<%= config.bin %> android install --asset-name releases/app.apk',
+    '<%= config.bin %> android install ./app.apk',
+    '<%= config.bin %> android install https://example.com/app.apk --id <instance-ID>',
   ];
 
   static args = {
@@ -43,7 +45,7 @@ export default class AndroidInstallApp extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(AndroidInstallApp);
+    const { args, flags } = await this.parse(AndroidInstall);
     this.setParsedFlags(flags);
     if (Boolean(args.path_or_url) === Boolean(flags['asset-name'])) {
       this.error('Provide a local path or URL, or --asset-name, but not both.');
@@ -53,7 +55,7 @@ export default class AndroidInstallApp extends BaseCommand {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
       const id = resolvedInstance.id;
       if (false) {
-        this.error('android install-app only supports Android instances');
+        this.error('android install only supports Android instances');
       }
 
       let downloadUrl: string | undefined;

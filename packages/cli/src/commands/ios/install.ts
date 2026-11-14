@@ -10,18 +10,20 @@ import {
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
-export default class IosInstallApp extends BaseCommand {
+export default class IosInstall extends BaseCommand {
+  static aliases = ['ios:install-app'];
+
   static summary = 'Install an app on a running iOS instance';
   static description =
     'Install an app from a local file path, asset name, or remote URL onto a running iOS instance. Local files are uploaded to Limrun asset storage automatically before installation. Named installs add a missing asset read grant to the instance role.';
 
   static examples = [
-    '<%= config.bin %> ios install-app --asset-name releases/app.zip',
-    '<%= config.bin %> ios install-app ./MyApp.ipa',
-    '<%= config.bin %> ios install-app https://example.com/MyApp.ipa --json',
-    '<%= config.bin %> ios install-app ./MyApp.ipa --id <instance-ID>',
-    '<%= config.bin %> ios install-app ./MyApp.ipa --launch-mode RelaunchIfRunning',
-    '<%= config.bin %> ios install-app https://example.com/MyApp.ipa --md5 <hex-digest>',
+    '<%= config.bin %> ios install --asset-name releases/app.zip',
+    '<%= config.bin %> ios install ./MyApp.ipa',
+    '<%= config.bin %> ios install https://example.com/MyApp.ipa --json',
+    '<%= config.bin %> ios install ./MyApp.ipa --id <instance-ID>',
+    '<%= config.bin %> ios install ./MyApp.ipa --launch-mode RelaunchIfRunning',
+    '<%= config.bin %> ios install https://example.com/MyApp.ipa --md5 <hex-digest>',
   ];
 
   static args = {
@@ -55,7 +57,7 @@ export default class IosInstallApp extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(IosInstallApp);
+    const { args, flags } = await this.parse(IosInstall);
     this.setParsedFlags(flags);
     if (Boolean(args.path_or_url) === Boolean(flags['asset-name'])) {
       this.error('Provide a local path or URL, or --asset-name, but not both.');
@@ -65,7 +67,7 @@ export default class IosInstallApp extends BaseCommand {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
       if (false) {
-        this.error('ios install-app only supports iOS instances');
+        this.error('ios install only supports iOS instances');
       }
 
       let downloadUrl: string | undefined;
