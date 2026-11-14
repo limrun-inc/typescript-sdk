@@ -11,9 +11,10 @@ import {
 export default class AndroidInstallApp extends BaseCommand {
   static summary = 'Install an app on a running Android instance';
   static description =
-    'Install an app from a local file path or remote URL onto a running Android instance. Local files are uploaded to Limrun asset storage automatically before installation.';
+    'Install an app from a local file path, asset name, or remote URL onto a running Android instance. Local files are uploaded to Limrun asset storage automatically before installation. Named installs add a missing asset read grant to the instance role.';
 
   static examples = [
+    '<%= config.bin %> android install-app --asset-name releases/app.apk',
     '<%= config.bin %> android install-app ./app.apk',
     '<%= config.bin %> android install-app https://example.com/app.apk --id <instance-ID>',
   ];
@@ -21,12 +22,16 @@ export default class AndroidInstallApp extends BaseCommand {
   static args = {
     path_or_url: Args.string({
       description: 'Local app file path or remote URL to an installable Android package such as .apk',
-      required: true,
+      required: false,
     }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
+    'asset-name': Flags.string({
+      description: 'Install an existing asset by exact name, granting instance read permission if needed.',
+      exclusive: ['asset-ttl'],
+    }),
     id: Flags.string({
       description:
         'Android instance ID to install the app on. Defaults to the last created Android instance.',
@@ -40,6 +45,9 @@ export default class AndroidInstallApp extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(AndroidInstallApp);
     this.setParsedFlags(flags);
+    if (Boolean(args.path_or_url) === Boolean(flags['asset-name'])) {
+      this.error('Provide a local path or URL, or --asset-name, but not both.');
+    }
 
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveAndroidInstance(flags.id);
@@ -48,36 +56,52 @@ export default class AndroidInstallApp extends BaseCommand {
         this.error('android install-app only supports Android instances');
       }
 
-      let downloadUrl: string;
+      let downloadUrl: string | undefined;
+      let assetName = flags['asset-name'];
       let assetId: string | undefined;
-      if (args.path_or_url.startsWith('http://') || args.path_or_url.startsWith('https://')) {
-        downloadUrl = args.path_or_url;
-      } else {
-        const filePath = path.resolve(args.path_or_url);
+      const source = args.path_or_url;
+      if (source?.startsWith('http://') || source?.startsWith('https://')) {
+        downloadUrl = source;
+      } else if (source) {
+        const filePath = path.resolve(source);
         if (!fs.existsSync(filePath)) {
           this.error(`File not found: ${filePath}`);
         }
         const name = path.basename(filePath);
         this.info(`Uploading ${name}...`);
         const asset = await this.client.assets.getOrUpload({ path: filePath, name, ttl: flags['asset-ttl'] });
-        downloadUrl = asset.signedDownloadUrl;
+        assetName = asset.name;
         assetId = asset.id;
       }
 
+      if (assetName) await this.ensureInstallPermissions(id, assetName, assetId);
+
       if (await ensureDaemonSession(resolvedInstance)) {
-        await sendSessionCommand(id, 'install-app', [downloadUrl]);
-        this.outputResult(
-          { ok: true, instanceId: id, source: args.path_or_url, assetId },
-          'App sent to instance',
-        );
-        return;
+        try {
+          await sendSessionCommand(
+            id,
+            assetName ? 'install-app-by-name' : 'install-app',
+            [assetName ?? downloadUrl],
+            120_000,
+          );
+          this.outputResult(
+            { ok: true, instanceId: id, source: args.path_or_url ?? assetName, assetId },
+            'App sent to instance',
+          );
+          return;
+        } catch (err) {
+          // Older background sessions cannot dispatch named installs; connect directly instead.
+          if (!assetName || !(err instanceof Error) || err.message !== 'Unknown command: install-app-by-name')
+            throw err;
+        }
       }
 
       const { client, disconnect } = await getAndroidInstanceClient(this.client, resolvedInstance);
       try {
-        await client.sendAsset(downloadUrl);
+        if (assetName) await client.installAppByName(assetName);
+        else await client.sendAsset(downloadUrl!);
         this.outputResult(
-          { ok: true, instanceId: id, source: args.path_or_url, assetId },
+          { ok: true, instanceId: id, source: args.path_or_url ?? assetName, assetId },
           'App sent to instance',
         );
       } finally {

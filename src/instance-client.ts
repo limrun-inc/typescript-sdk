@@ -429,6 +429,9 @@ export type InstanceClient = {
    */
   sendAsset: (source: AssetSource, timeoutMs?: number) => Promise<void>;
 
+  /** Install an APK by exact asset name using the instance role. */
+  installAppByName: (assetName: string, timeoutMs?: number) => Promise<void>;
+
   /**
    * Delta-sync a local APK to the instance and install it.
    */
@@ -1567,6 +1570,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             setBlockedDomains,
             getBlockedDomains,
             sendAsset,
+            installAppByName: (assetName, timeoutMs) => sendAsset({ assetName }, timeoutMs),
             syncApp,
             getConnectionState,
             onConnectionStateChange,

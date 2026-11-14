@@ -48,7 +48,7 @@ describe.each(['android', 'ios'] as const)('%s asset name installation', (platfo
     });
     try {
       const install = 'installApp' in client ? client.installApp : client.sendAsset;
-      await install({ assetName: 'team/app:prod+版本.zip' });
+      await client.installAppByName('team/app:prod+版本.zip');
       await install('https://storage.example/app.zip');
       await expect(install({ assetName: 'denied.apk' })).rejects.toThrow('asset read denied');
       expect(requests[0]).toMatchObject({ assetName: 'team/app:prod+版本.zip' });

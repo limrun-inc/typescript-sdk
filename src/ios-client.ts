@@ -952,6 +952,9 @@ export type InstanceClient = {
    */
   installApp: (source: AssetSource, options?: AppInstallationOptions) => Promise<AppInstallationResult>;
 
+  /** Install an app by exact asset name using the instance role. */
+  installAppByName: (assetName: string, options?: AppInstallationOptions) => Promise<AppInstallationResult>;
+
   /**
    * Save the simulator keychain as an unencrypted tar.gz archive at a presigned asset-storage URL.
    */
@@ -2418,6 +2421,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             listApps,
             openUrl,
             installApp,
+            installAppByName: (assetName, options) => installApp({ assetName }, options),
             saveKeychain,
             restoreKeychain,
             setOrientation,
