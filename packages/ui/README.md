@@ -336,7 +336,7 @@ Supply the instance's streaming URL and the resulting token to the viewer:
 <RemoteControl url={streamingUrl} token={watchToken} />
 ```
 
-`RemoteControl` derives watch-only mode from a signed `lim_st_` token's scopes for
+`RemoteControl` derives watch-only mode from a Limrun access token's scopes for
 the device ID in the streaming URL. A matching `stream` or `all` grant keeps it
 interactive. Set `watchOnly` to restrict an interactive token too; `false` cannot
 override a watch-only token. Opaque or malformed tokens, and URLs without a device

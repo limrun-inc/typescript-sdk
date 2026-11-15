@@ -6,14 +6,13 @@ import {
   type LastXcodeInstance,
 } from './config';
 import { type InstanceType } from './instance-client-factory';
+import { signedTokenClaims } from './signed-token';
 
 export type ManualInstanceRecord =
   | LastAndroidInstance
   | LastIosInstance
   | LastXcodeInstance
   | LastGradleInstance;
-
-const SIGNED_TOKEN_PREFIX = 'lim_st_';
 
 // TID prefixes an instance of each type can carry. Xcode instances appear
 // both standalone (xcode_) and as sandboxes nested in iOS instances (sandbox_).
@@ -32,17 +31,9 @@ const ID_PREFIXES: Record<InstanceType, string[]> = {
  * Legacy opaque tokens and wildcard scopes yield undefined.
  */
 export function instanceIdFromToken(token: string, type: InstanceType): string | undefined {
-  if (!token.startsWith(SIGNED_TOKEN_PREFIX)) return undefined;
-  const parts = token.slice(SIGNED_TOKEN_PREFIX.length).split('.');
-  if (parts.length !== 3) return undefined;
-  let payload: unknown;
-  try {
-    payload = JSON.parse(Buffer.from(parts[1]!, 'base64url').toString('utf-8'));
-  } catch {
-    return undefined;
-  }
-  if (typeof payload !== 'object' || payload === null) return undefined;
-  const scopes = (payload as { scopes?: unknown }).scopes;
+  const payload = signedTokenClaims(token);
+  if (!payload) return undefined;
+  const scopes = payload['scopes'];
   if (!Array.isArray(scopes)) return undefined;
   for (const raw of scopes) {
     if (typeof raw !== 'string') continue;

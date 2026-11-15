@@ -143,7 +143,7 @@ The CLI tests exercise response shapes, stream framing, both device transports, 
 | `access-token revoke` | `{"ok":true,"id":"..."}` after successful revocation.                      |
 
 `access-token create --quiet` prints only the token. `access-token revoke` accepts either the ID or the
-`lim_st_` token value, extracting its `jti`. Its JSON result always contains the resolved ID, never the token.
+token value, extracting its `jti`. Its JSON result always contains the resolved ID, never the token.
 
 ## Secret store
 
