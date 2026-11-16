@@ -57,6 +57,7 @@ export interface RemoteControlProps {
   url: string;
 
   // token is used to authenticate the connection to the instance.
+  // A new value keeps the current stream; reconnects use the latest one.
   token: string;
 
   // className is the class name to apply to the component
@@ -66,8 +67,7 @@ export interface RemoteControlProps {
   // sessionId is a unique identifier for the WebRTC session
   // with the source to prevent conflicts between other
   // users connected to the same source.
-  // If empty, the component generates a random one on mount and when the token changes.
-  // If supplied, change it whenever the token changes.
+  // If empty, the component generates a random one on mount.
   sessionId?: string;
 
   // openUrl is the URL to open in the instance when the
@@ -557,7 +557,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       () =>
         propSessionId ||
         Array.from(crypto.getRandomValues(new Uint32Array(4)), (part) => part.toString(36)).join(''),
-      [propSessionId, token],
+      [propSessionId],
     );
     const config =
       platform === 'android' && useAndroidTabletFrame ? androidTabletConfig : deviceConfig[platform];
@@ -1690,16 +1690,19 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         detach?.();
         clientRef.current = null;
       };
+      // Token rotation must not restart a healthy stream: the server checks
+      // the token only when a connection starts, so updateOptions carries it.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [url, token, propSessionId, deviceModel, latencyTraceRequested, watchOnly]);
+    }, [url, propSessionId, deviceModel, latencyTraceRequested, watchOnly]);
 
     useEffect(() => {
       if (isDuo && innerVideoRef.current)
         return clientRef.current?.attachVideo(innerVideoRef.current, 'inner');
-    }, [isDuo, url, token, propSessionId, deviceModel, latencyTraceRequested, watchOnly]);
+    }, [isDuo, url, propSessionId, deviceModel, latencyTraceRequested, watchOnly]);
 
     useEffect(() => {
       clientRef.current?.updateOptions({
+        token,
         openUrl,
         axPollIntervalMs,
         axMaxBackoffMs,
@@ -1713,6 +1716,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         onCameraStats: onCameraStats ? (...args) => callbacksRef.current.onCameraStats?.(...args) : undefined,
       });
     }, [
+      token,
       autoReconnect,
       jitterBufferTargetMs,
       microphoneEnabled,

@@ -52,7 +52,10 @@ function requestId(): string {
 /** A browser session shared by RemoteControl and custom renderers. No React or CSS required. */
 export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   let options = { ...initialOptions };
-  const { url, token, deviceModel } = options;
+  const { url, deviceModel } = options;
+  // The server checks the token only when a connection starts, so a rotated
+  // token waits for the next attempt instead of restarting a healthy session.
+  let token = options.token;
   const watchOnly = options.watchOnly ?? false;
   const sessionId = options.sessionId ?? requestId();
   const platform = options.platform ?? detectPlatform(url ?? '');
@@ -1932,8 +1935,13 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       attachments.clear();
     },
     getState: () => state,
-    updateOptions: (patch: Partial<DeviceStreamLiveOptions>) => {
+    /** A new token applies to the next connection attempt and termination probe. */
+    updateOptions: ({
+      token: nextToken,
+      ...patch
+    }: Partial<DeviceStreamLiveOptions> & { token?: string }) => {
       if (disposed) throw new Error('Device stream is disposed');
+      if (nextToken !== undefined && !options.transport) token = nextToken;
       const previous = options;
       options = { ...options, ...patch };
       if (previous.jitterBufferTargetMs !== options.jitterBufferTargetMs) {

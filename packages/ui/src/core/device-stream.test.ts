@@ -248,6 +248,18 @@ describe('headless device stream', () => {
     },
   );
 
+  it('retries a dropped session with the latest token', async () => {
+    const client = create({ url: 'wss://host/ios_test', token: 'secret' });
+    const { peer } = await handshake(client);
+    peer.connected();
+    client.updateOptions({ token: 'rotated' });
+    expect(Socket.sockets).toHaveLength(1);
+    peer.fail();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(Socket.sockets).toHaveLength(2);
+    expect(new URL(Socket.sockets[1]!.url).searchParams.get('token')).toBe('rotated');
+  });
+
   it.each([undefined, false])(
     'handles prolonged ICE disconnection with autoReconnect=%s',
     async (autoReconnect) => {
@@ -1194,17 +1206,24 @@ describe('RemoteControl compatibility', () => {
     expect(host.querySelector('.rc-retry-button')).not.toBeNull();
   });
 
-  it('generates a new session ID across credential changes', async () => {
-    await render({ openUrl: 'myapp://first' });
+  // Hosts that re-read an instance receive a new token each time. The stream
+  // must keep playing, and only its next connection needs the new value.
+  it('keeps the stream across a token change and reconnects with the latest token', async () => {
+    await render();
     const first = await connect();
     const sessionId = first.socket.sent.find(
       (message) => message.type === 'requestRtcConfiguration',
     )!.sessionId;
-    await render({ token: 'new-token', openUrl: 'myapp://second' });
+    await render({ token: 'second-token' });
+    await render({ token: 'third-token' });
+    expect(Socket.sockets).toHaveLength(1);
+    expect(first.peer.close).not.toHaveBeenCalled();
+    await act(async () => handle.current!.reconnect());
     const second = await connect();
-    expect(
-      second.socket.sent.find((message) => message.type === 'requestRtcConfiguration')!.sessionId,
-    ).not.toBe(sessionId);
+    expect(new URL(second.socket.url).searchParams.get('token')).toBe('third-token');
+    expect(second.socket.sent.find((message) => message.type === 'requestRtcConfiguration')!.sessionId).toBe(
+      sessionId,
+    );
   });
 
   it('preserves the session ID across client recreation without a token change', async () => {
@@ -1229,13 +1248,13 @@ describe('RemoteControl compatibility', () => {
     expect(Socket.sockets).toHaveLength(4);
   });
 
-  it('uses the caller session ID and replaces it with the credentials', async () => {
+  it('uses the caller session ID and reconnects when it changes', async () => {
     await render({ sessionId: 'first-session' });
     const first = await connect();
     expect(first.socket.sent.find((message) => message.type === 'requestRtcConfiguration')!.sessionId).toBe(
       'first-session',
     );
-    await render({ token: 'new-token', sessionId: 'second-session' });
+    await render({ sessionId: 'second-session' });
     const second = await connect();
     expect(second.socket.sent.find((message) => message.type === 'requestRtcConfiguration')!.sessionId).toBe(
       'second-session',
