@@ -163,3 +163,67 @@ test('workload exchange uses client transport options without allowing credentia
   await client.assets.createUploadURL('asset_01h455vb4pex5vsknk084sn02q');
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
+
+test('federation uses the binding and renews from the rotated file', async () => {
+  const identities: string[] = [];
+  const fetcher = jest.fn(async (url: unknown, init?: RequestInit) => {
+    expect(url).toBe('https://sts.example/v1/token');
+    expect(new Headers(init?.headers).has('Authorization')).toBe(false);
+    const form = new URLSearchParams(init?.body as string);
+    expect(form.get('audience')).toBe('federation_customer');
+    expect(form.get('grant_type')).toBe('urn:ietf:params:oauth:grant-type:token-exchange');
+    identities.push(form.get('subject_token')!);
+    return Response.json({
+      access_token: `session-${identities.length}`,
+      token_type: 'Bearer',
+      expires_in: 30,
+    });
+  });
+  const credentials = new WorkloadCredentials(
+    'https://sts.example',
+    tokenFile,
+    fetcher,
+    undefined,
+    'federation_customer',
+  );
+  expect(await Promise.all([credentials.get(), credentials.get()])).toEqual(['session-1', 'session-1']);
+  expect(await credentials.get()).toBe('session-1');
+  await writeFile(tokenFile, 'rotated');
+  const now = Date.now();
+  jest.spyOn(Date, 'now').mockReturnValue(now + 25000);
+  expect(await credentials.get()).toBe('session-2');
+  expect(identities).toEqual(['projected', 'rotated']);
+});
+
+test('federation client authenticates API calls with the exchanged token', async () => {
+  const fetcher = jest.fn(async (url: unknown, init?: RequestInit) => {
+    if (String(url).endsWith('/v1/token')) {
+      expect(url).toBe('https://sts.limrun.com/v1/token');
+      return Response.json({ access_token: 'limrun-session', token_type: 'Bearer', expires_in: 900 });
+    }
+    expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer limrun-session');
+    expect(String(url)).toContain('https://api.limrun.com/');
+    return Response.json({ items: [] });
+  });
+  const client = new Limrun({
+    apiKey: null,
+    workloadTokenFile: tokenFile,
+    federationBindingId: 'federation_customer',
+    fetch: fetcher,
+  });
+  await client.iosInstances.list();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+test('federation refusal never calls the requested API or reuses an expired session', async () => {
+  const fetcher = jest.fn(async () => Response.json({ error: 'invalid_grant' }, { status: 400 }));
+  const client = new Limrun({
+    apiKey: null,
+    workloadTokenFile: tokenFile,
+    federationBindingId: 'federation_customer',
+    fetch: fetcher,
+    maxRetries: 0,
+  });
+  await expect(client.iosInstances.list()).rejects.toThrow('Workload token exchange returned HTTP 400');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});

@@ -887,9 +887,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
 
   /** Follow disk snapshot restoration or publication until it reaches a terminal phase. */
   followSnapshot(id: string, options?: XcodeSnapshotFollowOptions): Promise<XcodeSnapshotFollowResult> {
-    const apiKey = this._client.apiKey;
-    if (!apiKey) throw new Error('Following disk snapshot status needs an API key on the client');
-    return followXcodeSnapshot({ baseURL: this._client.baseURL, apiKey, instanceId: id }, options);
+    return followXcodeSnapshot(this.snapshotFollowTarget(id), options);
   }
 
   /** @deprecated Use getSnapshot instead. */
@@ -918,11 +916,21 @@ export class XcodeInstances extends GeneratedXcodeInstances {
    * every phase change through `onUpdate`, so a caller can show a restore as it happens.
    */
   followCache(id: string, options?: XcodeCacheFollowOptions): Promise<XcodeCacheFollowResult> {
-    const apiKey = this._client.apiKey;
-    if (!apiKey) {
-      throw new Error('Following cache status needs an API key on the client');
-    }
-    return followXcodeCache({ baseURL: this._client.baseURL, apiKey, instanceId: id }, options);
+    return followXcodeCache(this.snapshotFollowTarget(id), options);
+  }
+
+  private snapshotFollowTarget(id: string) {
+    return {
+      baseURL: this._client.baseURL,
+      instanceId: id,
+      getHeaders: async () => {
+        const { req } = await this._client.buildRequest({
+          method: 'get',
+          path: path`/v1/xcode_instances/${id}/cache`,
+        });
+        return req.headers;
+      },
+    };
   }
 
   async createClient(params: XcodeCreateClientParams): Promise<XcodeClient> {

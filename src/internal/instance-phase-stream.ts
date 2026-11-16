@@ -2,6 +2,15 @@ import { createEventSource, type EventSourceMessage } from 'eventsource-client';
 
 import { nodeProxyTransport } from './proxy-transport';
 
+/** Credentials for a phase stream: a fixed API key, or headers resolved on every connection. */
+export type PhaseStreamAuth =
+  | { apiKey: string; getHeaders?: never }
+  | {
+      apiKey?: never;
+      /** Resolves current credentials on every connection, including reconnects. */
+      getHeaders: () => Promise<Headers>;
+    };
+
 /**
  * How to follow one instance's phase stream: an endpoint that answers JSON, or an event per
  * phase change when asked for `text/event-stream`, and a `gone` event when the instance leaves.
@@ -9,7 +18,7 @@ import { nodeProxyTransport } from './proxy-transport';
  */
 export type PhaseStreamOptions<T> = {
   url: string;
-  apiKey: string;
+  auth: PhaseStreamAuth;
   instanceId: string;
   /** The event carrying a state; `gone` is handled for every stream. */
   eventName: string;
@@ -37,7 +46,14 @@ export type PhaseStreamResult<T> = {
  * wait times out. The server emits on phase change only, so every callback is a real transition.
  */
 export function followPhaseStream<T>(options: PhaseStreamOptions<T>): Promise<PhaseStreamResult<T>> {
-  const { url, apiKey } = options;
+  const { url, auth } = options;
+  const fetchAuthenticated: typeof nodeProxyTransport.fetch = async (input, init) => {
+    const headers = new Headers(
+      auth.getHeaders ? await auth.getHeaders() : { Authorization: `Bearer ${auth.apiKey}` },
+    );
+    new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
+    return nodeProxyTransport.fetch(input, { ...init, headers });
+  };
   return new Promise<PhaseStreamResult<T>>((resolve, reject) => {
     let last: T | undefined;
     let lastKey = '';
@@ -65,10 +81,9 @@ export function followPhaseStream<T>(options: PhaseStreamOptions<T>): Promise<Ph
     const confirmGone = () => {
       if (confirming || settled) return;
       confirming = true;
-      nodeProxyTransport
-        .fetch(url, {
-          headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
-        })
+      fetchAuthenticated(url, {
+        headers: { Accept: 'application/json' },
+      })
         .then(async (res) => {
           confirming = false;
           if (res.status !== 404) {
@@ -87,7 +102,7 @@ export function followPhaseStream<T>(options: PhaseStreamOptions<T>): Promise<Ph
     // Without this the client treats it as a connection to retry and follows a gone instance
     // until the timeout, which is minutes of a command that looks hung and says nothing.
     const fetchOrGone: typeof nodeProxyTransport.fetch = async (input, init) => {
-      const res = await nodeProxyTransport.fetch(input, init);
+      const res = await fetchAuthenticated(input, init);
       if (res.status === 404) resolveGone();
       return res;
     };
@@ -97,7 +112,6 @@ export function followPhaseStream<T>(options: PhaseStreamOptions<T>): Promise<Ph
       fetch: fetchOrGone,
       onConnect: () => options.onOpen?.(),
       headers: {
-        Authorization: `Bearer ${apiKey}`,
         Accept: 'text/event-stream',
       },
       onMessage: (message: EventSourceMessage) => {

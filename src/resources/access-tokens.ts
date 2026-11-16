@@ -32,7 +32,8 @@ export interface AccessTokenCreateParams {
    * iOS and Android accept `ios:<id>:watch` and `android:<id>:watch` for watch-only
    * streaming, or `ios:<id>:stream` and `android:<id>:stream` for
    * interactive streaming without device API or app-management access.
-   * Instance wildcards and other instance actions are not accepted.
+   * Instance targets also accept `*`. Any supported action may be delegated when
+   * covered by the caller, including `read`, build `work`, and device `tunnel`.
    * See https://docs.limrun.com/docs/reference/permissions for targets and actions.
    */
   permissions?: Array<string>;
@@ -42,7 +43,7 @@ export interface AccessTokenCreateParams {
 
   /**
    * How long the token stays valid. Defaults to 3600 (1 hour), maximum is 14400 (4
-   * hours).
+   * hours), capped by the source credential's expiry.
    */
   ttlSeconds?: number;
 }
