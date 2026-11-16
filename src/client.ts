@@ -247,7 +247,7 @@ export class Limrun {
       : opts.workloadTokenFile ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
     const bindingId =
       opts.bindingId === null ? undefined : opts.bindingId ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_BINDING_ID');
-    if (bindingId && !tokenFile)
+    if (!apiKey && bindingId && !tokenFile)
       throw new Error('Federation requires workloadTokenFile or LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
     const options: ClientOptions = {
       apiKey,

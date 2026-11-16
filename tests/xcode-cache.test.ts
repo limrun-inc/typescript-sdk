@@ -58,6 +58,44 @@ describe('xcode cache follower', () => {
     nodeProxyTransport.fetch = originalFetch;
   });
 
+  test.each([false, true])('credential failure rejects immediately (reconnect: %s)', async (reconnect) => {
+    const dir = await mkdtemp(join(tmpdir(), 'limrun-follow-error-'));
+    const tokenFile = join(dir, 'jwt');
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(1000000);
+    try {
+      await writeFile(tokenFile, 'external.jwt');
+      const exchange = jest.fn(async () =>
+        Response.json({
+          access_token: 'session',
+          token_type: 'Bearer',
+          expires_in: 300,
+        }),
+      );
+      const client = new Limrun({
+        apiKey: null,
+        workloadTokenFile: tokenFile,
+        bindingId: 'binding_build',
+        fetch: exchange,
+      });
+      nodeProxyTransport.fetch = jest.fn(async () => new Response(''));
+      const following = client.xcodeInstances.followSnapshot('sandbox_1');
+      const rejected = expect(following).rejects.toThrow('Workload token exchange returned HTTP 403');
+      const source = await nextSource();
+      if (reconnect) {
+        await source.connect();
+        clock.mockReturnValue(1250000);
+      }
+      exchange.mockImplementation(async () => Response.json({}, { status: 403 }));
+      await expect(source.connect()).rejects.toThrow('Workload token exchange returned HTTP 403');
+      await rejected;
+      expect(source.closed).toBe(true);
+      expect(nodeProxyTransport.fetch).toHaveBeenCalledTimes(reconnect ? 1 : 0);
+    } finally {
+      clock.mockRestore();
+      await rm(dir, { recursive: true });
+    }
+  });
+
   test('federated snapshot followers renew credentials on reconnect', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'limrun-snapshot-identity-'));
     const tokenFile = join(dir, 'jwt');

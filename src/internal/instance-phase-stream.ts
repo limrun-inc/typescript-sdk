@@ -47,13 +47,6 @@ export type PhaseStreamResult<T> = {
  */
 export function followPhaseStream<T>(options: PhaseStreamOptions<T>): Promise<PhaseStreamResult<T>> {
   const { url, auth } = options;
-  const fetchAuthenticated: typeof nodeProxyTransport.fetch = async (input, init) => {
-    const headers = new Headers(
-      auth.getHeaders ? await auth.getHeaders() : { Authorization: `Bearer ${auth.apiKey}` },
-    );
-    new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
-    return nodeProxyTransport.fetch(input, { ...init, headers });
-  };
   return new Promise<PhaseStreamResult<T>>((resolve, reject) => {
     let last: T | undefined;
     let lastKey = '';
@@ -76,6 +69,21 @@ export function followPhaseStream<T>(options: PhaseStreamOptions<T>): Promise<Ph
     const onAbort = () => finish(() => reject(options.signal?.reason ?? new Error('aborted')));
     const resolveGone = () =>
       finish(() => (last !== undefined ? resolve({ state: last, gone: true }) : reject(options.goneError())));
+
+    const fetchAuthenticated: typeof nodeProxyTransport.fetch = async (input, init) => {
+      let headers: Headers;
+      try {
+        headers = new Headers(
+          auth.getHeaders ? await auth.getHeaders() : { Authorization: `Bearer ${auth.apiKey}` },
+        );
+      } catch (error) {
+        // Credential errors need caller action; EventSource otherwise retries them until timeout.
+        finish(() => reject(error));
+        throw error;
+      }
+      new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
+      return nodeProxyTransport.fetch(input, { ...init, headers });
+    };
 
     let confirming = false;
     const confirmGone = () => {
