@@ -167,7 +167,7 @@ test('workload exchange uses client transport options without allowing credentia
 test('federation uses the binding and renews from the rotated file', async () => {
   const identities: string[] = [];
   const fetcher = jest.fn(async (url: unknown, init?: RequestInit) => {
-    expect(url).toBe('https://sts.example/v1/token');
+    expect(url).toBe('https://sts.example/v1/access_tokens');
     expect(new Headers(init?.headers).has('Authorization')).toBe(false);
     const form = new URLSearchParams(init?.body as string);
     expect(form.get('audience')).toBe('federation_customer');
@@ -197,8 +197,8 @@ test('federation uses the binding and renews from the rotated file', async () =>
 
 test('federation client authenticates API calls with the exchanged token', async () => {
   const fetcher = jest.fn(async (url: unknown, init?: RequestInit) => {
-    if (String(url).endsWith('/v1/token')) {
-      expect(url).toBe('https://sts.limrun.com/v1/token');
+    if (String(url).endsWith('/v1/access_tokens')) {
+      expect(url).toBe('https://sts.limrun.com/v1/access_tokens');
       return Response.json({ access_token: 'limrun-session', token_type: 'Bearer', expires_in: 900 });
     }
     expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer limrun-session');
