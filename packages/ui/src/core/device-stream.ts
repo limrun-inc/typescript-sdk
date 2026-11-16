@@ -1936,7 +1936,10 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     },
     getState: () => state,
     /** A new token applies to the next connection attempt and termination probe. */
-    updateOptions: ({ token: nextToken, ...patch }: Partial<DeviceStreamLiveOptions> & { token?: string }) => {
+    updateOptions: ({
+      token: nextToken,
+      ...patch
+    }: Partial<DeviceStreamLiveOptions> & { token?: string }) => {
       if (disposed) throw new Error('Device stream is disposed');
       if (nextToken !== undefined && !options.transport) token = nextToken;
       const previous = options;
