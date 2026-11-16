@@ -27,12 +27,14 @@ export interface AccessTokenCreateParams {
   /**
    * Permissions in the form `<resource>:<id|*>:<action>`, e.g. `device:*:install`,
    * `asset:asset_01h455vb4pex5vsknk084sn02q:read` or `applerelay:*:connect`.
-   * Instance control accepts `ios:<id>:all`, `android:<id>:all`, `xcode:<id>:all`,
-   * and `gradle:<id>:all`. Use the returned instance ID, including `sandbox_` for Xcode.
+   * Instance control accepts `ios:<id>:control`, `android:<id>:control`, `xcode:<id>:control`,
+   * and `gradle:<id>:control`. Use the returned instance ID, including `sandbox_` for Xcode.
    * iOS and Android accept `ios:<id>:watch` and `android:<id>:watch` for watch-only
    * streaming, or `ios:<id>:stream` and `android:<id>:stream` for
    * interactive streaming without device API or app-management access.
-   * Instance targets also accept `*`. Any supported action may be delegated when
+   * Control includes reads and runtime operations, but excludes instance create/update/delete.
+   * Grant `create`, `update`, and `delete` separately; `all` includes every action.
+   * Creation requires target `*`. Instance targets also accept `*`. Any supported action may be delegated when
    * covered by the caller, including `read`, build `work`, and device `tunnel`.
    * See https://docs.limrun.com/docs/reference/permissions for targets and actions.
    */

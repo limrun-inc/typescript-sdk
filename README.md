@@ -33,6 +33,13 @@ access token and re-reads the identity file on renewal. Your runtime must rotate
 the external JWT. `LIMRUN_STS_BASE_URL` overrides the default token service at
 `https://sts.limrun.com`.
 
+The instance's `status.token` grants `control` on that instance. It permits runtime
+operations and reading the instance record, but cannot create, update, or delete
+instance records. Use your configured API key or federated client for those calls,
+with the corresponding `create`, `update`, or `delete` permission. Existing `all`
+grants include both runtime control and lifecycle management. See the
+[permissions reference](https://docs.limrun.com/docs/reference/permissions).
+
 ## Usage
 
 The full API of this library can be found in [api.md](api.md).
