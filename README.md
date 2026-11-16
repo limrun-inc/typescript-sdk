@@ -22,7 +22,7 @@ creates a [federation binding](https://docs.limrun.com/docs/platform/workload-id
 ```ts
 const client = new Limrun({
   workloadTokenFile: '/var/run/identity/token',
-  bindingId: 'federation_REPLACE_WITH_BINDING_ID',
+  bindingId: 'binding_REPLACE_WITH_BINDING_ID',
 });
 ```
 
