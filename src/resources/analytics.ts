@@ -96,6 +96,11 @@ export namespace AnalyticsInstancesResponse {
       billedBreakdown?: Instance.BilledBreakdown;
 
       /**
+       * Exact decimal credit amount. Prefer this field over billedMinutes.
+       */
+      billedCredits?: string;
+
+      /**
        * Cost breakdown by billing source in dollars
        */
       costBreakdown?: Instance.CostBreakdown;
@@ -109,6 +114,13 @@ export namespace AnalyticsInstancesResponse {
        * Region where the instance ran
        */
       region?: string;
+
+      /**
+       * Instance lifetime in minutes, before idle discounting. For build platforms
+       * (Xcode, Gradle), runtimeMinutes reflects phase rates and can be above or
+       * below this lifetime. Zero for instances billed before the field existed.
+       */
+      wallclockMinutes?: number;
     }
 
     export namespace Instance {
@@ -118,9 +130,24 @@ export namespace AnalyticsInstancesResponse {
         onDemandBilledMinutes: number;
 
         /**
+         * Exact decimal credit amount. Prefer this field over creditsBilledMinutes.
+         */
+        creditsBilled?: string;
+
+        /**
+         * Exact decimal credit amount. Prefer this field over onDemandBilledMinutes.
+         */
+        onDemandBilledCredits?: string;
+
+        /**
          * Map of plan ID to billed minutes
          */
         planBilledMinutes?: { [key: string]: number };
+
+        /**
+         * Exact decimal credits allocated to each subscription.
+         */
+        subscriptionBilledCredits?: { [key: string]: string };
 
         /**
          * Map of subscription ID to billed minutes
@@ -266,6 +293,26 @@ export namespace AnalyticsResponse {
       runtimeMinutes: number;
 
       /**
+       * Exact decimal credit amount. Prefer this field over billedMinutes.
+       */
+      billedCredits?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over creditsBilledMinutes.
+       */
+      creditsBilled?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over onDemandBilledMinutes.
+       */
+      onDemandBilledCredits?: string;
+
+      /**
+       * Exact decimal credits allocated to each subscription.
+       */
+      subscriptionBilledCredits?: { [key: string]: string };
+
+      /**
        * Map of subscription ID to billed minutes
        */
       subscriptionBilledMinutes?: { [key: string]: number };
@@ -274,6 +321,14 @@ export namespace AnalyticsResponse {
        * Map of subscription ID to cost in dollars
        */
       subscriptionCost?: { [key: string]: number };
+
+      /**
+       * Total instance lifetime in minutes, before idle discounting. For build
+       * platforms (Xcode, Gradle), runtimeMinutes reflects phase rates and can be
+       * above or below this lifetime. Zero for entries billed before the field
+       * existed.
+       */
+      wallclockMinutes?: number;
     }
 
     /**
@@ -326,6 +381,26 @@ export namespace AnalyticsResponse {
       runtimeMinutes: number;
 
       /**
+       * Exact decimal credit amount. Prefer this field over billedMinutes.
+       */
+      billedCredits?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over creditsBilledMinutes.
+       */
+      creditsBilled?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over onDemandBilledMinutes.
+       */
+      onDemandBilledCredits?: string;
+
+      /**
+       * Exact decimal credits allocated to each subscription.
+       */
+      subscriptionBilledCredits?: { [key: string]: string };
+
+      /**
        * Map of subscription ID to billed minutes
        */
       subscriptionBilledMinutes?: { [key: string]: number };
@@ -334,6 +409,14 @@ export namespace AnalyticsResponse {
        * Map of subscription ID to cost in dollars
        */
       subscriptionCost?: { [key: string]: number };
+
+      /**
+       * Total instance lifetime in minutes, before idle discounting. For build
+       * platforms (Xcode, Gradle), runtimeMinutes reflects phase rates and can be
+       * above or below this lifetime. Zero for entries billed before the field
+       * existed.
+       */
+      wallclockMinutes?: number;
     }
 
     /**
@@ -386,6 +469,26 @@ export namespace AnalyticsResponse {
       runtimeMinutes: number;
 
       /**
+       * Exact decimal credit amount. Prefer this field over billedMinutes.
+       */
+      billedCredits?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over creditsBilledMinutes.
+       */
+      creditsBilled?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over onDemandBilledMinutes.
+       */
+      onDemandBilledCredits?: string;
+
+      /**
+       * Exact decimal credits allocated to each subscription.
+       */
+      subscriptionBilledCredits?: { [key: string]: string };
+
+      /**
        * Map of subscription ID to billed minutes
        */
       subscriptionBilledMinutes?: { [key: string]: number };
@@ -394,6 +497,14 @@ export namespace AnalyticsResponse {
        * Map of subscription ID to cost in dollars
        */
       subscriptionCost?: { [key: string]: number };
+
+      /**
+       * Total instance lifetime in minutes, before idle discounting. For build
+       * platforms (Xcode, Gradle), runtimeMinutes reflects phase rates and can be
+       * above or below this lifetime. Zero for entries billed before the field
+       * existed.
+       */
+      wallclockMinutes?: number;
     }
 
     /**
@@ -446,6 +557,26 @@ export namespace AnalyticsResponse {
       runtimeMinutes: number;
 
       /**
+       * Exact decimal credit amount. Prefer this field over billedMinutes.
+       */
+      billedCredits?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over creditsBilledMinutes.
+       */
+      creditsBilled?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over onDemandBilledMinutes.
+       */
+      onDemandBilledCredits?: string;
+
+      /**
+       * Exact decimal credits allocated to each subscription.
+       */
+      subscriptionBilledCredits?: { [key: string]: string };
+
+      /**
        * Map of subscription ID to billed minutes
        */
       subscriptionBilledMinutes?: { [key: string]: number };
@@ -454,6 +585,14 @@ export namespace AnalyticsResponse {
        * Map of subscription ID to cost in dollars
        */
       subscriptionCost?: { [key: string]: number };
+
+      /**
+       * Total instance lifetime in minutes, before idle discounting. For build
+       * platforms (Xcode, Gradle), runtimeMinutes reflects phase rates and can be
+       * above or below this lifetime. Zero for entries billed before the field
+       * existed.
+       */
+      wallclockMinutes?: number;
     }
 
     /**
@@ -488,6 +627,11 @@ export namespace AnalyticsResponse {
       billedBreakdown?: Instance.BilledBreakdown;
 
       /**
+       * Exact decimal credit amount. Prefer this field over billedMinutes.
+       */
+      billedCredits?: string;
+
+      /**
        * Cost breakdown by billing source in dollars
        */
       costBreakdown?: Instance.CostBreakdown;
@@ -501,6 +645,13 @@ export namespace AnalyticsResponse {
        * Region where the instance ran
        */
       region?: string;
+
+      /**
+       * Instance lifetime in minutes, before idle discounting. For build platforms
+       * (Xcode, Gradle), runtimeMinutes reflects phase rates and can be above or
+       * below this lifetime. Zero for instances billed before the field existed.
+       */
+      wallclockMinutes?: number;
     }
 
     export namespace Instance {
@@ -510,9 +661,24 @@ export namespace AnalyticsResponse {
         onDemandBilledMinutes: number;
 
         /**
+         * Exact decimal credit amount. Prefer this field over creditsBilledMinutes.
+         */
+        creditsBilled?: string;
+
+        /**
+         * Exact decimal credit amount. Prefer this field over onDemandBilledMinutes.
+         */
+        onDemandBilledCredits?: string;
+
+        /**
          * Map of plan ID to billed minutes
          */
         planBilledMinutes?: { [key: string]: number };
+
+        /**
+         * Exact decimal credits allocated to each subscription.
+         */
+        subscriptionBilledCredits?: { [key: string]: string };
 
         /**
          * Map of subscription ID to billed minutes
@@ -623,6 +789,26 @@ export namespace AnalyticsResponse {
       runtimeMinutes: number;
 
       /**
+       * Exact decimal credit amount. Prefer this field over billedMinutes.
+       */
+      billedCredits?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over creditsBilledMinutes.
+       */
+      creditsBilled?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over onDemandBilledMinutes.
+       */
+      onDemandBilledCredits?: string;
+
+      /**
+       * Exact decimal credits allocated to each subscription.
+       */
+      subscriptionBilledCredits?: { [key: string]: string };
+
+      /**
        * Map of subscription ID to billed minutes
        */
       subscriptionBilledMinutes?: { [key: string]: number };
@@ -631,6 +817,14 @@ export namespace AnalyticsResponse {
        * Map of subscription ID to cost in dollars
        */
       subscriptionCost?: { [key: string]: number };
+
+      /**
+       * Total instance lifetime in minutes, before idle discounting. For build
+       * platforms (Xcode, Gradle), runtimeMinutes reflects phase rates and can be
+       * above or below this lifetime. Zero for entries billed before the field
+       * existed.
+       */
+      wallclockMinutes?: number;
     }
 
     /**
@@ -683,6 +877,26 @@ export namespace AnalyticsResponse {
       runtimeMinutes: number;
 
       /**
+       * Exact decimal credit amount. Prefer this field over billedMinutes.
+       */
+      billedCredits?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over creditsBilledMinutes.
+       */
+      creditsBilled?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over onDemandBilledMinutes.
+       */
+      onDemandBilledCredits?: string;
+
+      /**
+       * Exact decimal credits allocated to each subscription.
+       */
+      subscriptionBilledCredits?: { [key: string]: string };
+
+      /**
        * Map of subscription ID to billed minutes
        */
       subscriptionBilledMinutes?: { [key: string]: number };
@@ -691,6 +905,14 @@ export namespace AnalyticsResponse {
        * Map of subscription ID to cost in dollars
        */
       subscriptionCost?: { [key: string]: number };
+
+      /**
+       * Total instance lifetime in minutes, before idle discounting. For build
+       * platforms (Xcode, Gradle), runtimeMinutes reflects phase rates and can be
+       * above or below this lifetime. Zero for entries billed before the field
+       * existed.
+       */
+      wallclockMinutes?: number;
     }
 
     /**
@@ -743,6 +965,26 @@ export namespace AnalyticsResponse {
       runtimeMinutes: number;
 
       /**
+       * Exact decimal credit amount. Prefer this field over billedMinutes.
+       */
+      billedCredits?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over creditsBilledMinutes.
+       */
+      creditsBilled?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over onDemandBilledMinutes.
+       */
+      onDemandBilledCredits?: string;
+
+      /**
+       * Exact decimal credits allocated to each subscription.
+       */
+      subscriptionBilledCredits?: { [key: string]: string };
+
+      /**
        * Map of subscription ID to billed minutes
        */
       subscriptionBilledMinutes?: { [key: string]: number };
@@ -751,6 +993,14 @@ export namespace AnalyticsResponse {
        * Map of subscription ID to cost in dollars
        */
       subscriptionCost?: { [key: string]: number };
+
+      /**
+       * Total instance lifetime in minutes, before idle discounting. For build
+       * platforms (Xcode, Gradle), runtimeMinutes reflects phase rates and can be
+       * above or below this lifetime. Zero for entries billed before the field
+       * existed.
+       */
+      wallclockMinutes?: number;
     }
 
     /**
@@ -803,6 +1053,26 @@ export namespace AnalyticsResponse {
       runtimeMinutes: number;
 
       /**
+       * Exact decimal credit amount. Prefer this field over billedMinutes.
+       */
+      billedCredits?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over creditsBilledMinutes.
+       */
+      creditsBilled?: string;
+
+      /**
+       * Exact decimal credit amount. Prefer this field over onDemandBilledMinutes.
+       */
+      onDemandBilledCredits?: string;
+
+      /**
+       * Exact decimal credits allocated to each subscription.
+       */
+      subscriptionBilledCredits?: { [key: string]: string };
+
+      /**
        * Map of subscription ID to billed minutes
        */
       subscriptionBilledMinutes?: { [key: string]: number };
@@ -811,6 +1081,14 @@ export namespace AnalyticsResponse {
        * Map of subscription ID to cost in dollars
        */
       subscriptionCost?: { [key: string]: number };
+
+      /**
+       * Total instance lifetime in minutes, before idle discounting. For build
+       * platforms (Xcode, Gradle), runtimeMinutes reflects phase rates and can be
+       * above or below this lifetime. Zero for entries billed before the field
+       * existed.
+       */
+      wallclockMinutes?: number;
     }
   }
 }
