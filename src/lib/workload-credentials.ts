@@ -28,28 +28,25 @@ export class WorkloadCredentials {
     if (!jwt || jwt.length > 32768)
       throw new Error('Workload identity file must contain a JWT of at most 32768 characters');
     const start = Date.now();
-    const response = await this.fetcher(
-      `${this.endpoint.replace(/\/$/, '')}${this.bindingId ? '/v1/token' : '/v1/access_tokens'}`,
-      {
-        ...(this.fetchOptions as RequestInit),
-        method: 'POST',
-        headers:
-          this.bindingId ?
-            { 'Content-Type': 'application/x-www-form-urlencoded' }
-          : { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-        body:
-          this.bindingId ?
-            new URLSearchParams({
-              grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
-              subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
-              subject_token: jwt,
-              audience: this.bindingId,
-            }).toString()
-          : JSON.stringify({}),
-        signal: AbortSignal.timeout(30_000),
-        redirect: 'error',
-      },
-    );
+    const response = await this.fetcher(`${this.endpoint.replace(/\/$/, '')}/v1/access_tokens`, {
+      ...(this.fetchOptions as RequestInit),
+      method: 'POST',
+      headers:
+        this.bindingId ?
+          { 'Content-Type': 'application/x-www-form-urlencoded' }
+        : { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+      body:
+        this.bindingId ?
+          new URLSearchParams({
+            grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+            subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
+            subject_token: jwt,
+            audience: this.bindingId,
+          }).toString()
+        : JSON.stringify({}),
+      signal: AbortSignal.timeout(30_000),
+      redirect: 'error',
+    });
     if (!response.ok) throw new Error(`Workload token exchange returned HTTP ${response.status}`);
     const body = (await response.json()) as {
       token?: string;
