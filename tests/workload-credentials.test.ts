@@ -250,3 +250,22 @@ test('discovers customer federation from workload identity environment variables
   await new Limrun({ fetch: fetcher }).iosInstances.list();
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
+
+test.each(['explicit', 'environment'])(
+  '%s API key bypasses incomplete federation configuration',
+  async (source) => {
+    jest.replaceProperty(process, 'env', {
+      ...process.env,
+      LIM_API_KEY: source === 'environment' ? 'key' : '',
+      LIMRUN_WORKLOAD_IDENTITY_BINDING_ID: 'binding_unused',
+      LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE: '',
+    });
+    const fetcher = jest.fn(async (_url: unknown, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer key');
+      return Response.json({ items: [] });
+    });
+    const client = new Limrun({ ...(source === 'explicit' ? { apiKey: 'key' } : {}), fetch: fetcher });
+    await client.androidInstances.list();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  },
+);

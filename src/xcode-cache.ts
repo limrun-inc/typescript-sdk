@@ -199,13 +199,6 @@ export function followXcodeCache(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS[side];
   let base = target.baseURL;
   while (base.endsWith('/')) base = base.slice(0, -1);
-  const fetchAuthenticated: typeof nodeProxyTransport.fetch = async (input, init) => {
-    const headers = new Headers(
-      target.getHeaders ? await target.getHeaders() : { Authorization: `Bearer ${target.apiKey}` },
-    );
-    new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
-    return nodeProxyTransport.fetch(input, { ...init, headers });
-  };
   const url = `${base}/v1/xcode_instances/${encodeURIComponent(target.instanceId)}/cache`;
 
   return new Promise<XcodeCacheFollowResult>((resolve, reject) => {
@@ -231,6 +224,21 @@ export function followXcodeCache(
       timeoutMs,
     );
     const onAbort = () => finish(() => reject(options.signal?.reason ?? new Error('aborted')));
+
+    const fetchAuthenticated: typeof nodeProxyTransport.fetch = async (input, init) => {
+      let headers: Headers;
+      try {
+        headers = new Headers(
+          target.getHeaders ? await target.getHeaders() : { Authorization: `Bearer ${target.apiKey}` },
+        );
+      } catch (error) {
+        // Credential errors need caller action; EventSource otherwise retries them until timeout.
+        finish(() => reject(error));
+        throw error;
+      }
+      new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
+      return nodeProxyTransport.fetch(input, { ...init, headers });
+    };
 
     let confirming = false;
     const confirmGone = () => {
