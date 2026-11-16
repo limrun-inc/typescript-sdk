@@ -208,7 +208,7 @@ test('federation client authenticates API calls with the exchanged token', async
   const client = new Limrun({
     apiKey: null,
     workloadTokenFile: tokenFile,
-    federationBindingId: 'federation_customer',
+    bindingId: 'federation_customer',
     fetch: fetcher,
   });
   await client.iosInstances.list();
@@ -220,10 +220,33 @@ test('federation refusal never calls the requested API or reuses an expired sess
   const client = new Limrun({
     apiKey: null,
     workloadTokenFile: tokenFile,
-    federationBindingId: 'federation_customer',
+    bindingId: 'federation_customer',
     fetch: fetcher,
     maxRetries: 0,
   });
   await expect(client.iosInstances.list()).rejects.toThrow('Workload token exchange returned HTTP 400');
   expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+test('discovers customer federation from workload identity environment variables', async () => {
+  jest.replaceProperty(process, 'env', {
+    ...process.env,
+    LIM_API_KEY: '',
+    LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE: tokenFile,
+    LIMRUN_WORKLOAD_IDENTITY_BINDING_ID: 'federation_environment',
+    LIMRUN_STS_BASE_URL: 'https://sts.example.com',
+  });
+  const fetcher = jest.fn(async (url: unknown, init?: RequestInit) => {
+    if (String(url).endsWith('/v1/access_tokens')) {
+      expect(url).toBe('https://sts.example.com/v1/access_tokens');
+      const form = new URLSearchParams(init?.body as string);
+      expect(form.get('audience')).toBe('federation_environment');
+      expect(form.get('subject_token')).toBe('projected');
+      return Response.json({ access_token: 'limrun-session', token_type: 'Bearer', expires_in: 900 });
+    }
+    expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer limrun-session');
+    return Response.json({ items: [] });
+  });
+  await new Limrun({ fetch: fetcher }).iosInstances.list();
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });

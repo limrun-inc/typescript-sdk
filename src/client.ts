@@ -112,8 +112,8 @@ import { isEmptyObj } from './internal/utils/values';
 export interface ClientOptions {
   /** Projected workload JWT file. Defaults to LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE. Null disables discovery. */
   workloadTokenFile?: string | null;
-  /** Customer federation binding ID. Defaults to LIMRUN_FEDERATION_BINDING_ID. */
-  federationBindingId?: string | null;
+  /** Customer federation binding ID. Defaults to LIMRUN_WORKLOAD_IDENTITY_BINDING_ID. */
+  bindingId?: string | null;
   /** Token service base URL. Federation defaults to https://sts.limrun.com. */
   stsBaseURL?: string;
   /**
@@ -238,9 +238,7 @@ export class Limrun {
         undefined
       : opts.workloadTokenFile ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
     const bindingId =
-      opts.federationBindingId === null ?
-        undefined
-      : opts.federationBindingId ?? readEnv('LIMRUN_FEDERATION_BINDING_ID');
+      opts.bindingId === null ? undefined : opts.bindingId ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_BINDING_ID');
     if (bindingId && !tokenFile)
       throw new Error('Federation requires workloadTokenFile or LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
     const options: ClientOptions = {

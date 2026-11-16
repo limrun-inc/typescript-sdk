@@ -70,7 +70,7 @@ describe('xcode cache follower', () => {
       const client = new Limrun({
         apiKey: null,
         workloadTokenFile: tokenFile,
-        federationBindingId: 'federation_build',
+        bindingId: 'federation_build',
         fetch: jest.fn(async (_url, init) => {
           identities.push(new URLSearchParams(init?.body as string).get('subject_token')!);
           return Response.json({
