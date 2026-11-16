@@ -174,9 +174,15 @@ export function isCacheTerminal(cache: XcodeInstanceCache, side: XcodeCacheSide)
 
 export type XcodeCacheFollowTarget = {
   baseURL: string;
-  apiKey: string;
   instanceId: string;
-};
+} & (
+  | { apiKey: string; getHeaders?: never }
+  | {
+      apiKey?: never;
+      /** Resolves current credentials on every connection, including reconnects. */
+      getHeaders: () => Promise<Headers>;
+    }
+);
 
 /**
  * Follows an instance's cache status until the chosen side reaches a terminal phase, the
@@ -193,6 +199,13 @@ export function followXcodeCache(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS[side];
   let base = target.baseURL;
   while (base.endsWith('/')) base = base.slice(0, -1);
+  const fetchAuthenticated: typeof nodeProxyTransport.fetch = async (input, init) => {
+    const headers = new Headers(
+      target.getHeaders ? await target.getHeaders() : { Authorization: `Bearer ${target.apiKey}` },
+    );
+    new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
+    return nodeProxyTransport.fetch(input, { ...init, headers });
+  };
   const url = `${base}/v1/xcode_instances/${encodeURIComponent(target.instanceId)}/cache`;
 
   return new Promise<XcodeCacheFollowResult>((resolve, reject) => {
@@ -223,10 +236,9 @@ export function followXcodeCache(
     const confirmGone = () => {
       if (confirming || settled) return;
       confirming = true;
-      nodeProxyTransport
-        .fetch(url, {
-          headers: { Authorization: `Bearer ${target.apiKey}`, Accept: 'application/json' },
-        })
+      fetchAuthenticated(url, {
+        headers: { Accept: 'application/json' },
+      })
         .then(async (res) => {
           confirming = false;
           if (res.status !== 404) {
@@ -247,7 +259,7 @@ export function followXcodeCache(
     // Without this the client treats it as a connection to retry and follows a gone instance
     // until the timeout, which is minutes of a command that looks hung and says nothing.
     const fetchOrGone: typeof nodeProxyTransport.fetch = async (input, init) => {
-      const res = await nodeProxyTransport.fetch(input, init);
+      const res = await fetchAuthenticated(input, init);
       if (res.status === 404) {
         finish(() =>
           last ? resolve({ cache: last, gone: true }) : reject(new XcodeCacheGoneError(target.instanceId)),
@@ -261,7 +273,6 @@ export function followXcodeCache(
       fetch: fetchOrGone,
       onConnect: () => options.onOpen?.(),
       headers: {
-        Authorization: `Bearer ${target.apiKey}`,
         Accept: 'text/event-stream',
       },
       onMessage: (message: EventSourceMessage) => {

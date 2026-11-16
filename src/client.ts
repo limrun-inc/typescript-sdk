@@ -112,6 +112,10 @@ import { isEmptyObj } from './internal/utils/values';
 export interface ClientOptions {
   /** Projected workload JWT file. Defaults to LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE. Null disables discovery. */
   workloadTokenFile?: string | null;
+  /** Customer federation binding ID. Defaults to LIMRUN_FEDERATION_BINDING_ID. */
+  federationBindingId?: string | null;
+  /** Token service base URL. Federation defaults to https://sts.limrun.com. */
+  stsBaseURL?: string;
   /**
    * Defaults to process.env['LIM_API_KEY'].
    */
@@ -233,11 +237,19 @@ export class Limrun {
       opts.workloadTokenFile === null ?
         undefined
       : opts.workloadTokenFile ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
+    const bindingId =
+      opts.federationBindingId === null ?
+        undefined
+      : opts.federationBindingId ?? readEnv('LIMRUN_FEDERATION_BINDING_ID');
+    if (bindingId && !tokenFile)
+      throw new Error('Federation requires workloadTokenFile or LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
     const options: ClientOptions = {
       apiKey,
       ...opts,
       baseURL:
-        baseURL || (!apiKey && tokenFile ? readEnv('DIRECTOR_URL') : undefined) || `https://api.limrun.com`,
+        baseURL ||
+        (!apiKey && tokenFile && !bindingId ? readEnv('DIRECTOR_URL') : undefined) ||
+        `https://api.limrun.com`,
     };
 
     this.baseURL = options.baseURL!;
@@ -272,10 +284,13 @@ export class Limrun {
     this.apiKey = apiKey;
     if (!apiKey && tokenFile)
       this.workloadCredentials = new WorkloadCredentials(
-        this.baseURL,
+        opts.stsBaseURL ??
+          readEnv('LIMRUN_STS_BASE_URL') ??
+          (bindingId ? 'https://sts.limrun.com' : this.baseURL),
         tokenFile,
         this.fetch,
         this.fetchOptions,
+        bindingId,
       );
   }
 
