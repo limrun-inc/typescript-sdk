@@ -962,9 +962,6 @@ The build-capture flags are also readable from the environment (including a loca
 
 A flag passed on the command line always wins over its variable, and env-sourced values are validated and sent exactly like flag-sourced ones. For `--webhook-header` and `--webhook-label` that means replacement, not merging: one `--webhook-header` on the command line drops every header `LIM_WEBHOOK_HEADERS` would have set (and likewise for labels), so repeat the ambient ones alongside yours if you need both.
 
-Recognized build and command failures can include `Hint: You can ...` lines in live
-and saved logs. These describe available options; they do not guarantee a fix.
-
 #### Run project commands
 
 `lim xcode run [RELATIVE_CWD] -- <COMMAND...>` syncs the current directory and runs a one-shot command in the Xcode sandbox. The remote working directory defaults to the synced workspace root:
