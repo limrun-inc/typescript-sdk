@@ -31,6 +31,10 @@ class TestCommand extends BaseCommand {
     (this as unknown as { _parsedFlags: Record<string, unknown> })._parsedFlags = flags;
   }
 
+  getClient() {
+    return this.client;
+  }
+
   runWithAuth<T>(fn: () => Promise<T>): Promise<T> {
     return this.withAuth(fn);
   }
@@ -163,5 +167,47 @@ describe('withAuth login handling', () => {
     const cmd = makeCommand();
     const client = (cmd as unknown as { client: unknown }).client;
     expect(client).toBeDefined();
+  });
+});
+
+describe('workload identity selection', () => {
+  const originalEnv = process.env;
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env['LIM_API_KEY'];
+    process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'] = '/tmp/workload.jwt';
+    process.env['LIMRUN_WORKLOAD_IDENTITY_BINDING_ID'] = 'binding_test';
+    readConfigMock.mockReturnValue({
+      apiKey: 'lim_saved_login',
+      apiEndpoint: 'https://api.example.test',
+      consoleEndpoint: 'https://console.example.test',
+    });
+    loginMock.mockReset();
+  });
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('uses workload identity ahead of a saved login', () => {
+    expect(makeCommand().getClient().apiKey).toBeNull();
+  });
+
+  it('keeps explicit API keys ahead of workload identity', () => {
+    expect(makeCommand({ 'api-key': 'lim_explicit' }).getClient().apiKey).toBe('lim_explicit');
+    process.env['LIM_API_KEY'] = 'lim_env';
+    expect(makeCommand().getClient().apiKey).toBe('lim_env');
+  });
+
+  it('does not replace rejected workload credentials with browser login', async () => {
+    const err = unauthenticated403();
+    await withTty(async () => {
+      await expect(makeCommand().runWithAuth(() => Promise.reject(err))).rejects.toBe(err);
+    });
+    expect(loginMock).not.toHaveBeenCalled();
+  });
+
+  it('fails on incomplete federation configuration instead of using a saved login', () => {
+    delete process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'];
+    expect(() => makeCommand().getClient()).toThrow('workloadTokenFile');
   });
 });

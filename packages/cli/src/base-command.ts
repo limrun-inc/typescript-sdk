@@ -128,7 +128,10 @@ export abstract class BaseCommand extends Command {
     if (!this._client) {
       const config = readConfig();
       const flags = this.parsedFlags;
-      const apiKey = flags?.['api-key'] || config.apiKey;
+      const apiKey =
+        flags?.['api-key'] ||
+        process.env['LIM_API_KEY'] ||
+        (this.usesWorkloadIdentity() ? null : config.apiKey);
       const baseURL = config.apiEndpoint;
 
       // Without a key, still hand out a client: instance-credential paths
@@ -138,13 +141,22 @@ export abstract class BaseCommand extends Command {
       // "unauthenticated:", which withAuth turns into login guidance or a
       // re-login.
       this._client = new Limrun({
-        apiKey: (apiKey as string) || 'unauthenticated',
+        apiKey: (apiKey as string) || (this.usesWorkloadIdentity() ? null : 'unauthenticated'),
         baseURL,
         userAgent: `lim/${VERSION}`,
         ...(this.shouldSuppressInfo() ? { logLevel: 'warn' as const } : {}),
       });
     }
     return this._client;
+  }
+
+  private usesWorkloadIdentity(): boolean {
+    return Boolean(
+      !this.parsedFlags?.['api-key'] &&
+        !process.env['LIM_API_KEY'] &&
+        (process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'] ||
+          process.env['LIMRUN_WORKLOAD_IDENTITY_BINDING_ID']),
+    );
   }
 
   private _parsedFlags?: Record<string, unknown>;
@@ -297,6 +309,8 @@ export abstract class BaseCommand extends Command {
       return await fn();
     } catch (err) {
       if (isLoginRequiredError(err)) {
+        // A browser login must not replace an explicitly configured workload identity.
+        if (this.usesWorkloadIdentity()) throw err;
         const config = readConfig();
         // Without any stored or passed credential the user never logged in;
         // "session expired" would be wrong and auto-login a surprise.

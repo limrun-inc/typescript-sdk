@@ -40,12 +40,16 @@ export async function whoAmI(client: Limrun): Promise<string> {
   return organizationId;
 }
 
-interface WhoAmIBody {
-  organization?: { id?: string };
-  user?: { defaultOrganization?: { id?: string } };
+export interface WhoAmIBody {
+  type: string;
+  organization?: { id?: string; displayName?: string };
+  user?: { id?: string; email?: string; defaultOrganization?: { id?: string; displayName?: string } };
+  permissions?: string[];
+  scopes?: string[];
+  memberships?: { organizationId: string; role: string; permissions?: string[]; scopes?: string[] }[];
 }
 
-async function fetchWhoAmI(client: Limrun): Promise<WhoAmIBody> {
+export async function fetchWhoAmI(client: Limrun): Promise<WhoAmIBody> {
   try {
     return await client.get('/v1/whoami');
   } catch (err) {
