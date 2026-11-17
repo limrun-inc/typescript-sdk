@@ -32,11 +32,6 @@ export default class AndroidSetInstance extends BaseCommand {
         "The instance's ADB WebSocket URL (status.adbWebSocketUrl), needed only for `lim android connect`. Can also be set via LIM_ANDROID_INSTANCE_ADB_URL.",
       env: 'LIM_ANDROID_INSTANCE_ADB_URL',
     }),
-    'target-http-port-url-prefix': Flags.string({
-      description:
-        "The instance's HTTP port URL prefix (status.targetHttpPortUrlPrefix), used to reach HTTP services that run inside the device. Can also be set via LIM_ANDROID_INSTANCE_TARGET_HTTP_PORT_URL_PREFIX.",
-      env: 'LIM_ANDROID_INSTANCE_TARGET_HTTP_PORT_URL_PREFIX',
-    }),
   };
 
   async run(): Promise<void> {
@@ -48,9 +43,6 @@ export default class AndroidSetInstance extends BaseCommand {
       apiUrl: flags['api-url'],
       token: flags.token,
       ...(flags['adb-websocket-url'] ? { adbWebSocketUrl: flags['adb-websocket-url'] } : {}),
-      ...(flags['target-http-port-url-prefix'] ?
-        { targetHttpPortUrlPrefix: flags['target-http-port-url-prefix'] }
-      : {}),
     });
     setLastInstance(record);
 

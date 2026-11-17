@@ -71,7 +71,6 @@ export interface ManualInstanceInput {
   apiUrl: string;
   token: string;
   adbWebSocketUrl?: string;
-  targetHttpPortUrlPrefix?: string;
 }
 
 /**
@@ -88,16 +87,9 @@ export function buildManualInstanceRecord(input: ManualInstanceInput): ManualIns
         apiUrl: input.apiUrl,
         token: input.token,
         ...(input.adbWebSocketUrl ? { adbWebSocketUrl: input.adbWebSocketUrl } : {}),
-        ...(input.targetHttpPortUrlPrefix ? { targetHttpPortUrlPrefix: input.targetHttpPortUrlPrefix } : {}),
       };
     case 'ios':
-      return {
-        id,
-        type: 'ios',
-        apiUrl: input.apiUrl,
-        token: input.token,
-        ...(input.targetHttpPortUrlPrefix ? { targetHttpPortUrlPrefix: input.targetHttpPortUrlPrefix } : {}),
-      };
+      return { id, type: 'ios', apiUrl: input.apiUrl, token: input.token };
     case 'xcode':
       return { id, type: 'xcode', apiUrl: input.apiUrl, token: input.token };
     case 'gradle':
@@ -105,10 +97,7 @@ export function buildManualInstanceRecord(input: ManualInstanceInput): ManualIns
   }
 }
 
-function envVarName(
-  type: InstanceType,
-  suffix: 'URL' | 'TOKEN' | 'ADB_URL' | 'TARGET_HTTP_PORT_URL_PREFIX',
-): string {
+function envVarName(type: InstanceType, suffix: 'URL' | 'TOKEN' | 'ADB_URL'): string {
   return `LIM_${type.toUpperCase()}_INSTANCE_${suffix}`;
 }
 
@@ -117,9 +106,6 @@ function envVarName(
  * or null when either is missing. Built in memory and never persisted, so the
  * environment fully defines the target per process — a parent hands a sandboxed
  * agent two env vars and every command just works, no set-instance needed.
- * Device types also read LIM_<TYPE>_INSTANCE_TARGET_HTTP_PORT_URL_PREFIX, which
- * commands that reach a port inside the device (`lim ios maestro`) need and
- * cannot look up without an API key.
  */
 export function envInstanceTarget(type: 'ios'): LastIosInstance | null;
 export function envInstanceTarget(type: 'android'): LastAndroidInstance | null;
@@ -131,15 +117,5 @@ export function envInstanceTarget(type: InstanceType): ManualInstanceRecord | nu
   const token = process.env[envVarName(type, 'TOKEN')]?.trim();
   if (!apiUrl || !token) return null;
   const adbWebSocketUrl = type === 'android' ? process.env[envVarName(type, 'ADB_URL')]?.trim() : undefined;
-  const targetHttpPortUrlPrefix =
-    type === 'ios' || type === 'android' ?
-      process.env[envVarName(type, 'TARGET_HTTP_PORT_URL_PREFIX')]?.trim()
-    : undefined;
-  return buildManualInstanceRecord({
-    type,
-    apiUrl,
-    token,
-    ...(adbWebSocketUrl ? { adbWebSocketUrl } : {}),
-    ...(targetHttpPortUrlPrefix ? { targetHttpPortUrlPrefix } : {}),
-  });
+  return buildManualInstanceRecord({ type, apiUrl, token, ...(adbWebSocketUrl ? { adbWebSocketUrl } : {}) });
 }

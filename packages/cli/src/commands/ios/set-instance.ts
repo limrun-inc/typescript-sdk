@@ -26,11 +26,6 @@ export default class IosSetInstance extends BaseCommand {
       env: 'LIM_IOS_INSTANCE_TOKEN',
       required: true,
     }),
-    'target-http-port-url-prefix': Flags.string({
-      description:
-        "The instance's HTTP port URL prefix (status.targetHttpPortUrlPrefix), needed only for commands that reach a port inside the device, such as `lim ios maestro`. Can also be set via LIM_IOS_INSTANCE_TARGET_HTTP_PORT_URL_PREFIX.",
-      env: 'LIM_IOS_INSTANCE_TARGET_HTTP_PORT_URL_PREFIX',
-    }),
   };
 
   async run(): Promise<void> {
@@ -41,9 +36,6 @@ export default class IosSetInstance extends BaseCommand {
       type: 'ios',
       apiUrl: flags['api-url'],
       token: flags.token,
-      ...(flags['target-http-port-url-prefix'] ?
-        { targetHttpPortUrlPrefix: flags['target-http-port-url-prefix'] }
-      : {}),
     });
     setLastInstance(record);
 
