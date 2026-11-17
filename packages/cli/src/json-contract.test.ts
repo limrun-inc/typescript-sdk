@@ -1,3 +1,5 @@
+import { openInBrowser } from './lib/browser';
+import { registerCreatedInstance } from './lib/config';
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
 import {
@@ -13,6 +15,8 @@ import { loadXcodeVersionPreference } from './lib/config';
 import { streamBuildCommand } from './lib/build-command-helpers';
 
 jest.mock('@limrun/api', () => ({ ...jest.requireActual('@limrun/api'), createInstanceClient: jest.fn() }));
+
+jest.mock('./lib/browser', () => ({ openInBrowser: jest.fn() }));
 
 jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), spawn: jest.fn() }));
 jest.mock('./lib/config', () => ({
@@ -60,6 +64,8 @@ let cleanup: jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(openInBrowser).mockResolvedValue(true);
+  jest.mocked(loadXcodeVersionPreference).mockReset().mockReturnValue(null);
   stdout = '';
   stderr = '';
   jest.spyOn(process.stdout, 'write').mockImplementation((chunk: any) => {
@@ -135,6 +141,7 @@ function command(name: string, args: Record<string, unknown> = {}, flags: Record
     resolveXcodeClient: async () => client,
     resolveGradleClient: async () => client,
     consoleStreamUrl: () => 'https://console.example.test',
+    consoleBuildUrl: () => 'https://console.example.test/builds',
     signedStreamUrl: () => undefined,
   });
   const resource = {
@@ -291,8 +298,11 @@ test.each(['android', 'ios', 'xcode', 'gradle'])('%s delete emits the resource I
 });
 
 test.each([true, false])('Android create emits the API resource with connect=%s', async (connect) => {
-  await command('android/create', {}, { connect, daemon: true, open: true, 'hard-timeout': '10m' }).run();
-  expect(JSON.parse(stdout)).toEqual(instance);
+  const c = command('android/create', {}, { connect, daemon: true, open: true, 'hard-timeout': '10m' });
+  c.client.androidInstances.create.mockResolvedValue(signedInstance);
+  await c.run();
+  expect(JSON.parse(stdout)).toEqual({ ...instance, consoleUrl: 'https://console.example.test' });
+  expect(openInBrowser).not.toHaveBeenCalled();
   expect(stderr).toBe('');
   expect(spawn).toHaveBeenCalledTimes(connect ? 1 : 0);
 });
@@ -585,9 +595,10 @@ test.each([false, true])('Android foreground create emits JSON before waiting, r
     return originalOn(event as never, handler);
   }) as typeof process.on);
   const c = command('android/create', {}, { connect: true, daemon: rm, rm });
+  c.client.androidInstances.create.mockResolvedValue(signedInstance);
   const running = c.run();
   for (let i = 0; i < 20 && signals.length < (rm ? 2 : 1); i++) await new Promise(setImmediate);
-  expect(JSON.parse(stdout)).toEqual(instance);
+  expect(JSON.parse(stdout)).toEqual({ ...instance, consoleUrl: 'https://console.example.test' });
   expect(api.createInstanceClient).toHaveBeenCalledWith(expect.objectContaining({ logLevel: 'warn' }));
   signals[signals.length - 1]!();
   await running;
@@ -1069,4 +1080,70 @@ describe('ios perf', () => {
       expect(stdout).toBe('');
     });
   });
+});
+
+const signedInstance = {
+  ...instance,
+  status: { ...instance.status, signedStreamUrl: 'https://console.example.test/signedStream#token=secret' },
+};
+
+test.each(['android', 'ios', 'xcode', 'gradle'])(
+  '%s create omits signed links from JSON without changing the cached resource',
+  async (platform) => {
+    const c = command(`${platform}/create`);
+    c.client[`${platform}Instances`].create.mockResolvedValue(signedInstance);
+    await c.run();
+    expect(JSON.parse(stdout)).toEqual({
+      ...instance,
+      consoleUrl:
+        platform === 'gradle' ? 'https://console.example.test/builds' : 'https://console.example.test',
+    });
+    expect(registerCreatedInstance).toHaveBeenCalledWith(signedInstance);
+    expect(signedInstance.status.signedStreamUrl).toContain('token=secret');
+  },
+);
+
+test.each(['android', 'ios', 'xcode'])(
+  '%s create opens only the console link where auto-open is supported',
+  async (platform) => {
+    const c = command(`${platform}/create`, {}, { json: false, open: true });
+    c.client[`${platform}Instances`].create.mockResolvedValue(signedInstance);
+    c.signedStreamUrl = () => signedInstance.status.signedStreamUrl;
+    await c.run();
+    expect(stdout).toContain('Console URL: https://console.example.test');
+    expect(stdout + stderr).not.toContain('signedStream');
+    expect(stdout + stderr).not.toContain('token=secret');
+    if (platform === 'xcode') expect(openInBrowser).not.toHaveBeenCalled();
+    else expect(openInBrowser).toHaveBeenCalledWith('https://console.example.test');
+  },
+);
+
+test.each([
+  ['ios', 'xcode', 'xcode'],
+  ['xcode', 'ios', 'simulator'],
+])('%s create omits signed links from its attached %s instance', async (platform, flag, field) => {
+  const c = command(`${platform}/create`, {}, { [flag]: true });
+  c.client.iosInstances.create.mockResolvedValue(signedInstance);
+  c.client.xcodeInstances.createClient = jest.fn().mockResolvedValue({
+    attachSimulator: jest.fn().mockResolvedValue({ alreadyAttached: false }),
+  });
+  await c.run();
+  const result = JSON.parse(stdout);
+  expect(result.status).toEqual(instance.status);
+  expect(result[field].status).toEqual(instance.status);
+  expect(result.consoleUrl).toBe('https://console.example.test');
+  expect(result[field].consoleUrl).toBe('https://console.example.test');
+  expect(result.attach).toMatchObject({ alreadyAttached: false });
+  expect(stdout + stderr).not.toContain('token=secret');
+});
+
+test.each(['android', 'ios'])('%s create respects --no-open, --quiet, and --json', async (platform) => {
+  for (const flags of [
+    { json: false, open: false },
+    { json: false, open: true, quiet: true },
+    { json: true, open: true },
+  ]) {
+    await command(`${platform}/create`, {}, flags).run();
+  }
+  expect(openInBrowser).not.toHaveBeenCalled();
 });

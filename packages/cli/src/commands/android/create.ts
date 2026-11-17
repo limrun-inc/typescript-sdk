@@ -1,13 +1,14 @@
+import { createdInstanceOutput } from '../../lib/create-output';
 import { secretEnvFlags } from '../../lib/secret-env-flags';
 import { parseSecretEnv } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
 import { spawn } from 'child_process';
 import { Flags } from '@oclif/core';
+import { openInBrowser } from '../../lib/browser';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
-import { openInBrowser } from '../../lib/browser';
 import { parseDurationSeconds } from '../../lib/duration';
 import { startPersistedCaptures } from '../../lib/session-captures';
 import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-instances';
@@ -130,8 +131,7 @@ export default class AndroidCreate extends BaseCommand {
         'Asset time-to-live for files uploaded via --install, as a Go duration (e.g. "24h", min 1m). Does not affect --install-asset. Defaults to no expiry.',
     }),
     open: Flags.boolean({
-      description:
-        'Open the signed stream URL in your browser once the instance is ready. Use --no-open to skip.',
+      description: 'Open the Console URL in your browser once the instance is ready. Use --no-open to skip.',
       default: true,
       allowNo: true,
     }),
@@ -237,7 +237,7 @@ export default class AndroidCreate extends BaseCommand {
 
       const start = Date.now();
       const instance = await this.client.androidInstances.create(params);
-      const signedStreamUrl = this.signedStreamUrl(instance.status);
+      const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
       registerCreatedInstance(instance);
 
       if (wantsCaptures) {
@@ -267,14 +267,11 @@ export default class AndroidCreate extends BaseCommand {
 
       this.info(`Created a new instance in ${((Date.now() - start) / 1000).toFixed(1)}s`);
       this.info(`Instance ID: ${instance.metadata.id}`);
-      this.info(`Console URL: ${this.consoleStreamUrl(instance.metadata.id)}`);
-      if (signedStreamUrl) {
-        this.info(`Signed Stream URL: ${signedStreamUrl}`);
-      }
+      this.info(`Console URL: ${consoleUrl}`);
 
-      if (flags.open && signedStreamUrl && !this.shouldSuppressInfo()) {
-        if (await openInBrowser(signedStreamUrl)) {
-          this.info('Opened the stream in your browser.');
+      if (flags.open && !this.shouldSuppressInfo()) {
+        if (await openInBrowser(consoleUrl)) {
+          this.info('Opened the console in your browser.');
         }
       }
 
@@ -313,7 +310,7 @@ export default class AndroidCreate extends BaseCommand {
           });
           child.unref();
           if (flags.json) {
-            this.outputJson(instance);
+            this.outputJson(createdInstanceOutput(instance, consoleUrl));
             return;
           }
           this.output('');
@@ -339,7 +336,7 @@ export default class AndroidCreate extends BaseCommand {
         });
 
         const tunnel = await instanceClient.startAdbTunnel();
-        if (flags.json) this.outputJson(instance);
+        if (flags.json) this.outputJson(createdInstanceOutput(instance, consoleUrl));
         if (!flags.json)
           this.output(
             `ADB tunnel started on ${tunnel.address.address}:${tunnel.address.port}. Press Ctrl+C to stop.`,
@@ -358,7 +355,7 @@ export default class AndroidCreate extends BaseCommand {
         instanceClient.disconnect();
       } else {
         if (flags.json) {
-          this.outputJson(instance);
+          this.outputJson(createdInstanceOutput(instance, consoleUrl));
         } else if (this.isQuietEnabled()) {
           this.output(instance.metadata.id);
         } else {

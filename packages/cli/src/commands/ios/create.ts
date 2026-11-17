@@ -1,3 +1,4 @@
+import { createdInstanceOutput } from '../../lib/create-output';
 import { secretEnvFlags } from '../../lib/secret-env-flags';
 import { parseSecretEnv } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
@@ -5,10 +6,10 @@ import path from 'path';
 import { snapshotFlags } from '../../lib/cache-flags';
 import { parseSnapshotConfig, wantsRestore } from '../../lib/cache';
 import { Args, Flags } from '@oclif/core';
+import { openInBrowser } from '../../lib/browser';
 import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
-import { openInBrowser } from '../../lib/browser';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 import { formatDurationMs } from '../../lib/duration';
 import { parseDurationSeconds } from '../../lib/duration';
@@ -138,8 +139,7 @@ export default class IosCreate extends BaseCommand {
       default: false,
     }),
     open: Flags.boolean({
-      description:
-        'Open the signed stream URL in your browser once the instance is ready. Use --no-open to skip.',
+      description: 'Open the Console URL in your browser once the instance is ready. Use --no-open to skip.',
       default: true,
       allowNo: true,
     }),
@@ -275,7 +275,6 @@ export default class IosCreate extends BaseCommand {
       const instance = await this.client.iosInstances.create(params);
       const createDurationMs = Date.now() - createStart;
       const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
-      const signedStreamUrl = this.signedStreamUrl(instance.status);
       registerCreatedInstance(instance);
 
       if (wantsCaptures) {
@@ -406,9 +405,6 @@ export default class IosCreate extends BaseCommand {
       this.info('iOS Instance:');
       this.info(`  ID: ${instance.metadata.id}`);
       this.info(`  Console URL: ${consoleUrl}`);
-      if (signedStreamUrl) {
-        this.info(`  Signed Stream URL: ${signedStreamUrl}`);
-      }
       this.info(`  Region: ${instance.spec.region}`);
       this.info(`  State: ${instance.status.state}`);
       if (createdXcode) {
@@ -425,21 +421,23 @@ export default class IosCreate extends BaseCommand {
         this.info(formatSimulatorAttachResult(instance.metadata.id, attachedXcodeId, attachResult));
       }
 
-      if (flags.open && signedStreamUrl && !this.shouldSuppressInfo()) {
-        if (await openInBrowser(signedStreamUrl)) {
-          this.info('Opened the stream in your browser.');
+      if (flags.open && !this.shouldSuppressInfo()) {
+        if (await openInBrowser(consoleUrl)) {
+          this.info('Opened the console in your browser.');
         }
       }
 
       if (flags.json) {
         if (attachResult && attachedXcodeId) {
           this.outputJson({
-            ...instance,
-            ...(createdXcode ? { xcode: createdXcode } : {}),
+            ...createdInstanceOutput(instance, consoleUrl),
+            ...(createdXcode ?
+              { xcode: createdInstanceOutput(createdXcode, this.consoleStreamUrl(createdXcode.metadata.id)) }
+            : {}),
             attach: simulatorAttachJson(instance.metadata.id, attachedXcodeId, attachResult),
           });
         } else {
-          this.outputJson(instance);
+          this.outputJson(createdInstanceOutput(instance, consoleUrl));
         }
       } else if (this.isQuietEnabled()) {
         this.output(instance.metadata.id);
