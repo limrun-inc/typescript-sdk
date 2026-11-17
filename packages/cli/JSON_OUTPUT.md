@@ -12,6 +12,14 @@ Use `--json` for automation on commands whose help lists that flag. JSON output 
 - CLI, validation, and API errors emit `{"error":{"code":"CLI_ERROR","message":"..."}}` on stderr. A specific error code replaces `CLI_ERROR` when available; HTTP errors also include numeric `status`. stderr may also contain diagnostics, so do not parse the whole stream as one JSON document. Explicit process exits after an execution result preserve the exit status without adding another result.
 - Pass the CLI's `--json` before `--`. Flags after `--` belong to the invoked tool. Interactive commands that do not advertise JSON, including `login` and the onboarding `run`, reject it.
 
+## Identity
+
+`lim whoami --json` returns `type` and the API-reported `organization`, `user`,
+and `memberships` fields when present. Membership entries contain `organizationId`
+and `role`. Add `--permissions` to include the credential's `permissions` array,
+or each membership's permissions for a user session. An empty array means no
+grants. An omitted field means the API did not report it.
+
 ## Instance and asset resources
 
 | Commands                                                        | JSON result                                                                                                                               |
