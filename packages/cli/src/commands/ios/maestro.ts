@@ -4,6 +4,7 @@ import { Flags } from '@oclif/core';
 import {
   MAESTRO_RUNNER_BUNDLE_ID,
   MAESTRO_RUNNER_PORT,
+  deriveTargetHttpPortUrlPrefix,
   isMaestroRunnerRunning,
   maestroSpawnOptions,
   prepareMaestroRun,
@@ -12,11 +13,7 @@ import {
 import { BaseCommand } from '../../base-command';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';
 import { instanceToken } from '@limrun/api/instance-token';
-import {
-  INJECTED_MAESTRO_FLAGS,
-  MAESTRO_RUNNER_ASSET_NAME,
-  targetHttpPortUrlPrefixFromApiUrl,
-} from '../../lib/maestro';
+import { INJECTED_MAESTRO_FLAGS, MAESTRO_RUNNER_ASSET_NAME } from '../../lib/maestro';
 
 export default class IosMaestro extends BaseCommand {
   static summary = 'Run Maestro flows against a running iOS instance';
@@ -70,7 +67,7 @@ export default class IosMaestro extends BaseCommand {
       if (!targetHttpPortUrlPrefix && resolvedInstance.apiUrl) {
         // An instance pinned by apiUrl + token alone has no prefix; derive it
         // instead of requiring an API key just to look it up.
-        targetHttpPortUrlPrefix = targetHttpPortUrlPrefixFromApiUrl(resolvedInstance.apiUrl);
+        targetHttpPortUrlPrefix = deriveTargetHttpPortUrlPrefix(resolvedInstance.apiUrl);
       }
       if (!targetHttpPortUrlPrefix || !token) {
         const instance = await this.client.iosInstances.get(id);

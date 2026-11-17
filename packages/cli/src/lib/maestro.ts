@@ -14,15 +14,3 @@ export const INJECTED_MAESTRO_FLAGS = [
   '--no-reinstall-driver',
   '--driver-host-port',
 ];
-
-/**
- * The instance's HTTP port URL prefix, derived from its API URL: the two share
- * the instance path and differ only in the last segment (`/api` vs
- * `/targetHttpPort`). An instance known only by apiUrl + token carries no
- * prefix, and looking it up would need an API key. Undefined when the URL does
- * not end in `/api`.
- */
-export function targetHttpPortUrlPrefixFromApiUrl(apiUrl: string): string | undefined {
-  const match = /^(.*)\/api\/?$/.exec(apiUrl);
-  return match ? `${match[1]}/targetHttpPort` : undefined;
-}
