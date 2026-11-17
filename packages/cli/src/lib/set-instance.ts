@@ -73,6 +73,24 @@ export interface ManualInstanceInput {
   adbWebSocketUrl?: string;
 }
 
+function targetHttpPortUrlPrefix(apiUrl: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(apiUrl);
+  } catch {
+    return undefined;
+  }
+  if (!['http:', 'https:'].includes(url.protocol) || !/\/api\/?$/.test(url.pathname)) {
+    return undefined;
+  }
+  // Both router path formats expose ports beside the instance API. Commands
+  // append the port to this prefix, so it must end with the path component.
+  url.pathname = url.pathname.replace(/\/api\/?$/, '/targetHttpPort');
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+
 /**
  * A last-instance record built from just apiUrl + token, the minimum needed
  * for direct instance control without a management API key.
@@ -86,10 +104,17 @@ export function buildManualInstanceRecord(input: ManualInstanceInput): ManualIns
         type: 'android',
         apiUrl: input.apiUrl,
         token: input.token,
+        targetHttpPortUrlPrefix: targetHttpPortUrlPrefix(input.apiUrl),
         ...(input.adbWebSocketUrl ? { adbWebSocketUrl: input.adbWebSocketUrl } : {}),
       };
     case 'ios':
-      return { id, type: 'ios', apiUrl: input.apiUrl, token: input.token };
+      return {
+        id,
+        type: 'ios',
+        apiUrl: input.apiUrl,
+        token: input.token,
+        targetHttpPortUrlPrefix: targetHttpPortUrlPrefix(input.apiUrl),
+      };
     case 'xcode':
       return { id, type: 'xcode', apiUrl: input.apiUrl, token: input.token };
     case 'gradle':

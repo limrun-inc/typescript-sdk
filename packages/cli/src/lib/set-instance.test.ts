@@ -70,7 +70,45 @@ describe('buildManualInstanceRecord', () => {
       type: 'ios',
       apiUrl: 'https://region.limrun.com/v1/x/api',
       token: signedToken([`ios:${IOS_TID}:all`]),
+      targetHttpPortUrlPrefix: 'https://region.limrun.com/v1/x/targetHttpPort',
     });
+  });
+
+  describe.each(['ios', 'android'] as const)('%s HTTP port prefix', (type) => {
+    const id = `${type}_euna_01m02anjqredzr42pcn8s8jx90`;
+    const host = 'https://euna-nl1-m1-lim1.limrun.net';
+
+    it.each([
+      [`${host}/v1/${id}/api`, `${host}/v1/${id}/targetHttpPort`],
+      [`${host}/v1/${id}/api/`, `${host}/v1/${id}/targetHttpPort`],
+      [
+        `${host}/v1/organizations/org_01abc/${type}.limrun.com/v1/instances/${id}/api`,
+        `${host}/v1/organizations/org_01abc/${type}.limrun.com/v1/instances/${id}/targetHttpPort`,
+      ],
+      [`http://localhost:8080/v1/${id}/api`, `http://localhost:8080/v1/${id}/targetHttpPort`],
+      [`${host}/v1/${id}/api/?debug=true#status`, `${host}/v1/${id}/targetHttpPort`],
+    ])('derives a port endpoint from %s', (apiUrl, prefix) => {
+      const record = buildManualInstanceRecord({ type, apiUrl, token: 'opaque' });
+      expect(record).toMatchObject({ apiUrl, targetHttpPortUrlPrefix: prefix });
+    });
+
+    it.each([
+      'not-a-url',
+      `${host}/custom-endpoint`,
+      `${host}/v1/${id}/api/status`,
+      `${host}/v1/${id}/myapi`,
+      `wss://euna-nl1-m1-lim1.limrun.net/v1/${id}/api`,
+    ])('preserves the fallback for an unsupported API URL: %s', (apiUrl) => {
+      const record = buildManualInstanceRecord({ type, apiUrl, token: 'opaque' });
+      expect(record).toMatchObject({ apiUrl, token: 'opaque' });
+      expect(record).toHaveProperty('targetHttpPortUrlPrefix', undefined);
+    });
+  });
+
+  it.each(['xcode', 'gradle'] as const)('does not derive device port URLs for %s', (type) => {
+    expect(
+      buildManualInstanceRecord({ type, apiUrl: 'https://region.limrun.com/v1/x/api', token: 'opaque' }),
+    ).not.toHaveProperty('targetHttpPortUrlPrefix');
   });
 
   it('falls back to a synthetic handle for legacy tokens', () => {
@@ -133,6 +171,17 @@ describe('envInstanceTarget', () => {
     expect(envInstanceTarget('android')).toMatchObject({
       type: 'android',
       adbWebSocketUrl: 'wss://region.limrun.com/adb',
+    });
+  });
+
+  it.each(['ios', 'android'] as const)('derives the %s prefix from only URL and token', (type) => {
+    process.env[`LIM_${type.toUpperCase()}_INSTANCE_URL`] =
+      `https://node.limrun.net/v1/${type}_euna_01m02anjqredzr42pcn8s8jx90/api/`;
+    process.env[`LIM_${type.toUpperCase()}_INSTANCE_TOKEN`] = 'opaque';
+    expect(envInstanceTarget(type)).toMatchObject({
+      type,
+      token: 'opaque',
+      targetHttpPortUrlPrefix: `https://node.limrun.net/v1/${type}_euna_01m02anjqredzr42pcn8s8jx90/targetHttpPort`,
     });
   });
 });
