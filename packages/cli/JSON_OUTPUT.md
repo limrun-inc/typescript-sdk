@@ -14,11 +14,12 @@ Use `--json` for automation on commands whose help lists that flag. JSON output 
 
 ## Identity
 
-`lim whoami --json` returns `type` and the API-reported `organization`, `user`,
-and `memberships` fields when present. Membership entries contain `organizationId`
-and `role`. Add `--permissions` to include the credential's `permissions` array,
-or each membership's permissions for a user session. An empty array means no
-grants. An omitted field means the API did not report it.
+`lim whoami` prints JSON by default, including the API-reported `type`,
+`organization` with `id` and `displayName`, and `permissions`. For user sessions,
+it includes `user` with `id` and `email`, and `memberships` with `organizationId`,
+`role`, and `permissions` for each membership. Only fields reported by the API
+are included. An empty permission array means no grants. Explicit `--json`
+produces the same output.
 
 ## Instance and asset resources
 
