@@ -2,6 +2,7 @@ import { Parser } from '@oclif/core';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import SecretCreate from './create';
 import SecretGet from './get';
 import SecretUpdate from './update';
@@ -32,7 +33,7 @@ function setup(
     write: jest.fn().mockResolvedValue(undefined),
   };
   const instance = Object.assign(Object.create(command.prototype), {
-    parse: async () => ({ args, flags: { json: true, ...flags } }),
+    parse: async () => ({ args, flags: { json: true, metadata: '{}', type: 'generic', ...flags } }),
     setParsedFlags: jest.fn(),
     withAuth: async (run: () => Promise<void>) => run(),
     outputResult: jest.fn(),
@@ -156,3 +157,110 @@ test.each([['--stdin'], ['--file', '-']])(
     }
   },
 );
+
+test('create saves its optional value by the new ID without echoing it', async () => {
+  const { instance, secrets } = setup(SecretCreate, { name: 'npm/token', value: 'private-value' });
+  let received: Buffer | undefined;
+  secrets.write.mockImplementation(async (_target, bytes) => {
+    received = Buffer.from(bytes);
+  });
+  await instance.run();
+  expect(received!.toString()).toBe('private-value');
+  expect(secrets.write.mock.calls[0][0]).toBe('secret_test');
+  expect(secrets.create.mock.invocationCallOrder[0]).toBeLessThan(secrets.write.mock.invocationCallOrder[0]);
+  expect(JSON.stringify(instance.outputResult.mock.calls)).not.toContain('private-value');
+  expect(secrets.write.mock.calls[0][1]).toEqual(Buffer.alloc(13));
+});
+
+test('create preserves file bytes and validates input before creating a container', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lim-secret-create-'));
+  try {
+    const file = join(dir, 'input');
+    const input = Buffer.from([0, 255, 10]);
+    writeFileSync(file, input);
+    const { instance, secrets } = setup(SecretCreate, { name: 'npm/config' }, { file });
+    let received: Buffer | undefined;
+    secrets.write.mockImplementation(async (_target, bytes) => {
+      received = Buffer.from(bytes);
+    });
+    await instance.run();
+    expect(received).toEqual(input);
+    expect(secrets.write.mock.calls[0][1]).toEqual(Buffer.alloc(3));
+    for (const invalid of [Buffer.alloc(0), Buffer.alloc(65537)]) {
+      writeFileSync(file, invalid);
+      const invalidCreate = setup(SecretCreate, { name: 'npm/config' }, { file });
+      await expect(invalidCreate.instance.run()).rejects.toThrow();
+      expect(invalidCreate.secrets.create).not.toHaveBeenCalled();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  [{ name: 'npm/token', value: '' }, {}],
+  [{ name: 'npm/token', value: 'x'.repeat(65537) }, {}],
+  [{ name: 'npm/token', value: 'secret' }, { file: '/tmp/input' }],
+  [{ name: 'npm/token', value: 'secret' }, { stdin: true }],
+  [{ name: 'npm/token' }, { file: '/tmp/input', stdin: true }],
+])('create rejects invalid or ambiguous input before authentication', async (args, flags) => {
+  const { instance, secrets } = setup(SecretCreate, args, flags);
+  instance.withAuth = jest.fn();
+  await expect(instance.run()).rejects.toThrow();
+  expect(instance.withAuth).not.toHaveBeenCalled();
+  expect(secrets.create).not.toHaveBeenCalled();
+});
+
+test('create conflicts never write a value to an existing secret', async () => {
+  const { instance, secrets } = setup(SecretCreate, { name: 'npm/token', value: 'private-value' });
+  secrets.create.mockRejectedValue(new Error('Conflict'));
+  await expect(instance.run()).rejects.toThrow('Conflict');
+  expect(secrets.write).not.toHaveBeenCalled();
+});
+
+test('a failed initial write identifies the created container and clears its buffer', async () => {
+  const { instance, secrets } = setup(SecretCreate, { name: 'npm/token', value: 'private-value' });
+  secrets.write.mockRejectedValue(new Error('provider error containing private-value'));
+  await expect(instance.run()).rejects.toThrow('lim secret write secret_test --stdin');
+  expect(secrets.create).toHaveBeenCalledTimes(1);
+  expect(secrets.delete).not.toHaveBeenCalled();
+  expect(secrets.write.mock.calls[0][1]).toEqual(Buffer.alloc(13));
+  expect(instance.outputResult).not.toHaveBeenCalled();
+});
+
+test.each([[], ['--stdin'], ['--file', '-']])(
+  'create parser leaves stdin for the explicit value handler: %s',
+  async (...inputFlags) => {
+    const globals = globalThis as typeof globalThis & { oclif?: { stdinCache?: string } };
+    const original = globals.oclif;
+    globals.oclif = { ...original, stdinCache: '  private-value\n' };
+    try {
+      const parsed = await Parser.parse(['npm/token', ...inputFlags], {
+        args: SecretCreate.args,
+        flags: SecretCreate.flags,
+      });
+      expect(parsed.args.name).toBe('npm/token');
+      expect(parsed.args.value).toBeUndefined();
+    } finally {
+      globals.oclif = original;
+    }
+  },
+);
+
+test.each([{ stdin: true }, { file: '-' }])('create reads exact stdin bytes with %o', async (flags) => {
+  const input = Buffer.from('  private-value\n');
+  const stream = Readable.from([input]);
+  const stdin = jest.spyOn(process, 'stdin', 'get').mockReturnValue(stream as typeof process.stdin);
+  try {
+    const { instance, secrets } = setup(SecretCreate, { name: 'npm/token' }, flags);
+    let received: Buffer | undefined;
+    secrets.write.mockImplementation(async (_target, bytes) => {
+      received = Buffer.from(bytes);
+    });
+    await instance.run();
+    expect(received).toEqual(input);
+    expect(secrets.write.mock.calls[0][1]).toEqual(Buffer.alloc(input.length));
+  } finally {
+    stdin.mockRestore();
+  }
+});
