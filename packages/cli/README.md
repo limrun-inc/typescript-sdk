@@ -4,8 +4,8 @@ The official command-line interface for [Limrun](https://limrun.com) — create 
 
 ## Check your identity
 
-Run `lim whoami` to see the identity and organization reported by Limrun. Include
-its permissions with `lim whoami --permissions`, or add `--json` for structured output.
+Run `lim whoami` to see the identity, organization, and permissions reported by
+Limrun as JSON. API keys, access tokens, and workload identities are supported.
 
 For workload identity federation, configure the token file and binding:
 
@@ -13,7 +13,7 @@ For workload identity federation, configure the token file and binding:
 unset LIM_API_KEY
 export LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE=/var/run/identity/token
 export LIMRUN_WORKLOAD_IDENTITY_BINDING_ID=binding_REPLACE_WITH_BINDING_ID
-lim whoami --permissions
+lim whoami
 ```
 
 The runtime must keep the JWT file current. The CLI exchanges it for a Limrun token

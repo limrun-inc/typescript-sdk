@@ -19,33 +19,28 @@ const identity = {
   permissions: ['asset:name/builds/*:all', 'remoteexecution:*:all'],
 };
 
-test('shows server-reported permissions only when requested', async () => {
-  for (const permissions of [false, true]) {
-    const { command, get } = setup(identity, { permissions });
-    await command.run();
-    expect(get).toHaveBeenCalledWith('/v1/whoami');
-    const output = command.output.mock.calls.flat().join('\n');
-    expect(output).toContain('Organization: org_test (Test)');
-    expect(output.includes('asset:name/builds/*:all')).toBe(permissions);
-    expect(output.includes('remoteexecution:*:all')).toBe(permissions);
-  }
+test('prints identity and server-reported permissions as JSON by default', async () => {
+  const { command, get } = setup({
+    ...identity,
+    organization: { ...identity.organization, creditBalance: '123', stripeCustomerId: 'cus_example' },
+  });
+  await command.run();
+  expect(get).toHaveBeenCalledWith('/v1/whoami');
+  expect(command.output).not.toHaveBeenCalled();
+  expect(command.outputJson).toHaveBeenCalledWith(identity);
+  expect(Whoami.flags.json.default).toBe(true);
 });
 
-test('JSON output includes permissions only with --permissions', async () => {
-  for (const permissions of [false, true]) {
-    const { command } = setup(identity, { permissions, json: true });
-    await command.run();
-    expect(command.output).not.toHaveBeenCalled();
-    const result = command.outputJson.mock.calls[0][0];
-    expect(result.organization.id).toBe('org_test');
-    expect(result.permissions).toEqual(permissions ? identity.permissions : undefined);
-  }
+test('explicit --json produces the same output', async () => {
+  const { command } = setup(identity, { json: true });
+  await command.run();
+  expect(command.outputJson).toHaveBeenCalledWith(identity);
 });
 
 test('reports empty grants without inventing wildcard access', async () => {
-  const { command } = setup({ ...identity, permissions: [], scopes: ['*:*:all'] }, { permissions: true });
+  const { command } = setup({ ...identity, permissions: [], scopes: ['*:*:all'] });
   await command.run();
-  expect(command.output).toHaveBeenCalledWith('Permissions:\n  None');
+  expect(command.outputJson.mock.calls[0][0].permissions).toEqual([]);
 });
 
 test('user memberships keep permissions associated with their organization', async () => {
@@ -56,7 +51,6 @@ test('user memberships keep permissions associated with their organization', asy
   const { command } = setup(
     { type: 'user', user: { email: 'test@example.com' }, memberships },
     {
-      permissions: true,
       json: true,
     },
   );
