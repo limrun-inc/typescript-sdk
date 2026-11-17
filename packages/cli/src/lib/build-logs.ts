@@ -1,3 +1,4 @@
+import { BuildFailureHints, type BuildPlatform } from './build-failure-hints';
 import type { ExecLogOptions, ExecLogResult } from '@limrun/api/exec-client';
 import type { BuildLog } from '@limrun/api/resources/daemon-client-shared';
 
@@ -8,9 +9,11 @@ export type BuildLogsResult = {
   exitCode?: number;
   logs: string;
   source: 'retained' | 'persisted';
+  hints?: string[];
 };
 
 type BuildLogsOptions = {
+  platform: BuildPlatform;
   instanceId: string;
   execId?: string;
   follow: boolean;
@@ -81,9 +84,11 @@ export async function getBuildLogs(options: BuildLogsOptions): Promise<BuildLogs
 
 async function readRetained(options: BuildLogsOptions, execId: string): Promise<BuildLogsResult> {
   const parts: string[] = [];
+  const failureHints = new BuildFailureHints(options.platform);
   const observed = await options.observe(execId, {
     follow: options.follow,
     onEvent: (event) => {
+      failureHints.addEvent(event);
       let text: string | undefined;
       let stream: 'stdout' | 'stderr' = 'stdout';
       if (event.type === 'command') {
@@ -100,7 +105,9 @@ async function readRetained(options: BuildLogsOptions, execId: string): Promise<
       options.onText?.(chunk, stream);
     },
   });
+  const hints = failureHints.getHints(observed);
   return {
+    ...(hints.length && { hints }),
     instanceId: options.instanceId,
     execId: observed.execId,
     status: observed.status,
@@ -113,7 +120,11 @@ async function readRetained(options: BuildLogsOptions, execId: string): Promise<
 async function readPersisted(options: BuildLogsOptions, record: BuildLog): Promise<BuildLogsResult> {
   const logs = await (options.fetchText ?? fetchBuildLog)(record.downloadUrl);
   options.onText?.(logs, 'stdout');
+  const failureHints = new BuildFailureHints(options.platform);
+  failureHints.addPersistedLog(logs);
+  const hints = failureHints.getHints(record);
   return {
+    ...(hints.length && { hints }),
     instanceId: options.instanceId,
     execId: record.id,
     status: record.status,

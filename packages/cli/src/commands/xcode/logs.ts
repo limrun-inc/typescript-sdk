@@ -1,3 +1,4 @@
+import { printBuildHints } from '../../lib/build-failure-hints';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 import { getBuildLogs } from '../../lib/build-logs';
@@ -39,6 +40,7 @@ export default class XcodeLogs extends BaseCommand {
     await this.withAuth(async () => {
       const target = await this.resolveXcodeTarget(flags.id);
       const result = await getBuildLogs({
+        platform: 'xcode',
         instanceId: target.id,
         ...(args.execId && { execId: args.execId }),
         follow: flags.follow,
@@ -58,6 +60,7 @@ export default class XcodeLogs extends BaseCommand {
         this.outputJson(result);
         return;
       }
+      printBuildHints(result.hints ?? []);
       this.logToStderr(
         `Build ${result.execId} is ${result.status}${
           result.exitCode === undefined ? '' : ` (exit ${result.exitCode})`

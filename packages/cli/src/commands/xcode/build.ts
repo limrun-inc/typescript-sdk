@@ -1,3 +1,4 @@
+import { BuildFailureHints, printBuildHints } from '../../lib/build-failure-hints';
 import { secretEnvFlags, secretFileFlags } from '../../lib/secret-env-flags';
 import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { readFile } from 'node:fs/promises';
@@ -510,6 +511,7 @@ export default class XcodeBuild extends BaseCommand {
         return;
       }
 
+      const failureHints = new BuildFailureHints('xcode', proc);
       proc.command.on('data', (line: string) => {
         if (this.isJsonEnabled()) this.outputEvent({ type: 'command', line });
         else process.stdout.write(`$ ${line}\n`);
@@ -526,13 +528,15 @@ export default class XcodeBuild extends BaseCommand {
       });
 
       const result = await proc;
+      const hints = failureHints.getHints(result);
       if (this.isJsonEnabled()) {
-        this.outputEvent({ type: 'result', instanceId: id, ...result });
+        this.outputEvent({ type: 'result', instanceId: id, ...result, ...(hints.length && { hints }) });
         if (result.exitCode !== 0) this.exit(result.exitCode);
         return;
       }
       const snapshotTip = await this.buildSnapshotTip(id);
 
+      printBuildHints(hints);
       if (result.exitCode !== 0) {
         if (result.timedOut) {
           // 'timeout' means the stream was alive and the work outlived the

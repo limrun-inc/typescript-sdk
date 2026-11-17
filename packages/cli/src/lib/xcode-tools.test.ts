@@ -43,6 +43,7 @@ it('gives Gradle the same tool-selection flags and Java vendor support', async (
 it.each([XcodeTools, GradleTools])('syncs tool inspection only when requested', async (Tools) => {
   for (const sync of [false, true]) {
     const proc = Object.assign(Promise.resolve({ exitCode: 0 }), {
+      command: new EventEmitter(),
       stdout: new EventEmitter(),
       stderr: new EventEmitter(),
     });
@@ -149,6 +150,7 @@ it.each([XcodeToolsInstall, GradleToolsInstall])(
   async (Install) => {
     for (const sync of [false, true]) {
       const proc = Object.assign(Promise.resolve({ exitCode: 0 }), {
+        command: new EventEmitter(),
         stdout: new EventEmitter(),
         stderr: new EventEmitter(),
       });
@@ -179,6 +181,7 @@ it.each([XcodeToolsInstall, GradleToolsInstall])(
 
 it('reports installation failures', async () => {
   const proc = Object.assign(Promise.resolve({ exitCode: 17 }), {
+    command: new EventEmitter(),
     stdout: new EventEmitter(),
     stderr: new EventEmitter(),
   });
