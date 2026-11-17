@@ -92,6 +92,21 @@ describe('buildManualInstanceRecord', () => {
     });
     expect(record).toMatchObject({ type: 'android', adbWebSocketUrl: 'wss://region.limrun.com/adb' });
   });
+
+  it('keeps the HTTP port URL prefix on device records', () => {
+    for (const type of ['ios', 'android'] as const) {
+      const record = buildManualInstanceRecord({
+        type,
+        apiUrl: 'https://region.limrun.com/v1/x/api',
+        token: 'opaque',
+        targetHttpPortUrlPrefix: 'https://region.limrun.net/v1/x/targetHttpPort',
+      });
+      expect(record).toMatchObject({
+        type,
+        targetHttpPortUrlPrefix: 'https://region.limrun.net/v1/x/targetHttpPort',
+      });
+    }
+  });
 });
 
 describe('envInstanceTarget', () => {
@@ -101,6 +116,8 @@ describe('envInstanceTarget', () => {
     'LIM_ANDROID_INSTANCE_URL',
     'LIM_ANDROID_INSTANCE_TOKEN',
     'LIM_ANDROID_INSTANCE_ADB_URL',
+    'LIM_IOS_INSTANCE_TARGET_HTTP_PORT_URL_PREFIX',
+    'LIM_ANDROID_INSTANCE_TARGET_HTTP_PORT_URL_PREFIX',
   ];
   const saved: Record<string, string | undefined> = {};
 
@@ -133,6 +150,29 @@ describe('envInstanceTarget', () => {
     expect(envInstanceTarget('android')).toMatchObject({
       type: 'android',
       adbWebSocketUrl: 'wss://region.limrun.com/adb',
+    });
+  });
+
+  it('includes the HTTP port URL prefix for iOS when set', () => {
+    process.env['LIM_IOS_INSTANCE_URL'] = 'https://region.limrun.com/v1/x/api';
+    process.env['LIM_IOS_INSTANCE_TOKEN'] = signedToken([`ios:${IOS_TID}:all`]);
+    expect(envInstanceTarget('ios')).not.toHaveProperty('targetHttpPortUrlPrefix');
+    process.env['LIM_IOS_INSTANCE_TARGET_HTTP_PORT_URL_PREFIX'] =
+      'https://region.limrun.net/v1/x/targetHttpPort';
+    expect(envInstanceTarget('ios')).toMatchObject({
+      id: IOS_TID,
+      targetHttpPortUrlPrefix: 'https://region.limrun.net/v1/x/targetHttpPort',
+    });
+  });
+
+  it('includes the HTTP port URL prefix for android when set', () => {
+    process.env['LIM_ANDROID_INSTANCE_URL'] = 'https://region.limrun.com/v1/x/api';
+    process.env['LIM_ANDROID_INSTANCE_TOKEN'] = 'opaque';
+    process.env['LIM_ANDROID_INSTANCE_TARGET_HTTP_PORT_URL_PREFIX'] =
+      'https://region.limrun.net/v1/x/targetHttpPort';
+    expect(envInstanceTarget('android')).toMatchObject({
+      type: 'android',
+      targetHttpPortUrlPrefix: 'https://region.limrun.net/v1/x/targetHttpPort',
     });
   });
 });
