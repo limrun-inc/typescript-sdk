@@ -55,6 +55,14 @@ export interface DeviceStreamLiveOptions {
 export type DeviceStreamOptions = DeviceStreamLiveOptions & {
   /** Disable device input and outbound media. Enforce access with a server-issued watch token. */
   watchOnly?: boolean;
+  /**
+   * iOS only: receive the simulator's speaker output with the screen. The
+   * audio joins the primary display's stream, so a video element attached to
+   * it plays the sound once unmuted. Off by default because browsers pause
+   * autoplaying video that has sound; keep the element muted until the user
+   * interacts with the page. Changing it needs a new connection.
+   */
+  speakerAudio?: boolean;
   sessionId?: string;
   /** Required with proxy transports; direct instance URLs can supply the platform implicitly. */
   platform?: 'ios' | 'android';

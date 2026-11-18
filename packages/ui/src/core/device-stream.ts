@@ -1211,7 +1211,10 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       const playback = { peer: peerConnection, displays: new Map<RTCRtpReceiver, 'primary' | 'inner'>() };
       playbackConnection = playback;
       refreshPlaybackStats();
+      // Carries the simulator's speaker output when `speakerAudio` asks for it.
       peerConnection.addTransceiver('audio', { direction: 'recvonly' });
+      const wantsSpeakerAudio = platform === 'ios' && !!options.speakerAudio;
+      let speakerTrack: MediaStreamTrack | null = null;
       const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
       const duoTransceiver = isDuo ? peerConnection.addTransceiver('video', { direction: 'recvonly' }) : null;
 
@@ -1518,14 +1521,27 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
           event.track.id === 'duo-inner' || event.streams.some((stream) => stream.id === 'duo-inner');
         if (event.track.kind === 'video') playback.displays.set(event.receiver, inner ? 'inner' : 'primary');
         updateStatus('Received remote track: ' + event.track.kind);
-        if (event.track.kind === 'video') {
-          const display = inner ? 'inner' : 'primary';
-          const stream =
-            isDuo ? new MediaStream([event.track]) : event.streams[0] ?? new MediaStream([event.track]);
+        // Speaker audio plays from the primary display's element, so it
+        // stays in sync with the screen and follows that element's mute.
+        const playDisplay = (display: StreamDisplay, stream: MediaStream) => {
+          if (display === 'primary' && speakerTrack && !stream.getTracks().includes(speakerTrack)) {
+            stream.addTrack(speakerTrack);
+          }
           streams.set(display, stream);
           for (const [element, entry] of videos) {
             if (entry.display === display) playVideo(element, entry, stream);
           }
+        };
+        if (event.track.kind === 'audio' && wantsSpeakerAudio) {
+          speakerTrack = event.track;
+          const primary = streams.get('primary');
+          if (primary) playDisplay('primary', primary);
+        }
+        if (event.track.kind === 'video') {
+          const display = inner ? 'inner' : 'primary';
+          const stream =
+            isDuo ? new MediaStream([event.track]) : event.streams[0] ?? new MediaStream([event.track]);
+          playDisplay(display, stream);
         }
       };
 
@@ -1800,6 +1816,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
             JSON.stringify({
               type: 'offer',
               ...(isDuo ? { displayStreams: true } : {}),
+              ...(wantsSpeakerAudio ? { speakerAudio: true } : {}),
               ...(latencyTrace ? { latencyTraceVersion: 1 } : {}),
               sdp: offer.sdp,
               sessionId: sessionId,
