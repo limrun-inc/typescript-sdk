@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.74.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.73.2...v0.74.0) (2026-11-18)
+
+
+### Features
+
+* **cli:** compress remote cache transfers on the build plane ([#682](https://github.com/limrun-inc/typescript-sdk/issues/682)) ([9a9ba3f](https://github.com/limrun-inc/typescript-sdk/commit/9a9ba3f35e2a0fc7d2b40def7464bab66fa78125))
+* derive the target HTTP port URL from the instance API URL in the SDK ([#688](https://github.com/limrun-inc/typescript-sdk/issues/688)) ([01a539d](https://github.com/limrun-inc/typescript-sdk/commit/01a539d1f65506768da10c0479846dfe96f4ae9d))
+
+
+### Bug Fixes
+
+* **analytics:** add exact credit and lifetime fields to analytics types ([#684](https://github.com/limrun-inc/typescript-sdk/issues/684)) ([4e3d9ba](https://github.com/limrun-inc/typescript-sdk/commit/4e3d9bae39c3e94f6f6550fc93052fd5c367f4a1))
+* **cli:** disable swiftc's plugin sandbox on the build plane ([#679](https://github.com/limrun-inc/typescript-sdk/issues/679)) ([1026252](https://github.com/limrun-inc/typescript-sdk/commit/1026252994a1696e61eb451b168ee55ae45682b0))
+* **ui:** keep the stream playing when the token changes ([#685](https://github.com/limrun-inc/typescript-sdk/issues/685)) ([1d3df95](https://github.com/limrun-inc/typescript-sdk/commit/1d3df95b910f341989616e8182f10f7a3f04c714))
+
+
+### Chores
+
+* **cli:** release 0.57.2 with SDK 0.73.2 ([#680](https://github.com/limrun-inc/typescript-sdk/issues/680)) ([7c42bbe](https://github.com/limrun-inc/typescript-sdk/commit/7c42bbe7ddfb86ef37e3c638bb6ef758604147a0))
+
 ## [0.73.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.73.1...v0.73.2) (2026-11-14)
 
 
