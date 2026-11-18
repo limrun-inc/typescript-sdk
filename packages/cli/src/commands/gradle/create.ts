@@ -1,3 +1,4 @@
+import { createdInstanceOutput } from '../../lib/create-output';
 import { secretEnvFlags, secretFileFlags } from '../../lib/secret-env-flags';
 import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
@@ -79,13 +80,15 @@ export default class GradleCreate extends BaseCommand {
         ...(Object.keys(metadata).length > 0 && { metadata }),
       };
       const instance = await this.client.gradleInstances.create(params);
+      const consoleUrl = this.consoleBuildUrl(instance.metadata.id);
       registerCreatedInstance(instance);
 
       if (flags.json) {
-        this.outputJson(instance);
+        this.outputJson(createdInstanceOutput(instance, consoleUrl));
         return;
       }
       this.output(`Created gradle instance: ${instance.metadata.id}`);
+      this.output(`Console URL: ${consoleUrl}`);
       this.output(`Region: ${instance.spec.region}`);
       this.output(`Build with: lim gradle build --id ${instance.metadata.id}`);
     });

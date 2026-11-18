@@ -27,7 +27,9 @@ Use `--json` for automation on commands whose help lists that flag. JSON output 
 
 `assets` aliases use the same contract as `asset`.
 
-Android creation returns the same instance resource with or without `--connect`. The default still starts a background ADB tunnel. `--no-connect` skips it; JSON mode already suppresses browser opening. Foreground connection modes return the resource after starting the tunnel, before waiting for shutdown.
+Compatibility change: instance creation commands omit `status.signedStreamUrl` from JSON output, including nested instances created with `ios create --xcode` and `xcode create --ios`. Other resource fields and attachment results retain their meanings. Creation includes a top-level `consoleUrl` in JSON, also on nested created instances. Device URLs open the authenticated console; Gradle URLs open its builds page. iOS and Android creation open the Console URL by default. `--no-open`, `--quiet`, and `--json` suppress browser opening.
+
+Android creation returns the same instance resource with or without `--connect`. The default still starts a background ADB tunnel. `--no-connect` skips it; JSON mode suppresses browser opening. Foreground connection modes return the resource after starting the tunnel, before waiting for shutdown.
 
 ```sh
 lim android create --hard-timeout=10m --json > instance.json

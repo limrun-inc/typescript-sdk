@@ -1,3 +1,4 @@
+import { createdInstanceOutput } from '../../lib/create-output';
 import { secretEnvFlags, secretFileFlags } from '../../lib/secret-env-flags';
 import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
@@ -132,9 +133,6 @@ export default class XcodeCreate extends BaseCommand {
       const start = Date.now();
       const instance = await this.client.xcodeInstances.create(params);
       const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
-      const signedStreamUrl = this.signedStreamUrl(
-        instance.status as { signedStreamUrl?: string } | undefined,
-      );
       registerCreatedInstance(instance);
       let attachResult: SimulatorAttachResult | undefined;
       let attachedSimulator = simulator;
@@ -236,20 +234,14 @@ export default class XcodeCreate extends BaseCommand {
       this.info('Xcode Instance:');
       this.info(`  ID: ${instance.metadata.id}`);
       this.info(`  Console URL: ${consoleUrl}`);
-      if (signedStreamUrl) {
-        this.info(`  Signed Stream URL: ${signedStreamUrl}`);
-      }
       this.info(`  Region: ${instance.spec.region}`);
       this.info(`  State: ${instance.status.state}`);
       if (attachedSimulator) {
         registerCreatedInstance(attachedSimulator);
         if (createdSimulator) {
-          const simStreamUrl = this.signedStreamUrl(attachedSimulator.status);
           this.info('iOS Simulator:');
           this.info(`  ID: ${attachedSimulator.metadata.id}`);
-          if (simStreamUrl) {
-            this.info(`  Signed Stream URL: ${simStreamUrl}`);
-          }
+          this.info(`  Console URL: ${this.consoleStreamUrl(attachedSimulator.metadata.id)}`);
         }
         if (attachResult) {
           this.info(
@@ -265,12 +257,19 @@ export default class XcodeCreate extends BaseCommand {
       if (flags.json) {
         if (attachResult && attachedSimulator) {
           this.outputJson({
-            ...instance,
-            ...(createdSimulator ? { simulator: attachedSimulator } : {}),
+            ...createdInstanceOutput(instance, consoleUrl),
+            ...(createdSimulator ?
+              {
+                simulator: createdInstanceOutput(
+                  attachedSimulator,
+                  this.consoleStreamUrl(attachedSimulator.metadata.id),
+                ),
+              }
+            : {}),
             attach: simulatorAttachJson(attachedSimulator.metadata.id, instance.metadata.id, attachResult),
           });
         } else {
-          this.outputJson(instance);
+          this.outputJson(createdInstanceOutput(instance, consoleUrl));
         }
       } else if (this.isQuietEnabled()) {
         this.output(instance.metadata.id);
