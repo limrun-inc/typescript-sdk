@@ -98,6 +98,7 @@ export function buildRunCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
         });
         await streamBuildCommand(
           proc,
+          platform,
           (message, options) => this.error(message, options),
           'Command failed',
           this.isJsonEnabled() ? (result) => this.outputJson(result) : undefined,

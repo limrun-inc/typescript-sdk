@@ -1,3 +1,4 @@
+import { BuildFailureHints, printBuildHints } from '../../lib/build-failure-hints';
 import { secretEnvFlags, secretFileFlags } from '../../lib/secret-env-flags';
 import { parseSecretEnv, parseSecretFiles } from '../../lib/secret-env';
 import fs from 'fs';
@@ -233,6 +234,7 @@ export default class XcodeTest extends BaseCommand {
         };
 
         const proc = xcodeClient.xcodebuild(settings, options);
+        const failureHints = new BuildFailureHints('xcode', proc);
 
         if (!json) {
           proc.stdout.on('data', (line: string) => process.stdout.write(line + '\n'));
@@ -240,6 +242,8 @@ export default class XcodeTest extends BaseCommand {
         }
 
         const result = await proc;
+        const hints = failureHints.getHints(result);
+        if (!json) printBuildHints(hints);
 
         // Downloaded even when tests failed: the bundle is how a red run is read. A lost bundle
         // is reported after the run's own result, which it never replaces.
@@ -273,6 +277,7 @@ export default class XcodeTest extends BaseCommand {
           process.stdout.write(
             JSON.stringify({
               exitCode: result.exitCode,
+              ...(hints.length && { hints }),
               ...(resultBundlePath ? { resultBundle: resultBundlePath } : {}),
               ...(result.timedOut ? { timedOut: true, incomplete: result.incomplete } : {}),
             }) + '\n',

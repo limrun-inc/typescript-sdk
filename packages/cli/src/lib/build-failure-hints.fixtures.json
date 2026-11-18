@@ -1,0 +1,147 @@
+{
+  "capabilities": [
+    [
+      "missing SDK platform",
+      "Failed to find target with hash string 'android-35' in: /opt/android-sdk",
+      "lim gradle run -- sdkmanager '<package>'"
+    ],
+    ["missing build tools", "Failed to find Build Tools revision 35.0.0", "sdkmanager --list"],
+    ["private npm hook", "pnpm: Private npm credentials are missing or expired.", "secret create"],
+    [
+      "capacitor variants",
+      "No matching variant of project :capacitor-android was found.\n - No variants exist.",
+      "Capacitor sync"
+    ],
+    [
+      "missing expo binary",
+      "error: Could not find an existing 'expo' binary to run. Stopping because --no-install was passed.",
+      "--expo-app-dir"
+    ],
+    [
+      "registry",
+      "\u001b[31mERR_PNPM_FETCH_403\u001b[0m GET https://registry.example.invalid/private: Forbidden - 403",
+      "secret create <name> --file"
+    ],
+    [
+      "npm authentication",
+      "npm error code E401\nnpm error Incorrect or missing password.",
+      "~/.npmrc=<name>"
+    ],
+    [
+      "yarn authentication",
+      "YN0041: package: Invalid authentication (as an unknown user)",
+      "--env NAME=<value>"
+    ],
+    [
+      "pnpm integrity",
+      "ERR_PNPM_MISSING_TARBALL_INTEGRITY Cannot install package: its lockfile entry has no integrity field",
+      "lim gradle use pnpm@<version>"
+    ],
+    [
+      "engine",
+      "ERR_PNPM_UNSUPPORTED_ENGINE Unsupported environment (bad pnpm and/or Node.js version)",
+      "lim gradle use <tool>@<version>"
+    ],
+    ["java", "error: invalid source release: 21", "lim gradle use <tool>@<version>"],
+    ["class version", "Unsupported class file major version 69", "mise.limrun.toml"],
+    [
+      "yarn config",
+      "Usage Error: Unrecognized or legacy configuration settings found: approvedGitRepositories",
+      "lim gradle use <tool>@<version>"
+    ],
+    [
+      "rust",
+      "error: rustup could not choose a version of rustc to run, because one wasn't specified explicitly, and no default is configured.",
+      "lim gradle use"
+    ],
+    [
+      "unavailable pnpm",
+      "ERR_PNPM_NO_MATCHING_VERSION No matching version found for @pnpm/linux-x64@10.99.0",
+      "lim gradle use pnpm@<version>"
+    ],
+    [
+      "git",
+      "fatal: not a git repository (or any of the parent directories): .git",
+      "--include '^\\.git(/|$)'"
+    ],
+    [
+      "google services",
+      "Error: ENOENT: no such file or directory, open '/workspace/google-services.json'",
+      "--file-from-secret"
+    ],
+    [
+      "wrapper jar",
+      "Error: Unable to access jarfile /workspace/gradle/wrapper/gradle-wrapper.jar",
+      "--include"
+    ],
+    [
+      "wrapper preflight",
+      "gradlew wrapper not found or not executable at the Gradle root; sync the project including its wrapper",
+      "--project-path"
+    ],
+    ["wrapper permissions", "/bin/bash: line 1: ./gradlew: Permission denied", "chmod +x"],
+    ["flutter properties", "local.properties does not exist", "--additional-file"],
+    [
+      "capacitor",
+      "Could not read script '/workspace/capacitor-cordova-android-plugins/cordova.variables.gradle' as it does not exist.",
+      "Capacitor sync"
+    ],
+    ["module", "Project with path ':native-library' could not be found in project ':app'.", "--include"],
+    [
+      "signing",
+      "Keystore file '/workspace/app/release.jks' not found for signing config 'release'.",
+      "--keystore"
+    ],
+    ["metaspace", "java.lang.OutOfMemoryError: Metaspace", "-XX:MaxMetaspaceSize"],
+    ["heap", "java.lang.OutOfMemoryError: GC overhead limit exceeded", "org.gradle.workers.max"],
+    ["sentry", "error: An organization ID or slug is required (provide with --org)", "--env SENTRY_ORG"],
+    [
+      "depot tools",
+      "python3_bin_reldir.txt not found. need to initialize depot_tools by\nrunning gclient, update_depot_tools or ensure_bootstrap.",
+      "bootstrap command named in the error"
+    ],
+    ["ssh", "error: cannot run ssh: No such file or directory", "HTTPS Git URL"],
+    ["node module", "Error: Cannot find module 'react-native/package.json'", "--expo-app-dir"],
+    [
+      "expo gradle plugin",
+      "Plugin [id: 'expo-module-gradle-plugin'] was not found in any of the following sources:",
+      "--expo-app-dir"
+    ]
+  ],
+  "noHints": [
+    "> Task :app:compileDebugKotlin FAILED",
+    "There were failing tests. See the report at:",
+    "Process 'command 'node'' finished with non-zero exit value 1",
+    "Cannot convert null to File",
+    "ValueError: private file operation failed",
+    "resolve mise environment: chdir /workspace/app: no such file or directory",
+    "   > Could not find com.example:module:1.0.",
+    "  Unable to find ICU.",
+    "tar: app/build/test-results: Cannot stat: No such file or directory",
+    "ERR_PNPM_UNUSED_PATCH The following patches were not used: package@1.0.0",
+    "The project name 'app.' must not start or end with a '.'.",
+    "No value with key 'distributionUrl' specified in wrapper properties file",
+    "Dependency 'androidx.example:module:1.0' requires Android Gradle plugin 9.1.0 or higher.",
+    "Your project's Android Gradle Plugin version (8.1.1) is lower than Flutter's minimum supported version (8.1.2).",
+    "ERROR: Missing classes detected while running R8. Please add missing classes or apply additional keep rules",
+    "Duplicate class example.AudioDevice found in modules first.aar and second.aar",
+    "Error: twilio-voice-react-native: cannot add \"override fun onNewIntent\" to MainActivity because another plugin declares it",
+    "npm error The npm ci command can only install with an existing package-lock.json or npm-shrinkwrap.json",
+    "cannot authorize asset upload: asset create or upload returned HTTP 403: asset create permission is required for this name",
+    "cannot authorize asset upload: asset create or upload returned HTTP 403: unauthenticated: no such token found",
+    "fetch secret for [REDACTED] service refused the secret grant with HTTP 403",
+    "exit status 17",
+    "java.lang.AssertionError: expected 1, got 2",
+    "cat: gradle.properties: No such file or directory",
+    "HTTP 403: Forbidden",
+    "read secret bindings: secret service request failed",
+    "secret fetch returned HTTP 502",
+    "Could not GET https://repo.example.invalid/module.pom: Network is unreachable",
+    "Could not find com.example:library:1.0.\n> Network is unreachable",
+    "error: organization not found",
+    "Gradle connection timed out",
+    "exec: WaitDelay expired before I/O complete",
+    "npm warn deprecated package",
+    "xargs: {}: No such file or directory"
+  ]
+}

@@ -8,6 +8,7 @@ describe('getBuildLogs', () => {
 
     await expect(
       getBuildLogs({
+        platform: 'xcode',
         instanceId: 'xcode_test',
         follow: false,
         listPersisted,
@@ -39,6 +40,7 @@ describe('getBuildLogs', () => {
 
     await expect(
       getBuildLogs({
+        platform: 'xcode',
         instanceId: 'gradle_test',
         follow: false,
         listPersisted: async () => records,
@@ -67,6 +69,7 @@ describe('getBuildLogs', () => {
     };
 
     const result = await getBuildLogs({
+      platform: 'xcode',
       instanceId: 'xcode_test',
       execId: 'build-1',
       follow: true,
@@ -93,6 +96,7 @@ describe('getBuildLogs', () => {
       .mockResolvedValueOnce([record]);
 
     const result = await getBuildLogs({
+      platform: 'xcode',
       instanceId: 'xcode_test',
       execId: 'build-1',
       follow: false,
@@ -111,6 +115,7 @@ describe('getBuildLogs', () => {
     const listPersisted = jest.fn(async (): Promise<BuildLog[]> => []);
 
     const result = await getBuildLogs({
+      platform: 'xcode',
       instanceId: 'xcode_test',
       follow: false,
       listPersisted,
@@ -131,6 +136,7 @@ describe('getBuildLogs', () => {
 
     await expect(
       getBuildLogs({
+        platform: 'xcode',
         instanceId: 'xcode_test',
         follow: false,
         listPersisted,
@@ -144,6 +150,7 @@ describe('getBuildLogs', () => {
 
   test('reports a missing exec without an instance-level 404', async () => {
     const error = await getBuildLogs({
+      platform: 'xcode',
       instanceId: 'xcode_test',
       execId: 'build-404',
       follow: false,
@@ -165,6 +172,7 @@ describe('getBuildLogs', () => {
 
     await expect(
       getBuildLogs({
+        platform: 'xcode',
         instanceId: 'xcode_missing',
         execId: 'build-1',
         follow: false,
@@ -179,6 +187,7 @@ describe('getBuildLogs', () => {
   test('reports when an instance has no builds', async () => {
     await expect(
       getBuildLogs({
+        platform: 'xcode',
         instanceId: 'xcode_empty',
         follow: false,
         listPersisted: async () => [],
@@ -196,6 +205,7 @@ describe('getBuildLogs', () => {
       { id: 'build-9', status: 'FAILED', exitCode: 1, downloadUrl: 'https://logs/9' },
     ];
     const result = await getBuildLogs({
+      platform: 'xcode',
       instanceId: 'xcode_deleted',
       follow: false,
       listPersisted: async () => records,
@@ -218,3 +228,45 @@ function notFound(): Error {
     status: 404,
   });
 }
+
+test.each(['retained', 'persisted'] as const)(
+  '%s logs expose hints separately from original output',
+  async (source) => {
+    const diagnostic = 'ERR_PNPM_MISSING_TARBALL_INTEGRITY';
+    const raw = '$ pnpm install\n' + diagnostic + '\n';
+    const record = { id: 'build-7', status: 'FAILED', exitCode: 1, downloadUrl: 'https://logs/7' };
+    const onText = jest.fn();
+    const result = await getBuildLogs({
+      platform: 'gradle',
+      instanceId: 'gradle_test',
+      execId: record.id,
+      follow: true,
+      listPersisted: async () => (source === 'persisted' ? [record] : []),
+      fetchText: async () => raw,
+      observe: async (_id, options) => {
+        options.onEvent({ type: 'command', data: 'pnpm install' });
+        options.onEvent({ type: 'stderr', data: diagnostic });
+        return { execId: record.id, status: 'FAILED', exitCode: 1 };
+      },
+      onText,
+    });
+    expect(result.logs).toBe(raw);
+    expect(result.hints).toEqual([expect.stringContaining('lim gradle use pnpm@<version>')]);
+    expect(onText.mock.calls.map(([text]) => text).join('')).toBe(raw);
+  },
+);
+
+test('persisted logs ignore diagnostics from earlier successful commands', async () => {
+  const result = await getBuildLogs({
+    platform: 'xcode',
+    instanceId: 'sandbox_test',
+    execId: 'build-8',
+    follow: false,
+    listPersisted: async () => [
+      { id: 'build-8', status: 'FAILED', exitCode: 1, downloadUrl: 'https://logs/8' },
+    ],
+    fetchText: async () => '$ pnpm install\nERR_PNPM_UNSUPPORTED_ENGINE\n$ xcodebuild\nCompile failed\n',
+    observe: jest.fn(),
+  });
+  expect(result.hints).toBeUndefined();
+});

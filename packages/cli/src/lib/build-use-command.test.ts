@@ -27,6 +27,7 @@ function setup(
     {} as never,
   );
   const proc = Object.assign(Promise.resolve({ exitCode: 0 }), {
+    command: new EventEmitter(),
     stdout: new EventEmitter(),
     stderr: new EventEmitter(),
   });

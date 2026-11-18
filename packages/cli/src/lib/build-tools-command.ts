@@ -47,6 +47,7 @@ export function buildToolsCommand(
           await syncBuildProject(client, syncOptionsFromFlags(flags), (message) => this.info(message));
         await streamBuildCommand(
           client.run(install ? 'mise install' : 'mise ls --current', { cwd: flags.cwd }),
+          platform,
           (message, options) => this.error(message, options),
           install ? 'Tool installation failed' : 'Tool inspection failed',
           this.isJsonEnabled() ? (result) => this.outputJson(result) : undefined,

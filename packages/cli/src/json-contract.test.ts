@@ -394,13 +394,13 @@ test.each([0, 7])('remote commands preserve stdout, stderr and exit code %s', as
         resolve({ execId: 'exec_test', status: exitCode ? 'FAILED' : 'SUCCEEDED', exitCode });
       });
     }),
-    { stdout: out, stderr: err },
+    { command: new EventEmitter(), stdout: out, stderr: err },
   );
   const reportError = jest.fn((message: string) => {
     throw new Error(message);
   });
   const result = jest.fn();
-  const run = streamBuildCommand(proc as never, reportError, 'Command failed', result);
+  const run = streamBuildCommand(proc as never, 'gradle', reportError, 'Command failed', result);
   if (exitCode) await expect(run).rejects.toMatchObject({ code: 'EEXIT', oclif: { exit: 7 } });
   else await run;
   expect(result).toHaveBeenCalledWith({
@@ -730,6 +730,7 @@ describe.each(['xcode', 'gradle'])('%s execution failures', (platform) => {
         };
         client.run = jest.fn(() =>
           Object.assign(Promise.resolve(expected), {
+            command: new EventEmitter(),
             stdout: new EventEmitter(),
             stderr: new EventEmitter(),
           }),
@@ -748,13 +749,14 @@ describe.each(['xcode', 'gradle'])('%s execution failures', (platform) => {
 
 test.each([false, true])('human execution failures retain diagnostics, timedOut=%s', async (timedOut) => {
   const proc = Object.assign(Promise.resolve({ exitCode: timedOut ? 124 : 7, timedOut }), {
+    command: new EventEmitter(),
     stdout: new EventEmitter(),
     stderr: new EventEmitter(),
   });
   const reportError = jest.fn((message: string) => {
     throw new Error(message);
   });
-  await expect(streamBuildCommand(proc as never, reportError)).rejects.toThrow(
+  await expect(streamBuildCommand(proc as never, 'gradle', reportError)).rejects.toThrow(
     timedOut ? 'Timed out waiting' : 'Command failed with exit code 7',
   );
   expect(reportError).toHaveBeenCalledWith(expect.any(String), { exit: timedOut ? 124 : 7 });
@@ -838,7 +840,7 @@ describe('xcode test NDJSON', () => {
             resolve({ execId: 'exec_test', ...result });
           });
         }),
-        { stdout: new EventEmitter(), stderr: new EventEmitter() },
+        { command: new EventEmitter(), stdout: new EventEmitter(), stderr: new EventEmitter() },
       ),
     );
   }
@@ -1069,4 +1071,45 @@ describe('ios perf', () => {
       expect(stdout).toBe('');
     });
   });
+});
+
+test.each(['xcode', 'gradle'])('%s build returns hints separately from SDK log events', async (platform) => {
+  const raw = 'ERR_PNPM_MISSING_TARBALL_INTEGRITY';
+  const result = { execId: 'exec_test', status: 'FAILED', exitCode: 1 };
+  const commandStream = new EventEmitter();
+  const out = new EventEmitter();
+  const err = new EventEmitter();
+  client.sync = jest.fn().mockResolvedValue({ bytesSent: 100 });
+  client.gradlebuild = client.xcodebuild = jest.fn(() =>
+    Object.assign(
+      new Promise((resolve) =>
+        setImmediate(() => {
+          commandStream.emit('data', 'pnpm install');
+          err.emit('data', raw);
+          resolve(result);
+        }),
+      ),
+      { command: commandStream, stdout: out, stderr: err },
+    ),
+  );
+  const c = command(`${platform}/build`);
+  c.applyBuildCacheToTarget = async () => {};
+  await expect(c.run()).rejects.toMatchObject({ code: 'EEXIT', oclif: { exit: 1 } });
+  expect(
+    stdout
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line)),
+  ).toEqual([
+    { type: 'command', line: 'pnpm install' },
+    { type: 'stderr', line: raw },
+    {
+      type: 'result',
+      instanceId: target.id,
+      ...result,
+      hints: [expect.stringContaining(`lim ${platform} use pnpm@<version>`)],
+    },
+  ]);
+  expect(result).toEqual({ execId: 'exec_test', status: 'FAILED', exitCode: 1 });
+  expect(stderr).toBe('');
 });

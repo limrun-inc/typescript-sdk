@@ -62,6 +62,7 @@ export function buildUseCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
         const proc = client.run(command, { cwd: flags.cwd });
         await streamBuildCommand(
           proc,
+          platform,
           (message, options) => this.error(message, options),
           'Tool selection failed',
           this.isJsonEnabled() ?

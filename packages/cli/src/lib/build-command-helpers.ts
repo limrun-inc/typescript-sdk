@@ -1,3 +1,4 @@
+import { BuildFailureHints, printBuildHints, type BuildPlatform } from './build-failure-hints';
 import { Errors } from '@oclif/core';
 import type { GradleClient } from '@limrun/api/resources/gradle-instances-helpers';
 import type { ExecChildProcess } from '@limrun/api/exec-client';
@@ -22,10 +23,14 @@ export async function syncBuildProject(
 
 export async function streamBuildCommand(
   proc: ExecChildProcess,
+  platform: BuildPlatform,
   error: ReportError,
   failure = 'Command failed',
-  outputJson?: (result: Awaited<ExecChildProcess> & { stdout: string; stderr: string }) => void,
+  outputJson?: (
+    result: Awaited<ExecChildProcess> & { stdout: string; stderr: string; hints?: string[] },
+  ) => void,
 ): Promise<void> {
+  const failureHints = new BuildFailureHints(platform, proc);
   let stdout = '';
   let stderr = '';
   proc.stdout.on('data', (line: string) => {
@@ -37,11 +42,13 @@ export async function streamBuildCommand(
     else process.stderr.write(line + '\n');
   });
   const result = await proc;
+  const hints = failureHints.getHints(result);
   if (outputJson) {
-    outputJson({ ...result, stdout, stderr });
+    outputJson({ ...result, stdout, stderr, ...(hints.length && { hints }) });
     if (result.exitCode !== 0) Errors.exit(result.exitCode);
     return;
   }
+  printBuildHints(hints);
   if (result.exitCode === 0) return;
   if (result.timedOut) {
     error(

@@ -978,7 +978,8 @@ Commands stream stdout and stderr and return the remote exit code, but do not pr
 Select developer tools for shell commands and managed builds with mise preferences:
 
 ```bash
-lim xcode use node@24 pnpm@10 ruby@3.3
+lim xcode run -- mise ls-remote pnpm
+lim xcode use node@24 pnpm@10.13.1 ruby@3.3
 lim xcode tools install
 lim xcode tools
 lim xcode run -- mise use --pin node@24.5.0
@@ -990,9 +991,15 @@ lim xcode run -- mise use --pin node@24.5.0
 
 `lim xcode use xcode@27` is equivalent to `lim xcode version set 27`: it remembers the workspace Xcode version and switches the existing sandbox. With no sandbox, it saves the preference for the next one. You can combine requests, for example `lim xcode use xcode@27 node@24`; only the other tools go into mise. Xcode takes a major (`27`, the GA of that major) or a major.minor (`27.1`, an exact version). `--cwd` applies only to mise tools; `--workspace` chooses the Limrun workspace preference.
 
+You can browse available tool versions with `lim xcode run -- mise ls-remote <tool>`
+and select one with `lim xcode use <tool>@<version>`. A synced `mise.limrun.toml`
+persists `[tools]` selections for future sandboxes. The default pnpm is 10.13.1, which
+predates the missing-tarball-integrity requirement; project and sandbox selections
+can choose a different release.
+
 `lim xcode use` selects tools in an existing sandbox after project sync. Mise installs a requested version if needed; use `lim xcode tools install` to install tools declared by synced project files. Use `--cwd apps/mobile` for a nested project. Sandbox selections take precedence over synced project tool requests and apply to later runs and builds.
 
-Each run or build resolves `mise env --json` once. Synced project tool declarations override package-manager detection and image defaults. The first operation with project tool declarations installs them once; later changes require `lim xcode tools install`. Project numeric requests retain the major, except Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain `major.minor`. Limrun imports the `[tools]` declarations from project mise files. Use an explicit sandbox `mise use --pin` command to select an exact release.
+Each run or build resolves `mise env --json` once. Synced project tool declarations override package-manager detection and image defaults. The first operation with project tool declarations installs them once; later changes require `lim xcode tools install`. Project pnpm requests retain their exact version. Other numeric requests retain the major, except Ruby, Python, Go, Flutter, Dart and pre-1.0 tools retain `major.minor`. Limrun imports the `[tools]` declarations from project mise files. Use an explicit sandbox `mise use --pin` command to select an exact release.
 
 Both Node 22 and 24 are preinstalled, with Node 22 as the default. Image tools stay outside disk snapshots. User-installed versions under `.limbuild-sandbox/home/.mise/` can be saved when the configured snapshot paths cover them, after a successful managed build. If a restored user gem references its old sandbox path, reinstall it explicitly, for example `lim xcode run -- mise install --force bundler`. Homebrew and Apple tools have separate management; select Xcode with `lim xcode use xcode@27` and inspect it with `lim xcode version`.
 
@@ -1308,7 +1315,7 @@ The sandbox includes these mise-managed tools:
 | Tool                       | Included compatibility lines | Default    |
 | -------------------------- | ---------------------------- | ---------- |
 | Node.js (with npm and npx) | 22, 24                       | 22         |
-| pnpm                       | 9, 10, 11                    | 10         |
+| pnpm                       | 9, 10, 11, 12                | 10.13.1    |
 | Yarn                       | 1, 4                         | 1          |
 | Bun                        | 1 (stable)                   | 1          |
 | Java                       | Temurin 17                   | Temurin 17 |
@@ -1320,7 +1327,8 @@ remain managed by `sdkmanager`.
 Select tool versions and install missing versions explicitly:
 
 ```bash
-lim gradle use node@24 java@temurin-17 pnpm@10
+lim gradle run -- mise ls-remote pnpm
+lim gradle use node@24 java@temurin-17 pnpm@10.13.1
 lim gradle tools install
 lim gradle tools
 ```
@@ -1329,10 +1337,16 @@ lim gradle tools
 
 `lim gradle tools install` syncs the project and runs `mise install` in that sandbox. Use `--no-sync` to install its current selections without syncing, `--cwd apps/mobile` for a nested project, and `--id` to choose an existing sandbox. The command never creates or replaces an instance.
 
+You can browse available tool versions with `lim gradle run -- mise ls-remote <tool>`
+and select one with `lim gradle use <tool>@<version>`. A synced `mise.limrun.toml`
+persists `[tools]` selections for future sandboxes. The default pnpm is 10.13.1, which
+predates the missing-tarball-integrity requirement; project and sandbox selections
+can choose a different release.
+
 `lim gradle use` selects tools in an existing sandbox after project sync. Mise installs a requested version if needed. Use `--cwd apps/mobile` for a nested project, and the same directory with `lim gradle tools install --cwd apps/mobile` when installing its synced project tools.
 
 Limrun imports `[tools]` declarations from synced project mise files. These
-declarations override package-manager detection and image defaults. Most numeric project requests retain the major version;
+declarations override package-manager detection and image defaults. pnpm requests retain their exact version. Most other numeric project requests retain the major version;
 Ruby, Python, Go, Flutter, Dart, and pre-1.0 tools retain `major.minor`.
 Limrun can update patch and minor releases within those lines independently.
 `latest` opts out of a fixed line.
@@ -1357,21 +1371,24 @@ lim gradle build . --env APP_ENV=staging
 to add files outside the source tree. Repeat the flag for multiple files. Remote
 paths starting with `~/` target the sandbox home used by builds and tool commands;
 other paths are relative to the workspace.
-Create a secret container, then save its value:
+Create a secret and save its initial value in one command:
 
 ```bash
-lim secret create packages/npm --type generic --metadata '{"registry":"npm"}'
-lim secret write packages/npm "$NPM_TOKEN"
-lim secret create packages/npmrc
-lim secret write packages/npmrc --file .npmrc
-printf %s "$NPM_TOKEN" | lim secret write packages/npm --stdin
+lim secret create packages/npm "$NPM_TOKEN" --type generic --metadata '{"registry":"npm"}'
+lim secret create packages/npmrc --file .npmrc
+printf %s "$NPM_TOKEN" | lim secret create packages/another-token --stdin
+lim secret write packages/npm "$NEW_NPM_TOKEN"
 lim secret get packages/npm
 lim secret update packages/npm --metadata '{"registry":"npm","purpose":"builds"}'
 lim secret read packages/npm
 lim secret delete packages/npm
 ```
 
-`create` creates metadata only and returns a conflict if the name already exists.
+`create NAME [VALUE]` accepts at most one value source: VALUE, `--file PATH`, or
+`--stdin`. Without a value source, it creates metadata only. Existing names return
+a conflict without writing a value. Creating a secret with a value requires both
+create and write permissions. If creation succeeds but the value write fails, the
+command reports the new secret ID; you can retry with `lim secret write <id> --stdin`.
 `get` returns metadata; without a name, it lists visible secrets using `--limit` and
 `--offset`. `update` replaces the metadata object without reading or writing the
 value. Names and types cannot be changed. Metadata is stored by Limrun and must not
