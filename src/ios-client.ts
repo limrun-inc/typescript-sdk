@@ -31,6 +31,7 @@ import {
   type StartForwardHttpProxyOptions,
 } from './http-proxy';
 import { startXcrunShim as startClientXcrunShim } from './ios-shim';
+import { deriveTargetHttpPortUrlPrefix } from './target-http-port';
 import { persistFields, ttlFields, type PersistOption } from './internal/persist-option';
 import { streamSessionEntries } from './internal/session-stream';
 import type { SessionLogLine, SessionEvent, PerformanceSample } from './resources/session-artifacts';
@@ -1259,6 +1260,15 @@ export type InstanceClient = {
 
   /** Stop the active tunnel only when its ID matches `tunnelId`. */
   stopTunnel: (tunnelId: string) => Promise<void>;
+
+  /**
+   * The URL of an HTTP port exposed by the iOS instance, derived from the
+   * client's apiUrl. Requests to it authenticate with the instance token as a
+   * Bearer authorization header.
+   *
+   * @throws If the port is invalid or the client's apiUrl does not end in `/api`.
+   */
+  targetHttpPortUrl: (port: number) => string;
 
   /**
    * Start a local HTTP proxy to a port exposed by the iOS instance.
@@ -2565,6 +2575,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             startTunnel,
             getTunnelStatus,
             stopTunnel,
+            targetHttpPortUrl,
             startHttpProxy,
             startForwardHttpProxy,
             disconnect,
@@ -3663,6 +3674,15 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     const stopTunnel = async (tunnelId: string): Promise<void> => {
       await stopDestinationTunnel(options.apiUrl, options.token, tunnelId);
+    };
+
+    const targetHttpPortUrl = (port: number): string => {
+      assertPort(port, 'port', 1, 65535);
+      const prefix = deriveTargetHttpPortUrlPrefix(options.apiUrl);
+      if (!prefix) {
+        throw new Error('Cannot derive the target HTTP port URL: apiUrl does not end in /api');
+      }
+      return `${prefix}${port}`;
     };
 
     const startHttpProxy = async (proxyOptions: HttpProxyOptions): Promise<number> => {
