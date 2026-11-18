@@ -75,6 +75,7 @@ export {
   type StartHttpProxyOptions,
   type StartForwardHttpProxyOptions,
 } from './http-proxy';
+export { deriveTargetHttpPortUrlPrefix } from './target-http-port';
 export {
   prepareMaestroRun,
   isMaestroRunnerRunning,

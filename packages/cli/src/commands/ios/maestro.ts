@@ -4,6 +4,7 @@ import { Flags } from '@oclif/core';
 import {
   MAESTRO_RUNNER_BUNDLE_ID,
   MAESTRO_RUNNER_PORT,
+  deriveTargetHttpPortUrlPrefix,
   isMaestroRunnerRunning,
   maestroSpawnOptions,
   prepareMaestroRun,
@@ -63,6 +64,11 @@ export default class IosMaestro extends BaseCommand {
       const id = resolvedInstance.id;
 
       let { targetHttpPortUrlPrefix, token } = resolvedInstance;
+      if (!targetHttpPortUrlPrefix && resolvedInstance.apiUrl) {
+        // An instance pinned by apiUrl + token alone has no prefix; derive it
+        // instead of requiring an API key just to look it up.
+        targetHttpPortUrlPrefix = deriveTargetHttpPortUrlPrefix(resolvedInstance.apiUrl);
+      }
       if (!targetHttpPortUrlPrefix || !token) {
         const instance = await this.client.iosInstances.get(id);
         targetHttpPortUrlPrefix = instance.status.targetHttpPortUrlPrefix;
