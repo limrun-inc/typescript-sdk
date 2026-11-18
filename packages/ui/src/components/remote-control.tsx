@@ -307,6 +307,21 @@ export interface RemoteControlProps {
    * track mid-stream, and when capture stops.
    */
   onMicrophoneStateChange?: (state: MicrophoneState) => void;
+
+  /**
+   * iOS only: receive the simulator's speaker output and play it with the
+   * screen. Off by default, because browsers pause autoplaying video that has
+   * sound. Changing it reconnects the stream. Playback stays silent until
+   * `speakerMuted` is false.
+   */
+  speakerAudio?: boolean;
+
+  /**
+   * Mutes the speaker audio requested by `speakerAudio`. Defaults to true.
+   * Unmute only after the user interacts with the page, for example from an
+   * unmute button's click handler; otherwise the browser may pause playback.
+   */
+  speakerMuted?: boolean;
 }
 
 export interface RemoteControlHandle {
@@ -547,6 +562,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       onTrace,
       microphoneEnabled = false,
       onMicrophoneStateChange,
+      speakerAudio = false,
+      speakerMuted = true,
     }: RemoteControlProps,
     ref,
   ) => {
@@ -1928,6 +1945,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         axMaxBackoffMs,
         androidElementTreeOptions,
         microphoneEnabled,
+        speakerAudio,
         onStateChange: (state) => {
           // Preserve the loaded layout behind errors; the placeholder returns when a new attempt starts.
           if (
@@ -1970,12 +1988,18 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // Token rotation must not restart a healthy stream: the server checks
       // the token only when a connection starts, so updateOptions carries it.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [url, propSessionId, streamDeviceModel, latencyTraceRequested, watchOnly]);
+    }, [url, propSessionId, streamDeviceModel, latencyTraceRequested, watchOnly, speakerAudio]);
+
+    // The element mounts muted so it can autoplay; the speaker track plays
+    // through it once the caller unmutes.
+    useEffect(() => {
+      if (videoRef.current) videoRef.current.muted = speakerMuted;
+    }, [speakerMuted]);
 
     useEffect(() => {
       if (isDuo && innerVideoRef.current)
         return clientRef.current?.attachVideo(innerVideoRef.current, 'inner');
-    }, [isDuo, url, propSessionId, streamDeviceModel, latencyTraceRequested, watchOnly]);
+    }, [isDuo, url, propSessionId, streamDeviceModel, latencyTraceRequested, watchOnly, speakerAudio]);
 
     useEffect(() => {
       clientRef.current?.updateOptions({
