@@ -788,7 +788,8 @@ describe('headless device stream', () => {
     ],
     ['iOS with the option', { url: 'wss://host/ios_test', token: 'secret', speakerAudio: true }, true],
   ] as const)('asks for speaker audio only on %s', async (_, options, expected) => {
-    const { socket } = await handshake(create(options));
+    const { socket, peer } = await handshake(create(options));
+    expect(peer.createOffer).toHaveBeenCalledWith(expect.objectContaining({ offerToReceiveAudio: expected }));
     const offer = socket.sent.find((m) => m.type === 'offer')!;
     expect('speakerAudio' in offer).toBe(expected);
     if (expected) expect(offer.speakerAudio).toBe(true);

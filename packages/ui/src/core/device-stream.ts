@@ -1807,7 +1807,9 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       if (currentPeerConnection === peerConnection) {
         const offer = await peerConnection.createOffer({
           offerToReceiveVideo: true,
-          offerToReceiveAudio: false,
+          // This legacy option overrides transceiver directions: false turns
+          // the speaker's receive-only audio section inactive.
+          offerToReceiveAudio: wantsSpeakerAudio,
         });
         if (!isCurrentAttempt() || currentPeerConnection !== peerConnection) {
           return;
