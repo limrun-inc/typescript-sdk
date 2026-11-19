@@ -161,7 +161,8 @@ export type ElementTreeNode = {
   AXFrame: string;
   AXLabel?: string | null;
   AXUniqueId?: string | null;
-  AXValue?: string | null;
+  /** Sliders report numeric values; text fields report strings. */
+  AXValue?: string | number | null;
   children?: ElementTreeNode[];
   /** True when visibleOnly omitted offscreen descendants of this container. */
   has_offscreen_children?: boolean;
