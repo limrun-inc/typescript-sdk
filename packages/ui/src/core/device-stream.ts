@@ -19,7 +19,14 @@ import {
   parseCameraRequest,
   type CameraRequest,
 } from './camera';
-import { debugLog, debugWarn, safeInvoke, detectPlatform, withAuthenticationToken } from './stream-utils';
+import {
+  debugLog,
+  debugWarn,
+  safeInvoke,
+  detectPlatform,
+  playSpeaker,
+  withAuthenticationToken,
+} from './stream-utils';
 import type {
   CameraStreamStats,
   ScreenshotData,
@@ -99,8 +106,18 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     entry.stop?.();
     entry.stop = attachVideoStream(video, stream, (error) => debugWarn('Video playback fallback:', error));
   };
+  // Speaker audio plays from its own elements, so the screen's video elements
+  // stay muted and never need a user gesture to start.
+  const audios = new Set<HTMLAudioElement>();
+  let speakerStream: MediaStream | null = null;
+  const playSpeakerStream = (audio: HTMLAudioElement) => {
+    audio.srcObject = speakerStream;
+    if (speakerStream) playSpeaker(audio, () => safeInvoke('onSpeakerBlocked', options.onSpeakerBlocked));
+  };
   const clearPlayback = () => {
     streams.clear();
+    speakerStream = null;
+    for (const audio of audios) audio.srcObject = null;
     for (const [video, entry] of videos) {
       entry.clear?.();
       entry.stop?.();
@@ -1214,7 +1231,6 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       // Carries the simulator's speaker output when `speakerAudio` asks for it.
       peerConnection.addTransceiver('audio', { direction: 'recvonly' });
       const wantsSpeakerAudio = platform === 'ios' && !!options.speakerAudio;
-      let speakerTrack: MediaStreamTrack | null = null;
       const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
       const duoTransceiver = isDuo ? peerConnection.addTransceiver('video', { direction: 'recvonly' }) : null;
 
@@ -1521,27 +1537,18 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
           event.track.id === 'duo-inner' || event.streams.some((stream) => stream.id === 'duo-inner');
         if (event.track.kind === 'video') playback.displays.set(event.receiver, inner ? 'inner' : 'primary');
         updateStatus('Received remote track: ' + event.track.kind);
-        // Speaker audio plays from the primary display's element, so it
-        // stays in sync with the screen and follows that element's mute.
-        const playDisplay = (display: StreamDisplay, stream: MediaStream) => {
-          if (display === 'primary' && speakerTrack && !stream.getTracks().includes(speakerTrack)) {
-            stream.addTrack(speakerTrack);
-          }
-          streams.set(display, stream);
-          for (const [element, entry] of videos) {
-            if (entry.display === display) playVideo(element, entry, stream);
-          }
-        };
-        if (event.track.kind === 'audio' && wantsSpeakerAudio) {
-          speakerTrack = event.track;
-          const primary = streams.get('primary');
-          if (primary) playDisplay('primary', primary);
-        }
         if (event.track.kind === 'video') {
           const display = inner ? 'inner' : 'primary';
           const stream =
             isDuo ? new MediaStream([event.track]) : event.streams[0] ?? new MediaStream([event.track]);
-          playDisplay(display, stream);
+          streams.set(display, stream);
+          for (const [element, entry] of videos) {
+            if (entry.display === display) playVideo(element, entry, stream);
+          }
+        }
+        if (event.track.kind === 'audio' && wantsSpeakerAudio) {
+          speakerStream = new MediaStream([event.track]);
+          for (const audio of audios) playSpeakerStream(audio);
         }
       };
 
@@ -1866,6 +1873,23 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     updateStatus('Stopped');
   };
 
+  /** Plays the speaker audio requested by `speakerAudio`. The caller owns muting. */
+  const attachAudio = (audio: HTMLAudioElement) => {
+    if (disposed) throw new Error('Device stream is disposed');
+    if (audios.has(audio)) throw new Error('Audio element is already attached');
+    audios.add(audio);
+    if (speakerStream) playSpeakerStream(audio);
+    let detached = false;
+    const detach = () => {
+      if (detached) return;
+      detached = true;
+      attachments.delete(detach);
+      audios.delete(audio);
+      audio.srcObject = null;
+    };
+    attachments.add(detach);
+    return detach;
+  };
   const attachVideo = (video: HTMLVideoElement, display: StreamDisplay = 'primary') => {
     if (disposed) throw new Error('Device stream is disposed');
     if (videos.has(video)) throw new Error('Video element is already attached');
@@ -1943,6 +1967,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     start,
     stop,
     attachVideo,
+    attachAudio,
     attachFrameSink,
     dispose: () => {
       if (disposed) return;

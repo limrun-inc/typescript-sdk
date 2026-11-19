@@ -7,6 +7,7 @@ import { defaultRemoteControlAssets } from '../frame-assets';
 vi.mock('../core/device-stream', () => ({
   createDeviceStream: () => ({
     attachVideo: vi.fn(),
+    attachAudio: vi.fn(),
     start: vi.fn(),
     dispose: vi.fn(),
     updateOptions: vi.fn(),
