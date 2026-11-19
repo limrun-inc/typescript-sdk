@@ -10,6 +10,21 @@ export const debugWarn = (...args: any[]) => {
   }
 };
 
+/**
+ * Plays an element that carries the simulator's speaker audio. Browsers
+ * refuse sound outside a recent user gesture; the element then keeps playing
+ * muted, so a later unmute from a click needs no new `play()`, and
+ * `onBlocked` lets the caller show that the sound is off.
+ */
+export const playSpeaker = (audio: HTMLMediaElement, onBlocked: () => void): void => {
+  void Promise.resolve(audio.play()).catch((error: unknown) => {
+    if ((error as { name?: string } | null)?.name !== 'NotAllowedError' || audio.muted) return;
+    audio.muted = true;
+    void Promise.resolve(audio.play()).catch(() => undefined);
+    onBlocked();
+  });
+};
+
 // A failing host callback must not interrupt connection cleanup or message handling.
 export const safeInvoke = <Args extends unknown[]>(
   label: string,

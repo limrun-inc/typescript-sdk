@@ -1,5 +1,12 @@
 import { createDeviceStream, type DeviceStream } from '../core/device-stream';
-import { detectPlatform, debugLog, debugWarn, safeInvoke, type DevicePlatform } from '../core/stream-utils';
+import {
+  detectPlatform,
+  debugLog,
+  debugWarn,
+  playSpeaker,
+  safeInvoke,
+  type DevicePlatform,
+} from '../core/stream-utils';
 import { MACBOOK, MACBOOK_EXTRA_HEIGHT, MACBOOK_SCREEN_RAISE, MACBOOK_WIDTH } from './macbook-geometry';
 import type {
   ScreenshotData,
@@ -13,6 +20,7 @@ export { withAuthenticationToken } from '../core/stream-utils';
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useMemo,
   useState,
@@ -309,19 +317,26 @@ export interface RemoteControlProps {
   onMicrophoneStateChange?: (state: MicrophoneState) => void;
 
   /**
-   * iOS only: receive the simulator's speaker output and play it with the
-   * screen. Off by default, because browsers pause autoplaying video that has
-   * sound. Changing it reconnects the stream. Playback stays silent until
-   * `speakerMuted` is false.
+   * iOS only: receive the simulator's speaker output and play it in sync with
+   * the screen. Off by default, because browsers refuse sound before the user
+   * interacts with the page. Changing it reconnects the stream. Playback
+   * stays silent until `speakerMuted` is false.
    */
   speakerAudio?: boolean;
 
   /**
    * Mutes the speaker audio requested by `speakerAudio`. Defaults to true.
-   * Unmute only after the user interacts with the page, for example from an
-   * unmute button's click handler; otherwise the browser may pause playback.
+   * Unmute from a click handler or after other user interaction. The screen
+   * keeps playing either way; only the sound depends on it.
    */
   speakerMuted?: boolean;
+
+  /**
+   * Fires when the browser refuses to play the sound, for example when the
+   * audio arrives or reconnects long after the click that unmuted it. The
+   * sound stays off until the caller unmutes again from a user interaction.
+   */
+  onSpeakerBlocked?: () => void;
 }
 
 export interface RemoteControlHandle {
@@ -564,6 +579,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       onMicrophoneStateChange,
       speakerAudio = false,
       speakerMuted = true,
+      onSpeakerBlocked,
     }: RemoteControlProps,
     ref,
   ) => {
@@ -578,6 +594,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // changing the frame must not restart a live stream.
     const streamDeviceModel = deviceModel === 'iphone-duo' ? deviceModel : undefined;
     const innerVideoRef = useRef<HTMLVideoElement>(null);
+    const audioRef = useRef<HTMLAudioElement>(null);
     const [duoState, setDuoState] = useState<DuoState | null>(null);
     const [duoError, setDuoError] = useState<string>();
     const [videoLoaded, setVideoLoaded] = useState(false);
@@ -1894,6 +1911,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       clientRef.current?.reconnect();
     };
     const callbacksRef = useRef({
+      onSpeakerBlocked,
       onAxSnapshotChange,
       onAxStatusChange,
       onCameraDemandChange,
@@ -1905,6 +1923,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       onPlaybackStats,
     });
     callbacksRef.current = {
+      onSpeakerBlocked,
       onAxSnapshotChange,
       onAxStatusChange,
       onCameraDemandChange,
@@ -1970,6 +1989,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         onCameraDemandChange: (...args) => callbacksRef.current.onCameraDemandChange?.(...args),
         onCameraStats: onCameraStats ? (...args) => callbacksRef.current.onCameraStats?.(...args) : undefined,
         onMicrophoneStateChange: (...args) => callbacksRef.current.onMicrophoneStateChange?.(...args),
+        onSpeakerBlocked: () => callbacksRef.current.onSpeakerBlocked?.(),
         onTrace: latencyTraceRequested ? (...args) => callbacksRef.current.onTrace?.(...args) : undefined,
         onTerminated: () => callbacksRef.current.onTerminated?.(),
         onConnectionStateChange: (...args) => callbacksRef.current.onConnectionStateChange?.(...args),
@@ -1978,11 +1998,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       });
       clientRef.current = client;
       const detach = videoRef.current ? client.attachVideo(videoRef.current) : undefined;
+      const detachAudio = audioRef.current ? client.attachAudio(audioRef.current) : undefined;
       client.start();
       return () => {
         active = false;
         client.dispose();
         detach?.();
+        detachAudio?.();
         clientRef.current = null;
       };
       // Token rotation must not restart a healthy stream: the server checks
@@ -1990,10 +2012,15 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [url, propSessionId, streamDeviceModel, latencyTraceRequested, watchOnly, speakerAudio]);
 
-    // The element mounts muted so it can autoplay; the speaker track plays
-    // through it once the caller unmutes.
-    useEffect(() => {
-      if (videoRef.current) videoRef.current.muted = speakerMuted;
+    // A layout effect runs while the click that unmuted is still in progress,
+    // so the browser treats the resumed sound as user-initiated.
+    useLayoutEffect(() => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      audio.muted = speakerMuted;
+      if (!speakerMuted && audio.srcObject) {
+        playSpeaker(audio, () => safeInvoke('onSpeakerBlocked', callbacksRef.current.onSpeakerBlocked));
+      }
     }, [speakerMuted]);
 
     useEffect(() => {
@@ -2554,6 +2581,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           </Suspense>
         )}
         {macbookVisible && <DeviceModeToggle view={macbookView} label="MacBook rendering" />}
+        <audio ref={audioRef} muted hidden />
         {isDuo && (
           <video
             ref={innerVideoRef}
