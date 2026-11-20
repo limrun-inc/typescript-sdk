@@ -1362,7 +1362,7 @@ describe('RemoteControl compatibility', () => {
     },
   );
 
-  it('lifts a drag released over the iPhone SE home button, and the button presses home alone', async () => {
+  it('lifts a drag released over the iPhone SE home button, and the button presses home on a click or tap', async () => {
     vi.spyOn(HTMLImageElement.prototype, 'clientWidth', 'get').mockReturnValue(429);
     vi.spyOn(HTMLImageElement.prototype, 'clientHeight', 'get').mockReturnValue(889);
     await render({ deviceModel: 'iphone-se', assets: defaultRemoteControlAssets });
@@ -1393,6 +1393,19 @@ describe('RemoteControl compatibility', () => {
       home.dispatchEvent(new MouseEvent('click', { clientX: 25, clientY: 190, bubbles: true }));
     });
     // Only the home key's press and release, no touch on the screen.
+    expect(sent().map((message) => message.getUint8(0))).toEqual([
+      CONTROL_MSG_TYPE.INJECT_KEYCODE,
+      CONTROL_MSG_TYPE.INJECT_KEYCODE,
+    ]);
+
+    // A tap presses home once and cancels the click the browser would synthesize after it.
+    peer.channel.send.mockClear();
+    const touchEnd = new TouchEvent('touchend', { bubbles: true, cancelable: true });
+    await act(async () => {
+      home.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true }));
+      home.dispatchEvent(touchEnd);
+    });
+    expect(touchEnd.defaultPrevented).toBe(true);
     expect(sent().map((message) => message.getUint8(0))).toEqual([
       CONTROL_MSG_TYPE.INJECT_KEYCODE,
       CONTROL_MSG_TYPE.INJECT_KEYCODE,
