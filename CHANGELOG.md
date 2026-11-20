@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.74.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.73.4...v0.74.0) (2026-11-20)
+
+
+### Features
+
+* **ui:** frame the iPhone SE and iPhone 17e simulators ([796c78a](https://github.com/limrun-inc/typescript-sdk/commit/796c78afa564d56d7e158065993f47a06f3e85e7))
+* **ui:** slim the iPhone SE frame's side bezels to 18 points ([9b2b7f0](https://github.com/limrun-inc/typescript-sdk/commit/9b2b7f0e2c2799e13bb1ef98d9f7105e4f21c083))
+
+
+### Bug Fixes
+
+* **ui:** draw the iPhone SE and iPhone 17e frames ourselves ([d7b52da](https://github.com/limrun-inc/typescript-sdk/commit/d7b52da114ea16f3e557aef91c61cc6fa23b593b))
+* **ui:** keep the live stream when only the frame model changes ([d3ede18](https://github.com/limrun-inc/typescript-sdk/commit/d3ede186ae6216b0ca98766a7f924d5dd8789b54))
+* **ui:** let drags released over the home button lift their finger ([a30a7af](https://github.com/limrun-inc/typescript-sdk/commit/a30a7affba913c4702e0cdfce5e012bc9649be7a))
+* **ui:** press home from the iPhone SE frame's home button ([5310512](https://github.com/limrun-inc/typescript-sdk/commit/53105129c5c9d714b3422d3da05915368071dc92))
+* **ui:** press home on a tap of the iPhone SE home button ([602bf75](https://github.com/limrun-inc/typescript-sdk/commit/602bf75d63dc35962f06908cbe055f32633b11cd))
+
+
+### Chores
+
+* **cli:** release 0.58.1 with SDK 0.73.4 ([84f4c21](https://github.com/limrun-inc/typescript-sdk/commit/84f4c21e98d1dc12c6d0578cc79ebbcceee90651))
+
 ## [0.73.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.73.3...v0.73.4) (2026-11-20)
 
 
