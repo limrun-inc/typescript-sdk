@@ -6,6 +6,7 @@ import Limrun, {
   APIError,
   DeviceDetachUnavailableError,
   NotFoundError,
+  GradleSnapshotGoneError,
   XcodeCacheGoneError,
   XcodeSelectionUnsupportedError,
   isDirectInstanceHttpError,
@@ -38,6 +39,7 @@ import { detectInstanceType, setSessionAutoStart } from './lib/instance-client-f
 import { deleteCreatedInstance } from './lib/instance-cleanup';
 import { defaultSleep as sleep } from '@limrun/api';
 import {
+  gradleSnapshotConfig,
   parseSnapshotConfig,
   restoreOutcome,
   restoreProgressLine,
@@ -45,8 +47,9 @@ import {
   saveProgressLine,
   skippedKeyLines,
   wantsRestore,
+  type SnapshotState,
 } from './lib/cache';
-import type { XcodeCacheConfig, XcodeCacheFollowResult, XcodeClient, XcodeSelectResult } from '@limrun/api';
+import type { XcodeCacheConfig, XcodeClient, XcodeSelectResult } from '@limrun/api';
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
 import { formatXcode, resolveRequestedXcodeVersion, type RequestedXcodeVersion } from './lib/xcode-version';
 import type { TunnelCommandIO } from './lib/tunnel-command';
@@ -60,8 +63,11 @@ const VERSION = require('../package.json').version;
 const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox|gradle)_[a-z0-9]+_[a-z0-9]{20,}\b/;
 type XcodeTarget = LastXcodeInstance;
 type XcodeReplacementIntent = 'standalone' | 'simulator-backed';
+/** The products whose disk snapshots these helpers follow. */
+type SnapshotKind = 'xcode' | 'gradle';
+type SnapshotFollowResult = { state: SnapshotState; gone: boolean };
 type CachePublicationFollow =
-  | { start: number; result: XcodeCacheFollowResult }
+  | { start: number; result: SnapshotFollowResult }
   | { start: number; error: unknown };
 /**
  * A publication being watched, and a signal for when the watching has actually begun. The
@@ -71,6 +77,11 @@ type CachePublicationFollow =
 type CachePublicationWatch = { opened: Promise<void>; done: Promise<CachePublicationFollow> };
 /** How long a delete waits for its subscription before going ahead unwatched. */
 const CACHE_FOLLOW_OPEN_TIMEOUT_MS = 5_000;
+
+/** An instance that was over before it reported any disk snapshot state. */
+function isSnapshotGoneError(err: unknown): boolean {
+  return err instanceof XcodeCacheGoneError || err instanceof GradleSnapshotGoneError;
+}
 
 export abstract class BaseCommand extends Command {
   static baseFlags = {
@@ -923,8 +934,12 @@ export abstract class BaseCommand extends Command {
     }
   }
 
-  /** Defaults apply only at creation; existing targets keep their snapshot configuration. */
-  protected cacheConfigFromFlags(): XcodeCacheConfig | undefined {
+  /**
+   * The snapshot configuration a create sends. Xcode derives a key from the project's Git origin
+   * when no flag names one; Gradle snapshots are opt-in, so only the flags turn them on. Defaults
+   * apply only at creation; existing targets keep their snapshot configuration.
+   */
+  protected cacheConfigFromFlags(kind: SnapshotKind = 'xcode'): XcodeCacheConfig | undefined {
     const flags = this.parsedFlags;
     if (!flags) return undefined;
     const asString = (name: string) =>
@@ -935,6 +950,7 @@ export abstract class BaseCommand extends Command {
       'snapshot-restore-keys': asString('snapshot-restore-keys'),
       'snapshot-paths': asString('snapshot-paths'),
     };
+    if (kind === 'gradle') return parseSnapshotConfig(explicit);
     const config = projectSnapshotConfig(explicit, this.snapshotProjectPath ?? process.cwd());
     if (!parseSnapshotConfig(explicit) && !explicit['no-snapshot']) {
       this.info(
@@ -946,13 +962,14 @@ export abstract class BaseCommand extends Command {
     return config;
   }
 
-  protected async buildSnapshotTip(instanceId: string): Promise<string> {
+  protected async buildSnapshotTip(instanceId: string, kind: SnapshotKind = 'xcode'): Promise<string> {
     if (this.isJsonEnabled() || this.parsedFlags?.['no-snapshot']) return '';
     try {
-      const snapshot = await this.client.xcodeInstances.getCache(instanceId, {
-        timeout: 2000,
-        maxRetries: 0,
-      });
+      const options = { timeout: 2000, maxRetries: 0 };
+      const snapshot =
+        kind === 'gradle' ?
+          await this.client.gradleInstances.getSnapshot(instanceId, options)
+        : await this.client.xcodeInstances.getCache(instanceId, options);
       if (snapshot.config) return '';
     } catch {
       // Unknown snapshot state must not change the build result or suggest a redundant key.
@@ -965,19 +982,20 @@ export abstract class BaseCommand extends Command {
    * Waits for snapshot restore before building. Cache failures leave the instance usable,
    * so report them and continue with the server's cold workspace fallback.
    */
-  protected async awaitCacheRestore(instanceId: string): Promise<void> {
+  protected async awaitCacheRestore(instanceId: string, kind: SnapshotKind = 'xcode'): Promise<void> {
     const start = Date.now();
     this.info('Restoring disk snapshot...');
     let result;
     try {
-      result = await this.client.xcodeInstances.followCache(instanceId, {
+      result = await this.followSnapshotState(kind, instanceId, {
+        side: 'restore',
         onUpdate: (cache) => {
           const line = restoreProgressLine(cache);
           if (line) this.info(line);
         },
       });
     } catch (err) {
-      if (err instanceof XcodeCacheGoneError) {
+      if (isSnapshotGoneError(err)) {
         // Not a wait that broke but an instance that ended, so there is nothing to keep or check.
         throw new Error(`Instance ${instanceId} was collected before its disk snapshot restore started.`);
       }
@@ -992,17 +1010,17 @@ export abstract class BaseCommand extends Command {
     }
     if (result.gone) {
       throw new Error(
-        `Instance ${instanceId} was gone before its disk snapshot restore finished (last phase: ${result.cache.restore.phase}).`,
+        `Instance ${instanceId} was gone before its disk snapshot restore finished (last phase: ${result.state.restore.phase}).`,
       );
     }
-    const outcome = restoreOutcome(result.cache, Date.now() - start);
+    const outcome = restoreOutcome(result.state, Date.now() - start);
     if (outcome.failed) {
       this.warn(outcome.line);
     } else {
       this.info(outcome.line);
     }
-    if (result.cache.restore.phase !== 'restored') {
-      for (const line of skippedKeyLines(result.cache)) {
+    if (result.state.restore.phase !== 'restored') {
+      for (const line of skippedKeyLines(result.state)) {
         this.info(line);
       }
     }
@@ -1015,19 +1033,22 @@ export abstract class BaseCommand extends Command {
    * the workspace directory is adopted and cannot be changed afterwards.
    */
   protected async applyBuildCacheToTarget(
-    target: XcodeTarget,
+    target: { id: string },
     cache: XcodeCacheConfig | undefined,
+    kind: SnapshotKind = 'xcode',
   ): Promise<void> {
     if (!cache || this.wasCreatedThisRun(target.id)) {
       return;
     }
     if (cache.restoreKeys || cache.paths) {
       this.info(
-        `Disk snapshot: instance ${target.id} already exists, so its restore keys and paths stay as they were created.`,
+        kind === 'gradle' ?
+          `Disk snapshot: instance ${target.id} already exists, so its restore keys stay as they were created.`
+        : `Disk snapshot: instance ${target.id} already exists, so its restore keys and paths stay as they were created.`,
       );
     }
     if (cache.key) {
-      await this.bindCacheKey(target.id, cache.key);
+      await this.bindCacheKey(target.id, cache.key, kind);
     }
   }
 
@@ -1253,9 +1274,13 @@ export abstract class BaseCommand extends Command {
    * only at termination, possibly long after this process is gone, so the key has to live on
    * the instance rather than in this invocation.
    */
-  protected async bindCacheKey(instanceId: string, key: string): Promise<void> {
+  protected async bindCacheKey(instanceId: string, key: string, kind: SnapshotKind = 'xcode'): Promise<void> {
     try {
-      await this.client.xcodeInstances.bindCacheKey(instanceId, key);
+      if (kind === 'gradle') {
+        await this.client.gradleInstances.bindSnapshotKey(instanceId, key);
+      } else {
+        await this.client.xcodeInstances.bindCacheKey(instanceId, key);
+      }
       this.info(`Disk snapshot: publishing this workspace under ${key} when the instance terminates.`);
     } catch (err) {
       if (err instanceof APIError && err.message.includes('no cache workspace')) {
@@ -1268,29 +1293,48 @@ export abstract class BaseCommand extends Command {
     }
   }
 
+  /** Follows one product's disk snapshot stream, reporting both through the same state shape. */
+  private async followSnapshotState(
+    kind: SnapshotKind,
+    instanceId: string,
+    options: {
+      side: 'restore' | 'save';
+      onOpen?: () => void;
+      onUpdate?: (state: SnapshotState) => void;
+    },
+  ): Promise<SnapshotFollowResult> {
+    if (kind === 'gradle') {
+      const result = await this.client.gradleInstances.followSnapshot(instanceId, options);
+      return { state: result.snapshot, gone: result.gone };
+    }
+    const result = await this.client.xcodeInstances.followCache(instanceId, options);
+    return { state: result.cache, gone: result.gone };
+  }
+
   /**
    * Starts following an instance's disk snapshot publication before it is deleted, so a publication
    * that finishes quickly is still seen. Never rejects; the caller renders the result.
    */
-  protected startCachePublicationFollow(instanceId: string): CachePublicationWatch {
+  protected startCachePublicationFollow(
+    instanceId: string,
+    kind: SnapshotKind = 'xcode',
+  ): CachePublicationWatch {
     const start = Date.now();
     let open = () => {};
     const opened = new Promise<void>((resolve) => {
       open = resolve;
     });
-    const done = this.client.xcodeInstances
-      .followCache(instanceId, {
-        side: 'save',
-        onOpen: open,
-        onUpdate: (cache) => {
-          const line = saveProgressLine(cache);
-          if (line) this.info(line);
-        },
-      })
-      .then(
-        (result): CachePublicationFollow => ({ start, result }),
-        (error: unknown): CachePublicationFollow => ({ start, error }),
-      );
+    const done = this.followSnapshotState(kind, instanceId, {
+      side: 'save',
+      onOpen: open,
+      onUpdate: (cache) => {
+        const line = saveProgressLine(cache);
+        if (line) this.info(line);
+      },
+    }).then(
+      (result): CachePublicationFollow => ({ start, result }),
+      (error: unknown): CachePublicationFollow => ({ start, error }),
+    );
     // A follow that ends without ever opening, on a 404 or a broken connection, must not leave
     // the deletion waiting on a subscription that is already over.
     return { opened: Promise.race([opened, done.then(() => {}), sleep(CACHE_FOLLOW_OPEN_TIMEOUT_MS)]), done };
@@ -1300,7 +1344,7 @@ export abstract class BaseCommand extends Command {
   protected async renderCachePublication(watch: CachePublicationWatch): Promise<boolean> {
     const followed = await watch.done;
     if ('error' in followed) {
-      if (followed.error instanceof XcodeCacheGoneError) {
+      if (isSnapshotGoneError(followed.error)) {
         // Nothing was published under this instance's key that this command could have waited
         // for: the region had already let it go by the time the stream opened. Not a failure,
         // since a publication that was underway holds the instance until it finishes.
@@ -1314,7 +1358,7 @@ export abstract class BaseCommand extends Command {
       );
       return false;
     }
-    const outcome = saveOutcome(followed.result.cache, Date.now() - followed.start);
+    const outcome = saveOutcome(followed.result.state, Date.now() - followed.start);
     this.info(outcome.line);
     return !outcome.failed;
   }
@@ -1543,16 +1587,22 @@ export abstract class BaseCommand extends Command {
   private async createStandaloneGradleInstance(): Promise<LastGradleInstance> {
     const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
     const inactivityTimeout = this.autoCreateInactivityTimeout();
+    const snapshot = gradleSnapshotConfig(this.cacheConfigFromFlags('gradle'));
     const instance = await this.client.gradleInstances.create({
       wait: true,
       spec: {
         role: { permissions: delegatedPermissions ?? [] },
         ...(inactivityTimeout && { inactivityTimeout }),
+        ...(snapshot ? { snapshot } : {}),
       },
     });
     this._instancesCreatedThisRun.add(instance.metadata.id);
     // The save path builds the record from the instance we just created, so
     // the returned union member is necessarily the gradle shape.
-    return registerCreatedInstance(instance) as LastGradleInstance;
+    const target = registerCreatedInstance(instance) as LastGradleInstance;
+    if (wantsRestore(snapshot)) {
+      await this.awaitCacheRestore(instance.metadata.id, 'gradle');
+    }
+    return target;
   }
 }

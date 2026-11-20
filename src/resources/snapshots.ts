@@ -7,7 +7,7 @@ import { path } from '../internal/utils/path';
 export interface SnapshotListParams {
   /** Literal key prefix. Omit to list all keys. */
   prefix?: string;
-  /** Page size: 1–500 for Xcode, 1–100 for iOS. */
+  /** Page size: 1–500 for Xcode and Gradle, 1–100 for iOS. */
   limit?: number;
   offset?: number;
 }
@@ -29,6 +29,18 @@ export interface XcodeSnapshot {
   sha256: string;
   publishedAt: string;
   sourceInstanceId?: string;
+}
+
+export interface GradleSnapshot {
+  key: string;
+  /** Toolchains label of the image that saved it. An instance with another label tries its next restore key. */
+  compatKey: string;
+  archiveFormat: string;
+  archiveSizeBytes: number;
+  uncompressedSizeBytes: number;
+  sha256: string;
+  publishedAt: string;
+  sourceInstanceId: string;
 }
 
 export interface IOSSnapshot {
@@ -81,6 +93,32 @@ export class IOSSnapshots extends APIResource {
   /** Delete saved apps, data and the index entry. Running simulators can save this key again. */
   delete(organizationId: string, key: string, options?: RequestOptions): APIPromise<void> {
     return this._client.delete(path`/v1/organizations/${organizationId}/ios_snapshots/${key}`, {
+      ...options,
+      headers: buildHeaders([{ Accept: '*/*' }, options?.headers]),
+    });
+  }
+}
+
+export class GradleSnapshots extends APIResource {
+  /** List saved Gradle snapshots, newest publication first. */
+  list(
+    organizationId: string,
+    query: SnapshotListParams = {},
+    options?: RequestOptions,
+  ): APIPromise<SnapshotList<GradleSnapshot>> {
+    return this._client.get(path`/v1/organizations/${organizationId}/gradle_snapshots`, {
+      query,
+      ...options,
+    });
+  }
+
+  get(organizationId: string, key: string, options?: RequestOptions): APIPromise<GradleSnapshot> {
+    return this._client.get(path`/v1/organizations/${organizationId}/gradle_snapshots/${key}`, options);
+  }
+
+  /** Delete the archive and its record. Running instances can save this key again. */
+  delete(organizationId: string, key: string, options?: RequestOptions): APIPromise<void> {
+    return this._client.delete(path`/v1/organizations/${organizationId}/gradle_snapshots/${key}`, {
       ...options,
       headers: buildHeaders([{ Accept: '*/*' }, options?.headers]),
     });

@@ -1,10 +1,12 @@
 import type { XcodeInstanceCache } from '@limrun/api';
 import {
   formatBytes,
+  gradleSnapshotConfig,
   parseCacheConfig,
   restoreOutcome,
   restoreProgressLine,
   saveOutcome,
+  saveProgressLine,
   skippedKeyLines,
   wantsRestore,
 } from '../packages/cli/src/lib/cache';
@@ -159,3 +161,69 @@ function cache(overrides: {
     save: { phase: 'disabled', ...overrides.save },
   };
 }
+
+describe('gradle snapshot rendering', () => {
+  test('gradle phases get the same progress lines', () => {
+    const state = (restore: string, save = 'idle') => ({
+      restore: { phase: restore },
+      save: { phase: save },
+    });
+    expect(restoreProgressLine(state('pending'))).toBe(
+      'Disk snapshot restore: waiting for the build sandbox...',
+    );
+    expect(restoreProgressLine(state('extracting'))).toBe(
+      'Disk snapshot restore: extracting the archive into the build sandbox...',
+    );
+    // Requested follows idle, so it says something new rather than repeating the idle line.
+    expect(saveProgressLine(state('restored', 'requested'))).toBe(
+      'Disk snapshot publish: asking the build sandbox to save...',
+    );
+  });
+
+  test('a restore direct from object storage, and a key passed over for its toolchains', () => {
+    const restored = restoreOutcome(
+      {
+        restore: {
+          phase: 'restored',
+          matchedKey: 'app/main',
+          bytes: 2 * 1024 * 1024 * 1024,
+          source: 'direct',
+          startedAt: '2026-11-20T10:00:00Z',
+          finishedAt: '2026-11-20T10:00:41Z',
+        },
+        save: { phase: 'idle' },
+      },
+      0,
+    );
+    expect(restored.line).toBe(
+      'Disk snapshot restored from app/main, 2 GB direct from object storage in 41s.',
+    );
+    expect(
+      skippedKeyLines({
+        restore: { phase: 'skipped', skippedKeys: [{ key: 'app/pr-1', reason: 'compat_mismatch' }] },
+        save: { phase: 'idle' },
+      }),
+    ).toEqual(['  app/pr-1: the snapshot was saved by a build sandbox with different toolchains']);
+  });
+
+  test("a save reports Gradle's key field, and a save with nothing built explains why", () => {
+    expect(
+      saveOutcome(
+        { restore: { phase: 'disabled' }, save: { phase: 'published', key: 'app', bytes: 1024 } },
+        5000,
+      ).line,
+    ).toBe('Disk snapshot published under app, 1 KB in 5s.');
+    expect(
+      saveOutcome({ restore: { phase: 'disabled' }, save: { phase: 'skipped', reason: 'not_eligible' } }, 0)
+        .line,
+    ).toBe('Nothing published — no build succeeded since the last sync.');
+  });
+
+  test('the Gradle create field carries no paths', () => {
+    expect(gradleSnapshotConfig({ key: 'app', restoreKeys: ['app', 'main'] })).toEqual({
+      key: 'app',
+      restoreKeys: ['app', 'main'],
+    });
+    expect(gradleSnapshotConfig(undefined)).toBeUndefined();
+  });
+});
