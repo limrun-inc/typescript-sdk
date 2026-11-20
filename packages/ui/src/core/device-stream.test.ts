@@ -1235,8 +1235,9 @@ describe('RemoteControl compatibility', () => {
     const onTrace = vi.fn();
     const changes: Partial<RemoteControlProps>[] = [
       { onTrace },
-      { onTrace, deviceModel: 'iphone-16-pro' },
-      { onTrace, deviceModel: 'iphone-16-pro', url: 'wss://host/ios_other' },
+      // Only the Duo reaches the stream; other models change just the frame.
+      { onTrace, deviceModel: 'iphone-duo' },
+      { onTrace, deviceModel: 'iphone-duo', url: 'wss://host/ios_other' },
     ];
     for (const props of changes) {
       await render(props);
