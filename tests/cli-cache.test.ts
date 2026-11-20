@@ -174,8 +174,9 @@ describe('gradle snapshot rendering', () => {
     expect(restoreProgressLine(state('extracting'))).toBe(
       'Disk snapshot restore: extracting the archive into the build sandbox...',
     );
+    // Requested follows idle, so it says something new rather than repeating the idle line.
     expect(saveProgressLine(state('restored', 'requested'))).toBe(
-      'Disk snapshot publish: waiting for the build sandbox to stop...',
+      'Disk snapshot publish: asking the build sandbox to save...',
     );
   });
 

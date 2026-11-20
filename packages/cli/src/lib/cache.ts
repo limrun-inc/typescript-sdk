@@ -105,7 +105,7 @@ const RESTORE_PROGRESS: Record<string, string> = {
 
 const SAVE_PROGRESS: Record<string, string> = {
   idle: 'waiting for the build sandbox to stop',
-  requested: 'waiting for the build sandbox to stop',
+  requested: 'asking the build sandbox to save',
   quiescing: 'stopping the build sandbox',
   archiving: 'archiving the workspace',
   uploading: 'uploading the archive',
