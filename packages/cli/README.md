@@ -213,6 +213,9 @@ lim ios create
 # With specific device model
 lim ios create --model ipad --rm
 
+# A smaller screen: iPhone SE (3rd generation), which runs iOS 27
+lim ios create --model iphone-se
+
 # With a specific iOS version
 lim ios create --os-version 27
 
@@ -231,23 +234,23 @@ lim ios create --jurisdiction us --display-name "CI Test" --label env=ci --rm
 
 **Flags for `ios create`:**
 
-| Flag                                        | Description                                                                                                                   |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `--rm`                                      | Auto-delete the instance on exit (Ctrl+C)                                                                                     |
-| `--model <iphone\|iphone-duo\|ipad\|watch>` | Simulator device model                                                                                                        |
-| `--os-version <26\|27>`                     | iOS major version. iPhone and iPad run both, iPhone Duo `27`, Watch `26`. Default: `26`, or `27` on iPhone Duo                |
-| `--xcode`                                   | Create an Xcode build sandbox and attach the simulator to it                                                                  |
-| `--jurisdiction <us\|eu\|as>`               | Jurisdiction the instance must be created in (hard constraint: creation fails when no region there has capacity)              |
-| `--region <value>`                          | Deprecated. Region preference (e.g. `us-east1`), tried first and overflowing to other regions when full. Use `--jurisdiction` |
-| `--display-name <value>`                    | Human-readable name                                                                                                           |
-| `--label <key=value>`                       | Labels (repeatable). Used for filtering and reuse                                                                             |
-| `--hard-timeout <duration>`                 | Max lifetime (e.g. `1m`, `10m`, `3h`). Default: none                                                                          |
-| `--inactivity-timeout <duration>`           | Idle timeout. Default: `3m`                                                                                                   |
-| `--force-bundle-id <bundle-id>`             | Lock to an app after it first enters the foreground                                                                           |
-| `--reuse-if-exists`                         | Reuse an existing instance with exactly the same labels, looked up in the region that handles the create                      |
-| `--install <file>`                          | Local file to install (auto-uploads, repeatable)                                                                              |
-| `--install-asset <name>`                    | Asset name to install (repeatable)                                                                                            |
-| `--install-url <url>`                       | Signed download URL of an app to install (repeatable)                                                                         |
+| Flag                                                               | Description                                                                                                                                                 |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--rm`                                                             | Auto-delete the instance on exit (Ctrl+C)                                                                                                                   |
+| `--model <iphone\|iphone-se\|iphone-17e\|iphone-duo\|ipad\|watch>` | Simulator device model                                                                                                                                      |
+| `--os-version <26\|27>`                                            | iOS major version. iPhone and iPad run both; iPhone SE, iPhone 17e and iPhone Duo `27`; Watch `26`. Default: `26`, or `27` on the models that run only `27` |
+| `--xcode`                                                          | Create an Xcode build sandbox and attach the simulator to it                                                                                                |
+| `--jurisdiction <us\|eu\|as>`                                      | Jurisdiction the instance must be created in (hard constraint: creation fails when no region there has capacity)                                            |
+| `--region <value>`                                                 | Deprecated. Region preference (e.g. `us-east1`), tried first and overflowing to other regions when full. Use `--jurisdiction`                               |
+| `--display-name <value>`                                           | Human-readable name                                                                                                                                         |
+| `--label <key=value>`                                              | Labels (repeatable). Used for filtering and reuse                                                                                                           |
+| `--hard-timeout <duration>`                                        | Max lifetime (e.g. `1m`, `10m`, `3h`). Default: none                                                                                                        |
+| `--inactivity-timeout <duration>`                                  | Idle timeout. Default: `3m`                                                                                                                                 |
+| `--force-bundle-id <bundle-id>`                                    | Lock to an app after it first enters the foreground                                                                                                         |
+| `--reuse-if-exists`                                                | Reuse an existing instance with exactly the same labels, looked up in the region that handles the create                                                    |
+| `--install <file>`                                                 | Local file to install (auto-uploads, repeatable)                                                                                                            |
+| `--install-asset <name>`                                           | Asset name to install (repeatable)                                                                                                                          |
+| `--install-url <url>`                                              | Signed download URL of an app to install (repeatable)                                                                                                       |
 
 #### List and Filter
 
