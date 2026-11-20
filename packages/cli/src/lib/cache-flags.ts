@@ -23,6 +23,25 @@ export const snapshotFlags = {
   }),
 };
 
+/**
+ * Gradle's disk snapshot flags. They match Xcode's, without --snapshot-paths: a Gradle snapshot
+ * keeps a fixed set of build state rather than paths the caller picks.
+ */
+export const gradleSnapshotFlags = {
+  'no-snapshot': Flags.boolean({
+    description: 'Create without a disk snapshot. Existing instances keep their snapshot configuration.',
+    exclusive: ['snapshot-key', 'snapshot-restore-keys'],
+  }),
+  'snapshot-key': Flags.string({
+    description:
+      'Disk snapshot key to restore and save at termination. Defaults to the Git origin host/repository plus the project subdirectory for new instances. Reusing a key replaces its snapshot. Also used to restore when --snapshot-restore-keys is omitted. The snapshot keeps the synced project, Gradle caches, ccache and Android SDK packages the build installed.',
+  }),
+  'snapshot-restore-keys': Flags.string({
+    description:
+      'Comma-separated disk snapshot keys to restore from, tried in this order: exact match first, then keys starting with the given prefix, newest snapshot first. A key saved by a build sandbox with different toolchains is skipped for the next one.',
+  }),
+};
+
 export const waitSnapshotFlag = Flags.boolean({
   aliases: ['wait-cache'],
   description:

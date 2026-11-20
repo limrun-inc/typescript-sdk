@@ -7,6 +7,13 @@ import { Items, type ItemsParams, PagePromise } from '../core/pagination';
 import { buildHeaders } from '../internal/headers';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
+import {
+  followGradleSnapshot,
+  type GradleInstanceSnapshot,
+  type GradleSnapshotConfig,
+  type GradleSnapshotFollowOptions,
+  type GradleSnapshotFollowResult,
+} from '../gradle-snapshot';
 
 export class GradleInstances extends APIResource {
   /**
@@ -53,6 +60,26 @@ export class GradleInstances extends APIResource {
   get(id: string, options?: RequestOptions): APIPromise<GradleInstance> {
     return this._client.get(path`/v1/gradle_instances/${id}`, options);
   }
+
+  /** Current disk snapshot configuration and status, including a save still running at termination. */
+  getSnapshot(id: string, options?: RequestOptions): APIPromise<GradleInstanceSnapshot> {
+    return this._client.get(path`/v1/gradle_instances/${id}/snapshot`, options);
+  }
+
+  /**
+   * Set the key the instance saves under at termination. Set once: binding the same key again is
+   * accepted, a different one is rejected. Works on an instance created without a snapshot.
+   */
+  bindSnapshotKey(id: string, key: string, options?: RequestOptions): APIPromise<GradleInstanceSnapshot> {
+    return this._client.put(path`/v1/gradle_instances/${id}/snapshot`, { body: { key }, ...options });
+  }
+
+  /** Follow the disk snapshot restore or save until it reaches a terminal phase. */
+  followSnapshot(id: string, options?: GradleSnapshotFollowOptions): Promise<GradleSnapshotFollowResult> {
+    const apiKey = this._client.apiKey;
+    if (!apiKey) throw new Error('Following disk snapshot status needs an API key on the client');
+    return followGradleSnapshot({ baseURL: this._client.baseURL, apiKey, instanceId: id }, options);
+  }
 }
 
 export type GradleInstancesItems = Items<GradleInstance>;
@@ -98,6 +125,8 @@ export namespace GradleInstance {
     region: string;
 
     hardTimeout?: string;
+
+    snapshot?: GradleSnapshotConfig;
   }
 
   export interface Status {
@@ -113,6 +142,14 @@ export namespace GradleInstance {
     apiUrl?: string;
 
     errorMessage?: string;
+
+    /** What happened to the instance's disk snapshot. getSnapshot() has the full status. */
+    snapshot?: {
+      /** The snapshot key the instance restores from. Absent when it starts cold. */
+      restoreKey?: string;
+      /** The save requested at termination. Absent until the instance is deleted. */
+      save?: { phase: string; reason?: string; message?: string };
+    };
 
     /**
      * Machine-readable reason for instance termination. Present when state is
@@ -215,6 +252,12 @@ export namespace GradleInstanceCreateParams {
      * jurisdiction is ignored.
      */
     jurisdiction?: 'us' | 'eu' | 'as';
+
+    /**
+     * Disk snapshot to restore after assignment and save at termination. Omitted means an
+     * ordinary instance that restores and saves nothing.
+     */
+    snapshot?: GradleSnapshotConfig;
 
     /**
      * Where the instance will be created. If not given, the region is decided based on

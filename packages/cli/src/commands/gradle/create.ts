@@ -7,6 +7,8 @@ import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { type GradleInstanceCreateParams } from '@limrun/api/resources/gradle-instances';
+import { gradleSnapshotConfig, wantsRestore } from '../../lib/cache';
+import { gradleSnapshotFlags } from '../../lib/cache-flags';
 
 export default class GradleCreate extends BaseCommand {
   static summary = 'Create a new gradle instance';
@@ -16,6 +18,7 @@ export default class GradleCreate extends BaseCommand {
     '<%= config.bin %> gradle create',
     '<%= config.bin %> gradle create --jurisdiction eu',
     '<%= config.bin %> gradle create --label env=dev --display-name ci-builder',
+    '<%= config.bin %> gradle create --snapshot-key myapp-pr51 --snapshot-restore-keys "myapp-pr51,myapp-main"',
   ];
 
   static flags = {
@@ -23,6 +26,7 @@ export default class GradleCreate extends BaseCommand {
     ...BaseCommand.permissionFlags,
     ...secretEnvFlags,
     ...secretFileFlags,
+    ...gradleSnapshotFlags,
     'display-name': Flags.string({
       description: 'Human-friendly display name shown in listings and the console',
     }),
@@ -57,6 +61,10 @@ export default class GradleCreate extends BaseCommand {
       );
     }
     this.setParsedFlags(flags);
+    const snapshot = gradleSnapshotConfig(this.cacheConfigFromFlags());
+    if (snapshot && flags['reuse-if-exists']) {
+      this.info('A reused instance keeps the snapshot configuration it was created with.');
+    }
 
     await this.withAuth(async () => {
       const labels = parseLabels(flags.label);
@@ -76,12 +84,17 @@ export default class GradleCreate extends BaseCommand {
           ...(flags.jurisdiction && { jurisdiction: flags.jurisdiction as 'us' | 'eu' | 'as' }),
           ...(flags['hard-timeout'] && { hardTimeout: flags['hard-timeout'] }),
           ...(flags['inactivity-timeout'] && { inactivityTimeout: flags['inactivity-timeout'] }),
+          ...(snapshot ? { snapshot } : {}),
         },
         ...(Object.keys(metadata).length > 0 && { metadata }),
       };
       const instance = await this.client.gradleInstances.create(params);
       const consoleUrl = this.consoleBuildUrl(instance.metadata.id);
       registerCreatedInstance(instance);
+
+      if (wantsRestore(snapshot)) {
+        await this.awaitCacheRestore(instance.metadata.id, 'gradle');
+      }
 
       if (flags.json) {
         this.outputJson(createdInstanceOutput(instance, consoleUrl));

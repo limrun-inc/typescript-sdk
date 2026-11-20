@@ -6,6 +6,8 @@ import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { formatDurationMs } from '../../lib/duration';
 import { formatBytes } from '../../lib/bytes';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
+import { parseSnapshotConfig } from '../../lib/cache';
+import { gradleSnapshotFlags } from '../../lib/cache-flags';
 
 export default class GradleSync extends BaseCommand {
   static summary = 'Sync local source code to a Gradle sandbox';
@@ -32,6 +34,7 @@ export default class GradleSync extends BaseCommand {
     ...BaseCommand.permissionFlags,
     ...BaseCommand.baseFlags,
     ...syncFlags,
+    ...gradleSnapshotFlags,
     id: Flags.string({
       description:
         'Gradle instance ID to sync to. Defaults to the last used instance, creating one if needed.',
@@ -48,6 +51,8 @@ export default class GradleSync extends BaseCommand {
     this.setParsedFlags(flags);
 
     const syncPath = args.path ?? process.cwd();
+    // The default snapshot key comes from the project's Git origin.
+    this.snapshotProjectPath = syncPath;
     const syncOptions: GradleSyncOptions = {
       watch: flags.watch,
       basisCacheDir: flags['basis-cache-dir'],
@@ -64,6 +69,7 @@ export default class GradleSync extends BaseCommand {
     };
     await this.withAuth(async () => {
       const target = await this.resolveGradleTargetOrCreate(flags.id);
+      await this.applyBuildCacheToTarget(target, parseSnapshotConfig(flags), 'gradle');
       const gradleClient = await this.resolveGradleClient(target);
       this.info(`Syncing ${syncPath} to instance ${target.id}...`);
       const result = await gradleClient.sync(syncPath, syncOptions);

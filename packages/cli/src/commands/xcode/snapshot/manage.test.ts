@@ -4,6 +4,9 @@ import XcodeDelete from './delete';
 import IOSList from '../../ios/snapshot/list';
 import IOSGet from '../../ios/snapshot/get';
 import IOSDelete from '../../ios/snapshot/delete';
+import GradleList from '../../gradle/snapshot/list';
+import GradleGet from '../../gradle/snapshot/get';
+import GradleDelete from '../../gradle/snapshot/delete';
 import { whoAmI } from '../../../lib/backend';
 import { snapshotResource } from '../../../lib/snapshots';
 
@@ -13,6 +16,7 @@ jest.mock('../../../lib/backend', () => ({ whoAmI: jest.fn(async () => 'org_defa
 describe.each([
   { kind: 'xcode', List: XcodeList, Get: XcodeGet, Delete: XcodeDelete },
   { kind: 'ios', List: IOSList, Get: IOSGet, Delete: IOSDelete },
+  { kind: 'gradle', List: GradleList, Get: GradleGet, Delete: GradleDelete },
 ])('$kind snapshot commands', ({ kind, List, Get, Delete }) => {
   const resource = { list: jest.fn(), get: jest.fn(), delete: jest.fn() };
   const setup = (Command: { prototype: object }, flags: Record<string, unknown> = {}) => {

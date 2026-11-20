@@ -1,6 +1,4 @@
-import { createEventSource, type EventSourceMessage } from 'eventsource-client';
-
-import { nodeProxyTransport } from './internal/proxy-transport';
+import { followPhaseStream } from './internal/instance-phase-stream';
 
 /** @deprecated Use XcodeSnapshotConfig instead. */
 export type XcodeCacheConfig = import('./xcode-snapshot').XcodeSnapshotConfig;
@@ -185,7 +183,7 @@ export type XcodeCacheFollowTarget = {
  * The transport is the same endpoint that serves a JSON snapshot, asked for as an event
  * stream. The server emits on phase change only, so every callback is a real transition.
  */
-export function followXcodeCache(
+export async function followXcodeCache(
   target: XcodeCacheFollowTarget,
   options: XcodeCacheFollowOptions = {},
 ): Promise<XcodeCacheFollowResult> {
@@ -193,112 +191,21 @@ export function followXcodeCache(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS[side];
   let base = target.baseURL;
   while (base.endsWith('/')) base = base.slice(0, -1);
-  const url = `${base}/v1/xcode_instances/${encodeURIComponent(target.instanceId)}/cache`;
-
-  return new Promise<XcodeCacheFollowResult>((resolve, reject) => {
-    let last: XcodeInstanceCache | undefined;
-    let lastKey = '';
-    let settled = false;
-
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      options.signal?.removeEventListener('abort', onAbort);
-      try {
-        source.close();
-      } catch {
-        // A stream that never opened has nothing to close.
-      }
-      fn();
-    };
-
-    const timer = setTimeout(
-      () => finish(() => reject(new XcodeCacheTimeoutError(side, timeoutMs, last))),
-      timeoutMs,
-    );
-    const onAbort = () => finish(() => reject(options.signal?.reason ?? new Error('aborted')));
-
-    let confirming = false;
-    const confirmGone = () => {
-      if (confirming || settled) return;
-      confirming = true;
-      nodeProxyTransport
-        .fetch(url, {
-          headers: { Authorization: `Bearer ${target.apiKey}`, Accept: 'application/json' },
-        })
-        .then(async (res) => {
-          confirming = false;
-          if (res.status !== 404) {
-            await res.text().catch(() => undefined);
-            return;
-          }
-          finish(() =>
-            last ? resolve({ cache: last, gone: true }) : reject(new XcodeCacheGoneError(target.instanceId)),
-          );
-        })
-        .catch(() => {
-          confirming = false;
-        });
-    };
-
-    // The endpoint answers from the region, which keeps the instance while it terminates and
-    // drops it once it is collected, so a 404 is the instance being over rather than a fault.
-    // Without this the client treats it as a connection to retry and follows a gone instance
-    // until the timeout, which is minutes of a command that looks hung and says nothing.
-    const fetchOrGone: typeof nodeProxyTransport.fetch = async (input, init) => {
-      const res = await nodeProxyTransport.fetch(input, init);
-      if (res.status === 404) {
-        finish(() =>
-          last ? resolve({ cache: last, gone: true }) : reject(new XcodeCacheGoneError(target.instanceId)),
-        );
-      }
-      return res;
-    };
-
-    const source = createEventSource({
-      url,
-      fetch: fetchOrGone,
-      onConnect: () => options.onOpen?.(),
-      headers: {
-        Authorization: `Bearer ${target.apiKey}`,
-        Accept: 'text/event-stream',
-      },
-      onMessage: (message: EventSourceMessage) => {
-        if (message.event !== 'cache' && message.event !== 'gone') return;
-        let cache: XcodeInstanceCache;
-        try {
-          cache = JSON.parse(typeof message.data === 'string' ? message.data : String(message.data));
-        } catch (err) {
-          finish(() => reject(new Error(`Cache stream sent unreadable data: ${err}`)));
-          return;
-        }
-        last = cache;
-        if (message.event === 'gone') {
-          // The server also ends the stream this way when its own watch is cut short, which
-          // Kubernetes does routinely on a long one, so a snapshot decides which it was. The
-          // client library reconnects on its own when the instance is in fact still there.
-          confirmGone();
-          return;
-        }
-        // A reconnect replays the current state, which is not a transition.
-        const key = `${cache.restore.phase}/${cache.restore.reason ?? ''}|${cache.save.phase}/${
-          cache.save.reason ?? ''
-        }`;
-        if (key !== lastKey) {
-          lastKey = key;
-          options.onUpdate?.(cache);
-        }
-        if (isCacheTerminal(cache, side)) {
-          finish(() => resolve({ cache, gone: false }));
-        }
-      },
-    });
-
-    if (options.signal?.aborted) {
-      onAbort();
-      return;
-    }
-    options.signal?.addEventListener('abort', onAbort, { once: true });
+  const result = await followPhaseStream<XcodeInstanceCache>({
+    url: `${base}/v1/xcode_instances/${encodeURIComponent(target.instanceId)}/cache`,
+    apiKey: target.apiKey,
+    instanceId: target.instanceId,
+    eventName: 'cache',
+    timeoutMs,
+    signal: options.signal,
+    onOpen: options.onOpen,
+    onUpdate: options.onUpdate,
+    transitionKey: (cache) =>
+      `${cache.restore.phase}/${cache.restore.reason ?? ''}|${cache.save.phase}/${cache.save.reason ?? ''}`,
+    isTerminal: (cache) => isCacheTerminal(cache, side),
+    goneError: () => new XcodeCacheGoneError(target.instanceId),
+    timeoutError: (last) => new XcodeCacheTimeoutError(side, timeoutMs, last),
+    unreadableError: (err) => new Error(`Cache stream sent unreadable data: ${err}`),
   });
+  return { cache: result.state, gone: result.gone };
 }
