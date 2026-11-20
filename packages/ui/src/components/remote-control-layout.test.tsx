@@ -98,7 +98,7 @@ it('fits the tablet screen opening after metadata, rotation and container resizi
 
 it.each([
   // Simulator's chrome around a 375 × 667 screen with square corners, drawn at 3x.
-  { model: 'iphone-se', art: 'iphonese', frame: [1347, 2667], screen: 667 / 889, radius: 0 },
+  { model: 'iphone-se', art: 'iphonese', frame: [1287, 2667], screen: 667 / 889, radius: 0 },
   // A 390 × 844 screen with rounded corners in a 452 × 888 frame, drawn at 3x.
   { model: 'iphone-17e', art: 'iphone17e', frame: [1356, 2664], screen: 844 / 888, radius: 47.33 / 452 },
 ] as const)(

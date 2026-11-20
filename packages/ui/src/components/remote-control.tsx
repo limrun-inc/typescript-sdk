@@ -380,7 +380,8 @@ const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
 };
 
 // The iPhone SE and iPhone 17e artwork is Simulator's own device chrome around the screen, so the
-// screen openings are exact: 375 × 667 points in a 449 × 889 frame, and 390 × 844 in a 452 × 888 one.
+// screen openings are exact: 375 × 667 points in a 429 × 889 frame, and 390 × 844 in a 452 × 888 one.
+// The SE's side bezels are 18 points instead of Simulator's 28, which looked heavy at streaming size.
 // The SE screen has square corners; the 17e's have a radius of about 47 points.
 const iosModelConfig: Record<FramedIOSModel, DeviceConfig> = {
   'iphone-se': {
