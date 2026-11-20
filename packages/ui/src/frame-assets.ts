@@ -3,6 +3,10 @@
 import type { RemoteControlAssets } from './components/remote-control';
 import iphoneFrame from './assets/iphone16pro_black_bg.webp';
 import iphoneFrameLandscape from './assets/iphone16pro_black_landscape_bg.webp';
+import iphoneSEFrame from './assets/iphonese_black_bg.webp';
+import iphoneSEFrameLandscape from './assets/iphonese_black_landscape_bg.webp';
+import iphone17eFrame from './assets/iphone17e_black_bg.webp';
+import iphone17eFrameLandscape from './assets/iphone17e_black_landscape_bg.webp';
 import pixelFrame from './assets/pixel9_black.webp';
 import pixelFrameLandscape from './assets/pixel9_black_landscape.webp';
 import pixelTabletFrame from './assets/pixel_tablet_portrait.webp';
@@ -11,7 +15,15 @@ import appleLogo from './assets/Apple_logo_white.svg';
 import androidBootLogo from './assets/android_boot.webp';
 
 export const defaultRemoteControlAssets: RemoteControlAssets = {
-  ios: { frame: iphoneFrame, frameLandscape: iphoneFrameLandscape, loadingLogo: appleLogo },
+  ios: {
+    frame: iphoneFrame,
+    frameLandscape: iphoneFrameLandscape,
+    modelFrames: {
+      'iphone-se': { frame: iphoneSEFrame, frameLandscape: iphoneSEFrameLandscape },
+      'iphone-17e': { frame: iphone17eFrame, frameLandscape: iphone17eFrameLandscape },
+    },
+    loadingLogo: appleLogo,
+  },
   android: {
     frame: pixelFrame,
     frameLandscape: pixelFrameLandscape,

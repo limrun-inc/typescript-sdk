@@ -80,8 +80,11 @@ export interface RemoteControlProps {
   // around the video. Defaults to true.
   showFrame?: boolean;
 
-  /** Enables the official iPhone Duo's native displays and interactive folding frame. */
-  deviceModel?: 'iphone-duo';
+  /**
+   * The iOS model behind the stream. iphone-duo enables the official iPhone Duo's native displays and
+   * interactive folding frame; iphone-se and iphone-17e pick their own device frames.
+   */
+  deviceModel?: RemoteControlDeviceModel;
 
   /** Optional prepared Duo GLB, supplied and licensed by the host application. */
   duoModelUrl?: string;
@@ -318,11 +321,18 @@ const motionActionToString = (action: number): string => {
   return match?.[0] ?? String(action);
 };
 
+export type RemoteControlDeviceModel = 'iphone-se' | 'iphone-17e' | 'iphone-duo';
+
+/** iOS models that are drawn in a frame of their own instead of the default iPhone frame. */
+type FramedIOSModel = Exclude<RemoteControlDeviceModel, 'iphone-duo'>;
+
 export type RemoteControlPlatformAssets = {
   frame?: string;
   frameLandscape?: string;
   tabletFrame?: string;
   tabletFrameLandscape?: string;
+  /** Frames of iOS models whose shape differs from the default iPhone. A model without one streams frameless. */
+  modelFrames?: Partial<Record<FramedIOSModel, { frame: string; frameLandscape: string }>>;
   loadingLogo?: string;
 };
 
@@ -365,6 +375,28 @@ const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
     videoPosition: {
       portrait: { heightMultiplier: 0.967 },
       landscape: { widthMultiplier: 0.962 },
+    },
+  },
+};
+
+// The iPhone SE and iPhone 17e artwork is Simulator's own device chrome around the screen, so the
+// screen openings are exact: 375 × 667 points in a 449 × 889 frame, and 390 × 844 in a 452 × 888 one.
+// The SE screen has square corners; the 17e's have a radius of about 47 points.
+const iosModelConfig: Record<FramedIOSModel, DeviceConfig> = {
+  'iphone-se': {
+    videoBorderRadiusMultiplier: 0,
+    loadingLogoSize: '20%',
+    videoPosition: {
+      portrait: { heightMultiplier: 667 / 889 },
+      landscape: { widthMultiplier: 667 / 889 },
+    },
+  },
+  'iphone-17e': {
+    videoBorderRadiusMultiplier: 47.33 / 452,
+    loadingLogoSize: '20%',
+    videoPosition: {
+      portrait: { heightMultiplier: 844 / 888 },
+      landscape: { widthMultiplier: 844 / 888 },
     },
   },
 };
@@ -559,13 +591,21 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         Array.from(crypto.getRandomValues(new Uint32Array(4)), (part) => part.toString(36)).join(''),
       [propSessionId],
     );
+    const framedModel =
+      platform === 'ios' && deviceModel && deviceModel !== 'iphone-duo' ? deviceModel : undefined;
     const config =
-      platform === 'android' && useAndroidTabletFrame ? androidTabletConfig : deviceConfig[platform];
+      platform === 'android' && useAndroidTabletFrame ? androidTabletConfig
+      : framedModel ? iosModelConfig[framedModel]
+      : deviceConfig[platform];
     const platformAssets = assets?.[platform];
+    const modelFrame = framedModel && platformAssets?.modelFrames?.[framedModel];
     const frameImageSrc =
       platform === 'android' && useAndroidTabletFrame ?
         isLandscape ? platformAssets?.tabletFrameLandscape
         : platformAssets?.tabletFrame
+      : framedModel ?
+        isLandscape ? modelFrame?.frameLandscape
+        : modelFrame?.frame
       : isLandscape ? platformAssets?.frameLandscape
       : platformAssets?.frame;
     const loadingLogo = platformAssets?.loadingLogo;
@@ -1642,7 +1682,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         token,
         sessionId,
         watchOnly,
-        deviceModel,
+        // The stream only needs to know about the Duo's displays.
+        deviceModel: deviceModel === 'iphone-duo' ? deviceModel : undefined,
         autoReconnect,
         jitterBufferTargetMs,
         openUrl,
