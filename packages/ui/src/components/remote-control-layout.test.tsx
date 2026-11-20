@@ -11,6 +11,7 @@ const { createDeviceStream } = vi.hoisted(() => ({
     dispose: vi.fn(),
     updateOptions: vi.fn(),
     bumpActivity: vi.fn(),
+    pressButton: vi.fn(),
   })),
 }));
 vi.mock('../core/device-stream', () => ({ createDeviceStream }));
@@ -224,3 +225,77 @@ it('keeps the live stream when only the frame model changes', async () => {
     await act(async () => root.unmount());
   }
 });
+
+it.each([
+  { model: 'iphone-se', frame: [1287, 2667], home: true },
+  { model: 'iphone-17e', frame: [1356, 2664], home: false },
+] as const)(
+  'offers a home button on the frame only where the art has one: $model',
+  async ({ model, frame, home }) => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const [frameWidth, frameHeight] = frame;
+    const scale = 0.5;
+    const frameSize = (image: HTMLImageElement) =>
+      image.src.includes('landscape') ? [frameHeight, frameWidth] : [frameWidth, frameHeight];
+    vi.spyOn(HTMLImageElement.prototype, 'clientWidth', 'get').mockImplementation(function () {
+      return frameSize(this)[0]! * scale;
+    });
+    vi.spyOn(HTMLImageElement.prototype, 'clientHeight', 'get').mockImplementation(function () {
+      return frameSize(this)[1]! * scale;
+    });
+    createDeviceStream.mockClear();
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    try {
+      await act(async () =>
+        root.render(
+          <RemoteControl
+            url="wss://example.com/ios_euna_test/ws"
+            token="fixture"
+            deviceModel={model}
+            assets={defaultRemoteControlAssets}
+          />,
+        ),
+      );
+      const video = host.querySelector('video')!;
+      const img = host.querySelector('img')!;
+      const setVideoSize = async (width: number, height: number, event: string) => {
+        Object.defineProperties(video, {
+          videoWidth: { configurable: true, value: width },
+          videoHeight: { configurable: true, value: height },
+        });
+        await act(async () => video.dispatchEvent(new Event(event)));
+        await act(async () => img.dispatchEvent(new Event('load')));
+      };
+      await setVideoSize(750, 1334, 'loadedmetadata');
+      const button = () => host.querySelector<HTMLButtonElement>('button[aria-label="Home"]');
+      if (!home) {
+        expect(button()).toBeNull();
+        return;
+      }
+      // The SE's home button is 64 points across, 389 points below the center of an 889-point frame.
+      const longSide = frameHeight * scale;
+      expect(button()!.style.top).toBe(`calc(50% + ${(longSide * 389) / 889}px)`);
+      expect(button()!.style.left).toBe('50%');
+      expect(parseFloat(button()!.style.width)).toBeCloseTo((longSide * 64) / 889);
+
+      await act(async () => button()!.click());
+      const client = createDeviceStream.mock.results[0]!.value;
+      expect(client.pressButton).toHaveBeenCalledExactlyOnceWith('home');
+
+      // Turned counterclockwise, the home button sits right of the center.
+      await setVideoSize(1334, 750, 'resize');
+      expect(button()!.style.left).toBe(`calc(50% + ${(longSide * 389) / 889}px)`);
+      expect(button()!.style.top).toBe('50%');
+    } finally {
+      await act(async () => root.unmount());
+    }
+  },
+);
