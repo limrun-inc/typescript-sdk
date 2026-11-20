@@ -345,6 +345,11 @@ type DeviceConfig = {
     portrait: { heightMultiplier?: number; widthMultiplier?: number };
     landscape: { heightMultiplier?: number; widthMultiplier?: number };
   };
+  /**
+   * A home button drawn on the frame, as fractions of the frame's long side: its center's distance
+   * from the frame's center, below it in portrait and right of it in landscape, and its diameter.
+   */
+  homeButton?: { offset: number; diameter: number };
 };
 
 const ANDROID_TABLET_VIDEO_WIDTH = 1920;
@@ -390,6 +395,9 @@ const iosModelConfig: Record<FramedIOSModel, DeviceConfig> = {
       portrait: { heightMultiplier: 667 / 889 },
       landscape: { widthMultiplier: 667 / 889 },
     },
+    // The SE has no home indicator, so its frame's home button is the way home: 64 points across,
+    // centered in the bottom bezel 389 points below the frame's center.
+    homeButton: { offset: 389 / 889, diameter: 64 / 889 },
   },
   'iphone-17e': {
     videoBorderRadiusMultiplier: 47.33 / 452,
@@ -502,6 +510,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const [isLandscape, setIsLandscape] = useState(false);
     const [useAndroidTabletFrame, setUseAndroidTabletFrame] = useState(false);
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
+    const [homeButtonStyle, setHomeButtonStyle] = useState<React.CSSProperties | null>(null);
     const lastVideoSize = useRef<{ width: number; height: number } | null>(null);
     // Map to track active pointers for real touch/mouse single-finger events.
     // Key: pointerId (-1 for mouse, touch.identifier for touch), Value: { x: number, y: number }
@@ -1671,6 +1680,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       setIsLandscape(false);
       setUseAndroidTabletFrame(false);
       setVideoStyle({});
+      setHomeButtonStyle(null);
     }, [url, streamDeviceModel]);
 
     useEffect(() => {
@@ -1815,6 +1825,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // portrait stream, must not re-render the whole control.
       const updateVideoStyle = (next: React.CSSProperties) =>
         setVideoStyle((current) => (sameStyle(current, next) ? current : next));
+      const updateHomeButtonStyle = (next: React.CSSProperties | null) =>
+        setHomeButtonStyle((current) => (current && next && sameStyle(current, next) ? current : next));
 
       const updateVideoPosition = () => {
         const hasVideoSize = video.videoWidth > 0 && video.videoHeight > 0;
@@ -1834,6 +1846,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               }
             : {},
           );
+          updateHomeButtonStyle(null);
           recomputeOverlayGeometry();
           return;
         }
@@ -1867,6 +1880,20 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           : frameWidth * config.videoBorderRadiusMultiplier
         }px`;
         updateVideoStyle(newStyle);
+        // The frame is centered in the container, so the home button sits at an offset from the center.
+        const home = config.homeButton;
+        const longSide = landscape ? frameWidth : frameHeight;
+        const homeOffset = `calc(50% + ${longSide * (home?.offset ?? 0)}px)`;
+        updateHomeButtonStyle(
+          home ?
+            {
+              width: `${longSide * home.diameter}px`,
+              height: `${longSide * home.diameter}px`,
+              left: landscape ? homeOffset : '50%',
+              top: landscape ? '50%' : homeOffset,
+            }
+          : null,
+        );
         recomputeOverlayGeometry();
       };
 
@@ -2040,6 +2067,26 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             alt=""
             className={platform === 'ios' ? 'rc-phone-frame rc-phone-frame-ios' : 'rc-phone-frame'}
             draggable={false}
+          />
+        )}
+        {frameVisible && homeButtonStyle && !watchOnly && (
+          <button
+            type="button"
+            className="rc-home-button"
+            aria-label="Home"
+            title="Home"
+            style={homeButtonStyle}
+            // The container turns mouse and touch events into screen touches; a press on the frame is not one.
+            onMouseDown={(event) => event.stopPropagation()}
+            onMouseMove={(event) => event.stopPropagation()}
+            onMouseUp={(event) => event.stopPropagation()}
+            onTouchStart={(event) => event.stopPropagation()}
+            onTouchMove={(event) => event.stopPropagation()}
+            onTouchEnd={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              clientRef.current?.pressButton('home');
+            }}
           />
         )}
         <video

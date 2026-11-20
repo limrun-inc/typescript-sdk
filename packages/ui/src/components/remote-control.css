@@ -27,6 +27,31 @@
   z-index: 10;
 }
 
+/* A press target over a home button drawn on the frame; the art itself is the visible button. */
+.rc-home-button {
+  position: absolute;
+  z-index: 15;
+  transform: translate(-50%, -50%);
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.rc-home-button:hover {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+}
+
+.rc-home-button:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.rc-home-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 2px;
+}
+
 .rc-video {
   position: absolute;
   z-index: 20;
