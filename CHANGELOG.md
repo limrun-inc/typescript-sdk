@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.74.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.73.3...v0.74.0) (2026-11-20)
+
+
+### Features
+
+* offer iPhone SE and iPhone 17e simulator models ([198849e](https://github.com/limrun-inc/typescript-sdk/commit/198849ef752984cebe544c0a81b376dc14b66944))
+
+
+### Chores
+
+* **cli:** release 0.57.4 with SDK 0.73.3 ([#691](https://github.com/limrun-inc/typescript-sdk/issues/691)) ([eb87e85](https://github.com/limrun-inc/typescript-sdk/commit/eb87e8571f98674f22567a98b9c861b37bd501cf))
+
 ## [0.73.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.73.2...v0.73.3) (2026-11-18)
 
 
