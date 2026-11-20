@@ -4,15 +4,16 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { RemoteControl } from './remote-control';
 import { defaultRemoteControlAssets } from '../frame-assets';
 
-vi.mock('../core/device-stream', () => ({
-  createDeviceStream: () => ({
+const { createDeviceStream } = vi.hoisted(() => ({
+  createDeviceStream: vi.fn(() => ({
     attachVideo: vi.fn(),
     start: vi.fn(),
     dispose: vi.fn(),
     updateOptions: vi.fn(),
     bumpActivity: vi.fn(),
-  }),
+  })),
 }));
+vi.mock('../core/device-stream', () => ({ createDeviceStream }));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -185,6 +186,40 @@ it('streams a framed iOS model frameless when the assets lack its frame', async 
     );
     // The default iPhone frame has the wrong shape for an SE, so no frame is drawn at all.
     expect(host.querySelector('img[src*="iphone16pro"]')).toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+  }
+});
+
+it('keeps the live stream when only the frame model changes', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  createDeviceStream.mockClear();
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  // A host may learn the model after the stream connects, e.g. from the instance's labels.
+  const render = (deviceModel?: 'iphone-se' | 'iphone-17e') =>
+    act(async () =>
+      root.render(
+        <RemoteControl
+          url="wss://example.com/ios_euna_test/ws"
+          token="fixture"
+          deviceModel={deviceModel}
+          assets={defaultRemoteControlAssets}
+        />,
+      ),
+    );
+  try {
+    await render();
+    await render('iphone-se');
+    await render('iphone-17e');
+    expect(createDeviceStream).toHaveBeenCalledTimes(1);
   } finally {
     await act(async () => root.unmount());
   }

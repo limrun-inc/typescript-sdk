@@ -488,6 +488,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const frameRef = useRef<HTMLImageElement>(null);
     const [detectedDuo, setDetectedDuo] = useState(false);
     const isDuo = deviceModel === 'iphone-duo' || detectedDuo;
+    // The stream only needs to know about the Duo's displays. Other models pick a frame, and
+    // changing the frame must not restart a live stream.
+    const streamDeviceModel = deviceModel === 'iphone-duo' ? deviceModel : undefined;
     const innerVideoRef = useRef<HTMLVideoElement>(null);
     const [duoState, setDuoState] = useState<DuoState | null>(null);
     const [duoError, setDuoError] = useState<string>();
@@ -1669,7 +1672,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       setIsLandscape(false);
       setUseAndroidTabletFrame(false);
       setVideoStyle({});
-    }, [url, deviceModel]);
+    }, [url, streamDeviceModel]);
 
     useEffect(() => {
       let active = true;
@@ -1683,8 +1686,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         token,
         sessionId,
         watchOnly,
-        // The stream only needs to know about the Duo's displays.
-        deviceModel: deviceModel === 'iphone-duo' ? deviceModel : undefined,
+        deviceModel: streamDeviceModel,
         autoReconnect,
         jitterBufferTargetMs,
         openUrl,
@@ -1735,12 +1737,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // Token rotation must not restart a healthy stream: the server checks
       // the token only when a connection starts, so updateOptions carries it.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [url, propSessionId, deviceModel, latencyTraceRequested, watchOnly]);
+    }, [url, propSessionId, streamDeviceModel, latencyTraceRequested, watchOnly]);
 
     useEffect(() => {
       if (isDuo && innerVideoRef.current)
         return clientRef.current?.attachVideo(innerVideoRef.current, 'inner');
-    }, [isDuo, url, propSessionId, deviceModel, latencyTraceRequested, watchOnly]);
+    }, [isDuo, url, propSessionId, streamDeviceModel, latencyTraceRequested, watchOnly]);
 
     useEffect(() => {
       clientRef.current?.updateOptions({
