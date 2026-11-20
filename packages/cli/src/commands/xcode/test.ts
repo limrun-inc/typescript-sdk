@@ -61,7 +61,7 @@ export default class XcodeTest extends BaseCommand {
     }),
     'os-version': Flags.string({
       description:
-        'iOS major version of the simulator this run creates. iPhone and iPad run both, iPhone Duo 27. Forces fresh instances and cannot be combined with --id, --build-only or --no-create.',
+        'iOS major version of the simulator this run creates. iPhone and iPad run both; iPhone SE, iPhone 17e and iPhone Duo 27. Forces fresh instances and cannot be combined with --id, --build-only or --no-create.',
       options: IOS_OS_VERSIONS,
     }),
     'build-only': Flags.boolean({

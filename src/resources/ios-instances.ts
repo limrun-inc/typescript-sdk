@@ -259,10 +259,12 @@ export namespace IosInstanceCreateParams {
     jurisdiction?: 'us' | 'eu' | 'as';
 
     /**
-     * The Apple Simulator model. iPhone Duo requires Xcode 27.1 and runs iOS 27, see
-     * the OSVersion clue. Default is iphone.
+     * The Apple Simulator model. iphone-se is an iPhone SE (3rd generation) and
+     * iphone-17e an iPhone 17e, for testing smaller screens. iPhone Duo requires
+     * Xcode 27.1. See the OSVersion clue for the iOS versions each model runs.
+     * Default is iphone.
      */
-    model?: 'iphone' | 'iphone-duo' | 'ipad' | 'watch';
+    model?: 'iphone' | 'iphone-se' | 'iphone-17e' | 'iphone-duo' | 'ipad' | 'watch';
 
     /**
      * Where the instance will be created. If not given, the region is decided based on
@@ -315,8 +317,9 @@ export namespace IosInstanceCreateParams {
       clientLocation?: Clue.ClientLocation;
 
       /**
-       * The major version of iOS, "26" or "27". iphone runs both, iphone-duo runs 27,
-       * ipad and watch run 26. Default is 26, or 27 on iphone-duo.
+       * The major version of iOS, "26" or "27". iphone and ipad run both; iphone-se,
+       * iphone-17e and iphone-duo run 27; watch runs 26. Default is 26, or 27 on the
+       * models that run only 27.
        */
       osVersion?: string;
     }

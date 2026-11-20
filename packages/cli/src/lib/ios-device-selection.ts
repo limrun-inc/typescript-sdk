@@ -7,6 +7,8 @@ export type IosDeviceSelection = NonNullable<Parameters<XcodeClient['attachNewSi
 /** iOS models and major versions the --model and --os-version flags accept. */
 export const IOS_MODELS: NonNullable<IosInstanceCreateParams.Spec['model']>[] = [
   'iphone',
+  'iphone-se',
+  'iphone-17e',
   'iphone-duo',
   'ipad',
   'watch',
