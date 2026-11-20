@@ -2076,13 +2076,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             aria-label="Home"
             title="Home"
             style={homeButtonStyle}
-            // The container turns mouse and touch events into screen touches; a press on the frame is not one.
+            // A press here must not start a screen touch, since the container would clamp it to the
+            // screen's edge. Moves and releases still reach the container, so a drag that began on the
+            // screen and ends over the button lifts its finger.
             onMouseDown={(event) => event.stopPropagation()}
-            onMouseMove={(event) => event.stopPropagation()}
-            onMouseUp={(event) => event.stopPropagation()}
             onTouchStart={(event) => event.stopPropagation()}
-            onTouchMove={(event) => event.stopPropagation()}
-            onTouchEnd={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
               clientRef.current?.pressButton('home');

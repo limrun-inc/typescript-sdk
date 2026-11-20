@@ -8,6 +8,7 @@ import {
   type RemoteControlHandle,
   type RemoteControlProps,
 } from '../components/remote-control';
+import { defaultRemoteControlAssets } from '../frame-assets';
 import { CONTROL_MSG_TYPE, axElementAtPoint, axElementSelectorExpression, normalizeIosTree } from '../core';
 
 vi.mock('./video-playback', () => ({
@@ -1360,6 +1361,43 @@ describe('RemoteControl compatibility', () => {
       expect(messages.map((message) => message.getUint8(1))).toEqual([0, 2, 1]);
     },
   );
+
+  it('lifts a drag released over the iPhone SE home button, and the button presses home alone', async () => {
+    vi.spyOn(HTMLImageElement.prototype, 'clientWidth', 'get').mockReturnValue(429);
+    vi.spyOn(HTMLImageElement.prototype, 'clientHeight', 'get').mockReturnValue(889);
+    await render({ deviceModel: 'iphone-se', assets: defaultRemoteControlAssets });
+    const { peer } = await connect();
+    const container = host.querySelector('.rc-container')!;
+    const home = host.querySelector('button[aria-label="Home"]')!;
+    const sent = () => peer.channel.send.mock.calls.map(([buffer]) => new DataView(buffer));
+
+    peer.channel.send.mockClear();
+    await act(async () => {
+      container.dispatchEvent(
+        new MouseEvent('mousedown', { clientX: 25, clientY: 50, bubbles: true, buttons: 1 }),
+      );
+      home.dispatchEvent(new MouseEvent('mouseup', { clientX: 25, clientY: 190, bubbles: true }));
+    });
+    expect(sent().map((message) => message.getUint8(0))).toEqual([
+      CONTROL_MSG_TYPE.INJECT_TOUCH_EVENT,
+      CONTROL_MSG_TYPE.INJECT_TOUCH_EVENT,
+    ]);
+    expect(sent().map((message) => message.getUint8(1))).toEqual([0, 1]);
+
+    peer.channel.send.mockClear();
+    await act(async () => {
+      home.dispatchEvent(
+        new MouseEvent('mousedown', { clientX: 25, clientY: 190, bubbles: true, buttons: 1 }),
+      );
+      home.dispatchEvent(new MouseEvent('mouseup', { clientX: 25, clientY: 190, bubbles: true }));
+      home.dispatchEvent(new MouseEvent('click', { clientX: 25, clientY: 190, bubbles: true }));
+    });
+    // Only the home key's press and release, no touch on the screen.
+    expect(sent().map((message) => message.getUint8(0))).toEqual([
+      CONTROL_MSG_TYPE.INJECT_KEYCODE,
+      CONTROL_MSG_TYPE.INJECT_KEYCODE,
+    ]);
+  });
 
   it.each(['ios', 'android'])('retains %s Alt-drag pinch gestures', async (platform) => {
     await render({ url: `wss://host/${platform}_test` });
