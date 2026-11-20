@@ -61,7 +61,7 @@ export default class GradleCreate extends BaseCommand {
       );
     }
     this.setParsedFlags(flags);
-    const snapshot = gradleSnapshotConfig(this.cacheConfigFromFlags());
+    const snapshot = gradleSnapshotConfig(this.cacheConfigFromFlags('gradle'));
     if (snapshot && flags['reuse-if-exists']) {
       this.info('A reused instance keeps the snapshot configuration it was created with.');
     }

@@ -25,16 +25,13 @@ export const snapshotFlags = {
 
 /**
  * Gradle's disk snapshot flags. They match Xcode's, without --snapshot-paths: a Gradle snapshot
- * keeps a fixed set of build state rather than paths the caller picks.
+ * keeps a fixed set of build state rather than paths the caller picks. Gradle snapshots are
+ * opt-in, so there is no --no-snapshot either: no default key exists to turn off.
  */
 export const gradleSnapshotFlags = {
-  'no-snapshot': Flags.boolean({
-    description: 'Create without a disk snapshot. Existing instances keep their snapshot configuration.',
-    exclusive: ['snapshot-key', 'snapshot-restore-keys'],
-  }),
   'snapshot-key': Flags.string({
     description:
-      'Disk snapshot key to restore and save at termination. Defaults to the Git origin host/repository plus the project subdirectory for new instances. Reusing a key replaces its snapshot. Also used to restore when --snapshot-restore-keys is omitted. The snapshot keeps the synced project, Gradle caches, ccache and Android SDK packages the build installed.',
+      'Disk snapshot key to restore and save at termination. Gradle instances use no disk snapshot unless this or --snapshot-restore-keys is set. Reusing a key replaces its snapshot. Also used to restore when --snapshot-restore-keys is omitted. The snapshot keeps the synced project, Gradle caches, ccache and Android SDK packages the build installed.',
   }),
   'snapshot-restore-keys': Flags.string({
     description:

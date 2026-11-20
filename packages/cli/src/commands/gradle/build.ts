@@ -219,8 +219,6 @@ export default class GradleBuild extends BaseCommand {
     let additionalFiles: ReturnType<typeof parseAdditionalFileFlags>;
     let applicationId: string | undefined;
     const syncPath = args.path ?? process.cwd();
-    // The default snapshot key comes from the project's Git origin.
-    this.snapshotProjectPath = syncPath;
     try {
       additionalFiles = parseAdditionalFileFlags(flags['additional-file']);
       options = gradleBuildOptionsFromFlags(flags);

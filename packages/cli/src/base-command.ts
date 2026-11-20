@@ -934,8 +934,12 @@ export abstract class BaseCommand extends Command {
     }
   }
 
-  /** Defaults apply only at creation; existing targets keep their snapshot configuration. */
-  protected cacheConfigFromFlags(): XcodeCacheConfig | undefined {
+  /**
+   * The snapshot configuration a create sends. Xcode derives a key from the project's Git origin
+   * when no flag names one; Gradle snapshots are opt-in, so only the flags turn them on. Defaults
+   * apply only at creation; existing targets keep their snapshot configuration.
+   */
+  protected cacheConfigFromFlags(kind: SnapshotKind = 'xcode'): XcodeCacheConfig | undefined {
     const flags = this.parsedFlags;
     if (!flags) return undefined;
     const asString = (name: string) =>
@@ -946,6 +950,7 @@ export abstract class BaseCommand extends Command {
       'snapshot-restore-keys': asString('snapshot-restore-keys'),
       'snapshot-paths': asString('snapshot-paths'),
     };
+    if (kind === 'gradle') return parseSnapshotConfig(explicit);
     const config = projectSnapshotConfig(explicit, this.snapshotProjectPath ?? process.cwd());
     if (!parseSnapshotConfig(explicit) && !explicit['no-snapshot']) {
       this.info(
@@ -1582,7 +1587,7 @@ export abstract class BaseCommand extends Command {
   private async createStandaloneGradleInstance(): Promise<LastGradleInstance> {
     const delegatedPermissions = delegatedPermissionsFromFlags(this.parsedFlags ?? {});
     const inactivityTimeout = this.autoCreateInactivityTimeout();
-    const snapshot = gradleSnapshotConfig(this.cacheConfigFromFlags());
+    const snapshot = gradleSnapshotConfig(this.cacheConfigFromFlags('gradle'));
     const instance = await this.client.gradleInstances.create({
       wait: true,
       spec: {

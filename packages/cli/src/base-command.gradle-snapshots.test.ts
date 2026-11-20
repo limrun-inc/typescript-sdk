@@ -76,31 +76,32 @@ beforeEach(() => {
   register.mockImplementation(() => target);
 });
 
-test('auto-creation sends the project key and waits for the restore before returning', async () => {
+test('auto-creation without snapshot flags creates without a snapshot or a restore wait', async () => {
   const cmd = new TestCommand([], {} as never);
   Object.assign(cmd, { getCommandParts: () => ['gradle', 'build'] });
   cmd.configure({}, '/repo/apps/android');
+  await expect(cmd.resolve()).resolves.toEqual(target);
+  expect(cmd.create).toHaveBeenCalledWith({ wait: true, spec: { role: { permissions: [] } } });
+  // Gradle snapshots are opt-in: the project's Git origin is never read for a key.
+  expect(projectSnapshotKey).not.toHaveBeenCalled();
+  expect(cmd.follow).not.toHaveBeenCalled();
+});
+
+test('auto-creation sends an explicit key and waits for the restore before returning', async () => {
+  const cmd = new TestCommand([], {} as never);
+  Object.assign(cmd, { getCommandParts: () => ['gradle', 'build'] });
+  cmd.configure({ 'snapshot-key': 'github.com/acme/monorepo/apps/android' }, '/repo/apps/android');
   await expect(cmd.resolve()).resolves.toEqual(target);
   expect(cmd.create).toHaveBeenCalledWith({
     wait: true,
     spec: { role: { permissions: [] }, snapshot: { key: 'github.com/acme/monorepo/apps/android' } },
   });
-  expect(projectSnapshotKey).toHaveBeenCalledWith('/repo/apps/android');
   expect(cmd.follow).toHaveBeenCalledWith(target.id, expect.objectContaining({ side: 'restore' }));
   expect(cmd.xcodeFollow).not.toHaveBeenCalled();
   expect(cmd.create.mock.invocationCallOrder[0]).toBeLessThan(cmd.follow.mock.invocationCallOrder[0]!);
 });
 
-test('opt-out creates without a snapshot or a restore wait', async () => {
-  const cmd = new TestCommand([], {} as never);
-  Object.assign(cmd, { getCommandParts: () => ['gradle', 'build'] });
-  cmd.configure({ 'no-snapshot': true }, '/repo');
-  await cmd.resolve();
-  expect(cmd.create).toHaveBeenCalledWith({ wait: true, spec: { role: { permissions: [] } } });
-  expect(cmd.follow).not.toHaveBeenCalled();
-});
-
-test('existing instances are not rebound by the default, and an explicit key binds once', async () => {
+test('existing instances are not rebound without a key, and an explicit key binds once', async () => {
   load.mockReturnValue(target);
   const cmd = new TestCommand([], {} as never);
   cmd.configure({}, '/repo');
@@ -127,12 +128,15 @@ test('an instance collected before its restore started is an error, not a cold b
 });
 
 test.each([GradleBuild, GradleSync])(
-  '%s selects the sync path before resolving an instance',
+  '%s derives no snapshot key from the project it syncs',
   async (Command) => {
     const cmd = new Command([], {} as never);
     const stop = new Error('stop before remote work');
+    let config: unknown = 'unset';
     const resolve = jest.fn(async () => {
-      (cmd as unknown as { cacheConfigFromFlags(): unknown }).cacheConfigFromFlags();
+      config = (cmd as unknown as { cacheConfigFromFlags(kind: string): unknown }).cacheConfigFromFlags(
+        'gradle',
+      );
       throw stop;
     });
     Object.assign(cmd, {
@@ -142,6 +146,7 @@ test.each([GradleBuild, GradleSync])(
       info: jest.fn(),
     });
     await expect(cmd.run()).rejects.toThrow(stop);
-    expect(projectSnapshotKey).toHaveBeenCalledWith('/different-repo/apps/android');
+    expect(config).toBeUndefined();
+    expect(projectSnapshotKey).not.toHaveBeenCalled();
   },
 );

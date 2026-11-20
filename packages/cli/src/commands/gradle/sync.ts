@@ -51,8 +51,6 @@ export default class GradleSync extends BaseCommand {
     this.setParsedFlags(flags);
 
     const syncPath = args.path ?? process.cwd();
-    // The default snapshot key comes from the project's Git origin.
-    this.snapshotProjectPath = syncPath;
     const syncOptions: GradleSyncOptions = {
       watch: flags.watch,
       basisCacheDir: flags['basis-cache-dir'],
