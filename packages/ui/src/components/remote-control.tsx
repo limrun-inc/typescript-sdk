@@ -2077,10 +2077,18 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             title="Home"
             style={homeButtonStyle}
             // A press here must not start a screen touch, since the container would clamp it to the
-            // screen's edge. Moves and releases still reach the container, so a drag that began on the
-            // screen and ends over the button lifts its finger.
+            // screen's edge. Mouse moves and releases still reach the container, so a drag that began on
+            // the screen and ends over the button lifts its finger.
             onMouseDown={(event) => event.stopPropagation()}
             onTouchStart={(event) => event.stopPropagation()}
+            // A touch's events go to the element it began on, so this end is a tap on the button. The
+            // container cancels touchend, which would drop the synthesized click, so press home here and
+            // cancel the click ourselves to press only once.
+            onTouchEnd={(event) => {
+              event.stopPropagation();
+              event.preventDefault();
+              clientRef.current?.pressButton('home');
+            }}
             onClick={(event) => {
               event.stopPropagation();
               clientRef.current?.pressButton('home');
