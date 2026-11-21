@@ -43,6 +43,15 @@ describe('instanceIdFromToken', () => {
     expect(instanceIdFromToken(signedToken([`ios:${SANDBOX_TID}:all`]), 'ios')).toBeUndefined();
   });
 
+  it('reads an unprefixed token from the token service by its limrun issuer', () => {
+    const bare = signedToken([`ios:${IOS_TID}:all`]).slice('lim_st_'.length);
+    expect(instanceIdFromToken(bare, 'ios')).toBe(IOS_TID);
+    const payload = Buffer.from(JSON.stringify({ iss: 'other', scopes: [`ios:${IOS_TID}:all`] })).toString(
+      'base64url',
+    );
+    expect(instanceIdFromToken(`eyJhbGciOiJFUzI1NiJ9.${payload}.c2ln`, 'ios')).toBeUndefined();
+  });
+
   it('survives malformed payloads', () => {
     expect(instanceIdFromToken('lim_st_not.a.jwt', 'ios')).toBeUndefined();
     expect(instanceIdFromToken(signedToken('not-an-array'), 'ios')).toBeUndefined();

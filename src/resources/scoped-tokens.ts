@@ -1,6 +1,11 @@
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-import type { AccessTokenCreateParams } from './access-tokens';
+import {
+  type AccessTokenCreateParams,
+  TOKEN_SERVICE_URL,
+  tokenServiceBody,
+  withScopes,
+} from './access-tokens';
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
@@ -11,10 +16,16 @@ export class ScopedTokens extends APIResource {
    * Mint a short-lived access token whose permissions limit what the holder can do, e.g.
    * install a specific asset on a device through the registry. The token is verified
    * by services holding the signing public key. It is bound to the caller's organization.
-   * @deprecated Use client.accessTokens.create(). This method keeps the legacy URL.
+   * @deprecated Use client.accessTokens.create(), which this method now calls through to.
    */
   create(body: ScopedTokenCreateParams, options?: RequestOptions): APIPromise<ScopedToken> {
-    return this._client.post('/v1/scoped_tokens', { body, ...options });
+    return this._client
+      .post<ScopedToken & { permissions: Array<string> }>('/v1/access_tokens', {
+        body: tokenServiceBody(body),
+        defaultBaseURL: TOKEN_SERVICE_URL,
+        ...options,
+      })
+      ._thenUnwrap(withScopes);
   }
 }
 

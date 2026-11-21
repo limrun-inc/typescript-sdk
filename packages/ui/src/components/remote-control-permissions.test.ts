@@ -61,6 +61,16 @@ describe('RemoteControl token permissions', () => {
     expect(tokenRequiresWatchOnly(url, token)).toBe(false),
   );
 
+  it("reads the token service's unprefixed tokens by their limrun issuer", () => {
+    const bare = (claims: object) =>
+      `${btoa('{"alg":"ES256"}')}.${btoa(JSON.stringify(claims))
+        .replace(/=/g, '')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')}.signature`;
+    expect(tokenRequiresWatchOnly(url, bare({ iss: 'limrun', scopes: [`ios:${iosId}:watch`] }))).toBe(true);
+    expect(tokenRequiresWatchOnly(url, bare({ scopes: [`ios:${iosId}:watch`] }))).toBe(false);
+  });
+
   it('keeps the explicit prop behavior when the URL does not identify a device', () => {
     const token = tokenFor(['ios:*:watch']);
     expect(tokenRequiresWatchOnly('wss://proxy/stream', token)).toBe(false);

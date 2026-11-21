@@ -1,4 +1,5 @@
 import Limrun, { APIError, AuthenticationError, NotFoundError } from '@limrun/api';
+import { accessTokenJWT, signedTokenClaims } from './signed-token';
 
 /**
  * Backend API endpoints the generated resources do not cover (Stainless
@@ -78,7 +79,7 @@ export interface TunnelToken {
  * accepts no signed token.
  */
 export async function tunnelOrganization(client: Limrun): Promise<string> {
-  if ((client.apiKey ?? '').startsWith(SIGNED_TOKEN_PREFIX)) {
+  if (accessTokenJWT(client.apiKey ?? '') !== undefined) {
     throw new Error(
       'The API key is a signed token. Pass a tunnel token to lim tunnel run with --token or ' +
         'LIM_TUNNEL_TOKEN; managing tunnels needs an organization API key or login.',
@@ -100,28 +101,17 @@ function onlyTunnelOf(scopes: unknown): string | undefined {
   return match?.[1];
 }
 
-const SIGNED_TOKEN_PREFIX = 'lim_st_';
-
 /**
  * Reads the organization and tunnel a tunnel token names, without verifying
  * it; undefined when the token is no tunnel token. Its only scope is
  * tunnel:<id>:connect.
  */
 export function tunnelTokenClaims(token: string): { organizationId: string; tunnelId: string } | undefined {
-  const payload = token.slice(SIGNED_TOKEN_PREFIX.length).split('.')[1];
-  if (!token.startsWith(SIGNED_TOKEN_PREFIX) || !payload) {
+  const claims = signedTokenClaims(token);
+  if (!claims) {
     return undefined;
   }
-  let claims: unknown;
-  try {
-    claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-  } catch {
-    return undefined;
-  }
-  if (typeof claims !== 'object' || claims === null) {
-    return undefined;
-  }
-  const { sub, scopes } = claims as { sub?: unknown; scopes?: unknown };
+  const { sub, scopes } = claims;
   const tunnelId = onlyTunnelOf(scopes);
   if (!tunnelId || typeof sub !== 'string' || sub === '') {
     return undefined;

@@ -18,7 +18,7 @@ test('access tokens send permissions and preserve the deprecated scopes API', as
   expect(canonical.permissions).toEqual(legacy.scopes);
   expect(calls).toEqual([
     { url: 'https://api.example/v1/access_tokens', body: { permissions: ['asset:*:read'] } },
-    { url: 'https://api.example/v1/scoped_tokens', body: { scopes: ['asset:*:read'] } },
+    { url: 'https://api.example/v1/access_tokens', body: { permissions: ['asset:*:read'] } },
   ]);
 });
 
