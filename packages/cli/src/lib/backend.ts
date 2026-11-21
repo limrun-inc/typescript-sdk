@@ -1,4 +1,5 @@
 import Limrun, { APIError, AuthenticationError, NotFoundError } from '@limrun/api';
+import { isLoginRequiredError } from './auth';
 
 /**
  * Backend API endpoints the generated resources do not cover (Stainless
@@ -41,8 +42,37 @@ export async function whoAmI(client: Limrun): Promise<string> {
 }
 
 interface WhoAmIBody {
-  organization?: { id?: string };
-  user?: { defaultOrganization?: { id?: string } };
+  type?: string;
+  organization?: { id?: string; displayName?: string };
+  user?: { email?: string; defaultOrganization?: { id?: string; displayName?: string } };
+}
+
+/** Who the API key acts as, without the key itself. */
+export interface Identity {
+  type?: string;
+  organizationId?: string;
+  organizationName?: string;
+  email?: string;
+}
+
+/** The identity behind the API key, or null when the backend rejects the key. */
+export async function identity(client: Limrun): Promise<Identity | null> {
+  let body: WhoAmIBody;
+  try {
+    body = await client.get('/v1/whoami');
+  } catch (err) {
+    if (isLoginRequiredError(err)) {
+      return null;
+    }
+    rethrow(err, 'Failed to check the sign-in');
+  }
+  const organization = body.organization ?? body.user?.defaultOrganization;
+  return {
+    ...(body.type ? { type: body.type } : {}),
+    ...(organization?.id ? { organizationId: organization.id } : {}),
+    ...(organization?.displayName ? { organizationName: organization.displayName } : {}),
+    ...(body.user?.email ? { email: body.user.email } : {}),
+  };
 }
 
 async function fetchWhoAmI(client: Limrun): Promise<WhoAmIBody> {
