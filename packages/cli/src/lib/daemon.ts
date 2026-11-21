@@ -556,6 +556,17 @@ export function startDaemonServer(): void {
           result = await (client as any).listApps();
           break;
 
+        case 'install-app-by-name':
+          if (type === 'ios') {
+            result = await (client as any).installAppByName(args[0], args[1]);
+          } else if (type === 'android') {
+            await (client as any).installAppByName(args[0]);
+            result = { sent: true };
+          } else {
+            throw new Error('install-app-by-name requires an iOS or Android instance');
+          }
+          break;
+
         case 'install-app':
           if (type === 'ios') {
             result = await (client as any).installApp(args[0], args[1]);

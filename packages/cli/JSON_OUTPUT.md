@@ -61,8 +61,8 @@ Existing JSON-enabled device commands keep their existing response shapes. In pa
 | Detached iOS/Android `launch-app`              | `{ok:true, instanceId, bundleId, mode}` on iOS; `packageName` on Android. `mode` is the effective launch mode, including defaults. iOS adds `runtime` when requested. Environment values are not echoed. |
 | iOS `swipe`                                    | `{ok:true, instanceId, from:[x,y], to:[x,y], durationMs}`; adds `display` when explicitly selected.                                                                                                      |
 | iOS `toggle-keyboard`                          | `{ok:true, instanceId}`. The API does not report the resulting keyboard visibility.                                                                                                                      |
-| Android `install-app`                          | `{ok:true, instanceId, source}`. `source` is the supplied path or URL; local uploads also include `assetId`. Acknowledges sending the asset to the instance.                                             |
-| `ios install-app`                              | Existing installation result, including the bundle ID when supplied by the SDK.                                                                                                                          |
+| Android `install`                              | `{ok:true, instanceId, source}`. `source` is the supplied path, URL, or asset name; local uploads also include `assetId`. Returned after the instance reports successful installation.                   |
+| `ios install`                                  | Existing installation result, including the bundle ID when supplied by the SDK.                                                                                                                          |
 | iOS/Android `blocklist add`, `remove`, `clear` | `{ok:true, instanceId, domains}`. `domains` is the blocklist in force afterwards, in canonical form; empty after `clear`.                                                                                |
 | iOS/Android `blocklist list`                   | `{instanceId, domains}`.                                                                                                                                                                                 |
 | `android set-wifi-bandwidth`                   | `{ok:true, instanceId, downKbps:0, upKbps:1000}`. Only requested directions are included; zero clears that limit.                                                                                        |
@@ -74,6 +74,8 @@ Existing JSON-enabled device commands keep their existing response shapes. In pa
 | `android connect`                              | `{"instanceId":"...","address":{"address":"127.0.0.1","port":12345}}` from the local tunnel. The command stays running.                                                                                  |
 
 Camera `play` on both platforms returns `{ok:true, instanceId, action:"play", localPath, loop}`. Camera `clear` returns `{ok:true, instanceId, action:"clear"}`. Existing `ok` and `loop` fields are retained.
+
+`ios install-app` and `android install-app` remain aliases for `ios install` and `android install`, with identical output.
 
 These action results identify the resolved instance, including when the CLI selected a remembered instance. Parameters describe the submitted action after it succeeds, not a separate observation of device state. Optional targeting fields are omitted when no override was supplied. Android `target` uses the SDK shape: `{x,y}` or `{selector:{resourceId, text, ...}}`.
 
