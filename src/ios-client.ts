@@ -2417,8 +2417,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
           if (message.exitCode !== undefined) {
             logger.debug(`Simctl execution ${message.id} completed with exit code ${message.exitCode}`);
-            execution._handleExit(message.exitCode);
+            // Forget the execution first: an exit listener may disconnect, and disconnecting
+            // fails every execution still tracked, including this one.
             simctlExecutions.delete(message.id);
+            execution._handleExit(message.exitCode);
           }
           return;
         }
@@ -3322,8 +3324,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         // Defer error to next tick to allow caller to attach listeners
         process.nextTick(() => {
-          execution._handleError(new Error('WebSocket is not connected or connection is not open.'));
           simctlExecutions.delete(id);
+          execution._handleError(new Error('WebSocket is not connected or connection is not open.'));
         });
         return execution;
       }
@@ -3333,8 +3335,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       ws.send(JSON.stringify(request), (err?: Error) => {
         if (err) {
           logger.error(`Failed to send ${request.type} request:`, err);
-          execution._handleError(err);
           simctlExecutions.delete(id);
+          execution._handleError(err);
         }
       });
 
