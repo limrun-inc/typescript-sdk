@@ -15,6 +15,11 @@ export {
   type SnapshotList,
   type SnapshotListParams,
 } from './resources/snapshots';
+export {
+  SupportTickets,
+  type SupportTicket,
+  type SupportTicketCreateParams,
+} from './resources/support-tickets';
 export { PagePromise } from './core/pagination';
 export * from './instance-client';
 export * as Ios from './ios-client';

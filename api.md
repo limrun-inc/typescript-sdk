@@ -120,3 +120,7 @@ Types:
 Methods:
 
 - <code title="post /v1/scoped_tokens">client.scopedTokens.<a href="./src/resources/scoped-tokens.ts">create</a>({ ...params }) -> ScopedToken</code>
+
+# SupportTickets
+
+- <code title="post /v1/organizations/{organizationId}/support_tickets">client.supportTickets.<a href="./src/resources/support-tickets.ts">create</a>(organizationId, { kind, subject, message }, { idempotencyKey }) -> SupportTicket</code>
