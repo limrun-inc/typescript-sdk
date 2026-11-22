@@ -190,7 +190,10 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
       results[my] = await fn(item);
     }
   });
-  await Promise.all(workers);
+  // All writers must finish before the enclosing sync removes its staging directory.
+  for (const result of await Promise.allSettled(workers)) {
+    if (result.status === 'rejected') throw result.reason;
+  }
   return results;
 }
 
@@ -701,7 +704,24 @@ async function syncFolderOnce(
   localFolderPath: string,
   opts: FolderSyncOptions,
   reason?: string,
-  attempt = 0,
+): Promise<SyncFolderResult> {
+  for (let attempt = 0; ; attempt++) {
+    const stagingDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limrun-sync-'));
+    try {
+      return await syncStagedFolder(localFolderPath, opts, stagingDir, reason);
+    } catch (err) {
+      if (attempt !== 0 || !isENOENT(err)) throw err;
+    } finally {
+      await fs.promises.rm(stagingDir, { recursive: true, force: true });
+    }
+  }
+}
+
+async function syncStagedFolder(
+  localFolderPath: string,
+  opts: FolderSyncOptions,
+  stagingDir: string,
+  reason?: string,
 ): Promise<SyncFolderResult> {
   const totalStart = nowMs();
   const log = opts.log ?? noopLogger;
@@ -724,7 +744,7 @@ async function syncFolderOnce(
   let bytesSentDelta = 0;
   let httpSendMsTotal = 0;
   let deltaEncodeMsTotal = 0;
-  type EncodedPayload = { payload: FolderSyncHttpPayload; filePath: string; cleanupDir?: string };
+  type EncodedPayload = { payload: FolderSyncHttpPayload; filePath: string };
 
   // Build payload list by comparing against local basis cache (single-flight/watch assumes server matches cache).
   // lstat, never stat/existsSync: those follow symlinks and misreport a
@@ -757,6 +777,8 @@ async function syncFolderOnce(
     const basisSha = await sha256FileHex(basisPath);
     if (basisSha !== f.sha256.toLowerCase()) {
       changed.push(f);
+    } else {
+      f.size = basisStat.size;
     }
   }
 
@@ -766,13 +788,26 @@ async function syncFolderOnce(
   // every path that actually shipped this sync.
   const changedPaths = new Set(changed.map((f) => f.path));
 
+  // Full uploads, deltas, retries and the next basis must describe the same bytes.
+  const staged = new Set<FileEntry>();
+  let nextFile = 0;
+  async function stage(entry: FileEntry, source: string) {
+    const copy = path.join(stagingDir, String(nextFile++));
+    await fs.promises.copyFile(source, copy, fs.constants.COPYFILE_FICLONE);
+    entry.absPath = copy;
+    entry.size = (await fs.promises.stat(copy)).size;
+    entry.sha256 = await sha256FileHex(copy);
+    staged.add(entry);
+  }
+
   const encodedPayloads = await mapLimit(changedFiles, encodeLimit, async (f): Promise<EncodedPayload> => {
+    await stage(f, f.absPath);
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
     const basisStat =
       f.size >= MIN_XDELTA_TARGET_BYTES ? await fs.promises.lstat(basisPath).catch(() => null) : null;
     if (basisStat?.isFile()) {
       const basisSha = await sha256FileHex(basisPath);
-      const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limulator-xdelta3-'));
+      const tmpDir = await fs.promises.mkdtemp(path.join(stagingDir, 'delta-'));
       const patchPath = path.join(tmpDir, 'patch.xdelta3');
       const encodeStart = nowMs();
       const patchSize = await encodeXdelta3Patch(
@@ -798,7 +833,6 @@ async function syncFolderOnce(
             length: patchSize,
           },
           filePath: patchPath,
-          cleanupDir: tmpDir,
         };
       }
       // Patch too big, fall back to full
@@ -848,20 +882,12 @@ async function syncFolderOnce(
 
   const sendStart = nowMs();
   let resp: FolderSyncHttpResponse;
-  try {
-    resp = await httpFolderSyncBatch(
-      opts,
-      meta,
-      encodedPayloads.map((p) => ({ filePath: p.filePath })),
-      compression,
-    );
-  } catch (err) {
-    if (attempt < 1 && isENOENT(err)) {
-      slog('warn', `sync retrying after missing file during upload (ENOENT)`);
-      return await syncFolderOnce(localFolderPath, opts, reason, attempt + 1);
-    }
-    throw err;
-  }
+  resp = await httpFolderSyncBatch(
+    opts,
+    meta,
+    encodedPayloads.map((p) => ({ filePath: p.filePath })),
+    compression,
+  );
   httpSendMsTotal += nowMs() - sendStart;
 
   // Retry once if server needs full for some paths (basis mismatch).
@@ -882,6 +908,12 @@ async function syncFolderOnce(
     for (const p of need) {
       const entry = fileMap.get(p);
       if (!entry) continue;
+      if (!staged.has(entry)) {
+        // The first request declared this file unchanged against our cached basis.
+        const expected = entry.sha256;
+        await stage(entry, cacheGet(opts.basisCacheDir, entry.path));
+        if (entry.sha256 !== expected) throw new Error(`sync basis changed for ${entry.path}; retry sync`);
+      }
       // The retry uploads real bytes: count them (and surface large files)
       // exactly like first-pass fulls, or a fresh-daemon resync of a warm
       // cache reports "sent=0B" while gigabytes upload.
@@ -921,18 +953,6 @@ async function syncFolderOnce(
     }
   }
 
-  // Cleanup patch temp dirs
-  await Promise.all(
-    encodedPayloads.map(async (p) => {
-      if (!p.cleanupDir) return;
-      try {
-        await fs.promises.rm(p.cleanupDir, { recursive: true, force: true });
-      } catch {
-        // ignore
-      }
-    }),
-  );
-
   // Sync work includes: local hashing + planning + transfers (but excludes finalize/install wait).
   const syncWorkMs = nowMs() - totalStart;
   if (!resp.ok) {
@@ -960,6 +980,7 @@ async function syncFolderOnce(
   // across the sorted walk.
   const checkedDirs = opts.syncSymlinks ? new Set<string>() : undefined;
   for (const f of allFiles) {
+    if (!changedPaths.has(f.path)) continue;
     await cachePut(opts.basisCacheDir, f.path, f.absPath, f.linkTarget, checkedDirs);
   }
   return out;

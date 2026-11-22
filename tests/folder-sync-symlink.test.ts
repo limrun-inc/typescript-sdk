@@ -28,7 +28,10 @@ function decodeBody(raw: Buffer, encoding: string | undefined): Buffer {
   return raw;
 }
 
-async function startStubServer(response: object | object[] = { ok: true }): Promise<StubServer> {
+async function startStubServer(
+  response: object | object[] = { ok: true },
+  onRequest?: (request: number, meta: WireMeta, payload: Buffer) => void,
+): Promise<StubServer> {
   const requests: WireMeta[] = [];
   // An array means one response per request, in order (the last one repeats).
   const responses = Array.isArray(response) ? response : [response];
@@ -39,6 +42,7 @@ async function startStubServer(response: object | object[] = { ok: true }): Prom
       const body = decodeBody(Buffer.concat(chunks), req.headers['content-encoding'] as string);
       const metaLen = body.readUInt32BE(0);
       requests.push(JSON.parse(body.subarray(4, 4 + metaLen).toString('utf-8')) as WireMeta);
+      onRequest?.(requests.length, requests[requests.length - 1]!, body.subarray(4 + metaLen));
       res.setHeader('content-type', 'application/json');
       res.end(JSON.stringify(responses[Math.min(requests.length - 1, responses.length - 1)]));
     });
@@ -211,6 +215,31 @@ describe('folder-sync symlinks', () => {
       await expect(syncFolder(tree, syncOpts(server, cache))).rejects.toThrow(/does not support symlinks/);
       // No retry request: the target's content must never be uploaded as a file.
       expect(server.requests).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('a source edit during upload waits for the next sync', async () => {
+    const rel = 'shared/real.swift';
+    const source = path.join(tree, rel);
+    const old = fs.readFileSync(source, 'utf8');
+    const updated = old + '// edited during upload';
+    const payloads: string[] = [];
+    const server = await startStubServer(
+      [{ ok: false, needFull: [rel] }, { ok: true }],
+      (request, meta, payload) => {
+        payloads.push(payload.toString());
+        if (request === 1) fs.writeFileSync(source, updated);
+      },
+    );
+    try {
+      await syncFolder(tree, syncOpts(server, cache));
+      expect(payloads).toEqual([old, old]);
+      expect(fs.readFileSync(path.join(cache, rel), 'utf8')).toBe(old);
+      await syncFolder(tree, syncOpts(server, cache));
+      expect(payloads[2]).toBe(updated);
+      expect(fs.readFileSync(path.join(cache, rel), 'utf8')).toBe(updated);
     } finally {
       await server.close();
     }
