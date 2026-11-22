@@ -225,16 +225,16 @@ async function httpFolderSyncBatch(
 
   async function* gen(): AsyncGenerator<Buffer> {
     yield head;
-    for (const p of payloadFiles) {
+    for (const [index, p] of payloadFiles.entries()) {
+      const descriptor = meta.payloads[index]!;
       const fd = await fs.promises.open(p.filePath, 'r');
       try {
-        const st = await fd.stat();
         let offset = 0;
-        while (offset < st.size) {
-          const len = Math.min(256 * 1024, st.size - offset);
+        while (offset < descriptor.length) {
+          const len = Math.min(256 * 1024, descriptor.length - offset);
           const buf = Buffer.allocUnsafe(len);
           const { bytesRead } = await fd.read(buf, 0, len, offset);
-          if (bytesRead <= 0) break;
+          if (bytesRead === 0) throw new Error(`incomplete staged payload for ${descriptor.path}`);
           offset += bytesRead;
           yield buf.subarray(0, bytesRead);
         }
