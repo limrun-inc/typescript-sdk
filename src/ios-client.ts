@@ -1987,6 +1987,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   let connectionState: ConnectionState = 'connecting';
   let reconnectAttempts = 0;
   let reconnectTimeout: NodeJS.Timeout | undefined;
+  let handshakeDeadline: NodeJS.Timeout | undefined;
   let intentionalDisconnect = false;
   let lastError: string | undefined;
   // Centralized pending requests map - handles all request/response patterns
@@ -2048,6 +2049,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   };
 
   const cleanupConnection = (): void => {
+    clearTimeout(handshakeDeadline);
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = undefined;
@@ -2140,6 +2142,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
   return new Promise<InstanceClient>((resolveConnection, rejectConnection) => {
     let hasResolved = false;
+    let retriedHandshake = false;
 
     // Reconnection logic with exponential backoff
     const scheduleReconnect = (): void => {
@@ -2373,7 +2376,15 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       updateConnectionState('connecting');
 
       const proxyAgent = nodeProxyTransport.getWebSocketAgent(endpointWebSocketUrl);
-      ws = new WebSocket(endpointWebSocketUrl, proxyAgent ? { agent: proxyAgent } : {});
+      let opened = false;
+      let handshakeError: Error | undefined;
+      const socket = new WebSocket(endpointWebSocketUrl, proxyAgent ? { agent: proxyAgent } : {});
+      ws = socket;
+      // A socket inactivity timeout allows a slow TLS peer to keep the first command waiting.
+      handshakeDeadline = setTimeout(() => {
+        handshakeError = Object.assign(new Error('Opening handshake has timed out'), { code: 'ETIMEDOUT' });
+        socket.terminate();
+      }, 5000);
 
       ws.on('message', (data: Data) => {
         let message: ServerResponse;
@@ -2456,12 +2467,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       ws.on('error', (err: Error) => {
         lastError = err.message;
         logger.error('WebSocket error:', err.message);
-        if (!hasResolved && (ws?.readyState === WebSocket.CONNECTING || ws?.readyState === WebSocket.OPEN)) {
-          rejectConnection(err);
-        }
+        if (!opened) handshakeError ??= err;
       });
 
       ws.on('close', () => {
+        clearTimeout(handshakeDeadline);
         if (pingInterval) {
           clearInterval(pingInterval);
           pingInterval = undefined;
@@ -2477,6 +2487,27 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
         failPendingRequests('Connection closed');
 
+        if (!hasResolved) {
+          const err = handshakeError ?? new Error('Connection closed before the client was ready');
+          // Retry only the opening handshake. Once open, deviceInfo owns its failure.
+          const code = (err as NodeJS.ErrnoException).code;
+          const transient =
+            ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'EAI_AGAIN'].includes(
+              code ?? '',
+            ) ||
+            /^(Opening handshake has timed out|socket hang up|Unexpected server response: 50[234])$/.test(
+              err.message,
+            );
+          if (!opened && !retriedHandshake && maxReconnectAttempts > 0 && transient) {
+            retriedHandshake = true;
+            updateConnectionState('reconnecting');
+            reconnectTimeout = setTimeout(setupWebSocket, 100 + Math.floor(Math.random() * 151));
+          } else {
+            cleanupConnection();
+            rejectConnection(err);
+          }
+          return;
+        }
         if (shouldReconnect) {
           scheduleReconnect();
         } else if (isNonRetryableError(lastError ?? '')) {
@@ -2490,7 +2521,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
 
       ws.on('open', async () => {
-        logger.debug(`Connected to ${endpointWebSocketUrl}`);
+        clearTimeout(handshakeDeadline);
+        opened = true;
+        logger.debug('WebSocket connected');
         reconnectAttempts = 0;
         lastError = undefined;
         updateConnectionState('connected');
@@ -2508,6 +2541,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             logger.debug('Device info fetched:', cachedDeviceInfo);
           } catch (err) {
             logger.error('Failed to fetch device info:', err);
+            cleanupConnection();
+            updateConnectionState('disconnected');
             rejectConnection(err as Error);
             return;
           }
