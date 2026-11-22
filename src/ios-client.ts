@@ -1987,6 +1987,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   let connectionState: ConnectionState = 'connecting';
   let reconnectAttempts = 0;
   let reconnectTimeout: NodeJS.Timeout | undefined;
+  let handshakeDeadline: NodeJS.Timeout | undefined;
   let intentionalDisconnect = false;
   let lastError: string | undefined;
   // Centralized pending requests map - handles all request/response patterns
@@ -2048,6 +2049,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
   };
 
   const cleanupConnection = (): void => {
+    clearTimeout(handshakeDeadline);
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = undefined;
@@ -2376,10 +2378,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       const proxyAgent = nodeProxyTransport.getWebSocketAgent(endpointWebSocketUrl);
       let opened = false;
       let handshakeError: Error | undefined;
-      ws = new WebSocket(endpointWebSocketUrl, {
-        handshakeTimeout: 5000,
-        ...(proxyAgent && { agent: proxyAgent }),
-      });
+      const socket = new WebSocket(endpointWebSocketUrl, proxyAgent ? { agent: proxyAgent } : {});
+      ws = socket;
+      // A socket inactivity timeout allows a slow TLS peer to keep the first command waiting.
+      handshakeDeadline = setTimeout(() => {
+        handshakeError = Object.assign(new Error('Opening handshake has timed out'), { code: 'ETIMEDOUT' });
+        socket.terminate();
+      }, 5000);
 
       ws.on('message', (data: Data) => {
         let message: ServerResponse;
@@ -2462,10 +2467,11 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       ws.on('error', (err: Error) => {
         lastError = err.message;
         logger.error('WebSocket error:', err.message);
-        if (!opened) handshakeError = err;
+        if (!opened) handshakeError ??= err;
       });
 
       ws.on('close', () => {
+        clearTimeout(handshakeDeadline);
         if (pingInterval) {
           clearInterval(pingInterval);
           pingInterval = undefined;
@@ -2515,6 +2521,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       });
 
       ws.on('open', async () => {
+        clearTimeout(handshakeDeadline);
         opened = true;
         logger.debug('WebSocket connected');
         reconnectAttempts = 0;

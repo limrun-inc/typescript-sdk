@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { AddressInfo, Socket } from 'node:net';
+import { AddressInfo, createServer as createTcpServer, Socket } from 'node:net';
 import { WebSocketServer } from 'ws';
 
 import { createInstanceClient } from '../src/ios-client';
@@ -35,11 +35,15 @@ async function fixture(replies: Reply[]) {
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   return {
-    attempts, commands,
-    connect: (maxReconnectAttempts = 6) => createInstanceClient({
-      apiUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, token: 'fixture',
-      logLevel: 'none', maxReconnectAttempts,
-    }),
+    attempts,
+    commands,
+    connect: (maxReconnectAttempts = 6) =>
+      createInstanceClient({
+        apiUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+        token: 'fixture',
+        logLevel: 'none',
+        maxReconnectAttempts,
+      }),
     close: async () => {
       for (const socket of sockets) socket.destroy();
       websocket.close();
@@ -75,3 +79,28 @@ it.each([
     await f.close();
   }
 });
+
+it('bounds both attempts when TCP connects and TLS never completes', async () => {
+  let attempts = 0;
+  const sockets = new Set<Socket>();
+  const server = createTcpServer((socket) => {
+    attempts++;
+    sockets.add(socket);
+    socket.resume();
+    socket.on('close', () => sockets.delete(socket));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    await expect(
+      createInstanceClient({
+        apiUrl: `https://127.0.0.1:${(server.address() as AddressInfo).port}`,
+        token: 'fixture',
+        logLevel: 'none',
+      }),
+    ).rejects.toThrow('Opening handshake has timed out');
+    expect(attempts).toBe(2);
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}, 14000);
