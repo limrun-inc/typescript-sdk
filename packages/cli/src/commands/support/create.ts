@@ -1,6 +1,20 @@
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
+
+function ticketIdempotencyKey(body: { kind: string; subject: string; message: string }): string {
+  const hash = createHash('sha256').update(JSON.stringify(body)).digest();
+  // Encode the first 128 bits as a UUIDv8 for the support API.
+  hash[6] = (hash.readUInt8(6) & 0x0f) | 0x80;
+  hash[8] = (hash.readUInt8(8) & 0x3f) | 0x80;
+  return [
+    hash.toString('hex', 0, 4),
+    hash.toString('hex', 4, 6),
+    hash.toString('hex', 6, 8),
+    hash.toString('hex', 8, 10),
+    hash.toString('hex', 10, 16),
+  ].join('-');
+}
 
 export default class SupportCreate extends BaseCommand {
   static summary = 'Open a support ticket for an organization';
@@ -12,18 +26,21 @@ export default class SupportCreate extends BaseCommand {
     org: Flags.string({ description: 'Organization TypeID (org_...).', required: true }),
     subject: Flags.string({ description: 'Ticket subject.', required: true }),
     message: Flags.string({ description: 'Message for Limrun support.', required: true }),
-    'idempotency-key': Flags.string({ description: 'UUID to reuse for every delivery of the same event.' }),
+    'idempotency-key': Flags.string({
+      description: 'UUID for this event. Defaults to a hash of the ticket payload.',
+    }),
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(SupportCreate);
     this.setParsedFlags(flags);
-    const key = flags['idempotency-key'] ?? randomUUID();
+    const body = { kind: 'ticket', subject: flags.subject, message: flags.message };
+    const key = flags['idempotency-key'] ?? ticketIdempotencyKey(body);
     await this.withAuth(async () => {
       const ticket = await this.client.post<{ id: string }>(
         `/v1/organizations/${encodeURIComponent(flags.org)}/support_tickets`,
         {
-          body: { kind: 'ticket', subject: flags.subject, message: flags.message },
+          body,
           headers: { 'Idempotency-Key': key },
         },
       );
