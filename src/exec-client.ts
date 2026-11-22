@@ -58,6 +58,8 @@ export type XcodeBuildExecRequest = {
     sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos' | 'appletvos' | 'xros';
     configuration?: 'Debug' | 'Release';
     artifactName?: string;
+    /** Recompile from a clean build folder for this invocation. */
+    clean?: boolean;
     /**
      * xcodebuild action. 'build' (default) produces one .app; with a
      * simulator attached it is installed there. 'build-for-testing' compiles
