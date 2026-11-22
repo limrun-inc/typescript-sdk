@@ -108,6 +108,17 @@ lim logout
 
 The CLI stores configuration in `~/.lim/config.yaml`. This file is compatible with the Go-based `lim` CLI — if you've already logged in with the Go version, the TypeScript CLI will use the same credentials.
 
+## Feedback and support
+
+Send product feedback from the terminal, including before your first login.
+
+```sh
+lim feedback "Show the cache hit rate per target"
+lim feedback "My login link expired" --guest --kind ticket --email me@example.com
+```
+
+The command prints a ticket reference. Signed-in requests appear under Support in your organization. Guest requests can receive staff replies by email after you reply to the confirmation message. Omit the email address for one-way feedback. Use `--request-id <uuid>` to retry the same submission.
+
 ## Fast First Run
 
 ```bash
