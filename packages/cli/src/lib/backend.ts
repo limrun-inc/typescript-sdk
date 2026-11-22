@@ -53,6 +53,40 @@ async function fetchWhoAmI(client: Limrun): Promise<WhoAmIBody> {
   }
 }
 
+/** Who a credential acts for, as feedback attributes it. */
+export interface FeedbackSender {
+  organizationId?: string;
+  emailAddress?: string;
+}
+
+/**
+ * Names the organization and person behind the credential. Feedback must go
+ * through without it, so any failure returns nothing.
+ */
+export async function feedbackSender(client: Limrun): Promise<FeedbackSender> {
+  try {
+    const body = (await client.get('/v1/whoami')) as WhoAmIBody & {
+      organization?: { tid?: string };
+      user?: { emailAddress?: string };
+    };
+    return {
+      organizationId: body.organization?.tid ?? body.organization?.id ?? body.user?.defaultOrganization?.id,
+      emailAddress: body.user?.emailAddress,
+    };
+  } catch {
+    return {};
+  }
+}
+
+/** Sends feedback to the Limrun team. The endpoint takes no credential. */
+export async function sendFeedback(client: Limrun, message: string, email?: string): Promise<void> {
+  try {
+    await client.post('/feedback', { body: { message, ...(email && { email }) } });
+  } catch (err) {
+    rethrow(err, 'Failed to send feedback');
+  }
+}
+
 /** A private tunnel as the backend lists it. */
 export interface PrivateTunnel {
   id: string;
