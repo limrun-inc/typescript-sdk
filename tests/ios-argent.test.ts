@@ -1,10 +1,16 @@
 import { execFile, spawn } from 'child_process';
 import fs from 'fs';
+import http from 'http';
 import net from 'net';
 import os from 'os';
 import path from 'path';
 import { WebSocket } from 'ws';
-import { startArgentBridge, toArgentElements, type ArgentBridge } from '@limrun/api/ios-argent';
+import {
+  startArgentBridge,
+  toArgentElements,
+  toArgentTreeNodes,
+  type ArgentBridge,
+} from '@limrun/api/ios-argent';
 import type { ElementTreeNode, PerformAction } from '@limrun/api/ios-client';
 
 const UDID = 'A1B2C3D4-0000-4000-8000-000000000001';
@@ -117,6 +123,18 @@ function runShim(
   });
 }
 
+function rawGetStatus(baseUrl: string, rawPath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const { hostname, port } = new URL(baseUrl);
+    http
+      .get({ hostname, port, path: rawPath }, (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      })
+      .on('error', reject);
+  });
+}
+
 describe('Argent bridge', () => {
   let providersDir: string;
   let fake: ReturnType<typeof fakeClient>;
@@ -222,6 +240,32 @@ describe('Argent bridge', () => {
     expect(fs.readFileSync(shot.path).subarray(1, 4).toString()).toBe('PNG');
   });
 
+  test('a stale media URL answers 404 and the bridge keeps serving', async () => {
+    // Raw request paths: fetch would normalize the dot segments away.
+    for (const stale of ['/media/screenshot-gone.png', '/media/..', '/media/%2e%2e']) {
+      expect(await rawGetStatus(apiUrl, stale)).toBe(404);
+    }
+    const shot = await post('/api/screenshot', { scale: 0.25 });
+    const served = await fetch(shot.url);
+    expect(served.status).toBe(200);
+    expect(
+      Buffer.from(await served.arrayBuffer())
+        .subarray(1, 4)
+        .toString(),
+    ).toBe('PNG');
+  });
+
+  test('an unknown accessibility command answers without reading the tree', async () => {
+    let treeReads = 0;
+    const elementTree = fake.client.elementTree;
+    (fake.client as { elementTree: typeof elementTree }).elementTree = async (...args) => {
+      treeReads++;
+      return elementTree(...args);
+    };
+    expect(await post('/ax', { command: 'teleport' })).toEqual({ error: 'unknown_command' });
+    expect(treeReads).toBe(0);
+  });
+
   test('the xcrun shim lists the simulator and forwards its simctl calls', async () => {
     const listing = await runShim(bridge, ['simctl', 'list', 'devices', '--json']);
     expect(JSON.parse(listing.stdout).devices['com.apple.CoreSimulator.SimRuntime.iOS-26-4']).toEqual([
@@ -280,6 +324,31 @@ describe('Argent bridge', () => {
       'Search',
     ]);
     expect(replies.find((reply) => reply.id === 2)).toEqual({ id: 2, error: 'unknown_command' });
+  });
+});
+
+describe('toArgentTreeNodes', () => {
+  test('keeps a zero-size node with its label and traits, without a frame', () => {
+    const tree = [
+      node({
+        type: 'Other',
+        AXLabel: 'Wrapper',
+        frame: { x: 0, y: 0, width: 0, height: 0 },
+        children: [
+          node({ type: 'Button', AXLabel: 'Inside', frame: { x: 0, y: 0, width: 400, height: 80 } }),
+        ],
+      }),
+    ];
+    const nodes = toArgentTreeNodes(tree, { width: 400, height: 800 }, 'com.example.app');
+    expect(nodes[0]).toEqual({
+      index: 0,
+      bundleId: 'com.example.app',
+      label: 'Wrapper',
+      traits: [],
+      roleDescription: 'group',
+    });
+    expect(nodes[1]).toMatchObject({ index: 1, parentIndex: 0, label: 'Inside', traits: ['button'] });
+    expect(nodes[1]!['frame']).toEqual({ x: 0, y: 0, width: 1, height: 0.1 });
   });
 });
 

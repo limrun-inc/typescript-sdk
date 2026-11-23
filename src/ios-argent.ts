@@ -307,9 +307,19 @@ class BridgeSession {
     const url = req.url ?? '/';
     try {
       if (req.method === 'GET' && url.startsWith('/media/')) {
-        const file = path.join(this.mediaDir, path.basename(url));
-        res.writeHead(200, { 'content-type': 'image/png' });
-        fs.createReadStream(file).pipe(res);
+        // Serve only screenshots this bridge wrote and still keeps; anything
+        // else, a deleted screenshot included, is not found.
+        const name = url.slice('/media/'.length);
+        const file = this.mediaFiles.find((kept) => path.basename(kept) === name);
+        let image: Buffer;
+        try {
+          if (!file) throw new Error('not kept');
+          image = await fs.promises.readFile(file);
+        } catch {
+          return sendJson(res, 404, { error: 'not found' });
+        }
+        res.writeHead(200, { 'content-type': 'image/png', 'content-length': image.length });
+        res.end(image);
         return;
       }
       // Argent probes apiUrl to check that the provider is alive.
@@ -423,6 +433,11 @@ class BridgeSession {
       return { verified: true };
     }
 
+    if (!TREE_COMMANDS.has(command)) {
+      // Argent treats this code as "the daemon predates the command" and
+      // probes with it, so answer before reading the tree.
+      throw new Error('unknown_command');
+    }
     const tree = await this.client.elementTree(undefined, { visibleOnly: true });
     const screen = this.screen();
     const base = {
@@ -450,7 +465,6 @@ class BridgeSession {
         };
       }
       default:
-        // Argent treats this code as "the daemon predates the command".
         throw new Error('unknown_command');
     }
   }
@@ -464,6 +478,9 @@ class BridgeSession {
     return { ...(app ? { bundleId: app.bundleId } : {}), ...(name ? { name } : {}) };
   }
 }
+
+/** The accessibility commands answered from the element tree. */
+const TREE_COMMANDS = new Set(['alert_check', 'fill', 'foreground_app', 'describe', 'tree']);
 
 type QueuedInput = { actions: PerformAction[]; resolve: () => void; reject: (error: Error) => void };
 
@@ -512,9 +529,14 @@ type ArgentElement = {
 
 type Screen = { width: number; height: number };
 
-function toArgentElement(node: ElementTreeNode, screen: Screen): ArgentElement | undefined {
+/** The node's fields in Argent's shape, with the frame left out when it is empty. */
+function toArgentFields(
+  node: ElementTreeNode,
+  screen: Screen,
+): Omit<ArgentElement, 'frame'> & {
+  frame?: ArgentElement['frame'];
+} {
   const { x, y, width, height } = node.frame;
-  if (width <= 0 || height <= 0) return undefined;
   const traits = new Set(node.traits.map((trait) => trait.charAt(0).toLowerCase() + trait.slice(1)));
   const fromType = TRAIT_BY_TYPE[node.type];
   if (fromType) traits.add(fromType);
@@ -523,17 +545,28 @@ function toArgentElement(node: ElementTreeNode, screen: Screen): ArgentElement |
   return {
     ...(label ? { label } : {}),
     ...(node.help ? { hint: node.help } : {}),
-    // Argent expects frames as fractions of the screen.
-    frame: {
-      x: x / screen.width,
-      y: y / screen.height,
-      width: width / screen.width,
-      height: height / screen.height,
-    },
+    // Argent expects frames as fractions of the screen. It treats a node without
+    // a frame as unframed, but hides a 0x0 frame together with its subtree.
+    ...(width > 0 && height > 0 ?
+      {
+        frame: {
+          x: x / screen.width,
+          y: y / screen.height,
+          width: width / screen.width,
+          height: height / screen.height,
+        },
+      }
+    : {}),
     traits: [...traits],
     ...(node.AXValue ? { value: node.AXValue } : {}),
     ...(node.AXUniqueId ? { identifier: node.AXUniqueId } : {}),
   };
+}
+
+/** One `describe` element; describe has no use for an element without a frame. */
+function toArgentElement(node: ElementTreeNode, screen: Screen): ArgentElement | undefined {
+  const fields = toArgentFields(node, screen);
+  return fields.frame ? { ...fields, frame: fields.frame } : undefined;
 }
 
 /** The flat element list behind Argent's `describe`: every node except unnamed containers. */
@@ -567,7 +600,7 @@ export function toArgentTreeNodes(
           rootBundleId ? { bundleId: rootBundleId }
           : {}
         : { parentIndex }),
-        ...toArgentElement(node, screen),
+        ...toArgentFields(node, screen),
         roleDescription: node.role_description,
       });
       visit(node.children ?? [], index);
