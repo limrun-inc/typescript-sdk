@@ -1246,12 +1246,9 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         : null;
       currentOutboundMicSender = outboundMicTransceiver?.sender ?? null;
 
-      // As hardware encoder, we use H265 for iOS and VP9 for Android.
-      // We make sure these two are the first ones in the list.
-      // If not, the fallback is H264 which is also hardware accelerated, although not as good,
-      // available on all platforms.
-      //
-      // The rest is not important.
+      // Every Limrun stream server encodes H.265 in hardware, so it comes
+      // first for every platform, then H.264, which is hardware accelerated
+      // everywhere too. The rest is not important.
       if (RTCRtpReceiver.getCapabilities) {
         const capabilities = RTCRtpReceiver.getCapabilities('video');
         if (capabilities && capabilities.codecs) {
@@ -1259,16 +1256,9 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
           const sortedCodecs = codecs.sort((a, b) => {
             const getCodecPriority = (codec: { mimeType: string }): number => {
               const mimeType = codec.mimeType.toLowerCase();
-              // A macOS VM encodes H.265 or H.264 on the media engine only.
-              if (platform === 'macos') {
-                if (mimeType.includes('h265') || mimeType.includes('hevc')) return 1;
-                if (mimeType.includes('h264') || mimeType.includes('avc')) return 2;
-                return 4;
-              }
-              if (mimeType.includes('vp9')) return 1;
-              if (mimeType.includes('h265') || mimeType.includes('hevc')) return 2;
-              if (mimeType.includes('h264') || mimeType.includes('avc')) return 3;
-              return 4; // Everything else
+              if (mimeType.includes('h265') || mimeType.includes('hevc')) return 1;
+              if (mimeType.includes('h264') || mimeType.includes('avc')) return 2;
+              return 3; // Everything else
             };
             return getCodecPriority(a) - getCodecPriority(b);
           });

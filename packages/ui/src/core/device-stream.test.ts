@@ -648,10 +648,10 @@ describe('headless device stream', () => {
     expect(new URL(socket.url).searchParams.get('token')).toBe('secret');
     expect(peer.configuration.iceTransportPolicy).toBe('relay');
     expect(peer.transceivers[1].setCodecPreferences.mock.calls[0][0].map((c: any) => c.mimeType)).toEqual([
-      'video/VP9',
       'video/H265',
       'video/H264',
       'video/VP8',
+      'video/VP9',
     ]);
     peer.connected();
     const stream = peer.track();
