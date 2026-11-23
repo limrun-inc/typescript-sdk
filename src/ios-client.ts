@@ -675,7 +675,7 @@ export type PerformAction =
     }
   | { type: 'toggleKeyboard' }
   | { type: 'openUrl'; url: string }
-  | { type: 'setOrientation'; orientation: 'Portrait' | 'Landscape' }
+  | { type: 'setOrientation'; orientation: DeviceOrientation }
   | { type: 'wait'; durationMs: number }
   | {
       type: 'touchDown';
@@ -713,7 +713,61 @@ export type PerformAction =
   | {
       type: 'buttonUp';
       button: 'home' | 'lock' | 'side' | 'applePay' | 'softwareKeyboard' | 'volumeUp' | 'volumeDown' | string;
-    };
+    }
+  /**
+   * Press or release any HID usage by page and usage, such as page `0x0C`
+   * usage `0x6F` for Brightness Increment. Page `7` usages are keyboard keys.
+   * Simulators on Xcode before 27 accept only keyboard usages and the
+   * Consumer usages of the buttons above.
+   */
+  | { type: 'usageDown'; usagePage: number; usage: number }
+  | { type: 'usageUp'; usagePage: number; usage: number };
+
+/**
+ * A device orientation. `deviceInfo` reports the same names in camelCase.
+ * `Landscape` is the older name of `LandscapeRight`.
+ */
+export type DeviceOrientation =
+  | 'Portrait'
+  | 'PortraitUpsideDown'
+  | 'LandscapeLeft'
+  | 'LandscapeRight'
+  | 'Landscape';
+
+/**
+ * A privacy service for {@link InstanceClient.setPermission}. Location goes
+ * through `simctl privacy` instead.
+ */
+export type PrivacyService =
+  | 'calendar'
+  | 'camera'
+  | 'contacts'
+  | 'faceid'
+  | 'health'
+  | 'homekit'
+  | 'medialibrary'
+  | 'microphone'
+  | 'motion'
+  | 'notifications'
+  | 'photos'
+  | 'reminders'
+  | 'siri'
+  | 'speech'
+  | 'usertracking';
+
+/**
+ * A privacy decision. `limited` applies only to `photos` and `critical`
+ * (critical alerts allowed too) only to `notifications`. `unset` removes the
+ * decision, so the app asks again.
+ */
+export type PermissionStatus = 'granted' | 'denied' | 'limited' | 'critical' | 'unset';
+
+/** System services {@link InstanceClient.restartServices} can restart. */
+export type RestartableService =
+  | 'com.apple.SpringBoard'
+  | 'com.apple.locationd'
+  | 'com.apple.tccd'
+  | 'com.apple.akd';
 
 /**
  * Per-action result in a `performActions` batch. `type` identifies which
@@ -962,10 +1016,38 @@ export type InstanceClient = {
   restoreKeychain: (options: { url: string }) => Promise<KeychainRestoreResult>;
 
   /**
-   * Set the device orientation
-   * @param orientation The orientation to set ("Portrait" or "Landscape")
+   * Wipe the simulator keychain. The CA certificates Limrun and you installed
+   * are put back.
    */
-  setOrientation: (orientation: 'Portrait' | 'Landscape') => Promise<void>;
+  resetKeychain: () => Promise<void>;
+
+  /**
+   * Set an app's privacy permission without a prompt. Setting `notifications`
+   * restarts SpringBoard, which terminates every running app.
+   */
+  setPermission: (bundleId: string, service: PrivacyService, status: PermissionStatus) => Promise<void>;
+
+  /**
+   * Read an app's privacy permission. `unset` means the app has not asked yet.
+   * The `notifications` permission cannot be read.
+   */
+  getPermission: (
+    bundleId: string,
+    service: Exclude<PrivacyService, 'notifications'>,
+  ) => Promise<PermissionStatus>;
+
+  /**
+   * Restart system services, for example so system prompts pick up a new
+   * language. Restarting SpringBoard terminates every running app; the call
+   * returns once SpringBoard is back.
+   */
+  restartServices: (services: RestartableService[]) => Promise<void>;
+
+  /**
+   * Set the device orientation
+   * @param orientation The orientation to set
+   */
+  setOrientation: (orientation: DeviceOrientation) => Promise<void>;
   /** Returns null for a simulator without a hinge. */
   getFoldState: () => Promise<FoldState | null>;
   /** Capture an upright Duo display. A powered-off display returns its native black image. */
@@ -2333,6 +2415,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         bundleId: msg.bundleId || '',
       }),
       keychainExportResult: () => undefined,
+      resetKeychainResult: () => undefined,
+      setPermissionResult: () => undefined,
+      getPermissionResult: (msg) => (msg as unknown as { status: PermissionStatus }).status,
+      restartServicesResult: () => undefined,
       keychainImportResult: (msg): KeychainRestoreResult => ({
         durationMs: msg.durationMs ?? 0,
       }),
@@ -2575,6 +2661,10 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             installApp,
             saveKeychain,
             restoreKeychain,
+            resetKeychain,
+            setPermission,
+            getPermission,
+            restartServices,
             setOrientation,
             getFoldState,
             screenshotDisplay,
@@ -3032,8 +3122,32 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest('setHingeAngle', { angleDegrees });
     };
 
-    const setOrientation = (orientation: 'Portrait' | 'Landscape'): Promise<void> => {
+    const setOrientation = (orientation: DeviceOrientation): Promise<void> => {
       return sendRequest<void>('setOrientation', { orientation });
+    };
+
+    const resetKeychain = (): Promise<void> => {
+      return sendRequest<void>('resetKeychain', {}, undefined, 120_000);
+    };
+
+    const setPermission = (
+      bundleId: string,
+      service: PrivacyService,
+      status: PermissionStatus,
+    ): Promise<void> => {
+      // A notifications change waits for SpringBoard to restart.
+      return sendRequest<void>('setPermission', { bundleId, service, status }, undefined, 60_000);
+    };
+
+    const getPermission = (
+      bundleId: string,
+      service: Exclude<PrivacyService, 'notifications'>,
+    ): Promise<PermissionStatus> => {
+      return sendRequest<PermissionStatus>('getPermission', { bundleId, service });
+    };
+
+    const restartServices = (services: RestartableService[]): Promise<void> => {
+      return sendRequest<void>('restartServices', { services }, undefined, 60_000);
     };
 
     const scroll = (
