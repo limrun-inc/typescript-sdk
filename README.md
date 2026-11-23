@@ -156,8 +156,9 @@ import { RemoteControl } from '@limrun/ui';
 <RemoteControl url={mac.status.endpointWebSocketUrl!} token={mac.status.token!} />;
 ```
 
-`status.token` controls the whole instance. To let a browser watch the desktop without
-input, pass `status.streamToken` instead.
+`status.token` controls the whole instance, so keep it on your backend and give a browser
+`status.streamToken` instead. It opens the stream, including keyboard and mouse input, but
+not the instance's API.
 
 Delete the instance when you are done with `client.macosInstances.delete(mac.metadata.id)`.
 
