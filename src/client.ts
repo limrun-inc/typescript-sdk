@@ -883,6 +883,7 @@ export class Limrun {
   iosSnapshots: API.IOSSnapshots = new API.IOSSnapshots(this);
   gradleSnapshots: API.GradleSnapshots = new API.GradleSnapshots(this);
   gradleInstances: API.GradleInstances = new API.GradleInstances(this);
+  supportTickets: API.SupportTickets = new API.SupportTickets(this);
   analytics: API.Analytics = new API.Analytics(this);
   accessTokens: API.AccessTokens = new API.AccessTokens(this);
   /** @deprecated Use accessTokens. */

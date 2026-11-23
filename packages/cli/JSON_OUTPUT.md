@@ -46,6 +46,10 @@ Instance responses include access credentials. Store them with the same care as 
 
 `xcode detach-simulator` and `gradle detach-emulator` return the sandbox's attachment status with `attached: false`. The response retains any latest-build fields from the daemon. Repeated detach requests succeed.
 
+## Support tickets
+
+`lim support create --json` prints the created ticket object, including its `id`, `organizationId`, `kind`, `status`, `subject`, and `createdAt`.
+
 ## Device actions and files
 
 Existing JSON-enabled device commands keep their existing response shapes. In particular, element trees, selectors, device info, app lists, microphone operations, proxy operations, and file operations retain their API/SDK fields.

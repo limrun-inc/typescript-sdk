@@ -11,6 +11,7 @@ export {
   type SnapshotListParams,
 } from './snapshots';
 
+export { SupportTickets, type SupportTicket, type SupportTicketCreateParams } from './support-tickets';
 export {
   Analytics,
   type AnalyticsInstancesResponse,
