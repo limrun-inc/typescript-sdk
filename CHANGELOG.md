@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.77.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.76.0...v0.77.0) (2026-11-23)
+
+
+### Features
+
+* **ios:** drive a remote simulator with Argent through lim ios argent ([#715](https://github.com/limrun-inc/typescript-sdk/issues/715)) ([086b238](https://github.com/limrun-inc/typescript-sdk/commit/086b238fdafa906713025f122a079f825567c07a))
+
+
+### Chores
+
+* **cli:** release 0.60.0 with SDK 0.76.0 ([#717](https://github.com/limrun-inc/typescript-sdk/issues/717)) ([82963f3](https://github.com/limrun-inc/typescript-sdk/commit/82963f3eec7d15aa8740260d6e7ba1e31aad2e4f))
+
 ## [0.76.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.75.0...v0.76.0) (2026-11-23)
 
 
