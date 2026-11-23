@@ -1,5 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
+import { MAC_INPUT_ACTION } from './constants';
 import { createLatencyTrace } from './latency-trace';
+import { createMacKeyMessage, createMacScrollMessage, createMouseControlMessage } from './webrtc-messages';
 
 function connection() {
   const channel = {
@@ -93,5 +95,24 @@ describe('latency trace v1', () => {
     channel.onclose!();
     const data = touch();
     expect(trace.wrap(data)).toBe(data);
+  });
+  test('wraps macOS pointer, key and scroll messages whole once tracing is accepted', () => {
+    const { trace } = connection();
+    const inputs = [
+      createMouseControlMessage(MAC_INPUT_ACTION.DOWN, 1920, 1080, 10, 20, 1),
+      createMacKeyMessage(MAC_INPUT_ACTION.DOWN, 0x7d),
+      createMacScrollMessage(1920, 1080, 10, 20, 0, 48),
+    ];
+    for (const input of inputs) expect(trace.wrap(input)).toBe(input);
+    trace.accept(1);
+    inputs.forEach((input, index) => {
+      const wrapped = trace.wrap(input);
+      expect(wrapped.byteLength).toBe(input.byteLength + 6);
+      const view = new DataView(wrapped);
+      expect(view.getUint8(0)).toBe(240);
+      expect(view.getUint8(1)).toBe(1);
+      expect(view.getUint32(2, true)).toBe(index + 1);
+      expect(new Uint8Array(wrapped, 6)).toEqual(new Uint8Array(input));
+    });
   });
 });

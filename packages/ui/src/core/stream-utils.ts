@@ -26,11 +26,14 @@ export const safeInvoke = <Args extends unknown[]>(
   }
 };
 
-export type DevicePlatform = 'ios' | 'android';
+export type DevicePlatform = 'ios' | 'android' | 'macos';
 
 export const detectPlatform = (url: string): DevicePlatform => {
   if (url.includes('/android_')) {
     return 'android';
+  }
+  if (url.includes('/macos_')) {
+    return 'macos';
   }
   // Default to iOS if no Android pattern is found
   return 'ios';

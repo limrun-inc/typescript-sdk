@@ -1259,6 +1259,12 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
           const sortedCodecs = codecs.sort((a, b) => {
             const getCodecPriority = (codec: { mimeType: string }): number => {
               const mimeType = codec.mimeType.toLowerCase();
+              // A macOS VM encodes H.265 or H.264 on the media engine only.
+              if (platform === 'macos') {
+                if (mimeType.includes('h265') || mimeType.includes('hevc')) return 1;
+                if (mimeType.includes('h264') || mimeType.includes('avc')) return 2;
+                return 4;
+              }
               if (mimeType.includes('vp9')) return 1;
               if (mimeType.includes('h265') || mimeType.includes('hevc')) return 2;
               if (mimeType.includes('h264') || mimeType.includes('avc')) return 3;
@@ -1355,7 +1361,8 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         // channel. The fetcher's send function reuses this WS; it stops
         // sending if the WS dies. start() is called lazily based on the
         // inspectMode option or updateOptions().
-        if (!currentAxFetcher) {
+        // No accessibility tree is served for a macOS guest yet.
+        if (!currentAxFetcher && platform !== 'macos') {
           currentAxFetcher = new AxFetcher({
             platform,
             baseIntervalMs: axPollIntervalMs,
