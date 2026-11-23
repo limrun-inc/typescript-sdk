@@ -309,6 +309,21 @@ lim ios perform --file ./actions.yaml
 - type: typeText
   text: "Hello World"
 
+# Orientation and raw HID usages (page 12 usage 111 is Brightness Increment)
+lim ios set-orientation landscape-right
+lim ios set-orientation portrait-upside-down
+lim ios perform --action type=usageDown,usagePage=12,usage=111 --action type=usageUp,usagePage=12,usage=111
+
+# Privacy permissions, without the system prompt
+lim ios permission set com.example.app camera granted
+lim ios permission set com.example.app photos limited
+lim ios permission set com.example.app notifications denied   # restarts SpringBoard
+lim ios permission get com.example.app camera
+
+# Keychain and system services
+lim ios keychain reset
+lim ios restart-services com.apple.SpringBoard com.apple.locationd com.apple.tccd com.apple.akd
+
 # UI inspection
 lim ios element-tree
 lim ios element-tree | jq '.'
