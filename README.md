@@ -51,7 +51,7 @@ Documentation for each method, request param, and response field are available i
 ## Workload permissions
 
 An instance's role controls which resources its workload can access. Set
-`spec.role.permissions` when creating an Xcode, Gradle, iOS, or Android instance:
+`spec.role.permissions` when creating an Xcode, Gradle, iOS, Android, or macOS instance:
 
 ```ts
 spec: {
@@ -135,6 +135,31 @@ with `side: 'save'`; subscribe before deleting the instance. See the
 Existing `spec.cache`, `getCache`, `bindCacheKey`, `followCache`, and cache-named
 types remain supported. Snapshot methods expose the saved key as
 `save.snapshotKey`; legacy methods keep `save.cacheKey`.
+
+## macOS instances
+
+A macOS instance is a full macOS virtual machine. Create one and wait until it is ready:
+
+```ts
+const mac = await client.macosInstances.create({
+  wait: true,
+  spec: { inactivityTimeout: '10m' },
+});
+```
+
+To show and control its desktop in a React app, pass the instance's stream URL and
+token to `RemoteControl` from [`@limrun/ui`](packages/ui):
+
+```tsx
+import { RemoteControl } from '@limrun/ui';
+
+<RemoteControl url={mac.status.endpointWebSocketUrl!} token={mac.status.token!} />;
+```
+
+`status.token` controls the whole instance. To let a browser watch the desktop without
+input, pass `status.streamToken` instead.
+
+Delete the instance when you are done with `client.macosInstances.delete(mac.metadata.id)`.
 
 ## Handling errors
 
