@@ -172,8 +172,13 @@ await guest.tap({ x: 640, y: 360 });
 await guest.typeText('hello');
 ```
 
-Pass `spec.snapshot: { key: 'my-mac' }` at create to restore the files a previous instance saved
-under that key, and save this instance's changes under it when it terminates.
+Pass `spec.snapshot: { key: 'my-mac' }` at create to save this instance's changes under that key
+when it terminates, and to find the files a previous instance saved under it. The instance restores
+them only when a client asks, so restore before using the guest:
+
+```ts
+await client.macosInstances.restoreSnapshot(mac);
+```
 
 Delete the instance when you are done with `client.macosInstances.delete(mac.metadata.id)`.
 
