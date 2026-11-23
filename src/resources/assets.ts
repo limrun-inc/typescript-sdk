@@ -68,7 +68,7 @@ export class Assets extends APIResource {
 export interface Asset {
   id: string;
 
-  kind: 'App' | 'Keychain';
+  kind: 'App' | 'Keychain' | 'MacOSSnapshot';
 
   name: string;
 
@@ -102,6 +102,26 @@ export interface Asset {
   signedDownloadUrl?: string;
 
   signedUploadUrl?: string;
+
+  /** What a kind records about its file. A `MacOSSnapshot` records the macOS build it restores onto. */
+  metadata?: AssetSnapshotMetadata;
+
+  /** SHA-256 of the uploaded file, for assets uploaded in parts. */
+  sha256?: string;
+
+  sizeBytes?: number;
+
+  /** When the last complete upload finished. */
+  publishedAt?: string;
+}
+
+/** The metadata of a `MacOSSnapshot` asset: a macOS instance's saved changes. */
+export interface AssetSnapshotMetadata {
+  /** The guest's macOS build; a snapshot restores only onto the same one. */
+  compatKey: string;
+  format: string;
+  uncompressedSizeBytes: number;
+  sourceInstanceId?: string;
 }
 
 export type AssetListResponse = Array<Asset>;
@@ -109,7 +129,7 @@ export type AssetListResponse = Array<Asset>;
 export interface AssetGetOrCreateResponse {
   id: string;
 
-  kind: 'App' | 'Keychain';
+  kind: 'App' | 'Keychain' | 'MacOSSnapshot';
 
   name: string;
 
@@ -152,7 +172,7 @@ export interface AssetListParams {
   /**
    * Filters assets by kind.
    */
-  kindFilter?: 'App' | 'Keychain';
+  kindFilter?: 'App' | 'Keychain' | 'MacOSSnapshot';
 
   /**
    * Maximum number of items to be returned. The default is 50.
@@ -237,7 +257,7 @@ export interface AssetGetOrCreateParams {
   deeplink?: string;
 }
 
-export type AssetKind = 'App' | 'Keychain';
+export type AssetKind = 'App' | 'Keychain' | 'MacOSSnapshot';
 
 export type AssetPlatform = 'ios' | 'android' | 'xcode';
 

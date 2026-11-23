@@ -168,24 +168,12 @@ export async function followGradleSnapshot(
   target: GradleSnapshotFollowTarget,
   options: GradleSnapshotFollowOptions = {},
 ): Promise<GradleSnapshotFollowResult> {
-  return followInstanceSnapshot('gradle_instances', target, options);
-}
-
-/**
- * Follow the disk snapshot of an instance of any product with snapshots: they share one state
- * shape and stream it from `/v1/<collection>/<id>/snapshot`.
- */
-export async function followInstanceSnapshot(
-  collection: 'gradle_instances' | 'macos_instances',
-  target: GradleSnapshotFollowTarget,
-  options: GradleSnapshotFollowOptions = {},
-): Promise<GradleSnapshotFollowResult> {
   const side = options.side ?? 'restore';
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS[side];
   let base = target.baseURL;
   while (base.endsWith('/')) base = base.slice(0, -1);
   const result = await followPhaseStream<GradleInstanceSnapshot>({
-    url: `${base}/v1/${collection}/${encodeURIComponent(target.instanceId)}/snapshot`,
+    url: `${base}/v1/gradle_instances/${encodeURIComponent(target.instanceId)}/snapshot`,
     apiKey: target.apiKey,
     instanceId: target.instanceId,
     eventName: 'snapshot',

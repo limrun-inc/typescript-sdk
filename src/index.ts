@@ -11,10 +11,8 @@ export {
   XcodeSnapshots,
   IOSSnapshots,
   GradleSnapshots,
-  MacosSnapshots,
   type XcodeSnapshot,
   type GradleSnapshot,
-  type MacosSnapshot,
   type IOSSnapshot,
   type SnapshotList,
   type SnapshotListParams,
@@ -270,13 +268,6 @@ export {
   type GradleSnapshotFollowResult,
   type GradleSnapshotFollowTarget,
 } from './gradle-snapshot';
-export {
-  followMacosSnapshot,
-  type MacosSnapshotConfig,
-  type MacosInstanceSnapshot,
-  type MacosSnapshotFollowOptions,
-  type MacosSnapshotFollowResult,
-} from './macos-snapshot';
 export {
   LimrunError,
   APIError,

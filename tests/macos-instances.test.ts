@@ -164,36 +164,28 @@ describe('macOS client', () => {
   });
 });
 
-test('macOS snapshots use the instance and organization snapshot routes', async () => {
-  const calls: string[] = [];
-  const bodies: unknown[] = [];
-  const snapshot = { config: { key: 'my-mac' }, restore: { phase: 'restored' }, save: { phase: 'idle' } };
+test('macOS snapshots are assets listed by kind, with the build they restore onto', async () => {
+  const calls: URL[] = [];
+  const asset = {
+    id: 'asset_1',
+    kind: 'MacOSSnapshot',
+    name: 'my-mac',
+    sha256: 'ab',
+    sizeBytes: 10,
+    publishedAt: '2026-11-23T00:00:00Z',
+    metadata: { compatKey: 'macos-27.2.1', format: 'aar', uncompressedSizeBytes: 20 },
+  };
   const client = new Limrun({
     apiKey: 'key',
     baseURL: 'https://api.example.test',
-    fetch: async (input, init) => {
-      const url = new URL(input.toString());
-      calls.push(`${init?.method ?? 'GET'} ${url.pathname}${url.search}`);
-      bodies.push(init?.body ? JSON.parse(init.body as string) : undefined);
-      if (init?.method === 'DELETE') return new Response(null, { status: 204 });
-      if (url.pathname.endsWith('/macos_snapshots')) return Response.json({ snapshots: [] });
-      if (url.pathname.includes('/macos_snapshots/')) return Response.json({ key: 'my-mac' });
-      return Response.json(snapshot);
+    fetch: async (input) => {
+      calls.push(new URL(input.toString()));
+      return Response.json([asset]);
     },
   });
-
-  expect(await client.macosInstances.getSnapshot('macos_eu_01h')).toEqual(snapshot);
-  await client.macosInstances.bindSnapshotKey('macos_eu_01h', 'my-mac');
-  await client.macosSnapshots.list('org_1', { prefix: 'my-' });
-  await client.macosSnapshots.get('org_1', 'my-mac');
-  await client.macosSnapshots.delete('org_1', 'my-mac');
-
-  expect(calls).toEqual([
-    'GET /v1/macos_instances/macos_eu_01h/snapshot',
-    'PUT /v1/macos_instances/macos_eu_01h/snapshot',
-    'GET /v1/organizations/org_1/macos_snapshots?prefix=my-',
-    'GET /v1/organizations/org_1/macos_snapshots/my-mac',
-    'DELETE /v1/organizations/org_1/macos_snapshots/my-mac',
-  ]);
-  expect(bodies[1]).toEqual({ key: 'my-mac' });
+  const listed = await client.assets.list({ kindFilter: 'MacOSSnapshot', namePrefixFilter: 'my-' });
+  expect(listed[0]!.metadata?.compatKey).toBe('macos-27.2.1');
+  expect(calls[0]!.pathname).toBe('/v1/assets');
+  expect(calls[0]!.searchParams.get('kindFilter')).toBe('MacOSSnapshot');
+  expect(calls[0]!.searchParams.get('namePrefixFilter')).toBe('my-');
 });

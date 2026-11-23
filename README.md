@@ -172,12 +172,27 @@ await guest.tap({ x: 640, y: 360 });
 await guest.typeText('hello');
 ```
 
-Pass `spec.snapshot: { key: 'my-mac' }` at create to save this instance's changes under that key
-when it terminates, and to find the files a previous instance saved under it. The instance restores
-them only when a client asks, so restore before using the guest:
+A disk snapshot keeps the guest's changes between instances. It is an asset of kind
+`MacOSSnapshot`, so the instance's role grants it like any asset: read on the names it restores
+from, and create, upload and update on the name it saves under. Restore once the instance is ready;
+the instance saves under `key` when it terminates:
 
 ```ts
-await client.macosInstances.restoreSnapshot(mac);
+const mac = await client.macosInstances.create({
+  wait: true,
+  spec: {
+    role: {
+      permissions: [
+        'asset:name/my-mac*:read',
+        'asset:name/my-mac:create',
+        'asset:name/my-mac:upload',
+        'asset:name/my-mac:update',
+      ],
+    },
+  },
+});
+const guest = await client.macosInstances.createClient({ instance: mac });
+await guest.restoreSnapshot({ key: 'my-mac', onProgress: (p) => console.log(p.phase, p.doneBytes) });
 ```
 
 Delete the instance when you are done with `client.macosInstances.delete(mac.metadata.id)`.
