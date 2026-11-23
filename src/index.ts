@@ -179,7 +179,8 @@ export {
   type MacosPoint,
   type MacosModifier,
   type MacosSshAccess,
-  type MacosDaemonSnapshotStatus,
+  type MacosSnapshotRestoreOptions,
+  type MacosSnapshotProgress,
 } from './resources/macos-instances-helpers';
 export { type AssetUploadOptions } from './resources/daemon-client-shared';
 export {

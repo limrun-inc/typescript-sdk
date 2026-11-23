@@ -97,9 +97,12 @@ describe('macOS client', () => {
               'id: 1\nevent: stdout\ndata: 27.2.1\n\n' +
               'id: 2\nevent: exitCode\ndata: 0\n\n',
           );
-        } else if (req.url === '/snapshot/restore') {
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ restore: { phase: 'downloading' }, save: { phase: 'idle' } }));
+        } else if (req.url === '/snapshot') {
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.write('event: snapshot\ndata: {"phase":"resolving"}\n\n');
+          res.write(': keepalive\n\n');
+          res.write('event: snapshot\ndata: {"phase":"downloading","totalBytes":10,"doneBytes":4}\n\n');
+          res.end('event: snapshot\ndata: {"phase":"restored","key":"my-mac","matchKind":"exact_hit"}\n\n');
         } else if (req.url === '/ssh') {
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ user: 'limrun', port: 22 }));
@@ -137,7 +140,14 @@ describe('macOS client', () => {
     await mac.pressKey('q', ['command']);
     await mac.scroll({ dy: 300, at: { x: 5, y: 6 } });
     await mac.drag({ x: 1, y: 2 }, { x: 3, y: 4 }, { durationMs: 100 });
-    expect((await mac.startSnapshotRestore()).restore.phase).toBe('downloading');
+    const progress: string[] = [];
+    const restored = await mac.restoreSnapshot({
+      key: 'my-mac',
+      restoreKeys: ['my-mac', 'base-'],
+      onProgress: (p) => progress.push(p.phase),
+    });
+    expect(restored).toEqual({ phase: 'restored', key: 'my-mac', matchKind: 'exact_hit' });
+    expect(progress).toEqual(['resolving', 'downloading', 'restored']);
 
     const posts = requests.filter((r) => r.method === 'POST');
     expect(posts.every((r) => r.auth === 'Bearer control')).toBe(true);
@@ -149,7 +159,7 @@ describe('macOS client', () => {
       ['/press-key', { key: 'q', modifiers: ['command'] }],
       ['/scroll', { dx: 0, dy: 300, x: 5, y: 6 }],
       ['/drag', { fromX: 1, fromY: 2, toX: 3, toY: 4, durationMs: 100 }],
-      ['/snapshot/restore', {}],
+      ['/snapshot', { key: 'my-mac', restoreKeys: ['my-mac', 'base-'] }],
     ]);
   });
 });
