@@ -890,6 +890,7 @@ export class Limrun {
   xcodeSnapshots: API.XcodeSnapshots = new API.XcodeSnapshots(this);
   iosSnapshots: API.IOSSnapshots = new API.IOSSnapshots(this);
   gradleSnapshots: API.GradleSnapshots = new API.GradleSnapshots(this);
+  macosSnapshots: API.MacosSnapshots = new API.MacosSnapshots(this);
   gradleInstances: API.GradleInstances = new API.GradleInstances(this);
   supportTickets: API.SupportTickets = new API.SupportTickets(this);
   macosInstances: API.MacosInstances = new API.MacosInstances(this);

@@ -43,6 +43,18 @@ export interface GradleSnapshot {
   sourceInstanceId: string;
 }
 
+export interface MacosSnapshot {
+  key: string;
+  /** macOS image of the instance that saved it. An instance on another image tries its next restore key. */
+  compatKey: string;
+  archiveFormat: string;
+  archiveSizeBytes: number;
+  uncompressedSizeBytes: number;
+  sha256: string;
+  publishedAt: string;
+  sourceInstanceId: string;
+}
+
 export interface IOSSnapshot {
   key: string;
   saved: boolean;
@@ -119,6 +131,32 @@ export class GradleSnapshots extends APIResource {
   /** Delete the archive and its record. Running instances can save this key again. */
   delete(organizationId: string, key: string, options?: RequestOptions): APIPromise<void> {
     return this._client.delete(path`/v1/organizations/${organizationId}/gradle_snapshots/${key}`, {
+      ...options,
+      headers: buildHeaders([{ Accept: '*/*' }, options?.headers]),
+    });
+  }
+}
+
+export class MacosSnapshots extends APIResource {
+  /** List saved macOS snapshots, newest publication first. */
+  list(
+    organizationId: string,
+    query: SnapshotListParams = {},
+    options?: RequestOptions,
+  ): APIPromise<SnapshotList<MacosSnapshot>> {
+    return this._client.get(path`/v1/organizations/${organizationId}/macos_snapshots`, {
+      query,
+      ...options,
+    });
+  }
+
+  get(organizationId: string, key: string, options?: RequestOptions): APIPromise<MacosSnapshot> {
+    return this._client.get(path`/v1/organizations/${organizationId}/macos_snapshots/${key}`, options);
+  }
+
+  /** Delete the archive and its record. Running instances can save this key again. */
+  delete(organizationId: string, key: string, options?: RequestOptions): APIPromise<void> {
+    return this._client.delete(path`/v1/organizations/${organizationId}/macos_snapshots/${key}`, {
       ...options,
       headers: buildHeaders([{ Accept: '*/*' }, options?.headers]),
     });

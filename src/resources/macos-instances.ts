@@ -7,6 +7,13 @@ import { Items, type ItemsParams, PagePromise } from '../core/pagination';
 import { buildHeaders } from '../internal/headers';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
+import {
+  followMacosSnapshot,
+  type MacosInstanceSnapshot,
+  type MacosSnapshotConfig,
+  type MacosSnapshotFollowOptions,
+  type MacosSnapshotFollowResult,
+} from '../macos-snapshot';
 
 /** A macOS virtual machine, streamed to the browser like a simulator. */
 export class MacosInstances extends APIResource {
@@ -53,6 +60,26 @@ export class MacosInstances extends APIResource {
    */
   get(id: string, options?: RequestOptions): APIPromise<MacosInstance> {
     return this._client.get(path`/v1/macos_instances/${id}`, options);
+  }
+
+  /** Current disk snapshot configuration and status, including a save still running at termination. */
+  getSnapshot(id: string, options?: RequestOptions): APIPromise<MacosInstanceSnapshot> {
+    return this._client.get(path`/v1/macos_instances/${id}/snapshot`, options);
+  }
+
+  /**
+   * Set the key the instance saves under at termination. Set once: binding the same key again is
+   * accepted, a different one is rejected. Works on an instance created without a snapshot.
+   */
+  bindSnapshotKey(id: string, key: string, options?: RequestOptions): APIPromise<MacosInstanceSnapshot> {
+    return this._client.put(path`/v1/macos_instances/${id}/snapshot`, { body: { key }, ...options });
+  }
+
+  /** Follow the disk snapshot restore or save until it reaches a terminal phase. */
+  followSnapshot(id: string, options?: MacosSnapshotFollowOptions): Promise<MacosSnapshotFollowResult> {
+    const apiKey = this._client.apiKey;
+    if (!apiKey) throw new Error('Following disk snapshot status needs an API key on the client');
+    return followMacosSnapshot({ baseURL: this._client.baseURL, apiKey, instanceId: id }, options);
   }
 }
 
@@ -145,6 +172,14 @@ export namespace MacosInstance {
      *   details when available.
      */
     terminationReason?: string;
+
+    /** What happened to the instance's disk snapshot. getSnapshot() has the full status. */
+    snapshot?: {
+      /** The snapshot key the instance restores from. Absent when it starts cold. */
+      restoreKey?: string;
+      /** The save requested at termination. Absent until the instance is deleted. */
+      save?: { phase: string; reason?: string; message?: string };
+    };
   }
 }
 
@@ -237,6 +272,12 @@ export namespace MacosInstanceCreateParams {
       /** Asset permissions delegated by the creator. An empty array grants nothing. */
       permissions: Array<string>;
     };
+
+    /**
+     * Disk snapshot to restore after assignment and save at termination. Omitted means an
+     * ordinary instance that restores and saves nothing.
+     */
+    snapshot?: MacosSnapshotConfig;
   }
 
   export namespace Spec {

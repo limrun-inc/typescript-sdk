@@ -11,8 +11,10 @@ export {
   XcodeSnapshots,
   IOSSnapshots,
   GradleSnapshots,
+  MacosSnapshots,
   type XcodeSnapshot,
   type GradleSnapshot,
+  type MacosSnapshot,
   type IOSSnapshot,
   type SnapshotList,
   type SnapshotListParams,
@@ -171,6 +173,13 @@ export {
   type GradleRunOptions,
   type GradleBuildLog,
 } from './resources/gradle-instances-helpers';
+export {
+  type MacosCreateClientParams,
+  type MacosClient,
+  type MacosPoint,
+  type MacosModifier,
+  type MacosSshAccess,
+} from './resources/macos-instances-helpers';
 export { type AssetUploadOptions } from './resources/daemon-client-shared';
 export {
   type SessionArtifact,
@@ -259,6 +268,13 @@ export {
   type GradleSnapshotFollowResult,
   type GradleSnapshotFollowTarget,
 } from './gradle-snapshot';
+export {
+  followMacosSnapshot,
+  type MacosSnapshotConfig,
+  type MacosInstanceSnapshot,
+  type MacosSnapshotFollowOptions,
+  type MacosSnapshotFollowResult,
+} from './macos-snapshot';
 export {
   LimrunError,
   APIError,
