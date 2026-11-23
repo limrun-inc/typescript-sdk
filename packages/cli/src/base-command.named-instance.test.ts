@@ -33,10 +33,17 @@ const envTarget = jest.mocked(envInstanceTarget);
 
 class TestCommand extends BaseCommand {
   replace = jest.fn();
+  deleted = jest.fn(async () => {});
   async run(): Promise<void> {}
   protected override info(): void {}
   protected override get client(): BaseCommand['client'] {
-    return {} as BaseCommand['client'];
+    const resource = { delete: this.deleted };
+    return {
+      gradleInstances: resource,
+      xcodeInstances: resource,
+      iosInstances: resource,
+      androidInstances: resource,
+    } as unknown as BaseCommand['client'];
   }
   constructor(noun: string) {
     super([], {} as never);
@@ -71,6 +78,9 @@ class TestCommand extends BaseCommand {
   }
   xcode(id?: string) {
     return this.resolveXcodeTarget(id);
+  }
+  created(id: string) {
+    this._instancesCreatedThisRun.add(id);
   }
   xcodeWithSimulator(id?: string) {
     return this.resolveSimulatorBackedXcodeTargetOrCreate(id);
@@ -146,4 +156,17 @@ test('an Xcode instance named for --ios that is gone fails before its simulator 
   });
   await expect(cmd.workOn((c) => c.xcodeWithSimulator(id))).rejects.toThrow('is never replaced');
   expect(cmd.replace).not.toHaveBeenCalled();
+});
+
+// The 404 handler deletes an instance this run created before it decides on a replacement. The
+// decision must still see the instance as this run's own.
+test('an instance this run created that is gone is replaced', async () => {
+  const id = 'gradle_euna_01h455vb4pex5vsknk084sn02q';
+  const replacement = { id: 'gradle_euna_01h455vb4pex5vsknk084sn02r', type: 'gradle' as const };
+  const cmd = new TestCommand('gradle');
+  cmd.created(id);
+  cmd.replace.mockResolvedValue(replacement);
+  await expect(cmd.workOn((c) => c.gradle(id))).resolves.toEqual([id, replacement.id]);
+  expect(cmd.deleted).toHaveBeenCalledWith(id);
+  expect(cmd.replace).toHaveBeenCalledWith(id);
 });

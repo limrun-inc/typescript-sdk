@@ -347,6 +347,9 @@ export abstract class BaseCommand extends Command {
         if (instanceId) {
           stopDaemon(instanceId);
           clearLastInstanceId(instanceId);
+          // Decide before the cleanup below, which drops a created instance from the created set.
+          const replaceable =
+            this._replaceableInstanceIds.has(instanceId) || this.wasCreatedThisRun(instanceId);
           // Release an instance THIS invocation created so it doesn't keep
           // billing: eagerly when the error names it as gone, otherwise
           // only after a replacement is secured, because a 404 attributed
@@ -357,7 +360,7 @@ export abstract class BaseCommand extends Command {
             await this.deleteCreatedInstance(explicitId);
           }
           if (options.createReplacement !== false && this.shouldAutoCreateOnNotFound()) {
-            if (!this._replaceableInstanceIds.has(instanceId) && !this.wasCreatedThisRun(instanceId)) {
+            if (!replaceable) {
               this.error(
                 `Instance ${instanceId} was not found; it may have ended. An instance named with --id or an env pin is never replaced. Create a new one, or rerun without the ID to let the command create one.`,
               );
