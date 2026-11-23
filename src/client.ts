@@ -53,6 +53,14 @@ import {
   GradleInstancesItems,
 } from './resources/gradle-instances';
 import {
+  MacosInstance,
+  MacosInstanceUpdateParams,
+  MacosInstanceCreateParams,
+  MacosInstanceListParams,
+  MacosInstances,
+  MacosInstancesItems,
+} from './resources/macos-instances';
+import {
   IosInstance,
   IosInstanceUpdateParams,
   IosInstanceCreateParams,
@@ -884,6 +892,7 @@ export class Limrun {
   gradleSnapshots: API.GradleSnapshots = new API.GradleSnapshots(this);
   gradleInstances: API.GradleInstances = new API.GradleInstances(this);
   supportTickets: API.SupportTickets = new API.SupportTickets(this);
+  macosInstances: API.MacosInstances = new API.MacosInstances(this);
   analytics: API.Analytics = new API.Analytics(this);
   accessTokens: API.AccessTokens = new API.AccessTokens(this);
   /** @deprecated Use accessTokens. */
@@ -895,6 +904,7 @@ Limrun.Assets = Assets;
 Limrun.IosInstances = IosInstances;
 Limrun.XcodeInstances = XcodeInstances;
 Limrun.GradleInstances = GradleInstances;
+Limrun.MacosInstances = MacosInstances;
 Limrun.Analytics = Analytics;
 Limrun.AccessTokens = AccessTokens;
 Limrun.ScopedTokens = ScopedTokens;
@@ -969,6 +979,15 @@ export declare namespace Limrun {
     type GradleInstanceUpdateParams as GradleInstanceUpdateParams,
     type GradleInstanceCreateParams as GradleInstanceCreateParams,
     type GradleInstanceListParams as GradleInstanceListParams,
+  };
+
+  export {
+    MacosInstances as MacosInstances,
+    type MacosInstance as MacosInstance,
+    type MacosInstancesItems as MacosInstancesItems,
+    type MacosInstanceUpdateParams as MacosInstanceUpdateParams,
+    type MacosInstanceCreateParams as MacosInstanceCreateParams,
+    type MacosInstanceListParams as MacosInstanceListParams,
   };
 
   export {
