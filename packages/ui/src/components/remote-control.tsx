@@ -10,6 +10,7 @@ import type {
 export type { RemoteControlConnectionState, MicrophoneState, CameraStreamStats } from '../core/stream-types';
 export { withAuthenticationToken } from '../core/stream-utils';
 import React, {
+  useCallback,
   useEffect,
   useRef,
   useMemo,
@@ -640,6 +641,17 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     const clientRef = useRef<DeviceStream | null>(null);
     const sendBinaryControlMessage = (data: ArrayBuffer) => clientRef.current?.sendControl(data);
+
+    // Keys a macOS guest holds down. A key whose up the browser never delivers
+    // (focus moved away, Cmd+Tab, the tab hidden) is released here, or the
+    // guest keeps it held and later clicks and keys run as a shortcut.
+    const heldMacKeysRef = useRef(new Set<number>());
+    const releaseHeldMacKeys = useCallback(() => {
+      for (const keyCode of heldMacKeysRef.current) {
+        clientRef.current?.sendControl(createMacKeyMessage(MAC_INPUT_ACTION.UP, keyCode));
+      }
+      heldMacKeysRef.current.clear();
+    }, []);
     const sendDuoControl = (type: string, parameters: object) =>
       clientRef.current?.sendDuoControl(type, parameters) ??
       Promise.reject(new Error('Simulator disconnected'));
@@ -1610,17 +1622,23 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       };
       const handleWindowBlur = () => {
         updateAltHeld(false);
+        releaseHeldMacKeys();
+      };
+      const handleVisibilityChange = () => {
+        if (document.hidden) releaseHeldMacKeys();
       };
       // Use capture phase so these fire before handleKeyboard's stopPropagation
       window.addEventListener('keydown', handleKeyDown, true);
       window.addEventListener('keyup', handleKeyUp, true);
       window.addEventListener('blur', handleWindowBlur);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
       return () => {
         window.removeEventListener('keydown', handleKeyDown, true);
         window.removeEventListener('keyup', handleKeyUp, true);
         window.removeEventListener('blur', handleWindowBlur);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
-    }, []);
+    }, [releaseHeldMacKeys]);
 
     const handleKeyboard = (event: React.KeyboardEvent) => {
       event.preventDefault();
@@ -1660,6 +1678,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           debugLog(`Ignoring unmapped key for macOS: code=${event.code}`);
           return;
         }
+        if (event.type === 'keydown') heldMacKeysRef.current.add(keyCode);
+        else heldMacKeysRef.current.delete(keyCode);
         sendBinaryControlMessage(
           createMacKeyMessage(
             event.type === 'keydown' ? MAC_INPUT_ACTION.DOWN : MAC_INPUT_ACTION.UP,
@@ -2185,7 +2205,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         )}
         <video
           ref={videoRef}
-          className={['rc-video', !frameVisible && 'rc-video-frameless', !videoLoaded && 'rc-video-loading']
+          className={[
+            'rc-video',
+            !frameVisible && 'rc-video-frameless',
+            !videoLoaded && (platform === 'macos' ? 'rc-video-loading-desktop' : 'rc-video-loading'),
+          ]
             .filter(Boolean)
             .join(' ')}
           style={{
@@ -2216,6 +2240,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             if (videoRef.current) {
               videoRef.current.style.outline = 'none';
             }
+            releaseHeldMacKeys();
           }}
         />
         {isDuo && (

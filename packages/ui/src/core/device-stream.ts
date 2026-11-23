@@ -1,6 +1,8 @@
-import { ANDROID_KEYS, codeMap } from './constants';
+import { ANDROID_KEYS, MAC_INPUT_ACTION, codeMap } from './constants';
+import { macKeyCodeFor } from './mac-keys';
 import {
   createInjectKeycodeMessage,
+  createMacKeyMessage,
   createTouchControlMessage,
   createSetClipboardMessage,
 } from './webrtc-messages';
@@ -2027,6 +2029,38 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     sendKeyEvent: (event: ImperativeKeyboardEvent) => {
       if (!currentDataChannel || currentDataChannel.readyState !== 'open') {
         debugWarn('Data channel not ready for imperative key command:', currentDataChannel?.readyState);
+        return;
+      }
+
+      // A macOS guest takes keys by macOS virtual key code, and a modifier is a
+      // key of its own: the event's modifier flags are pressed before the key
+      // goes down and released after it comes up, so { code: 'KeyC', metaKey }
+      // is Cmd+C.
+      if (platform === 'macos') {
+        const keyCode = macKeyCodeFor(event.code);
+        if (keyCode === undefined) {
+          debugWarn(`Unknown event.code for imperative command: ${event.code}`);
+          return;
+        }
+        const modifiers = (
+          [
+            [event.metaKey, 'MetaLeft'],
+            [event.ctrlKey, 'ControlLeft'],
+            [event.altKey, 'AltLeft'],
+            [event.shiftKey, 'ShiftLeft'],
+          ] as const
+        )
+          .filter(([held, code]) => held && code !== event.code)
+          .map(([, code]) => macKeyCodeFor(code)!);
+        const send = (action: number, code: number) =>
+          sendBinaryControlMessage(createMacKeyMessage(action, code));
+        if (event.type === 'keydown') {
+          for (const modifier of modifiers) send(MAC_INPUT_ACTION.DOWN, modifier);
+          send(MAC_INPUT_ACTION.DOWN, keyCode);
+        } else {
+          send(MAC_INPUT_ACTION.UP, keyCode);
+          for (const modifier of [...modifiers].reverse()) send(MAC_INPUT_ACTION.UP, modifier);
+        }
         return;
       }
 

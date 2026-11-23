@@ -630,6 +630,29 @@ describe('headless device stream', () => {
     },
   );
 
+  it('sends imperative keys to a macOS guest as Mac key codes, with their modifiers around them', async () => {
+    const client = create({ url: 'wss://host/v1/macos_test/endpointWebSocket', token: 'secret' });
+    const { peer } = await handshake(client);
+    peer.connected();
+    client.sendKeyEvent({ type: 'keydown', code: 'KeyC', metaKey: true, shiftKey: true });
+    client.sendKeyEvent({ type: 'keyup', code: 'KeyC', metaKey: true, shiftKey: true });
+    // A modifier sent as the key itself is not pressed twice.
+    client.sendKeyEvent({ type: 'keydown', code: 'MetaLeft', metaKey: true });
+    const keys = peer.channel.send.mock.calls.map(([data]: [ArrayBuffer]) => {
+      const view = new DataView(data);
+      return [view.getUint8(0), view.getUint8(1), view.getUint16(2, true)];
+    });
+    expect(keys).toEqual([
+      [41, 0, 0x37],
+      [41, 0, 0x38],
+      [41, 0, 0x08],
+      [41, 1, 0x08],
+      [41, 1, 0x38],
+      [41, 1, 0x37],
+      [41, 0, 0x37],
+    ]);
+  });
+
   it('leaves token permission inference to the host when using core directly', async () => {
     const token = `lim_st_header.${btoa(JSON.stringify({ scopes: ['ios:ios_test:watch'] }))}.signature`;
     const client = create({ url: 'wss://host/ios_test', token });
