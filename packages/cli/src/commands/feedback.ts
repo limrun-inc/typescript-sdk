@@ -38,15 +38,20 @@ export default class Feedback extends BaseCommand {
     if (!flags.guest && (flags['api-key'] || config.apiKey)) {
       if (flags.email)
         this.error('Use --guest with --email, or omit --email to submit to your organization.');
-      const org = await whoAmI(this.client);
-      const ticket = await this.client.post<{ id: string }>(
-        `/v1/organizations/${encodeURIComponent(org)}/support_tickets`,
-        {
-          body: { kind: flags.kind, subject, message },
-          headers,
-        },
-      );
-      id = ticket.id;
+      try {
+        const org = await whoAmI(this.client);
+        const ticket = await this.client.post<{ id: string }>(
+          `/v1/organizations/${encodeURIComponent(org)}/support_tickets`,
+          {
+            body: { kind: flags.kind, subject, message },
+            headers,
+          },
+        );
+        id = ticket.id;
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : 'Could not confirm submission.';
+        this.error(`${detail} If you retry, use --request-id ${requestId}.`);
+      }
       followUp = 'Follow up in the console under Support.';
     } else {
       let res: Response;
@@ -61,8 +66,15 @@ export default class Feedback extends BaseCommand {
       } catch {
         this.error(`Could not confirm submission. Retry with --request-id ${requestId}.`);
       }
-      if (!res.ok)
-        this.error(`Guest support returned HTTP ${res.status}. Retry with --request-id ${requestId}.`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        const detail = typeof body?.message === 'string' ? ` ${body.message}` : '';
+        const retry =
+          res.status === 408 || res.status === 429 || res.status >= 500 ?
+            ` Retry with --request-id ${requestId}.`
+          : '';
+        this.error(`Guest support returned HTTP ${res.status}.${detail}${retry}`);
+      }
       id = res.headers.get('X-Limrun-Ticket-ID');
       followUp =
         flags.email ?

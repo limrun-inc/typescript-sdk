@@ -37,7 +37,34 @@ test('a denied credential never falls back to guest submission', async () => {
   const fetch = jest
     .spyOn(globalThis, 'fetch')
     .mockResolvedValue(Response.json({ message: 'Access denied' }, { status: 403 }));
-  await expect(Feedback.run(['Login failed'])).rejects.toThrow();
+  await expect(Feedback.run(['Login failed'])).rejects.toThrow(/Access denied.*--request-id [0-9a-f-]{36}/s);
   expect(fetch).toHaveBeenCalled();
   expect(fetch.mock.calls.some(([url]) => String(url).endsWith('/feedback'))).toBe(false);
+});
+
+test('a guest sees why a request was rejected', async () => {
+  jest
+    .mocked(readConfig)
+    .mockReturnValue({ apiKey: '', apiEndpoint: 'https://example.test', consoleEndpoint: '' });
+  jest
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValue(Response.json({ message: 'provide a personal reply address' }, { status: 400 }));
+  await expect(Feedback.run(['Login failed', '--guest'])).rejects.toThrow(
+    'Guest support returned HTTP 400. provide a personal reply address',
+  );
+});
+
+test('a failed organization write reports the idempotency key it sent', async () => {
+  jest
+    .mocked(readConfig)
+    .mockReturnValue({ apiKey: 'lim_test', apiEndpoint: 'https://example.test', consoleEndpoint: '' });
+  const fetch = jest
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(Response.json({ organization: { id: 'org_test' } }))
+    .mockResolvedValueOnce(Response.json({ message: 'Access denied' }, { status: 403 }));
+  const failure = await Feedback.run(['Login failed']).catch((err: Error) => err);
+  const requestId = new Headers(fetch.mock.calls[1]?.[1]?.headers).get('Idempotency-Key');
+  expect(requestId).toBeTruthy();
+  expect(failure).toBeInstanceOf(Error);
+  expect((failure as Error).message).toContain(`--request-id ${requestId}`);
 });
