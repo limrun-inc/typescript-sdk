@@ -3,7 +3,9 @@
 export {
   XcodeSnapshots,
   IOSSnapshots,
+  GradleSnapshots,
   type XcodeSnapshot,
+  type GradleSnapshot,
   type IOSSnapshot,
   type SnapshotList,
   type SnapshotListParams,

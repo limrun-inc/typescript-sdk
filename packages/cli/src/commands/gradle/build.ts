@@ -6,6 +6,8 @@ import { type GradleBuildOptions } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { syncFlags } from '../../lib/sync-flags';
+import { parseSnapshotConfig } from '../../lib/cache';
+import { gradleSnapshotFlags } from '../../lib/cache-flags';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import {
   gradleAndroidABIs,
@@ -32,6 +34,7 @@ export default class GradleBuild extends BaseCommand {
     "<%= config.bin %> gradle build --file-from-secret '~/.npmrc=packages/npmrc'",
     '<%= config.bin %> gradle build',
     '<%= config.bin %> gradle build ./my-app --upload myapp.apk',
+    '<%= config.bin %> gradle build --snapshot-key myapp-pr51 --snapshot-restore-keys "myapp-pr51,myapp-main"',
     '<%= config.bin %> gradle build --task bundleRelease',
     '<%= config.bin %> gradle build --id <gradle-instance-ID> --project-path android',
     '<%= config.bin %> gradle build ./my-monorepo --expo-app-dir apps/mobile',
@@ -61,6 +64,7 @@ export default class GradleBuild extends BaseCommand {
     ...BaseCommand.baseFlags,
     ...secretEnvFlags,
     ...secretFileFlags,
+    ...gradleSnapshotFlags,
     ...BaseCommand.permissionFlags,
     'additional-file': syncFlags['additional-file'],
     id: Flags.string({
@@ -296,6 +300,7 @@ export default class GradleBuild extends BaseCommand {
 
       const target = await this.resolveGradleTargetOrCreate(flags.id);
       const id = target.id;
+      await this.applyBuildCacheToTarget(target, parseSnapshotConfig(flags), 'gradle');
       options.envFromSecret = parseSecretEnv(flags['env-from-secret']);
       options.fileFromSecret = parseSecretFiles(flags['file-from-secret']);
       await this.ensureSecretPermissions(id, options.envFromSecret, options.fileFromSecret);
@@ -385,10 +390,15 @@ export default class GradleBuild extends BaseCommand {
             { exit: result.exitCode },
           );
         }
-        this.error(`gradle build failed with exit code ${result.exitCode}`, { exit: result.exitCode });
+        const snapshotTip = await this.buildSnapshotTip(id, 'gradle');
+        this.error(`gradle build failed with exit code ${result.exitCode}${snapshotTip}`, {
+          exit: result.exitCode,
+        });
       }
 
-      this.output(`\nBuild succeeded (exit code ${result.exitCode})`);
+      this.output(
+        `\nBuild succeeded (exit code ${result.exitCode})${await this.buildSnapshotTip(id, 'gradle')}`,
+      );
       // Signing only yields a Play-ready AAB when a bundle task ran (no
       // explicit tasks means the server defaulted to bundleRelease); a BYO
       // keystore with an explicit assemble task still produces an APK.

@@ -16,7 +16,7 @@ function encodePathParameter(value: string, name: string): string {
 
 // Backend commands use the stable SDK transport so CLI releases do not require
 // a newly published SDK resource class just to call an organization endpoint.
-export function snapshotResource(client: Limrun, kind: 'xcode' | 'ios', organizationId: string) {
+export function snapshotResource(client: Limrun, kind: 'xcode' | 'ios' | 'gradle', organizationId: string) {
   const base = `/v1/organizations/${encodePathParameter(
     organizationId,
     'Organization ID',

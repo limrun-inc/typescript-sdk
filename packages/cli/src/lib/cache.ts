@@ -1,10 +1,37 @@
-import type {
-  XcodeCacheConfig,
-  XcodeCacheRestoreStatus,
-  XcodeCacheSaveStatus,
-  XcodeInstanceCache,
-} from '@limrun/api';
+import type { XcodeCacheConfig } from '@limrun/api';
 import { formatDurationMs } from './duration';
+
+/**
+ * The part of a disk snapshot status these lines read. Xcode's cache and Gradle's snapshot both
+ * have it, so one set of renderers keeps the two products' output the same.
+ */
+export type SnapshotRestoreState = {
+  phase: string;
+  reason?: string;
+  message?: string;
+  matchedKey?: string;
+  matchKind?: 'exact_hit' | 'prefix_hit';
+  skippedKeys?: { key: string; reason: string }[];
+  source?: string;
+  bytes?: number;
+  startedAt?: string;
+  finishedAt?: string;
+};
+
+export type SnapshotSaveState = {
+  phase: string;
+  reason?: string;
+  message?: string;
+  /** Xcode's name for the key the save publishes under. */
+  cacheKey?: string;
+  /** Gradle's name for the key the save publishes under. */
+  key?: string;
+  bytes?: number;
+  startedAt?: string;
+  finishedAt?: string;
+};
+
+export type SnapshotState = { restore: SnapshotRestoreState; save: SnapshotSaveState };
 
 // The oclif flag definitions live in ./cache-flags so that everything here stays importable
 // without oclif, which is what lets the root test suite cover it.
@@ -37,6 +64,20 @@ export function parseSnapshotConfig(flags: CacheFlags): XcodeCacheConfig | undef
   };
 }
 
+/**
+ * The Gradle create field for a snapshot configuration. A Gradle snapshot has no paths: it keeps a
+ * fixed set of build state, so the flags never offer them.
+ */
+export function gradleSnapshotConfig(
+  config: XcodeCacheConfig | undefined,
+): { key?: string; restoreKeys?: string[] } | undefined {
+  if (!config) return undefined;
+  return {
+    ...(config.key ? { key: config.key } : {}),
+    ...(config.restoreKeys ? { restoreKeys: config.restoreKeys } : {}),
+  };
+}
+
 /** @deprecated Use parseSnapshotConfig. */
 export const parseCacheConfig = parseSnapshotConfig;
 
@@ -55,13 +96,16 @@ export function wantsRestore(config: XcodeCacheConfig | undefined): boolean {
 }
 
 const RESTORE_PROGRESS: Record<string, string> = {
+  pending: 'waiting for the build sandbox',
   placing: 'preparing the workspace directory',
   downloading: 'downloading the archive',
   materializing: 'unpacking the archive into the workspace',
+  extracting: 'extracting the archive into the build sandbox',
 };
 
 const SAVE_PROGRESS: Record<string, string> = {
   idle: 'waiting for the build sandbox to stop',
+  requested: 'asking the build sandbox to save',
   quiescing: 'stopping the build sandbox',
   archiving: 'archiving the workspace',
   uploading: 'uploading the archive',
@@ -82,6 +126,13 @@ const REASONS: Record<string, string> = {
   transport: 'the transfer failed',
   publish_deadline: 'publication ran past the time limit',
   no_pod: 'the instance had no node left to publish from',
+  compat_mismatch: 'the snapshot was saved by a build sandbox with different toolchains',
+  not_eligible: 'no build succeeded since the last sync',
+  unsupported: 'the build sandbox image does not support disk snapshots',
+  archive: 'archiving the build sandbox failed',
+  extract: 'extracting the archive failed',
+  restore_deadline: 'the restore ran past the time limit',
+  save_deadline: 'publication ran past the time limit',
 };
 
 function explain(reason: string | undefined): string | undefined {
@@ -90,12 +141,12 @@ function explain(reason: string | undefined): string | undefined {
 }
 
 /** A line for a phase that is still moving, or undefined for phases with nothing to say. */
-export function restoreProgressLine(cache: XcodeInstanceCache): string | undefined {
+export function restoreProgressLine(cache: SnapshotState): string | undefined {
   const text = RESTORE_PROGRESS[cache.restore.phase];
   return text ? `Disk snapshot restore: ${text}...` : undefined;
 }
 
-export function saveProgressLine(cache: XcodeInstanceCache): string | undefined {
+export function saveProgressLine(cache: SnapshotState): string | undefined {
   const text = SAVE_PROGRESS[cache.save.phase];
   return text ? `Disk snapshot publish: ${text}...` : undefined;
 }
@@ -105,10 +156,7 @@ export function saveProgressLine(cache: XcodeInstanceCache): string | undefined 
  * A cold instance is a normal outcome; only `failed` means the warm workspace that was asked
  * for is not there and something is actually wrong.
  */
-export function restoreOutcome(
-  cache: XcodeInstanceCache,
-  fallbackMs: number,
-): { line: string; failed: boolean } {
+export function restoreOutcome(cache: SnapshotState, fallbackMs: number): { line: string; failed: boolean } {
   const restore = cache.restore;
   const took = ` in ${formatDurationMs(durationMs(restore, fallbackMs))}`;
   switch (restore.phase) {
@@ -118,7 +166,7 @@ export function restoreOutcome(
       const size = restore.bytes ? `, ${formatBytes(restore.bytes)}` : '';
       const via =
         restore.source === 'tag' ? ' via the regional accelerator'
-        : restore.source === 'tigris' ? ' direct from object storage'
+        : restore.source === 'tigris' || restore.source === 'direct' ? ' direct from object storage'
         : '';
       return { line: `Disk snapshot restored${from}${kind}${size}${via}${took}.`, failed: false };
     }
@@ -143,22 +191,20 @@ export function restoreOutcome(
 }
 
 /** The keys resolution passed over, as indented lines, so a miss is explainable. */
-export function skippedKeyLines(cache: XcodeInstanceCache): string[] {
+export function skippedKeyLines(cache: SnapshotState): string[] {
   return (cache.restore.skippedKeys ?? []).map(
     (skipped) => `  ${skipped.key}: ${explain(skipped.reason) ?? skipped.reason}`,
   );
 }
 
-export function saveOutcome(
-  cache: XcodeInstanceCache,
-  fallbackMs: number,
-): { line: string; failed: boolean } {
+export function saveOutcome(cache: SnapshotState, fallbackMs: number): { line: string; failed: boolean } {
   const save = cache.save;
   const took = ` in ${formatDurationMs(durationMs(save, fallbackMs))}`;
   const why = explain(save.reason);
   switch (save.phase) {
     case 'published': {
-      const under = save.cacheKey ? ` under ${save.cacheKey}` : '';
+      const key = save.cacheKey ?? save.key;
+      const under = key ? ` under ${key}` : '';
       const size = save.bytes ? `, ${formatBytes(save.bytes)}` : '';
       return { line: `Disk snapshot published${under}${size}${took}.`, failed: false };
     }
@@ -183,7 +229,7 @@ export function saveOutcome(
  * Server-measured duration when the status carries both ends, since that is the time the
  * transfer actually took rather than the time this process spent watching it.
  */
-function durationMs(status: XcodeCacheRestoreStatus | XcodeCacheSaveStatus, fallbackMs: number): number {
+function durationMs(status: SnapshotRestoreState | SnapshotSaveState, fallbackMs: number): number {
   if (status.startedAt && status.finishedAt) {
     const started = Date.parse(status.startedAt);
     const finished = Date.parse(status.finishedAt);

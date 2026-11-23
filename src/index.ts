@@ -10,7 +10,9 @@ export { Limrun, type ClientOptions } from './client';
 export {
   XcodeSnapshots,
   IOSSnapshots,
+  GradleSnapshots,
   type XcodeSnapshot,
+  type GradleSnapshot,
   type IOSSnapshot,
   type SnapshotList,
   type SnapshotListParams,
@@ -226,6 +228,25 @@ export {
   type XcodeSnapshotFollowResult,
   type XcodeSnapshotFollowTarget,
 } from './xcode-snapshot';
+export {
+  followGradleSnapshot,
+  isGradleRestoreTerminal,
+  isGradleSaveTerminal,
+  isGradleSnapshotTerminal,
+  GradleSnapshotGoneError,
+  GradleSnapshotTimeoutError,
+  type GradleSnapshotConfig,
+  type GradleInstanceSnapshot,
+  type GradleSnapshotRestoreStatus,
+  type GradleSnapshotSaveStatus,
+  type GradleSnapshotRestorePhase,
+  type GradleSnapshotSavePhase,
+  type GradleSnapshotSkippedKey,
+  type GradleSnapshotSide,
+  type GradleSnapshotFollowOptions,
+  type GradleSnapshotFollowResult,
+  type GradleSnapshotFollowTarget,
+} from './gradle-snapshot';
 export {
   LimrunError,
   APIError,
