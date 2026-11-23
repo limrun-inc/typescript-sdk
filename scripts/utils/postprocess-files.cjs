@@ -36,6 +36,15 @@ async function postprocess() {
       transformed = transformed.replace(/\/\*\* @ts-ignore\b[^*]*\*\/ /gm, '// @ts-ignore\n');
     }
 
+    // tsc-multi adds .mjs to the relative imports of ESM declarations but not to module
+    // augmentations, so `declare module './x'` there names the CommonJS twin and the helpers it
+    // grafts on (createClient and friends) never reach an ESM consumer's types.
+    if (file.endsWith('.d.mts')) {
+      transformed = transformed.replace(/^(declare module ['"])(\.\.?\/[^'"]+?)(['"])/gm, (match, open, specifier, close) =>
+        /\.[cm]?js$/.test(specifier) ? match : `${open}${specifier}.mjs${close}`,
+      );
+    }
+
     if (transformed !== code) {
       console.error(`wrote ${path.relative(process.cwd(), file)}`);
       await fs.promises.writeFile(file, transformed, 'utf8');
