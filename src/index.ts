@@ -92,6 +92,13 @@ export {
   MAESTRO_RUNNER_PORT,
   type MaestroRun,
 } from './ios-maestro';
+export {
+  startArgentBridge,
+  ARGENT_PROVIDER_CAPABILITIES,
+  type ArgentBridge,
+  type ArgentBridgeClient,
+  type ArgentBridgeOptions,
+} from './ios-argent';
 export { buildSettingKeyPattern, parseBuildSettingEntries, validateBuildSettings } from './build-settings';
 export {
   exec,

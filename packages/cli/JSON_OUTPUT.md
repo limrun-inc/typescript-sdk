@@ -80,6 +80,7 @@ Existing JSON-enabled device commands keep their existing response shapes. In pa
 | `ios restart-services`                         | `{ok:true, instanceId, services}` once every service has restarted.                                                                                                                                      |
 | `ios set-orientation`                          | `{ok:true, instanceId, orientation}` with the requested orientation.                                                                                                                                     |
 | `ios forward`                                  | `{"instanceId":"...","localHost":"127.0.0.1","localPort":8100,"remotePort":8100}` after the listener and remote connection are ready. The command stays running until interrupted.                       |
+| `ios argent`                                   | `{"instanceId":"...","deviceId":"ext:limrun-...:<udid>"}` once the simulator is offered to Argent. Argent's own output goes to stderr. The command stays running until interrupted.                      |
 | `android connect`                              | `{"instanceId":"...","address":{"address":"127.0.0.1","port":12345}}` from the local tunnel. The command stays running.                                                                                  |
 
 Camera `play` on both platforms returns `{ok:true, instanceId, action:"play", localPath, loop}`. Camera `clear` returns `{ok:true, instanceId, action:"clear"}`. Existing `ok` and `loop` fields are retained.
