@@ -511,6 +511,34 @@ lim ios maestro -- test flow.yaml --include-tags smoke --test-output-dir artifac
 lim ios create --install-asset appstore/maestro-ios-runner-2.5.1.tar.gz
 ```
 
+#### Argent (iOS only)
+
+Drive a remote Limrun simulator with the locally installed
+[Argent](https://github.com/software-mansion/argent) toolkit. The command starts
+Argent's tool-server wired to the instance, and the simulator then appears in
+`list-devices` next to your local devices. It stays running until Ctrl+C.
+
+```bash
+# Terminal 1: prints the device id Argent lists the simulator under
+lim ios argent
+
+# Terminal 2: your agent, or Argent's own CLI, with the same Argent install
+argent run list-devices
+argent run describe --udid 'ext:limrun-<id>:<udid>'
+
+# `argent server start` flags go after --
+lim ios argent -- --port 4000
+```
+
+A tool-server that is already running is replaced, because it must start with
+this wiring. Tapping, typing, screenshots, the UI tree, app launch and install
+work. Screen recording, the native inspection tools and the native profiler
+do not: they need Argent's helper processes beside the simulator. After `paste`,
+iOS can show its "Allow Paste" prompt, which the agent taps like any other alert.
+
+Android needs no command. `lim android create` connects the emulator over ADB,
+and Argent lists it like any other ADB device.
+
 ---
 
 ### Android
