@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.77.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.77.0...v0.77.1) (2026-11-23)
+
+
+### Features
+
+* macOS instances in the SDK and RemoteControl ([#713](https://github.com/limrun-inc/typescript-sdk/issues/713)) ([609aa19](https://github.com/limrun-inc/typescript-sdk/commit/609aa19a10eedf8d81313ca10736fc03c2479a9a))
+
+
+### Chores
+
+* **cli:** release 0.61.0 with SDK 0.77.0 ([#719](https://github.com/limrun-inc/typescript-sdk/issues/719)) ([82bbd6d](https://github.com/limrun-inc/typescript-sdk/commit/82bbd6d7d5a9357703571b38636c224170b78726))
+
+
+### Documentation
+
+* show macOS instances in the README ([#721](https://github.com/limrun-inc/typescript-sdk/issues/721)) ([502da7b](https://github.com/limrun-inc/typescript-sdk/commit/502da7bd2da7ac36f4e139b4fcdcd1ddd9a994c0))
+
 ## [0.77.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.76.0...v0.77.0) (2026-11-23)
 
 
