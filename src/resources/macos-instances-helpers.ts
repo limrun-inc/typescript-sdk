@@ -10,10 +10,25 @@ import {
 } from './daemon-client-shared';
 import { MacosInstances, type MacosInstance } from './macos-instances';
 import {
+  destinationTunnelDialOptions,
   startDestinationTcpTunnel,
   type DestinationTcpTunnel,
   type DestinationTunnelStartOptions,
 } from '../destination-tunnel-dialer';
+import { APIPromise } from '../core/api-promise';
+import { RequestOptions } from '../internal/request-options';
+import { path } from '../internal/utils/path';
+import { downloadFileToLocalPath } from '../internal/download-file';
+import { persistFields, ttlFields, type PersistOption } from '../internal/persist-option';
+import { streamSessionEntries } from '../internal/session-stream';
+import { postTrustedCaCertificate, type TrustedCaCertificate } from '../internal/trusted-ca';
+import {
+  type PerformanceSample,
+  type SessionArtifact,
+  type SessionArtifactKind,
+  type SessionEvent,
+  type SessionLogLine,
+} from './session-artifacts';
 import {
   getDestinationTunnelStatus,
   stopDestinationTunnel,
@@ -27,13 +42,36 @@ export type MacosCreateClientParams = { logLevel?: LogLevel } & (
 );
 
 /**
- * Options of {@link MacosClient.startTunnel}. The guest relays tunnel traffic as it is, so the
- * inspection options iOS and Android take do not apply.
+ * Options of {@link MacosClient.startTunnel}, as on iOS and Android: inspection is on and bodies
+ * are off unless `inspection` says otherwise.
  */
-export type MacosTunnelOptions = Pick<
-  DestinationTunnelStartOptions,
-  'selectors' | 'window' | 'resetsInactivityTimeout' | 'logLevel'
->;
+export type MacosTunnelOptions = DestinationTunnelStartOptions;
+
+/** Options of {@link MacosClient.startRecording}. */
+export interface MacosRecordingOptions {
+  /** The recording's ID, `[a-z0-9][a-z0-9_-]{0,63}`. Generated when omitted; never reused. */
+  recordingId?: string;
+  /** Encoder quality from 5 to 10; the server default is 5. */
+  quality?: number;
+  /** Upload the recording to Limrun's bucket when it stops; list it with `listRecordings`. */
+  persist?: PersistOption;
+}
+
+/** Where a stopped recording goes, besides the instance's own download URL. */
+export interface MacosRecordingDestination {
+  /** An HTTPS presigned PUT URL the instance uploads the MP4 to before the stop resolves. */
+  presignedUrl?: string;
+  /** A local path this client downloads the MP4 to. */
+  localPath?: string;
+}
+
+/** Handlers of a live stream. `onError` fires at most once, and the stream is then closed. */
+export interface MacosStreamHandlers<T> {
+  onEntry: (entry: T) => void;
+  /** Called once the entries the instance replays on connect have all arrived. */
+  onReplayed?: () => void;
+  onError?: (error: Error) => void;
+}
 
 /** A point on the screen, in pixels of `screenshot()`, from the top-left corner. */
 export interface MacosPoint {
@@ -133,6 +171,78 @@ export interface MacosClient {
 
   /** Stop the tunnel with this ID; another tunnel that replaced it keeps running. */
   stopTunnel(tunnelId: string): Promise<void>;
+
+  /**
+   * Trust a PEM-encoded CA certificate system-wide in the guest, for example the CA of an
+   * intercepting proxy you record traffic with. macOS asks an administrator to confirm a new
+   * trusted root, so the instance answers that dialog itself and it shows on the screen for a
+   * few seconds. Adding a certificate the guest already trusts changes nothing.
+   */
+  addCaCertificate(pem: string): Promise<TrustedCaCertificate>;
+
+  /**
+   * Start recording the screen and return the recording's ID. Up to eight recordings may be
+   * active or uploading at once.
+   */
+  startRecording(options?: MacosRecordingOptions): Promise<string>;
+
+  /**
+   * Stop a recording, or the latest active one when `recordingId` is omitted, and return its
+   * download URL, which takes the instance token and lasts while the instance runs.
+   */
+  stopRecording(recordingId?: string, saveTo?: MacosRecordingDestination): Promise<string>;
+
+  /** The last `lines` lines an app logged to the unified log in the past hour. */
+  appLogTail(bundleId: string, lines: number): Promise<string>;
+
+  /**
+   * Follow an app's unified log as it is written, one message per `onEntry`. Returns a
+   * function that stops it.
+   */
+  streamAppLog(bundleId: string, handlers: MacosStreamHandlers<string>): () => void;
+
+  /**
+   * Start capturing an app's logs. One app log capture runs at a time. With `persist`, the
+   * capture is uploaded to Limrun's bucket when it stops or the instance terminates; list it
+   * with `macosInstances.listAppLogs`.
+   */
+  startAppLogCapture(options: { bundleId: string; persist?: PersistOption }): Promise<void>;
+
+  /** Stop the active app log capture. */
+  stopAppLogCapture(): Promise<void>;
+
+  /**
+   * Start capturing the coalesced event log of clicks, scrolls and keys sent to the screen.
+   * Typing is logged as a count of characters, never their content.
+   */
+  startEventCapture(options?: { persist?: PersistOption }): Promise<void>;
+
+  /** Stop the active event capture. */
+  stopEventCapture(): Promise<void>;
+
+  /**
+   * Start saving the running apps' performance samples. The capture always persists, kept for
+   * `ttlSeconds` (server default 72h); list it with `macosInstances.listPerformanceCaptures`.
+   */
+  startPerformanceCapture(options?: { ttlSeconds?: number }): Promise<void>;
+
+  /** Stop the active performance capture and upload it. */
+  stopPerformanceCapture(): Promise<void>;
+
+  /**
+   * Tail the live app log capture. On connect the instance replays its recent lines, and a
+   * dropped connection resumes where it left off. Returns a function that closes it.
+   */
+  streamAppLogCapture(handlers: MacosStreamHandlers<SessionLogLine>): () => void;
+
+  /** Tail the live event capture, with {@link streamAppLogCapture}'s semantics. */
+  streamEventCapture(handlers: MacosStreamHandlers<SessionEvent>): () => void;
+
+  /**
+   * Tail the running apps' CPU, memory, thread and disk samples, about once a second; no
+   * capture is needed. On connect the instance replays its recent samples.
+   */
+  streamPerformance(handlers: MacosStreamHandlers<PerformanceSample>): () => void;
 }
 
 export interface MacosSnapshotRestoreOptions {
@@ -161,6 +271,20 @@ declare module './macos-instances' {
   interface MacosInstances {
     /** Create a client that works inside a running macOS instance. */
     createClient(params: MacosCreateClientParams): Promise<MacosClient>;
+    /** List the instance's persisted session artifacts, optionally narrowed to one kind. */
+    listSessionArtifacts(
+      id: string,
+      kind?: SessionArtifactKind,
+      options?: RequestOptions,
+    ): APIPromise<SessionArtifact[]>;
+    /** List the instance's persisted screen recordings. */
+    listRecordings(id: string, options?: RequestOptions): APIPromise<SessionArtifact[]>;
+    /** List the instance's persisted app log captures. */
+    listAppLogs(id: string, options?: RequestOptions): APIPromise<SessionArtifact[]>;
+    /** List the instance's persisted event log captures. */
+    listEvents(id: string, options?: RequestOptions): APIPromise<SessionArtifact[]>;
+    /** List the instance's persisted performance captures. */
+    listPerformanceCaptures(id: string, options?: RequestOptions): APIPromise<SessionArtifact[]>;
   }
 }
 
@@ -209,6 +333,19 @@ class MacosInstancesHelpers extends MacosInstances {
       await request(path, { method: 'POST', body });
     }
 
+    function tail<T extends { ts: number }>(
+      kind: 'applogs' | 'events' | 'performance',
+      handlers: MacosStreamHandlers<T>,
+    ): () => void {
+      return streamSessionEntries<T>({
+        url: `${apiUrl}/session/${kind}/events`,
+        token,
+        onEntry: handlers.onEntry,
+        onReplayed: handlers.onReplayed,
+        onError: handlers.onError,
+      });
+    }
+
     return {
       run: createBuildRun({ apiUrl, token, log }),
 
@@ -231,14 +368,111 @@ class MacosInstancesHelpers extends MacosInstances {
       },
 
       startTunnel(tunnelOptions) {
-        return startDestinationTcpTunnel(deriveDestinationTunnelURL(apiUrl), token, {
-          selectors: tunnelOptions.selectors,
-          ...(tunnelOptions.window === undefined ? {} : { window: tunnelOptions.window }),
-          ...(tunnelOptions.resetsInactivityTimeout === undefined ?
-            {}
-          : { resetsInactivityTimeout: tunnelOptions.resetsInactivityTimeout }),
-          logLevel: tunnelOptions.logLevel ?? params.logLevel ?? 'info',
+        return startDestinationTcpTunnel(
+          deriveDestinationTunnelURL(apiUrl),
+          token,
+          destinationTunnelDialOptions(tunnelOptions, params.logLevel ?? 'info'),
+        );
+      },
+
+      addCaCertificate(pem) {
+        return postTrustedCaCertificate<TrustedCaCertificate>(`${apiUrl}/trusted-cas`, token, pem);
+      },
+
+      async startRecording(options) {
+        if (options?.recordingId !== undefined) validateRecordingId(options.recordingId);
+        const response = await request('/recordings', {
+          method: 'POST',
+          body: {
+            ...(options?.recordingId !== undefined && { recordingId: options.recordingId }),
+            ...(options?.quality !== undefined && { quality: options.quality }),
+            ...persistFields(options?.persist),
+          },
         });
+        return ((await response.json()) as { recordingId: string }).recordingId;
+      },
+
+      async stopRecording(recordingId, saveTo = {}) {
+        if (recordingId !== undefined) validateRecordingId(recordingId);
+        const response = await request(
+          recordingId === undefined ? '/recordings/stop' : `/recordings/${recordingId}/stop`,
+          {
+            method: 'POST',
+            body: saveTo.presignedUrl ? { presignedUrl: saveTo.presignedUrl } : {},
+          },
+        );
+        const stopped = ((await response.json()) as { recordingId?: string }).recordingId || recordingId;
+        if (!stopped) throw new Error('the instance did not say which recording stopped');
+        const downloadUrl = `${apiUrl}/files?name=${encodeURIComponent(`recording_${stopped}.mp4`)}`;
+        if (saveTo.localPath) await downloadFileToLocalPath(downloadUrl, token, saveTo.localPath);
+        return downloadUrl;
+      },
+
+      async appLogTail(bundleId, lines) {
+        const query = new URLSearchParams({ bundleId, lines: String(lines) });
+        const response = await request(`/app-logs?${query}`, { method: 'GET' });
+        return ((await response.json()) as { logs?: string }).logs ?? '';
+      },
+
+      streamAppLog(bundleId, handlers) {
+        const controller = new AbortController();
+        void (async () => {
+          try {
+            const response = await nodeProxyTransport.fetch(
+              `${apiUrl}/app-logs/stream?${new URLSearchParams({ bundleId })}`,
+              { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal },
+            );
+            if (!response.ok || !response.body) {
+              throw new Error(
+                `GET /app-logs/stream failed: ${response.status} ${await response.text()}`.trim(),
+              );
+            }
+            for await (const event of readServerSentEvents(response.body)) handlers.onEntry(event.data);
+            if (!controller.signal.aborted) throw new Error('the app log stream ended');
+          } catch (error) {
+            if (!controller.signal.aborted) {
+              handlers.onError?.(error instanceof Error ? error : new Error(String(error)));
+            }
+          }
+        })();
+        return () => controller.abort();
+      },
+
+      async startAppLogCapture({ bundleId, persist }) {
+        if (!bundleId) throw new Error('bundleId must be a non-empty string');
+        await post('/session/applogs/start', { bundleId, ...persistFields(persist) });
+      },
+
+      async stopAppLogCapture() {
+        await post('/session/applogs/stop', {});
+      },
+
+      async startEventCapture(options) {
+        await post('/session/events/start', { ...persistFields(options?.persist) });
+      },
+
+      async stopEventCapture() {
+        await post('/session/events/stop', {});
+      },
+
+      async startPerformanceCapture(options) {
+        await post('/session/performance/start', { ...ttlFields(options?.ttlSeconds) });
+      },
+
+      async stopPerformanceCapture() {
+        await post('/session/performance/stop', {});
+      },
+
+      streamAppLogCapture(handlers) {
+        return tail<SessionLogLine>('applogs', handlers);
+      },
+
+      streamEventCapture(handlers) {
+        return tail<SessionEvent>('events', handlers);
+      },
+
+      streamPerformance(handlers) {
+        return tail<PerformanceSample>('performance', handlers);
       },
 
       getTunnelStatus() {
@@ -304,6 +538,37 @@ class MacosInstancesHelpers extends MacosInstances {
 }
 
 MacosInstances.prototype.createClient = MacosInstancesHelpers.prototype.createClient;
+
+MacosInstances.prototype.listSessionArtifacts = function (
+  this: MacosInstances,
+  id: string,
+  kind?: SessionArtifactKind,
+  options?: RequestOptions,
+): APIPromise<SessionArtifact[]> {
+  return this._client.get(path`/v1/macos_instances/${id}/session_artifacts`, {
+    query: kind ? { kind } : undefined,
+    ...options,
+  });
+};
+MacosInstances.prototype.listRecordings = function (this: MacosInstances, id, options) {
+  return this.listSessionArtifacts(id, 'recording', options);
+};
+MacosInstances.prototype.listAppLogs = function (this: MacosInstances, id, options) {
+  return this.listSessionArtifacts(id, 'appLog', options);
+};
+MacosInstances.prototype.listEvents = function (this: MacosInstances, id, options) {
+  return this.listSessionArtifacts(id, 'eventLog', options);
+};
+MacosInstances.prototype.listPerformanceCaptures = function (this: MacosInstances, id, options) {
+  return this.listSessionArtifacts(id, 'performance', options);
+};
+
+/** validateRecordingId refuses an ID the instance would refuse, before anything is sent. */
+function validateRecordingId(recordingId: string): void {
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(recordingId)) {
+    throw new Error('recordingId must match ^[a-z0-9][a-z0-9_-]{0,63}$');
+  }
+}
 
 /** readServerSentEvents yields the events of a server-sent event stream as they arrive. */
 async function* readServerSentEvents(

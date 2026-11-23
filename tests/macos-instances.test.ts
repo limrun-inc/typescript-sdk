@@ -81,11 +81,17 @@ describe('macOS client', () => {
       let raw = '';
       req.on('data', (chunk) => (raw += chunk));
       req.on('end', () => {
+        let body: unknown;
+        try {
+          body = raw ? JSON.parse(raw) : undefined;
+        } catch {
+          body = raw;
+        }
         requests.push({
           method: req.method!,
           path: req.url!,
           ...(req.headers.authorization && { auth: req.headers.authorization }),
-          body: raw ? JSON.parse(raw) : undefined,
+          body,
         });
         if (req.url === '/exec') {
           res.setHeader('Content-Type', 'application/json');
@@ -106,6 +112,21 @@ describe('macOS client', () => {
         } else if (req.url === '/ssh') {
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ user: 'limrun', port: 22 }));
+        } else if (req.url === '/recordings') {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ recordingId: 'rec-1', captureId: 'rec-123' }));
+        } else if (req.url === '/recordings/stop' || req.url === '/recordings/rec-1/stop') {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ recordingId: 'rec-1' }));
+        } else if (req.url!.startsWith('/files?')) {
+          res.setHeader('Content-Type', 'video/mp4');
+          res.end(Buffer.from('mp4'));
+        } else if (req.url!.startsWith('/app-logs?')) {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ bundleId: 'com.apple.TextEdit', logs: 'one\ntwo' }));
+        } else if (req.url === '/trusted-cas') {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ sha256: 'ab'.repeat(32) }));
         } else if (req.url === '/screenshot.jpg') {
           res.setHeader('Content-Type', 'image/jpeg');
           res.end(Buffer.from([0xff, 0xd8, 0xff]));
@@ -162,11 +183,77 @@ describe('macOS client', () => {
       ['/snapshot', { key: 'my-mac', restoreKeys: ['my-mac', 'base-'] }],
     ]);
   });
+
+  test('records the screen, captures logs, events and performance, and trusts CAs', async () => {
+    const fs = await import('fs');
+    const os = await import('os');
+    const pathModule = await import('path');
+    const limrun = new Limrun({ apiKey: 'key', baseURL: 'https://api.example.test' });
+    const mac = await limrun.macosInstances.createClient({ apiUrl, token: 'control', logLevel: 'none' });
+    requests.length = 0;
+
+    expect(await mac.startRecording({ quality: 7, persist: { ttlSeconds: 600 } })).toBe('rec-1');
+    const localPath = pathModule.join(fs.mkdtempSync(pathModule.join(os.tmpdir(), 'mac-rec-')), 'out.mp4');
+    const url = await mac.stopRecording(undefined, { localPath });
+    expect(url).toBe(`${apiUrl}/files?name=recording_rec-1.mp4`);
+    expect(fs.readFileSync(localPath, 'utf8')).toBe('mp4');
+    await mac.stopRecording('rec-1');
+    await expect(mac.stopRecording('Not Valid')).rejects.toThrow('recordingId must match');
+
+    expect(await mac.appLogTail('com.apple.TextEdit', 50)).toBe('one\ntwo');
+    await mac.startAppLogCapture({ bundleId: 'com.apple.TextEdit', persist: true });
+    await mac.stopAppLogCapture();
+    await mac.startEventCapture();
+    await mac.stopEventCapture();
+    await mac.startPerformanceCapture({ ttlSeconds: 3600 });
+    await mac.stopPerformanceCapture();
+    expect(await mac.addCaCertificate('-----BEGIN CERTIFICATE-----')).toEqual({ sha256: 'ab'.repeat(32) });
+
+    expect(requests.map((r) => [r.method, r.path, r.body])).toEqual([
+      ['POST', '/recordings', { quality: 7, persist: true, ttlSeconds: 600 }],
+      ['POST', '/recordings/stop', {}],
+      ['GET', '/files?name=recording_rec-1.mp4', undefined],
+      ['POST', '/recordings/rec-1/stop', {}],
+      ['GET', '/app-logs?bundleId=com.apple.TextEdit&lines=50', undefined],
+      ['POST', '/session/applogs/start', { bundleId: 'com.apple.TextEdit', persist: true }],
+      ['POST', '/session/applogs/stop', {}],
+      ['POST', '/session/events/start', {}],
+      ['POST', '/session/events/stop', {}],
+      ['POST', '/session/performance/start', { ttlSeconds: 3600 }],
+      ['POST', '/session/performance/stop', {}],
+      ['POST', '/trusted-cas', '-----BEGIN CERTIFICATE-----'],
+    ]);
+    expect(requests.every((r) => r.auth === 'Bearer control')).toBe(true);
+  });
 });
 
-test('a macOS tunnel dials the instance with its token and asks for no inspection', async () => {
+test('macOS session artifacts are listed by kind', async () => {
+  const urls: string[] = [];
+  const client = new Limrun({
+    apiKey: 'key',
+    baseURL: 'https://api.example.test',
+    fetch: async (input) => {
+      urls.push(new URL(input.toString()).pathname + new URL(input.toString()).search);
+      return Response.json([]);
+    },
+  });
+  await client.macosInstances.listRecordings('macos_eu_01h');
+  await client.macosInstances.listAppLogs('macos_eu_01h');
+  await client.macosInstances.listEvents('macos_eu_01h');
+  await client.macosInstances.listPerformanceCaptures('macos_eu_01h');
+  await client.macosInstances.listSessionArtifacts('macos_eu_01h');
+  expect(urls).toEqual([
+    '/v1/macos_instances/macos_eu_01h/session_artifacts?kind=recording',
+    '/v1/macos_instances/macos_eu_01h/session_artifacts?kind=appLog',
+    '/v1/macos_instances/macos_eu_01h/session_artifacts?kind=eventLog',
+    '/v1/macos_instances/macos_eu_01h/session_artifacts?kind=performance',
+    '/v1/macos_instances/macos_eu_01h/session_artifacts',
+  ]);
+});
+
+test('a macOS tunnel dials the instance with its token and inspects as iOS and Android do', async () => {
   const { WebSocketServer } = await import('ws');
-  const { destinationTunnelConfigHash, disabledDestinationTunnelInspection } = await import(
+  const { destinationTunnelConfigHash, normalizeDestinationTunnelInspection } = await import(
     '../src/destination-tunnel'
   );
   const relay = new WebSocketServer({ host: '127.0.0.1', port: 0 });
@@ -186,7 +273,10 @@ test('a macOS tunnel dials the instance with its token and asks for no inspectio
           type: 'ready',
           version: 1,
           tunnelId: 'tun-1',
-          configHash: destinationTunnelConfigHash(['localhost:3000'], disabledDestinationTunnelInspection()),
+          configHash: destinationTunnelConfigHash(
+            ['localhost:3000'],
+            normalizeDestinationTunnelInspection({ enabled: true, captureBodies: false }),
+          ),
           selectors: [{ id: 'selector-1', kind: 'route', value: 'localhost:3000' }],
         }),
       );
@@ -209,7 +299,7 @@ test('a macOS tunnel dials the instance with its token and asks for no inspectio
       type: 'start',
       selectors: ['localhost:3000'],
       resetsInactivityTimeout: false,
-      inspection: { enabled: false },
+      inspection: { enabled: true, captureBodies: false },
     });
   } finally {
     for (const client of relay.clients) client.terminate();

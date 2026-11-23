@@ -179,6 +179,10 @@ export {
   type MacosSshAccess,
   type MacosSnapshotRestoreOptions,
   type MacosSnapshotProgress,
+  type MacosTunnelOptions,
+  type MacosRecordingOptions,
+  type MacosRecordingDestination,
+  type MacosStreamHandlers,
 } from './resources/macos-instances-helpers';
 export { type AssetUploadOptions } from './resources/daemon-client-shared';
 export {
